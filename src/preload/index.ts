@@ -13,6 +13,10 @@ contextBridge.exposeInMainWorld('api', {
   selectRepoRoot: () => ipcRenderer.invoke('repo:select'),
   getRepoRoot: () => ipcRenderer.invoke('repo:getRoot'),
 
+  // Changed files
+  getChangedFiles: (worktreePath: string) => ipcRenderer.invoke('worktree:changedFiles', worktreePath),
+  getFileDiff: (worktreePath: string, filePath: string, staged: boolean) => ipcRenderer.invoke('worktree:fileDiff', worktreePath, filePath, staged),
+
   // Hooks
   checkHooks: (worktreePath: string) => ipcRenderer.invoke('hooks:check', worktreePath),
   installHooks: (worktreePath: string) => ipcRenderer.invoke('hooks:install', worktreePath),

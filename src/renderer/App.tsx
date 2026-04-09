@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import type { Worktree, TerminalTab, PtyStatus } from './types'
 import { Sidebar } from './components/Sidebar'
 import { TerminalPanel } from './components/TerminalPanel'
+import { ChangedFilesPanel } from './components/ChangedFilesPanel'
 
 /** Create a filesystem-safe terminal ID from a worktree path */
 function makeTerminalId(prefix: string, worktreePath: string): string {
@@ -182,7 +183,10 @@ export default function App(): JSX.Element {
 
   const handleCloseTab = useCallback(
     (worktreePath: string, tabId: string) => {
-      window.api.killTerminal(tabId)
+      // Only kill PTY for terminal tabs, not diff tabs
+      if (!tabId.startsWith('diff-')) {
+        window.api.killTerminal(tabId)
+      }
       setTerminalTabs((prev) => {
         const tabs = (prev[worktreePath] || []).filter((t) => t.id !== tabId)
         return { ...prev, [worktreePath]: tabs }
@@ -201,6 +205,28 @@ export default function App(): JSX.Element {
   const handleSelectTab = useCallback((worktreePath: string, tabId: string) => {
     setActiveTabId((prev) => ({ ...prev, [worktreePath]: tabId }))
   }, [])
+
+  const handleOpenDiff = useCallback(
+    (filePath: string, staged: boolean) => {
+      if (!activeWorktreeId) return
+      const tabId = `diff-${staged ? 'staged' : 'unstaged'}-${filePath}`
+      // If tab already exists, just switch to it
+      const existing = (terminalTabs[activeWorktreeId] || []).find((t) => t.id === tabId)
+      if (existing) {
+        setActiveTabId((prev) => ({ ...prev, [activeWorktreeId!]: tabId }))
+        return
+      }
+      // Extract just the filename for the tab label
+      const fileName = filePath.split('/').pop() || filePath
+      const tab: TerminalTab = { id: tabId, type: 'diff', label: fileName, filePath, staged }
+      setTerminalTabs((prev) => ({
+        ...prev,
+        [activeWorktreeId!]: [...(prev[activeWorktreeId!] || []), tab]
+      }))
+      setActiveTabId((prev) => ({ ...prev, [activeWorktreeId!]: tabId }))
+    },
+    [activeWorktreeId, terminalTabs]
+  )
 
   // Compute aggregate status per worktree (worst status wins)
   const worktreeStatuses: Record<string, PtyStatus> = {}
@@ -303,6 +329,10 @@ export default function App(): JSX.Element {
             Select a worktree to begin
           </div>
         )}
+        {/* Right panel */}
+        <div className="w-64 shrink-0 h-full">
+          <ChangedFilesPanel worktreePath={activeWorktreeId} onOpenDiff={handleOpenDiff} />
+        </div>
       </div>
     </div>
   )

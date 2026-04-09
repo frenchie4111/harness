@@ -1,5 +1,6 @@
 import type { TerminalTab, PtyStatus } from '../types'
 import { XTerminal } from './XTerminal'
+import { DiffView } from './DiffView'
 
 interface TerminalPanelProps {
   worktreePath: string
@@ -73,7 +74,7 @@ export function TerminalPanel({
         </div>
       </div>
 
-      {/* Terminal area */}
+      {/* Terminal / diff area */}
       <div className="flex-1 relative min-h-0">
         {tabs.map((tab) => (
           <div
@@ -81,12 +82,20 @@ export function TerminalPanel({
             className="absolute inset-0"
             style={{ display: tab.id === activeTabId ? 'block' : 'none' }}
           >
-            <XTerminal
-              terminalId={tab.id}
-              cwd={worktreePath}
-              type={tab.type}
-              visible={visible && tab.id === activeTabId}
-            />
+            {tab.type === 'diff' ? (
+              <DiffView
+                worktreePath={worktreePath}
+                filePath={tab.filePath!}
+                staged={tab.staged ?? false}
+              />
+            ) : (
+              <XTerminal
+                terminalId={tab.id}
+                cwd={worktreePath}
+                type={tab.type}
+                visible={visible && tab.id === activeTabId}
+              />
+            )}
           </div>
         ))}
       </div>

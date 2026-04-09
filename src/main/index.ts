@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, dialog, Menu } from 'electron'
 import { join } from 'path'
 import { PtyManager } from './pty-manager'
-import { listWorktrees, listBranches, addWorktree, removeWorktree, defaultWorktreeDir } from './worktree'
+import { listWorktrees, listBranches, addWorktree, removeWorktree, defaultWorktreeDir, getChangedFiles, getFileDiff } from './worktree'
 import { loadConfig, saveConfig, saveConfigSync } from './persistence'
 import { hooksInstalled, installHooks, watchStatusDir } from './hooks'
 import { log, getLogFilePath } from './debug'
@@ -128,6 +128,15 @@ function registerIpcHandlers(): void {
   ipcMain.handle('repo:getRoot', (event) => {
     const win = getWindowFromEvent(event)
     return win ? windowRepoRoots.get(win.id) || null : null
+  })
+
+  // Changed files
+  ipcMain.handle('worktree:changedFiles', async (_, worktreePath: string) => {
+    return getChangedFiles(worktreePath)
+  })
+
+  ipcMain.handle('worktree:fileDiff', async (_, worktreePath: string, filePath: string, staged: boolean) => {
+    return getFileDiff(worktreePath, filePath, staged)
   })
 
   // Hooks
