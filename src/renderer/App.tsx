@@ -50,6 +50,41 @@ export default function App(): JSX.Element {
     })()
   }, [])
 
+  // Fetch PR status for all worktrees in the background
+  useEffect(() => {
+    if (worktrees.length === 0) return
+
+    let cancelled = false
+
+    const fetchAllPRStatuses = async (): Promise<void> => {
+      for (const wt of worktrees) {
+        if (cancelled) break
+        try {
+          const status = await window.api.getPRStatus(wt.path)
+          if (!cancelled) {
+            setPrStatuses((prev) => {
+              // Skip update if nothing changed
+              const existing = prev[wt.path]
+              if (existing === status) return prev
+              if (existing && status && existing.checksOverall === status.checksOverall && existing.state === status.state) return prev
+              return { ...prev, [wt.path]: status }
+            })
+          }
+        } catch {
+          // ignore individual failures
+        }
+      }
+    }
+
+    fetchAllPRStatuses()
+    const interval = setInterval(fetchAllPRStatuses, 30000)
+
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [worktrees])
+
   // Listen for status changes from main process
   useEffect(() => {
     const cleanup = window.api.onStatusChange((id, status) => {
@@ -137,9 +172,6 @@ export default function App(): JSX.Element {
     setWorktrees(trees)
   }, [])
 
-  const handlePRStatusChange = useCallback((worktreePath: string, pr: PRStatus | null) => {
-    setPrStatuses((prev) => ({ ...prev, [worktreePath]: pr }))
-  }, [])
 
   const handleCreateWorktree = useCallback(async (branchName: string) => {
     await window.api.addWorktree(branchName)
@@ -439,7 +471,7 @@ export default function App(): JSX.Element {
         )}
         {/* Right panel */}
         <div className="w-64 shrink-0 h-full flex flex-col border-l border-neutral-800 bg-neutral-950">
-          <PRStatusPanel worktreePath={activeWorktreeId} onPRStatusChange={handlePRStatusChange} />
+          <PRStatusPanel pr={activeWorktreeId ? prStatuses[activeWorktreeId] : null} />
           <div className="flex-1 min-h-0">
             <ChangedFilesPanel worktreePath={activeWorktreeId} onOpenDiff={handleOpenDiff} />
           </div>

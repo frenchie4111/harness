@@ -1,9 +1,8 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState } from 'react'
 import type { PRStatus, CheckStatus } from '../types'
 
 interface PRStatusPanelProps {
-  worktreePath: string | null
-  onPRStatusChange?: (worktreePath: string, pr: PRStatus | null) => void
+  pr: PRStatus | null | undefined
 }
 
 const STATE_LABELS: Record<string, string> = {
@@ -36,63 +35,21 @@ const OVERALL_COLORS: Record<string, string> = {
   none: 'text-neutral-500'
 }
 
-export function PRStatusPanel({ worktreePath, onPRStatusChange }: PRStatusPanelProps): JSX.Element {
-  const [pr, setPr] = useState<PRStatus | null>(null)
-  const [loading, setLoading] = useState(false)
+export function PRStatusPanel({ pr }: PRStatusPanelProps): JSX.Element {
   const [expanded, setExpanded] = useState(false)
-  const prevPath = useRef<string | null>(null)
-
-  useEffect(() => {
-    if (!worktreePath) {
-      setPr(null)
-      return
-    }
-
-    // Reset when switching worktrees
-    if (worktreePath !== prevPath.current) {
-      setPr(null)
-      setExpanded(false)
-      prevPath.current = worktreePath
-    }
-
-    let cancelled = false
-
-    const fetchStatus = async (): Promise<void> => {
-      setLoading(true)
-      try {
-        const status = await window.api.getPRStatus(worktreePath)
-        if (!cancelled) {
-          setPr(status)
-          onPRStatusChange?.(worktreePath, status)
-        }
-      } catch {
-        if (!cancelled) setPr(null)
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-
-    fetchStatus()
-    const interval = setInterval(fetchStatus, 30000) // Poll every 30s
-
-    return () => {
-      cancelled = true
-      clearInterval(interval)
-    }
-  }, [worktreePath, onPRStatusChange])
-
-  if (!worktreePath) return <div />
 
   return (
     <div className="border-b border-neutral-800">
-      {/* Header */}
       <div className="px-3 py-2 flex items-center gap-2">
         <span className="text-xs font-medium text-neutral-500 flex-1">PULL REQUEST</span>
-        {loading && <span className="text-xs text-neutral-600">...</span>}
       </div>
 
-      {pr === null && !loading && (
+      {pr === null && (
         <div className="px-3 pb-2 text-xs text-neutral-600">No PR for this branch</div>
+      )}
+
+      {pr === undefined && (
+        <div className="px-3 pb-2 text-xs text-neutral-600">Loading...</div>
       )}
 
       {pr && (
