@@ -28,6 +28,11 @@
   }
 }
 
+/* All buttons and clickable elements get pointer cursor */
+button, [role="button"], a[href], [onclick] {
+  cursor: pointer;
+}
+
 /* Draggable title bar region */
 .drag-region {
   -webkit-app-region: drag;
