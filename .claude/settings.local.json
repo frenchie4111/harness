@@ -1,0 +1,87 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(npx electron-vite:*)"
+    ]
+  },
+  "hooks": {
+    "Notification": [
+      {
+        "matcher": "idle_prompt",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'hid=\"$CLAUDE_HARNESS_ID\"; [ -z \"$hid\" ] && exit 0; mkdir -p /tmp/claude-harness-status; echo \"{\\\"status\\\":\\\"waiting\\\",\\\"ts\\\":$(date +%s)}\" > /tmp/claude-harness-status/$hid.json'",
+            "timeout": 5,
+            "_marker": "__claude_harness__",
+            "_version": 3
+          }
+        ]
+      },
+      {
+        "matcher": "permission_prompt",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'hid=\"$CLAUDE_HARNESS_ID\"; [ -z \"$hid\" ] && exit 0; mkdir -p /tmp/claude-harness-status; echo \"{\\\"status\\\":\\\"needs-approval\\\",\\\"ts\\\":$(date +%s)}\" > /tmp/claude-harness-status/$hid.json'",
+            "timeout": 5,
+            "_marker": "__claude_harness__",
+            "_version": 3
+          }
+        ]
+      },
+      {
+        "matcher": "elicitation_dialog",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'hid=\"$CLAUDE_HARNESS_ID\"; [ -z \"$hid\" ] && exit 0; mkdir -p /tmp/claude-harness-status; echo \"{\\\"status\\\":\\\"needs-approval\\\",\\\"ts\\\":$(date +%s)}\" > /tmp/claude-harness-status/$hid.json'",
+            "timeout": 5,
+            "_marker": "__claude_harness__",
+            "_version": 3
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'hid=\"$CLAUDE_HARNESS_ID\"; [ -z \"$hid\" ] && exit 0; mkdir -p /tmp/claude-harness-status; echo \"{\\\"status\\\":\\\"waiting\\\",\\\"ts\\\":$(date +%s)}\" > /tmp/claude-harness-status/$hid.json'",
+            "timeout": 5,
+            "_marker": "__claude_harness__",
+            "_version": 3
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'hid=\"$CLAUDE_HARNESS_ID\"; [ -z \"$hid\" ] && exit 0; mkdir -p /tmp/claude-harness-status; echo \"{\\\"status\\\":\\\"processing\\\",\\\"ts\\\":$(date +%s)}\" > /tmp/claude-harness-status/$hid.json'",
+            "timeout": 5,
+            "_marker": "__claude_harness__",
+            "_version": 3
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'hid=\"$CLAUDE_HARNESS_ID\"; [ -z \"$hid\" ] && exit 0; mkdir -p /tmp/claude-harness-status; echo \"{\\\"status\\\":\\\"processing\\\",\\\"ts\\\":$(date +%s)}\" > /tmp/claude-harness-status/$hid.json'",
+            "timeout": 5,
+            "_marker": "__claude_harness__",
+            "_version": 3
+          }
+        ]
+      }
+    ]
+  }
+}
