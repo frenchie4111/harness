@@ -24,7 +24,7 @@ function createWindow(repoRoot?: string): BrowserWindow {
     width: bounds.width,
     height: bounds.height,
     ...(bounds.x != null ? { x: bounds.x, y: bounds.y } : {}),
-    title: 'Claude Harness',
+    title: 'Harness',
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 12, y: 12 },
     backgroundColor: '#0a0a0a',

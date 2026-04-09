@@ -415,7 +415,7 @@ export default function App(): JSX.Element {
         <div className="drag-region h-10 shrink-0" />
         <div className="flex flex-1 items-center justify-center">
         <div className="text-center">
-          <h1 className="text-2xl font-semibold text-neutral-200 mb-4">Claude Harness</h1>
+          <h1 className="text-2xl font-semibold text-neutral-200 mb-4">Harness</h1>
           <p className="text-neutral-500 mb-6">Select a git repository to get started</p>
           <button
             onClick={handleSelectRepo}

@@ -80,10 +80,12 @@ export function Sidebar({
 
   return (
     <div className="w-56 bg-neutral-950 border-r border-neutral-800 flex flex-col h-full">
-      {/* Title bar drag region (space for traffic lights) */}
-      <div className="drag-region h-10 shrink-0" />
+      {/* Title bar drag region with app name */}
+      <div className="drag-region h-10 flex items-end px-3 pb-1 shrink-0">
+        <span className="text-xs font-semibold text-neutral-400 pl-16">Harness</span>
+      </div>
 
-      {/* Header */}
+      {/* Worktrees header */}
       <div className="px-3 py-1.5 flex items-center gap-2 shrink-0">
         <span className="text-xs font-medium text-neutral-500">WORKTREES</span>
         {prLoading && <Loader2 size={10} className="text-neutral-600 animate-spin" />}

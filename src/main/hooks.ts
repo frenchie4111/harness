@@ -4,10 +4,10 @@ import { BrowserWindow } from 'electron'
 import type { PtyStatus } from './pty-manager'
 import { log } from './debug'
 
-const STATUS_DIR = '/tmp/claude-harness-status'
+const STATUS_DIR = '/tmp/harness-status'
 const HARNESS_HOOK_MARKER = '__claude_harness__'
 // Bump this when the hook format changes to force reinstallation
-const HARNESS_HOOK_VERSION = 3
+const HARNESS_HOOK_VERSION = 4
 
 // Per-event hook commands. Each event type gets its own simple command
 // that writes the appropriate status. No jq dependency — these don't need
