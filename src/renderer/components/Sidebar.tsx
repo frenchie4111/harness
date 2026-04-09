@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import type { Worktree, PtyStatus } from '../types'
 import { WorktreeTab } from './WorktreeTab'
 
@@ -11,6 +11,7 @@ interface SidebarProps {
   onDeleteWorktree: (path: string) => Promise<void>
   onRefresh: () => void
   onSelectRepo: () => void
+  onRegisterCreate?: (trigger: () => void) => void
 }
 
 export function Sidebar({
@@ -21,7 +22,8 @@ export function Sidebar({
   onCreateWorktree,
   onDeleteWorktree,
   onRefresh,
-  onSelectRepo
+  onSelectRepo,
+  onRegisterCreate
 }: SidebarProps): JSX.Element {
   const [showCreate, setShowCreate] = useState(false)
   const [branchName, setBranchName] = useState('')
@@ -43,6 +45,11 @@ export function Sidebar({
       setCreating(false)
     }
   }, [branchName, onCreateWorktree])
+
+  // Register the create trigger for external callers (hotkeys)
+  useEffect(() => {
+    onRegisterCreate?.(() => setShowCreate(true))
+  }, [onRegisterCreate])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {

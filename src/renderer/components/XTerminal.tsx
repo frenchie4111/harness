@@ -3,6 +3,13 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 
+/** Global registry so hotkeys can focus terminals without prop-drilling refs */
+const terminalRegistry = new Map<string, Terminal>()
+
+export function focusTerminalById(id: string): void {
+  terminalRegistry.get(id)?.focus()
+}
+
 interface XTerminalProps {
   terminalId: string
   cwd: string
@@ -65,6 +72,7 @@ export function XTerminal({ terminalId, cwd, type, visible }: XTerminalProps): J
 
     terminalRef.current = terminal
     fitAddonRef.current = fitAddon
+    terminalRegistry.set(terminalId, terminal)
 
     // Spawn the PTY
     const shell = '/bin/zsh'
@@ -102,6 +110,7 @@ export function XTerminal({ terminalId, cwd, type, visible }: XTerminalProps): J
     resizeObserver.observe(containerRef.current)
 
     return () => {
+      terminalRegistry.delete(terminalId)
       resizeObserver.disconnect()
       cleanupData()
       terminal.dispose()

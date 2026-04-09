@@ -37,6 +37,8 @@ export interface ElectronAPI {
   getChangedFiles(worktreePath: string): Promise<ChangedFile[]>
   getFileDiff(worktreePath: string, filePath: string, staged: boolean): Promise<string>
 
+  getHotkeyOverrides(): Promise<Record<string, string> | null>
+
   checkHooks(worktreePath: string): Promise<boolean>
   installHooks(worktreePath: string): Promise<boolean>
 
