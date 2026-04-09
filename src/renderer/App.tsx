@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import type { Worktree, TerminalTab, PtyStatus } from './types'
+import type { Worktree, TerminalTab, PtyStatus, PRStatus } from './types'
 import type { Action } from './hotkeys'
 import { Sidebar } from './components/Sidebar'
 import { TerminalPanel } from './components/TerminalPanel'
 import { ChangedFilesPanel } from './components/ChangedFilesPanel'
+import { PRStatusPanel } from './components/PRStatusPanel'
 import { focusTerminalById } from './components/XTerminal'
 import { useHotkeys } from './hooks/useHotkeys'
 
@@ -20,6 +21,7 @@ export default function App(): JSX.Element {
   const [terminalTabs, setTerminalTabs] = useState<Record<string, TerminalTab[]>>({})
   const [activeTabId, setActiveTabId] = useState<Record<string, string>>({})
   const [statuses, setStatuses] = useState<Record<string, PtyStatus>>({})
+  const [prStatuses, setPrStatuses] = useState<Record<string, PRStatus | null>>({})
   const [repoRoot, setRepoRoot] = useState<string | null>(null)
   const [hooksConsent, setHooksConsent] = useState<'pending' | 'accepted' | 'declined'>('pending')
   const [sidebarVisible, setSidebarVisible] = useState(true)
@@ -133,6 +135,10 @@ export default function App(): JSX.Element {
   const handleRefreshWorktrees = useCallback(async () => {
     const trees = await window.api.listWorktrees()
     setWorktrees(trees)
+  }, [])
+
+  const handlePRStatusChange = useCallback((worktreePath: string, pr: PRStatus | null) => {
+    setPrStatuses((prev) => ({ ...prev, [worktreePath]: pr }))
   }, [])
 
   const handleCreateWorktree = useCallback(async (branchName: string) => {
@@ -394,6 +400,7 @@ export default function App(): JSX.Element {
             worktrees={worktrees}
             activeWorktreeId={activeWorktreeId}
             statuses={worktreeStatuses}
+            prStatuses={prStatuses}
             onSelectWorktree={setActiveWorktreeId}
             onCreateWorktree={handleCreateWorktree}
             onDeleteWorktree={handleDeleteWorktree}
@@ -431,8 +438,11 @@ export default function App(): JSX.Element {
           </div>
         )}
         {/* Right panel */}
-        <div className="w-64 shrink-0 h-full">
-          <ChangedFilesPanel worktreePath={activeWorktreeId} onOpenDiff={handleOpenDiff} />
+        <div className="w-64 shrink-0 h-full flex flex-col border-l border-neutral-800 bg-neutral-950">
+          <PRStatusPanel worktreePath={activeWorktreeId} onPRStatusChange={handlePRStatusChange} />
+          <div className="flex-1 min-h-0">
+            <ChangedFilesPanel worktreePath={activeWorktreeId} onOpenDiff={handleOpenDiff} />
+          </div>
         </div>
       </div>
     </div>

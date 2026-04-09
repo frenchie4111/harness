@@ -1,9 +1,10 @@
-import type { Worktree, PtyStatus } from '../types'
+import type { Worktree, PtyStatus, PRStatus } from '../types'
 
 interface WorktreeTabProps {
   worktree: Worktree
   isActive: boolean
   status: PtyStatus
+  prStatus?: PRStatus | null
   onClick: () => void
   onDelete?: () => void
 }
@@ -22,7 +23,24 @@ const STATUS_LABELS: Record<PtyStatus, string> = {
   'needs-approval': 'Needs approval'
 }
 
-export function WorktreeTab({ worktree, isActive, status, onClick, onDelete }: WorktreeTabProps): JSX.Element {
+const PR_INDICATOR: Record<string, { symbol: string; color: string; label: string }> = {
+  open: { symbol: '\u25CB', color: 'text-green-400', label: 'PR open' },
+  draft: { symbol: '\u25CB', color: 'text-neutral-500', label: 'PR draft' },
+  merged: { symbol: '\u25CF', color: 'text-purple-400', label: 'PR merged' },
+  closed: { symbol: '\u25CF', color: 'text-red-400', label: 'PR closed' }
+}
+
+const CHECKS_INDICATOR: Record<string, string> = {
+  success: 'text-green-400',
+  failure: 'text-red-400',
+  pending: 'text-amber-400',
+  none: ''
+}
+
+export function WorktreeTab({ worktree, isActive, status, prStatus, onClick, onDelete }: WorktreeTabProps): JSX.Element {
+  const prInfo = prStatus ? PR_INDICATOR[prStatus.state] : null
+  const checksColor = prStatus ? CHECKS_INDICATOR[prStatus.checksOverall] : ''
+
   return (
     <div
       onClick={onClick}
@@ -37,7 +55,17 @@ export function WorktreeTab({ worktree, isActive, status, onClick, onDelete }: W
         title={STATUS_LABELS[status]}
       />
       <div className="min-w-0 flex-1">
-        <div className="text-sm font-medium truncate">{worktree.branch}</div>
+        <div className="text-sm font-medium truncate flex items-center gap-1.5">
+          {worktree.branch}
+          {prInfo && (
+            <span
+              className={`text-[10px] shrink-0 ${checksColor || prInfo.color}`}
+              title={`${prInfo.label} #${prStatus!.number}${prStatus!.checksOverall !== 'none' ? ` \u2014 checks ${prStatus!.checksOverall}` : ''}`}
+            >
+              PR
+            </span>
+          )}
+        </div>
         <div className="text-xs text-neutral-600 truncate">
           {worktree.path.split('/').slice(-2).join('/')}
         </div>

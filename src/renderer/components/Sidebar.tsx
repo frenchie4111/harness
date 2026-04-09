@@ -1,11 +1,12 @@
 import { useState, useCallback, useEffect } from 'react'
-import type { Worktree, PtyStatus } from '../types'
+import type { Worktree, PtyStatus, PRStatus } from '../types'
 import { WorktreeTab } from './WorktreeTab'
 
 interface SidebarProps {
   worktrees: Worktree[]
   activeWorktreeId: string | null
   statuses: Record<string, PtyStatus>
+  prStatuses: Record<string, PRStatus | null>
   onSelectWorktree: (path: string) => void
   onCreateWorktree: (branchName: string) => Promise<void>
   onDeleteWorktree: (path: string) => Promise<void>
@@ -18,6 +19,7 @@ export function Sidebar({
   worktrees,
   activeWorktreeId,
   statuses,
+  prStatuses,
   onSelectWorktree,
   onCreateWorktree,
   onDeleteWorktree,
@@ -78,6 +80,7 @@ export function Sidebar({
             worktree={wt}
             isActive={wt.path === activeWorktreeId}
             status={statuses[wt.path] || 'idle'}
+            prStatus={prStatuses[wt.path]}
             onClick={() => onSelectWorktree(wt.path)}
             onDelete={wt.isMain ? undefined : () => onDeleteWorktree(wt.path)}
           />

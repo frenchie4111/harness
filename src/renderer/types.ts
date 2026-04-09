@@ -24,6 +24,22 @@ export interface ChangedFile {
   staged: boolean
 }
 
+export interface CheckStatus {
+  name: string
+  state: 'success' | 'failure' | 'pending' | 'neutral' | 'skipped' | 'error'
+  description: string
+}
+
+export interface PRStatus {
+  number: number
+  title: string
+  state: 'open' | 'draft' | 'merged' | 'closed'
+  url: string
+  branch: string
+  checks: CheckStatus[]
+  checksOverall: 'success' | 'failure' | 'pending' | 'none'
+}
+
 export interface ElectronAPI {
   listWorktrees(): Promise<Worktree[]>
   listBranches(): Promise<string[]>
@@ -34,6 +50,7 @@ export interface ElectronAPI {
   selectRepoRoot(): Promise<string | null>
   getRepoRoot(): Promise<string | null>
 
+  getPRStatus(worktreePath: string): Promise<PRStatus | null>
   getChangedFiles(worktreePath: string): Promise<ChangedFile[]>
   getFileDiff(worktreePath: string, filePath: string, staged: boolean): Promise<string>
 

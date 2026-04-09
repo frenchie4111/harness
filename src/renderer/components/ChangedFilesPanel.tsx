@@ -51,7 +51,7 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff }: ChangedFilesPane
   const unstagedFiles = files.filter((f) => !f.staged)
 
   return (
-    <div className="flex flex-col h-full bg-neutral-950 border-l border-neutral-800">
+    <div className="flex flex-col h-full bg-neutral-950">
       {/* Header */}
       <div className="drag-region flex items-center justify-between h-10 px-3 border-b border-neutral-800 shrink-0">
         <span className="no-drag text-xs font-medium text-neutral-400 uppercase tracking-wide">
