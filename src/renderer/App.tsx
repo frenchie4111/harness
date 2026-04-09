@@ -105,15 +105,6 @@ export default function App(): JSX.Element {
     }, 2000) // debounce: update at most every 2s per worktree
   }, [])
 
-  // Track activity from terminal output
-  useEffect(() => {
-    const cleanup = window.api.onTerminalData((id) => {
-      const wtPath = terminalToWorktree(id)
-      if (wtPath) markActive(wtPath)
-    })
-    return cleanup
-  }, [terminalToWorktree, markActive])
-
   // Listen for status changes from main process
   useEffect(() => {
     const cleanup = window.api.onStatusChange((id, status) => {
