@@ -232,68 +232,6 @@ function parseChecks(rollup: Array<{ name: string; status: string; conclusion: s
   return { checks, checksOverall }
 }
 
-/** Bulk-fetch PR statuses for all given worktrees.
- *  Step 1: lightweight gh pr list (open only, no checks) to find which branches have PRs.
- *  Step 2: parallel gh pr view for each matched PR to get check details. */
-export async function getAllPRStatuses(repoRoot: string, worktrees: WorktreeInfo[]): Promise<Record<string, PRStatus | null>> {
-  const result: Record<string, PRStatus | null> = {}
-  const branchToPath = new Map<string, string>()
-
-  for (const wt of worktrees) {
-    result[wt.path] = null
-    if (wt.branch && wt.branch !== '(detached)') {
-      branchToPath.set(wt.branch, wt.path)
-    }
-  }
-
-  if (branchToPath.size === 0) return result
-
-  try {
-    // Step 1: lightweight list of open PRs (no statusCheckRollup to avoid timeout)
-    const { stdout } = await execFileAsync(
-      'gh',
-      ['pr', 'list', '--state', 'open', '--limit', '100',
-       '--json', 'number,title,state,url,isDraft,headRefName'],
-      { cwd: repoRoot }
-    )
-
-    const prs = JSON.parse(stdout) as Array<{
-      number: number; title: string; state: string; url: string
-      isDraft: boolean; headRefName: string
-    }>
-
-    // Filter to only PRs matching our worktree branches
-    const matched = prs.filter((pr) => branchToPath.has(pr.headRefName))
-
-    // Step 2: fetch check details in parallel for matched PRs
-    const checkFetches = matched.map(async (pr) => {
-      const wtPath = branchToPath.get(pr.headRefName)!
-      const state = pr.isDraft ? 'draft' : (pr.state?.toLowerCase() as PRStatus['state']) || 'open'
-
-      try {
-        const { stdout: detailJson } = await execFileAsync(
-          'gh',
-          ['pr', 'view', String(pr.number), '--json', 'statusCheckRollup'],
-          { cwd: repoRoot }
-        )
-        const detail = JSON.parse(detailJson)
-        const { checks, checksOverall } = parseChecks(detail.statusCheckRollup || [])
-
-        result[wtPath] = { number: pr.number, title: pr.title, state, url: pr.url, branch: pr.headRefName, checks, checksOverall }
-      } catch {
-        // If check fetch fails, still show the PR without checks
-        result[wtPath] = { number: pr.number, title: pr.title, state, url: pr.url, branch: pr.headRefName, checks: [], checksOverall: 'none' }
-      }
-    })
-
-    await Promise.all(checkFetches)
-  } catch (err) {
-    log('worktree', 'getAllPRStatuses failed', err instanceof Error ? err.message : err)
-  }
-
-  return result
-}
-
 /** Get PR status for the branch checked out in a worktree. Returns null if no PR. */
 export async function getPRStatus(worktreePath: string): Promise<PRStatus | null> {
   try {

@@ -53,32 +53,41 @@ export default function App(): JSX.Element {
     })()
   }, [])
 
-  // Fetch PR status for all worktrees in bulk
-  useEffect(() => {
+  // Fetch PR status for all worktrees in parallel (on initial load)
+  const fetchAllPRStatuses = useCallback(async () => {
     if (worktrees.length === 0) return
-
-    let cancelled = false
-
-    const fetchAll = async (): Promise<void> => {
-      setPrLoading(true)
-      try {
-        const statuses = await window.api.getAllPRStatuses()
-        if (!cancelled) setPrStatuses(statuses)
-      } catch {
-        // ignore
-      } finally {
-        if (!cancelled) setPrLoading(false)
-      }
-    }
-
-    fetchAll()
-    const interval = setInterval(fetchAll, 30000)
-
-    return () => {
-      cancelled = true
-      clearInterval(interval)
+    setPrLoading(true)
+    try {
+      const results = await Promise.all(
+        worktrees.map(async (wt) => {
+          try {
+            const status = await window.api.getPRStatus(wt.path)
+            return [wt.path, status] as const
+          } catch {
+            return [wt.path, null] as const
+          }
+        })
+      )
+      setPrStatuses(Object.fromEntries(results))
+    } finally {
+      setPrLoading(false)
     }
   }, [worktrees])
+
+  // Fetch a single worktree's PR status
+  const fetchPRStatus = useCallback(async (wtPath: string) => {
+    try {
+      const status = await window.api.getPRStatus(wtPath)
+      setPrStatuses((prev) => ({ ...prev, [wtPath]: status }))
+    } catch {
+      // ignore
+    }
+  }, [])
+
+  // Initial load
+  useEffect(() => {
+    fetchAllPRStatuses()
+  }, [fetchAllPRStatuses])
 
   // Map a terminal ID back to its worktree path
   const terminalToWorktree = useCallback((terminalId: string): string | null => {
@@ -103,16 +112,22 @@ export default function App(): JSX.Element {
     const cleanup = window.api.onStatusChange((id, status) => {
       console.log(`[status] received: id=${id} status=${status}`)
       setStatuses((prev) => ({ ...prev, [id]: status as PtyStatus }))
-      // Status change = activity
       const wtPath = terminalToWorktree(id)
-      if (wtPath) markActive(wtPath)
+      if (wtPath) {
+        markActive(wtPath)
+        // Refresh PR status when Claude finishes a turn (may have pushed/created PR)
+        if (status === 'waiting') fetchPRStatus(wtPath)
+      }
     })
     return cleanup
-  }, [terminalToWorktree, markActive])
+  }, [terminalToWorktree, markActive, fetchPRStatus])
 
   // When a worktree becomes active, check hooks and set up tabs
   useEffect(() => {
     if (!activeWorktreeId) return
+
+    // Refresh PR status on focus
+    fetchPRStatus(activeWorktreeId)
 
     // Check and install hooks if needed
     if (!hooksChecked.current.has(activeWorktreeId)) {

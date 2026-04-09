@@ -51,7 +51,6 @@ export interface ElectronAPI {
   getRepoRoot(): Promise<string | null>
 
   getPRStatus(worktreePath: string): Promise<PRStatus | null>
-  getAllPRStatuses(): Promise<Record<string, PRStatus | null>>
   getChangedFiles(worktreePath: string): Promise<ChangedFile[]>
   getFileDiff(worktreePath: string, filePath: string, staged: boolean): Promise<string>
 

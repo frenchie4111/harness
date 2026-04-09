@@ -18,7 +18,6 @@ contextBridge.exposeInMainWorld('api', {
   getChangedFiles: (worktreePath: string) => ipcRenderer.invoke('worktree:changedFiles', worktreePath),
   getFileDiff: (worktreePath: string, filePath: string, staged: boolean) => ipcRenderer.invoke('worktree:fileDiff', worktreePath, filePath, staged),
   getPRStatus: (worktreePath: string) => ipcRenderer.invoke('worktree:prStatus', worktreePath),
-  getAllPRStatuses: () => ipcRenderer.invoke('worktree:allPRStatuses'),
 
   // Config
   getHotkeyOverrides: () => ipcRenderer.invoke('config:getHotkeys'),
