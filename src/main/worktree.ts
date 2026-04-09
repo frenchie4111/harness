@@ -202,6 +202,88 @@ export interface PRStatus {
   checksOverall: 'success' | 'failure' | 'pending' | 'none'
 }
 
+/** Bulk-fetch PR statuses for all given worktrees. Single `gh pr list` call + parallel check fetches. */
+export async function getAllPRStatuses(repoRoot: string, worktrees: WorktreeInfo[]): Promise<Record<string, PRStatus | null>> {
+  const result: Record<string, PRStatus | null> = {}
+  const branchToPath = new Map<string, string>()
+
+  for (const wt of worktrees) {
+    result[wt.path] = null
+    if (wt.branch && wt.branch !== '(detached)') {
+      branchToPath.set(wt.branch, wt.path)
+    }
+  }
+
+  if (branchToPath.size === 0) return result
+
+  try {
+    // Single call to get all open/draft PRs with check info
+    const { stdout } = await execFileAsync(
+      'gh',
+      ['pr', 'list', '--state', 'all', '--limit', '100',
+       '--json', 'number,title,state,url,isDraft,headRefName,statusCheckRollup'],
+      { cwd: repoRoot }
+    )
+
+    const prs = JSON.parse(stdout) as Array<{
+      number: number
+      title: string
+      state: string
+      url: string
+      isDraft: boolean
+      headRefName: string
+      statusCheckRollup: Array<{ name: string; status: string; conclusion: string; state: string }>
+    }>
+
+    for (const pr of prs) {
+      const wtPath = branchToPath.get(pr.headRefName)
+      if (!wtPath) continue
+
+      const checks: CheckStatus[] = (pr.statusCheckRollup || []).map((c) => {
+        let state: CheckStatus['state']
+        if (c.conclusion) {
+          state = c.conclusion.toLowerCase() as CheckStatus['state']
+        } else if (c.state) {
+          const s = c.state.toLowerCase()
+          state = s === 'expected' || s === 'pending' ? 'pending' : s as CheckStatus['state']
+        } else if (c.status === 'COMPLETED') {
+          state = 'success'
+        } else {
+          state = 'pending'
+        }
+        return { name: c.name || 'Unknown', state, description: '' }
+      })
+
+      let checksOverall: PRStatus['checksOverall'] = 'none'
+      if (checks.length > 0) {
+        if (checks.some((c) => c.state === 'failure' || c.state === 'error')) {
+          checksOverall = 'failure'
+        } else if (checks.some((c) => c.state === 'pending')) {
+          checksOverall = 'pending'
+        } else {
+          checksOverall = 'success'
+        }
+      }
+
+      const state = pr.isDraft ? 'draft' : (pr.state?.toLowerCase() as PRStatus['state']) || 'open'
+
+      result[wtPath] = {
+        number: pr.number,
+        title: pr.title,
+        state,
+        url: pr.url,
+        branch: pr.headRefName,
+        checks,
+        checksOverall
+      }
+    }
+  } catch (err) {
+    log('worktree', 'getAllPRStatuses failed', err instanceof Error ? err.message : err)
+  }
+
+  return result
+}
+
 /** Get PR status for the branch checked out in a worktree. Returns null if no PR. */
 export async function getPRStatus(worktreePath: string): Promise<PRStatus | null> {
   try {

@@ -52,34 +52,23 @@ export default function App(): JSX.Element {
     })()
   }, [])
 
-  // Fetch PR status for all worktrees in the background
+  // Fetch PR status for all worktrees in bulk
   useEffect(() => {
     if (worktrees.length === 0) return
 
     let cancelled = false
 
-    const fetchAllPRStatuses = async (): Promise<void> => {
-      for (const wt of worktrees) {
-        if (cancelled) break
-        try {
-          const status = await window.api.getPRStatus(wt.path)
-          if (!cancelled) {
-            setPrStatuses((prev) => {
-              // Skip update if nothing changed
-              const existing = prev[wt.path]
-              if (existing === status) return prev
-              if (existing && status && existing.checksOverall === status.checksOverall && existing.state === status.state) return prev
-              return { ...prev, [wt.path]: status }
-            })
-          }
-        } catch {
-          // ignore individual failures
-        }
+    const fetchAll = async (): Promise<void> => {
+      try {
+        const statuses = await window.api.getAllPRStatuses()
+        if (!cancelled) setPrStatuses(statuses)
+      } catch {
+        // ignore
       }
     }
 
-    fetchAllPRStatuses()
-    const interval = setInterval(fetchAllPRStatuses, 30000)
+    fetchAll()
+    const interval = setInterval(fetchAll, 30000)
 
     return () => {
       cancelled = true

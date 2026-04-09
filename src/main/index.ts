@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, dialog, Menu, shell } from 'electron'
 import { join } from 'path'
 import { PtyManager } from './pty-manager'
-import { listWorktrees, listBranches, addWorktree, removeWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getPRStatus } from './worktree'
+import { listWorktrees, listBranches, addWorktree, removeWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getPRStatus, getAllPRStatuses } from './worktree'
 import { loadConfig, saveConfig, saveConfigSync } from './persistence'
 import { hooksInstalled, installHooks, watchStatusDir } from './hooks'
 import { log, getLogFilePath } from './debug'
@@ -145,6 +145,14 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('worktree:prStatus', async (_, worktreePath: string) => {
     return getPRStatus(worktreePath)
+  })
+
+  ipcMain.handle('worktree:allPRStatuses', async (event) => {
+    const win = getWindowFromEvent(event)
+    const repoRoot = win ? windowRepoRoots.get(win.id) : null
+    if (!repoRoot) return {}
+    const trees = await listWorktrees(repoRoot)
+    return getAllPRStatuses(repoRoot, trees)
   })
 
   // Config
