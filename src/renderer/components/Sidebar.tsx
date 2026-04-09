@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useMemo } from 'react'
-import { ChevronDown, ChevronRight, Plus, RefreshCw, FolderOpen } from 'lucide-react'
+import { ChevronDown, ChevronRight, Plus, RefreshCw, FolderOpen, Loader2 } from 'lucide-react'
 import type { Worktree, PtyStatus, PRStatus } from '../types'
 import type { GroupKey } from '../worktree-sort'
 import { groupWorktrees } from '../worktree-sort'
@@ -11,6 +11,7 @@ interface SidebarProps {
   statuses: Record<string, PtyStatus>
   prStatuses: Record<string, PRStatus | null>
   lastActive: Record<string, number>
+  prLoading: boolean
   onSelectWorktree: (path: string) => void
   onCreateWorktree: (branchName: string) => Promise<void>
   onDeleteWorktree: (path: string) => Promise<void>
@@ -25,6 +26,7 @@ export function Sidebar({
   statuses,
   prStatuses,
   lastActive,
+  prLoading,
   onSelectWorktree,
   onCreateWorktree,
   onDeleteWorktree,
@@ -78,9 +80,13 @@ export function Sidebar({
 
   return (
     <div className="w-56 bg-neutral-950 border-r border-neutral-800 flex flex-col h-full">
-      {/* Title bar drag region */}
-      <div className="drag-region h-10 flex items-center px-4 pt-1 shrink-0">
-        <span className="text-xs font-medium text-neutral-500 pl-16">WORKTREES</span>
+      {/* Title bar drag region (space for traffic lights) */}
+      <div className="drag-region h-10 shrink-0" />
+
+      {/* Header */}
+      <div className="px-3 py-1.5 flex items-center gap-2 shrink-0">
+        <span className="text-xs font-medium text-neutral-500">WORKTREES</span>
+        {prLoading && <Loader2 size={10} className="text-neutral-600 animate-spin" />}
       </div>
 
       {/* Worktree list grouped by PR status */}

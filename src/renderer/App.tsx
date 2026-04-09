@@ -23,6 +23,7 @@ export default function App(): JSX.Element {
   const [activeTabId, setActiveTabId] = useState<Record<string, string>>({})
   const [statuses, setStatuses] = useState<Record<string, PtyStatus>>({})
   const [prStatuses, setPrStatuses] = useState<Record<string, PRStatus | null>>({})
+  const [prLoading, setPrLoading] = useState(false)
   const [lastActive, setLastActive] = useState<Record<string, number>>({})
   const [repoRoot, setRepoRoot] = useState<string | null>(null)
   const [hooksConsent, setHooksConsent] = useState<'pending' | 'accepted' | 'declined'>('pending')
@@ -59,11 +60,14 @@ export default function App(): JSX.Element {
     let cancelled = false
 
     const fetchAll = async (): Promise<void> => {
+      setPrLoading(true)
       try {
         const statuses = await window.api.getAllPRStatuses()
         if (!cancelled) setPrStatuses(statuses)
       } catch {
         // ignore
+      } finally {
+        if (!cancelled) setPrLoading(false)
       }
     }
 
@@ -458,6 +462,7 @@ export default function App(): JSX.Element {
             statuses={worktreeStatuses}
             prStatuses={prStatuses}
             lastActive={lastActive}
+            prLoading={prLoading}
             onSelectWorktree={setActiveWorktreeId}
             onCreateWorktree={handleCreateWorktree}
             onDeleteWorktree={handleDeleteWorktree}
