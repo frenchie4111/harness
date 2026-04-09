@@ -23,6 +23,8 @@ export interface ElectronAPI {
   selectRepoRoot(): Promise<string | null>
   getRepoRoot(): Promise<string | null>
 
+  getHotkeyOverrides(): Promise<Record<string, string> | null>
+
   checkHooks(worktreePath: string): Promise<boolean>
   installHooks(worktreePath: string): Promise<boolean>
 

@@ -6,6 +6,8 @@ interface Config {
   windowBounds: { x: number; y: number; width: number; height: number } | null
   // All repo roots that have been opened (for re-opening windows)
   repoRoots: string[]
+  // Custom hotkey overrides: action name → shortcut string (e.g. "Cmd+Shift+T")
+  hotkeys?: Record<string, string>
 }
 
 const DEFAULT_CONFIG: Config = {

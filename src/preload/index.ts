@@ -13,6 +13,9 @@ contextBridge.exposeInMainWorld('api', {
   selectRepoRoot: () => ipcRenderer.invoke('repo:select'),
   getRepoRoot: () => ipcRenderer.invoke('repo:getRoot'),
 
+  // Config
+  getHotkeyOverrides: () => ipcRenderer.invoke('config:getHotkeys'),
+
   // Hooks
   checkHooks: (worktreePath: string) => ipcRenderer.invoke('hooks:check', worktreePath),
   installHooks: (worktreePath: string) => ipcRenderer.invoke('hooks:install', worktreePath),

@@ -130,6 +130,11 @@ function registerIpcHandlers(): void {
     return win ? windowRepoRoots.get(win.id) || null : null
   })
 
+  // Config
+  ipcMain.handle('config:getHotkeys', () => {
+    return config.hotkeys || null
+  })
+
   // Hooks
   ipcMain.handle('hooks:check', (_, worktreePath: string) => {
     return hooksInstalled(worktreePath)
@@ -178,7 +183,7 @@ function buildMenu(): void {
       submenu: [
         {
           label: 'New Window',
-          accelerator: 'CmdOrCtrl+N',
+          accelerator: 'CmdOrCtrl+Shift+N',
           click: () => createWindow()
         },
         { role: 'close' }

@@ -1,7 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import type { Worktree, TerminalTab, PtyStatus } from './types'
+import type { Action } from './hotkeys'
 import { Sidebar } from './components/Sidebar'
 import { TerminalPanel } from './components/TerminalPanel'
+import { focusTerminalById } from './components/XTerminal'
+import { useHotkeys } from './hooks/useHotkeys'
 
 /** Create a filesystem-safe terminal ID from a worktree path */
 function makeTerminalId(prefix: string, worktreePath: string): string {
@@ -18,13 +21,21 @@ export default function App(): JSX.Element {
   const [statuses, setStatuses] = useState<Record<string, PtyStatus>>({})
   const [repoRoot, setRepoRoot] = useState<string | null>(null)
   const [hooksConsent, setHooksConsent] = useState<'pending' | 'accepted' | 'declined'>('pending')
+  const [sidebarVisible, setSidebarVisible] = useState(true)
+  const [hotkeyOverrides, setHotkeyOverrides] = useState<Record<string, string> | undefined>(undefined)
   // Track which worktrees already have hooks installed so we only prompt once
   const hooksChecked = useRef(new Set<string>())
+  // Ref to the sidebar's create-worktree trigger
+  const createWorktreeRef = useRef<(() => void) | null>(null)
 
-  // Load repo root and worktrees on mount
+  // Load repo root, worktrees, and hotkey config on mount
   useEffect(() => {
     (async () => {
-      const root = await window.api.getRepoRoot()
+      const [root, overrides] = await Promise.all([
+        window.api.getRepoRoot(),
+        window.api.getHotkeyOverrides()
+      ])
+      if (overrides) setHotkeyOverrides(overrides)
       if (root) {
         setRepoRoot(root)
         const trees = await window.api.listWorktrees()
@@ -202,6 +213,89 @@ export default function App(): JSX.Element {
     setActiveTabId((prev) => ({ ...prev, [worktreePath]: tabId }))
   }, [])
 
+  // --- Hotkey action handlers ---
+  const switchToWorktreeByIndex = useCallback(
+    (index: number) => {
+      if (index < worktrees.length) {
+        setActiveWorktreeId(worktrees[index].path)
+      }
+    },
+    [worktrees]
+  )
+
+  const cycleWorktree = useCallback(
+    (delta: number) => {
+      if (worktrees.length === 0) return
+      const currentIdx = worktrees.findIndex((w) => w.path === activeWorktreeId)
+      const nextIdx = (currentIdx + delta + worktrees.length) % worktrees.length
+      setActiveWorktreeId(worktrees[nextIdx].path)
+    },
+    [worktrees, activeWorktreeId]
+  )
+
+  const cycleTab = useCallback(
+    (delta: number) => {
+      if (!activeWorktreeId) return
+      const tabs = terminalTabs[activeWorktreeId] || []
+      if (tabs.length === 0) return
+      const currentTabId = activeTabId[activeWorktreeId]
+      const currentIdx = tabs.findIndex((t) => t.id === currentTabId)
+      const nextIdx = (currentIdx + delta + tabs.length) % tabs.length
+      setActiveTabId((prev) => ({ ...prev, [activeWorktreeId]: tabs[nextIdx].id }))
+    },
+    [activeWorktreeId, terminalTabs, activeTabId]
+  )
+
+  const hotkeyActions = useMemo<Partial<Record<Action, () => void>>>(
+    () => ({
+      nextWorktree: () => cycleWorktree(1),
+      prevWorktree: () => cycleWorktree(-1),
+      worktree1: () => switchToWorktreeByIndex(0),
+      worktree2: () => switchToWorktreeByIndex(1),
+      worktree3: () => switchToWorktreeByIndex(2),
+      worktree4: () => switchToWorktreeByIndex(3),
+      worktree5: () => switchToWorktreeByIndex(4),
+      worktree6: () => switchToWorktreeByIndex(5),
+      worktree7: () => switchToWorktreeByIndex(6),
+      worktree8: () => switchToWorktreeByIndex(7),
+      worktree9: () => switchToWorktreeByIndex(8),
+      newShellTab: () => {
+        if (activeWorktreeId) handleAddTerminalTab(activeWorktreeId)
+      },
+      closeTab: () => {
+        if (!activeWorktreeId) return
+        const tabs = terminalTabs[activeWorktreeId] || []
+        const currentTabId = activeTabId[activeWorktreeId]
+        if (tabs.length > 1 && currentTabId) {
+          handleCloseTab(activeWorktreeId, currentTabId)
+        }
+      },
+      nextTab: () => cycleTab(1),
+      prevTab: () => cycleTab(-1),
+      newWorktree: () => createWorktreeRef.current?.(),
+      refreshWorktrees: handleRefreshWorktrees,
+      focusTerminal: () => {
+        if (!activeWorktreeId) return
+        const currentTabId = activeTabId[activeWorktreeId]
+        if (currentTabId) focusTerminalById(currentTabId)
+      },
+      toggleSidebar: () => setSidebarVisible((v) => !v),
+    }),
+    [
+      cycleWorktree,
+      switchToWorktreeByIndex,
+      cycleTab,
+      activeWorktreeId,
+      terminalTabs,
+      activeTabId,
+      handleAddTerminalTab,
+      handleCloseTab,
+      handleRefreshWorktrees,
+    ]
+  )
+
+  useHotkeys(hotkeyActions, hotkeyOverrides)
+
   // Compute aggregate status per worktree (worst status wins)
   const worktreeStatuses: Record<string, PtyStatus> = {}
   for (const wt of worktrees) {
@@ -265,16 +359,19 @@ export default function App(): JSX.Element {
       )}
 
       <div className="flex flex-1 min-h-0">
-        <Sidebar
-          worktrees={worktrees}
-          activeWorktreeId={activeWorktreeId}
-          statuses={worktreeStatuses}
-          onSelectWorktree={setActiveWorktreeId}
-          onCreateWorktree={handleCreateWorktree}
-          onDeleteWorktree={handleDeleteWorktree}
-          onRefresh={handleRefreshWorktrees}
-          onSelectRepo={handleSelectRepo}
-        />
+        {sidebarVisible && (
+          <Sidebar
+            worktrees={worktrees}
+            activeWorktreeId={activeWorktreeId}
+            statuses={worktreeStatuses}
+            onSelectWorktree={setActiveWorktreeId}
+            onCreateWorktree={handleCreateWorktree}
+            onDeleteWorktree={handleDeleteWorktree}
+            onRefresh={handleRefreshWorktrees}
+            onSelectRepo={handleSelectRepo}
+            onRegisterCreate={(trigger) => { createWorktreeRef.current = trigger }}
+          />
+        )}
         {/* Render ALL worktrees' terminals to keep PTYs alive across switches */}
         {worktrees.map((wt) => {
           const tabs = terminalTabs[wt.path]
