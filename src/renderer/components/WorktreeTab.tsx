@@ -1,3 +1,4 @@
+import { GitPullRequest } from 'lucide-react'
 import type { Worktree, PtyStatus, PRStatus } from '../types'
 
 interface WorktreeTabProps {
@@ -23,23 +24,25 @@ const STATUS_LABELS: Record<PtyStatus, string> = {
   'needs-approval': 'Needs approval'
 }
 
-const PR_INDICATOR: Record<string, { symbol: string; color: string; label: string }> = {
-  open: { symbol: '\u25CB', color: 'text-green-400', label: 'PR open' },
-  draft: { symbol: '\u25CB', color: 'text-neutral-500', label: 'PR draft' },
-  merged: { symbol: '\u25CF', color: 'text-purple-400', label: 'PR merged' },
-  closed: { symbol: '\u25CF', color: 'text-red-400', label: 'PR closed' }
-}
-
-const CHECKS_INDICATOR: Record<string, string> = {
+const PR_ICON_COLOR: Record<string, string> = {
   success: 'text-green-400',
   failure: 'text-red-400',
   pending: 'text-amber-400',
-  none: ''
+  none: 'text-neutral-500'
+}
+
+const PR_STATE_COLOR: Record<string, string> = {
+  open: 'text-green-400',
+  draft: 'text-neutral-500',
+  merged: 'text-purple-400',
+  closed: 'text-red-400'
 }
 
 export function WorktreeTab({ worktree, isActive, status, prStatus, onClick, onDelete }: WorktreeTabProps): JSX.Element {
-  const prInfo = prStatus ? PR_INDICATOR[prStatus.state] : null
-  const checksColor = prStatus ? CHECKS_INDICATOR[prStatus.checksOverall] : ''
+  // Use check status color if available, otherwise use PR state color
+  const iconColor = prStatus
+    ? (prStatus.checksOverall !== 'none' ? PR_ICON_COLOR[prStatus.checksOverall] : PR_STATE_COLOR[prStatus.state])
+    : ''
 
   return (
     <div
@@ -54,18 +57,15 @@ export function WorktreeTab({ worktree, isActive, status, prStatus, onClick, onD
         className={`w-2 h-2 rounded-full shrink-0 ${STATUS_COLORS[status]}`}
         title={STATUS_LABELS[status]}
       />
+      {prStatus && (
+        <GitPullRequest
+          size={13}
+          className={`shrink-0 ${iconColor}`}
+          title={`PR #${prStatus.number}${prStatus.checksOverall !== 'none' ? ` \u2014 checks ${prStatus.checksOverall}` : ''}`}
+        />
+      )}
       <div className="min-w-0 flex-1">
-        <div className="text-sm font-medium truncate flex items-center gap-1.5">
-          {worktree.branch}
-          {prInfo && (
-            <span
-              className={`text-[10px] shrink-0 ${checksColor || prInfo.color}`}
-              title={`${prInfo.label} #${prStatus!.number}${prStatus!.checksOverall !== 'none' ? ` \u2014 checks ${prStatus!.checksOverall}` : ''}`}
-            >
-              PR
-            </span>
-          )}
-        </div>
+        <div className="text-sm font-medium truncate">{worktree.branch}</div>
         <div className="text-xs text-neutral-600 truncate">
           {worktree.path.split('/').slice(-2).join('/')}
         </div>
