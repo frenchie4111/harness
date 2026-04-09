@@ -1,3 +1,4 @@
+import { X, Plus } from 'lucide-react'
 import type { TerminalTab, PtyStatus } from '../types'
 import { XTerminal } from './XTerminal'
 import { DiffView } from './DiffView'
@@ -58,7 +59,7 @@ export function TerminalPanel({
                     }}
                     className="ml-1 text-neutral-600 hover:text-neutral-300 transition-colors"
                   >
-                    x
+                    <X size={10} />
                   </button>
                 )}
               </div>
@@ -69,7 +70,7 @@ export function TerminalPanel({
             className="no-drag px-2 h-full text-neutral-600 hover:text-neutral-300 text-sm transition-colors"
             title="New shell tab"
           >
-            +
+            <Plus size={12} />
           </button>
         </div>
       </div>

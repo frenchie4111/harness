@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { RefreshCw } from 'lucide-react'
 import type { ChangedFile } from '../types'
 
 interface ChangedFilesPanelProps {
@@ -59,10 +60,10 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff }: ChangedFilesPane
         </span>
         <button
           onClick={refresh}
-          className="no-drag text-neutral-600 hover:text-neutral-300 text-xs transition-colors cursor-pointer"
+          className="no-drag text-neutral-600 hover:text-neutral-300 transition-colors cursor-pointer"
           title="Refresh"
         >
-          ↻
+          <RefreshCw size={12} />
         </button>
       </div>
 

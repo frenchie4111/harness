@@ -1,4 +1,4 @@
-import { GitPullRequest } from 'lucide-react'
+import { GitPullRequest, X } from 'lucide-react'
 import type { Worktree, PtyStatus, PRStatus } from '../types'
 
 interface WorktreeTabProps {
@@ -82,10 +82,10 @@ export function WorktreeTab({ worktree, isActive, status, prStatus, onClick, onD
             e.stopPropagation()
             onDelete()
           }}
-          className="opacity-0 group-hover:opacity-100 text-neutral-600 hover:text-red-400 text-xs transition-all shrink-0 cursor-pointer"
+          className="opacity-0 group-hover:opacity-100 text-neutral-600 hover:text-red-400 transition-all shrink-0 cursor-pointer"
           title="Remove worktree"
         >
-          x
+          <X size={12} />
         </button>
       )}
     </div>

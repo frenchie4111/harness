@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useMemo } from 'react'
-import { ChevronDown, ChevronRight } from 'lucide-react'
+import { ChevronDown, ChevronRight, Plus, RefreshCw, FolderOpen } from 'lucide-react'
 import type { Worktree, PtyStatus, PRStatus } from '../types'
 import { WorktreeTab } from './WorktreeTab'
 
@@ -196,27 +196,27 @@ export function Sidebar({
       )}
 
       {/* Bottom actions */}
-      <div className="border-t border-neutral-800 p-2 flex gap-1 shrink-0">
+      <div className="border-t border-neutral-800 p-2 flex justify-center gap-1 shrink-0">
         <button
           onClick={() => setShowCreate(!showCreate)}
-          className="flex-1 text-xs text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 rounded px-2 py-1.5 transition-colors cursor-pointer"
+          className="text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 rounded p-1.5 transition-colors cursor-pointer"
           title="New worktree"
         >
-          + New
+          <Plus size={14} />
         </button>
         <button
           onClick={onRefresh}
-          className="flex-1 text-xs text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 rounded px-2 py-1.5 transition-colors cursor-pointer"
+          className="text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 rounded p-1.5 transition-colors cursor-pointer"
           title="Refresh worktrees"
         >
-          Refresh
+          <RefreshCw size={14} />
         </button>
         <button
           onClick={onSelectRepo}
-          className="flex-1 text-xs text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 rounded px-2 py-1.5 transition-colors cursor-pointer"
+          className="text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 rounded p-1.5 transition-colors cursor-pointer"
           title="Change repository"
         >
-          Repo
+          <FolderOpen size={14} />
         </button>
       </div>
     </div>
