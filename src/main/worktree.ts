@@ -101,6 +101,16 @@ export async function addWorktree(
   return created
 }
 
+/** Check if a worktree has uncommitted changes */
+export async function isWorktreeDirty(path: string): Promise<boolean> {
+  try {
+    const { stdout } = await execFileAsync('git', ['status', '--porcelain'], { cwd: path })
+    return stdout.trim().length > 0
+  } catch {
+    return false
+  }
+}
+
 export async function removeWorktree(repoRoot: string, path: string, force?: boolean): Promise<void> {
   log('worktree', `removing worktree: path=${path} force=${force}`)
   const args = ['worktree', 'remove', path]

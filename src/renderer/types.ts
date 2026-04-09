@@ -18,6 +18,7 @@ export interface ElectronAPI {
   listWorktrees(): Promise<Worktree[]>
   listBranches(): Promise<string[]>
   addWorktree(branchName: string, baseBranch?: string): Promise<Worktree>
+  isWorktreeDirty(path: string): Promise<boolean>
   removeWorktree(path: string, force?: boolean): Promise<void>
   getWorktreeDir(): Promise<string>
   selectRepoRoot(): Promise<string | null>

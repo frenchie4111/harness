@@ -135,6 +135,15 @@ export default function App(): JSX.Element {
   }, [])
 
   const handleDeleteWorktree = useCallback(async (path: string) => {
+    // Check for dirty changes
+    const dirty = await window.api.isWorktreeDirty(path)
+    if (dirty) {
+      const confirmed = window.confirm(
+        'This worktree has uncommitted changes that will be lost. Delete anyway?'
+      )
+      if (!confirmed) return
+    }
+
     // Kill any terminals running in this worktree
     const tabs = terminalTabs[path] || []
     for (const tab of tabs) {
@@ -152,16 +161,11 @@ export default function App(): JSX.Element {
       return next
     })
 
-    try {
-      await window.api.removeWorktree(path)
-    } catch {
-      // If normal remove fails, try force
-      await window.api.removeWorktree(path, true)
-    }
+    // Force remove if dirty (user already confirmed), normal remove otherwise
+    await window.api.removeWorktree(path, dirty)
 
     const trees = await window.api.listWorktrees()
     setWorktrees(trees)
-    // If we deleted the active worktree, switch to first available
     if (path === activeWorktreeId) {
       setActiveWorktreeId(trees.length > 0 ? trees[0].path : null)
     }

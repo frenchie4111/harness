@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, dialog, Menu } from 'electron'
 import { join } from 'path'
 import { PtyManager } from './pty-manager'
-import { listWorktrees, listBranches, addWorktree, removeWorktree, defaultWorktreeDir } from './worktree'
+import { listWorktrees, listBranches, addWorktree, removeWorktree, isWorktreeDirty, defaultWorktreeDir } from './worktree'
 import { loadConfig, saveConfig, saveConfigSync } from './persistence'
 import { hooksInstalled, installHooks, watchStatusDir } from './hooks'
 import { log, getLogFilePath } from './debug'
@@ -91,6 +91,10 @@ function registerIpcHandlers(): void {
     if (!repoRoot) throw new Error('No repo root configured')
     const wtDir = defaultWorktreeDir(repoRoot)
     return addWorktree(repoRoot, wtDir, branchName, baseBranch)
+  })
+
+  ipcMain.handle('worktree:isDirty', async (_, path: string) => {
+    return isWorktreeDirty(path)
   })
 
   ipcMain.handle('worktree:remove', async (event, path: string, force?: boolean) => {
