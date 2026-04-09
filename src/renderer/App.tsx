@@ -87,21 +87,48 @@ export default function App(): JSX.Element {
     }
   }, [worktrees])
 
+  // Map a terminal ID back to its worktree path
+  const terminalToWorktree = useCallback((terminalId: string): string | null => {
+    for (const [wtPath, tabs] of Object.entries(terminalTabs)) {
+      if (tabs.some((t) => t.id === terminalId)) return wtPath
+    }
+    return null
+  }, [terminalTabs])
+
+  // Mark a worktree as recently active (debounced to avoid thrashing on rapid PTY output)
+  const activityTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+  const markActive = useCallback((wtPath: string) => {
+    if (activityTimers.current[wtPath]) return // already scheduled
+    activityTimers.current[wtPath] = setTimeout(() => {
+      delete activityTimers.current[wtPath]
+      setLastActive((prev) => ({ ...prev, [wtPath]: Date.now() }))
+    }, 2000) // debounce: update at most every 2s per worktree
+  }, [])
+
+  // Track activity from terminal output
+  useEffect(() => {
+    const cleanup = window.api.onTerminalData((id) => {
+      const wtPath = terminalToWorktree(id)
+      if (wtPath) markActive(wtPath)
+    })
+    return cleanup
+  }, [terminalToWorktree, markActive])
+
   // Listen for status changes from main process
   useEffect(() => {
     const cleanup = window.api.onStatusChange((id, status) => {
       console.log(`[status] received: id=${id} status=${status}`)
       setStatuses((prev) => ({ ...prev, [id]: status as PtyStatus }))
+      // Status change = activity
+      const wtPath = terminalToWorktree(id)
+      if (wtPath) markActive(wtPath)
     })
     return cleanup
-  }, [])
+  }, [terminalToWorktree, markActive])
 
   // When a worktree becomes active, check hooks and set up tabs
   useEffect(() => {
     if (!activeWorktreeId) return
-
-    // Track recency for sorting
-    setLastActive((prev) => ({ ...prev, [activeWorktreeId]: Date.now() }))
 
     // Check and install hooks if needed
     if (!hooksChecked.current.has(activeWorktreeId)) {
