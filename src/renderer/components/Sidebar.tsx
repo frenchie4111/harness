@@ -1,4 +1,5 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 import type { Worktree, PtyStatus, PRStatus } from '../types'
 import { WorktreeTab } from './WorktreeTab'
 
@@ -13,6 +14,30 @@ interface SidebarProps {
   onRefresh: () => void
   onSelectRepo: () => void
   onRegisterCreate?: (trigger: () => void) => void
+}
+
+type GroupKey = 'needs-attention' | 'active' | 'no-pr' | 'merged'
+
+interface Group {
+  key: GroupKey
+  label: string
+  worktrees: Worktree[]
+}
+
+function getGroupKey(wt: Worktree, pr: PRStatus | null | undefined): GroupKey {
+  if (!pr) return 'no-pr'
+  if (pr.state === 'merged' || pr.state === 'closed') return 'merged'
+  if (pr.checksOverall === 'failure') return 'needs-attention'
+  return 'active'
+}
+
+const GROUP_ORDER: GroupKey[] = ['needs-attention', 'active', 'no-pr', 'merged']
+
+const GROUP_LABELS: Record<GroupKey, string> = {
+  'needs-attention': 'Needs Attention',
+  active: 'Active PRs',
+  'no-pr': 'No PR',
+  merged: 'Merged / Closed'
 }
 
 export function Sidebar({
@@ -31,6 +56,7 @@ export function Sidebar({
   const [branchName, setBranchName] = useState('')
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [collapsed, setCollapsed] = useState<Record<GroupKey, boolean>>({ 'needs-attention': false, active: false, 'no-pr': false, merged: true })
 
   const handleCreate = useCallback(async () => {
     const name = branchName.trim()
@@ -48,7 +74,6 @@ export function Sidebar({
     }
   }, [branchName, onCreateWorktree])
 
-  // Register the create trigger for external callers (hotkeys)
   useEffect(() => {
     onRegisterCreate?.(() => setShowCreate(true))
   }, [onRegisterCreate])
@@ -65,6 +90,29 @@ export function Sidebar({
     [handleCreate]
   )
 
+  const toggleGroup = useCallback((key: GroupKey) => {
+    setCollapsed((prev) => ({ ...prev, [key]: !prev[key] }))
+  }, [])
+
+  const groups = useMemo<Group[]>(() => {
+    const grouped: Record<GroupKey, Worktree[]> = {
+      'needs-attention': [],
+      active: [],
+      'no-pr': [],
+      merged: []
+    }
+
+    for (const wt of worktrees) {
+      const pr = prStatuses[wt.path]
+      const key = getGroupKey(wt, pr)
+      grouped[key].push(wt)
+    }
+
+    return GROUP_ORDER
+      .filter((key) => grouped[key].length > 0)
+      .map((key) => ({ key, label: GROUP_LABELS[key], worktrees: grouped[key] }))
+  }, [worktrees, prStatuses])
+
   return (
     <div className="w-56 bg-neutral-950 border-r border-neutral-800 flex flex-col h-full">
       {/* Title bar drag region */}
@@ -72,18 +120,33 @@ export function Sidebar({
         <span className="text-xs font-medium text-neutral-500 pl-16">WORKTREES</span>
       </div>
 
-      {/* Worktree list */}
+      {/* Worktree list grouped by PR status */}
       <div className="flex-1 overflow-y-auto py-1">
-        {worktrees.map((wt) => (
-          <WorktreeTab
-            key={wt.path}
-            worktree={wt}
-            isActive={wt.path === activeWorktreeId}
-            status={statuses[wt.path] || 'idle'}
-            prStatus={prStatuses[wt.path]}
-            onClick={() => onSelectWorktree(wt.path)}
-            onDelete={wt.isMain ? undefined : () => onDeleteWorktree(wt.path)}
-          />
+        {groups.map((group) => (
+          <div key={group.key}>
+            <button
+              onClick={() => toggleGroup(group.key)}
+              className="w-full flex items-center gap-1 px-3 py-1.5 text-xs text-neutral-500 hover:text-neutral-300 transition-colors cursor-pointer"
+            >
+              {collapsed[group.key]
+                ? <ChevronRight size={12} className="shrink-0" />
+                : <ChevronDown size={12} className="shrink-0" />
+              }
+              <span className="font-medium">{group.label}</span>
+              <span className="text-neutral-600 ml-auto">{group.worktrees.length}</span>
+            </button>
+            {!collapsed[group.key] && group.worktrees.map((wt) => (
+              <WorktreeTab
+                key={wt.path}
+                worktree={wt}
+                isActive={wt.path === activeWorktreeId}
+                status={statuses[wt.path] || 'idle'}
+                prStatus={prStatuses[wt.path]}
+                onClick={() => onSelectWorktree(wt.path)}
+                onDelete={wt.isMain ? undefined : () => onDeleteWorktree(wt.path)}
+              />
+            ))}
+          </div>
         ))}
         {worktrees.length === 0 && (
           <div className="px-4 py-3 text-xs text-neutral-600">
