@@ -10,6 +10,7 @@ interface SidebarProps {
   activeWorktreeId: string | null
   statuses: Record<string, PtyStatus>
   prStatuses: Record<string, PRStatus | null>
+  lastActive: Record<string, number>
   onSelectWorktree: (path: string) => void
   onCreateWorktree: (branchName: string) => Promise<void>
   onDeleteWorktree: (path: string) => Promise<void>
@@ -23,6 +24,7 @@ export function Sidebar({
   activeWorktreeId,
   statuses,
   prStatuses,
+  lastActive,
   onSelectWorktree,
   onCreateWorktree,
   onDeleteWorktree,
@@ -72,7 +74,7 @@ export function Sidebar({
     setCollapsed((prev) => ({ ...prev, [key]: !prev[key] }))
   }, [])
 
-  const groups = useMemo(() => groupWorktrees(worktrees, prStatuses), [worktrees, prStatuses])
+  const groups = useMemo(() => groupWorktrees(worktrees, prStatuses, lastActive), [worktrees, prStatuses, lastActive])
 
   return (
     <div className="w-56 bg-neutral-950 border-r border-neutral-800 flex flex-col h-full">

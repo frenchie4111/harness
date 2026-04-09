@@ -24,10 +24,16 @@ export const GROUP_LABELS: Record<GroupKey, string> = {
   merged: 'Merged / Closed'
 }
 
-/** Group worktrees by PR status, returning groups in display order */
+/** Sort worktrees within a group by most recently active (descending) */
+function sortByRecency(worktrees: Worktree[], lastActive: Record<string, number>): Worktree[] {
+  return [...worktrees].sort((a, b) => (lastActive[b.path] || 0) - (lastActive[a.path] || 0))
+}
+
+/** Group worktrees by PR status, sorted by recency within each group */
 export function groupWorktrees(
   worktrees: Worktree[],
-  prStatuses: Record<string, PRStatus | null>
+  prStatuses: Record<string, PRStatus | null>,
+  lastActive?: Record<string, number>
 ): WorktreeGroup[] {
   const grouped: Record<GroupKey, Worktree[]> = {
     'needs-attention': [],
@@ -43,13 +49,18 @@ export function groupWorktrees(
 
   return GROUP_ORDER
     .filter((key) => grouped[key].length > 0)
-    .map((key) => ({ key, label: GROUP_LABELS[key], worktrees: grouped[key] }))
+    .map((key) => ({
+      key,
+      label: GROUP_LABELS[key],
+      worktrees: lastActive ? sortByRecency(grouped[key], lastActive) : grouped[key]
+    }))
 }
 
 /** Flatten grouped worktrees into a single ordered list (matching sidebar display order) */
 export function sortedWorktrees(
   worktrees: Worktree[],
-  prStatuses: Record<string, PRStatus | null>
+  prStatuses: Record<string, PRStatus | null>,
+  lastActive?: Record<string, number>
 ): Worktree[] {
-  return groupWorktrees(worktrees, prStatuses).flatMap((g) => g.worktrees)
+  return groupWorktrees(worktrees, prStatuses, lastActive).flatMap((g) => g.worktrees)
 }

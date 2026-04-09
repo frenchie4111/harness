@@ -23,6 +23,7 @@ export default function App(): JSX.Element {
   const [activeTabId, setActiveTabId] = useState<Record<string, string>>({})
   const [statuses, setStatuses] = useState<Record<string, PtyStatus>>({})
   const [prStatuses, setPrStatuses] = useState<Record<string, PRStatus | null>>({})
+  const [lastActive, setLastActive] = useState<Record<string, number>>({})
   const [repoRoot, setRepoRoot] = useState<string | null>(null)
   const [hooksConsent, setHooksConsent] = useState<'pending' | 'accepted' | 'declined'>('pending')
   const [sidebarVisible, setSidebarVisible] = useState(true)
@@ -98,6 +99,9 @@ export default function App(): JSX.Element {
   // When a worktree becomes active, check hooks and set up tabs
   useEffect(() => {
     if (!activeWorktreeId) return
+
+    // Track recency for sorting
+    setLastActive((prev) => ({ ...prev, [activeWorktreeId]: Date.now() }))
 
     // Check and install hooks if needed
     if (!hooksChecked.current.has(activeWorktreeId)) {
@@ -285,8 +289,8 @@ export default function App(): JSX.Element {
   // --- Hotkey action handlers ---
   // Use the same sort order as the sidebar for navigation
   const orderedWorktrees = useMemo(
-    () => sortedWorktrees(worktrees, prStatuses),
-    [worktrees, prStatuses]
+    () => sortedWorktrees(worktrees, prStatuses, lastActive),
+    [worktrees, prStatuses, lastActive]
   )
 
   const switchToWorktreeByIndex = useCallback(
@@ -446,6 +450,7 @@ export default function App(): JSX.Element {
             activeWorktreeId={activeWorktreeId}
             statuses={worktreeStatuses}
             prStatuses={prStatuses}
+            lastActive={lastActive}
             onSelectWorktree={setActiveWorktreeId}
             onCreateWorktree={handleCreateWorktree}
             onDeleteWorktree={handleDeleteWorktree}
