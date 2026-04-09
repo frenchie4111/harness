@@ -24,13 +24,14 @@ It will create a worktree directory at `../<your repo folder>-worktree` and star
 
 # "Roadmap"
 
- [x] Initial functionality
- [ ] Settings, configurability, etc
- [ ] OTA Updates
- [ ] Better persistence (PTYs don't really stay if you kill the app, which can be a bit frustrating)
- [ ] Support other LLM CLI Tools - Honestly I currently only use Claude so this probably won't happen unless I
- [ ] Notifications when cluades are ready for you (maybe peon noises?)
- [ ] Whatever else people want - add a github issue or email me directly!
+- [x] Initial functionality
+-[ ] Proper packaging into an app and dmg for other mac users
+-[ ] Settings, configurability, etc
+-[ ] OTA Updates
+-[ ] Better persistence (PTYs don't really stay if you kill the app, which can be a bit frustrating)
+-[ ] Support other LLM CLI Tools - Honestly I currently only use Claude so this probably won't happen unless I
+-[ ] Notifications when cluades are ready for you (maybe peon noises?)
+-[ ] Whatever else people want - add a github issue or email me directly!
 
 # Contributing
 
