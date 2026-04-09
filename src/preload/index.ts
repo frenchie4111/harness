@@ -22,6 +22,9 @@ contextBridge.exposeInMainWorld('api', {
   // Config
   getHotkeyOverrides: () => ipcRenderer.invoke('config:getHotkeys'),
 
+  // Shell
+  openExternal: (url: string) => ipcRenderer.send('shell:openExternal', url),
+
   // Hooks
   checkHooks: (worktreePath: string) => ipcRenderer.invoke('hooks:check', worktreePath),
   installHooks: (worktreePath: string) => ipcRenderer.invoke('hooks:install', worktreePath),

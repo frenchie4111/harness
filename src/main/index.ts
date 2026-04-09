@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, Menu } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, Menu, shell } from 'electron'
 import { join } from 'path'
 import { PtyManager } from './pty-manager'
 import { listWorktrees, listBranches, addWorktree, removeWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getPRStatus } from './worktree'
@@ -160,6 +160,11 @@ function registerIpcHandlers(): void {
   ipcMain.handle('hooks:install', async (_, worktreePath: string) => {
     installHooks(worktreePath)
     return true
+  })
+
+  // Shell
+  ipcMain.on('shell:openExternal', (_, url: string) => {
+    shell.openExternal(url)
   })
 
   // PTY handlers — route to the calling window

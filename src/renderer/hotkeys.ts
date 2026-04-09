@@ -18,6 +18,7 @@ export type Action =
   | 'refreshWorktrees'
   | 'focusTerminal'
   | 'toggleSidebar'
+  | 'openPR'
 
 export interface Modifiers {
   cmd?: boolean
@@ -51,6 +52,7 @@ export const DEFAULT_HOTKEYS: Record<Action, HotkeyBinding> = {
   refreshWorktrees: { key: 'r', modifiers: { cmd: true, shift: true } },
   focusTerminal: { key: '`', modifiers: { cmd: true } },
   toggleSidebar: { key: 'b', modifiers: { cmd: true } },
+  openPR: { key: 'g', modifiers: { cmd: true, shift: true } },
 }
 
 /** Check if a KeyboardEvent matches a hotkey binding */

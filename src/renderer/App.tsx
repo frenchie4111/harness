@@ -348,6 +348,11 @@ export default function App(): JSX.Element {
         if (currentTabId) focusTerminalById(currentTabId)
       },
       toggleSidebar: () => setSidebarVisible((v) => !v),
+      openPR: () => {
+        if (!activeWorktreeId) return
+        const pr = prStatuses[activeWorktreeId]
+        if (pr?.url) window.api.openExternal(pr.url)
+      },
     }),
     [
       cycleWorktree,
@@ -359,6 +364,7 @@ export default function App(): JSX.Element {
       handleAddTerminalTab,
       handleCloseTab,
       handleRefreshWorktrees,
+      prStatuses,
     ]
   )
 

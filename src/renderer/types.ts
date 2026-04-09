@@ -56,6 +56,8 @@ export interface ElectronAPI {
 
   getHotkeyOverrides(): Promise<Record<string, string> | null>
 
+  openExternal(url: string): void
+
   checkHooks(worktreePath: string): Promise<boolean>
   installHooks(worktreePath: string): Promise<boolean>
 
