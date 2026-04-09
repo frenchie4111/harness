@@ -5,6 +5,7 @@ interface WorktreeTabProps {
   isActive: boolean
   status: PtyStatus
   onClick: () => void
+  onDelete?: () => void
 }
 
 const STATUS_COLORS: Record<PtyStatus, string> = {
@@ -21,11 +22,11 @@ const STATUS_LABELS: Record<PtyStatus, string> = {
   'needs-approval': 'Needs approval'
 }
 
-export function WorktreeTab({ worktree, isActive, status, onClick }: WorktreeTabProps): JSX.Element {
+export function WorktreeTab({ worktree, isActive, status, onClick, onDelete }: WorktreeTabProps): JSX.Element {
   return (
-    <button
+    <div
       onClick={onClick}
-      className={`w-full text-left px-3 py-2 flex items-center gap-2 transition-colors cursor-pointer ${
+      className={`group w-full text-left px-3 py-2 flex items-center gap-2 transition-colors cursor-pointer ${
         isActive
           ? 'bg-neutral-800 text-neutral-100'
           : 'text-neutral-400 hover:bg-neutral-900 hover:text-neutral-200'
@@ -41,6 +42,18 @@ export function WorktreeTab({ worktree, isActive, status, onClick }: WorktreeTab
           {worktree.path.split('/').slice(-2).join('/')}
         </div>
       </div>
-    </button>
+      {onDelete && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            onDelete()
+          }}
+          className="opacity-0 group-hover:opacity-100 text-neutral-600 hover:text-red-400 text-xs transition-all shrink-0 cursor-pointer"
+          title="Remove worktree"
+        >
+          x
+        </button>
+      )}
+    </div>
   )
 }

@@ -123,6 +123,50 @@ export default function App(): JSX.Element {
     setWorktrees(trees)
   }, [])
 
+  const handleCreateWorktree = useCallback(async (branchName: string) => {
+    await window.api.addWorktree(branchName)
+    const trees = await window.api.listWorktrees()
+    setWorktrees(trees)
+    // Select the new worktree
+    const created = trees.find((t) => t.branch === branchName)
+    if (created) {
+      setActiveWorktreeId(created.path)
+    }
+  }, [])
+
+  const handleDeleteWorktree = useCallback(async (path: string) => {
+    // Kill any terminals running in this worktree
+    const tabs = terminalTabs[path] || []
+    for (const tab of tabs) {
+      window.api.killTerminal(tab.id)
+    }
+    // Clean up terminal state
+    setTerminalTabs((prev) => {
+      const next = { ...prev }
+      delete next[path]
+      return next
+    })
+    setActiveTabId((prev) => {
+      const next = { ...prev }
+      delete next[path]
+      return next
+    })
+
+    try {
+      await window.api.removeWorktree(path)
+    } catch {
+      // If normal remove fails, try force
+      await window.api.removeWorktree(path, true)
+    }
+
+    const trees = await window.api.listWorktrees()
+    setWorktrees(trees)
+    // If we deleted the active worktree, switch to first available
+    if (path === activeWorktreeId) {
+      setActiveWorktreeId(trees.length > 0 ? trees[0].path : null)
+    }
+  }, [terminalTabs, activeWorktreeId])
+
   const handleAddTerminalTab = useCallback(
     (worktreePath: string) => {
       const id = `shell-${Date.now()}`
@@ -226,6 +270,8 @@ export default function App(): JSX.Element {
           activeWorktreeId={activeWorktreeId}
           statuses={worktreeStatuses}
           onSelectWorktree={setActiveWorktreeId}
+          onCreateWorktree={handleCreateWorktree}
+          onDeleteWorktree={handleDeleteWorktree}
           onRefresh={handleRefreshWorktrees}
           onSelectRepo={handleSelectRepo}
         />

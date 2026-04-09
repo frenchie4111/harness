@@ -1,5 +1,8 @@
 import { execFile } from 'child_process'
 import { promisify } from 'util'
+import { basename, join } from 'path'
+import { existsSync, mkdirSync } from 'fs'
+import { log } from './debug'
 
 const execFileAsync = promisify(execFile)
 
@@ -8,6 +11,13 @@ export interface WorktreeInfo {
   branch: string
   head: string
   isBare: boolean
+  isMain: boolean
+}
+
+/** Get a sensible default directory for worktrees: <repo>-worktrees/ alongside the repo */
+export function defaultWorktreeDir(repoRoot: string): string {
+  const repoName = basename(repoRoot)
+  return join(repoRoot, '..', `${repoName}-worktrees`)
 }
 
 export async function listWorktrees(repoRoot: string): Promise<WorktreeInfo[]> {
@@ -33,7 +43,8 @@ export async function listWorktrees(repoRoot: string): Promise<WorktreeInfo[]> {
           path: current.path,
           branch: current.branch || '(detached)',
           head: current.head || '',
-          isBare: current.isBare || false
+          isBare: current.isBare || false,
+          isMain: current.path === repoRoot
         })
       }
       current = {}
@@ -43,22 +54,56 @@ export async function listWorktrees(repoRoot: string): Promise<WorktreeInfo[]> {
   return worktrees
 }
 
+export async function listBranches(repoRoot: string): Promise<string[]> {
+  const { stdout } = await execFileAsync(
+    'git',
+    ['branch', '-a', '--format=%(refname:short)'],
+    { cwd: repoRoot }
+  )
+  return stdout.trim().split('\n').filter(Boolean)
+}
+
 export async function addWorktree(
   repoRoot: string,
-  name: string
+  worktreeDir: string,
+  branchName: string,
+  baseBranch?: string
 ): Promise<WorktreeInfo> {
-  const worktreePath = `${repoRoot}/../${name}`
-  await execFileAsync('git', ['worktree', 'add', worktreePath, '-b', name], {
-    cwd: repoRoot
-  })
+  // Ensure worktree directory exists
+  if (!existsSync(worktreeDir)) {
+    mkdirSync(worktreeDir, { recursive: true })
+  }
+
+  const worktreePath = join(worktreeDir, branchName)
+  log('worktree', `creating worktree: branch=${branchName} path=${worktreePath} base=${baseBranch || 'HEAD'}`)
+
+  const args = ['worktree', 'add', worktreePath, '-b', branchName]
+  if (baseBranch) {
+    args.push(baseBranch)
+  }
+
+  try {
+    await execFileAsync('git', args, { cwd: repoRoot })
+  } catch (err) {
+    // If branch already exists, try checking it out instead of creating
+    if (err instanceof Error && err.message.includes('already exists')) {
+      await execFileAsync('git', ['worktree', 'add', worktreePath, branchName], {
+        cwd: repoRoot
+      })
+    } else {
+      throw err
+    }
+  }
+
   const trees = await listWorktrees(repoRoot)
-  const created = trees.find((t) => t.branch === name)
-  if (!created) throw new Error(`Failed to create worktree ${name}`)
+  const created = trees.find((t) => t.path === worktreePath)
+  if (!created) throw new Error(`Failed to create worktree ${branchName}`)
   return created
 }
 
-export async function removeWorktree(repoRoot: string, path: string): Promise<void> {
-  await execFileAsync('git', ['worktree', 'remove', path], {
-    cwd: repoRoot
-  })
+export async function removeWorktree(repoRoot: string, path: string, force?: boolean): Promise<void> {
+  log('worktree', `removing worktree: path=${path} force=${force}`)
+  const args = ['worktree', 'remove', path]
+  if (force) args.push('--force')
+  await execFileAsync('git', args, { cwd: repoRoot })
 }

@@ -3,6 +3,7 @@ export interface Worktree {
   branch: string
   head: string
   isBare: boolean
+  isMain: boolean
 }
 
 export interface TerminalTab {
@@ -15,8 +16,10 @@ export type PtyStatus = 'idle' | 'processing' | 'waiting' | 'needs-approval'
 
 export interface ElectronAPI {
   listWorktrees(): Promise<Worktree[]>
-  addWorktree(name: string): Promise<Worktree>
-  removeWorktree(path: string): Promise<void>
+  listBranches(): Promise<string[]>
+  addWorktree(branchName: string, baseBranch?: string): Promise<Worktree>
+  removeWorktree(path: string, force?: boolean): Promise<void>
+  getWorktreeDir(): Promise<string>
   selectRepoRoot(): Promise<string | null>
   getRepoRoot(): Promise<string | null>
 

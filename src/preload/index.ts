@@ -6,8 +6,10 @@ type DataCallback = (id: string, data: string) => void
 contextBridge.exposeInMainWorld('api', {
   // Worktrees
   listWorktrees: () => ipcRenderer.invoke('worktree:list'),
-  addWorktree: (name: string) => ipcRenderer.invoke('worktree:add', name),
-  removeWorktree: (path: string) => ipcRenderer.invoke('worktree:remove', path),
+  listBranches: () => ipcRenderer.invoke('worktree:branches'),
+  addWorktree: (branchName: string, baseBranch?: string) => ipcRenderer.invoke('worktree:add', branchName, baseBranch),
+  removeWorktree: (path: string, force?: boolean) => ipcRenderer.invoke('worktree:remove', path, force),
+  getWorktreeDir: () => ipcRenderer.invoke('worktree:dir'),
   selectRepoRoot: () => ipcRenderer.invoke('repo:select'),
   getRepoRoot: () => ipcRenderer.invoke('repo:getRoot'),
 

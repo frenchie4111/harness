@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, dialog, Menu } from 'electron'
 import { join } from 'path'
 import { PtyManager } from './pty-manager'
-import { listWorktrees, addWorktree, removeWorktree } from './worktree'
+import { listWorktrees, listBranches, addWorktree, removeWorktree, defaultWorktreeDir } from './worktree'
 import { loadConfig, saveConfig, saveConfigSync } from './persistence'
 import { hooksInstalled, installHooks, watchStatusDir } from './hooks'
 import { log, getLogFilePath } from './debug'
@@ -78,18 +78,33 @@ function registerIpcHandlers(): void {
     return listWorktrees(repoRoot)
   })
 
-  ipcMain.handle('worktree:add', async (event, name: string) => {
+  ipcMain.handle('worktree:branches', async (event) => {
     const win = getWindowFromEvent(event)
     const repoRoot = win ? windowRepoRoots.get(win.id) : null
-    if (!repoRoot) throw new Error('No repo root configured')
-    return addWorktree(repoRoot, name)
+    if (!repoRoot) return []
+    return listBranches(repoRoot)
   })
 
-  ipcMain.handle('worktree:remove', async (event, path: string) => {
+  ipcMain.handle('worktree:add', async (event, branchName: string, baseBranch?: string) => {
     const win = getWindowFromEvent(event)
     const repoRoot = win ? windowRepoRoots.get(win.id) : null
     if (!repoRoot) throw new Error('No repo root configured')
-    return removeWorktree(repoRoot, path)
+    const wtDir = defaultWorktreeDir(repoRoot)
+    return addWorktree(repoRoot, wtDir, branchName, baseBranch)
+  })
+
+  ipcMain.handle('worktree:remove', async (event, path: string, force?: boolean) => {
+    const win = getWindowFromEvent(event)
+    const repoRoot = win ? windowRepoRoots.get(win.id) : null
+    if (!repoRoot) throw new Error('No repo root configured')
+    return removeWorktree(repoRoot, path, force)
+  })
+
+  ipcMain.handle('worktree:dir', async (event) => {
+    const win = getWindowFromEvent(event)
+    const repoRoot = win ? windowRepoRoots.get(win.id) : null
+    if (!repoRoot) return ''
+    return defaultWorktreeDir(repoRoot)
   })
 
   ipcMain.handle('repo:select', async (event) => {
