@@ -7,6 +7,7 @@ import { ChangedFilesPanel } from './components/ChangedFilesPanel'
 import { PRStatusPanel } from './components/PRStatusPanel'
 import { focusTerminalById } from './components/XTerminal'
 import { useHotkeys } from './hooks/useHotkeys'
+import { sortedWorktrees } from './worktree-sort'
 
 /** Create a filesystem-safe terminal ID from a worktree path */
 function makeTerminalId(prefix: string, worktreePath: string): string {
@@ -282,21 +283,27 @@ export default function App(): JSX.Element {
   )
 
   // --- Hotkey action handlers ---
+  // Use the same sort order as the sidebar for navigation
+  const orderedWorktrees = useMemo(
+    () => sortedWorktrees(worktrees, prStatuses),
+    [worktrees, prStatuses]
+  )
+
   const switchToWorktreeByIndex = useCallback(
     (index: number) => {
-      if (index < worktrees.length) {
-        setActiveWorktreeId(worktrees[index].path)
+      if (index < orderedWorktrees.length) {
+        setActiveWorktreeId(orderedWorktrees[index].path)
       }
     },
-    [worktrees]
+    [orderedWorktrees]
   )
 
   const cycleWorktree = useCallback(
     (delta: number) => {
-      if (worktrees.length === 0) return
-      const currentIdx = worktrees.findIndex((w) => w.path === activeWorktreeId)
-      const nextIdx = (currentIdx + delta + worktrees.length) % worktrees.length
-      setActiveWorktreeId(worktrees[nextIdx].path)
+      if (orderedWorktrees.length === 0) return
+      const currentIdx = orderedWorktrees.findIndex((w) => w.path === activeWorktreeId)
+      const nextIdx = (currentIdx + delta + orderedWorktrees.length) % orderedWorktrees.length
+      setActiveWorktreeId(orderedWorktrees[nextIdx].path)
     },
     [worktrees, activeWorktreeId]
   )

@@ -1,6 +1,8 @@
 import { useState, useCallback, useEffect, useMemo } from 'react'
 import { ChevronDown, ChevronRight, Plus, RefreshCw, FolderOpen } from 'lucide-react'
 import type { Worktree, PtyStatus, PRStatus } from '../types'
+import type { GroupKey } from '../worktree-sort'
+import { groupWorktrees } from '../worktree-sort'
 import { WorktreeTab } from './WorktreeTab'
 
 interface SidebarProps {
@@ -14,30 +16,6 @@ interface SidebarProps {
   onRefresh: () => void
   onSelectRepo: () => void
   onRegisterCreate?: (trigger: () => void) => void
-}
-
-type GroupKey = 'needs-attention' | 'active' | 'no-pr' | 'merged'
-
-interface Group {
-  key: GroupKey
-  label: string
-  worktrees: Worktree[]
-}
-
-function getGroupKey(wt: Worktree, pr: PRStatus | null | undefined): GroupKey {
-  if (!pr) return 'no-pr'
-  if (pr.state === 'merged' || pr.state === 'closed') return 'merged'
-  if (pr.checksOverall === 'failure') return 'needs-attention'
-  return 'active'
-}
-
-const GROUP_ORDER: GroupKey[] = ['needs-attention', 'active', 'no-pr', 'merged']
-
-const GROUP_LABELS: Record<GroupKey, string> = {
-  'needs-attention': 'Needs Attention',
-  active: 'Active PRs',
-  'no-pr': 'No PR',
-  merged: 'Merged / Closed'
 }
 
 export function Sidebar({
@@ -94,24 +72,7 @@ export function Sidebar({
     setCollapsed((prev) => ({ ...prev, [key]: !prev[key] }))
   }, [])
 
-  const groups = useMemo<Group[]>(() => {
-    const grouped: Record<GroupKey, Worktree[]> = {
-      'needs-attention': [],
-      active: [],
-      'no-pr': [],
-      merged: []
-    }
-
-    for (const wt of worktrees) {
-      const pr = prStatuses[wt.path]
-      const key = getGroupKey(wt, pr)
-      grouped[key].push(wt)
-    }
-
-    return GROUP_ORDER
-      .filter((key) => grouped[key].length > 0)
-      .map((key) => ({ key, label: GROUP_LABELS[key], worktrees: grouped[key] }))
-  }, [worktrees, prStatuses])
+  const groups = useMemo(() => groupWorktrees(worktrees, prStatuses), [worktrees, prStatuses])
 
   return (
     <div className="w-56 bg-neutral-950 border-r border-neutral-800 flex flex-col h-full">
