@@ -39,10 +39,16 @@ const PR_STATE_COLOR: Record<string, string> = {
 }
 
 export function WorktreeTab({ worktree, isActive, status, prStatus, onClick, onDelete }: WorktreeTabProps): JSX.Element {
-  // Use check status color if available, otherwise use PR state color
-  const iconColor = prStatus
-    ? (prStatus.checksOverall !== 'none' ? PR_ICON_COLOR[prStatus.checksOverall] : PR_STATE_COLOR[prStatus.state])
-    : ''
+  // Priority: merged/closed state always wins, then check status, then PR state
+  let iconColor = ''
+  if (prStatus) {
+    if (prStatus.state === 'merged') iconColor = PR_STATE_COLOR.merged
+    else if (prStatus.state === 'closed') iconColor = PR_STATE_COLOR.closed
+    else if (prStatus.checksOverall === 'failure') iconColor = PR_ICON_COLOR.failure
+    else if (prStatus.checksOverall === 'pending') iconColor = PR_ICON_COLOR.pending
+    else if (prStatus.checksOverall === 'success') iconColor = PR_ICON_COLOR.success
+    else iconColor = PR_STATE_COLOR[prStatus.state]
+  }
 
   return (
     <div
