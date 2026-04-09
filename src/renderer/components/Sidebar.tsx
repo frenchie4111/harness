@@ -81,7 +81,7 @@ export function Sidebar({
   return (
     <div className="w-56 bg-neutral-950 border-r border-neutral-800 flex flex-col h-full">
       {/* Title bar drag region with app name */}
-      <div className="drag-region h-10 flex items-end px-3 pb-1 shrink-0">
+      <div className="drag-region h-10 flex items-center px-4 pt-1 shrink-0">
         <span className="text-xs font-semibold text-neutral-400 pl-16">Harness</span>
       </div>
 
