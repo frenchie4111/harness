@@ -8,11 +8,21 @@ export interface Worktree {
 
 export interface TerminalTab {
   id: string
-  type: 'claude' | 'shell'
+  type: 'claude' | 'shell' | 'diff'
   label: string
+  /** For diff tabs: the file path being diffed */
+  filePath?: string
+  /** For diff tabs: whether the diff is for staged changes */
+  staged?: boolean
 }
 
 export type PtyStatus = 'idle' | 'processing' | 'waiting' | 'needs-approval'
+
+export interface ChangedFile {
+  path: string
+  status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked'
+  staged: boolean
+}
 
 export interface ElectronAPI {
   listWorktrees(): Promise<Worktree[]>
@@ -23,6 +33,9 @@ export interface ElectronAPI {
   getWorktreeDir(): Promise<string>
   selectRepoRoot(): Promise<string | null>
   getRepoRoot(): Promise<string | null>
+
+  getChangedFiles(worktreePath: string): Promise<ChangedFile[]>
+  getFileDiff(worktreePath: string, filePath: string, staged: boolean): Promise<string>
 
   checkHooks(worktreePath: string): Promise<boolean>
   installHooks(worktreePath: string): Promise<boolean>
