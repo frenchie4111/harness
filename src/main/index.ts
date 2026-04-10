@@ -3,7 +3,7 @@ import { autoUpdater } from 'electron-updater'
 import { join } from 'path'
 import { PtyManager } from './pty-manager'
 import { listWorktrees, listBranches, addWorktree, removeWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff } from './worktree'
-import { getPRStatus, testToken } from './github'
+import { getPRStatus, testToken, starRepo } from './github'
 import { setSecret, hasSecret, deleteSecret } from './secrets'
 import { loadConfig, saveConfig, saveConfigSync } from './persistence'
 import { hooksInstalled, installHooks, watchStatusDir } from './hooks'
@@ -162,7 +162,7 @@ function registerIpcHandlers(): void {
     return hasSecret('githubToken')
   })
 
-  ipcMain.handle('settings:setGithubToken', async (_, token: string) => {
+  ipcMain.handle('settings:setGithubToken', async (_, token: string, options?: { starRepo?: boolean }) => {
     const trimmed = token.trim()
     if (!trimmed) {
       deleteSecret('githubToken')
@@ -172,7 +172,16 @@ function registerIpcHandlers(): void {
     const test = await testToken(trimmed)
     if (!test.ok) return { ok: false, error: test.error }
     setSecret('githubToken', trimmed)
-    return { ok: true, username: test.username }
+
+    // Optionally star the repo — fire and forget, don't fail token save if this fails
+    let starred = false
+    if (options?.starRepo) {
+      const result = await starRepo(trimmed, 'frenchie4111', 'harness')
+      starred = result.ok
+      if (!result.ok) log('app', 'failed to star repo', result.error)
+    }
+
+    return { ok: true, username: test.username, starred }
   })
 
   ipcMain.handle('settings:clearGithubToken', () => {

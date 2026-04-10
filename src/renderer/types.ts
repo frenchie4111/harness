@@ -57,7 +57,7 @@ export interface ElectronAPI {
   getHotkeyOverrides(): Promise<Record<string, string> | null>
 
   hasGithubToken(): Promise<boolean>
-  setGithubToken(token: string): Promise<{ ok: boolean; username?: string; error?: string }>
+  setGithubToken(token: string, options?: { starRepo?: boolean }): Promise<{ ok: boolean; username?: string; error?: string; starred?: boolean }>
   clearGithubToken(): Promise<boolean>
 
   openExternal(url: string): void

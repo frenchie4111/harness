@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { ArrowLeft, Check, X, Eye, EyeOff } from 'lucide-react'
+import { ArrowLeft, Check, X, Eye, EyeOff, Star } from 'lucide-react'
 
 interface SettingsProps {
   onClose: () => void
@@ -10,6 +10,7 @@ export function Settings({ onClose }: SettingsProps): JSX.Element {
   const [hasToken, setHasToken] = useState(false)
   const [showToken, setShowToken] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [autoStar, setAutoStar] = useState(true)
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null)
 
   useEffect(() => {
@@ -20,9 +21,11 @@ export function Settings({ onClose }: SettingsProps): JSX.Element {
     setSaving(true)
     setResult(null)
     try {
-      const res = await window.api.setGithubToken(token)
+      const res = await window.api.setGithubToken(token, { starRepo: autoStar })
       if (res.ok) {
-        setResult({ ok: true, message: res.username ? `Connected as @${res.username}` : 'Token saved' })
+        let message = res.username ? `Connected as @${res.username}` : 'Token saved'
+        if (autoStar && res.starred) message += ' · starred Harness on GitHub'
+        setResult({ ok: true, message })
         setHasToken(true)
         setToken('')
       } else {
@@ -31,7 +34,7 @@ export function Settings({ onClose }: SettingsProps): JSX.Element {
     } finally {
       setSaving(false)
     }
-  }, [token])
+  }, [token, autoStar])
 
   const handleClear = useCallback(async () => {
     await window.api.clearGithubToken()
@@ -73,6 +76,19 @@ export function Settings({ onClose }: SettingsProps): JSX.Element {
                 <span>A token is currently saved</span>
               </div>
             )}
+
+            <label className="flex items-center gap-2 mb-3 cursor-pointer group">
+              <input
+                type="checkbox"
+                checked={autoStar}
+                onChange={(e) => setAutoStar(e.target.checked)}
+                className="w-3.5 h-3.5 accent-amber-400 cursor-pointer"
+              />
+              <Star size={12} className="text-amber-400 shrink-0" />
+              <span className="text-xs text-neutral-400 group-hover:text-neutral-300 transition-colors">
+                Automatically star Harness on GitHub
+              </span>
+            </label>
 
             <div className="relative mb-3">
               <input

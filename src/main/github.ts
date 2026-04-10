@@ -229,6 +229,26 @@ export async function getPRStatus(worktreePath: string): Promise<PRStatus | null
   }
 }
 
+/** Star a repository on behalf of the authenticated user. Idempotent. */
+export async function starRepo(token: string, owner: string, repo: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await fetch(`https://api.github.com/user/starred/${owner}/${repo}`, {
+      method: 'PUT',
+      headers: {
+        Accept: 'application/vnd.github+json',
+        'User-Agent': 'Harness',
+        Authorization: `Bearer ${token}`,
+        'X-GitHub-Api-Version': '2022-11-28',
+        'Content-Length': '0'
+      }
+    })
+    if (res.status === 204 || res.status === 304) return { ok: true }
+    return { ok: false, error: `${res.status} ${res.statusText}` }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
 /** Test a token by making an authenticated request to /user. Returns the username if valid. */
 export async function testToken(token: string): Promise<{ ok: boolean; username?: string; error?: string }> {
   try {
