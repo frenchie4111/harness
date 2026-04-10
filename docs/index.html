@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Harness — wrangle your Claude Code worktrees</title>
+  <meta name="description" content="A native macOS app for managing many Claude Code instances across git worktrees, with reliable status detection, PR tracking, and inline diffs." />
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="Harness" />
+  <meta property="og:description" content="Wrangle your Claude Code worktrees. A native macOS app for running many Claude Code sessions in parallel." />
+  <meta property="og:image" content="https://frenchie4111.github.io/harness/icon.png" />
+  <meta property="og:url" content="https://frenchie4111.github.io/harness/" />
+  <meta property="og:type" content="website" />
+
+  <link rel="icon" type="image/png" href="icon.png" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <style>
+    html, body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0a0a0a; color: #e5e5e5; }
+    .gradient-text { background: linear-gradient(135deg, #f59e0b 0%, #ef4444 50%, #a855f7 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .glow-amber { box-shadow: 0 0 60px rgba(245, 158, 11, 0.15); }
+    .grid-bg {
+      background-image:
+        radial-gradient(circle at 50% 0%, rgba(245, 158, 11, 0.08), transparent 50%),
+        radial-gradient(circle at 0% 100%, rgba(168, 85, 247, 0.06), transparent 50%);
+    }
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 0.6; transform: scale(1); }
+      50% { opacity: 1; transform: scale(1.1); }
+    }
+    .pulse-dot { animation: pulse-dot 2s ease-in-out infinite; }
+  </style>
+</head>
+<body class="min-h-screen grid-bg">
+
+  <!-- Nav -->
+  <nav class="max-w-6xl mx-auto px-6 py-6 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <img src="icon.png" alt="Harness icon" class="w-9 h-9 rounded-lg" />
+      <span class="text-xl font-bold">Harness</span>
+    </div>
+    <div class="flex items-center gap-6 text-sm text-neutral-400">
+      <a href="#features" class="hover:text-neutral-100 transition-colors">Features</a>
+      <a href="#install" class="hover:text-neutral-100 transition-colors">Install</a>
+      <a href="https://github.com/frenchie4111/harness" class="hover:text-neutral-100 transition-colors">GitHub</a>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="max-w-6xl mx-auto px-6 pt-12 pb-20 text-center">
+    <img src="icon.png" alt="Harness" class="w-28 h-28 mx-auto rounded-3xl mb-8 glow-amber" />
+    <h1 class="text-5xl md:text-7xl font-extrabold tracking-tight mb-6">
+      Wrangle your<br />
+      <span class="gradient-text">Claude Code worktrees</span>
+    </h1>
+    <p class="text-lg md:text-xl text-neutral-400 max-w-2xl mx-auto mb-10">
+      A native macOS app for running many Claude Code sessions in parallel,
+      with reliable status detection, PR tracking, and inline diffs.
+    </p>
+    <div class="flex flex-col sm:flex-row gap-3 justify-center items-center">
+      <a href="#install" class="px-8 py-3 bg-white text-black rounded-lg font-semibold hover:bg-neutral-200 transition-colors">
+        Download for macOS
+      </a>
+      <a href="https://github.com/frenchie4111/harness" class="px-8 py-3 border border-neutral-700 hover:border-neutral-500 rounded-lg font-semibold transition-colors">
+        View on GitHub
+      </a>
+    </div>
+    <p class="text-xs text-neutral-600 mt-4">Free · Open source · Signed &amp; notarized</p>
+  </section>
+
+  <!-- Screenshot -->
+  <section class="max-w-6xl mx-auto px-6 pb-24">
+    <div class="rounded-2xl overflow-hidden border border-neutral-800 shadow-2xl shadow-amber-900/10 bg-neutral-950">
+      <img src="screenshot.png" alt="Harness screenshot" class="w-full" />
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section id="features" class="max-w-6xl mx-auto px-6 py-16">
+    <h2 class="text-4xl font-bold text-center mb-4">Built for parallel work</h2>
+    <p class="text-neutral-500 text-center mb-16 max-w-xl mx-auto">
+      The way you wish your terminal could handle ten Claudes at once.
+    </p>
+
+    <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <!-- Feature: status -->
+      <div class="bg-neutral-950/60 border border-neutral-800 rounded-xl p-6">
+        <div class="flex items-center gap-2 mb-3">
+          <span class="w-2.5 h-2.5 rounded-full bg-green-500 pulse-dot"></span>
+          <span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
+          <span class="w-2.5 h-2.5 rounded-full bg-red-500 pulse-dot"></span>
+        </div>
+        <h3 class="text-lg font-semibold mb-2">Reliable status dots</h3>
+        <p class="text-sm text-neutral-500">
+          Each worktree's sidebar dot tells you exactly what Claude is doing —
+          working, waiting for input, or asking permission. Powered by Claude
+          Code hooks, not flaky output parsing.
+        </p>
+      </div>
+
+      <!-- Feature: worktrees -->
+      <div class="bg-neutral-950/60 border border-neutral-800 rounded-xl p-6">
+        <div class="text-amber-400 text-2xl mb-3">⌥</div>
+        <h3 class="text-lg font-semibold mb-2">Worktree management</h3>
+        <p class="text-sm text-neutral-500">
+          Create and delete git worktrees from the sidebar. Each worktree
+          gets its own terminal tabs (Claude + raw shells) and remembers your
+          state.
+        </p>
+      </div>
+
+      <!-- Feature: PR -->
+      <div class="bg-neutral-950/60 border border-neutral-800 rounded-xl p-6">
+        <div class="text-purple-400 mb-3">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" y1="9" x2="6" y2="21"/></svg>
+        </div>
+        <h3 class="text-lg font-semibold mb-2">Live PR status</h3>
+        <p class="text-sm text-neutral-500">
+          See PR state and CI checks for every worktree at a glance. Cmd+Shift+G
+          opens the PR in your browser. Sorted by what needs your attention.
+        </p>
+      </div>
+
+      <!-- Feature: diff -->
+      <div class="bg-neutral-950/60 border border-neutral-800 rounded-xl p-6">
+        <div class="text-blue-400 mb-3">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        </div>
+        <h3 class="text-lg font-semibold mb-2">Inline diffs</h3>
+        <p class="text-sm text-neutral-500">
+          A changed-files panel sits next to the terminal so you can review
+          what Claude changed without leaving the app. Click any file to open
+          a diff tab.
+        </p>
+      </div>
+
+      <!-- Feature: hotkeys -->
+      <div class="bg-neutral-950/60 border border-neutral-800 rounded-xl p-6">
+        <div class="text-neutral-400 mb-3">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2" ry="2"/><path d="M6 8h.001"/><path d="M10 8h.001"/><path d="M14 8h.001"/><path d="M18 8h.001"/><path d="M8 12h.001"/><path d="M12 12h.001"/><path d="M16 12h.001"/><path d="M7 16h10"/></svg>
+        </div>
+        <h3 class="text-lg font-semibold mb-2">Configurable hotkeys</h3>
+        <p class="text-sm text-neutral-500">
+          Cmd+1-9 to jump between worktrees. Cmd+T for a new shell. Cmd+W to
+          close. Cmd+B to hide the sidebar. All rebindable in Settings.
+        </p>
+      </div>
+
+      <!-- Feature: signed -->
+      <div class="bg-neutral-950/60 border border-neutral-800 rounded-xl p-6">
+        <div class="text-green-400 mb-3">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
+        </div>
+        <h3 class="text-lg font-semibold mb-2">Signed &amp; notarized</h3>
+        <p class="text-sm text-neutral-500">
+          Properly signed with a Developer ID and notarized by Apple, so it
+          opens cleanly without "unidentified developer" warnings. Auto-updates
+          via GitHub releases.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Why -->
+  <section class="max-w-3xl mx-auto px-6 py-20 text-center">
+    <h2 class="text-3xl font-bold mb-6">Why does this exist?</h2>
+    <p class="text-neutral-400 leading-relaxed mb-4">
+      I have been using Conductor for a while as a fairly happy customer, but
+      some rough edges started to annoy me. So on a random Thursday morning I
+      built my own version that works the way I want to.
+    </p>
+    <p class="text-neutral-500 text-sm italic">
+      Honestly the whole thing is vibe coded — I haven't opened the source
+      file once. Future travelers be warned.
+    </p>
+  </section>
+
+  <!-- Install -->
+  <section id="install" class="max-w-3xl mx-auto px-6 py-20">
+    <h2 class="text-4xl font-bold text-center mb-4">Download</h2>
+    <p class="text-neutral-500 text-center mb-12">
+      Pick your Mac architecture. Drag the app to Applications, launch, and
+      you're done.
+    </p>
+
+    <div class="grid md:grid-cols-2 gap-4">
+      <a href="https://github.com/frenchie4111/harness/releases/latest/download/Harness-1.0.0-arm64.dmg"
+         class="block p-6 bg-neutral-950 border border-neutral-800 hover:border-neutral-600 rounded-xl transition-colors group">
+        <div class="text-xs text-neutral-500 mb-2 uppercase tracking-wider">M1 / M2 / M3 / M4</div>
+        <div class="text-xl font-semibold mb-1 group-hover:text-amber-400 transition-colors">Apple Silicon</div>
+        <div class="text-xs text-neutral-600 font-mono">Harness-arm64.dmg</div>
+      </a>
+
+      <a href="https://github.com/frenchie4111/harness/releases/latest/download/Harness-1.0.0.dmg"
+         class="block p-6 bg-neutral-950 border border-neutral-800 hover:border-neutral-600 rounded-xl transition-colors group">
+        <div class="text-xs text-neutral-500 mb-2 uppercase tracking-wider">x86_64</div>
+        <div class="text-xl font-semibold mb-1 group-hover:text-amber-400 transition-colors">Intel Mac</div>
+        <div class="text-xs text-neutral-600 font-mono">Harness.dmg</div>
+      </a>
+    </div>
+
+    <div class="mt-8 text-center">
+      <a href="https://github.com/frenchie4111/harness/releases" class="text-sm text-neutral-500 hover:text-neutral-300 underline transition-colors">
+        Browse all releases on GitHub
+      </a>
+    </div>
+
+    <div class="mt-12 p-6 bg-neutral-950 border border-neutral-800 rounded-xl">
+      <div class="text-sm font-semibold text-neutral-300 mb-3">After install</div>
+      <ol class="text-sm text-neutral-500 space-y-2 list-decimal pl-5">
+        <li>Pick a git repository when Harness asks.</li>
+        <li>Click the gear icon to paste a GitHub personal access token (optional, needed for PR status).</li>
+        <li>Click <strong class="text-neutral-300">Enable</strong> on the hooks banner so Claude status detection works.</li>
+      </ol>
+      <div class="text-xs text-neutral-600 mt-4">
+        Requires <code class="bg-neutral-900 px-1 rounded">claude</code> CLI installed and <code class="bg-neutral-900 px-1 rounded">git</code> on your PATH.
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="border-t border-neutral-900 mt-20">
+    <div class="max-w-6xl mx-auto px-6 py-10 flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-neutral-600">
+      <div class="flex items-center gap-2">
+        <img src="icon.png" alt="" class="w-5 h-5 rounded" />
+        <span>Harness · Open source · MIT</span>
+      </div>
+      <div class="flex items-center gap-6">
+        <a href="https://github.com/frenchie4111/harness" class="hover:text-neutral-300 transition-colors">GitHub</a>
+        <a href="https://github.com/frenchie4111/harness/issues" class="hover:text-neutral-300 transition-colors">Issues</a>
+        <a href="https://github.com/frenchie4111/harness/releases" class="hover:text-neutral-300 transition-colors">Releases</a>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

@@ -113,22 +113,26 @@ fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
 "
 ok "package.json updated"
 
-# ---- Update README download links ----
-step "Updating README download links"
+# ---- Update README and landing page download links ----
+step "Updating download links in README and docs/index.html"
 node -e "
 const fs = require('fs');
 const v = '${VERSION}';
-let readme = fs.readFileSync('README.md', 'utf-8');
-// Replace any X.Y.Z occurring inside Harness-X.Y.Z (filename) or download/vX.Y.Z (path)
-readme = readme.replace(/Harness-\d+\.\d+\.\d+/g, \`Harness-\${v}\`);
-readme = readme.replace(/releases\/download\/v\d+\.\d+\.\d+/g, \`releases/download/v\${v}\`);
-fs.writeFileSync('README.md', readme);
+const files = ['README.md', 'docs/index.html'];
+for (const f of files) {
+  if (!fs.existsSync(f)) continue;
+  let content = fs.readFileSync(f, 'utf-8');
+  // Replace any X.Y.Z in Harness-X.Y.Z (filename) or download/vX.Y.Z (path)
+  content = content.replace(/Harness-\d+\.\d+\.\d+/g, \`Harness-\${v}\`);
+  content = content.replace(/releases\/download\/v\d+\.\d+\.\d+/g, \`releases/download/v\${v}\`);
+  fs.writeFileSync(f, content);
+}
 "
-ok "README updated"
+ok "Download links updated"
 
-git add package.json README.md
+git add package.json README.md docs/index.html
 git commit -m "Release v${VERSION}"
-ok "Committed version bump and README update"
+ok "Committed version bump and download link updates"
 
 # ---- Build / sign / notarize ----
 step "Building, signing, and notarizing (this takes several minutes)"
