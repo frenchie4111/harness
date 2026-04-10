@@ -8,7 +8,11 @@ interface Config {
   repoRoots: string[]
   // Custom hotkey overrides: action name → shortcut string (e.g. "Cmd+Shift+T")
   hotkeys?: Record<string, string>
+  // Command used to launch Claude in a worktree terminal. Runs via login shell.
+  claudeCommand?: string
 }
+
+export const DEFAULT_CLAUDE_COMMAND = 'claude --continue || (echo "Creating new Claude session for this worktree..." && claude)'
 
 const DEFAULT_CONFIG: Config = {
   windowBounds: null,

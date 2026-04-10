@@ -30,6 +30,16 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('config:hotkeysChanged', handler)
     return () => ipcRenderer.removeListener('config:hotkeysChanged', handler)
   },
+  getClaudeCommand: () => ipcRenderer.invoke('config:getClaudeCommand'),
+  setClaudeCommand: (command: string) => ipcRenderer.invoke('config:setClaudeCommand', command),
+  getDefaultClaudeCommand: () => ipcRenderer.invoke('config:getDefaultClaudeCommand'),
+  onClaudeCommandChanged: (callback: (command: string) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, command: string): void => {
+      callback(command)
+    }
+    ipcRenderer.on('config:claudeCommandChanged', handler)
+    return () => ipcRenderer.removeListener('config:claudeCommandChanged', handler)
+  },
 
   // Settings
   hasGithubToken: () => ipcRenderer.invoke('settings:hasGithubToken'),

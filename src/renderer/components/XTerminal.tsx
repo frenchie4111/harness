@@ -15,9 +15,10 @@ interface XTerminalProps {
   cwd: string
   type: 'claude' | 'shell'
   visible: boolean
+  claudeCommand: string
 }
 
-export function XTerminal({ terminalId, cwd, type, visible }: XTerminalProps): JSX.Element {
+export function XTerminal({ terminalId, cwd, type, visible, claudeCommand }: XTerminalProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
@@ -76,7 +77,7 @@ export function XTerminal({ terminalId, cwd, type, visible }: XTerminalProps): J
 
     // Spawn the PTY
     const shell = '/bin/zsh'
-    const args = type === 'claude' ? ['-ilc', 'claude --continue || (echo "Creating new Claude session for this worktree..." && claude)'] : ['-il']
+    const args = type === 'claude' ? ['-ilc', claudeCommand] : ['-il']
     window.api.createTerminal(terminalId, cwd, shell, args)
 
     terminal.onData((data) => {

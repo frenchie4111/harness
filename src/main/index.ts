@@ -5,7 +5,7 @@ import { PtyManager } from './pty-manager'
 import { listWorktrees, listBranches, addWorktree, removeWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff } from './worktree'
 import { getPRStatus, testToken, starRepo } from './github'
 import { setSecret, hasSecret, deleteSecret } from './secrets'
-import { loadConfig, saveConfig, saveConfigSync } from './persistence'
+import { loadConfig, saveConfig, saveConfigSync, DEFAULT_CLAUDE_COMMAND } from './persistence'
 import { hooksInstalled, installHooks, watchStatusDir } from './hooks'
 import { log, getLogFilePath } from './debug'
 
@@ -174,6 +174,28 @@ function registerIpcHandlers(): void {
       if (!win.isDestroyed()) win.webContents.send('config:hotkeysChanged', null)
     }
     return true
+  })
+
+  ipcMain.handle('config:getClaudeCommand', () => {
+    return config.claudeCommand || DEFAULT_CLAUDE_COMMAND
+  })
+
+  ipcMain.handle('config:setClaudeCommand', (_, command: string) => {
+    const trimmed = command.trim()
+    if (!trimmed || trimmed === DEFAULT_CLAUDE_COMMAND) {
+      delete config.claudeCommand
+    } else {
+      config.claudeCommand = trimmed
+    }
+    saveConfig(config)
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.send('config:claudeCommandChanged', config.claudeCommand || DEFAULT_CLAUDE_COMMAND)
+    }
+    return true
+  })
+
+  ipcMain.handle('config:getDefaultClaudeCommand', () => {
+    return DEFAULT_CLAUDE_COMMAND
   })
 
   // Settings: GitHub token

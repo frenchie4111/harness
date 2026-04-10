@@ -31,19 +31,22 @@ export default function App(): JSX.Element {
   const [sidebarVisible, setSidebarVisible] = useState(true)
   const [showSettings, setShowSettings] = useState(false)
   const [hotkeyOverrides, setHotkeyOverrides] = useState<Record<string, string> | undefined>(undefined)
+  const [claudeCommand, setClaudeCommand] = useState<string>('')
   // Track which worktrees already have hooks installed so we only prompt once
   const hooksChecked = useRef(new Set<string>())
   // Ref to the sidebar's create-worktree trigger
   const createWorktreeRef = useRef<(() => void) | null>(null)
 
-  // Load repo root, worktrees, and hotkey config on mount
+  // Load repo root, worktrees, and config on mount
   useEffect(() => {
     (async () => {
-      const [root, overrides] = await Promise.all([
+      const [root, overrides, cmd] = await Promise.all([
         window.api.getRepoRoot(),
-        window.api.getHotkeyOverrides()
+        window.api.getHotkeyOverrides(),
+        window.api.getClaudeCommand()
       ])
       if (overrides) setHotkeyOverrides(overrides)
+      setClaudeCommand(cmd)
       if (root) {
         setRepoRoot(root)
         const trees = await window.api.listWorktrees()
@@ -59,6 +62,14 @@ export default function App(): JSX.Element {
   useEffect(() => {
     const cleanup = window.api.onHotkeysChanged((hotkeys) => {
       setHotkeyOverrides(hotkeys || undefined)
+    })
+    return cleanup
+  }, [])
+
+  // Live-reload claude command when changed in settings
+  useEffect(() => {
+    const cleanup = window.api.onClaudeCommandChanged((cmd) => {
+      setClaudeCommand(cmd)
     })
     return cleanup
   }, [])
@@ -520,6 +531,7 @@ export default function App(): JSX.Element {
                 onAddTab={handleAddTerminalTab}
                 onCloseTab={handleCloseTab}
                 visible={wt.path === activeWorktreeId}
+                claudeCommand={claudeCommand}
               />
             </div>
           )

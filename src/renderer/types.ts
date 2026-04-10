@@ -67,6 +67,11 @@ export interface ElectronAPI {
   resetHotkeyOverrides(): Promise<boolean>
   onHotkeysChanged(callback: (hotkeys: Record<string, string> | null) => void): () => void
 
+  getClaudeCommand(): Promise<string>
+  setClaudeCommand(command: string): Promise<boolean>
+  getDefaultClaudeCommand(): Promise<string>
+  onClaudeCommandChanged(callback: (command: string) => void): () => void
+
   hasGithubToken(): Promise<boolean>
   setGithubToken(token: string, options?: { starRepo?: boolean }): Promise<{ ok: boolean; username?: string; error?: string; starred?: boolean }>
   clearGithubToken(): Promise<boolean>
