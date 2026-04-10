@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud } from 'lucide-react'
+import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw } from 'lucide-react'
 import type { UpdaterStatus } from '../types'
+import { DEFAULT_HOTKEYS, ACTION_LABELS, bindingToString, eventToBinding, resolveHotkeys, type Action, type HotkeyBinding } from '../hotkeys'
 
 interface SettingsProps {
   onClose: () => void
 }
 
-type SectionId = 'github' | 'updates'
+type SectionId = 'github' | 'updates' | 'hotkeys'
 
 interface Section {
   id: SectionId
@@ -16,6 +17,7 @@ interface Section {
 
 const SECTIONS: Section[] = [
   { id: 'github', label: 'GitHub', icon: GitPullRequest },
+  { id: 'hotkeys', label: 'Hotkeys', icon: Keyboard },
   { id: 'updates', label: 'Updates', icon: DownloadCloud }
 ]
 
@@ -24,6 +26,7 @@ export function Settings({ onClose }: SettingsProps): JSX.Element {
   const scrollRef = useRef<HTMLDivElement>(null)
   const sectionRefs = useRef<Record<SectionId, HTMLElement | null>>({
     github: null,
+    hotkeys: null,
     updates: null
   })
 
@@ -70,9 +73,14 @@ export function Settings({ onClose }: SettingsProps): JSX.Element {
   const [updaterStatus, setUpdaterStatus] = useState<UpdaterStatus | null>(null)
   const [checking, setChecking] = useState(false)
 
+  // Hotkeys state
+  const [hotkeyOverrides, setHotkeyOverrides] = useState<Record<string, string> | null>(null)
+  const [rebindingAction, setRebindingAction] = useState<Action | null>(null)
+
   useEffect(() => {
     window.api.hasGithubToken().then(setHasToken)
     window.api.getVersion().then(setVersion)
+    window.api.getHotkeyOverrides().then((v) => setHotkeyOverrides(v))
   }, [])
 
   useEffect(() => {
@@ -122,6 +130,53 @@ export function Settings({ onClose }: SettingsProps): JSX.Element {
   const handleRestart = useCallback(() => {
     window.api.quitAndInstall()
   }, [])
+
+  // Capture a key press while rebinding
+  useEffect(() => {
+    if (!rebindingAction) return
+
+    const handler = (e: KeyboardEvent): void => {
+      e.preventDefault()
+      e.stopPropagation()
+
+      if (e.key === 'Escape') {
+        setRebindingAction(null)
+        return
+      }
+
+      const binding = eventToBinding(e)
+      if (!binding) return // ignore pure modifier presses
+
+      const shortcut = bindingToString(binding)
+      const next = { ...(hotkeyOverrides || {}), [rebindingAction]: shortcut }
+      setHotkeyOverrides(next)
+      void window.api.setHotkeyOverrides(next)
+      setRebindingAction(null)
+    }
+
+    window.addEventListener('keydown', handler, true)
+    return () => window.removeEventListener('keydown', handler, true)
+  }, [rebindingAction, hotkeyOverrides])
+
+  const resolvedHotkeys = resolveHotkeys(hotkeyOverrides || undefined)
+
+  const handleResetHotkey = useCallback(async (action: Action) => {
+    const next = { ...(hotkeyOverrides || {}) }
+    delete next[action]
+    setHotkeyOverrides(next)
+    await window.api.setHotkeyOverrides(next)
+  }, [hotkeyOverrides])
+
+  const handleResetAllHotkeys = useCallback(async () => {
+    setHotkeyOverrides(null)
+    await window.api.resetHotkeyOverrides()
+  }, [])
+
+  const isOverridden = (action: Action): boolean => {
+    if (!hotkeyOverrides || !(action in hotkeyOverrides)) return false
+    const defaultStr = bindingToString(DEFAULT_HOTKEYS[action])
+    return hotkeyOverrides[action] !== defaultStr
+  }
 
   const renderUpdaterStatus = (): JSX.Element | null => {
     if (!updaterStatus) return null
@@ -322,6 +377,60 @@ export function Settings({ onClose }: SettingsProps): JSX.Element {
                   Required scopes: <code className="bg-neutral-900 px-1 rounded">repo</code> for private repos,
                   or <code className="bg-neutral-900 px-1 rounded">public_repo</code> for public only.
                 </p>
+              </div>
+            </section>
+
+            {/* Hotkeys section */}
+            <section ref={(el) => { sectionRefs.current.hotkeys = el }} id="hotkeys">
+              <div className="flex items-start justify-between mb-1">
+                <h2 className="text-lg font-semibold text-neutral-200">Hotkeys</h2>
+                {hotkeyOverrides && Object.keys(hotkeyOverrides).length > 0 && (
+                  <button
+                    onClick={handleResetAllHotkeys}
+                    className="flex items-center gap-1 text-xs text-neutral-500 hover:text-neutral-300 transition-colors cursor-pointer"
+                  >
+                    <RotateCcw size={11} />
+                    Reset all to defaults
+                  </button>
+                )}
+              </div>
+              <p className="text-sm text-neutral-500 mb-4">
+                Click a shortcut to rebind it. Press <kbd className="bg-neutral-900 px-1 rounded text-[10px]">Esc</kbd> to cancel.
+              </p>
+
+              <div className="bg-neutral-900 border border-neutral-800 rounded-lg divide-y divide-neutral-800">
+                {(Object.keys(DEFAULT_HOTKEYS) as Action[]).map((action) => {
+                  const binding: HotkeyBinding = resolvedHotkeys[action]
+                  const isRebinding = rebindingAction === action
+                  const overridden = isOverridden(action)
+
+                  return (
+                    <div key={action} className="flex items-center justify-between px-3 py-2">
+                      <span className="text-sm text-neutral-300">{ACTION_LABELS[action]}</span>
+                      <div className="flex items-center gap-2">
+                        {overridden && (
+                          <button
+                            onClick={() => handleResetHotkey(action)}
+                            className="text-xs text-neutral-500 hover:text-neutral-300 transition-colors cursor-pointer"
+                            title="Reset to default"
+                          >
+                            <RotateCcw size={11} />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => setRebindingAction(isRebinding ? null : action)}
+                          className={`min-w-[100px] px-2.5 py-1 rounded text-xs font-mono transition-colors cursor-pointer ${
+                            isRebinding
+                              ? 'bg-amber-900 text-amber-200 border border-amber-700 animate-pulse'
+                              : 'bg-neutral-950 text-neutral-300 border border-neutral-700 hover:border-neutral-500'
+                          }`}
+                        >
+                          {isRebinding ? 'Press keys...' : bindingToString(binding)}
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             </section>
 

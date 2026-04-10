@@ -63,6 +63,9 @@ export interface ElectronAPI {
   getFileDiff(worktreePath: string, filePath: string, staged: boolean): Promise<string>
 
   getHotkeyOverrides(): Promise<Record<string, string> | null>
+  setHotkeyOverrides(hotkeys: Record<string, string>): Promise<boolean>
+  resetHotkeyOverrides(): Promise<boolean>
+  onHotkeysChanged(callback: (hotkeys: Record<string, string> | null) => void): () => void
 
   hasGithubToken(): Promise<boolean>
   setGithubToken(token: string, options?: { starRepo?: boolean }): Promise<{ ok: boolean; username?: string; error?: string; starred?: boolean }>

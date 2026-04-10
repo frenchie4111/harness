@@ -55,6 +55,14 @@ export default function App(): JSX.Element {
     })()
   }, [])
 
+  // Live-reload hotkeys when changed in settings
+  useEffect(() => {
+    const cleanup = window.api.onHotkeysChanged((hotkeys) => {
+      setHotkeyOverrides(hotkeys || undefined)
+    })
+    return cleanup
+  }, [])
+
   // Fetch PR status for all worktrees in parallel (on initial load)
   const fetchAllPRStatuses = useCallback(async () => {
     if (worktrees.length === 0) return

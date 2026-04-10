@@ -157,6 +157,25 @@ function registerIpcHandlers(): void {
     return config.hotkeys || null
   })
 
+  ipcMain.handle('config:setHotkeys', (_, hotkeys: Record<string, string>) => {
+    config.hotkeys = hotkeys
+    saveConfig(config)
+    // Broadcast to all windows so open renderers can re-resolve bindings
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.send('config:hotkeysChanged', hotkeys)
+    }
+    return true
+  })
+
+  ipcMain.handle('config:resetHotkeys', () => {
+    delete config.hotkeys
+    saveConfig(config)
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.send('config:hotkeysChanged', null)
+    }
+    return true
+  })
+
   // Settings: GitHub token
   ipcMain.handle('settings:hasGithubToken', () => {
     return hasSecret('githubToken')

@@ -96,6 +96,56 @@ export function parseBinding(shortcut: string): HotkeyBinding {
   return { key, modifiers }
 }
 
+/** Convert a binding back to a human-readable string like "Cmd+Shift+T" */
+export function bindingToString(binding: HotkeyBinding): string {
+  const parts: string[] = []
+  if (binding.modifiers.cmd) parts.push('Cmd')
+  if (binding.modifiers.ctrl) parts.push('Ctrl')
+  if (binding.modifiers.alt) parts.push('Alt')
+  if (binding.modifiers.shift) parts.push('Shift')
+  parts.push(binding.key.length === 1 ? binding.key.toUpperCase() : binding.key)
+  return parts.join('+')
+}
+
+/** Human-readable labels for each action */
+export const ACTION_LABELS: Record<Action, string> = {
+  nextWorktree: 'Next worktree',
+  prevWorktree: 'Previous worktree',
+  worktree1: 'Switch to worktree 1',
+  worktree2: 'Switch to worktree 2',
+  worktree3: 'Switch to worktree 3',
+  worktree4: 'Switch to worktree 4',
+  worktree5: 'Switch to worktree 5',
+  worktree6: 'Switch to worktree 6',
+  worktree7: 'Switch to worktree 7',
+  worktree8: 'Switch to worktree 8',
+  worktree9: 'Switch to worktree 9',
+  newShellTab: 'New shell tab',
+  closeTab: 'Close tab',
+  nextTab: 'Next tab',
+  prevTab: 'Previous tab',
+  newWorktree: 'New worktree',
+  refreshWorktrees: 'Refresh worktrees',
+  focusTerminal: 'Focus terminal',
+  toggleSidebar: 'Toggle sidebar',
+  openPR: 'Open PR in browser'
+}
+
+/** Capture a KeyboardEvent into a HotkeyBinding (for the rebind UI) */
+export function eventToBinding(e: KeyboardEvent): HotkeyBinding | null {
+  // Ignore pure modifier presses
+  if (['Meta', 'Control', 'Shift', 'Alt'].includes(e.key)) return null
+  return {
+    key: e.key.length === 1 ? e.key.toLowerCase() : e.key,
+    modifiers: {
+      cmd: e.metaKey,
+      ctrl: e.ctrlKey,
+      shift: e.shiftKey,
+      alt: e.altKey
+    }
+  }
+}
+
 /** Build a resolved hotkey map by merging defaults with user overrides */
 export function resolveHotkeys(
   overrides?: Record<string, string>

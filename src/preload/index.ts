@@ -21,6 +21,15 @@ contextBridge.exposeInMainWorld('api', {
 
   // Config
   getHotkeyOverrides: () => ipcRenderer.invoke('config:getHotkeys'),
+  setHotkeyOverrides: (hotkeys: Record<string, string>) => ipcRenderer.invoke('config:setHotkeys', hotkeys),
+  resetHotkeyOverrides: () => ipcRenderer.invoke('config:resetHotkeys'),
+  onHotkeysChanged: (callback: (hotkeys: Record<string, string> | null) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, hotkeys: Record<string, string> | null): void => {
+      callback(hotkeys)
+    }
+    ipcRenderer.on('config:hotkeysChanged', handler)
+    return () => ipcRenderer.removeListener('config:hotkeysChanged', handler)
+  },
 
   // Settings
   hasGithubToken: () => ipcRenderer.invoke('settings:hasGithubToken'),
