@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { ExternalLink } from 'lucide-react'
 import type { PRStatus, CheckStatus } from '../types'
 
 interface PRStatusPanelProps {
@@ -42,6 +43,16 @@ export function PRStatusPanel({ pr }: PRStatusPanelProps): JSX.Element {
     <div className="border-b border-border">
       <div className="px-3 py-2 flex items-center gap-2">
         <span className="text-xs font-medium text-dim flex-1">PULL REQUEST</span>
+        {pr && (
+          <button
+            onClick={() => window.api.openExternal(pr.url)}
+            className="text-xs text-dim hover:text-fg flex items-center gap-1 transition-colors cursor-pointer"
+            title={`Open PR in browser: ${pr.url}`}
+          >
+            Open
+            <ExternalLink size={11} />
+          </button>
+        )}
       </div>
 
       {pr === null && (
