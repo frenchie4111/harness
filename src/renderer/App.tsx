@@ -6,6 +6,8 @@ import { TerminalPanel } from './components/TerminalPanel'
 import { ChangedFilesPanel } from './components/ChangedFilesPanel'
 import { PRStatusPanel } from './components/PRStatusPanel'
 import { Settings } from './components/Settings'
+import { Guide } from './components/Guide'
+import iconUrl from '../../resources/icon.png'
 import { focusTerminalById, flushAllTerminalHistory, markTerminalClosing } from './components/XTerminal'
 import { useHotkeys } from './hooks/useHotkeys'
 import { sortedWorktrees } from './worktree-sort'
@@ -30,6 +32,7 @@ export default function App(): JSX.Element {
   const [hooksConsent, setHooksConsent] = useState<'pending' | 'accepted' | 'declined'>('pending')
   const [sidebarVisible, setSidebarVisible] = useState(true)
   const [showSettings, setShowSettings] = useState(false)
+  const [showGuide, setShowGuide] = useState(false)
   const [hasGithubToken, setHasGithubToken] = useState<boolean | null>(null)
   const [githubBannerDismissed, setGithubBannerDismissed] = useState(
     () => localStorage.getItem('githubBannerDismissed') === '1'
@@ -566,8 +569,20 @@ export default function App(): JSX.Element {
     worktreeStatuses[wt.path] = worstStatus
   }
 
+  if (showGuide) {
+    return <Guide onClose={() => setShowGuide(false)} />
+  }
+
   if (showSettings) {
-    return <Settings onClose={() => setShowSettings(false)} />
+    return (
+      <Settings
+        onClose={() => setShowSettings(false)}
+        onOpenGuide={() => {
+          setShowSettings(false)
+          setShowGuide(true)
+        }}
+      />
+    )
   }
 
   if (!repoRoot) {
@@ -576,6 +591,12 @@ export default function App(): JSX.Element {
         <div className="drag-region h-10 shrink-0" />
         <div className="flex flex-1 items-center justify-center">
         <div className="text-center">
+          <img
+            src={iconUrl}
+            alt="Harness"
+            className="w-28 h-28 mx-auto rounded-3xl mb-8"
+            style={{ boxShadow: '0 0 60px rgba(245, 158, 11, 0.15)' }}
+          />
           <h1 className="text-2xl font-semibold text-fg-bright mb-4">Harness</h1>
           <p className="text-dim mb-6">Select a git repository to get started</p>
           <button
@@ -584,6 +605,15 @@ export default function App(): JSX.Element {
           >
             Open Repository
           </button>
+          <div className="mt-8 pt-8 border-t border-border/60 max-w-sm mx-auto">
+            <p className="text-xs text-dim mb-2">New to multi-agent workflows?</p>
+            <button
+              onClick={() => setShowGuide(true)}
+              className="text-sm text-accent hover:underline cursor-pointer"
+            >
+              Read the worktree guide →
+            </button>
+          </div>
         </div>
         </div>
       </div>
