@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon } from 'lucide-react'
+import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette } from 'lucide-react'
 import type { UpdaterStatus } from '../types'
 import { DEFAULT_HOTKEYS, ACTION_LABELS, bindingToString, eventToBinding, resolveHotkeys, type Action, type HotkeyBinding } from '../hotkeys'
 
@@ -7,7 +7,7 @@ interface SettingsProps {
   onClose: () => void
 }
 
-type SectionId = 'claude' | 'github' | 'hotkeys' | 'updates'
+type SectionId = 'appearance' | 'claude' | 'github' | 'hotkeys' | 'updates'
 
 interface Section {
   id: SectionId
@@ -16,16 +16,75 @@ interface Section {
 }
 
 const SECTIONS: Section[] = [
+  { id: 'appearance', label: 'Appearance', icon: Palette },
   { id: 'claude', label: 'Claude', icon: TerminalIcon },
   { id: 'github', label: 'GitHub', icon: GitPullRequest },
   { id: 'hotkeys', label: 'Hotkeys', icon: Keyboard },
   { id: 'updates', label: 'Updates', icon: DownloadCloud }
 ]
 
+const THEME_OPTIONS: { id: string; label: string; description: string; swatches: string[] }[] = [
+  {
+    id: 'dark',
+    label: 'Dark',
+    description: 'Neutral dark \u2014 the default Harness look.',
+    swatches: ['#0a0a0a', '#262626', '#d4d4d4', '#22c55e']
+  },
+  {
+    id: 'dracula',
+    label: 'Dracula',
+    description: 'The iconic purple-tinted dark theme.',
+    swatches: ['#282a36', '#44475a', '#f8f8f2', '#bd93f9']
+  },
+  {
+    id: 'nord',
+    label: 'Nord',
+    description: 'Arctic, north-bluish clean and elegant.',
+    swatches: ['#2e3440', '#434c5e', '#d8dee9', '#88c0d0']
+  },
+  {
+    id: 'gruvbox-dark',
+    label: 'Gruvbox Dark',
+    description: 'Retro groove warm earth tones.',
+    swatches: ['#282828', '#3c3836', '#ebdbb2', '#fabd2f']
+  },
+  {
+    id: 'tokyo-night',
+    label: 'Tokyo Night',
+    description: 'Inspired by the neon lights of downtown Tokyo.',
+    swatches: ['#1a1b26', '#292e42', '#c0caf5', '#7aa2f7']
+  },
+  {
+    id: 'catppuccin-mocha',
+    label: 'Catppuccin Mocha',
+    description: 'Soothing pastel theme, mocha flavor.',
+    swatches: ['#1e1e2e', '#313244', '#cdd6f4', '#cba6f7']
+  },
+  {
+    id: 'one-dark',
+    label: 'One Dark',
+    description: 'Atom\u2019s classic dark theme.',
+    swatches: ['#282c34', '#3e4451', '#abb2bf', '#61afef']
+  },
+  {
+    id: 'solarized-dark',
+    label: 'Solarized Dark',
+    description: 'Ethan Schoonover\u2019s classic low-contrast dark palette.',
+    swatches: ['#002b36', '#073642', '#93a1a1', '#268bd2']
+  },
+  {
+    id: 'solarized-light',
+    label: 'Solarized Light',
+    description: 'The light half of Solarized \u2014 easy on the eyes in daylight.',
+    swatches: ['#fdf6e3', '#eee8d5', '#657b83', '#268bd2']
+  }
+]
+
 export function Settings({ onClose }: SettingsProps): JSX.Element {
-  const [activeSection, setActiveSection] = useState<SectionId>('claude')
+  const [activeSection, setActiveSection] = useState<SectionId>('appearance')
   const scrollRef = useRef<HTMLDivElement>(null)
   const sectionRefs = useRef<Record<SectionId, HTMLElement | null>>({
+    appearance: null,
     claude: null,
     github: null,
     hotkeys: null,
@@ -48,7 +107,7 @@ export function Settings({ onClose }: SettingsProps): JSX.Element {
 
     const onScroll = (): void => {
       const scrollTop = container.scrollTop
-      let current: SectionId = 'github'
+      let current: SectionId = 'appearance'
       for (const section of SECTIONS) {
         const el = sectionRefs.current[section.id]
         if (el && el.offsetTop - 48 <= scrollTop) {
@@ -84,12 +143,21 @@ export function Settings({ onClose }: SettingsProps): JSX.Element {
   const [defaultClaudeCommand, setDefaultClaudeCommand] = useState<string>('')
   const [claudeSaveResult, setClaudeSaveResult] = useState<{ ok: boolean; message: string } | null>(null)
 
+  // Theme state
+  const [theme, setThemeState] = useState<string>('dark')
+
   useEffect(() => {
     window.api.hasGithubToken().then(setHasToken)
     window.api.getVersion().then(setVersion)
     window.api.getHotkeyOverrides().then((v) => setHotkeyOverrides(v))
     window.api.getClaudeCommand().then(setClaudeCommand)
     window.api.getDefaultClaudeCommand().then(setDefaultClaudeCommand)
+    window.api.getTheme().then(setThemeState)
+  }, [])
+
+  const handleSelectTheme = useCallback(async (id: string) => {
+    setThemeState(id)
+    await window.api.setTheme(id)
   }, [])
 
   useEffect(() => {
@@ -204,28 +272,28 @@ export function Settings({ onClose }: SettingsProps): JSX.Element {
     switch (updaterStatus.state) {
       case 'checking':
         return (
-          <div className="flex items-center gap-2 text-xs text-neutral-400">
+          <div className="flex items-center gap-2 text-xs text-muted">
             <RefreshCw size={12} className="animate-spin" />
             Checking for updates...
           </div>
         )
       case 'not-available':
         return (
-          <div className="flex items-center gap-2 text-xs text-green-400">
+          <div className="flex items-center gap-2 text-xs text-success">
             <Check size={12} />
             You&apos;re up to date
           </div>
         )
       case 'available':
         return (
-          <div className="flex items-center gap-2 text-xs text-amber-400">
+          <div className="flex items-center gap-2 text-xs text-warning">
             <Download size={12} />
             Version {updaterStatus.version} available — downloading...
           </div>
         )
       case 'downloading':
         return (
-          <div className="flex items-center gap-2 text-xs text-amber-400">
+          <div className="flex items-center gap-2 text-xs text-warning">
             <Download size={12} />
             Downloading update... {Math.round(updaterStatus.percent)}%
           </div>
@@ -233,13 +301,13 @@ export function Settings({ onClose }: SettingsProps): JSX.Element {
       case 'downloaded':
         return (
           <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-2 text-xs text-green-400">
+            <div className="flex items-center gap-2 text-xs text-success">
               <Check size={12} />
               Version {updaterStatus.version} ready to install
             </div>
             <button
               onClick={handleRestart}
-              className="self-start flex items-center gap-1.5 px-3 py-1.5 bg-green-900 hover:bg-green-800 rounded text-xs text-green-200 transition-colors cursor-pointer"
+              className="self-start flex items-center gap-1.5 px-3 py-1.5 bg-success/20 hover:bg-success/30 rounded text-xs text-success transition-colors cursor-pointer"
             >
               <RotateCw size={12} />
               Restart &amp; install
@@ -248,7 +316,7 @@ export function Settings({ onClose }: SettingsProps): JSX.Element {
         )
       case 'error':
         return (
-          <div className="flex items-center gap-2 text-xs text-red-400">
+          <div className="flex items-center gap-2 text-xs text-danger">
             <X size={12} />
             {updaterStatus.error}
           </div>
@@ -257,26 +325,26 @@ export function Settings({ onClose }: SettingsProps): JSX.Element {
   }
 
   return (
-    <div className="flex flex-col h-full bg-neutral-950">
+    <div className="flex flex-col h-full bg-panel">
       {/* Title bar (drag region) */}
-      <div className="drag-region h-10 shrink-0 border-b border-neutral-800 relative">
+      <div className="drag-region h-10 shrink-0 border-b border-border relative">
         <button
           onClick={onClose}
-          className="no-drag absolute left-20 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-xs text-neutral-400 hover:text-neutral-200 transition-colors cursor-pointer"
+          className="no-drag absolute left-20 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-xs text-muted hover:text-fg-bright transition-colors cursor-pointer"
         >
           <ArrowLeft size={14} />
           Back
         </button>
-        <span className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 text-sm font-medium text-neutral-300 pointer-events-none">
+        <span className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 text-sm font-medium text-fg pointer-events-none">
           Settings
         </span>
       </div>
 
       <div className="flex flex-1 min-h-0">
         {/* Left sidebar */}
-        <div className="w-56 border-r border-neutral-800 bg-neutral-950 flex flex-col shrink-0">
+        <div className="w-56 border-r border-border bg-panel flex flex-col shrink-0">
           <div className="px-3 py-2">
-            <span className="text-xs font-medium text-neutral-500">SECTIONS</span>
+            <span className="text-xs font-medium text-dim">SECTIONS</span>
           </div>
           {SECTIONS.map((section) => {
             const Icon = section.icon
@@ -287,8 +355,8 @@ export function Settings({ onClose }: SettingsProps): JSX.Element {
                 onClick={() => scrollToSection(section.id)}
                 className={`flex items-center gap-2 px-3 py-2 text-left text-sm transition-colors cursor-pointer ${
                   isActive
-                    ? 'bg-neutral-800 text-neutral-100'
-                    : 'text-neutral-400 hover:bg-neutral-900 hover:text-neutral-200'
+                    ? 'bg-surface text-fg-bright'
+                    : 'text-muted hover:bg-panel-raised hover:text-fg-bright'
                 }`}
               >
                 <Icon size={14} className="shrink-0" />
@@ -301,17 +369,55 @@ export function Settings({ onClose }: SettingsProps): JSX.Element {
         {/* Main scrollable content */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto">
           <div className="max-w-2xl p-8 space-y-12">
+            {/* Appearance section */}
+            <section ref={(el) => { sectionRefs.current.appearance = el }} id="appearance">
+              <h2 className="text-lg font-semibold text-fg-bright mb-1">Appearance</h2>
+              <p className="text-sm text-dim mb-4">
+                Pick a color theme for the major panels. Takes effect immediately.
+              </p>
+
+              <div className="bg-panel-raised border border-border rounded-lg divide-y divide-border">
+                {THEME_OPTIONS.map((opt) => {
+                  const isActive = theme === opt.id
+                  return (
+                    <button
+                      key={opt.id}
+                      onClick={() => handleSelectTheme(opt.id)}
+                      className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors cursor-pointer ${
+                        isActive ? 'bg-surface' : 'hover:bg-surface/60'
+                      }`}
+                    >
+                      <div className="flex gap-1 shrink-0">
+                        {opt.swatches.map((c) => (
+                          <span
+                            key={c}
+                            className="w-4 h-4 rounded border border-border-strong"
+                            style={{ backgroundColor: c }}
+                          />
+                        ))}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm text-fg">{opt.label}</div>
+                        <div className="text-xs text-dim truncate">{opt.description}</div>
+                      </div>
+                      {isActive && <Check size={14} className="text-success shrink-0" />}
+                    </button>
+                  )
+                })}
+              </div>
+            </section>
+
             {/* Claude section */}
             <section ref={(el) => { sectionRefs.current.claude = el }} id="claude">
-              <h2 className="text-lg font-semibold text-neutral-200 mb-1">Claude</h2>
-              <p className="text-sm text-neutral-500 mb-4">
+              <h2 className="text-lg font-semibold text-fg-bright mb-1">Claude</h2>
+              <p className="text-sm text-dim mb-4">
                 The shell command run inside each Claude tab. The command is executed via{' '}
-                <code className="bg-neutral-900 px-1 rounded text-xs">/bin/zsh -ilc</code>{' '}
+                <code className="bg-panel-raised px-1 rounded text-xs">/bin/zsh -ilc</code>{' '}
                 so your full PATH and shell config are available.
               </p>
 
-              <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-4">
-                <label className="block text-sm font-medium text-neutral-300 mb-2">
+              <div className="bg-panel-raised border border-border rounded-lg p-4">
+                <label className="block text-sm font-medium text-fg mb-2">
                   Launch command
                 </label>
                 <textarea
@@ -319,7 +425,7 @@ export function Settings({ onClose }: SettingsProps): JSX.Element {
                   onChange={(e) => setClaudeCommand(e.target.value)}
                   rows={3}
                   spellCheck={false}
-                  className="w-full bg-neutral-950 border border-neutral-700 rounded px-3 py-2 text-xs text-neutral-200 placeholder-neutral-600 outline-none focus:border-neutral-500 font-mono resize-y"
+                  className="w-full bg-panel border border-border-strong rounded px-3 py-2 text-xs text-fg-bright placeholder-faint outline-none focus:border-fg font-mono resize-y"
                   placeholder={defaultClaudeCommand}
                 />
 
@@ -327,14 +433,14 @@ export function Settings({ onClose }: SettingsProps): JSX.Element {
                   <button
                     onClick={handleSaveClaudeCommand}
                     disabled={!claudeCommand.trim()}
-                    className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-40 rounded text-sm text-neutral-200 transition-colors cursor-pointer"
+                    className="px-3 py-1.5 bg-surface hover:bg-surface-hover disabled:opacity-40 rounded text-sm text-fg-bright transition-colors cursor-pointer"
                   >
                     Save
                   </button>
                   {claudeCommand !== defaultClaudeCommand && defaultClaudeCommand && (
                     <button
                       onClick={handleResetClaudeCommand}
-                      className="flex items-center gap-1 px-3 py-1.5 text-sm text-neutral-500 hover:text-neutral-300 transition-colors cursor-pointer"
+                      className="flex items-center gap-1 px-3 py-1.5 text-sm text-dim hover:text-fg transition-colors cursor-pointer"
                     >
                       <RotateCcw size={12} />
                       Reset to default
@@ -343,24 +449,24 @@ export function Settings({ onClose }: SettingsProps): JSX.Element {
                 </div>
 
                 {claudeSaveResult && (
-                  <div className={`mt-3 text-xs flex items-center gap-1.5 ${claudeSaveResult.ok ? 'text-green-400' : 'text-red-400'}`}>
+                  <div className={`mt-3 text-xs flex items-center gap-1.5 ${claudeSaveResult.ok ? 'text-success' : 'text-danger'}`}>
                     {claudeSaveResult.ok ? <Check size={12} /> : <X size={12} />}
                     {claudeSaveResult.message}
                   </div>
                 )}
               </div>
 
-              <div className="mt-4 text-xs text-neutral-500 space-y-2">
+              <div className="mt-4 text-xs text-dim space-y-2">
                 <p>
-                  Default: <code className="bg-neutral-900 px-1 rounded text-[10px] break-all">{defaultClaudeCommand}</code>
+                  Default: <code className="bg-panel-raised px-1 rounded text-[10px] break-all">{defaultClaudeCommand}</code>
                 </p>
                 <p>
                   Common variations:{' '}
-                  <code className="bg-neutral-900 px-1 rounded text-[10px]">claude</code> (no resume),{' '}
-                  <code className="bg-neutral-900 px-1 rounded text-[10px]">claude --model opus-4</code>,{' '}
-                  <code className="bg-neutral-900 px-1 rounded text-[10px]">claude --dangerously-skip-permissions</code>
+                  <code className="bg-panel-raised px-1 rounded text-[10px]">claude</code> (no resume),{' '}
+                  <code className="bg-panel-raised px-1 rounded text-[10px]">claude --model opus-4</code>,{' '}
+                  <code className="bg-panel-raised px-1 rounded text-[10px]">claude --dangerously-skip-permissions</code>
                 </p>
-                <p className="text-neutral-600">
+                <p className="text-faint">
                   Note: changes apply to newly created Claude tabs. Existing terminals are unaffected.
                 </p>
               </div>
@@ -368,19 +474,19 @@ export function Settings({ onClose }: SettingsProps): JSX.Element {
 
             {/* GitHub section */}
             <section ref={(el) => { sectionRefs.current.github = el }} id="github">
-              <h2 className="text-lg font-semibold text-neutral-200 mb-1">GitHub</h2>
-              <p className="text-sm text-neutral-500 mb-4">
+              <h2 className="text-lg font-semibold text-fg-bright mb-1">GitHub</h2>
+              <p className="text-sm text-dim mb-4">
                 Harness uses a personal access token to fetch PR status and check results.
                 The token is encrypted and stored locally using your macOS keychain.
               </p>
 
-              <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-4">
-                <label className="block text-sm font-medium text-neutral-300 mb-2">
+              <div className="bg-panel-raised border border-border rounded-lg p-4">
+                <label className="block text-sm font-medium text-fg mb-2">
                   Personal Access Token
                 </label>
 
                 {hasToken && (
-                  <div className="flex items-center gap-2 mb-3 text-xs text-green-400">
+                  <div className="flex items-center gap-2 mb-3 text-xs text-success">
                     <Check size={14} />
                     <span>A token is currently saved</span>
                   </div>
@@ -391,10 +497,10 @@ export function Settings({ onClose }: SettingsProps): JSX.Element {
                     type="checkbox"
                     checked={autoStar}
                     onChange={(e) => setAutoStar(e.target.checked)}
-                    className="w-3.5 h-3.5 accent-amber-400 cursor-pointer"
+                    className="w-3.5 h-3.5 accent-warning cursor-pointer"
                   />
-                  <Star size={12} className="text-amber-400 shrink-0" />
-                  <span className="text-xs text-neutral-400 group-hover:text-neutral-300 transition-colors">
+                  <Star size={12} className="text-warning shrink-0" />
+                  <span className="text-xs text-muted group-hover:text-fg transition-colors">
                     Automatically star Harness on GitHub
                   </span>
                 </label>
@@ -405,11 +511,11 @@ export function Settings({ onClose }: SettingsProps): JSX.Element {
                     value={token}
                     onChange={(e) => setToken(e.target.value)}
                     placeholder={hasToken ? 'Enter a new token to replace the existing one' : 'ghp_... or github_pat_...'}
-                    className="w-full bg-neutral-950 border border-neutral-700 rounded px-3 py-2 pr-10 text-sm text-neutral-200 placeholder-neutral-600 outline-none focus:border-neutral-500 font-mono"
+                    className="w-full bg-panel border border-border-strong rounded px-3 py-2 pr-10 text-sm text-fg-bright placeholder-faint outline-none focus:border-fg font-mono"
                   />
                   <button
                     onClick={() => setShowToken(!showToken)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-neutral-300 transition-colors cursor-pointer"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-dim hover:text-fg transition-colors cursor-pointer"
                   >
                     {showToken ? <EyeOff size={14} /> : <Eye size={14} />}
                   </button>
@@ -419,14 +525,14 @@ export function Settings({ onClose }: SettingsProps): JSX.Element {
                   <button
                     onClick={handleSave}
                     disabled={saving || !token.trim()}
-                    className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-40 rounded text-sm text-neutral-200 transition-colors cursor-pointer"
+                    className="px-3 py-1.5 bg-surface hover:bg-surface-hover disabled:opacity-40 rounded text-sm text-fg-bright transition-colors cursor-pointer"
                   >
                     {saving ? 'Validating...' : 'Save'}
                   </button>
                   {hasToken && (
                     <button
                       onClick={handleClear}
-                      className="px-3 py-1.5 text-sm text-red-400 hover:text-red-300 transition-colors cursor-pointer"
+                      className="px-3 py-1.5 text-sm text-danger hover:text-danger transition-colors cursor-pointer"
                     >
                       Remove
                     </button>
@@ -434,34 +540,34 @@ export function Settings({ onClose }: SettingsProps): JSX.Element {
                 </div>
 
                 {tokenResult && (
-                  <div className={`mt-3 text-xs flex items-center gap-1.5 ${tokenResult.ok ? 'text-green-400' : 'text-red-400'}`}>
+                  <div className={`mt-3 text-xs flex items-center gap-1.5 ${tokenResult.ok ? 'text-success' : 'text-danger'}`}>
                     {tokenResult.ok ? <Check size={12} /> : <X size={12} />}
                     {tokenResult.message}
                   </div>
                 )}
               </div>
 
-              <div className="mt-4 text-xs text-neutral-500 space-y-2">
+              <div className="mt-4 text-xs text-dim space-y-2">
                 <p>
                   Create a token at{' '}
                   <a
                     onClick={() => window.api.openExternal('https://github.com/settings/tokens?type=beta')}
-                    className="text-neutral-400 hover:text-neutral-200 underline cursor-pointer"
+                    className="text-muted hover:text-fg-bright underline cursor-pointer"
                   >
                     github.com/settings/tokens
                   </a>
                   {' '}(fine-grained) or{' '}
                   <a
                     onClick={() => window.api.openExternal('https://github.com/settings/tokens')}
-                    className="text-neutral-400 hover:text-neutral-200 underline cursor-pointer"
+                    className="text-muted hover:text-fg-bright underline cursor-pointer"
                   >
                     classic tokens
                   </a>
                   .
                 </p>
                 <p>
-                  Required scopes: <code className="bg-neutral-900 px-1 rounded">repo</code> for private repos,
-                  or <code className="bg-neutral-900 px-1 rounded">public_repo</code> for public only.
+                  Required scopes: <code className="bg-panel-raised px-1 rounded">repo</code> for private repos,
+                  or <code className="bg-panel-raised px-1 rounded">public_repo</code> for public only.
                 </p>
               </div>
             </section>
@@ -469,22 +575,22 @@ export function Settings({ onClose }: SettingsProps): JSX.Element {
             {/* Hotkeys section */}
             <section ref={(el) => { sectionRefs.current.hotkeys = el }} id="hotkeys">
               <div className="flex items-start justify-between mb-1">
-                <h2 className="text-lg font-semibold text-neutral-200">Hotkeys</h2>
+                <h2 className="text-lg font-semibold text-fg-bright">Hotkeys</h2>
                 {hotkeyOverrides && Object.keys(hotkeyOverrides).length > 0 && (
                   <button
                     onClick={handleResetAllHotkeys}
-                    className="flex items-center gap-1 text-xs text-neutral-500 hover:text-neutral-300 transition-colors cursor-pointer"
+                    className="flex items-center gap-1 text-xs text-dim hover:text-fg transition-colors cursor-pointer"
                   >
                     <RotateCcw size={11} />
                     Reset all to defaults
                   </button>
                 )}
               </div>
-              <p className="text-sm text-neutral-500 mb-4">
-                Click a shortcut to rebind it. Press <kbd className="bg-neutral-900 px-1 rounded text-[10px]">Esc</kbd> to cancel.
+              <p className="text-sm text-dim mb-4">
+                Click a shortcut to rebind it. Press <kbd className="bg-panel-raised px-1 rounded text-[10px]">Esc</kbd> to cancel.
               </p>
 
-              <div className="bg-neutral-900 border border-neutral-800 rounded-lg divide-y divide-neutral-800">
+              <div className="bg-panel-raised border border-border rounded-lg divide-y divide-border">
                 {(Object.keys(DEFAULT_HOTKEYS) as Action[]).map((action) => {
                   const binding: HotkeyBinding = resolvedHotkeys[action]
                   const isRebinding = rebindingAction === action
@@ -492,12 +598,12 @@ export function Settings({ onClose }: SettingsProps): JSX.Element {
 
                   return (
                     <div key={action} className="flex items-center justify-between px-3 py-2">
-                      <span className="text-sm text-neutral-300">{ACTION_LABELS[action]}</span>
+                      <span className="text-sm text-fg">{ACTION_LABELS[action]}</span>
                       <div className="flex items-center gap-2">
                         {overridden && (
                           <button
                             onClick={() => handleResetHotkey(action)}
-                            className="text-xs text-neutral-500 hover:text-neutral-300 transition-colors cursor-pointer"
+                            className="text-xs text-dim hover:text-fg transition-colors cursor-pointer"
                             title="Reset to default"
                           >
                             <RotateCcw size={11} />
@@ -507,8 +613,8 @@ export function Settings({ onClose }: SettingsProps): JSX.Element {
                           onClick={() => setRebindingAction(isRebinding ? null : action)}
                           className={`min-w-[100px] px-2.5 py-1 rounded text-xs font-mono transition-colors cursor-pointer ${
                             isRebinding
-                              ? 'bg-amber-900 text-amber-200 border border-amber-700 animate-pulse'
-                              : 'bg-neutral-950 text-neutral-300 border border-neutral-700 hover:border-neutral-500'
+                              ? 'bg-warning/20 text-warning border border-warning/50 animate-pulse'
+                              : 'bg-panel text-fg border border-border-strong hover:border-fg'
                           }`}
                         >
                           {isRebinding ? 'Press keys...' : bindingToString(binding)}
@@ -522,23 +628,23 @@ export function Settings({ onClose }: SettingsProps): JSX.Element {
 
             {/* Updates section */}
             <section ref={(el) => { sectionRefs.current.updates = el }} id="updates">
-              <h2 className="text-lg font-semibold text-neutral-200 mb-1">Updates</h2>
-              <p className="text-sm text-neutral-500 mb-4">
+              <h2 className="text-lg font-semibold text-fg-bright mb-1">Updates</h2>
+              <p className="text-sm text-dim mb-4">
                 Harness checks for updates automatically on startup and every hour.
               </p>
 
-              <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-4">
+              <div className="bg-panel-raised border border-border rounded-lg p-4">
                 <div className="flex items-center justify-between mb-3">
                   <div>
-                    <div className="text-sm text-neutral-300">Current version</div>
-                    <div className="text-xs text-neutral-500 font-mono mt-0.5">
+                    <div className="text-sm text-fg">Current version</div>
+                    <div className="text-xs text-dim font-mono mt-0.5">
                       {version || '...'}
                     </div>
                   </div>
                   <button
                     onClick={handleCheckForUpdates}
                     disabled={checking || updaterStatus?.state === 'checking' || updaterStatus?.state === 'downloading'}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-40 rounded text-sm text-neutral-200 transition-colors cursor-pointer"
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-surface hover:bg-surface-hover disabled:opacity-40 rounded text-sm text-fg-bright transition-colors cursor-pointer"
                   >
                     <RefreshCw size={12} className={checking ? 'animate-spin' : ''} />
                     Check for updates
@@ -546,16 +652,16 @@ export function Settings({ onClose }: SettingsProps): JSX.Element {
                 </div>
 
                 {renderUpdaterStatus() && (
-                  <div className="pt-3 border-t border-neutral-800">
+                  <div className="pt-3 border-t border-border">
                     {renderUpdaterStatus()}
                   </div>
                 )}
               </div>
 
-              <div className="mt-3 text-xs text-neutral-500">
+              <div className="mt-3 text-xs text-dim">
                 <a
                   onClick={() => window.api.openExternal('https://github.com/frenchie4111/harness/releases')}
-                  className="text-neutral-400 hover:text-neutral-200 underline cursor-pointer"
+                  className="text-muted hover:text-fg-bright underline cursor-pointer"
                 >
                   View all releases on GitHub
                 </a>

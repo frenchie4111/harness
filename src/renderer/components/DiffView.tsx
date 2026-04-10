@@ -46,19 +46,19 @@ function parseDiff(raw: string): DiffLine[] {
 }
 
 const LINE_STYLES: Record<DiffLine['type'], string> = {
-  add: 'bg-green-950/40 text-green-300',
-  remove: 'bg-red-950/40 text-red-300',
-  context: 'text-neutral-400',
-  header: 'text-neutral-500 italic',
-  hunk: 'text-blue-400 bg-blue-950/20'
+  add: 'bg-success/15 text-success',
+  remove: 'bg-danger/15 text-danger',
+  context: 'text-muted',
+  header: 'text-dim italic',
+  hunk: 'text-info bg-info/10'
 }
 
 const GUTTER_STYLES: Record<DiffLine['type'], string> = {
-  add: 'text-green-700',
-  remove: 'text-red-700',
-  context: 'text-neutral-700',
+  add: 'text-success/70',
+  remove: 'text-danger/70',
+  context: 'text-faint',
   header: '',
-  hunk: 'text-blue-800'
+  hunk: 'text-info/70'
 }
 
 export function DiffView({ worktreePath, filePath, staged }: DiffViewProps): JSX.Element {
@@ -79,7 +79,7 @@ export function DiffView({ worktreePath, filePath, staged }: DiffViewProps): JSX
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full text-neutral-600 text-sm">
+      <div className="flex items-center justify-center h-full text-faint text-sm">
         Loading diff...
       </div>
     )
@@ -87,7 +87,7 @@ export function DiffView({ worktreePath, filePath, staged }: DiffViewProps): JSX
 
   if (!diff) {
     return (
-      <div className="flex items-center justify-center h-full text-neutral-600 text-sm">
+      <div className="flex items-center justify-center h-full text-faint text-sm">
         No diff available
       </div>
     )
@@ -96,7 +96,7 @@ export function DiffView({ worktreePath, filePath, staged }: DiffViewProps): JSX
   const lines = parseDiff(diff)
 
   return (
-    <div className="h-full overflow-auto bg-[#0a0a0a]">
+    <div className="h-full overflow-auto bg-app">
       <div className="font-mono text-xs leading-5 min-w-fit">
         {lines.map((line, i) => (
           <div key={i} className={`flex ${LINE_STYLES[line.type]}`}>
@@ -104,7 +104,7 @@ export function DiffView({ worktreePath, filePath, staged }: DiffViewProps): JSX
             <span className={`shrink-0 w-10 text-right pr-2 select-none ${GUTTER_STYLES[line.type]}`}>
               {line.type === 'add' || line.type === 'context' ? line.newLine : ''}
             </span>
-            <span className={`shrink-0 w-10 text-right pr-2 select-none border-r border-neutral-800/50 ${GUTTER_STYLES[line.type]}`}>
+            <span className={`shrink-0 w-10 text-right pr-2 select-none border-r border-border/50 ${GUTTER_STYLES[line.type]}`}>
               {line.type === 'remove' || line.type === 'context' ? line.oldLine : ''}
             </span>
             {/* Sign */}

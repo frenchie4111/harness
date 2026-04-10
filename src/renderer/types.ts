@@ -78,6 +78,11 @@ export interface ElectronAPI {
   getDefaultClaudeCommand(): Promise<string>
   onClaudeCommandChanged(callback: (command: string) => void): () => void
 
+  getTheme(): Promise<string>
+  setTheme(theme: string): Promise<boolean>
+  getAvailableThemes(): Promise<readonly string[]>
+  onThemeChanged(callback: (theme: string) => void): () => void
+
   getTerminalTabs(): Promise<{
     tabs: Record<string, PersistedTab[]>
     activeTabId: Record<string, string>

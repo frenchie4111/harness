@@ -10,6 +10,9 @@ import {
   saveConfig,
   saveConfigSync,
   DEFAULT_CLAUDE_COMMAND,
+  DEFAULT_THEME,
+  AVAILABLE_THEMES,
+  THEME_APP_BG,
   saveTerminalHistory,
   loadTerminalHistory,
   clearTerminalHistory,
@@ -41,7 +44,7 @@ function createWindow(repoRoot?: string): BrowserWindow {
     icon: join(__dirname, '../../resources/icon.png'),
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 12, y: 12 },
-    backgroundColor: '#0a0a0a',
+    backgroundColor: THEME_APP_BG[config.theme || DEFAULT_THEME] || THEME_APP_BG[DEFAULT_THEME],
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -206,6 +209,30 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('config:getDefaultClaudeCommand', () => {
     return DEFAULT_CLAUDE_COMMAND
+  })
+
+  ipcMain.handle('config:getTheme', () => {
+    return config.theme || DEFAULT_THEME
+  })
+
+  ipcMain.handle('config:setTheme', (_, theme: string) => {
+    if (!AVAILABLE_THEMES.includes(theme as (typeof AVAILABLE_THEMES)[number])) {
+      return false
+    }
+    if (theme === DEFAULT_THEME) {
+      delete config.theme
+    } else {
+      config.theme = theme
+    }
+    saveConfig(config)
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.send('config:themeChanged', theme)
+    }
+    return true
+  })
+
+  ipcMain.handle('config:getAvailableThemes', () => {
+    return AVAILABLE_THEMES
   })
 
   // Persisted terminal tabs / active tab ids

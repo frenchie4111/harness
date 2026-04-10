@@ -16,11 +16,11 @@ const STATUS_LABEL: Record<ChangedFile['status'], string> = {
 }
 
 const STATUS_COLOR: Record<ChangedFile['status'], string> = {
-  added: 'text-green-400',
-  modified: 'text-amber-400',
-  deleted: 'text-red-400',
-  renamed: 'text-blue-400',
-  untracked: 'text-neutral-500'
+  added: 'text-success',
+  modified: 'text-warning',
+  deleted: 'text-danger',
+  renamed: 'text-info',
+  untracked: 'text-dim'
 }
 
 export function ChangedFilesPanel({ worktreePath, onOpenDiff }: ChangedFilesPanelProps): JSX.Element {
@@ -52,15 +52,15 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff }: ChangedFilesPane
   const unstagedFiles = files.filter((f) => !f.staged)
 
   return (
-    <div className="flex flex-col h-full bg-neutral-950">
+    <div className="flex flex-col h-full bg-panel">
       {/* Header */}
-      <div className="drag-region flex items-center justify-between h-10 px-3 border-b border-neutral-800 shrink-0">
-        <span className="no-drag text-xs font-medium text-neutral-400 uppercase tracking-wide">
+      <div className="drag-region flex items-center justify-between h-10 px-3 border-b border-border shrink-0">
+        <span className="no-drag text-xs font-medium text-muted uppercase tracking-wide">
           Changed Files
         </span>
         <button
           onClick={refresh}
-          className="no-drag text-neutral-600 hover:text-neutral-300 transition-colors cursor-pointer"
+          className="no-drag text-faint hover:text-fg transition-colors cursor-pointer"
           title="Refresh"
         >
           <RefreshCw size={12} />
@@ -70,16 +70,16 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff }: ChangedFilesPane
       {/* File list */}
       <div className="flex-1 overflow-y-auto min-h-0 text-xs">
         {!worktreePath && (
-          <div className="p-3 text-neutral-600">No worktree selected</div>
+          <div className="p-3 text-faint">No worktree selected</div>
         )}
 
         {worktreePath && files.length === 0 && !loading && (
-          <div className="p-3 text-neutral-600">No changes</div>
+          <div className="p-3 text-faint">No changes</div>
         )}
 
         {stagedFiles.length > 0 && (
           <div>
-            <div className="px-3 py-1.5 text-[10px] font-medium text-neutral-500 uppercase tracking-wider bg-neutral-900/50">
+            <div className="px-3 py-1.5 text-[10px] font-medium text-dim uppercase tracking-wider bg-panel-raised/50">
               Staged
             </div>
             {stagedFiles.map((file) => (
@@ -90,7 +90,7 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff }: ChangedFilesPane
 
         {unstagedFiles.length > 0 && (
           <div>
-            <div className="px-3 py-1.5 text-[10px] font-medium text-neutral-500 uppercase tracking-wider bg-neutral-900/50">
+            <div className="px-3 py-1.5 text-[10px] font-medium text-dim uppercase tracking-wider bg-panel-raised/50">
               {stagedFiles.length > 0 ? 'Unstaged' : 'Changes'}
             </div>
             {unstagedFiles.map((file) => (
@@ -102,7 +102,7 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff }: ChangedFilesPane
 
       {/* Footer summary */}
       {files.length > 0 && (
-        <div className="px-3 py-1.5 border-t border-neutral-800 text-[10px] text-neutral-600 shrink-0">
+        <div className="px-3 py-1.5 border-t border-border text-[10px] text-faint shrink-0">
           {files.length} file{files.length !== 1 ? 's' : ''} changed
         </div>
       )}
@@ -117,13 +117,13 @@ function FileRow({ file, onClick }: { file: ChangedFile; onClick: () => void }):
   const name = lastSlash >= 0 ? file.path.slice(lastSlash + 1) : file.path
 
   return (
-    <div className="flex items-center gap-2 px-3 py-1 hover:bg-neutral-900 cursor-pointer group" onClick={onClick}>
+    <div className="flex items-center gap-2 px-3 py-1 hover:bg-panel-raised cursor-pointer group" onClick={onClick}>
       <span className={`shrink-0 w-3 font-mono ${STATUS_COLOR[file.status]}`}>
         {STATUS_LABEL[file.status]}
       </span>
       <span className="truncate min-w-0">
-        {dir && <span className="text-neutral-600">{dir}</span>}
-        <span className="text-neutral-300">{name}</span>
+        {dir && <span className="text-faint">{dir}</span>}
+        <span className="text-fg">{name}</span>
       </span>
     </div>
   )

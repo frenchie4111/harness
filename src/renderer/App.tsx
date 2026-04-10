@@ -129,6 +129,17 @@ export default function App(): JSX.Element {
     return cleanup
   }, [])
 
+  // Load theme on mount and apply to <html data-theme="...">
+  useEffect(() => {
+    window.api.getTheme().then((theme) => {
+      document.documentElement.dataset.theme = theme
+    })
+    const cleanup = window.api.onThemeChanged((theme) => {
+      document.documentElement.dataset.theme = theme
+    })
+    return cleanup
+  }, [])
+
   // Open Settings from the menu (Cmd+,)
   useEffect(() => {
     const cleanup = window.api.onOpenSettings(() => setShowSettings(true))
@@ -518,11 +529,11 @@ export default function App(): JSX.Element {
         <div className="drag-region h-10 shrink-0" />
         <div className="flex flex-1 items-center justify-center">
         <div className="text-center">
-          <h1 className="text-2xl font-semibold text-neutral-200 mb-4">Harness</h1>
-          <p className="text-neutral-500 mb-6">Select a git repository to get started</p>
+          <h1 className="text-2xl font-semibold text-fg-bright mb-4">Harness</h1>
+          <p className="text-dim mb-6">Select a git repository to get started</p>
           <button
             onClick={handleSelectRepo}
-            className="px-6 py-3 bg-neutral-800 hover:bg-neutral-700 rounded-lg text-neutral-200 transition-colors cursor-pointer"
+            className="px-6 py-3 bg-surface hover:bg-surface-hover rounded-lg text-fg-bright transition-colors cursor-pointer"
           >
             Open Repository
           </button>
@@ -536,21 +547,21 @@ export default function App(): JSX.Element {
     <div className="flex h-full flex-col">
       {/* Hooks consent banner */}
       {hooksConsent === 'pending' && (
-        <div className="bg-amber-950 border-b border-amber-800 pl-20 pr-4 py-2.5 drag-region flex items-center gap-3 shrink-0">
-          <span className="text-amber-200 text-sm flex-1">
+        <div className="bg-warning/15 border-b border-warning/30 pl-20 pr-4 py-2.5 drag-region flex items-center gap-3 shrink-0">
+          <span className="text-warning text-sm flex-1">
             Claude Harness can install hooks in your worktrees to reliably detect Claude's status
             (waiting, processing, needs approval). This adds entries to each worktree's{' '}
-            <code className="bg-amber-900 px-1 rounded text-xs">.claude/settings.local.json</code>.
+            <code className="bg-warning/20 px-1 rounded text-xs">.claude/settings.local.json</code>.
           </span>
           <button
             onClick={handleAcceptHooks}
-            className="px-3 py-1 bg-amber-700 hover:bg-amber-600 rounded text-sm text-amber-100 transition-colors shrink-0 cursor-pointer no-drag"
+            className="px-3 py-1 bg-warning/30 hover:bg-warning/40 rounded text-sm text-warning transition-colors shrink-0 cursor-pointer no-drag"
           >
             Enable
           </button>
           <button
             onClick={handleDeclineHooks}
-            className="px-3 py-1 text-amber-400 hover:text-amber-200 text-sm transition-colors shrink-0 cursor-pointer no-drag"
+            className="px-3 py-1 text-warning/80 hover:text-warning text-sm transition-colors shrink-0 cursor-pointer no-drag"
           >
             Skip
           </button>
@@ -559,19 +570,19 @@ export default function App(): JSX.Element {
 
       {/* GitHub setup banner */}
       {hasGithubToken === false && !githubBannerDismissed && (
-        <div className="bg-blue-950 border-b border-blue-800 pl-20 pr-4 py-2.5 drag-region flex items-center gap-3 shrink-0">
-          <span className="text-blue-200 text-sm flex-1">
+        <div className="bg-info/15 border-b border-info/30 pl-20 pr-4 py-2.5 drag-region flex items-center gap-3 shrink-0">
+          <span className="text-info text-sm flex-1">
             Connect a GitHub token to see PR status and open pull requests from Harness.
           </span>
           <button
             onClick={() => setShowSettings(true)}
-            className="px-3 py-1 bg-blue-700 hover:bg-blue-600 rounded text-sm text-blue-100 transition-colors shrink-0 cursor-pointer no-drag"
+            className="px-3 py-1 bg-info/30 hover:bg-info/40 rounded text-sm text-info transition-colors shrink-0 cursor-pointer no-drag"
           >
             Set up GitHub
           </button>
           <button
             onClick={handleDismissGithubBanner}
-            className="px-3 py-1 text-blue-400 hover:text-blue-200 text-sm transition-colors shrink-0 cursor-pointer no-drag"
+            className="px-3 py-1 text-info/80 hover:text-info text-sm transition-colors shrink-0 cursor-pointer no-drag"
           >
             Dismiss
           </button>
@@ -621,12 +632,12 @@ export default function App(): JSX.Element {
           )
         })}
         {!activeWorktreeId && worktrees.length > 0 && (
-          <div className="flex-1 flex items-center justify-center text-neutral-500">
+          <div className="flex-1 flex items-center justify-center text-dim">
             Select a worktree to begin
           </div>
         )}
         {/* Right panel */}
-        <div className="w-64 shrink-0 h-full flex flex-col border-l border-neutral-800 bg-neutral-950">
+        <div className="w-64 shrink-0 h-full flex flex-col border-l border-border bg-panel">
           <PRStatusPanel pr={activeWorktreeId ? prStatuses[activeWorktreeId] : null} />
           <div className="flex-1 min-h-0">
             <ChangedFilesPanel worktreePath={activeWorktreeId} onOpenDiff={handleOpenDiff} />
