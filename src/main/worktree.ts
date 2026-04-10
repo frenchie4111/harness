@@ -117,8 +117,66 @@ export interface ChangedFile {
   staged: boolean
 }
 
+export type ChangedFilesMode = 'working' | 'branch'
+
+/** Detect the repo's default base branch (e.g. "main" or "master"). */
+async function getDefaultBaseRef(worktreePath: string): Promise<string> {
+  try {
+    const { stdout } = await execFileAsync(
+      'git',
+      ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'],
+      { cwd: worktreePath }
+    )
+    const ref = stdout.trim()
+    if (ref) return ref
+  } catch {}
+  for (const candidate of ['origin/main', 'origin/master', 'main', 'master']) {
+    try {
+      await execFileAsync('git', ['rev-parse', '--verify', candidate], { cwd: worktreePath })
+      return candidate
+    } catch {}
+  }
+  return 'HEAD'
+}
+
+function mapNameStatus(code: string): ChangedFile['status'] {
+  const c = code[0]
+  if (c === 'A') return 'added'
+  if (c === 'D') return 'deleted'
+  if (c === 'R') return 'renamed'
+  if (c === 'C') return 'renamed'
+  return 'modified'
+}
+
 /** Get changed files (staged, unstaged, and untracked) in a worktree */
-export async function getChangedFiles(worktreePath: string): Promise<ChangedFile[]> {
+export async function getChangedFiles(
+  worktreePath: string,
+  mode: ChangedFilesMode = 'working'
+): Promise<ChangedFile[]> {
+  if (mode === 'branch') {
+    const base = await getDefaultBaseRef(worktreePath)
+    if (base === 'HEAD') return []
+    try {
+      const { stdout } = await execFileAsync(
+        'git',
+        ['diff', '--name-status', `${base}...HEAD`],
+        { cwd: worktreePath }
+      )
+      const out: ChangedFile[] = []
+      for (const line of stdout.split('\n')) {
+        if (!line) continue
+        const parts = line.split('\t')
+        const code = parts[0]
+        // Renamed/copied entries have form "R100\told\tnew"
+        const filePath = parts[parts.length - 1]
+        out.push({ path: filePath, status: mapNameStatus(code), staged: false })
+      }
+      return out
+    } catch {
+      return []
+    }
+  }
+
   const files: ChangedFile[] = []
   const seen = new Set<string>()
 
@@ -159,7 +217,27 @@ export async function getChangedFiles(worktreePath: string): Promise<ChangedFile
 }
 
 /** Get the diff for a single file in a worktree */
-export async function getFileDiff(worktreePath: string, filePath: string, staged: boolean): Promise<string> {
+export async function getFileDiff(
+  worktreePath: string,
+  filePath: string,
+  staged: boolean,
+  mode: ChangedFilesMode = 'working'
+): Promise<string> {
+  if (mode === 'branch') {
+    const base = await getDefaultBaseRef(worktreePath)
+    if (base === 'HEAD') return ''
+    try {
+      const { stdout } = await execFileAsync(
+        'git',
+        ['diff', '--no-color', `${base}...HEAD`, '--', filePath],
+        { cwd: worktreePath }
+      )
+      return stdout
+    } catch {
+      return ''
+    }
+  }
+
   const args = ['diff', '--no-color']
   if (staged) args.push('--cached')
   args.push('--', filePath)

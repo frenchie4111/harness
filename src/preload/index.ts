@@ -15,8 +15,10 @@ contextBridge.exposeInMainWorld('api', {
   getRepoRoot: () => ipcRenderer.invoke('repo:getRoot'),
 
   // Changed files
-  getChangedFiles: (worktreePath: string) => ipcRenderer.invoke('worktree:changedFiles', worktreePath),
-  getFileDiff: (worktreePath: string, filePath: string, staged: boolean) => ipcRenderer.invoke('worktree:fileDiff', worktreePath, filePath, staged),
+  getChangedFiles: (worktreePath: string, mode?: 'working' | 'branch') =>
+    ipcRenderer.invoke('worktree:changedFiles', worktreePath, mode),
+  getFileDiff: (worktreePath: string, filePath: string, staged: boolean, mode?: 'working' | 'branch') =>
+    ipcRenderer.invoke('worktree:fileDiff', worktreePath, filePath, staged, mode),
   getPRStatus: (worktreePath: string) => ipcRenderer.invoke('worktree:prStatus', worktreePath),
 
   // Config

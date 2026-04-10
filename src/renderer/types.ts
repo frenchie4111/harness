@@ -14,6 +14,8 @@ export interface TerminalTab {
   filePath?: string
   /** For diff tabs: whether the diff is for staged changes */
   staged?: boolean
+  /** For diff tabs: show the branch diff (base...HEAD) instead of working-tree diff */
+  branchDiff?: boolean
   /** For claude tabs: UUID passed to `claude --session-id` so the tab resumes its own session. */
   sessionId?: string
 }
@@ -68,8 +70,13 @@ export interface ElectronAPI {
   getRepoRoot(): Promise<string | null>
 
   getPRStatus(worktreePath: string): Promise<PRStatus | null>
-  getChangedFiles(worktreePath: string): Promise<ChangedFile[]>
-  getFileDiff(worktreePath: string, filePath: string, staged: boolean): Promise<string>
+  getChangedFiles(worktreePath: string, mode?: 'working' | 'branch'): Promise<ChangedFile[]>
+  getFileDiff(
+    worktreePath: string,
+    filePath: string,
+    staged: boolean,
+    mode?: 'working' | 'branch'
+  ): Promise<string>
 
   getHotkeyOverrides(): Promise<Record<string, string> | null>
   setHotkeyOverrides(hotkeys: Record<string, string>): Promise<boolean>

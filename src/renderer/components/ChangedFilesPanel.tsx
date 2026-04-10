@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback } from 'react'
-import { RefreshCw } from 'lucide-react'
+import { RefreshCw, FileEdit, GitBranch } from 'lucide-react'
 import type { ChangedFile } from '../types'
+
+type Mode = 'working' | 'branch'
 
 interface ChangedFilesPanelProps {
   worktreePath: string | null
-  onOpenDiff: (filePath: string, staged: boolean) => void
+  onOpenDiff: (filePath: string, staged: boolean, mode: Mode) => void
 }
 
 const STATUS_LABEL: Record<ChangedFile['status'], string> = {
@@ -26,12 +28,13 @@ const STATUS_COLOR: Record<ChangedFile['status'], string> = {
 export function ChangedFilesPanel({ worktreePath, onOpenDiff }: ChangedFilesPanelProps): JSX.Element {
   const [files, setFiles] = useState<ChangedFile[]>([])
   const [loading, setLoading] = useState(false)
+  const [mode, setMode] = useState<Mode>('working')
 
   const refresh = useCallback(async () => {
     if (!worktreePath) return
     setLoading(true)
     try {
-      const result = await window.api.getChangedFiles(worktreePath)
+      const result = await window.api.getChangedFiles(worktreePath, mode)
       setFiles(result)
     } catch (err) {
       console.error('Failed to get changed files:', err)
@@ -39,7 +42,7 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff }: ChangedFilesPane
     } finally {
       setLoading(false)
     }
-  }, [worktreePath])
+  }, [worktreePath, mode])
 
   useEffect(() => {
     refresh()
@@ -54,17 +57,39 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff }: ChangedFilesPane
   return (
     <div className="flex flex-col h-full bg-panel">
       {/* Header */}
-      <div className="drag-region flex items-center justify-between h-10 px-3 border-b border-border shrink-0">
+      <div className="drag-region flex items-center justify-between h-10 px-3 border-b border-border shrink-0 gap-2">
         <span className="no-drag text-xs font-medium text-muted uppercase tracking-wide">
           Changed Files
         </span>
-        <button
-          onClick={refresh}
-          className="no-drag text-faint hover:text-fg transition-colors cursor-pointer"
-          title="Refresh"
-        >
-          <RefreshCw size={12} />
-        </button>
+        <div className="no-drag flex items-center gap-2">
+          <div className="flex items-center rounded border border-border-strong bg-panel-raised/50 p-0.5">
+            <button
+              onClick={() => setMode('working')}
+              className={`flex items-center rounded px-1.5 py-0.5 transition-colors cursor-pointer ${
+                mode === 'working' ? 'bg-surface text-fg' : 'text-faint hover:text-fg'
+              }`}
+              title="Working tree — uncommitted staged, unstaged, and untracked changes"
+            >
+              <FileEdit size={12} />
+            </button>
+            <button
+              onClick={() => setMode('branch')}
+              className={`flex items-center rounded px-1.5 py-0.5 transition-colors cursor-pointer ${
+                mode === 'branch' ? 'bg-surface text-fg' : 'text-faint hover:text-fg'
+              }`}
+              title="Branch diff — all files this branch changes vs. the base branch (same as the PR)"
+            >
+              <GitBranch size={12} />
+            </button>
+          </div>
+          <button
+            onClick={refresh}
+            className="text-faint hover:text-fg transition-colors cursor-pointer"
+            title="Refresh"
+          >
+            <RefreshCw size={12} />
+          </button>
+        </div>
       </div>
 
       {/* File list */}
@@ -74,27 +99,49 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff }: ChangedFilesPane
         )}
 
         {worktreePath && files.length === 0 && !loading && (
-          <div className="p-3 text-faint">No changes</div>
+          <div className="p-3 text-faint">
+            {mode === 'branch' ? 'No commits on this branch yet' : 'No changes'}
+          </div>
         )}
 
-        {stagedFiles.length > 0 && (
+        {mode === 'branch' && files.length > 0 && (
+          <div>
+            {files.map((file) => (
+              <FileRow
+                key={`branch-${file.path}`}
+                file={file}
+                onClick={() => onOpenDiff(file.path, false, 'branch')}
+              />
+            ))}
+          </div>
+        )}
+
+        {mode === 'working' && stagedFiles.length > 0 && (
           <div>
             <div className="px-3 py-1.5 text-[10px] font-medium text-dim uppercase tracking-wider bg-panel-raised/50">
               Staged
             </div>
             {stagedFiles.map((file) => (
-              <FileRow key={`staged-${file.path}`} file={file} onClick={() => onOpenDiff(file.path, true)} />
+              <FileRow
+                key={`staged-${file.path}`}
+                file={file}
+                onClick={() => onOpenDiff(file.path, true, 'working')}
+              />
             ))}
           </div>
         )}
 
-        {unstagedFiles.length > 0 && (
+        {mode === 'working' && unstagedFiles.length > 0 && (
           <div>
             <div className="px-3 py-1.5 text-[10px] font-medium text-dim uppercase tracking-wider bg-panel-raised/50">
               {stagedFiles.length > 0 ? 'Unstaged' : 'Changes'}
             </div>
             {unstagedFiles.map((file) => (
-              <FileRow key={`unstaged-${file.path}`} file={file} onClick={() => onOpenDiff(file.path, false)} />
+              <FileRow
+                key={`unstaged-${file.path}`}
+                file={file}
+                onClick={() => onOpenDiff(file.path, false, 'working')}
+              />
             ))}
           </div>
         )}

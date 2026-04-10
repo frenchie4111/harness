@@ -436,9 +436,11 @@ export default function App(): JSX.Element {
   }, [])
 
   const handleOpenDiff = useCallback(
-    (filePath: string, staged: boolean) => {
+    (filePath: string, staged: boolean, mode: 'working' | 'branch' = 'working') => {
       if (!activeWorktreeId) return
-      const tabId = `diff-${staged ? 'staged' : 'unstaged'}-${filePath}`
+      const branchDiff = mode === 'branch'
+      const kind = branchDiff ? 'branch' : staged ? 'staged' : 'unstaged'
+      const tabId = `diff-${kind}-${filePath}`
       // If tab already exists, just switch to it
       const existing = (terminalTabs[activeWorktreeId] || []).find((t) => t.id === tabId)
       if (existing) {
@@ -447,7 +449,14 @@ export default function App(): JSX.Element {
       }
       // Extract just the filename for the tab label
       const fileName = filePath.split('/').pop() || filePath
-      const tab: TerminalTab = { id: tabId, type: 'diff', label: fileName, filePath, staged }
+      const tab: TerminalTab = {
+        id: tabId,
+        type: 'diff',
+        label: fileName,
+        filePath,
+        staged,
+        branchDiff
+      }
       setTerminalTabs((prev) => ({
         ...prev,
         [activeWorktreeId!]: [...(prev[activeWorktreeId!] || []), tab]

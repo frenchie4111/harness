@@ -154,13 +154,22 @@ function registerIpcHandlers(): void {
   })
 
   // Changed files
-  ipcMain.handle('worktree:changedFiles', async (_, worktreePath: string) => {
-    return getChangedFiles(worktreePath)
+  ipcMain.handle('worktree:changedFiles', async (_, worktreePath: string, mode?: 'working' | 'branch') => {
+    return getChangedFiles(worktreePath, mode ?? 'working')
   })
 
-  ipcMain.handle('worktree:fileDiff', async (_, worktreePath: string, filePath: string, staged: boolean) => {
-    return getFileDiff(worktreePath, filePath, staged)
-  })
+  ipcMain.handle(
+    'worktree:fileDiff',
+    async (
+      _,
+      worktreePath: string,
+      filePath: string,
+      staged: boolean,
+      mode?: 'working' | 'branch'
+    ) => {
+      return getFileDiff(worktreePath, filePath, staged, mode ?? 'working')
+    }
+  )
 
   ipcMain.handle('worktree:prStatus', async (_, worktreePath: string) => {
     return getPRStatus(worktreePath)

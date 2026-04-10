@@ -99,6 +99,7 @@ export function TerminalPanel({
                 worktreePath={worktreePath}
                 filePath={tab.filePath!}
                 staged={tab.staged ?? false}
+                branchDiff={tab.branchDiff ?? false}
               />
             ) : (
               <XTerminal

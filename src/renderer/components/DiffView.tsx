@@ -4,6 +4,7 @@ interface DiffViewProps {
   worktreePath: string
   filePath: string
   staged: boolean
+  branchDiff?: boolean
 }
 
 interface DiffLine {
@@ -61,21 +62,25 @@ const GUTTER_STYLES: Record<DiffLine['type'], string> = {
   hunk: 'text-info/70'
 }
 
-export function DiffView({ worktreePath, filePath, staged }: DiffViewProps): JSX.Element {
+export function DiffView({ worktreePath, filePath, staged, branchDiff }: DiffViewProps): JSX.Element {
   const [diff, setDiff] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
-    window.api.getFileDiff(worktreePath, filePath, staged).then((result) => {
-      if (!cancelled) {
-        setDiff(result)
-        setLoading(false)
-      }
-    })
-    return () => { cancelled = true }
-  }, [worktreePath, filePath, staged])
+    window.api
+      .getFileDiff(worktreePath, filePath, staged, branchDiff ? 'branch' : 'working')
+      .then((result) => {
+        if (!cancelled) {
+          setDiff(result)
+          setLoading(false)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [worktreePath, filePath, staged, branchDiff])
 
   if (loading) {
     return (
