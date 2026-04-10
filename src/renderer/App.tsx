@@ -36,6 +36,7 @@ export default function App(): JSX.Element {
   )
   const [hotkeyOverrides, setHotkeyOverrides] = useState<Record<string, string> | undefined>(undefined)
   const [claudeCommand, setClaudeCommand] = useState<string>('')
+  const [freshClaudeCommand, setFreshClaudeCommand] = useState<string>('')
   // Flipped to true after persisted tabs finish loading, so the persist effect
   // below doesn't overwrite the on-disk state with empty initial React state.
   const tabsLoadedRef = useRef(false)
@@ -58,14 +59,16 @@ export default function App(): JSX.Element {
   // Load repo root, worktrees, and config on mount
   useEffect(() => {
     (async () => {
-      const [root, overrides, cmd, persistedTabs] = await Promise.all([
+      const [root, overrides, cmd, freshCmd, persistedTabs] = await Promise.all([
         window.api.getRepoRoot(),
         window.api.getHotkeyOverrides(),
         window.api.getClaudeCommand(),
+        window.api.getFreshClaudeCommand(),
         window.api.getTerminalTabs()
       ])
       if (overrides) setHotkeyOverrides(overrides)
       setClaudeCommand(cmd)
+      setFreshClaudeCommand(freshCmd)
       // Restore persisted tabs (already typed as TerminalTab-compatible since
       // PersistedTab only includes claude/shell tabs — a subset of TerminalTab)
       if (persistedTabs?.tabs) setTerminalTabs(persistedTabs.tabs as Record<string, TerminalTab[]>)
@@ -88,12 +91,13 @@ export default function App(): JSX.Element {
   // initial React state.
   useEffect(() => {
     if (!tabsLoadedRef.current) return
-    const persistable: Record<string, { id: string; type: 'claude' | 'shell'; label: string }[]> = {}
+    const persistable: Record<string, { id: string; type: 'claude' | 'shell'; label: string; fresh?: boolean }[]> = {}
     for (const [wtPath, tabs] of Object.entries(terminalTabs)) {
       const filtered = tabs.filter((t) => t.type !== 'diff') as {
         id: string
         type: 'claude' | 'shell'
         label: string
+        fresh?: boolean
       }[]
       if (filtered.length > 0) persistable[wtPath] = filtered
     }
@@ -125,6 +129,13 @@ export default function App(): JSX.Element {
   useEffect(() => {
     const cleanup = window.api.onClaudeCommandChanged((cmd) => {
       setClaudeCommand(cmd)
+    })
+    return cleanup
+  }, [])
+
+  useEffect(() => {
+    const cleanup = window.api.onFreshClaudeCommandChanged((cmd) => {
+      setFreshClaudeCommand(cmd)
     })
     return cleanup
   }, [])
@@ -339,6 +350,19 @@ export default function App(): JSX.Element {
     (worktreePath: string) => {
       const id = `shell-${Date.now()}`
       const tab: TerminalTab = { id, type: 'shell', label: 'Shell' }
+      setTerminalTabs((prev) => ({
+        ...prev,
+        [worktreePath]: [...(prev[worktreePath] || []), tab]
+      }))
+      setActiveTabId((prev) => ({ ...prev, [worktreePath]: id }))
+    },
+    []
+  )
+
+  const handleAddClaudeTab = useCallback(
+    (worktreePath: string) => {
+      const id = `${makeTerminalId('claude', worktreePath)}-${Date.now()}`
+      const tab: TerminalTab = { id, type: 'claude', label: 'Claude', fresh: true }
       setTerminalTabs((prev) => ({
         ...prev,
         [worktreePath]: [...(prev[worktreePath] || []), tab]
@@ -613,9 +637,11 @@ export default function App(): JSX.Element {
                 statuses={statuses}
                 onSelectTab={handleSelectTab}
                 onAddTab={handleAddTerminalTab}
+                onAddClaudeTab={handleAddClaudeTab}
                 onCloseTab={handleCloseTab}
                 visible={wt.path === activeWorktreeId}
                 claudeCommand={claudeCommand}
+                freshClaudeCommand={freshClaudeCommand}
               />
             </div>
           )

@@ -14,12 +14,15 @@ export interface TerminalTab {
   filePath?: string
   /** For diff tabs: whether the diff is for staged changes */
   staged?: boolean
+  /** For claude tabs: start a fresh session instead of running the configured command (which usually --continues) */
+  fresh?: boolean
 }
 
 export interface PersistedTab {
   id: string
   type: 'claude' | 'shell'
   label: string
+  fresh?: boolean
 }
 
 export type PtyStatus = 'idle' | 'processing' | 'waiting' | 'needs-approval'
@@ -77,6 +80,11 @@ export interface ElectronAPI {
   setClaudeCommand(command: string): Promise<boolean>
   getDefaultClaudeCommand(): Promise<string>
   onClaudeCommandChanged(callback: (command: string) => void): () => void
+
+  getFreshClaudeCommand(): Promise<string>
+  setFreshClaudeCommand(command: string): Promise<boolean>
+  getDefaultFreshClaudeCommand(): Promise<string>
+  onFreshClaudeCommandChanged(callback: (command: string) => void): () => void
 
   getTerminalTabs(): Promise<{
     tabs: Record<string, PersistedTab[]>

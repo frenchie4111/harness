@@ -33,6 +33,16 @@ contextBridge.exposeInMainWorld('api', {
   getClaudeCommand: () => ipcRenderer.invoke('config:getClaudeCommand'),
   setClaudeCommand: (command: string) => ipcRenderer.invoke('config:setClaudeCommand', command),
   getDefaultClaudeCommand: () => ipcRenderer.invoke('config:getDefaultClaudeCommand'),
+  getFreshClaudeCommand: () => ipcRenderer.invoke('config:getFreshClaudeCommand'),
+  setFreshClaudeCommand: (command: string) => ipcRenderer.invoke('config:setFreshClaudeCommand', command),
+  getDefaultFreshClaudeCommand: () => ipcRenderer.invoke('config:getDefaultFreshClaudeCommand'),
+  onFreshClaudeCommandChanged: (callback: (command: string) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, command: string): void => {
+      callback(command)
+    }
+    ipcRenderer.on('config:freshClaudeCommandChanged', handler)
+    return () => ipcRenderer.removeListener('config:freshClaudeCommandChanged', handler)
+  },
   getTerminalTabs: () => ipcRenderer.invoke('config:getTerminalTabs'),
   setTerminalTabs: (tabs: unknown, activeTabId: unknown) =>
     ipcRenderer.invoke('config:setTerminalTabs', tabs, activeTabId),

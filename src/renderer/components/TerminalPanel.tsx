@@ -1,4 +1,4 @@
-import { X, Plus } from 'lucide-react'
+import { X, Plus, Sparkles } from 'lucide-react'
 import type { TerminalTab, PtyStatus } from '../types'
 import { XTerminal } from './XTerminal'
 import { DiffView } from './DiffView'
@@ -10,9 +10,11 @@ interface TerminalPanelProps {
   statuses: Record<string, PtyStatus>
   onSelectTab: (worktreePath: string, tabId: string) => void
   onAddTab: (worktreePath: string) => void
+  onAddClaudeTab: (worktreePath: string) => void
   onCloseTab: (worktreePath: string, tabId: string) => void
   visible: boolean
   claudeCommand: string
+  freshClaudeCommand: string
 }
 
 const TAB_STATUS_DOT: Record<PtyStatus, string> = {
@@ -29,9 +31,11 @@ export function TerminalPanel({
   statuses,
   onSelectTab,
   onAddTab,
+  onAddClaudeTab,
   onCloseTab,
   visible,
-  claudeCommand
+  claudeCommand,
+  freshClaudeCommand
 }: TerminalPanelProps): JSX.Element {
   return (
     <div className="flex-1 flex flex-col min-w-0 bg-[#0a0a0a]">
@@ -68,6 +72,13 @@ export function TerminalPanel({
             )
           })}
           <button
+            onClick={() => onAddClaudeTab(worktreePath)}
+            className="no-drag px-2 h-full text-neutral-600 hover:text-neutral-300 text-sm transition-colors"
+            title="New Claude tab"
+          >
+            <Sparkles size={12} />
+          </button>
+          <button
             onClick={() => onAddTab(worktreePath)}
             className="no-drag px-2 h-full text-neutral-600 hover:text-neutral-300 text-sm transition-colors"
             title="New shell tab"
@@ -97,7 +108,7 @@ export function TerminalPanel({
                 cwd={worktreePath}
                 type={tab.type}
                 visible={visible && tab.id === activeTabId}
-                claudeCommand={claudeCommand}
+                claudeCommand={tab.fresh ? freshClaudeCommand : claudeCommand}
               />
             )}
           </div>

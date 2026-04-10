@@ -10,6 +10,7 @@ import {
   saveConfig,
   saveConfigSync,
   DEFAULT_CLAUDE_COMMAND,
+  DEFAULT_FRESH_CLAUDE_COMMAND,
   saveTerminalHistory,
   loadTerminalHistory,
   clearTerminalHistory,
@@ -206,6 +207,28 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('config:getDefaultClaudeCommand', () => {
     return DEFAULT_CLAUDE_COMMAND
+  })
+
+  ipcMain.handle('config:getFreshClaudeCommand', () => {
+    return config.freshClaudeCommand || DEFAULT_FRESH_CLAUDE_COMMAND
+  })
+
+  ipcMain.handle('config:setFreshClaudeCommand', (_, command: string) => {
+    const trimmed = command.trim()
+    if (!trimmed || trimmed === DEFAULT_FRESH_CLAUDE_COMMAND) {
+      delete config.freshClaudeCommand
+    } else {
+      config.freshClaudeCommand = trimmed
+    }
+    saveConfig(config)
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.send('config:freshClaudeCommandChanged', config.freshClaudeCommand || DEFAULT_FRESH_CLAUDE_COMMAND)
+    }
+    return true
+  })
+
+  ipcMain.handle('config:getDefaultFreshClaudeCommand', () => {
+    return DEFAULT_FRESH_CLAUDE_COMMAND
   })
 
   // Persisted terminal tabs / active tab ids

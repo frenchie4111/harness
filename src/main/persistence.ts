@@ -6,6 +6,7 @@ export interface PersistedTab {
   id: string
   type: 'claude' | 'shell'
   label: string
+  fresh?: boolean
 }
 
 interface Config {
@@ -16,6 +17,10 @@ interface Config {
   hotkeys?: Record<string, string>
   // Command used to launch Claude in a worktree terminal. Runs via login shell.
   claudeCommand?: string
+  // Command used when the user explicitly opens a second "fresh" Claude tab.
+  // Separate from claudeCommand because the default resumes the existing session,
+  // which would conflict if multiple tabs tried to --continue the same cwd.
+  freshClaudeCommand?: string
   // Persisted terminal tabs per worktree path (claude + shell only — diff tabs are transient)
   terminalTabs?: Record<string, PersistedTab[]>
   // Active tab id per worktree path
@@ -23,6 +28,7 @@ interface Config {
 }
 
 export const DEFAULT_CLAUDE_COMMAND = 'claude --continue || (echo "Creating new Claude session for this worktree..." && claude)'
+export const DEFAULT_FRESH_CLAUDE_COMMAND = 'claude'
 
 const DEFAULT_CONFIG: Config = {
   windowBounds: null,
