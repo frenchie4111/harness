@@ -8,8 +8,8 @@
  */
 @theme {
   --color-app: #0a0a0a;
-  --color-panel: #0a0a0a;
-  --color-panel-raised: #171717;
+  --color-panel: #141414;
+  --color-panel-raised: #1f1f1f;
   --color-surface: #262626;
   --color-surface-hover: #404040;
   --color-border: #262626;
@@ -28,7 +28,7 @@
 
 [data-theme="solarized-dark"] {
   --color-app: #002b36;
-  --color-panel: #002b36;
+  --color-panel: #053340;
   --color-panel-raised: #073642;
   --color-surface: #0d4a5a;
   --color-surface-hover: #114d5d;
@@ -48,7 +48,7 @@
 
 [data-theme="solarized-light"] {
   --color-app: #fdf6e3;
-  --color-panel: #fdf6e3;
+  --color-panel: #f5efd7;
   --color-panel-raised: #eee8d5;
   --color-surface: #eee8d5;
   --color-surface-hover: #ded8c5;
@@ -68,7 +68,7 @@
 
 [data-theme="dracula"] {
   --color-app: #282a36;
-  --color-panel: #282a36;
+  --color-panel: #2f3142;
   --color-panel-raised: #21222c;
   --color-surface: #44475a;
   --color-surface-hover: #565970;
@@ -88,7 +88,7 @@
 
 [data-theme="nord"] {
   --color-app: #2e3440;
-  --color-panel: #2e3440;
+  --color-panel: #353b49;
   --color-panel-raised: #3b4252;
   --color-surface: #434c5e;
   --color-surface-hover: #4c566a;
@@ -108,7 +108,7 @@
 
 [data-theme="gruvbox-dark"] {
   --color-app: #282828;
-  --color-panel: #282828;
+  --color-panel: #2e2d2c;
   --color-panel-raised: #32302f;
   --color-surface: #3c3836;
   --color-surface-hover: #504945;
@@ -128,7 +128,7 @@
 
 [data-theme="tokyo-night"] {
   --color-app: #1a1b26;
-  --color-panel: #1a1b26;
+  --color-panel: #1f2030;
   --color-panel-raised: #16161e;
   --color-surface: #292e42;
   --color-surface-hover: #3b4261;
@@ -148,7 +148,7 @@
 
 [data-theme="catppuccin-mocha"] {
   --color-app: #1e1e2e;
-  --color-panel: #1e1e2e;
+  --color-panel: #24243a;
   --color-panel-raised: #181825;
   --color-surface: #313244;
   --color-surface-hover: #45475a;
@@ -168,7 +168,7 @@
 
 [data-theme="one-dark"] {
   --color-app: #282c34;
-  --color-panel: #282c34;
+  --color-panel: #2d323c;
   --color-panel-raised: #21252b;
   --color-surface: #2c313a;
   --color-surface-hover: #3e4451;
