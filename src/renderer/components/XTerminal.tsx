@@ -1,7 +1,8 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { SerializeAddon } from '@xterm/addon-serialize'
+import { Loader2 } from 'lucide-react'
 import '@xterm/xterm/css/xterm.css'
 
 /** Global registry so hotkeys can focus terminals without prop-drilling refs */
@@ -42,12 +43,14 @@ interface XTerminalProps {
   type: 'claude' | 'shell'
   visible: boolean
   claudeCommand: string
+  sessionId?: string
 }
 
-export function XTerminal({ terminalId, cwd, type, visible, claudeCommand }: XTerminalProps): JSX.Element {
+export function XTerminal({ terminalId, cwd, type, visible, claudeCommand, sessionId }: XTerminalProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
+  const [loading, setLoading] = useState(type === 'claude')
   const visibleRef = useRef(visible)
   const initializedRef = useRef(false)
 
@@ -120,7 +123,8 @@ export function XTerminal({ terminalId, cwd, type, visible, claudeCommand }: XTe
     const spawnPty = (): void => {
       if (disposed) return
       const shell = '/bin/zsh'
-      const args = type === 'claude' ? ['-ilc', claudeCommand] : ['-il']
+      const claudeArg = sessionId ? `${claudeCommand} --session-id ${sessionId}` : claudeCommand
+      const args = type === 'claude' ? ['-ilc', claudeArg] : ['-il']
       window.api.createTerminal(terminalId, cwd, shell, args)
 
       terminal.onData((data) => {
@@ -130,6 +134,7 @@ export function XTerminal({ terminalId, cwd, type, visible, claudeCommand }: XTe
       cleanupData = window.api.onTerminalData((id, data) => {
         if (id === terminalId) {
           terminal.write(data)
+          setLoading(false)
         }
       })
     }
@@ -140,6 +145,7 @@ export function XTerminal({ terminalId, cwd, type, visible, claudeCommand }: XTe
         terminal.write(history)
         // Visual separator between restored history and the fresh shell session
         terminal.write('\r\n\x1b[2m── session restored ──\x1b[0m\r\n')
+        setLoading(false)
       }
       spawnPty()
     }).catch(() => {
@@ -228,5 +234,17 @@ export function XTerminal({ terminalId, cwd, type, visible, claudeCommand }: XTe
     }
   }, [visible, terminalId])
 
-  return <div ref={containerRef} className="w-full h-full" />
+  return (
+    <div className="w-full h-full relative">
+      <div ref={containerRef} className="w-full h-full" />
+      {loading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-app/70 pointer-events-none">
+          <div className="flex items-center gap-2 text-dim text-sm">
+            <Loader2 size={16} className="animate-spin" />
+            Starting Claude…
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }

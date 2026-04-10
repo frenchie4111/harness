@@ -417,9 +417,12 @@ export function Settings({ onClose }: SettingsProps): JSX.Element {
               </p>
 
               <div className="bg-panel-raised border border-border rounded-lg p-4">
-                <label className="block text-sm font-medium text-fg mb-2">
+                <label className="block text-sm font-medium text-fg mb-1">
                   Launch command
                 </label>
+                <p className="text-xs text-dim mb-2">
+                  Harness appends <code className="bg-panel px-1 rounded">--session-id &lt;uuid&gt;</code> to this command so each tab has its own stable, resumable Claude session.
+                </p>
                 <textarea
                   value={claudeCommand}
                   onChange={(e) => setClaudeCommand(e.target.value)}
@@ -462,7 +465,6 @@ export function Settings({ onClose }: SettingsProps): JSX.Element {
                 </p>
                 <p>
                   Common variations:{' '}
-                  <code className="bg-panel-raised px-1 rounded text-[10px]">claude</code> (no resume),{' '}
                   <code className="bg-panel-raised px-1 rounded text-[10px]">claude --model opus-4</code>,{' '}
                   <code className="bg-panel-raised px-1 rounded text-[10px]">claude --dangerously-skip-permissions</code>
                 </p>

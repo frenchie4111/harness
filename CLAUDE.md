@@ -62,6 +62,11 @@ via `safeStorage` and stored in `userData/secrets.enc`. All GitHub data
 
 ## Important quirks
 
+- **Worktree dep installs** — fresh git worktrees under
+  `claude-harness-worktrees/` start with no `node_modules`. Run
+  `npm install --legacy-peer-deps` once before building (the `--legacy-peer-deps`
+  flag is required because `electron-vite@5` declares a peer range that
+  npm's strict resolver rejects against the installed `vite@7`).
 - **node-pty rebuild** — `node-pty` is a native module compiled against a
   specific Electron version. After running `npm run pack` or `npm run dist*`,
   the postdist hook runs `electron-rebuild -f -w node-pty` so dev mode keeps

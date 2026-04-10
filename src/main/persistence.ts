@@ -6,6 +6,8 @@ export interface PersistedTab {
   id: string
   type: 'claude' | 'shell'
   label: string
+  /** UUID passed to `claude --session-id` so the tab resumes its own session. Claude tabs only. */
+  sessionId?: string
 }
 
 interface Config {
@@ -15,6 +17,7 @@ interface Config {
   // Custom hotkey overrides: action name → shortcut string (e.g. "Cmd+Shift+T")
   hotkeys?: Record<string, string>
   // Command used to launch Claude in a worktree terminal. Runs via login shell.
+  // Harness appends `--session-id <uuid>` so each tab has a stable resumable session.
   claudeCommand?: string
   // Persisted terminal tabs per worktree path (claude + shell only — diff tabs are transient)
   terminalTabs?: Record<string, PersistedTab[]>
@@ -51,7 +54,7 @@ export const THEME_APP_BG: Record<string, string> = {
   'solarized-light': '#fdf6e3'
 }
 
-export const DEFAULT_CLAUDE_COMMAND = 'claude --continue || (echo "Creating new Claude session for this worktree..." && claude)'
+export const DEFAULT_CLAUDE_COMMAND = 'claude'
 
 const DEFAULT_CONFIG: Config = {
   windowBounds: null,

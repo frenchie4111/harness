@@ -1,4 +1,4 @@
-import { X, Plus } from 'lucide-react'
+import { X, Plus, Sparkles } from 'lucide-react'
 import type { TerminalTab, PtyStatus } from '../types'
 import { XTerminal } from './XTerminal'
 import { DiffView } from './DiffView'
@@ -10,6 +10,7 @@ interface TerminalPanelProps {
   statuses: Record<string, PtyStatus>
   onSelectTab: (worktreePath: string, tabId: string) => void
   onAddTab: (worktreePath: string) => void
+  onAddClaudeTab: (worktreePath: string) => void
   onCloseTab: (worktreePath: string, tabId: string) => void
   visible: boolean
   claudeCommand: string
@@ -29,6 +30,7 @@ export function TerminalPanel({
   statuses,
   onSelectTab,
   onAddTab,
+  onAddClaudeTab,
   onCloseTab,
   visible,
   claudeCommand
@@ -68,6 +70,13 @@ export function TerminalPanel({
             )
           })}
           <button
+            onClick={() => onAddClaudeTab(worktreePath)}
+            className="no-drag px-2 h-full text-faint hover:text-fg text-sm transition-colors"
+            title="New Claude tab"
+          >
+            <Sparkles size={12} />
+          </button>
+          <button
             onClick={() => onAddTab(worktreePath)}
             className="no-drag px-2 h-full text-faint hover:text-fg text-sm transition-colors"
             title="New shell tab"
@@ -98,6 +107,7 @@ export function TerminalPanel({
                 type={tab.type}
                 visible={visible && tab.id === activeTabId}
                 claudeCommand={claudeCommand}
+                sessionId={tab.sessionId}
               />
             )}
           </div>

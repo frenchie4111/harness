@@ -53,6 +53,7 @@ contextBridge.exposeInMainWorld('api', {
   },
   loadTerminalHistory: (id: string) => ipcRenderer.invoke('terminal:loadHistory', id),
   clearTerminalHistory: (id: string) => ipcRenderer.invoke('terminal:clearHistory', id),
+  getLatestClaudeSessionId: (cwd: string) => ipcRenderer.invoke('claude:latestSessionId', cwd),
   onClaudeCommandChanged: (callback: (command: string) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, command: string): void => {
       callback(command)
