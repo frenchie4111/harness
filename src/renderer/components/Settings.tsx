@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette } from 'lucide-react'
+import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen } from 'lucide-react'
 import type { UpdaterStatus } from '../types'
 import { DEFAULT_HOTKEYS, ACTION_LABELS, bindingToString, eventToBinding, resolveHotkeys, type Action, type HotkeyBinding } from '../hotkeys'
 
 interface SettingsProps {
   onClose: () => void
+  onOpenGuide: () => void
 }
 
 type SectionId = 'appearance' | 'claude' | 'github' | 'hotkeys' | 'updates'
@@ -80,7 +81,7 @@ const THEME_OPTIONS: { id: string; label: string; description: string; swatches:
   }
 ]
 
-export function Settings({ onClose }: SettingsProps): JSX.Element {
+export function Settings({ onClose, onOpenGuide }: SettingsProps): JSX.Element {
   const [activeSection, setActiveSection] = useState<SectionId>('appearance')
   const scrollRef = useRef<HTMLDivElement>(null)
   const sectionRefs = useRef<Record<SectionId, HTMLElement | null>>({
@@ -364,6 +365,17 @@ export function Settings({ onClose }: SettingsProps): JSX.Element {
               </button>
             )
           })}
+
+          <div className="mt-auto border-t border-border px-3 py-2">
+            <span className="text-xs font-medium text-dim">HELP</span>
+          </div>
+          <button
+            onClick={onOpenGuide}
+            className="flex items-center gap-2 px-3 py-2 text-left text-sm text-muted hover:bg-panel-raised hover:text-fg-bright transition-colors cursor-pointer"
+          >
+            <BookOpen size={14} className="shrink-0" />
+            <span>Worktree Guide</span>
+          </button>
         </div>
 
         {/* Main scrollable content */}
