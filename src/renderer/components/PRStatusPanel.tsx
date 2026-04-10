@@ -79,6 +79,13 @@ export function PRStatusPanel({ pr }: PRStatusPanelProps): JSX.Element {
             </a>
           </div>
 
+          {/* Merge conflict indicator — styled like the checks line */}
+          {pr.hasConflict === true && (
+            <div className="flex items-center gap-1.5 mb-1">
+              <span className="text-xs text-danger">Merge conflict</span>
+            </div>
+          )}
+
           {/* Checks summary */}
           <div
             className={`flex items-center gap-1.5 cursor-pointer ${expanded ? 'mb-1.5' : ''}`}

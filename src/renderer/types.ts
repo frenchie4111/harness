@@ -57,6 +57,8 @@ export interface PRStatus {
   branch: string
   checks: CheckStatus[]
   checksOverall: 'success' | 'failure' | 'pending' | 'none'
+  /** true = has conflicts with base, false = mergeable, null = still computing */
+  hasConflict: boolean | null
 }
 
 export interface ElectronAPI {

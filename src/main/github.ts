@@ -19,6 +19,8 @@ export interface PRStatus {
   branch: string
   checks: CheckStatus[]
   checksOverall: 'success' | 'failure' | 'pending' | 'none'
+  /** true = has conflicts with base, false = mergeable, null = still computing */
+  hasConflict: boolean | null
 }
 
 function getToken(): string | null {
@@ -90,6 +92,11 @@ interface ApiPR {
   merged_at: string | null
   html_url: string
   head: { ref: string; sha: string }
+}
+
+interface ApiPRDetail extends ApiPR {
+  mergeable: boolean | null
+  mergeable_state: string
 }
 
 interface ApiCheckRun {
@@ -185,11 +192,23 @@ export async function getPRStatus(worktreePath: string): Promise<PRStatus | null
     const pr = prList[0]
     const sha = pr.head.sha
 
-    // Fetch check runs AND status contexts for the SHA in parallel
-    const [checkRunsRes, combinedRes] = await Promise.all([
+    // Fetch check runs, status contexts, and PR detail (for mergeable) in parallel.
+    // The /pulls/{n} endpoint triggers GitHub's background mergeability computation
+    // and returns the result if it's ready — otherwise mergeable is null.
+    const [checkRunsRes, combinedRes, prDetail] = await Promise.all([
       githubFetch(`https://api.github.com/repos/${owner}/${repo}/commits/${sha}/check-runs?per_page=100`) as Promise<ApiCheckRunsResponse>,
-      githubFetch(`https://api.github.com/repos/${owner}/${repo}/commits/${sha}/status`) as Promise<ApiCombinedStatus>
+      githubFetch(`https://api.github.com/repos/${owner}/${repo}/commits/${sha}/status`) as Promise<ApiCombinedStatus>,
+      githubFetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${pr.number}`) as Promise<ApiPRDetail>
     ])
+
+    // mergeable_state 'dirty' is the definitive conflict signal. mergeable===false
+    // alone can also indicate conflicts. Null/unknown means GitHub hasn't finished
+    // computing yet, so we report null and the UI hides the conflict indicator.
+    let hasConflict: boolean | null
+    if (prDetail.mergeable_state === 'dirty') hasConflict = true
+    else if (prDetail.mergeable === false) hasConflict = true
+    else if (prDetail.mergeable === true) hasConflict = false
+    else hasConflict = null
 
     const checks: CheckStatus[] = []
     for (const run of checkRunsRes.check_runs || []) {
@@ -221,7 +240,8 @@ export async function getPRStatus(worktreePath: string): Promise<PRStatus | null
       url: pr.html_url,
       branch: branchName,
       checks,
-      checksOverall: computeOverall(checks)
+      checksOverall: computeOverall(checks),
+      hasConflict
     }
   } catch (err) {
     log('github', `getPRStatus failed for ${branchName}`, err instanceof Error ? err.message : err)
