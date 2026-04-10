@@ -111,9 +111,24 @@ const pkg = JSON.parse(fs.readFileSync('package.json', 'utf-8'));
 pkg.version = '${VERSION}';
 fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
 "
-git add package.json
+ok "package.json updated"
+
+# ---- Update README download links ----
+step "Updating README download links"
+node -e "
+const fs = require('fs');
+const v = '${VERSION}';
+let readme = fs.readFileSync('README.md', 'utf-8');
+// Replace any X.Y.Z occurring inside Harness-X.Y.Z (filename) or download/vX.Y.Z (path)
+readme = readme.replace(/Harness-\d+\.\d+\.\d+/g, \`Harness-\${v}\`);
+readme = readme.replace(/releases\/download\/v\d+\.\d+\.\d+/g, \`releases/download/v\${v}\`);
+fs.writeFileSync('README.md', readme);
+"
+ok "README updated"
+
+git add package.json README.md
 git commit -m "Release v${VERSION}"
-ok "Version bumped and committed"
+ok "Committed version bump and README update"
 
 # ---- Build / sign / notarize ----
 step "Building, signing, and notarizing (this takes several minutes)"
