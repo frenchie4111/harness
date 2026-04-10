@@ -25,7 +25,14 @@ interface Config {
   activeTabId?: Record<string, string>
   // Selected color theme id
   theme?: string
+  // Preferred external editor id (see AVAILABLE_EDITORS)
+  editor?: string
+  // New worktrees are branched from: 'remote' = fetch origin then branch
+  // from origin/<default>, 'local' = branch from current HEAD.
+  worktreeBase?: 'remote' | 'local'
 }
+
+export const DEFAULT_WORKTREE_BASE: 'remote' | 'local' = 'remote'
 
 export const DEFAULT_THEME = 'dark'
 export const AVAILABLE_THEMES = [

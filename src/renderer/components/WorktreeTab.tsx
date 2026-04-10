@@ -1,5 +1,6 @@
 import { GitPullRequest, X } from 'lucide-react'
 import type { Worktree, PtyStatus, PRStatus } from '../types'
+import { Tooltip } from './Tooltip'
 
 interface WorktreeTabProps {
   worktree: Worktree
@@ -39,11 +40,17 @@ const PR_STATE_COLOR: Record<string, string> = {
 }
 
 export function WorktreeTab({ worktree, isActive, status, prStatus, onClick, onDelete }: WorktreeTabProps): JSX.Element {
-  // Priority: merged/closed state always wins, then check status, then PR state
+  // Priority: merged/closed state always wins, then merge conflict, then check
+  // status, then PR state
   let iconColor = ''
+  let iconTitleSuffix = ''
   if (prStatus) {
     if (prStatus.state === 'merged') iconColor = PR_STATE_COLOR.merged
     else if (prStatus.state === 'closed') iconColor = PR_STATE_COLOR.closed
+    else if (prStatus.hasConflict === true) {
+      iconColor = PR_ICON_COLOR.failure
+      iconTitleSuffix = ' \u2014 merge conflict'
+    }
     else if (prStatus.checksOverall === 'failure') iconColor = PR_ICON_COLOR.failure
     else if (prStatus.checksOverall === 'pending') iconColor = PR_ICON_COLOR.pending
     else if (prStatus.checksOverall === 'success') iconColor = PR_ICON_COLOR.success
@@ -67,7 +74,7 @@ export function WorktreeTab({ worktree, isActive, status, prStatus, onClick, onD
         <GitPullRequest
           size={13}
           className={`shrink-0 ${iconColor}`}
-          title={`PR #${prStatus.number}${prStatus.checksOverall !== 'none' ? ` \u2014 checks ${prStatus.checksOverall}` : ''}`}
+          title={`PR #${prStatus.number}${prStatus.checksOverall !== 'none' ? ` \u2014 checks ${prStatus.checksOverall}` : ''}${iconTitleSuffix}`}
         />
       )}
       <div className="min-w-0 flex-1">
@@ -77,16 +84,17 @@ export function WorktreeTab({ worktree, isActive, status, prStatus, onClick, onD
         </div>
       </div>
       {onDelete && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation()
-            onDelete()
-          }}
-          className="opacity-0 group-hover:opacity-100 text-faint hover:text-danger transition-all shrink-0 cursor-pointer"
-          title="Remove worktree"
-        >
-          <X size={12} />
-        </button>
+        <Tooltip label="Remove worktree" side="left">
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onDelete()
+            }}
+            className="opacity-0 group-hover:opacity-100 text-faint hover:text-danger transition-all shrink-0 cursor-pointer"
+          >
+            <X size={12} />
+          </button>
+        </Tooltip>
       )}
     </div>
   )

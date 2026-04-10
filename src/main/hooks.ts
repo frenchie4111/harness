@@ -7,18 +7,29 @@ import { log } from './debug'
 const STATUS_DIR = '/tmp/harness-status'
 const HARNESS_HOOK_MARKER = '__claude_harness__'
 // Bump this when the hook format changes to force reinstallation
-const HARNESS_HOOK_VERSION = 4
+const HARNESS_HOOK_VERSION = 5
 
 // Per-event hook commands. Each event type gets its own simple command
 // that writes the appropriate status. No jq dependency — these don't need
 // to parse stdin, they just know what event they're attached to.
 // Uses CLAUDE_HARNESS_ID env var (set by our PTY manager) to key the file.
+//
+// The write is atomic: content goes to a temp file and is then renamed over
+// the target. fs.watch on macOS otherwise fires mid-write during the
+// truncate-then-write window, which caused status transitions to be lost
+// (JSON.parse on an empty file). With rename the watcher only ever sees the
+// completed file.
 function makeHookCommand(status: string): string {
-  return (
-    'bash -c \'hid="$CLAUDE_HARNESS_ID"; [ -z "$hid" ] && exit 0; ' +
-    'mkdir -p ' + STATUS_DIR + '; ' +
-    'echo "{\\"status\\":\\"' + status + '\\",\\"ts\\":$(date +%s)}" > ' + STATUS_DIR + '/$hid.json\''
-  )
+  const payload = `{"status":"${status}","ts":%s}`
+  // Inner bash script. Single quotes inside a single-quoted shell string are
+  // escaped via the classic '\'' dance (close, literal quote, reopen).
+  const inner =
+    `hid="$CLAUDE_HARNESS_ID"; [ -z "$hid" ] && exit 0; ` +
+    `d=${STATUS_DIR}; mkdir -p "$d"; ` +
+    `t="$d/.$hid.$$.tmp"; ` +
+    `printf '\\''${payload}'\\'' "$(date +%s)" > "$t" && ` +
+    `mv -f "$t" "$d/$hid.json"`
+  return `bash -c '${inner}'`
 }
 
 // For Notification we need to distinguish idle_prompt vs permission_prompt.
@@ -141,6 +152,8 @@ export function watchStatusDir(
 
   const watcher = watch(STATUS_DIR, (eventType, filename) => {
     if (!filename || !filename.endsWith('.json')) return
+    // Skip the atomic-rename temp files the hook writes (".<id>.<pid>.tmp")
+    if (filename.startsWith('.')) return
     const terminalId = filename.replace('.json', '')
     const win = getWindowForTerminal(terminalId)
     if (!win) {
@@ -148,17 +161,27 @@ export function watchStatusDir(
       return
     }
 
-    try {
-      const raw = readFileSync(join(STATUS_DIR, filename), 'utf-8')
-      const data = JSON.parse(raw)
-      const status = data.status as PtyStatus
-      log('hooks', `status update: terminal=${terminalId} status=${status}`, data)
-      if (status) {
-        win.webContents.send('terminal:status', terminalId, status)
+    // Read with a small retry in case we race the writer (shouldn't happen
+    // now that hooks write via rename, but cheap insurance against future
+    // hook-script regressions).
+    const tryRead = (attempt: number): void => {
+      try {
+        const raw = readFileSync(join(STATUS_DIR, filename), 'utf-8')
+        const data = JSON.parse(raw)
+        const status = data.status as PtyStatus
+        log('hooks', `status update: terminal=${terminalId} status=${status}`, data)
+        if (status) {
+          win.webContents.send('terminal:status', terminalId, status)
+        }
+      } catch (err) {
+        if (attempt < 2) {
+          setTimeout(() => tryRead(attempt + 1), 25)
+        } else {
+          log('hooks', `failed to read status file after retries: ${filename}`, err instanceof Error ? err.message : err)
+        }
       }
-    } catch (err) {
-      log('hooks', `failed to read status file: ${filename}`, err instanceof Error ? err.message : err)
     }
+    tryRead(0)
   })
 
   return () => watcher.close()

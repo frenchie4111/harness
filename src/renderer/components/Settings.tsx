@@ -1,14 +1,15 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen } from 'lucide-react'
+import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch } from 'lucide-react'
 import type { UpdaterStatus } from '../types'
 import { DEFAULT_HOTKEYS, ACTION_LABELS, bindingToString, eventToBinding, resolveHotkeys, type Action, type HotkeyBinding } from '../hotkeys'
+import { Tooltip } from './Tooltip'
 
 interface SettingsProps {
   onClose: () => void
   onOpenGuide: () => void
 }
 
-type SectionId = 'appearance' | 'claude' | 'github' | 'hotkeys' | 'updates'
+type SectionId = 'appearance' | 'claude' | 'worktrees' | 'editor' | 'github' | 'hotkeys' | 'updates'
 
 interface Section {
   id: SectionId
@@ -19,6 +20,8 @@ interface Section {
 const SECTIONS: Section[] = [
   { id: 'appearance', label: 'Appearance', icon: Palette },
   { id: 'claude', label: 'Claude', icon: TerminalIcon },
+  { id: 'worktrees', label: 'Worktrees', icon: GitBranch },
+  { id: 'editor', label: 'Editor', icon: Code2 },
   { id: 'github', label: 'GitHub', icon: GitPullRequest },
   { id: 'hotkeys', label: 'Hotkeys', icon: Keyboard },
   { id: 'updates', label: 'Updates', icon: DownloadCloud }
@@ -87,6 +90,8 @@ export function Settings({ onClose, onOpenGuide }: SettingsProps): JSX.Element {
   const sectionRefs = useRef<Record<SectionId, HTMLElement | null>>({
     appearance: null,
     claude: null,
+    worktrees: null,
+    editor: null,
     github: null,
     hotkeys: null,
     updates: null
@@ -147,6 +152,13 @@ export function Settings({ onClose, onOpenGuide }: SettingsProps): JSX.Element {
   // Theme state
   const [theme, setThemeState] = useState<string>('dark')
 
+  // Editor state
+  const [editorId, setEditorId] = useState<string>('vscode')
+  const [availableEditors, setAvailableEditors] = useState<{ id: string; name: string }[]>([])
+
+  // Worktree base state
+  const [worktreeBase, setWorktreeBaseState] = useState<'remote' | 'local'>('remote')
+
   useEffect(() => {
     window.api.hasGithubToken().then(setHasToken)
     window.api.getVersion().then(setVersion)
@@ -154,11 +166,24 @@ export function Settings({ onClose, onOpenGuide }: SettingsProps): JSX.Element {
     window.api.getClaudeCommand().then(setClaudeCommand)
     window.api.getDefaultClaudeCommand().then(setDefaultClaudeCommand)
     window.api.getTheme().then(setThemeState)
+    window.api.getEditor().then(setEditorId)
+    window.api.getAvailableEditors().then(setAvailableEditors)
+    window.api.getWorktreeBase().then(setWorktreeBaseState)
   }, [])
 
   const handleSelectTheme = useCallback(async (id: string) => {
     setThemeState(id)
     await window.api.setTheme(id)
+  }, [])
+
+  const handleSelectEditor = useCallback(async (id: string) => {
+    setEditorId(id)
+    await window.api.setEditor(id)
+  }, [])
+
+  const handleSelectWorktreeBase = useCallback(async (mode: 'remote' | 'local') => {
+    setWorktreeBaseState(mode)
+    await window.api.setWorktreeBase(mode)
   }, [])
 
   useEffect(() => {
@@ -486,6 +511,95 @@ export function Settings({ onClose, onOpenGuide }: SettingsProps): JSX.Element {
               </div>
             </section>
 
+            {/* Worktrees section */}
+            <section ref={(el) => { sectionRefs.current.worktrees = el }} id="worktrees">
+              <h2 className="text-lg font-semibold text-fg-bright mb-1">Worktrees</h2>
+              <p className="text-sm text-dim mb-4">
+                Controls how new worktrees are created from the sidebar.
+              </p>
+              <div className="space-y-2">
+                {(
+                  [
+                    {
+                      id: 'remote' as const,
+                      label: 'Branch from the latest remote main',
+                      description:
+                        'Fetches origin before creating the worktree so you start from the tip of the remote default branch. Falls back to local HEAD if the fetch fails (e.g. offline).'
+                    },
+                    {
+                      id: 'local' as const,
+                      label: 'Branch from the current local HEAD',
+                      description:
+                        "Uses whatever is checked out in the main repo right now. Fastest, but you'll inherit any stale local main or unpushed commits."
+                    }
+                  ]
+                ).map((opt) => {
+                  const isActive = worktreeBase === opt.id
+                  return (
+                    <button
+                      key={opt.id}
+                      onClick={() => handleSelectWorktreeBase(opt.id)}
+                      className={`w-full text-left rounded border px-3 py-2 transition-colors cursor-pointer ${
+                        isActive
+                          ? 'border-accent bg-panel-raised'
+                          : 'border-border hover:border-border-strong'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <div
+                          className={`w-3 h-3 rounded-full border ${
+                            isActive ? 'border-accent bg-accent' : 'border-border-strong'
+                          }`}
+                        />
+                        <span className="text-sm text-fg-bright">{opt.label}</span>
+                      </div>
+                      <p className="text-xs text-dim mt-1 ml-5">{opt.description}</p>
+                    </button>
+                  )
+                })}
+              </div>
+            </section>
+
+            {/* Editor section */}
+            <section ref={(el) => { sectionRefs.current.editor = el }} id="editor">
+              <h2 className="text-lg font-semibold text-fg-bright mb-1">Editor</h2>
+              <p className="text-sm text-dim mb-4">
+                Your preferred code editor. Harness uses this when you click
+                "Open in editor" on a worktree, or click the edit icon on a
+                changed file. The editor's CLI must be installed and on your
+                shell PATH.
+              </p>
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                {availableEditors.map((ed) => {
+                  const isActive = editorId === ed.id
+                  return (
+                    <button
+                      key={ed.id}
+                      onClick={() => handleSelectEditor(ed.id)}
+                      className={`flex items-center gap-2 text-left rounded border px-3 py-2 text-sm transition-colors cursor-pointer ${
+                        isActive
+                          ? 'border-accent bg-panel-raised text-fg-bright'
+                          : 'border-border hover:border-border-strong text-muted hover:text-fg'
+                      }`}
+                    >
+                      <Code2 size={14} className={isActive ? 'text-accent' : 'text-faint'} />
+                      <span className="flex-1">{ed.name}</span>
+                      {isActive && <Check size={12} className="text-accent" />}
+                    </button>
+                  )
+                })}
+              </div>
+              <p className="text-[11px] text-faint">
+                Harness spawns the editor via a login shell (<code className="bg-panel-raised px-1 rounded text-[10px]">zsh -ilc</code>)
+                so homebrew and nvm paths are picked up automatically. If nothing
+                happens when you click "Open in editor", check that the selected
+                editor's CLI is installed (e.g. VS Code's{' '}
+                <code className="bg-panel-raised px-1 rounded text-[10px]">code</code> command,
+                installed via <em>Shell Command: Install 'code' command in PATH</em> from
+                the command palette).
+              </p>
+            </section>
+
             {/* GitHub section */}
             <section ref={(el) => { sectionRefs.current.github = el }} id="github">
               <h2 className="text-lg font-semibold text-fg-bright mb-1">GitHub</h2>
@@ -615,13 +729,14 @@ export function Settings({ onClose, onOpenGuide }: SettingsProps): JSX.Element {
                       <span className="text-sm text-fg">{ACTION_LABELS[action]}</span>
                       <div className="flex items-center gap-2">
                         {overridden && (
-                          <button
-                            onClick={() => handleResetHotkey(action)}
-                            className="text-xs text-dim hover:text-fg transition-colors cursor-pointer"
-                            title="Reset to default"
-                          >
-                            <RotateCcw size={11} />
-                          </button>
+                          <Tooltip label="Reset to default">
+                            <button
+                              onClick={() => handleResetHotkey(action)}
+                              className="text-xs text-dim hover:text-fg transition-colors cursor-pointer"
+                            >
+                              <RotateCcw size={11} />
+                            </button>
+                          </Tooltip>
                         )}
                         <button
                           onClick={() => setRebindingAction(isRebinding ? null : action)}

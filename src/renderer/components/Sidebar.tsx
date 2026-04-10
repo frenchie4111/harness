@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useMemo } from 'react'
 import { ChevronDown, ChevronRight, Plus, RefreshCw, FolderOpen, Loader2, Settings as SettingsIcon } from 'lucide-react'
+import { Tooltip } from './Tooltip'
 import type { Worktree, PtyStatus, PRStatus } from '../types'
 import type { GroupKey } from '../worktree-sort'
 import { groupWorktrees } from '../worktree-sort'
@@ -100,6 +101,7 @@ export function Sidebar({
             <button
               onClick={() => toggleGroup(group.key)}
               className="w-full flex items-center gap-1 px-3 py-1.5 text-xs text-dim hover:text-fg transition-colors cursor-pointer"
+              title={collapsed[group.key] ? `Expand ${group.label}` : `Collapse ${group.label}`}
             >
               {collapsed[group.key]
                 ? <ChevronRight size={12} className="shrink-0" />
@@ -130,7 +132,10 @@ export function Sidebar({
 
       {/* Create worktree form */}
       {showCreate && (
-        <div className="border-t border-border p-2">
+        <div className="border-t-2 border-accent bg-panel-raised p-2.5 shadow-lg">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-accent mb-1.5 px-0.5">
+            New worktree
+          </div>
           <input
             type="text"
             value={branchName}
@@ -139,7 +144,7 @@ export function Sidebar({
             placeholder="branch-name"
             autoFocus
             disabled={creating}
-            className="w-full bg-panel-raised border border-border-strong rounded px-2 py-1.5 text-xs text-fg-bright placeholder-faint outline-none focus:border-fg"
+            className="w-full bg-app border-2 border-border-strong rounded px-2 py-1.5 text-xs text-fg-bright placeholder-faint outline-none focus:border-accent"
           />
           {error && (
             <div className="text-xs text-danger mt-1 px-1 truncate" title={error}>
@@ -150,7 +155,7 @@ export function Sidebar({
             <button
               onClick={handleCreate}
               disabled={creating || !branchName.trim()}
-              className="flex-1 text-xs bg-surface hover:bg-surface-hover disabled:opacity-40 rounded px-2 py-1 text-fg-bright transition-colors cursor-pointer"
+              className="flex-1 text-xs bg-accent hover:opacity-90 disabled:opacity-40 rounded px-2 py-1 text-app font-semibold transition-opacity cursor-pointer"
             >
               {creating ? 'Creating...' : 'Create'}
             </button>
@@ -170,34 +175,38 @@ export function Sidebar({
 
       {/* Bottom actions */}
       <div className="border-t border-border p-2 flex justify-center gap-1 shrink-0">
-        <button
-          onClick={() => setShowCreate(!showCreate)}
-          className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
-          title="New worktree"
-        >
-          <Plus size={14} />
-        </button>
-        <button
-          onClick={onRefresh}
-          className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
-          title="Refresh worktrees"
-        >
-          <RefreshCw size={14} />
-        </button>
-        <button
-          onClick={onSelectRepo}
-          className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
-          title="Change repository"
-        >
-          <FolderOpen size={14} />
-        </button>
-        <button
-          onClick={onOpenSettings}
-          className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
-          title="Settings"
-        >
-          <SettingsIcon size={14} />
-        </button>
+        <Tooltip label="New worktree" action="newWorktree" side="top">
+          <button
+            onClick={() => setShowCreate(!showCreate)}
+            className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
+          >
+            <Plus size={14} />
+          </button>
+        </Tooltip>
+        <Tooltip label="Refresh worktrees" action="refreshWorktrees" side="top">
+          <button
+            onClick={onRefresh}
+            className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
+          >
+            <RefreshCw size={14} />
+          </button>
+        </Tooltip>
+        <Tooltip label="Change repository" side="top">
+          <button
+            onClick={onSelectRepo}
+            className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
+          >
+            <FolderOpen size={14} />
+          </button>
+        </Tooltip>
+        <Tooltip label="Settings" side="top">
+          <button
+            onClick={onOpenSettings}
+            className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
+          >
+            <SettingsIcon size={14} />
+          </button>
+        </Tooltip>
       </div>
     </div>
   )

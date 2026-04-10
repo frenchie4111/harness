@@ -63,11 +63,20 @@ export async function listBranches(repoRoot: string): Promise<string[]> {
   return stdout.trim().split('\n').filter(Boolean)
 }
 
+export interface AddWorktreeOptions {
+  /** Explicit base branch to fork from. Overrides fetchRemote detection. */
+  baseBranch?: string
+  /** If true, fetch the default branch from origin before creating so the
+   * new worktree starts at the tip of the latest remote main. Falls back
+   * to local HEAD if the fetch fails (e.g. offline). */
+  fetchRemote?: boolean
+}
+
 export async function addWorktree(
   repoRoot: string,
   worktreeDir: string,
   branchName: string,
-  baseBranch?: string
+  options: AddWorktreeOptions = {}
 ): Promise<WorktreeInfo> {
   // Ensure worktree directory exists
   if (!existsSync(worktreeDir)) {
@@ -75,11 +84,37 @@ export async function addWorktree(
   }
 
   const worktreePath = join(worktreeDir, branchName)
-  log('worktree', `creating worktree: branch=${branchName} path=${worktreePath} base=${baseBranch || 'HEAD'}`)
+
+  // Determine the base ref.
+  // 1. Explicit baseBranch wins.
+  // 2. Otherwise if fetchRemote is set, fetch origin/<default> and use it.
+  // 3. Otherwise leave unset → git uses HEAD.
+  let baseRef: string | undefined = options.baseBranch
+  if (!baseRef && options.fetchRemote) {
+    try {
+      const defaultRef = await getDefaultBaseRef(repoRoot)
+      // defaultRef is something like "origin/main" — extract just the branch
+      // name and fetch it explicitly (shallow, quiet).
+      const remoteBranch = defaultRef.startsWith('origin/') ? defaultRef.slice('origin/'.length) : defaultRef
+      if (remoteBranch && remoteBranch !== 'HEAD') {
+        log('worktree', `fetching origin ${remoteBranch} before creating worktree`)
+        await execFileAsync('git', ['fetch', '--quiet', 'origin', remoteBranch], { cwd: repoRoot })
+      }
+      // Re-resolve in case origin/HEAD wasn't known until after fetch.
+      const resolvedRef = await getDefaultBaseRef(repoRoot)
+      if (resolvedRef && resolvedRef !== 'HEAD') {
+        baseRef = resolvedRef
+      }
+    } catch (err) {
+      log('worktree', `remote fetch failed, falling back to local HEAD`, err instanceof Error ? err.message : err)
+    }
+  }
+
+  log('worktree', `creating worktree: branch=${branchName} path=${worktreePath} base=${baseRef || 'HEAD'}`)
 
   const args = ['worktree', 'add', worktreePath, '-b', branchName]
-  if (baseBranch) {
-    args.push(baseBranch)
+  if (baseRef) {
+    args.push(baseRef)
   }
 
   try {
@@ -117,8 +152,66 @@ export interface ChangedFile {
   staged: boolean
 }
 
+export type ChangedFilesMode = 'working' | 'branch'
+
+/** Detect the repo's default base branch (e.g. "main" or "master"). */
+export async function getDefaultBaseRef(worktreePath: string): Promise<string> {
+  try {
+    const { stdout } = await execFileAsync(
+      'git',
+      ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'],
+      { cwd: worktreePath }
+    )
+    const ref = stdout.trim()
+    if (ref) return ref
+  } catch {}
+  for (const candidate of ['origin/main', 'origin/master', 'main', 'master']) {
+    try {
+      await execFileAsync('git', ['rev-parse', '--verify', candidate], { cwd: worktreePath })
+      return candidate
+    } catch {}
+  }
+  return 'HEAD'
+}
+
+function mapNameStatus(code: string): ChangedFile['status'] {
+  const c = code[0]
+  if (c === 'A') return 'added'
+  if (c === 'D') return 'deleted'
+  if (c === 'R') return 'renamed'
+  if (c === 'C') return 'renamed'
+  return 'modified'
+}
+
 /** Get changed files (staged, unstaged, and untracked) in a worktree */
-export async function getChangedFiles(worktreePath: string): Promise<ChangedFile[]> {
+export async function getChangedFiles(
+  worktreePath: string,
+  mode: ChangedFilesMode = 'working'
+): Promise<ChangedFile[]> {
+  if (mode === 'branch') {
+    const base = await getDefaultBaseRef(worktreePath)
+    if (base === 'HEAD') return []
+    try {
+      const { stdout } = await execFileAsync(
+        'git',
+        ['diff', '--name-status', `${base}...HEAD`],
+        { cwd: worktreePath }
+      )
+      const out: ChangedFile[] = []
+      for (const line of stdout.split('\n')) {
+        if (!line) continue
+        const parts = line.split('\t')
+        const code = parts[0]
+        // Renamed/copied entries have form "R100\told\tnew"
+        const filePath = parts[parts.length - 1]
+        out.push({ path: filePath, status: mapNameStatus(code), staged: false })
+      }
+      return out
+    } catch {
+      return []
+    }
+  }
+
   const files: ChangedFile[] = []
   const seen = new Set<string>()
 
@@ -159,7 +252,27 @@ export async function getChangedFiles(worktreePath: string): Promise<ChangedFile
 }
 
 /** Get the diff for a single file in a worktree */
-export async function getFileDiff(worktreePath: string, filePath: string, staged: boolean): Promise<string> {
+export async function getFileDiff(
+  worktreePath: string,
+  filePath: string,
+  staged: boolean,
+  mode: ChangedFilesMode = 'working'
+): Promise<string> {
+  if (mode === 'branch') {
+    const base = await getDefaultBaseRef(worktreePath)
+    if (base === 'HEAD') return ''
+    try {
+      const { stdout } = await execFileAsync(
+        'git',
+        ['diff', '--no-color', `${base}...HEAD`, '--', filePath],
+        { cwd: worktreePath }
+      )
+      return stdout
+    } catch {
+      return ''
+    }
+  }
+
   const args = ['diff', '--no-color']
   if (staged) args.push('--cached')
   args.push('--', filePath)

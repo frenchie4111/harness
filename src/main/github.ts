@@ -9,6 +9,10 @@ export interface CheckStatus {
   name: string
   state: 'success' | 'failure' | 'pending' | 'neutral' | 'skipped' | 'error'
   description: string
+  /** Longer failure summary from the check's output (markdown, may be multi-line) */
+  summary?: string
+  /** External URL to the check's log / details page */
+  detailsUrl?: string
 }
 
 export interface PRStatus {
@@ -19,6 +23,8 @@ export interface PRStatus {
   branch: string
   checks: CheckStatus[]
   checksOverall: 'success' | 'failure' | 'pending' | 'none'
+  /** true = has conflicts with base, false = mergeable, null = still computing */
+  hasConflict: boolean | null
 }
 
 function getToken(): string | null {
@@ -92,11 +98,18 @@ interface ApiPR {
   head: { ref: string; sha: string }
 }
 
+interface ApiPRDetail extends ApiPR {
+  mergeable: boolean | null
+  mergeable_state: string
+}
+
 interface ApiCheckRun {
   name: string
   status: 'queued' | 'in_progress' | 'completed' | 'waiting' | 'requested' | 'pending'
   conclusion: 'success' | 'failure' | 'neutral' | 'cancelled' | 'skipped' | 'timed_out' | 'action_required' | null
-  output?: { title?: string | null }
+  html_url?: string | null
+  details_url?: string | null
+  output?: { title?: string | null; summary?: string | null }
 }
 
 interface ApiCheckRunsResponse {
@@ -108,6 +121,7 @@ interface ApiStatus {
   state: 'error' | 'failure' | 'pending' | 'success'
   context: string
   description: string | null
+  target_url: string | null
 }
 
 interface ApiCombinedStatus {
@@ -185,25 +199,40 @@ export async function getPRStatus(worktreePath: string): Promise<PRStatus | null
     const pr = prList[0]
     const sha = pr.head.sha
 
-    // Fetch check runs AND status contexts for the SHA in parallel
-    const [checkRunsRes, combinedRes] = await Promise.all([
+    // Fetch check runs, status contexts, and PR detail (for mergeable) in parallel.
+    // The /pulls/{n} endpoint triggers GitHub's background mergeability computation
+    // and returns the result if it's ready — otherwise mergeable is null.
+    const [checkRunsRes, combinedRes, prDetail] = await Promise.all([
       githubFetch(`https://api.github.com/repos/${owner}/${repo}/commits/${sha}/check-runs?per_page=100`) as Promise<ApiCheckRunsResponse>,
-      githubFetch(`https://api.github.com/repos/${owner}/${repo}/commits/${sha}/status`) as Promise<ApiCombinedStatus>
+      githubFetch(`https://api.github.com/repos/${owner}/${repo}/commits/${sha}/status`) as Promise<ApiCombinedStatus>,
+      githubFetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${pr.number}`) as Promise<ApiPRDetail>
     ])
+
+    // mergeable_state 'dirty' is the definitive conflict signal. mergeable===false
+    // alone can also indicate conflicts. Null/unknown means GitHub hasn't finished
+    // computing yet, so we report null and the UI hides the conflict indicator.
+    let hasConflict: boolean | null
+    if (prDetail.mergeable_state === 'dirty') hasConflict = true
+    else if (prDetail.mergeable === false) hasConflict = true
+    else if (prDetail.mergeable === true) hasConflict = false
+    else hasConflict = null
 
     const checks: CheckStatus[] = []
     for (const run of checkRunsRes.check_runs || []) {
       checks.push({
         name: run.name,
         state: normalizeCheckState(run.status, run.conclusion),
-        description: run.output?.title || ''
+        description: run.output?.title || '',
+        summary: run.output?.summary || undefined,
+        detailsUrl: run.html_url || run.details_url || undefined
       })
     }
     for (const s of combinedRes.statuses || []) {
       checks.push({
         name: s.context,
         state: normalizeStatusState(s.state),
-        description: s.description || ''
+        description: s.description || '',
+        detailsUrl: s.target_url || undefined
       })
     }
 
@@ -221,7 +250,8 @@ export async function getPRStatus(worktreePath: string): Promise<PRStatus | null
       url: pr.html_url,
       branch: branchName,
       checks,
-      checksOverall: computeOverall(checks)
+      checksOverall: computeOverall(checks),
+      hasConflict
     }
   } catch (err) {
     log('github', `getPRStatus failed for ${branchName}`, err instanceof Error ? err.message : err)

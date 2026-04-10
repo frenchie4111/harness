@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import type { Worktree, TerminalTab, PtyStatus, PRStatus } from './types'
 import type { Action } from './hotkeys'
+import { resolveHotkeys } from './hotkeys'
+import { HotkeysProvider } from './components/Tooltip'
 import { Sidebar } from './components/Sidebar'
 import { TerminalPanel } from './components/TerminalPanel'
 import { ChangedFilesPanel } from './components/ChangedFilesPanel'
@@ -242,6 +244,17 @@ export default function App(): JSX.Element {
     return cleanup
   }, [terminalToWorktree, markActive, fetchPRStatus])
 
+  // Auto-focus the active terminal when switching worktrees so the user can
+  // start typing immediately. Deferred to the next frame so the xterm layer
+  // is visible (TerminalPanels use display:none for inactive worktrees).
+  useEffect(() => {
+    if (!activeWorktreeId) return
+    const tabId = activeTabId[activeWorktreeId]
+    if (!tabId || tabId.startsWith('diff-')) return
+    const raf = requestAnimationFrame(() => focusTerminalById(tabId))
+    return () => cancelAnimationFrame(raf)
+  }, [activeWorktreeId, activeTabId])
+
   // When a worktree becomes active, check hooks and set up tabs
   useEffect(() => {
     if (!activeWorktreeId) return
@@ -436,9 +449,11 @@ export default function App(): JSX.Element {
   }, [])
 
   const handleOpenDiff = useCallback(
-    (filePath: string, staged: boolean) => {
+    (filePath: string, staged: boolean, mode: 'working' | 'branch' = 'working') => {
       if (!activeWorktreeId) return
-      const tabId = `diff-${staged ? 'staged' : 'unstaged'}-${filePath}`
+      const branchDiff = mode === 'branch'
+      const kind = branchDiff ? 'branch' : staged ? 'staged' : 'unstaged'
+      const tabId = `diff-${kind}-${filePath}`
       // If tab already exists, just switch to it
       const existing = (terminalTabs[activeWorktreeId] || []).find((t) => t.id === tabId)
       if (existing) {
@@ -447,7 +462,14 @@ export default function App(): JSX.Element {
       }
       // Extract just the filename for the tab label
       const fileName = filePath.split('/').pop() || filePath
-      const tab: TerminalTab = { id: tabId, type: 'diff', label: fileName, filePath, staged }
+      const tab: TerminalTab = {
+        id: tabId,
+        type: 'diff',
+        label: fileName,
+        filePath,
+        staged,
+        branchDiff
+      }
       setTerminalTabs((prev) => ({
         ...prev,
         [activeWorktreeId!]: [...(prev[activeWorktreeId!] || []), tab]
@@ -535,6 +557,10 @@ export default function App(): JSX.Element {
         const pr = prStatuses[activeWorktreeId]
         if (pr?.url) window.api.openExternal(pr.url)
       },
+      openInEditor: () => {
+        if (!activeWorktreeId) return
+        window.api.openInEditor(activeWorktreeId)
+      },
     }),
     [
       cycleWorktree,
@@ -551,6 +577,8 @@ export default function App(): JSX.Element {
   )
 
   useHotkeys(hotkeyActions, hotkeyOverrides)
+
+  const resolvedHotkeys = useMemo(() => resolveHotkeys(hotkeyOverrides), [hotkeyOverrides])
 
   // Compute aggregate status per worktree (worst status wins)
   const worktreeStatuses: Record<string, PtyStatus> = {}
@@ -575,13 +603,15 @@ export default function App(): JSX.Element {
 
   if (showSettings) {
     return (
-      <Settings
-        onClose={() => setShowSettings(false)}
-        onOpenGuide={() => {
-          setShowSettings(false)
-          setShowGuide(true)
-        }}
-      />
+      <HotkeysProvider bindings={resolvedHotkeys}>
+        <Settings
+          onClose={() => setShowSettings(false)}
+          onOpenGuide={() => {
+            setShowSettings(false)
+            setShowGuide(true)
+          }}
+        />
+      </HotkeysProvider>
     )
   }
 
@@ -621,6 +651,7 @@ export default function App(): JSX.Element {
   }
 
   return (
+    <HotkeysProvider bindings={resolvedHotkeys}>
     <div className="flex h-full flex-col">
       {/* Hooks consent banner */}
       {hooksConsent === 'pending' && (
@@ -723,5 +754,6 @@ export default function App(): JSX.Element {
         </div>
       </div>
     </div>
+    </HotkeysProvider>
   )
 }

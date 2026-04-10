@@ -104,14 +104,21 @@ if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
 fi
 
 # ---- Bump version ----
-step "Bumping package.json to ${VERSION}"
+step "Bumping package.json and package-lock.json to ${VERSION}"
 node -e "
 const fs = require('fs');
+const v = '${VERSION}';
 const pkg = JSON.parse(fs.readFileSync('package.json', 'utf-8'));
-pkg.version = '${VERSION}';
+pkg.version = v;
 fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+if (fs.existsSync('package-lock.json')) {
+  const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf-8'));
+  lock.version = v;
+  if (lock.packages && lock.packages['']) lock.packages[''].version = v;
+  fs.writeFileSync('package-lock.json', JSON.stringify(lock, null, 2) + '\n');
+}
 "
-ok "package.json updated"
+ok "package.json and package-lock.json updated"
 
 # ---- Update README and landing page download links ----
 step "Updating download links in README and docs/index.html"
@@ -130,7 +137,7 @@ for (const f of files) {
 "
 ok "Download links updated"
 
-git add package.json README.md docs/index.html
+git add package.json package-lock.json README.md docs/index.html
 git commit -m "Release v${VERSION}"
 ok "Committed version bump and download link updates"
 

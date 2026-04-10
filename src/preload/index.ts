@@ -15,8 +15,10 @@ contextBridge.exposeInMainWorld('api', {
   getRepoRoot: () => ipcRenderer.invoke('repo:getRoot'),
 
   // Changed files
-  getChangedFiles: (worktreePath: string) => ipcRenderer.invoke('worktree:changedFiles', worktreePath),
-  getFileDiff: (worktreePath: string, filePath: string, staged: boolean) => ipcRenderer.invoke('worktree:fileDiff', worktreePath, filePath, staged),
+  getChangedFiles: (worktreePath: string, mode?: 'working' | 'branch') =>
+    ipcRenderer.invoke('worktree:changedFiles', worktreePath, mode),
+  getFileDiff: (worktreePath: string, filePath: string, staged: boolean, mode?: 'working' | 'branch') =>
+    ipcRenderer.invoke('worktree:fileDiff', worktreePath, filePath, staged, mode),
   getPRStatus: (worktreePath: string) => ipcRenderer.invoke('worktree:prStatus', worktreePath),
 
   // Config
@@ -60,6 +62,25 @@ contextBridge.exposeInMainWorld('api', {
     }
     ipcRenderer.on('config:claudeCommandChanged', handler)
     return () => ipcRenderer.removeListener('config:claudeCommandChanged', handler)
+  },
+
+  // Worktree base
+  getWorktreeBase: () => ipcRenderer.invoke('config:getWorktreeBase'),
+  setWorktreeBase: (mode: 'remote' | 'local') =>
+    ipcRenderer.invoke('config:setWorktreeBase', mode),
+
+  // External editor
+  getEditor: () => ipcRenderer.invoke('config:getEditor'),
+  setEditor: (editorId: string) => ipcRenderer.invoke('config:setEditor', editorId),
+  getAvailableEditors: () => ipcRenderer.invoke('config:getAvailableEditors'),
+  openInEditor: (worktreePath: string, filePath?: string) =>
+    ipcRenderer.invoke('editor:open', worktreePath, filePath),
+  onEditorChanged: (callback: (editorId: string) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, editorId: string): void => {
+      callback(editorId)
+    }
+    ipcRenderer.on('config:editorChanged', handler)
+    return () => ipcRenderer.removeListener('config:editorChanged', handler)
   },
 
   // Settings

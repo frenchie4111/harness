@@ -11,7 +11,7 @@ export interface WorktreeGroup {
 export function getGroupKey(wt: Worktree, pr: PRStatus | null | undefined): GroupKey {
   if (!pr) return 'no-pr'
   if (pr.state === 'merged' || pr.state === 'closed') return 'merged'
-  if (pr.checksOverall === 'failure') return 'needs-attention'
+  if (pr.checksOverall === 'failure' || pr.hasConflict === true) return 'needs-attention'
   return 'active'
 }
 

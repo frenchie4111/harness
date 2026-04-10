@@ -14,6 +14,8 @@ export interface TerminalTab {
   filePath?: string
   /** For diff tabs: whether the diff is for staged changes */
   staged?: boolean
+  /** For diff tabs: show the branch diff (base...HEAD) instead of working-tree diff */
+  branchDiff?: boolean
   /** For claude tabs: UUID passed to `claude --session-id` so the tab resumes its own session. */
   sessionId?: string
 }
@@ -45,6 +47,10 @@ export interface CheckStatus {
   name: string
   state: 'success' | 'failure' | 'pending' | 'neutral' | 'skipped' | 'error'
   description: string
+  /** Longer failure summary from the check's output (markdown, may be multi-line) */
+  summary?: string
+  /** External URL to the check's log / details page */
+  detailsUrl?: string
 }
 
 export interface PRStatus {
@@ -55,6 +61,8 @@ export interface PRStatus {
   branch: string
   checks: CheckStatus[]
   checksOverall: 'success' | 'failure' | 'pending' | 'none'
+  /** true = has conflicts with base, false = mergeable, null = still computing */
+  hasConflict: boolean | null
 }
 
 export interface ElectronAPI {
@@ -68,8 +76,13 @@ export interface ElectronAPI {
   getRepoRoot(): Promise<string | null>
 
   getPRStatus(worktreePath: string): Promise<PRStatus | null>
-  getChangedFiles(worktreePath: string): Promise<ChangedFile[]>
-  getFileDiff(worktreePath: string, filePath: string, staged: boolean): Promise<string>
+  getChangedFiles(worktreePath: string, mode?: 'working' | 'branch'): Promise<ChangedFile[]>
+  getFileDiff(
+    worktreePath: string,
+    filePath: string,
+    staged: boolean,
+    mode?: 'working' | 'branch'
+  ): Promise<string>
 
   getHotkeyOverrides(): Promise<Record<string, string> | null>
   setHotkeyOverrides(hotkeys: Record<string, string>): Promise<boolean>
@@ -85,6 +98,15 @@ export interface ElectronAPI {
   setTheme(theme: string): Promise<boolean>
   getAvailableThemes(): Promise<readonly string[]>
   onThemeChanged(callback: (theme: string) => void): () => void
+
+  getWorktreeBase(): Promise<'remote' | 'local'>
+  setWorktreeBase(mode: 'remote' | 'local'): Promise<boolean>
+
+  getEditor(): Promise<string>
+  setEditor(editorId: string): Promise<boolean>
+  getAvailableEditors(): Promise<{ id: string; name: string }[]>
+  openInEditor(worktreePath: string, filePath?: string): Promise<{ ok: true } | { ok: false; error: string }>
+  onEditorChanged(callback: (editorId: string) => void): () => void
 
   getTerminalTabs(): Promise<{
     tabs: Record<string, PersistedTab[]>

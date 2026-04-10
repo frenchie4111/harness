@@ -1,7 +1,8 @@
-import { X, Plus, Sparkles } from 'lucide-react'
+import { X, Plus, Sparkles, Code2 } from 'lucide-react'
 import type { TerminalTab, PtyStatus } from '../types'
 import { XTerminal } from './XTerminal'
 import { DiffView } from './DiffView'
+import { Tooltip } from './Tooltip'
 
 interface TerminalPanelProps {
   worktreePath: string
@@ -39,7 +40,7 @@ export function TerminalPanel({
     <div className="flex-1 flex flex-col min-w-0 bg-app">
       {/* Tab bar */}
       <div className="drag-region flex items-center border-b border-border bg-panel h-10 shrink-0">
-        <div className="no-drag flex items-center h-full overflow-x-auto pl-2">
+        <div className="no-drag flex items-center h-full overflow-x-auto pl-2 flex-1 min-w-0">
           {tabs.map((tab) => {
             const status = statuses[tab.id] || 'idle'
             const isActive = tab.id === activeTabId
@@ -56,34 +57,46 @@ export function TerminalPanel({
                 <span className={`w-1.5 h-1.5 rounded-full ${TAB_STATUS_DOT[status]}`} />
                 <span>{tab.label}</span>
                 {tabs.length > 1 && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onCloseTab(worktreePath, tab.id)
-                    }}
-                    className="ml-1 text-faint hover:text-fg transition-colors"
-                  >
-                    <X size={10} />
-                  </button>
+                  <Tooltip label="Close tab" action="closeTab">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onCloseTab(worktreePath, tab.id)
+                      }}
+                      className="ml-1 text-faint hover:text-fg transition-colors"
+                    >
+                      <X size={10} />
+                    </button>
+                  </Tooltip>
                 )}
               </div>
             )
           })}
-          <button
-            onClick={() => onAddClaudeTab(worktreePath)}
-            className="no-drag px-2 h-full text-faint hover:text-fg text-sm transition-colors"
-            title="New Claude tab"
-          >
-            <Sparkles size={12} />
-          </button>
-          <button
-            onClick={() => onAddTab(worktreePath)}
-            className="no-drag px-2 h-full text-faint hover:text-fg text-sm transition-colors"
-            title="New shell tab"
-          >
-            <Plus size={12} />
-          </button>
+          <Tooltip label="New Claude tab">
+            <button
+              onClick={() => onAddClaudeTab(worktreePath)}
+              className="no-drag px-2 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"
+            >
+              <Sparkles size={12} />
+            </button>
+          </Tooltip>
+          <Tooltip label="New shell tab" action="newShellTab">
+            <button
+              onClick={() => onAddTab(worktreePath)}
+              className="no-drag px-2 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"
+            >
+              <Plus size={12} />
+            </button>
+          </Tooltip>
         </div>
+        <Tooltip label="Open worktree in editor" action="openInEditor" side="left">
+          <button
+            onClick={() => window.api.openInEditor(worktreePath)}
+            className="no-drag shrink-0 px-3 h-full text-faint hover:text-fg transition-colors cursor-pointer"
+          >
+            <Code2 size={13} />
+          </button>
+        </Tooltip>
       </div>
 
       {/* Terminal / diff area */}
@@ -99,6 +112,7 @@ export function TerminalPanel({
                 worktreePath={worktreePath}
                 filePath={tab.filePath!}
                 staged={tab.staged ?? false}
+                branchDiff={tab.branchDiff ?? false}
               />
             ) : (
               <XTerminal

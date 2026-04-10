@@ -6,6 +6,7 @@ import { homedir } from 'os'
 import { PtyManager } from './pty-manager'
 import { listWorktrees, listBranches, addWorktree, removeWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff } from './worktree'
 import { getPRStatus, testToken, starRepo } from './github'
+import { AVAILABLE_EDITORS, DEFAULT_EDITOR_ID, openInEditor } from './editor'
 import { setSecret, hasSecret, deleteSecret } from './secrets'
 import {
   loadConfig,
@@ -15,6 +16,7 @@ import {
   DEFAULT_THEME,
   AVAILABLE_THEMES,
   THEME_APP_BG,
+  DEFAULT_WORKTREE_BASE,
   saveTerminalHistory,
   loadTerminalHistory,
   clearTerminalHistory,
@@ -109,7 +111,11 @@ function registerIpcHandlers(): void {
     const repoRoot = win ? windowRepoRoots.get(win.id) : null
     if (!repoRoot) throw new Error('No repo root configured')
     const wtDir = defaultWorktreeDir(repoRoot)
-    return addWorktree(repoRoot, wtDir, branchName, baseBranch)
+    const mode = config.worktreeBase || DEFAULT_WORKTREE_BASE
+    return addWorktree(repoRoot, wtDir, branchName, {
+      baseBranch,
+      fetchRemote: !baseBranch && mode === 'remote'
+    })
   })
 
   ipcMain.handle('worktree:isDirty', async (_, path: string) => {
@@ -154,13 +160,22 @@ function registerIpcHandlers(): void {
   })
 
   // Changed files
-  ipcMain.handle('worktree:changedFiles', async (_, worktreePath: string) => {
-    return getChangedFiles(worktreePath)
+  ipcMain.handle('worktree:changedFiles', async (_, worktreePath: string, mode?: 'working' | 'branch') => {
+    return getChangedFiles(worktreePath, mode ?? 'working')
   })
 
-  ipcMain.handle('worktree:fileDiff', async (_, worktreePath: string, filePath: string, staged: boolean) => {
-    return getFileDiff(worktreePath, filePath, staged)
-  })
+  ipcMain.handle(
+    'worktree:fileDiff',
+    async (
+      _,
+      worktreePath: string,
+      filePath: string,
+      staged: boolean,
+      mode?: 'working' | 'branch'
+    ) => {
+      return getFileDiff(worktreePath, filePath, staged, mode ?? 'working')
+    }
+  )
 
   ipcMain.handle('worktree:prStatus', async (_, worktreePath: string) => {
     return getPRStatus(worktreePath)
@@ -230,6 +245,48 @@ function registerIpcHandlers(): void {
     for (const win of BrowserWindow.getAllWindows()) {
       if (!win.isDestroyed()) win.webContents.send('config:themeChanged', theme)
     }
+    return true
+  })
+
+  ipcMain.handle('config:getEditor', () => {
+    return config.editor || DEFAULT_EDITOR_ID
+  })
+
+  ipcMain.handle('config:setEditor', (_, editorId: string) => {
+    if (!AVAILABLE_EDITORS.some((e) => e.id === editorId)) return false
+    if (editorId === DEFAULT_EDITOR_ID) {
+      delete config.editor
+    } else {
+      config.editor = editorId
+    }
+    saveConfig(config)
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.send('config:editorChanged', editorId)
+    }
+    return true
+  })
+
+  ipcMain.handle('config:getAvailableEditors', () => {
+    return AVAILABLE_EDITORS.map(({ id, name }) => ({ id, name }))
+  })
+
+  ipcMain.handle('editor:open', (_, worktreePath: string, filePath?: string) => {
+    const editorId = config.editor || DEFAULT_EDITOR_ID
+    return openInEditor(editorId, worktreePath, filePath)
+  })
+
+  ipcMain.handle('config:getWorktreeBase', () => {
+    return config.worktreeBase || DEFAULT_WORKTREE_BASE
+  })
+
+  ipcMain.handle('config:setWorktreeBase', (_, mode: 'remote' | 'local') => {
+    if (mode !== 'remote' && mode !== 'local') return false
+    if (mode === DEFAULT_WORKTREE_BASE) {
+      delete config.worktreeBase
+    } else {
+      config.worktreeBase = mode
+    }
+    saveConfig(config)
     return true
   })
 
