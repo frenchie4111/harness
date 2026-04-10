@@ -10,8 +10,8 @@ A fairly simple UI wrapper that makes it easier to manage a bunch of LLM coding 
 
 Grab the latest release from the [releases page](https://github.com/frenchie4111/harness/releases/latest).
 
-- **Apple Silicon (M1/M2/M3/M4):** [Harness-1.0.0-arm64.dmg](https://github.com/frenchie4111/harness/releases/download/v1.0.0/Harness-1.0.0-arm64.dmg)
-- **Intel Mac:** [Harness-1.0.0.dmg](https://github.com/frenchie4111/harness/releases/download/v1.0.0/Harness-1.0.0.dmg)
+- **Apple Silicon (M1/M2/M3/M4):** [Harness-1.1.0-arm64.dmg](https://github.com/frenchie4111/harness/releases/download/v1.1.0/Harness-1.1.0-arm64.dmg)
+- **Intel Mac:** [Harness-1.1.0.dmg](https://github.com/frenchie4111/harness/releases/download/v1.1.0/Harness-1.1.0.dmg)
 
 ## Installation
 
