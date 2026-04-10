@@ -58,7 +58,7 @@
           ]
         }
       ],
-      "identity": "Developer ID Application: Michael Lyons (M7Y6TPCQ63)",
+      "identity": "Michael Lyons (M7Y6TPCQ63)",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
