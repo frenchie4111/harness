@@ -62,6 +62,7 @@ export function TerminalPanel({
                       onCloseTab(worktreePath, tab.id)
                     }}
                     className="ml-1 text-faint hover:text-fg transition-colors"
+                    title="Close tab"
                   >
                     <X size={10} />
                   </button>

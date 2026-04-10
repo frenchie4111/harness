@@ -100,6 +100,7 @@ export function Sidebar({
             <button
               onClick={() => toggleGroup(group.key)}
               className="w-full flex items-center gap-1 px-3 py-1.5 text-xs text-dim hover:text-fg transition-colors cursor-pointer"
+              title={collapsed[group.key] ? `Expand ${group.label}` : `Collapse ${group.label}`}
             >
               {collapsed[group.key]
                 ? <ChevronRight size={12} className="shrink-0" />
