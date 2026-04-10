@@ -1,19 +1,71 @@
-import { useState, useEffect, useCallback } from 'react'
-import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw } from 'lucide-react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud } from 'lucide-react'
 import type { UpdaterStatus } from '../types'
 
 interface SettingsProps {
   onClose: () => void
 }
 
+type SectionId = 'github' | 'updates'
+
+interface Section {
+  id: SectionId
+  label: string
+  icon: React.ComponentType<{ size?: number; className?: string }>
+}
+
+const SECTIONS: Section[] = [
+  { id: 'github', label: 'GitHub', icon: GitPullRequest },
+  { id: 'updates', label: 'Updates', icon: DownloadCloud }
+]
+
 export function Settings({ onClose }: SettingsProps): JSX.Element {
+  const [activeSection, setActiveSection] = useState<SectionId>('github')
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const sectionRefs = useRef<Record<SectionId, HTMLElement | null>>({
+    github: null,
+    updates: null
+  })
+
+  // Scroll to a section when the sidebar item is clicked
+  const scrollToSection = useCallback((id: SectionId) => {
+    setActiveSection(id)
+    const el = sectionRefs.current[id]
+    if (el && scrollRef.current) {
+      scrollRef.current.scrollTo({ top: el.offsetTop - 24, behavior: 'smooth' })
+    }
+  }, [])
+
+  // Update active section based on scroll position
+  useEffect(() => {
+    const container = scrollRef.current
+    if (!container) return
+
+    const onScroll = (): void => {
+      const scrollTop = container.scrollTop
+      let current: SectionId = 'github'
+      for (const section of SECTIONS) {
+        const el = sectionRefs.current[section.id]
+        if (el && el.offsetTop - 48 <= scrollTop) {
+          current = section.id
+        }
+      }
+      setActiveSection(current)
+    }
+
+    container.addEventListener('scroll', onScroll)
+    return () => container.removeEventListener('scroll', onScroll)
+  }, [])
+
+  // GitHub state
   const [token, setToken] = useState('')
   const [hasToken, setHasToken] = useState(false)
   const [showToken, setShowToken] = useState(false)
   const [saving, setSaving] = useState(false)
   const [autoStar, setAutoStar] = useState(true)
-  const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null)
+  const [tokenResult, setTokenResult] = useState<{ ok: boolean; message: string } | null>(null)
 
+  // Updates state
   const [version, setVersion] = useState<string>('')
   const [updaterStatus, setUpdaterStatus] = useState<UpdaterStatus | null>(null)
   const [checking, setChecking] = useState(false)
@@ -30,17 +82,17 @@ export function Settings({ onClose }: SettingsProps): JSX.Element {
 
   const handleSave = useCallback(async () => {
     setSaving(true)
-    setResult(null)
+    setTokenResult(null)
     try {
       const res = await window.api.setGithubToken(token, { starRepo: autoStar })
       if (res.ok) {
         let message = res.username ? `Connected as @${res.username}` : 'Token saved'
         if (autoStar && res.starred) message += ' · starred Harness on GitHub'
-        setResult({ ok: true, message })
+        setTokenResult({ ok: true, message })
         setHasToken(true)
         setToken('')
       } else {
-        setResult({ ok: false, message: `Invalid token: ${res.error || 'unknown error'}` })
+        setTokenResult({ ok: false, message: `Invalid token: ${res.error || 'unknown error'}` })
       }
     } finally {
       setSaving(false)
@@ -50,7 +102,7 @@ export function Settings({ onClose }: SettingsProps): JSX.Element {
   const handleClear = useCallback(async () => {
     await window.api.clearGithubToken()
     setHasToken(false)
-    setResult({ ok: true, message: 'Token removed' })
+    setTokenResult({ ok: true, message: 'Token removed' })
   }, [])
 
   const handleCheckForUpdates = useCallback(async () => {
@@ -62,7 +114,6 @@ export function Settings({ onClose }: SettingsProps): JSX.Element {
       } else if (!res.available) {
         setUpdaterStatus({ state: 'not-available' })
       }
-      // If available, the autoUpdater events will drive the status updates
     } finally {
       setChecking(false)
     }
@@ -131,162 +182,191 @@ export function Settings({ onClose }: SettingsProps): JSX.Element {
 
   return (
     <div className="flex flex-col h-full bg-neutral-950">
-      {/* Title bar */}
-      <div className="drag-region h-10 flex items-center shrink-0 border-b border-neutral-800">
+      {/* Title bar (drag region) */}
+      <div className="drag-region h-10 shrink-0 border-b border-neutral-800 relative">
         <button
           onClick={onClose}
-          className="no-drag ml-20 flex items-center gap-1.5 text-xs text-neutral-400 hover:text-neutral-200 transition-colors cursor-pointer"
+          className="no-drag absolute left-20 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-xs text-neutral-400 hover:text-neutral-200 transition-colors cursor-pointer"
         >
           <ArrowLeft size={14} />
           Back
         </button>
-        <span className="text-sm font-medium text-neutral-300 ml-4">Settings</span>
+        <span className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 text-sm font-medium text-neutral-300 pointer-events-none">
+          Settings
+        </span>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto p-8">
-        <div className="max-w-xl space-y-8">
-          {/* GitHub section */}
-          <section>
-            <h2 className="text-lg font-semibold text-neutral-200 mb-1">GitHub</h2>
-            <p className="text-sm text-neutral-500 mb-4">
-              Harness uses a personal access token to fetch PR status and check results.
-              The token is encrypted and stored locally using your macOS keychain.
-            </p>
+      <div className="flex flex-1 min-h-0">
+        {/* Left sidebar */}
+        <div className="w-56 border-r border-neutral-800 bg-neutral-950 flex flex-col shrink-0">
+          <div className="px-3 py-2">
+            <span className="text-xs font-medium text-neutral-500">SECTIONS</span>
+          </div>
+          {SECTIONS.map((section) => {
+            const Icon = section.icon
+            const isActive = activeSection === section.id
+            return (
+              <button
+                key={section.id}
+                onClick={() => scrollToSection(section.id)}
+                className={`flex items-center gap-2 px-3 py-2 text-left text-sm transition-colors cursor-pointer ${
+                  isActive
+                    ? 'bg-neutral-800 text-neutral-100'
+                    : 'text-neutral-400 hover:bg-neutral-900 hover:text-neutral-200'
+                }`}
+              >
+                <Icon size={14} className="shrink-0" />
+                <span>{section.label}</span>
+              </button>
+            )
+          })}
+        </div>
 
-            <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-4">
-              <label className="block text-sm font-medium text-neutral-300 mb-2">
-                Personal Access Token
-              </label>
+        {/* Main scrollable content */}
+        <div ref={scrollRef} className="flex-1 overflow-y-auto">
+          <div className="max-w-2xl p-8 space-y-12">
+            {/* GitHub section */}
+            <section ref={(el) => { sectionRefs.current.github = el }} id="github">
+              <h2 className="text-lg font-semibold text-neutral-200 mb-1">GitHub</h2>
+              <p className="text-sm text-neutral-500 mb-4">
+                Harness uses a personal access token to fetch PR status and check results.
+                The token is encrypted and stored locally using your macOS keychain.
+              </p>
 
-              {hasToken && (
-                <div className="flex items-center gap-2 mb-3 text-xs text-green-400">
-                  <Check size={14} />
-                  <span>A token is currently saved</span>
-                </div>
-              )}
+              <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-4">
+                <label className="block text-sm font-medium text-neutral-300 mb-2">
+                  Personal Access Token
+                </label>
 
-              <label className="flex items-center gap-2 mb-3 cursor-pointer group">
-                <input
-                  type="checkbox"
-                  checked={autoStar}
-                  onChange={(e) => setAutoStar(e.target.checked)}
-                  className="w-3.5 h-3.5 accent-amber-400 cursor-pointer"
-                />
-                <Star size={12} className="text-amber-400 shrink-0" />
-                <span className="text-xs text-neutral-400 group-hover:text-neutral-300 transition-colors">
-                  Automatically star Harness on GitHub
-                </span>
-              </label>
-
-              <div className="relative mb-3">
-                <input
-                  type={showToken ? 'text' : 'password'}
-                  value={token}
-                  onChange={(e) => setToken(e.target.value)}
-                  placeholder={hasToken ? 'Enter a new token to replace the existing one' : 'ghp_... or github_pat_...'}
-                  className="w-full bg-neutral-950 border border-neutral-700 rounded px-3 py-2 pr-10 text-sm text-neutral-200 placeholder-neutral-600 outline-none focus:border-neutral-500 font-mono"
-                />
-                <button
-                  onClick={() => setShowToken(!showToken)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-neutral-300 transition-colors cursor-pointer"
-                >
-                  {showToken ? <EyeOff size={14} /> : <Eye size={14} />}
-                </button>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleSave}
-                  disabled={saving || !token.trim()}
-                  className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-40 rounded text-sm text-neutral-200 transition-colors cursor-pointer"
-                >
-                  {saving ? 'Validating...' : 'Save'}
-                </button>
                 {hasToken && (
+                  <div className="flex items-center gap-2 mb-3 text-xs text-green-400">
+                    <Check size={14} />
+                    <span>A token is currently saved</span>
+                  </div>
+                )}
+
+                <label className="flex items-center gap-2 mb-3 cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={autoStar}
+                    onChange={(e) => setAutoStar(e.target.checked)}
+                    className="w-3.5 h-3.5 accent-amber-400 cursor-pointer"
+                  />
+                  <Star size={12} className="text-amber-400 shrink-0" />
+                  <span className="text-xs text-neutral-400 group-hover:text-neutral-300 transition-colors">
+                    Automatically star Harness on GitHub
+                  </span>
+                </label>
+
+                <div className="relative mb-3">
+                  <input
+                    type={showToken ? 'text' : 'password'}
+                    value={token}
+                    onChange={(e) => setToken(e.target.value)}
+                    placeholder={hasToken ? 'Enter a new token to replace the existing one' : 'ghp_... or github_pat_...'}
+                    className="w-full bg-neutral-950 border border-neutral-700 rounded px-3 py-2 pr-10 text-sm text-neutral-200 placeholder-neutral-600 outline-none focus:border-neutral-500 font-mono"
+                  />
                   <button
-                    onClick={handleClear}
-                    className="px-3 py-1.5 text-sm text-red-400 hover:text-red-300 transition-colors cursor-pointer"
+                    onClick={() => setShowToken(!showToken)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-neutral-300 transition-colors cursor-pointer"
                   >
-                    Remove
+                    {showToken ? <EyeOff size={14} /> : <Eye size={14} />}
                   </button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleSave}
+                    disabled={saving || !token.trim()}
+                    className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-40 rounded text-sm text-neutral-200 transition-colors cursor-pointer"
+                  >
+                    {saving ? 'Validating...' : 'Save'}
+                  </button>
+                  {hasToken && (
+                    <button
+                      onClick={handleClear}
+                      className="px-3 py-1.5 text-sm text-red-400 hover:text-red-300 transition-colors cursor-pointer"
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+
+                {tokenResult && (
+                  <div className={`mt-3 text-xs flex items-center gap-1.5 ${tokenResult.ok ? 'text-green-400' : 'text-red-400'}`}>
+                    {tokenResult.ok ? <Check size={12} /> : <X size={12} />}
+                    {tokenResult.message}
+                  </div>
                 )}
               </div>
 
-              {result && (
-                <div className={`mt-3 text-xs flex items-center gap-1.5 ${result.ok ? 'text-green-400' : 'text-red-400'}`}>
-                  {result.ok ? <Check size={12} /> : <X size={12} />}
-                  {result.message}
-                </div>
-              )}
-            </div>
+              <div className="mt-4 text-xs text-neutral-500 space-y-2">
+                <p>
+                  Create a token at{' '}
+                  <a
+                    onClick={() => window.api.openExternal('https://github.com/settings/tokens?type=beta')}
+                    className="text-neutral-400 hover:text-neutral-200 underline cursor-pointer"
+                  >
+                    github.com/settings/tokens
+                  </a>
+                  {' '}(fine-grained) or{' '}
+                  <a
+                    onClick={() => window.api.openExternal('https://github.com/settings/tokens')}
+                    className="text-neutral-400 hover:text-neutral-200 underline cursor-pointer"
+                  >
+                    classic tokens
+                  </a>
+                  .
+                </p>
+                <p>
+                  Required scopes: <code className="bg-neutral-900 px-1 rounded">repo</code> for private repos,
+                  or <code className="bg-neutral-900 px-1 rounded">public_repo</code> for public only.
+                </p>
+              </div>
+            </section>
 
-            <div className="mt-4 text-xs text-neutral-500 space-y-2">
-              <p>
-                Create a token at{' '}
-                <a
-                  onClick={() => window.api.openExternal('https://github.com/settings/tokens?type=beta')}
-                  className="text-neutral-400 hover:text-neutral-200 underline cursor-pointer"
-                >
-                  github.com/settings/tokens
-                </a>
-                {' '}(fine-grained) or{' '}
-                <a
-                  onClick={() => window.api.openExternal('https://github.com/settings/tokens')}
-                  className="text-neutral-400 hover:text-neutral-200 underline cursor-pointer"
-                >
-                  classic tokens
-                </a>
-                .
+            {/* Updates section */}
+            <section ref={(el) => { sectionRefs.current.updates = el }} id="updates">
+              <h2 className="text-lg font-semibold text-neutral-200 mb-1">Updates</h2>
+              <p className="text-sm text-neutral-500 mb-4">
+                Harness checks for updates automatically on startup and every hour.
               </p>
-              <p>
-                Required scopes: <code className="bg-neutral-900 px-1 rounded">repo</code> for private repos,
-                or <code className="bg-neutral-900 px-1 rounded">public_repo</code> for public only.
-              </p>
-            </div>
-          </section>
 
-          {/* Updates section */}
-          <section>
-            <h2 className="text-lg font-semibold text-neutral-200 mb-1">Updates</h2>
-            <p className="text-sm text-neutral-500 mb-4">
-              Harness checks for updates automatically on startup and every hour.
-            </p>
-
-            <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-4">
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <div className="text-sm text-neutral-300">Current version</div>
-                  <div className="text-xs text-neutral-500 font-mono mt-0.5">
-                    {version || '...'}
+              <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <div className="text-sm text-neutral-300">Current version</div>
+                    <div className="text-xs text-neutral-500 font-mono mt-0.5">
+                      {version || '...'}
+                    </div>
                   </div>
+                  <button
+                    onClick={handleCheckForUpdates}
+                    disabled={checking || updaterStatus?.state === 'checking' || updaterStatus?.state === 'downloading'}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-40 rounded text-sm text-neutral-200 transition-colors cursor-pointer"
+                  >
+                    <RefreshCw size={12} className={checking ? 'animate-spin' : ''} />
+                    Check for updates
+                  </button>
                 </div>
-                <button
-                  onClick={handleCheckForUpdates}
-                  disabled={checking || updaterStatus?.state === 'checking' || updaterStatus?.state === 'downloading'}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-40 rounded text-sm text-neutral-200 transition-colors cursor-pointer"
-                >
-                  <RefreshCw size={12} className={checking ? 'animate-spin' : ''} />
-                  Check for updates
-                </button>
+
+                {renderUpdaterStatus() && (
+                  <div className="pt-3 border-t border-neutral-800">
+                    {renderUpdaterStatus()}
+                  </div>
+                )}
               </div>
 
-              {renderUpdaterStatus() && (
-                <div className="pt-3 border-t border-neutral-800">
-                  {renderUpdaterStatus()}
-                </div>
-              )}
-            </div>
-
-            <div className="mt-3 text-xs text-neutral-500">
-              <a
-                onClick={() => window.api.openExternal('https://github.com/frenchie4111/harness/releases')}
-                className="text-neutral-400 hover:text-neutral-200 underline cursor-pointer"
-              >
-                View all releases on GitHub
-              </a>
-            </div>
-          </section>
+              <div className="mt-3 text-xs text-neutral-500">
+                <a
+                  onClick={() => window.api.openExternal('https://github.com/frenchie4111/harness/releases')}
+                  className="text-neutral-400 hover:text-neutral-200 underline cursor-pointer"
+                >
+                  View all releases on GitHub
+                </a>
+              </div>
+            </section>
+          </div>
         </div>
       </div>
     </div>
