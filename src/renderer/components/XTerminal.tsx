@@ -58,6 +58,13 @@ export function XTerminal({ terminalId, cwd, type, visible, claudeCommand }: XTe
     if (!containerRef.current || initializedRef.current) return
     initializedRef.current = true
 
+    // Pull background/foreground from the active app theme so the terminal
+    // blends into the panel it's embedded in. xterm.js only accepts literal
+    // color strings, so we read the resolved CSS variables at init time.
+    const rootStyle = getComputedStyle(document.documentElement)
+    const bg = rootStyle.getPropertyValue('--color-app').trim() || '#0a0a0a'
+    const fg = rootStyle.getPropertyValue('--color-fg-bright').trim() || '#e5e5e5'
+
     const terminal = new Terminal({
       fontSize: 13,
       fontFamily: "'SF Mono', 'Monaco', 'Menlo', 'Courier New', monospace",
@@ -65,18 +72,18 @@ export function XTerminal({ terminalId, cwd, type, visible, claudeCommand }: XTe
       cursorStyle: 'bar',
       allowProposedApi: true,
       theme: {
-        background: '#0a0a0a',
-        foreground: '#e5e5e5',
-        cursor: '#e5e5e5',
+        background: bg,
+        foreground: fg,
+        cursor: fg,
         selectionBackground: '#33415580',
-        black: '#0a0a0a',
+        black: bg,
         red: '#f87171',
         green: '#4ade80',
         yellow: '#facc15',
         blue: '#60a5fa',
         magenta: '#c084fc',
         cyan: '#22d3ee',
-        white: '#e5e5e5',
+        white: fg,
         brightBlack: '#525252',
         brightRed: '#fca5a5',
         brightGreen: '#86efac',

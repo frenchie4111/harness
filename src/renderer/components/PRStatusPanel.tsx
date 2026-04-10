@@ -13,43 +13,43 @@ const STATE_LABELS: Record<string, string> = {
 }
 
 const STATE_COLORS: Record<string, string> = {
-  open: 'text-green-400',
-  draft: 'text-neutral-400',
-  merged: 'text-purple-400',
-  closed: 'text-red-400'
+  open: 'text-success',
+  draft: 'text-muted',
+  merged: 'text-accent',
+  closed: 'text-danger'
 }
 
 const CHECK_ICONS: Record<CheckStatus['state'], { symbol: string; color: string }> = {
-  success: { symbol: '\u2713', color: 'text-green-400' },
-  failure: { symbol: '\u2717', color: 'text-red-400' },
-  error: { symbol: '!', color: 'text-red-400' },
-  pending: { symbol: '\u25CB', color: 'text-amber-400' },
-  neutral: { symbol: '-', color: 'text-neutral-500' },
-  skipped: { symbol: '-', color: 'text-neutral-500' }
+  success: { symbol: '\u2713', color: 'text-success' },
+  failure: { symbol: '\u2717', color: 'text-danger' },
+  error: { symbol: '!', color: 'text-danger' },
+  pending: { symbol: '\u25CB', color: 'text-warning' },
+  neutral: { symbol: '-', color: 'text-dim' },
+  skipped: { symbol: '-', color: 'text-dim' }
 }
 
 const OVERALL_COLORS: Record<string, string> = {
-  success: 'text-green-400',
-  failure: 'text-red-400',
-  pending: 'text-amber-400',
-  none: 'text-neutral-500'
+  success: 'text-success',
+  failure: 'text-danger',
+  pending: 'text-warning',
+  none: 'text-dim'
 }
 
 export function PRStatusPanel({ pr }: PRStatusPanelProps): JSX.Element {
   const [expanded, setExpanded] = useState(false)
 
   return (
-    <div className="border-b border-neutral-800">
+    <div className="border-b border-border">
       <div className="px-3 py-2 flex items-center gap-2">
-        <span className="text-xs font-medium text-neutral-500 flex-1">PULL REQUEST</span>
+        <span className="text-xs font-medium text-dim flex-1">PULL REQUEST</span>
       </div>
 
       {pr === null && (
-        <div className="px-3 pb-2 text-xs text-neutral-600">No PR for this branch</div>
+        <div className="px-3 pb-2 text-xs text-faint">No PR for this branch</div>
       )}
 
       {pr === undefined && (
-        <div className="px-3 pb-2 text-xs text-neutral-600">Loading...</div>
+        <div className="px-3 pb-2 text-xs text-faint">Loading...</div>
       )}
 
       {pr && (
@@ -60,7 +60,7 @@ export function PRStatusPanel({ pr }: PRStatusPanelProps): JSX.Element {
               {STATE_LABELS[pr.state]}
             </span>
             <a
-              className="text-xs text-neutral-300 hover:text-neutral-100 truncate cursor-pointer"
+              className="text-xs text-fg hover:text-fg-bright truncate cursor-pointer"
               title={`#${pr.number}: ${pr.title}\n${pr.url}`}
               onClick={() => setExpanded(!expanded)}
             >
@@ -80,7 +80,7 @@ export function PRStatusPanel({ pr }: PRStatusPanelProps): JSX.Element {
               {pr.checksOverall === 'none' && 'No checks'}
             </span>
             {pr.checks.length > 0 && (
-              <span className="text-xs text-neutral-600">
+              <span className="text-xs text-faint">
                 ({pr.checks.filter((c) => c.state === 'success').length}/{pr.checks.length})
                 {expanded ? '\u25B4' : '\u25BE'}
               </span>
@@ -95,7 +95,7 @@ export function PRStatusPanel({ pr }: PRStatusPanelProps): JSX.Element {
                 return (
                   <div key={check.name} className="flex items-center gap-1.5 text-xs">
                     <span className={`shrink-0 ${icon.color}`}>{icon.symbol}</span>
-                    <span className="text-neutral-400 truncate" title={check.description || check.name}>
+                    <span className="text-muted truncate" title={check.description || check.name}>
                       {check.name}
                     </span>
                   </div>

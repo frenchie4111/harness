@@ -20,6 +20,35 @@ interface Config {
   terminalTabs?: Record<string, PersistedTab[]>
   // Active tab id per worktree path
   activeTabId?: Record<string, string>
+  // Selected color theme id
+  theme?: string
+}
+
+export const DEFAULT_THEME = 'dark'
+export const AVAILABLE_THEMES = [
+  'dark',
+  'dracula',
+  'nord',
+  'gruvbox-dark',
+  'tokyo-night',
+  'catppuccin-mocha',
+  'one-dark',
+  'solarized-dark',
+  'solarized-light'
+] as const
+
+/** App background hex for each theme — used for the Electron window backgroundColor
+ *  so the first paint matches the theme instead of flashing default dark. */
+export const THEME_APP_BG: Record<string, string> = {
+  'dark': '#0a0a0a',
+  'dracula': '#282a36',
+  'nord': '#2e3440',
+  'gruvbox-dark': '#282828',
+  'tokyo-night': '#1a1b26',
+  'catppuccin-mocha': '#1e1e2e',
+  'one-dark': '#282c34',
+  'solarized-dark': '#002b36',
+  'solarized-light': '#fdf6e3'
 }
 
 export const DEFAULT_CLAUDE_COMMAND = 'claude --continue || (echo "Creating new Claude session for this worktree..." && claude)'
