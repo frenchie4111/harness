@@ -9,6 +9,10 @@ export interface CheckStatus {
   name: string
   state: 'success' | 'failure' | 'pending' | 'neutral' | 'skipped' | 'error'
   description: string
+  /** Longer failure summary from the check's output (markdown, may be multi-line) */
+  summary?: string
+  /** External URL to the check's log / details page */
+  detailsUrl?: string
 }
 
 export interface PRStatus {
@@ -103,7 +107,9 @@ interface ApiCheckRun {
   name: string
   status: 'queued' | 'in_progress' | 'completed' | 'waiting' | 'requested' | 'pending'
   conclusion: 'success' | 'failure' | 'neutral' | 'cancelled' | 'skipped' | 'timed_out' | 'action_required' | null
-  output?: { title?: string | null }
+  html_url?: string | null
+  details_url?: string | null
+  output?: { title?: string | null; summary?: string | null }
 }
 
 interface ApiCheckRunsResponse {
@@ -115,6 +121,7 @@ interface ApiStatus {
   state: 'error' | 'failure' | 'pending' | 'success'
   context: string
   description: string | null
+  target_url: string | null
 }
 
 interface ApiCombinedStatus {
@@ -215,14 +222,17 @@ export async function getPRStatus(worktreePath: string): Promise<PRStatus | null
       checks.push({
         name: run.name,
         state: normalizeCheckState(run.status, run.conclusion),
-        description: run.output?.title || ''
+        description: run.output?.title || '',
+        summary: run.output?.summary || undefined,
+        detailsUrl: run.html_url || run.details_url || undefined
       })
     }
     for (const s of combinedRes.statuses || []) {
       checks.push({
         name: s.context,
         state: normalizeStatusState(s.state),
-        description: s.description || ''
+        description: s.description || '',
+        detailsUrl: s.target_url || undefined
       })
     }
 

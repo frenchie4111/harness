@@ -47,6 +47,10 @@ export interface CheckStatus {
   name: string
   state: 'success' | 'failure' | 'pending' | 'neutral' | 'skipped' | 'error'
   description: string
+  /** Longer failure summary from the check's output (markdown, may be multi-line) */
+  summary?: string
+  /** External URL to the check's log / details page */
+  detailsUrl?: string
 }
 
 export interface PRStatus {
