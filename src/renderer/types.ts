@@ -16,6 +16,12 @@ export interface TerminalTab {
   staged?: boolean
 }
 
+export interface PersistedTab {
+  id: string
+  type: 'claude' | 'shell'
+  label: string
+}
+
 export type PtyStatus = 'idle' | 'processing' | 'waiting' | 'needs-approval'
 
 export type UpdaterStatus =
@@ -71,6 +77,19 @@ export interface ElectronAPI {
   setClaudeCommand(command: string): Promise<boolean>
   getDefaultClaudeCommand(): Promise<string>
   onClaudeCommandChanged(callback: (command: string) => void): () => void
+
+  getTerminalTabs(): Promise<{
+    tabs: Record<string, PersistedTab[]>
+    activeTabId: Record<string, string>
+  }>
+  setTerminalTabs(
+    tabs: Record<string, PersistedTab[]>,
+    activeTabId: Record<string, string>
+  ): Promise<boolean>
+  saveTerminalHistory(id: string, content: string): Promise<boolean>
+  saveTerminalHistorySync(id: string, content: string): void
+  loadTerminalHistory(id: string): Promise<string | null>
+  clearTerminalHistory(id: string): Promise<boolean>
 
   hasGithubToken(): Promise<boolean>
   setGithubToken(token: string, options?: { starRepo?: boolean }): Promise<{ ok: boolean; username?: string; error?: string; starred?: boolean }>
