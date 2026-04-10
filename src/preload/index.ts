@@ -33,6 +33,16 @@ contextBridge.exposeInMainWorld('api', {
   getClaudeCommand: () => ipcRenderer.invoke('config:getClaudeCommand'),
   setClaudeCommand: (command: string) => ipcRenderer.invoke('config:setClaudeCommand', command),
   getDefaultClaudeCommand: () => ipcRenderer.invoke('config:getDefaultClaudeCommand'),
+  getTerminalTabs: () => ipcRenderer.invoke('config:getTerminalTabs'),
+  setTerminalTabs: (tabs: unknown, activeTabId: unknown) =>
+    ipcRenderer.invoke('config:setTerminalTabs', tabs, activeTabId),
+  saveTerminalHistory: (id: string, content: string) =>
+    ipcRenderer.invoke('terminal:saveHistory', id, content),
+  saveTerminalHistorySync: (id: string, content: string) => {
+    ipcRenderer.sendSync('terminal:saveHistorySync', id, content)
+  },
+  loadTerminalHistory: (id: string) => ipcRenderer.invoke('terminal:loadHistory', id),
+  clearTerminalHistory: (id: string) => ipcRenderer.invoke('terminal:clearHistory', id),
   onClaudeCommandChanged: (callback: (command: string) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, command: string): void => {
       callback(command)

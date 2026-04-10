@@ -1,13 +1,39 @@
 import { useEffect, useRef } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
+import { SerializeAddon } from '@xterm/addon-serialize'
 import '@xterm/xterm/css/xterm.css'
 
 /** Global registry so hotkeys can focus terminals without prop-drilling refs */
 const terminalRegistry = new Map<string, Terminal>()
+/** Serialize addons keyed by terminal id, so we can flush all on window unload */
+const serializeRegistry = new Map<string, SerializeAddon>()
+/** Ids whose history is being cleared — suppress saves from pending intervals
+ * and the window beforeunload flush so we don't resurrect deleted history. */
+const closingIds = new Set<string>()
 
 export function focusTerminalById(id: string): void {
   terminalRegistry.get(id)?.focus()
+}
+
+/** Mark a terminal as closing: stop saving its history and clear any
+ * already-persisted history file. Call this before removing the tab. */
+export function markTerminalClosing(id: string): void {
+  closingIds.add(id)
+  window.api.clearTerminalHistory(id)
+}
+
+/** Flush every live terminal's scrollback to disk. Called on window unload —
+ * uses the sync IPC variant so writes complete before the window closes. */
+export function flushAllTerminalHistory(): void {
+  for (const [id, addon] of serializeRegistry) {
+    if (closingIds.has(id)) continue
+    try {
+      window.api.saveTerminalHistorySync(id, addon.serialize())
+    } catch {
+      // ignore
+    }
+  }
 }
 
 interface XTerminalProps {
@@ -65,6 +91,9 @@ export function XTerminal({ terminalId, cwd, type, visible, claudeCommand }: XTe
     const fitAddon = new FitAddon()
     terminal.loadAddon(fitAddon)
 
+    const serializeAddon = new SerializeAddon()
+    terminal.loadAddon(serializeAddon)
+
     terminal.open(containerRef.current)
 
     requestAnimationFrame(() => {
@@ -74,20 +103,40 @@ export function XTerminal({ terminalId, cwd, type, visible, claudeCommand }: XTe
     terminalRef.current = terminal
     fitAddonRef.current = fitAddon
     terminalRegistry.set(terminalId, terminal)
+    serializeRegistry.set(terminalId, serializeAddon)
 
-    // Spawn the PTY
-    const shell = '/bin/zsh'
-    const args = type === 'claude' ? ['-ilc', claudeCommand] : ['-il']
-    window.api.createTerminal(terminalId, cwd, shell, args)
+    // Restore scrollback (if any) before spawning the PTY so historical output
+    // appears above the fresh shell's prompt.
+    let cleanupData: (() => void) | null = null
+    let disposed = false
 
-    terminal.onData((data) => {
-      window.api.writeTerminal(terminalId, data)
-    })
+    const spawnPty = (): void => {
+      if (disposed) return
+      const shell = '/bin/zsh'
+      const args = type === 'claude' ? ['-ilc', claudeCommand] : ['-il']
+      window.api.createTerminal(terminalId, cwd, shell, args)
 
-    const cleanupData = window.api.onTerminalData((id, data) => {
-      if (id === terminalId) {
-        terminal.write(data)
+      terminal.onData((data) => {
+        window.api.writeTerminal(terminalId, data)
+      })
+
+      cleanupData = window.api.onTerminalData((id, data) => {
+        if (id === terminalId) {
+          terminal.write(data)
+        }
+      })
+    }
+
+    window.api.loadTerminalHistory(terminalId).then((history) => {
+      if (disposed) return
+      if (history) {
+        terminal.write(history)
+        // Visual separator between restored history and the fresh shell session
+        terminal.write('\r\n\x1b[2m── session restored ──\x1b[0m\r\n')
       }
+      spawnPty()
+    }).catch(() => {
+      spawnPty()
     })
 
     // Handle resize — only fit when actually visible
@@ -110,10 +159,28 @@ export function XTerminal({ terminalId, cwd, type, visible, claudeCommand }: XTe
     })
     resizeObserver.observe(containerRef.current)
 
+    // Periodic snapshot so a crash doesn't lose too much scrollback
+    const snapshotInterval = setInterval(() => {
+      if (closingIds.has(terminalId)) return
+      try {
+        window.api.saveTerminalHistory(terminalId, serializeAddon.serialize())
+      } catch {
+        // ignore
+      }
+    }, 30_000)
+
     return () => {
+      disposed = true
+      // NOTE: intentionally do NOT save here. Unmount happens on both
+      // tab-close (history should be cleared) and app-quit (history is
+      // flushed via beforeunload). Saving here would race with
+      // clearTerminalHistory on close.
+      clearInterval(snapshotInterval)
       terminalRegistry.delete(terminalId)
+      serializeRegistry.delete(terminalId)
+      closingIds.delete(terminalId)
       resizeObserver.disconnect()
-      cleanupData()
+      cleanupData?.()
       terminal.dispose()
       window.api.killTerminal(terminalId)
     }

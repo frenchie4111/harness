@@ -1,6 +1,12 @@
 import { app } from 'electron'
-import { readFileSync, writeFileSync } from 'fs'
+import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync, readdirSync } from 'fs'
 import { join } from 'path'
+
+export interface PersistedTab {
+  id: string
+  type: 'claude' | 'shell'
+  label: string
+}
 
 interface Config {
   windowBounds: { x: number; y: number; width: number; height: number } | null
@@ -10,6 +16,10 @@ interface Config {
   hotkeys?: Record<string, string>
   // Command used to launch Claude in a worktree terminal. Runs via login shell.
   claudeCommand?: string
+  // Persisted terminal tabs per worktree path (claude + shell only — diff tabs are transient)
+  terminalTabs?: Record<string, PersistedTab[]>
+  // Active tab id per worktree path
+  activeTabId?: Record<string, string>
 }
 
 export const DEFAULT_CLAUDE_COMMAND = 'claude --continue || (echo "Creating new Claude session for this worktree..." && claude)'
@@ -56,5 +66,62 @@ export function saveConfigSync(config: Config): void {
     writeFileSync(getConfigPath(), JSON.stringify(config, null, 2))
   } catch (e) {
     console.error('Failed to save config:', e)
+  }
+}
+
+// --- Terminal scrollback persistence ---
+// Each terminal's serialized xterm buffer is stored as a file named by a
+// hash-free sanitized version of the terminal id.
+
+function getHistoryDir(): string {
+  const dir = join(app.getPath('userData'), 'terminal-history')
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+  return dir
+}
+
+function sanitizeId(id: string): string {
+  return id.replace(/[^a-zA-Z0-9._-]/g, '_')
+}
+
+function historyPath(id: string): string {
+  return join(getHistoryDir(), `${sanitizeId(id)}.txt`)
+}
+
+export function saveTerminalHistory(id: string, content: string): void {
+  try {
+    writeFileSync(historyPath(id), content)
+  } catch (e) {
+    console.error('Failed to save terminal history:', e)
+  }
+}
+
+export function loadTerminalHistory(id: string): string | null {
+  try {
+    return readFileSync(historyPath(id), 'utf-8')
+  } catch {
+    return null
+  }
+}
+
+export function clearTerminalHistory(id: string): void {
+  try {
+    unlinkSync(historyPath(id))
+  } catch {
+    // ignore missing file
+  }
+}
+
+/** Remove history files for terminals not present in `keepIds`. */
+export function pruneTerminalHistory(keepIds: Set<string>): void {
+  try {
+    const dir = getHistoryDir()
+    const keep = new Set(Array.from(keepIds).map((id) => `${sanitizeId(id)}.txt`))
+    for (const file of readdirSync(dir)) {
+      if (!keep.has(file)) {
+        try { unlinkSync(join(dir, file)) } catch { /* ignore */ }
+      }
+    }
+  } catch {
+    // ignore
   }
 }

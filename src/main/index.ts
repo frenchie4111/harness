@@ -5,7 +5,17 @@ import { PtyManager } from './pty-manager'
 import { listWorktrees, listBranches, addWorktree, removeWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff } from './worktree'
 import { getPRStatus, testToken, starRepo } from './github'
 import { setSecret, hasSecret, deleteSecret } from './secrets'
-import { loadConfig, saveConfig, saveConfigSync, DEFAULT_CLAUDE_COMMAND } from './persistence'
+import {
+  loadConfig,
+  saveConfig,
+  saveConfigSync,
+  DEFAULT_CLAUDE_COMMAND,
+  saveTerminalHistory,
+  loadTerminalHistory,
+  clearTerminalHistory,
+  pruneTerminalHistory,
+  type PersistedTab
+} from './persistence'
 import { hooksInstalled, installHooks, watchStatusDir } from './hooks'
 import { log, getLogFilePath } from './debug'
 
@@ -196,6 +206,45 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('config:getDefaultClaudeCommand', () => {
     return DEFAULT_CLAUDE_COMMAND
+  })
+
+  // Persisted terminal tabs / active tab ids
+  ipcMain.handle('config:getTerminalTabs', () => {
+    return {
+      tabs: config.terminalTabs || {},
+      activeTabId: config.activeTabId || {}
+    }
+  })
+
+  ipcMain.handle(
+    'config:setTerminalTabs',
+    (_, tabs: Record<string, PersistedTab[]>, activeTabId: Record<string, string>) => {
+      config.terminalTabs = tabs
+      config.activeTabId = activeTabId
+      saveConfig(config)
+      return true
+    }
+  )
+
+  // Terminal scrollback persistence
+  ipcMain.handle('terminal:saveHistory', (_, id: string, content: string) => {
+    saveTerminalHistory(id, content)
+    return true
+  })
+
+  // Sync variant used by beforeunload so writes complete before window closes
+  ipcMain.on('terminal:saveHistorySync', (event, id: string, content: string) => {
+    saveTerminalHistory(id, content)
+    event.returnValue = true
+  })
+
+  ipcMain.handle('terminal:loadHistory', (_, id: string) => {
+    return loadTerminalHistory(id)
+  })
+
+  ipcMain.handle('terminal:clearHistory', (_, id: string) => {
+    clearTerminalHistory(id)
+    return true
   })
 
   // Settings: GitHub token
@@ -428,6 +477,13 @@ app.whenReady().then(() => {
 
   buildMenu()
   registerIpcHandlers()
+
+  // Prune terminal history files not referenced by any persisted tab
+  const keepIds = new Set<string>()
+  for (const tabs of Object.values(config.terminalTabs || {})) {
+    for (const tab of tabs) keepIds.add(tab.id)
+  }
+  pruneTerminalHistory(keepIds)
 
   // Watch status dir globally — route to correct window via ptyManager
   stopWatchingStatus = watchStatusDir((id) => ptyManager.getWindowForTerminal(id))

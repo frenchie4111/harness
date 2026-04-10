@@ -6,7 +6,7 @@ import { TerminalPanel } from './components/TerminalPanel'
 import { ChangedFilesPanel } from './components/ChangedFilesPanel'
 import { PRStatusPanel } from './components/PRStatusPanel'
 import { Settings } from './components/Settings'
-import { focusTerminalById } from './components/XTerminal'
+import { focusTerminalById, flushAllTerminalHistory, markTerminalClosing } from './components/XTerminal'
 import { useHotkeys } from './hooks/useHotkeys'
 import { sortedWorktrees } from './worktree-sort'
 
@@ -36,6 +36,9 @@ export default function App(): JSX.Element {
   )
   const [hotkeyOverrides, setHotkeyOverrides] = useState<Record<string, string> | undefined>(undefined)
   const [claudeCommand, setClaudeCommand] = useState<string>('')
+  // Flipped to true after persisted tabs finish loading, so the persist effect
+  // below doesn't overwrite the on-disk state with empty initial React state.
+  const tabsLoadedRef = useRef(false)
   // Track which worktrees already have hooks installed so we only prompt once
   const hooksChecked = useRef(new Set<string>())
   // Ref to the sidebar's create-worktree trigger
@@ -55,13 +58,19 @@ export default function App(): JSX.Element {
   // Load repo root, worktrees, and config on mount
   useEffect(() => {
     (async () => {
-      const [root, overrides, cmd] = await Promise.all([
+      const [root, overrides, cmd, persistedTabs] = await Promise.all([
         window.api.getRepoRoot(),
         window.api.getHotkeyOverrides(),
-        window.api.getClaudeCommand()
+        window.api.getClaudeCommand(),
+        window.api.getTerminalTabs()
       ])
       if (overrides) setHotkeyOverrides(overrides)
       setClaudeCommand(cmd)
+      // Restore persisted tabs (already typed as TerminalTab-compatible since
+      // PersistedTab only includes claude/shell tabs — a subset of TerminalTab)
+      if (persistedTabs?.tabs) setTerminalTabs(persistedTabs.tabs as Record<string, TerminalTab[]>)
+      if (persistedTabs?.activeTabId) setActiveTabId(persistedTabs.activeTabId)
+      tabsLoadedRef.current = true
       if (root) {
         setRepoRoot(root)
         const trees = await window.api.listWorktrees()
@@ -71,6 +80,37 @@ export default function App(): JSX.Element {
         }
       }
     })()
+  }, [])
+
+  // Persist terminal tab metadata whenever it changes (claude + shell only —
+  // diff tabs are transient and derived from file state). Waits for the
+  // initial load to finish so we don't clobber on-disk state with empty
+  // initial React state.
+  useEffect(() => {
+    if (!tabsLoadedRef.current) return
+    const persistable: Record<string, { id: string; type: 'claude' | 'shell'; label: string }[]> = {}
+    for (const [wtPath, tabs] of Object.entries(terminalTabs)) {
+      const filtered = tabs.filter((t) => t.type !== 'diff') as {
+        id: string
+        type: 'claude' | 'shell'
+        label: string
+      }[]
+      if (filtered.length > 0) persistable[wtPath] = filtered
+    }
+    // Only persist active tab ids that point at a non-diff tab
+    const persistableActive: Record<string, string> = {}
+    for (const [wtPath, tabId] of Object.entries(activeTabId)) {
+      if (!tabId || tabId.startsWith('diff-')) continue
+      persistableActive[wtPath] = tabId
+    }
+    window.api.setTerminalTabs(persistable, persistableActive)
+  }, [terminalTabs, activeTabId])
+
+  // Flush all terminal scrollback to disk when the window is about to close
+  useEffect(() => {
+    const handler = (): void => flushAllTerminalHistory()
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
   }, [])
 
   // Live-reload hotkeys when changed in settings
@@ -267,9 +307,10 @@ export default function App(): JSX.Element {
       if (!confirmed) return
     }
 
-    // Kill any terminals running in this worktree
+    // Kill any terminals running in this worktree and drop their history
     const tabs = terminalTabs[path] || []
     for (const tab of tabs) {
+      if (tab.type !== 'diff') markTerminalClosing(tab.id)
       window.api.killTerminal(tab.id)
     }
     // Clean up terminal state
@@ -311,6 +352,7 @@ export default function App(): JSX.Element {
     (worktreePath: string, tabId: string) => {
       // Only kill PTY for terminal tabs, not diff tabs
       if (!tabId.startsWith('diff-')) {
+        markTerminalClosing(tabId)
         window.api.killTerminal(tabId)
       }
       setTerminalTabs((prev) => {
