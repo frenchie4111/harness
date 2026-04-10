@@ -30,12 +30,27 @@ export default function App(): JSX.Element {
   const [hooksConsent, setHooksConsent] = useState<'pending' | 'accepted' | 'declined'>('pending')
   const [sidebarVisible, setSidebarVisible] = useState(true)
   const [showSettings, setShowSettings] = useState(false)
+  const [hasGithubToken, setHasGithubToken] = useState<boolean | null>(null)
+  const [githubBannerDismissed, setGithubBannerDismissed] = useState(
+    () => localStorage.getItem('githubBannerDismissed') === '1'
+  )
   const [hotkeyOverrides, setHotkeyOverrides] = useState<Record<string, string> | undefined>(undefined)
   const [claudeCommand, setClaudeCommand] = useState<string>('')
   // Track which worktrees already have hooks installed so we only prompt once
   const hooksChecked = useRef(new Set<string>())
   // Ref to the sidebar's create-worktree trigger
   const createWorktreeRef = useRef<(() => void) | null>(null)
+
+  // Check GitHub token presence (on mount and whenever Settings is closed)
+  useEffect(() => {
+    if (showSettings) return
+    window.api.hasGithubToken().then(setHasGithubToken).catch(() => setHasGithubToken(null))
+  }, [showSettings])
+
+  const handleDismissGithubBanner = useCallback(() => {
+    localStorage.setItem('githubBannerDismissed', '1')
+    setGithubBannerDismissed(true)
+  }, [])
 
   // Load repo root, worktrees, and config on mount
   useEffect(() => {
@@ -479,7 +494,7 @@ export default function App(): JSX.Element {
     <div className="flex h-full flex-col">
       {/* Hooks consent banner */}
       {hooksConsent === 'pending' && (
-        <div className="bg-amber-950 border-b border-amber-800 px-4 py-2.5 flex items-center gap-3 shrink-0">
+        <div className="bg-amber-950 border-b border-amber-800 pl-20 pr-4 py-2.5 drag-region flex items-center gap-3 shrink-0">
           <span className="text-amber-200 text-sm flex-1">
             Claude Harness can install hooks in your worktrees to reliably detect Claude's status
             (waiting, processing, needs approval). This adds entries to each worktree's{' '}
@@ -487,15 +502,36 @@ export default function App(): JSX.Element {
           </span>
           <button
             onClick={handleAcceptHooks}
-            className="px-3 py-1 bg-amber-700 hover:bg-amber-600 rounded text-sm text-amber-100 transition-colors shrink-0 cursor-pointer"
+            className="px-3 py-1 bg-amber-700 hover:bg-amber-600 rounded text-sm text-amber-100 transition-colors shrink-0 cursor-pointer no-drag"
           >
             Enable
           </button>
           <button
             onClick={handleDeclineHooks}
-            className="px-3 py-1 text-amber-400 hover:text-amber-200 text-sm transition-colors shrink-0 cursor-pointer"
+            className="px-3 py-1 text-amber-400 hover:text-amber-200 text-sm transition-colors shrink-0 cursor-pointer no-drag"
           >
             Skip
+          </button>
+        </div>
+      )}
+
+      {/* GitHub setup banner */}
+      {hasGithubToken === false && !githubBannerDismissed && (
+        <div className="bg-blue-950 border-b border-blue-800 pl-20 pr-4 py-2.5 drag-region flex items-center gap-3 shrink-0">
+          <span className="text-blue-200 text-sm flex-1">
+            Connect a GitHub token to see PR status and open pull requests from Harness.
+          </span>
+          <button
+            onClick={() => setShowSettings(true)}
+            className="px-3 py-1 bg-blue-700 hover:bg-blue-600 rounded text-sm text-blue-100 transition-colors shrink-0 cursor-pointer no-drag"
+          >
+            Set up GitHub
+          </button>
+          <button
+            onClick={handleDismissGithubBanner}
+            className="px-3 py-1 text-blue-400 hover:text-blue-200 text-sm transition-colors shrink-0 cursor-pointer no-drag"
+          >
+            Dismiss
           </button>
         </div>
       )}
