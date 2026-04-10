@@ -104,6 +104,28 @@ export function XTerminal({ terminalId, cwd, type, visible, claudeCommand, sessi
     const serializeAddon = new SerializeAddon()
     terminal.loadAddon(serializeAddon)
 
+    // Translate Shift+Enter into "backslash + Enter" (\\\r). By default xterm
+    // sends bare \r for both Enter and Shift+Enter, so Claude Code can't tell
+    // them apart and treats Shift+Enter as submit. Sending `\` then Enter
+    // matches Claude Code's documented line-continuation pattern and inserts
+    // a newline regardless of cursor position.
+    terminal.attachCustomKeyEventHandler((e) => {
+      if (
+        e.type === 'keydown' &&
+        e.key === 'Enter' &&
+        e.shiftKey &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        !e.altKey
+      ) {
+        e.preventDefault()
+        e.stopPropagation()
+        window.api.writeTerminal(terminalId, '\\\r')
+        return false
+      }
+      return true
+    })
+
     terminal.open(containerRef.current)
 
     requestAnimationFrame(() => {
