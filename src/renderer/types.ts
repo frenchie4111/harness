@@ -18,6 +18,14 @@ export interface TerminalTab {
 
 export type PtyStatus = 'idle' | 'processing' | 'waiting' | 'needs-approval'
 
+export type UpdaterStatus =
+  | { state: 'checking' }
+  | { state: 'available'; version: string }
+  | { state: 'not-available' }
+  | { state: 'downloading'; percent: number }
+  | { state: 'downloaded'; version: string }
+  | { state: 'error'; error: string }
+
 export interface ChangedFile {
   path: string
   status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked'
@@ -59,6 +67,11 @@ export interface ElectronAPI {
   hasGithubToken(): Promise<boolean>
   setGithubToken(token: string, options?: { starRepo?: boolean }): Promise<{ ok: boolean; username?: string; error?: string; starred?: boolean }>
   clearGithubToken(): Promise<boolean>
+
+  getVersion(): Promise<string>
+  checkForUpdates(): Promise<{ ok: boolean; available?: boolean; version?: string; releaseDate?: string; error?: string }>
+  quitAndInstall(): Promise<boolean>
+  onUpdaterStatus(callback: (status: UpdaterStatus) => void): () => void
 
   openExternal(url: string): void
 

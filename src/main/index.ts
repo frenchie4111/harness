@@ -189,6 +189,36 @@ function registerIpcHandlers(): void {
     return true
   })
 
+  // Updater
+  ipcMain.handle('updater:getVersion', () => {
+    return app.getVersion()
+  })
+
+  ipcMain.handle('updater:checkForUpdates', async () => {
+    if (!app.isPackaged) {
+      return { ok: false, error: 'Updates are only available in packaged builds' }
+    }
+    try {
+      const result = await autoUpdater.checkForUpdates()
+      if (!result) return { ok: true, available: false }
+      const updateInfo = result.updateInfo
+      const current = app.getVersion()
+      return {
+        ok: true,
+        available: updateInfo.version !== current,
+        version: updateInfo.version,
+        releaseDate: updateInfo.releaseDate
+      }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
+  ipcMain.handle('updater:quitAndInstall', () => {
+    autoUpdater.quitAndInstall()
+    return true
+  })
+
   // Hooks
   ipcMain.handle('hooks:check', (_, worktreePath: string) => {
     return hooksInstalled(worktreePath)
@@ -283,6 +313,12 @@ function buildMenu(): void {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }
 
+function broadcastToAllWindows(channel: string, ...args: unknown[]): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send(channel, ...args)
+  }
+}
+
 function setupAutoUpdater(): void {
   if (!app.isPackaged) return // No-op in dev
 
@@ -293,24 +329,28 @@ function setupAutoUpdater(): void {
     debug: () => {}
   } as Electron.Logger
 
-  autoUpdater.on('checking-for-update', () => log('updater', 'checking for update'))
-  autoUpdater.on('update-available', (info) => log('updater', 'update available', info.version))
-  autoUpdater.on('update-not-available', () => log('updater', 'no update available'))
-  autoUpdater.on('error', (err) => log('updater', 'error', err.message))
-  autoUpdater.on('download-progress', (p) => log('updater', `downloading ${Math.round(p.percent)}%`))
+  autoUpdater.on('checking-for-update', () => {
+    log('updater', 'checking for update')
+    broadcastToAllWindows('updater:status', { state: 'checking' })
+  })
+  autoUpdater.on('update-available', (info) => {
+    log('updater', 'update available', info.version)
+    broadcastToAllWindows('updater:status', { state: 'available', version: info.version })
+  })
+  autoUpdater.on('update-not-available', () => {
+    log('updater', 'no update available')
+    broadcastToAllWindows('updater:status', { state: 'not-available' })
+  })
+  autoUpdater.on('error', (err) => {
+    log('updater', 'error', err.message)
+    broadcastToAllWindows('updater:status', { state: 'error', error: err.message })
+  })
+  autoUpdater.on('download-progress', (p) => {
+    broadcastToAllWindows('updater:status', { state: 'downloading', percent: p.percent })
+  })
   autoUpdater.on('update-downloaded', (info) => {
     log('updater', 'update downloaded', info.version)
-    // Prompt the user to install
-    dialog.showMessageBox({
-      type: 'info',
-      buttons: ['Restart Now', 'Later'],
-      defaultId: 0,
-      title: 'Update Available',
-      message: `Harness ${info.version} has been downloaded.`,
-      detail: 'Restart the app to apply the update.'
-    }).then((result) => {
-      if (result.response === 0) autoUpdater.quitAndInstall()
-    })
+    broadcastToAllWindows('updater:status', { state: 'downloaded', version: info.version })
   })
 
   // Check on startup, then every hour
