@@ -80,7 +80,7 @@
     },
     "publish": {
       "provider": "github",
-      "owner": "mikelyons",
+      "owner": "frenchie4111",
       "repo": "harness"
     }
   },
