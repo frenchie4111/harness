@@ -18,10 +18,10 @@ interface TerminalPanelProps {
 }
 
 const TAB_STATUS_DOT: Record<PtyStatus, string> = {
-  idle: 'bg-neutral-600',
-  processing: 'bg-green-500',
-  waiting: 'bg-amber-400',
-  'needs-approval': 'bg-red-500'
+  idle: 'bg-faint',
+  processing: 'bg-success',
+  waiting: 'bg-warning',
+  'needs-approval': 'bg-danger'
 }
 
 export function TerminalPanel({
@@ -38,9 +38,9 @@ export function TerminalPanel({
   freshClaudeCommand
 }: TerminalPanelProps): JSX.Element {
   return (
-    <div className="flex-1 flex flex-col min-w-0 bg-[#0a0a0a]">
+    <div className="flex-1 flex flex-col min-w-0 bg-app">
       {/* Tab bar */}
-      <div className="drag-region flex items-center border-b border-neutral-800 bg-neutral-950 h-10 shrink-0">
+      <div className="drag-region flex items-center border-b border-border bg-panel h-10 shrink-0">
         <div className="no-drag flex items-center h-full overflow-x-auto pl-2">
           {tabs.map((tab) => {
             const status = statuses[tab.id] || 'idle'
@@ -50,8 +50,8 @@ export function TerminalPanel({
                 key={tab.id}
                 className={`flex items-center gap-1.5 px-3 h-full text-xs cursor-pointer border-b-2 transition-colors ${
                   isActive
-                    ? 'border-neutral-400 text-neutral-200'
-                    : 'border-transparent text-neutral-500 hover:text-neutral-300'
+                    ? 'border-muted text-fg-bright'
+                    : 'border-transparent text-dim hover:text-fg'
                 }`}
                 onClick={() => onSelectTab(worktreePath, tab.id)}
               >
@@ -63,7 +63,7 @@ export function TerminalPanel({
                       e.stopPropagation()
                       onCloseTab(worktreePath, tab.id)
                     }}
-                    className="ml-1 text-neutral-600 hover:text-neutral-300 transition-colors"
+                    className="ml-1 text-faint hover:text-fg transition-colors"
                   >
                     <X size={10} />
                   </button>
@@ -73,14 +73,14 @@ export function TerminalPanel({
           })}
           <button
             onClick={() => onAddClaudeTab(worktreePath)}
-            className="no-drag px-2 h-full text-neutral-600 hover:text-neutral-300 text-sm transition-colors"
+            className="no-drag px-2 h-full text-faint hover:text-fg text-sm transition-colors"
             title="New Claude tab"
           >
             <Sparkles size={12} />
           </button>
           <button
             onClick={() => onAddTab(worktreePath)}
-            className="no-drag px-2 h-full text-neutral-600 hover:text-neutral-300 text-sm transition-colors"
+            className="no-drag px-2 h-full text-faint hover:text-fg text-sm transition-colors"
             title="New shell tab"
           >
             <Plus size={12} />

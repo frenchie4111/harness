@@ -43,6 +43,16 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('config:freshClaudeCommandChanged', handler)
     return () => ipcRenderer.removeListener('config:freshClaudeCommandChanged', handler)
   },
+  getTheme: () => ipcRenderer.invoke('config:getTheme'),
+  setTheme: (theme: string) => ipcRenderer.invoke('config:setTheme', theme),
+  getAvailableThemes: () => ipcRenderer.invoke('config:getAvailableThemes'),
+  onThemeChanged: (callback: (theme: string) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, theme: string): void => {
+      callback(theme)
+    }
+    ipcRenderer.on('config:themeChanged', handler)
+    return () => ipcRenderer.removeListener('config:themeChanged', handler)
+  },
   getTerminalTabs: () => ipcRenderer.invoke('config:getTerminalTabs'),
   setTerminalTabs: (tabs: unknown, activeTabId: unknown) =>
     ipcRenderer.invoke('config:setTerminalTabs', tabs, activeTabId),

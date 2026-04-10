@@ -11,10 +11,10 @@ interface WorktreeTabProps {
 }
 
 const STATUS_COLORS: Record<PtyStatus, string> = {
-  idle: 'bg-neutral-600',
-  processing: 'bg-green-500 animate-pulse',
-  waiting: 'bg-amber-400',
-  'needs-approval': 'bg-red-500 animate-pulse'
+  idle: 'bg-faint',
+  processing: 'bg-success animate-pulse',
+  waiting: 'bg-warning',
+  'needs-approval': 'bg-danger animate-pulse'
 }
 
 const STATUS_LABELS: Record<PtyStatus, string> = {
@@ -25,17 +25,17 @@ const STATUS_LABELS: Record<PtyStatus, string> = {
 }
 
 const PR_ICON_COLOR: Record<string, string> = {
-  success: 'text-green-400',
-  failure: 'text-red-400',
-  pending: 'text-amber-400',
-  none: 'text-neutral-500'
+  success: 'text-success',
+  failure: 'text-danger',
+  pending: 'text-warning',
+  none: 'text-dim'
 }
 
 const PR_STATE_COLOR: Record<string, string> = {
-  open: 'text-green-400',
-  draft: 'text-neutral-500',
-  merged: 'text-purple-400',
-  closed: 'text-red-400'
+  open: 'text-success',
+  draft: 'text-dim',
+  merged: 'text-accent',
+  closed: 'text-danger'
 }
 
 export function WorktreeTab({ worktree, isActive, status, prStatus, onClick, onDelete }: WorktreeTabProps): JSX.Element {
@@ -55,8 +55,8 @@ export function WorktreeTab({ worktree, isActive, status, prStatus, onClick, onD
       onClick={onClick}
       className={`group w-full text-left px-3 py-2 flex items-center gap-2 transition-colors cursor-pointer ${
         isActive
-          ? 'bg-neutral-800 text-neutral-100'
-          : 'text-neutral-400 hover:bg-neutral-900 hover:text-neutral-200'
+          ? 'bg-surface text-fg-bright'
+          : 'text-muted hover:bg-panel-raised hover:text-fg'
       }`}
     >
       <span
@@ -72,7 +72,7 @@ export function WorktreeTab({ worktree, isActive, status, prStatus, onClick, onD
       )}
       <div className="min-w-0 flex-1">
         <div className="text-sm font-medium truncate">{worktree.branch}</div>
-        <div className="text-xs text-neutral-600 truncate">
+        <div className="text-xs text-faint truncate">
           {worktree.path.split('/').slice(-2).join('/')}
         </div>
       </div>
@@ -82,7 +82,7 @@ export function WorktreeTab({ worktree, isActive, status, prStatus, onClick, onD
             e.stopPropagation()
             onDelete()
           }}
-          className="opacity-0 group-hover:opacity-100 text-neutral-600 hover:text-red-400 transition-all shrink-0 cursor-pointer"
+          className="opacity-0 group-hover:opacity-100 text-faint hover:text-danger transition-all shrink-0 cursor-pointer"
           title="Remove worktree"
         >
           <X size={12} />

@@ -1,5 +1,191 @@
 @import "tailwindcss";
 
+/* --- Theme tokens ---
+ * Semantic color tokens exposed to Tailwind utilities via @theme.
+ * Each token generates `bg-*`, `text-*`, `border-*` utilities that read
+ * from the CSS variable, so changing the variable in a `[data-theme]`
+ * selector swaps the theme without rebuilding utilities.
+ */
+@theme {
+  --color-app: #0a0a0a;
+  --color-panel: #141414;
+  --color-panel-raised: #1f1f1f;
+  --color-surface: #262626;
+  --color-surface-hover: #404040;
+  --color-border: #262626;
+  --color-border-strong: #404040;
+  --color-fg: #d4d4d4;
+  --color-fg-bright: #f5f5f5;
+  --color-muted: #a3a3a3;
+  --color-dim: #737373;
+  --color-faint: #525252;
+  --color-success: #22c55e;
+  --color-warning: #fbbf24;
+  --color-danger: #ef4444;
+  --color-info: #60a5fa;
+  --color-accent: #c084fc;
+}
+
+[data-theme="solarized-dark"] {
+  --color-app: #002b36;
+  --color-panel: #053340;
+  --color-panel-raised: #073642;
+  --color-surface: #0d4a5a;
+  --color-surface-hover: #114d5d;
+  --color-border: #0d4452;
+  --color-border-strong: #586e75;
+  --color-fg: #93a1a1;
+  --color-fg-bright: #eee8d5;
+  --color-muted: #839496;
+  --color-dim: #657b83;
+  --color-faint: #586e75;
+  --color-success: #859900;
+  --color-warning: #b58900;
+  --color-danger: #dc322f;
+  --color-info: #268bd2;
+  --color-accent: #6c71c4;
+}
+
+[data-theme="solarized-light"] {
+  --color-app: #fdf6e3;
+  --color-panel: #f5efd7;
+  --color-panel-raised: #eee8d5;
+  --color-surface: #eee8d5;
+  --color-surface-hover: #ded8c5;
+  --color-border: #eee8d5;
+  --color-border-strong: #93a1a1;
+  --color-fg: #657b83;
+  --color-fg-bright: #002b36;
+  --color-muted: #586e75;
+  --color-dim: #93a1a1;
+  --color-faint: #a9a49a;
+  --color-success: #859900;
+  --color-warning: #b58900;
+  --color-danger: #dc322f;
+  --color-info: #268bd2;
+  --color-accent: #6c71c4;
+}
+
+[data-theme="dracula"] {
+  --color-app: #282a36;
+  --color-panel: #2f3142;
+  --color-panel-raised: #21222c;
+  --color-surface: #44475a;
+  --color-surface-hover: #565970;
+  --color-border: #191a21;
+  --color-border-strong: #44475a;
+  --color-fg: #f8f8f2;
+  --color-fg-bright: #ffffff;
+  --color-muted: #bfbfbf;
+  --color-dim: #6272a4;
+  --color-faint: #4a5075;
+  --color-success: #50fa7b;
+  --color-warning: #f1fa8c;
+  --color-danger: #ff5555;
+  --color-info: #8be9fd;
+  --color-accent: #bd93f9;
+}
+
+[data-theme="nord"] {
+  --color-app: #2e3440;
+  --color-panel: #353b49;
+  --color-panel-raised: #3b4252;
+  --color-surface: #434c5e;
+  --color-surface-hover: #4c566a;
+  --color-border: #3b4252;
+  --color-border-strong: #4c566a;
+  --color-fg: #d8dee9;
+  --color-fg-bright: #eceff4;
+  --color-muted: #a3adc2;
+  --color-dim: #6b7590;
+  --color-faint: #4c566a;
+  --color-success: #a3be8c;
+  --color-warning: #ebcb8b;
+  --color-danger: #bf616a;
+  --color-info: #88c0d0;
+  --color-accent: #b48ead;
+}
+
+[data-theme="gruvbox-dark"] {
+  --color-app: #282828;
+  --color-panel: #2e2d2c;
+  --color-panel-raised: #32302f;
+  --color-surface: #3c3836;
+  --color-surface-hover: #504945;
+  --color-border: #3c3836;
+  --color-border-strong: #504945;
+  --color-fg: #ebdbb2;
+  --color-fg-bright: #fbf1c7;
+  --color-muted: #bdae93;
+  --color-dim: #928374;
+  --color-faint: #665c54;
+  --color-success: #b8bb26;
+  --color-warning: #fabd2f;
+  --color-danger: #fb4934;
+  --color-info: #83a598;
+  --color-accent: #d3869b;
+}
+
+[data-theme="tokyo-night"] {
+  --color-app: #1a1b26;
+  --color-panel: #1f2030;
+  --color-panel-raised: #16161e;
+  --color-surface: #292e42;
+  --color-surface-hover: #3b4261;
+  --color-border: #292e42;
+  --color-border-strong: #414868;
+  --color-fg: #c0caf5;
+  --color-fg-bright: #ffffff;
+  --color-muted: #a9b1d6;
+  --color-dim: #565f89;
+  --color-faint: #3b4261;
+  --color-success: #9ece6a;
+  --color-warning: #e0af68;
+  --color-danger: #f7768e;
+  --color-info: #7aa2f7;
+  --color-accent: #bb9af7;
+}
+
+[data-theme="catppuccin-mocha"] {
+  --color-app: #1e1e2e;
+  --color-panel: #24243a;
+  --color-panel-raised: #181825;
+  --color-surface: #313244;
+  --color-surface-hover: #45475a;
+  --color-border: #313244;
+  --color-border-strong: #45475a;
+  --color-fg: #cdd6f4;
+  --color-fg-bright: #ffffff;
+  --color-muted: #bac2de;
+  --color-dim: #7f849c;
+  --color-faint: #585b70;
+  --color-success: #a6e3a1;
+  --color-warning: #f9e2af;
+  --color-danger: #f38ba8;
+  --color-info: #89b4fa;
+  --color-accent: #cba6f7;
+}
+
+[data-theme="one-dark"] {
+  --color-app: #282c34;
+  --color-panel: #2d323c;
+  --color-panel-raised: #21252b;
+  --color-surface: #2c313a;
+  --color-surface-hover: #3e4451;
+  --color-border: #21252b;
+  --color-border-strong: #3e4451;
+  --color-fg: #abb2bf;
+  --color-fg-bright: #d7dae0;
+  --color-muted: #9da5b4;
+  --color-dim: #5c6370;
+  --color-faint: #4b5263;
+  --color-success: #98c379;
+  --color-warning: #e5c07b;
+  --color-danger: #e06c75;
+  --color-info: #61afef;
+  --color-accent: #c678dd;
+}
+
 @layer base {
   * {
     margin: 0;
@@ -10,8 +196,8 @@
   html, body, #root {
     height: 100%;
     overflow: hidden;
-    background: #0a0a0a;
-    color: #e5e5e5;
+    background: var(--color-app);
+    color: var(--color-fg);
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   }
 
@@ -23,7 +209,7 @@
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: #333;
+    background: var(--color-border-strong);
     border-radius: 3px;
   }
 }
