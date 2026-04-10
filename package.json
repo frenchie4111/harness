@@ -23,7 +23,8 @@
     "dist": "npm run build && dotenv -e .env -- electron-builder",
     "postdist": "npm run rebuild:dev",
     "dist:mac": "npm run build && dotenv -e .env -- electron-builder --mac",
-    "postdist:mac": "npm run rebuild:dev"
+    "postdist:mac": "npm run rebuild:dev",
+    "release": "./scripts/release.sh"
   },
   "build": {
     "appId": "org.mikelyons.harness",
