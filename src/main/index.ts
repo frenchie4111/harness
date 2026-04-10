@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, dialog, Menu, shell } from 'electron'
+import { autoUpdater } from 'electron-updater'
 import { join } from 'path'
 import { PtyManager } from './pty-manager'
 import { listWorktrees, listBranches, addWorktree, removeWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getPRStatus } from './worktree'
@@ -248,6 +249,43 @@ function buildMenu(): void {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }
 
+function setupAutoUpdater(): void {
+  if (!app.isPackaged) return // No-op in dev
+
+  autoUpdater.logger = {
+    info: (msg: string) => log('updater', msg),
+    warn: (msg: string) => log('updater', `[warn] ${msg}`),
+    error: (msg: string) => log('updater', `[error] ${msg}`),
+    debug: () => {}
+  } as Electron.Logger
+
+  autoUpdater.on('checking-for-update', () => log('updater', 'checking for update'))
+  autoUpdater.on('update-available', (info) => log('updater', 'update available', info.version))
+  autoUpdater.on('update-not-available', () => log('updater', 'no update available'))
+  autoUpdater.on('error', (err) => log('updater', 'error', err.message))
+  autoUpdater.on('download-progress', (p) => log('updater', `downloading ${Math.round(p.percent)}%`))
+  autoUpdater.on('update-downloaded', (info) => {
+    log('updater', 'update downloaded', info.version)
+    // Prompt the user to install
+    dialog.showMessageBox({
+      type: 'info',
+      buttons: ['Restart Now', 'Later'],
+      defaultId: 0,
+      title: 'Update Available',
+      message: `Harness ${info.version} has been downloaded.`,
+      detail: 'Restart the app to apply the update.'
+    }).then((result) => {
+      if (result.response === 0) autoUpdater.quitAndInstall()
+    })
+  })
+
+  // Check on startup, then every hour
+  autoUpdater.checkForUpdatesAndNotify().catch((err) => log('updater', 'check failed', err.message))
+  setInterval(() => {
+    autoUpdater.checkForUpdatesAndNotify().catch(() => {})
+  }, 60 * 60 * 1000)
+}
+
 app.whenReady().then(() => {
   log('app', `started, log file: ${getLogFilePath()}`)
 
@@ -274,6 +312,8 @@ app.whenReady().then(() => {
   } else {
     createWindow()
   }
+
+  setupAutoUpdater()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

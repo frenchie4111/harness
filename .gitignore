@@ -1,4 +1,7 @@
 node_modules/
 out/
 dist/
+release/
 *.tsbuildinfo
+.env
+.env.local
