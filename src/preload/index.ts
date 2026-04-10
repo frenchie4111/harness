@@ -33,16 +33,6 @@ contextBridge.exposeInMainWorld('api', {
   getClaudeCommand: () => ipcRenderer.invoke('config:getClaudeCommand'),
   setClaudeCommand: (command: string) => ipcRenderer.invoke('config:setClaudeCommand', command),
   getDefaultClaudeCommand: () => ipcRenderer.invoke('config:getDefaultClaudeCommand'),
-  getFreshClaudeCommand: () => ipcRenderer.invoke('config:getFreshClaudeCommand'),
-  setFreshClaudeCommand: (command: string) => ipcRenderer.invoke('config:setFreshClaudeCommand', command),
-  getDefaultFreshClaudeCommand: () => ipcRenderer.invoke('config:getDefaultFreshClaudeCommand'),
-  onFreshClaudeCommandChanged: (callback: (command: string) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, command: string): void => {
-      callback(command)
-    }
-    ipcRenderer.on('config:freshClaudeCommandChanged', handler)
-    return () => ipcRenderer.removeListener('config:freshClaudeCommandChanged', handler)
-  },
   getTheme: () => ipcRenderer.invoke('config:getTheme'),
   setTheme: (theme: string) => ipcRenderer.invoke('config:setTheme', theme),
   getAvailableThemes: () => ipcRenderer.invoke('config:getAvailableThemes'),
@@ -63,6 +53,7 @@ contextBridge.exposeInMainWorld('api', {
   },
   loadTerminalHistory: (id: string) => ipcRenderer.invoke('terminal:loadHistory', id),
   clearTerminalHistory: (id: string) => ipcRenderer.invoke('terminal:clearHistory', id),
+  getLatestClaudeSessionId: (cwd: string) => ipcRenderer.invoke('claude:latestSessionId', cwd),
   onClaudeCommandChanged: (callback: (command: string) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, command: string): void => {
       callback(command)

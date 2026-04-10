@@ -36,7 +36,6 @@ export default function App(): JSX.Element {
   )
   const [hotkeyOverrides, setHotkeyOverrides] = useState<Record<string, string> | undefined>(undefined)
   const [claudeCommand, setClaudeCommand] = useState<string>('')
-  const [freshClaudeCommand, setFreshClaudeCommand] = useState<string>('')
   // Flipped to true after persisted tabs finish loading, so the persist effect
   // below doesn't overwrite the on-disk state with empty initial React state.
   const tabsLoadedRef = useRef(false)
@@ -59,19 +58,40 @@ export default function App(): JSX.Element {
   // Load repo root, worktrees, and config on mount
   useEffect(() => {
     (async () => {
-      const [root, overrides, cmd, freshCmd, persistedTabs] = await Promise.all([
+      const [root, overrides, cmd, persistedTabs] = await Promise.all([
         window.api.getRepoRoot(),
         window.api.getHotkeyOverrides(),
         window.api.getClaudeCommand(),
-        window.api.getFreshClaudeCommand(),
         window.api.getTerminalTabs()
       ])
       if (overrides) setHotkeyOverrides(overrides)
       setClaudeCommand(cmd)
-      setFreshClaudeCommand(freshCmd)
-      // Restore persisted tabs (already typed as TerminalTab-compatible since
-      // PersistedTab only includes claude/shell tabs — a subset of TerminalTab)
-      if (persistedTabs?.tabs) setTerminalTabs(persistedTabs.tabs as Record<string, TerminalTab[]>)
+      // Restore persisted tabs, backfilling sessionId for any Claude tab
+      // missing one (legacy tabs from before per-tab session IDs existed).
+      // For the first legacy claude tab in each worktree, try to reuse the
+      // most recent session on disk (what `claude --continue` would have
+      // picked) so the user's existing conversation carries over. Subsequent
+      // legacy claude tabs in the same worktree get fresh UUIDs — they
+      // weren't resumable before anyway.
+      if (persistedTabs?.tabs) {
+        const restored: Record<string, TerminalTab[]> = {}
+        for (const [wtPath, tabs] of Object.entries(persistedTabs.tabs)) {
+          const needsBackfill = tabs.some((t) => t.type === 'claude' && !t.sessionId)
+          const latest = needsBackfill
+            ? await window.api.getLatestClaudeSessionId(wtPath)
+            : null
+          let claimedLatest = false
+          restored[wtPath] = tabs.map((t) => {
+            if (t.type !== 'claude' || t.sessionId) return t as TerminalTab
+            if (latest && !claimedLatest) {
+              claimedLatest = true
+              return { ...t, sessionId: latest }
+            }
+            return { ...t, sessionId: crypto.randomUUID() }
+          })
+        }
+        setTerminalTabs(restored)
+      }
       if (persistedTabs?.activeTabId) setActiveTabId(persistedTabs.activeTabId)
       tabsLoadedRef.current = true
       if (root) {
@@ -91,13 +111,13 @@ export default function App(): JSX.Element {
   // initial React state.
   useEffect(() => {
     if (!tabsLoadedRef.current) return
-    const persistable: Record<string, { id: string; type: 'claude' | 'shell'; label: string; fresh?: boolean }[]> = {}
+    const persistable: Record<string, { id: string; type: 'claude' | 'shell'; label: string; sessionId?: string }[]> = {}
     for (const [wtPath, tabs] of Object.entries(terminalTabs)) {
       const filtered = tabs.filter((t) => t.type !== 'diff') as {
         id: string
         type: 'claude' | 'shell'
         label: string
-        fresh?: boolean
+        sessionId?: string
       }[]
       if (filtered.length > 0) persistable[wtPath] = filtered
     }
@@ -129,13 +149,6 @@ export default function App(): JSX.Element {
   useEffect(() => {
     const cleanup = window.api.onClaudeCommandChanged((cmd) => {
       setClaudeCommand(cmd)
-    })
-    return cleanup
-  }, [])
-
-  useEffect(() => {
-    const cleanup = window.api.onFreshClaudeCommandChanged((cmd) => {
-      setFreshClaudeCommand(cmd)
     })
     return cleanup
   }, [])
@@ -251,7 +264,12 @@ export default function App(): JSX.Element {
     setTerminalTabs((prev) => {
       if (prev[activeWorktreeId] && prev[activeWorktreeId].length > 0) return prev
       const claudeTabId = makeTerminalId('claude', activeWorktreeId)
-      const tabs: TerminalTab[] = [{ id: claudeTabId, type: 'claude', label: 'Claude' }]
+      const tabs: TerminalTab[] = [{
+        id: claudeTabId,
+        type: 'claude',
+        label: 'Claude',
+        sessionId: crypto.randomUUID()
+      }]
       return { ...prev, [activeWorktreeId]: tabs }
     })
 
@@ -373,7 +391,12 @@ export default function App(): JSX.Element {
   const handleAddClaudeTab = useCallback(
     (worktreePath: string) => {
       const id = `${makeTerminalId('claude', worktreePath)}-${Date.now()}`
-      const tab: TerminalTab = { id, type: 'claude', label: 'Claude', fresh: true }
+      const tab: TerminalTab = {
+        id,
+        type: 'claude',
+        label: 'Claude',
+        sessionId: crypto.randomUUID()
+      }
       setTerminalTabs((prev) => ({
         ...prev,
         [worktreePath]: [...(prev[worktreePath] || []), tab]
@@ -652,7 +675,6 @@ export default function App(): JSX.Element {
                 onCloseTab={handleCloseTab}
                 visible={wt.path === activeWorktreeId}
                 claudeCommand={claudeCommand}
-                freshClaudeCommand={freshClaudeCommand}
               />
             </div>
           )

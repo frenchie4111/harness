@@ -1,6 +1,8 @@
 import { app, BrowserWindow, ipcMain, dialog, Menu, shell } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import { join } from 'path'
+import { readdirSync, statSync } from 'fs'
+import { homedir } from 'os'
 import { PtyManager } from './pty-manager'
 import { listWorktrees, listBranches, addWorktree, removeWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff } from './worktree'
 import { getPRStatus, testToken, starRepo } from './github'
@@ -10,7 +12,6 @@ import {
   saveConfig,
   saveConfigSync,
   DEFAULT_CLAUDE_COMMAND,
-  DEFAULT_FRESH_CLAUDE_COMMAND,
   DEFAULT_THEME,
   AVAILABLE_THEMES,
   THEME_APP_BG,
@@ -212,28 +213,6 @@ function registerIpcHandlers(): void {
     return DEFAULT_CLAUDE_COMMAND
   })
 
-  ipcMain.handle('config:getFreshClaudeCommand', () => {
-    return config.freshClaudeCommand || DEFAULT_FRESH_CLAUDE_COMMAND
-  })
-
-  ipcMain.handle('config:setFreshClaudeCommand', (_, command: string) => {
-    const trimmed = command.trim()
-    if (!trimmed || trimmed === DEFAULT_FRESH_CLAUDE_COMMAND) {
-      delete config.freshClaudeCommand
-    } else {
-      config.freshClaudeCommand = trimmed
-    }
-    saveConfig(config)
-    for (const win of BrowserWindow.getAllWindows()) {
-      if (!win.isDestroyed()) win.webContents.send('config:freshClaudeCommandChanged', config.freshClaudeCommand || DEFAULT_FRESH_CLAUDE_COMMAND)
-    }
-    return true
-  })
-
-  ipcMain.handle('config:getDefaultFreshClaudeCommand', () => {
-    return DEFAULT_FRESH_CLAUDE_COMMAND
-  })
-
   ipcMain.handle('config:getTheme', () => {
     return config.theme || DEFAULT_THEME
   })
@@ -295,6 +274,31 @@ function registerIpcHandlers(): void {
   ipcMain.handle('terminal:clearHistory', (_, id: string) => {
     clearTerminalHistory(id)
     return true
+  })
+
+  // Find the most recent Claude Code session ID for a given worktree path,
+  // by reading ~/.claude/projects/<encoded-cwd>/*.jsonl sorted by mtime.
+  // Used to migrate legacy Claude tabs (which resumed via `--continue`) onto
+  // the new per-tab `--session-id <uuid>` scheme without losing their session.
+  ipcMain.handle('claude:latestSessionId', (_, cwd: string): string | null => {
+    try {
+      const encoded = cwd.replace(/[^a-zA-Z0-9]/g, '-')
+      const dir = join(homedir(), '.claude', 'projects', encoded)
+      const files = readdirSync(dir).filter((f) => f.endsWith('.jsonl'))
+      if (files.length === 0) return null
+      let bestId: string | null = null
+      let bestMtime = -Infinity
+      for (const file of files) {
+        const mtime = statSync(join(dir, file)).mtimeMs
+        if (mtime > bestMtime) {
+          bestMtime = mtime
+          bestId = file.replace(/\.jsonl$/, '')
+        }
+      }
+      return bestId
+    } catch {
+      return null
+    }
   })
 
   // Settings: GitHub token

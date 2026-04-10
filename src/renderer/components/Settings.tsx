@@ -142,9 +142,6 @@ export function Settings({ onClose }: SettingsProps): JSX.Element {
   const [claudeCommand, setClaudeCommand] = useState<string>('')
   const [defaultClaudeCommand, setDefaultClaudeCommand] = useState<string>('')
   const [claudeSaveResult, setClaudeSaveResult] = useState<{ ok: boolean; message: string } | null>(null)
-  const [freshClaudeCommand, setFreshClaudeCommand] = useState<string>('')
-  const [defaultFreshClaudeCommand, setDefaultFreshClaudeCommand] = useState<string>('')
-  const [freshClaudeSaveResult, setFreshClaudeSaveResult] = useState<{ ok: boolean; message: string } | null>(null)
 
   // Theme state
   const [theme, setThemeState] = useState<string>('dark')
@@ -155,8 +152,6 @@ export function Settings({ onClose }: SettingsProps): JSX.Element {
     window.api.getHotkeyOverrides().then((v) => setHotkeyOverrides(v))
     window.api.getClaudeCommand().then(setClaudeCommand)
     window.api.getDefaultClaudeCommand().then(setDefaultClaudeCommand)
-    window.api.getFreshClaudeCommand().then(setFreshClaudeCommand)
-    window.api.getDefaultFreshClaudeCommand().then(setDefaultFreshClaudeCommand)
     window.api.getTheme().then(setThemeState)
   }, [])
 
@@ -265,18 +260,6 @@ export function Settings({ onClose }: SettingsProps): JSX.Element {
     await window.api.setClaudeCommand(defaultClaudeCommand)
     setClaudeSaveResult({ ok: true, message: 'Reset to default' })
   }, [defaultClaudeCommand])
-
-  const handleSaveFreshClaudeCommand = useCallback(async () => {
-    setFreshClaudeSaveResult(null)
-    await window.api.setFreshClaudeCommand(freshClaudeCommand)
-    setFreshClaudeSaveResult({ ok: true, message: 'Saved · new Claude tabs will use this command' })
-  }, [freshClaudeCommand])
-
-  const handleResetFreshClaudeCommand = useCallback(async () => {
-    setFreshClaudeCommand(defaultFreshClaudeCommand)
-    await window.api.setFreshClaudeCommand(defaultFreshClaudeCommand)
-    setFreshClaudeSaveResult({ ok: true, message: 'Reset to default' })
-  }, [defaultFreshClaudeCommand])
 
   const isOverridden = (action: Action): boolean => {
     if (!hotkeyOverrides || !(action in hotkeyOverrides)) return false
@@ -438,7 +421,7 @@ export function Settings({ onClose }: SettingsProps): JSX.Element {
                   Launch command
                 </label>
                 <p className="text-xs text-dim mb-2">
-                  Run when a worktree's initial Claude tab starts. Should resume the existing session if possible.
+                  Harness appends <code className="bg-panel px-1 rounded">--session-id &lt;uuid&gt;</code> to this command so each tab has its own stable, resumable Claude session.
                 </p>
                 <textarea
                   value={claudeCommand}
@@ -476,56 +459,12 @@ export function Settings({ onClose }: SettingsProps): JSX.Element {
                 )}
               </div>
 
-              <div className="bg-panel-raised border border-border rounded-lg p-4 mt-4">
-                <label className="block text-sm font-medium text-fg mb-1">
-                  New-tab command
-                </label>
-                <p className="text-xs text-dim mb-2">
-                  Run when you open an additional Claude tab via the sparkles button. Should start a fresh session — don&apos;t use <code className="bg-panel px-1 rounded">--continue</code> or it will conflict with the existing tab&apos;s session.
-                </p>
-                <textarea
-                  value={freshClaudeCommand}
-                  onChange={(e) => setFreshClaudeCommand(e.target.value)}
-                  rows={2}
-                  spellCheck={false}
-                  className="w-full bg-panel border border-border-strong rounded px-3 py-2 text-xs text-fg-bright placeholder-faint outline-none focus:border-fg font-mono resize-y"
-                  placeholder={defaultFreshClaudeCommand}
-                />
-
-                <div className="flex items-center gap-2 mt-3">
-                  <button
-                    onClick={handleSaveFreshClaudeCommand}
-                    disabled={!freshClaudeCommand.trim()}
-                    className="px-3 py-1.5 bg-surface hover:bg-surface-hover disabled:opacity-40 rounded text-sm text-fg-bright transition-colors cursor-pointer"
-                  >
-                    Save
-                  </button>
-                  {freshClaudeCommand !== defaultFreshClaudeCommand && defaultFreshClaudeCommand && (
-                    <button
-                      onClick={handleResetFreshClaudeCommand}
-                      className="flex items-center gap-1 px-3 py-1.5 text-sm text-dim hover:text-fg transition-colors cursor-pointer"
-                    >
-                      <RotateCcw size={12} />
-                      Reset to default
-                    </button>
-                  )}
-                </div>
-
-                {freshClaudeSaveResult && (
-                  <div className={`mt-3 text-xs flex items-center gap-1.5 ${freshClaudeSaveResult.ok ? 'text-success' : 'text-danger'}`}>
-                    {freshClaudeSaveResult.ok ? <Check size={12} /> : <X size={12} />}
-                    {freshClaudeSaveResult.message}
-                  </div>
-                )}
-              </div>
-
               <div className="mt-4 text-xs text-dim space-y-2">
                 <p>
                   Default: <code className="bg-panel-raised px-1 rounded text-[10px] break-all">{defaultClaudeCommand}</code>
                 </p>
                 <p>
                   Common variations:{' '}
-                  <code className="bg-panel-raised px-1 rounded text-[10px]">claude</code> (no resume),{' '}
                   <code className="bg-panel-raised px-1 rounded text-[10px]">claude --model opus-4</code>,{' '}
                   <code className="bg-panel-raised px-1 rounded text-[10px]">claude --dangerously-skip-permissions</code>
                 </p>

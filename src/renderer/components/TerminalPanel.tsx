@@ -14,7 +14,6 @@ interface TerminalPanelProps {
   onCloseTab: (worktreePath: string, tabId: string) => void
   visible: boolean
   claudeCommand: string
-  freshClaudeCommand: string
 }
 
 const TAB_STATUS_DOT: Record<PtyStatus, string> = {
@@ -34,8 +33,7 @@ export function TerminalPanel({
   onAddClaudeTab,
   onCloseTab,
   visible,
-  claudeCommand,
-  freshClaudeCommand
+  claudeCommand
 }: TerminalPanelProps): JSX.Element {
   return (
     <div className="flex-1 flex flex-col min-w-0 bg-app">
@@ -108,7 +106,8 @@ export function TerminalPanel({
                 cwd={worktreePath}
                 type={tab.type}
                 visible={visible && tab.id === activeTabId}
-                claudeCommand={tab.fresh ? freshClaudeCommand : claudeCommand}
+                claudeCommand={claudeCommand}
+                sessionId={tab.sessionId}
               />
             )}
           </div>

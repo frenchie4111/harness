@@ -14,15 +14,15 @@ export interface TerminalTab {
   filePath?: string
   /** For diff tabs: whether the diff is for staged changes */
   staged?: boolean
-  /** For claude tabs: start a fresh session instead of running the configured command (which usually --continues) */
-  fresh?: boolean
+  /** For claude tabs: UUID passed to `claude --session-id` so the tab resumes its own session. */
+  sessionId?: string
 }
 
 export interface PersistedTab {
   id: string
   type: 'claude' | 'shell'
   label: string
-  fresh?: boolean
+  sessionId?: string
 }
 
 export type PtyStatus = 'idle' | 'processing' | 'waiting' | 'needs-approval'
@@ -81,11 +81,6 @@ export interface ElectronAPI {
   getDefaultClaudeCommand(): Promise<string>
   onClaudeCommandChanged(callback: (command: string) => void): () => void
 
-  getFreshClaudeCommand(): Promise<string>
-  setFreshClaudeCommand(command: string): Promise<boolean>
-  getDefaultFreshClaudeCommand(): Promise<string>
-  onFreshClaudeCommandChanged(callback: (command: string) => void): () => void
-
   getTheme(): Promise<string>
   setTheme(theme: string): Promise<boolean>
   getAvailableThemes(): Promise<readonly string[]>
@@ -103,6 +98,7 @@ export interface ElectronAPI {
   saveTerminalHistorySync(id: string, content: string): void
   loadTerminalHistory(id: string): Promise<string | null>
   clearTerminalHistory(id: string): Promise<boolean>
+  getLatestClaudeSessionId(cwd: string): Promise<string | null>
 
   hasGithubToken(): Promise<boolean>
   setGithubToken(token: string, options?: { starRepo?: boolean }): Promise<{ ok: boolean; username?: string; error?: string; starred?: boolean }>
