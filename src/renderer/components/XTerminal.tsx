@@ -44,9 +44,11 @@ interface XTerminalProps {
   visible: boolean
   claudeCommand: string
   sessionId?: string
+  onRestartClaude?: () => void
 }
 
-export function XTerminal({ terminalId, cwd, type, visible, claudeCommand, sessionId }: XTerminalProps): JSX.Element {
+export function XTerminal({ terminalId, cwd, type, visible, claudeCommand, sessionId, onRestartClaude }: XTerminalProps): JSX.Element {
+  const [exited, setExited] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
@@ -140,12 +142,32 @@ export function XTerminal({ terminalId, cwd, type, visible, claudeCommand, sessi
     // Restore scrollback (if any) before spawning the PTY so historical output
     // appears above the fresh shell's prompt.
     let cleanupData: (() => void) | null = null
+    let cleanupExit: (() => void) | null = null
     let disposed = false
 
-    const spawnPty = (): void => {
+    if (type === 'claude') {
+      cleanupExit = window.api.onTerminalExit((id) => {
+        if (id === terminalId && !disposed) setExited(true)
+      })
+    }
+
+    const buildClaudeArg = async (): Promise<string> => {
+      if (!sessionId) return claudeCommand
+      // If a session file already exists for this id, resume it; otherwise
+      // create a new session with this id. `claude --session-id <id>` errors
+      // with "is already in use" when the file exists, so we can't use it
+      // idempotently across launches.
+      const exists = await window.api.claudeSessionFileExists(cwd, sessionId)
+      return exists
+        ? `${claudeCommand} --resume ${sessionId}`
+        : `${claudeCommand} --session-id ${sessionId}`
+    }
+
+    const spawnPty = async (): Promise<void> => {
       if (disposed) return
       const shell = '/bin/zsh'
-      const claudeArg = sessionId ? `${claudeCommand} --session-id ${sessionId}` : claudeCommand
+      const claudeArg = type === 'claude' ? await buildClaudeArg() : ''
+      if (disposed) return
       const args = type === 'claude' ? ['-ilc', claudeArg] : ['-il']
       window.api.createTerminal(terminalId, cwd, shell, args)
 
@@ -236,6 +258,7 @@ export function XTerminal({ terminalId, cwd, type, visible, claudeCommand, sessi
       closingIds.delete(terminalId)
       resizeObserver.disconnect()
       cleanupData?.()
+      cleanupExit?.()
       terminal.dispose()
       window.api.killTerminal(terminalId)
     }
@@ -284,6 +307,19 @@ export function XTerminal({ terminalId, cwd, type, visible, claudeCommand, sessi
           <div className="flex items-center gap-2 text-dim text-sm">
             <Loader2 size={16} className="animate-spin" />
             Starting Claude…
+          </div>
+        </div>
+      )}
+      {exited && type === 'claude' && onRestartClaude && (
+        <div className="absolute inset-0 flex items-center justify-center bg-app/80">
+          <div className="flex flex-col items-center gap-3 text-sm">
+            <div className="text-dim">Claude exited.</div>
+            <button
+              onClick={onRestartClaude}
+              className="px-3 py-1.5 rounded border border-border bg-panel text-fg-bright hover:bg-border transition-colors"
+            >
+              Start a new session
+            </button>
           </div>
         </div>
       )}

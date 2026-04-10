@@ -61,6 +61,7 @@ export class PtyManager {
       const win = BrowserWindow.fromId(instance.windowId)
       if (win && !win.isDestroyed()) {
         win.webContents.send('terminal:status', id, 'idle')
+        win.webContents.send('terminal:exit', id, exitCode)
       }
       this.ptys.delete(id)
     })

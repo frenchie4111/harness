@@ -74,10 +74,9 @@ export default function App(): JSX.Element {
       // Restore persisted tabs, backfilling sessionId for any Claude tab
       // missing one (legacy tabs from before per-tab session IDs existed).
       // For the first legacy claude tab in each worktree, try to reuse the
-      // most recent session on disk (what `claude --continue` would have
-      // picked) so the user's existing conversation carries over. Subsequent
-      // legacy claude tabs in the same worktree get fresh UUIDs — they
-      // weren't resumable before anyway.
+      // most recent session on disk so the user's existing conversation
+      // carries over — the spawn path will use `--resume` when the file
+      // exists. Subsequent legacy tabs get fresh UUIDs.
       if (persistedTabs?.tabs) {
         const restored: Record<string, TerminalTab[]> = {}
         for (const [wtPath, tabs] of Object.entries(persistedTabs.tabs)) {
@@ -444,6 +443,29 @@ export default function App(): JSX.Element {
     [terminalTabs]
   )
 
+  const handleRestartClaudeTab = useCallback(
+    (worktreePath: string, tabId: string) => {
+      markTerminalClosing(tabId)
+      window.api.killTerminal(tabId)
+      window.api.clearTerminalHistory(tabId)
+      const newId = `${makeTerminalId('claude', worktreePath)}-${Date.now()}`
+      const newSessionId = crypto.randomUUID()
+      setTerminalTabs((prev) => {
+        const tabs = prev[worktreePath] || []
+        const next = tabs.map((t) =>
+          t.id === tabId && t.type === 'claude'
+            ? { ...t, id: newId, sessionId: newSessionId }
+            : t
+        )
+        return { ...prev, [worktreePath]: next }
+      })
+      setActiveTabId((prev) =>
+        prev[worktreePath] === tabId ? { ...prev, [worktreePath]: newId } : prev
+      )
+    },
+    []
+  )
+
   const handleSelectTab = useCallback((worktreePath: string, tabId: string) => {
     setActiveTabId((prev) => ({ ...prev, [worktreePath]: tabId }))
   }, [])
@@ -734,6 +756,7 @@ export default function App(): JSX.Element {
                 onAddTab={handleAddTerminalTab}
                 onAddClaudeTab={handleAddClaudeTab}
                 onCloseTab={handleCloseTab}
+                onRestartClaudeTab={handleRestartClaudeTab}
                 visible={wt.path === activeWorktreeId}
                 claudeCommand={claudeCommand}
               />

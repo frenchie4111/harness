@@ -1,8 +1,8 @@
 import { app, BrowserWindow, ipcMain, dialog, Menu, shell } from 'electron'
 import { autoUpdater } from 'electron-updater'
-import { join } from 'path'
-import { readdirSync, statSync } from 'fs'
+import { existsSync, readdirSync, statSync } from 'fs'
 import { homedir } from 'os'
+import { join } from 'path'
 import { PtyManager } from './pty-manager'
 import { listWorktrees, listBranches, addWorktree, removeWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff } from './worktree'
 import { getPRStatus, testToken, starRepo } from './github'
@@ -333,10 +333,24 @@ function registerIpcHandlers(): void {
     return true
   })
 
+  // Check whether a Claude session file already exists on disk for
+  // `<cwd>/<sessionId>.jsonl`. When it does, the tab should spawn with
+  // `--resume <id>` instead of `--session-id <id>` — claude refuses the
+  // latter on an existing session file with "is already in use".
+  ipcMain.handle('claude:sessionFileExists', (_, cwd: string, sessionId: string): boolean => {
+    try {
+      const encoded = cwd.replace(/[^a-zA-Z0-9]/g, '-')
+      return existsSync(join(homedir(), '.claude', 'projects', encoded, `${sessionId}.jsonl`))
+    } catch {
+      return false
+    }
+  })
+
   // Find the most recent Claude Code session ID for a given worktree path,
   // by reading ~/.claude/projects/<encoded-cwd>/*.jsonl sorted by mtime.
   // Used to migrate legacy Claude tabs (which resumed via `--continue`) onto
-  // the new per-tab `--session-id <uuid>` scheme without losing their session.
+  // the new per-tab scheme without losing their session — the spawn path
+  // uses `--resume` when the file exists.
   ipcMain.handle('claude:latestSessionId', (_, cwd: string): string | null => {
     try {
       const encoded = cwd.replace(/[^a-zA-Z0-9]/g, '-')

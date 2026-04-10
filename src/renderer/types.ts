@@ -120,6 +120,7 @@ export interface ElectronAPI {
   saveTerminalHistorySync(id: string, content: string): void
   loadTerminalHistory(id: string): Promise<string | null>
   clearTerminalHistory(id: string): Promise<boolean>
+  claudeSessionFileExists(cwd: string, sessionId: string): Promise<boolean>
   getLatestClaudeSessionId(cwd: string): Promise<string | null>
 
   hasGithubToken(): Promise<boolean>
@@ -143,6 +144,7 @@ export interface ElectronAPI {
   killTerminal(id: string): void
   onTerminalData(callback: (id: string, data: string) => void): () => void
   onStatusChange(callback: (id: string, status: PtyStatus) => void): () => void
+  onTerminalExit(callback: (id: string, exitCode: number) => void): () => void
 }
 
 declare global {

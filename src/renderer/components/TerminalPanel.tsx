@@ -13,6 +13,7 @@ interface TerminalPanelProps {
   onAddTab: (worktreePath: string) => void
   onAddClaudeTab: (worktreePath: string) => void
   onCloseTab: (worktreePath: string, tabId: string) => void
+  onRestartClaudeTab: (worktreePath: string, tabId: string) => void
   visible: boolean
   claudeCommand: string
 }
@@ -33,6 +34,7 @@ export function TerminalPanel({
   onAddTab,
   onAddClaudeTab,
   onCloseTab,
+  onRestartClaudeTab,
   visible,
   claudeCommand
 }: TerminalPanelProps): JSX.Element {
@@ -122,6 +124,11 @@ export function TerminalPanel({
                 visible={visible && tab.id === activeTabId}
                 claudeCommand={claudeCommand}
                 sessionId={tab.sessionId}
+                onRestartClaude={
+                  tab.type === 'claude'
+                    ? () => onRestartClaudeTab(worktreePath, tab.id)
+                    : undefined
+                }
               />
             )}
           </div>

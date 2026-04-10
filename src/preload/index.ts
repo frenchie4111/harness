@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 
 type StatusCallback = (id: string, status: string) => void
 type DataCallback = (id: string, data: string) => void
+type ExitCallback = (id: string, exitCode: number) => void
 
 contextBridge.exposeInMainWorld('api', {
   // Worktrees
@@ -55,6 +56,8 @@ contextBridge.exposeInMainWorld('api', {
   },
   loadTerminalHistory: (id: string) => ipcRenderer.invoke('terminal:loadHistory', id),
   clearTerminalHistory: (id: string) => ipcRenderer.invoke('terminal:clearHistory', id),
+  claudeSessionFileExists: (cwd: string, sessionId: string) =>
+    ipcRenderer.invoke('claude:sessionFileExists', cwd, sessionId),
   getLatestClaudeSessionId: (cwd: string) => ipcRenderer.invoke('claude:latestSessionId', cwd),
   onClaudeCommandChanged: (callback: (command: string) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, command: string): void => {
@@ -140,5 +143,12 @@ contextBridge.exposeInMainWorld('api', {
     }
     ipcRenderer.on('terminal:status', handler)
     return () => ipcRenderer.removeListener('terminal:status', handler)
+  },
+  onTerminalExit: (callback: ExitCallback) => {
+    const handler = (_event: Electron.IpcRendererEvent, id: string, exitCode: number): void => {
+      callback(id, exitCode)
+    }
+    ipcRenderer.on('terminal:exit', handler)
+    return () => ipcRenderer.removeListener('terminal:exit', handler)
   }
 })
