@@ -25,6 +25,7 @@ function createWindow(repoRoot?: string): BrowserWindow {
     height: bounds.height,
     ...(bounds.x != null ? { x: bounds.x, y: bounds.y } : {}),
     title: 'Harness',
+    icon: join(__dirname, '../../resources/icon.png'),
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 12, y: 12 },
     backgroundColor: '#0a0a0a',
@@ -249,6 +250,16 @@ function buildMenu(): void {
 
 app.whenReady().then(() => {
   log('app', `started, log file: ${getLogFilePath()}`)
+
+  // Set dock icon (macOS dev mode — packaged builds use the .icns from the app bundle)
+  if (process.platform === 'darwin' && app.dock) {
+    try {
+      app.dock.setIcon(join(__dirname, '../../resources/icon.png'))
+    } catch (err) {
+      log('app', 'failed to set dock icon', err instanceof Error ? err.message : err)
+    }
+  }
+
   buildMenu()
   registerIpcHandlers()
 
