@@ -141,13 +141,33 @@ export function XTerminal({ terminalId, cwd, type, visible, claudeCommand, sessi
 
     window.api.loadTerminalHistory(terminalId).then((history) => {
       if (disposed) return
-      if (history) {
-        terminal.write(history)
-        // Visual separator between restored history and the fresh shell session
-        terminal.write('\r\n\x1b[2m── session restored ──\x1b[0m\r\n')
-        setLoading(false)
+      if (!history) {
+        spawnPty()
+        return
       }
-      spawnPty()
+      // Replay scrollback. Wait for xterm to finish parsing before attaching
+      // onData, otherwise any response sequences xterm generates mid-parse
+      // (e.g. focus reports from CSI ?1004h in the saved history) get sent to
+      // the freshly spawned PTY — which is how a stray "O" was leaking into
+      // Claude on session resume (focus-out = ESC [ O).
+      terminal.write(history, () => {
+        if (disposed) return
+        // History is on screen — user sees something, dismiss the spinner.
+        setLoading(false)
+        // Reset any reporting modes the restored session may have left on, so
+        // the fresh process starts in a clean state.
+        const RESET_MODES =
+          '\x1b[?1004l' + // focus reporting
+          '\x1b[?1000l' + // mouse click tracking
+          '\x1b[?1002l' + // mouse cell tracking
+          '\x1b[?1003l' + // mouse all tracking
+          '\x1b[?1006l' + // SGR mouse encoding
+          '\x1b[?2004l'   // bracketed paste
+        terminal.write(RESET_MODES + '\r\n\x1b[2m── session restored ──\x1b[0m\r\n', () => {
+          if (disposed) return
+          spawnPty()
+        })
+      })
     }).catch(() => {
       spawnPty()
     })
