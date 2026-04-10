@@ -61,6 +61,13 @@ contextBridge.exposeInMainWorld('api', {
   // Shell
   openExternal: (url: string) => ipcRenderer.send('shell:openExternal', url),
 
+  // App-level events from menu
+  onOpenSettings: (callback: () => void) => {
+    const handler = (): void => callback()
+    ipcRenderer.on('app:openSettings', handler)
+    return () => ipcRenderer.removeListener('app:openSettings', handler)
+  },
+
   // Hooks
   checkHooks: (worktreePath: string) => ipcRenderer.invoke('hooks:check', worktreePath),
   installHooks: (worktreePath: string) => ipcRenderer.invoke('hooks:install', worktreePath),

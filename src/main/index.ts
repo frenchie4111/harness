@@ -294,12 +294,25 @@ function registerIpcHandlers(): void {
   })
 }
 
+function openSettingsInFocusedWindow(): void {
+  const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0]
+  if (win && !win.isDestroyed()) {
+    win.webContents.send('app:openSettings')
+  }
+}
+
 function buildMenu(): void {
   const template: Electron.MenuItemConstructorOptions[] = [
     {
       label: app.name,
       submenu: [
         { role: 'about' },
+        { type: 'separator' },
+        {
+          label: 'Settings…',
+          accelerator: 'CmdOrCtrl+,',
+          click: openSettingsInFocusedWindow
+        },
         { type: 'separator' },
         { role: 'hide' },
         { role: 'hideOthers' },

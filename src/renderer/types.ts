@@ -82,6 +82,7 @@ export interface ElectronAPI {
   onUpdaterStatus(callback: (status: UpdaterStatus) => void): () => void
 
   openExternal(url: string): void
+  onOpenSettings(callback: () => void): () => void
 
   checkHooks(worktreePath: string): Promise<boolean>
   installHooks(worktreePath: string): Promise<boolean>

@@ -74,6 +74,12 @@ export default function App(): JSX.Element {
     return cleanup
   }, [])
 
+  // Open Settings from the menu (Cmd+,)
+  useEffect(() => {
+    const cleanup = window.api.onOpenSettings(() => setShowSettings(true))
+    return cleanup
+  }, [])
+
   // Fetch PR status for all worktrees in parallel (on initial load)
   const fetchAllPRStatuses = useCallback(async () => {
     if (worktrees.length === 0) return
