@@ -130,7 +130,10 @@ export function Sidebar({
 
       {/* Create worktree form */}
       {showCreate && (
-        <div className="border-t border-border p-2">
+        <div className="border-t-2 border-accent bg-panel-raised p-2.5 shadow-lg">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-accent mb-1.5 px-0.5">
+            New worktree
+          </div>
           <input
             type="text"
             value={branchName}
@@ -139,7 +142,7 @@ export function Sidebar({
             placeholder="branch-name"
             autoFocus
             disabled={creating}
-            className="w-full bg-panel-raised border border-border-strong rounded px-2 py-1.5 text-xs text-fg-bright placeholder-faint outline-none focus:border-fg"
+            className="w-full bg-app border-2 border-border-strong rounded px-2 py-1.5 text-xs text-fg-bright placeholder-faint outline-none focus:border-accent"
           />
           {error && (
             <div className="text-xs text-danger mt-1 px-1 truncate" title={error}>
@@ -150,7 +153,7 @@ export function Sidebar({
             <button
               onClick={handleCreate}
               disabled={creating || !branchName.trim()}
-              className="flex-1 text-xs bg-surface hover:bg-surface-hover disabled:opacity-40 rounded px-2 py-1 text-fg-bright transition-colors cursor-pointer"
+              className="flex-1 text-xs bg-accent hover:opacity-90 disabled:opacity-40 rounded px-2 py-1 text-app font-semibold transition-opacity cursor-pointer"
             >
               {creating ? 'Creating...' : 'Create'}
             </button>
