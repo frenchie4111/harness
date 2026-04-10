@@ -244,6 +244,17 @@ export default function App(): JSX.Element {
     return cleanup
   }, [terminalToWorktree, markActive, fetchPRStatus])
 
+  // Auto-focus the active terminal when switching worktrees so the user can
+  // start typing immediately. Deferred to the next frame so the xterm layer
+  // is visible (TerminalPanels use display:none for inactive worktrees).
+  useEffect(() => {
+    if (!activeWorktreeId) return
+    const tabId = activeTabId[activeWorktreeId]
+    if (!tabId || tabId.startsWith('diff-')) return
+    const raf = requestAnimationFrame(() => focusTerminalById(tabId))
+    return () => cancelAnimationFrame(raf)
+  }, [activeWorktreeId, activeTabId])
+
   // When a worktree becomes active, check hooks and set up tabs
   useEffect(() => {
     if (!activeWorktreeId) return
