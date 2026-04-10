@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useMemo } from 'react'
 import { ChevronDown, ChevronRight, Plus, RefreshCw, FolderOpen, Loader2, Settings as SettingsIcon } from 'lucide-react'
+import { Tooltip } from './Tooltip'
 import type { Worktree, PtyStatus, PRStatus } from '../types'
 import type { GroupKey } from '../worktree-sort'
 import { groupWorktrees } from '../worktree-sort'
@@ -174,34 +175,38 @@ export function Sidebar({
 
       {/* Bottom actions */}
       <div className="border-t border-border p-2 flex justify-center gap-1 shrink-0">
-        <button
-          onClick={() => setShowCreate(!showCreate)}
-          className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
-          title="New worktree"
-        >
-          <Plus size={14} />
-        </button>
-        <button
-          onClick={onRefresh}
-          className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
-          title="Refresh worktrees"
-        >
-          <RefreshCw size={14} />
-        </button>
-        <button
-          onClick={onSelectRepo}
-          className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
-          title="Change repository"
-        >
-          <FolderOpen size={14} />
-        </button>
-        <button
-          onClick={onOpenSettings}
-          className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
-          title="Settings"
-        >
-          <SettingsIcon size={14} />
-        </button>
+        <Tooltip label="New worktree" action="newWorktree" side="top">
+          <button
+            onClick={() => setShowCreate(!showCreate)}
+            className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
+          >
+            <Plus size={14} />
+          </button>
+        </Tooltip>
+        <Tooltip label="Refresh worktrees" action="refreshWorktrees" side="top">
+          <button
+            onClick={onRefresh}
+            className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
+          >
+            <RefreshCw size={14} />
+          </button>
+        </Tooltip>
+        <Tooltip label="Change repository" side="top">
+          <button
+            onClick={onSelectRepo}
+            className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
+          >
+            <FolderOpen size={14} />
+          </button>
+        </Tooltip>
+        <Tooltip label="Settings" side="top">
+          <button
+            onClick={onOpenSettings}
+            className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
+          >
+            <SettingsIcon size={14} />
+          </button>
+        </Tooltip>
       </div>
     </div>
   )

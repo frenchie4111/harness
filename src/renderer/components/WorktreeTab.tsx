@@ -1,5 +1,6 @@
 import { GitPullRequest, X } from 'lucide-react'
 import type { Worktree, PtyStatus, PRStatus } from '../types'
+import { Tooltip } from './Tooltip'
 
 interface WorktreeTabProps {
   worktree: Worktree
@@ -83,16 +84,17 @@ export function WorktreeTab({ worktree, isActive, status, prStatus, onClick, onD
         </div>
       </div>
       {onDelete && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation()
-            onDelete()
-          }}
-          className="opacity-0 group-hover:opacity-100 text-faint hover:text-danger transition-all shrink-0 cursor-pointer"
-          title="Remove worktree"
-        >
-          <X size={12} />
-        </button>
+        <Tooltip label="Remove worktree" side="left">
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onDelete()
+            }}
+            className="opacity-0 group-hover:opacity-100 text-faint hover:text-danger transition-all shrink-0 cursor-pointer"
+          >
+            <X size={12} />
+          </button>
+        </Tooltip>
       )}
     </div>
   )

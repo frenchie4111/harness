@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2 } from 'lucide-react'
 import type { UpdaterStatus } from '../types'
 import { DEFAULT_HOTKEYS, ACTION_LABELS, bindingToString, eventToBinding, resolveHotkeys, type Action, type HotkeyBinding } from '../hotkeys'
+import { Tooltip } from './Tooltip'
 
 interface SettingsProps {
   onClose: () => void
@@ -668,13 +669,14 @@ export function Settings({ onClose, onOpenGuide }: SettingsProps): JSX.Element {
                       <span className="text-sm text-fg">{ACTION_LABELS[action]}</span>
                       <div className="flex items-center gap-2">
                         {overridden && (
-                          <button
-                            onClick={() => handleResetHotkey(action)}
-                            className="text-xs text-dim hover:text-fg transition-colors cursor-pointer"
-                            title="Reset to default"
-                          >
-                            <RotateCcw size={11} />
-                          </button>
+                          <Tooltip label="Reset to default">
+                            <button
+                              onClick={() => handleResetHotkey(action)}
+                              className="text-xs text-dim hover:text-fg transition-colors cursor-pointer"
+                            >
+                              <RotateCcw size={11} />
+                            </button>
+                          </Tooltip>
                         )}
                         <button
                           onClick={() => setRebindingAction(isRebinding ? null : action)}

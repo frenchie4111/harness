@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { RefreshCw, FileEdit, GitBranch, Code2 } from 'lucide-react'
 import type { ChangedFile } from '../types'
+import { Tooltip } from './Tooltip'
 
 type Mode = 'working' | 'branch'
 
@@ -63,32 +64,35 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff }: ChangedFilesPane
         </span>
         <div className="no-drag flex items-center gap-2">
           <div className="flex items-center rounded border border-border-strong bg-panel-raised/50 p-0.5">
-            <button
-              onClick={() => setMode('working')}
-              className={`flex items-center rounded px-1.5 py-0.5 transition-colors cursor-pointer ${
-                mode === 'working' ? 'bg-surface text-fg' : 'text-faint hover:text-fg'
-              }`}
-              title="Working tree — uncommitted staged, unstaged, and untracked changes"
-            >
-              <FileEdit size={12} />
-            </button>
-            <button
-              onClick={() => setMode('branch')}
-              className={`flex items-center rounded px-1.5 py-0.5 transition-colors cursor-pointer ${
-                mode === 'branch' ? 'bg-surface text-fg' : 'text-faint hover:text-fg'
-              }`}
-              title="Branch diff — all files this branch changes vs. the base branch (same as the PR)"
-            >
-              <GitBranch size={12} />
-            </button>
+            <Tooltip label="Working tree — uncommitted changes">
+              <button
+                onClick={() => setMode('working')}
+                className={`flex items-center rounded px-1.5 py-0.5 transition-colors cursor-pointer ${
+                  mode === 'working' ? 'bg-surface text-fg' : 'text-faint hover:text-fg'
+                }`}
+              >
+                <FileEdit size={12} />
+              </button>
+            </Tooltip>
+            <Tooltip label="Branch diff — files changed vs. the base branch (same as the PR)">
+              <button
+                onClick={() => setMode('branch')}
+                className={`flex items-center rounded px-1.5 py-0.5 transition-colors cursor-pointer ${
+                  mode === 'branch' ? 'bg-surface text-fg' : 'text-faint hover:text-fg'
+                }`}
+              >
+                <GitBranch size={12} />
+              </button>
+            </Tooltip>
           </div>
-          <button
-            onClick={refresh}
-            className="text-faint hover:text-fg transition-colors cursor-pointer"
-            title="Refresh"
-          >
-            <RefreshCw size={12} />
-          </button>
+          <Tooltip label="Refresh">
+            <button
+              onClick={refresh}
+              className="text-faint hover:text-fg transition-colors cursor-pointer"
+            >
+              <RefreshCw size={12} />
+            </button>
+          </Tooltip>
         </div>
       </div>
 
@@ -184,16 +188,17 @@ function FileRow({
         <span className="text-fg">{name}</span>
       </span>
       {worktreePath && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation()
-            window.api.openInEditor(worktreePath, file.path)
-          }}
-          className="shrink-0 opacity-0 group-hover:opacity-100 text-faint hover:text-fg transition-all cursor-pointer"
-          title="Open file in editor"
-        >
-          <Code2 size={11} />
-        </button>
+        <Tooltip label="Open file in editor" side="left">
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              window.api.openInEditor(worktreePath, file.path)
+            }}
+            className="shrink-0 opacity-0 group-hover:opacity-100 text-faint hover:text-fg transition-all cursor-pointer"
+          >
+            <Code2 size={11} />
+          </button>
+        </Tooltip>
       )}
     </div>
   )

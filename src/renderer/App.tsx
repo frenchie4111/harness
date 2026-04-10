@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import type { Worktree, TerminalTab, PtyStatus, PRStatus } from './types'
 import type { Action } from './hotkeys'
+import { resolveHotkeys } from './hotkeys'
+import { HotkeysProvider } from './components/Tooltip'
 import { Sidebar } from './components/Sidebar'
 import { TerminalPanel } from './components/TerminalPanel'
 import { ChangedFilesPanel } from './components/ChangedFilesPanel'
@@ -565,6 +567,8 @@ export default function App(): JSX.Element {
 
   useHotkeys(hotkeyActions, hotkeyOverrides)
 
+  const resolvedHotkeys = useMemo(() => resolveHotkeys(hotkeyOverrides), [hotkeyOverrides])
+
   // Compute aggregate status per worktree (worst status wins)
   const worktreeStatuses: Record<string, PtyStatus> = {}
   for (const wt of worktrees) {
@@ -588,13 +592,15 @@ export default function App(): JSX.Element {
 
   if (showSettings) {
     return (
-      <Settings
-        onClose={() => setShowSettings(false)}
-        onOpenGuide={() => {
-          setShowSettings(false)
-          setShowGuide(true)
-        }}
-      />
+      <HotkeysProvider bindings={resolvedHotkeys}>
+        <Settings
+          onClose={() => setShowSettings(false)}
+          onOpenGuide={() => {
+            setShowSettings(false)
+            setShowGuide(true)
+          }}
+        />
+      </HotkeysProvider>
     )
   }
 
@@ -634,6 +640,7 @@ export default function App(): JSX.Element {
   }
 
   return (
+    <HotkeysProvider bindings={resolvedHotkeys}>
     <div className="flex h-full flex-col">
       {/* Hooks consent banner */}
       {hooksConsent === 'pending' && (
@@ -736,5 +743,6 @@ export default function App(): JSX.Element {
         </div>
       </div>
     </div>
+    </HotkeysProvider>
   )
 }

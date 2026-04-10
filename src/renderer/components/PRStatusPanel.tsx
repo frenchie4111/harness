@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { ExternalLink } from 'lucide-react'
 import type { PRStatus, CheckStatus } from '../types'
+import { Tooltip } from './Tooltip'
 
 /** Pick a one-line failure reason out of a check's GitHub `output.summary`,
  * which is often multi-line markdown. Grab the first non-empty, non-heading
@@ -62,14 +63,15 @@ export function PRStatusPanel({ pr }: PRStatusPanelProps): JSX.Element {
       <div className="px-3 py-2 flex items-center gap-2">
         <span className="text-xs font-medium text-dim flex-1">PULL REQUEST</span>
         {pr && (
-          <button
-            onClick={() => window.api.openExternal(pr.url)}
-            className="text-xs text-dim hover:text-fg flex items-center gap-1 transition-colors cursor-pointer"
-            title={`Open PR in browser: ${pr.url}`}
-          >
-            Open
-            <ExternalLink size={11} />
-          </button>
+          <Tooltip label="Open PR in browser" action="openPR" side="left">
+            <button
+              onClick={() => window.api.openExternal(pr.url)}
+              className="text-xs text-dim hover:text-fg flex items-center gap-1 transition-colors cursor-pointer"
+            >
+              Open
+              <ExternalLink size={11} />
+            </button>
+          </Tooltip>
         )}
       </div>
 
