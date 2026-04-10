@@ -17,9 +17,13 @@
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit",
     "postinstall": "electron-builder install-app-deps",
+    "rebuild:dev": "electron-rebuild -f -w node-pty",
     "pack": "npm run build && electron-builder --dir",
+    "postpack": "npm run rebuild:dev",
     "dist": "npm run build && dotenv -e .env -- electron-builder",
-    "dist:mac": "npm run build && dotenv -e .env -- electron-builder --mac"
+    "postdist": "npm run rebuild:dev",
+    "dist:mac": "npm run build && dotenv -e .env -- electron-builder --mac",
+    "postdist:mac": "npm run rebuild:dev"
   },
   "build": {
     "appId": "org.mikelyons.harness",
