@@ -6,6 +6,7 @@ import { homedir } from 'os'
 import { PtyManager } from './pty-manager'
 import { listWorktrees, listBranches, addWorktree, removeWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff } from './worktree'
 import { getPRStatus, testToken, starRepo } from './github'
+import { AVAILABLE_EDITORS, DEFAULT_EDITOR_ID, openInEditor } from './editor'
 import { setSecret, hasSecret, deleteSecret } from './secrets'
 import {
   loadConfig,
@@ -240,6 +241,33 @@ function registerIpcHandlers(): void {
       if (!win.isDestroyed()) win.webContents.send('config:themeChanged', theme)
     }
     return true
+  })
+
+  ipcMain.handle('config:getEditor', () => {
+    return config.editor || DEFAULT_EDITOR_ID
+  })
+
+  ipcMain.handle('config:setEditor', (_, editorId: string) => {
+    if (!AVAILABLE_EDITORS.some((e) => e.id === editorId)) return false
+    if (editorId === DEFAULT_EDITOR_ID) {
+      delete config.editor
+    } else {
+      config.editor = editorId
+    }
+    saveConfig(config)
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.send('config:editorChanged', editorId)
+    }
+    return true
+  })
+
+  ipcMain.handle('config:getAvailableEditors', () => {
+    return AVAILABLE_EDITORS.map(({ id, name }) => ({ id, name }))
+  })
+
+  ipcMain.handle('editor:open', (_, worktreePath: string, filePath?: string) => {
+    const editorId = config.editor || DEFAULT_EDITOR_ID
+    return openInEditor(editorId, worktreePath, filePath)
   })
 
   ipcMain.handle('config:getAvailableThemes', () => {

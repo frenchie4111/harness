@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { RefreshCw, FileEdit, GitBranch } from 'lucide-react'
+import { RefreshCw, FileEdit, GitBranch, Code2 } from 'lucide-react'
 import type { ChangedFile } from '../types'
 
 type Mode = 'working' | 'branch'
@@ -110,6 +110,7 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff }: ChangedFilesPane
               <FileRow
                 key={`branch-${file.path}`}
                 file={file}
+                worktreePath={worktreePath}
                 onClick={() => onOpenDiff(file.path, false, 'branch')}
               />
             ))}
@@ -125,6 +126,7 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff }: ChangedFilesPane
               <FileRow
                 key={`staged-${file.path}`}
                 file={file}
+                worktreePath={worktreePath}
                 onClick={() => onOpenDiff(file.path, true, 'working')}
               />
             ))}
@@ -140,6 +142,7 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff }: ChangedFilesPane
               <FileRow
                 key={`unstaged-${file.path}`}
                 file={file}
+                worktreePath={worktreePath}
                 onClick={() => onOpenDiff(file.path, false, 'working')}
               />
             ))}
@@ -157,7 +160,15 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff }: ChangedFilesPane
   )
 }
 
-function FileRow({ file, onClick }: { file: ChangedFile; onClick: () => void }): JSX.Element {
+function FileRow({
+  file,
+  worktreePath,
+  onClick
+}: {
+  file: ChangedFile
+  worktreePath: string | null
+  onClick: () => void
+}): JSX.Element {
   // Show just the filename, with directory path dimmed
   const lastSlash = file.path.lastIndexOf('/')
   const dir = lastSlash >= 0 ? file.path.slice(0, lastSlash + 1) : ''
@@ -168,10 +179,22 @@ function FileRow({ file, onClick }: { file: ChangedFile; onClick: () => void }):
       <span className={`shrink-0 w-3 font-mono ${STATUS_COLOR[file.status]}`}>
         {STATUS_LABEL[file.status]}
       </span>
-      <span className="truncate min-w-0">
+      <span className="truncate min-w-0 flex-1">
         {dir && <span className="text-faint">{dir}</span>}
         <span className="text-fg">{name}</span>
       </span>
+      {worktreePath && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            window.api.openInEditor(worktreePath, file.path)
+          }}
+          className="shrink-0 opacity-0 group-hover:opacity-100 text-faint hover:text-fg transition-all cursor-pointer"
+          title="Open file in editor"
+        >
+          <Code2 size={11} />
+        </button>
+      )}
     </div>
   )
 }

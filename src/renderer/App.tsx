@@ -544,6 +544,10 @@ export default function App(): JSX.Element {
         const pr = prStatuses[activeWorktreeId]
         if (pr?.url) window.api.openExternal(pr.url)
       },
+      openInEditor: () => {
+        if (!activeWorktreeId) return
+        window.api.openInEditor(activeWorktreeId)
+      },
     }),
     [
       cycleWorktree,

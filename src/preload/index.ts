@@ -64,6 +64,20 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('config:claudeCommandChanged', handler)
   },
 
+  // External editor
+  getEditor: () => ipcRenderer.invoke('config:getEditor'),
+  setEditor: (editorId: string) => ipcRenderer.invoke('config:setEditor', editorId),
+  getAvailableEditors: () => ipcRenderer.invoke('config:getAvailableEditors'),
+  openInEditor: (worktreePath: string, filePath?: string) =>
+    ipcRenderer.invoke('editor:open', worktreePath, filePath),
+  onEditorChanged: (callback: (editorId: string) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, editorId: string): void => {
+      callback(editorId)
+    }
+    ipcRenderer.on('config:editorChanged', handler)
+    return () => ipcRenderer.removeListener('config:editorChanged', handler)
+  },
+
   // Settings
   hasGithubToken: () => ipcRenderer.invoke('settings:hasGithubToken'),
   setGithubToken: (token: string, options?: { starRepo?: boolean }) => ipcRenderer.invoke('settings:setGithubToken', token, options),

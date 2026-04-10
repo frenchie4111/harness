@@ -25,6 +25,8 @@ interface Config {
   activeTabId?: Record<string, string>
   // Selected color theme id
   theme?: string
+  // Preferred external editor id (see AVAILABLE_EDITORS)
+  editor?: string
 }
 
 export const DEFAULT_THEME = 'dark'

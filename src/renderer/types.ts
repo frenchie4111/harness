@@ -99,6 +99,12 @@ export interface ElectronAPI {
   getAvailableThemes(): Promise<readonly string[]>
   onThemeChanged(callback: (theme: string) => void): () => void
 
+  getEditor(): Promise<string>
+  setEditor(editorId: string): Promise<boolean>
+  getAvailableEditors(): Promise<{ id: string; name: string }[]>
+  openInEditor(worktreePath: string, filePath?: string): Promise<{ ok: true } | { ok: false; error: string }>
+  onEditorChanged(callback: (editorId: string) => void): () => void
+
   getTerminalTabs(): Promise<{
     tabs: Record<string, PersistedTab[]>
     activeTabId: Record<string, string>
