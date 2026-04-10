@@ -4,7 +4,7 @@
 
 A fairly simple UI wrapper that makes it easier to manage a bunch of LLM coding (claude code) worktrees all at once.
 
-🌐 **Website:** [frenchie4111.github.io/harness](https://frenchie4111.github.io/harness/)
+🌐 **Website:** [harness.mikelyons.org](https://harness.mikelyons.org/)
 
 ## Download
 

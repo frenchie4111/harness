@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(npm install:*)",
-      "Bash(npx electron-vite:*)"
+      "Bash(npx electron-vite:*)",
+      "Bash(dig:*)"
     ]
   },
   "hooks": {
@@ -13,9 +14,7 @@
           {
             "type": "command",
             "command": "bash -c 'hid=\"$CLAUDE_HARNESS_ID\"; [ -z \"$hid\" ] && exit 0; mkdir -p /tmp/harness-status; echo \"{\\\"status\\\":\\\"waiting\\\",\\\"ts\\\":$(date +%s)}\" > /tmp/harness-status/$hid.json'",
-            "timeout": 5,
-            "_marker": "__claude_harness__",
-            "_version": 4
+            "timeout": 5
           }
         ]
       },
@@ -25,9 +24,7 @@
           {
             "type": "command",
             "command": "bash -c 'hid=\"$CLAUDE_HARNESS_ID\"; [ -z \"$hid\" ] && exit 0; mkdir -p /tmp/harness-status; echo \"{\\\"status\\\":\\\"needs-approval\\\",\\\"ts\\\":$(date +%s)}\" > /tmp/harness-status/$hid.json'",
-            "timeout": 5,
-            "_marker": "__claude_harness__",
-            "_version": 4
+            "timeout": 5
           }
         ]
       },
@@ -37,9 +34,7 @@
           {
             "type": "command",
             "command": "bash -c 'hid=\"$CLAUDE_HARNESS_ID\"; [ -z \"$hid\" ] && exit 0; mkdir -p /tmp/harness-status; echo \"{\\\"status\\\":\\\"needs-approval\\\",\\\"ts\\\":$(date +%s)}\" > /tmp/harness-status/$hid.json'",
-            "timeout": 5,
-            "_marker": "__claude_harness__",
-            "_version": 4
+            "timeout": 5
           }
         ]
       }
@@ -50,9 +45,7 @@
           {
             "type": "command",
             "command": "bash -c 'hid=\"$CLAUDE_HARNESS_ID\"; [ -z \"$hid\" ] && exit 0; mkdir -p /tmp/harness-status; echo \"{\\\"status\\\":\\\"waiting\\\",\\\"ts\\\":$(date +%s)}\" > /tmp/harness-status/$hid.json'",
-            "timeout": 5,
-            "_marker": "__claude_harness__",
-            "_version": 4
+            "timeout": 5
           }
         ]
       }
@@ -63,9 +56,7 @@
           {
             "type": "command",
             "command": "bash -c 'hid=\"$CLAUDE_HARNESS_ID\"; [ -z \"$hid\" ] && exit 0; mkdir -p /tmp/harness-status; echo \"{\\\"status\\\":\\\"processing\\\",\\\"ts\\\":$(date +%s)}\" > /tmp/harness-status/$hid.json'",
-            "timeout": 5,
-            "_marker": "__claude_harness__",
-            "_version": 4
+            "timeout": 5
           }
         ]
       }
@@ -76,9 +67,7 @@
           {
             "type": "command",
             "command": "bash -c 'hid=\"$CLAUDE_HARNESS_ID\"; [ -z \"$hid\" ] && exit 0; mkdir -p /tmp/harness-status; echo \"{\\\"status\\\":\\\"processing\\\",\\\"ts\\\":$(date +%s)}\" > /tmp/harness-status/$hid.json'",
-            "timeout": 5,
-            "_marker": "__claude_harness__",
-            "_version": 4
+            "timeout": 5
           }
         ]
       }
