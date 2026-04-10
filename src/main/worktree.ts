@@ -63,11 +63,20 @@ export async function listBranches(repoRoot: string): Promise<string[]> {
   return stdout.trim().split('\n').filter(Boolean)
 }
 
+export interface AddWorktreeOptions {
+  /** Explicit base branch to fork from. Overrides fetchRemote detection. */
+  baseBranch?: string
+  /** If true, fetch the default branch from origin before creating so the
+   * new worktree starts at the tip of the latest remote main. Falls back
+   * to local HEAD if the fetch fails (e.g. offline). */
+  fetchRemote?: boolean
+}
+
 export async function addWorktree(
   repoRoot: string,
   worktreeDir: string,
   branchName: string,
-  baseBranch?: string
+  options: AddWorktreeOptions = {}
 ): Promise<WorktreeInfo> {
   // Ensure worktree directory exists
   if (!existsSync(worktreeDir)) {
@@ -75,11 +84,37 @@ export async function addWorktree(
   }
 
   const worktreePath = join(worktreeDir, branchName)
-  log('worktree', `creating worktree: branch=${branchName} path=${worktreePath} base=${baseBranch || 'HEAD'}`)
+
+  // Determine the base ref.
+  // 1. Explicit baseBranch wins.
+  // 2. Otherwise if fetchRemote is set, fetch origin/<default> and use it.
+  // 3. Otherwise leave unset → git uses HEAD.
+  let baseRef: string | undefined = options.baseBranch
+  if (!baseRef && options.fetchRemote) {
+    try {
+      const defaultRef = await getDefaultBaseRef(repoRoot)
+      // defaultRef is something like "origin/main" — extract just the branch
+      // name and fetch it explicitly (shallow, quiet).
+      const remoteBranch = defaultRef.startsWith('origin/') ? defaultRef.slice('origin/'.length) : defaultRef
+      if (remoteBranch && remoteBranch !== 'HEAD') {
+        log('worktree', `fetching origin ${remoteBranch} before creating worktree`)
+        await execFileAsync('git', ['fetch', '--quiet', 'origin', remoteBranch], { cwd: repoRoot })
+      }
+      // Re-resolve in case origin/HEAD wasn't known until after fetch.
+      const resolvedRef = await getDefaultBaseRef(repoRoot)
+      if (resolvedRef && resolvedRef !== 'HEAD') {
+        baseRef = resolvedRef
+      }
+    } catch (err) {
+      log('worktree', `remote fetch failed, falling back to local HEAD`, err instanceof Error ? err.message : err)
+    }
+  }
+
+  log('worktree', `creating worktree: branch=${branchName} path=${worktreePath} base=${baseRef || 'HEAD'}`)
 
   const args = ['worktree', 'add', worktreePath, '-b', branchName]
-  if (baseBranch) {
-    args.push(baseBranch)
+  if (baseRef) {
+    args.push(baseRef)
   }
 
   try {
@@ -120,7 +155,7 @@ export interface ChangedFile {
 export type ChangedFilesMode = 'working' | 'branch'
 
 /** Detect the repo's default base branch (e.g. "main" or "master"). */
-async function getDefaultBaseRef(worktreePath: string): Promise<string> {
+export async function getDefaultBaseRef(worktreePath: string): Promise<string> {
   try {
     const { stdout } = await execFileAsync(
       'git',

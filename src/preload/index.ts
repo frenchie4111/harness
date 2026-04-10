@@ -64,6 +64,11 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('config:claudeCommandChanged', handler)
   },
 
+  // Worktree base
+  getWorktreeBase: () => ipcRenderer.invoke('config:getWorktreeBase'),
+  setWorktreeBase: (mode: 'remote' | 'local') =>
+    ipcRenderer.invoke('config:setWorktreeBase', mode),
+
   // External editor
   getEditor: () => ipcRenderer.invoke('config:getEditor'),
   setEditor: (editorId: string) => ipcRenderer.invoke('config:setEditor', editorId),

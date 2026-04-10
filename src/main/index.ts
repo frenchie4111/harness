@@ -16,6 +16,7 @@ import {
   DEFAULT_THEME,
   AVAILABLE_THEMES,
   THEME_APP_BG,
+  DEFAULT_WORKTREE_BASE,
   saveTerminalHistory,
   loadTerminalHistory,
   clearTerminalHistory,
@@ -110,7 +111,11 @@ function registerIpcHandlers(): void {
     const repoRoot = win ? windowRepoRoots.get(win.id) : null
     if (!repoRoot) throw new Error('No repo root configured')
     const wtDir = defaultWorktreeDir(repoRoot)
-    return addWorktree(repoRoot, wtDir, branchName, baseBranch)
+    const mode = config.worktreeBase || DEFAULT_WORKTREE_BASE
+    return addWorktree(repoRoot, wtDir, branchName, {
+      baseBranch,
+      fetchRemote: !baseBranch && mode === 'remote'
+    })
   })
 
   ipcMain.handle('worktree:isDirty', async (_, path: string) => {
@@ -268,6 +273,21 @@ function registerIpcHandlers(): void {
   ipcMain.handle('editor:open', (_, worktreePath: string, filePath?: string) => {
     const editorId = config.editor || DEFAULT_EDITOR_ID
     return openInEditor(editorId, worktreePath, filePath)
+  })
+
+  ipcMain.handle('config:getWorktreeBase', () => {
+    return config.worktreeBase || DEFAULT_WORKTREE_BASE
+  })
+
+  ipcMain.handle('config:setWorktreeBase', (_, mode: 'remote' | 'local') => {
+    if (mode !== 'remote' && mode !== 'local') return false
+    if (mode === DEFAULT_WORKTREE_BASE) {
+      delete config.worktreeBase
+    } else {
+      config.worktreeBase = mode
+    }
+    saveConfig(config)
+    return true
   })
 
   ipcMain.handle('config:getAvailableThemes', () => {

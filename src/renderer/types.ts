@@ -99,6 +99,9 @@ export interface ElectronAPI {
   getAvailableThemes(): Promise<readonly string[]>
   onThemeChanged(callback: (theme: string) => void): () => void
 
+  getWorktreeBase(): Promise<'remote' | 'local'>
+  setWorktreeBase(mode: 'remote' | 'local'): Promise<boolean>
+
   getEditor(): Promise<string>
   setEditor(editorId: string): Promise<boolean>
   getAvailableEditors(): Promise<{ id: string; name: string }[]>

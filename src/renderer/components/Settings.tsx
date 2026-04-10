@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2 } from 'lucide-react'
+import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch } from 'lucide-react'
 import type { UpdaterStatus } from '../types'
 import { DEFAULT_HOTKEYS, ACTION_LABELS, bindingToString, eventToBinding, resolveHotkeys, type Action, type HotkeyBinding } from '../hotkeys'
 import { Tooltip } from './Tooltip'
@@ -9,7 +9,7 @@ interface SettingsProps {
   onOpenGuide: () => void
 }
 
-type SectionId = 'appearance' | 'claude' | 'editor' | 'github' | 'hotkeys' | 'updates'
+type SectionId = 'appearance' | 'claude' | 'worktrees' | 'editor' | 'github' | 'hotkeys' | 'updates'
 
 interface Section {
   id: SectionId
@@ -20,6 +20,7 @@ interface Section {
 const SECTIONS: Section[] = [
   { id: 'appearance', label: 'Appearance', icon: Palette },
   { id: 'claude', label: 'Claude', icon: TerminalIcon },
+  { id: 'worktrees', label: 'Worktrees', icon: GitBranch },
   { id: 'editor', label: 'Editor', icon: Code2 },
   { id: 'github', label: 'GitHub', icon: GitPullRequest },
   { id: 'hotkeys', label: 'Hotkeys', icon: Keyboard },
@@ -89,6 +90,7 @@ export function Settings({ onClose, onOpenGuide }: SettingsProps): JSX.Element {
   const sectionRefs = useRef<Record<SectionId, HTMLElement | null>>({
     appearance: null,
     claude: null,
+    worktrees: null,
     editor: null,
     github: null,
     hotkeys: null,
@@ -154,6 +156,9 @@ export function Settings({ onClose, onOpenGuide }: SettingsProps): JSX.Element {
   const [editorId, setEditorId] = useState<string>('vscode')
   const [availableEditors, setAvailableEditors] = useState<{ id: string; name: string }[]>([])
 
+  // Worktree base state
+  const [worktreeBase, setWorktreeBaseState] = useState<'remote' | 'local'>('remote')
+
   useEffect(() => {
     window.api.hasGithubToken().then(setHasToken)
     window.api.getVersion().then(setVersion)
@@ -163,6 +168,7 @@ export function Settings({ onClose, onOpenGuide }: SettingsProps): JSX.Element {
     window.api.getTheme().then(setThemeState)
     window.api.getEditor().then(setEditorId)
     window.api.getAvailableEditors().then(setAvailableEditors)
+    window.api.getWorktreeBase().then(setWorktreeBaseState)
   }, [])
 
   const handleSelectTheme = useCallback(async (id: string) => {
@@ -173,6 +179,11 @@ export function Settings({ onClose, onOpenGuide }: SettingsProps): JSX.Element {
   const handleSelectEditor = useCallback(async (id: string) => {
     setEditorId(id)
     await window.api.setEditor(id)
+  }, [])
+
+  const handleSelectWorktreeBase = useCallback(async (mode: 'remote' | 'local') => {
+    setWorktreeBaseState(mode)
+    await window.api.setWorktreeBase(mode)
   }, [])
 
   useEffect(() => {
@@ -497,6 +508,55 @@ export function Settings({ onClose, onOpenGuide }: SettingsProps): JSX.Element {
                 <p className="text-faint">
                   Note: changes apply to newly created Claude tabs. Existing terminals are unaffected.
                 </p>
+              </div>
+            </section>
+
+            {/* Worktrees section */}
+            <section ref={(el) => { sectionRefs.current.worktrees = el }} id="worktrees">
+              <h2 className="text-lg font-semibold text-fg-bright mb-1">Worktrees</h2>
+              <p className="text-sm text-dim mb-4">
+                Controls how new worktrees are created from the sidebar.
+              </p>
+              <div className="space-y-2">
+                {(
+                  [
+                    {
+                      id: 'remote' as const,
+                      label: 'Branch from the latest remote main',
+                      description:
+                        'Fetches origin before creating the worktree so you start from the tip of the remote default branch. Falls back to local HEAD if the fetch fails (e.g. offline).'
+                    },
+                    {
+                      id: 'local' as const,
+                      label: 'Branch from the current local HEAD',
+                      description:
+                        "Uses whatever is checked out in the main repo right now. Fastest, but you'll inherit any stale local main or unpushed commits."
+                    }
+                  ]
+                ).map((opt) => {
+                  const isActive = worktreeBase === opt.id
+                  return (
+                    <button
+                      key={opt.id}
+                      onClick={() => handleSelectWorktreeBase(opt.id)}
+                      className={`w-full text-left rounded border px-3 py-2 transition-colors cursor-pointer ${
+                        isActive
+                          ? 'border-accent bg-panel-raised'
+                          : 'border-border hover:border-border-strong'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <div
+                          className={`w-3 h-3 rounded-full border ${
+                            isActive ? 'border-accent bg-accent' : 'border-border-strong'
+                          }`}
+                        />
+                        <span className="text-sm text-fg-bright">{opt.label}</span>
+                      </div>
+                      <p className="text-xs text-dim mt-1 ml-5">{opt.description}</p>
+                    </button>
+                  )
+                })}
               </div>
             </section>
 
