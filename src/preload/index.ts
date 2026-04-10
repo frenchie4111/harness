@@ -22,6 +22,11 @@ contextBridge.exposeInMainWorld('api', {
   // Config
   getHotkeyOverrides: () => ipcRenderer.invoke('config:getHotkeys'),
 
+  // Settings
+  hasGithubToken: () => ipcRenderer.invoke('settings:hasGithubToken'),
+  setGithubToken: (token: string) => ipcRenderer.invoke('settings:setGithubToken', token),
+  clearGithubToken: () => ipcRenderer.invoke('settings:clearGithubToken'),
+
   // Shell
   openExternal: (url: string) => ipcRenderer.send('shell:openExternal', url),
 

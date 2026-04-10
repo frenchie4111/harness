@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useMemo } from 'react'
-import { ChevronDown, ChevronRight, Plus, RefreshCw, FolderOpen, Loader2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Plus, RefreshCw, FolderOpen, Loader2, Settings as SettingsIcon } from 'lucide-react'
 import type { Worktree, PtyStatus, PRStatus } from '../types'
 import type { GroupKey } from '../worktree-sort'
 import { groupWorktrees } from '../worktree-sort'
@@ -17,6 +17,7 @@ interface SidebarProps {
   onDeleteWorktree: (path: string) => Promise<void>
   onRefresh: () => void
   onSelectRepo: () => void
+  onOpenSettings: () => void
   onRegisterCreate?: (trigger: () => void) => void
 }
 
@@ -32,6 +33,7 @@ export function Sidebar({
   onDeleteWorktree,
   onRefresh,
   onSelectRepo,
+  onOpenSettings,
   onRegisterCreate
 }: SidebarProps): JSX.Element {
   const [showCreate, setShowCreate] = useState(false)
@@ -188,6 +190,13 @@ export function Sidebar({
           title="Change repository"
         >
           <FolderOpen size={14} />
+        </button>
+        <button
+          onClick={onOpenSettings}
+          className="text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 rounded p-1.5 transition-colors cursor-pointer"
+          title="Settings"
+        >
+          <SettingsIcon size={14} />
         </button>
       </div>
     </div>

@@ -2,7 +2,9 @@ import { app, BrowserWindow, ipcMain, dialog, Menu, shell } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import { join } from 'path'
 import { PtyManager } from './pty-manager'
-import { listWorktrees, listBranches, addWorktree, removeWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getPRStatus } from './worktree'
+import { listWorktrees, listBranches, addWorktree, removeWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff } from './worktree'
+import { getPRStatus, testToken } from './github'
+import { setSecret, hasSecret, deleteSecret } from './secrets'
 import { loadConfig, saveConfig, saveConfigSync } from './persistence'
 import { hooksInstalled, installHooks, watchStatusDir } from './hooks'
 import { log, getLogFilePath } from './debug'
@@ -153,6 +155,29 @@ function registerIpcHandlers(): void {
   // Config
   ipcMain.handle('config:getHotkeys', () => {
     return config.hotkeys || null
+  })
+
+  // Settings: GitHub token
+  ipcMain.handle('settings:hasGithubToken', () => {
+    return hasSecret('githubToken')
+  })
+
+  ipcMain.handle('settings:setGithubToken', async (_, token: string) => {
+    const trimmed = token.trim()
+    if (!trimmed) {
+      deleteSecret('githubToken')
+      return { ok: true }
+    }
+    // Validate the token first by hitting /user
+    const test = await testToken(trimmed)
+    if (!test.ok) return { ok: false, error: test.error }
+    setSecret('githubToken', trimmed)
+    return { ok: true, username: test.username }
+  })
+
+  ipcMain.handle('settings:clearGithubToken', () => {
+    deleteSecret('githubToken')
+    return true
   })
 
   // Hooks

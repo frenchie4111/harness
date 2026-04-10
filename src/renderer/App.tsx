@@ -5,6 +5,7 @@ import { Sidebar } from './components/Sidebar'
 import { TerminalPanel } from './components/TerminalPanel'
 import { ChangedFilesPanel } from './components/ChangedFilesPanel'
 import { PRStatusPanel } from './components/PRStatusPanel'
+import { Settings } from './components/Settings'
 import { focusTerminalById } from './components/XTerminal'
 import { useHotkeys } from './hooks/useHotkeys'
 import { sortedWorktrees } from './worktree-sort'
@@ -28,6 +29,7 @@ export default function App(): JSX.Element {
   const [repoRoot, setRepoRoot] = useState<string | null>(null)
   const [hooksConsent, setHooksConsent] = useState<'pending' | 'accepted' | 'declined'>('pending')
   const [sidebarVisible, setSidebarVisible] = useState(true)
+  const [showSettings, setShowSettings] = useState(false)
   const [hotkeyOverrides, setHotkeyOverrides] = useState<Record<string, string> | undefined>(undefined)
   // Track which worktrees already have hooks installed so we only prompt once
   const hooksChecked = useRef(new Set<string>())
@@ -424,6 +426,10 @@ export default function App(): JSX.Element {
     worktreeStatuses[wt.path] = worstStatus
   }
 
+  if (showSettings) {
+    return <Settings onClose={() => setShowSettings(false)} />
+  }
+
   if (!repoRoot) {
     return (
       <div className="flex h-full flex-col">
@@ -483,6 +489,7 @@ export default function App(): JSX.Element {
             onDeleteWorktree={handleDeleteWorktree}
             onRefresh={handleRefreshWorktrees}
             onSelectRepo={handleSelectRepo}
+            onOpenSettings={() => setShowSettings(true)}
             onRegisterCreate={(trigger) => { createWorktreeRef.current = trigger }}
           />
         )}
