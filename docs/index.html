@@ -92,70 +92,182 @@
   <section id="features" class="max-w-6xl mx-auto px-6 py-16">
     <h2 class="text-4xl font-bold text-center mb-4">Built for parallel work</h2>
     <p class="text-neutral-500 text-center mb-16 max-w-xl mx-auto">
-      The way you wish your terminal could handle ten Claudes at once.
+      Everything you need to keep a team of Claudes pointed at the right things.
     </p>
 
     <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-      <!-- Feature: status -->
+
+      <!-- Feature: status dots -->
       <div class="bg-neutral-950/60 border border-neutral-800 rounded-xl p-6">
-        <div class="flex items-center gap-2 mb-3">
-          <span class="w-2.5 h-2.5 rounded-full bg-green-500 pulse-dot"></span>
-          <span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
-          <span class="w-2.5 h-2.5 rounded-full bg-red-500 pulse-dot"></span>
+        <div class="h-16 mb-4 flex items-center justify-center gap-4 bg-neutral-900/40 rounded-lg border border-neutral-800/60">
+          <div class="flex items-center gap-1.5">
+            <span class="w-2.5 h-2.5 rounded-full bg-green-500 pulse-dot"></span>
+            <span class="text-[10px] text-neutral-500 font-mono">working</span>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
+            <span class="text-[10px] text-neutral-500 font-mono">waiting</span>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <span class="w-2.5 h-2.5 rounded-full bg-red-500 pulse-dot"></span>
+            <span class="text-[10px] text-neutral-500 font-mono">approve</span>
+          </div>
         </div>
         <h3 class="text-lg font-semibold mb-2">Reliable status dots</h3>
         <p class="text-sm text-neutral-500">
-          Each worktree's sidebar dot tells you exactly what Claude is doing —
-          working, waiting for input, or asking permission. Powered by Claude
-          Code hooks, not flaky output parsing.
+          Each worktree's sidebar dot shows exactly what Claude is doing — working,
+          waiting on you, or asking permission. Powered by Claude Code hooks, not
+          flaky output parsing.
         </p>
       </div>
 
-      <!-- Feature: worktrees -->
+      <!-- Feature: one worktree per task -->
       <div class="bg-neutral-950/60 border border-neutral-800 rounded-xl p-6">
-        <div class="text-amber-400 text-2xl mb-3">⌥</div>
-        <h3 class="text-lg font-semibold mb-2">Worktree management</h3>
+        <div class="h-16 mb-4 flex items-center justify-center bg-neutral-900/40 rounded-lg border border-neutral-800/60">
+          <div class="flex flex-col items-center">
+            <div class="px-2 py-0.5 rounded bg-neutral-800 border border-neutral-700 text-[9px] font-mono text-neutral-300">.git</div>
+            <svg width="80" height="14" viewBox="0 0 80 14"><path d="M40 0 L40 6 L12 6 L12 14 M40 6 L40 14 M40 6 L68 6 L68 14" stroke="#525252" stroke-width="1" fill="none"/></svg>
+            <div class="flex gap-2">
+              <div class="w-3.5 h-3.5 rounded bg-green-500/20 border border-green-500/50"></div>
+              <div class="w-3.5 h-3.5 rounded bg-blue-500/20 border border-blue-500/50"></div>
+              <div class="w-3.5 h-3.5 rounded bg-amber-500/20 border border-amber-500/50"></div>
+            </div>
+          </div>
+        </div>
+        <h3 class="text-lg font-semibold mb-2">One worktree per task</h3>
         <p class="text-sm text-neutral-500">
-          Create and delete git worktrees from the sidebar. Each worktree
-          gets its own terminal tabs (Claude + raw shells) and remembers your
-          state.
+          Create and delete git worktrees from the sidebar. Each task gets its own
+          folder and branch so agents never trip over each other's edits.
         </p>
       </div>
 
-      <!-- Feature: PR -->
+      <!-- Feature: activity timeline -->
       <div class="bg-neutral-950/60 border border-neutral-800 rounded-xl p-6">
-        <div class="text-purple-400 mb-3">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" y1="9" x2="6" y2="21"/></svg>
+        <div class="h-16 mb-4 flex flex-col justify-center gap-1.5 bg-neutral-900/40 rounded-lg border border-neutral-800/60 px-3">
+          <div class="flex h-2 rounded overflow-hidden border border-neutral-800">
+            <div class="bg-green-500/60" style="flex:3"></div>
+            <div class="bg-amber-400/60" style="flex:1"></div>
+            <div class="bg-green-500/60" style="flex:4"></div>
+            <div class="bg-blue-400/40" style="flex:2"></div>
+          </div>
+          <div class="flex h-2 rounded overflow-hidden border border-neutral-800">
+            <div class="bg-amber-400/60" style="flex:1"></div>
+            <div class="bg-green-500/60" style="flex:5"></div>
+            <div class="bg-amber-400/60" style="flex:2"></div>
+            <div class="bg-green-500/60" style="flex:2"></div>
+          </div>
+          <div class="flex h-2 rounded overflow-hidden border border-neutral-800">
+            <div class="bg-green-500/60" style="flex:6"></div>
+            <div class="bg-amber-400/60" style="flex:1"></div>
+            <div class="bg-green-500/60" style="flex:3"></div>
+          </div>
+        </div>
+        <h3 class="text-lg font-semibold mb-2">Activity timeline</h3>
+        <p class="text-sm text-neutral-500">
+          A dedicated Activity view tracks every worktree's status history. See at a
+          glance which agents have been productive and which got stuck.
+        </p>
+      </div>
+
+      <!-- Feature: live PR status -->
+      <div class="bg-neutral-950/60 border border-neutral-800 rounded-xl p-6">
+        <div class="h-16 mb-4 flex flex-col justify-center gap-1 bg-neutral-900/40 rounded-lg border border-neutral-800/60 px-3 py-2">
+          <div class="flex items-center gap-2">
+            <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+            <span class="text-[10px] font-mono text-neutral-300 flex-1 truncate">feat/onboarding</span>
+            <svg class="text-purple-400" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" y1="9" x2="6" y2="21"/></svg>
+            <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+            <span class="text-[10px] font-mono text-neutral-300 flex-1 truncate">bug/login-flash</span>
+            <svg class="text-purple-400" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" y1="9" x2="6" y2="21"/></svg>
+            <span class="w-1.5 h-1.5 rounded-full bg-amber-400 pulse-dot"></span>
+          </div>
         </div>
         <h3 class="text-lg font-semibold mb-2">Live PR status</h3>
         <p class="text-sm text-neutral-500">
-          See PR state and CI checks for every worktree at a glance. Cmd+Shift+G
-          opens the PR in your browser. Sorted by what needs your attention.
+          See open PRs and CI checks for every worktree. The list re-sorts so the one
+          that needs your attention floats to the top. ⌘⇧G opens it in the browser.
         </p>
       </div>
 
-      <!-- Feature: diff -->
+      <!-- Feature: inline diffs -->
       <div class="bg-neutral-950/60 border border-neutral-800 rounded-xl p-6">
-        <div class="text-blue-400 mb-3">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <div class="h-16 mb-4 flex flex-col justify-center gap-1 bg-neutral-900/40 rounded-lg border border-neutral-800/60 px-3 py-2 font-mono text-[10px]">
+          <div class="flex items-center gap-2"><span class="text-amber-400">M</span><span class="text-neutral-300 flex-1 truncate">src/api.ts</span><span class="text-green-500">+24</span><span class="text-red-500">-3</span></div>
+          <div class="flex items-center gap-2"><span class="text-green-400">A</span><span class="text-neutral-300 flex-1 truncate">src/auth/middleware.ts</span><span class="text-green-500">+88</span></div>
+          <div class="flex items-center gap-2"><span class="text-amber-400">M</span><span class="text-neutral-300 flex-1 truncate">tests/login.spec.ts</span><span class="text-green-500">+12</span><span class="text-red-500">-7</span></div>
         </div>
         <h3 class="text-lg font-semibold mb-2">Inline diffs</h3>
         <p class="text-sm text-neutral-500">
-          A changed-files panel sits next to the terminal so you can review
-          what Claude changed without leaving the app. Click any file to open
-          a diff tab.
+          A changed-files panel sits next to the terminal. Click any file for a full
+          diff tab so you can review what Claude changed without leaving the app.
+        </p>
+      </div>
+
+      <!-- Feature: tabs per worktree -->
+      <div class="bg-neutral-950/60 border border-neutral-800 rounded-xl p-6">
+        <div class="h-16 mb-4 flex items-end bg-neutral-900/40 rounded-lg border border-neutral-800/60 px-2 pt-3 gap-1">
+          <div class="px-2 py-1 rounded-t bg-neutral-800 border border-neutral-700 border-b-0 text-[10px] text-neutral-100 font-mono flex items-center gap-1">
+            <span class="w-1.5 h-1.5 rounded-full bg-green-500 pulse-dot"></span> claude
+          </div>
+          <div class="px-2 py-1 rounded-t bg-neutral-900 border border-neutral-800 border-b-0 text-[10px] text-neutral-400 font-mono">shell</div>
+          <div class="px-2 py-1 rounded-t bg-neutral-900 border border-neutral-800 border-b-0 text-[10px] text-neutral-400 font-mono">api.ts</div>
+        </div>
+        <h3 class="text-lg font-semibold mb-2">Tabs for everything</h3>
+        <p class="text-sm text-neutral-500">
+          Every worktree opens with a Claude tab and a shell tab side by side. Add
+          more shells, open diffs as tabs — all scoped to that checkout.
+        </p>
+      </div>
+
+      <!-- Feature: kickoff prompts / onboarding -->
+      <div class="bg-neutral-950/60 border border-neutral-800 rounded-xl p-6">
+        <div class="h-16 mb-4 flex flex-col justify-center gap-1.5 bg-neutral-900/40 rounded-lg border border-neutral-800/60 px-3">
+          <div class="text-[9px] uppercase tracking-wider text-neutral-600">Try a starter prompt</div>
+          <div class="flex flex-wrap gap-1">
+            <div class="px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-[10px] text-amber-300">Fix a bug</div>
+            <div class="px-2 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/30 text-[10px] text-purple-300">Add tests</div>
+            <div class="px-2 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/30 text-[10px] text-blue-300">Refactor</div>
+          </div>
+        </div>
+        <h3 class="text-lg font-semibold mb-2">Kickoff prompts</h3>
+        <p class="text-sm text-neutral-500">
+          A full-screen new-worktree flow with starter prompts gets an agent moving
+          in seconds. Built-in nudges walk you through your first parallel session.
+        </p>
+      </div>
+
+      <!-- Feature: themes -->
+      <div class="bg-neutral-950/60 border border-neutral-800 rounded-xl p-6">
+        <div class="h-16 mb-4 flex items-center justify-center gap-2 bg-neutral-900/40 rounded-lg border border-neutral-800/60">
+          <div class="w-6 h-6 rounded-full bg-gradient-to-br from-amber-400 to-red-500 ring-2 ring-neutral-700"></div>
+          <div class="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 ring-1 ring-neutral-800"></div>
+          <div class="w-6 h-6 rounded-full bg-gradient-to-br from-emerald-400 to-teal-600 ring-1 ring-neutral-800"></div>
+          <div class="w-6 h-6 rounded-full bg-gradient-to-br from-pink-500 to-rose-600 ring-1 ring-neutral-800"></div>
+          <div class="w-6 h-6 rounded-full bg-gradient-to-br from-neutral-200 to-neutral-500 ring-1 ring-neutral-800"></div>
+          <div class="w-6 h-6 rounded-full bg-gradient-to-br from-yellow-300 to-orange-500 ring-1 ring-neutral-800"></div>
+        </div>
+        <h3 class="text-lg font-semibold mb-2">Nine built-in themes</h3>
+        <p class="text-sm text-neutral-500">
+          Match your editor or just pick the one you like. Switch themes from
+          Settings any time without restarting the app.
         </p>
       </div>
 
       <!-- Feature: hotkeys -->
       <div class="bg-neutral-950/60 border border-neutral-800 rounded-xl p-6">
-        <div class="text-neutral-400 mb-3">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2" ry="2"/><path d="M6 8h.001"/><path d="M10 8h.001"/><path d="M14 8h.001"/><path d="M18 8h.001"/><path d="M8 12h.001"/><path d="M12 12h.001"/><path d="M16 12h.001"/><path d="M7 16h10"/></svg>
+        <div class="h-16 mb-4 flex items-center justify-center gap-1.5 bg-neutral-900/40 rounded-lg border border-neutral-800/60">
+          <kbd class="px-1.5 py-0.5 rounded bg-neutral-800 border border-neutral-700 text-[10px] text-neutral-200 font-mono">⌘1</kbd>
+          <kbd class="px-1.5 py-0.5 rounded bg-neutral-800 border border-neutral-700 text-[10px] text-neutral-200 font-mono">⌘T</kbd>
+          <kbd class="px-1.5 py-0.5 rounded bg-neutral-800 border border-neutral-700 text-[10px] text-neutral-200 font-mono">⌘⇧G</kbd>
+          <kbd class="px-1.5 py-0.5 rounded bg-neutral-800 border border-neutral-700 text-[10px] text-neutral-200 font-mono">⌘B</kbd>
         </div>
         <h3 class="text-lg font-semibold mb-2">Configurable hotkeys</h3>
         <p class="text-sm text-neutral-500">
-          Cmd+1-9 to jump between worktrees. Cmd+T for a new shell. Cmd+W to
-          close. Cmd+B to hide the sidebar. All rebindable in Settings.
+          ⌘1–⌘9 jumps between worktrees. ⌘T opens a new shell. ⌘⇧G opens the active
+          PR. ⌘B hides the sidebar. All rebindable in Settings.
         </p>
       </div>
 
