@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from 'react'
-import { ChevronDown, ChevronRight, Plus, RefreshCw, FolderOpen, Loader2, Settings as SettingsIcon, Sparkles, BarChart3 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Plus, RefreshCw, FolderOpen, Loader2, Settings as SettingsIcon, Sparkles, BarChart3, Trash2 } from 'lucide-react'
 import { Tooltip } from './Tooltip'
 import type { Worktree, PtyStatus, PRStatus } from '../types'
 import type { GroupKey } from '../worktree-sort'
@@ -24,6 +24,7 @@ interface SidebarProps {
   onSelectRepo: () => void
   onOpenSettings: () => void
   onOpenActivity: () => void
+  onOpenCleanup: () => void
 }
 
 export function Sidebar({
@@ -42,7 +43,8 @@ export function Sidebar({
   onRefresh,
   onSelectRepo,
   onOpenSettings,
-  onOpenActivity
+  onOpenActivity,
+  onOpenCleanup
 }: SidebarProps): JSX.Element {
   const [continueTarget, setContinueTarget] = useState<{ path: string; oldBranch: string } | null>(null)
   const [continueBranchName, setContinueBranchName] = useState('')
@@ -243,6 +245,14 @@ export function Sidebar({
             className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
           >
             <FolderOpen size={14} />
+          </button>
+        </Tooltip>
+        <Tooltip label="Clean up old worktrees" side="top">
+          <button
+            onClick={onOpenCleanup}
+            className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
+          >
+            <Trash2 size={14} />
           </button>
         </Tooltip>
         <Tooltip label="Activity" side="top">

@@ -1,4 +1,4 @@
-import { GitPullRequest, RotateCw, X } from 'lucide-react'
+import { GitPullRequest, RotateCw, Trash2 } from 'lucide-react'
 import type { Worktree, PtyStatus, PRStatus } from '../types'
 import { Tooltip } from './Tooltip'
 
@@ -107,7 +107,7 @@ export function WorktreeTab({ worktree, isActive, status, prStatus, onClick, onD
             }}
             className="opacity-0 group-hover:opacity-100 text-faint hover:text-danger transition-all shrink-0 cursor-pointer"
           >
-            <X size={12} />
+            <Trash2 size={12} />
           </button>
         </Tooltip>
       )}

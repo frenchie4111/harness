@@ -13,6 +13,7 @@ import { PRStatusPanel } from './components/PRStatusPanel'
 import { Settings } from './components/Settings'
 import { Guide } from './components/Guide'
 import { Activity } from './components/Activity'
+import { Cleanup } from './components/Cleanup'
 import iconUrl from '../../resources/icon.png'
 import { focusTerminalById, flushAllTerminalHistory, markTerminalClosing } from './components/XTerminal'
 import { useHotkeys } from './hooks/useHotkeys'
@@ -67,6 +68,7 @@ export default function App(): JSX.Element {
   const [showSettings, setShowSettings] = useState(false)
   const [showGuide, setShowGuide] = useState(false)
   const [showActivity, setShowActivity] = useState(false)
+  const [showCleanup, setShowCleanup] = useState(false)
   const [hasGithubToken, setHasGithubToken] = useState<boolean | null>(null)
   const [githubBannerDismissed, setGithubBannerDismissed] = useState(
     () => localStorage.getItem('githubBannerDismissed') === '1'
@@ -522,6 +524,48 @@ export default function App(): JSX.Element {
       setActiveWorktreeId(trees.length > 0 ? trees[0].path : null)
     }
   }, [terminalTabs, activeWorktreeId])
+
+  // Bulk delete used by the Cleanup screen. Skips per-path confirmation — the
+  // Cleanup UI owns the single confirm — and removes each worktree sequentially
+  // so git operations don't race each other.
+  const handleBulkDeleteWorktrees = useCallback(
+    async (
+      paths: string[],
+      force: boolean,
+      onProgress?: (path: string, phase: 'start' | 'done') => void
+    ) => {
+      for (const path of paths) {
+        onProgress?.(path, 'start')
+        const tabs = terminalTabs[path] || []
+        for (const tab of tabs) {
+          if (tab.type !== 'diff') markTerminalClosing(tab.id)
+          window.api.killTerminal(tab.id)
+        }
+        setPanes((prev) => {
+          const next = { ...prev }
+          delete next[path]
+          return next
+        })
+        setActivePaneId((prev) => {
+          const next = { ...prev }
+          delete next[path]
+          return next
+        })
+        try {
+          await window.api.removeWorktree(path, force)
+        } catch (err) {
+          console.error('Failed to remove worktree', path, err)
+        }
+        onProgress?.(path, 'done')
+      }
+      const trees = await window.api.listWorktrees()
+      setWorktrees(trees)
+      if (activeWorktreeId && paths.includes(activeWorktreeId)) {
+        setActiveWorktreeId(trees.length > 0 ? trees[0].path : null)
+      }
+    },
+    [terminalTabs, activeWorktreeId]
+  )
 
   // Append a tab to a specific pane (or the focused pane if paneId is omitted).
   // Creates an initial pane if the worktree has none.
@@ -1018,6 +1062,7 @@ export default function App(): JSX.Element {
             onSelectWorktree={(path) => {
               setShowNewWorktree(false)
               setShowActivity(false)
+              setShowCleanup(false)
               setActiveWorktreeId(path)
             }}
             onNewWorktree={() => setShowNewWorktree(true)}
@@ -1027,13 +1072,14 @@ export default function App(): JSX.Element {
             onSelectRepo={handleSelectRepo}
             onOpenSettings={() => setShowSettings(true)}
             onOpenActivity={() => setShowActivity(true)}
+            onOpenCleanup={() => setShowCleanup(true)}
           />
         )}
         {/* Render ALL worktrees' terminals to keep PTYs alive across switches */}
         {worktrees.map((wt) => {
           const paneList = panes[wt.path]
           if (!paneList || paneList.length === 0) return null
-          const isVisible = !showNewWorktree && !showActivity && wt.path === activeWorktreeId
+          const isVisible = !showNewWorktree && !showActivity && !showCleanup && wt.path === activeWorktreeId
           return (
             <div
               key={wt.path}
@@ -1070,7 +1116,19 @@ export default function App(): JSX.Element {
             <Activity onClose={() => setShowActivity(false)} worktrees={worktrees} />
           </div>
         )}
-        {!showNewWorktree && !showActivity && !activeWorktreeId && worktrees.length > 0 && (
+        {showCleanup && (
+          <div className="flex-1 min-w-0 flex">
+            <Cleanup
+              onClose={() => setShowCleanup(false)}
+              worktrees={worktrees}
+              prStatuses={prStatuses}
+              mergedPaths={mergedPaths}
+              lastActive={lastActive}
+              onBulkDelete={handleBulkDeleteWorktrees}
+            />
+          </div>
+        )}
+        {!showNewWorktree && !showActivity && !showCleanup && !activeWorktreeId && worktrees.length > 0 && (
           <div className="flex-1 flex items-center justify-center text-dim">
             Select a worktree to begin
           </div>
@@ -1081,7 +1139,7 @@ export default function App(): JSX.Element {
           onFinish={() => setQuestStep('done')}
         />
         {/* Right panel — hidden on the new-worktree screen so the form gets the full width */}
-        {!showNewWorktree && !showActivity && (
+        {!showNewWorktree && !showActivity && !showCleanup && (
           <div className="w-64 shrink-0 h-full flex flex-col border-l border-border bg-panel">
             <PRStatusPanel
               pr={activeWorktreeId ? prStatuses[activeWorktreeId] : null}
