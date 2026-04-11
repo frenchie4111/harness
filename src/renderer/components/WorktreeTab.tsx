@@ -1,4 +1,4 @@
-import { GitPullRequest, X } from 'lucide-react'
+import { GitPullRequest, RotateCw, X } from 'lucide-react'
 import type { Worktree, PtyStatus, PRStatus } from '../types'
 import { Tooltip } from './Tooltip'
 
@@ -9,6 +9,7 @@ interface WorktreeTabProps {
   prStatus?: PRStatus | null
   onClick: () => void
   onDelete?: () => void
+  onContinue?: () => void
 }
 
 const STATUS_COLORS: Record<PtyStatus, string> = {
@@ -39,7 +40,8 @@ const PR_STATE_COLOR: Record<string, string> = {
   closed: 'text-danger'
 }
 
-export function WorktreeTab({ worktree, isActive, status, prStatus, onClick, onDelete }: WorktreeTabProps): JSX.Element {
+export function WorktreeTab({ worktree, isActive, status, prStatus, onClick, onDelete, onContinue }: WorktreeTabProps): JSX.Element {
+  const canContinue = !!onContinue && (prStatus?.state === 'merged' || prStatus?.state === 'closed')
   // Priority: merged/closed state always wins, then merge conflict, then check
   // status, then PR state
   let iconColor = ''
@@ -83,6 +85,19 @@ export function WorktreeTab({ worktree, isActive, status, prStatus, onClick, onD
           {worktree.path.split('/').slice(-2).join('/')}
         </div>
       </div>
+      {canContinue && (
+        <Tooltip label="Continue on a new branch off main" side="left">
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onContinue!()
+            }}
+            className="opacity-0 group-hover:opacity-100 text-faint hover:text-accent transition-all shrink-0 cursor-pointer"
+          >
+            <RotateCw size={12} />
+          </button>
+        </Tooltip>
+      )}
       {onDelete && (
         <Tooltip label="Remove worktree" side="left">
           <button

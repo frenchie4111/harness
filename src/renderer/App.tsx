@@ -353,6 +353,19 @@ export default function App(): JSX.Element {
     }
   }, [])
 
+  const handleContinueWorktree = useCallback(async (path: string, newBranchName: string) => {
+    const result = await window.api.continueWorktree(path, newBranchName)
+    const trees = await window.api.listWorktrees()
+    setWorktrees(trees)
+    // Clear cached PR status — the old branch/PR no longer belongs to this worktree
+    setPrStatuses((prev) => ({ ...prev, [path]: null }))
+    if (result.stashConflict) {
+      window.alert(
+        `Checked out ${newBranchName}, but your uncommitted changes did not apply cleanly and are still in the stash.\n\nRun \`git stash pop\` inside the worktree after resolving conflicts.`
+      )
+    }
+  }, [])
+
   const handleDeleteWorktree = useCallback(async (path: string) => {
     // Check for dirty changes
     const dirty = await window.api.isWorktreeDirty(path)
@@ -708,6 +721,7 @@ export default function App(): JSX.Element {
             prLoading={prLoading}
             onSelectWorktree={setActiveWorktreeId}
             onCreateWorktree={handleCreateWorktree}
+            onContinueWorktree={handleContinueWorktree}
             onDeleteWorktree={handleDeleteWorktree}
             onRefresh={handleRefreshWorktrees}
             onSelectRepo={handleSelectRepo}

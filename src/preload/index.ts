@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld('api', {
   listWorktrees: () => ipcRenderer.invoke('worktree:list'),
   listBranches: () => ipcRenderer.invoke('worktree:branches'),
   addWorktree: (branchName: string, baseBranch?: string) => ipcRenderer.invoke('worktree:add', branchName, baseBranch),
+  continueWorktree: (worktreePath: string, newBranchName: string, baseBranch?: string) =>
+    ipcRenderer.invoke('worktree:continue', worktreePath, newBranchName, baseBranch),
   isWorktreeDirty: (path: string) => ipcRenderer.invoke('worktree:isDirty', path),
   removeWorktree: (path: string, force?: boolean) => ipcRenderer.invoke('worktree:remove', path, force),
   getWorktreeDir: () => ipcRenderer.invoke('worktree:dir'),
