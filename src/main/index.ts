@@ -31,6 +31,12 @@ import { hooksInstalled, installHooks, watchStatusDir } from './hooks'
 import { recordActivity, getActivityLog, clearAllActivity, clearActivityForWorktree, sealAllActive, touchActivityMeta, finalizeActivity, type ActivityState, type PRState } from './activity'
 import { log, getLogFilePath } from './debug'
 
+// In dev, use a separate userData dir so a running dev instance doesn't
+// fight with the installed prod app over config.json / activity.json / etc.
+if (!app.isPackaged) {
+  app.setPath('userData', join(app.getPath('appData'), 'Harness (Dev)'))
+}
+
 const ptyManager = new PtyManager()
 let config = loadConfig()
 let stopWatchingStatus: (() => void) | null = null
