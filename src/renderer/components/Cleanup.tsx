@@ -95,7 +95,8 @@ export function Cleanup({
         ])
         if (cancelled) return
         const lastTs: Record<string, number> = {}
-        for (const [path, events] of Object.entries(log as ActivityLog)) {
+        for (const [path, rec] of Object.entries(log as ActivityLog)) {
+          const events = rec.events
           if (events.length) lastTs[path] = events[events.length - 1].t
         }
         setActivityLastTs(lastTs)

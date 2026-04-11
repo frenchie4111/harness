@@ -140,7 +140,11 @@ export interface ElectronAPI {
     baseBranch?: string
   ): Promise<{ worktree: Worktree; stashReapplied: boolean; stashConflict: boolean }>
   isWorktreeDirty(path: string): Promise<boolean>
-  removeWorktree(path: string, force?: boolean): Promise<void>
+  removeWorktree(
+    path: string,
+    force?: boolean,
+    removeMeta?: { prNumber?: number; prState?: PRStatus['state'] }
+  ): Promise<void>
   getWorktreeDir(): Promise<string>
   selectRepoRoot(): Promise<string | null>
   getRepoRoot(): Promise<string | null>
@@ -235,13 +239,28 @@ export interface ElectronAPI {
   onTerminalExit(callback: (id: string, exitCode: number) => void): () => void
 
   recordActivity(worktreePath: string, state: string): void
-  getActivityLog(): Promise<Record<string, { t: number; s: 'processing' | 'waiting' | 'needs-approval' | 'idle' }[]>>
+  getActivityLog(): Promise<ActivityLog>
   clearActivityLog(worktreePath?: string): Promise<boolean>
 }
 
 export type ActivityState = 'processing' | 'waiting' | 'needs-approval' | 'idle' | 'merged'
 export interface ActivityEvent { t: number; s: ActivityState }
-export type ActivityLog = Record<string, ActivityEvent[]>
+export interface ActivityDiffStats {
+  added: number
+  removed: number
+  files: number
+}
+export interface ActivityRecord {
+  branch?: string
+  repoRoot?: string
+  createdAt?: number
+  removedAt?: number
+  diffStats?: ActivityDiffStats
+  prNumber?: number
+  prState?: PRStatus['state']
+  events: ActivityEvent[]
+}
+export type ActivityLog = Record<string, ActivityRecord>
 
 declare global {
   interface Window {

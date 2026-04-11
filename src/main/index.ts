@@ -4,7 +4,7 @@ import { existsSync, readdirSync, statSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 import { PtyManager } from './pty-manager'
-import { listWorktrees, listBranches, addWorktree, continueWorktree, removeWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, type MergeStrategy } from './worktree'
+import { listWorktrees, listBranches, addWorktree, continueWorktree, removeWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, type MergeStrategy } from './worktree'
 import { getPRStatus, testToken, starRepo } from './github'
 import { AVAILABLE_EDITORS, DEFAULT_EDITOR_ID, openInEditor } from './editor'
 import { setSecret, hasSecret, deleteSecret } from './secrets'
@@ -28,7 +28,7 @@ import {
   type QuestStep
 } from './persistence'
 import { hooksInstalled, installHooks, watchStatusDir } from './hooks'
-import { recordActivity, getActivityLog, clearAllActivity, clearActivityForWorktree, sealAllActive, type ActivityState } from './activity'
+import { recordActivity, getActivityLog, clearAllActivity, clearActivityForWorktree, sealAllActive, touchActivityMeta, finalizeActivity, type ActivityState, type PRState } from './activity'
 import { log, getLogFilePath } from './debug'
 
 const ptyManager = new PtyManager()
@@ -101,7 +101,13 @@ function registerIpcHandlers(): void {
     const win = getWindowFromEvent(event)
     const repoRoot = win ? windowRepoRoots.get(win.id) : null
     if (!repoRoot) return []
-    return listWorktrees(repoRoot)
+    const trees = await listWorktrees(repoRoot)
+    // Keep activity records' branch/repoRoot in sync with current git state so
+    // historical reporting still identifies the worktree after it's removed.
+    for (const wt of trees) {
+      touchActivityMeta(wt.path, { branch: wt.branch, repoRoot })
+    }
+    return trees
   })
 
   ipcMain.handle('worktree:branches', async (event) => {
@@ -141,7 +147,12 @@ function registerIpcHandlers(): void {
     return isWorktreeDirty(path)
   })
 
-  ipcMain.handle('worktree:remove', async (event, path: string, force?: boolean) => {
+  ipcMain.handle('worktree:remove', async (
+    event,
+    path: string,
+    force?: boolean,
+    removeMeta?: { prNumber?: number; prState?: PRState }
+  ) => {
     const win = getWindowFromEvent(event)
     const repoRoot = win ? windowRepoRoots.get(win.id) : null
     if (!repoRoot) throw new Error('No repo root configured')
@@ -152,6 +163,14 @@ function registerIpcHandlers(): void {
       delete config.locallyMerged[wt.branch]
       saveConfig(config)
     }
+    // Capture final stats *before* the working tree is gone.
+    const diffStats = await getBranchDiffStats(path)
+    if (wt) touchActivityMeta(path, { branch: wt.branch, repoRoot })
+    finalizeActivity(path, {
+      diffStats,
+      prNumber: removeMeta?.prNumber,
+      prState: removeMeta?.prState
+    })
     return removeWorktree(repoRoot, path, force)
   })
 
