@@ -106,8 +106,8 @@ function MergeLocallyBody({
     setBusy('checking')
     try {
       const [status, preview] = await Promise.all([
-        window.api.getMainWorktreeStatus(),
-        window.api.previewMergeConflicts(worktree.branch).catch(() => null)
+        window.api.getMainWorktreeStatus(worktree.repoRoot),
+        window.api.previewMergeConflicts(worktree.repoRoot, worktree.branch).catch(() => null)
       ])
       setMainStatus(status)
       setConflictPreview(preview)
@@ -148,7 +148,7 @@ function MergeLocallyBody({
     setError(null)
     setBusy('fixing')
     try {
-      const status = await window.api.prepareMainForMerge()
+      const status = await window.api.prepareMainForMerge(worktree.repoRoot)
       setMainStatus(status)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -165,7 +165,7 @@ function MergeLocallyBody({
     try {
       // Persist strategy on use too, in case the user never opened the dropdown.
       void window.api.setMergeStrategy(strategy)
-      const result = await window.api.mergeWorktreeLocally(worktree.branch, strategy)
+      const result = await window.api.mergeWorktreeLocally(worktree.repoRoot, worktree.branch, strategy)
       setSuccess(`Merged into ${result.baseBranch}`)
       if (onMerged) await onMerged()
     } catch (err) {
@@ -173,7 +173,7 @@ function MergeLocallyBody({
     } finally {
       setBusy('idle')
     }
-  }, [mainStatus, strategy, worktree.branch, onMerged])
+  }, [mainStatus, strategy, worktree.repoRoot, worktree.branch, onMerged])
 
   const handleRemoveAfterMerge = useCallback(async () => {
     if (!onRemoveWorktree) return

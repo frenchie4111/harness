@@ -41,14 +41,7 @@ const ptyManager = new PtyManager()
 let config = loadConfig()
 let stopWatchingStatus: (() => void) | null = null
 
-// Track repo root per window
-const windowRepoRoots = new Map<number, string>()
-
-function getWindowFromEvent(event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent): BrowserWindow | null {
-  return BrowserWindow.fromWebContents(event.sender)
-}
-
-function createWindow(repoRoot?: string): BrowserWindow {
+function createWindow(): BrowserWindow {
   const bounds = config.windowBounds || { width: 1400, height: 900, x: undefined!, y: undefined! }
 
   const win = new BrowserWindow({
@@ -68,10 +61,6 @@ function createWindow(repoRoot?: string): BrowserWindow {
     }
   })
 
-  if (repoRoot) {
-    windowRepoRoots.set(win.id, repoRoot)
-  }
-
   // Forward renderer console logs to debug log
   win.webContents.on('console-message', (_event, level, message) => {
     const levelName = ['verbose', 'info', 'warn', 'error'][level] || 'log'
@@ -87,10 +76,6 @@ function createWindow(repoRoot?: string): BrowserWindow {
   win.on('resize', saveBounds)
   win.on('move', saveBounds)
 
-  win.on('closed', () => {
-    windowRepoRoots.delete(win.id)
-  })
-
   // Load renderer
   if (process.env['ELECTRON_RENDERER_URL']) {
     win.loadURL(process.env['ELECTRON_RENDERER_URL'])
@@ -102,31 +87,24 @@ function createWindow(repoRoot?: string): BrowserWindow {
 }
 
 function registerIpcHandlers(): void {
-  // Worktree handlers — scoped to the calling window's repo root
-  ipcMain.handle('worktree:list', async (event) => {
-    const win = getWindowFromEvent(event)
-    const repoRoot = win ? windowRepoRoots.get(win.id) : null
+  // Worktree handlers — every call takes an explicit repoRoot, since a single
+  // window now shows worktrees from multiple repos at once.
+  ipcMain.handle('worktree:list', async (_, repoRoot: string) => {
     if (!repoRoot) return []
     const trees = await listWorktrees(repoRoot)
-    // Keep activity records' branch/repoRoot in sync with current git state so
-    // historical reporting still identifies the worktree after it's removed.
     for (const wt of trees) {
       touchActivityMeta(wt.path, { branch: wt.branch, repoRoot })
     }
     return trees
   })
 
-  ipcMain.handle('worktree:branches', async (event) => {
-    const win = getWindowFromEvent(event)
-    const repoRoot = win ? windowRepoRoots.get(win.id) : null
+  ipcMain.handle('worktree:branches', async (_, repoRoot: string) => {
     if (!repoRoot) return []
     return listBranches(repoRoot)
   })
 
-  ipcMain.handle('worktree:add', async (event, branchName: string, baseBranch?: string) => {
-    const win = getWindowFromEvent(event)
-    const repoRoot = win ? windowRepoRoots.get(win.id) : null
-    if (!repoRoot) throw new Error('No repo root configured')
+  ipcMain.handle('worktree:add', async (_, repoRoot: string, branchName: string, baseBranch?: string) => {
+    if (!repoRoot) throw new Error('No repo root provided')
     const wtDir = defaultWorktreeDir(repoRoot)
     const mode = config.worktreeBase || DEFAULT_WORKTREE_BASE
     return addWorktree(repoRoot, wtDir, branchName, {
@@ -137,10 +115,8 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle(
     'worktree:continue',
-    async (event, worktreePath: string, newBranchName: string, baseBranch?: string) => {
-      const win = getWindowFromEvent(event)
-      const repoRoot = win ? windowRepoRoots.get(win.id) : null
-      if (!repoRoot) throw new Error('No repo root configured')
+    async (_, repoRoot: string, worktreePath: string, newBranchName: string, baseBranch?: string) => {
+      if (!repoRoot) throw new Error('No repo root provided')
       const mode = config.worktreeBase || DEFAULT_WORKTREE_BASE
       return continueWorktree(repoRoot, worktreePath, newBranchName, {
         baseBranch,
@@ -154,14 +130,13 @@ function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('worktree:remove', async (
-    event,
+    _,
+    repoRoot: string,
     path: string,
     force?: boolean,
     removeMeta?: { prNumber?: number; prState?: PRState }
   ) => {
-    const win = getWindowFromEvent(event)
-    const repoRoot = win ? windowRepoRoots.get(win.id) : null
-    if (!repoRoot) throw new Error('No repo root configured')
+    if (!repoRoot) throw new Error('No repo root provided')
     // Drop any locally-merged flag for the branch at this path
     const trees = await listWorktrees(repoRoot)
     const wt = trees.find((t) => t.path === path)
@@ -180,34 +155,43 @@ function registerIpcHandlers(): void {
     return removeWorktree(repoRoot, path, force)
   })
 
-  ipcMain.handle('worktree:dir', async (event) => {
-    const win = getWindowFromEvent(event)
-    const repoRoot = win ? windowRepoRoots.get(win.id) : null
+  ipcMain.handle('worktree:dir', async (_, repoRoot: string) => {
     if (!repoRoot) return ''
     return defaultWorktreeDir(repoRoot)
   })
 
-  ipcMain.handle('repo:select', async (event) => {
-    const win = getWindowFromEvent(event)
-    if (!win) return null
-    const result = await dialog.showOpenDialog(win, {
+  ipcMain.handle('repo:list', () => {
+    return config.repoRoots
+  })
+
+  ipcMain.handle('repo:add', async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const result = await dialog.showOpenDialog(win!, {
       properties: ['openDirectory'],
-      title: 'Select Git Repository Root'
+      title: 'Open Git Repository'
     })
     if (result.canceled || result.filePaths.length === 0) return null
     const repoRoot = result.filePaths[0]
-    windowRepoRoots.set(win.id, repoRoot)
-    // Track in config for reopening
     if (!config.repoRoots.includes(repoRoot)) {
       config.repoRoots.push(repoRoot)
       saveConfig(config)
+      broadcastToAllWindows('repo:listChanged', config.repoRoots)
     }
     return repoRoot
   })
 
-  ipcMain.handle('repo:getRoot', (event) => {
-    const win = getWindowFromEvent(event)
-    return win ? windowRepoRoots.get(win.id) || null : null
+  ipcMain.handle('repo:remove', (_, repoRoot: string) => {
+    const idx = config.repoRoots.indexOf(repoRoot)
+    if (idx === -1) return false
+    config.repoRoots.splice(idx, 1)
+    // Also drop any persisted panes for the removed repo so they don't
+    // linger as orphans.
+    if (config.panes && config.panes[repoRoot]) {
+      delete config.panes[repoRoot]
+    }
+    saveConfig(config)
+    broadcastToAllWindows('repo:listChanged', config.repoRoots)
+    return true
   })
 
   // Changed files
@@ -248,34 +232,26 @@ function registerIpcHandlers(): void {
     return getPRStatus(worktreePath)
   })
 
-  ipcMain.handle('worktree:mainStatus', async (event) => {
-    const win = getWindowFromEvent(event)
-    const repoRoot = win ? windowRepoRoots.get(win.id) : null
-    if (!repoRoot) throw new Error('No repo root configured')
+  ipcMain.handle('worktree:mainStatus', async (_, repoRoot: string) => {
+    if (!repoRoot) throw new Error('No repo root provided')
     return getMainWorktreeStatus(repoRoot)
   })
 
-  ipcMain.handle('worktree:previewMerge', async (event, sourceBranch: string) => {
-    const win = getWindowFromEvent(event)
-    const repoRoot = win ? windowRepoRoots.get(win.id) : null
-    if (!repoRoot) throw new Error('No repo root configured')
+  ipcMain.handle('worktree:previewMerge', async (_, repoRoot: string, sourceBranch: string) => {
+    if (!repoRoot) throw new Error('No repo root provided')
     const status = await getMainWorktreeStatus(repoRoot)
     return previewMergeConflicts(repoRoot, sourceBranch, status.baseBranch)
   })
 
-  ipcMain.handle('worktree:prepareMain', async (event) => {
-    const win = getWindowFromEvent(event)
-    const repoRoot = win ? windowRepoRoots.get(win.id) : null
-    if (!repoRoot) throw new Error('No repo root configured')
+  ipcMain.handle('worktree:prepareMain', async (_, repoRoot: string) => {
+    if (!repoRoot) throw new Error('No repo root provided')
     return prepareMainForMerge(repoRoot)
   })
 
   ipcMain.handle(
     'worktree:mergeLocal',
-    async (event, sourceBranch: string, strategy: MergeStrategy) => {
-      const win = getWindowFromEvent(event)
-      const repoRoot = win ? windowRepoRoots.get(win.id) : null
-      if (!repoRoot) throw new Error('No repo root configured')
+    async (_, repoRoot: string, sourceBranch: string, strategy: MergeStrategy) => {
+      if (!repoRoot) throw new Error('No repo root provided')
       const result = await mergeWorktreeLocally(repoRoot, sourceBranch, strategy)
       // Record the branch as locally merged at its current tip sha. If new
       // commits are pushed to the branch later, the flag becomes stale and
@@ -296,9 +272,7 @@ function registerIpcHandlers(): void {
    * check can't tell "fork point on trunk" from "trunk position after merge",
    * so we don't try to detect external merges automatically. The flag is
    * auto-cleared if the branch later gains new commits. */
-  ipcMain.handle('worktree:mergedStatus', async (event) => {
-    const win = getWindowFromEvent(event)
-    const repoRoot = win ? windowRepoRoots.get(win.id) : null
+  ipcMain.handle('worktree:mergedStatus', async (_, repoRoot: string) => {
     if (!repoRoot) return {}
     const trees = await listWorktrees(repoRoot)
     const result: Record<string, boolean> = {}
@@ -515,14 +489,14 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  // Persisted workspace panes (tabs per pane, per worktree)
+  // Persisted workspace panes (tabs per pane, per worktree, per repo).
   ipcMain.handle('config:getPanes', () => {
     return config.panes || {}
   })
 
   ipcMain.handle(
     'config:setPanes',
-    (_, panes: Record<string, PersistedPane[]>) => {
+    (_, panes: Record<string, Record<string, PersistedPane[]>>) => {
       config.panes = panes
       saveConfig(config)
       return true
@@ -683,7 +657,7 @@ function registerIpcHandlers(): void {
 
   // PTY handlers — route to the calling window
   ipcMain.on('pty:create', (event, id: string, cwd: string, cmd: string, args: string[]) => {
-    const win = getWindowFromEvent(event)
+    const win = BrowserWindow.fromWebContents(event.sender)
     if (win) ptyManager.create(id, cwd, cmd, args, win)
   })
 
@@ -837,9 +811,11 @@ app.whenReady().then(() => {
 
   // Prune terminal history files not referenced by any persisted tab
   const keepIds = new Set<string>()
-  for (const panes of Object.values(config.panes || {})) {
-    for (const pane of panes) {
-      for (const tab of pane.tabs) keepIds.add(tab.id)
+  for (const byRepo of Object.values(config.panes || {})) {
+    for (const panes of Object.values(byRepo)) {
+      for (const pane of panes) {
+        for (const tab of pane.tabs) keepIds.add(tab.id)
+      }
     }
   }
   pruneTerminalHistory(keepIds)
@@ -847,14 +823,9 @@ app.whenReady().then(() => {
   // Watch status dir globally — route to correct window via ptyManager
   stopWatchingStatus = watchStatusDir((id) => ptyManager.getWindowForTerminal(id))
 
-  // Open a window for each saved repo root, or one empty window
-  if (config.repoRoots.length > 0) {
-    for (const root of config.repoRoots) {
-      createWindow(root)
-    }
-  } else {
-    createWindow()
-  }
+  // One window shows all repos. The renderer reads `config.repoRoots` via
+  // `repo:list` and opens each one on mount.
+  createWindow()
 
   setupAutoUpdater()
 

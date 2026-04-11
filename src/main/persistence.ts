@@ -1,24 +1,22 @@
 import { app } from 'electron'
 import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync, readdirSync } from 'fs'
 import { join } from 'path'
+import {
+  runMigrations,
+  SCHEMA_VERSION,
+  type AnyConfig,
+  type PersistedPane,
+  type PersistedTab
+} from './persistence-migrations'
 
-export interface PersistedTab {
-  id: string
-  type: 'claude' | 'shell'
-  label: string
-  /** UUID passed to `claude --session-id` so the tab resumes its own session. Claude tabs only. */
-  sessionId?: string
-}
-
-export interface PersistedPane {
-  id: string
-  tabs: PersistedTab[]
-  activeTabId: string
-}
+export type { PersistedPane, PersistedTab }
 
 export type QuestStep = 'hidden' | 'spawn-second' | 'switch-between' | 'finale' | 'done'
 
 interface Config {
+  /** Schema version of the on-disk config. Bumped whenever the shape changes;
+   *  see `migrations` below. Always written; absent on pre-versioned configs. */
+  schemaVersion?: number
   windowBounds: { x: number; y: number; width: number; height: number } | null
   // All repo roots that have been opened (for re-opening windows)
   repoRoots: string[]
@@ -27,10 +25,15 @@ interface Config {
   // Command used to launch Claude in a worktree terminal. Runs via login shell.
   // Harness appends `--session-id <uuid>` so each tab has a stable resumable session.
   claudeCommand?: string
-  // Persisted workspace panes per worktree path — each pane has its own tabs + active id.
-  // Replaces the legacy `terminalTabs` / `activeTabId` flat-list shape; migrated on load.
-  panes?: Record<string, PersistedPane[]>
-  // Legacy — migrated to `panes` on first load, then cleared.
+  // Persisted workspace panes nested by repoRoot → worktreePath → panes[].
+  // Two repos can have worktrees with identical paths in theory, and the
+  // multi-repo UI shows them together, so we key by repo to keep them distinct.
+  panes?: Record<string, Record<string, PersistedPane[]>>
+  // Legacy flat shape (worktreePath → panes). Migrated into the nested form on
+  // first load — entries are grouped under whichever known `repoRoot` is a
+  // prefix of the worktree path; unmatched entries land in `__orphan__`.
+  legacyPanes?: Record<string, PersistedPane[]>
+  // Even older — migrated to `legacyPanes` then to `panes` on first load.
   terminalTabs?: Record<string, PersistedTab[]>
   activeTabId?: Record<string, string>
   // Selected color theme id
@@ -95,6 +98,7 @@ export const DEFAULT_TERMINAL_FONT_FAMILY =
 export const DEFAULT_TERMINAL_FONT_SIZE = 13
 
 const DEFAULT_CONFIG: Config = {
+  schemaVersion: 0, // overwritten in loadConfig — kept here to satisfy Config shape
   windowBounds: null,
   repoRoots: []
 }
@@ -106,29 +110,11 @@ function getConfigPath(): string {
 export function loadConfig(): Config {
   try {
     const data = readFileSync(getConfigPath(), 'utf-8')
-    const parsed = JSON.parse(data)
-    // Migrate from old single repoRoot format
-    if (parsed.repoRoot && !parsed.repoRoots) {
-      parsed.repoRoots = [parsed.repoRoot]
-      delete parsed.repoRoot
-    }
-    // Migrate legacy flat-tab persistence → pane shape. Each worktree's
-    // previous tab list becomes a single pane with the same active tab.
-    // We intentionally leave the legacy `terminalTabs` / `activeTabId` keys
-    // in place so users can downgrade to an older build without losing
-    // their tab layout — the new app ignores them after migration.
-    if (parsed.terminalTabs && !parsed.panes) {
-      const migrated: Record<string, PersistedPane[]> = {}
-      for (const [wtPath, tabs] of Object.entries(parsed.terminalTabs as Record<string, PersistedTab[]>)) {
-        if (!tabs || tabs.length === 0) continue
-        const activeId = parsed.activeTabId?.[wtPath] || tabs[0].id
-        migrated[wtPath] = [{ id: `pane-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, tabs, activeTabId: activeId }]
-      }
-      parsed.panes = migrated
-    }
-    return { ...DEFAULT_CONFIG, ...parsed }
+    const parsed = JSON.parse(data) as AnyConfig
+    runMigrations(parsed)
+    return { ...DEFAULT_CONFIG, ...(parsed as Partial<Config>), schemaVersion: SCHEMA_VERSION }
   } catch {
-    return { ...DEFAULT_CONFIG }
+    return { ...DEFAULT_CONFIG, schemaVersion: SCHEMA_VERSION }
   }
 }
 

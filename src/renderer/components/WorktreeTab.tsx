@@ -8,6 +8,9 @@ interface WorktreeTabProps {
   status: PtyStatus
   prStatus?: PRStatus | null
   isMerged?: boolean
+  /** When set, shows a small repo hint next to the branch name. Used in
+   *  unified-repo mode so two branches with the same name stay distinguishable. */
+  repoLabel?: string
   onClick: () => void
   onDelete?: () => void
   onContinue?: () => void
@@ -43,7 +46,7 @@ const PR_STATE_COLOR: Record<string, string> = {
   closed: 'text-danger'
 }
 
-export function WorktreeTab({ worktree, isActive, status, prStatus, isMerged, onClick, onDelete, onContinue }: WorktreeTabProps): JSX.Element {
+export function WorktreeTab({ worktree, isActive, status, prStatus, isMerged, repoLabel, onClick, onDelete, onContinue }: WorktreeTabProps): JSX.Element {
   const displayStatus: PtyStatus | 'merged' = isMerged ? 'merged' : status
   const canContinue = !!onContinue && (prStatus?.state === 'merged' || prStatus?.state === 'closed')
   // Priority: merged/closed state always wins, then merge conflict, then check
@@ -86,7 +89,15 @@ export function WorktreeTab({ worktree, isActive, status, prStatus, isMerged, on
       <div className="min-w-0 flex-1">
         <div className="text-sm font-medium truncate">{worktree.branch}</div>
         <div className="text-xs text-faint truncate">
-          {worktree.path.split('/').slice(-2).join('/')}
+          {repoLabel ? (
+            <>
+              <span className="text-dim">{repoLabel}</span>
+              <span className="mx-1">·</span>
+              {worktree.path.split('/').pop()}
+            </>
+          ) : (
+            worktree.path.split('/').slice(-2).join('/')
+          )}
         </div>
       </div>
       {canContinue && (

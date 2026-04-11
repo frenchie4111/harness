@@ -6,6 +6,8 @@ export interface Worktree {
   isMain: boolean
   /** Directory birthtime in ms since epoch; 0 if unavailable. */
   createdAt: number
+  /** Repo this worktree belongs to. Set by the renderer after a cross-repo listWorktrees merge. */
+  repoRoot: string
 }
 
 export interface FileReadResult {
@@ -141,33 +143,38 @@ export interface PRStatus {
 }
 
 export interface ElectronAPI {
-  listWorktrees(): Promise<Worktree[]>
-  listBranches(): Promise<string[]>
-  addWorktree(branchName: string, baseBranch?: string): Promise<Worktree>
+  listWorktrees(repoRoot: string): Promise<Worktree[]>
+  listBranches(repoRoot: string): Promise<string[]>
+  addWorktree(repoRoot: string, branchName: string, baseBranch?: string): Promise<Worktree>
   continueWorktree(
+    repoRoot: string,
     worktreePath: string,
     newBranchName: string,
     baseBranch?: string
   ): Promise<{ worktree: Worktree; stashReapplied: boolean; stashConflict: boolean }>
   isWorktreeDirty(path: string): Promise<boolean>
   removeWorktree(
+    repoRoot: string,
     path: string,
     force?: boolean,
     removeMeta?: { prNumber?: number; prState?: PRStatus['state'] }
   ): Promise<void>
-  getWorktreeDir(): Promise<string>
-  selectRepoRoot(): Promise<string | null>
-  getRepoRoot(): Promise<string | null>
+  getWorktreeDir(repoRoot: string): Promise<string>
+  listRepos(): Promise<string[]>
+  addRepo(): Promise<string | null>
+  removeRepo(repoRoot: string): Promise<boolean>
+  onReposChanged(callback: (repos: string[]) => void): () => void
 
   getPRStatus(worktreePath: string): Promise<PRStatus | null>
-  getMainWorktreeStatus(): Promise<MainWorktreeStatus>
-  prepareMainForMerge(): Promise<MainWorktreeStatus>
-  previewMergeConflicts(sourceBranch: string): Promise<MergeConflictPreview>
+  getMainWorktreeStatus(repoRoot: string): Promise<MainWorktreeStatus>
+  prepareMainForMerge(repoRoot: string): Promise<MainWorktreeStatus>
+  previewMergeConflicts(repoRoot: string, sourceBranch: string): Promise<MergeConflictPreview>
   mergeWorktreeLocally(
+    repoRoot: string,
     sourceBranch: string,
     strategy: MergeStrategy
   ): Promise<MergeLocalResult>
-  getMergedStatus(): Promise<Record<string, boolean>>
+  getMergedStatus(repoRoot: string): Promise<Record<string, boolean>>
   getBranchCommits(worktreePath: string): Promise<BranchCommit[]>
   getCommitDiff(worktreePath: string, hash: string): Promise<CommitDiff | null>
   listAllFiles(worktreePath: string): Promise<string[]>
@@ -217,8 +224,8 @@ export interface ElectronAPI {
   openInEditor(worktreePath: string, filePath?: string): Promise<{ ok: true } | { ok: false; error: string }>
   onEditorChanged(callback: (editorId: string) => void): () => void
 
-  getWorkspacePanes(): Promise<Record<string, PersistedPane[]>>
-  setWorkspacePanes(panes: Record<string, PersistedPane[]>): Promise<boolean>
+  getWorkspacePanes(): Promise<Record<string, Record<string, PersistedPane[]>>>
+  setWorkspacePanes(panes: Record<string, Record<string, PersistedPane[]>>): Promise<boolean>
   saveTerminalHistory(id: string, content: string): Promise<boolean>
   saveTerminalHistorySync(id: string, content: string): void
   loadTerminalHistory(id: string): Promise<string | null>
