@@ -177,6 +177,14 @@ export interface ElectronAPI {
   getAvailableThemes(): Promise<readonly string[]>
   onThemeChanged(callback: (theme: string) => void): () => void
 
+  getTerminalFontFamily(): Promise<string>
+  setTerminalFontFamily(fontFamily: string): Promise<boolean>
+  getDefaultTerminalFontFamily(): Promise<string>
+  onTerminalFontFamilyChanged(callback: (fontFamily: string) => void): () => void
+  getTerminalFontSize(): Promise<number>
+  setTerminalFontSize(fontSize: number): Promise<boolean>
+  onTerminalFontSizeChanged(callback: (fontSize: number) => void): () => void
+
   getOnboarding(): Promise<{ quest?: QuestStep }>
   setOnboardingQuest(quest: QuestStep): Promise<boolean>
 

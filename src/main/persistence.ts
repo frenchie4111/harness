@@ -35,6 +35,10 @@ interface Config {
   activeTabId?: Record<string, string>
   // Selected color theme id
   theme?: string
+  // Terminal font family (CSS font-family string, applied to xterm.js)
+  terminalFontFamily?: string
+  // Terminal font size in px
+  terminalFontSize?: number
   // Preferred external editor id (see AVAILABLE_EDITORS)
   editor?: string
   // New worktrees are branched from: 'remote' = fetch origin then branch
@@ -85,6 +89,10 @@ export const THEME_APP_BG: Record<string, string> = {
 }
 
 export const DEFAULT_CLAUDE_COMMAND = 'claude'
+
+export const DEFAULT_TERMINAL_FONT_FAMILY =
+  "'SF Mono', 'Monaco', 'Menlo', 'Courier New', monospace"
+export const DEFAULT_TERMINAL_FONT_SIZE = 13
 
 const DEFAULT_CONFIG: Config = {
   windowBounds: null,
