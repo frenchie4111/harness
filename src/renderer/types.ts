@@ -187,7 +187,15 @@ export interface ElectronAPI {
   onTerminalData(callback: (id: string, data: string) => void): () => void
   onStatusChange(callback: (id: string, status: PtyStatus) => void): () => void
   onTerminalExit(callback: (id: string, exitCode: number) => void): () => void
+
+  recordActivity(worktreePath: string, state: string): void
+  getActivityLog(): Promise<Record<string, { t: number; s: 'processing' | 'waiting' | 'needs-approval' | 'idle' }[]>>
+  clearActivityLog(worktreePath?: string): Promise<boolean>
 }
+
+export type ActivityState = 'processing' | 'waiting' | 'needs-approval' | 'idle'
+export interface ActivityEvent { t: number; s: ActivityState }
+export type ActivityLog = Record<string, ActivityEvent[]>
 
 declare global {
   interface Window {

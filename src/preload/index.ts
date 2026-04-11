@@ -156,6 +156,13 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('terminal:status', handler)
     return () => ipcRenderer.removeListener('terminal:status', handler)
   },
+  // Activity log
+  recordActivity: (worktreePath: string, state: string) => {
+    ipcRenderer.send('activity:record', worktreePath, state)
+  },
+  getActivityLog: () => ipcRenderer.invoke('activity:get'),
+  clearActivityLog: (worktreePath?: string) => ipcRenderer.invoke('activity:clear', worktreePath),
+
   onTerminalExit: (callback: ExitCallback) => {
     const handler = (_event: Electron.IpcRendererEvent, id: string, exitCode: number): void => {
       callback(id, exitCode)

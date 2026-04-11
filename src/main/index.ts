@@ -25,6 +25,7 @@ import {
   type PersistedTab
 } from './persistence'
 import { hooksInstalled, installHooks, watchStatusDir } from './hooks'
+import { recordActivity, getActivityLog, clearAllActivity, clearActivityForWorktree, sealAllActive, type ActivityState } from './activity'
 import { log, getLogFilePath } from './debug'
 
 const ptyManager = new PtyManager()
@@ -434,6 +435,21 @@ function registerIpcHandlers(): void {
     }
   )
 
+  // Activity log — per-worktree status transition history for the Activity view
+  ipcMain.on('activity:record', (_, worktreePath: string, state: ActivityState) => {
+    recordActivity(worktreePath, state)
+  })
+
+  ipcMain.handle('activity:get', () => {
+    return getActivityLog()
+  })
+
+  ipcMain.handle('activity:clear', (_, worktreePath?: string) => {
+    if (worktreePath) clearActivityForWorktree(worktreePath)
+    else clearAllActivity()
+    return true
+  })
+
   // Terminal scrollback persistence
   ipcMain.handle('terminal:saveHistory', (_, id: string, content: string) => {
     saveTerminalHistory(id, content)
@@ -762,5 +778,6 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   stopWatchingStatus?.()
   ptyManager.killAll()
+  sealAllActive()
   saveConfigSync(config)
 })
