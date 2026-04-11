@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react'
+import type { CommitDiff } from '../types'
 
 interface DiffViewProps {
   worktreePath: string
-  filePath: string
-  staged: boolean
+  filePath?: string
+  staged?: boolean
   branchDiff?: boolean
+  commitHash?: string
 }
 
 interface DiffLine {
@@ -62,25 +64,38 @@ const GUTTER_STYLES: Record<DiffLine['type'], string> = {
   hunk: 'text-info/70'
 }
 
-export function DiffView({ worktreePath, filePath, staged, branchDiff }: DiffViewProps): JSX.Element {
+export function DiffView({ worktreePath, filePath, staged, branchDiff, commitHash }: DiffViewProps): JSX.Element {
   const [diff, setDiff] = useState<string | null>(null)
+  const [commit, setCommit] = useState<CommitDiff | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
-    window.api
-      .getFileDiff(worktreePath, filePath, staged, branchDiff ? 'branch' : 'working')
-      .then((result) => {
-        if (!cancelled) {
+    setDiff(null)
+    setCommit(null)
+    if (commitHash) {
+      window.api.getCommitDiff(worktreePath, commitHash).then((result) => {
+        if (cancelled) return
+        setCommit(result)
+        setDiff(result?.diff ?? '')
+        setLoading(false)
+      })
+    } else if (filePath) {
+      window.api
+        .getFileDiff(worktreePath, filePath, staged ?? false, branchDiff ? 'branch' : 'working')
+        .then((result) => {
+          if (cancelled) return
           setDiff(result)
           setLoading(false)
-        }
-      })
+        })
+    } else {
+      setLoading(false)
+    }
     return () => {
       cancelled = true
     }
-  }, [worktreePath, filePath, staged, branchDiff])
+  }, [worktreePath, filePath, staged, branchDiff, commitHash])
 
   if (loading) {
     return (
@@ -102,6 +117,7 @@ export function DiffView({ worktreePath, filePath, staged, branchDiff }: DiffVie
 
   return (
     <div className="h-full overflow-auto bg-app">
+      {commit && <CommitHeader commit={commit} />}
       <div className="font-mono text-xs leading-5 min-w-fit">
         {lines.map((line, i) => (
           <div key={i} className={`flex ${LINE_STYLES[line.type]}`}>
@@ -121,6 +137,30 @@ export function DiffView({ worktreePath, filePath, staged, branchDiff }: DiffVie
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+function CommitHeader({ commit }: { commit: CommitDiff }): JSX.Element {
+  const date = new Date(commit.date)
+  const formatted = isNaN(date.getTime()) ? commit.date : date.toLocaleString()
+  return (
+    <div className="border-b border-border bg-panel px-5 py-4">
+      <div className="flex items-center gap-2 mb-2">
+        <span className="font-mono text-[11px] text-info bg-info/10 px-2 py-0.5 rounded">
+          {commit.shortHash}
+        </span>
+        <span className="text-xs text-faint">{formatted}</span>
+      </div>
+      <div className="text-sm font-medium text-fg mb-1">{commit.subject}</div>
+      <div className="text-xs text-muted mb-2">
+        {commit.author} {commit.authorEmail && <span className="text-faint">&lt;{commit.authorEmail}&gt;</span>}
+      </div>
+      {commit.body && (
+        <pre className="text-xs text-muted whitespace-pre-wrap font-sans mt-2 leading-relaxed">
+          {commit.body.trim()}
+        </pre>
+      )}
     </div>
   )
 }
