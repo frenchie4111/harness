@@ -58,6 +58,41 @@ It will create a worktree directory at `../<your repo folder>-worktree` and star
 - [ ] Notifications when cluades are ready for you (maybe peon noises?)
 - [ ] Whatever else people want - add a github issue or email me directly!
 
+# Setup, building, and running locally
+
+Clone the repo and install dependencies:
+
+```sh
+git clone https://github.com/frenchie4111/harness.git
+cd harness
+npm install --legacy-peer-deps
+```
+
+> The `--legacy-peer-deps` flag is required because `electron-vite@5` declares a peer range that npm's strict resolver rejects against the installed `vite@7`.
+
+Common commands:
+
+| Command | What it does |
+|---|---|
+| `npm run dev` | Launch the app in dev mode with hot reload |
+| `npm run build` | Type-check and build main, preload, and renderer to `out/` |
+| `npm run pack` | Build an unsigned `.app` for local smoke testing (fast — skips codesigning and notarization) |
+| `npm run dist:mac` | Full signed + notarized macOS build (requires `.env` with Apple creds) |
+| `npm run rebuild:dev` | Rebuild `node-pty` against the dev Electron version — run this if dev mode errors with `posix_spawnp failed` |
+| `npm run log` | Tail the debug log at `~/Library/Application Support/harness/debug.log` |
+
+After `npm run pack`, you can launch the unsigned build with:
+
+```sh
+open release/mac-arm64/Harness.app
+```
+
+If Gatekeeper blocks the unsigned app, strip the quarantine attribute first:
+
+```sh
+xattr -cr release/mac-arm64/Harness.app
+```
+
 # Contributing
 
 I mean if you want? I think you probably just want to tell claude to download it and make whatever changes you want
