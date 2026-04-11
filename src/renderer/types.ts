@@ -22,6 +22,8 @@ export interface TerminalTab {
   sessionId?: string
   /** For claude tabs: one-shot kickoff prompt appended to the claude command on first spawn. Not persisted. */
   initialPrompt?: string
+  /** For claude tabs: one-shot teleport session id. When set, spawns `claude --teleport <id>` instead of the normal flow. Not persisted. */
+  teleportSessionId?: string
 }
 
 export interface PersistedTab {
