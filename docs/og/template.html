@@ -1,0 +1,90 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+<style>
+  html, body { margin: 0; padding: 0; }
+  body {
+    width: 1200px;
+    height: 630px;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: #0a0a0a;
+    color: #e5e5e5;
+    overflow: hidden;
+    background-image:
+      radial-gradient(circle at 50% 0%, rgba(245, 158, 11, 0.18), transparent 55%),
+      radial-gradient(circle at 0% 100%, rgba(168, 85, 247, 0.14), transparent 55%),
+      radial-gradient(circle at 100% 100%, rgba(239, 68, 68, 0.10), transparent 55%);
+  }
+  .wrap {
+    position: relative;
+    width: 1200px;
+    height: 630px;
+    display: flex;
+    flex-direction: column;
+  }
+  .top {
+    padding: 56px 64px 0 64px;
+    display: flex;
+    align-items: center;
+    gap: 24px;
+  }
+  .icon {
+    width: 88px;
+    height: 88px;
+    border-radius: 22px;
+    box-shadow: 0 0 80px rgba(245, 158, 11, 0.35);
+  }
+  .title {
+    font-size: 104px;
+    font-weight: 900;
+    letter-spacing: -0.04em;
+    line-height: 1;
+    background: linear-gradient(135deg, #f59e0b 0%, #ef4444 50%, #a855f7 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .tagline {
+    padding: 18px 64px 0 64px;
+    font-size: 30px;
+    font-weight: 600;
+    color: #f5f5f5;
+    letter-spacing: -0.01em;
+  }
+  .sub {
+    padding: 6px 64px 0 64px;
+    font-size: 20px;
+    font-weight: 400;
+    color: #a3a3a3;
+    letter-spacing: -0.005em;
+  }
+  .shot-frame {
+    position: absolute;
+    left: 64px;
+    right: 64px;
+    bottom: 0;
+    height: 400px;
+    overflow: hidden;
+  }
+  .shot-frame img {
+    width: 100%;
+    display: block;
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <img class="icon" src="ICON_DATA_URI" />
+      <div class="title">Harness</div>
+    </div>
+    <div class="tagline">Wrangle all your agents.</div>
+    <div class="sub">Run ten Claudes at once without losing your mind — a native macOS app for parallel Claude Code sessions.</div>
+    <div class="shot-frame">
+      <img src="SHOT_DATA_URI" />
+    </div>
+  </div>
+</body>
+</html>
