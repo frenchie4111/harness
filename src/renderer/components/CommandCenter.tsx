@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { X, GitPullRequest, ChevronDown, ChevronRight } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { X, GitPullRequest, ChevronDown, ChevronRight, Layers, Rows3 } from 'lucide-react'
 import type {
   Worktree,
   PtyStatus,
@@ -161,25 +161,80 @@ export function CommandCenter({
     return m
   }, [history])
 
-  // Group cards the same way the sidebar does.
-  const groups = useMemo(
-    () => groupWorktrees(worktrees, prStatuses, mergedPaths),
-    [worktrees, prStatuses, mergedPaths]
-  )
+  // Distinct repos represented in the current worktree list, in first-seen
+  // order. Used to decide when to show the unified/split toggle and to
+  // render per-repo sections in split mode.
+  const repoRoots = useMemo(() => {
+    const seen: string[] = []
+    for (const wt of worktrees) {
+      if (!seen.includes(wt.repoRoot)) seen.push(wt.repoRoot)
+    }
+    return seen
+  }, [worktrees])
+
+  // Unified = one set of PR-status groups across all repos (default).
+  // Split = each repo gets its own section with its own groups.
+  // Shares the same localStorage key as the sidebar toggle so the user's
+  // preference stays consistent across views.
+  const [unifiedRepos, setUnifiedRepos] = useState<boolean>(() => {
+    const saved = localStorage.getItem('harness:unifiedRepos')
+    return saved === null ? true : saved === '1'
+  })
+  useEffect(() => {
+    localStorage.setItem('harness:unifiedRepos', unifiedRepos ? '1' : '0')
+  }, [unifiedRepos])
+
+  // Group cards. In unified mode we pass the full worktree list through
+  // `groupWorktrees` once; in split mode we bucket by repo first, then
+  // group inside each bucket so every repo has its own "Active" section.
+  interface Section {
+    /** Stable scope for collapse state. `__unified__` in unified mode,
+     *  otherwise the repoRoot. */
+    scope: string
+    /** Repo header text — empty string in unified mode. */
+    repoLabel: string
+    groups: ReturnType<typeof groupWorktrees>
+  }
+  const sections = useMemo<Section[]>(() => {
+    if (unifiedRepos || repoRoots.length <= 1) {
+      return [{
+        scope: '__unified__',
+        repoLabel: '',
+        groups: groupWorktrees(worktrees, prStatuses, mergedPaths)
+      }]
+    }
+    const byRepo = new Map<string, Worktree[]>()
+    for (const root of repoRoots) byRepo.set(root, [])
+    for (const wt of worktrees) byRepo.get(wt.repoRoot)!.push(wt)
+    return repoRoots.map((root) => ({
+      scope: root,
+      repoLabel: root.split('/').pop() || root,
+      groups: groupWorktrees(byRepo.get(root) || [], prStatuses, mergedPaths)
+    }))
+  }, [unifiedRepos, repoRoots, worktrees, prStatuses, mergedPaths])
 
   const totalCards = useMemo(
-    () => groups.reduce((acc, g) => acc + g.worktrees.length, 0),
-    [groups]
+    () => sections.reduce((acc, s) => acc + s.groups.reduce((a, g) => a + g.worktrees.length, 0), 0),
+    [sections]
   )
 
-  const [collapsed, setCollapsed] = useState<Record<GroupKey, boolean>>({
-    'needs-attention': false,
-    active: false,
-    'no-pr': false,
-    merged: true
-  })
-  const toggleGroup = (key: GroupKey): void =>
-    setCollapsed((prev) => ({ ...prev, [key]: !prev[key] }))
+  // Collapse state keyed by `${scope}:${groupKey}` so each repo's groups
+  // collapse independently in split mode. Defaults `merged` to collapsed.
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
+  const isCollapsed = useCallback((scope: string, key: GroupKey): boolean => {
+    const composite = `${scope}:${key}`
+    if (composite in collapsed) return collapsed[composite]
+    return key === 'merged'
+  }, [collapsed])
+  const toggleGroup = useCallback((scope: string, key: GroupKey): void => {
+    const composite = `${scope}:${key}`
+    setCollapsed((prev) => {
+      const current = composite in prev ? prev[composite] : key === 'merged'
+      return { ...prev, [composite]: !current }
+    })
+  }, [])
+
+  const showRepoLabelOnCards = repoRoots.length > 1
 
   // ESC to close
   useEffect(() => {
@@ -236,6 +291,16 @@ export function CommandCenter({
           <StatCount label="Idle" value={counts.idle} dot="bg-faint" />
         </div>
 
+        {repoRoots.length > 1 && (
+          <button
+            onClick={() => setUnifiedRepos((v) => !v)}
+            className="no-drag p-2 rounded hover:bg-surface text-muted hover:text-fg cursor-pointer"
+            title={unifiedRepos ? 'Split by repo' : 'Merge repos into one list'}
+          >
+            {unifiedRepos ? <Rows3 size={16} /> : <Layers size={16} />}
+          </button>
+        )}
+
         <button
           onClick={onClose}
           className="no-drag p-2 rounded hover:bg-surface text-muted hover:text-fg cursor-pointer"
@@ -281,87 +346,106 @@ export function CommandCenter({
           </div>
         )}
 
-        {groups.map((group) => {
-          const isCollapsed = collapsed[group.key]
-          return (
-            <section key={group.key}>
-              <button
-                onClick={() => toggleGroup(group.key)}
-                className="w-full flex items-center gap-2 mb-3 text-left text-muted hover:text-fg transition-colors cursor-pointer"
-              >
-                {isCollapsed
-                  ? <ChevronRight size={14} className="shrink-0" />
-                  : <ChevronDown size={14} className="shrink-0" />}
-                <h2 className="text-xs font-semibold uppercase tracking-wider">
-                  {group.label}
+        {sections.map((section) => (
+          <div key={section.scope}>
+            {section.repoLabel && (
+              <div className="flex items-center gap-2 mb-5">
+                <h2 className="text-base font-semibold text-fg-bright tracking-tight">
+                  {section.repoLabel}
                 </h2>
-                <span className="text-[10px] text-faint">{group.worktrees.length}</span>
-                <div className="flex-1 border-t border-border ml-2" />
-              </button>
+                <div className="flex-1 border-t border-border" />
+              </div>
+            )}
+            <div className="space-y-6">
+            {section.groups.map((group) => {
+              const collapsedHere = isCollapsed(section.scope, group.key)
+              return (
+                <section key={group.key}>
+                  <button
+                    onClick={() => toggleGroup(section.scope, group.key)}
+                    className="w-full flex items-center gap-2 mb-3 text-left text-muted hover:text-fg transition-colors cursor-pointer"
+                  >
+                    {collapsedHere
+                      ? <ChevronRight size={14} className="shrink-0" />
+                      : <ChevronDown size={14} className="shrink-0" />}
+                    <h2 className="text-xs font-semibold uppercase tracking-wider">
+                      {group.label}
+                    </h2>
+                    <span className="text-[10px] text-faint">{group.worktrees.length}</span>
+                    <div className="flex-1 border-t border-border ml-2" />
+                  </button>
 
-              {!isCollapsed && (
-                <div
-                  className="grid gap-4"
-                  style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}
-                >
-                  {group.worktrees.map((wt) => {
-                    const display = cardDisplay(wt)
-                    const pr = prStatuses[wt.path]
-                    const tail = pickTail(wt.path)
-                    const record = pickRecord(wt.path)
-                    return (
-                      <button
-                        key={wt.path}
-                        onClick={() => onSelect(wt.path)}
-                        className={`text-left rounded-lg bg-surface hover:bg-surface-hover transition-colors p-4 flex flex-col gap-3 cursor-pointer ${STATUS_CARD_RING[display]}`}
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span
-                            className={`w-2.5 h-2.5 rounded-full shrink-0 ${STATUS_DOT[display]}`}
-                          />
-                          <span className="text-sm font-semibold text-fg-bright truncate flex-1">
-                            {wt.branch}
-                          </span>
-                          {pr && (
-                            <GitPullRequest
-                              size={13}
-                              className={
-                                pr.state === 'merged'
-                                  ? 'text-accent'
-                                  : pr.state === 'closed'
-                                    ? 'text-danger'
-                                    : pr.checksOverall === 'failure' || pr.hasConflict
-                                      ? 'text-danger'
-                                      : pr.checksOverall === 'pending'
-                                        ? 'text-warning'
-                                        : pr.checksOverall === 'success'
-                                          ? 'text-success'
-                                          : 'text-dim'
-                              }
-                            />
-                          )}
-                        </div>
+                  {!collapsedHere && (
+                    <div
+                      className="grid gap-4"
+                      style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}
+                    >
+                      {group.worktrees.map((wt) => {
+                        const display = cardDisplay(wt)
+                        const pr = prStatuses[wt.path]
+                        const tail = pickTail(wt.path)
+                        const record = pickRecord(wt.path)
+                        return (
+                          <button
+                            key={wt.path}
+                            onClick={() => onSelect(wt.path)}
+                            className={`text-left rounded-lg bg-surface hover:bg-surface-hover transition-colors p-4 flex flex-col gap-3 cursor-pointer ${STATUS_CARD_RING[display]}`}
+                          >
+                            {showRepoLabelOnCards && (
+                              <div className="text-[10px] uppercase tracking-wider text-faint -mb-1 truncate">
+                                {wt.repoRoot.split('/').pop()}
+                              </div>
+                            )}
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span
+                                className={`w-2.5 h-2.5 rounded-full shrink-0 ${STATUS_DOT[display]}`}
+                              />
+                              <span className="text-sm font-semibold text-fg-bright truncate flex-1">
+                                {wt.branch}
+                              </span>
+                              {pr && (
+                                <GitPullRequest
+                                  size={13}
+                                  className={
+                                    pr.state === 'merged'
+                                      ? 'text-accent'
+                                      : pr.state === 'closed'
+                                        ? 'text-danger'
+                                        : pr.checksOverall === 'failure' || pr.hasConflict
+                                          ? 'text-danger'
+                                          : pr.checksOverall === 'pending'
+                                            ? 'text-warning'
+                                            : pr.checksOverall === 'success'
+                                              ? 'text-success'
+                                              : 'text-dim'
+                                  }
+                                />
+                              )}
+                            </div>
 
-                        <div className="flex items-center justify-between text-[11px]">
-                          <span className="text-muted">{STATUS_LABEL[display]}</span>
-                          <span className="text-faint">{relTime(lastActive[wt.path])}</span>
-                        </div>
+                            <div className="flex items-center justify-between text-[11px]">
+                              <span className="text-muted">{STATUS_LABEL[display]}</span>
+                              <span className="text-faint">{relTime(lastActive[wt.path])}</span>
+                            </div>
 
-                        <div className="rounded bg-panel border border-border/60 p-2 h-14 overflow-hidden">
-                          <pre className="text-[10px] leading-tight text-muted font-mono whitespace-pre-wrap break-all line-clamp-3">
-                            {tail || <span className="text-faint italic">no output yet</span>}
-                          </pre>
-                        </div>
+                            <div className="rounded bg-panel border border-border/60 p-2 h-14 overflow-hidden">
+                              <pre className="text-[10px] leading-tight text-muted font-mono whitespace-pre-wrap break-all line-clamp-3">
+                                {tail || <span className="text-faint italic">no output yet</span>}
+                              </pre>
+                            </div>
 
-                        <MiniTimeline record={record} now={now} />
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
-            </section>
-          )
-        })}
+                            <MiniTimeline record={record} now={now} />
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                </section>
+              )
+            })}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   )
