@@ -12,7 +12,6 @@ interface SidebarProps {
   statuses: Record<string, PtyStatus>
   prStatuses: Record<string, PRStatus | null>
   mergedPaths?: Record<string, boolean>
-  lastActive: Record<string, number>
   prLoading: boolean
   /** Non-main worktrees. Used to decide whether to show the "spawn your first agent" nudge. */
   agentCount: number
@@ -33,7 +32,6 @@ export function Sidebar({
   statuses,
   prStatuses,
   mergedPaths,
-  lastActive,
   prLoading,
   agentCount,
   onSelectWorktree,
@@ -106,8 +104,8 @@ export function Sidebar({
   }, [])
 
   const groups = useMemo(
-    () => groupWorktrees(worktrees, prStatuses, lastActive, mergedPaths),
-    [worktrees, prStatuses, lastActive, mergedPaths]
+    () => groupWorktrees(worktrees, prStatuses, mergedPaths),
+    [worktrees, prStatuses, mergedPaths]
   )
 
   return (

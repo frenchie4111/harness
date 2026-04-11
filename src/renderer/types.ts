@@ -4,6 +4,8 @@ export interface Worktree {
   head: string
   isBare: boolean
   isMain: boolean
+  /** Directory birthtime in ms since epoch; 0 if unavailable. */
+  createdAt: number
 }
 
 export interface TerminalTab {

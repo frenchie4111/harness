@@ -29,16 +29,18 @@ export const GROUP_LABELS: Record<GroupKey, string> = {
   merged: 'Merged / Closed'
 }
 
-/** Sort worktrees within a group by most recently active (descending) */
-function sortByRecency(worktrees: Worktree[], lastActive: Record<string, number>): Worktree[] {
-  return [...worktrees].sort((a, b) => (lastActive[b.path] || 0) - (lastActive[a.path] || 0))
+/** Sort worktrees within a group by creation time (newest first). Main worktree pinned to top. */
+function sortByCreatedAt(worktrees: Worktree[]): Worktree[] {
+  return [...worktrees].sort((a, b) => {
+    if (a.isMain !== b.isMain) return a.isMain ? -1 : 1
+    return (b.createdAt || 0) - (a.createdAt || 0)
+  })
 }
 
-/** Group worktrees by PR status, sorted by recency within each group */
+/** Group worktrees by PR status, sorted by creation time within each group */
 export function groupWorktrees(
   worktrees: Worktree[],
   prStatuses: Record<string, PRStatus | null>,
-  lastActive?: Record<string, number>,
   mergedPaths?: Record<string, boolean>
 ): WorktreeGroup[] {
   const grouped: Record<GroupKey, Worktree[]> = {
@@ -58,7 +60,7 @@ export function groupWorktrees(
     .map((key) => ({
       key,
       label: GROUP_LABELS[key],
-      worktrees: lastActive ? sortByRecency(grouped[key], lastActive) : grouped[key]
+      worktrees: sortByCreatedAt(grouped[key])
     }))
 }
 
@@ -66,10 +68,7 @@ export function groupWorktrees(
 export function sortedWorktrees(
   worktrees: Worktree[],
   prStatuses: Record<string, PRStatus | null>,
-  lastActive?: Record<string, number>,
   mergedPaths?: Record<string, boolean>
 ): Worktree[] {
-  return groupWorktrees(worktrees, prStatuses, lastActive, mergedPaths).flatMap(
-    (g) => g.worktrees
-  )
+  return groupWorktrees(worktrees, prStatuses, mergedPaths).flatMap((g) => g.worktrees)
 }

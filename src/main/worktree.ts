@@ -1,7 +1,7 @@
 import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { basename, join } from 'path'
-import { existsSync, mkdirSync } from 'fs'
+import { existsSync, mkdirSync, statSync } from 'fs'
 import { log } from './debug'
 
 const execFileAsync = promisify(execFile)
@@ -12,6 +12,17 @@ export interface WorktreeInfo {
   head: string
   isBare: boolean
   isMain: boolean
+  /** Directory birthtime in ms since epoch; 0 if unavailable. */
+  createdAt: number
+}
+
+function getCreatedAt(path: string): number {
+  try {
+    const s = statSync(path)
+    return s.birthtimeMs || s.ctimeMs || 0
+  } catch {
+    return 0
+  }
 }
 
 /** Get a sensible default directory for worktrees: <repo>-worktrees/ alongside the repo */
@@ -44,7 +55,8 @@ export async function listWorktrees(repoRoot: string): Promise<WorktreeInfo[]> {
           branch: current.branch || '(detached)',
           head: current.head || '',
           isBare: current.isBare || false,
-          isMain: current.path === repoRoot
+          isMain: current.path === repoRoot,
+          createdAt: getCreatedAt(current.path)
         })
       }
       current = {}
