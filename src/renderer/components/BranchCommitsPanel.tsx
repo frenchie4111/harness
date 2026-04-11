@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { RefreshCw } from 'lucide-react'
 import type { BranchCommit } from '../types'
 import { Tooltip } from './Tooltip'
+import { RightPanel } from './RightPanel'
 
 interface BranchCommitsPanelProps {
   worktreePath: string | null
@@ -10,14 +11,13 @@ interface BranchCommitsPanelProps {
 
 export function BranchCommitsPanel({ worktreePath, onOpenCommit }: BranchCommitsPanelProps): JSX.Element | null {
   const [commits, setCommits] = useState<BranchCommit[]>([])
-  const [loading, setLoading] = useState(false)
+  const [hasLoaded, setHasLoaded] = useState(false)
 
   const refresh = useCallback(async () => {
     if (!worktreePath) {
       setCommits([])
       return
     }
-    setLoading(true)
     try {
       const result = await window.api.getBranchCommits(worktreePath)
       setCommits(result)
@@ -25,8 +25,12 @@ export function BranchCommitsPanel({ worktreePath, onOpenCommit }: BranchCommits
       console.error('Failed to get branch commits:', err)
       setCommits([])
     } finally {
-      setLoading(false)
+      setHasLoaded(true)
     }
+  }, [worktreePath])
+
+  useEffect(() => {
+    setHasLoaded(false)
   }, [worktreePath])
 
   useEffect(() => {
@@ -37,28 +41,29 @@ export function BranchCommitsPanel({ worktreePath, onOpenCommit }: BranchCommits
 
   if (!worktreePath) return null
 
+  const actions = (
+    <>
+      {commits.length > 0 && (
+        <span className="text-[10px] text-faint">{commits.length}</span>
+      )}
+      <Tooltip label="Refresh">
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            refresh()
+          }}
+          className="text-faint hover:text-fg transition-colors cursor-pointer"
+        >
+          <RefreshCw size={12} />
+        </button>
+      </Tooltip>
+    </>
+  )
+
   return (
-    <div className="flex flex-col border-b border-border bg-panel shrink-0 max-h-56">
-      <div className="flex items-center justify-between h-9 px-3 border-b border-border shrink-0">
-        <span className="text-xs font-medium text-muted uppercase tracking-wide">
-          Commits
-        </span>
-        <div className="flex items-center gap-2">
-          {commits.length > 0 && (
-            <span className="text-[10px] text-faint">{commits.length}</span>
-          )}
-          <Tooltip label="Refresh">
-            <button
-              onClick={refresh}
-              className="text-faint hover:text-fg transition-colors cursor-pointer"
-            >
-              <RefreshCw size={12} />
-            </button>
-          </Tooltip>
-        </div>
-      </div>
+    <RightPanel id="commits" title="Commits" actions={actions} maxHeight="max-h-56">
       <div className="flex-1 overflow-y-auto min-h-0 text-xs py-1.5">
-        {commits.length === 0 && !loading && (
+        {commits.length === 0 && hasLoaded && (
           <div className="px-4 py-2 text-faint">No commits ahead of base</div>
         )}
         {commits.map((c, i) => {
@@ -85,6 +90,6 @@ export function BranchCommitsPanel({ worktreePath, onOpenCommit }: BranchCommits
           )
         })}
       </div>
-    </div>
+    </RightPanel>
   )
 }

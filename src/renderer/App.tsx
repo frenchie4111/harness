@@ -9,7 +9,7 @@ import { QuestCard } from './components/QuestCard'
 import { WorkspaceView } from './components/WorkspaceView'
 import { ChangedFilesPanel } from './components/ChangedFilesPanel'
 import { BranchCommitsPanel } from './components/BranchCommitsPanel'
-import { PRStatusPanel } from './components/PRStatusPanel'
+import { PRStatusPanel, MergeLocallyPanel } from './components/PRStatusPanel'
 import { Settings } from './components/Settings'
 import { Guide } from './components/Guide'
 import { Activity } from './components/Activity'
@@ -1243,11 +1243,15 @@ const setQuestStep = useCallback((next: QuestStep) => {
         {/* Right panel — hidden on the new-worktree screen so the form gets the full width */}
         {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && (
           <div className="w-64 shrink-0 h-full flex flex-col border-l border-border bg-panel">
-            <PRStatusPanel
+            <MergeLocallyPanel
               pr={activeWorktreeId ? prStatuses[activeWorktreeId] : null}
               worktree={worktrees.find((w) => w.path === activeWorktreeId) || null}
+              hasGithubToken={hasGithubToken}
               onMerged={refreshMergedStatus}
               onRemoveWorktree={handleDeleteWorktree}
+            />
+            <PRStatusPanel
+              pr={activeWorktreeId ? prStatuses[activeWorktreeId] : null}
               hasGithubToken={hasGithubToken}
               onConnectGithub={() => {
                 setSettingsInitialSection('github')
@@ -1255,17 +1259,15 @@ const setQuestStep = useCallback((next: QuestStep) => {
               }}
             />
             <BranchCommitsPanel worktreePath={activeWorktreeId} onOpenCommit={handleOpenCommit} />
-            <div className="flex-1 min-h-0">
-              <ChangedFilesPanel
-                worktreePath={activeWorktreeId}
-                onOpenDiff={handleOpenDiff}
-                onSendToClaude={
-                  activeWorktreeId
-                    ? (text) => handleSendToClaude(activeWorktreeId, text)
-                    : undefined
-                }
-              />
-            </div>
+            <ChangedFilesPanel
+              worktreePath={activeWorktreeId}
+              onOpenDiff={handleOpenDiff}
+              onSendToClaude={
+                activeWorktreeId
+                  ? (text) => handleSendToClaude(activeWorktreeId, text)
+                  : undefined
+              }
+            />
           </div>
         )}
       </div>

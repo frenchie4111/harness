@@ -9,6 +9,7 @@ import type {
   MergeConflictPreview
 } from '../types'
 import { Tooltip } from './Tooltip'
+import { RightPanel } from './RightPanel'
 
 /** Pick a one-line failure reason out of a check's GitHub `output.summary`,
  * which is often multi-line markdown. Grab the first non-empty, non-heading
@@ -20,19 +21,6 @@ function firstLine(summary: string | undefined): string {
     if (line) return line.length > 140 ? line.slice(0, 140) + '…' : line
   }
   return ''
-}
-
-interface PRStatusPanelProps {
-  pr: PRStatus | null | undefined
-  worktree?: Worktree | null
-  /** Called right after a successful local merge (for refreshing lists). */
-  onMerged?: () => void | Promise<void>
-  /** Called when the user clicks "Remove worktree" after a merge. */
-  onRemoveWorktree?: (worktreePath: string) => void | Promise<void>
-  /** Whether a GitHub token is configured. `null` means still loading. */
-  hasGithubToken?: boolean | null
-  /** Called when the user clicks the "Connect GitHub" button. */
-  onConnectGithub?: () => void
 }
 
 const STRATEGY_BUTTON_LABELS: Record<MergeStrategy, string> = {
@@ -56,7 +44,38 @@ const STRATEGY_DESCRIPTIONS: Record<MergeStrategy, string> = {
     'Only merge if the base can fast-forward (--ff-only). Fails on divergent history.'
 }
 
-function MergeLocallySection({
+interface MergeLocallyPanelProps {
+  pr: PRStatus | null | undefined
+  worktree?: Worktree | null
+  hasGithubToken?: boolean | null
+  onMerged?: () => void | Promise<void>
+  onRemoveWorktree?: (worktreePath: string) => void | Promise<void>
+}
+
+/** Renders the "Merge Locally" right-panel when it's applicable (no PR, not main branch,
+ * GitHub connected). Returns null otherwise. */
+export function MergeLocallyPanel({
+  pr,
+  worktree,
+  hasGithubToken,
+  onMerged,
+  onRemoveWorktree
+}: MergeLocallyPanelProps): JSX.Element | null {
+  const needsGithubToken = hasGithubToken === false
+  const show = !needsGithubToken && pr === null && worktree && !worktree.isMain
+  if (!show || !worktree) return null
+  return (
+    <RightPanel id="merge-locally" title="Merge Locally">
+      <MergeLocallyBody
+        worktree={worktree}
+        onMerged={onMerged}
+        onRemoveWorktree={onRemoveWorktree}
+      />
+    </RightPanel>
+  )
+}
+
+function MergeLocallyBody({
   worktree,
   onMerged,
   onRemoveWorktree
@@ -166,11 +185,7 @@ function MergeLocallySection({
   const hasConflict = conflictPreview?.hasConflict === true
 
   return (
-    <div className="border-b border-border">
-      <div className="px-3 py-2 flex items-center gap-2">
-        <span className="text-xs font-medium text-dim flex-1">MERGE LOCALLY</span>
-      </div>
-      <div className="px-3 pb-3 space-y-2">
+    <div className="px-3 py-2 space-y-2">
         {!success && (
           <>
             <div className="text-xs text-faint">
@@ -327,7 +342,6 @@ function MergeLocallySection({
             </button>
           </div>
         )}
-      </div>
     </div>
   )
 }
@@ -362,11 +376,14 @@ const OVERALL_COLORS: Record<string, string> = {
   none: 'text-dim'
 }
 
+interface PRStatusPanelProps {
+  pr: PRStatus | null | undefined
+  hasGithubToken?: boolean | null
+  onConnectGithub?: () => void
+}
+
 export function PRStatusPanel({
   pr,
-  worktree,
-  onMerged,
-  onRemoveWorktree,
   hasGithubToken,
   onConnectGithub
 }: PRStatusPanelProps): JSX.Element {
@@ -379,43 +396,31 @@ export function PRStatusPanel({
   }, [pr?.checksOverall, pr?.number])
 
   const needsGithubToken = hasGithubToken === false
-  const showMergeLocally = !needsGithubToken && pr === null && worktree && !worktree.isMain
+
+  const actions =
+    !needsGithubToken && pr ? (
+      <Tooltip label="Open PR in browser" action="openPR" side="left">
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            window.api.openExternal(pr.url)
+          }}
+          className="text-xs text-dim hover:text-fg flex items-center gap-1 transition-colors cursor-pointer"
+        >
+          Open
+          <ExternalLink size={11} />
+        </button>
+      </Tooltip>
+    ) : null
 
   return (
-    <>
-    {showMergeLocally && (
-      <MergeLocallySection
-        worktree={worktree}
-        onMerged={onMerged}
-        onRemoveWorktree={onRemoveWorktree}
-      />
-    )}
-    <div className={`border-b border-border ${needsGithubToken ? 'bg-info/10' : ''}`}>
-      <div
-        className={`px-3 py-2 flex items-center gap-2 ${
-          needsGithubToken ? 'bg-info/25' : ''
-        }`}
-      >
-        <span
-          className={`text-xs font-medium flex-1 ${
-            needsGithubToken ? 'text-info' : 'text-dim'
-          }`}
-        >
-          PULL REQUEST
-        </span>
-        {!needsGithubToken && pr && (
-          <Tooltip label="Open PR in browser" action="openPR" side="left">
-            <button
-              onClick={() => window.api.openExternal(pr.url)}
-              className="text-xs text-dim hover:text-fg flex items-center gap-1 transition-colors cursor-pointer"
-            >
-              Open
-              <ExternalLink size={11} />
-            </button>
-          </Tooltip>
-        )}
-      </div>
-
+    <RightPanel
+      id="pull-request"
+      title="Pull Request"
+      actions={actions}
+      containerClassName={needsGithubToken ? 'bg-info/10' : ''}
+      headerClassName={needsGithubToken ? 'bg-info/25' : ''}
+    >
       {needsGithubToken && (
         <div className="px-3 py-3 space-y-2">
           <div className="text-xs text-info/90 leading-snug">
@@ -434,15 +439,15 @@ export function PRStatusPanel({
       )}
 
       {!needsGithubToken && pr === null && (
-        <div className="px-3 pb-2 text-xs text-faint">No PR for this branch</div>
+        <div className="px-3 py-2 text-xs text-faint">No PR for this branch</div>
       )}
 
       {!needsGithubToken && pr === undefined && (
-        <div className="px-3 pb-2 text-xs text-faint">Loading...</div>
+        <div className="px-3 py-2 text-xs text-faint">Loading...</div>
       )}
 
       {!needsGithubToken && pr && (
-        <div className="px-3 pb-2">
+        <div className="px-3 py-2">
           {/* PR title and state */}
           <div className="flex items-start gap-1.5 mb-1.5">
             <span className={`text-xs font-medium shrink-0 ${STATE_COLORS[pr.state]}`}>
@@ -537,7 +542,6 @@ export function PRStatusPanel({
           )}
         </div>
       )}
-    </div>
-    </>
+    </RightPanel>
   )
 }
