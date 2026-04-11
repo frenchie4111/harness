@@ -124,6 +124,7 @@ export function TerminalPanel({
                 visible={visible && tab.id === activeTabId}
                 claudeCommand={claudeCommand}
                 sessionId={tab.sessionId}
+                initialPrompt={tab.initialPrompt}
                 onRestartClaude={
                   tab.type === 'claude'
                     ? () => onRestartClaudeTab(worktreePath, tab.id)

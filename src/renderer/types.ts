@@ -18,6 +18,8 @@ export interface TerminalTab {
   branchDiff?: boolean
   /** For claude tabs: UUID passed to `claude --session-id` so the tab resumes its own session. */
   sessionId?: string
+  /** For claude tabs: one-shot kickoff prompt appended to the claude command on first spawn. Not persisted. */
+  initialPrompt?: string
 }
 
 export interface PersistedTab {

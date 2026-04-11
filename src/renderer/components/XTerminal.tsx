@@ -44,10 +44,15 @@ interface XTerminalProps {
   visible: boolean
   claudeCommand: string
   sessionId?: string
+  initialPrompt?: string
   onRestartClaude?: () => void
 }
 
-export function XTerminal({ terminalId, cwd, type, visible, claudeCommand, sessionId, onRestartClaude }: XTerminalProps): JSX.Element {
+function shellQuote(s: string): string {
+  return "'" + s.replace(/'/g, "'\\''") + "'"
+}
+
+export function XTerminal({ terminalId, cwd, type, visible, claudeCommand, sessionId, initialPrompt, onRestartClaude }: XTerminalProps): JSX.Element {
   const [exited, setExited] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
@@ -152,15 +157,20 @@ export function XTerminal({ terminalId, cwd, type, visible, claudeCommand, sessi
     }
 
     const buildClaudeArg = async (): Promise<string> => {
-      if (!sessionId) return claudeCommand
+      if (!sessionId) {
+        return initialPrompt
+          ? `${claudeCommand} ${shellQuote(initialPrompt)}`
+          : claudeCommand
+      }
       // If a session file already exists for this id, resume it; otherwise
       // create a new session with this id. `claude --session-id <id>` errors
       // with "is already in use" when the file exists, so we can't use it
-      // idempotently across launches.
+      // idempotently across launches. Only forward the kickoff prompt on a
+      // fresh session — a resume should never replay it.
       const exists = await window.api.claudeSessionFileExists(cwd, sessionId)
-      return exists
-        ? `${claudeCommand} --resume ${sessionId}`
-        : `${claudeCommand} --session-id ${sessionId}`
+      if (exists) return `${claudeCommand} --resume ${sessionId}`
+      const base = `${claudeCommand} --session-id ${sessionId}`
+      return initialPrompt ? `${base} ${shellQuote(initialPrompt)}` : base
     }
 
     const spawnPty = async (): Promise<void> => {
