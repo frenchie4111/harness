@@ -41,6 +41,15 @@ export type UpdaterStatus =
   | { state: 'downloaded'; version: string }
   | { state: 'error'; error: string }
 
+export interface BranchCommit {
+  hash: string
+  shortHash: string
+  subject: string
+  author: string
+  relativeDate: string
+  timestamp: number
+}
+
 export interface ChangedFile {
   path: string
   status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked'
@@ -118,6 +127,7 @@ export interface ElectronAPI {
     strategy: MergeStrategy
   ): Promise<MergeLocalResult>
   getMergedStatus(): Promise<Record<string, boolean>>
+  getBranchCommits(worktreePath: string): Promise<BranchCommit[]>
   getChangedFiles(worktreePath: string, mode?: 'working' | 'branch'): Promise<ChangedFile[]>
   getFileDiff(
     worktreePath: string,

@@ -249,6 +249,45 @@ export async function getDefaultBaseRef(worktreePath: string): Promise<string> {
   return 'HEAD'
 }
 
+export interface BranchCommit {
+  hash: string
+  shortHash: string
+  subject: string
+  author: string
+  relativeDate: string
+  timestamp: number
+}
+
+/** Get commits unique to this branch (i.e. base..HEAD). */
+export async function getBranchCommits(worktreePath: string): Promise<BranchCommit[]> {
+  const base = await getDefaultBaseRef(worktreePath)
+  if (base === 'HEAD') return []
+  try {
+    const sep = '\x1f'
+    const { stdout } = await execFileAsync(
+      'git',
+      ['log', `${base}..HEAD`, `--pretty=format:%H${sep}%h${sep}%s${sep}%an${sep}%ar${sep}%at`, '--max-count=200'],
+      { cwd: worktreePath }
+    )
+    const out: BranchCommit[] = []
+    for (const line of stdout.split('\n')) {
+      if (!line) continue
+      const [hash, shortHash, subject, author, relativeDate, ts] = line.split(sep)
+      out.push({
+        hash,
+        shortHash,
+        subject,
+        author,
+        relativeDate,
+        timestamp: Number(ts) || 0
+      })
+    }
+    return out
+  } catch {
+    return []
+  }
+}
+
 function mapNameStatus(code: string): ChangedFile['status'] {
   const c = code[0]
   if (c === 'A') return 'added'

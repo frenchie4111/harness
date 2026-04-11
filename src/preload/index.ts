@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('worktree:changedFiles', worktreePath, mode),
   getFileDiff: (worktreePath: string, filePath: string, staged: boolean, mode?: 'working' | 'branch') =>
     ipcRenderer.invoke('worktree:fileDiff', worktreePath, filePath, staged, mode),
+  getBranchCommits: (worktreePath: string) => ipcRenderer.invoke('worktree:branchCommits', worktreePath),
   getPRStatus: (worktreePath: string) => ipcRenderer.invoke('worktree:prStatus', worktreePath),
   getMainWorktreeStatus: () => ipcRenderer.invoke('worktree:mainStatus'),
   prepareMainForMerge: () => ipcRenderer.invoke('worktree:prepareMain'),

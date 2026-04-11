@@ -8,6 +8,7 @@ import { NewWorktreeScreen } from './components/NewWorktreeScreen'
 import { QuestCard } from './components/QuestCard'
 import { TerminalPanel } from './components/TerminalPanel'
 import { ChangedFilesPanel } from './components/ChangedFilesPanel'
+import { BranchCommitsPanel } from './components/BranchCommitsPanel'
 import { PRStatusPanel } from './components/PRStatusPanel'
 import { Settings } from './components/Settings'
 import { Guide } from './components/Guide'
@@ -916,6 +917,7 @@ export default function App(): JSX.Element {
               onMerged={refreshMergedStatus}
               onRemoveWorktree={handleDeleteWorktree}
             />
+            <BranchCommitsPanel worktreePath={activeWorktreeId} />
             <div className="flex-1 min-h-0">
               <ChangedFilesPanel worktreePath={activeWorktreeId} onOpenDiff={handleOpenDiff} />
             </div>
