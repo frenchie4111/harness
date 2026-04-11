@@ -12,7 +12,11 @@ contextBridge.exposeInMainWorld('api', {
   continueWorktree: (worktreePath: string, newBranchName: string, baseBranch?: string) =>
     ipcRenderer.invoke('worktree:continue', worktreePath, newBranchName, baseBranch),
   isWorktreeDirty: (path: string) => ipcRenderer.invoke('worktree:isDirty', path),
-  removeWorktree: (path: string, force?: boolean) => ipcRenderer.invoke('worktree:remove', path, force),
+  removeWorktree: (
+    path: string,
+    force?: boolean,
+    removeMeta?: { prNumber?: number; prState?: 'open' | 'draft' | 'merged' | 'closed' }
+  ) => ipcRenderer.invoke('worktree:remove', path, force, removeMeta),
   getWorktreeDir: () => ipcRenderer.invoke('worktree:dir'),
   selectRepoRoot: () => ipcRenderer.invoke('repo:select'),
   getRepoRoot: () => ipcRenderer.invoke('repo:getRoot'),

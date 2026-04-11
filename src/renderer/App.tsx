@@ -520,14 +520,15 @@ const setQuestStep = useCallback((next: QuestStep) => {
     })
 
     // Force remove if dirty (user already confirmed), normal remove otherwise
-    await window.api.removeWorktree(path, dirty)
+    const pr = prStatuses[path]
+    await window.api.removeWorktree(path, dirty, pr ? { prNumber: pr.number, prState: pr.state } : undefined)
 
     const trees = await window.api.listWorktrees()
     setWorktrees(trees)
     if (path === activeWorktreeId) {
       setActiveWorktreeId(trees.length > 0 ? trees[0].path : null)
     }
-  }, [terminalTabs, activeWorktreeId])
+  }, [terminalTabs, activeWorktreeId, prStatuses])
 
   // Bulk delete used by the Cleanup screen. Skips per-path confirmation — the
   // Cleanup UI owns the single confirm — and removes each worktree sequentially
@@ -556,7 +557,8 @@ const setQuestStep = useCallback((next: QuestStep) => {
           return next
         })
         try {
-          await window.api.removeWorktree(path, force)
+          const pr = prStatuses[path]
+          await window.api.removeWorktree(path, force, pr ? { prNumber: pr.number, prState: pr.state } : undefined)
         } catch (err) {
           console.error('Failed to remove worktree', path, err)
         }
@@ -568,7 +570,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
         setActiveWorktreeId(trees.length > 0 ? trees[0].path : null)
       }
     },
-    [terminalTabs, activeWorktreeId]
+    [terminalTabs, activeWorktreeId, prStatuses]
   )
 
   // Append a tab to a specific pane (or the focused pane if paneId is omitted).
