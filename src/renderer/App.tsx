@@ -11,6 +11,7 @@ import { ChangedFilesPanel } from './components/ChangedFilesPanel'
 import { PRStatusPanel } from './components/PRStatusPanel'
 import { Settings } from './components/Settings'
 import { Guide } from './components/Guide'
+import { Activity } from './components/Activity'
 import iconUrl from '../../resources/icon.png'
 import { focusTerminalById, flushAllTerminalHistory, markTerminalClosing } from './components/XTerminal'
 import { useHotkeys } from './hooks/useHotkeys'
@@ -39,6 +40,7 @@ export default function App(): JSX.Element {
   const [showNewWorktree, setShowNewWorktree] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showGuide, setShowGuide] = useState(false)
+  const [showActivity, setShowActivity] = useState(false)
   const [hasGithubToken, setHasGithubToken] = useState<boolean | null>(null)
   const [githubBannerDismissed, setGithubBannerDismissed] = useState(
     () => localStorage.getItem('githubBannerDismissed') === '1'
@@ -721,6 +723,17 @@ export default function App(): JSX.Element {
     worktreeStatuses[wt.path] = worstStatus
   }
 
+  // Record activity-log transitions whenever a worktree's effective state changes.
+  const lastRecordedActivity = useRef<Record<string, PtyStatus>>({})
+  useEffect(() => {
+    for (const [path, state] of Object.entries(worktreeStatuses)) {
+      if (lastRecordedActivity.current[path] !== state) {
+        lastRecordedActivity.current[path] = state
+        window.api.recordActivity(path, state)
+      }
+    }
+  }, [worktreeStatuses])
+
   if (showGuide) {
     return <Guide onClose={() => setShowGuide(false)} />
   }
@@ -834,6 +847,7 @@ export default function App(): JSX.Element {
             agentCount={agentWorktreeCount}
             onSelectWorktree={(path) => {
               setShowNewWorktree(false)
+              setShowActivity(false)
               setActiveWorktreeId(path)
             }}
             onNewWorktree={() => setShowNewWorktree(true)}
@@ -842,13 +856,14 @@ export default function App(): JSX.Element {
             onRefresh={handleRefreshWorktrees}
             onSelectRepo={handleSelectRepo}
             onOpenSettings={() => setShowSettings(true)}
+            onOpenActivity={() => setShowActivity(true)}
           />
         )}
         {/* Render ALL worktrees' terminals to keep PTYs alive across switches */}
         {worktrees.map((wt) => {
           const tabs = terminalTabs[wt.path]
           if (!tabs || tabs.length === 0) return null
-          const isVisible = !showNewWorktree && wt.path === activeWorktreeId
+          const isVisible = !showNewWorktree && !showActivity && wt.path === activeWorktreeId
           return (
             <div
               key={wt.path}
@@ -877,7 +892,12 @@ export default function App(): JSX.Element {
             onCancel={() => setShowNewWorktree(false)}
           />
         )}
-        {!showNewWorktree && !activeWorktreeId && worktrees.length > 0 && (
+        {showActivity && (
+          <div className="flex-1 min-w-0 flex">
+            <Activity onClose={() => setShowActivity(false)} worktrees={worktrees} />
+          </div>
+        )}
+        {!showNewWorktree && !showActivity && !activeWorktreeId && worktrees.length > 0 && (
           <div className="flex-1 flex items-center justify-center text-dim">
             Select a worktree to begin
           </div>
@@ -888,7 +908,7 @@ export default function App(): JSX.Element {
           onFinish={() => setQuestStep('done')}
         />
         {/* Right panel — hidden on the new-worktree screen so the form gets the full width */}
-        {!showNewWorktree && (
+        {!showNewWorktree && !showActivity && (
           <div className="w-64 shrink-0 h-full flex flex-col border-l border-border bg-panel">
             <PRStatusPanel
               pr={activeWorktreeId ? prStatuses[activeWorktreeId] : null}
