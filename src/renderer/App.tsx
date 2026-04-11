@@ -861,8 +861,8 @@ const setQuestStep = useCallback((next: QuestStep) => {
   // --- Hotkey action handlers ---
   // Use the same sort order as the sidebar for navigation
   const orderedWorktrees = useMemo(
-    () => sortedWorktrees(worktrees, prStatuses, lastActive, mergedPaths),
-    [worktrees, prStatuses, lastActive, mergedPaths]
+    () => sortedWorktrees(worktrees, prStatuses, mergedPaths),
+    [worktrees, prStatuses, mergedPaths]
   )
 
   const switchToWorktreeByIndex = useCallback(
@@ -1090,7 +1090,6 @@ const setQuestStep = useCallback((next: QuestStep) => {
             statuses={worktreeStatuses}
             prStatuses={prStatuses}
             mergedPaths={mergedPaths}
-            lastActive={lastActive}
             prLoading={prLoading}
             agentCount={agentWorktreeCount}
             onSelectWorktree={(path) => {
