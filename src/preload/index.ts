@@ -5,21 +5,30 @@ type DataCallback = (id: string, data: string) => void
 type ExitCallback = (id: string, exitCode: number) => void
 
 contextBridge.exposeInMainWorld('api', {
-  // Worktrees
-  listWorktrees: () => ipcRenderer.invoke('worktree:list'),
-  listBranches: () => ipcRenderer.invoke('worktree:branches'),
-  addWorktree: (branchName: string, baseBranch?: string) => ipcRenderer.invoke('worktree:add', branchName, baseBranch),
-  continueWorktree: (worktreePath: string, newBranchName: string, baseBranch?: string) =>
-    ipcRenderer.invoke('worktree:continue', worktreePath, newBranchName, baseBranch),
+  // Worktrees — every call takes repoRoot explicitly so a window can host multiple repos.
+  listWorktrees: (repoRoot: string) => ipcRenderer.invoke('worktree:list', repoRoot),
+  listBranches: (repoRoot: string) => ipcRenderer.invoke('worktree:branches', repoRoot),
+  addWorktree: (repoRoot: string, branchName: string, baseBranch?: string) =>
+    ipcRenderer.invoke('worktree:add', repoRoot, branchName, baseBranch),
+  continueWorktree: (repoRoot: string, worktreePath: string, newBranchName: string, baseBranch?: string) =>
+    ipcRenderer.invoke('worktree:continue', repoRoot, worktreePath, newBranchName, baseBranch),
   isWorktreeDirty: (path: string) => ipcRenderer.invoke('worktree:isDirty', path),
   removeWorktree: (
+    repoRoot: string,
     path: string,
     force?: boolean,
     removeMeta?: { prNumber?: number; prState?: 'open' | 'draft' | 'merged' | 'closed' }
-  ) => ipcRenderer.invoke('worktree:remove', path, force, removeMeta),
-  getWorktreeDir: () => ipcRenderer.invoke('worktree:dir'),
-  selectRepoRoot: () => ipcRenderer.invoke('repo:select'),
-  getRepoRoot: () => ipcRenderer.invoke('repo:getRoot'),
+  ) => ipcRenderer.invoke('worktree:remove', repoRoot, path, force, removeMeta),
+  getWorktreeDir: (repoRoot: string) => ipcRenderer.invoke('worktree:dir', repoRoot),
+  // Repos (multi-repo session state)
+  listRepos: () => ipcRenderer.invoke('repo:list'),
+  addRepo: () => ipcRenderer.invoke('repo:add'),
+  removeRepo: (repoRoot: string) => ipcRenderer.invoke('repo:remove', repoRoot),
+  onReposChanged: (callback: (repos: string[]) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, repos: string[]): void => callback(repos)
+    ipcRenderer.on('repo:listChanged', handler)
+    return () => ipcRenderer.removeListener('repo:listChanged', handler)
+  },
 
   // All files (tracked + untracked, respecting .gitignore)
   listAllFiles: (worktreePath: string) => ipcRenderer.invoke('worktree:listFiles', worktreePath),
@@ -35,13 +44,13 @@ contextBridge.exposeInMainWorld('api', {
   getCommitDiff: (worktreePath: string, hash: string) =>
     ipcRenderer.invoke('worktree:commitDiff', worktreePath, hash),
   getPRStatus: (worktreePath: string) => ipcRenderer.invoke('worktree:prStatus', worktreePath),
-  getMainWorktreeStatus: () => ipcRenderer.invoke('worktree:mainStatus'),
-  prepareMainForMerge: () => ipcRenderer.invoke('worktree:prepareMain'),
-  previewMergeConflicts: (sourceBranch: string) =>
-    ipcRenderer.invoke('worktree:previewMerge', sourceBranch),
-  mergeWorktreeLocally: (sourceBranch: string, strategy: 'squash' | 'merge-commit' | 'fast-forward') =>
-    ipcRenderer.invoke('worktree:mergeLocal', sourceBranch, strategy),
-  getMergedStatus: () => ipcRenderer.invoke('worktree:mergedStatus'),
+  getMainWorktreeStatus: (repoRoot: string) => ipcRenderer.invoke('worktree:mainStatus', repoRoot),
+  prepareMainForMerge: (repoRoot: string) => ipcRenderer.invoke('worktree:prepareMain', repoRoot),
+  previewMergeConflicts: (repoRoot: string, sourceBranch: string) =>
+    ipcRenderer.invoke('worktree:previewMerge', repoRoot, sourceBranch),
+  mergeWorktreeLocally: (repoRoot: string, sourceBranch: string, strategy: 'squash' | 'merge-commit' | 'fast-forward') =>
+    ipcRenderer.invoke('worktree:mergeLocal', repoRoot, sourceBranch, strategy),
+  getMergedStatus: (repoRoot: string) => ipcRenderer.invoke('worktree:mergedStatus', repoRoot),
 
   // Config
   getHotkeyOverrides: () => ipcRenderer.invoke('config:getHotkeys'),

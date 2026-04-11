@@ -16,6 +16,8 @@
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "postinstall": "electron-builder install-app-deps",
     "rebuild:dev": "electron-rebuild -f -w node-pty",
     "pack": "npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --dir --arm64 --config.mac.identity=null",
@@ -117,6 +119,7 @@
     "electron-vite": "^5.0.0",
     "tailwindcss": "^4.2.2",
     "typescript": "^6.0.2",
-    "vite": "^8.0.8"
+    "vite": "^8.0.8",
+    "vitest": "^4.1.4"
   }
 }

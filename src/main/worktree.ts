@@ -15,6 +15,8 @@ export interface WorktreeInfo {
   isMain: boolean
   /** Directory birthtime in ms since epoch; 0 if unavailable. */
   createdAt: number
+  /** The repo this worktree belongs to. */
+  repoRoot: string
 }
 
 function getCreatedAt(path: string): number {
@@ -57,7 +59,8 @@ export async function listWorktrees(repoRoot: string): Promise<WorktreeInfo[]> {
           head: current.head || '',
           isBare: current.isBare || false,
           isMain: current.path === repoRoot,
-          createdAt: getCreatedAt(current.path)
+          createdAt: getCreatedAt(current.path),
+          repoRoot
         })
       }
       current = {}

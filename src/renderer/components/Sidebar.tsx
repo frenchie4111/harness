@@ -1,5 +1,5 @@
-import { useState, useCallback, useMemo } from 'react'
-import { ChevronDown, ChevronRight, Plus, RefreshCw, FolderOpen, Loader2, Settings as SettingsIcon, Sparkles, BarChart3, Trash2, LayoutGrid } from 'lucide-react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
+import { ChevronDown, ChevronRight, Plus, RefreshCw, FolderOpen, Loader2, Settings as SettingsIcon, Sparkles, BarChart3, Trash2, LayoutGrid, X, Layers, Rows3 } from 'lucide-react'
 import { Tooltip } from './Tooltip'
 import type { Worktree, PtyStatus, PRStatus } from '../types'
 import type { GroupKey } from '../worktree-sort'
@@ -20,7 +20,9 @@ interface SidebarProps {
   onContinueWorktree: (worktreePath: string, newBranchName: string) => Promise<void>
   onDeleteWorktree: (path: string) => Promise<void>
   onRefresh: () => void
-  onSelectRepo: () => void
+  repoRoots: string[]
+  onAddRepo: () => void
+  onRemoveRepo: (repoRoot: string) => Promise<void>
   onOpenSettings: () => void
   onOpenActivity: () => void
   onOpenCleanup: () => void
@@ -42,7 +44,9 @@ export function Sidebar({
   onContinueWorktree,
   onDeleteWorktree,
   onRefresh,
-  onSelectRepo,
+  repoRoots,
+  onAddRepo,
+  onRemoveRepo,
   onOpenSettings,
   onOpenActivity,
   onOpenCleanup,
@@ -54,7 +58,27 @@ export function Sidebar({
   const [continueBranchName, setContinueBranchName] = useState('')
   const [continuing, setContinuing] = useState(false)
   const [continueError, setContinueError] = useState<string | null>(null)
-  const [collapsed, setCollapsed] = useState<Record<GroupKey, boolean>>({ 'needs-attention': false, active: false, 'no-pr': false, merged: true })
+  // Collapsed state for PR-status groups. Keyed by `${repoRoot}:${groupKey}`
+  // (or `unified:${groupKey}` in unified mode) so each repo's groups collapse
+  // independently. Defaults set lazily below on first render.
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
+  const [collapsedRepos, setCollapsedRepos] = useState<Record<string, boolean>>({})
+  // Unified mode merges all repos into a single set of PR-status groups.
+  // Separate mode (default) gives each repo its own sub-sidebar.
+  const [unifiedRepos, setUnifiedRepos] = useState<boolean>(() => {
+    const saved = localStorage.getItem('harness:unifiedRepos')
+    return saved === null ? true : saved === '1'
+  })
+  useEffect(() => {
+    localStorage.setItem('harness:unifiedRepos', unifiedRepos ? '1' : '0')
+  }, [unifiedRepos])
+
+  // Default `merged` to collapsed the first time we see any given scope.
+  const isCollapsed = useCallback((scope: string, key: GroupKey): boolean => {
+    const composite = `${scope}:${key}`
+    if (composite in collapsed) return collapsed[composite]
+    return key === 'merged'
+  }, [collapsed])
 
   const suggestContinueName = useCallback((oldBranch: string) => {
     // Strip any trailing "-N" suffix, then add "-continued" (or bump N)
@@ -105,14 +129,43 @@ export function Sidebar({
     [submitContinue, cancelContinue]
   )
 
-  const toggleGroup = useCallback((key: GroupKey) => {
-    setCollapsed((prev) => ({ ...prev, [key]: !prev[key] }))
+  const toggleGroup = useCallback((scope: string, key: GroupKey) => {
+    const composite = `${scope}:${key}`
+    setCollapsed((prev) => {
+      const current = composite in prev ? prev[composite] : key === 'merged'
+      return { ...prev, [composite]: !current }
+    })
   }, [])
 
-  const groups = useMemo(
-    () => groupWorktrees(worktrees, prStatuses, mergedPaths),
-    [worktrees, prStatuses, mergedPaths]
-  )
+  // Group worktrees by repo, preserving the user's repo order. In unified
+  // mode we short-circuit and return a single "synthetic" repo containing
+  // every worktree.
+  const byRepo = useMemo(() => {
+    if (unifiedRepos && repoRoots.length > 1) {
+      return [{ repoRoot: '__unified__', groups: groupWorktrees(worktrees, prStatuses, mergedPaths) }]
+    }
+    const map = new Map<string, Worktree[]>()
+    for (const root of repoRoots) map.set(root, [])
+    for (const wt of worktrees) {
+      if (!map.has(wt.repoRoot)) map.set(wt.repoRoot, [])
+      map.get(wt.repoRoot)!.push(wt)
+    }
+    return Array.from(map.entries()).map(([repoRoot, wts]) => ({
+      repoRoot,
+      groups: groupWorktrees(wts, prStatuses, mergedPaths)
+    }))
+  }, [repoRoots, worktrees, prStatuses, mergedPaths, unifiedRepos])
+
+  const showRepoHeaders = repoRoots.length > 1 && !unifiedRepos
+  const showRepoLabelsOnTabs = repoRoots.length > 1 && unifiedRepos
+
+  const repoLabelFor = useCallback((repoRoot: string): string => {
+    return repoRoot.split('/').pop() || repoRoot
+  }, [])
+
+  const toggleRepo = useCallback((repoRoot: string) => {
+    setCollapsedRepos((prev) => ({ ...prev, [repoRoot]: !prev[repoRoot] }))
+  }, [])
 
   return (
     <div
@@ -143,6 +196,19 @@ export function Sidebar({
       <div className="px-3 py-1.5 flex items-center gap-2 shrink-0">
         <span className="text-xs font-medium text-dim">WORKTREES</span>
         {prLoading && <Loader2 size={10} className="text-faint animate-spin" />}
+        {repoRoots.length > 1 && (
+          <Tooltip
+            label={unifiedRepos ? 'Split by repo' : 'Merge repos into one list'}
+            side="bottom"
+          >
+            <button
+              onClick={() => setUnifiedRepos((v) => !v)}
+              className="ml-auto text-dim hover:text-fg hover:bg-surface rounded p-0.5 transition-colors cursor-pointer"
+            >
+              {unifiedRepos ? <Rows3 size={12} /> : <Layers size={12} />}
+            </button>
+          </Tooltip>
+        )}
       </div>
 
       {/* Worktree list grouped by PR status */}
@@ -169,21 +235,25 @@ export function Sidebar({
             </div>
           </button>
         )}
-        {groups.map((group) => (
+        {byRepo.map(({ repoRoot, groups }) => {
+          const repoCollapsed = collapsedRepos[repoRoot] === true
+          const repoName = repoRoot === '__unified__' ? 'All repos' : repoRoot.split('/').pop() || repoRoot
+          const scope = repoRoot
+          const groupsBody = groups.map((group) => (
           <div key={group.key}>
             <button
-              onClick={() => toggleGroup(group.key)}
+              onClick={() => toggleGroup(scope, group.key)}
               className="w-full flex items-center gap-1 px-3 py-1.5 text-xs text-dim hover:text-fg transition-colors cursor-pointer"
-              title={collapsed[group.key] ? `Expand ${group.label}` : `Collapse ${group.label}`}
+              title={isCollapsed(scope, group.key) ? `Expand ${group.label}` : `Collapse ${group.label}`}
             >
-              {collapsed[group.key]
+              {isCollapsed(scope, group.key)
                 ? <ChevronRight size={12} className="shrink-0" />
                 : <ChevronDown size={12} className="shrink-0" />
               }
               <span className="font-medium">{group.label}</span>
               <span className="text-faint ml-auto">{group.worktrees.length}</span>
             </button>
-            {!collapsed[group.key] && group.worktrees.map((wt) => (
+            {!isCollapsed(scope, group.key) && group.worktrees.map((wt) => (
               <div key={wt.path}>
                 <WorktreeTab
                   worktree={wt}
@@ -191,6 +261,7 @@ export function Sidebar({
                   status={statuses[wt.path] || 'idle'}
                   prStatus={prStatuses[wt.path]}
                   isMerged={group.key === 'merged'}
+                  repoLabel={showRepoLabelsOnTabs ? repoLabelFor(wt.repoRoot) : undefined}
                   onClick={() => onSelectWorktree(wt.path)}
                   onDelete={wt.isMain ? undefined : () => onDeleteWorktree(wt.path)}
                   onContinue={wt.isMain ? undefined : () => beginContinue(wt.path, wt.branch)}
@@ -236,7 +307,38 @@ export function Sidebar({
               </div>
             ))}
           </div>
-        ))}
+          ))
+          return (
+            <div key={repoRoot}>
+              {showRepoHeaders && (
+                <button
+                  onClick={() => toggleRepo(repoRoot)}
+                  className="group w-full flex items-center gap-1 px-3 mt-1 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-dim hover:text-fg transition-colors cursor-pointer"
+                  title={repoRoot}
+                >
+                  {repoCollapsed
+                    ? <ChevronRight size={11} className="shrink-0" />
+                    : <ChevronDown size={11} className="shrink-0" />}
+                  <span className="truncate">{repoName}</span>
+                  <span
+                    role="button"
+                    className="ml-auto opacity-0 group-hover:opacity-100 text-faint hover:text-danger"
+                    title={`Remove ${repoName} from workspace`}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      if (window.confirm(`Remove ${repoName} from this window? Worktrees stay on disk.`)) {
+                        void onRemoveRepo(repoRoot)
+                      }
+                    }}
+                  >
+                    <X size={11} />
+                  </span>
+                </button>
+              )}
+              {!repoCollapsed && groupsBody}
+            </div>
+          )
+        })}
         {worktrees.length === 0 && (
           <div className="px-4 py-3 text-xs text-faint">
             No worktrees found
@@ -262,9 +364,9 @@ export function Sidebar({
             <RefreshCw size={14} />
           </button>
         </Tooltip>
-        <Tooltip label="Change repository" side="top">
+        <Tooltip label="Add repository" side="top">
           <button
-            onClick={onSelectRepo}
+            onClick={onAddRepo}
             className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
           >
             <FolderOpen size={14} />

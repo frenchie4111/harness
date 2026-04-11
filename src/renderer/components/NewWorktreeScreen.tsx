@@ -4,8 +4,11 @@ import iconUrl from '../../../resources/icon.png'
 import { sanitizeBranchInput, isValidBranchName } from '../branch-name'
 
 interface NewWorktreeScreenProps {
-  onSubmit: (branchName: string, initialPrompt: string, teleportSessionId?: string) => Promise<void>
+  onSubmit: (repoRoot: string, branchName: string, initialPrompt: string, teleportSessionId?: string) => Promise<void>
   onCancel: () => void
+  repoRoots: string[]
+  /** Repo to pre-select in the picker. Usually the repo of the currently active worktree. */
+  defaultRepoRoot?: string
 }
 
 /** Extract a `session_…` id from either a raw id or a full `claude --teleport …` command. */
@@ -51,8 +54,11 @@ const STARTER_PROMPTS = [
   }
 ]
 
-export function NewWorktreeScreen({ onSubmit, onCancel }: NewWorktreeScreenProps): JSX.Element {
+export function NewWorktreeScreen({ onSubmit, onCancel, repoRoots, defaultRepoRoot }: NewWorktreeScreenProps): JSX.Element {
   const [mode, setMode] = useState<'fresh' | 'teleport'>('fresh')
+  const [selectedRepo, setSelectedRepo] = useState<string>(
+    defaultRepoRoot && repoRoots.includes(defaultRepoRoot) ? defaultRepoRoot : repoRoots[0] || ''
+  )
   const [branch, setBranch] = useState('')
   const [prompt, setPrompt] = useState('')
   const [teleportInput, setTeleportInput] = useState('')
@@ -69,6 +75,7 @@ export function NewWorktreeScreen({ onSubmit, onCancel }: NewWorktreeScreenProps
     : branch
   const canSubmit =
     !submitting &&
+    !!selectedRepo &&
     (mode === 'fresh'
       ? isValidBranchName(branch)
       : !!parsedTeleport && !teleportInvalid && isValidBranchName(effectiveBranch))
@@ -86,12 +93,12 @@ export function NewWorktreeScreen({ onSubmit, onCancel }: NewWorktreeScreenProps
     setSubmitting(true)
     setError(null)
     try {
-      await onSubmit(effectiveBranch, prompt.trim(), parsedTeleport || undefined)
+      await onSubmit(selectedRepo, effectiveBranch, prompt.trim(), parsedTeleport || undefined)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create worktree')
       setSubmitting(false)
     }
-  }, [effectiveBranch, prompt, canSubmit, onSubmit, parsedTeleport])
+  }, [effectiveBranch, prompt, canSubmit, onSubmit, parsedTeleport, selectedRepo])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -180,6 +187,28 @@ export function NewWorktreeScreen({ onSubmit, onCancel }: NewWorktreeScreenProps
                 Teleport from claude.ai
               </button>
             </div>
+
+            {repoRoots.length > 1 && (
+              <label className="block mb-5">
+                <div className="mb-2">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-dim">
+                    Repository
+                  </span>
+                </div>
+                <select
+                  value={selectedRepo}
+                  onChange={(e) => setSelectedRepo(e.target.value)}
+                  disabled={submitting}
+                  className="w-full bg-app border-2 border-border-strong rounded-lg px-3 py-2.5 text-sm text-fg-bright outline-none focus:border-accent transition-colors cursor-pointer"
+                >
+                  {repoRoots.map((r) => (
+                    <option key={r} value={r}>
+                      {r.split('/').pop() || r}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
 
             {mode === 'fresh' && (
               <label className="block">

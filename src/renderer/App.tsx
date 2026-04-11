@@ -33,6 +33,13 @@ function newPaneId(): string {
   return `pane-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
+async function fetchMergedStatusAll(roots: string[]): Promise<Record<string, boolean>> {
+  const results = await Promise.all(
+    roots.map((root) => window.api.getMergedStatus(root).catch(() => ({})))
+  )
+  return Object.assign({}, ...results)
+}
+
 export default function App(): JSX.Element {
   const [worktrees, setWorktrees] = useState<Worktree[]>([])
   const [activeWorktreeId, setActiveWorktreeId] = useState<string | null>(null)
@@ -66,7 +73,10 @@ export default function App(): JSX.Element {
   const lastAllPRFetchAt = useRef(0)
   const lastPRFetchAt = useRef<Record<string, number>>({})
   const [lastActive, setLastActive] = useState<Record<string, number>>({})
-  const [repoRoot, setRepoRoot] = useState<string | null>(null)
+  const [repoRoots, setRepoRoots] = useState<string[]>([])
+  // Map of worktree path → repoRoot for quick lookups outside of `worktrees`.
+  // Populated whenever the worktree list refreshes.
+  const worktreeRepoRef = useRef<Record<string, string>>({})
   const [hooksConsent, setHooksConsent] = useState<'pending' | 'accepted' | 'declined'>('pending')
   const [sidebarVisible, setSidebarVisible] = useState(true)
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
@@ -168,70 +178,103 @@ const setQuestStep = useCallback((next: QuestStep) => {
     }
   }, [activeWorktreeId, questStep, setQuestStep])
 
-  // Load repo root, worktrees, and config on mount
+  // Helper: fetch worktrees for every known repo and merge into a flat list.
+  const fetchAllWorktrees = useCallback(async (roots: string[]): Promise<Worktree[]> => {
+    const results = await Promise.all(
+      roots.map((root) =>
+        window.api.listWorktrees(root).catch((err) => {
+          console.error('listWorktrees failed for', root, err)
+          return [] as Worktree[]
+        })
+      )
+    )
+    const flat = results.flat()
+    const map: Record<string, string> = {}
+    for (const wt of flat) map[wt.path] = wt.repoRoot
+    worktreeRepoRef.current = map
+    return flat
+  }, [])
+
+  // Load repos, worktrees, and config on mount
   useEffect(() => {
     (async () => {
-      const [root, overrides, cmd, persistedPanes] = await Promise.all([
-        window.api.getRepoRoot(),
+      const [roots, overrides, cmd, persistedPanes] = await Promise.all([
+        window.api.listRepos(),
         window.api.getHotkeyOverrides(),
         window.api.getClaudeCommand(),
         window.api.getWorkspacePanes()
       ])
       if (overrides) setHotkeyOverrides(overrides)
       setClaudeCommand(cmd)
-      // Restore persisted panes, backfilling sessionId for any Claude tab
-      // missing one (legacy tabs from before per-tab session IDs existed).
-      // For the first legacy claude tab in each worktree, try to reuse the
-      // most recent session on disk so the user's existing conversation
-      // carries over — the spawn path will use `--resume` when the file
-      // exists.
-      if (persistedPanes) {
-        const restored: Record<string, WorkspacePane[]> = {}
-        for (const [wtPath, paneList] of Object.entries(persistedPanes)) {
-          const allTabs = paneList.flatMap((p) => p.tabs)
-          const needsBackfill = allTabs.some((t) => t.type === 'claude' && !t.sessionId)
-          const latest = needsBackfill
-            ? await window.api.getLatestClaudeSessionId(wtPath)
-            : null
-          let claimedLatest = false
-          restored[wtPath] = paneList.map((pane) => ({
-            id: pane.id,
-            activeTabId: pane.activeTabId,
-            tabs: pane.tabs.map((t) => {
-              if (t.type !== 'claude' || t.sessionId) return t as TerminalTab
-              if (latest && !claimedLatest) {
-                claimedLatest = true
-                return { ...t, sessionId: latest }
-              }
-              return { ...t, sessionId: crypto.randomUUID() }
-            })
-          }))
-        }
-        setPanes(restored)
-      }
-      tabsLoadedRef.current = true
-      if (root) {
-        setRepoRoot(root)
-        const trees = await window.api.listWorktrees()
+      // Flatten the nested persisted panes (repoRoot → wtPath → panes[]) into
+      // the flat renderer shape keyed by wtPath. Paths are globally unique
+      // across repos in practice — git worktrees are directories on disk.
+      // Backfill missing sessionIds for legacy claude tabs, reusing the most
+      // recent on-disk session for the first one so the user's conversation
+      // carries over.
+      // Load worktrees first so worktreeRepoRef is populated before the
+      // persist effect fires. Without this, the first save after loading
+      // old config would see an empty path→repo map and dump every entry
+      // under `__orphan__` again.
+      setRepoRoots(roots)
+      if (roots.length > 0) {
+        const trees = await fetchAllWorktrees(roots)
         setWorktrees(trees)
         if (trees.length > 0) {
           setActiveWorktreeId(trees[0].path)
         }
       }
+      if (persistedPanes) {
+        const restored: Record<string, WorkspacePane[]> = {}
+        for (const byWt of Object.values(persistedPanes)) {
+          for (const [wtPath, paneList] of Object.entries(byWt)) {
+            const allTabs = paneList.flatMap((p) => p.tabs)
+            const needsBackfill = allTabs.some((t) => t.type === 'claude' && !t.sessionId)
+            const latest = needsBackfill
+              ? await window.api.getLatestClaudeSessionId(wtPath)
+              : null
+            let claimedLatest = false
+            restored[wtPath] = paneList.map((pane) => ({
+              id: pane.id,
+              activeTabId: pane.activeTabId,
+              tabs: pane.tabs.map((t) => {
+                if (t.type !== 'claude' || t.sessionId) return t as TerminalTab
+                if (latest && !claimedLatest) {
+                  claimedLatest = true
+                  return { ...t, sessionId: latest }
+                }
+                return { ...t, sessionId: crypto.randomUUID() }
+              })
+            }))
+          }
+        }
+        setPanes(restored)
+      }
+      tabsLoadedRef.current = true
     })()
-  }, [])
+  }, [fetchAllWorktrees])
+
+  // Live-update when another window mutates the repo list
+  useEffect(() => {
+    return window.api.onReposChanged((roots) => {
+      setRepoRoots(roots)
+      fetchAllWorktrees(roots).then(setWorktrees)
+    })
+  }, [fetchAllWorktrees])
 
   // Persist terminal tab metadata whenever it changes (claude + shell only —
-  // diff tabs are transient and derived from file state). Waits for the
-  // initial load to finish so we don't clobber on-disk state with empty
-  // initial React state.
+  // diff tabs are transient and derived from file state). Writes are nested
+  // by repoRoot so two repos with coincidentally equal worktree paths stay
+  // distinct. Waits for the initial load so we don't clobber on-disk state
+  // with empty initial React state.
   useEffect(() => {
     if (!tabsLoadedRef.current) return
-    const persistable: Record<string, { id: string; tabs: { id: string; type: 'claude' | 'shell'; label: string; sessionId?: string }[]; activeTabId: string }[]> = {}
+    type PersistedShape = { id: string; tabs: { id: string; type: 'claude' | 'shell'; label: string; sessionId?: string }[]; activeTabId: string }
+    const persistable: Record<string, Record<string, PersistedShape[]>> = {}
     for (const [wtPath, paneList] of Object.entries(panes)) {
+      const repoRoot = worktreeRepoRef.current[wtPath] || '__orphan__'
       const persistedPanes = paneList
         .map((pane) => {
-          // Drop diff tabs and the transient `initialPrompt` field.
           const tabs = pane.tabs
             .filter((t) => t.type !== 'diff' && t.type !== 'file')
             .map((t) => ({
@@ -247,7 +290,10 @@ const setQuestStep = useCallback((next: QuestStep) => {
           return { id: pane.id, tabs, activeTabId: validActive }
         })
         .filter((p): p is NonNullable<typeof p> => p !== null)
-      if (persistedPanes.length > 0) persistable[wtPath] = persistedPanes
+      if (persistedPanes.length > 0) {
+        if (!persistable[repoRoot]) persistable[repoRoot] = {}
+        persistable[repoRoot][wtPath] = persistedPanes
+      }
     }
     window.api.setWorkspacePanes(persistable)
   }, [panes])
@@ -315,21 +361,21 @@ const setQuestStep = useCallback((next: QuestStep) => {
       setPrLoading(false)
     }
     try {
-      const merged = await window.api.getMergedStatus()
+      const merged = await fetchMergedStatusAll(repoRoots)
       setMergedPaths(merged)
     } catch {
       // ignore
     }
-  }, [worktrees])
+  }, [worktrees, repoRoots])
 
   const refreshMergedStatus = useCallback(async () => {
     try {
-      const merged = await window.api.getMergedStatus()
+      const merged = await fetchMergedStatusAll(repoRoots)
       setMergedPaths(merged)
     } catch {
       // ignore
     }
-  }, [])
+  }, [repoRoots])
 
   // Fetch a single worktree's PR status
   const fetchPRStatus = useCallback(async (wtPath: string) => {
@@ -536,43 +582,60 @@ const setQuestStep = useCallback((next: QuestStep) => {
     })()
   }, [worktrees])
 
-  const handleSelectRepo = useCallback(async () => {
-    const root = await window.api.selectRepoRoot()
+  const handleAddRepo = useCallback(async () => {
+    const root = await window.api.addRepo()
     if (root) {
-      setRepoRoot(root)
-      const trees = await window.api.listWorktrees()
+      const nextRoots = repoRoots.includes(root) ? repoRoots : [...repoRoots, root]
+      setRepoRoots(nextRoots)
+      const trees = await fetchAllWorktrees(nextRoots)
       setWorktrees(trees)
-      if (trees.length > 0) {
-        setActiveWorktreeId(trees[0].path)
-      }
+      // Focus the main worktree of the repo the user just added.
+      const added = trees.find((w) => w.repoRoot === root && w.isMain) || trees.find((w) => w.repoRoot === root)
+      if (added) setActiveWorktreeId(added.path)
     }
-  }, [])
+  }, [repoRoots, fetchAllWorktrees])
+
+  const handleRemoveRepo = useCallback(
+    async (root: string) => {
+      await window.api.removeRepo(root)
+      const nextRoots = repoRoots.filter((r) => r !== root)
+      setRepoRoots(nextRoots)
+      const trees = await fetchAllWorktrees(nextRoots)
+      setWorktrees(trees)
+      if (activeWorktreeId && worktreeRepoRef.current[activeWorktreeId] === undefined) {
+        setActiveWorktreeId(trees.length > 0 ? trees[0].path : null)
+      }
+    },
+    [repoRoots, fetchAllWorktrees, activeWorktreeId]
+  )
 
   const handleRefreshWorktrees = useCallback(async () => {
-    const trees = await window.api.listWorktrees()
+    const trees = await fetchAllWorktrees(repoRoots)
     setWorktrees(trees)
-  }, [])
+  }, [repoRoots, fetchAllWorktrees])
 
 
   const handleSubmitNewWorktree = useCallback(
-    async (branchName: string, initialPrompt: string, teleportSessionId?: string) => {
-      const created = await window.api.addWorktree(branchName)
+    async (repoRoot: string, branchName: string, initialPrompt: string, teleportSessionId?: string) => {
+      const created = await window.api.addWorktree(repoRoot, branchName)
       if (teleportSessionId) {
         pendingTeleportRef.current[created.path] = teleportSessionId
       } else if (initialPrompt) {
         pendingPromptsRef.current[created.path] = initialPrompt
       }
-      const trees = await window.api.listWorktrees()
+      const trees = await fetchAllWorktrees(repoRoots)
       setWorktrees(trees)
       setActiveWorktreeId(created.path)
       setShowNewWorktree(false)
     },
-    []
+    [repoRoots, fetchAllWorktrees]
   )
 
   const handleContinueWorktree = useCallback(async (path: string, newBranchName: string) => {
-    const result = await window.api.continueWorktree(path, newBranchName)
-    const trees = await window.api.listWorktrees()
+    const repoRoot = worktreeRepoRef.current[path]
+    if (!repoRoot) return
+    const result = await window.api.continueWorktree(repoRoot, path, newBranchName)
+    const trees = await fetchAllWorktrees(repoRoots)
     setWorktrees(trees)
     // Clear cached PR status — the old branch/PR no longer belongs to this worktree
     setPrStatuses((prev) => ({ ...prev, [path]: null }))
@@ -581,7 +644,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
         `Checked out ${newBranchName}, but your uncommitted changes did not apply cleanly and are still in the stash.\n\nRun \`git stash pop\` inside the worktree after resolving conflicts.`
       )
     }
-  }, [])
+  }, [repoRoots, fetchAllWorktrees])
 
   const handleDeleteWorktree = useCallback(async (path: string) => {
     // Check for dirty changes
@@ -613,14 +676,16 @@ const setQuestStep = useCallback((next: QuestStep) => {
 
     // Force remove if dirty (user already confirmed), normal remove otherwise
     const pr = prStatuses[path]
-    await window.api.removeWorktree(path, dirty, pr ? { prNumber: pr.number, prState: pr.state } : undefined)
+    const repoRoot = worktreeRepoRef.current[path]
+    if (!repoRoot) return
+    await window.api.removeWorktree(repoRoot, path, dirty, pr ? { prNumber: pr.number, prState: pr.state } : undefined)
 
-    const trees = await window.api.listWorktrees()
+    const trees = await fetchAllWorktrees(repoRoots)
     setWorktrees(trees)
     if (path === activeWorktreeId) {
       setActiveWorktreeId(trees.length > 0 ? trees[0].path : null)
     }
-  }, [terminalTabs, activeWorktreeId, prStatuses])
+  }, [terminalTabs, activeWorktreeId, prStatuses, repoRoots, fetchAllWorktrees])
 
   // Bulk delete used by the Cleanup screen. Skips per-path confirmation — the
   // Cleanup UI owns the single confirm — and removes each worktree sequentially
@@ -650,19 +715,22 @@ const setQuestStep = useCallback((next: QuestStep) => {
         })
         try {
           const pr = prStatuses[path]
-          await window.api.removeWorktree(path, force, pr ? { prNumber: pr.number, prState: pr.state } : undefined)
+          const repoRoot = worktreeRepoRef.current[path]
+          if (repoRoot) {
+            await window.api.removeWorktree(repoRoot, path, force, pr ? { prNumber: pr.number, prState: pr.state } : undefined)
+          }
         } catch (err) {
           console.error('Failed to remove worktree', path, err)
         }
         onProgress?.(path, 'done')
       }
-      const trees = await window.api.listWorktrees()
+      const trees = await fetchAllWorktrees(repoRoots)
       setWorktrees(trees)
       if (activeWorktreeId && paths.includes(activeWorktreeId)) {
         setActiveWorktreeId(trees.length > 0 ? trees[0].path : null)
       }
     },
-    [terminalTabs, activeWorktreeId, prStatuses]
+    [terminalTabs, activeWorktreeId, prStatuses, repoRoots, fetchAllWorktrees]
   )
 
   // Append a tab to a specific pane (or the focused pane if paneId is omitted).
@@ -1133,7 +1201,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
     </div>
   ) : null
 
-  if (!repoRoot) {
+  if (repoRoots.length === 0) {
     return (
       <HotkeysProvider bindings={resolvedHotkeys}>
       <div className="flex h-full flex-col">
@@ -1149,7 +1217,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
           <h1 className="gradient-text text-4xl font-extrabold tracking-tight mb-4">Harness</h1>
           <p className="text-dim mb-6">Select a git repository to get started</p>
           <button
-            onClick={handleSelectRepo}
+            onClick={handleAddRepo}
             className="px-6 py-3 bg-surface hover:bg-surface-hover rounded-lg text-fg-bright transition-colors cursor-pointer"
           >
             Open Repository
@@ -1218,7 +1286,9 @@ const setQuestStep = useCallback((next: QuestStep) => {
             onContinueWorktree={handleContinueWorktree}
             onDeleteWorktree={handleDeleteWorktree}
             onRefresh={handleRefreshWorktrees}
-            onSelectRepo={handleSelectRepo}
+            repoRoots={repoRoots}
+            onAddRepo={handleAddRepo}
+            onRemoveRepo={handleRemoveRepo}
             onOpenSettings={() => setShowSettings(true)}
             onOpenActivity={() => setShowActivity(true)}
             onOpenCleanup={() => setShowCleanup(true)}
@@ -1268,6 +1338,8 @@ const setQuestStep = useCallback((next: QuestStep) => {
           <NewWorktreeScreen
             onSubmit={handleSubmitNewWorktree}
             onCancel={() => setShowNewWorktree(false)}
+            repoRoots={repoRoots}
+            defaultRepoRoot={activeWorktreeId ? worktreeRepoRef.current[activeWorktreeId] : undefined}
           />
         )}
         {showActivity && (
