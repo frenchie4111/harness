@@ -163,13 +163,8 @@ export function CommandCenter({
 
   // Group cards the same way the sidebar does.
   const groups = useMemo(
-    () => groupWorktrees(
-      worktrees.filter((w) => !w.isMain),
-      prStatuses,
-      lastActive,
-      mergedPaths
-    ),
-    [worktrees, prStatuses, lastActive, mergedPaths]
+    () => groupWorktrees(worktrees, prStatuses, mergedPaths),
+    [worktrees, prStatuses, mergedPaths]
   )
 
   const totalCards = useMemo(
