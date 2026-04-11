@@ -236,7 +236,7 @@ export interface ElectronAPI {
   clearActivityLog(worktreePath?: string): Promise<boolean>
 }
 
-export type ActivityState = 'processing' | 'waiting' | 'needs-approval' | 'idle'
+export type ActivityState = 'processing' | 'waiting' | 'needs-approval' | 'idle' | 'merged'
 export interface ActivityEvent { t: number; s: ActivityState }
 export type ActivityLog = Record<string, ActivityEvent[]>
 

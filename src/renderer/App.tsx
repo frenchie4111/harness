@@ -930,15 +930,22 @@ const setQuestStep = useCallback((next: QuestStep) => {
   }
 
   // Record activity-log transitions whenever a worktree's effective state changes.
-  const lastRecordedActivity = useRef<Record<string, PtyStatus>>({})
+  // Merged worktrees are terminal — once we've recorded 'merged' we stop
+  // overwriting with pty state so the timeline keeps the purple tail.
+  const lastRecordedActivity = useRef<Record<string, PtyStatus | 'merged'>>({})
   useEffect(() => {
     for (const [path, state] of Object.entries(worktreeStatuses)) {
-      if (lastRecordedActivity.current[path] !== state) {
-        lastRecordedActivity.current[path] = state
-        window.api.recordActivity(path, state)
+      const isMerged =
+        mergedPaths[path] ||
+        prStatuses[path]?.state === 'merged' ||
+        prStatuses[path]?.state === 'closed'
+      const next: PtyStatus | 'merged' = isMerged ? 'merged' : state
+      if (lastRecordedActivity.current[path] !== next) {
+        lastRecordedActivity.current[path] = next
+        window.api.recordActivity(path, next)
       }
     }
-  }, [worktreeStatuses])
+  }, [worktreeStatuses, prStatuses, mergedPaths])
 
   if (showGuide) {
     return <Guide onClose={() => setShowGuide(false)} />
@@ -1090,7 +1097,12 @@ const setQuestStep = useCallback((next: QuestStep) => {
         )}
         {showActivity && (
           <div className="flex-1 min-w-0 flex">
-            <Activity onClose={() => setShowActivity(false)} worktrees={worktrees} />
+            <Activity
+              onClose={() => setShowActivity(false)}
+              worktrees={worktrees}
+              prStatuses={prStatuses}
+              mergedPaths={mergedPaths}
+            />
           </div>
         )}
         {showCleanup && (

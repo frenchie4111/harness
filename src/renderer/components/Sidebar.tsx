@@ -168,6 +168,7 @@ export function Sidebar({
                   isActive={wt.path === activeWorktreeId}
                   status={statuses[wt.path] || 'idle'}
                   prStatus={prStatuses[wt.path]}
+                  isMerged={group.key === 'merged'}
                   onClick={() => onSelectWorktree(wt.path)}
                   onDelete={wt.isMain ? undefined : () => onDeleteWorktree(wt.path)}
                   onContinue={wt.isMain ? undefined : () => beginContinue(wt.path, wt.branch)}
