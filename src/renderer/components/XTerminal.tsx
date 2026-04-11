@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { SerializeAddon } from '@xterm/addon-serialize'
@@ -356,8 +356,38 @@ export function XTerminal({ terminalId, cwd, type, visible, claudeCommand, sessi
     }
   }, [visible, terminalId])
 
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>): void => {
+    if (!e.dataTransfer.types.includes('Files')) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'copy'
+  }
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>): void => {
+    const files = Array.from(e.dataTransfer.files)
+    if (files.length === 0) return
+    e.preventDefault()
+    const paths = files
+      .map((f) => window.api.getFilePath(f))
+      .filter((p) => p && p.length > 0)
+    if (paths.length === 0) return
+    // Match iTerm2: shell-quote each path, join with spaces, wrap in
+    // bracketed-paste markers so Claude (and other readline-style prompts)
+    // treat it as a paste rather than per-keystroke input.
+    // Claude Code detects image paths in pasted text and renders them as
+    // attachments, but only when escaped iTerm2-style (backslash-escaped
+    // special chars, not POSIX single-quoting).
+    const escapeForDrop = (p: string): string => p.replace(/([ \t"'`$\\!?*()[\]{}|;<>&#])/g, '\\$1')
+    const text = paths.map(escapeForDrop).join(' ')
+    window.api.writeTerminal(terminalId, '\x1b[200~' + text + '\x1b[201~')
+    terminalRef.current?.focus()
+  }
+
   return (
-    <div className="w-full h-full relative">
+    <div
+      className="w-full h-full relative"
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
       <div ref={containerRef} className="w-full h-full" />
       {loading && (
         <div className="absolute inset-0 flex items-center justify-center bg-app/70 pointer-events-none">
