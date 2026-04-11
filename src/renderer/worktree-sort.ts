@@ -19,8 +19,8 @@ export const GROUP_ORDER: GroupKey[] = ['needs-attention', 'active', 'no-pr', 'm
 
 export const GROUP_LABELS: Record<GroupKey, string> = {
   'needs-attention': 'Needs Attention',
-  active: 'Active PRs',
-  'no-pr': 'No PR',
+  active: 'Open PRs',
+  'no-pr': 'Active',
   merged: 'Merged / Closed'
 }
 
