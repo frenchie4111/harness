@@ -1,10 +1,21 @@
+<p align="center">
+  <img src="docs/icon.png" alt="Harness" width="128" height="128" />
+</p>
+
+<h1 align="center">Run a team of agents.</h1>
+
+<p align="center">
+  Run ten Claudes at once without losing your mind.<br />
+  Ship more, faster, with every session at your fingertips.
+</p>
+
+<p align="center">
+  <a href="https://harness.mikelyons.org/">Website</a> ·
+  <a href="https://github.com/frenchie4111/harness/releases/latest">Download</a> ·
+  <a href="https://harness.mikelyons.org/guide.html">Guide</a>
+</p>
+
 ![Screenshot](screenshot.png)
-
-# Harness
-
-A fairly simple UI wrapper that makes it easier to manage a bunch of LLM coding (claude code) worktrees all at once.
-
-🌐 **Website:** [harness.mikelyons.org](https://harness.mikelyons.org/)
 
 ## Download
 
