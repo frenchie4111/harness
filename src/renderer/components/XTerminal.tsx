@@ -90,6 +90,7 @@ interface XTerminalProps {
   claudeCommand: string
   sessionId?: string
   initialPrompt?: string
+  teleportSessionId?: string
   onRestartClaude?: () => void
 }
 
@@ -97,7 +98,7 @@ function shellQuote(s: string): string {
   return "'" + s.replace(/'/g, "'\\''") + "'"
 }
 
-export function XTerminal({ terminalId, cwd, type, visible, claudeCommand, sessionId, initialPrompt, onRestartClaude }: XTerminalProps): JSX.Element {
+export function XTerminal({ terminalId, cwd, type, visible, claudeCommand, sessionId, initialPrompt, teleportSessionId, onRestartClaude }: XTerminalProps): JSX.Element {
   const [exited, setExited] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
@@ -203,6 +204,16 @@ export function XTerminal({ terminalId, cwd, type, visible, claudeCommand, sessi
     }
 
     const buildClaudeArg = async (): Promise<string> => {
+      if (teleportSessionId && sessionId) {
+        // If the session file already exists (e.g. user restarted the tab
+        // after teleport already replayed history), fall through to the
+        // regular --resume path — re-running --teleport would hit
+        // "Session ID is already in use".
+        const exists = await window.api.claudeSessionFileExists(cwd, sessionId)
+        if (!exists) {
+          return `${claudeCommand} --teleport ${teleportSessionId} --session-id ${sessionId}`
+        }
+      }
       if (!sessionId) {
         return initialPrompt
           ? `${claudeCommand} ${shellQuote(initialPrompt)}`

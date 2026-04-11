@@ -1,11 +1,27 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { Sparkles, Loader2, X, Map, ListChecks, BookOpen } from 'lucide-react'
+import { Sparkles, Loader2, X, Map, ListChecks, BookOpen, Radio } from 'lucide-react'
 import iconUrl from '../../../resources/icon.png'
 import { sanitizeBranchInput, isValidBranchName } from '../branch-name'
 
 interface NewWorktreeScreenProps {
-  onSubmit: (branchName: string, initialPrompt: string) => Promise<void>
+  onSubmit: (branchName: string, initialPrompt: string, teleportSessionId?: string) => Promise<void>
   onCancel: () => void
+}
+
+/** Extract a `session_…` id from either a raw id or a full `claude --teleport …` command. */
+function parseTeleportInput(raw: string): string | null {
+  const trimmed = raw.trim()
+  if (!trimmed) return null
+  const match = trimmed.match(/session_[A-Za-z0-9]+/)
+  return match ? match[0] : null
+}
+
+/** Derive a worktree folder name from a teleport session id. The claude CLI
+ * overwrites the branch on first run anyway, so this only affects the folder
+ * name on disk. */
+function teleportFolderName(sessionId: string): string {
+  const stripped = sessionId.replace(/^session_/, '')
+  return `teleport-${stripped}`
 }
 
 const STARTER_PROMPTS = [
@@ -36,14 +52,26 @@ const STARTER_PROMPTS = [
 ]
 
 export function NewWorktreeScreen({ onSubmit, onCancel }: NewWorktreeScreenProps): JSX.Element {
+  const [mode, setMode] = useState<'fresh' | 'teleport'>('fresh')
   const [branch, setBranch] = useState('')
   const [prompt, setPrompt] = useState('')
+  const [teleportInput, setTeleportInput] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const branchRef = useRef<HTMLInputElement>(null)
   const promptRef = useRef<HTMLTextAreaElement>(null)
+  const teleportRef = useRef<HTMLInputElement>(null)
 
-  const canSubmit = !submitting && isValidBranchName(branch)
+  const parsedTeleport = mode === 'teleport' ? parseTeleportInput(teleportInput) : null
+  const teleportInvalid = mode === 'teleport' && teleportInput.trim().length > 0 && !parsedTeleport
+  const effectiveBranch = mode === 'teleport'
+    ? (parsedTeleport ? teleportFolderName(parsedTeleport) : '')
+    : branch
+  const canSubmit =
+    !submitting &&
+    (mode === 'fresh'
+      ? isValidBranchName(branch)
+      : !!parsedTeleport && !teleportInvalid && isValidBranchName(effectiveBranch))
 
   useEffect(() => {
     branchRef.current?.focus()
@@ -58,12 +86,12 @@ export function NewWorktreeScreen({ onSubmit, onCancel }: NewWorktreeScreenProps
     setSubmitting(true)
     setError(null)
     try {
-      await onSubmit(branch, prompt.trim())
+      await onSubmit(effectiveBranch, prompt.trim(), parsedTeleport || undefined)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create worktree')
       setSubmitting(false)
     }
-  }, [branch, prompt, canSubmit, onSubmit])
+  }, [effectiveBranch, prompt, canSubmit, onSubmit, parsedTeleport])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -118,44 +146,124 @@ export function NewWorktreeScreen({ onSubmit, onCancel }: NewWorktreeScreenProps
           </div>
 
           <div className="bg-panel/80 backdrop-blur border border-border rounded-2xl p-6 shadow-xl">
-            <label className="block">
-              <div className="mb-2">
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-dim">
-                  Branch name
-                </span>
-              </div>
-              <input
-                ref={branchRef}
-                type="text"
-                value={branch}
-                onChange={handleBranchChange}
-                onKeyDown={handleBranchKey}
-                placeholder="fix-the-thing"
+            <div className="flex p-1 bg-app border border-border-strong rounded-lg mb-6">
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('fresh')
+                  requestAnimationFrame(() => branchRef.current?.focus())
+                }}
                 disabled={submitting}
-                autoComplete="off"
-                spellCheck={false}
-                style={{ fontSize: '13px' }}
-                className="w-full bg-app border-2 border-border-strong rounded-lg px-3 py-2.5 font-mono text-fg-bright placeholder-faint outline-none focus:border-accent transition-colors"
-              />
-            </label>
+                className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
+                  mode === 'fresh'
+                    ? 'bg-panel text-fg-bright shadow-sm'
+                    : 'text-dim hover:text-fg'
+                }`}
+              >
+                <Sparkles size={12} />
+                Fresh start
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('teleport')
+                  requestAnimationFrame(() => teleportRef.current?.focus())
+                }}
+                disabled={submitting}
+                className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
+                  mode === 'teleport'
+                    ? 'bg-panel text-fg-bright shadow-sm'
+                    : 'text-dim hover:text-fg'
+                }`}
+              >
+                <Radio size={12} />
+                Teleport from claude.ai
+              </button>
+            </div>
 
-            <label className="block mt-6">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-dim">
-                  Kickoff prompt
-                </span>
-                <span className="text-[11px] text-faint">optional</span>
-              </div>
-              <textarea
-                ref={promptRef}
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                placeholder="What should Claude start on? Leave blank to drop in and take it from there."
-                disabled={submitting}
-                rows={5}
-                className="w-full bg-app border-2 border-border-strong rounded-lg px-4 py-3 text-sm text-fg-bright placeholder-faint outline-none focus:border-accent transition-colors resize-none"
-              />
-            </label>
+            {mode === 'fresh' && (
+              <label className="block">
+                <div className="mb-2">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-dim">
+                    Branch name
+                  </span>
+                </div>
+                <input
+                  ref={branchRef}
+                  type="text"
+                  value={branch}
+                  onChange={handleBranchChange}
+                  onKeyDown={handleBranchKey}
+                  placeholder="fix-the-thing"
+                  disabled={submitting}
+                  autoComplete="off"
+                  spellCheck={false}
+                  style={{ fontSize: '13px' }}
+                  className="w-full bg-app border-2 border-border-strong rounded-lg px-3 py-2.5 font-mono text-fg-bright placeholder-faint outline-none focus:border-accent transition-colors"
+                />
+              </label>
+            )}
+
+            {mode === 'fresh' ? (
+              <label className="block mt-6">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-dim">
+                    Kickoff prompt
+                  </span>
+                  <span className="text-[11px] text-faint">optional</span>
+                </div>
+                <textarea
+                  ref={promptRef}
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  placeholder="What should Claude start on? Leave blank to drop in and take it from there."
+                  disabled={submitting}
+                  rows={5}
+                  className="w-full bg-app border-2 border-border-strong rounded-lg px-4 py-3 text-sm text-fg-bright placeholder-faint outline-none focus:border-accent transition-colors resize-none"
+                />
+              </label>
+            ) : (
+              <label className="block">
+                <div className="mb-2">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-dim">
+                    Session id or command
+                  </span>
+                </div>
+                <input
+                  ref={teleportRef}
+                  type="text"
+                  value={teleportInput}
+                  onChange={(e) => setTeleportInput(e.target.value)}
+                  placeholder="session_014RhXscMpGuVrBJnbeTcpVn  or  claude --teleport session_…"
+                  disabled={submitting}
+                  autoComplete="off"
+                  spellCheck={false}
+                  style={{ fontSize: '13px' }}
+                  className={`w-full bg-app border-2 rounded-lg px-3 py-2.5 font-mono text-fg-bright placeholder-faint outline-none transition-colors ${
+                    teleportInvalid
+                      ? 'border-danger focus:border-danger'
+                      : 'border-border-strong focus:border-accent'
+                  }`}
+                />
+                <div className="mt-2 text-[11px] text-dim leading-snug">
+                  {teleportInvalid ? (
+                    <span className="text-danger">
+                      Couldn't find a <span className="font-mono">session_…</span> id in there.
+                    </span>
+                  ) : parsedTeleport ? (
+                    <>
+                      Worktree folder: <span className="font-mono text-fg">{effectiveBranch}</span>
+                      {' '}— the Claude CLI will check out the session's own branch on top.
+                    </>
+                  ) : (
+                    <>
+                      Grab a session id from{' '}
+                      <span className="font-mono">claude.ai/code</span> to resume it here.
+                    </>
+                  )}
+                </div>
+              </label>
+            )}
 
             {error && (
               <div className="mt-4 text-sm text-danger bg-danger/10 border border-danger/30 rounded-lg px-3 py-2">
@@ -197,6 +305,7 @@ export function NewWorktreeScreen({ onSubmit, onCancel }: NewWorktreeScreenProps
             </div>
           </div>
 
+          {mode === 'fresh' && (
           <div className="mt-10">
             <div className="mb-3 px-1">
               <span className="text-[11px] font-semibold uppercase tracking-wider text-dim">
@@ -225,6 +334,7 @@ export function NewWorktreeScreen({ onSubmit, onCancel }: NewWorktreeScreenProps
               )}
             </div>
           </div>
+          )}
         </div>
       </div>
     </div>

@@ -186,6 +186,7 @@ export function WorkspaceView({
                   claudeCommand={claudeCommand}
                   sessionId={tab.sessionId}
                   initialPrompt={tab.initialPrompt}
+                  teleportSessionId={tab.teleportSessionId}
                   onRestartClaude={
                     tab.type === 'claude'
                       ? (): void => onRestartClaudeTab(worktreePath, tab.id)

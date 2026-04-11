@@ -92,6 +92,8 @@ export default function App(): JSX.Element {
   // Kickoff prompts staged by the new-worktree screen. Consumed (and deleted)
   // by the effect that sets up the initial Claude tab for a fresh worktree.
   const pendingPromptsRef = useRef<Record<string, string>>({})
+  // Same idea, but for --teleport session ids pasted in the new-worktree screen.
+  const pendingTeleportRef = useRef<Record<string, string>>({})
 
   // Check GitHub token presence (on mount and whenever Settings is closed)
   useEffect(() => {
@@ -386,14 +388,21 @@ const setQuestStep = useCallback((next: QuestStep) => {
       const claudeTabId = makeTerminalId('claude', activeWorktreeId)
       const pendingPrompt = pendingPromptsRef.current[activeWorktreeId]
       delete pendingPromptsRef.current[activeWorktreeId]
+      const pendingTeleport = pendingTeleportRef.current[activeWorktreeId]
+      delete pendingTeleportRef.current[activeWorktreeId]
       const shellTabId = `shell-${activeWorktreeId}-${Date.now()}`
       const tabs: TerminalTab[] = [
         {
           id: claudeTabId,
           type: 'claude',
           label: 'Claude',
+          // Generate a UUID even in teleport mode — we pass it to
+          // `claude --teleport <id> --session-id <uuid>` so the replayed
+          // history lands in a known local session file. Reloads then resume
+          // via the standard `--resume` path.
           sessionId: crypto.randomUUID(),
-          initialPrompt: pendingPrompt || undefined
+          initialPrompt: pendingTeleport ? undefined : (pendingPrompt || undefined),
+          teleportSessionId: pendingTeleport || undefined
         },
         {
           id: shellTabId,
@@ -454,9 +463,11 @@ const setQuestStep = useCallback((next: QuestStep) => {
 
 
   const handleSubmitNewWorktree = useCallback(
-    async (branchName: string, initialPrompt: string) => {
+    async (branchName: string, initialPrompt: string, teleportSessionId?: string) => {
       const created = await window.api.addWorktree(branchName)
-      if (initialPrompt) {
+      if (teleportSessionId) {
+        pendingTeleportRef.current[created.path] = teleportSessionId
+      } else if (initialPrompt) {
         pendingPromptsRef.current[created.path] = initialPrompt
       }
       const trees = await window.api.listWorktrees()
