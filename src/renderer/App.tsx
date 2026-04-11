@@ -794,7 +794,7 @@ export default function App(): JSX.Element {
       const nextIdx = (currentIdx + delta + orderedWorktrees.length) % orderedWorktrees.length
       setActiveWorktreeId(orderedWorktrees[nextIdx].path)
     },
-    [worktrees, activeWorktreeId]
+    [orderedWorktrees, activeWorktreeId]
   )
 
   // Cycle tabs within the focused pane of the active worktree.
