@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from 'react'
-import { ChevronDown, ChevronRight, Plus, RefreshCw, FolderOpen, Loader2, Settings as SettingsIcon } from 'lucide-react'
+import { ChevronDown, ChevronRight, Plus, RefreshCw, FolderOpen, Loader2, Settings as SettingsIcon, Sparkles } from 'lucide-react'
 import { Tooltip } from './Tooltip'
 import type { Worktree, PtyStatus, PRStatus } from '../types'
 import type { GroupKey } from '../worktree-sort'
@@ -14,6 +14,8 @@ interface SidebarProps {
   mergedPaths?: Record<string, boolean>
   lastActive: Record<string, number>
   prLoading: boolean
+  /** Non-main worktrees. Used to decide whether to show the "spawn your first agent" nudge. */
+  agentCount: number
   onSelectWorktree: (path: string) => void
   onNewWorktree: () => void
   onContinueWorktree: (worktreePath: string, newBranchName: string) => Promise<void>
@@ -31,6 +33,7 @@ export function Sidebar({
   mergedPaths,
   lastActive,
   prLoading,
+  agentCount,
   onSelectWorktree,
   onNewWorktree,
   onContinueWorktree,
@@ -118,6 +121,28 @@ export function Sidebar({
 
       {/* Worktree list grouped by PR status */}
       <div className="flex-1 overflow-y-auto py-1">
+        {agentCount === 0 && (
+          <button
+            onClick={onNewWorktree}
+            className="group relative mx-2 mb-2 mt-1 w-[calc(100%-1rem)] text-left bg-panel-raised border border-border-strong hover:border-accent rounded-lg overflow-hidden transition-colors cursor-pointer"
+          >
+            <div className="brand-gradient-bg h-0.5" />
+            <div className="p-3">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Sparkles size={11} className="text-accent" />
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-accent">
+                  Get started
+                </span>
+              </div>
+              <div className="text-[13px] font-semibold text-fg-bright leading-snug">
+                Spawn your first agent
+              </div>
+              <div className="text-[11px] text-dim mt-0.5 leading-snug">
+                Fork a branch and send a Claude into it.
+              </div>
+            </div>
+          </button>
+        )}
         {groups.map((group) => (
           <div key={group.key}>
             <button

@@ -22,7 +22,8 @@ import {
   loadTerminalHistory,
   clearTerminalHistory,
   pruneTerminalHistory,
-  type PersistedTab
+  type PersistedTab,
+  type QuestStep
 } from './persistence'
 import { hooksInstalled, installHooks, watchStatusDir } from './hooks'
 import { log, getLogFilePath } from './debug'
@@ -414,6 +415,18 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('config:getAvailableThemes', () => {
     return AVAILABLE_THEMES
+  })
+
+  ipcMain.handle('config:getOnboarding', () => {
+    return config.onboarding || { quest: 'hidden' }
+  })
+
+  ipcMain.handle('config:setOnboardingQuest', (_, quest: string) => {
+    const valid = ['hidden', 'spawn-second', 'switch-between', 'finale', 'done']
+    if (!valid.includes(quest)) return false
+    config.onboarding = { ...(config.onboarding || {}), quest: quest as QuestStep }
+    saveConfig(config)
+    return true
   })
 
   // Persisted terminal tabs / active tab ids

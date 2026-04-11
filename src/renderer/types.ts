@@ -31,6 +31,8 @@ export interface PersistedTab {
 
 export type PtyStatus = 'idle' | 'processing' | 'waiting' | 'needs-approval'
 
+export type QuestStep = 'hidden' | 'spawn-second' | 'switch-between' | 'finale' | 'done'
+
 export type UpdaterStatus =
   | { state: 'checking' }
   | { state: 'available'; version: string }
@@ -138,6 +140,9 @@ export interface ElectronAPI {
   setTheme(theme: string): Promise<boolean>
   getAvailableThemes(): Promise<readonly string[]>
   onThemeChanged(callback: (theme: string) => void): () => void
+
+  getOnboarding(): Promise<{ quest?: QuestStep }>
+  setOnboardingQuest(quest: QuestStep): Promise<boolean>
 
   getWorktreeBase(): Promise<'remote' | 'local'>
   setWorktreeBase(mode: 'remote' | 'local'): Promise<boolean>

@@ -76,6 +76,10 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('config:claudeCommandChanged', handler)
   },
 
+  // Onboarding quest
+  getOnboarding: () => ipcRenderer.invoke('config:getOnboarding'),
+  setOnboardingQuest: (quest: string) => ipcRenderer.invoke('config:setOnboardingQuest', quest),
+
   // Worktree base
   getWorktreeBase: () => ipcRenderer.invoke('config:getWorktreeBase'),
   setWorktreeBase: (mode: 'remote' | 'local') =>

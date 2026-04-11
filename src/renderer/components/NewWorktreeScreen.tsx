@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { Sparkles, Loader2, X, Lock, ListTodo, CircleDot, Zap } from 'lucide-react'
+import { Sparkles, Loader2, X, Map, ListChecks, BookOpen } from 'lucide-react'
 import iconUrl from '../../../resources/icon.png'
 import { sanitizeBranchInput, isValidBranchName } from '../branch-name'
 
@@ -7,6 +7,33 @@ interface NewWorktreeScreenProps {
   onSubmit: (branchName: string, initialPrompt: string) => Promise<void>
   onCancel: () => void
 }
+
+const STARTER_PROMPTS = [
+  {
+    icon: Map,
+    label: 'Map the repo',
+    hint: 'A one-paragraph architecture summary',
+    branch: 'map-repo',
+    prompt:
+      "Read this repo and write a one-paragraph summary of its architecture in SCRATCH.md — what the major pieces are and how they fit together. Keep it under 150 words."
+  },
+  {
+    icon: ListChecks,
+    label: 'Find the TODOs',
+    hint: 'Collect every TODO/FIXME in one file',
+    branch: 'find-todos',
+    prompt:
+      "Search the codebase for every TODO and FIXME comment. Write TODOS.md grouping them by file with line numbers and the comment text. Don't fix anything — just catalog."
+  },
+  {
+    icon: BookOpen,
+    label: 'Sharpen the README',
+    hint: 'Get 3 concrete improvement ideas',
+    branch: 'sharpen-readme',
+    prompt:
+      "Read the README and propose 3 specific, concrete improvements (not vague advice). Reply with the suggestions — don't make any changes yet so I can review first."
+  }
+]
 
 export function NewWorktreeScreen({ onSubmit, onCancel }: NewWorktreeScreenProps): JSX.Element {
   const [branch, setBranch] = useState('')
@@ -171,28 +198,31 @@ export function NewWorktreeScreen({ onSubmit, onCancel }: NewWorktreeScreenProps
           </div>
 
           <div className="mt-10">
-            <div className="flex items-baseline gap-2 mb-3 px-1">
+            <div className="mb-3 px-1">
               <span className="text-[11px] font-semibold uppercase tracking-wider text-dim">
-                Pull from your backlog
+                Or try a starter task
               </span>
-              <span className="text-[10px] text-faint">coming soon</span>
             </div>
             <div className="grid sm:grid-cols-3 gap-3">
-              {[
-                { icon: ListTodo, label: 'Todo list', hint: 'Pop the top item off the stack' },
-                { icon: CircleDot, label: 'GitHub Issues', hint: 'Pick a labeled issue to tackle' },
-                { icon: Zap, label: 'Linear', hint: 'Start on an assigned ticket' }
-              ].map(({ icon: Icon, label, hint }) => (
-                <div
-                  key={label}
-                  className="relative bg-panel/40 border border-border/60 rounded-xl p-4 opacity-60"
-                >
-                  <Lock size={10} className="absolute top-2 right-2 text-faint" />
-                  <Icon size={18} className="text-muted mb-2" />
-                  <div className="text-sm text-fg font-medium">{label}</div>
-                  <div className="text-xs text-dim mt-0.5">{hint}</div>
-                </div>
-              ))}
+              {STARTER_PROMPTS.map(
+                ({ icon: Icon, label, hint, branch: starterBranch, prompt: starterPrompt }) => (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => {
+                      if (!branch) setBranch(starterBranch)
+                      setPrompt(starterPrompt)
+                      promptRef.current?.focus()
+                    }}
+                    disabled={submitting}
+                    className="text-left bg-panel/60 border border-border/60 hover:border-accent hover:bg-panel rounded-xl p-4 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Icon size={18} className="text-accent mb-2" />
+                    <div className="text-sm text-fg font-medium">{label}</div>
+                    <div className="text-xs text-dim mt-0.5">{hint}</div>
+                  </button>
+                )
+              )}
             </div>
           </div>
         </div>
