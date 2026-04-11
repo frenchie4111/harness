@@ -16,6 +16,8 @@ import {
   DEFAULT_THEME,
   AVAILABLE_THEMES,
   THEME_APP_BG,
+  DEFAULT_TERMINAL_FONT_FAMILY,
+  DEFAULT_TERMINAL_FONT_SIZE,
   DEFAULT_WORKTREE_BASE,
   DEFAULT_MERGE_STRATEGY,
   saveTerminalHistory,
@@ -356,6 +358,48 @@ function registerIpcHandlers(): void {
     saveConfig(config)
     for (const win of BrowserWindow.getAllWindows()) {
       if (!win.isDestroyed()) win.webContents.send('config:themeChanged', theme)
+    }
+    return true
+  })
+
+  ipcMain.handle('config:getTerminalFontFamily', () => {
+    return config.terminalFontFamily || DEFAULT_TERMINAL_FONT_FAMILY
+  })
+
+  ipcMain.handle('config:setTerminalFontFamily', (_, fontFamily: string) => {
+    const trimmed = (fontFamily || '').trim()
+    if (!trimmed || trimmed === DEFAULT_TERMINAL_FONT_FAMILY) {
+      delete config.terminalFontFamily
+    } else {
+      config.terminalFontFamily = trimmed
+    }
+    saveConfig(config)
+    const value = config.terminalFontFamily || DEFAULT_TERMINAL_FONT_FAMILY
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.send('config:terminalFontFamilyChanged', value)
+    }
+    return true
+  })
+
+  ipcMain.handle('config:getDefaultTerminalFontFamily', () => DEFAULT_TERMINAL_FONT_FAMILY)
+
+  ipcMain.handle('config:getTerminalFontSize', () => {
+    return config.terminalFontSize || DEFAULT_TERMINAL_FONT_SIZE
+  })
+
+  ipcMain.handle('config:setTerminalFontSize', (_, fontSize: number) => {
+    const n = Number(fontSize)
+    if (!Number.isFinite(n) || n < 8 || n > 48) return false
+    const rounded = Math.round(n)
+    if (rounded === DEFAULT_TERMINAL_FONT_SIZE) {
+      delete config.terminalFontSize
+    } else {
+      config.terminalFontSize = rounded
+    }
+    saveConfig(config)
+    const value = config.terminalFontSize || DEFAULT_TERMINAL_FONT_SIZE
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.send('config:terminalFontSizeChanged', value)
     }
     return true
   })

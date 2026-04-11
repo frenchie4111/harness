@@ -5,8 +5,14 @@ import { SerializeAddon } from '@xterm/addon-serialize'
 import { Loader2 } from 'lucide-react'
 import '@xterm/xterm/css/xterm.css'
 
+const DEFAULT_TERMINAL_FONT_FAMILY =
+  "'SF Mono', 'Monaco', 'Menlo', 'Courier New', monospace"
+const DEFAULT_TERMINAL_FONT_SIZE = 13
+
 /** Global registry so hotkeys can focus terminals without prop-drilling refs */
 const terminalRegistry = new Map<string, Terminal>()
+/** Fit addons keyed by terminal id, so font-change listeners can refit. */
+const fitRegistry = new Map<string, FitAddon>()
 /** Serialize addons keyed by terminal id, so we can flush all on window unload */
 const serializeRegistry = new Map<string, SerializeAddon>()
 /** Ids whose history is being cleared — suppress saves from pending intervals
@@ -16,6 +22,45 @@ const closingIds = new Set<string>()
 export function focusTerminalById(id: string): void {
   terminalRegistry.get(id)?.focus()
 }
+
+/** Live cache of terminal font settings. Hydrated once at module load and
+ * kept in sync via main-process broadcasts so newly created terminals open
+ * with the user's chosen values without any prop drilling. */
+let currentFontFamily = DEFAULT_TERMINAL_FONT_FAMILY
+let currentFontSize = DEFAULT_TERMINAL_FONT_SIZE
+
+function applyFontToAll(): void {
+  for (const [id, term] of terminalRegistry) {
+    term.options.fontFamily = currentFontFamily
+    term.options.fontSize = currentFontSize
+    const fit = fitRegistry.get(id)
+    if (!fit) continue
+    try {
+      fit.fit()
+      const dims = fit.proposeDimensions()
+      if (dims) window.api.resizeTerminal(id, dims.cols, dims.rows)
+    } catch {
+      // ignore — terminal may not be visible
+    }
+  }
+}
+
+void window.api.getTerminalFontFamily().then((v) => {
+  currentFontFamily = v || DEFAULT_TERMINAL_FONT_FAMILY
+  applyFontToAll()
+})
+void window.api.getTerminalFontSize().then((v) => {
+  currentFontSize = v || DEFAULT_TERMINAL_FONT_SIZE
+  applyFontToAll()
+})
+window.api.onTerminalFontFamilyChanged((v) => {
+  currentFontFamily = v || DEFAULT_TERMINAL_FONT_FAMILY
+  applyFontToAll()
+})
+window.api.onTerminalFontSizeChanged((v) => {
+  currentFontSize = v || DEFAULT_TERMINAL_FONT_SIZE
+  applyFontToAll()
+})
 
 /** Mark a terminal as closing: stop saving its history and clear any
  * already-persisted history file. Call this before removing the tab. */
@@ -76,8 +121,8 @@ export function XTerminal({ terminalId, cwd, type, visible, claudeCommand, sessi
     const fg = rootStyle.getPropertyValue('--color-fg-bright').trim() || '#e5e5e5'
 
     const terminal = new Terminal({
-      fontSize: 13,
-      fontFamily: "'SF Mono', 'Monaco', 'Menlo', 'Courier New', monospace",
+      fontSize: currentFontSize,
+      fontFamily: currentFontFamily,
       cursorBlink: true,
       cursorStyle: 'bar',
       allowProposedApi: true,
@@ -143,6 +188,7 @@ export function XTerminal({ terminalId, cwd, type, visible, claudeCommand, sessi
     fitAddonRef.current = fitAddon
     terminalRegistry.set(terminalId, terminal)
     serializeRegistry.set(terminalId, serializeAddon)
+    fitRegistry.set(terminalId, fitAddon)
 
     // Restore scrollback (if any) before spawning the PTY so historical output
     // appears above the fresh shell's prompt.
@@ -265,6 +311,7 @@ export function XTerminal({ terminalId, cwd, type, visible, claudeCommand, sessi
       clearInterval(snapshotInterval)
       terminalRegistry.delete(terminalId)
       serializeRegistry.delete(terminalId)
+      fitRegistry.delete(terminalId)
       closingIds.delete(terminalId)
       resizeObserver.disconnect()
       cleanupData?.()

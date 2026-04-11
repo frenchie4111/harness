@@ -152,6 +152,11 @@ export function Settings({ onClose, onOpenGuide }: SettingsProps): JSX.Element {
   // Theme state
   const [theme, setThemeState] = useState<string>('dark')
 
+  // Terminal font state
+  const [terminalFontFamily, setTerminalFontFamily] = useState<string>('')
+  const [defaultTerminalFontFamily, setDefaultTerminalFontFamily] = useState<string>('')
+  const [terminalFontSize, setTerminalFontSize] = useState<number>(13)
+
   // Editor state
   const [editorId, setEditorId] = useState<string>('vscode')
   const [availableEditors, setAvailableEditors] = useState<{ id: string; name: string }[]>([])
@@ -167,6 +172,9 @@ export function Settings({ onClose, onOpenGuide }: SettingsProps): JSX.Element {
     window.api.getClaudeCommand().then(setClaudeCommand)
     window.api.getDefaultClaudeCommand().then(setDefaultClaudeCommand)
     window.api.getTheme().then(setThemeState)
+    window.api.getTerminalFontFamily().then(setTerminalFontFamily)
+    window.api.getDefaultTerminalFontFamily().then(setDefaultTerminalFontFamily)
+    window.api.getTerminalFontSize().then(setTerminalFontSize)
     window.api.getEditor().then(setEditorId)
     window.api.getAvailableEditors().then(setAvailableEditors)
     window.api.getWorktreeBase().then(setWorktreeBaseState)
@@ -176,6 +184,23 @@ export function Settings({ onClose, onOpenGuide }: SettingsProps): JSX.Element {
   const handleSelectTheme = useCallback(async (id: string) => {
     setThemeState(id)
     await window.api.setTheme(id)
+  }, [])
+
+  const handleTerminalFontFamilyChange = useCallback((value: string) => {
+    setTerminalFontFamily(value)
+    void window.api.setTerminalFontFamily(value)
+  }, [])
+
+  const handleResetTerminalFontFamily = useCallback(() => {
+    setTerminalFontFamily(defaultTerminalFontFamily)
+    void window.api.setTerminalFontFamily(defaultTerminalFontFamily)
+  }, [defaultTerminalFontFamily])
+
+  const handleTerminalFontSizeChange = useCallback((value: number) => {
+    if (!Number.isFinite(value)) return
+    const clamped = Math.max(8, Math.min(48, Math.round(value)))
+    setTerminalFontSize(clamped)
+    void window.api.setTerminalFontSize(clamped)
   }, [])
 
   const handleSelectEditor = useCallback(async (id: string) => {
@@ -448,6 +473,65 @@ export function Settings({ onClose, onOpenGuide }: SettingsProps): JSX.Element {
                     </button>
                   )
                 })}
+              </div>
+
+              <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">Terminal font</h3>
+              <p className="text-xs text-dim mb-3">
+                Used by every Claude and shell tab. Provide any CSS font-family value
+                — install the font on your system first (e.g.{' '}
+                <code className="bg-panel-raised px-1 rounded">Hack</code>,{' '}
+                <code className="bg-panel-raised px-1 rounded">'JetBrains Mono'</code>,{' '}
+                <code className="bg-panel-raised px-1 rounded">'Fira Code'</code>).
+                Changes apply immediately to all open terminals.
+              </p>
+
+              <div className="bg-panel-raised border border-border rounded-lg p-4 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-fg mb-1">Font family</label>
+                  <input
+                    type="text"
+                    value={terminalFontFamily}
+                    onChange={(e) => handleTerminalFontFamilyChange(e.target.value)}
+                    spellCheck={false}
+                    className="w-full bg-panel border border-border-strong rounded px-3 py-2 text-xs text-fg-bright placeholder-faint outline-none focus:border-fg font-mono"
+                    placeholder={defaultTerminalFontFamily}
+                  />
+                  {terminalFontFamily !== defaultTerminalFontFamily && defaultTerminalFontFamily && (
+                    <button
+                      onClick={handleResetTerminalFontFamily}
+                      className="mt-2 flex items-center gap-1 px-2 py-1 text-xs text-dim hover:text-fg transition-colors cursor-pointer"
+                    >
+                      <RotateCcw size={11} />
+                      Reset to default
+                    </button>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-fg mb-1">
+                    Font size <span className="text-dim font-normal">({terminalFontSize}px)</span>
+                  </label>
+                  <input
+                    type="range"
+                    min={8}
+                    max={24}
+                    step={1}
+                    value={terminalFontSize}
+                    onChange={(e) => handleTerminalFontSizeChange(Number(e.target.value))}
+                    className="w-full accent-fg cursor-pointer"
+                  />
+                </div>
+
+                <div
+                  className="rounded border border-border-strong bg-panel px-3 py-2 text-fg-bright"
+                  style={{
+                    fontFamily: terminalFontFamily || defaultTerminalFontFamily,
+                    fontSize: `${terminalFontSize}px`,
+                    lineHeight: 1.4
+                  }}
+                >
+                  the quick brown fox 0123 =&gt; != &lt;= -&gt;
+                </div>
               </div>
             </section>
 

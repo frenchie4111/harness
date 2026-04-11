@@ -58,6 +58,28 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('config:themeChanged', handler)
     return () => ipcRenderer.removeListener('config:themeChanged', handler)
   },
+  getTerminalFontFamily: () => ipcRenderer.invoke('config:getTerminalFontFamily'),
+  setTerminalFontFamily: (fontFamily: string) =>
+    ipcRenderer.invoke('config:setTerminalFontFamily', fontFamily),
+  getDefaultTerminalFontFamily: () => ipcRenderer.invoke('config:getDefaultTerminalFontFamily'),
+  onTerminalFontFamilyChanged: (callback: (fontFamily: string) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, fontFamily: string): void => {
+      callback(fontFamily)
+    }
+    ipcRenderer.on('config:terminalFontFamilyChanged', handler)
+    return () => ipcRenderer.removeListener('config:terminalFontFamilyChanged', handler)
+  },
+  getTerminalFontSize: () => ipcRenderer.invoke('config:getTerminalFontSize'),
+  setTerminalFontSize: (fontSize: number) =>
+    ipcRenderer.invoke('config:setTerminalFontSize', fontSize),
+  onTerminalFontSizeChanged: (callback: (fontSize: number) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, fontSize: number): void => {
+      callback(fontSize)
+    }
+    ipcRenderer.on('config:terminalFontSizeChanged', handler)
+    return () => ipcRenderer.removeListener('config:terminalFontSizeChanged', handler)
+  },
+
   getWorkspacePanes: () => ipcRenderer.invoke('config:getPanes'),
   setWorkspacePanes: (panes: unknown) =>
     ipcRenderer.invoke('config:setPanes', panes),
