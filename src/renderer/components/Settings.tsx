@@ -7,6 +7,7 @@ import { Tooltip } from './Tooltip'
 interface SettingsProps {
   onClose: () => void
   onOpenGuide: () => void
+  initialSection?: SectionId
 }
 
 type SectionId = 'appearance' | 'claude' | 'worktrees' | 'editor' | 'github' | 'hotkeys' | 'updates'
@@ -84,8 +85,8 @@ const THEME_OPTIONS: { id: string; label: string; description: string; swatches:
   }
 ]
 
-export function Settings({ onClose, onOpenGuide }: SettingsProps): JSX.Element {
-  const [activeSection, setActiveSection] = useState<SectionId>('appearance')
+export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps): JSX.Element {
+  const [activeSection, setActiveSection] = useState<SectionId>(initialSection ?? 'appearance')
   const scrollRef = useRef<HTMLDivElement>(null)
   const sectionRefs = useRef<Record<SectionId, HTMLElement | null>>({
     appearance: null,
@@ -104,6 +105,16 @@ export function Settings({ onClose, onOpenGuide }: SettingsProps): JSX.Element {
     if (el && scrollRef.current) {
       scrollRef.current.scrollTo({ top: el.offsetTop - 24, behavior: 'smooth' })
     }
+  }, [])
+
+  // Honor `initialSection` once the section refs are wired up.
+  useEffect(() => {
+    if (!initialSection) return
+    const el = sectionRefs.current[initialSection]
+    if (el && scrollRef.current) {
+      scrollRef.current.scrollTo({ top: el.offsetTop - 24 })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Update active section based on scroll position
@@ -407,15 +418,21 @@ export function Settings({ onClose, onOpenGuide }: SettingsProps): JSX.Element {
           {SECTIONS.map((section) => {
             const Icon = section.icon
             const isActive = activeSection === section.id
+            const needsAttention = section.id === 'github' && !hasToken
+            const className = needsAttention
+              ? `flex items-center gap-2 px-3 py-2 text-left text-sm transition-colors cursor-pointer ${
+                  isActive ? 'bg-info/25 text-info' : 'bg-info/10 text-info hover:bg-info/20'
+                }`
+              : `flex items-center gap-2 px-3 py-2 text-left text-sm transition-colors cursor-pointer ${
+                  isActive
+                    ? 'bg-surface text-fg-bright'
+                    : 'text-muted hover:bg-panel-raised hover:text-fg-bright'
+                }`
             return (
               <button
                 key={section.id}
                 onClick={() => scrollToSection(section.id)}
-                className={`flex items-center gap-2 px-3 py-2 text-left text-sm transition-colors cursor-pointer ${
-                  isActive
-                    ? 'bg-surface text-fg-bright'
-                    : 'text-muted hover:bg-panel-raised hover:text-fg-bright'
-                }`}
+                className={className}
               >
                 <Icon size={14} className="shrink-0" />
                 <span>{section.label}</span>
@@ -747,13 +764,13 @@ export function Settings({ onClose, onOpenGuide }: SettingsProps): JSX.Element {
 
             {/* GitHub section */}
             <section ref={(el) => { sectionRefs.current.github = el }} id="github">
-              <h2 className="text-lg font-semibold text-fg-bright mb-1">GitHub</h2>
-              <p className="text-sm text-dim mb-4">
+              <h2 className={`text-lg font-semibold mb-1 ${!hasToken ? 'text-info' : 'text-fg-bright'}`}>GitHub</h2>
+              <p className={`text-sm mb-4 ${!hasToken ? 'text-info/80' : 'text-dim'}`}>
                 Harness uses a personal access token to fetch PR status and check results.
                 The token is encrypted and stored locally using your macOS keychain.
               </p>
 
-              <div className="bg-panel-raised border border-border rounded-lg p-4">
+              <div className={`rounded-lg p-4 border ${!hasToken ? 'bg-info/10 border-info/30' : 'bg-panel-raised border-border'}`}>
                 <label className="block text-sm font-medium text-fg mb-2">
                   Personal Access Token
                 </label>
