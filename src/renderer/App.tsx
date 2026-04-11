@@ -599,6 +599,23 @@ export default function App(): JSX.Element {
     [activeWorktreeId, terminalTabs]
   )
 
+  const handleReorderTabs = useCallback(
+    (worktreePath: string, fromId: string, toId: string) => {
+      if (fromId === toId) return
+      setTerminalTabs((prev) => {
+        const tabs = prev[worktreePath] || []
+        const fromIdx = tabs.findIndex((t) => t.id === fromId)
+        const toIdx = tabs.findIndex((t) => t.id === toId)
+        if (fromIdx === -1 || toIdx === -1) return prev
+        const next = tabs.slice()
+        const [moved] = next.splice(fromIdx, 1)
+        next.splice(toIdx, 0, moved)
+        return { ...prev, [worktreePath]: next }
+      })
+    },
+    []
+  )
+
   const handleOpenDiff = useCallback(
     (filePath: string, staged: boolean, mode: 'working' | 'branch' = 'working') => {
       if (!activeWorktreeId) return
@@ -906,6 +923,7 @@ export default function App(): JSX.Element {
                 onAddClaudeTab={handleAddClaudeTab}
                 onCloseTab={handleCloseTab}
                 onRestartClaudeTab={handleRestartClaudeTab}
+                onReorderTabs={handleReorderTabs}
                 visible={isVisible}
                 claudeCommand={claudeCommand}
               />
