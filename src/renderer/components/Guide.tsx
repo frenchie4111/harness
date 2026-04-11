@@ -35,6 +35,7 @@ export function Guide({ onClose }: GuideProps): JSX.Element {
 
           {/* Intro framing */}
           <Section icon={Smartphone} title="Wait, why am I doing this?">
+            <SoloFlow />
             <p>
               Be honest. How much of this week did you spend scrolling Instagram reels
               while a single Claude crunched through one task? Five minutes here, ten
@@ -301,6 +302,53 @@ function Figure({ caption, children }: { caption: string; children: React.ReactN
       {children}
       <figcaption className="mt-4 text-xs text-dim text-center italic">{caption}</figcaption>
     </figure>
+  )
+}
+
+/** One Claude grinding while you scroll. The whole problem in one figure. */
+function SoloFlow(): JSX.Element {
+  type State = 'kick' | 'scroll' | 'review' | 'work'
+  const rows: { label: string; icon?: typeof Smartphone; segments: [number, State][] }[] = [
+    { label: 'You', icon: Smartphone, segments: [[1, 'kick'], [9, 'scroll'], [1, 'review']] },
+    { label: 'Claude', segments: [[11, 'work']] }
+  ]
+  const segColor = (s: State): string => {
+    if (s === 'kick') return 'bg-info/60'
+    if (s === 'scroll') return 'bg-faint/30'
+    if (s === 'review') return 'bg-warning/60'
+    return 'bg-success/70'
+  }
+  return (
+    <Figure caption='One Claude. You "wait." Your screen-time report knows the truth.'>
+      <div className="space-y-3">
+        {rows.map((r) => {
+          const Icon = r.icon
+          return (
+            <div key={r.label} className="flex items-center gap-3">
+              <div className="flex items-center gap-1.5 w-20 shrink-0">
+                {Icon && <Icon size={12} className="text-muted" />}
+                <span className="text-xs text-muted font-mono">{r.label}</span>
+              </div>
+              <div className="flex-1 flex h-6 rounded-md overflow-hidden border border-border">
+                {r.segments.map((seg, i) => (
+                  <div
+                    key={i}
+                    className={`${segColor(seg[1])} border-r border-app/40 last:border-r-0`}
+                    style={{ flex: seg[0] }}
+                  />
+                ))}
+              </div>
+            </div>
+          )
+        })}
+        <div className="flex items-center gap-4 pt-2 text-[10px] text-dim justify-center flex-wrap">
+          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-info/60" />kick off</span>
+          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-faint/30" />scrolling reels</span>
+          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-warning/60" />review</span>
+          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-success/70" />Claude working</span>
+        </div>
+      </div>
+    </Figure>
   )
 }
 
