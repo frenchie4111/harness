@@ -10,6 +10,12 @@ export interface PersistedTab {
   sessionId?: string
 }
 
+export interface PersistedPane {
+  id: string
+  tabs: PersistedTab[]
+  activeTabId: string
+}
+
 export type QuestStep = 'hidden' | 'spawn-second' | 'switch-between' | 'finale' | 'done'
 
 interface Config {
@@ -21,9 +27,11 @@ interface Config {
   // Command used to launch Claude in a worktree terminal. Runs via login shell.
   // Harness appends `--session-id <uuid>` so each tab has a stable resumable session.
   claudeCommand?: string
-  // Persisted terminal tabs per worktree path (claude + shell only — diff tabs are transient)
+  // Persisted workspace panes per worktree path — each pane has its own tabs + active id.
+  // Replaces the legacy `terminalTabs` / `activeTabId` flat-list shape; migrated on load.
+  panes?: Record<string, PersistedPane[]>
+  // Legacy — migrated to `panes` on first load, then cleared.
   terminalTabs?: Record<string, PersistedTab[]>
-  // Active tab id per worktree path
   activeTabId?: Record<string, string>
   // Selected color theme id
   theme?: string
@@ -95,6 +103,19 @@ export function loadConfig(): Config {
     if (parsed.repoRoot && !parsed.repoRoots) {
       parsed.repoRoots = [parsed.repoRoot]
       delete parsed.repoRoot
+    }
+    // Migrate legacy flat-tab persistence → pane shape. Each worktree's
+    // previous tab list becomes a single pane with the same active tab.
+    if (parsed.terminalTabs && !parsed.panes) {
+      const migrated: Record<string, PersistedPane[]> = {}
+      for (const [wtPath, tabs] of Object.entries(parsed.terminalTabs as Record<string, PersistedTab[]>)) {
+        if (!tabs || tabs.length === 0) continue
+        const activeId = parsed.activeTabId?.[wtPath] || tabs[0].id
+        migrated[wtPath] = [{ id: `pane-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, tabs, activeTabId: activeId }]
+      }
+      parsed.panes = migrated
+      delete parsed.terminalTabs
+      delete parsed.activeTabId
     }
     return { ...DEFAULT_CONFIG, ...parsed }
   } catch {

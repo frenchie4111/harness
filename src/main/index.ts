@@ -22,7 +22,7 @@ import {
   loadTerminalHistory,
   clearTerminalHistory,
   pruneTerminalHistory,
-  type PersistedTab,
+  type PersistedPane,
   type QuestStep
 } from './persistence'
 import { hooksInstalled, installHooks, watchStatusDir } from './hooks'
@@ -438,19 +438,15 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  // Persisted terminal tabs / active tab ids
-  ipcMain.handle('config:getTerminalTabs', () => {
-    return {
-      tabs: config.terminalTabs || {},
-      activeTabId: config.activeTabId || {}
-    }
+  // Persisted workspace panes (tabs per pane, per worktree)
+  ipcMain.handle('config:getPanes', () => {
+    return config.panes || {}
   })
 
   ipcMain.handle(
-    'config:setTerminalTabs',
-    (_, tabs: Record<string, PersistedTab[]>, activeTabId: Record<string, string>) => {
-      config.terminalTabs = tabs
-      config.activeTabId = activeTabId
+    'config:setPanes',
+    (_, panes: Record<string, PersistedPane[]>) => {
+      config.panes = panes
       saveConfig(config)
       return true
     }
@@ -764,8 +760,10 @@ app.whenReady().then(() => {
 
   // Prune terminal history files not referenced by any persisted tab
   const keepIds = new Set<string>()
-  for (const tabs of Object.values(config.terminalTabs || {})) {
-    for (const tab of tabs) keepIds.add(tab.id)
+  for (const panes of Object.values(config.panes || {})) {
+    for (const pane of panes) {
+      for (const tab of pane.tabs) keepIds.add(tab.id)
+    }
   }
   pruneTerminalHistory(keepIds)
 

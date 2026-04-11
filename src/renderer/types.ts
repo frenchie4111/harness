@@ -31,6 +31,18 @@ export interface PersistedTab {
   sessionId?: string
 }
 
+export interface WorkspacePane {
+  id: string
+  tabs: TerminalTab[]
+  activeTabId: string
+}
+
+export interface PersistedPane {
+  id: string
+  tabs: PersistedTab[]
+  activeTabId: string
+}
+
 export type PtyStatus = 'idle' | 'processing' | 'waiting' | 'needs-approval'
 
 export type QuestStep = 'hidden' | 'spawn-second' | 'switch-between' | 'finale' | 'done'
@@ -179,14 +191,8 @@ export interface ElectronAPI {
   openInEditor(worktreePath: string, filePath?: string): Promise<{ ok: true } | { ok: false; error: string }>
   onEditorChanged(callback: (editorId: string) => void): () => void
 
-  getTerminalTabs(): Promise<{
-    tabs: Record<string, PersistedTab[]>
-    activeTabId: Record<string, string>
-  }>
-  setTerminalTabs(
-    tabs: Record<string, PersistedTab[]>,
-    activeTabId: Record<string, string>
-  ): Promise<boolean>
+  getWorkspacePanes(): Promise<Record<string, PersistedPane[]>>
+  setWorkspacePanes(panes: Record<string, PersistedPane[]>): Promise<boolean>
   saveTerminalHistory(id: string, content: string): Promise<boolean>
   saveTerminalHistorySync(id: string, content: string): void
   loadTerminalHistory(id: string): Promise<string | null>

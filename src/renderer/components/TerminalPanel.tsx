@@ -1,36 +1,27 @@
-import { X, Plus, Sparkles, Code2 } from 'lucide-react'
-import {
-  DndContext,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  closestCenter,
-  type DragEndEvent
-} from '@dnd-kit/core'
+import { useEffect, useRef } from 'react'
+import { X, Plus, Sparkles, Code2, SplitSquareHorizontal } from 'lucide-react'
 import {
   SortableContext,
   horizontalListSortingStrategy,
   useSortable
 } from '@dnd-kit/sortable'
+import { useDroppable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
-import type { TerminalTab, PtyStatus } from '../types'
-import { XTerminal } from './XTerminal'
-import { DiffView } from './DiffView'
+import type { WorkspacePane, TerminalTab, PtyStatus } from '../types'
 import { Tooltip } from './Tooltip'
 
 interface TerminalPanelProps {
   worktreePath: string
-  tabs: TerminalTab[]
-  activeTabId: string
+  pane: WorkspacePane
+  isFocused: boolean
+  paneCount: number
   statuses: Record<string, PtyStatus>
-  onSelectTab: (worktreePath: string, tabId: string) => void
-  onAddTab: (worktreePath: string) => void
-  onAddClaudeTab: (worktreePath: string) => void
-  onCloseTab: (worktreePath: string, tabId: string) => void
-  onRestartClaudeTab: (worktreePath: string, tabId: string) => void
-  onReorderTabs: (worktreePath: string, fromId: string, toId: string) => void
-  visible: boolean
-  claudeCommand: string
+  registerSlot: (paneId: string, el: HTMLDivElement | null) => void
+  onSelectTab: (tabId: string) => void
+  onAddTab: () => void
+  onAddClaudeTab: () => void
+  onCloseTab: (tabId: string) => void
+  onSplit: () => void
 }
 
 const TAB_STATUS_DOT: Record<PtyStatus, string> = {
@@ -56,7 +47,7 @@ function SortableTab({ tab, isActive, status, showClose, onSelect, onClose }: So
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.5 : 1
+    opacity: isDragging ? 0.4 : 1
   }
   return (
     <div
@@ -93,51 +84,49 @@ function SortableTab({ tab, isActive, status, showClose, onSelect, onClose }: So
 
 export function TerminalPanel({
   worktreePath,
-  tabs,
-  activeTabId,
+  pane,
+  paneCount,
   statuses,
+  registerSlot,
   onSelectTab,
   onAddTab,
   onAddClaudeTab,
   onCloseTab,
-  onRestartClaudeTab,
-  onReorderTabs,
-  visible,
-  claudeCommand
+  onSplit
 }: TerminalPanelProps): JSX.Element {
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 4 } })
-  )
+  // Droppable target for the pane itself — lets users drop a tab onto an
+  // empty pane or past the last tab.
+  const { setNodeRef: setPaneDropRef } = useDroppable({ id: pane.id })
+  const slotRef = useRef<HTMLDivElement | null>(null)
 
-  const handleDragEnd = (event: DragEndEvent): void => {
-    const { active, over } = event
-    if (!over || active.id === over.id) return
-    onReorderTabs(worktreePath, String(active.id), String(over.id))
-  }
+  // Register the content slot div with WorkspaceView so it can portal
+  // terminal content into this pane.
+  useEffect(() => {
+    registerSlot(pane.id, slotRef.current)
+    return () => registerSlot(pane.id, null)
+  }, [pane.id, registerSlot])
 
   return (
-    <div className="flex-1 flex flex-col min-w-0 bg-app">
+    <div ref={setPaneDropRef} className="flex-1 flex flex-col min-w-0 bg-app">
       {/* Tab bar */}
       <div className="drag-region flex items-center border-b border-border bg-panel h-10 shrink-0">
         <div className="no-drag flex items-center h-full overflow-x-auto pl-2 flex-1 min-w-0">
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-            <SortableContext items={tabs.map((t) => t.id)} strategy={horizontalListSortingStrategy}>
-              {tabs.map((tab) => (
-                <SortableTab
-                  key={tab.id}
-                  tab={tab}
-                  isActive={tab.id === activeTabId}
-                  status={statuses[tab.id] || 'idle'}
-                  showClose={tabs.length > 1}
-                  onSelect={() => onSelectTab(worktreePath, tab.id)}
-                  onClose={() => onCloseTab(worktreePath, tab.id)}
-                />
-              ))}
-            </SortableContext>
-          </DndContext>
+          <SortableContext items={pane.tabs.map((t) => t.id)} strategy={horizontalListSortingStrategy}>
+            {pane.tabs.map((tab) => (
+              <SortableTab
+                key={tab.id}
+                tab={tab}
+                isActive={tab.id === pane.activeTabId}
+                status={statuses[tab.id] || 'idle'}
+                showClose={pane.tabs.length > 1 || paneCount > 1}
+                onSelect={() => onSelectTab(tab.id)}
+                onClose={() => onCloseTab(tab.id)}
+              />
+            ))}
+          </SortableContext>
           <Tooltip label="New Claude tab">
             <button
-              onClick={() => onAddClaudeTab(worktreePath)}
+              onClick={onAddClaudeTab}
               className="no-drag px-2 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"
             >
               <Sparkles size={12} />
@@ -145,10 +134,18 @@ export function TerminalPanel({
           </Tooltip>
           <Tooltip label="New shell tab" action="newShellTab">
             <button
-              onClick={() => onAddTab(worktreePath)}
+              onClick={onAddTab}
               className="no-drag px-2 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"
             >
               <Plus size={12} />
+            </button>
+          </Tooltip>
+          <Tooltip label="Split pane right">
+            <button
+              onClick={onSplit}
+              className="no-drag px-2 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"
+            >
+              <SplitSquareHorizontal size={12} />
             </button>
           </Tooltip>
         </div>
@@ -162,41 +159,8 @@ export function TerminalPanel({
         </Tooltip>
       </div>
 
-      {/* Terminal / diff area */}
-      <div className="flex-1 relative min-h-0">
-        {tabs.map((tab) => (
-          <div
-            key={tab.id}
-            className="absolute inset-0"
-            style={{ display: tab.id === activeTabId ? 'block' : 'none' }}
-          >
-            {tab.type === 'diff' ? (
-              <DiffView
-                worktreePath={worktreePath}
-                filePath={tab.filePath}
-                staged={tab.staged ?? false}
-                branchDiff={tab.branchDiff ?? false}
-                commitHash={tab.commitHash}
-              />
-            ) : (
-              <XTerminal
-                terminalId={tab.id}
-                cwd={worktreePath}
-                type={tab.type}
-                visible={visible && tab.id === activeTabId}
-                claudeCommand={claudeCommand}
-                sessionId={tab.sessionId}
-                initialPrompt={tab.initialPrompt}
-                onRestartClaude={
-                  tab.type === 'claude'
-                    ? () => onRestartClaudeTab(worktreePath, tab.id)
-                    : undefined
-                }
-              />
-            )}
-          </div>
-        ))}
-      </div>
+      {/* Content slot — terminals / diffs are portaled in by WorkspaceView */}
+      <div ref={slotRef} className="flex-1 relative min-h-0" />
     </div>
   )
 }

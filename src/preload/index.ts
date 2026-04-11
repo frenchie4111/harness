@@ -58,9 +58,9 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('config:themeChanged', handler)
     return () => ipcRenderer.removeListener('config:themeChanged', handler)
   },
-  getTerminalTabs: () => ipcRenderer.invoke('config:getTerminalTabs'),
-  setTerminalTabs: (tabs: unknown, activeTabId: unknown) =>
-    ipcRenderer.invoke('config:setTerminalTabs', tabs, activeTabId),
+  getWorkspacePanes: () => ipcRenderer.invoke('config:getPanes'),
+  setWorkspacePanes: (panes: unknown) =>
+    ipcRenderer.invoke('config:setPanes', panes),
   saveTerminalHistory: (id: string, content: string) =>
     ipcRenderer.invoke('terminal:saveHistory', id, content),
   saveTerminalHistorySync: (id: string, content: string) => {
