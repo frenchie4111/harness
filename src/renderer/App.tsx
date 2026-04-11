@@ -4,6 +4,7 @@ import type { Action } from './hotkeys'
 import { resolveHotkeys } from './hotkeys'
 import { HotkeysProvider } from './components/Tooltip'
 import { Sidebar } from './components/Sidebar'
+import { ResizeHandle } from './components/ResizeHandle'
 import { NewWorktreeScreen } from './components/NewWorktreeScreen'
 import { QuestCard } from './components/QuestCard'
 import { WorkspaceView } from './components/WorkspaceView'
@@ -65,6 +66,26 @@ export default function App(): JSX.Element {
   const [repoRoot, setRepoRoot] = useState<string | null>(null)
   const [hooksConsent, setHooksConsent] = useState<'pending' | 'accepted' | 'declined'>('pending')
   const [sidebarVisible, setSidebarVisible] = useState(true)
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
+    const saved = Number(localStorage.getItem('harness:sidebarWidth'))
+    return Number.isFinite(saved) && saved > 0 ? saved : 224
+  })
+  const [rightPanelWidth, setRightPanelWidth] = useState<number>(() => {
+    const saved = Number(localStorage.getItem('harness:rightPanelWidth'))
+    return Number.isFinite(saved) && saved > 0 ? saved : 256
+  })
+  useEffect(() => {
+    localStorage.setItem('harness:sidebarWidth', String(sidebarWidth))
+  }, [sidebarWidth])
+  useEffect(() => {
+    localStorage.setItem('harness:rightPanelWidth', String(rightPanelWidth))
+  }, [rightPanelWidth])
+  const handleSidebarResize = useCallback((delta: number) => {
+    setSidebarWidth((w) => Math.max(160, Math.min(500, w + delta)))
+  }, [])
+  const handleRightPanelResize = useCallback((delta: number) => {
+    setRightPanelWidth((w) => Math.max(180, Math.min(600, w - delta)))
+  }, [])
   const [showNewWorktree, setShowNewWorktree] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [settingsInitialSection, setSettingsInitialSection] = useState<'github' | undefined>(undefined)
@@ -1150,8 +1171,10 @@ const setQuestStep = useCallback((next: QuestStep) => {
               setShowCommandCenter(true)
             }}
             commandCenterActive={showCommandCenter}
+            width={sidebarWidth}
           />
         )}
+        {sidebarVisible && <ResizeHandle onDelta={handleSidebarResize} />}
         {/* Render ALL worktrees' terminals to keep PTYs alive across switches */}
         {worktrees.map((wt) => {
           const paneList = panes[wt.path]
@@ -1242,7 +1265,13 @@ const setQuestStep = useCallback((next: QuestStep) => {
         />
         {/* Right panel — hidden on the new-worktree screen so the form gets the full width */}
         {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && (
-          <div className="w-64 shrink-0 h-full flex flex-col border-l border-border bg-panel">
+          <ResizeHandle onDelta={handleRightPanelResize} />
+        )}
+        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && (
+          <div
+            className="shrink-0 h-full flex flex-col bg-panel"
+            style={{ width: rightPanelWidth }}
+          >
             <MergeLocallyPanel
               pr={activeWorktreeId ? prStatuses[activeWorktreeId] : null}
               worktree={worktrees.find((w) => w.path === activeWorktreeId) || null}
