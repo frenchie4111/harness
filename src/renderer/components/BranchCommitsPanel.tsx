@@ -37,8 +37,8 @@ export function BranchCommitsPanel({ worktreePath }: BranchCommitsPanelProps): J
   if (!worktreePath) return null
 
   return (
-    <div className="flex flex-col border-b border-border bg-panel shrink-0 max-h-48">
-      <div className="flex items-center justify-between h-8 px-3 border-b border-border shrink-0">
+    <div className="flex flex-col border-b border-border bg-panel shrink-0 max-h-56">
+      <div className="flex items-center justify-between h-9 px-3 border-b border-border shrink-0">
         <span className="text-xs font-medium text-muted uppercase tracking-wide">
           Commits
         </span>
@@ -56,18 +56,30 @@ export function BranchCommitsPanel({ worktreePath }: BranchCommitsPanelProps): J
           </Tooltip>
         </div>
       </div>
-      <div className="flex-1 overflow-y-auto min-h-0 text-xs">
+      <div className="flex-1 overflow-y-auto min-h-0 text-xs py-1.5">
         {commits.length === 0 && !loading && (
-          <div className="p-3 text-faint">No commits ahead of base</div>
+          <div className="px-4 py-2 text-faint">No commits ahead of base</div>
         )}
-        {commits.map((c) => (
-          <Tooltip key={c.hash} label={`${c.shortHash} · ${c.author} · ${c.relativeDate}`} side="left">
-            <div className="flex items-baseline gap-2 px-3 py-1 hover:bg-panel-raised cursor-default">
-              <span className="shrink-0 font-mono text-[10px] text-faint">{c.shortHash}</span>
-              <span className="truncate min-w-0 flex-1 text-fg">{c.subject}</span>
-            </div>
-          </Tooltip>
-        ))}
+        {commits.map((c, i) => {
+          const isFirst = i === 0
+          const isLast = i === commits.length - 1
+          return (
+            <Tooltip key={c.hash} label={`${c.shortHash} · ${c.author} · ${c.relativeDate}`} side="left">
+              <div className="group relative flex items-center gap-2.5 pl-4 pr-3 py-1.5 hover:bg-panel-raised cursor-default">
+                {/* Tree line + dot */}
+                <div className="relative shrink-0 w-3 self-stretch flex justify-center">
+                  <div
+                    className="absolute left-1/2 -translate-x-1/2 w-px bg-border-strong"
+                    style={{ top: isFirst ? '50%' : 0, bottom: isLast ? '50%' : 0 }}
+                  />
+                  <div className="relative z-10 self-center w-2 h-2 rounded-full bg-info ring-2 ring-panel group-hover:ring-panel-raised group-hover:bg-success transition-colors shadow-[0_0_6px_rgba(56,189,248,0.5)]" />
+                </div>
+                <span className="shrink-0 font-mono text-[10px] text-faint">{c.shortHash}</span>
+                <span className="truncate min-w-0 flex-1 text-fg">{c.subject}</span>
+              </div>
+            </Tooltip>
+          )
+        })}
       </div>
     </div>
   )
