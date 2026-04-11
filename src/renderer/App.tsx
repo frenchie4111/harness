@@ -63,6 +63,8 @@ export default function App(): JSX.Element {
   const [prStatuses, setPrStatuses] = useState<Record<string, PRStatus | null>>({})
   const [mergedPaths, setMergedPaths] = useState<Record<string, boolean>>({})
   const [prLoading, setPrLoading] = useState(false)
+  const lastAllPRFetchAt = useRef(0)
+  const lastPRFetchAt = useRef<Record<string, number>>({})
   const [lastActive, setLastActive] = useState<Record<string, number>>({})
   const [repoRoot, setRepoRoot] = useState<string | null>(null)
   const [hooksConsent, setHooksConsent] = useState<'pending' | 'accepted' | 'declined'>('pending')
@@ -293,6 +295,9 @@ const setQuestStep = useCallback((next: QuestStep) => {
   // Fetch PR status for all worktrees in parallel (on initial load)
   const fetchAllPRStatuses = useCallback(async () => {
     if (worktrees.length === 0) return
+    const now = Date.now()
+    lastAllPRFetchAt.current = now
+    for (const wt of worktrees) lastPRFetchAt.current[wt.path] = now
     setPrLoading(true)
     try {
       const results = await Promise.all(
@@ -328,6 +333,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
 
   // Fetch a single worktree's PR status
   const fetchPRStatus = useCallback(async (wtPath: string) => {
+    lastPRFetchAt.current[wtPath] = Date.now()
     try {
       const status = await window.api.getPRStatus(wtPath)
       setPrStatuses((prev) => ({ ...prev, [wtPath]: status }))
@@ -336,10 +342,39 @@ const setQuestStep = useCallback((next: QuestStep) => {
     }
   }, [])
 
+  // Refetch a worktree's PR status if it hasn't been fetched in >60s. Used
+  // when the user activates a worktree — cheap freshness without hammering
+  // the GitHub API on rapid worktree switching.
+  const fetchPRStatusIfStale = useCallback((wtPath: string) => {
+    if (Date.now() - (lastPRFetchAt.current[wtPath] ?? 0) > 60 * 1000) {
+      void fetchPRStatus(wtPath)
+    }
+  }, [fetchPRStatus])
+
   // Initial load
   useEffect(() => {
     fetchAllPRStatuses()
   }, [fetchAllPRStatuses])
+
+  // Keep PR statuses fresh: poll every 5 min, and refetch on window focus
+  // if it's been more than 60s since the last fetch (so rapid alt-tabbing
+  // doesn't hammer the GitHub API).
+  useEffect(() => {
+    if (worktrees.length === 0) return
+    const interval = setInterval(() => {
+      void fetchAllPRStatuses()
+    }, 5 * 60 * 1000)
+    const onFocus = (): void => {
+      if (Date.now() - lastAllPRFetchAt.current > 60 * 1000) {
+        void fetchAllPRStatuses()
+      }
+    }
+    window.addEventListener('focus', onFocus)
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener('focus', onFocus)
+    }
+  }, [fetchAllPRStatuses, worktrees.length])
 
   // Map a terminal ID back to its worktree path
   const terminalToWorktree = useCallback((terminalId: string): string | null => {
@@ -421,8 +456,8 @@ const setQuestStep = useCallback((next: QuestStep) => {
   useEffect(() => {
     if (!activeWorktreeId) return
 
-    // Refresh PR status on focus
-    fetchPRStatus(activeWorktreeId)
+    // Refresh PR status on focus (throttled)
+    fetchPRStatusIfStale(activeWorktreeId)
 
     // Check and install hooks if needed
     if (!hooksChecked.current.has(activeWorktreeId)) {
@@ -1305,6 +1340,8 @@ const setQuestStep = useCallback((next: QuestStep) => {
             <PRStatusPanel
               pr={activeWorktreeId ? prStatuses[activeWorktreeId] : null}
               hasGithubToken={hasGithubToken}
+              loading={prLoading}
+              onRefresh={fetchAllPRStatuses}
               onConnectGithub={() => {
                 setSettingsInitialSection('github')
                 setShowSettings(true)
