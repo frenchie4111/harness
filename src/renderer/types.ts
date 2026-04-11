@@ -8,11 +8,19 @@ export interface Worktree {
   createdAt: number
 }
 
+export interface FileReadResult {
+  content: string | null
+  size: number
+  binary: boolean
+  truncated: boolean
+  error?: string
+}
+
 export interface TerminalTab {
   id: string
-  type: 'claude' | 'shell' | 'diff'
+  type: 'claude' | 'shell' | 'diff' | 'file'
   label: string
-  /** For diff tabs: the file path being diffed */
+  /** For diff/file tabs: the file path */
   filePath?: string
   /** For diff tabs: whether the diff is for staged changes */
   staged?: boolean
@@ -162,6 +170,8 @@ export interface ElectronAPI {
   getMergedStatus(): Promise<Record<string, boolean>>
   getBranchCommits(worktreePath: string): Promise<BranchCommit[]>
   getCommitDiff(worktreePath: string, hash: string): Promise<CommitDiff | null>
+  listAllFiles(worktreePath: string): Promise<string[]>
+  readWorktreeFile(worktreePath: string, filePath: string): Promise<FileReadResult>
   getChangedFiles(worktreePath: string, mode?: 'working' | 'branch'): Promise<ChangedFile[]>
   getFileDiff(
     worktreePath: string,

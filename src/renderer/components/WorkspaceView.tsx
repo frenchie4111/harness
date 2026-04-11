@@ -15,6 +15,7 @@ import type { WorkspacePane, PtyStatus } from '../types'
 import { TerminalPanel } from './TerminalPanel'
 import { XTerminal } from './XTerminal'
 import { DiffView } from './DiffView'
+import { FileView } from './FileView'
 
 interface WorkspaceViewProps {
   worktreePath: string
@@ -178,6 +179,16 @@ export function WorkspaceView({
                   staged={tab.staged ?? false}
                   branchDiff={tab.branchDiff ?? false}
                   commitHash={tab.commitHash}
+                  onSendToClaude={
+                    onSendToClaude
+                      ? (text) => onSendToClaude(worktreePath, text)
+                      : undefined
+                  }
+                />
+              ) : tab.type === 'file' ? (
+                <FileView
+                  worktreePath={worktreePath}
+                  filePath={tab.filePath}
                   onSendToClaude={
                     onSendToClaude
                       ? (text) => onSendToClaude(worktreePath, text)

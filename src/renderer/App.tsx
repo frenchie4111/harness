@@ -8,6 +8,7 @@ import { NewWorktreeScreen } from './components/NewWorktreeScreen'
 import { QuestCard } from './components/QuestCard'
 import { WorkspaceView } from './components/WorkspaceView'
 import { ChangedFilesPanel } from './components/ChangedFilesPanel'
+import { AllFilesPanel } from './components/AllFilesPanel'
 import { BranchCommitsPanel } from './components/BranchCommitsPanel'
 import { PRStatusPanel, MergeLocallyPanel } from './components/PRStatusPanel'
 import { Settings } from './components/Settings'
@@ -209,7 +210,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
         .map((pane) => {
           // Drop diff tabs and the transient `initialPrompt` field.
           const tabs = pane.tabs
-            .filter((t) => t.type !== 'diff')
+            .filter((t) => t.type !== 'diff' && t.type !== 'file')
             .map((t) => ({
               id: t.id,
               type: t.type as 'claude' | 'shell',
@@ -539,7 +540,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
     // Kill any terminals running in this worktree and drop their history
     const tabs = terminalTabs[path] || []
     for (const tab of tabs) {
-      if (tab.type !== 'diff') markTerminalClosing(tab.id)
+      if (tab.type !== 'diff' && tab.type !== 'file') markTerminalClosing(tab.id)
       window.api.killTerminal(tab.id)
     }
     // Clean up pane state
@@ -578,7 +579,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
         onProgress?.(path, 'start')
         const tabs = terminalTabs[path] || []
         for (const tab of tabs) {
-          if (tab.type !== 'diff') markTerminalClosing(tab.id)
+          if (tab.type !== 'diff' && tab.type !== 'file') markTerminalClosing(tab.id)
           window.api.killTerminal(tab.id)
         }
         setPanes((prev) => {
@@ -657,8 +658,8 @@ const setQuestStep = useCallback((next: QuestStep) => {
 
   const handleCloseTab = useCallback(
     (worktreePath: string, tabId: string) => {
-      // Only kill PTY for terminal tabs, not diff tabs
-      if (!tabId.startsWith('diff-')) {
+      // Only kill PTY for terminal tabs, not diff/file viewer tabs
+      if (!tabId.startsWith('diff-') && !tabId.startsWith('file-')) {
         markTerminalClosing(tabId)
         window.api.killTerminal(tabId)
       }
@@ -865,6 +866,28 @@ const setQuestStep = useCallback((next: QuestStep) => {
       })
     },
     [panes, handleSelectTab]
+  )
+
+  const handleOpenFile = useCallback(
+    (filePath: string) => {
+      if (!activeWorktreeId) return
+      const tabId = `file-${filePath}`
+      const list = panes[activeWorktreeId] || []
+      const existingPane = list.find((p) => p.tabs.some((t) => t.id === tabId))
+      if (existingPane) {
+        handleSelectTab(activeWorktreeId, existingPane.id, tabId)
+        return
+      }
+      const fileName = filePath.split('/').pop() || filePath
+      const tab: TerminalTab = {
+        id: tabId,
+        type: 'file',
+        label: fileName,
+        filePath
+      }
+      appendTabToPane(activeWorktreeId, tab)
+    },
+    [activeWorktreeId, panes, handleSelectTab, appendTabToPane]
   )
 
   const handleOpenDiff = useCallback(
@@ -1262,6 +1285,15 @@ const setQuestStep = useCallback((next: QuestStep) => {
             <ChangedFilesPanel
               worktreePath={activeWorktreeId}
               onOpenDiff={handleOpenDiff}
+              onSendToClaude={
+                activeWorktreeId
+                  ? (text) => handleSendToClaude(activeWorktreeId, text)
+                  : undefined
+              }
+            />
+            <AllFilesPanel
+              worktreePath={activeWorktreeId}
+              onOpenFile={handleOpenFile}
               onSendToClaude={
                 activeWorktreeId
                   ? (text) => handleSendToClaude(activeWorktreeId, text)
