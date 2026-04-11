@@ -65,12 +65,10 @@ export default function App(): JSX.Element {
   const [sidebarVisible, setSidebarVisible] = useState(true)
   const [showNewWorktree, setShowNewWorktree] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [settingsInitialSection, setSettingsInitialSection] = useState<'github' | undefined>(undefined)
   const [showGuide, setShowGuide] = useState(false)
   const [showActivity, setShowActivity] = useState(false)
   const [hasGithubToken, setHasGithubToken] = useState<boolean | null>(null)
-  const [githubBannerDismissed, setGithubBannerDismissed] = useState(
-    () => localStorage.getItem('githubBannerDismissed') === '1'
-  )
   const [hotkeyOverrides, setHotkeyOverrides] = useState<Record<string, string> | undefined>(undefined)
   const [claudeCommand, setClaudeCommand] = useState<string>('')
   // Onboarding parallelism quest — see QuestCard.tsx for the steps.
@@ -99,12 +97,7 @@ export default function App(): JSX.Element {
     window.api.hasGithubToken().then(setHasGithubToken).catch(() => setHasGithubToken(null))
   }, [showSettings])
 
-  const handleDismissGithubBanner = useCallback(() => {
-    localStorage.setItem('githubBannerDismissed', '1')
-    setGithubBannerDismissed(true)
-  }, [])
-
-  const setQuestStep = useCallback((next: QuestStep) => {
+const setQuestStep = useCallback((next: QuestStep) => {
     setQuestStepRaw(next)
     window.api.setOnboardingQuest(next).catch(() => {})
   }, [])
@@ -910,11 +903,16 @@ export default function App(): JSX.Element {
   const settingsOverlay = showSettings ? (
     <div className="fixed inset-0 z-50">
       <Settings
-        onClose={() => setShowSettings(false)}
+        onClose={() => {
+          setShowSettings(false)
+          setSettingsInitialSection(undefined)
+        }}
         onOpenGuide={() => {
           setShowSettings(false)
+          setSettingsInitialSection(undefined)
           setShowGuide(true)
         }}
+        initialSection={settingsInitialSection}
       />
     </div>
   ) : null
@@ -979,27 +977,6 @@ export default function App(): JSX.Element {
             className="px-3 py-1 text-warning/80 hover:text-warning text-sm transition-colors shrink-0 cursor-pointer no-drag"
           >
             Skip
-          </button>
-        </div>
-      )}
-
-      {/* GitHub setup banner */}
-      {hasGithubToken === false && !githubBannerDismissed && (
-        <div className="bg-info/15 border-b border-info/30 pl-20 pr-4 py-2.5 drag-region flex items-center gap-3 shrink-0">
-          <span className="text-info text-sm flex-1">
-            Connect a GitHub token to see PR status and open pull requests from Harness.
-          </span>
-          <button
-            onClick={() => setShowSettings(true)}
-            className="px-3 py-1 bg-info/30 hover:bg-info/40 rounded text-sm text-info transition-colors shrink-0 cursor-pointer no-drag"
-          >
-            Set up GitHub
-          </button>
-          <button
-            onClick={handleDismissGithubBanner}
-            className="px-3 py-1 text-info/80 hover:text-info text-sm transition-colors shrink-0 cursor-pointer no-drag"
-          >
-            Dismiss
           </button>
         </div>
       )}
@@ -1088,6 +1065,11 @@ export default function App(): JSX.Element {
               worktree={worktrees.find((w) => w.path === activeWorktreeId) || null}
               onMerged={refreshMergedStatus}
               onRemoveWorktree={handleDeleteWorktree}
+              hasGithubToken={hasGithubToken}
+              onConnectGithub={() => {
+                setSettingsInitialSection('github')
+                setShowSettings(true)
+              }}
             />
             <BranchCommitsPanel worktreePath={activeWorktreeId} onOpenCommit={handleOpenCommit} />
             <div className="flex-1 min-h-0">

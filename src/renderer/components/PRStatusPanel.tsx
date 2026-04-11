@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { ExternalLink, GitMerge, ChevronDown, Check } from 'lucide-react'
+import { ExternalLink, GitMerge, ChevronDown, Check, GitPullRequest } from 'lucide-react'
 import type {
   PRStatus,
   CheckStatus,
@@ -29,6 +29,10 @@ interface PRStatusPanelProps {
   onMerged?: () => void | Promise<void>
   /** Called when the user clicks "Remove worktree" after a merge. */
   onRemoveWorktree?: (worktreePath: string) => void | Promise<void>
+  /** Whether a GitHub token is configured. `null` means still loading. */
+  hasGithubToken?: boolean | null
+  /** Called when the user clicks the "Connect GitHub" button. */
+  onConnectGithub?: () => void
 }
 
 const STRATEGY_BUTTON_LABELS: Record<MergeStrategy, string> = {
@@ -358,7 +362,14 @@ const OVERALL_COLORS: Record<string, string> = {
   none: 'text-dim'
 }
 
-export function PRStatusPanel({ pr, worktree, onMerged, onRemoveWorktree }: PRStatusPanelProps): JSX.Element {
+export function PRStatusPanel({
+  pr,
+  worktree,
+  onMerged,
+  onRemoveWorktree,
+  hasGithubToken,
+  onConnectGithub
+}: PRStatusPanelProps): JSX.Element {
   const [expanded, setExpanded] = useState(false)
 
   // Auto-expand the check list whenever checks are failing so the user sees
@@ -367,7 +378,8 @@ export function PRStatusPanel({ pr, worktree, onMerged, onRemoveWorktree }: PRSt
     if (pr?.checksOverall === 'failure') setExpanded(true)
   }, [pr?.checksOverall, pr?.number])
 
-  const showMergeLocally = pr === null && worktree && !worktree.isMain
+  const needsGithubToken = hasGithubToken === false
+  const showMergeLocally = !needsGithubToken && pr === null && worktree && !worktree.isMain
 
   return (
     <>
@@ -378,10 +390,20 @@ export function PRStatusPanel({ pr, worktree, onMerged, onRemoveWorktree }: PRSt
         onRemoveWorktree={onRemoveWorktree}
       />
     )}
-    <div className="border-b border-border">
-      <div className="px-3 py-2 flex items-center gap-2">
-        <span className="text-xs font-medium text-dim flex-1">PULL REQUEST</span>
-        {pr && (
+    <div className={`border-b border-border ${needsGithubToken ? 'bg-info/10' : ''}`}>
+      <div
+        className={`px-3 py-2 flex items-center gap-2 ${
+          needsGithubToken ? 'bg-info/25' : ''
+        }`}
+      >
+        <span
+          className={`text-xs font-medium flex-1 ${
+            needsGithubToken ? 'text-info' : 'text-dim'
+          }`}
+        >
+          PULL REQUEST
+        </span>
+        {!needsGithubToken && pr && (
           <Tooltip label="Open PR in browser" action="openPR" side="left">
             <button
               onClick={() => window.api.openExternal(pr.url)}
@@ -394,15 +416,32 @@ export function PRStatusPanel({ pr, worktree, onMerged, onRemoveWorktree }: PRSt
         )}
       </div>
 
-      {pr === null && (
+      {needsGithubToken && (
+        <div className="px-3 py-3 space-y-2">
+          <div className="text-xs text-info/90 leading-snug">
+            Connect a GitHub token to see PR status and open pull requests from Harness.
+          </div>
+          {onConnectGithub && (
+            <button
+              onClick={onConnectGithub}
+              className="w-full text-xs bg-info/25 hover:bg-info/35 text-info px-2 py-1.5 rounded flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <GitPullRequest size={12} />
+              Connect GitHub
+            </button>
+          )}
+        </div>
+      )}
+
+      {!needsGithubToken && pr === null && (
         <div className="px-3 pb-2 text-xs text-faint">No PR for this branch</div>
       )}
 
-      {pr === undefined && (
+      {!needsGithubToken && pr === undefined && (
         <div className="px-3 pb-2 text-xs text-faint">Loading...</div>
       )}
 
-      {pr && (
+      {!needsGithubToken && pr && (
         <div className="px-3 pb-2">
           {/* PR title and state */}
           <div className="flex items-start gap-1.5 mb-1.5">
