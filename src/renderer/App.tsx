@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import type { Worktree, TerminalTab, PtyStatus, PRStatus } from './types'
+import type { Worktree, TerminalTab, PtyStatus, PRStatus, QuestStep } from './types'
 import type { Action } from './hotkeys'
 import { resolveHotkeys } from './hotkeys'
 import { HotkeysProvider } from './components/Tooltip'
 import { Sidebar } from './components/Sidebar'
 import { NewWorktreeScreen } from './components/NewWorktreeScreen'
+import { QuestCard } from './components/QuestCard'
 import { TerminalPanel } from './components/TerminalPanel'
 import { ChangedFilesPanel } from './components/ChangedFilesPanel'
 import { PRStatusPanel } from './components/PRStatusPanel'
@@ -44,6 +45,17 @@ export default function App(): JSX.Element {
   )
   const [hotkeyOverrides, setHotkeyOverrides] = useState<Record<string, string> | undefined>(undefined)
   const [claudeCommand, setClaudeCommand] = useState<string>('')
+  // Onboarding parallelism quest — see QuestCard.tsx for the steps.
+  const [questStep, setQuestStepRaw] = useState<QuestStep>('hidden')
+  const questLoadedRef = useRef(false)
+  const questVisitedRef = useRef<Set<string>>(new Set())
+
+  // Count of "real" worktrees the user has spawned — main repo doesn't count
+  // as an agent. Used by empty state + quest advancement.
+  const agentWorktreeCount = useMemo(
+    () => worktrees.filter((w) => !w.isMain).length,
+    [worktrees]
+  )
   // Flipped to true after persisted tabs finish loading, so the persist effect
   // below doesn't overwrite the on-disk state with empty initial React state.
   const tabsLoadedRef = useRef(false)
@@ -63,6 +75,46 @@ export default function App(): JSX.Element {
     localStorage.setItem('githubBannerDismissed', '1')
     setGithubBannerDismissed(true)
   }, [])
+
+  const setQuestStep = useCallback((next: QuestStep) => {
+    setQuestStepRaw(next)
+    window.api.setOnboardingQuest(next).catch(() => {})
+  }, [])
+
+  // Load persisted quest state on mount
+  useEffect(() => {
+    window.api
+      .getOnboarding()
+      .then((o) => {
+        setQuestStepRaw(o?.quest ?? 'hidden')
+      })
+      .catch(() => {})
+      .finally(() => {
+        questLoadedRef.current = true
+      })
+  }, [])
+
+  // Advance the quest based on how many agent worktrees exist (main excluded)
+  useEffect(() => {
+    if (!questLoadedRef.current) return
+    if (questStep === 'done' || questStep === 'finale') return
+    if (questStep === 'hidden' && agentWorktreeCount >= 1) {
+      setQuestStep(agentWorktreeCount >= 2 ? 'switch-between' : 'spawn-second')
+      return
+    }
+    if (questStep === 'spawn-second' && agentWorktreeCount >= 2) {
+      setQuestStep('switch-between')
+    }
+  }, [agentWorktreeCount, questStep, setQuestStep])
+
+  // Advance the quest when the user switches between two different worktrees
+  useEffect(() => {
+    if (questStep !== 'switch-between' || !activeWorktreeId) return
+    questVisitedRef.current.add(activeWorktreeId)
+    if (questVisitedRef.current.size >= 2) {
+      setQuestStep('finale')
+    }
+  }, [activeWorktreeId, questStep, setQuestStep])
 
   // Load repo root, worktrees, and config on mount
   useEffect(() => {
@@ -771,6 +823,7 @@ export default function App(): JSX.Element {
             mergedPaths={mergedPaths}
             lastActive={lastActive}
             prLoading={prLoading}
+            agentCount={agentWorktreeCount}
             onSelectWorktree={(path) => {
               setShowNewWorktree(false)
               setActiveWorktreeId(path)
@@ -821,6 +874,11 @@ export default function App(): JSX.Element {
             Select a worktree to begin
           </div>
         )}
+        <QuestCard
+          step={questStep}
+          onDismiss={() => setQuestStep('done')}
+          onFinish={() => setQuestStep('done')}
+        />
         {/* Right panel — hidden on the new-worktree screen so the form gets the full width */}
         {!showNewWorktree && (
           <div className="w-64 shrink-0 h-full flex flex-col border-l border-border bg-panel">

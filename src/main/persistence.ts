@@ -10,6 +10,8 @@ export interface PersistedTab {
   sessionId?: string
 }
 
+export type QuestStep = 'hidden' | 'spawn-second' | 'switch-between' | 'finale' | 'done'
+
 interface Config {
   windowBounds: { x: number; y: number; width: number; height: number } | null
   // All repo roots that have been opened (for re-opening windows)
@@ -38,6 +40,10 @@ interface Config {
   // past this SHA, the flag is considered stale and the branch is no longer
   // shown as merged.
   locallyMerged?: Record<string, string>
+  // First-run parallelism quest — advances through steps as the user learns.
+  onboarding?: {
+    quest?: QuestStep
+  }
 }
 
 export const DEFAULT_WORKTREE_BASE: 'remote' | 'local' = 'remote'
