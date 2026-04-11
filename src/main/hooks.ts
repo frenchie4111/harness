@@ -7,7 +7,7 @@ import { log } from './debug'
 const STATUS_DIR = '/tmp/harness-status'
 const HARNESS_HOOK_MARKER = '__claude_harness__'
 // Bump this when the hook format changes to force reinstallation
-const HARNESS_HOOK_VERSION = 5
+const HARNESS_HOOK_VERSION = 6
 
 // Per-event hook commands. Each event type gets its own simple command
 // that writes the appropriate status. No jq dependency — these don't need
@@ -133,7 +133,7 @@ export function installHooks(worktreePath: string): void {
   settings.hooks['Stop'].push(makeHarnessHookEntry(makeHookCommand('waiting')))
 
   // Processing signals
-  for (const event of ['UserPromptSubmit', 'PreToolUse']) {
+  for (const event of ['UserPromptSubmit', 'PreToolUse', 'PostToolUse']) {
     if (!settings.hooks[event]) settings.hooks[event] = []
     settings.hooks[event].push(makeHarnessHookEntry(makeHookCommand('processing')))
   }
