@@ -2,8 +2,37 @@ import React, { useEffect, useRef, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { SerializeAddon } from '@xterm/addon-serialize'
-import { Loader2 } from 'lucide-react'
 import '@xterm/xterm/css/xterm.css'
+
+function ClaudeLoader() {
+  return (
+    <div className="claude-loader" aria-label="Starting Claude">
+      <div className="claude-loader-halo" />
+      <div className="claude-loader-pulser">
+        <div className="claude-loader-rotator">
+          <svg viewBox="0 0 56 56" width="56" height="56">
+            <defs>
+              <linearGradient id="claudeLoaderGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#f59e0b" />
+                <stop offset="55%" stopColor="#ef4444" />
+                <stop offset="100%" stopColor="#a855f7" />
+              </linearGradient>
+            </defs>
+            <g fill="url(#claudeLoaderGrad)" transform="translate(28 28)">
+              {[0, 45, 90, 135].map((deg) => (
+                <path
+                  key={deg}
+                  d="M 0 -24 Q 3 0 0 24 Q -3 0 0 -24 Z"
+                  transform={`rotate(${deg})`}
+                />
+              ))}
+            </g>
+          </svg>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 const DEFAULT_TERMINAL_FONT_FAMILY =
   "'SF Mono', 'Monaco', 'Menlo', 'Courier New', monospace"
@@ -402,9 +431,16 @@ export function XTerminal({ terminalId, cwd, type, visible, claudeCommand, sessi
       <div ref={containerRef} className="w-full h-full" />
       {loading && (
         <div className="absolute inset-0 flex items-center justify-center bg-app/70 pointer-events-none">
-          <div className="flex items-center gap-2 text-dim text-sm">
-            <Loader2 size={16} className="animate-spin" />
-            Starting Claude…
+          <div className="flex flex-col items-center gap-3 text-dim text-sm">
+            <ClaudeLoader />
+            <div className="flex items-center">
+              <span>Starting Claude</span>
+              <span className="claude-loader-dots ml-1">
+                <span />
+                <span />
+                <span />
+              </span>
+            </div>
           </div>
         </div>
       )}
