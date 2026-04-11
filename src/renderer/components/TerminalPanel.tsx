@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useCallback } from 'react'
 import { X, Plus, Sparkles, Code2, SplitSquareHorizontal } from 'lucide-react'
 import {
   SortableContext,
@@ -44,6 +44,19 @@ function SortableTab({ tab, isActive, status, showClose, onSelect, onClose }: So
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: tab.id
   })
+  const localRef = useRef<HTMLDivElement | null>(null)
+  const setRefs = useCallback(
+    (el: HTMLDivElement | null) => {
+      localRef.current = el
+      setNodeRef(el)
+    },
+    [setNodeRef]
+  )
+  useEffect(() => {
+    if (isActive && localRef.current) {
+      localRef.current.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    }
+  }, [isActive])
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -51,18 +64,20 @@ function SortableTab({ tab, isActive, status, showClose, onSelect, onClose }: So
   }
   return (
     <div
-      ref={setNodeRef}
+      ref={setRefs}
       style={style}
       {...attributes}
       {...listeners}
-      className={`no-drag flex items-center gap-1.5 px-3 h-full text-xs cursor-pointer border-b-2 transition-colors ${
+      className={`no-drag shrink-0 flex items-center gap-1.5 px-3 h-full text-xs cursor-pointer border-b-2 whitespace-nowrap transition-colors ${
         isActive
           ? 'border-muted text-fg-bright'
           : 'border-transparent text-dim hover:text-fg'
       }`}
       onClick={onSelect}
     >
-      <span className={`w-1.5 h-1.5 rounded-full ${TAB_STATUS_DOT[status]}`} />
+      {tab.type !== 'diff' && (
+        <span className={`w-1.5 h-1.5 rounded-full ${TAB_STATUS_DOT[status]}`} />
+      )}
       <span>{tab.label}</span>
       {showClose && (
         <Tooltip label="Close tab" action="closeTab">
@@ -110,7 +125,7 @@ export function TerminalPanel({
     <div ref={setPaneDropRef} className="flex-1 flex flex-col min-w-0 bg-app">
       {/* Tab bar */}
       <div className="drag-region flex items-center border-b border-border bg-panel h-10 shrink-0">
-        <div className="flex items-center h-full overflow-x-auto pl-2 flex-1 min-w-0">
+        <div className="flex items-center h-full overflow-x-auto scrollbar-hidden pl-2 flex-1 min-w-0">
           <SortableContext items={pane.tabs.map((t) => t.id)} strategy={horizontalListSortingStrategy}>
             {pane.tabs.map((tab) => (
               <SortableTab
@@ -127,7 +142,7 @@ export function TerminalPanel({
           <Tooltip label="New Claude tab">
             <button
               onClick={onAddClaudeTab}
-              className="no-drag px-2 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"
+              className="no-drag shrink-0 px-2 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"
             >
               <Sparkles size={12} />
             </button>
@@ -135,7 +150,7 @@ export function TerminalPanel({
           <Tooltip label="New shell tab" action="newShellTab">
             <button
               onClick={onAddTab}
-              className="no-drag px-2 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"
+              className="no-drag shrink-0 px-2 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"
             >
               <Plus size={12} />
             </button>
@@ -143,7 +158,7 @@ export function TerminalPanel({
           <Tooltip label="Split pane right">
             <button
               onClick={onSplit}
-              className="no-drag px-2 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"
+              className="no-drag shrink-0 px-2 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"
             >
               <SplitSquareHorizontal size={12} />
             </button>
