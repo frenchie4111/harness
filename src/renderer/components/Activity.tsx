@@ -18,7 +18,7 @@ const RANGES: { id: Range; label: string; ms: number }[] = [
   { id: '7d', label: '7d', ms: 7 * 24 * 60 * 60 * 1000 }
 ]
 
-const STATE_COLOR: Record<ActivityState, string> = {
+export const STATE_COLOR: Record<ActivityState, string> = {
   processing: 'bg-success/80',
   waiting: 'bg-warning/80',
   'needs-approval': 'bg-danger/80',
@@ -36,7 +36,7 @@ const STATE_LABEL: Record<ActivityState, string> = {
 
 /** Convert an events list into a series of [start, end, state] segments
  *  clamped to [windowStart, now]. */
-function eventsToSegments(
+export function eventsToSegments(
   events: ActivityEvent[],
   windowStart: number,
   windowEnd: number

@@ -14,6 +14,7 @@ import { Settings } from './components/Settings'
 import { Guide } from './components/Guide'
 import { Activity } from './components/Activity'
 import { Cleanup } from './components/Cleanup'
+import { CommandCenter } from './components/CommandCenter'
 import iconUrl from '../../resources/icon.png'
 import { focusTerminalById, flushAllTerminalHistory, markTerminalClosing } from './components/XTerminal'
 import { useHotkeys } from './hooks/useHotkeys'
@@ -70,6 +71,8 @@ export default function App(): JSX.Element {
   const [showGuide, setShowGuide] = useState(false)
   const [showActivity, setShowActivity] = useState(false)
   const [showCleanup, setShowCleanup] = useState(false)
+  const [showCommandCenter, setShowCommandCenter] = useState(false)
+  const [tailLines, setTailLines] = useState<Record<string, string>>({})
   const [hasGithubToken, setHasGithubToken] = useState<boolean | null>(null)
   const [hotkeyOverrides, setHotkeyOverrides] = useState<Record<string, string> | undefined>(undefined)
   const [claudeCommand, setClaudeCommand] = useState<string>('')
@@ -332,6 +335,38 @@ const setQuestStep = useCallback((next: QuestStep) => {
       delete activityTimers.current[wtPath]
       setLastActive((prev) => ({ ...prev, [wtPath]: Date.now() }))
     }, 2000) // debounce: update at most every 2s per worktree
+  }, [])
+
+  // Rolling last-line-of-output cache per terminal, for the CommandCenter preview.
+  // Tap terminal:data in the renderer — the main process already broadcasts it,
+  // so no IPC additions are needed. Buffer in a ref, flush to state every 500ms.
+  const tailBuffersRef = useRef<Record<string, string>>({})
+  const tailDirtyRef = useRef(false)
+  useEffect(() => {
+    const stripAnsi = (s: string): string =>
+      // eslint-disable-next-line no-control-regex
+      s.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '').replace(/\x1b\][^\x07\x1b]*(\x07|\x1b\\)/g, '')
+    const cleanup = window.api.onTerminalData((id, data) => {
+      const prev = tailBuffersRef.current[id] || ''
+      const next = (prev + data).slice(-1024)
+      tailBuffersRef.current[id] = next
+      tailDirtyRef.current = true
+    })
+    const flush = setInterval(() => {
+      if (!tailDirtyRef.current) return
+      tailDirtyRef.current = false
+      const out: Record<string, string> = {}
+      for (const [id, buf] of Object.entries(tailBuffersRef.current)) {
+        const stripped = stripAnsi(buf).replace(/\r/g, '')
+        const lines = stripped.split('\n').map((l) => l.trim()).filter(Boolean)
+        out[id] = lines.length ? lines[lines.length - 1].slice(0, 240) : ''
+      }
+      setTailLines(out)
+    }, 500)
+    return () => {
+      cleanup()
+      clearInterval(flush)
+    }
   }, [])
 
   // Listen for status changes from main process
@@ -904,6 +939,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
         if (!activeWorktreeId) return
         window.api.openInEditor(activeWorktreeId)
       },
+      toggleCommandCenter: () => setShowCommandCenter((v) => !v),
     }),
     [
       cycleWorktree,
@@ -1058,6 +1094,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
               setShowNewWorktree(false)
               setShowActivity(false)
               setShowCleanup(false)
+              setShowCommandCenter(false)
               setActiveWorktreeId(path)
             }}
             onNewWorktree={() => setShowNewWorktree(true)}
@@ -1068,13 +1105,20 @@ const setQuestStep = useCallback((next: QuestStep) => {
             onOpenSettings={() => setShowSettings(true)}
             onOpenActivity={() => setShowActivity(true)}
             onOpenCleanup={() => setShowCleanup(true)}
+            onOpenCommandCenter={() => {
+              setShowNewWorktree(false)
+              setShowActivity(false)
+              setShowCleanup(false)
+              setShowCommandCenter(true)
+            }}
+            commandCenterActive={showCommandCenter}
           />
         )}
         {/* Render ALL worktrees' terminals to keep PTYs alive across switches */}
         {worktrees.map((wt) => {
           const paneList = panes[wt.path]
           if (!paneList || paneList.length === 0) return null
-          const isVisible = !showNewWorktree && !showActivity && !showCleanup && wt.path === activeWorktreeId
+          const isVisible = !showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && wt.path === activeWorktreeId
           return (
             <div
               key={wt.path}
@@ -1128,7 +1172,26 @@ const setQuestStep = useCallback((next: QuestStep) => {
             />
           </div>
         )}
-        {!showNewWorktree && !showActivity && !showCleanup && !activeWorktreeId && worktrees.length > 0 && (
+        {showCommandCenter && (
+          <CommandCenter
+            worktrees={worktrees}
+            worktreeStatuses={worktreeStatuses}
+            prStatuses={prStatuses}
+            mergedPaths={mergedPaths}
+            lastActive={lastActive}
+            tailLines={tailLines}
+            terminalTabs={terminalTabs}
+            onClose={() => setShowCommandCenter(false)}
+            onSelect={(path) => {
+              setShowCommandCenter(false)
+              setShowNewWorktree(false)
+              setShowActivity(false)
+              setShowCleanup(false)
+              setActiveWorktreeId(path)
+            }}
+          />
+        )}
+        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !activeWorktreeId && worktrees.length > 0 && (
           <div className="flex-1 flex items-center justify-center text-dim">
             Select a worktree to begin
           </div>
@@ -1139,7 +1202,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
           onFinish={() => setQuestStep('done')}
         />
         {/* Right panel — hidden on the new-worktree screen so the form gets the full width */}
-        {!showNewWorktree && !showActivity && !showCleanup && (
+        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && (
           <div className="w-64 shrink-0 h-full flex flex-col border-l border-border bg-panel">
             <PRStatusPanel
               pr={activeWorktreeId ? prStatuses[activeWorktreeId] : null}

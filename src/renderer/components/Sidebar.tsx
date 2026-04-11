@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from 'react'
-import { ChevronDown, ChevronRight, Plus, RefreshCw, FolderOpen, Loader2, Settings as SettingsIcon, Sparkles, BarChart3, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Plus, RefreshCw, FolderOpen, Loader2, Settings as SettingsIcon, Sparkles, BarChart3, Trash2, LayoutGrid } from 'lucide-react'
 import { Tooltip } from './Tooltip'
 import type { Worktree, PtyStatus, PRStatus } from '../types'
 import type { GroupKey } from '../worktree-sort'
@@ -25,6 +25,8 @@ interface SidebarProps {
   onOpenSettings: () => void
   onOpenActivity: () => void
   onOpenCleanup: () => void
+  onOpenCommandCenter: () => void
+  commandCenterActive: boolean
 }
 
 export function Sidebar({
@@ -44,7 +46,9 @@ export function Sidebar({
   onSelectRepo,
   onOpenSettings,
   onOpenActivity,
-  onOpenCleanup
+  onOpenCleanup,
+  onOpenCommandCenter,
+  commandCenterActive
 }: SidebarProps): JSX.Element {
   const [continueTarget, setContinueTarget] = useState<{ path: string; oldBranch: string } | null>(null)
   const [continueBranchName, setContinueBranchName] = useState('')
@@ -115,6 +119,21 @@ export function Sidebar({
       {/* Title bar drag region with app name — vertically aligned with traffic lights at y:12 */}
       <div className="drag-region h-10 relative shrink-0">
         <span className="gradient-text text-xs font-semibold absolute left-20 top-[11px]">Harness</span>
+      </div>
+
+      {/* Command Center entry */}
+      <div className="px-2 pt-1 pb-1 shrink-0">
+        <button
+          onClick={onOpenCommandCenter}
+          className={`w-full flex items-center gap-2 px-2 py-1.5 rounded transition-colors cursor-pointer ${
+            commandCenterActive
+              ? 'bg-surface text-fg-bright'
+              : 'text-muted hover:bg-panel-raised hover:text-fg'
+          }`}
+        >
+          <LayoutGrid size={14} className={commandCenterActive ? 'text-accent' : 'text-dim'} />
+          <span className="text-sm font-medium">Command Center</span>
+        </button>
       </div>
 
       {/* Worktrees header */}
