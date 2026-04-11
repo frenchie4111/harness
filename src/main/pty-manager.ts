@@ -82,18 +82,22 @@ export class PtyManager {
     }
   }
 
-  kill(id: string): void {
-    log('pty', `kill id=${id}`)
+  kill(id: string, signal?: string): void {
+    log('pty', `kill id=${id}${signal ? ` signal=${signal}` : ''}`)
     const instance = this.ptys.get(id)
     if (instance) {
-      instance.pty.kill()
+      try {
+        instance.pty.kill(signal)
+      } catch {
+        // ignore — pty may already be dead
+      }
       this.ptys.delete(id)
     }
   }
 
-  killAll(): void {
+  killAll(signal?: string): void {
     for (const [id] of this.ptys) {
-      this.kill(id)
+      this.kill(id, signal)
     }
   }
 

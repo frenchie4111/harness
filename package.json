@@ -10,7 +10,7 @@
   "description": "Harness - manage multiple Claude Code instances across git worktrees",
   "scripts": {
     "dev": "electron-vite dev",
-    "dev:debug": "electron-vite dev & sleep 2 && tail -f ~/Library/Application\\ Support/harness/debug.log",
+    "dev:debug": "sh -c 'trap \"kill 0\" EXIT; tail -F \"$HOME/Library/Application Support/Harness (Dev)/debug.log\" & electron-vite dev'",
     "log": "tail -f ~/Library/Application\\ Support/harness/debug.log",
     "log:clear": "rm -f ~/Library/Application\\ Support/harness/debug.log",
     "build": "electron-vite build",

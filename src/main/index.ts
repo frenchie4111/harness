@@ -636,7 +636,37 @@ function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('updater:quitAndInstall', () => {
-    autoUpdater.quitAndInstall()
+    log('updater', 'quitAndInstall requested — cleaning up for fast exit')
+    try {
+      stopWatchingStatus?.()
+      stopWatchingStatus = null
+    } catch (err) {
+      log('updater', 'stopWatchingStatus failed', err instanceof Error ? err.message : String(err))
+    }
+    try {
+      ptyManager.killAll('SIGKILL')
+    } catch (err) {
+      log('updater', 'ptyManager.killAll failed', err instanceof Error ? err.message : String(err))
+    }
+    try {
+      sealAllActive()
+      saveConfigSync(config)
+    } catch (err) {
+      log('updater', 'final persistence failed', err instanceof Error ? err.message : String(err))
+    }
+
+    // Skip our before-quit handler — it's already been done above, and it can
+    // hang waiting for PTY fds to drain. We just want Squirrel to see us gone.
+    app.removeAllListeners('before-quit')
+
+    // Hard-exit fallback. If Squirrel/Electron's quit takes longer than ~1.5s,
+    // force-kill the process so ShipIt's "target still running" check passes.
+    setTimeout(() => {
+      log('updater', 'fallback app.exit(0) — Squirrel should take over')
+      app.exit(0)
+    }, 1500)
+
+    autoUpdater.quitAndInstall(true, false)
     return true
   })
 
@@ -842,9 +872,24 @@ app.on('window-all-closed', () => {
   }
 })
 
+let quitWatchdogArmed = false
 app.on('before-quit', () => {
   stopWatchingStatus?.()
+  stopWatchingStatus = null
   ptyManager.killAll()
   sealAllActive()
   saveConfigSync(config)
+
+  // Force-exit watchdog: if a PTY child (stuck claude / shell) won't die after
+  // SIGHUP, the main process can hang indefinitely draining fds. Give the
+  // graceful path ~1.5s, then hard-exit. electron-updater's ShipIt helper has
+  // already been spawned by this point if an update is pending, so force-exit
+  // is safe — ShipIt runs independently and swaps the bundle once we're gone.
+  if (!quitWatchdogArmed) {
+    quitWatchdogArmed = true
+    setTimeout(() => {
+      log('app', 'quit watchdog fired — force-exiting')
+      app.exit(0)
+    }, 1500).unref()
+  }
 })
