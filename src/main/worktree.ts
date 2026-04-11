@@ -72,6 +72,35 @@ export interface AddWorktreeOptions {
   fetchRemote?: boolean
 }
 
+/**
+ * Resolve a base ref to fork/branch from, optionally fetching origin first.
+ * Matches the same logic addWorktree and continueWorktree share:
+ * explicit baseBranch wins; else if fetchRemote, fetch origin's default
+ * branch and use origin/<default>; else return undefined (caller uses HEAD).
+ */
+async function resolveBaseRef(
+  repoRoot: string,
+  options: { baseBranch?: string; fetchRemote?: boolean }
+): Promise<string | undefined> {
+  if (options.baseBranch) return options.baseBranch
+  if (!options.fetchRemote) return undefined
+  try {
+    const defaultRef = await getDefaultBaseRef(repoRoot)
+    const remoteBranch = defaultRef.startsWith('origin/')
+      ? defaultRef.slice('origin/'.length)
+      : defaultRef
+    if (remoteBranch && remoteBranch !== 'HEAD') {
+      log('worktree', `fetching origin ${remoteBranch}`)
+      await execFileAsync('git', ['fetch', '--quiet', 'origin', remoteBranch], { cwd: repoRoot })
+    }
+    const resolvedRef = await getDefaultBaseRef(repoRoot)
+    if (resolvedRef && resolvedRef !== 'HEAD') return resolvedRef
+  } catch (err) {
+    log('worktree', `remote fetch failed, falling back to local HEAD`, err instanceof Error ? err.message : err)
+  }
+  return undefined
+}
+
 export async function addWorktree(
   repoRoot: string,
   worktreeDir: string,
@@ -84,31 +113,7 @@ export async function addWorktree(
   }
 
   const worktreePath = join(worktreeDir, branchName)
-
-  // Determine the base ref.
-  // 1. Explicit baseBranch wins.
-  // 2. Otherwise if fetchRemote is set, fetch origin/<default> and use it.
-  // 3. Otherwise leave unset → git uses HEAD.
-  let baseRef: string | undefined = options.baseBranch
-  if (!baseRef && options.fetchRemote) {
-    try {
-      const defaultRef = await getDefaultBaseRef(repoRoot)
-      // defaultRef is something like "origin/main" — extract just the branch
-      // name and fetch it explicitly (shallow, quiet).
-      const remoteBranch = defaultRef.startsWith('origin/') ? defaultRef.slice('origin/'.length) : defaultRef
-      if (remoteBranch && remoteBranch !== 'HEAD') {
-        log('worktree', `fetching origin ${remoteBranch} before creating worktree`)
-        await execFileAsync('git', ['fetch', '--quiet', 'origin', remoteBranch], { cwd: repoRoot })
-      }
-      // Re-resolve in case origin/HEAD wasn't known until after fetch.
-      const resolvedRef = await getDefaultBaseRef(repoRoot)
-      if (resolvedRef && resolvedRef !== 'HEAD') {
-        baseRef = resolvedRef
-      }
-    } catch (err) {
-      log('worktree', `remote fetch failed, falling back to local HEAD`, err instanceof Error ? err.message : err)
-    }
-  }
+  const baseRef = await resolveBaseRef(repoRoot, options)
 
   log('worktree', `creating worktree: branch=${branchName} path=${worktreePath} base=${baseRef || 'HEAD'}`)
 
@@ -134,6 +139,76 @@ export async function addWorktree(
   const created = trees.find((t) => t.path === worktreePath)
   if (!created) throw new Error(`Failed to create worktree ${branchName}`)
   return created
+}
+
+export interface ContinueWorktreeResult {
+  worktree: WorktreeInfo
+  /** Dirty files were stashed and successfully re-applied. */
+  stashReapplied: boolean
+  /** Dirty files are still in the stash because pop conflicted. */
+  stashConflict: boolean
+}
+
+/**
+ * Reuse an existing worktree path and re-point it at a brand new branch
+ * forked from the repo's default base (optionally fetching origin first).
+ * If the worktree has uncommitted changes, they are stashed before the
+ * checkout and popped afterward so the user's in-progress work carries
+ * over to the fresh branch.
+ */
+export async function continueWorktree(
+  repoRoot: string,
+  worktreePath: string,
+  newBranchName: string,
+  options: AddWorktreeOptions = {}
+): Promise<ContinueWorktreeResult> {
+  const baseRef = await resolveBaseRef(repoRoot, options)
+  log(
+    'worktree',
+    `continuing worktree: path=${worktreePath} newBranch=${newBranchName} base=${baseRef || 'HEAD'}`
+  )
+
+  const dirty = await isWorktreeDirty(worktreePath)
+  let stashed = false
+  if (dirty) {
+    const stashMsg = `harness-continue ${newBranchName} ${Date.now()}`
+    await execFileAsync('git', ['stash', 'push', '--include-untracked', '-m', stashMsg], {
+      cwd: worktreePath
+    })
+    stashed = true
+  }
+
+  const checkoutArgs = ['checkout', '-b', newBranchName]
+  if (baseRef) checkoutArgs.push(baseRef)
+
+  try {
+    await execFileAsync('git', checkoutArgs, { cwd: worktreePath })
+  } catch (err) {
+    if (stashed) {
+      // Best-effort: try to restore dirty state so user isn't stranded
+      try {
+        await execFileAsync('git', ['stash', 'pop'], { cwd: worktreePath })
+      } catch {}
+    }
+    throw err
+  }
+
+  let stashReapplied = false
+  let stashConflict = false
+  if (stashed) {
+    try {
+      await execFileAsync('git', ['stash', 'pop'], { cwd: worktreePath })
+      stashReapplied = true
+    } catch {
+      // Pop left changes in a conflict state; stash entry is preserved.
+      stashConflict = true
+    }
+  }
+
+  const trees = await listWorktrees(repoRoot)
+  const updated = trees.find((t) => t.path === worktreePath)
+  if (!updated) throw new Error(`Failed to locate worktree ${worktreePath} after continue`)
+  return { worktree: updated, stashReapplied, stashConflict }
 }
 
 /** Check if a worktree has uncommitted changes */

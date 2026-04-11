@@ -4,7 +4,7 @@ import { existsSync, readdirSync, statSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 import { PtyManager } from './pty-manager'
-import { listWorktrees, listBranches, addWorktree, removeWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff } from './worktree'
+import { listWorktrees, listBranches, addWorktree, continueWorktree, removeWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff } from './worktree'
 import { getPRStatus, testToken, starRepo } from './github'
 import { AVAILABLE_EDITORS, DEFAULT_EDITOR_ID, openInEditor } from './editor'
 import { setSecret, hasSecret, deleteSecret } from './secrets'
@@ -117,6 +117,20 @@ function registerIpcHandlers(): void {
       fetchRemote: !baseBranch && mode === 'remote'
     })
   })
+
+  ipcMain.handle(
+    'worktree:continue',
+    async (event, worktreePath: string, newBranchName: string, baseBranch?: string) => {
+      const win = getWindowFromEvent(event)
+      const repoRoot = win ? windowRepoRoots.get(win.id) : null
+      if (!repoRoot) throw new Error('No repo root configured')
+      const mode = config.worktreeBase || DEFAULT_WORKTREE_BASE
+      return continueWorktree(repoRoot, worktreePath, newBranchName, {
+        baseBranch,
+        fetchRemote: !baseBranch && mode === 'remote'
+      })
+    }
+  )
 
   ipcMain.handle('worktree:isDirty', async (_, path: string) => {
     return isWorktreeDirty(path)
