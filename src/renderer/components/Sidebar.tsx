@@ -26,6 +26,7 @@ interface SidebarProps {
   onOpenCleanup: () => void
   onOpenCommandCenter: () => void
   commandCenterActive: boolean
+  width: number
 }
 
 export function Sidebar({
@@ -46,7 +47,8 @@ export function Sidebar({
   onOpenActivity,
   onOpenCleanup,
   onOpenCommandCenter,
-  commandCenterActive
+  commandCenterActive,
+  width
 }: SidebarProps): JSX.Element {
   const [continueTarget, setContinueTarget] = useState<{ path: string; oldBranch: string } | null>(null)
   const [continueBranchName, setContinueBranchName] = useState('')
@@ -113,7 +115,10 @@ export function Sidebar({
   )
 
   return (
-    <div className="w-56 bg-panel border-r border-border flex flex-col h-full">
+    <div
+      className="shrink-0 bg-panel flex flex-col h-full"
+      style={{ width }}
+    >
       {/* Title bar drag region with app name — vertically aligned with traffic lights at y:12 */}
       <div className="drag-region h-10 relative shrink-0">
         <span className="gradient-text text-xs font-semibold absolute left-20 top-[11px]">Harness</span>
