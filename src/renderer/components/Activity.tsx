@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, Flame, Clock, Zap, GitBranch, RefreshCw } from 'lucide-react'
-import type { Worktree, ActivityLog, ActivityEvent, ActivityState } from '../types'
+import { ArrowLeft, Flame, Clock, Zap, GitBranch, GitMerge, RefreshCw } from 'lucide-react'
+import type { Worktree, ActivityLog, ActivityEvent, ActivityState, PRStatus } from '../types'
 
 interface ActivityProps {
   onClose: () => void
   worktrees: Worktree[]
+  prStatuses?: Record<string, PRStatus | null>
+  mergedPaths?: Record<string, boolean>
 }
 
 type Range = '1h' | '6h' | '24h' | '7d'
@@ -20,14 +22,16 @@ const STATE_COLOR: Record<ActivityState, string> = {
   processing: 'bg-success/80',
   waiting: 'bg-warning/80',
   'needs-approval': 'bg-danger/80',
-  idle: 'bg-faint/20'
+  idle: 'bg-faint/20',
+  merged: 'bg-accent/80'
 }
 
 const STATE_LABEL: Record<ActivityState, string> = {
   processing: 'working',
   waiting: 'waiting on you',
   'needs-approval': 'needs approval',
-  idle: 'idle'
+  idle: 'idle',
+  merged: 'merged'
 }
 
 /** Convert an events list into a series of [start, end, state] segments
@@ -73,7 +77,17 @@ function basename(p: string): string {
   return parts[parts.length - 1] || p
 }
 
-export function Activity({ onClose, worktrees }: ActivityProps): JSX.Element {
+function isWorktreeMerged(
+  path: string,
+  prStatuses?: Record<string, PRStatus | null>,
+  mergedPaths?: Record<string, boolean>
+): boolean {
+  if (mergedPaths?.[path]) return true
+  const pr = prStatuses?.[path]
+  return pr?.state === 'merged' || pr?.state === 'closed'
+}
+
+export function Activity({ onClose, worktrees, prStatuses, mergedPaths }: ActivityProps): JSX.Element {
   const [log, setLog] = useState<ActivityLog>({})
   const [range, setRange] = useState<Range>('24h')
   const [now, setNow] = useState(Date.now())
@@ -124,11 +138,14 @@ export function Activity({ onClose, worktrees }: ActivityProps): JSX.Element {
       processing: 0,
       waiting: 0,
       'needs-approval': 0,
-      idle: 0
+      idle: 0,
+      merged: 0
     }
     let longestFlow = 0
     let activeWorktrees = 0
+    let mergedCount = 0
     for (const path of orderedPaths) {
+      if (isWorktreeMerged(path, prStatuses, mergedPaths)) mergedCount++
       const events = log[path] || []
       const segs = eventsToSegments(events, windowStart, now)
       let hadAny = false
@@ -143,8 +160,8 @@ export function Activity({ onClose, worktrees }: ActivityProps): JSX.Element {
       }
       if (hadAny) activeWorktrees++
     }
-    return { totalsByState, longestFlow, activeWorktrees }
-  }, [log, orderedPaths, windowStart, now])
+    return { totalsByState, longestFlow, activeWorktrees, mergedCount }
+  }, [log, orderedPaths, windowStart, now, prStatuses, mergedPaths])
 
   const handleReset = async (): Promise<void> => {
     if (!confirm('Clear all activity history? This cannot be undone.')) return
@@ -203,7 +220,7 @@ export function Activity({ onClose, worktrees }: ActivityProps): JSX.Element {
           </div>
 
           {/* Stat cards */}
-          <div className="grid grid-cols-4 gap-3 mb-8">
+          <div className="grid grid-cols-5 gap-3 mb-8">
             <StatCard
               icon={Zap}
               label="Flow time"
@@ -233,6 +250,13 @@ export function Activity({ onClose, worktrees }: ActivityProps): JSX.Element {
               value={String(totals.activeWorktrees)}
               tint="text-info"
               sub="in this range"
+            />
+            <StatCard
+              icon={GitMerge}
+              label="Merged"
+              value={String(totals.mergedCount)}
+              tint="text-accent"
+              sub="PRs landed or closed"
             />
           </div>
 
@@ -320,6 +344,10 @@ function Legend(): JSX.Element {
       <span className="flex items-center gap-1.5">
         <span className="w-2.5 h-2.5 rounded-sm bg-danger/80" />
         needs approval
+      </span>
+      <span className="flex items-center gap-1.5">
+        <span className="w-2.5 h-2.5 rounded-sm bg-accent/80" />
+        merged
       </span>
     </div>
   )

@@ -7,23 +7,26 @@ interface WorktreeTabProps {
   isActive: boolean
   status: PtyStatus
   prStatus?: PRStatus | null
+  isMerged?: boolean
   onClick: () => void
   onDelete?: () => void
   onContinue?: () => void
 }
 
-const STATUS_COLORS: Record<PtyStatus, string> = {
+const STATUS_COLORS: Record<PtyStatus | 'merged', string> = {
   idle: 'bg-faint',
   processing: 'bg-success animate-pulse',
   waiting: 'bg-warning',
-  'needs-approval': 'bg-danger animate-pulse'
+  'needs-approval': 'bg-danger animate-pulse',
+  merged: 'bg-accent'
 }
 
-const STATUS_LABELS: Record<PtyStatus, string> = {
+const STATUS_LABELS: Record<PtyStatus | 'merged', string> = {
   idle: 'Idle',
   processing: 'Working...',
   waiting: 'Waiting for input',
-  'needs-approval': 'Needs approval'
+  'needs-approval': 'Needs approval',
+  merged: 'Merged'
 }
 
 const PR_ICON_COLOR: Record<string, string> = {
@@ -40,7 +43,8 @@ const PR_STATE_COLOR: Record<string, string> = {
   closed: 'text-danger'
 }
 
-export function WorktreeTab({ worktree, isActive, status, prStatus, onClick, onDelete, onContinue }: WorktreeTabProps): JSX.Element {
+export function WorktreeTab({ worktree, isActive, status, prStatus, isMerged, onClick, onDelete, onContinue }: WorktreeTabProps): JSX.Element {
+  const displayStatus: PtyStatus | 'merged' = isMerged ? 'merged' : status
   const canContinue = !!onContinue && (prStatus?.state === 'merged' || prStatus?.state === 'closed')
   // Priority: merged/closed state always wins, then merge conflict, then check
   // status, then PR state
@@ -69,8 +73,8 @@ export function WorktreeTab({ worktree, isActive, status, prStatus, onClick, onD
       }`}
     >
       <span
-        className={`w-2 h-2 rounded-full shrink-0 ${STATUS_COLORS[status]}`}
-        title={STATUS_LABELS[status]}
+        className={`w-2 h-2 rounded-full shrink-0 ${STATUS_COLORS[displayStatus]}`}
+        title={STATUS_LABELS[displayStatus]}
       />
       {prStatus && (
         <GitPullRequest

@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { log } from './debug'
 
-export type ActivityState = 'processing' | 'waiting' | 'needs-approval' | 'idle'
+export type ActivityState = 'processing' | 'waiting' | 'needs-approval' | 'idle' | 'merged'
 
 export interface ActivityEvent {
   /** epoch ms */
@@ -85,7 +85,7 @@ export function sealAllActive(): void {
   let changed = false
   for (const events of Object.values(logMap)) {
     const last = events[events.length - 1]
-    if (last && last.s !== 'idle') {
+    if (last && last.s !== 'idle' && last.s !== 'merged') {
       events.push({ t: Date.now(), s: 'idle' })
       changed = true
     }
