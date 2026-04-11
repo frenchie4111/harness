@@ -799,11 +799,11 @@ function setupAutoUpdater(): void {
     broadcastToAllWindows('updater:status', { state: 'downloaded', version: info.version })
   })
 
-  // Check on startup, then every hour
+  // Check on startup, then every 10 minutes
   autoUpdater.checkForUpdatesAndNotify().catch((err) => log('updater', 'check failed', err.message))
   setInterval(() => {
     autoUpdater.checkForUpdatesAndNotify().catch(() => {})
-  }, 60 * 60 * 1000)
+  }, 10 * 60 * 1000)
 }
 
 app.whenReady().then(() => {
