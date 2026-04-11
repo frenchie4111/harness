@@ -738,22 +738,21 @@ export default function App(): JSX.Element {
     return <Guide onClose={() => setShowGuide(false)} />
   }
 
-  if (showSettings) {
-    return (
-      <HotkeysProvider bindings={resolvedHotkeys}>
-        <Settings
-          onClose={() => setShowSettings(false)}
-          onOpenGuide={() => {
-            setShowSettings(false)
-            setShowGuide(true)
-          }}
-        />
-      </HotkeysProvider>
-    )
-  }
+  const settingsOverlay = showSettings ? (
+    <div className="fixed inset-0 z-50">
+      <Settings
+        onClose={() => setShowSettings(false)}
+        onOpenGuide={() => {
+          setShowSettings(false)
+          setShowGuide(true)
+        }}
+      />
+    </div>
+  ) : null
 
   if (!repoRoot) {
     return (
+      <HotkeysProvider bindings={resolvedHotkeys}>
       <div className="flex h-full flex-col">
         <div className="drag-region h-10 shrink-0" />
         <div className="flex flex-1 items-center justify-center">
@@ -784,6 +783,8 @@ export default function App(): JSX.Element {
         </div>
         </div>
       </div>
+      {settingsOverlay}
+      </HotkeysProvider>
     )
   }
 
@@ -923,6 +924,7 @@ export default function App(): JSX.Element {
         )}
       </div>
     </div>
+    {settingsOverlay}
     </HotkeysProvider>
   )
 }
