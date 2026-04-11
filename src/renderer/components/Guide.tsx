@@ -1,4 +1,4 @@
-import { ArrowLeft, GitBranch, Layers, Eye, Workflow, Lightbulb, ArrowRight, Folder, GitPullRequest, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, GitBranch, Layers, Eye, Workflow, Lightbulb, ArrowRight, Folder, GitPullRequest, AlertTriangle, Smartphone } from 'lucide-react'
 
 interface GuideProps {
   onClose: () => void
@@ -32,6 +32,41 @@ export function Guide({ onClose }: GuideProps): JSX.Element {
               and how Harness turns them into a workflow you&apos;ll actually use.
             </p>
           </div>
+
+          {/* Intro framing */}
+          <Section icon={Smartphone} title="Wait, why am I doing this?">
+            <SoloFlow />
+            <p>
+              Be honest. How much of this week did you spend scrolling Instagram reels
+              while a single Claude crunched through one task? Five minutes here, ten
+              minutes there. Your screen-time report is doing things it has never done
+              before, and the only person who knows is you and Apple.
+            </p>
+            <p>
+              Meanwhile every AI influencer on your feed is breathlessly explaining{' '}
+              <em>&ldquo;agent swarms&rdquo;</em> and <em>&ldquo;multi-agent orchestration&rdquo;</em>{' '}
+              like it&apos;s a sacred incantation. The actual idea under the buzzwords is much
+              simpler than they let on: stop running one Claude. Run several, on different
+              problems, at the same time.
+            </p>
+            <p>
+              The reason you&apos;re not already doing this isn&apos;t that it&apos;s hard — it&apos;s that
+              nothing makes it easy. One terminal, one folder, one Claude. Two Claudes
+              pointed at the same folder will trip over each other&apos;s edits within thirty
+              seconds. So you wait. And scroll.
+            </p>
+            <p>
+              Here&apos;s the alternative. While Claude #1 is grinding through that auth
+              refactor, Claude #2 is fixing yesterday&apos;s bug, and Claude #3 is writing the
+              tests you&apos;ve been procrastinating on. You glance over occasionally, unblock
+              whichever one is waiting on you, and ship three things in the time it used
+              to take to ship one. <strong className="text-fg-bright">You become the bottleneck only when you want to be.</strong>
+            </p>
+            <p className="text-dim">
+              Doing this safely takes one small git primitive most people have never
+              touched. That&apos;s the rest of this guide.
+            </p>
+          </Section>
 
           {/* Section 1 */}
           <Section icon={GitBranch} title="What is a git worktree?">
@@ -267,6 +302,53 @@ function Figure({ caption, children }: { caption: string; children: React.ReactN
       {children}
       <figcaption className="mt-4 text-xs text-dim text-center italic">{caption}</figcaption>
     </figure>
+  )
+}
+
+/** One Claude grinding while you scroll. The whole problem in one figure. */
+function SoloFlow(): JSX.Element {
+  type State = 'kick' | 'scroll' | 'review' | 'work'
+  const rows: { label: string; icon?: typeof Smartphone; segments: [number, State][] }[] = [
+    { label: 'You', icon: Smartphone, segments: [[1, 'kick'], [9, 'scroll'], [1, 'review']] },
+    { label: 'Claude', segments: [[11, 'work']] }
+  ]
+  const segColor = (s: State): string => {
+    if (s === 'kick') return 'bg-info/60'
+    if (s === 'scroll') return 'bg-faint/30'
+    if (s === 'review') return 'bg-warning/60'
+    return 'bg-success/70'
+  }
+  return (
+    <Figure caption='One Claude. You "wait." Your screen-time report knows the truth.'>
+      <div className="space-y-3">
+        {rows.map((r) => {
+          const Icon = r.icon
+          return (
+            <div key={r.label} className="flex items-center gap-3">
+              <div className="flex items-center gap-1.5 w-20 shrink-0">
+                {Icon && <Icon size={12} className="text-muted" />}
+                <span className="text-xs text-muted font-mono">{r.label}</span>
+              </div>
+              <div className="flex-1 flex h-6 rounded-md overflow-hidden border border-border">
+                {r.segments.map((seg, i) => (
+                  <div
+                    key={i}
+                    className={`${segColor(seg[1])} border-r border-app/40 last:border-r-0`}
+                    style={{ flex: seg[0] }}
+                  />
+                ))}
+              </div>
+            </div>
+          )
+        })}
+        <div className="flex items-center gap-4 pt-2 text-[10px] text-dim justify-center flex-wrap">
+          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-info/60" />kick off</span>
+          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-faint/30" />scrolling reels</span>
+          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-warning/60" />review</span>
+          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-success/70" />Claude working</span>
+        </div>
+      </div>
+    </Figure>
   )
 }
 
