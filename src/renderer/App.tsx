@@ -793,6 +793,43 @@ const setQuestStep = useCallback((next: QuestStep) => {
     []
   )
 
+  const handleSendToClaude = useCallback(
+    (worktreePath: string, text: string) => {
+      const paneList = panes[worktreePath] || []
+      let targetPaneId: string | undefined
+      let targetTabId: string | undefined
+      // Prefer a pane whose active tab is already a claude tab
+      for (const pane of paneList) {
+        const active = pane.tabs.find((t) => t.id === pane.activeTabId)
+        if (active?.type === 'claude') {
+          targetPaneId = pane.id
+          targetTabId = active.id
+          break
+        }
+      }
+      // Otherwise pick the first claude tab we can find
+      if (!targetTabId) {
+        for (const pane of paneList) {
+          const c = pane.tabs.find((t) => t.type === 'claude')
+          if (c) {
+            targetPaneId = pane.id
+            targetTabId = c.id
+            break
+          }
+        }
+      }
+      if (!targetPaneId || !targetTabId) return
+      setActiveWorktreeId(worktreePath)
+      handleSelectTab(worktreePath, targetPaneId, targetTabId)
+      const id = targetTabId
+      requestAnimationFrame(() => {
+        window.api.writeTerminal(id, '\x1b[200~' + text + '\x1b[201~')
+        focusTerminalById(id)
+      })
+    },
+    [panes, handleSelectTab]
+  )
+
   const handleOpenDiff = useCallback(
     (filePath: string, staged: boolean, mode: 'working' | 'branch' = 'working') => {
       if (!activeWorktreeId) return
@@ -1096,6 +1133,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
                 onReorderTabs={handleReorderTabs}
                 onMoveTabToPane={handleMoveTabToPane}
                 onSplitPane={handleSplitPane}
+                onSendToClaude={handleSendToClaude}
               />
             </div>
           )
@@ -1154,7 +1192,15 @@ const setQuestStep = useCallback((next: QuestStep) => {
             />
             <BranchCommitsPanel worktreePath={activeWorktreeId} onOpenCommit={handleOpenCommit} />
             <div className="flex-1 min-h-0">
-              <ChangedFilesPanel worktreePath={activeWorktreeId} onOpenDiff={handleOpenDiff} />
+              <ChangedFilesPanel
+                worktreePath={activeWorktreeId}
+                onOpenDiff={handleOpenDiff}
+                onSendToClaude={
+                  activeWorktreeId
+                    ? (text) => handleSendToClaude(activeWorktreeId, text)
+                    : undefined
+                }
+              />
             </div>
           </div>
         )}

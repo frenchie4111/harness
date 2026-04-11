@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { RefreshCw, FileEdit, GitBranch, Code2 } from 'lucide-react'
+import { RefreshCw, FileEdit, GitBranch, Code2, AtSign } from 'lucide-react'
 import type { ChangedFile } from '../types'
 import { Tooltip } from './Tooltip'
 
@@ -8,6 +8,7 @@ type Mode = 'working' | 'branch'
 interface ChangedFilesPanelProps {
   worktreePath: string | null
   onOpenDiff: (filePath: string, staged: boolean, mode: Mode) => void
+  onSendToClaude?: (text: string) => void
 }
 
 const STATUS_LABEL: Record<ChangedFile['status'], string> = {
@@ -26,7 +27,7 @@ const STATUS_COLOR: Record<ChangedFile['status'], string> = {
   untracked: 'text-dim'
 }
 
-export function ChangedFilesPanel({ worktreePath, onOpenDiff }: ChangedFilesPanelProps): JSX.Element {
+export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToClaude }: ChangedFilesPanelProps): JSX.Element {
   const [files, setFiles] = useState<ChangedFile[]>([])
   const [loading, setLoading] = useState(false)
   const [mode, setMode] = useState<Mode>('working')
@@ -116,6 +117,7 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff }: ChangedFilesPane
                 file={file}
                 worktreePath={worktreePath}
                 onClick={() => onOpenDiff(file.path, false, 'branch')}
+                onSendToClaude={onSendToClaude}
               />
             ))}
           </div>
@@ -132,6 +134,7 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff }: ChangedFilesPane
                 file={file}
                 worktreePath={worktreePath}
                 onClick={() => onOpenDiff(file.path, true, 'working')}
+                onSendToClaude={onSendToClaude}
               />
             ))}
           </div>
@@ -148,6 +151,7 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff }: ChangedFilesPane
                 file={file}
                 worktreePath={worktreePath}
                 onClick={() => onOpenDiff(file.path, false, 'working')}
+                onSendToClaude={onSendToClaude}
               />
             ))}
           </div>
@@ -167,11 +171,13 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff }: ChangedFilesPane
 function FileRow({
   file,
   worktreePath,
-  onClick
+  onClick,
+  onSendToClaude
 }: {
   file: ChangedFile
   worktreePath: string | null
   onClick: () => void
+  onSendToClaude?: (text: string) => void
 }): JSX.Element {
   // Show just the filename, with directory path dimmed
   const lastSlash = file.path.lastIndexOf('/')
@@ -187,6 +193,19 @@ function FileRow({
         {dir && <span className="text-faint">{dir}</span>}
         <span className="text-fg">{name}</span>
       </span>
+      {onSendToClaude && (
+        <Tooltip label="Reference in Claude" side="left">
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onSendToClaude(`@${file.path} `)
+            }}
+            className="shrink-0 opacity-0 group-hover:opacity-100 text-faint hover:text-fg transition-all cursor-pointer"
+          >
+            <AtSign size={11} />
+          </button>
+        </Tooltip>
+      )}
       {worktreePath && (
         <Tooltip label="Open file in editor" side="left">
           <button

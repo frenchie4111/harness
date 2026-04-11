@@ -31,6 +31,7 @@ interface WorkspaceViewProps {
   onReorderTabs: (worktreePath: string, paneId: string, fromId: string, toId: string) => void
   onMoveTabToPane: (worktreePath: string, tabId: string, toPaneId: string, toIndex?: number) => void
   onSplitPane: (worktreePath: string, fromPaneId: string) => void
+  onSendToClaude?: (worktreePath: string, text: string) => void
 }
 
 // Collision strategy: prefer direct hits (pointerWithin) so dropping over a
@@ -55,7 +56,8 @@ export function WorkspaceView({
   onRestartClaudeTab,
   onReorderTabs,
   onMoveTabToPane,
-  onSplitPane
+  onSplitPane,
+  onSendToClaude
 }: WorkspaceViewProps): JSX.Element {
   // Slot elements per pane — TerminalPanel registers its content-area div
   // here so WorkspaceView can portal the right terminals into each slot.
@@ -176,6 +178,11 @@ export function WorkspaceView({
                   staged={tab.staged ?? false}
                   branchDiff={tab.branchDiff ?? false}
                   commitHash={tab.commitHash}
+                  onSendToClaude={
+                    onSendToClaude
+                      ? (text) => onSendToClaude(worktreePath, text)
+                      : undefined
+                  }
                 />
               ) : (
                 <XTerminal
