@@ -662,7 +662,7 @@ export default function App(): JSX.Element {
             className="w-28 h-28 mx-auto rounded-3xl mb-8"
             style={{ boxShadow: '0 0 60px rgba(245, 158, 11, 0.15)' }}
           />
-          <h1 className="text-2xl font-semibold text-fg-bright mb-4">Harness</h1>
+          <h1 className="gradient-text text-4xl font-extrabold tracking-tight mb-4">Harness</h1>
           <p className="text-dim mb-6">Select a git repository to get started</p>
           <button
             onClick={handleSelectRepo}

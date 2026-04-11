@@ -140,7 +140,7 @@ export function Sidebar({
     <div className="w-56 bg-panel border-r border-border flex flex-col h-full">
       {/* Title bar drag region with app name — vertically aligned with traffic lights at y:12 */}
       <div className="drag-region h-10 relative shrink-0">
-        <span className="text-xs font-semibold text-muted absolute left-20 top-[11px]">Harness</span>
+        <span className="gradient-text text-xs font-semibold absolute left-20 top-[11px]">Harness</span>
       </div>
 
       {/* Worktrees header */}
