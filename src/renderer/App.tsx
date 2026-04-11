@@ -575,6 +575,30 @@ export default function App(): JSX.Element {
     setActiveTabId((prev) => ({ ...prev, [worktreePath]: tabId }))
   }, [])
 
+  const handleOpenCommit = useCallback(
+    (hash: string, shortHash: string, subject: string) => {
+      if (!activeWorktreeId) return
+      const tabId = `diff-commit-${shortHash}`
+      const existing = (terminalTabs[activeWorktreeId] || []).find((t) => t.id === tabId)
+      if (existing) {
+        setActiveTabId((prev) => ({ ...prev, [activeWorktreeId!]: tabId }))
+        return
+      }
+      const tab: TerminalTab = {
+        id: tabId,
+        type: 'diff',
+        label: `${shortHash} ${subject}`,
+        commitHash: hash
+      }
+      setTerminalTabs((prev) => ({
+        ...prev,
+        [activeWorktreeId!]: [...(prev[activeWorktreeId!] || []), tab]
+      }))
+      setActiveTabId((prev) => ({ ...prev, [activeWorktreeId!]: tabId }))
+    },
+    [activeWorktreeId, terminalTabs]
+  )
+
   const handleOpenDiff = useCallback(
     (filePath: string, staged: boolean, mode: 'working' | 'branch' = 'working') => {
       if (!activeWorktreeId) return
@@ -917,7 +941,7 @@ export default function App(): JSX.Element {
               onMerged={refreshMergedStatus}
               onRemoveWorktree={handleDeleteWorktree}
             />
-            <BranchCommitsPanel worktreePath={activeWorktreeId} />
+            <BranchCommitsPanel worktreePath={activeWorktreeId} onOpenCommit={handleOpenCommit} />
             <div className="flex-1 min-h-0">
               <ChangedFilesPanel worktreePath={activeWorktreeId} onOpenDiff={handleOpenDiff} />
             </div>

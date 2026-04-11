@@ -112,9 +112,10 @@ export function TerminalPanel({
             {tab.type === 'diff' ? (
               <DiffView
                 worktreePath={worktreePath}
-                filePath={tab.filePath!}
+                filePath={tab.filePath}
                 staged={tab.staged ?? false}
                 branchDiff={tab.branchDiff ?? false}
+                commitHash={tab.commitHash}
               />
             ) : (
               <XTerminal

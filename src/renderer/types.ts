@@ -16,6 +16,8 @@ export interface TerminalTab {
   staged?: boolean
   /** For diff tabs: show the branch diff (base...HEAD) instead of working-tree diff */
   branchDiff?: boolean
+  /** For diff tabs: when set, show this commit's full diff instead of a file diff */
+  commitHash?: string
   /** For claude tabs: UUID passed to `claude --session-id` so the tab resumes its own session. */
   sessionId?: string
   /** For claude tabs: one-shot kickoff prompt appended to the claude command on first spawn. Not persisted. */
@@ -40,6 +42,17 @@ export type UpdaterStatus =
   | { state: 'downloading'; percent: number }
   | { state: 'downloaded'; version: string }
   | { state: 'error'; error: string }
+
+export interface CommitDiff {
+  hash: string
+  shortHash: string
+  author: string
+  authorEmail: string
+  date: string
+  subject: string
+  body: string
+  diff: string
+}
 
 export interface BranchCommit {
   hash: string
@@ -128,6 +141,7 @@ export interface ElectronAPI {
   ): Promise<MergeLocalResult>
   getMergedStatus(): Promise<Record<string, boolean>>
   getBranchCommits(worktreePath: string): Promise<BranchCommit[]>
+  getCommitDiff(worktreePath: string, hash: string): Promise<CommitDiff | null>
   getChangedFiles(worktreePath: string, mode?: 'working' | 'branch'): Promise<ChangedFile[]>
   getFileDiff(
     worktreePath: string,

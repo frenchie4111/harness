@@ -5,9 +5,10 @@ import { Tooltip } from './Tooltip'
 
 interface BranchCommitsPanelProps {
   worktreePath: string | null
+  onOpenCommit?: (hash: string, shortHash: string, subject: string) => void
 }
 
-export function BranchCommitsPanel({ worktreePath }: BranchCommitsPanelProps): JSX.Element | null {
+export function BranchCommitsPanel({ worktreePath, onOpenCommit }: BranchCommitsPanelProps): JSX.Element | null {
   const [commits, setCommits] = useState<BranchCommit[]>([])
   const [loading, setLoading] = useState(false)
 
@@ -65,7 +66,10 @@ export function BranchCommitsPanel({ worktreePath }: BranchCommitsPanelProps): J
           const isLast = i === commits.length - 1
           return (
             <Tooltip key={c.hash} label={`${c.shortHash} · ${c.author} · ${c.relativeDate}`} side="left">
-              <div className="group relative flex items-center gap-2.5 pl-4 pr-3 py-1.5 hover:bg-panel-raised cursor-default">
+              <div
+                onClick={() => onOpenCommit?.(c.hash, c.shortHash, c.subject)}
+                className="group relative flex items-center gap-2.5 pl-4 pr-3 py-1.5 hover:bg-panel-raised cursor-pointer"
+              >
                 {/* Tree line + dot */}
                 <div className="relative shrink-0 w-3 self-stretch flex justify-center">
                   <div

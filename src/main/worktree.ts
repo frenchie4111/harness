@@ -365,6 +365,53 @@ export async function getChangedFiles(
   return files
 }
 
+export interface CommitDiff {
+  hash: string
+  shortHash: string
+  author: string
+  authorEmail: string
+  date: string
+  subject: string
+  body: string
+  diff: string
+}
+
+/** Get a single commit's metadata + full diff. */
+export async function getCommitDiff(
+  worktreePath: string,
+  hash: string
+): Promise<CommitDiff | null> {
+  if (!/^[0-9a-fA-F]{4,64}$/.test(hash)) return null
+  try {
+    const sep = '\x1f'
+    const end = '\x1e'
+    const { stdout: meta } = await execFileAsync(
+      'git',
+      ['show', '-s', `--pretty=format:%H${sep}%h${sep}%an${sep}%ae${sep}%aI${sep}%s${sep}%b${end}`, hash],
+      { cwd: worktreePath }
+    )
+    const cleaned = meta.endsWith(end) ? meta.slice(0, -1) : meta
+    const [fullHash, shortHash, author, authorEmail, date, subject, body = ''] = cleaned.split(sep)
+    const { stdout: diff } = await execFileAsync(
+      'git',
+      ['show', '--no-color', '--pretty=format:', hash],
+      { cwd: worktreePath, maxBuffer: 32 * 1024 * 1024 }
+    )
+    return {
+      hash: fullHash,
+      shortHash,
+      author,
+      authorEmail,
+      date,
+      subject,
+      body,
+      diff: diff.replace(/^\n+/, '')
+    }
+  } catch {
+    return null
+  }
+}
+
 /** Get the diff for a single file in a worktree */
 export async function getFileDiff(
   worktreePath: string,
