@@ -356,13 +356,21 @@ export default function App(): JSX.Element {
       const claudeTabId = makeTerminalId('claude', activeWorktreeId)
       const pendingPrompt = pendingPromptsRef.current[activeWorktreeId]
       delete pendingPromptsRef.current[activeWorktreeId]
-      const tabs: TerminalTab[] = [{
-        id: claudeTabId,
-        type: 'claude',
-        label: 'Claude',
-        sessionId: crypto.randomUUID(),
-        initialPrompt: pendingPrompt || undefined
-      }]
+      const shellTabId = `shell-${activeWorktreeId}-${Date.now()}`
+      const tabs: TerminalTab[] = [
+        {
+          id: claudeTabId,
+          type: 'claude',
+          label: 'Claude',
+          sessionId: crypto.randomUUID(),
+          initialPrompt: pendingPrompt || undefined
+        },
+        {
+          id: shellTabId,
+          type: 'shell',
+          label: 'Shell'
+        }
+      ]
       return { ...prev, [activeWorktreeId]: tabs }
     })
 
