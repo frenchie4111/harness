@@ -20,6 +20,7 @@ export type Action =
   | 'toggleSidebar'
   | 'openPR'
   | 'openInEditor'
+  | 'toggleCommandCenter'
 
 export interface Modifiers {
   cmd?: boolean
@@ -55,6 +56,7 @@ export const DEFAULT_HOTKEYS: Record<Action, HotkeyBinding> = {
   toggleSidebar: { key: 'b', modifiers: { cmd: true } },
   openPR: { key: 'g', modifiers: { cmd: true, shift: true } },
   openInEditor: { key: 'e', modifiers: { cmd: true, shift: true } },
+  toggleCommandCenter: { key: 'k', modifiers: { cmd: true, shift: true } },
 }
 
 /** Check if a KeyboardEvent matches a hotkey binding */
@@ -131,7 +133,8 @@ export const ACTION_LABELS: Record<Action, string> = {
   focusTerminal: 'Focus terminal',
   toggleSidebar: 'Toggle sidebar',
   openPR: 'Open PR in browser',
-  openInEditor: 'Open worktree in editor'
+  openInEditor: 'Open worktree in editor',
+  toggleCommandCenter: 'Toggle command center'
 }
 
 /** Capture a KeyboardEvent into a HotkeyBinding (for the rebind UI) */

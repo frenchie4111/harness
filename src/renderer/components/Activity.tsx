@@ -27,7 +27,7 @@ const RANGES: { id: Range; label: string; ms: number }[] = [
   { id: 'all', label: 'all', ms: Number.POSITIVE_INFINITY }
 ]
 
-const STATE_COLOR: Record<ActivityState, string> = {
+export const STATE_COLOR: Record<ActivityState, string> = {
   processing: 'bg-success/80',
   waiting: 'bg-warning/80',
   'needs-approval': 'bg-danger/80',
@@ -46,7 +46,7 @@ const STATE_LABEL: Record<ActivityState, string> = {
 /** Convert an events list into a series of [start, end, state] segments
  *  clamped to [windowStart, windowEnd]. For removed worktrees the final
  *  segment is capped at removedAt so it doesn't stretch to "now". */
-function eventsToSegments(
+export function eventsToSegments(
   events: ActivityEvent[],
   windowStart: number,
   windowEnd: number,
