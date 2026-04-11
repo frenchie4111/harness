@@ -106,6 +106,9 @@ export function loadConfig(): Config {
     }
     // Migrate legacy flat-tab persistence → pane shape. Each worktree's
     // previous tab list becomes a single pane with the same active tab.
+    // We intentionally leave the legacy `terminalTabs` / `activeTabId` keys
+    // in place so users can downgrade to an older build without losing
+    // their tab layout — the new app ignores them after migration.
     if (parsed.terminalTabs && !parsed.panes) {
       const migrated: Record<string, PersistedPane[]> = {}
       for (const [wtPath, tabs] of Object.entries(parsed.terminalTabs as Record<string, PersistedTab[]>)) {
@@ -114,8 +117,6 @@ export function loadConfig(): Config {
         migrated[wtPath] = [{ id: `pane-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, tabs, activeTabId: activeId }]
       }
       parsed.panes = migrated
-      delete parsed.terminalTabs
-      delete parsed.activeTabId
     }
     return { ...DEFAULT_CONFIG, ...parsed }
   } catch {
