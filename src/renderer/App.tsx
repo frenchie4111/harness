@@ -4,6 +4,7 @@ import type { Action } from './hotkeys'
 import { resolveHotkeys } from './hotkeys'
 import { HotkeysProvider } from './components/Tooltip'
 import { Sidebar } from './components/Sidebar'
+import { NewWorktreeScreen } from './components/NewWorktreeScreen'
 import { TerminalPanel } from './components/TerminalPanel'
 import { ChangedFilesPanel } from './components/ChangedFilesPanel'
 import { PRStatusPanel } from './components/PRStatusPanel'
@@ -33,6 +34,7 @@ export default function App(): JSX.Element {
   const [repoRoot, setRepoRoot] = useState<string | null>(null)
   const [hooksConsent, setHooksConsent] = useState<'pending' | 'accepted' | 'declined'>('pending')
   const [sidebarVisible, setSidebarVisible] = useState(true)
+  const [showNewWorktree, setShowNewWorktree] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showGuide, setShowGuide] = useState(false)
   const [hasGithubToken, setHasGithubToken] = useState<boolean | null>(null)
@@ -46,8 +48,9 @@ export default function App(): JSX.Element {
   const tabsLoadedRef = useRef(false)
   // Track which worktrees already have hooks installed so we only prompt once
   const hooksChecked = useRef(new Set<string>())
-  // Ref to the sidebar's create-worktree trigger
-  const createWorktreeRef = useRef<(() => void) | null>(null)
+  // Kickoff prompts staged by the new-worktree screen. Consumed (and deleted)
+  // by the effect that sets up the initial Claude tab for a fresh worktree.
+  const pendingPromptsRef = useRef<Record<string, string>>({})
 
   // Check GitHub token presence (on mount and whenever Settings is closed)
   useEffect(() => {
@@ -117,12 +120,16 @@ export default function App(): JSX.Element {
     if (!tabsLoadedRef.current) return
     const persistable: Record<string, { id: string; type: 'claude' | 'shell'; label: string; sessionId?: string }[]> = {}
     for (const [wtPath, tabs] of Object.entries(terminalTabs)) {
-      const filtered = tabs.filter((t) => t.type !== 'diff') as {
-        id: string
-        type: 'claude' | 'shell'
-        label: string
-        sessionId?: string
-      }[]
+      // Explicit shape map — drops transient fields (initialPrompt) that
+      // must never round-trip through persistence.
+      const filtered = tabs
+        .filter((t) => t.type !== 'diff')
+        .map((t) => ({
+          id: t.id,
+          type: t.type as 'claude' | 'shell',
+          label: t.label,
+          sessionId: t.sessionId
+        }))
       if (filtered.length > 0) persistable[wtPath] = filtered
     }
     // Only persist active tab ids that point at a non-diff tab
@@ -279,11 +286,14 @@ export default function App(): JSX.Element {
     setTerminalTabs((prev) => {
       if (prev[activeWorktreeId] && prev[activeWorktreeId].length > 0) return prev
       const claudeTabId = makeTerminalId('claude', activeWorktreeId)
+      const pendingPrompt = pendingPromptsRef.current[activeWorktreeId]
+      delete pendingPromptsRef.current[activeWorktreeId]
       const tabs: TerminalTab[] = [{
         id: claudeTabId,
         type: 'claude',
         label: 'Claude',
-        sessionId: crypto.randomUUID()
+        sessionId: crypto.randomUUID(),
+        initialPrompt: pendingPrompt || undefined
       }]
       return { ...prev, [activeWorktreeId]: tabs }
     })
@@ -341,16 +351,19 @@ export default function App(): JSX.Element {
   }, [])
 
 
-  const handleCreateWorktree = useCallback(async (branchName: string) => {
-    await window.api.addWorktree(branchName)
-    const trees = await window.api.listWorktrees()
-    setWorktrees(trees)
-    // Select the new worktree
-    const created = trees.find((t) => t.branch === branchName)
-    if (created) {
+  const handleSubmitNewWorktree = useCallback(
+    async (branchName: string, initialPrompt: string) => {
+      const created = await window.api.addWorktree(branchName)
+      if (initialPrompt) {
+        pendingPromptsRef.current[created.path] = initialPrompt
+      }
+      const trees = await window.api.listWorktrees()
+      setWorktrees(trees)
       setActiveWorktreeId(created.path)
-    }
-  }, [])
+      setShowNewWorktree(false)
+    },
+    []
+  )
 
   const handleContinueWorktree = useCallback(async (path: string, newBranchName: string) => {
     const result = await window.api.continueWorktree(path, newBranchName)
@@ -579,7 +592,7 @@ export default function App(): JSX.Element {
       },
       nextTab: () => cycleTab(1),
       prevTab: () => cycleTab(-1),
-      newWorktree: () => createWorktreeRef.current?.(),
+      newWorktree: () => setShowNewWorktree(true),
       refreshWorktrees: handleRefreshWorktrees,
       focusTerminal: () => {
         if (!activeWorktreeId) return
@@ -741,25 +754,28 @@ export default function App(): JSX.Element {
             prStatuses={prStatuses}
             lastActive={lastActive}
             prLoading={prLoading}
-            onSelectWorktree={setActiveWorktreeId}
-            onCreateWorktree={handleCreateWorktree}
+            onSelectWorktree={(path) => {
+              setShowNewWorktree(false)
+              setActiveWorktreeId(path)
+            }}
+            onNewWorktree={() => setShowNewWorktree(true)}
             onContinueWorktree={handleContinueWorktree}
             onDeleteWorktree={handleDeleteWorktree}
             onRefresh={handleRefreshWorktrees}
             onSelectRepo={handleSelectRepo}
             onOpenSettings={() => setShowSettings(true)}
-            onRegisterCreate={(trigger) => { createWorktreeRef.current = trigger }}
           />
         )}
         {/* Render ALL worktrees' terminals to keep PTYs alive across switches */}
         {worktrees.map((wt) => {
           const tabs = terminalTabs[wt.path]
           if (!tabs || tabs.length === 0) return null
+          const isVisible = !showNewWorktree && wt.path === activeWorktreeId
           return (
             <div
               key={wt.path}
               className="flex-1 min-w-0"
-              style={{ display: wt.path === activeWorktreeId ? 'flex' : 'none' }}
+              style={{ display: isVisible ? 'flex' : 'none' }}
             >
               <TerminalPanel
                 worktreePath={wt.path}
@@ -771,24 +787,32 @@ export default function App(): JSX.Element {
                 onAddClaudeTab={handleAddClaudeTab}
                 onCloseTab={handleCloseTab}
                 onRestartClaudeTab={handleRestartClaudeTab}
-                visible={wt.path === activeWorktreeId}
+                visible={isVisible}
                 claudeCommand={claudeCommand}
               />
             </div>
           )
         })}
-        {!activeWorktreeId && worktrees.length > 0 && (
+        {showNewWorktree && (
+          <NewWorktreeScreen
+            onSubmit={handleSubmitNewWorktree}
+            onCancel={() => setShowNewWorktree(false)}
+          />
+        )}
+        {!showNewWorktree && !activeWorktreeId && worktrees.length > 0 && (
           <div className="flex-1 flex items-center justify-center text-dim">
             Select a worktree to begin
           </div>
         )}
-        {/* Right panel */}
-        <div className="w-64 shrink-0 h-full flex flex-col border-l border-border bg-panel">
-          <PRStatusPanel pr={activeWorktreeId ? prStatuses[activeWorktreeId] : null} />
-          <div className="flex-1 min-h-0">
-            <ChangedFilesPanel worktreePath={activeWorktreeId} onOpenDiff={handleOpenDiff} />
+        {/* Right panel — hidden on the new-worktree screen so the form gets the full width */}
+        {!showNewWorktree && (
+          <div className="w-64 shrink-0 h-full flex flex-col border-l border-border bg-panel">
+            <PRStatusPanel pr={activeWorktreeId ? prStatuses[activeWorktreeId] : null} />
+            <div className="flex-1 min-h-0">
+              <ChangedFilesPanel worktreePath={activeWorktreeId} onOpenDiff={handleOpenDiff} />
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
     </HotkeysProvider>

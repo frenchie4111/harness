@@ -235,3 +235,24 @@ button, [role="button"], a[href], [onclick] {
 .no-drag {
   -webkit-app-region: no-drag;
 }
+
+/* Brand accents — mirrors harness.mikelyons.org hero styling */
+.brand-grid-bg {
+  background-image:
+    radial-gradient(circle at 50% 0%, rgba(245, 158, 11, 0.09), transparent 55%),
+    radial-gradient(circle at 0% 100%, rgba(168, 85, 247, 0.08), transparent 50%),
+    radial-gradient(circle at 100% 100%, rgba(239, 68, 68, 0.05), transparent 50%);
+}
+.brand-gradient-text {
+  background: linear-gradient(135deg, #f59e0b 0%, #ef4444 50%, #a855f7 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+.brand-gradient-bg {
+  background: linear-gradient(135deg, #f59e0b 0%, #ef4444 50%, #a855f7 100%);
+}
+.brand-glow-amber {
+  box-shadow: 0 0 60px rgba(245, 158, 11, 0.15);
+}
