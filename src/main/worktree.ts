@@ -1,7 +1,8 @@
 import { execFile } from 'child_process'
 import { promisify } from 'util'
-import { basename, join } from 'path'
+import { basename, join, resolve, relative, isAbsolute } from 'path'
 import { existsSync, mkdirSync, statSync } from 'fs'
+import { readFile } from 'fs/promises'
 import { log } from './debug'
 
 const execFileAsync = promisify(execFile)
@@ -730,6 +731,76 @@ export async function getBranchDiffStats(
     return { added, removed, files }
   } catch {
     return { added: 0, removed: 0, files: 0 }
+  }
+}
+
+/** List every tracked-or-untracked-but-not-ignored file in the worktree, as repo-relative paths. */
+export async function listAllFiles(worktreePath: string): Promise<string[]> {
+  try {
+    const { stdout } = await execFileAsync(
+      'git',
+      ['ls-files', '--cached', '--others', '--exclude-standard'],
+      { cwd: worktreePath, maxBuffer: 32 * 1024 * 1024 }
+    )
+    const files = stdout.split('\n').filter((l) => l.length > 0)
+    files.sort((a, b) => a.localeCompare(b))
+    return files
+  } catch (err) {
+    log('worktree', `listAllFiles failed: ${(err as Error).message}`)
+    return []
+  }
+}
+
+const MAX_FILE_READ_BYTES = 2 * 1024 * 1024
+
+export interface FileReadResult {
+  content: string | null
+  size: number
+  binary: boolean
+  truncated: boolean
+  error?: string
+}
+
+/** Read a single file from within a worktree. Rejects paths that escape the worktree. */
+export async function readWorktreeFile(
+  worktreePath: string,
+  filePath: string
+): Promise<FileReadResult> {
+  const base = resolve(worktreePath)
+  const target = isAbsolute(filePath) ? resolve(filePath) : resolve(base, filePath)
+  const rel = relative(base, target)
+  if (rel.startsWith('..') || isAbsolute(rel)) {
+    return { content: null, size: 0, binary: false, truncated: false, error: 'Path escapes worktree' }
+  }
+  try {
+    const st = statSync(target)
+    if (!st.isFile()) {
+      return { content: null, size: 0, binary: false, truncated: false, error: 'Not a regular file' }
+    }
+    const truncated = st.size > MAX_FILE_READ_BYTES
+    const buf = await readFile(target)
+    const slice = truncated ? buf.subarray(0, MAX_FILE_READ_BYTES) : buf
+    // Heuristic binary check: NUL byte in the first 8KB.
+    const sniff = slice.subarray(0, Math.min(slice.length, 8192))
+    let binary = false
+    for (let i = 0; i < sniff.length; i++) {
+      if (sniff[i] === 0) {
+        binary = true
+        break
+      }
+    }
+    if (binary) {
+      return { content: null, size: st.size, binary: true, truncated, error: undefined }
+    }
+    return { content: slice.toString('utf8'), size: st.size, binary: false, truncated }
+  } catch (err) {
+    return {
+      content: null,
+      size: 0,
+      binary: false,
+      truncated: false,
+      error: (err as Error).message
+    }
   }
 }
 

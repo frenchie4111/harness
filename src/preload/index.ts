@@ -21,6 +21,11 @@ contextBridge.exposeInMainWorld('api', {
   selectRepoRoot: () => ipcRenderer.invoke('repo:select'),
   getRepoRoot: () => ipcRenderer.invoke('repo:getRoot'),
 
+  // All files (tracked + untracked, respecting .gitignore)
+  listAllFiles: (worktreePath: string) => ipcRenderer.invoke('worktree:listFiles', worktreePath),
+  readWorktreeFile: (worktreePath: string, filePath: string) =>
+    ipcRenderer.invoke('worktree:readFile', worktreePath, filePath),
+
   // Changed files
   getChangedFiles: (worktreePath: string, mode?: 'working' | 'branch') =>
     ipcRenderer.invoke('worktree:changedFiles', worktreePath, mode),

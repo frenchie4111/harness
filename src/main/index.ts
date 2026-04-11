@@ -4,7 +4,7 @@ import { existsSync, readdirSync, statSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 import { PtyManager } from './pty-manager'
-import { listWorktrees, listBranches, addWorktree, continueWorktree, removeWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, type MergeStrategy } from './worktree'
+import { listWorktrees, listBranches, addWorktree, continueWorktree, removeWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, readWorktreeFile, type MergeStrategy } from './worktree'
 import { getPRStatus, testToken, starRepo } from './github'
 import { AVAILABLE_EDITORS, DEFAULT_EDITOR_ID, openInEditor } from './editor'
 import { setSecret, hasSecret, deleteSecret } from './secrets'
@@ -221,6 +221,14 @@ function registerIpcHandlers(): void {
       return getFileDiff(worktreePath, filePath, staged, mode ?? 'working')
     }
   )
+
+  ipcMain.handle('worktree:listFiles', async (_, worktreePath: string) => {
+    return listAllFiles(worktreePath)
+  })
+
+  ipcMain.handle('worktree:readFile', async (_, worktreePath: string, filePath: string) => {
+    return readWorktreeFile(worktreePath, filePath)
+  })
 
   ipcMain.handle('worktree:branchCommits', async (_, worktreePath: string) => {
     return getBranchCommits(worktreePath)
