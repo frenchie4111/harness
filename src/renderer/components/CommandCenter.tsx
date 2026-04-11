@@ -6,7 +6,7 @@ import type {
   PRStatus,
   TerminalTab,
   ActivityLog,
-  ActivityEvent
+  ActivityRecord
 } from '../types'
 import { eventsToSegments, STATE_COLOR } from './Activity'
 import { groupWorktrees, type GroupKey } from '../worktree-sort'
@@ -204,11 +204,7 @@ export function CommandCenter({
     return ''
   }
 
-  const pickEvents = (wtPath: string): ActivityEvent[] => {
-    // Pick the longest event list keyed by anything that matches this path
-    // (activity log keys are worktree paths).
-    return log[wtPath] || []
-  }
+  const pickRecord = (wtPath: string): ActivityRecord | undefined => log[wtPath]
 
   const cardDisplay = (wt: Worktree): DisplayStatus => {
     const merged =
@@ -317,7 +313,7 @@ export function CommandCenter({
                     const display = cardDisplay(wt)
                     const pr = prStatuses[wt.path]
                     const tail = pickTail(wt.path)
-                    const events = pickEvents(wt.path)
+                    const record = pickRecord(wt.path)
                     return (
                       <button
                         key={wt.path}
@@ -362,7 +358,7 @@ export function CommandCenter({
                           </pre>
                         </div>
 
-                        <MiniTimeline events={events} now={now} />
+                        <MiniTimeline record={record} now={now} />
                       </button>
                     )
                   })}
@@ -377,15 +373,16 @@ export function CommandCenter({
 }
 
 function MiniTimeline({
-  events,
+  record,
   now
 }: {
-  events: ActivityEvent[]
+  record: ActivityRecord | undefined
   now: number
 }): JSX.Element {
   const windowStart = now - TIMELINE_WINDOW_MS
   const span = now - windowStart
-  const segs = eventsToSegments(events, windowStart, now)
+  const events = record?.events || []
+  const segs = eventsToSegments(events, windowStart, now, record?.removedAt)
   return (
     <div className="relative h-6 overflow-hidden rounded-b-lg border-t border-border bg-faint/5 -mx-4 -mb-4 mt-auto">
       {segs.map((seg, i) => {

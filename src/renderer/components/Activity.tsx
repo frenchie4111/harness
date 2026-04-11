@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, Flame, Clock, Zap, GitBranch, GitMerge, RefreshCw } from 'lucide-react'
-import type { Worktree, ActivityLog, ActivityEvent, ActivityState, PRStatus } from '../types'
+import type {
+  Worktree,
+  ActivityLog,
+  ActivityEvent,
+  ActivityRecord,
+  ActivityState,
+  PRStatus
+} from '../types'
 
 interface ActivityProps {
   onClose: () => void
@@ -9,13 +16,15 @@ interface ActivityProps {
   mergedPaths?: Record<string, boolean>
 }
 
-type Range = '1h' | '6h' | '24h' | '7d'
+type Range = '1h' | '6h' | '24h' | '7d' | '30d' | 'all'
 
 const RANGES: { id: Range; label: string; ms: number }[] = [
   { id: '1h', label: '1h', ms: 60 * 60 * 1000 },
   { id: '6h', label: '6h', ms: 6 * 60 * 60 * 1000 },
   { id: '24h', label: '24h', ms: 24 * 60 * 60 * 1000 },
-  { id: '7d', label: '7d', ms: 7 * 24 * 60 * 60 * 1000 }
+  { id: '7d', label: '7d', ms: 7 * 24 * 60 * 60 * 1000 },
+  { id: '30d', label: '30d', ms: 30 * 24 * 60 * 60 * 1000 },
+  { id: 'all', label: 'all', ms: Number.POSITIVE_INFINITY }
 ]
 
 export const STATE_COLOR: Record<ActivityState, string> = {
@@ -35,19 +44,22 @@ const STATE_LABEL: Record<ActivityState, string> = {
 }
 
 /** Convert an events list into a series of [start, end, state] segments
- *  clamped to [windowStart, now]. */
+ *  clamped to [windowStart, windowEnd]. For removed worktrees the final
+ *  segment is capped at removedAt so it doesn't stretch to "now". */
 export function eventsToSegments(
   events: ActivityEvent[],
   windowStart: number,
-  windowEnd: number
+  windowEnd: number,
+  removedAt?: number
 ): { start: number; end: number; state: ActivityState }[] {
   if (events.length === 0) return []
+  const cap = removedAt ? Math.min(windowEnd, removedAt) : windowEnd
   const segs: { start: number; end: number; state: ActivityState }[] = []
   for (let i = 0; i < events.length; i++) {
     const e = events[i]
     const next = events[i + 1]
     const segStart = e.t
-    const segEnd = next ? next.t : windowEnd
+    const segEnd = next ? next.t : cap
     if (segEnd <= windowStart) continue
     if (segStart >= windowEnd) break
     segs.push({
@@ -77,7 +89,7 @@ function basename(p: string): string {
   return parts[parts.length - 1] || p
 }
 
-function isWorktreeMerged(
+function isLiveMerged(
   path: string,
   prStatuses?: Record<string, PRStatus | null>,
   mergedPaths?: Record<string, boolean>
@@ -114,23 +126,68 @@ export function Activity({ onClose, worktrees, prStatuses, mergedPaths }: Activi
   }, [])
 
   const rangeMs = RANGES.find((r) => r.id === range)!.ms
-  const windowStart = now - rangeMs
+  const windowStart = Number.isFinite(rangeMs) ? now - rangeMs : 0
 
-  // Order worktrees: those with data first (by most recent activity), then others.
-  const orderedPaths = useMemo(() => {
-    const knownPaths = new Set(worktrees.map((w) => w.path))
-    const seen = new Set<string>()
-    const withActivity: { path: string; lastT: number }[] = []
-    for (const [path, events] of Object.entries(log)) {
-      if (!events.length) continue
-      if (!knownPaths.has(path)) continue
-      seen.add(path)
-      withActivity.push({ path, lastT: events[events.length - 1].t })
+  const livePaths = useMemo(() => new Set(worktrees.map((w) => w.path)), [worktrees])
+
+  type Section = 'active' | 'merged' | 'archived'
+
+  // Bucket every known path into active / merged / archived, sorted within each
+  // section by most recent event. Live worktrees always appear; removed ones
+  // only when they overlap the current window.
+  const sections = useMemo(() => {
+    const buckets: Record<Section, { path: string; lastT: number }[]> = {
+      active: [],
+      merged: [],
+      archived: []
     }
-    withActivity.sort((a, b) => b.lastT - a.lastT)
-    const rest = worktrees.filter((w) => !seen.has(w.path)).map((w) => w.path)
-    return [...withActivity.map((w) => w.path), ...rest]
-  }, [log, worktrees])
+
+    const classify = (path: string, rec: ActivityRecord | undefined): Section => {
+      const isLive = livePaths.has(path)
+      if (isLive) {
+        return isLiveMerged(path, prStatuses, mergedPaths) ? 'merged' : 'active'
+      }
+      const prState = rec?.prState
+      if (prState === 'merged' || prState === 'closed') return 'merged'
+      return 'archived'
+    }
+
+    const inWindow = (rec: ActivityRecord | undefined): boolean => {
+      if (!rec) return false
+      const last = rec.events[rec.events.length - 1]?.t ?? rec.removedAt ?? 0
+      const first = rec.createdAt ?? rec.events[0]?.t ?? 0
+      if (!last) return false
+      return last >= windowStart && first <= now
+    }
+
+    const pushed = new Set<string>()
+    for (const [path, rec] of Object.entries(log)) {
+      const isLive = livePaths.has(path)
+      if (!isLive && !inWindow(rec)) continue
+      const lastT =
+        rec.events[rec.events.length - 1]?.t ?? rec.removedAt ?? rec.createdAt ?? 0
+      buckets[classify(path, rec)].push({ path, lastT })
+      pushed.add(path)
+    }
+    for (const wt of worktrees) {
+      if (pushed.has(wt.path)) continue
+      buckets[classify(wt.path, undefined)].push({ path: wt.path, lastT: 0 })
+    }
+
+    for (const key of Object.keys(buckets) as Section[]) {
+      buckets[key].sort((a, b) => {
+        if (a.lastT === 0 && b.lastT !== 0) return 1
+        if (b.lastT === 0 && a.lastT !== 0) return -1
+        return b.lastT - a.lastT
+      })
+    }
+    return buckets
+  }, [log, worktrees, livePaths, prStatuses, mergedPaths, windowStart, now])
+
+  const visiblePaths = useMemo(
+    () => [...sections.active, ...sections.merged, ...sections.archived].map((e) => e.path),
+    [sections]
+  )
 
   // Totals across the window
   const totals = useMemo(() => {
@@ -144,10 +201,20 @@ export function Activity({ onClose, worktrees, prStatuses, mergedPaths }: Activi
     let longestFlow = 0
     let activeWorktrees = 0
     let mergedCount = 0
-    for (const path of orderedPaths) {
-      if (isWorktreeMerged(path, prStatuses, mergedPaths)) mergedCount++
-      const events = log[path] || []
-      const segs = eventsToSegments(events, windowStart, now)
+    let linesAdded = 0
+    let linesRemoved = 0
+    for (const path of visiblePaths) {
+      const rec = log[path]
+      const isMerged = livePaths.has(path)
+        ? isLiveMerged(path, prStatuses, mergedPaths)
+        : rec?.prState === 'merged' || rec?.prState === 'closed'
+      if (isMerged) mergedCount++
+      if (rec?.diffStats) {
+        linesAdded += rec.diffStats.added
+        linesRemoved += rec.diffStats.removed
+      }
+      const events = rec?.events || []
+      const segs = eventsToSegments(events, windowStart, now, rec?.removedAt)
       let hadAny = false
       for (const seg of segs) {
         const dur = seg.end - seg.start
@@ -160,8 +227,21 @@ export function Activity({ onClose, worktrees, prStatuses, mergedPaths }: Activi
       }
       if (hadAny) activeWorktrees++
     }
-    return { totalsByState, longestFlow, activeWorktrees, mergedCount }
-  }, [log, orderedPaths, windowStart, now, prStatuses, mergedPaths])
+    return { totalsByState, longestFlow, activeWorktrees, mergedCount, linesAdded, linesRemoved }
+  }, [log, visiblePaths, livePaths, windowStart, now, prStatuses, mergedPaths])
+
+  // Effective window for rendering the timeline. For finite ranges we anchor
+  // on "now"; for "all" we stretch to fit the oldest event we're going to draw.
+  const effectiveWindowStart = useMemo(() => {
+    if (Number.isFinite(rangeMs)) return windowStart
+    let earliest = now
+    for (const path of visiblePaths) {
+      const rec = log[path]
+      const first = rec?.createdAt ?? rec?.events[0]?.t
+      if (first && first < earliest) earliest = first
+    }
+    return earliest === now ? now - 60 * 60 * 1000 : earliest
+  }, [rangeMs, windowStart, visiblePaths, log, now])
 
   const handleReset = async (): Promise<void> => {
     if (!confirm('Clear all activity history? This cannot be undone.')) return
@@ -246,10 +326,10 @@ export function Activity({ onClose, worktrees, prStatuses, mergedPaths }: Activi
             />
             <StatCard
               icon={GitBranch}
-              label="Active worktrees"
-              value={String(totals.activeWorktrees)}
+              label="Lines shipped"
+              value={`+${totals.linesAdded.toLocaleString()} / -${totals.linesRemoved.toLocaleString()}`}
               tint="text-info"
-              sub="in this range"
+              sub="from removed worktrees"
             />
             <StatCard
               icon={GitMerge}
@@ -268,28 +348,55 @@ export function Activity({ onClose, worktrees, prStatuses, mergedPaths }: Activi
 
           {loading && <div className="text-sm text-dim py-8 text-center">Loading…</div>}
 
-          {!loading && orderedPaths.length === 0 && (
+          {!loading && visiblePaths.length === 0 && (
             <div className="text-sm text-dim py-12 text-center">
-              No worktrees yet.
+              No activity in this range.
             </div>
           )}
 
-          {!loading && orderedPaths.length > 0 && (
+          {!loading && visiblePaths.length > 0 && (
             <div className="bg-app/50 border border-border rounded-xl p-5">
-              <TimeAxis windowStart={windowStart} windowEnd={now} />
-              <div className="space-y-2 mt-2">
-                {orderedPaths.map((path) => {
-                  const events = log[path] || []
-                  const segs = eventsToSegments(events, windowStart, now)
-                  const wt = worktrees.find((w) => w.path === path)
+              <TimeAxis windowStart={effectiveWindowStart} windowEnd={now} />
+              <div className="mt-2">
+                {([
+                  ['active', 'Active'],
+                  ['merged', 'Merged'],
+                  ['archived', 'Archived']
+                ] as const).map(([key, label]) => {
+                  const entries = sections[key]
+                  if (entries.length === 0) return null
                   return (
-                    <WorktreeRow
-                      key={path}
-                      label={wt?.branch || basename(path)}
-                      segments={segs}
-                      windowStart={windowStart}
-                      windowEnd={now}
-                    />
+                    <div key={key} className="mb-4 last:mb-0">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-[10px] uppercase tracking-wider text-dim font-semibold">
+                          {label}
+                        </span>
+                        <span className="text-[10px] text-dim/60 tabular-nums">
+                          {entries.length}
+                        </span>
+                        <div className="flex-1 h-px bg-border/50" />
+                      </div>
+                      <div className="space-y-2">
+                        {entries.map(({ path }) => {
+                          const rec = log[path]
+                          const events = rec?.events || []
+                          const segs = eventsToSegments(events, effectiveWindowStart, now, rec?.removedAt)
+                          const live = worktrees.find((w) => w.path === path)
+                          const rowLabel = live?.branch || rec?.branch || basename(path)
+                          return (
+                            <WorktreeRow
+                              key={path}
+                              label={rowLabel}
+                              record={rec}
+                              isLive={!!live}
+                              segments={segs}
+                              windowStart={effectiveWindowStart}
+                              windowEnd={now}
+                            />
+                          )
+                        })}
+                      </div>
+                    </div>
                   )
                 })}
               </div>
@@ -297,7 +404,7 @@ export function Activity({ onClose, worktrees, prStatuses, mergedPaths }: Activi
           )}
 
           <p className="text-xs text-dim mt-6 text-center">
-            Activity is recorded locally from Claude Code hooks. Each bar shows when that worktree was working, waiting, or blocked on you.
+            Activity is recorded locally from Claude Code hooks. Removed worktrees stay in the log so you can see historical trends.
           </p>
         </div>
       </div>
@@ -372,7 +479,7 @@ function TimeAxis({ windowStart, windowEnd }: { windowStart: number; windowEnd: 
     return `${d.getMonth() + 1}/${d.getDate()}`
   }
   return (
-    <div className="flex items-center ml-28 mb-1">
+    <div className="flex items-center ml-44 mb-1">
       <div className="flex-1 relative h-4">
         {ticks.map((p) => {
           const t = windowStart + p * span
@@ -393,21 +500,52 @@ function TimeAxis({ windowStart, windowEnd }: { windowStart: number; windowEnd: 
 
 function WorktreeRow({
   label,
+  record,
+  isLive,
   segments,
   windowStart,
   windowEnd
 }: {
   label: string
+  record?: ActivityRecord
+  isLive: boolean
   segments: { start: number; end: number; state: ActivityState }[]
   windowStart: number
   windowEnd: number
 }): JSX.Element {
   const span = windowEnd - windowStart
+  const diff = record?.diffStats
+  const repoLabel = record?.repoRoot ? basename(record.repoRoot) : null
+  const fullTitle = [label, repoLabel ? `(${repoLabel})` : null, isLive ? null : 'removed']
+    .filter(Boolean)
+    .join(' ')
   return (
     <div className="flex items-center gap-3">
-      <span className="text-[11px] text-muted font-mono w-28 shrink-0 truncate" title={label}>
-        {label}
-      </span>
+      <div className="w-44 shrink-0 flex flex-col leading-tight" title={fullTitle}>
+        <div className="flex items-center gap-1.5">
+          <span
+            className={`text-[11px] font-mono truncate ${isLive ? 'text-muted' : 'text-dim italic'}`}
+          >
+            {label}
+          </span>
+          {!isLive && (
+            <span className="text-[8px] uppercase tracking-wider text-dim/70 bg-faint/10 px-1 py-px rounded">
+              removed
+            </span>
+          )}
+        </div>
+        {(repoLabel || diff) && (
+          <div className="flex items-center gap-1.5 text-[9px] text-dim/80 tabular-nums">
+            {repoLabel && <span className="truncate">{repoLabel}</span>}
+            {diff && (diff.added || diff.removed) ? (
+              <span className="shrink-0">
+                <span className="text-success/80">+{diff.added}</span>
+                <span className="text-danger/80"> -{diff.removed}</span>
+              </span>
+            ) : null}
+          </div>
+        )}
+      </div>
       <div className="flex-1 relative h-6 rounded-md overflow-hidden border border-border bg-faint/5">
         {segments.map((seg, i) => {
           if (seg.state === 'idle') return null

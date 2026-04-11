@@ -555,14 +555,15 @@ const setQuestStep = useCallback((next: QuestStep) => {
     })
 
     // Force remove if dirty (user already confirmed), normal remove otherwise
-    await window.api.removeWorktree(path, dirty)
+    const pr = prStatuses[path]
+    await window.api.removeWorktree(path, dirty, pr ? { prNumber: pr.number, prState: pr.state } : undefined)
 
     const trees = await window.api.listWorktrees()
     setWorktrees(trees)
     if (path === activeWorktreeId) {
       setActiveWorktreeId(trees.length > 0 ? trees[0].path : null)
     }
-  }, [terminalTabs, activeWorktreeId])
+  }, [terminalTabs, activeWorktreeId, prStatuses])
 
   // Bulk delete used by the Cleanup screen. Skips per-path confirmation — the
   // Cleanup UI owns the single confirm — and removes each worktree sequentially
@@ -591,7 +592,8 @@ const setQuestStep = useCallback((next: QuestStep) => {
           return next
         })
         try {
-          await window.api.removeWorktree(path, force)
+          const pr = prStatuses[path]
+          await window.api.removeWorktree(path, force, pr ? { prNumber: pr.number, prState: pr.state } : undefined)
         } catch (err) {
           console.error('Failed to remove worktree', path, err)
         }
@@ -603,7 +605,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
         setActiveWorktreeId(trees.length > 0 ? trees[0].path : null)
       }
     },
-    [terminalTabs, activeWorktreeId]
+    [terminalTabs, activeWorktreeId, prStatuses]
   )
 
   // Append a tab to a specific pane (or the focused pane if paneId is omitted).
@@ -826,6 +828,43 @@ const setQuestStep = useCallback((next: QuestStep) => {
       setActivePaneId((prev) => ({ ...prev, [worktreePath]: newPane.id }))
     },
     []
+  )
+
+  const handleSendToClaude = useCallback(
+    (worktreePath: string, text: string) => {
+      const paneList = panes[worktreePath] || []
+      let targetPaneId: string | undefined
+      let targetTabId: string | undefined
+      // Prefer a pane whose active tab is already a claude tab
+      for (const pane of paneList) {
+        const active = pane.tabs.find((t) => t.id === pane.activeTabId)
+        if (active?.type === 'claude') {
+          targetPaneId = pane.id
+          targetTabId = active.id
+          break
+        }
+      }
+      // Otherwise pick the first claude tab we can find
+      if (!targetTabId) {
+        for (const pane of paneList) {
+          const c = pane.tabs.find((t) => t.type === 'claude')
+          if (c) {
+            targetPaneId = pane.id
+            targetTabId = c.id
+            break
+          }
+        }
+      }
+      if (!targetPaneId || !targetTabId) return
+      setActiveWorktreeId(worktreePath)
+      handleSelectTab(worktreePath, targetPaneId, targetTabId)
+      const id = targetTabId
+      requestAnimationFrame(() => {
+        window.api.writeTerminal(id, '\x1b[200~' + text + '\x1b[201~')
+        focusTerminalById(id)
+      })
+    },
+    [panes, handleSelectTab]
   )
 
   const handleOpenDiff = useCallback(
@@ -1140,6 +1179,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
                 onReorderTabs={handleReorderTabs}
                 onMoveTabToPane={handleMoveTabToPane}
                 onSplitPane={handleSplitPane}
+                onSendToClaude={handleSendToClaude}
               />
             </div>
           )
@@ -1217,7 +1257,15 @@ const setQuestStep = useCallback((next: QuestStep) => {
             />
             <BranchCommitsPanel worktreePath={activeWorktreeId} onOpenCommit={handleOpenCommit} />
             <div className="flex-1 min-h-0">
-              <ChangedFilesPanel worktreePath={activeWorktreeId} onOpenDiff={handleOpenDiff} />
+              <ChangedFilesPanel
+                worktreePath={activeWorktreeId}
+                onOpenDiff={handleOpenDiff}
+                onSendToClaude={
+                  activeWorktreeId
+                    ? (text) => handleSendToClaude(activeWorktreeId, text)
+                    : undefined
+                }
+              />
             </div>
           </div>
         )}

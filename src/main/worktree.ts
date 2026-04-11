@@ -691,6 +691,36 @@ export async function isBranchAncestorOfBase(
   }
 }
 
+/** Sum of added/removed lines and touched files for committed work on this
+ *  branch vs its default base. Returns zeros if the base can't be resolved. */
+export async function getBranchDiffStats(
+  worktreePath: string
+): Promise<{ added: number; removed: number; files: number }> {
+  try {
+    const base = await getDefaultBaseRef(worktreePath)
+    if (!base || base === 'HEAD') return { added: 0, removed: 0, files: 0 }
+    const { stdout } = await execFileAsync(
+      'git',
+      ['diff', '--numstat', `${base}...HEAD`],
+      { cwd: worktreePath, maxBuffer: 8 * 1024 * 1024 }
+    )
+    let added = 0
+    let removed = 0
+    let files = 0
+    for (const line of stdout.split('\n')) {
+      if (!line) continue
+      const [a, r] = line.split('\t')
+      // Binary files show "-\t-" — skip line counts but still count the file.
+      if (a !== '-') added += parseInt(a, 10) || 0
+      if (r !== '-') removed += parseInt(r, 10) || 0
+      files++
+    }
+    return { added, removed, files }
+  } catch {
+    return { added: 0, removed: 0, files: 0 }
+  }
+}
+
 export async function removeWorktree(repoRoot: string, path: string, force?: boolean): Promise<void> {
   log('worktree', `removing worktree: path=${path} force=${force}`)
   const args = ['worktree', 'remove', path]
