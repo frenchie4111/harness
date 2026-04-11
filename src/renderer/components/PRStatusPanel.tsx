@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { ExternalLink, GitMerge, ChevronDown, Check, GitPullRequest } from 'lucide-react'
+import { ExternalLink, GitMerge, ChevronDown, Check, GitPullRequest, RefreshCw } from 'lucide-react'
 import type {
   PRStatus,
   CheckStatus,
@@ -379,12 +379,16 @@ const OVERALL_COLORS: Record<string, string> = {
 interface PRStatusPanelProps {
   pr: PRStatus | null | undefined
   hasGithubToken?: boolean | null
+  loading?: boolean
+  onRefresh?: () => void | Promise<void>
   onConnectGithub?: () => void
 }
 
 export function PRStatusPanel({
   pr,
   hasGithubToken,
+  loading,
+  onRefresh,
   onConnectGithub
 }: PRStatusPanelProps): JSX.Element {
   const [expanded, setExpanded] = useState(false)
@@ -397,21 +401,43 @@ export function PRStatusPanel({
 
   const needsGithubToken = hasGithubToken === false
 
-  const actions =
-    !needsGithubToken && pr ? (
-      <Tooltip label="Open PR in browser" action="openPR" side="left">
-        <button
-          onClick={(e) => {
-            e.stopPropagation()
-            window.api.openExternal(pr.url)
-          }}
-          className="text-xs text-dim hover:text-fg flex items-center gap-1 transition-colors cursor-pointer"
-        >
-          Open
-          <ExternalLink size={11} />
-        </button>
-      </Tooltip>
-    ) : null
+  const refreshButton = !needsGithubToken && onRefresh ? (
+    <Tooltip label="Refresh PR status" side="left">
+      <button
+        onClick={(e) => {
+          e.stopPropagation()
+          void onRefresh()
+        }}
+        disabled={loading}
+        className="text-xs text-dim hover:text-fg flex items-center transition-colors cursor-pointer disabled:cursor-default"
+        aria-label="Refresh PR status"
+      >
+        <RefreshCw size={11} className={loading ? 'animate-spin' : ''} />
+      </button>
+    </Tooltip>
+  ) : null
+
+  const openButton = !needsGithubToken && pr ? (
+    <Tooltip label="Open PR in browser" action="openPR" side="left">
+      <button
+        onClick={(e) => {
+          e.stopPropagation()
+          window.api.openExternal(pr.url)
+        }}
+        className="text-xs text-dim hover:text-fg flex items-center gap-1 transition-colors cursor-pointer"
+      >
+        Open
+        <ExternalLink size={11} />
+      </button>
+    </Tooltip>
+  ) : null
+
+  const actions = (refreshButton || openButton) ? (
+    <>
+      {refreshButton}
+      {openButton}
+    </>
+  ) : null
 
   return (
     <RightPanel
