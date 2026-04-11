@@ -18,7 +18,7 @@
     "typecheck": "tsc --noEmit",
     "postinstall": "electron-builder install-app-deps",
     "rebuild:dev": "electron-rebuild -f -w node-pty",
-    "pack": "npm run build && electron-builder --dir",
+    "pack": "npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --dir --arm64 --config.mac.identity=null",
     "postpack": "npm run rebuild:dev",
     "dist": "npm run build && dotenv -e .env -- electron-builder",
     "postdist": "npm run rebuild:dev",
