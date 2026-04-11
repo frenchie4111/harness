@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch } from 'lucide-react'
-import type { UpdaterStatus } from '../types'
+import type { UpdaterStatus, MergeStrategy } from '../types'
 import { DEFAULT_HOTKEYS, ACTION_LABELS, bindingToString, eventToBinding, resolveHotkeys, type Action, type HotkeyBinding } from '../hotkeys'
 import { Tooltip } from './Tooltip'
 
@@ -158,6 +158,7 @@ export function Settings({ onClose, onOpenGuide }: SettingsProps): JSX.Element {
 
   // Worktree base state
   const [worktreeBase, setWorktreeBaseState] = useState<'remote' | 'local'>('remote')
+  const [mergeStrategy, setMergeStrategyState] = useState<MergeStrategy>('squash')
 
   useEffect(() => {
     window.api.hasGithubToken().then(setHasToken)
@@ -169,6 +170,7 @@ export function Settings({ onClose, onOpenGuide }: SettingsProps): JSX.Element {
     window.api.getEditor().then(setEditorId)
     window.api.getAvailableEditors().then(setAvailableEditors)
     window.api.getWorktreeBase().then(setWorktreeBaseState)
+    window.api.getMergeStrategy().then(setMergeStrategyState)
   }, [])
 
   const handleSelectTheme = useCallback(async (id: string) => {
@@ -184,6 +186,11 @@ export function Settings({ onClose, onOpenGuide }: SettingsProps): JSX.Element {
   const handleSelectWorktreeBase = useCallback(async (mode: 'remote' | 'local') => {
     setWorktreeBaseState(mode)
     await window.api.setWorktreeBase(mode)
+  }, [])
+
+  const handleSelectMergeStrategy = useCallback(async (strategy: MergeStrategy) => {
+    setMergeStrategyState(strategy)
+    await window.api.setMergeStrategy(strategy)
   }, [])
 
   useEffect(() => {
@@ -539,6 +546,60 @@ export function Settings({ onClose, onOpenGuide }: SettingsProps): JSX.Element {
                     <button
                       key={opt.id}
                       onClick={() => handleSelectWorktreeBase(opt.id)}
+                      className={`w-full text-left rounded border px-3 py-2 transition-colors cursor-pointer ${
+                        isActive
+                          ? 'border-accent bg-panel-raised'
+                          : 'border-border hover:border-border-strong'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <div
+                          className={`w-3 h-3 rounded-full border ${
+                            isActive ? 'border-accent bg-accent' : 'border-border-strong'
+                          }`}
+                        />
+                        <span className="text-sm text-fg-bright">{opt.label}</span>
+                      </div>
+                      <p className="text-xs text-dim mt-1 ml-5">{opt.description}</p>
+                    </button>
+                  )
+                })}
+              </div>
+
+              <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">Default merge strategy</h3>
+              <p className="text-xs text-dim mb-3">
+                Used when you run "Merge locally" on a worktree. The dropdown on
+                that button also writes back to this setting so your most recent
+                choice becomes the new default.
+              </p>
+              <div className="space-y-2">
+                {(
+                  [
+                    {
+                      id: 'squash' as const,
+                      label: 'Squash',
+                      description:
+                        "Combine all branch commits into one commit on the base branch. GitHub's \"Squash and merge\"."
+                    },
+                    {
+                      id: 'merge-commit' as const,
+                      label: 'Merge commit',
+                      description:
+                        'Always create a merge commit (--no-ff), preserving the branch as a visible bubble in history.'
+                    },
+                    {
+                      id: 'fast-forward' as const,
+                      label: 'Fast-forward only',
+                      description:
+                        'Only merge if the base can fast-forward (--ff-only). Fails on divergent history.'
+                    }
+                  ]
+                ).map((opt) => {
+                  const isActive = mergeStrategy === opt.id
+                  return (
+                    <button
+                      key={opt.id}
+                      onClick={() => handleSelectMergeStrategy(opt.id)}
                       className={`w-full text-left rounded border px-3 py-2 transition-colors cursor-pointer ${
                         isActive
                           ? 'border-accent bg-panel-raised'

@@ -4,7 +4,7 @@ import { existsSync, readdirSync, statSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 import { PtyManager } from './pty-manager'
-import { listWorktrees, listBranches, addWorktree, continueWorktree, removeWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff } from './worktree'
+import { listWorktrees, listBranches, addWorktree, continueWorktree, removeWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, type MergeStrategy } from './worktree'
 import { getPRStatus, testToken, starRepo } from './github'
 import { AVAILABLE_EDITORS, DEFAULT_EDITOR_ID, openInEditor } from './editor'
 import { setSecret, hasSecret, deleteSecret } from './secrets'
@@ -17,6 +17,7 @@ import {
   AVAILABLE_THEMES,
   THEME_APP_BG,
   DEFAULT_WORKTREE_BASE,
+  DEFAULT_MERGE_STRATEGY,
   saveTerminalHistory,
   loadTerminalHistory,
   clearTerminalHistory,
@@ -140,6 +141,13 @@ function registerIpcHandlers(): void {
     const win = getWindowFromEvent(event)
     const repoRoot = win ? windowRepoRoots.get(win.id) : null
     if (!repoRoot) throw new Error('No repo root configured')
+    // Drop any locally-merged flag for the branch at this path
+    const trees = await listWorktrees(repoRoot)
+    const wt = trees.find((t) => t.path === path)
+    if (wt && config.locallyMerged && wt.branch && config.locallyMerged[wt.branch]) {
+      delete config.locallyMerged[wt.branch]
+      saveConfig(config)
+    }
     return removeWorktree(repoRoot, path, force)
   })
 
@@ -193,6 +201,86 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('worktree:prStatus', async (_, worktreePath: string) => {
     return getPRStatus(worktreePath)
+  })
+
+  ipcMain.handle('worktree:mainStatus', async (event) => {
+    const win = getWindowFromEvent(event)
+    const repoRoot = win ? windowRepoRoots.get(win.id) : null
+    if (!repoRoot) throw new Error('No repo root configured')
+    return getMainWorktreeStatus(repoRoot)
+  })
+
+  ipcMain.handle('worktree:previewMerge', async (event, sourceBranch: string) => {
+    const win = getWindowFromEvent(event)
+    const repoRoot = win ? windowRepoRoots.get(win.id) : null
+    if (!repoRoot) throw new Error('No repo root configured')
+    const status = await getMainWorktreeStatus(repoRoot)
+    return previewMergeConflicts(repoRoot, sourceBranch, status.baseBranch)
+  })
+
+  ipcMain.handle('worktree:prepareMain', async (event) => {
+    const win = getWindowFromEvent(event)
+    const repoRoot = win ? windowRepoRoots.get(win.id) : null
+    if (!repoRoot) throw new Error('No repo root configured')
+    return prepareMainForMerge(repoRoot)
+  })
+
+  ipcMain.handle(
+    'worktree:mergeLocal',
+    async (event, sourceBranch: string, strategy: MergeStrategy) => {
+      const win = getWindowFromEvent(event)
+      const repoRoot = win ? windowRepoRoots.get(win.id) : null
+      if (!repoRoot) throw new Error('No repo root configured')
+      const result = await mergeWorktreeLocally(repoRoot, sourceBranch, strategy)
+      // Record the branch as locally merged at its current tip sha. If new
+      // commits are pushed to the branch later, the flag becomes stale and
+      // will stop applying (see worktree:mergedStatus).
+      const sha = await getBranchSha(repoRoot, sourceBranch)
+      if (sha) {
+        if (!config.locallyMerged) config.locallyMerged = {}
+        config.locallyMerged[sourceBranch] = sha
+        saveConfig(config)
+      }
+      return result
+    }
+  )
+
+  /** Batched merge-status query. Returns a map keyed by worktree path → true
+   * if the branch was merged into base by Harness. Driven entirely by the
+   * persistent locallyMerged flag — a pure `git merge-base --is-ancestor`
+   * check can't tell "fork point on trunk" from "trunk position after merge",
+   * so we don't try to detect external merges automatically. The flag is
+   * auto-cleared if the branch later gains new commits. */
+  ipcMain.handle('worktree:mergedStatus', async (event) => {
+    const win = getWindowFromEvent(event)
+    const repoRoot = win ? windowRepoRoots.get(win.id) : null
+    if (!repoRoot) return {}
+    const trees = await listWorktrees(repoRoot)
+    const result: Record<string, boolean> = {}
+    const persisted = config.locallyMerged || {}
+    let dirty = false
+    for (const wt of trees) {
+      if (wt.isMain) continue
+      if (wt.branch === '(detached)') continue
+      const recordedSha = persisted[wt.branch]
+      if (!recordedSha) {
+        result[wt.path] = false
+        continue
+      }
+      const branchSha = await getBranchSha(repoRoot, wt.branch)
+      if (branchSha && branchSha === recordedSha) {
+        result[wt.path] = true
+      } else {
+        delete persisted[wt.branch]
+        dirty = true
+        result[wt.path] = false
+      }
+    }
+    if (dirty) {
+      config.locallyMerged = persisted
+      saveConfig(config)
+    }
+    return result
   })
 
 
@@ -303,6 +391,26 @@ function registerIpcHandlers(): void {
     saveConfig(config)
     return true
   })
+
+  ipcMain.handle('config:getMergeStrategy', () => {
+    return config.mergeStrategy || DEFAULT_MERGE_STRATEGY
+  })
+
+  ipcMain.handle(
+    'config:setMergeStrategy',
+    (_, strategy: 'squash' | 'merge-commit' | 'fast-forward') => {
+      if (
+        strategy !== 'squash' &&
+        strategy !== 'merge-commit' &&
+        strategy !== 'fast-forward'
+      ) {
+        return false
+      }
+      config.mergeStrategy = strategy
+      saveConfig(config)
+      return true
+    }
+  )
 
   ipcMain.handle('config:getAvailableThemes', () => {
     return AVAILABLE_THEMES

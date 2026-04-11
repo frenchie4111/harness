@@ -23,6 +23,13 @@ contextBridge.exposeInMainWorld('api', {
   getFileDiff: (worktreePath: string, filePath: string, staged: boolean, mode?: 'working' | 'branch') =>
     ipcRenderer.invoke('worktree:fileDiff', worktreePath, filePath, staged, mode),
   getPRStatus: (worktreePath: string) => ipcRenderer.invoke('worktree:prStatus', worktreePath),
+  getMainWorktreeStatus: () => ipcRenderer.invoke('worktree:mainStatus'),
+  prepareMainForMerge: () => ipcRenderer.invoke('worktree:prepareMain'),
+  previewMergeConflicts: (sourceBranch: string) =>
+    ipcRenderer.invoke('worktree:previewMerge', sourceBranch),
+  mergeWorktreeLocally: (sourceBranch: string, strategy: 'squash' | 'merge-commit' | 'fast-forward') =>
+    ipcRenderer.invoke('worktree:mergeLocal', sourceBranch, strategy),
+  getMergedStatus: () => ipcRenderer.invoke('worktree:mergedStatus'),
 
   // Config
   getHotkeyOverrides: () => ipcRenderer.invoke('config:getHotkeys'),
@@ -73,6 +80,9 @@ contextBridge.exposeInMainWorld('api', {
   getWorktreeBase: () => ipcRenderer.invoke('config:getWorktreeBase'),
   setWorktreeBase: (mode: 'remote' | 'local') =>
     ipcRenderer.invoke('config:setWorktreeBase', mode),
+  getMergeStrategy: () => ipcRenderer.invoke('config:getMergeStrategy'),
+  setMergeStrategy: (strategy: 'squash' | 'merge-commit' | 'fast-forward') =>
+    ipcRenderer.invoke('config:setMergeStrategy', strategy),
 
   // External editor
   getEditor: () => ipcRenderer.invoke('config:getEditor'),

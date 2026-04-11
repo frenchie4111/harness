@@ -374,6 +374,237 @@ export async function getFileDiff(
   }
 }
 
+export type MergeStrategy = 'squash' | 'merge-commit' | 'fast-forward'
+
+export interface MainWorktreeStatus {
+  path: string
+  currentBranch: string
+  baseBranch: string
+  isOnBase: boolean
+  isDirty: boolean
+  /** True when the worktree is ready to accept a merge without any fixups */
+  ready: boolean
+}
+
+/** Resolve the local base branch name (no remote prefix) — "main" or "master". */
+async function getLocalBaseBranch(repoRoot: string): Promise<string> {
+  const ref = await getDefaultBaseRef(repoRoot)
+  const name = ref.startsWith('origin/') ? ref.slice('origin/'.length) : ref
+  if (!name || name === 'HEAD') return 'main'
+  return name
+}
+
+/** Get the current branch of a worktree, or empty string if detached. */
+async function getCurrentBranch(worktreePath: string): Promise<string> {
+  try {
+    const { stdout } = await execFileAsync('git', ['symbolic-ref', '--short', 'HEAD'], {
+      cwd: worktreePath
+    })
+    return stdout.trim()
+  } catch {
+    return ''
+  }
+}
+
+/** Report status of the main worktree for a local merge. */
+export async function getMainWorktreeStatus(repoRoot: string): Promise<MainWorktreeStatus> {
+  const trees = await listWorktrees(repoRoot)
+  const main = trees.find((t) => t.isMain) || trees[0]
+  const mainPath = main?.path || repoRoot
+  const baseBranch = await getLocalBaseBranch(repoRoot)
+  const currentBranch = await getCurrentBranch(mainPath)
+  const isDirty = await isWorktreeDirty(mainPath)
+  const isOnBase = currentBranch === baseBranch
+  return {
+    path: mainPath,
+    currentBranch,
+    baseBranch,
+    isOnBase,
+    isDirty,
+    ready: isOnBase && !isDirty
+  }
+}
+
+/** Stash and/or checkout base in the main worktree so a merge can proceed.
+ * Stashing is auto-labeled so the user can find it later via `git stash list`. */
+export async function prepareMainForMerge(repoRoot: string): Promise<MainWorktreeStatus> {
+  const status = await getMainWorktreeStatus(repoRoot)
+  if (status.isDirty) {
+    log('worktree', `stashing dirty changes in main worktree ${status.path}`)
+    await execFileAsync(
+      'git',
+      ['stash', 'push', '--include-untracked', '-m', 'harness: auto-stash before local merge'],
+      { cwd: status.path }
+    )
+  }
+  if (!status.isOnBase) {
+    log('worktree', `checking out ${status.baseBranch} in main worktree ${status.path}`)
+    await execFileAsync('git', ['checkout', status.baseBranch], { cwd: status.path })
+  }
+  return getMainWorktreeStatus(repoRoot)
+}
+
+export interface MergeLocalResult {
+  ok: true
+  strategy: MergeStrategy
+  mergedBranch: string
+  baseBranch: string
+  mainPath: string
+}
+
+/** Merge a worktree's branch into the local base branch inside the main worktree.
+ * Requires the main worktree to already be on base and clean — caller should
+ * run prepareMainForMerge first if needed. On conflict, aborts and throws. */
+export async function mergeWorktreeLocally(
+  repoRoot: string,
+  sourceBranch: string,
+  strategy: MergeStrategy
+): Promise<MergeLocalResult> {
+  const status = await getMainWorktreeStatus(repoRoot)
+  if (!status.ready) {
+    throw new Error(
+      `Main worktree is not ready: ${status.isDirty ? 'has uncommitted changes' : `on ${status.currentBranch || 'detached HEAD'}, not ${status.baseBranch}`}`
+    )
+  }
+  if (sourceBranch === status.baseBranch) {
+    throw new Error(`Cannot merge ${sourceBranch} into itself`)
+  }
+
+  log('worktree', `merging ${sourceBranch} into ${status.baseBranch} (${strategy}) at ${status.path}`)
+
+  try {
+    if (strategy === 'squash') {
+      await execFileAsync('git', ['merge', '--squash', sourceBranch], { cwd: status.path })
+      // --squash stages the changes without committing. Commit them now.
+      await execFileAsync(
+        'git',
+        ['commit', '-m', `${sourceBranch} (squashed)`],
+        { cwd: status.path }
+      )
+    } else if (strategy === 'merge-commit') {
+      await execFileAsync(
+        'git',
+        ['merge', '--no-ff', '-m', `Merge branch '${sourceBranch}'`, sourceBranch],
+        { cwd: status.path }
+      )
+    } else {
+      await execFileAsync('git', ['merge', '--ff-only', sourceBranch], { cwd: status.path })
+    }
+  } catch (err) {
+    // Extract stderr from the execFile error — it's where git's actual
+    // failure reason lives, and err.message only carries the command line.
+    const stderr =
+      err && typeof err === 'object' && 'stderr' in err
+        ? String((err as { stderr: unknown }).stderr || '').trim()
+        : ''
+    const stdout =
+      err && typeof err === 'object' && 'stdout' in err
+        ? String((err as { stdout: unknown }).stdout || '').trim()
+        : ''
+    const baseMessage = err instanceof Error ? err.message : String(err)
+    const detail = stderr || stdout || baseMessage
+
+    log('worktree', `merge failed: ${detail}`)
+
+    // Abort any partial merge/squash state so the user is left clean.
+    try {
+      await execFileAsync('git', ['merge', '--abort'], { cwd: status.path })
+    } catch {}
+    // For --squash the failure is typically at the `git commit` step (e.g.
+    // nothing to commit because the branch is equivalent to base). In that
+    // case `merge --abort` is a no-op, so also reset any staged changes.
+    try {
+      await execFileAsync('git', ['reset', '--hard', 'HEAD'], { cwd: status.path })
+    } catch {}
+
+    // Friendlier message for the common "nothing to commit" case on squash
+    if (strategy === 'squash' && /nothing to commit/i.test(detail)) {
+      throw new Error(
+        `Nothing to merge — ${sourceBranch} has no changes relative to ${status.baseBranch}.`
+      )
+    }
+    throw new Error(`Merge failed and was aborted: ${detail}`)
+  }
+
+  return {
+    ok: true,
+    strategy,
+    mergedBranch: sourceBranch,
+    baseBranch: status.baseBranch,
+    mainPath: status.path
+  }
+}
+
+export interface MergeConflictPreview {
+  hasConflict: boolean
+  files: string[]
+  /** True if git merge-tree isn't supported by the installed git (pre-2.38). */
+  unsupported?: boolean
+}
+
+/** Preview a three-way merge of `sourceBranch` into `baseBranch` in-memory
+ * via `git merge-tree --write-tree`. Doesn't touch the working tree or any
+ * refs. Returns the list of conflicted file paths on conflict. */
+export async function previewMergeConflicts(
+  repoRoot: string,
+  sourceBranch: string,
+  baseBranch: string
+): Promise<MergeConflictPreview> {
+  try {
+    await execFileAsync(
+      'git',
+      ['merge-tree', '--write-tree', '--name-only', baseBranch, sourceBranch],
+      { cwd: repoRoot }
+    )
+    return { hasConflict: false, files: [] }
+  } catch (err) {
+    if (err && typeof err === 'object') {
+      const e = err as { code?: number; stdout?: string; stderr?: string; message?: string }
+      // git merge-tree prints the tree OID on line 1, then conflicted file
+      // paths on subsequent lines (with --name-only). Exit code 1 = conflicts.
+      if (e.code === 1) {
+        const lines = String(e.stdout || '').split('\n').map((s) => s.trim()).filter(Boolean)
+        // Drop the first line (tree OID) — the rest are file paths.
+        const files = lines.slice(1)
+        return { hasConflict: true, files }
+      }
+      // "unknown switch" / unsupported → older git
+      const stderr = String(e.stderr || e.message || '')
+      if (/unknown (option|switch)|usage: git merge-tree/i.test(stderr)) {
+        return { hasConflict: false, files: [], unsupported: true }
+      }
+    }
+    // Unknown error — treat as "can't tell", don't block the user
+    return { hasConflict: false, files: [], unsupported: true }
+  }
+}
+
+/** Resolve a branch ref to its current SHA, or null if it doesn't exist. */
+export async function getBranchSha(repoRoot: string, branch: string): Promise<string | null> {
+  try {
+    const { stdout } = await execFileAsync('git', ['rev-parse', '--verify', `refs/heads/${branch}`], {
+      cwd: repoRoot
+    })
+    return stdout.trim() || null
+  } catch {
+    return null
+  }
+}
+
+/** True if `branch` is an ancestor of `base` (i.e. non-squash merged). */
+export async function isBranchAncestorOfBase(
+  repoRoot: string,
+  branch: string,
+  base: string
+): Promise<boolean> {
+  try {
+    await execFileAsync('git', ['merge-base', '--is-ancestor', branch, base], { cwd: repoRoot })
+    return true
+  } catch {
+    return false
+  }
+}
+
 export async function removeWorktree(repoRoot: string, path: string, force?: boolean): Promise<void> {
   log('worktree', `removing worktree: path=${path} force=${force}`)
   const args = ['worktree', 'remove', path]

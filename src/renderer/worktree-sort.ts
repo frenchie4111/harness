@@ -8,7 +8,12 @@ export interface WorktreeGroup {
   worktrees: Worktree[]
 }
 
-export function getGroupKey(wt: Worktree, pr: PRStatus | null | undefined): GroupKey {
+export function getGroupKey(
+  wt: Worktree,
+  pr: PRStatus | null | undefined,
+  locallyMerged?: boolean
+): GroupKey {
+  if (locallyMerged) return 'merged'
   if (!pr) return 'no-pr'
   if (pr.state === 'merged' || pr.state === 'closed') return 'merged'
   if (pr.checksOverall === 'failure' || pr.hasConflict === true) return 'needs-attention'
@@ -33,7 +38,8 @@ function sortByRecency(worktrees: Worktree[], lastActive: Record<string, number>
 export function groupWorktrees(
   worktrees: Worktree[],
   prStatuses: Record<string, PRStatus | null>,
-  lastActive?: Record<string, number>
+  lastActive?: Record<string, number>,
+  mergedPaths?: Record<string, boolean>
 ): WorktreeGroup[] {
   const grouped: Record<GroupKey, Worktree[]> = {
     'needs-attention': [],
@@ -43,7 +49,7 @@ export function groupWorktrees(
   }
 
   for (const wt of worktrees) {
-    const key = getGroupKey(wt, prStatuses[wt.path])
+    const key = getGroupKey(wt, prStatuses[wt.path], mergedPaths?.[wt.path])
     grouped[key].push(wt)
   }
 
@@ -60,7 +66,10 @@ export function groupWorktrees(
 export function sortedWorktrees(
   worktrees: Worktree[],
   prStatuses: Record<string, PRStatus | null>,
-  lastActive?: Record<string, number>
+  lastActive?: Record<string, number>,
+  mergedPaths?: Record<string, boolean>
 ): Worktree[] {
-  return groupWorktrees(worktrees, prStatuses, lastActive).flatMap((g) => g.worktrees)
+  return groupWorktrees(worktrees, prStatuses, lastActive, mergedPaths).flatMap(
+    (g) => g.worktrees
+  )
 }

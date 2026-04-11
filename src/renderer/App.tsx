@@ -29,6 +29,7 @@ export default function App(): JSX.Element {
   const [activeTabId, setActiveTabId] = useState<Record<string, string>>({})
   const [statuses, setStatuses] = useState<Record<string, PtyStatus>>({})
   const [prStatuses, setPrStatuses] = useState<Record<string, PRStatus | null>>({})
+  const [mergedPaths, setMergedPaths] = useState<Record<string, boolean>>({})
   const [prLoading, setPrLoading] = useState(false)
   const [lastActive, setLastActive] = useState<Record<string, number>>({})
   const [repoRoot, setRepoRoot] = useState<string | null>(null)
@@ -200,7 +201,22 @@ export default function App(): JSX.Element {
     } finally {
       setPrLoading(false)
     }
+    try {
+      const merged = await window.api.getMergedStatus()
+      setMergedPaths(merged)
+    } catch {
+      // ignore
+    }
   }, [worktrees])
+
+  const refreshMergedStatus = useCallback(async () => {
+    try {
+      const merged = await window.api.getMergedStatus()
+      setMergedPaths(merged)
+    } catch {
+      // ignore
+    }
+  }, [])
 
   // Fetch a single worktree's PR status
   const fetchPRStatus = useCallback(async (wtPath: string) => {
@@ -530,8 +546,8 @@ export default function App(): JSX.Element {
   // --- Hotkey action handlers ---
   // Use the same sort order as the sidebar for navigation
   const orderedWorktrees = useMemo(
-    () => sortedWorktrees(worktrees, prStatuses, lastActive),
-    [worktrees, prStatuses, lastActive]
+    () => sortedWorktrees(worktrees, prStatuses, lastActive, mergedPaths),
+    [worktrees, prStatuses, lastActive, mergedPaths]
   )
 
   const switchToWorktreeByIndex = useCallback(
@@ -752,6 +768,7 @@ export default function App(): JSX.Element {
             activeWorktreeId={activeWorktreeId}
             statuses={worktreeStatuses}
             prStatuses={prStatuses}
+            mergedPaths={mergedPaths}
             lastActive={lastActive}
             prLoading={prLoading}
             onSelectWorktree={(path) => {
@@ -807,7 +824,12 @@ export default function App(): JSX.Element {
         {/* Right panel — hidden on the new-worktree screen so the form gets the full width */}
         {!showNewWorktree && (
           <div className="w-64 shrink-0 h-full flex flex-col border-l border-border bg-panel">
-            <PRStatusPanel pr={activeWorktreeId ? prStatuses[activeWorktreeId] : null} />
+            <PRStatusPanel
+              pr={activeWorktreeId ? prStatuses[activeWorktreeId] : null}
+              worktree={worktrees.find((w) => w.path === activeWorktreeId) || null}
+              onMerged={refreshMergedStatus}
+              onRemoveWorktree={handleDeleteWorktree}
+            />
             <div className="flex-1 min-h-0">
               <ChangedFilesPanel worktreePath={activeWorktreeId} onOpenDiff={handleOpenDiff} />
             </div>

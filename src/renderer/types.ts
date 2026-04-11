@@ -55,6 +55,31 @@ export interface CheckStatus {
   detailsUrl?: string
 }
 
+export type MergeStrategy = 'squash' | 'merge-commit' | 'fast-forward'
+
+export interface MainWorktreeStatus {
+  path: string
+  currentBranch: string
+  baseBranch: string
+  isOnBase: boolean
+  isDirty: boolean
+  ready: boolean
+}
+
+export interface MergeConflictPreview {
+  hasConflict: boolean
+  files: string[]
+  unsupported?: boolean
+}
+
+export interface MergeLocalResult {
+  ok: true
+  strategy: MergeStrategy
+  mergedBranch: string
+  baseBranch: string
+  mainPath: string
+}
+
 export interface PRStatus {
   number: number
   title: string
@@ -83,6 +108,14 @@ export interface ElectronAPI {
   getRepoRoot(): Promise<string | null>
 
   getPRStatus(worktreePath: string): Promise<PRStatus | null>
+  getMainWorktreeStatus(): Promise<MainWorktreeStatus>
+  prepareMainForMerge(): Promise<MainWorktreeStatus>
+  previewMergeConflicts(sourceBranch: string): Promise<MergeConflictPreview>
+  mergeWorktreeLocally(
+    sourceBranch: string,
+    strategy: MergeStrategy
+  ): Promise<MergeLocalResult>
+  getMergedStatus(): Promise<Record<string, boolean>>
   getChangedFiles(worktreePath: string, mode?: 'working' | 'branch'): Promise<ChangedFile[]>
   getFileDiff(
     worktreePath: string,
@@ -108,6 +141,8 @@ export interface ElectronAPI {
 
   getWorktreeBase(): Promise<'remote' | 'local'>
   setWorktreeBase(mode: 'remote' | 'local'): Promise<boolean>
+  getMergeStrategy(): Promise<MergeStrategy>
+  setMergeStrategy(strategy: MergeStrategy): Promise<boolean>
 
   getEditor(): Promise<string>
   setEditor(editorId: string): Promise<boolean>
