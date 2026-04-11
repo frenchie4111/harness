@@ -4,7 +4,7 @@ import { existsSync, readdirSync, statSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 import { PtyManager } from './pty-manager'
-import { listWorktrees, listBranches, addWorktree, continueWorktree, removeWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, type MergeStrategy } from './worktree'
+import { listWorktrees, listBranches, addWorktree, continueWorktree, removeWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, type MergeStrategy } from './worktree'
 import { getPRStatus, testToken, starRepo } from './github'
 import { AVAILABLE_EDITORS, DEFAULT_EDITOR_ID, openInEditor } from './editor'
 import { setSecret, hasSecret, deleteSecret } from './secrets'
@@ -22,7 +22,7 @@ import {
   loadTerminalHistory,
   clearTerminalHistory,
   pruneTerminalHistory,
-  type PersistedTab,
+  type PersistedPane,
   type QuestStep
 } from './persistence'
 import { hooksInstalled, installHooks, watchStatusDir } from './hooks'
@@ -200,6 +200,14 @@ function registerIpcHandlers(): void {
       return getFileDiff(worktreePath, filePath, staged, mode ?? 'working')
     }
   )
+
+  ipcMain.handle('worktree:branchCommits', async (_, worktreePath: string) => {
+    return getBranchCommits(worktreePath)
+  })
+
+  ipcMain.handle('worktree:commitDiff', async (_, worktreePath: string, hash: string) => {
+    return getCommitDiff(worktreePath, hash)
+  })
 
   ipcMain.handle('worktree:prStatus', async (_, worktreePath: string) => {
     return getPRStatus(worktreePath)
@@ -430,19 +438,15 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  // Persisted terminal tabs / active tab ids
-  ipcMain.handle('config:getTerminalTabs', () => {
-    return {
-      tabs: config.terminalTabs || {},
-      activeTabId: config.activeTabId || {}
-    }
+  // Persisted workspace panes (tabs per pane, per worktree)
+  ipcMain.handle('config:getPanes', () => {
+    return config.panes || {}
   })
 
   ipcMain.handle(
-    'config:setTerminalTabs',
-    (_, tabs: Record<string, PersistedTab[]>, activeTabId: Record<string, string>) => {
-      config.terminalTabs = tabs
-      config.activeTabId = activeTabId
+    'config:setPanes',
+    (_, panes: Record<string, PersistedPane[]>) => {
+      config.panes = panes
       saveConfig(config)
       return true
     }
@@ -756,8 +760,10 @@ app.whenReady().then(() => {
 
   // Prune terminal history files not referenced by any persisted tab
   const keepIds = new Set<string>()
-  for (const tabs of Object.values(config.terminalTabs || {})) {
-    for (const tab of tabs) keepIds.add(tab.id)
+  for (const panes of Object.values(config.panes || {})) {
+    for (const pane of panes) {
+      for (const tab of pane.tabs) keepIds.add(tab.id)
+    }
   }
   pruneTerminalHistory(keepIds)
 

@@ -16,6 +16,8 @@ export interface TerminalTab {
   staged?: boolean
   /** For diff tabs: show the branch diff (base...HEAD) instead of working-tree diff */
   branchDiff?: boolean
+  /** For diff tabs: when set, show this commit's full diff instead of a file diff */
+  commitHash?: string
   /** For claude tabs: UUID passed to `claude --session-id` so the tab resumes its own session. */
   sessionId?: string
   /** For claude tabs: one-shot kickoff prompt appended to the claude command on first spawn. Not persisted. */
@@ -29,6 +31,18 @@ export interface PersistedTab {
   sessionId?: string
 }
 
+export interface WorkspacePane {
+  id: string
+  tabs: TerminalTab[]
+  activeTabId: string
+}
+
+export interface PersistedPane {
+  id: string
+  tabs: PersistedTab[]
+  activeTabId: string
+}
+
 export type PtyStatus = 'idle' | 'processing' | 'waiting' | 'needs-approval'
 
 export type QuestStep = 'hidden' | 'spawn-second' | 'switch-between' | 'finale' | 'done'
@@ -40,6 +54,26 @@ export type UpdaterStatus =
   | { state: 'downloading'; percent: number }
   | { state: 'downloaded'; version: string }
   | { state: 'error'; error: string }
+
+export interface CommitDiff {
+  hash: string
+  shortHash: string
+  author: string
+  authorEmail: string
+  date: string
+  subject: string
+  body: string
+  diff: string
+}
+
+export interface BranchCommit {
+  hash: string
+  shortHash: string
+  subject: string
+  author: string
+  relativeDate: string
+  timestamp: number
+}
 
 export interface ChangedFile {
   path: string
@@ -118,6 +152,8 @@ export interface ElectronAPI {
     strategy: MergeStrategy
   ): Promise<MergeLocalResult>
   getMergedStatus(): Promise<Record<string, boolean>>
+  getBranchCommits(worktreePath: string): Promise<BranchCommit[]>
+  getCommitDiff(worktreePath: string, hash: string): Promise<CommitDiff | null>
   getChangedFiles(worktreePath: string, mode?: 'working' | 'branch'): Promise<ChangedFile[]>
   getFileDiff(
     worktreePath: string,
@@ -155,14 +191,8 @@ export interface ElectronAPI {
   openInEditor(worktreePath: string, filePath?: string): Promise<{ ok: true } | { ok: false; error: string }>
   onEditorChanged(callback: (editorId: string) => void): () => void
 
-  getTerminalTabs(): Promise<{
-    tabs: Record<string, PersistedTab[]>
-    activeTabId: Record<string, string>
-  }>
-  setTerminalTabs(
-    tabs: Record<string, PersistedTab[]>,
-    activeTabId: Record<string, string>
-  ): Promise<boolean>
+  getWorkspacePanes(): Promise<Record<string, PersistedPane[]>>
+  setWorkspacePanes(panes: Record<string, PersistedPane[]>): Promise<boolean>
   saveTerminalHistory(id: string, content: string): Promise<boolean>
   saveTerminalHistorySync(id: string, content: string): void
   loadTerminalHistory(id: string): Promise<string | null>

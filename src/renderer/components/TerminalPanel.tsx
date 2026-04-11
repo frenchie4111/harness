@@ -1,21 +1,27 @@
-import { X, Plus, Sparkles, Code2 } from 'lucide-react'
-import type { TerminalTab, PtyStatus } from '../types'
-import { XTerminal } from './XTerminal'
-import { DiffView } from './DiffView'
+import { useEffect, useRef } from 'react'
+import { X, Plus, Sparkles, Code2, SplitSquareHorizontal } from 'lucide-react'
+import {
+  SortableContext,
+  horizontalListSortingStrategy,
+  useSortable
+} from '@dnd-kit/sortable'
+import { useDroppable } from '@dnd-kit/core'
+import { CSS } from '@dnd-kit/utilities'
+import type { WorkspacePane, TerminalTab, PtyStatus } from '../types'
 import { Tooltip } from './Tooltip'
 
 interface TerminalPanelProps {
   worktreePath: string
-  tabs: TerminalTab[]
-  activeTabId: string
+  pane: WorkspacePane
+  isFocused: boolean
+  paneCount: number
   statuses: Record<string, PtyStatus>
-  onSelectTab: (worktreePath: string, tabId: string) => void
-  onAddTab: (worktreePath: string) => void
-  onAddClaudeTab: (worktreePath: string) => void
-  onCloseTab: (worktreePath: string, tabId: string) => void
-  onRestartClaudeTab: (worktreePath: string, tabId: string) => void
-  visible: boolean
-  claudeCommand: string
+  registerSlot: (paneId: string, el: HTMLDivElement | null) => void
+  onSelectTab: (tabId: string) => void
+  onAddTab: () => void
+  onAddClaudeTab: () => void
+  onCloseTab: (tabId: string) => void
+  onSplit: () => void
 }
 
 const TAB_STATUS_DOT: Record<PtyStatus, string> = {
@@ -25,58 +31,102 @@ const TAB_STATUS_DOT: Record<PtyStatus, string> = {
   'needs-approval': 'bg-danger'
 }
 
+interface SortableTabProps {
+  tab: TerminalTab
+  isActive: boolean
+  status: PtyStatus
+  showClose: boolean
+  onSelect: () => void
+  onClose: () => void
+}
+
+function SortableTab({ tab, isActive, status, showClose, onSelect, onClose }: SortableTabProps): JSX.Element {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: tab.id
+  })
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1
+  }
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      className={`no-drag flex items-center gap-1.5 px-3 h-full text-xs cursor-pointer border-b-2 transition-colors ${
+        isActive
+          ? 'border-muted text-fg-bright'
+          : 'border-transparent text-dim hover:text-fg'
+      }`}
+      onClick={onSelect}
+    >
+      <span className={`w-1.5 h-1.5 rounded-full ${TAB_STATUS_DOT[status]}`} />
+      <span>{tab.label}</span>
+      {showClose && (
+        <Tooltip label="Close tab" action="closeTab">
+          <button
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation()
+              onClose()
+            }}
+            className="ml-1 text-faint hover:text-fg transition-colors"
+          >
+            <X size={10} />
+          </button>
+        </Tooltip>
+      )}
+    </div>
+  )
+}
+
 export function TerminalPanel({
   worktreePath,
-  tabs,
-  activeTabId,
+  pane,
+  paneCount,
   statuses,
+  registerSlot,
   onSelectTab,
   onAddTab,
   onAddClaudeTab,
   onCloseTab,
-  onRestartClaudeTab,
-  visible,
-  claudeCommand
+  onSplit
 }: TerminalPanelProps): JSX.Element {
+  // Droppable target for the pane itself — lets users drop a tab onto an
+  // empty pane or past the last tab.
+  const { setNodeRef: setPaneDropRef } = useDroppable({ id: pane.id })
+  const slotRef = useRef<HTMLDivElement | null>(null)
+
+  // Register the content slot div with WorkspaceView so it can portal
+  // terminal content into this pane.
+  useEffect(() => {
+    registerSlot(pane.id, slotRef.current)
+    return () => registerSlot(pane.id, null)
+  }, [pane.id, registerSlot])
+
   return (
-    <div className="flex-1 flex flex-col min-w-0 bg-app">
+    <div ref={setPaneDropRef} className="flex-1 flex flex-col min-w-0 bg-app">
       {/* Tab bar */}
       <div className="drag-region flex items-center border-b border-border bg-panel h-10 shrink-0">
         <div className="no-drag flex items-center h-full overflow-x-auto pl-2 flex-1 min-w-0">
-          {tabs.map((tab) => {
-            const status = statuses[tab.id] || 'idle'
-            const isActive = tab.id === activeTabId
-            return (
-              <div
+          <SortableContext items={pane.tabs.map((t) => t.id)} strategy={horizontalListSortingStrategy}>
+            {pane.tabs.map((tab) => (
+              <SortableTab
                 key={tab.id}
-                className={`flex items-center gap-1.5 px-3 h-full text-xs cursor-pointer border-b-2 transition-colors ${
-                  isActive
-                    ? 'border-muted text-fg-bright'
-                    : 'border-transparent text-dim hover:text-fg'
-                }`}
-                onClick={() => onSelectTab(worktreePath, tab.id)}
-              >
-                <span className={`w-1.5 h-1.5 rounded-full ${TAB_STATUS_DOT[status]}`} />
-                <span>{tab.label}</span>
-                {tabs.length > 1 && (
-                  <Tooltip label="Close tab" action="closeTab">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onCloseTab(worktreePath, tab.id)
-                      }}
-                      className="ml-1 text-faint hover:text-fg transition-colors"
-                    >
-                      <X size={10} />
-                    </button>
-                  </Tooltip>
-                )}
-              </div>
-            )
-          })}
+                tab={tab}
+                isActive={tab.id === pane.activeTabId}
+                status={statuses[tab.id] || 'idle'}
+                showClose={pane.tabs.length > 1 || paneCount > 1}
+                onSelect={() => onSelectTab(tab.id)}
+                onClose={() => onCloseTab(tab.id)}
+              />
+            ))}
+          </SortableContext>
           <Tooltip label="New Claude tab">
             <button
-              onClick={() => onAddClaudeTab(worktreePath)}
+              onClick={onAddClaudeTab}
               className="no-drag px-2 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"
             >
               <Sparkles size={12} />
@@ -84,10 +134,18 @@ export function TerminalPanel({
           </Tooltip>
           <Tooltip label="New shell tab" action="newShellTab">
             <button
-              onClick={() => onAddTab(worktreePath)}
+              onClick={onAddTab}
               className="no-drag px-2 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"
             >
               <Plus size={12} />
+            </button>
+          </Tooltip>
+          <Tooltip label="Split pane right">
+            <button
+              onClick={onSplit}
+              className="no-drag px-2 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"
+            >
+              <SplitSquareHorizontal size={12} />
             </button>
           </Tooltip>
         </div>
@@ -101,40 +159,8 @@ export function TerminalPanel({
         </Tooltip>
       </div>
 
-      {/* Terminal / diff area */}
-      <div className="flex-1 relative min-h-0">
-        {tabs.map((tab) => (
-          <div
-            key={tab.id}
-            className="absolute inset-0"
-            style={{ display: tab.id === activeTabId ? 'block' : 'none' }}
-          >
-            {tab.type === 'diff' ? (
-              <DiffView
-                worktreePath={worktreePath}
-                filePath={tab.filePath!}
-                staged={tab.staged ?? false}
-                branchDiff={tab.branchDiff ?? false}
-              />
-            ) : (
-              <XTerminal
-                terminalId={tab.id}
-                cwd={worktreePath}
-                type={tab.type}
-                visible={visible && tab.id === activeTabId}
-                claudeCommand={claudeCommand}
-                sessionId={tab.sessionId}
-                initialPrompt={tab.initialPrompt}
-                onRestartClaude={
-                  tab.type === 'claude'
-                    ? () => onRestartClaudeTab(worktreePath, tab.id)
-                    : undefined
-                }
-              />
-            )}
-          </div>
-        ))}
-      </div>
+      {/* Content slot — terminals / diffs are portaled in by WorkspaceView */}
+      <div ref={slotRef} className="flex-1 relative min-h-0" />
     </div>
   )
 }

@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import type { Worktree, TerminalTab, PtyStatus, PRStatus, QuestStep } from './types'
+import type { Worktree, TerminalTab, PtyStatus, PRStatus, QuestStep, WorkspacePane } from './types'
 import type { Action } from './hotkeys'
 import { resolveHotkeys } from './hotkeys'
 import { HotkeysProvider } from './components/Tooltip'
 import { Sidebar } from './components/Sidebar'
 import { NewWorktreeScreen } from './components/NewWorktreeScreen'
 import { QuestCard } from './components/QuestCard'
-import { TerminalPanel } from './components/TerminalPanel'
+import { WorkspaceView } from './components/WorkspaceView'
 import { ChangedFilesPanel } from './components/ChangedFilesPanel'
+import { BranchCommitsPanel } from './components/BranchCommitsPanel'
 import { PRStatusPanel } from './components/PRStatusPanel'
 import { Settings } from './components/Settings'
 import { Guide } from './components/Guide'
@@ -24,11 +25,36 @@ function makeTerminalId(prefix: string, worktreePath: string): string {
   return `${prefix}-${safe}`
 }
 
+function newPaneId(): string {
+  return `pane-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
 export default function App(): JSX.Element {
   const [worktrees, setWorktrees] = useState<Worktree[]>([])
   const [activeWorktreeId, setActiveWorktreeId] = useState<string | null>(null)
-  const [terminalTabs, setTerminalTabs] = useState<Record<string, TerminalTab[]>>({})
-  const [activeTabId, setActiveTabId] = useState<Record<string, string>>({})
+  const [panes, setPanes] = useState<Record<string, WorkspacePane[]>>({})
+  // Which pane in each worktree is the "focused" one for hotkeys (newTab, closeTab, cycleTab).
+  // Tracks the last pane the user interacted with; defaults to the first pane.
+  const [activePaneId, setActivePaneId] = useState<Record<string, string>>({})
+
+  // Derived flat-tab views — preserved so the read-heavy parts of the app
+  // (status aggregation, hotkeys, PR refresh) don't need pane awareness.
+  const terminalTabs = useMemo<Record<string, TerminalTab[]>>(() => {
+    const out: Record<string, TerminalTab[]> = {}
+    for (const [wtPath, paneList] of Object.entries(panes)) {
+      out[wtPath] = paneList.flatMap((p) => p.tabs)
+    }
+    return out
+  }, [panes])
+  const activeTabId = useMemo<Record<string, string>>(() => {
+    const out: Record<string, string> = {}
+    for (const [wtPath, paneList] of Object.entries(panes)) {
+      const focusedId = activePaneId[wtPath] ?? paneList[0]?.id
+      const focused = paneList.find((p) => p.id === focusedId) || paneList[0]
+      if (focused) out[wtPath] = focused.activeTabId
+    }
+    return out
+  }, [panes, activePaneId])
   const [statuses, setStatuses] = useState<Record<string, PtyStatus>>({})
   const [prStatuses, setPrStatuses] = useState<Record<string, PRStatus | null>>({})
   const [mergedPaths, setMergedPaths] = useState<Record<string, boolean>>({})
@@ -121,40 +147,44 @@ export default function App(): JSX.Element {
   // Load repo root, worktrees, and config on mount
   useEffect(() => {
     (async () => {
-      const [root, overrides, cmd, persistedTabs] = await Promise.all([
+      const [root, overrides, cmd, persistedPanes] = await Promise.all([
         window.api.getRepoRoot(),
         window.api.getHotkeyOverrides(),
         window.api.getClaudeCommand(),
-        window.api.getTerminalTabs()
+        window.api.getWorkspacePanes()
       ])
       if (overrides) setHotkeyOverrides(overrides)
       setClaudeCommand(cmd)
-      // Restore persisted tabs, backfilling sessionId for any Claude tab
+      // Restore persisted panes, backfilling sessionId for any Claude tab
       // missing one (legacy tabs from before per-tab session IDs existed).
       // For the first legacy claude tab in each worktree, try to reuse the
       // most recent session on disk so the user's existing conversation
       // carries over — the spawn path will use `--resume` when the file
-      // exists. Subsequent legacy tabs get fresh UUIDs.
-      if (persistedTabs?.tabs) {
-        const restored: Record<string, TerminalTab[]> = {}
-        for (const [wtPath, tabs] of Object.entries(persistedTabs.tabs)) {
-          const needsBackfill = tabs.some((t) => t.type === 'claude' && !t.sessionId)
+      // exists.
+      if (persistedPanes) {
+        const restored: Record<string, WorkspacePane[]> = {}
+        for (const [wtPath, paneList] of Object.entries(persistedPanes)) {
+          const allTabs = paneList.flatMap((p) => p.tabs)
+          const needsBackfill = allTabs.some((t) => t.type === 'claude' && !t.sessionId)
           const latest = needsBackfill
             ? await window.api.getLatestClaudeSessionId(wtPath)
             : null
           let claimedLatest = false
-          restored[wtPath] = tabs.map((t) => {
-            if (t.type !== 'claude' || t.sessionId) return t as TerminalTab
-            if (latest && !claimedLatest) {
-              claimedLatest = true
-              return { ...t, sessionId: latest }
-            }
-            return { ...t, sessionId: crypto.randomUUID() }
-          })
+          restored[wtPath] = paneList.map((pane) => ({
+            id: pane.id,
+            activeTabId: pane.activeTabId,
+            tabs: pane.tabs.map((t) => {
+              if (t.type !== 'claude' || t.sessionId) return t as TerminalTab
+              if (latest && !claimedLatest) {
+                claimedLatest = true
+                return { ...t, sessionId: latest }
+              }
+              return { ...t, sessionId: crypto.randomUUID() }
+            })
+          }))
         }
-        setTerminalTabs(restored)
+        setPanes(restored)
       }
-      if (persistedTabs?.activeTabId) setActiveTabId(persistedTabs.activeTabId)
       tabsLoadedRef.current = true
       if (root) {
         setRepoRoot(root)
@@ -173,28 +203,30 @@ export default function App(): JSX.Element {
   // initial React state.
   useEffect(() => {
     if (!tabsLoadedRef.current) return
-    const persistable: Record<string, { id: string; type: 'claude' | 'shell'; label: string; sessionId?: string }[]> = {}
-    for (const [wtPath, tabs] of Object.entries(terminalTabs)) {
-      // Explicit shape map — drops transient fields (initialPrompt) that
-      // must never round-trip through persistence.
-      const filtered = tabs
-        .filter((t) => t.type !== 'diff')
-        .map((t) => ({
-          id: t.id,
-          type: t.type as 'claude' | 'shell',
-          label: t.label,
-          sessionId: t.sessionId
-        }))
-      if (filtered.length > 0) persistable[wtPath] = filtered
+    const persistable: Record<string, { id: string; tabs: { id: string; type: 'claude' | 'shell'; label: string; sessionId?: string }[]; activeTabId: string }[]> = {}
+    for (const [wtPath, paneList] of Object.entries(panes)) {
+      const persistedPanes = paneList
+        .map((pane) => {
+          // Drop diff tabs and the transient `initialPrompt` field.
+          const tabs = pane.tabs
+            .filter((t) => t.type !== 'diff')
+            .map((t) => ({
+              id: t.id,
+              type: t.type as 'claude' | 'shell',
+              label: t.label,
+              sessionId: t.sessionId
+            }))
+          if (tabs.length === 0) return null
+          const validActive = tabs.some((t) => t.id === pane.activeTabId)
+            ? pane.activeTabId
+            : tabs[0].id
+          return { id: pane.id, tabs, activeTabId: validActive }
+        })
+        .filter((p): p is NonNullable<typeof p> => p !== null)
+      if (persistedPanes.length > 0) persistable[wtPath] = persistedPanes
     }
-    // Only persist active tab ids that point at a non-diff tab
-    const persistableActive: Record<string, string> = {}
-    for (const [wtPath, tabId] of Object.entries(activeTabId)) {
-      if (!tabId || tabId.startsWith('diff-')) continue
-      persistableActive[wtPath] = tabId
-    }
-    window.api.setTerminalTabs(persistable, persistableActive)
-  }, [terminalTabs, activeTabId])
+    window.api.setWorkspacePanes(persistable)
+  }, [panes])
 
   // Flush all terminal scrollback to disk when the window is about to close
   useEffect(() => {
@@ -353,8 +385,9 @@ export default function App(): JSX.Element {
       })()
     }
 
-    setTerminalTabs((prev) => {
-      if (prev[activeWorktreeId] && prev[activeWorktreeId].length > 0) return prev
+    setPanes((prev) => {
+      const existing = prev[activeWorktreeId] || []
+      if (existing.some((p) => p.tabs.length > 0)) return prev
       const claudeTabId = makeTerminalId('claude', activeWorktreeId)
       const pendingPrompt = pendingPromptsRef.current[activeWorktreeId]
       delete pendingPromptsRef.current[activeWorktreeId]
@@ -373,12 +406,8 @@ export default function App(): JSX.Element {
           label: 'Shell'
         }
       ]
-      return { ...prev, [activeWorktreeId]: tabs }
-    })
-
-    setActiveTabId((prev) => {
-      if (prev[activeWorktreeId]) return prev
-      return { ...prev, [activeWorktreeId]: makeTerminalId('claude', activeWorktreeId) }
+      const pane: WorkspacePane = { id: newPaneId(), tabs, activeTabId: claudeTabId }
+      return { ...prev, [activeWorktreeId]: [pane] }
     })
   }, [activeWorktreeId, hooksConsent])
 
@@ -472,13 +501,13 @@ export default function App(): JSX.Element {
       if (tab.type !== 'diff') markTerminalClosing(tab.id)
       window.api.killTerminal(tab.id)
     }
-    // Clean up terminal state
-    setTerminalTabs((prev) => {
+    // Clean up pane state
+    setPanes((prev) => {
       const next = { ...prev }
       delete next[path]
       return next
     })
-    setActiveTabId((prev) => {
+    setActivePaneId((prev) => {
       const next = { ...prev }
       delete next[path]
       return next
@@ -494,35 +523,51 @@ export default function App(): JSX.Element {
     }
   }, [terminalTabs, activeWorktreeId])
 
-  const handleAddTerminalTab = useCallback(
-    (worktreePath: string) => {
-      const id = `shell-${Date.now()}`
-      const tab: TerminalTab = { id, type: 'shell', label: 'Shell' }
-      setTerminalTabs((prev) => ({
-        ...prev,
-        [worktreePath]: [...(prev[worktreePath] || []), tab]
-      }))
-      setActiveTabId((prev) => ({ ...prev, [worktreePath]: id }))
+  // Append a tab to a specific pane (or the focused pane if paneId is omitted).
+  // Creates an initial pane if the worktree has none.
+  const appendTabToPane = useCallback(
+    (worktreePath: string, tab: TerminalTab, paneId?: string) => {
+      setPanes((prev) => {
+        const list = prev[worktreePath] || []
+        if (list.length === 0) {
+          const pane: WorkspacePane = { id: newPaneId(), tabs: [tab], activeTabId: tab.id }
+          return { ...prev, [worktreePath]: [pane] }
+        }
+        const targetId = paneId || activePaneId[worktreePath] || list[0].id
+        const nextList = list.map((p) =>
+          p.id === targetId
+            ? { ...p, tabs: [...p.tabs, tab], activeTabId: tab.id }
+            : p
+        )
+        return { ...prev, [worktreePath]: nextList }
+      })
+      setActivePaneId((prev) => {
+        const list = panes[worktreePath] || []
+        const target = paneId || prev[worktreePath] || list[0]?.id
+        return target ? { ...prev, [worktreePath]: target } : prev
+      })
     },
-    []
+    [activePaneId, panes]
+  )
+
+  const handleAddTerminalTab = useCallback(
+    (worktreePath: string, paneId?: string) => {
+      const id = `shell-${Date.now()}`
+      appendTabToPane(worktreePath, { id, type: 'shell', label: 'Shell' }, paneId)
+    },
+    [appendTabToPane]
   )
 
   const handleAddClaudeTab = useCallback(
-    (worktreePath: string) => {
+    (worktreePath: string, paneId?: string) => {
       const id = `${makeTerminalId('claude', worktreePath)}-${Date.now()}`
-      const tab: TerminalTab = {
-        id,
-        type: 'claude',
-        label: 'Claude',
-        sessionId: crypto.randomUUID()
-      }
-      setTerminalTabs((prev) => ({
-        ...prev,
-        [worktreePath]: [...(prev[worktreePath] || []), tab]
-      }))
-      setActiveTabId((prev) => ({ ...prev, [worktreePath]: id }))
+      appendTabToPane(
+        worktreePath,
+        { id, type: 'claude', label: 'Claude', sessionId: crypto.randomUUID() },
+        paneId
+      )
     },
-    []
+    [appendTabToPane]
   )
 
   const handleCloseTab = useCallback(
@@ -532,19 +577,29 @@ export default function App(): JSX.Element {
         markTerminalClosing(tabId)
         window.api.killTerminal(tabId)
       }
-      setTerminalTabs((prev) => {
-        const tabs = (prev[worktreePath] || []).filter((t) => t.id !== tabId)
-        return { ...prev, [worktreePath]: tabs }
-      })
-      setActiveTabId((prev) => {
-        if (prev[worktreePath] === tabId) {
-          const remaining = (terminalTabs[worktreePath] || []).filter((t) => t.id !== tabId)
-          return { ...prev, [worktreePath]: remaining[0]?.id || '' }
+      setPanes((prev) => {
+        const list = prev[worktreePath] || []
+        const nextList: WorkspacePane[] = []
+        for (const pane of list) {
+          if (!pane.tabs.some((t) => t.id === tabId)) {
+            nextList.push(pane)
+            continue
+          }
+          const remaining = pane.tabs.filter((t) => t.id !== tabId)
+          if (remaining.length === 0) {
+            // Drop empty panes — unless this is the worktree's only pane,
+            // in which case keep it empty so a fresh Claude tab can spawn.
+            if (list.length === 1) nextList.push({ ...pane, tabs: [], activeTabId: '' })
+            continue
+          }
+          const newActive =
+            pane.activeTabId === tabId ? remaining[0].id : pane.activeTabId
+          nextList.push({ ...pane, tabs: remaining, activeTabId: newActive })
         }
-        return prev
+        return { ...prev, [worktreePath]: nextList }
       })
     },
-    [terminalTabs]
+    []
   )
 
   const handleRestartClaudeTab = useCallback(
@@ -554,25 +609,141 @@ export default function App(): JSX.Element {
       window.api.clearTerminalHistory(tabId)
       const newId = `${makeTerminalId('claude', worktreePath)}-${Date.now()}`
       const newSessionId = crypto.randomUUID()
-      setTerminalTabs((prev) => {
-        const tabs = prev[worktreePath] || []
-        const next = tabs.map((t) =>
-          t.id === tabId && t.type === 'claude'
-            ? { ...t, id: newId, sessionId: newSessionId }
-            : t
-        )
-        return { ...prev, [worktreePath]: next }
+      setPanes((prev) => {
+        const list = prev[worktreePath] || []
+        const nextList = list.map((pane) => {
+          if (!pane.tabs.some((t) => t.id === tabId)) return pane
+          const tabs = pane.tabs.map((t) =>
+            t.id === tabId && t.type === 'claude'
+              ? { ...t, id: newId, sessionId: newSessionId }
+              : t
+          )
+          const activeTabId = pane.activeTabId === tabId ? newId : pane.activeTabId
+          return { ...pane, tabs, activeTabId }
+        })
+        return { ...prev, [worktreePath]: nextList }
       })
-      setActiveTabId((prev) =>
-        prev[worktreePath] === tabId ? { ...prev, [worktreePath]: newId } : prev
-      )
     },
     []
   )
 
-  const handleSelectTab = useCallback((worktreePath: string, tabId: string) => {
-    setActiveTabId((prev) => ({ ...prev, [worktreePath]: tabId }))
-  }, [])
+  const handleSelectTab = useCallback(
+    (worktreePath: string, paneId: string, tabId: string) => {
+      setPanes((prev) => {
+        const list = prev[worktreePath] || []
+        if (!list.some((p) => p.id === paneId)) return prev
+        const nextList = list.map((p) =>
+          p.id === paneId ? { ...p, activeTabId: tabId } : p
+        )
+        return { ...prev, [worktreePath]: nextList }
+      })
+      setActivePaneId((prev) => ({ ...prev, [worktreePath]: paneId }))
+    },
+    []
+  )
+
+  const handleOpenCommit = useCallback(
+    (hash: string, shortHash: string, subject: string) => {
+      if (!activeWorktreeId) return
+      const tabId = `diff-commit-${shortHash}`
+      const list = panes[activeWorktreeId] || []
+      const existingPane = list.find((p) => p.tabs.some((t) => t.id === tabId))
+      if (existingPane) {
+        handleSelectTab(activeWorktreeId, existingPane.id, tabId)
+        return
+      }
+      const tab: TerminalTab = {
+        id: tabId,
+        type: 'diff',
+        label: `${shortHash} ${subject}`,
+        commitHash: hash
+      }
+      appendTabToPane(activeWorktreeId, tab)
+    },
+    [activeWorktreeId, panes, handleSelectTab, appendTabToPane]
+  )
+
+  const handleReorderTabs = useCallback(
+    (worktreePath: string, paneId: string, fromId: string, toId: string) => {
+      if (fromId === toId) return
+      setPanes((prev) => {
+        const list = prev[worktreePath] || []
+        const nextList = list.map((pane) => {
+          if (pane.id !== paneId) return pane
+          const fromIdx = pane.tabs.findIndex((t) => t.id === fromId)
+          const toIdx = pane.tabs.findIndex((t) => t.id === toId)
+          if (fromIdx === -1 || toIdx === -1) return pane
+          const tabs = pane.tabs.slice()
+          const [moved] = tabs.splice(fromIdx, 1)
+          tabs.splice(toIdx, 0, moved)
+          return { ...pane, tabs }
+        })
+        return { ...prev, [worktreePath]: nextList }
+      })
+    },
+    []
+  )
+
+  // Move a tab from one pane to another (or to a different index within the same pane).
+  // If toIndex is undefined, appends at the end.
+  const handleMoveTabToPane = useCallback(
+    (worktreePath: string, tabId: string, toPaneId: string, toIndex?: number) => {
+      setPanes((prev) => {
+        const list = prev[worktreePath] || []
+        let moved: TerminalTab | null = null
+        // First pass: remove from source pane
+        const stripped = list.map((pane) => {
+          const idx = pane.tabs.findIndex((t) => t.id === tabId)
+          if (idx === -1) return pane
+          moved = pane.tabs[idx]
+          const tabs = pane.tabs.slice()
+          tabs.splice(idx, 1)
+          const activeTabId =
+            pane.activeTabId === tabId ? tabs[0]?.id || '' : pane.activeTabId
+          return { ...pane, tabs, activeTabId }
+        })
+        if (!moved) return prev
+        // Second pass: insert into target pane. Drop any now-empty source
+        // panes unless it's the only pane in the worktree.
+        const filtered =
+          stripped.length > 1 ? stripped.filter((p) => p.tabs.length > 0 || p.id === toPaneId) : stripped
+        const nextList = filtered.map((pane) => {
+          if (pane.id !== toPaneId) return pane
+          const tabs = pane.tabs.slice()
+          const insertAt = toIndex ?? tabs.length
+          tabs.splice(insertAt, 0, moved!)
+          return { ...pane, tabs, activeTabId: moved!.id }
+        })
+        return { ...prev, [worktreePath]: nextList }
+      })
+      setActivePaneId((prev) => ({ ...prev, [worktreePath]: toPaneId }))
+    },
+    []
+  )
+
+  // Split: create a new pane to the right of `fromPaneId` containing a fresh Claude tab.
+  const handleSplitPane = useCallback(
+    (worktreePath: string, fromPaneId: string) => {
+      const tabId = `${makeTerminalId('claude', worktreePath)}-${Date.now()}`
+      const tab: TerminalTab = {
+        id: tabId,
+        type: 'claude',
+        label: 'Claude',
+        sessionId: crypto.randomUUID()
+      }
+      const newPane: WorkspacePane = { id: newPaneId(), tabs: [tab], activeTabId: tabId }
+      setPanes((prev) => {
+        const list = prev[worktreePath] || []
+        const idx = list.findIndex((p) => p.id === fromPaneId)
+        const insertAt = idx === -1 ? list.length : idx + 1
+        const nextList = list.slice()
+        nextList.splice(insertAt, 0, newPane)
+        return { ...prev, [worktreePath]: nextList }
+      })
+      setActivePaneId((prev) => ({ ...prev, [worktreePath]: newPane.id }))
+    },
+    []
+  )
 
   const handleOpenDiff = useCallback(
     (filePath: string, staged: boolean, mode: 'working' | 'branch' = 'working') => {
@@ -580,13 +751,12 @@ export default function App(): JSX.Element {
       const branchDiff = mode === 'branch'
       const kind = branchDiff ? 'branch' : staged ? 'staged' : 'unstaged'
       const tabId = `diff-${kind}-${filePath}`
-      // If tab already exists, just switch to it
-      const existing = (terminalTabs[activeWorktreeId] || []).find((t) => t.id === tabId)
-      if (existing) {
-        setActiveTabId((prev) => ({ ...prev, [activeWorktreeId!]: tabId }))
+      const list = panes[activeWorktreeId] || []
+      const existingPane = list.find((p) => p.tabs.some((t) => t.id === tabId))
+      if (existingPane) {
+        handleSelectTab(activeWorktreeId, existingPane.id, tabId)
         return
       }
-      // Extract just the filename for the tab label
       const fileName = filePath.split('/').pop() || filePath
       const tab: TerminalTab = {
         id: tabId,
@@ -596,13 +766,9 @@ export default function App(): JSX.Element {
         staged,
         branchDiff
       }
-      setTerminalTabs((prev) => ({
-        ...prev,
-        [activeWorktreeId!]: [...(prev[activeWorktreeId!] || []), tab]
-      }))
-      setActiveTabId((prev) => ({ ...prev, [activeWorktreeId!]: tabId }))
+      appendTabToPane(activeWorktreeId, tab)
     },
-    [activeWorktreeId, terminalTabs]
+    [activeWorktreeId, panes, handleSelectTab, appendTabToPane]
   )
 
   // --- Hotkey action handlers ---
@@ -631,17 +797,20 @@ export default function App(): JSX.Element {
     [worktrees, activeWorktreeId]
   )
 
+  // Cycle tabs within the focused pane of the active worktree.
   const cycleTab = useCallback(
     (delta: number) => {
       if (!activeWorktreeId) return
-      const tabs = terminalTabs[activeWorktreeId] || []
-      if (tabs.length === 0) return
-      const currentTabId = activeTabId[activeWorktreeId]
-      const currentIdx = tabs.findIndex((t) => t.id === currentTabId)
-      const nextIdx = (currentIdx + delta + tabs.length) % tabs.length
-      setActiveTabId((prev) => ({ ...prev, [activeWorktreeId]: tabs[nextIdx].id }))
+      const list = panes[activeWorktreeId] || []
+      if (list.length === 0) return
+      const paneId = activePaneId[activeWorktreeId] || list[0].id
+      const pane = list.find((p) => p.id === paneId) || list[0]
+      if (pane.tabs.length === 0) return
+      const currentIdx = pane.tabs.findIndex((t) => t.id === pane.activeTabId)
+      const nextIdx = (currentIdx + delta + pane.tabs.length) % pane.tabs.length
+      handleSelectTab(activeWorktreeId, pane.id, pane.tabs[nextIdx].id)
     },
-    [activeWorktreeId, terminalTabs, activeTabId]
+    [activeWorktreeId, panes, activePaneId, handleSelectTab]
   )
 
   const hotkeyActions = useMemo<Partial<Record<Action, () => void>>>(
@@ -862,8 +1031,8 @@ export default function App(): JSX.Element {
         )}
         {/* Render ALL worktrees' terminals to keep PTYs alive across switches */}
         {worktrees.map((wt) => {
-          const tabs = terminalTabs[wt.path]
-          if (!tabs || tabs.length === 0) return null
+          const paneList = panes[wt.path]
+          if (!paneList || paneList.length === 0) return null
           const isVisible = !showNewWorktree && !showActivity && wt.path === activeWorktreeId
           return (
             <div
@@ -871,18 +1040,21 @@ export default function App(): JSX.Element {
               className="flex-1 min-w-0"
               style={{ display: isVisible ? 'flex' : 'none' }}
             >
-              <TerminalPanel
+              <WorkspaceView
                 worktreePath={wt.path}
-                tabs={tabs}
-                activeTabId={activeTabId[wt.path] || ''}
+                panes={paneList}
+                focusedPaneId={activePaneId[wt.path] || paneList[0]?.id || ''}
                 statuses={statuses}
+                visible={isVisible}
+                claudeCommand={claudeCommand}
                 onSelectTab={handleSelectTab}
                 onAddTab={handleAddTerminalTab}
                 onAddClaudeTab={handleAddClaudeTab}
                 onCloseTab={handleCloseTab}
                 onRestartClaudeTab={handleRestartClaudeTab}
-                visible={isVisible}
-                claudeCommand={claudeCommand}
+                onReorderTabs={handleReorderTabs}
+                onMoveTabToPane={handleMoveTabToPane}
+                onSplitPane={handleSplitPane}
               />
             </div>
           )
@@ -917,6 +1089,7 @@ export default function App(): JSX.Element {
               onMerged={refreshMergedStatus}
               onRemoveWorktree={handleDeleteWorktree}
             />
+            <BranchCommitsPanel worktreePath={activeWorktreeId} onOpenCommit={handleOpenCommit} />
             <div className="flex-1 min-h-0">
               <ChangedFilesPanel worktreePath={activeWorktreeId} onOpenDiff={handleOpenDiff} />
             </div>
