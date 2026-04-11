@@ -218,6 +218,7 @@ export interface ElectronAPI {
   onUpdaterStatus(callback: (status: UpdaterStatus) => void): () => void
 
   openExternal(url: string): void
+  getFilePath(file: File): string
   onOpenSettings(callback: () => void): () => void
 
   checkHooks(worktreePath: string): Promise<boolean>

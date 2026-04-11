@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 
 type StatusCallback = (id: string, status: string) => void
 type DataCallback = (id: string, data: string) => void
@@ -146,6 +146,9 @@ contextBridge.exposeInMainWorld('api', {
 
   // Shell
   openExternal: (url: string) => ipcRenderer.send('shell:openExternal', url),
+
+  // Resolve a dropped File's absolute path. File.path was removed in Electron 32+.
+  getFilePath: (file: File) => webUtils.getPathForFile(file),
 
   // App-level events from menu
   onOpenSettings: (callback: () => void) => {
