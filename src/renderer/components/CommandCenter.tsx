@@ -10,6 +10,7 @@ import type {
 } from '../types'
 import { eventsToSegments, STATE_COLOR } from './Activity'
 import { groupWorktrees, type GroupKey } from '../worktree-sort'
+import { RepoIcon } from './RepoIcon'
 
 interface CommandCenterProps {
   worktrees: Worktree[]
@@ -350,6 +351,7 @@ export function CommandCenter({
           <div key={section.scope}>
             {section.repoLabel && (
               <div className="flex items-center gap-2 mb-5">
+                <RepoIcon repoName={section.repoLabel} size={18} />
                 <h2 className="text-base font-semibold text-fg-bright tracking-tight">
                   {section.repoLabel}
                 </h2>
@@ -392,7 +394,8 @@ export function CommandCenter({
                             className={`text-left rounded-lg bg-surface hover:bg-surface-hover transition-colors p-4 flex flex-col gap-3 cursor-pointer ${STATUS_CARD_RING[display]}`}
                           >
                             {showRepoLabelOnCards && (
-                              <div className="text-[10px] uppercase tracking-wider text-faint -mb-1 truncate">
+                              <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-faint -mb-1 truncate">
+                                <RepoIcon repoName={wt.repoRoot.split('/').pop() || wt.repoRoot} size={12} />
                                 {wt.repoRoot.split('/').pop()}
                               </div>
                             )}

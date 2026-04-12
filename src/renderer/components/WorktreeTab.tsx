@@ -1,6 +1,7 @@
 import { GitPullRequest, RotateCw, Trash2 } from 'lucide-react'
 import type { Worktree, PtyStatus, PRStatus } from '../types'
 import { Tooltip } from './Tooltip'
+import { RepoIcon } from './RepoIcon'
 
 interface WorktreeTabProps {
   worktree: Worktree
@@ -90,11 +91,12 @@ export function WorktreeTab({ worktree, isActive, status, prStatus, isMerged, re
         <div className="text-sm font-medium truncate">{worktree.branch}</div>
         <div className="text-xs text-faint truncate">
           {repoLabel ? (
-            <>
+            <span className="inline-flex items-center gap-1">
+              <RepoIcon repoName={repoLabel} size={11} />
               <span className="text-dim">{repoLabel}</span>
-              <span className="mx-1">·</span>
+              <span className="mx-0.5">·</span>
               {worktree.path.split('/').pop()}
-            </>
+            </span>
           ) : (
             worktree.path.split('/').slice(-2).join('/')
           )}

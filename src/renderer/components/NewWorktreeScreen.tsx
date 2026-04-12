@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { Sparkles, Loader2, X, Map, ListChecks, BookOpen, Radio } from 'lucide-react'
 import iconUrl from '../../../resources/icon.png'
 import { sanitizeBranchInput, isValidBranchName } from '../branch-name'
+import { RepoIcon } from './RepoIcon'
 
 interface NewWorktreeScreenProps {
   onSubmit: (repoRoot: string, branchName: string, initialPrompt: string, teleportSessionId?: string) => Promise<void>
@@ -195,18 +196,24 @@ export function NewWorktreeScreen({ onSubmit, onCancel, repoRoots, defaultRepoRo
                     Repository
                   </span>
                 </div>
-                <select
-                  value={selectedRepo}
-                  onChange={(e) => setSelectedRepo(e.target.value)}
-                  disabled={submitting}
-                  className="w-full bg-app border-2 border-border-strong rounded-lg px-3 py-2.5 text-sm text-fg-bright outline-none focus:border-accent transition-colors cursor-pointer"
-                >
-                  {repoRoots.map((r) => (
-                    <option key={r} value={r}>
-                      {r.split('/').pop() || r}
-                    </option>
-                  ))}
-                </select>
+                <div className="flex items-center gap-2">
+                  <RepoIcon repoName={selectedRepo.split('/').pop() || selectedRepo} size={18} />
+                  <select
+                    value={selectedRepo}
+                    onChange={(e) => setSelectedRepo(e.target.value)}
+                    disabled={submitting}
+                    className="flex-1 bg-app border-2 border-border-strong rounded-lg px-3 py-2.5 text-sm text-fg-bright outline-none focus:border-accent transition-colors cursor-pointer"
+                  >
+                  {repoRoots.map((r) => {
+                    const name = r.split('/').pop() || r
+                    return (
+                      <option key={r} value={r}>
+                        {name}
+                      </option>
+                    )
+                  })}
+                  </select>
+                </div>
               </label>
             )}
 
