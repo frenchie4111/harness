@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Search, GitBranch, ArrowRight, Circle, Loader, Clock, AlertTriangle } from 'lucide-react'
-import type { Worktree, PtyStatus } from '../types'
+import { Search, GitPullRequest, ArrowRight } from 'lucide-react'
+import type { Worktree, PtyStatus, PRStatus } from '../types'
 import type { Action, HotkeyBinding } from '../hotkeys'
 import { ACTION_LABELS, bindingToString } from '../hotkeys'
+import { groupWorktrees, GROUP_ORDER, GROUP_LABELS, type GroupKey } from '../worktree-sort'
 
 interface CommandPaletteProps {
   worktrees: Worktree[]
   worktreeStatuses: Record<string, PtyStatus>
+  prStatuses: Record<string, PRStatus | null>
+  mergedPaths: Record<string, boolean>
   activeWorktreeId: string | null
   resolvedHotkeys: Record<Action, HotkeyBinding>
   onClose: () => void
@@ -14,22 +17,39 @@ interface CommandPaletteProps {
   onAction: (action: Action) => void
 }
 
-interface PaletteItem {
-  id: string
-  label: string
-  sublabel?: string
-  hint?: string
-  category: 'worktree' | 'action'
-  action?: Action
-  worktreePath?: string
-  status?: PtyStatus
+type PaletteItem =
+  | { kind: 'worktree'; wt: Worktree }
+  | { kind: 'action'; action: Action; label: string; hint?: string }
+  | { kind: 'heading'; label: string }
+
+const STATUS_COLORS: Record<PtyStatus | 'merged', string> = {
+  idle: 'bg-faint',
+  processing: 'bg-success animate-pulse',
+  waiting: 'bg-warning',
+  'needs-approval': 'bg-danger animate-pulse',
+  merged: 'bg-accent',
 }
 
-const STATUS_ICON: Record<PtyStatus, { icon: typeof Circle; className: string; label: string }> = {
-  idle: { icon: Circle, className: 'text-faint', label: 'Idle' },
-  processing: { icon: Loader, className: 'text-success animate-spin', label: 'Working' },
-  waiting: { icon: Clock, className: 'text-warning', label: 'Waiting' },
-  'needs-approval': { icon: AlertTriangle, className: 'text-danger animate-pulse', label: 'Needs approval' },
+const STATUS_LABELS: Record<PtyStatus | 'merged', string> = {
+  idle: 'Idle',
+  processing: 'Working...',
+  waiting: 'Waiting for input',
+  'needs-approval': 'Needs approval',
+  merged: 'Merged',
+}
+
+const PR_ICON_COLOR: Record<string, string> = {
+  success: 'text-success',
+  failure: 'text-danger',
+  pending: 'text-warning',
+  none: 'text-dim',
+}
+
+const PR_STATE_COLOR: Record<string, string> = {
+  open: 'text-success',
+  draft: 'text-dim',
+  merged: 'text-accent',
+  closed: 'text-danger',
 }
 
 const EXCLUDED_ACTIONS: Set<Action> = new Set([
@@ -57,9 +77,21 @@ function fuzzyScore(query: string, text: string): number {
   return qi === q.length ? score : -1
 }
 
+function prIconColor(pr: PRStatus): string {
+  if (pr.state === 'merged') return PR_STATE_COLOR.merged
+  if (pr.state === 'closed') return PR_STATE_COLOR.closed
+  if (pr.hasConflict === true) return PR_ICON_COLOR.failure
+  if (pr.checksOverall === 'failure') return PR_ICON_COLOR.failure
+  if (pr.checksOverall === 'pending') return PR_ICON_COLOR.pending
+  if (pr.checksOverall === 'success') return PR_ICON_COLOR.success
+  return PR_STATE_COLOR[pr.state] || PR_ICON_COLOR.none
+}
+
 export function CommandPalette({
   worktrees,
   worktreeStatuses,
+  prStatuses,
+  mergedPaths,
   activeWorktreeId,
   resolvedHotkeys,
   onClose,
@@ -80,49 +112,81 @@ export function CommandPalette({
     return roots.size > 1
   }, [worktrees])
 
-  const allItems = useMemo<PaletteItem[]>(() => {
-    const items: PaletteItem[] = []
+  const groups = useMemo(
+    () => groupWorktrees(worktrees, prStatuses, mergedPaths),
+    [worktrees, prStatuses, mergedPaths]
+  )
 
-    for (const wt of worktrees) {
-      const repoName = wt.repoRoot.split('/').pop() || wt.repoRoot
-      items.push({
-        id: `wt:${wt.path}`,
-        label: wt.branch || wt.path.split('/').pop() || wt.path,
-        sublabel: multiRepo ? repoName : undefined,
-        category: 'worktree',
-        worktreePath: wt.path,
-        status: worktreeStatuses[wt.path],
-      })
-    }
-
+  const actionItems = useMemo(() => {
+    const items: { action: Action; label: string; hint?: string }[] = []
     for (const [action, label] of Object.entries(ACTION_LABELS)) {
       if (EXCLUDED_ACTIONS.has(action as Action)) continue
       const binding = resolvedHotkeys[action as Action]
-      items.push({
-        id: `action:${action}`,
-        label,
-        hint: binding ? bindingToString(binding) : undefined,
-        category: 'action',
-        action: action as Action,
-      })
+      items.push({ action: action as Action, label, hint: binding ? bindingToString(binding) : undefined })
+    }
+    return items
+  }, [resolvedHotkeys])
+
+  const { items: flatItems, selectableCount } = useMemo(() => {
+    const isSearching = query.trim().length > 0
+    const items: PaletteItem[] = []
+    let selectable = 0
+
+    if (isSearching) {
+      const scoredWts = worktrees
+        .map((wt) => {
+          const branch = wt.branch || wt.path.split('/').pop() || ''
+          const repo = wt.repoRoot.split('/').pop() || ''
+          return { wt, score: Math.max(fuzzyScore(query, branch), fuzzyScore(query, repo)) }
+        })
+        .filter(({ score }) => score > 0)
+        .sort((a, b) => b.score - a.score)
+
+      const scoredActions = actionItems
+        .map((a) => ({ ...a, score: fuzzyScore(query, a.label) }))
+        .filter(({ score }) => score > 0)
+        .sort((a, b) => b.score - a.score)
+
+      if (scoredWts.length > 0) {
+        items.push({ kind: 'heading', label: 'Worktrees' })
+        for (const { wt } of scoredWts) {
+          items.push({ kind: 'worktree', wt })
+          selectable++
+        }
+      }
+      if (scoredActions.length > 0) {
+        items.push({ kind: 'heading', label: 'Commands' })
+        for (const { action, label, hint } of scoredActions) {
+          items.push({ kind: 'action', action, label, hint })
+          selectable++
+        }
+      }
+    } else {
+      for (const group of groups) {
+        items.push({ kind: 'heading', label: GROUP_LABELS[group.key] })
+        for (const wt of group.worktrees) {
+          items.push({ kind: 'worktree', wt })
+          selectable++
+        }
+      }
+      items.push({ kind: 'heading', label: 'Commands' })
+      for (const a of actionItems) {
+        items.push({ kind: 'action', ...a })
+        selectable++
+      }
     }
 
-    return items
-  }, [worktrees, worktreeStatuses, multiRepo, resolvedHotkeys])
+    return { items, selectableCount: selectable }
+  }, [query, worktrees, groups, actionItems])
 
-  const filtered = useMemo(() => {
-    if (!query.trim()) return allItems
-
-    return allItems
-      .map((item) => {
-        const labelScore = fuzzyScore(query, item.label)
-        const subScore = item.sublabel ? fuzzyScore(query, item.sublabel) : -1
-        return { item, score: Math.max(labelScore, subScore) }
-      })
-      .filter(({ score }) => score > 0)
-      .sort((a, b) => b.score - a.score)
-      .map(({ item }) => item)
-  }, [allItems, query])
+  // Map from selectable index → flat index
+  const selectableIndices = useMemo(() => {
+    const indices: number[] = []
+    for (let i = 0; i < flatItems.length; i++) {
+      if (flatItems[i].kind !== 'heading') indices.push(i)
+    }
+    return indices
+  }, [flatItems])
 
   useEffect(() => {
     setSelectedIndex(0)
@@ -130,9 +194,9 @@ export function CommandPalette({
 
   const execute = useCallback(
     (item: PaletteItem) => {
-      if (item.category === 'worktree' && item.worktreePath) {
-        onSelectWorktree(item.worktreePath)
-      } else if (item.category === 'action' && item.action) {
+      if (item.kind === 'worktree') {
+        onSelectWorktree(item.wt.path)
+      } else if (item.kind === 'action') {
         onAction(item.action)
       }
       onClose()
@@ -147,30 +211,27 @@ export function CommandPalette({
         onClose()
       } else if (e.key === 'ArrowDown') {
         e.preventDefault()
-        setSelectedIndex((i) => Math.min(i + 1, filtered.length - 1))
+        setSelectedIndex((i) => Math.min(i + 1, selectableCount - 1))
       } else if (e.key === 'ArrowUp') {
         e.preventDefault()
         setSelectedIndex((i) => Math.max(i - 1, 0))
       } else if (e.key === 'Enter') {
         e.preventDefault()
-        if (filtered[selectedIndex]) execute(filtered[selectedIndex])
+        const flatIdx = selectableIndices[selectedIndex]
+        if (flatIdx !== undefined) execute(flatItems[flatIdx])
       }
     },
-    [filtered, selectedIndex, execute, onClose]
+    [flatItems, selectableIndices, selectedIndex, selectableCount, execute, onClose]
   )
 
   useEffect(() => {
-    const el = listRef.current?.children[selectedIndex] as HTMLElement | undefined
+    const flatIdx = selectableIndices[selectedIndex]
+    if (flatIdx === undefined) return
+    const el = listRef.current?.querySelector(`[data-idx="${flatIdx}"]`) as HTMLElement | undefined
     el?.scrollIntoView({ block: 'nearest' })
-  }, [selectedIndex])
+  }, [selectedIndex, selectableIndices])
 
-  const worktreeItems = filtered.filter((i) => i.category === 'worktree')
-  const actionItems = filtered.filter((i) => i.category === 'action')
-
-  let runningIdx = 0
-  const worktreeStartIdx = runningIdx
-  runningIdx += worktreeItems.length
-  const actionStartIdx = runningIdx
+  let selectableIdx = -1
 
   return (
     <div className="fixed inset-0 z-[60] flex items-start justify-center pt-[15vh]" onClick={onClose}>
@@ -193,79 +254,98 @@ export function CommandPalette({
         </div>
 
         <div ref={listRef} className="max-h-80 overflow-y-auto py-1">
-          {filtered.length === 0 && (
+          {selectableCount === 0 && (
             <div className="px-4 py-8 text-center text-dim text-sm">No results</div>
           )}
 
-          {worktreeItems.length > 0 && (
-            <>
-              <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-faint">
-                Worktrees
-              </div>
-              {worktreeItems.map((item, i) => {
-                const globalIdx = worktreeStartIdx + i
-                const isActive = item.worktreePath === activeWorktreeId
-                const statusInfo = item.status ? STATUS_ICON[item.status] : undefined
-                const StatusIcon = statusInfo?.icon
-                return (
-                  <button
-                    key={item.id}
-                    className={`w-full flex items-center gap-2 px-3 py-2 text-sm cursor-pointer transition-colors ${
-                      globalIdx === selectedIndex
-                        ? 'bg-accent/15 text-fg-bright'
-                        : 'text-fg hover:bg-surface-hover'
-                    }`}
-                    onMouseEnter={() => setSelectedIndex(globalIdx)}
-                    onClick={() => execute(item)}
-                  >
-                    {StatusIcon ? (
-                      <StatusIcon size={14} className={`shrink-0 ${statusInfo.className}`} title={statusInfo.label} />
-                    ) : (
-                      <GitBranch size={14} className="text-dim shrink-0" />
-                    )}
-                    <span className="truncate flex-1 text-left">{item.label}</span>
-                    {item.sublabel && (
-                      <span className="text-[10px] text-faint shrink-0">{item.sublabel}</span>
-                    )}
-                    {isActive && (
-                      <span className="text-[10px] text-accent font-medium shrink-0">current</span>
-                    )}
-                  </button>
-                )
-              })}
-            </>
-          )}
+          {flatItems.map((item, flatIdx) => {
+            if (item.kind === 'heading') {
+              return (
+                <div
+                  key={`h-${flatIdx}`}
+                  className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-faint"
+                >
+                  {item.label}
+                </div>
+              )
+            }
 
-          {actionItems.length > 0 && (
-            <>
-              <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-faint">
-                Commands
-              </div>
-              {actionItems.map((item, i) => {
-                const globalIdx = actionStartIdx + i
-                return (
-                  <button
-                    key={item.id}
-                    className={`w-full flex items-center gap-2 px-3 py-2 text-sm cursor-pointer transition-colors ${
-                      globalIdx === selectedIndex
-                        ? 'bg-accent/15 text-fg-bright'
-                        : 'text-fg hover:bg-surface-hover'
-                    }`}
-                    onMouseEnter={() => setSelectedIndex(globalIdx)}
-                    onClick={() => execute(item)}
-                  >
-                    <ArrowRight size={14} className="text-dim shrink-0" />
-                    <span className="truncate flex-1 text-left">{item.label}</span>
-                    {item.hint && (
-                      <kbd className="text-[10px] text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono shrink-0">
-                        {item.hint}
-                      </kbd>
-                    )}
-                  </button>
-                )
-              })}
-            </>
-          )}
+            selectableIdx++
+            const mySelectableIdx = selectableIdx
+            const isSelected = mySelectableIdx === selectedIndex
+
+            if (item.kind === 'worktree') {
+              const { wt } = item
+              const status = worktreeStatuses[wt.path] || 'idle'
+              const isMerged = !!mergedPaths[wt.path]
+              const displayStatus: PtyStatus | 'merged' = isMerged ? 'merged' : status
+              const pr = prStatuses[wt.path]
+              const isActive = wt.path === activeWorktreeId
+              const repoName = multiRepo ? (wt.repoRoot.split('/').pop() || wt.repoRoot) : undefined
+
+              let iconColor = ''
+              if (pr) {
+                iconColor = prIconColor(pr)
+              }
+
+              return (
+                <button
+                  key={wt.path}
+                  data-idx={flatIdx}
+                  className={`w-full flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors ${
+                    isSelected ? 'bg-accent/15 text-fg-bright' : 'text-fg hover:bg-surface-hover'
+                  }`}
+                  onMouseEnter={() => setSelectedIndex(mySelectableIdx)}
+                  onClick={() => execute(item)}
+                >
+                  <span
+                    className={`w-2 h-2 rounded-full shrink-0 ${STATUS_COLORS[displayStatus]}`}
+                    title={STATUS_LABELS[displayStatus]}
+                  />
+                  {pr && (
+                    <GitPullRequest size={13} className={`shrink-0 ${iconColor}`} />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium truncate text-left">{wt.branch}</div>
+                    <div className="text-xs text-faint truncate text-left">
+                      {repoName ? (
+                        <>
+                          <span className="text-dim">{repoName}</span>
+                          <span className="mx-1">&middot;</span>
+                          {wt.path.split('/').pop()}
+                        </>
+                      ) : (
+                        wt.path.split('/').slice(-2).join('/')
+                      )}
+                    </div>
+                  </div>
+                  {isActive && (
+                    <span className="text-[10px] text-accent font-medium shrink-0">current</span>
+                  )}
+                </button>
+              )
+            }
+
+            return (
+              <button
+                key={item.action}
+                data-idx={flatIdx}
+                className={`w-full flex items-center gap-2 px-3 py-2 text-sm cursor-pointer transition-colors ${
+                  isSelected ? 'bg-accent/15 text-fg-bright' : 'text-fg hover:bg-surface-hover'
+                }`}
+                onMouseEnter={() => setSelectedIndex(mySelectableIdx)}
+                onClick={() => execute(item)}
+              >
+                <ArrowRight size={14} className="text-dim shrink-0" />
+                <span className="truncate flex-1 text-left">{item.label}</span>
+                {item.hint && (
+                  <kbd className="text-[10px] text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono shrink-0">
+                    {item.hint}
+                  </kbd>
+                )}
+              </button>
+            )
+          })}
         </div>
       </div>
     </div>

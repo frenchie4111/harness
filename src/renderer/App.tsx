@@ -1546,6 +1546,8 @@ const setQuestStep = useCallback((next: QuestStep) => {
       <CommandPalette
         worktrees={worktrees}
         worktreeStatuses={worktreeStatuses}
+        prStatuses={prStatuses}
+        mergedPaths={mergedPaths}
         activeWorktreeId={activeWorktreeId}
         resolvedHotkeys={resolvedHotkeys}
         onClose={() => setShowCommandPalette(false)}
