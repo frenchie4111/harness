@@ -66,6 +66,15 @@ contextBridge.exposeInMainWorld('api', {
   getClaudeCommand: () => ipcRenderer.invoke('config:getClaudeCommand'),
   setClaudeCommand: (command: string) => ipcRenderer.invoke('config:setClaudeCommand', command),
   getDefaultClaudeCommand: () => ipcRenderer.invoke('config:getDefaultClaudeCommand'),
+  getClaudeEnvVars: () => ipcRenderer.invoke('config:getClaudeEnvVars'),
+  setClaudeEnvVars: (vars: Record<string, string>) => ipcRenderer.invoke('config:setClaudeEnvVars', vars),
+  onClaudeEnvVarsChanged: (callback: (vars: Record<string, string>) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, vars: Record<string, string>): void => {
+      callback(vars)
+    }
+    ipcRenderer.on('config:claudeEnvVarsChanged', handler)
+    return () => ipcRenderer.removeListener('config:claudeEnvVarsChanged', handler)
+  },
   getTheme: () => ipcRenderer.invoke('config:getTheme'),
   setTheme: (theme: string) => ipcRenderer.invoke('config:setTheme', theme),
   getAvailableThemes: () => ipcRenderer.invoke('config:getAvailableThemes'),
@@ -180,8 +189,8 @@ contextBridge.exposeInMainWorld('api', {
   installHooks: (worktreePath: string) => ipcRenderer.invoke('hooks:install', worktreePath),
 
   // PTY
-  createTerminal: (id: string, cwd: string, cmd: string, args: string[]) => {
-    ipcRenderer.send('pty:create', id, cwd, cmd, args)
+  createTerminal: (id: string, cwd: string, cmd: string, args: string[], isClaude?: boolean) => {
+    ipcRenderer.send('pty:create', id, cwd, cmd, args, isClaude)
   },
   writeTerminal: (id: string, data: string) => {
     ipcRenderer.send('pty:write', id, data)

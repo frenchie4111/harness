@@ -265,7 +265,7 @@ export function XTerminal({ terminalId, cwd, type, visible, claudeCommand, sessi
       const claudeArg = type === 'claude' ? await buildClaudeArg() : ''
       if (disposed) return
       const args = type === 'claude' ? ['-ilc', claudeArg] : ['-il']
-      window.api.createTerminal(terminalId, cwd, shell, args)
+      window.api.createTerminal(terminalId, cwd, shell, args, type === 'claude')
 
       terminal.onData((data) => {
         window.api.writeTerminal(terminalId, data)

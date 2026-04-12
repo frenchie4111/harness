@@ -349,6 +349,33 @@ function registerIpcHandlers(): void {
     return DEFAULT_CLAUDE_COMMAND
   })
 
+  ipcMain.handle('config:getClaudeEnvVars', () => {
+    return config.claudeEnvVars || {}
+  })
+
+  ipcMain.handle('config:setClaudeEnvVars', (_, vars: Record<string, string>) => {
+    const cleaned: Record<string, string> = {}
+    if (vars && typeof vars === 'object') {
+      for (const [rawKey, rawVal] of Object.entries(vars)) {
+        const key = String(rawKey).trim()
+        if (!key) continue
+        // POSIX-ish name check — letters, digits, underscore, not starting with a digit.
+        if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue
+        cleaned[key] = rawVal == null ? '' : String(rawVal)
+      }
+    }
+    if (Object.keys(cleaned).length === 0) {
+      delete config.claudeEnvVars
+    } else {
+      config.claudeEnvVars = cleaned
+    }
+    saveConfig(config)
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.send('config:claudeEnvVarsChanged', config.claudeEnvVars || {})
+    }
+    return true
+  })
+
   ipcMain.handle('config:getTheme', () => {
     return config.theme || DEFAULT_THEME
   })
@@ -686,9 +713,11 @@ function registerIpcHandlers(): void {
   })
 
   // PTY handlers — route to the calling window
-  ipcMain.on('pty:create', (event, id: string, cwd: string, cmd: string, args: string[]) => {
+  ipcMain.on('pty:create', (event, id: string, cwd: string, cmd: string, args: string[], isClaude?: boolean) => {
     const win = BrowserWindow.fromWebContents(event.sender)
-    if (win) ptyManager.create(id, cwd, cmd, args, win)
+    if (!win) return
+    const extraEnv = isClaude ? config.claudeEnvVars : undefined
+    ptyManager.create(id, cwd, cmd, args, win, extraEnv)
   })
 
   ipcMain.on('pty:write', (_, id: string, data: string) => {
