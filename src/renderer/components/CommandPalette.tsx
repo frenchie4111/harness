@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Search, GitBranch, Keyboard, ArrowRight } from 'lucide-react'
+import { Search, GitBranch, ArrowRight, Circle, Loader, Clock, AlertTriangle } from 'lucide-react'
 import type { Worktree, PtyStatus } from '../types'
 import type { Action, HotkeyBinding } from '../hotkeys'
 import { ACTION_LABELS, bindingToString } from '../hotkeys'
@@ -17,17 +17,19 @@ interface CommandPaletteProps {
 interface PaletteItem {
   id: string
   label: string
+  sublabel?: string
   hint?: string
   category: 'worktree' | 'action'
   action?: Action
   worktreePath?: string
+  status?: PtyStatus
 }
 
-const STATUS_DOT: Record<PtyStatus, string> = {
-  idle: 'bg-faint',
-  processing: 'bg-success animate-pulse',
-  waiting: 'bg-warning',
-  'needs-approval': 'bg-danger animate-pulse',
+const STATUS_ICON: Record<PtyStatus, { icon: typeof Circle; className: string; label: string }> = {
+  idle: { icon: Circle, className: 'text-faint', label: 'Idle' },
+  processing: { icon: Loader, className: 'text-success animate-spin', label: 'Working' },
+  waiting: { icon: Clock, className: 'text-warning', label: 'Waiting' },
+  'needs-approval': { icon: AlertTriangle, className: 'text-danger animate-pulse', label: 'Needs approval' },
 }
 
 const EXCLUDED_ACTIONS: Set<Action> = new Set([
@@ -35,16 +37,6 @@ const EXCLUDED_ACTIONS: Set<Action> = new Set([
   'worktree6', 'worktree7', 'worktree8', 'worktree9',
   'commandPalette',
 ])
-
-function fuzzyMatch(query: string, text: string): boolean {
-  const q = query.toLowerCase()
-  const t = text.toLowerCase()
-  let qi = 0
-  for (let ti = 0; ti < t.length && qi < q.length; ti++) {
-    if (t[ti] === q[qi]) qi++
-  }
-  return qi === q.length
-}
 
 function fuzzyScore(query: string, text: string): number {
   const q = query.toLowerCase()
@@ -83,16 +75,23 @@ export function CommandPalette({
     inputRef.current?.focus()
   }, [])
 
+  const multiRepo = useMemo(() => {
+    const roots = new Set(worktrees.map((wt) => wt.repoRoot))
+    return roots.size > 1
+  }, [worktrees])
+
   const allItems = useMemo<PaletteItem[]>(() => {
     const items: PaletteItem[] = []
 
     for (const wt of worktrees) {
+      const repoName = wt.repoRoot.split('/').pop() || wt.repoRoot
       items.push({
         id: `wt:${wt.path}`,
         label: wt.branch || wt.path.split('/').pop() || wt.path,
-        hint: wt.isMain ? 'main' : undefined,
+        sublabel: multiRepo ? repoName : undefined,
         category: 'worktree',
         worktreePath: wt.path,
+        status: worktreeStatuses[wt.path],
       })
     }
 
@@ -109,13 +108,17 @@ export function CommandPalette({
     }
 
     return items
-  }, [worktrees, resolvedHotkeys])
+  }, [worktrees, worktreeStatuses, multiRepo, resolvedHotkeys])
 
   const filtered = useMemo(() => {
     if (!query.trim()) return allItems
 
     return allItems
-      .map((item) => ({ item, score: fuzzyScore(query, item.label) }))
+      .map((item) => {
+        const labelScore = fuzzyScore(query, item.label)
+        const subScore = item.sublabel ? fuzzyScore(query, item.sublabel) : -1
+        return { item, score: Math.max(labelScore, subScore) }
+      })
       .filter(({ score }) => score > 0)
       .sort((a, b) => b.score - a.score)
       .map(({ item }) => item)
@@ -202,7 +205,8 @@ export function CommandPalette({
               {worktreeItems.map((item, i) => {
                 const globalIdx = worktreeStartIdx + i
                 const isActive = item.worktreePath === activeWorktreeId
-                const status = item.worktreePath ? worktreeStatuses[item.worktreePath] : undefined
+                const statusInfo = item.status ? STATUS_ICON[item.status] : undefined
+                const StatusIcon = statusInfo?.icon
                 return (
                   <button
                     key={item.id}
@@ -214,13 +218,17 @@ export function CommandPalette({
                     onMouseEnter={() => setSelectedIndex(globalIdx)}
                     onClick={() => execute(item)}
                   >
-                    <GitBranch size={14} className="text-dim shrink-0" />
+                    {StatusIcon ? (
+                      <StatusIcon size={14} className={`shrink-0 ${statusInfo.className}`} title={statusInfo.label} />
+                    ) : (
+                      <GitBranch size={14} className="text-dim shrink-0" />
+                    )}
                     <span className="truncate flex-1 text-left">{item.label}</span>
-                    {status && (
-                      <span className={`w-2 h-2 rounded-full shrink-0 ${STATUS_DOT[status]}`} />
+                    {item.sublabel && (
+                      <span className="text-[10px] text-faint shrink-0">{item.sublabel}</span>
                     )}
                     {isActive && (
-                      <span className="text-[10px] text-accent font-medium">current</span>
+                      <span className="text-[10px] text-accent font-medium shrink-0">current</span>
                     )}
                   </button>
                 )
