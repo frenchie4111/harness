@@ -391,50 +391,52 @@ export function CommandCenter({
                           <button
                             key={wt.path}
                             onClick={() => onSelect(wt.path)}
-                            className={`text-left rounded-lg bg-surface hover:bg-surface-hover transition-colors p-4 flex flex-col gap-3 cursor-pointer ${STATUS_CARD_RING[display]}`}
+                            className={`text-left rounded-lg bg-surface hover:bg-surface-hover transition-colors flex flex-col cursor-pointer overflow-hidden ${STATUS_CARD_RING[display]}`}
                           >
-                            {showRepoLabelOnCards && (
-                              <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-faint -mb-1 truncate">
-                                <RepoIcon repoName={wt.repoRoot.split('/').pop() || wt.repoRoot} size={12} />
-                                {wt.repoRoot.split('/').pop()}
-                              </div>
-                            )}
-                            <div className="flex items-center gap-2 min-w-0">
-                              <span
-                                className={`w-2.5 h-2.5 rounded-full shrink-0 ${STATUS_DOT[display]}`}
-                              />
-                              <span className="text-sm font-semibold text-fg-bright truncate flex-1">
-                                {wt.branch}
-                              </span>
-                              {pr && (
-                                <GitPullRequest
-                                  size={13}
-                                  className={
-                                    pr.state === 'merged'
-                                      ? 'text-accent'
-                                      : pr.state === 'closed'
-                                        ? 'text-danger'
-                                        : pr.checksOverall === 'failure' || pr.hasConflict
-                                          ? 'text-danger'
-                                          : pr.checksOverall === 'pending'
-                                            ? 'text-warning'
-                                            : pr.checksOverall === 'success'
-                                              ? 'text-success'
-                                              : 'text-dim'
-                                  }
-                                />
+                            <div className="px-4 pt-4 pb-3 flex flex-col gap-2">
+                              {showRepoLabelOnCards && (
+                                <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-faint truncate">
+                                  <RepoIcon repoName={wt.repoRoot.split('/').pop() || wt.repoRoot} size={12} />
+                                  {wt.repoRoot.split('/').pop()}
+                                </div>
                               )}
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span
+                                  className={`w-2.5 h-2.5 rounded-full shrink-0 ${STATUS_DOT[display]}`}
+                                />
+                                <span className="text-sm font-semibold text-fg-bright truncate flex-1">
+                                  {wt.branch}
+                                </span>
+                                {pr && (
+                                  <GitPullRequest
+                                    size={13}
+                                    className={
+                                      pr.state === 'merged'
+                                        ? 'text-accent'
+                                        : pr.state === 'closed'
+                                          ? 'text-danger'
+                                          : pr.checksOverall === 'failure' || pr.hasConflict
+                                            ? 'text-danger'
+                                            : pr.checksOverall === 'pending'
+                                              ? 'text-warning'
+                                              : pr.checksOverall === 'success'
+                                                ? 'text-success'
+                                                : 'text-dim'
+                                    }
+                                  />
+                                )}
+                              </div>
                             </div>
 
-                            <div className="flex items-center justify-between text-[11px]">
-                              <span className="text-muted">{STATUS_LABEL[display]}</span>
-                              <span className="text-faint">{relTime(lastActive[wt.path])}</span>
-                            </div>
-
-                            <div className="rounded bg-panel border border-border/60 p-2 h-20 overflow-hidden">
-                              <pre className="text-[10px] leading-tight text-muted font-mono whitespace-pre-wrap break-all line-clamp-5">
+                            <div className="border-y border-border/60 bg-bg px-3 py-2 h-24 overflow-hidden">
+                              <pre className="text-[10px] leading-tight text-fg/80 font-mono whitespace-pre-wrap break-all line-clamp-6">
                                 {tail || <span className="text-faint italic">no output yet</span>}
                               </pre>
+                            </div>
+
+                            <div className="px-4 py-2 flex items-center justify-between text-[11px]">
+                              <span className="text-muted">{STATUS_LABEL[display]}</span>
+                              <span className="text-faint">{relTime(lastActive[wt.path])}</span>
                             </div>
 
                             <MiniTimeline record={record} now={now} />
@@ -466,7 +468,7 @@ function MiniTimeline({
   const events = record?.events || []
   const segs = eventsToSegments(events, windowStart, now, record?.removedAt)
   return (
-    <div className="relative h-6 overflow-hidden rounded-b-lg border-t border-border bg-faint/5 -mx-4 -mb-4 mt-auto">
+    <div className="relative h-6 overflow-hidden border-t border-border bg-faint/5 mt-auto">
       {segs.map((seg, i) => {
         if (seg.state === 'idle') return null
         const leftPct = ((seg.start - windowStart) / span) * 100
