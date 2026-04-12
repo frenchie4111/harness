@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { ExternalLink, GitMerge, ChevronDown, Check, GitPullRequest, RefreshCw } from 'lucide-react'
 import type {
   PRStatus,
+  PRReview,
   CheckStatus,
   Worktree,
   MergeStrategy,
@@ -376,6 +377,81 @@ const OVERALL_COLORS: Record<string, string> = {
   none: 'text-dim'
 }
 
+const REVIEW_DECISION_LABELS: Record<PRStatus['reviewDecision'], { text: string; color: string }> = {
+  approved: { text: 'Approved', color: 'text-success' },
+  changes_requested: { text: 'Changes requested', color: 'text-warning' },
+  review_required: { text: 'Review pending', color: 'text-faint' },
+  none: { text: '', color: '' }
+}
+
+const REVIEW_STATE_ICONS: Record<PRReview['state'], { symbol: string; color: string }> = {
+  APPROVED: { symbol: '\u2713', color: 'text-success' },
+  CHANGES_REQUESTED: { symbol: '\u25CF', color: 'text-warning' },
+  COMMENTED: { symbol: '\u25CB', color: 'text-faint' },
+  DISMISSED: { symbol: '-', color: 'text-dim' },
+  PENDING: { symbol: '\u25CB', color: 'text-dim' }
+}
+
+function ReviewSummary({
+  reviews,
+  decision
+}: {
+  reviews: PRReview[]
+  decision: PRStatus['reviewDecision']
+}): JSX.Element {
+  const [expanded, setExpanded] = useState(false)
+  const label = REVIEW_DECISION_LABELS[decision]
+
+  // Dedupe to latest review per user for the summary row
+  const latestByUser = new Map<string, PRReview>()
+  for (const r of reviews) {
+    latestByUser.set(r.user, r)
+  }
+  const uniqueReviewers = [...latestByUser.values()]
+
+  return (
+    <div className="mb-1">
+      <div
+        className="flex items-center gap-1.5 cursor-pointer"
+        onClick={() => setExpanded(!expanded)}
+      >
+        <span className={`text-xs ${label.color}`}>{label.text}</span>
+        <span className="text-xs text-faint">
+          ({uniqueReviewers.length} {uniqueReviewers.length === 1 ? 'reviewer' : 'reviewers'})
+          {expanded ? '\u25B4' : '\u25BE'}
+        </span>
+      </div>
+      {expanded && (
+        <div className="space-y-0.5 mt-1">
+          {uniqueReviewers.map((review) => {
+            const icon = REVIEW_STATE_ICONS[review.state]
+            return (
+              <div
+                key={review.user}
+                className="flex items-center gap-1.5 text-xs py-0.5 cursor-pointer hover:bg-panel-raised px-1 -mx-1 rounded group"
+                onClick={() => window.api.openExternal(review.htmlUrl)}
+                title={`${review.user}: ${review.state.toLowerCase().replace('_', ' ')}`}
+              >
+                <img
+                  src={review.avatarUrl}
+                  alt={review.user}
+                  className="w-4 h-4 rounded-full shrink-0"
+                />
+                <span className="text-muted truncate">{review.user}</span>
+                <span className={`shrink-0 ${icon.color}`}>{icon.symbol}</span>
+                <ExternalLink
+                  size={10}
+                  className="shrink-0 text-faint opacity-0 group-hover:opacity-100 transition-opacity ml-auto"
+                />
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 interface PRStatusPanelProps {
   pr: PRStatus | null | undefined
   hasGithubToken?: boolean | null
@@ -493,6 +569,11 @@ export function PRStatusPanel({
             <div className="flex items-center gap-1.5 mb-1">
               <span className="text-xs text-danger">Merge conflict</span>
             </div>
+          )}
+
+          {/* Reviews summary */}
+          {pr.reviews.length > 0 && (
+            <ReviewSummary reviews={pr.reviews} decision={pr.reviewDecision} />
           )}
 
           {/* Checks summary */}
