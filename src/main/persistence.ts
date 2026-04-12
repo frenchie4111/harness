@@ -25,6 +25,10 @@ interface Config {
   // Command used to launch Claude in a worktree terminal. Runs via login shell.
   // Harness appends `--session-id <uuid>` so each tab has a stable resumable session.
   claudeCommand?: string
+  // Extra environment variables injected into the PTY when spawning a Claude tab.
+  // Merged on top of process.env so users can set things like ANTHROPIC_API_KEY,
+  // DISABLE_TELEMETRY, etc. without editing their shell config.
+  claudeEnvVars?: Record<string, string>
   // Persisted workspace panes nested by repoRoot → worktreePath → panes[].
   // Two repos can have worktrees with identical paths in theory, and the
   // multi-repo UI shows them together, so we key by repo to keep them distinct.

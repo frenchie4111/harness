@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch } from 'lucide-react'
+import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2 } from 'lucide-react'
 import type { UpdaterStatus, MergeStrategy } from '../types'
 import { DEFAULT_HOTKEYS, ACTION_LABELS, bindingToString, eventToBinding, resolveHotkeys, type Action, type HotkeyBinding } from '../hotkeys'
 import { Tooltip } from './Tooltip'
@@ -160,6 +160,12 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
   const [defaultClaudeCommand, setDefaultClaudeCommand] = useState<string>('')
   const [claudeSaveResult, setClaudeSaveResult] = useState<{ ok: boolean; message: string } | null>(null)
 
+  // Claude env var state. Stored as an ordered list of [key, value] pairs so
+  // the user can edit a blank row without it collapsing in a Record.
+  const [claudeEnvRows, setClaudeEnvRows] = useState<{ key: string; value: string }[]>([])
+  const [envSaveResult, setEnvSaveResult] = useState<{ ok: boolean; message: string } | null>(null)
+  const [revealedEnvRows, setRevealedEnvRows] = useState<Set<number>>(new Set())
+
   // Theme state
   const [theme, setThemeState] = useState<string>('dark')
 
@@ -182,6 +188,10 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
     window.api.getHotkeyOverrides().then((v) => setHotkeyOverrides(v))
     window.api.getClaudeCommand().then(setClaudeCommand)
     window.api.getDefaultClaudeCommand().then(setDefaultClaudeCommand)
+    window.api.getClaudeEnvVars().then((vars) => {
+      const rows = Object.entries(vars || {}).map(([key, value]) => ({ key, value }))
+      setClaudeEnvRows(rows)
+    })
     window.api.getTheme().then(setThemeState)
     window.api.getTerminalFontFamily().then(setTerminalFontFamily)
     window.api.getDefaultTerminalFontFamily().then(setDefaultTerminalFontFamily)
@@ -329,6 +339,65 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
     await window.api.setClaudeCommand(defaultClaudeCommand)
     setClaudeSaveResult({ ok: true, message: 'Reset to default' })
   }, [defaultClaudeCommand])
+
+  const handleAddEnvRow = useCallback(() => {
+    setClaudeEnvRows((prev) => [...prev, { key: '', value: '' }])
+    setEnvSaveResult(null)
+  }, [])
+
+  const handleRemoveEnvRow = useCallback((index: number) => {
+    setClaudeEnvRows((prev) => prev.filter((_, i) => i !== index))
+    setRevealedEnvRows((prev) => {
+      const next = new Set<number>()
+      prev.forEach((i) => { if (i < index) next.add(i); else if (i > index) next.add(i - 1) })
+      return next
+    })
+    setEnvSaveResult(null)
+  }, [])
+
+  const handleUpdateEnvRow = useCallback((index: number, field: 'key' | 'value', value: string) => {
+    setClaudeEnvRows((prev) => prev.map((row, i) => (i === index ? { ...row, [field]: value } : row)))
+    setEnvSaveResult(null)
+  }, [])
+
+  const handleToggleRevealEnvRow = useCallback((index: number) => {
+    setRevealedEnvRows((prev) => {
+      const next = new Set(prev)
+      if (next.has(index)) next.delete(index); else next.add(index)
+      return next
+    })
+  }, [])
+
+  const handleSaveClaudeEnvVars = useCallback(async () => {
+    const vars: Record<string, string> = {}
+    const seen = new Set<string>()
+    const invalidNames: string[] = []
+    const duplicates: string[] = []
+    for (const { key, value } of claudeEnvRows) {
+      const k = key.trim()
+      if (!k) continue
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(k)) {
+        invalidNames.push(k)
+        continue
+      }
+      if (seen.has(k)) {
+        duplicates.push(k)
+        continue
+      }
+      seen.add(k)
+      vars[k] = value
+    }
+    if (invalidNames.length > 0) {
+      setEnvSaveResult({ ok: false, message: `Invalid name(s): ${invalidNames.join(', ')}` })
+      return
+    }
+    if (duplicates.length > 0) {
+      setEnvSaveResult({ ok: false, message: `Duplicate name(s): ${duplicates.join(', ')}` })
+      return
+    }
+    await window.api.setClaudeEnvVars(vars)
+    setEnvSaveResult({ ok: true, message: 'Saved · new Claude tabs will see these' })
+  }, [claudeEnvRows])
 
   const isOverridden = (action: Action): boolean => {
     if (!hotkeyOverrides || !(action in hotkeyOverrides)) return false
@@ -615,6 +684,92 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
                 </p>
                 <p className="text-faint">
                   Note: changes apply to newly created Claude tabs. Existing terminals are unaffected.
+                </p>
+              </div>
+
+              <div className="mt-6 bg-panel-raised border border-border rounded-lg p-4">
+                <label className="block text-sm font-medium text-fg mb-1">
+                  Environment variables
+                </label>
+                <p className="text-xs text-dim mb-3">
+                  Injected into the PTY before Claude launches. Use for things like{' '}
+                  <code className="bg-panel px-1 rounded">ANTHROPIC_API_KEY</code>,{' '}
+                  <code className="bg-panel px-1 rounded">ANTHROPIC_BASE_URL</code>, or{' '}
+                  <code className="bg-panel px-1 rounded">DISABLE_TELEMETRY</code>. Only applied to Claude tabs, not raw shells.
+                </p>
+
+                {claudeEnvRows.length > 0 && (
+                  <div className="space-y-2 mb-3">
+                    {claudeEnvRows.map((row, index) => {
+                      const revealed = revealedEnvRows.has(index)
+                      return (
+                        <div key={index} className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={row.key}
+                            onChange={(e) => handleUpdateEnvRow(index, 'key', e.target.value)}
+                            placeholder="NAME"
+                            spellCheck={false}
+                            className="w-44 bg-panel border border-border-strong rounded px-2 py-1.5 text-xs text-fg-bright placeholder-faint outline-none focus:border-fg font-mono"
+                          />
+                          <span className="text-dim text-xs">=</span>
+                          <input
+                            type={revealed ? 'text' : 'password'}
+                            value={row.value}
+                            onChange={(e) => handleUpdateEnvRow(index, 'value', e.target.value)}
+                            placeholder="value"
+                            spellCheck={false}
+                            className="flex-1 bg-panel border border-border-strong rounded px-2 py-1.5 text-xs text-fg-bright placeholder-faint outline-none focus:border-fg font-mono"
+                          />
+                          <Tooltip label={revealed ? 'Hide value' : 'Reveal value'}>
+                            <button
+                              onClick={() => handleToggleRevealEnvRow(index)}
+                              className="p-1.5 text-dim hover:text-fg transition-colors cursor-pointer"
+                              aria-label={revealed ? 'Hide value' : 'Reveal value'}
+                            >
+                              {revealed ? <EyeOff size={14} /> : <Eye size={14} />}
+                            </button>
+                          </Tooltip>
+                          <Tooltip label="Remove">
+                            <button
+                              onClick={() => handleRemoveEnvRow(index)}
+                              className="p-1.5 text-dim hover:text-danger transition-colors cursor-pointer"
+                              aria-label="Remove variable"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </Tooltip>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleAddEnvRow}
+                    className="flex items-center gap-1 px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer"
+                  >
+                    <Plus size={12} />
+                    Add variable
+                  </button>
+                  <button
+                    onClick={handleSaveClaudeEnvVars}
+                    className="px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer"
+                  >
+                    Save
+                  </button>
+                </div>
+
+                {envSaveResult && (
+                  <div className={`mt-3 text-xs flex items-center gap-1.5 ${envSaveResult.ok ? 'text-success' : 'text-danger'}`}>
+                    {envSaveResult.ok ? <Check size={12} /> : <X size={12} />}
+                    {envSaveResult.message}
+                  </div>
+                )}
+
+                <p className="mt-3 text-xs text-faint">
+                  Values are stored in <code className="bg-panel px-1 rounded">config.json</code> in plain text. Variables already set in your shell environment will be overridden by values set here.
                 </p>
               </div>
             </section>

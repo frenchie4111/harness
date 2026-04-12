@@ -197,6 +197,10 @@ export interface ElectronAPI {
   getDefaultClaudeCommand(): Promise<string>
   onClaudeCommandChanged(callback: (command: string) => void): () => void
 
+  getClaudeEnvVars(): Promise<Record<string, string>>
+  setClaudeEnvVars(vars: Record<string, string>): Promise<boolean>
+  onClaudeEnvVarsChanged(callback: (vars: Record<string, string>) => void): () => void
+
   getTheme(): Promise<string>
   setTheme(theme: string): Promise<boolean>
   getAvailableThemes(): Promise<readonly string[]>
@@ -249,7 +253,7 @@ export interface ElectronAPI {
   checkHooks(worktreePath: string): Promise<boolean>
   installHooks(worktreePath: string): Promise<boolean>
 
-  createTerminal(id: string, cwd: string, cmd: string, args: string[]): void
+  createTerminal(id: string, cwd: string, cmd: string, args: string[], isClaude?: boolean): void
   writeTerminal(id: string, data: string): void
   resizeTerminal(id: string, cols: number, rows: number): void
   killTerminal(id: string): void

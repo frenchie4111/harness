@@ -17,13 +17,24 @@ export class PtyManager {
     return this.ptys.has(id)
   }
 
-  create(id: string, cwd: string, command: string, args: string[], window: BrowserWindow): void {
+  create(
+    id: string,
+    cwd: string,
+    command: string,
+    args: string[],
+    window: BrowserWindow,
+    extraEnv?: Record<string, string>
+  ): void {
     log('pty', `create id=${id} cmd=${command} args=${JSON.stringify(args)} cwd=${cwd}`)
     if (this.ptys.has(id)) {
       this.kill(id)
     }
 
-    const env = { ...process.env, CLAUDE_HARNESS_ID: id } as Record<string, string>
+    const env = {
+      ...process.env,
+      ...(extraEnv || {}),
+      CLAUDE_HARNESS_ID: id
+    } as Record<string, string>
     const shell = command || env.SHELL || '/bin/zsh'
     let ptyProcess: pty.IPty
     try {
