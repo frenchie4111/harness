@@ -1,13 +1,14 @@
 import { useState, useCallback, useMemo, useEffect } from 'react'
-import { ChevronDown, ChevronRight, Plus, RefreshCw, FolderOpen, Loader2, Settings as SettingsIcon, Sparkles, BarChart3, Trash2, LayoutGrid, X, Layers, Rows3 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Plus, RefreshCw, FolderOpen, Loader2, Settings as SettingsIcon, Sparkles, BarChart3, Trash2, LayoutGrid, X, Layers, Rows3, AlertCircle } from 'lucide-react'
 import { Tooltip } from './Tooltip'
-import type { Worktree, PtyStatus, PRStatus } from '../types'
+import type { Worktree, PtyStatus, PRStatus, PendingWorktree } from '../types'
 import type { GroupKey } from '../worktree-sort'
 import { groupWorktrees } from '../worktree-sort'
 import { WorktreeTab } from './WorktreeTab'
 
 interface SidebarProps {
   worktrees: Worktree[]
+  pendingWorktrees: PendingWorktree[]
   activeWorktreeId: string | null
   statuses: Record<string, PtyStatus>
   prStatuses: Record<string, PRStatus | null>
@@ -16,6 +17,7 @@ interface SidebarProps {
   /** Non-main worktrees. Used to decide whether to show the "spawn your first agent" nudge. */
   agentCount: number
   onSelectWorktree: (path: string) => void
+  onDismissPendingWorktree: (id: string) => void
   onNewWorktree: () => void
   onContinueWorktree: (worktreePath: string, newBranchName: string) => Promise<void>
   onDeleteWorktree: (path: string) => Promise<void>
@@ -33,6 +35,7 @@ interface SidebarProps {
 
 export function Sidebar({
   worktrees,
+  pendingWorktrees,
   activeWorktreeId,
   statuses,
   prStatuses,
@@ -40,6 +43,7 @@ export function Sidebar({
   prLoading,
   agentCount,
   onSelectWorktree,
+  onDismissPendingWorktree,
   onNewWorktree,
   onContinueWorktree,
   onDeleteWorktree,
@@ -308,6 +312,19 @@ export function Sidebar({
             ))}
           </div>
           ))
+          const repoPendings =
+            repoRoot === '__unified__'
+              ? pendingWorktrees
+              : pendingWorktrees.filter((p) => p.repoRoot === repoRoot)
+          const pendingBody = repoPendings.map((pending) => (
+            <PendingWorktreeRow
+              key={pending.id}
+              pending={pending}
+              isActive={pending.id === activeWorktreeId}
+              onClick={() => onSelectWorktree(pending.id)}
+              onDismiss={() => onDismissPendingWorktree(pending.id)}
+            />
+          ))
           return (
             <div key={repoRoot}>
               {showRepoHeaders && (
@@ -335,6 +352,7 @@ export function Sidebar({
                   </span>
                 </button>
               )}
+              {!repoCollapsed && pendingBody}
               {!repoCollapsed && groupsBody}
             </div>
           )
@@ -397,6 +415,50 @@ export function Sidebar({
           </button>
         </Tooltip>
       </div>
+    </div>
+  )
+}
+
+interface PendingWorktreeRowProps {
+  pending: PendingWorktree
+  isActive: boolean
+  onClick: () => void
+  onDismiss: () => void
+}
+
+function PendingWorktreeRow({ pending, isActive, onClick, onDismiss }: PendingWorktreeRowProps): JSX.Element {
+  const isError = pending.status === 'error'
+  return (
+    <div
+      onClick={onClick}
+      className={`group w-full text-left px-3 py-2 flex items-center gap-2 transition-colors cursor-pointer ${
+        isActive ? 'bg-surface text-fg-bright' : 'text-muted hover:bg-panel-raised hover:text-fg'
+      }`}
+    >
+      {isError ? (
+        <AlertCircle size={13} className="shrink-0 text-danger" />
+      ) : (
+        <Loader2 size={13} className="shrink-0 text-accent animate-spin" />
+      )}
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-medium truncate">{pending.branchName}</div>
+        <div className="text-xs text-faint truncate">
+          {isError ? 'Failed to create' : 'Creating worktree…'}
+        </div>
+      </div>
+      {isError && (
+        <Tooltip label="Dismiss" side="left">
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onDismiss()
+            }}
+            className="opacity-0 group-hover:opacity-100 text-faint hover:text-danger transition-all shrink-0 cursor-pointer"
+          >
+            <X size={12} />
+          </button>
+        </Tooltip>
+      )}
     </div>
   )
 }

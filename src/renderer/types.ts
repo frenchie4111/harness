@@ -10,6 +10,17 @@ export interface Worktree {
   repoRoot: string
 }
 
+export interface PendingWorktree {
+  /** Prefixed id like `pending:<uuid>` so App state can use it as an activeWorktreeId. */
+  id: string
+  repoRoot: string
+  branchName: string
+  status: 'creating' | 'error'
+  error?: string
+  initialPrompt?: string
+  teleportSessionId?: string
+}
+
 export interface FileReadResult {
   content: string | null
   size: number

@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import type { Worktree, TerminalTab, PtyStatus, PRStatus, QuestStep, WorkspacePane } from './types'
+import type { Worktree, TerminalTab, PtyStatus, PRStatus, QuestStep, WorkspacePane, PendingWorktree } from './types'
 import type { Action } from './hotkeys'
 import { resolveHotkeys } from './hotkeys'
 import { HotkeysProvider } from './components/Tooltip'
 import { Sidebar } from './components/Sidebar'
 import { ResizeHandle } from './components/ResizeHandle'
 import { NewWorktreeScreen } from './components/NewWorktreeScreen'
+import { CreatingWorktreeScreen } from './components/CreatingWorktreeScreen'
 import { QuestCard } from './components/QuestCard'
 import { WorkspaceView } from './components/WorkspaceView'
 import { ChangedFilesPanel } from './components/ChangedFilesPanel'
@@ -31,6 +32,10 @@ function makeTerminalId(prefix: string, worktreePath: string): string {
 
 function newPaneId(): string {
   return `pane-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function isPendingId(id: string | null | undefined): id is string {
+  return typeof id === 'string' && id.startsWith('pending:')
 }
 
 async function fetchMergedStatusAll(roots: string[]): Promise<Record<string, boolean>> {
@@ -100,6 +105,10 @@ export default function App(): JSX.Element {
     setRightPanelWidth((w) => Math.max(180, Math.min(600, w - delta)))
   }, [])
   const [showNewWorktree, setShowNewWorktree] = useState(false)
+  // Worktrees whose git creation is still running (or has errored). They
+  // show in the sidebar immediately on submit so the user sees the new entry
+  // right away instead of waiting on the modal.
+  const [pendingWorktrees, setPendingWorktrees] = useState<PendingWorktree[]>([])
   const [showSettings, setShowSettings] = useState(false)
   const [settingsInitialSection, setSettingsInitialSection] = useState<'github' | undefined>(undefined)
   const [showGuide, setShowGuide] = useState(false)
@@ -501,6 +510,9 @@ const setQuestStep = useCallback((next: QuestStep) => {
   // When a worktree becomes active, check hooks and set up tabs
   useEffect(() => {
     if (!activeWorktreeId) return
+    // Pending ids refer to worktrees that don't exist on disk yet — skip
+    // hooks + tab creation until the real path takes over.
+    if (isPendingId(activeWorktreeId)) return
 
     // Refresh PR status on focus (throttled)
     fetchPRStatusIfStale(activeWorktreeId)
@@ -615,21 +627,66 @@ const setQuestStep = useCallback((next: QuestStep) => {
   }, [repoRoots, fetchAllWorktrees])
 
 
-  const handleSubmitNewWorktree = useCallback(
-    async (repoRoot: string, branchName: string, initialPrompt: string, teleportSessionId?: string) => {
-      const created = await window.api.addWorktree(repoRoot, branchName)
-      if (teleportSessionId) {
-        pendingTeleportRef.current[created.path] = teleportSessionId
-      } else if (initialPrompt) {
-        pendingPromptsRef.current[created.path] = initialPrompt
+  const runPendingCreate = useCallback(
+    async (pending: PendingWorktree) => {
+      try {
+        const created = await window.api.addWorktree(pending.repoRoot, pending.branchName)
+        if (pending.teleportSessionId) {
+          pendingTeleportRef.current[created.path] = pending.teleportSessionId
+        } else if (pending.initialPrompt) {
+          pendingPromptsRef.current[created.path] = pending.initialPrompt
+        }
+        const trees = await fetchAllWorktrees(repoRoots)
+        setWorktrees(trees)
+        // Hand the active selection over to the real path if the user was
+        // looking at the pending tab, then drop the pending entry.
+        setActiveWorktreeId((prev) => (prev === pending.id ? created.path : prev))
+        setPendingWorktrees((prev) => prev.filter((p) => p.id !== pending.id))
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        setPendingWorktrees((prev) =>
+          prev.map((p) => (p.id === pending.id ? { ...p, status: 'error', error: message } : p))
+        )
       }
-      const trees = await fetchAllWorktrees(repoRoots)
-      setWorktrees(trees)
-      setActiveWorktreeId(created.path)
-      setShowNewWorktree(false)
     },
     [repoRoots, fetchAllWorktrees]
   )
+
+  const handleSubmitNewWorktree = useCallback(
+    async (repoRoot: string, branchName: string, initialPrompt: string, teleportSessionId?: string) => {
+      const pending: PendingWorktree = {
+        id: `pending:${crypto.randomUUID()}`,
+        repoRoot,
+        branchName,
+        status: 'creating',
+        initialPrompt: initialPrompt || undefined,
+        teleportSessionId: teleportSessionId || undefined
+      }
+      setPendingWorktrees((prev) => [...prev, pending])
+      setActiveWorktreeId(pending.id)
+      setShowNewWorktree(false)
+      void runPendingCreate(pending)
+    },
+    [runPendingCreate]
+  )
+
+  const handleRetryPendingWorktree = useCallback(
+    (id: string) => {
+      setPendingWorktrees((prev) => {
+        const target = prev.find((p) => p.id === id)
+        if (!target) return prev
+        const next = prev.map((p) => (p.id === id ? { ...p, status: 'creating' as const, error: undefined } : p))
+        void runPendingCreate({ ...target, status: 'creating', error: undefined })
+        return next
+      })
+    },
+    [runPendingCreate]
+  )
+
+  const handleDismissPendingWorktree = useCallback((id: string) => {
+    setPendingWorktrees((prev) => prev.filter((p) => p.id !== id))
+    setActiveWorktreeId((prev) => (prev === id ? null : prev))
+  }, [])
 
   const handleContinueWorktree = useCallback(async (path: string, newBranchName: string) => {
     const repoRoot = worktreeRepoRef.current[path]
@@ -1269,6 +1326,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
         {sidebarVisible && (
           <Sidebar
             worktrees={worktrees}
+            pendingWorktrees={pendingWorktrees}
             activeWorktreeId={activeWorktreeId}
             statuses={worktreeStatuses}
             prStatuses={prStatuses}
@@ -1282,6 +1340,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
               setShowCommandCenter(false)
               setActiveWorktreeId(path)
             }}
+            onDismissPendingWorktree={handleDismissPendingWorktree}
             onNewWorktree={() => setShowNewWorktree(true)}
             onContinueWorktree={handleContinueWorktree}
             onDeleteWorktree={handleDeleteWorktree}
@@ -1388,6 +1447,17 @@ const setQuestStep = useCallback((next: QuestStep) => {
             Select a worktree to begin
           </div>
         )}
+        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && isPendingId(activeWorktreeId) && (() => {
+          const pending = pendingWorktrees.find((p) => p.id === activeWorktreeId)
+          if (!pending) return null
+          return (
+            <CreatingWorktreeScreen
+              pending={pending}
+              onRetry={handleRetryPendingWorktree}
+              onDismiss={handleDismissPendingWorktree}
+            />
+          )
+        })()}
         <QuestCard
           step={questStep}
           onDismiss={() => setQuestStep('done')}
