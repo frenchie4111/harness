@@ -431,8 +431,8 @@ export function CommandCenter({
                               <span className="text-faint">{relTime(lastActive[wt.path])}</span>
                             </div>
 
-                            <div className="rounded bg-panel border border-border/60 p-2 h-14 overflow-hidden">
-                              <pre className="text-[10px] leading-tight text-muted font-mono whitespace-pre-wrap break-all line-clamp-3">
+                            <div className="rounded bg-panel border border-border/60 p-2 h-20 overflow-hidden">
+                              <pre className="text-[10px] leading-tight text-muted font-mono whitespace-pre-wrap break-all line-clamp-5">
                                 {tail || <span className="text-faint italic">no output yet</span>}
                               </pre>
                             </div>

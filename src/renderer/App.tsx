@@ -472,7 +472,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
       s.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '').replace(/\x1b\][^\x07\x1b]*(\x07|\x1b\\)/g, '')
     const cleanup = window.api.onTerminalData((id, data) => {
       const prev = tailBuffersRef.current[id] || ''
-      const next = (prev + data).slice(-1024)
+      const next = (prev + data).slice(-4096)
       tailBuffersRef.current[id] = next
       tailDirtyRef.current = true
     })
@@ -483,7 +483,8 @@ const setQuestStep = useCallback((next: QuestStep) => {
       for (const [id, buf] of Object.entries(tailBuffersRef.current)) {
         const stripped = stripAnsi(buf).replace(/\r/g, '')
         const lines = stripped.split('\n').map((l) => l.trim()).filter(Boolean)
-        out[id] = lines.length ? lines[lines.length - 1].slice(0, 240) : ''
+        const last = lines.slice(-4).map((l) => l.slice(0, 240))
+        out[id] = last.join('\n')
       }
       setTailLines(out)
     }, 500)
