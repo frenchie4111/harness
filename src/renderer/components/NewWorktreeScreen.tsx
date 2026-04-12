@@ -100,6 +100,13 @@ export function NewWorktreeScreen({ onSubmit, onCancel, repoRoots, defaultRepoRo
     }
   }, [effectiveBranch, prompt, canSubmit, onSubmit, parsedTeleport, selectedRepo])
 
+  const cycleRepo = useCallback((direction: 1 | -1) => {
+    if (repoRoots.length <= 1) return
+    const idx = repoRoots.indexOf(selectedRepo)
+    const next = (idx + direction + repoRoots.length) % repoRoots.length
+    setSelectedRepo(repoRoots[next])
+  }, [repoRoots, selectedRepo])
+
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -110,8 +117,16 @@ export function NewWorktreeScreen({ onSubmit, onCancel, repoRoots, defaultRepoRo
         e.preventDefault()
         onCancel()
       }
+      if ((e.metaKey || e.ctrlKey) && e.key === '[') {
+        e.preventDefault()
+        cycleRepo(-1)
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === ']') {
+        e.preventDefault()
+        cycleRepo(1)
+      }
     },
-    [handleSubmit, onCancel]
+    [handleSubmit, onCancel, cycleRepo]
   )
 
   const handleBranchKey = useCallback((e: React.KeyboardEvent) => {
@@ -189,25 +204,33 @@ export function NewWorktreeScreen({ onSubmit, onCancel, repoRoots, defaultRepoRo
             </div>
 
             {repoRoots.length > 1 && (
-              <label className="block mb-5">
-                <div className="mb-2">
+              <div className="mb-5">
+                <div className="flex items-center justify-between mb-2">
                   <span className="text-[11px] font-semibold uppercase tracking-wider text-dim">
                     Repository
                   </span>
+                  <span className="text-[11px] text-faint">
+                    <span className="font-mono">⌘[</span> <span className="font-mono">⌘]</span> to switch
+                  </span>
                 </div>
-                <select
-                  value={selectedRepo}
-                  onChange={(e) => setSelectedRepo(e.target.value)}
-                  disabled={submitting}
-                  className="w-full bg-app border-2 border-border-strong rounded-lg px-3 py-2.5 text-sm text-fg-bright outline-none focus:border-accent transition-colors cursor-pointer"
-                >
+                <div className="flex p-1 bg-app border border-border-strong rounded-lg gap-1 flex-wrap">
                   {repoRoots.map((r) => (
-                    <option key={r} value={r}>
+                    <button
+                      key={r}
+                      type="button"
+                      onClick={() => setSelectedRepo(r)}
+                      disabled={submitting}
+                      className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
+                        selectedRepo === r
+                          ? 'bg-panel text-fg-bright shadow-sm'
+                          : 'text-dim hover:text-fg'
+                      }`}
+                    >
                       {r.split('/').pop() || r}
-                    </option>
+                    </button>
                   ))}
-                </select>
-              </label>
+                </div>
+              </div>
             )}
 
             {mode === 'fresh' && (
