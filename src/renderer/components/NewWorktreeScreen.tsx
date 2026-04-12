@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { Sparkles, Loader2, X, Map, ListChecks, BookOpen, Radio } from 'lucide-react'
 import iconUrl from '../../../resources/icon.png'
 import { sanitizeBranchInput, isValidBranchName } from '../branch-name'
+import { RepoIcon } from './RepoIcon'
 
 interface NewWorktreeScreenProps {
   onSubmit: (repoRoot: string, branchName: string, initialPrompt: string, teleportSessionId?: string) => Promise<void>
@@ -220,12 +221,13 @@ export function NewWorktreeScreen({ onSubmit, onCancel, repoRoots, defaultRepoRo
                       type="button"
                       onClick={() => setSelectedRepo(r)}
                       disabled={submitting}
-                      className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
+                      className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
                         selectedRepo === r
                           ? 'bg-panel text-fg-bright shadow-sm'
                           : 'text-dim hover:text-fg'
                       }`}
                     >
+                      <RepoIcon repoName={r.split('/').pop() || r} size={14} />
                       {r.split('/').pop() || r}
                     </button>
                   ))}
