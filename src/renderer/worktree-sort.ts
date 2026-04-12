@@ -16,7 +16,7 @@ export function getGroupKey(
   if (locallyMerged) return 'merged'
   if (!pr) return 'no-pr'
   if (pr.state === 'merged' || pr.state === 'closed') return 'merged'
-  if (pr.checksOverall === 'failure' || pr.hasConflict === true) return 'needs-attention'
+  if (pr.checksOverall === 'failure' || pr.hasConflict === true || pr.reviewDecision === 'changes_requested') return 'needs-attention'
   return 'active'
 }
 

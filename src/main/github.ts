@@ -15,6 +15,15 @@ export interface CheckStatus {
   detailsUrl?: string
 }
 
+export interface PRReview {
+  user: string
+  avatarUrl: string
+  state: 'APPROVED' | 'CHANGES_REQUESTED' | 'COMMENTED' | 'DISMISSED' | 'PENDING'
+  body: string
+  submittedAt: string
+  htmlUrl: string
+}
+
 export interface PRStatus {
   number: number
   title: string
@@ -25,6 +34,9 @@ export interface PRStatus {
   checksOverall: 'success' | 'failure' | 'pending' | 'none'
   /** true = has conflicts with base, false = mergeable, null = still computing */
   hasConflict: boolean | null
+  reviews: PRReview[]
+  /** Overall review decision: approved, changes requested, or pending */
+  reviewDecision: 'approved' | 'changes_requested' | 'review_required' | 'none'
 }
 
 function getToken(): string | null {
@@ -129,6 +141,14 @@ interface ApiCombinedStatus {
   statuses: ApiStatus[]
 }
 
+interface ApiReview {
+  user: { login: string; avatar_url: string }
+  state: 'APPROVED' | 'CHANGES_REQUESTED' | 'COMMENTED' | 'DISMISSED' | 'PENDING'
+  body: string
+  submitted_at: string
+  html_url: string
+}
+
 function normalizeCheckState(
   status: ApiCheckRun['status'],
   conclusion: ApiCheckRun['conclusion']
@@ -202,10 +222,11 @@ export async function getPRStatus(worktreePath: string): Promise<PRStatus | null
     // Fetch check runs, status contexts, and PR detail (for mergeable) in parallel.
     // The /pulls/{n} endpoint triggers GitHub's background mergeability computation
     // and returns the result if it's ready — otherwise mergeable is null.
-    const [checkRunsRes, combinedRes, prDetail] = await Promise.all([
+    const [checkRunsRes, combinedRes, prDetail, reviewsRes] = await Promise.all([
       githubFetch(`https://api.github.com/repos/${owner}/${repo}/commits/${sha}/check-runs?per_page=100`) as Promise<ApiCheckRunsResponse>,
       githubFetch(`https://api.github.com/repos/${owner}/${repo}/commits/${sha}/status`) as Promise<ApiCombinedStatus>,
-      githubFetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${pr.number}`) as Promise<ApiPRDetail>
+      githubFetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${pr.number}`) as Promise<ApiPRDetail>,
+      githubFetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${pr.number}/reviews?per_page=100`) as Promise<ApiReview[]>
     ])
 
     // mergeable_state 'dirty' is the definitive conflict signal. mergeable===false
@@ -236,6 +257,29 @@ export async function getPRStatus(worktreePath: string): Promise<PRStatus | null
       })
     }
 
+    // Process reviews — keep all reviews, dedupe to latest per user for decision
+    const reviews: PRReview[] = (Array.isArray(reviewsRes) ? reviewsRes : [])
+      .filter((r) => r.user && r.state !== 'PENDING')
+      .map((r) => ({
+        user: r.user.login,
+        avatarUrl: r.user.avatar_url,
+        state: r.state,
+        body: r.body || '',
+        submittedAt: r.submitted_at,
+        htmlUrl: r.html_url
+      }))
+
+    // Compute overall review decision from the latest review per user
+    const latestByUser = new Map<string, PRReview['state']>()
+    for (const r of reviews) {
+      latestByUser.set(r.user, r.state)
+    }
+    const latestStates = [...latestByUser.values()]
+    let reviewDecision: PRStatus['reviewDecision'] = 'none'
+    if (latestStates.some((s) => s === 'CHANGES_REQUESTED')) reviewDecision = 'changes_requested'
+    else if (latestStates.some((s) => s === 'APPROVED')) reviewDecision = 'approved'
+    else if (latestStates.length > 0) reviewDecision = 'review_required'
+
     // Determine PR state
     let state: PRStatus['state']
     if (pr.merged_at) state = 'merged'
@@ -251,7 +295,9 @@ export async function getPRStatus(worktreePath: string): Promise<PRStatus | null
       branch: branchName,
       checks,
       checksOverall: computeOverall(checks),
-      hasConflict
+      hasConflict,
+      reviews,
+      reviewDecision
     }
   } catch (err) {
     log('github', `getPRStatus failed for ${branchName}`, err instanceof Error ? err.message : err)

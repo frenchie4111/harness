@@ -141,6 +141,15 @@ export interface MergeLocalResult {
   mainPath: string
 }
 
+export interface PRReview {
+  user: string
+  avatarUrl: string
+  state: 'APPROVED' | 'CHANGES_REQUESTED' | 'COMMENTED' | 'DISMISSED' | 'PENDING'
+  body: string
+  submittedAt: string
+  htmlUrl: string
+}
+
 export interface PRStatus {
   number: number
   title: string
@@ -151,6 +160,8 @@ export interface PRStatus {
   checksOverall: 'success' | 'failure' | 'pending' | 'none'
   /** true = has conflicts with base, false = mergeable, null = still computing */
   hasConflict: boolean | null
+  reviews: PRReview[]
+  reviewDecision: 'approved' | 'changes_requested' | 'review_required' | 'none'
 }
 
 export interface ElectronAPI {

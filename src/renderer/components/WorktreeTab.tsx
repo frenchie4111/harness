@@ -81,11 +81,19 @@ export function WorktreeTab({ worktree, isActive, status, prStatus, isMerged, re
         title={STATUS_LABELS[displayStatus]}
       />
       {prStatus && (
-        <GitPullRequest
-          size={13}
-          className={`shrink-0 ${iconColor}`}
-          title={`PR #${prStatus.number}${prStatus.checksOverall !== 'none' ? ` \u2014 checks ${prStatus.checksOverall}` : ''}${iconTitleSuffix}`}
-        />
+        <span className="relative shrink-0">
+          <GitPullRequest
+            size={13}
+            className={iconColor}
+            title={`PR #${prStatus.number}${prStatus.checksOverall !== 'none' ? ` \u2014 checks ${prStatus.checksOverall}` : ''}${iconTitleSuffix}${prStatus.reviewDecision === 'approved' ? ' \u2014 approved' : prStatus.reviewDecision === 'changes_requested' ? ' \u2014 changes requested' : ''}`}
+          />
+          {prStatus.reviewDecision === 'approved' && (
+            <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-success ring-1 ring-panel" />
+          )}
+          {prStatus.reviewDecision === 'changes_requested' && (
+            <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-warning ring-1 ring-panel" />
+          )}
+        </span>
       )}
       <div className="min-w-0 flex-1">
         <div className="text-sm font-medium truncate">{worktree.branch}</div>
