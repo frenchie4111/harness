@@ -24,6 +24,8 @@ interface WorkspaceViewProps {
   statuses: Record<string, PtyStatus>
   visible: boolean
   claudeCommand: string
+  repoLabel: string
+  branch: string
   onSelectTab: (worktreePath: string, paneId: string, tabId: string) => void
   onAddTab: (worktreePath: string, paneId?: string) => void
   onAddClaudeTab: (worktreePath: string, paneId?: string) => void
@@ -58,7 +60,9 @@ export function WorkspaceView({
   onReorderTabs,
   onMoveTabToPane,
   onSplitPane,
-  onSendToClaude
+  onSendToClaude,
+  repoLabel,
+  branch
 }: WorkspaceViewProps): JSX.Element {
   // Slot elements per pane — TerminalPanel registers its content-area div
   // here so WorkspaceView can portal the right terminals into each slot.
@@ -149,6 +153,8 @@ export function WorkspaceView({
               isFocused={pane.id === focusedPaneId}
               paneCount={panes.length}
               statuses={statuses}
+              repoLabel={repoLabel}
+              branch={branch}
               registerSlot={registerSlot}
               onSelectTab={(tabId) => onSelectTab(worktreePath, pane.id, tabId)}
               onAddTab={() => onAddTab(worktreePath, pane.id)}

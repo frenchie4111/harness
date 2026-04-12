@@ -1316,6 +1316,8 @@ const setQuestStep = useCallback((next: QuestStep) => {
             >
               <WorkspaceView
                 worktreePath={wt.path}
+                repoLabel={wt.repoRoot.split('/').pop() || wt.repoRoot}
+                branch={wt.branch}
                 panes={paneList}
                 focusedPaneId={activePaneId[wt.path] || paneList[0]?.id || ''}
                 statuses={statuses}
