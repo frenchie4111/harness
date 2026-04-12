@@ -151,12 +151,16 @@ export function Cleanup({
     return out
   }, [eligible, activityLastTs, lastActive, prStatuses, mergedPaths, dirtyMap, ageMs, mergedOnly, repoFilter, now])
 
-  // Seed selection with defaults for candidates we haven't seen yet. Paths the
-  // user has explicitly clicked (tracked in `touched`) keep their current value
-  // across refreshes and filter changes.
+  // Seed selection with defaults for candidates we haven't seen yet, and
+  // deselect anything no longer visible so filtered-out worktrees can't be
+  // accidentally deleted.
   useEffect(() => {
+    const visiblePaths = new Set(candidates.map((c) => c.worktree.path))
     setSelected((prev) => {
       const next = { ...prev }
+      for (const path of Object.keys(next)) {
+        if (!visiblePaths.has(path)) next[path] = false
+      }
       for (const c of candidates) {
         if (touched[c.worktree.path]) continue
         next[c.worktree.path] = includeDirty ? true : !c.dirty
@@ -222,11 +226,15 @@ export function Cleanup({
 
   const handleDelete = async (): Promise<void> => {
     if (selectedPaths.length === 0) return
+    const selectedCandidates = candidates.filter((c) => selected[c.worktree.path])
+    const listing = selectedCandidates
+      .map((c) => `  - ${c.worktree.branch || basename(c.worktree.path)}`)
+      .join('\n')
     const dirtyNote = selectedDirtyCount > 0
       ? `\n\n⚠ ${selectedDirtyCount} of these have uncommitted changes that will be lost.`
       : ''
     const ok = window.confirm(
-      `Delete ${selectedPaths.length} worktree${selectedPaths.length === 1 ? '' : 's'}?${dirtyNote}\n\nThis cannot be undone.`
+      `Delete ${selectedPaths.length} worktree${selectedPaths.length === 1 ? '' : 's'}?\n\n${listing}${dirtyNote}\n\nThis cannot be undone.`
     )
     if (!ok) return
     setDeleting(true)
