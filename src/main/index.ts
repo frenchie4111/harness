@@ -402,6 +402,22 @@ function registerIpcHandlers(): void {
     return writeMcpConfigForTerminal(terminalId)
   })
 
+  ipcMain.handle('config:getNameClaudeSessions', () => {
+    return config.nameClaudeSessions ?? false
+  })
+
+  ipcMain.handle('config:setNameClaudeSessions', (_, enabled: boolean) => {
+    if (enabled) {
+      config.nameClaudeSessions = true
+    } else {
+      delete config.nameClaudeSessions
+    }
+    saveConfig(config)
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.send('config:nameClaudeSessionsChanged', config.nameClaudeSessions ?? false)
+    }
+    return true
+  })
   ipcMain.handle('config:getTheme', () => {
     return config.theme || DEFAULT_THEME
   })

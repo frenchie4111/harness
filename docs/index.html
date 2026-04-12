@@ -256,6 +256,87 @@
         </p>
       </div>
 
+      <!-- Feature: multi-repo -->
+      <div class="bg-neutral-950/60 border border-neutral-800 rounded-xl p-6">
+        <div class="h-16 mb-4 flex items-center justify-center gap-3 bg-neutral-900/40 rounded-lg border border-neutral-800/60 px-3">
+          <div class="flex flex-col items-center gap-0.5">
+            <div class="px-2 py-0.5 rounded bg-neutral-800 border border-neutral-700 text-[9px] font-mono text-amber-300">api</div>
+            <div class="flex gap-0.5">
+              <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+              <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+            </div>
+          </div>
+          <div class="flex flex-col items-center gap-0.5">
+            <div class="px-2 py-0.5 rounded bg-neutral-800 border border-neutral-700 text-[9px] font-mono text-blue-300">web</div>
+            <div class="flex gap-0.5">
+              <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+              <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+              <span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>
+            </div>
+          </div>
+          <div class="flex flex-col items-center gap-0.5">
+            <div class="px-2 py-0.5 rounded bg-neutral-800 border border-neutral-700 text-[9px] font-mono text-purple-300">infra</div>
+            <div class="flex gap-0.5">
+              <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+            </div>
+          </div>
+        </div>
+        <h3 class="text-lg font-semibold mb-2">Multi-repo</h3>
+        <p class="text-sm text-neutral-500">
+          Manage multiple repos in a single window. Add repos to the sidebar, switch
+          between them, or toggle unified view to see everything at once.
+        </p>
+      </div>
+
+      <!-- Feature: MCP -->
+      <div class="bg-neutral-950/60 border border-neutral-800 rounded-xl p-6">
+        <div class="h-16 mb-4 flex flex-col justify-center gap-1 bg-neutral-900/40 rounded-lg border border-neutral-800/60 px-3 py-2 font-mono text-[10px]">
+          <div class="text-neutral-500">> create a worktree for the auth refactor</div>
+          <div class="text-green-400">Created worktree: auth-refactor</div>
+          <div class="text-neutral-500">> list worktrees</div>
+        </div>
+        <h3 class="text-lg font-semibold mb-2">Claude controls Harness</h3>
+        <p class="text-sm text-neutral-500">
+          A built-in MCP server lets Claude create and list worktrees on its own.
+          Ask Claude to spin up a new worktree and it just does it.
+        </p>
+      </div>
+
+      <!-- Feature: command center -->
+      <div class="bg-neutral-950/60 border border-neutral-800 rounded-xl p-6">
+        <div class="h-16 mb-4 grid grid-cols-3 gap-1 bg-neutral-900/40 rounded-lg border border-neutral-800/60 p-2">
+          <div class="rounded bg-neutral-800/60 border border-neutral-700/40 flex flex-col items-center justify-center gap-0.5">
+            <span class="w-2 h-2 rounded-full bg-green-500 pulse-dot"></span>
+            <span class="text-[7px] text-neutral-500">auth</span>
+          </div>
+          <div class="rounded bg-neutral-800/60 border border-neutral-700/40 flex flex-col items-center justify-center gap-0.5">
+            <span class="w-2 h-2 rounded-full bg-red-500 pulse-dot"></span>
+            <span class="text-[7px] text-neutral-500">api</span>
+          </div>
+          <div class="rounded bg-neutral-800/60 border border-neutral-700/40 flex flex-col items-center justify-center gap-0.5">
+            <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+            <span class="text-[7px] text-neutral-500">tests</span>
+          </div>
+          <div class="rounded bg-neutral-800/60 border border-neutral-700/40 flex flex-col items-center justify-center gap-0.5">
+            <span class="w-2 h-2 rounded-full bg-green-500 pulse-dot"></span>
+            <span class="text-[7px] text-neutral-500">docs</span>
+          </div>
+          <div class="rounded bg-neutral-800/60 border border-neutral-700/40 flex flex-col items-center justify-center gap-0.5">
+            <span class="w-2 h-2 rounded-full bg-green-500 pulse-dot"></span>
+            <span class="text-[7px] text-neutral-500">login</span>
+          </div>
+          <div class="rounded bg-neutral-800/60 border border-neutral-700/40 flex flex-col items-center justify-center gap-0.5">
+            <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+            <span class="text-[7px] text-neutral-500">perf</span>
+          </div>
+        </div>
+        <h3 class="text-lg font-semibold mb-2">Command center</h3>
+        <p class="text-sm text-neutral-500">
+          Bird's-eye view of every worktree in one grid. See which Claudes are
+          working, which need you, and which are idle — with mini activity timelines.
+        </p>
+      </div>
+
       <!-- Feature: hotkeys -->
       <div class="bg-neutral-950/60 border border-neutral-800 rounded-xl p-6">
         <div class="h-16 mb-4 flex items-center justify-center gap-1.5 bg-neutral-900/40 rounded-lg border border-neutral-800/60">

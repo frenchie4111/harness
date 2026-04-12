@@ -40,6 +40,19 @@ Grab the latest release from the [releases page](https://github.com/frenchie4111
 - [`claude`](https://code.claude.com) CLI installed and on your login shell's `PATH`
 - `git` installed (preinstalled on macOS via Xcode Command Line Tools)
 
+## Features
+
+- **Multi-repo** — manage multiple repos in a single window, switch between them or see everything at once
+- **Status at a glance** — sidebar dots show which Claude is working, waiting, or needs approval (powered by Claude Code hooks)
+- **MCP: Claude controls Harness** — a built-in MCP server lets Claude create and list worktrees on its own
+- **Command center** — bird's-eye grid of every worktree with mini activity timelines
+- **Activity tracking** — visual timeline of what each Claude has been doing across hours or days
+- **Live PR status** — see open PRs and CI checks for every worktree, auto-sorted by urgency
+- **Inline diffs** — syntax-highlighted changed-files panel next to the terminal
+- **Tabs per worktree** — Claude, shells, and diff tabs scoped to each checkout
+- **9 themes** — dark, dracula, nord, gruvbox, tokyo night, catppuccin, one dark, solarized dark/light
+- **Configurable hotkeys** — ⌘1–⌘9 to jump between worktrees, all rebindable
+
 ## Why did I build this
 
 Honestly I have been using [Conductor](https://www.conductor.build) for a while as a fairly happy customer, but some rough edges have really started to annoy me so on a random Thursday morning I decided to build my own version of it that works the way I want to. Oh yeah did I mention:
@@ -63,8 +76,14 @@ It will create a worktree directory at `../<your repo folder>-worktree` and star
 - [x] Initial functionality
 - [x] Proper packaging into an app and dmg for other mac users
 - [x] OTA Updates
-- [ ] Settings, configurability, etc
-- [ ] Better persistence (PTYs don't really stay if you kill the app, which can be a bit frustrating)
+- [x] Settings, configurability, etc
+- [x] Better persistence (PTYs don't really stay if you kill the app, which can be a bit frustrating)
+- [x] Multi-repo support
+- [x] MCP server — Claude can create and manage worktrees itself
+- [x] Command center — bird's-eye view of all worktrees
+- [x] Activity tracking — visual timeline of agent status history
+- [x] Syntax-highlighted diffs
+- [x] 9 built-in themes
 - [ ] Support other LLM CLI Tools - Honestly I currently only use Claude so this probably won't happen unless I
 - [ ] Notifications when cluades are ready for you (maybe peon noises?)
 - [ ] Whatever else people want - add a github issue or email me directly!

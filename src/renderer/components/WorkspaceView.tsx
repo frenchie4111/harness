@@ -24,6 +24,7 @@ interface WorkspaceViewProps {
   statuses: Record<string, PtyStatus>
   visible: boolean
   claudeCommand: string
+  nameClaudeSessions: boolean
   repoLabel: string
   branch: string
   onSelectTab: (worktreePath: string, paneId: string, tabId: string) => void
@@ -52,6 +53,7 @@ export function WorkspaceView({
   statuses,
   visible,
   claudeCommand,
+  nameClaudeSessions,
   onSelectTab,
   onAddTab,
   onAddClaudeTab,
@@ -208,6 +210,7 @@ export function WorkspaceView({
                   type={tab.type as 'claude' | 'shell'}
                   visible={visible && isActiveInPane}
                   claudeCommand={claudeCommand}
+                  sessionName={tab.type === 'claude' && nameClaudeSessions ? `${repoLabel}/${branch}` : undefined}
                   sessionId={tab.sessionId}
                   initialPrompt={tab.initialPrompt}
                   teleportSessionId={tab.teleportSessionId}
