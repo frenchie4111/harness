@@ -233,6 +233,10 @@ export function XTerminal({ terminalId, cwd, type, visible, claudeCommand, sessi
     }
 
     const buildClaudeArg = async (): Promise<string> => {
+      const mcpPath = await window.api.prepareMcpForTerminal(terminalId)
+      const mcpFlag = mcpPath ? ` --mcp-config ${shellQuote(mcpPath)}` : ''
+      const cmd = `${claudeCommand}${mcpFlag}`
+
       if (teleportSessionId && sessionId) {
         // If the session file already exists (e.g. user restarted the tab
         // after teleport already replayed history), fall through to the
@@ -240,13 +244,11 @@ export function XTerminal({ terminalId, cwd, type, visible, claudeCommand, sessi
         // "Session ID is already in use".
         const exists = await window.api.claudeSessionFileExists(cwd, sessionId)
         if (!exists) {
-          return `${claudeCommand} --teleport ${teleportSessionId} --session-id ${sessionId}`
+          return `${cmd} --teleport ${teleportSessionId} --session-id ${sessionId}`
         }
       }
       if (!sessionId) {
-        return initialPrompt
-          ? `${claudeCommand} ${shellQuote(initialPrompt)}`
-          : claudeCommand
+        return initialPrompt ? `${cmd} ${shellQuote(initialPrompt)}` : cmd
       }
       // If a session file already exists for this id, resume it; otherwise
       // create a new session with this id. `claude --session-id <id>` errors
@@ -254,8 +256,8 @@ export function XTerminal({ terminalId, cwd, type, visible, claudeCommand, sessi
       // idempotently across launches. Only forward the kickoff prompt on a
       // fresh session — a resume should never replay it.
       const exists = await window.api.claudeSessionFileExists(cwd, sessionId)
-      if (exists) return `${claudeCommand} --resume ${sessionId}`
-      const base = `${claudeCommand} --session-id ${sessionId}`
+      if (exists) return `${cmd} --resume ${sessionId}`
+      const base = `${cmd} --session-id ${sessionId}`
       return initialPrompt ? `${base} ${shellQuote(initialPrompt)}` : base
     }
 

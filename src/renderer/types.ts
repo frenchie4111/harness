@@ -207,6 +207,13 @@ export interface ElectronAPI {
   setClaudeCommand(command: string): Promise<boolean>
   getDefaultClaudeCommand(): Promise<string>
   onClaudeCommandChanged(callback: (command: string) => void): () => void
+  getHarnessMcpEnabled(): Promise<boolean>
+  setHarnessMcpEnabled(enabled: boolean): Promise<boolean>
+  onHarnessMcpEnabledChanged(callback: (enabled: boolean) => void): () => void
+  prepareMcpForTerminal(terminalId: string): Promise<string | null>
+  onWorktreesExternalCreate(
+    callback: (payload: { repoRoot: string; worktree: Worktree }) => void
+  ): () => void
 
   getClaudeEnvVars(): Promise<Record<string, string>>
   setClaudeEnvVars(vars: Record<string, string>): Promise<boolean>

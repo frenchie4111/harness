@@ -29,6 +29,9 @@ interface Config {
   // Merged on top of process.env so users can set things like ANTHROPIC_API_KEY,
   // DISABLE_TELEMETRY, etc. without editing their shell config.
   claudeEnvVars?: Record<string, string>
+  // When false, Harness won't inject `--mcp-config <path>` pointing at the
+  // bundled harness-control MCP server. Default is enabled (undefined/true).
+  harnessMcpEnabled?: boolean
   // Persisted workspace panes nested by repoRoot → worktreePath → panes[].
   // Two repos can have worktrees with identical paths in theory, and the
   // multi-repo UI shows them together, so we key by repo to keep them distinct.

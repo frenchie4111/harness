@@ -159,6 +159,7 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
   const [claudeCommand, setClaudeCommand] = useState<string>('')
   const [defaultClaudeCommand, setDefaultClaudeCommand] = useState<string>('')
   const [claudeSaveResult, setClaudeSaveResult] = useState<{ ok: boolean; message: string } | null>(null)
+  const [harnessMcpEnabled, setHarnessMcpEnabledState] = useState<boolean>(true)
 
   // Claude env var state. Stored as an ordered list of [key, value] pairs so
   // the user can edit a blank row without it collapsing in a Record.
@@ -192,6 +193,7 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
       const rows = Object.entries(vars || {}).map(([key, value]) => ({ key, value }))
       setClaudeEnvRows(rows)
     })
+    window.api.getHarnessMcpEnabled().then(setHarnessMcpEnabledState)
     window.api.getTheme().then(setThemeState)
     window.api.getTerminalFontFamily().then(setTerminalFontFamily)
     window.api.getDefaultTerminalFontFamily().then(setDefaultTerminalFontFamily)
@@ -333,6 +335,17 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
     await window.api.setClaudeCommand(claudeCommand)
     setClaudeSaveResult({ ok: true, message: 'Saved · new tabs will use this command' })
   }, [claudeCommand])
+
+  const handleToggleHarnessMcp = useCallback(async (enabled: boolean) => {
+    setHarnessMcpEnabledState(enabled)
+    await window.api.setHarnessMcpEnabled(enabled)
+  }, [])
+
+  const effectiveClaudeCommand = claudeCommand.trim() || defaultClaudeCommand
+  const previewInner = harnessMcpEnabled
+    ? `${effectiveClaudeCommand} --mcp-config <per-session> --session-id <uuid>`
+    : `${effectiveClaudeCommand} --session-id <uuid>`
+  const commandPreview = `/bin/zsh -ilc "${previewInner}"`
 
   const handleResetClaudeCommand = useCallback(async () => {
     setClaudeCommand(defaultClaudeCommand)
@@ -671,6 +684,39 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
                     {claudeSaveResult.message}
                   </div>
                 )}
+
+                <div className="mt-4 pt-3 border-t border-border">
+                  <label className="block text-xs font-medium text-fg mb-1">
+                    Full command preview
+                  </label>
+                  <p className="text-xs text-dim mb-2">
+                    What Harness actually spawns for a new Claude tab, including
+                    the login-shell wrap{harnessMcpEnabled ? ' and the harness-control MCP injection' : ''}.
+                  </p>
+                  <div className="bg-panel border border-border rounded px-3 py-2 text-[11px] text-fg-bright font-mono break-all">
+                    {commandPreview}
+                  </div>
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-border">
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={harnessMcpEnabled}
+                      onChange={(e) => handleToggleHarnessMcp(e.target.checked)}
+                      className="mt-0.5 cursor-pointer"
+                    />
+                    <div className="flex-1">
+                      <div className="text-sm text-fg-bright">Enable Harness MCP</div>
+                      <div className="text-xs text-dim mt-0.5">
+                        Auto-injects a <code className="bg-panel px-1 rounded text-[10px]">harness-control</code>{' '}
+                        MCP server into every Claude tab via{' '}
+                        <code className="bg-panel px-1 rounded text-[10px]">--mcp-config</code>, so Claude can
+                        create new worktrees (and chats) inside Harness. Merges additively with your existing MCPs.
+                      </div>
+                    </div>
+                  </label>
+                </div>
               </div>
 
               <div className="mt-4 text-xs text-dim space-y-2">
