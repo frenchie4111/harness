@@ -393,7 +393,7 @@ export function CommandCenter({
                             onClick={() => onSelect(wt.path)}
                             className={`text-left rounded-lg bg-surface hover:bg-surface-hover transition-colors flex flex-col cursor-pointer overflow-hidden ${STATUS_CARD_RING[display]}`}
                           >
-                            <div className="px-4 pt-4 pb-3 flex flex-col gap-2">
+                            <div className="px-4 pt-4 pb-2 flex flex-col gap-1.5">
                               {showRepoLabelOnCards && (
                                 <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-faint truncate">
                                   <RepoIcon repoName={wt.repoRoot.split('/').pop() || wt.repoRoot} size={12} />
@@ -428,15 +428,15 @@ export function CommandCenter({
                               </div>
                             </div>
 
-                            <div className="border-y border-border/60 bg-bg px-3 py-2 h-24 overflow-hidden">
+                            <div className="px-4 pb-3 flex items-center justify-between text-[11px]">
+                              <span className="text-muted">{STATUS_LABEL[display]}</span>
+                              <span className="text-faint">{relTime(lastActive[wt.path])}</span>
+                            </div>
+
+                            <div className="border-t border-border/60 bg-bg px-3 py-2 h-24 overflow-hidden">
                               <pre className="text-[10px] leading-tight text-fg/80 font-mono whitespace-pre-wrap break-all line-clamp-6">
                                 {tail || <span className="text-faint italic">no output yet</span>}
                               </pre>
-                            </div>
-
-                            <div className="px-4 py-2 flex items-center justify-between text-[11px]">
-                              <span className="text-muted">{STATUS_LABEL[display]}</span>
-                              <span className="text-faint">{relTime(lastActive[wt.path])}</span>
                             </div>
 
                             <MiniTimeline record={record} now={now} />

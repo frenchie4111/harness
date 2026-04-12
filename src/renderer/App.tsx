@@ -480,9 +480,17 @@ const setQuestStep = useCallback((next: QuestStep) => {
       if (!tailDirtyRef.current) return
       tailDirtyRef.current = false
       const out: Record<string, string> = {}
+      const isMeaningful = (line: string): boolean => {
+        const stripped = line.replace(/[\u2500-\u257F\u2580-\u259F]/g, '')
+        const wordChars = stripped.match(/[\p{L}\p{N}]/gu)
+        return !!wordChars && wordChars.length >= 3
+      }
       for (const [id, buf] of Object.entries(tailBuffersRef.current)) {
         const stripped = stripAnsi(buf).replace(/\r/g, '')
-        const lines = stripped.split('\n').map((l) => l.trim()).filter(Boolean)
+        const lines = stripped
+          .split('\n')
+          .map((l) => l.replace(/[\u2500-\u257F\u2580-\u259F]+/g, ' ').replace(/\s+/g, ' ').trim())
+          .filter(isMeaningful)
         const last = lines.slice(-4).map((l) => l.slice(0, 240))
         out[id] = last.join('\n')
       }
