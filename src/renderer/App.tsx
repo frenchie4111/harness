@@ -119,6 +119,7 @@ export default function App(): JSX.Element {
   const [hasGithubToken, setHasGithubToken] = useState<boolean | null>(null)
   const [hotkeyOverrides, setHotkeyOverrides] = useState<Record<string, string> | undefined>(undefined)
   const [claudeCommand, setClaudeCommand] = useState<string>('')
+  const [nameClaudeSessions, setNameClaudeSessions] = useState(false)
   // Onboarding parallelism quest — see QuestCard.tsx for the steps.
   const [questStep, setQuestStepRaw] = useState<QuestStep>('hidden')
   const questLoadedRef = useRef(false)
@@ -207,14 +208,16 @@ const setQuestStep = useCallback((next: QuestStep) => {
   // Load repos, worktrees, and config on mount
   useEffect(() => {
     (async () => {
-      const [roots, overrides, cmd, persistedPanes] = await Promise.all([
+      const [roots, overrides, cmd, persistedPanes, nameSessions] = await Promise.all([
         window.api.listRepos(),
         window.api.getHotkeyOverrides(),
         window.api.getClaudeCommand(),
-        window.api.getWorkspacePanes()
+        window.api.getWorkspacePanes(),
+        window.api.getNameClaudeSessions()
       ])
       if (overrides) setHotkeyOverrides(overrides)
       setClaudeCommand(cmd)
+      setNameClaudeSessions(nameSessions)
       // Flatten the nested persisted panes (repoRoot → wtPath → panes[]) into
       // the flat renderer shape keyed by wtPath. Paths are globally unique
       // across repos in practice — git worktrees are directories on disk.
@@ -326,6 +329,13 @@ const setQuestStep = useCallback((next: QuestStep) => {
   useEffect(() => {
     const cleanup = window.api.onClaudeCommandChanged((cmd) => {
       setClaudeCommand(cmd)
+    })
+    return cleanup
+  }, [])
+
+  useEffect(() => {
+    const cleanup = window.api.onNameClaudeSessionsChanged((enabled) => {
+      setNameClaudeSessions(enabled)
     })
     return cleanup
   }, [])
@@ -1395,6 +1405,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
                 statuses={statuses}
                 visible={isVisible}
                 claudeCommand={claudeCommand}
+                nameClaudeSessions={nameClaudeSessions}
                 onSelectTab={handleSelectTab}
                 onAddTab={handleAddTerminalTab}
                 onAddClaudeTab={handleAddClaudeTab}

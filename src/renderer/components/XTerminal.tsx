@@ -117,6 +117,7 @@ interface XTerminalProps {
   type: 'claude' | 'shell'
   visible: boolean
   claudeCommand: string
+  sessionName?: string
   sessionId?: string
   initialPrompt?: string
   teleportSessionId?: string
@@ -127,7 +128,7 @@ function shellQuote(s: string): string {
   return "'" + s.replace(/'/g, "'\\''") + "'"
 }
 
-export function XTerminal({ terminalId, cwd, type, visible, claudeCommand, sessionId, initialPrompt, teleportSessionId, onRestartClaude }: XTerminalProps): JSX.Element {
+export function XTerminal({ terminalId, cwd, type, visible, claudeCommand, sessionName, sessionId, initialPrompt, teleportSessionId, onRestartClaude }: XTerminalProps): JSX.Element {
   const [exited, setExited] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
@@ -235,8 +236,8 @@ export function XTerminal({ terminalId, cwd, type, visible, claudeCommand, sessi
     const buildClaudeArg = async (): Promise<string> => {
       const mcpPath = await window.api.prepareMcpForTerminal(terminalId)
       const mcpFlag = mcpPath ? ` --mcp-config ${shellQuote(mcpPath)}` : ''
-      const cmd = `${claudeCommand}${mcpFlag}`
-
+      const nameFlag = sessionName ? ` --name ${shellQuote(sessionName)}` : ''
+      const cmd = `${claudeCommand}${mcpFlag}${nameFlag}`
       if (teleportSessionId && sessionId) {
         // If the session file already exists (e.g. user restarted the tab
         // after teleport already replayed history), fall through to the

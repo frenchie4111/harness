@@ -63,6 +63,10 @@ interface Config {
   // shown as merged.
   locallyMerged?: Record<string, string>
   // First-run parallelism quest — advances through steps as the user learns.
+  // When true, pass --name "repo/branch" to Claude so sessions are named by
+  // their worktree rather than auto-summarized. Also sets the name visible
+  // to `claude --resume` and remote control.
+  nameClaudeSessions?: boolean
   onboarding?: {
     quest?: QuestStep
   }
