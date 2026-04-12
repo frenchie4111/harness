@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { AtSign } from 'lucide-react'
 import type { CommitDiff } from '../types'
 import { Tooltip } from './Tooltip'
+import { detectLanguage, highlightLine } from '../syntax'
 
 interface DiffViewProps {
   worktreePath: string
@@ -10,6 +11,10 @@ interface DiffViewProps {
   branchDiff?: boolean
   commitHash?: string
   onSendToClaude?: (text: string) => void
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
 interface DiffLine {
@@ -177,7 +182,15 @@ export function DiffView({ worktreePath, filePath, staged, branchDiff, commitHas
               {line.type === 'add' ? '+' : line.type === 'remove' ? '-' : ''}
             </span>
             {/* Content */}
-            <span className="whitespace-pre pr-4">{line.content}</span>
+            <span
+              className="whitespace-pre pr-4 hljs"
+              dangerouslySetInnerHTML={{
+                __html:
+                  line.type === 'add' || line.type === 'remove' || line.type === 'context'
+                    ? highlightLine(line.content, detectLanguage(line.file || filePath))
+                    : escapeHtml(line.content),
+              }}
+            />
           </div>
         ))}
       </div>
