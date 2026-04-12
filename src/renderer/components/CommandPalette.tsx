@@ -4,6 +4,7 @@ import type { Worktree, PtyStatus, PRStatus } from '../types'
 import type { Action, HotkeyBinding } from '../hotkeys'
 import { ACTION_LABELS, bindingToString } from '../hotkeys'
 import { groupWorktrees, GROUP_ORDER, GROUP_LABELS, type GroupKey } from '../worktree-sort'
+import { RepoIcon } from './RepoIcon'
 
 interface CommandPaletteProps {
   worktrees: Worktree[]
@@ -309,11 +310,12 @@ export function CommandPalette({
                     <div className="text-sm font-medium truncate text-left">{wt.branch}</div>
                     <div className="text-xs text-faint truncate text-left">
                       {repoName ? (
-                        <>
+                        <span className="inline-flex items-center gap-1">
+                          <RepoIcon repoName={repoName} size={11} />
                           <span className="text-dim">{repoName}</span>
-                          <span className="mx-1">&middot;</span>
+                          <span className="mx-0.5">&middot;</span>
                           {wt.path.split('/').pop()}
-                        </>
+                        </span>
                       ) : (
                         wt.path.split('/').slice(-2).join('/')
                       )}
