@@ -61,6 +61,7 @@ export function Cleanup({
   onBulkDelete
 }: CleanupProps): JSX.Element {
   const [ageKey, setAgeKey] = useState<AgeKey>('7d')
+  const [repoFilter, setRepoFilter] = useState<string | null>(null) // null = all repos
   const [mergedOnly, setMergedOnly] = useState(false)
   const [includeDirty, setIncludeDirty] = useState(false)
   const [dirtyMap, setDirtyMap] = useState<Record<string, boolean>>({})
@@ -81,6 +82,11 @@ export function Cleanup({
   const [now] = useState(() => Date.now())
 
   const eligible = useMemo(() => worktrees.filter((w) => !w.isMain), [worktrees])
+
+  const repos = useMemo(() => {
+    const set = new Set(eligible.map((w) => w.repoRoot))
+    return [...set].sort()
+  }, [eligible])
 
   useEffect(() => {
     let cancelled = false
@@ -122,6 +128,7 @@ export function Cleanup({
       const merged = !!mergedPaths[w.path] || pr?.state === 'merged'
       const dirty = !!dirtyMap[w.path]
 
+      if (repoFilter !== null && w.repoRoot !== repoFilter) continue
       if (ageMs !== null) {
         // "older than" means: last activity is older than threshold, OR no activity recorded.
         if (lastMs !== null && now - lastMs < ageMs) continue
@@ -142,7 +149,7 @@ export function Cleanup({
       return aT - bT
     })
     return out
-  }, [eligible, activityLastTs, lastActive, prStatuses, mergedPaths, dirtyMap, ageMs, mergedOnly, now])
+  }, [eligible, activityLastTs, lastActive, prStatuses, mergedPaths, dirtyMap, ageMs, mergedOnly, repoFilter, now])
 
   // Seed selection with defaults for candidates we haven't seen yet. Paths the
   // user has explicitly clicked (tracked in `touched`) keep their current value
@@ -280,6 +287,35 @@ export function Cleanup({
               </button>
             ))}
           </div>
+
+          {repos.length > 1 && (
+            <div className="flex items-center gap-2 mb-4 flex-wrap">
+              <span className="text-xs text-dim uppercase tracking-wider mr-2">Repo</span>
+              <button
+                onClick={() => setRepoFilter(null)}
+                className={`px-2.5 py-1 rounded text-xs font-mono transition-colors cursor-pointer ${
+                  repoFilter === null
+                    ? 'bg-accent/25 text-fg-bright border border-accent/40'
+                    : 'bg-surface/40 text-muted hover:text-fg border border-transparent'
+                }`}
+              >
+                all
+              </button>
+              {repos.map((r) => (
+                <button
+                  key={r}
+                  onClick={() => setRepoFilter(r)}
+                  className={`px-2.5 py-1 rounded text-xs font-mono transition-colors cursor-pointer ${
+                    repoFilter === r
+                      ? 'bg-accent/25 text-fg-bright border border-accent/40'
+                      : 'bg-surface/40 text-muted hover:text-fg border border-transparent'
+                  }`}
+                >
+                  {basename(r)}
+                </button>
+              ))}
+            </div>
+          )}
 
           <div className="flex items-center gap-4 mb-6 text-xs">
             <label className="flex items-center gap-1.5 cursor-pointer text-muted hover:text-fg">
