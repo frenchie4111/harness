@@ -208,6 +208,7 @@ export function WorkspaceView({
                   type={tab.type as 'claude' | 'shell'}
                   visible={visible && isActiveInPane}
                   claudeCommand={claudeCommand}
+                  sessionName={tab.type === 'claude' ? `${repoLabel}/${branch}` : undefined}
                   sessionId={tab.sessionId}
                   initialPrompt={tab.initialPrompt}
                   teleportSessionId={tab.teleportSessionId}
