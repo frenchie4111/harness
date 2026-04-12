@@ -18,6 +18,7 @@ import { Guide } from './components/Guide'
 import { Activity } from './components/Activity'
 import { Cleanup } from './components/Cleanup'
 import { CommandCenter } from './components/CommandCenter'
+import { CommandPalette } from './components/CommandPalette'
 import iconUrl from '../../resources/icon.png'
 import { focusTerminalById, flushAllTerminalHistory, markTerminalClosing } from './components/XTerminal'
 import { useHotkeys } from './hooks/useHotkeys'
@@ -115,6 +116,7 @@ export default function App(): JSX.Element {
   const [showActivity, setShowActivity] = useState(false)
   const [showCleanup, setShowCleanup] = useState(false)
   const [showCommandCenter, setShowCommandCenter] = useState(false)
+  const [showCommandPalette, setShowCommandPalette] = useState(false)
   const [tailLines, setTailLines] = useState<Record<string, string>>({})
   const [hasGithubToken, setHasGithubToken] = useState<boolean | null>(null)
   const [hotkeyOverrides, setHotkeyOverrides] = useState<Record<string, string> | undefined>(undefined)
@@ -1206,6 +1208,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
         window.api.openInEditor(activeWorktreeId)
       },
       toggleCommandCenter: () => setShowCommandCenter((v) => !v),
+      commandPalette: () => setShowCommandPalette((v) => !v),
     }),
     [
       cycleWorktree,
@@ -1539,6 +1542,28 @@ const setQuestStep = useCallback((next: QuestStep) => {
       </div>
     </div>
     {settingsOverlay}
+    {showCommandPalette && (
+      <CommandPalette
+        worktrees={worktrees}
+        worktreeStatuses={worktreeStatuses}
+        prStatuses={prStatuses}
+        mergedPaths={mergedPaths}
+        activeWorktreeId={activeWorktreeId}
+        resolvedHotkeys={resolvedHotkeys}
+        onClose={() => setShowCommandPalette(false)}
+        onSelectWorktree={(path) => {
+          setShowNewWorktree(false)
+          setShowActivity(false)
+          setShowCleanup(false)
+          setShowCommandCenter(false)
+          setActiveWorktreeId(path)
+        }}
+        onAction={(action) => {
+          const handler = hotkeyActions[action]
+          if (handler) handler()
+        }}
+      />
+    )}
     </HotkeysProvider>
   )
 }
