@@ -219,6 +219,10 @@ export interface ElectronAPI {
   setClaudeEnvVars(vars: Record<string, string>): Promise<boolean>
   onClaudeEnvVarsChanged(callback: (vars: Record<string, string>) => void): () => void
 
+  getNameClaudeSessions(): Promise<boolean>
+  setNameClaudeSessions(enabled: boolean): Promise<boolean>
+  onNameClaudeSessionsChanged(callback: (enabled: boolean) => void): () => void
+
   getTheme(): Promise<string>
   setTheme(theme: string): Promise<boolean>
   getAvailableThemes(): Promise<readonly string[]>

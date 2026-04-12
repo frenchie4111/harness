@@ -99,6 +99,15 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('worktrees:externalCreate', handler)
     return () => ipcRenderer.removeListener('worktrees:externalCreate', handler)
   },
+  getNameClaudeSessions: () => ipcRenderer.invoke('config:getNameClaudeSessions'),
+  setNameClaudeSessions: (enabled: boolean) => ipcRenderer.invoke('config:setNameClaudeSessions', enabled),
+  onNameClaudeSessionsChanged: (callback: (enabled: boolean) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, enabled: boolean): void => {
+      callback(enabled)
+    }
+    ipcRenderer.on('config:nameClaudeSessionsChanged', handler)
+    return () => ipcRenderer.removeListener('config:nameClaudeSessionsChanged', handler)
+  },
   getTheme: () => ipcRenderer.invoke('config:getTheme'),
   setTheme: (theme: string) => ipcRenderer.invoke('config:setTheme', theme),
   getAvailableThemes: () => ipcRenderer.invoke('config:getAvailableThemes'),

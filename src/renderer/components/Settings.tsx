@@ -167,6 +167,9 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
   const [envSaveResult, setEnvSaveResult] = useState<{ ok: boolean; message: string } | null>(null)
   const [revealedEnvRows, setRevealedEnvRows] = useState<Set<number>>(new Set())
 
+  // Name sessions toggle
+  const [nameClaudeSessions, setNameClaudeSessions] = useState(false)
+
   // Theme state
   const [theme, setThemeState] = useState<string>('dark')
 
@@ -194,6 +197,7 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
       setClaudeEnvRows(rows)
     })
     window.api.getHarnessMcpEnabled().then(setHarnessMcpEnabledState)
+    window.api.getNameClaudeSessions().then(setNameClaudeSessions)
     window.api.getTheme().then(setThemeState)
     window.api.getTerminalFontFamily().then(setTerminalFontFamily)
     window.api.getDefaultTerminalFontFamily().then(setDefaultTerminalFontFamily)
@@ -816,6 +820,30 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
 
                 <p className="mt-3 text-xs text-faint">
                   Values are stored in <code className="bg-panel px-1 rounded">config.json</code> in plain text. Variables already set in your shell environment will be overridden by values set here.
+                </p>
+              </div>
+
+              <div className="mt-6 bg-panel-raised border border-border rounded-lg p-4">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={nameClaudeSessions}
+                    onChange={(e) => {
+                      const enabled = e.target.checked
+                      setNameClaudeSessions(enabled)
+                      window.api.setNameClaudeSessions(enabled)
+                    }}
+                    className="accent-current w-4 h-4 cursor-pointer"
+                  />
+                  <div>
+                    <span className="text-sm font-medium text-fg">Name sessions by worktree</span>
+                    <p className="text-xs text-dim mt-0.5">
+                      Passes <code className="bg-panel px-1 rounded">--name &quot;repo/branch&quot;</code> when launching Claude so sessions are named after their worktree instead of auto-summarized. This name is also visible to <code className="bg-panel px-1 rounded">claude --resume</code> and remote control via <code className="bg-panel px-1 rounded">claude --name</code>.
+                    </p>
+                  </div>
+                </label>
+                <p className="mt-3 text-xs text-faint">
+                  Changes apply to newly created Claude tabs. Existing terminals are unaffected.
                 </p>
               </div>
             </section>
