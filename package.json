@@ -46,6 +46,12 @@
     "asarUnpack": [
       "**/node_modules/node-pty/**/*"
     ],
+    "extraResources": [
+      {
+        "from": "resources/mcp-bridge.js",
+        "to": "mcp-bridge.js"
+      }
+    ],
     "mac": {
       "category": "public.app-category.developer-tools",
       "icon": "resources/icon.icns",

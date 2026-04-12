@@ -28,6 +28,8 @@ import {
   type QuestStep
 } from './persistence'
 import { hooksInstalled, installHooks, watchStatusDir } from './hooks'
+import { startControlServer } from './control-server'
+import { writeMcpConfigForTerminal, pruneMcpConfigs } from './mcp-config'
 import { recordActivity, getActivityLog, clearAllActivity, clearActivityForWorktree, sealAllActive, touchActivityMeta, finalizeActivity, type ActivityState, type PRState } from './activity'
 import { log, getLogFilePath } from './debug'
 
@@ -374,6 +376,30 @@ function registerIpcHandlers(): void {
       if (!win.isDestroyed()) win.webContents.send('config:claudeEnvVarsChanged', config.claudeEnvVars || {})
     }
     return true
+  })
+
+  ipcMain.handle('config:getHarnessMcpEnabled', () => {
+    return config.harnessMcpEnabled !== false
+  })
+
+  ipcMain.handle('config:setHarnessMcpEnabled', (_, enabled: boolean) => {
+    if (enabled) {
+      delete config.harnessMcpEnabled
+    } else {
+      config.harnessMcpEnabled = false
+    }
+    saveConfig(config)
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed())
+        win.webContents.send('config:harnessMcpEnabledChanged', config.harnessMcpEnabled !== false)
+    }
+    return true
+  })
+
+  ipcMain.handle('mcp:prepareForTerminal', (_, terminalId: string): string | null => {
+    if (config.harnessMcpEnabled === false) return null
+    if (!terminalId) return null
+    return writeMcpConfigForTerminal(terminalId)
   })
 
   ipcMain.handle('config:getTheme', () => {
@@ -878,6 +904,14 @@ app.whenReady().then(() => {
     }
   }
   pruneTerminalHistory(keepIds)
+  pruneMcpConfigs(keepIds)
+
+  // Local HTTP control server for the bundled harness-control MCP bridge.
+  startControlServer({
+    getRepoRoots: () => config.repoRoots,
+    getWorktreeBase: () => config.worktreeBase || DEFAULT_WORKTREE_BASE,
+    broadcast: broadcastToAllWindows
+  }).catch((err) => log('control', 'failed to start', err instanceof Error ? err.message : err))
 
   // Watch status dir globally — route to correct window via ptyManager
   stopWatchingStatus = watchStatusDir((id) => ptyManager.getWindowForTerminal(id))

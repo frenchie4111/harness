@@ -607,6 +607,19 @@ const setQuestStep = useCallback((next: QuestStep) => {
     }
   }, [repoRoots, fetchAllWorktrees])
 
+  // External worktree creation (from the harness-control MCP). Refresh the
+  // list and focus the new worktree in any window showing that repo; the
+  // existing auto-pane effect will spawn a fresh Claude tab on activation.
+  useEffect(() => {
+    const off = window.api.onWorktreesExternalCreate(async ({ repoRoot, worktree }) => {
+      if (!repoRoots.includes(repoRoot)) return
+      const trees = await fetchAllWorktrees(repoRoots)
+      setWorktrees(trees)
+      setActiveWorktreeId(worktree.path)
+    })
+    return off
+  }, [repoRoots, fetchAllWorktrees])
+
   const handleRemoveRepo = useCallback(
     async (root: string) => {
       await window.api.removeRepo(root)

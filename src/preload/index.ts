@@ -75,6 +75,30 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('config:claudeEnvVarsChanged', handler)
     return () => ipcRenderer.removeListener('config:claudeEnvVarsChanged', handler)
   },
+  getHarnessMcpEnabled: () => ipcRenderer.invoke('config:getHarnessMcpEnabled'),
+  setHarnessMcpEnabled: (enabled: boolean) =>
+    ipcRenderer.invoke('config:setHarnessMcpEnabled', enabled),
+  onHarnessMcpEnabledChanged: (callback: (enabled: boolean) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, enabled: boolean): void => {
+      callback(enabled)
+    }
+    ipcRenderer.on('config:harnessMcpEnabledChanged', handler)
+    return () => ipcRenderer.removeListener('config:harnessMcpEnabledChanged', handler)
+  },
+  prepareMcpForTerminal: (terminalId: string): Promise<string | null> =>
+    ipcRenderer.invoke('mcp:prepareForTerminal', terminalId),
+  onWorktreesExternalCreate: (
+    callback: (payload: { repoRoot: string; worktree: unknown }) => void
+  ) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      payload: { repoRoot: string; worktree: unknown }
+    ): void => {
+      callback(payload)
+    }
+    ipcRenderer.on('worktrees:externalCreate', handler)
+    return () => ipcRenderer.removeListener('worktrees:externalCreate', handler)
+  },
   getTheme: () => ipcRenderer.invoke('config:getTheme'),
   setTheme: (theme: string) => ipcRenderer.invoke('config:setTheme', theme),
   getAvailableThemes: () => ipcRenderer.invoke('config:getAvailableThemes'),
