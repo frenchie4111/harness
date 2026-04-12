@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { AtSign, Code2 } from 'lucide-react'
 import type { FileReadResult } from '../types'
 import { Tooltip } from './Tooltip'
+import { detectLanguage, highlightToLines } from '../syntax'
 
 interface FileViewProps {
   worktreePath: string
@@ -18,6 +19,11 @@ function formatBytes(n: number): string {
 export function FileView({ worktreePath, filePath, onSendToClaude }: FileViewProps): JSX.Element {
   const [result, setResult] = useState<FileReadResult | null>(null)
   const [loading, setLoading] = useState(true)
+
+  const highlightedLines = useMemo(() => {
+    if (!result || result.binary || result.content == null) return [] as string[]
+    return highlightToLines(result.content, detectLanguage(filePath))
+  }, [result, filePath])
 
   useEffect(() => {
     let cancelled = false
@@ -61,7 +67,7 @@ export function FileView({ worktreePath, filePath, onSendToClaude }: FileViewPro
     )
   }
 
-  const lines = result.binary || result.content == null ? [] : result.content.split('\n')
+  const lines = highlightedLines
 
   return (
     <div className="h-full flex flex-col bg-app">
@@ -114,7 +120,10 @@ export function FileView({ worktreePath, filePath, onSendToClaude }: FileViewPro
                       </Tooltip>
                     )}
                   </span>
-                  <span className="whitespace-pre pr-4 text-muted">{line}</span>
+                  <span
+                    className="whitespace-pre pr-4 text-muted hljs"
+                    dangerouslySetInnerHTML={{ __html: line }}
+                  />
                 </div>
               )
             })}

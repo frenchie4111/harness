@@ -324,3 +324,75 @@ button, [role="button"], a[href], [onclick] {
 }
 .claude-loader-dots span:nth-child(2) { animation-delay: 0.18s; }
 .claude-loader-dots span:nth-child(3) { animation-delay: 0.36s; }
+
+/* --- Syntax highlighting ---
+ * Maps highlight.js token classes to the active theme's semantic color
+ * tokens, so the file/diff viewers retheme automatically when the user
+ * switches themes. No prebuilt hljs stylesheet is imported.
+ */
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-doctag {
+  color: var(--color-accent);
+}
+.hljs-built_in,
+.hljs-type,
+.hljs-class .hljs-title,
+.hljs-title.class_ {
+  color: var(--color-info);
+}
+.hljs-string,
+.hljs-regexp,
+.hljs-symbol,
+.hljs-template-tag,
+.hljs-template-variable {
+  color: var(--color-success);
+}
+.hljs-number,
+.hljs-meta {
+  color: var(--color-warning);
+}
+.hljs-comment,
+.hljs-quote {
+  color: var(--color-faint);
+  font-style: italic;
+}
+.hljs-function .hljs-title,
+.hljs-title.function_,
+.hljs-title {
+  color: var(--color-info);
+}
+.hljs-variable,
+.hljs-attr,
+.hljs-attribute,
+.hljs-property {
+  color: var(--color-fg);
+}
+.hljs-params {
+  color: var(--color-muted);
+}
+.hljs-tag,
+.hljs-name {
+  color: var(--color-accent);
+}
+.hljs-section,
+.hljs-bullet {
+  color: var(--color-warning);
+}
+.hljs-link {
+  color: var(--color-info);
+  text-decoration: underline;
+}
+.hljs-deletion {
+  color: var(--color-danger);
+}
+.hljs-addition {
+  color: var(--color-success);
+}
+.hljs-emphasis {
+  font-style: italic;
+}
+.hljs-strong {
+  font-weight: 600;
+}
