@@ -402,23 +402,30 @@ export function CommandCenter({
                             onClick={() => onSelect(wt.path)}
                             className={`text-left rounded-lg bg-surface hover:bg-surface-hover transition-colors flex flex-col cursor-pointer overflow-hidden ${STATUS_CARD_RING[display]}`}
                           >
-                            <div className="px-4 pt-4 pb-2 flex flex-col gap-1.5">
-                              {showRepoLabelOnCards && (
-                                <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-faint truncate">
-                                  <RepoIcon repoName={wt.repoRoot.split('/').pop() || wt.repoRoot} size={12} />
-                                  {wt.repoRoot.split('/').pop()}
-                                </div>
-                              )}
-                              <div className="flex items-center gap-2 min-w-0">
-                                <span
-                                  className={`w-2.5 h-2.5 rounded-full shrink-0 ${STATUS_DOT[display]}`}
-                                />
+                            <div className="px-4 pt-3 pb-2.5 flex flex-col gap-1 min-w-0">
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                {showRepoLabelOnCards && (
+                                  <>
+                                    <RepoIcon repoName={wt.repoRoot.split('/').pop() || wt.repoRoot} size={12} />
+                                    <span className="text-xs text-dim truncate shrink">
+                                      {wt.repoRoot.split('/').pop()}
+                                    </span>
+                                    <span className="text-faint shrink-0">/</span>
+                                  </>
+                                )}
                                 <span className="text-sm font-semibold text-fg-bright truncate flex-1">
                                   {wt.branch}
                                 </span>
+                              </div>
+                              <div className="flex items-center gap-2 min-w-0 text-[11px]">
+                                <span
+                                  className={`w-2 h-2 rounded-full shrink-0 ${STATUS_DOT[display]}`}
+                                />
+                                <span className="text-muted">{STATUS_LABEL[display]}</span>
+                                <div className="flex-1" />
                                 {pr && (
                                   <GitPullRequest
-                                    size={13}
+                                    size={12}
                                     className={
                                       pr.state === 'merged'
                                         ? 'text-accent'
@@ -434,12 +441,8 @@ export function CommandCenter({
                                     }
                                   />
                                 )}
+                                <span className="text-faint">{relTime(lastActive[wt.path])}</span>
                               </div>
-                            </div>
-
-                            <div className="px-4 pb-3 flex items-center justify-between text-[11px]">
-                              <span className="text-muted">{STATUS_LABEL[display]}</span>
-                              <span className="text-faint">{relTime(lastActive[wt.path])}</span>
                             </div>
 
                             <div
