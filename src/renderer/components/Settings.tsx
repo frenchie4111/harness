@@ -441,6 +441,16 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
     return () => window.removeEventListener('keydown', handler, true)
   }, [rebindingAction, hotkeyOverrides])
 
+  useEffect(() => {
+    const handler = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape') return
+      if (e.defaultPrevented) return
+      onClose()
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [onClose])
+
   const resolvedHotkeys = resolveHotkeys(hotkeyOverrides || undefined)
 
   const handleResetHotkey = useCallback(async (action: Action) => {
