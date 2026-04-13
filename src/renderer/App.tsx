@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import type { Worktree, TerminalTab, PtyStatus, PRStatus, QuestStep, WorkspacePane, PendingWorktree } from './types'
+import type { Worktree, TerminalTab, PtyStatus, PRStatus, QuestStep, WorkspacePane, PendingWorktree, UpdaterStatus } from './types'
 import type { Action } from './hotkeys'
 import { resolveHotkeys } from './hotkeys'
 import { HotkeysProvider } from './components/Tooltip'
@@ -84,6 +84,8 @@ export default function App(): JSX.Element {
   // Populated whenever the worktree list refreshes.
   const worktreeRepoRef = useRef<Record<string, string>>({})
   const [hooksConsent, setHooksConsent] = useState<'pending' | 'accepted' | 'declined'>('pending')
+  const [updaterStatus, setUpdaterStatus] = useState<UpdaterStatus | null>(null)
+  const [updateBannerDismissed, setUpdateBannerDismissed] = useState(false)
   const [sidebarVisible, setSidebarVisible] = useState(true)
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
     const saved = Number(localStorage.getItem('harness:sidebarWidth'))
@@ -605,6 +607,20 @@ const setQuestStep = useCallback((next: QuestStep) => {
       }
     })()
   }, [worktrees])
+
+  // Subscribe to auto-updater status for the in-app update banner.
+  useEffect(() => {
+    const cleanup = window.api.onUpdaterStatus((status) => {
+      setUpdaterStatus(status)
+      // If a new version shows up after a prior dismiss, re-show the banner.
+      if (status.state === 'downloaded') setUpdateBannerDismissed(false)
+    })
+    return cleanup
+  }, [])
+
+  const handleUpdateRestart = useCallback(() => {
+    void window.api.quitAndInstall()
+  }, [])
 
   const handleAddRepo = useCallback(async () => {
     const root = await window.api.addRepo()
@@ -1325,6 +1341,27 @@ const setQuestStep = useCallback((next: QuestStep) => {
   return (
     <HotkeysProvider bindings={resolvedHotkeys}>
     <div className="flex h-full flex-col">
+      {/* Update-ready banner */}
+      {updaterStatus?.state === 'downloaded' && !updateBannerDismissed && (
+        <div className="bg-success/15 border-b border-success/30 pl-20 pr-4 py-2.5 drag-region flex items-center gap-3 shrink-0">
+          <span className="text-success text-sm flex-1">
+            Harness {updaterStatus.version} is ready to install. Restart to update.
+          </span>
+          <button
+            onClick={handleUpdateRestart}
+            className="px-3 py-1 bg-success/30 hover:bg-success/40 rounded text-sm text-success transition-colors shrink-0 cursor-pointer no-drag"
+          >
+            Restart &amp; install
+          </button>
+          <button
+            onClick={() => setUpdateBannerDismissed(true)}
+            className="px-3 py-1 text-success/80 hover:text-success text-sm transition-colors shrink-0 cursor-pointer no-drag"
+          >
+            Later
+          </button>
+        </div>
+      )}
+
       {/* Hooks consent banner */}
       {hooksConsent === 'pending' && (
         <div className="bg-warning/15 border-b border-warning/30 pl-20 pr-4 py-2.5 drag-region flex items-center gap-3 shrink-0">

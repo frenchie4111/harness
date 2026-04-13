@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, Menu, shell } from 'electron'
+import { app, autoUpdater as nativeAutoUpdater, BrowserWindow, ipcMain, dialog, Menu, shell } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import { existsSync, readdirSync, statSync } from 'fs'
 import { homedir } from 'os'
@@ -705,7 +705,7 @@ function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('updater:quitAndInstall', () => {
-    log('updater', 'quitAndInstall requested — cleaning up for fast exit')
+    log('updater', 'quitAndInstall requested — tearing down before handing off to Squirrel')
     try {
       stopWatchingStatus?.()
       stopWatchingStatus = null
@@ -713,6 +713,11 @@ function registerIpcHandlers(): void {
       log('updater', 'stopWatchingStatus failed', err instanceof Error ? err.message : String(err))
     }
     try {
+      // Kill the whole PTY process group (zsh + claude + any grandchildren),
+      // not just the direct shell child. Leaving descendants alive keeps
+      // libuv handles attached on our side, which makes Electron's quit
+      // sequence hang — and Squirrel.Mac then bails with "original process
+      // did not end" before ShipIt swaps the bundle.
       ptyManager.killAll('SIGKILL')
     } catch (err) {
       log('updater', 'ptyManager.killAll failed', err instanceof Error ? err.message : String(err))
@@ -724,18 +729,18 @@ function registerIpcHandlers(): void {
       log('updater', 'final persistence failed', err instanceof Error ? err.message : String(err))
     }
 
-    // Skip our before-quit handler — it's already been done above, and it can
-    // hang waiting for PTY fds to drain. We just want Squirrel to see us gone.
+    // Skip our before-quit handler — we just did its work above.
     app.removeAllListeners('before-quit')
 
-    // Hard-exit fallback. If Squirrel/Electron's quit takes longer than ~1.5s,
-    // force-kill the process so ShipIt's "target still running" check passes.
+    // Safety net only. With PTY groups nuked and before-quit removed, quit
+    // should finish in well under a second; this guards against some other
+    // unexpected hang without ever racing Squirrel's install work.
     setTimeout(() => {
-      log('updater', 'fallback app.exit(0) — Squirrel should take over')
+      log('updater', 'safety-net app.exit(0) — quit took too long')
       app.exit(0)
-    }, 1500)
+    }, 30_000).unref()
 
-    autoUpdater.quitAndInstall(true, false)
+    autoUpdater.quitAndInstall(true, true)
     return true
   })
 
@@ -888,10 +893,23 @@ function setupAutoUpdater(): void {
     broadcastToAllWindows('updater:status', { state: 'downloaded', version: info.version })
   })
 
-  // Check on startup, then every 10 minutes
-  autoUpdater.checkForUpdatesAndNotify().catch((err) => log('updater', 'check failed', err.message))
+  // Also log native Squirrel.Mac errors. electron-updater wraps Squirrel via
+  // its own MacUpdater but doesn't surface errors from the native side, so
+  // things like "target app still running" or codesign mismatches would
+  // otherwise be invisible. These are the errors that would have diagnosed
+  // previous OTA loops in one glance.
+  if (process.platform === 'darwin') {
+    nativeAutoUpdater.on('error', (err) => {
+      log('updater', `[error] Squirrel.Mac: ${err.message}`)
+    })
+  }
+
+  // Check on startup, then every 10 minutes. We use checkForUpdates (not
+  // checkForUpdatesAndNotify) so there's no native OS notification — the
+  // renderer shows an in-app banner based on the updater:status events.
+  autoUpdater.checkForUpdates().catch((err) => log('updater', 'check failed', err.message))
   setInterval(() => {
-    autoUpdater.checkForUpdatesAndNotify().catch(() => {})
+    autoUpdater.checkForUpdates().catch(() => {})
   }, 10 * 60 * 1000)
 }
 
