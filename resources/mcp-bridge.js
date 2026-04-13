@@ -87,6 +87,26 @@ const TOOLS = [
     }
   },
   {
+    name: 'fork_management',
+    description:
+      'Fork the management workspace into a new git worktree (a sibling Claude session) on a fresh branch. Harness opens a new Claude chat tab inside the fork automatically. Use this from the management session to spin up child projects or parallel helpers when you do not have a regular git repo in play.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        branchName: {
+          type: 'string',
+          description: 'Name of the new branch to create for the fork.'
+        },
+        baseBranch: {
+          type: 'string',
+          description:
+            'Optional base branch on the management repo to fork from. Defaults to the management repo HEAD (main).'
+        }
+      },
+      required: ['branchName']
+    }
+  },
+  {
     name: 'remove_worktree',
     description:
       'Remove a git worktree that Harness is currently tracking. Fails if the worktree has uncommitted changes unless force is true.',
@@ -175,6 +195,22 @@ async function handleToolCall(name, args) {
     })
     return (
       'Created worktree ' +
+      r.path +
+      ' on branch ' +
+      r.branch +
+      '. Harness will open a new Claude chat tab in it.'
+    )
+  }
+  if (name === 'fork_management') {
+    if (!args || !args.branchName) throw new Error('branchName is required')
+    const r = await callControl('POST', '/worktrees', {
+      terminalId: TERMINAL_ID,
+      repoRoot: 'management',
+      branchName: args.branchName,
+      baseBranch: args.baseBranch
+    })
+    return (
+      'Forked management workspace into ' +
       r.path +
       ' on branch ' +
       r.branch +

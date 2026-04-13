@@ -53,6 +53,9 @@ const MANAGEMENT_REPO_SENTINEL = '__management__'
 export default function App(): JSX.Element {
   const [worktrees, setWorktrees] = useState<Worktree[]>([])
   const [managementWorktree, setManagementWorktree] = useState<Worktree | null>(null)
+  // Mirror of managementWorktree so fetchAllWorktrees (a stable useCallback)
+  // can see the current management path without getting re-created.
+  const managementPathRef = useRef<string | null>(null)
   const [activeWorktreeId, setActiveWorktreeId] = useState<string | null>(null)
   const [panes, setPanes] = useState<Record<string, WorkspacePane[]>>({})
   // Which pane in each worktree is the "focused" one for hotkeys (newTab, closeTab, cycleTab).
@@ -196,6 +199,10 @@ const setQuestStep = useCallback((next: QuestStep) => {
   }, [activeWorktreeId, questStep, setQuestStep])
 
   // Helper: fetch worktrees for every known repo and merge into a flat list.
+  // Also fetches forks of the management workspace and appends them (minus
+  // the management self-entry, which is represented by the dedicated sidebar
+  // button). Management forks carry `repoRoot === managementPath` so they
+  // group together in the sidebar.
   const fetchAllWorktrees = useCallback(async (roots: string[]): Promise<Worktree[]> => {
     const results = await Promise.all(
       roots.map((root) =>
@@ -206,6 +213,15 @@ const setQuestStep = useCallback((next: QuestStep) => {
       )
     )
     const flat = results.flat()
+    const managementPath = managementPathRef.current
+    if (managementPath) {
+      const mgmtTrees = await window.api.listWorktrees(managementPath).catch(() => [] as Worktree[])
+      for (const wt of mgmtTrees) {
+        // Drop the management self-worktree — it's the "Management" button.
+        if (wt.path === managementPath) continue
+        flat.push({ ...wt, isMain: false, repoRoot: managementPath })
+      }
+    }
     const map: Record<string, string> = {}
     for (const wt of flat) map[wt.path] = wt.repoRoot
     // Preserve the management workspace mapping so its panes keep persisting
@@ -246,6 +262,9 @@ const setQuestStep = useCallback((next: QuestStep) => {
           isManagement: true
         }
         setManagementWorktree(mgmt)
+        // Populate the path ref before fetchAllWorktrees fires so its call
+        // picks up management forks on the first pass.
+        managementPathRef.current = mgmtPath
         // Make the persist effect route management panes under __management__
         // instead of the __orphan__ bucket.
         worktreeRepoRef.current[mgmtPath] = MANAGEMENT_REPO_SENTINEL
@@ -261,14 +280,14 @@ const setQuestStep = useCallback((next: QuestStep) => {
       // old config would see an empty path→repo map and dump every entry
       // under `__orphan__` again.
       setRepoRoots(roots)
-      if (roots.length > 0) {
-        const trees = await fetchAllWorktrees(roots)
-        setWorktrees(trees)
-        if (trees.length > 0) {
-          setActiveWorktreeId(trees[0].path)
-        } else if (mgmt) {
-          setActiveWorktreeId(mgmt.path)
-        }
+      // Fetch worktrees (and management forks, via managementPathRef) even
+      // when the user has no regular repos — management may contribute its
+      // own worktrees to the sidebar.
+      const trees = await fetchAllWorktrees(roots)
+      setWorktrees(trees)
+      const firstRealWt = trees.find((t) => t.repoRoot !== managementPathRef.current) || trees[0]
+      if (firstRealWt) {
+        setActiveWorktreeId(firstRealWt.path)
       } else if (mgmt) {
         setActiveWorktreeId(mgmt.path)
       }
@@ -659,9 +678,12 @@ const setQuestStep = useCallback((next: QuestStep) => {
   // External worktree creation (from the harness-control MCP). Refresh the
   // list and focus the new worktree in any window showing that repo; the
   // existing auto-pane effect will spawn a fresh Claude tab on activation.
+  // Forks of the management workspace come through with repoRoot set to the
+  // management path, which isn't in `repoRoots` — accept those too.
   useEffect(() => {
     const off = window.api.onWorktreesExternalCreate(async ({ repoRoot, worktree }) => {
-      if (!repoRoots.includes(repoRoot)) return
+      const isMgmtFork = repoRoot === managementPathRef.current
+      if (!isMgmtFork && !repoRoots.includes(repoRoot)) return
       const trees = await fetchAllWorktrees(repoRoots)
       setWorktrees(trees)
       setActiveWorktreeId(worktree.path)

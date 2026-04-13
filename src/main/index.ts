@@ -28,7 +28,7 @@ import {
   type QuestStep
 } from './persistence'
 import { hooksInstalled, installHooks, watchStatusDir } from './hooks'
-import { ensureManagementWorkspace } from './management'
+import { ensureManagementWorkspace, getManagementWorkspacePath } from './management'
 import { startControlServer } from './control-server'
 import { writeMcpConfigForTerminal, pruneMcpConfigs } from './mcp-config'
 import { recordActivity, getActivityLog, clearAllActivity, clearActivityForWorktree, sealAllActive, touchActivityMeta, finalizeActivity, type ActivityState, type PRState } from './activity'
@@ -931,18 +931,17 @@ app.whenReady().then(() => {
   pruneTerminalHistory(keepIds)
   pruneMcpConfigs(keepIds)
 
-  // Pre-create the management workspace and install its hooks so the
-  // meta-level Claude session is ready before the user clicks into it.
-  try {
-    ensureManagementWorkspace()
-  } catch (err) {
+  // Pre-create the management workspace, git-init it, and install its hooks
+  // so the meta-level Claude session is ready before the user clicks into it.
+  ensureManagementWorkspace().catch((err) =>
     log('management', 'ensureManagementWorkspace failed', err instanceof Error ? err.message : err)
-  }
+  )
 
   // Local HTTP control server for the bundled harness-control MCP bridge.
   startControlServer({
     getRepoRoots: () => config.repoRoots,
     getWorktreeBase: () => config.worktreeBase || DEFAULT_WORKTREE_BASE,
+    getManagementRepoRoot: () => getManagementWorkspacePath(),
     addRepoRoot: async (repoRoot: string) => {
       if (config.repoRoots.includes(repoRoot)) return false
       config.repoRoots.push(repoRoot)

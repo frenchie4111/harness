@@ -12,6 +12,10 @@ const execFileAsync = promisify(execFile)
 export interface ControlServerDeps {
   getRepoRoots: () => string[]
   getWorktreeBase: () => 'remote' | 'local'
+  /** Absolute path to the management workspace (always a git repo), or null
+   *  if it isn't ready yet. Used to resolve `repoRoot: "management"` in MCP
+   *  calls and to look up forks of the management session. */
+  getManagementRepoRoot: () => string | null
   /** Register an existing directory as a harness repo root. Returns true if it
    *  wasn't already tracked. Throws if the path isn't a git repo. */
   addRepoRoot: (repoRoot: string) => Promise<boolean>
@@ -19,6 +23,9 @@ export interface ControlServerDeps {
   removeRepoRoot: (repoRoot: string) => boolean
   broadcast: (channel: string, ...args: unknown[]) => void
 }
+
+/** Aliases that resolve to the management workspace in body.repoRoot. */
+const MANAGEMENT_ALIASES = new Set(['management', '__management__'])
 
 let serverInfo: { port: number; token: string } | null = null
 
@@ -81,7 +88,10 @@ async function handleRequest(
   }
 
   if (req.method === 'GET' && path === '/worktrees') {
-    const repoRoot = url.searchParams.get('repoRoot')
+    let repoRoot = url.searchParams.get('repoRoot')
+    if (repoRoot && MANAGEMENT_ALIASES.has(repoRoot)) {
+      repoRoot = deps.getManagementRepoRoot()
+    }
     const roots = repoRoot ? [repoRoot] : deps.getRepoRoots()
     const all: WorktreeInfo[] = []
     for (const r of roots) {
@@ -135,7 +145,10 @@ async function handleRequest(
   }
 
   if (req.method === 'DELETE' && path === '/worktrees') {
-    const repoRoot = url.searchParams.get('repoRoot')
+    let repoRoot = url.searchParams.get('repoRoot')
+    if (repoRoot && MANAGEMENT_ALIASES.has(repoRoot)) {
+      repoRoot = deps.getManagementRepoRoot()
+    }
     const worktreePath = url.searchParams.get('path')
     const force = url.searchParams.get('force') === '1' || url.searchParams.get('force') === 'true'
     if (!repoRoot || !worktreePath) {
@@ -153,12 +166,24 @@ async function handleRequest(
   if (req.method === 'POST' && path === '/worktrees') {
     const body = await readJson(req)
     let repoRoot = typeof body.repoRoot === 'string' ? body.repoRoot : undefined
+    if (repoRoot && MANAGEMENT_ALIASES.has(repoRoot)) {
+      const mgmt = deps.getManagementRepoRoot()
+      if (!mgmt) return sendJson(res, 400, { error: 'management workspace not ready' })
+      repoRoot = mgmt
+    }
     if (!repoRoot) {
       const roots = deps.getRepoRoots()
       if (roots.length === 1) {
         repoRoot = roots[0]
       } else if (roots.length === 0) {
-        return sendJson(res, 400, { error: 'no repos open in Harness' })
+        // Fall back to the management workspace so users with no real repos
+        // can still fork a new project from the management session.
+        const mgmt = deps.getManagementRepoRoot()
+        if (mgmt) {
+          repoRoot = mgmt
+        } else {
+          return sendJson(res, 400, { error: 'no repos open in Harness' })
+        }
       } else {
         return sendJson(res, 400, {
           error: 'repoRoot required when multiple repos are open',

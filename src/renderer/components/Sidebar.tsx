@@ -283,7 +283,12 @@ export function Sidebar({
         )}
         {byRepo.map(({ repoRoot, groups }) => {
           const repoCollapsed = collapsedRepos[repoRoot] === true
-          const repoName = repoRoot === '__unified__' ? 'All repos' : repoRoot.split('/').pop() || repoRoot
+          const isManagementGroup = managementPath != null && repoRoot === managementPath
+          const repoName = repoRoot === '__unified__'
+            ? 'All repos'
+            : isManagementGroup
+              ? 'Management forks'
+              : repoRoot.split('/').pop() || repoRoot
           const scope = repoRoot
           const groupsBody = groups.map((group) => (
           <div key={group.key}>
@@ -369,7 +374,7 @@ export function Sidebar({
           ))
           return (
             <div key={repoRoot}>
-              {showRepoHeaders && (
+              {(showRepoHeaders || isManagementGroup) && (
                 <button
                   onClick={() => toggleRepo(repoRoot)}
                   className="group w-full flex items-center gap-1 px-3 mt-1 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-dim hover:text-fg transition-colors cursor-pointer"
@@ -378,21 +383,27 @@ export function Sidebar({
                   {repoCollapsed
                     ? <ChevronRight size={11} className="shrink-0" />
                     : <ChevronDown size={11} className="shrink-0" />}
-                  <RepoIcon repoName={repoName} size={14} />
+                  {isManagementGroup ? (
+                    <Zap size={12} className="shrink-0 text-dim" />
+                  ) : (
+                    <RepoIcon repoName={repoName} size={14} />
+                  )}
                   <span className="truncate">{repoName}</span>
-                  <span
-                    role="button"
-                    className="ml-auto opacity-0 group-hover:opacity-100 text-faint hover:text-danger"
-                    title={`Remove ${repoName} from workspace`}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      if (window.confirm(`Remove ${repoName} from this window? Worktrees stay on disk.`)) {
-                        void onRemoveRepo(repoRoot)
-                      }
-                    }}
-                  >
-                    <X size={11} />
-                  </span>
+                  {!isManagementGroup && (
+                    <span
+                      role="button"
+                      className="ml-auto opacity-0 group-hover:opacity-100 text-faint hover:text-danger"
+                      title={`Remove ${repoName} from workspace`}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        if (window.confirm(`Remove ${repoName} from this window? Worktrees stay on disk.`)) {
+                          void onRemoveRepo(repoRoot)
+                        }
+                      }}
+                    >
+                      <X size={11} />
+                    </span>
+                  )}
                 </button>
               )}
               {!repoCollapsed && pendingBody}
