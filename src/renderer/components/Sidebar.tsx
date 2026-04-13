@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo } from 'react'
 import { ChevronDown, ChevronRight, Plus, RefreshCw, FolderOpen, Loader2, Settings as SettingsIcon, Sparkles, BarChart3, Trash2, LayoutGrid, X, Layers, Rows3, AlertCircle } from 'lucide-react'
 import { Tooltip } from './Tooltip'
+import { HotkeyBadge } from './HotkeyBadge'
 import type { Worktree, PtyStatus, PendingTool, PRStatus, PendingWorktree } from '../types'
 import type { GroupKey } from '../worktree-sort'
 import { groupWorktrees } from '../worktree-sort'
@@ -177,6 +178,7 @@ export function Sidebar({
         >
           <LayoutGrid size={14} className={commandCenterActive ? 'text-accent' : 'text-dim'} />
           <span className="text-sm font-medium">Command Center</span>
+          <HotkeyBadge action="toggleCommandCenter" className="ml-auto" />
         </button>
       </div>
 
