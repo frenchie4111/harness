@@ -1467,8 +1467,9 @@ const setQuestStep = useCallback((next: QuestStep) => {
       {hooksConsent === 'pending' && (
         <div className="bg-warning/15 border-b border-warning/30 pl-20 pr-4 py-2.5 drag-region flex items-center gap-3 shrink-0">
           <span className="text-warning text-sm flex-1">
-            Claude Harness can install hooks in your worktrees to reliably detect Claude's status
-            (waiting, processing, needs approval). This adds entries to each worktree's{' '}
+            Claude Harness needs to install hooks in your worktrees to detect Claude's status
+            (waiting, processing, needs approval) — without them the sidebar status dots and
+            command center won't work. This adds entries to each worktree's{' '}
             <code className="bg-warning/20 px-1 rounded text-xs">.claude/settings.local.json</code>.
           </span>
           <button
