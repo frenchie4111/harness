@@ -222,6 +222,9 @@ export function Sidebar({
               <div className="text-[11px] text-dim mt-0.5 leading-snug">
                 Fork a branch and send a Claude into it.
               </div>
+              <div className="mt-2">
+                <HotkeyBadge action="newWorktree" />
+              </div>
             </div>
           </button>
         )}
