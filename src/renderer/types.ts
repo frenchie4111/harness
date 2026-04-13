@@ -28,6 +28,8 @@ export interface RepoConfig {
   setupCommand?: string
   teardownCommand?: string
   mergeStrategy?: 'squash' | 'merge-commit' | 'fast-forward'
+  hideMergePanel?: boolean
+  hidePrPanel?: boolean
 }
 
 export interface WorktreeScriptEvent {
