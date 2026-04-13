@@ -50,7 +50,7 @@ export class PtyManager {
       log('pty', `spawn failed id=${id}`, err instanceof Error ? err.message : err)
       const msg = `\r\n\x1b[31mFailed to spawn "${shell}": ${err instanceof Error ? err.message : err}\x1b[0m\r\n`
       window.webContents.send('terminal:data', id, msg)
-      window.webContents.send('terminal:status', id, 'idle')
+      window.webContents.send('terminal:status', id, 'idle', null)
       return
     }
 
@@ -72,7 +72,7 @@ export class PtyManager {
       log('pty', `exit id=${id} code=${exitCode}`)
       const win = BrowserWindow.fromId(instance.windowId)
       if (win && !win.isDestroyed()) {
-        win.webContents.send('terminal:status', id, 'idle')
+        win.webContents.send('terminal:status', id, 'idle', null)
         win.webContents.send('terminal:exit', id, exitCode)
       }
       this.ptys.delete(id)

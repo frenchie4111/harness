@@ -3,6 +3,7 @@ import { X, GitPullRequest, ChevronDown, ChevronRight, Layers, Rows3 } from 'luc
 import type {
   Worktree,
   PtyStatus,
+  PendingTool,
   PRStatus,
   TerminalTab,
   ActivityLog,
@@ -11,10 +12,12 @@ import type {
 import { eventsToSegments, STATE_COLOR } from './Activity'
 import { groupWorktrees, type GroupKey } from '../worktree-sort'
 import { RepoIcon } from './RepoIcon'
+import { formatPendingTool } from '../pending-tool'
 
 interface CommandCenterProps {
   worktrees: Worktree[]
   worktreeStatuses: Record<string, PtyStatus>
+  worktreePendingTools: Record<string, PendingTool | null>
   prStatuses: Record<string, PRStatus | null>
   mergedPaths: Record<string, boolean>
   lastActive: Record<string, number>
@@ -85,6 +88,7 @@ function relTime(ms: number | undefined): string {
 export function CommandCenter({
   worktrees,
   worktreeStatuses,
+  worktreePendingTools,
   prStatuses,
   mergedPaths,
   lastActive,
@@ -417,6 +421,14 @@ export function CommandCenter({
                                   {wt.branch}
                                 </span>
                               </div>
+                              {display === 'needs-approval' && worktreePendingTools[wt.path] && (
+                                <div className="flex items-center gap-1.5 min-w-0 text-[11px] text-danger">
+                                  <span className="font-semibold shrink-0">Waiting on:</span>
+                                  <span className="truncate font-mono">
+                                    {formatPendingTool(worktreePendingTools[wt.path] as PendingTool)}
+                                  </span>
+                                </div>
+                              )}
                               <div className="flex items-center gap-2 min-w-0 text-[11px]">
                                 <span
                                   className={`w-2 h-2 rounded-full shrink-0 ${STATUS_DOT[display]}`}

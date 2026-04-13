@@ -1,6 +1,14 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 
-type StatusCallback = (id: string, status: string) => void
+interface PendingToolShape {
+  name: string
+  input: Record<string, unknown>
+}
+type StatusCallback = (
+  id: string,
+  status: string,
+  pendingTool: PendingToolShape | null
+) => void
 type DataCallback = (id: string, data: string) => void
 type ExitCallback = (id: string, exitCode: number) => void
 
@@ -277,8 +285,13 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('terminal:data', handler)
   },
   onStatusChange: (callback: StatusCallback) => {
-    const handler = (_event: Electron.IpcRendererEvent, id: string, status: string): void => {
-      callback(id, status)
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      id: string,
+      status: string,
+      pendingTool?: PendingToolShape | null
+    ): void => {
+      callback(id, status, pendingTool ?? null)
     }
     ipcRenderer.on('terminal:status', handler)
     return () => ipcRenderer.removeListener('terminal:status', handler)
