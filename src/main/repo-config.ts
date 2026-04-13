@@ -7,6 +7,8 @@ export interface RepoConfig {
   setupCommand?: string
   teardownCommand?: string
   mergeStrategy?: 'squash' | 'merge-commit' | 'fast-forward'
+  hideMergePanel?: boolean
+  hidePrPanel?: boolean
 }
 
 const REPO_CONFIG_FILENAME = '.harness.json'
@@ -44,6 +46,8 @@ export function saveRepoConfig(repoRoot: string, next: RepoConfig): RepoConfig {
   if (setup) cleaned.setupCommand = setup
   if (teardown) cleaned.teardownCommand = teardown
   if (next.mergeStrategy) cleaned.mergeStrategy = next.mergeStrategy
+  if (next.hideMergePanel) cleaned.hideMergePanel = true
+  if (next.hidePrPanel) cleaned.hidePrPanel = true
 
   const hasAny = Object.keys(cleaned).some((k) => k !== 'version')
   const path = configPath(repoRoot)
