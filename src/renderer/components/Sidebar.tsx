@@ -17,6 +17,7 @@ interface SidebarProps {
   pendingTools: Record<string, PendingTool | null>
   prStatuses: Record<string, PRStatus | null>
   mergedPaths?: Record<string, boolean>
+  pausedPaths?: Set<string>
   prLoading: boolean
   /** Non-main worktrees. Used to decide whether to show the "spawn your first agent" nudge. */
   agentCount: number
@@ -52,6 +53,7 @@ export function Sidebar({
   pendingTools,
   prStatuses,
   mergedPaths,
+  pausedPaths,
   prLoading,
   agentCount,
   onSelectWorktree,
@@ -281,6 +283,7 @@ export function Sidebar({
                   pendingTool={pendingTools[wt.path] || null}
                   prStatus={prStatuses[wt.path]}
                   isMerged={group.key === 'merged'}
+                  isPaused={pausedPaths?.has(wt.path)}
                   repoLabel={showRepoLabelsOnTabs ? repoLabelFor(wt.repoRoot) : undefined}
                   cmdOrdinal={cmdOrdinals.get(wt.path)}
                   onClick={() => onSelectWorktree(wt.path)}

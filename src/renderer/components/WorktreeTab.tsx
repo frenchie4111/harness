@@ -1,4 +1,4 @@
-import { GitPullRequest, RotateCw, Trash2 } from 'lucide-react'
+import { GitPullRequest, RotateCw, Trash2, Pause } from 'lucide-react'
 import type { Worktree, PtyStatus, PendingTool, PRStatus } from '../types'
 import { Tooltip } from './Tooltip'
 import { RepoIcon } from './RepoIcon'
@@ -14,6 +14,9 @@ interface WorktreeTabProps {
   pendingTool?: PendingTool | null
   prStatus?: PRStatus | null
   isMerged?: boolean
+  /** Worktree has persisted panes but no PTY spawned yet — shows a pause
+   *  indicator so users know clicking will cold-start the session. */
+  isPaused?: boolean
   /** When set, shows a small repo hint next to the branch name. Used in
    *  unified-repo mode so two branches with the same name stay distinguishable. */
   repoLabel?: string
@@ -55,7 +58,7 @@ const PR_STATE_COLOR: Record<string, string> = {
   closed: 'text-danger'
 }
 
-export function WorktreeTab({ worktree, isActive, status, pendingTool, prStatus, isMerged, repoLabel, cmdOrdinal, onClick, onDelete, onContinue }: WorktreeTabProps): JSX.Element {
+export function WorktreeTab({ worktree, isActive, status, pendingTool, prStatus, isMerged, isPaused, repoLabel, cmdOrdinal, onClick, onDelete, onContinue }: WorktreeTabProps): JSX.Element {
   const metaHeld = useMetaHeld()
   const displayStatus: PtyStatus | 'merged' = isMerged ? 'merged' : status
   const showPendingTool = displayStatus === 'needs-approval' && pendingTool
@@ -86,10 +89,19 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, prStatus,
           : 'text-muted hover:bg-panel-raised hover:text-fg'
       }`}
     >
-      <span
-        className={`w-2 h-2 rounded-full shrink-0 ${STATUS_COLORS[displayStatus]}`}
-        title={STATUS_LABELS[displayStatus]}
-      />
+      {isPaused ? (
+        <span
+          className="shrink-0 flex items-center justify-center w-2 h-2"
+          title="Paused — click to resume"
+        >
+          <Pause size={10} className="text-faint fill-faint" />
+        </span>
+      ) : (
+        <span
+          className={`w-2 h-2 rounded-full shrink-0 ${STATUS_COLORS[displayStatus]}`}
+          title={STATUS_LABELS[displayStatus]}
+        />
+      )}
       {prStatus && (
         <span className="relative shrink-0">
           <GitPullRequest

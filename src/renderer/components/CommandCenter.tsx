@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { X, GitPullRequest, ChevronDown, ChevronRight, Layers, Rows3 } from 'lucide-react'
+import { X, GitPullRequest, ChevronDown, ChevronRight, Layers, Rows3, Pause } from 'lucide-react'
 import type {
   Worktree,
   PtyStatus,
@@ -20,6 +20,7 @@ interface CommandCenterProps {
   worktreePendingTools: Record<string, PendingTool | null>
   prStatuses: Record<string, PRStatus | null>
   mergedPaths: Record<string, boolean>
+  pausedPaths?: Set<string>
   lastActive: Record<string, number>
   tailLines: Record<string, string>
   terminalTabs: Record<string, TerminalTab[]>
@@ -91,6 +92,7 @@ export function CommandCenter({
   worktreePendingTools,
   prStatuses,
   mergedPaths,
+  pausedPaths,
   lastActive,
   tailLines,
   terminalTabs,
@@ -430,10 +432,19 @@ export function CommandCenter({
                                 </div>
                               )}
                               <div className="flex items-center gap-2 min-w-0 text-[11px]">
-                                <span
-                                  className={`w-2 h-2 rounded-full shrink-0 ${STATUS_DOT[display]}`}
-                                />
-                                <span className="text-muted">{STATUS_LABEL[display]}</span>
+                                {pausedPaths?.has(wt.path) ? (
+                                  <>
+                                    <Pause size={11} className="shrink-0 text-faint fill-faint" />
+                                    <span className="text-muted">Paused</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <span
+                                      className={`w-2 h-2 rounded-full shrink-0 ${STATUS_DOT[display]}`}
+                                    />
+                                    <span className="text-muted">{STATUS_LABEL[display]}</span>
+                                  </>
+                                )}
                                 <div className="flex-1" />
                                 {pr && (
                                   <GitPullRequest

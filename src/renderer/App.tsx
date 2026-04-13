@@ -351,6 +351,19 @@ const setQuestStep = useCallback((next: QuestStep) => {
     })
   }, [worktrees, panes, prStatuses, mergedPaths])
 
+  // Worktrees with persisted panes that haven't been spawned yet — the UI
+  // surfaces a "paused" indicator for these so users know clicking will
+  // start a PTY rather than reattach to a running one.
+  const pausedPaths = useMemo(() => {
+    const out = new Set<string>()
+    for (const wt of worktrees) {
+      const paneList = panes[wt.path]
+      if (!paneList || paneList.length === 0) continue
+      if (!eagerSpawnSet.has(wt.path)) out.add(wt.path)
+    }
+    return out
+  }, [worktrees, panes, eagerSpawnSet])
+
   // Live-update when another window mutates the repo list
   useEffect(() => {
     return window.api.onReposChanged((roots) => {
@@ -1685,6 +1698,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
             pendingTools={worktreePendingTools}
             prStatuses={prStatuses}
             mergedPaths={mergedPaths}
+            pausedPaths={pausedPaths}
             prLoading={prLoading}
             agentCount={agentWorktreeCount}
             onSelectWorktree={(path) => {
@@ -1799,6 +1813,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
             worktreePendingTools={worktreePendingTools}
             prStatuses={prStatuses}
             mergedPaths={mergedPaths}
+            pausedPaths={pausedPaths}
             lastActive={lastActive}
             tailLines={tailLines}
             terminalTabs={terminalTabs}
