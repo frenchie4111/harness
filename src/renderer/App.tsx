@@ -22,7 +22,7 @@ import { CommandPalette } from './components/CommandPalette'
 import iconUrl from '../../resources/icon.png'
 import { focusTerminalById, flushAllTerminalHistory, markTerminalClosing } from './components/XTerminal'
 import { useHotkeys } from './hooks/useHotkeys'
-import { sortedWorktrees } from './worktree-sort'
+import { groupWorktrees, getGroupKey, type GroupKey } from './worktree-sort'
 
 /** Create a filesystem-safe terminal ID from a worktree path */
 function makeTerminalId(prefix: string, worktreePath: string): string {
@@ -101,6 +101,33 @@ export default function App(): JSX.Element {
   useEffect(() => {
     localStorage.setItem('harness:rightPanelWidth', String(rightPanelWidth))
   }, [rightPanelWidth])
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({})
+  const [collapsedRepos, setCollapsedRepos] = useState<Record<string, boolean>>({})
+  const [unifiedRepos, setUnifiedRepos] = useState<boolean>(() => {
+    const saved = localStorage.getItem('harness:unifiedRepos')
+    return saved === null ? true : saved === '1'
+  })
+  useEffect(() => {
+    localStorage.setItem('harness:unifiedRepos', unifiedRepos ? '1' : '0')
+  }, [unifiedRepos])
+  const isGroupCollapsed = useCallback(
+    (scope: string, key: GroupKey): boolean => {
+      const composite = `${scope}:${key}`
+      if (composite in collapsedGroups) return collapsedGroups[composite]
+      return key === 'merged'
+    },
+    [collapsedGroups]
+  )
+  const toggleGroup = useCallback((scope: string, key: GroupKey) => {
+    const composite = `${scope}:${key}`
+    setCollapsedGroups((prev) => {
+      const current = composite in prev ? prev[composite] : key === 'merged'
+      return { ...prev, [composite]: !current }
+    })
+  }, [])
+  const toggleRepo = useCallback((repoRoot: string) => {
+    setCollapsedRepos((prev) => ({ ...prev, [repoRoot]: !prev[repoRoot] }))
+  }, [])
   const handleSidebarResize = useCallback((delta: number) => {
     setSidebarWidth((w) => Math.max(160, Math.min(500, w + delta)))
   }, [])
@@ -1215,29 +1242,83 @@ const setQuestStep = useCallback((next: QuestStep) => {
   )
 
   // --- Hotkey action handlers ---
-  // Use the same sort order as the sidebar for navigation
-  const orderedWorktrees = useMemo(
-    () => sortedWorktrees(worktrees, prStatuses, mergedPaths),
-    [worktrees, prStatuses, mergedPaths]
+  // Mirror the sidebar's grouping/rendering order so hotkey navigation matches what's on screen.
+  const byRepoGroups = useMemo(() => {
+    if (unifiedRepos && repoRoots.length > 1) {
+      return [{ repoRoot: '__unified__', groups: groupWorktrees(worktrees, prStatuses, mergedPaths) }]
+    }
+    const map = new Map<string, Worktree[]>()
+    for (const root of repoRoots) map.set(root, [])
+    for (const wt of worktrees) {
+      if (!map.has(wt.repoRoot)) map.set(wt.repoRoot, [])
+      map.get(wt.repoRoot)!.push(wt)
+    }
+    return Array.from(map.entries()).map(([repoRoot, wts]) => ({
+      repoRoot,
+      groups: groupWorktrees(wts, prStatuses, mergedPaths)
+    }))
+  }, [unifiedRepos, repoRoots, worktrees, prStatuses, mergedPaths])
+
+  const allOrderedWorktrees = useMemo(() => {
+    const out: Worktree[] = []
+    for (const { groups } of byRepoGroups) {
+      for (const group of groups) out.push(...group.worktrees)
+    }
+    return out
+  }, [byRepoGroups])
+
+  const visibleWorktrees = useMemo(() => {
+    const out: Worktree[] = []
+    for (const { repoRoot, groups } of byRepoGroups) {
+      if (collapsedRepos[repoRoot]) continue
+      for (const group of groups) {
+        if (isGroupCollapsed(repoRoot, group.key)) continue
+        out.push(...group.worktrees)
+      }
+    }
+    return out
+  }, [byRepoGroups, collapsedRepos, isGroupCollapsed])
+
+  const scopeForWorktree = useCallback(
+    (wt: Worktree): string =>
+      unifiedRepos && repoRoots.length > 1 ? '__unified__' : wt.repoRoot,
+    [unifiedRepos, repoRoots]
+  )
+
+  const ensureWorktreeVisible = useCallback(
+    (wt: Worktree) => {
+      const scope = scopeForWorktree(wt)
+      const key = getGroupKey(wt, prStatuses[wt.path], mergedPaths?.[wt.path])
+      if (isGroupCollapsed(scope, key)) {
+        setCollapsedGroups((prev) => ({ ...prev, [`${scope}:${key}`]: false }))
+      }
+      if (scope !== '__unified__' && collapsedRepos[scope]) {
+        setCollapsedRepos((prev) => ({ ...prev, [scope]: false }))
+      }
+    },
+    [scopeForWorktree, prStatuses, mergedPaths, isGroupCollapsed, collapsedRepos]
   )
 
   const switchToWorktreeByIndex = useCallback(
     (index: number) => {
-      if (index < orderedWorktrees.length) {
-        setActiveWorktreeId(orderedWorktrees[index].path)
+      if (index < visibleWorktrees.length) {
+        setActiveWorktreeId(visibleWorktrees[index].path)
       }
     },
-    [orderedWorktrees]
+    [visibleWorktrees]
   )
 
   const cycleWorktree = useCallback(
     (delta: number) => {
-      if (orderedWorktrees.length === 0) return
-      const currentIdx = orderedWorktrees.findIndex((w) => w.path === activeWorktreeId)
-      const nextIdx = (currentIdx + delta + orderedWorktrees.length) % orderedWorktrees.length
-      setActiveWorktreeId(orderedWorktrees[nextIdx].path)
+      if (allOrderedWorktrees.length === 0) return
+      const currentIdx = allOrderedWorktrees.findIndex((w) => w.path === activeWorktreeId)
+      const nextIdx =
+        (currentIdx + delta + allOrderedWorktrees.length) % allOrderedWorktrees.length
+      const next = allOrderedWorktrees[nextIdx]
+      ensureWorktreeVisible(next)
+      setActiveWorktreeId(next.path)
     },
-    [orderedWorktrees, activeWorktreeId]
+    [allOrderedWorktrees, activeWorktreeId, ensureWorktreeVisible]
   )
 
   // Cycle tabs within the focused pane of the active worktree.
@@ -1508,6 +1589,13 @@ const setQuestStep = useCallback((next: QuestStep) => {
             }}
             commandCenterActive={showCommandCenter}
             width={sidebarWidth}
+            collapsedGroups={collapsedGroups}
+            onToggleGroup={toggleGroup}
+            isGroupCollapsed={isGroupCollapsed}
+            collapsedRepos={collapsedRepos}
+            onToggleRepo={toggleRepo}
+            unifiedRepos={unifiedRepos}
+            onToggleUnifiedRepos={() => setUnifiedRepos((v) => !v)}
           />
         )}
         {sidebarVisible && <ResizeHandle onDelta={handleSidebarResize} />}

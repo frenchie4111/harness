@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { ChevronDown, ChevronRight, Plus, RefreshCw, FolderOpen, Loader2, Settings as SettingsIcon, Sparkles, BarChart3, Trash2, LayoutGrid, X, Layers, Rows3, AlertCircle } from 'lucide-react'
 import { Tooltip } from './Tooltip'
 import type { Worktree, PtyStatus, PRStatus, PendingWorktree } from '../types'
@@ -32,6 +32,13 @@ interface SidebarProps {
   onOpenCommandCenter: () => void
   commandCenterActive: boolean
   width: number
+  collapsedGroups: Record<string, boolean>
+  onToggleGroup: (scope: string, key: GroupKey) => void
+  isGroupCollapsed: (scope: string, key: GroupKey) => boolean
+  collapsedRepos: Record<string, boolean>
+  onToggleRepo: (repoRoot: string) => void
+  unifiedRepos: boolean
+  onToggleUnifiedRepos: () => void
 }
 
 export function Sidebar({
@@ -57,33 +64,19 @@ export function Sidebar({
   onOpenCleanup,
   onOpenCommandCenter,
   commandCenterActive,
-  width
+  width,
+  collapsedGroups: _collapsedGroups,
+  onToggleGroup,
+  isGroupCollapsed,
+  collapsedRepos,
+  onToggleRepo,
+  unifiedRepos,
+  onToggleUnifiedRepos
 }: SidebarProps): JSX.Element {
   const [continueTarget, setContinueTarget] = useState<{ path: string; oldBranch: string } | null>(null)
   const [continueBranchName, setContinueBranchName] = useState('')
   const [continuing, setContinuing] = useState(false)
   const [continueError, setContinueError] = useState<string | null>(null)
-  // Collapsed state for PR-status groups. Keyed by `${repoRoot}:${groupKey}`
-  // (or `unified:${groupKey}` in unified mode) so each repo's groups collapse
-  // independently. Defaults set lazily below on first render.
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
-  const [collapsedRepos, setCollapsedRepos] = useState<Record<string, boolean>>({})
-  // Unified mode merges all repos into a single set of PR-status groups.
-  // Separate mode (default) gives each repo its own sub-sidebar.
-  const [unifiedRepos, setUnifiedRepos] = useState<boolean>(() => {
-    const saved = localStorage.getItem('harness:unifiedRepos')
-    return saved === null ? true : saved === '1'
-  })
-  useEffect(() => {
-    localStorage.setItem('harness:unifiedRepos', unifiedRepos ? '1' : '0')
-  }, [unifiedRepos])
-
-  // Default `merged` to collapsed the first time we see any given scope.
-  const isCollapsed = useCallback((scope: string, key: GroupKey): boolean => {
-    const composite = `${scope}:${key}`
-    if (composite in collapsed) return collapsed[composite]
-    return key === 'merged'
-  }, [collapsed])
 
   const suggestContinueName = useCallback((oldBranch: string) => {
     // Strip any trailing "-N" suffix, then add "-continued" (or bump N)
@@ -134,14 +127,6 @@ export function Sidebar({
     [submitContinue, cancelContinue]
   )
 
-  const toggleGroup = useCallback((scope: string, key: GroupKey) => {
-    const composite = `${scope}:${key}`
-    setCollapsed((prev) => {
-      const current = composite in prev ? prev[composite] : key === 'merged'
-      return { ...prev, [composite]: !current }
-    })
-  }, [])
-
   // Group worktrees by repo, preserving the user's repo order. In unified
   // mode we short-circuit and return a single "synthetic" repo containing
   // every worktree.
@@ -166,10 +151,6 @@ export function Sidebar({
 
   const repoLabelFor = useCallback((repoRoot: string): string => {
     return repoRoot.split('/').pop() || repoRoot
-  }, [])
-
-  const toggleRepo = useCallback((repoRoot: string) => {
-    setCollapsedRepos((prev) => ({ ...prev, [repoRoot]: !prev[repoRoot] }))
   }, [])
 
   return (
@@ -207,7 +188,7 @@ export function Sidebar({
             side="bottom"
           >
             <button
-              onClick={() => setUnifiedRepos((v) => !v)}
+              onClick={onToggleUnifiedRepos}
               className="ml-auto text-dim hover:text-fg hover:bg-surface rounded p-0.5 transition-colors cursor-pointer"
             >
               {unifiedRepos ? <Rows3 size={12} /> : <Layers size={12} />}
@@ -247,18 +228,18 @@ export function Sidebar({
           const groupsBody = groups.map((group) => (
           <div key={group.key}>
             <button
-              onClick={() => toggleGroup(scope, group.key)}
+              onClick={() => onToggleGroup(scope, group.key)}
               className="w-full flex items-center gap-1 px-3 py-1.5 text-xs text-dim hover:text-fg transition-colors cursor-pointer"
-              title={isCollapsed(scope, group.key) ? `Expand ${group.label}` : `Collapse ${group.label}`}
+              title={isGroupCollapsed(scope, group.key) ? `Expand ${group.label}` : `Collapse ${group.label}`}
             >
-              {isCollapsed(scope, group.key)
+              {isGroupCollapsed(scope, group.key)
                 ? <ChevronRight size={12} className="shrink-0" />
                 : <ChevronDown size={12} className="shrink-0" />
               }
               <span className="font-medium">{group.label}</span>
               <span className="text-faint ml-auto">{group.worktrees.length}</span>
             </button>
-            {!isCollapsed(scope, group.key) && group.worktrees.map((wt) => (
+            {!isGroupCollapsed(scope, group.key) && group.worktrees.map((wt) => (
               <div key={wt.path}>
                 <WorktreeTab
                   worktree={wt}
@@ -330,7 +311,7 @@ export function Sidebar({
             <div key={repoRoot}>
               {showRepoHeaders && (
                 <button
-                  onClick={() => toggleRepo(repoRoot)}
+                  onClick={() => onToggleRepo(repoRoot)}
                   className="group w-full flex items-center gap-1 px-3 mt-1 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-dim hover:text-fg transition-colors cursor-pointer"
                   title={repoRoot}
                 >
