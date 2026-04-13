@@ -126,13 +126,6 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, prStatus,
           </div>
         )}
       </div>
-      {metaHeld && cmdOrdinal !== undefined && (
-        <HotkeyBadge
-          action={`worktree${cmdOrdinal}` as Action}
-          variant="strong"
-          className="shrink-0"
-        />
-      )}
       {canContinue && (
         <Tooltip label="Continue on a new branch off main" side="left">
           <button
@@ -158,6 +151,13 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, prStatus,
             <Trash2 size={12} />
           </button>
         </Tooltip>
+      )}
+      {metaHeld && cmdOrdinal !== undefined && (
+        <HotkeyBadge
+          action={`worktree${cmdOrdinal}` as Action}
+          variant="strong"
+          className="shrink-0"
+        />
       )}
     </div>
   )
