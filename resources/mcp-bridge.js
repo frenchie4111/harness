@@ -81,6 +81,11 @@ const TOOLS = [
           type: 'string',
           description:
             "Branch to fork the new worktree from. Defaults to the repo's configured base."
+        },
+        initialPrompt: {
+          type: 'string',
+          description:
+            'A prompt to automatically send to the Claude chat tab when it opens in the new worktree.'
         }
       },
       required: ['branchName']
@@ -113,7 +118,8 @@ async function handleToolCall(name, args) {
       terminalId: TERMINAL_ID,
       repoRoot: args.repoRoot,
       branchName: args.branchName,
-      baseBranch: args.baseBranch
+      baseBranch: args.baseBranch,
+      initialPrompt: args.initialPrompt
     })
     return (
       'Created worktree ' +
