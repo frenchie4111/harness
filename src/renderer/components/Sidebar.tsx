@@ -1,6 +1,8 @@
 import { useState, useCallback, useMemo } from 'react'
 import { ChevronDown, ChevronRight, Plus, RefreshCw, FolderOpen, Loader2, Settings as SettingsIcon, Sparkles, BarChart3, Trash2, LayoutGrid, X, Layers, Rows3, AlertCircle } from 'lucide-react'
 import { Tooltip } from './Tooltip'
+import { HotkeyBadge } from './HotkeyBadge'
+import { useMetaHeld } from '../hooks/useMetaHeld'
 import type { Worktree, PtyStatus, PendingTool, PRStatus, PendingWorktree } from '../types'
 import type { GroupKey } from '../worktree-sort'
 import { groupWorktrees } from '../worktree-sort'
@@ -75,6 +77,7 @@ export function Sidebar({
   unifiedRepos,
   onToggleUnifiedRepos
 }: SidebarProps): JSX.Element {
+  const metaHeld = useMetaHeld()
   const [continueTarget, setContinueTarget] = useState<{ path: string; oldBranch: string } | null>(null)
   const [continueBranchName, setContinueBranchName] = useState('')
   const [continuing, setContinuing] = useState(false)
@@ -151,6 +154,28 @@ export function Sidebar({
   const showRepoHeaders = repoRoots.length > 1 && !unifiedRepos
   const showRepoLabelsOnTabs = repoRoots.length > 1 && unifiedRepos
 
+  // Assign Cmd+1..9 ordinals in the same order as App.tsx visibleWorktrees:
+  // iterate repos → groups, skipping collapsed repos/groups, so ordinals
+  // match the actual hotkey targets.
+  const cmdOrdinals = useMemo(() => {
+    const map = new Map<string, number>()
+    let n = 1
+    for (const { repoRoot, groups } of byRepo) {
+      if (repoRoot !== '__unified__' && collapsedRepos[repoRoot]) continue
+      for (const group of groups) {
+        if (isGroupCollapsed(repoRoot, group.key)) continue
+        for (const wt of group.worktrees) {
+          if (n > 9) break
+          map.set(wt.path, n)
+          n += 1
+        }
+        if (n > 9) break
+      }
+      if (n > 9) break
+    }
+    return map
+  }, [byRepo, collapsedRepos, isGroupCollapsed])
+
   const repoLabelFor = useCallback((repoRoot: string): string => {
     return repoRoot.split('/').pop() || repoRoot
   }, [])
@@ -177,6 +202,9 @@ export function Sidebar({
         >
           <LayoutGrid size={14} className={commandCenterActive ? 'text-accent' : 'text-dim'} />
           <span className="text-sm font-medium">Command Center</span>
+          {metaHeld && (
+            <HotkeyBadge action="toggleCommandCenter" variant="strong" className="ml-auto" />
+          )}
         </button>
       </div>
 
@@ -220,6 +248,9 @@ export function Sidebar({
               <div className="text-[11px] text-dim mt-0.5 leading-snug">
                 Fork a branch and send a Claude into it.
               </div>
+              <div className="mt-2">
+                <HotkeyBadge action="newWorktree" />
+              </div>
             </div>
           </button>
         )}
@@ -251,6 +282,7 @@ export function Sidebar({
                   prStatus={prStatuses[wt.path]}
                   isMerged={group.key === 'merged'}
                   repoLabel={showRepoLabelsOnTabs ? repoLabelFor(wt.repoRoot) : undefined}
+                  cmdOrdinal={cmdOrdinals.get(wt.path)}
                   onClick={() => onSelectWorktree(wt.path)}
                   onDelete={wt.isMain ? undefined : () => onDeleteWorktree(wt.path)}
                   onContinue={wt.isMain ? undefined : () => beginContinue(wt.path, wt.branch)}

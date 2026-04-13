@@ -104,6 +104,28 @@ export function parseBinding(shortcut: string): HotkeyBinding {
   return { key, modifiers }
 }
 
+/** Format a Cmd+Shift+E-style string as ⌘⇧E with Unicode mac glyphs. */
+export function formatBindingGlyphs(binding: string): string {
+  return binding
+    .split('+')
+    .map((part) => {
+      const lower = part.trim().toLowerCase()
+      if (lower === 'cmd' || lower === 'meta') return '\u2318' // ⌘
+      if (lower === 'ctrl' || lower === 'control') return '\u2303' // ⌃
+      if (lower === 'alt' || lower === 'option') return '\u2325' // ⌥
+      if (lower === 'shift') return '\u21E7' // ⇧
+      if (part === 'ArrowUp') return '\u2191'
+      if (part === 'ArrowDown') return '\u2193'
+      if (part === 'ArrowLeft') return '\u2190'
+      if (part === 'ArrowRight') return '\u2192'
+      if (part === 'Enter') return '\u23CE'
+      if (part === 'Tab') return '\u21E5'
+      if (part === 'Escape') return 'Esc'
+      return part
+    })
+    .join('')
+}
+
 /** Convert a binding back to a human-readable string like "Cmd+Shift+T" */
 export function bindingToString(binding: HotkeyBinding): string {
   const parts: string[] = []

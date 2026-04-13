@@ -168,7 +168,7 @@ export function TerminalPanel({
               <Plus size={12} />
             </button>
           </Tooltip>
-          <Tooltip label="Split pane right">
+          <Tooltip label="Split pane right" action="splitPaneRight">
             <button
               onClick={onSplit}
               className="no-drag shrink-0 px-2 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"

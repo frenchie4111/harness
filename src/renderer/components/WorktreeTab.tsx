@@ -3,6 +3,9 @@ import type { Worktree, PtyStatus, PendingTool, PRStatus } from '../types'
 import { Tooltip } from './Tooltip'
 import { RepoIcon } from './RepoIcon'
 import { formatPendingTool } from '../pending-tool'
+import { HotkeyBadge } from './HotkeyBadge'
+import { useMetaHeld } from '../hooks/useMetaHeld'
+import type { Action } from '../hotkeys'
 
 interface WorktreeTabProps {
   worktree: Worktree
@@ -14,6 +17,9 @@ interface WorktreeTabProps {
   /** When set, shows a small repo hint next to the branch name. Used in
    *  unified-repo mode so two branches with the same name stay distinguishable. */
   repoLabel?: string
+  /** 1-based position in the Cmd+1..9 switch order. Undefined if this
+   *  worktree isn't bound to a numeric switch hotkey. */
+  cmdOrdinal?: number
   onClick: () => void
   onDelete?: () => void
   onContinue?: () => void
@@ -49,7 +55,8 @@ const PR_STATE_COLOR: Record<string, string> = {
   closed: 'text-danger'
 }
 
-export function WorktreeTab({ worktree, isActive, status, pendingTool, prStatus, isMerged, repoLabel, onClick, onDelete, onContinue }: WorktreeTabProps): JSX.Element {
+export function WorktreeTab({ worktree, isActive, status, pendingTool, prStatus, isMerged, repoLabel, cmdOrdinal, onClick, onDelete, onContinue }: WorktreeTabProps): JSX.Element {
+  const metaHeld = useMetaHeld()
   const displayStatus: PtyStatus | 'merged' = isMerged ? 'merged' : status
   const showPendingTool = displayStatus === 'needs-approval' && pendingTool
   const canContinue = !!onContinue && (prStatus?.state === 'merged' || prStatus?.state === 'closed')
@@ -144,6 +151,13 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, prStatus,
             <Trash2 size={12} />
           </button>
         </Tooltip>
+      )}
+      {metaHeld && cmdOrdinal !== undefined && (
+        <HotkeyBadge
+          action={`worktree${cmdOrdinal}` as Action}
+          variant="strong"
+          className="shrink-0"
+        />
       )}
     </div>
   )
