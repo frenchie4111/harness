@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo } from 'react'
 import { ChevronDown, ChevronRight, Plus, RefreshCw, FolderOpen, Loader2, Settings as SettingsIcon, Sparkles, BarChart3, Trash2, LayoutGrid, X, Layers, Rows3, AlertCircle } from 'lucide-react'
 import { Tooltip } from './Tooltip'
-import type { Worktree, PtyStatus, PRStatus, PendingWorktree } from '../types'
+import type { Worktree, PtyStatus, PendingTool, PRStatus, PendingWorktree } from '../types'
 import type { GroupKey } from '../worktree-sort'
 import { groupWorktrees } from '../worktree-sort'
 import { WorktreeTab } from './WorktreeTab'
@@ -12,6 +12,7 @@ interface SidebarProps {
   pendingWorktrees: PendingWorktree[]
   activeWorktreeId: string | null
   statuses: Record<string, PtyStatus>
+  pendingTools: Record<string, PendingTool | null>
   prStatuses: Record<string, PRStatus | null>
   mergedPaths?: Record<string, boolean>
   prLoading: boolean
@@ -46,6 +47,7 @@ export function Sidebar({
   pendingWorktrees,
   activeWorktreeId,
   statuses,
+  pendingTools,
   prStatuses,
   mergedPaths,
   prLoading,
@@ -245,6 +247,7 @@ export function Sidebar({
                   worktree={wt}
                   isActive={wt.path === activeWorktreeId}
                   status={statuses[wt.path] || 'idle'}
+                  pendingTool={pendingTools[wt.path] || null}
                   prStatus={prStatuses[wt.path]}
                   isMerged={group.key === 'merged'}
                   repoLabel={showRepoLabelsOnTabs ? repoLabelFor(wt.repoRoot) : undefined}

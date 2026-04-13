@@ -18,7 +18,12 @@ import { log } from './debug'
 const STATUS_DIR = '/tmp/harness-status'
 const HARNESS_HOOK_MARKER = '__claude_harness__'
 // Bump this when the hook format changes to force reinstallation
-const HARNESS_HOOK_VERSION = 7
+const HARNESS_HOOK_VERSION = 8
+
+export interface PendingTool {
+  name: string
+  input: Record<string, unknown>
+}
 
 // Emit a bash command that appends one NDJSON line per event to the
 // terminal's log file at /tmp/harness-status/<id>.ndjson. The line wraps
@@ -142,18 +147,49 @@ interface HookEvent {
   payload: Record<string, unknown> | null
 }
 
-function deriveStatus(ev: HookEvent): PtyStatus | null {
+// Most recently seen PreToolUse tool info per terminal. Used as a fallback
+// source of `tool_name`/`tool_input` when a permission_prompt Notification
+// arrives without those fields embedded in its own payload.
+const lastPreTool = new Map<string, PendingTool>()
+
+interface StatusUpdate {
+  status: PtyStatus
+  pendingTool: PendingTool | null
+}
+
+function readPendingTool(p: Record<string, unknown> | null): PendingTool | null {
+  if (!p) return null
+  const name = p.tool_name
+  if (typeof name !== 'string' || !name) return null
+  const rawInput = p.tool_input
+  const input =
+    rawInput && typeof rawInput === 'object' && !Array.isArray(rawInput)
+      ? (rawInput as Record<string, unknown>)
+      : {}
+  return { name, input }
+}
+
+function deriveStatus(terminalId: string, ev: HookEvent): StatusUpdate | null {
   switch (ev.event) {
+    case 'PreToolUse': {
+      const tool = readPendingTool(ev.payload)
+      if (tool) lastPreTool.set(terminalId, tool)
+      return { status: 'processing', pendingTool: null }
+    }
     case 'UserPromptSubmit':
-    case 'PreToolUse':
     case 'PostToolUse':
-      return 'processing'
+      return { status: 'processing', pendingTool: null }
     case 'Stop':
-      return 'waiting'
+      return { status: 'waiting', pendingTool: null }
     case 'Notification': {
-      const t = (ev.payload as Record<string, unknown> | null)?.notification_type
-      if (t === 'permission_prompt' || t === 'elicitation_dialog') return 'needs-approval'
-      if (t === 'idle_prompt') return 'waiting'
+      const p = ev.payload as Record<string, unknown> | null
+      const t = p?.notification_type
+      if (t === 'permission_prompt' || t === 'elicitation_dialog') {
+        const fromNotification = readPendingTool(p)
+        const pendingTool = fromNotification ?? lastPreTool.get(terminalId) ?? null
+        return { status: 'needs-approval', pendingTool }
+      }
+      if (t === 'idle_prompt') return { status: 'waiting', pendingTool: null }
       return null
     }
     default:
@@ -207,9 +243,14 @@ function tailLog(terminalId: string, win: BrowserWindow): void {
         continue
       }
       log('hooks', `event terminal=${terminalId} event=${ev.event}`)
-      const status = deriveStatus(ev)
-      if (status) {
-        win.webContents.send('terminal:status', terminalId, status)
+      const update = deriveStatus(terminalId, ev)
+      if (update) {
+        win.webContents.send(
+          'terminal:status',
+          terminalId,
+          update.status,
+          update.pendingTool
+        )
       }
     }
   } finally {
@@ -246,6 +287,7 @@ export function watchStatusDir(
 export function cleanupTerminalLog(terminalId: string): void {
   offsets.delete(terminalId)
   residual.delete(terminalId)
+  lastPreTool.delete(terminalId)
   try {
     unlinkSync(join(STATUS_DIR, `${terminalId}.ndjson`))
   } catch {

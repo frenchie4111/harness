@@ -1,12 +1,14 @@
 import { GitPullRequest, RotateCw, Trash2 } from 'lucide-react'
-import type { Worktree, PtyStatus, PRStatus } from '../types'
+import type { Worktree, PtyStatus, PendingTool, PRStatus } from '../types'
 import { Tooltip } from './Tooltip'
 import { RepoIcon } from './RepoIcon'
+import { formatPendingTool } from '../pending-tool'
 
 interface WorktreeTabProps {
   worktree: Worktree
   isActive: boolean
   status: PtyStatus
+  pendingTool?: PendingTool | null
   prStatus?: PRStatus | null
   isMerged?: boolean
   /** When set, shows a small repo hint next to the branch name. Used in
@@ -47,8 +49,9 @@ const PR_STATE_COLOR: Record<string, string> = {
   closed: 'text-danger'
 }
 
-export function WorktreeTab({ worktree, isActive, status, prStatus, isMerged, repoLabel, onClick, onDelete, onContinue }: WorktreeTabProps): JSX.Element {
+export function WorktreeTab({ worktree, isActive, status, pendingTool, prStatus, isMerged, repoLabel, onClick, onDelete, onContinue }: WorktreeTabProps): JSX.Element {
   const displayStatus: PtyStatus | 'merged' = isMerged ? 'merged' : status
+  const showPendingTool = displayStatus === 'needs-approval' && pendingTool
   const canContinue = !!onContinue && (prStatus?.state === 'merged' || prStatus?.state === 'closed')
   // Priority: merged/closed state always wins, then merge conflict, then check
   // status, then PR state
@@ -97,18 +100,24 @@ export function WorktreeTab({ worktree, isActive, status, prStatus, isMerged, re
       )}
       <div className="min-w-0 flex-1">
         <div className="text-sm font-medium truncate">{worktree.branch}</div>
-        <div className="text-xs text-faint truncate">
-          {repoLabel ? (
-            <span className="inline-flex items-center gap-1">
-              <RepoIcon repoName={repoLabel} size={11} />
-              <span className="text-dim">{repoLabel}</span>
-              <span className="mx-0.5">·</span>
-              {worktree.path.split('/').pop()}
-            </span>
-          ) : (
-            worktree.path.split('/').slice(-2).join('/')
-          )}
-        </div>
+        {showPendingTool ? (
+          <div className="text-xs text-danger truncate font-mono" title={formatPendingTool(pendingTool!)}>
+            {formatPendingTool(pendingTool!)}
+          </div>
+        ) : (
+          <div className="text-xs text-faint truncate">
+            {repoLabel ? (
+              <span className="inline-flex items-center gap-1">
+                <RepoIcon repoName={repoLabel} size={11} />
+                <span className="text-dim">{repoLabel}</span>
+                <span className="mx-0.5">·</span>
+                {worktree.path.split('/').pop()}
+              </span>
+            ) : (
+              worktree.path.split('/').slice(-2).join('/')
+            )}
+          </div>
+        )}
       </div>
       {canContinue && (
         <Tooltip label="Continue on a new branch off main" side="left">

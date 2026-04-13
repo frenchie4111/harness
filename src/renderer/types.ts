@@ -89,6 +89,11 @@ export interface PersistedPane {
 
 export type PtyStatus = 'idle' | 'processing' | 'waiting' | 'needs-approval'
 
+export interface PendingTool {
+  name: string
+  input: Record<string, unknown>
+}
+
 export type QuestStep = 'hidden' | 'spawn-second' | 'switch-between' | 'finale' | 'done'
 
 export type UpdaterStatus =
@@ -320,7 +325,9 @@ export interface ElectronAPI {
   resizeTerminal(id: string, cols: number, rows: number): void
   killTerminal(id: string): void
   onTerminalData(callback: (id: string, data: string) => void): () => void
-  onStatusChange(callback: (id: string, status: PtyStatus) => void): () => void
+  onStatusChange(
+    callback: (id: string, status: PtyStatus, pendingTool: PendingTool | null) => void
+  ): () => void
   onTerminalExit(callback: (id: string, exitCode: number) => void): () => void
 
   recordActivity(worktreePath: string, state: string): void

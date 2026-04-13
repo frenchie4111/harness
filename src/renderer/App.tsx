@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import type { Worktree, TerminalTab, PtyStatus, PRStatus, QuestStep, WorkspacePane, PendingWorktree, UpdaterStatus } from './types'
+import type { Worktree, TerminalTab, PtyStatus, PendingTool, PRStatus, QuestStep, WorkspacePane, PendingWorktree, UpdaterStatus } from './types'
 import type { Action } from './hotkeys'
 import { resolveHotkeys } from './hotkeys'
 import { HotkeysProvider } from './components/Tooltip'
@@ -73,6 +73,7 @@ export default function App(): JSX.Element {
     return out
   }, [panes, activePaneId])
   const [statuses, setStatuses] = useState<Record<string, PtyStatus>>({})
+  const [pendingTools, setPendingTools] = useState<Record<string, PendingTool | null>>({})
   const [prStatuses, setPrStatuses] = useState<Record<string, PRStatus | null>>({})
   const [mergedPaths, setMergedPaths] = useState<Record<string, boolean>>({})
   const [prLoading, setPrLoading] = useState(false)
@@ -534,9 +535,14 @@ const setQuestStep = useCallback((next: QuestStep) => {
 
   // Listen for status changes from main process
   useEffect(() => {
-    const cleanup = window.api.onStatusChange((id, status) => {
+    const cleanup = window.api.onStatusChange((id, status, pendingTool) => {
       console.log(`[status] received: id=${id} status=${status}`)
       setStatuses((prev) => ({ ...prev, [id]: status as PtyStatus }))
+      setPendingTools((prev) => {
+        const next = status === 'needs-approval' ? pendingTool : null
+        if (prev[id] === next) return prev
+        return { ...prev, [id]: next }
+      })
       const wtPath = terminalToWorktree(id)
       if (wtPath) {
         markActive(wtPath)
@@ -1428,19 +1434,23 @@ const setQuestStep = useCallback((next: QuestStep) => {
 
   // Compute aggregate status per worktree (worst status wins)
   const worktreeStatuses: Record<string, PtyStatus> = {}
+  const worktreePendingTools: Record<string, PendingTool | null> = {}
   for (const wt of worktrees) {
     const tabs = terminalTabs[wt.path] || []
     let worstStatus: PtyStatus = 'idle'
+    let pending: PendingTool | null = null
     for (const tab of tabs) {
       const s = statuses[tab.id]
       if (s === 'needs-approval') {
         worstStatus = 'needs-approval'
+        pending = pendingTools[tab.id] || null
         break
       }
       if (s === 'waiting' && worstStatus !== 'needs-approval') worstStatus = 'waiting'
       if (s === 'processing' && worstStatus === 'idle') worstStatus = 'processing'
     }
     worktreeStatuses[wt.path] = worstStatus
+    worktreePendingTools[wt.path] = pending
   }
 
   // Record activity-log transitions whenever a worktree's effective state changes.
@@ -1596,6 +1606,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
             pendingWorktrees={pendingWorktrees}
             activeWorktreeId={activeWorktreeId}
             statuses={worktreeStatuses}
+            pendingTools={worktreePendingTools}
             prStatuses={prStatuses}
             mergedPaths={mergedPaths}
             prLoading={prLoading}
@@ -1704,6 +1715,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
           <CommandCenter
             worktrees={worktrees}
             worktreeStatuses={worktreeStatuses}
+            worktreePendingTools={worktreePendingTools}
             prStatuses={prStatuses}
             mergedPaths={mergedPaths}
             lastActive={lastActive}
