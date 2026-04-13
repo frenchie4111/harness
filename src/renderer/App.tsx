@@ -84,6 +84,7 @@ export default function App(): JSX.Element {
   // Populated whenever the worktree list refreshes.
   const worktreeRepoRef = useRef<Record<string, string>>({})
   const [hooksConsent, setHooksConsent] = useState<'pending' | 'accepted' | 'declined'>('pending')
+  const [hooksJustInstalled, setHooksJustInstalled] = useState(false)
   const [updaterStatus, setUpdaterStatus] = useState<UpdaterStatus | null>(null)
   const [updateBannerDismissed, setUpdateBannerDismissed] = useState(false)
   const [sidebarVisible, setSidebarVisible] = useState(true)
@@ -597,6 +598,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
         await window.api.installHooks(wt.path)
       }
     }
+    setHooksJustInstalled(true)
   }, [worktrees])
 
   const handleDeclineHooks = useCallback(() => {
@@ -1000,6 +1002,19 @@ const setQuestStep = useCallback((next: QuestStep) => {
     },
     []
   )
+
+  const handleRestartAllClaudeTabs = useCallback(() => {
+    for (const [worktreePath, paneList] of Object.entries(panes)) {
+      for (const pane of paneList) {
+        for (const tab of pane.tabs) {
+          if (tab.type === 'claude') {
+            handleRestartClaudeTab(worktreePath, tab.id)
+          }
+        }
+      }
+    }
+    setHooksJustInstalled(false)
+  }, [panes, handleRestartClaudeTab])
 
   const handleSelectTab = useCallback(
     (worktreePath: string, paneId: string, tabId: string) => {
@@ -1467,6 +1482,27 @@ const setQuestStep = useCallback((next: QuestStep) => {
             className="px-3 py-1 text-warning/80 hover:text-warning text-sm transition-colors shrink-0 cursor-pointer no-drag"
           >
             Skip
+          </button>
+        </div>
+      )}
+
+      {/* Hooks installed — prompt to restart Claude tabs */}
+      {hooksJustInstalled && (
+        <div className="bg-success/15 border-b border-success/30 pl-20 pr-4 py-2.5 drag-region flex items-center gap-3 shrink-0">
+          <span className="text-success text-sm flex-1">
+            Hooks installed! You will need to restart any active Claude instances to see the changes.
+          </span>
+          <button
+            onClick={handleRestartAllClaudeTabs}
+            className="px-3 py-1 bg-success/30 hover:bg-success/40 rounded text-sm text-success transition-colors shrink-0 cursor-pointer no-drag"
+          >
+            Restart Claude tabs
+          </button>
+          <button
+            onClick={() => setHooksJustInstalled(false)}
+            className="px-3 py-1 text-success/80 hover:text-success text-sm transition-colors shrink-0 cursor-pointer no-drag"
+          >
+            Dismiss
           </button>
         </div>
       )}
