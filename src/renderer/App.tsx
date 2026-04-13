@@ -76,6 +76,11 @@ export default function App(): JSX.Element {
   const [pendingTools, setPendingTools] = useState<Record<string, PendingTool | null>>({})
   const [prStatuses, setPrStatuses] = useState<Record<string, PRStatus | null>>({})
   const [mergedPaths, setMergedPaths] = useState<Record<string, boolean>>({})
+  // Worktrees allowed to mount their WorkspaceView (and thus spawn PTYs).
+  // Merged worktrees are excluded at launch and only join the set when the
+  // user explicitly activates them. Once added, a path stays in the set for
+  // the rest of the session so PTYs persist across switches.
+  const [eagerSpawnSet, setEagerSpawnSet] = useState<Set<string>>(() => new Set())
   const [prLoading, setPrLoading] = useState(false)
   const lastAllPRFetchAt = useRef(0)
   const lastPRFetchAt = useRef<Record<string, number>>({})
@@ -272,15 +277,25 @@ const setQuestStep = useCallback((next: QuestStep) => {
       }
       if (persistedPanes) {
         const restored: Record<string, WorkspacePane[]> = {}
+        type PaneList = NonNullable<typeof persistedPanes>[string][string]
+        const entries: { wtPath: string; paneList: PaneList }[] = []
         for (const byWt of Object.values(persistedPanes)) {
           for (const [wtPath, paneList] of Object.entries(byWt)) {
+            entries.push({ wtPath, paneList })
+          }
+        }
+        const latestIds = await Promise.all(
+          entries.map(({ wtPath, paneList }) => {
             const allTabs = paneList.flatMap((p) => p.tabs)
             const needsBackfill = allTabs.some((t) => t.type === 'claude' && !t.sessionId)
-            const latest = needsBackfill
-              ? await window.api.getLatestClaudeSessionId(wtPath)
-              : null
-            let claimedLatest = false
-            restored[wtPath] = paneList.map((pane) => ({
+            return needsBackfill ? window.api.getLatestClaudeSessionId(wtPath) : Promise.resolve(null)
+          })
+        )
+        for (let i = 0; i < entries.length; i++) {
+          const { wtPath, paneList } = entries[i]
+          const latest = latestIds[i]
+          let claimedLatest = false
+          restored[wtPath] = paneList.map((pane) => ({
               id: pane.id,
               activeTabId: pane.activeTabId,
               tabs: pane.tabs.map((t) => {
@@ -292,13 +307,49 @@ const setQuestStep = useCallback((next: QuestStep) => {
                 return { ...t, sessionId: crypto.randomUUID() }
               })
             }))
-          }
         }
         setPanes(restored)
       }
       tabsLoadedRef.current = true
     })()
   }, [fetchAllWorktrees])
+
+  // Keep the active worktree in the eager-spawn set so visiting a merged
+  // worktree mounts (and spawns) its PTYs on demand. Entries are never
+  // removed — once a session is alive we keep it alive.
+  useEffect(() => {
+    if (!activeWorktreeId) return
+    setEagerSpawnSet((prev) => {
+      if (prev.has(activeWorktreeId)) return prev
+      const next = new Set(prev)
+      next.add(activeWorktreeId)
+      return next
+    })
+  }, [activeWorktreeId])
+
+  // Re-classify persisted-pane worktrees whenever PR status / merged state
+  // settles. Anything that is NOT in the `merged` group gets eagerly spawned.
+  useEffect(() => {
+    const classified: string[] = []
+    for (const wt of worktrees) {
+      const paneList = panes[wt.path]
+      if (!paneList || paneList.length === 0) continue
+      const key = getGroupKey(wt, prStatuses[wt.path], mergedPaths?.[wt.path])
+      if (key !== 'merged') classified.push(wt.path)
+    }
+    if (classified.length === 0) return
+    setEagerSpawnSet((prev) => {
+      let changed = false
+      const next = new Set(prev)
+      for (const p of classified) {
+        if (!next.has(p)) {
+          next.add(p)
+          changed = true
+        }
+      }
+      return changed ? next : prev
+    })
+  }, [worktrees, panes, prStatuses, mergedPaths])
 
   // Live-update when another window mutates the repo list
   useEffect(() => {
@@ -1672,10 +1723,15 @@ const setQuestStep = useCallback((next: QuestStep) => {
           />
         )}
         {sidebarVisible && <ResizeHandle onDelta={handleSidebarResize} />}
-        {/* Render ALL worktrees' terminals to keep PTYs alive across switches */}
+        {/* Render terminals for every worktree we've decided to eagerly spawn
+            (everything except the Merged / Closed group, plus any merged
+            worktree the user has activated this session). Mounted views keep
+            their PTYs alive across switches; merged worktrees stay unmounted
+            until the user clicks one, saving N×tabs zsh spawns at launch. */}
         {worktrees.map((wt) => {
           const paneList = panes[wt.path]
           if (!paneList || paneList.length === 0) return null
+          if (!eagerSpawnSet.has(wt.path)) return null
           const isVisible = !showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && wt.path === activeWorktreeId
           return (
             <div
