@@ -91,6 +91,10 @@ if ! gh auth status >/dev/null 2>&1; then
 fi
 ok "gh CLI is authenticated"
 
+# Ensure deps are installed (electron-vite@5 + vite@7 peer range needs --legacy-peer-deps)
+npm install --legacy-peer-deps --silent
+ok "Dependencies installed"
+
 # Confirm before proceeding
 echo
 echo "${BOLD}Ready to release Harness v${VERSION}${RESET}"
