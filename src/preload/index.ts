@@ -217,6 +217,9 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('app:openSettings', handler)
   },
 
+  // Management workspace (standalone non-git Claude session)
+  getManagementWorkspacePath: () => ipcRenderer.invoke('management:getPath'),
+
   // Hooks
   checkHooks: (worktreePath: string) => ipcRenderer.invoke('hooks:check', worktreePath),
   installHooks: (worktreePath: string) => ipcRenderer.invoke('hooks:install', worktreePath),

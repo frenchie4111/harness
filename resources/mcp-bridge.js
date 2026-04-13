@@ -87,6 +87,29 @@ const TOOLS = [
     }
   },
   {
+    name: 'remove_worktree',
+    description:
+      'Remove a git worktree that Harness is currently tracking. Fails if the worktree has uncommitted changes unless force is true.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        repoRoot: {
+          type: 'string',
+          description: 'Absolute path to the repo root the worktree belongs to.'
+        },
+        path: {
+          type: 'string',
+          description: 'Absolute path to the worktree to remove.'
+        },
+        force: {
+          type: 'boolean',
+          description: 'Force removal even if there are uncommitted changes.'
+        }
+      },
+      required: ['repoRoot', 'path']
+    }
+  },
+  {
     name: 'list_worktrees',
     description: 'List git worktrees currently managed by Harness.',
     inputSchema: {
@@ -103,6 +126,41 @@ const TOOLS = [
     name: 'list_repos',
     description: 'List the repo roots currently open in Harness.',
     inputSchema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'add_repo',
+    description:
+      'Register an existing git repository on disk as a Harness-managed repo root. Set init=true to `git init` a new repo at the given path if it does not exist yet — useful for spinning up brand new projects from the management workspace.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: {
+          type: 'string',
+          description: 'Absolute path to the repository (or desired new project directory).'
+        },
+        init: {
+          type: 'boolean',
+          description:
+            'When true, create the directory and run `git init` if no git repo exists at that path.'
+        }
+      },
+      required: ['path']
+    }
+  },
+  {
+    name: 'remove_repo',
+    description:
+      'Unregister a repo root from Harness. The directory on disk is left untouched; only the Harness sidebar entry and its persisted workspace state are cleared.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        repoRoot: {
+          type: 'string',
+          description: 'Absolute path to the repo root to unregister.'
+        }
+      },
+      required: ['repoRoot']
+    }
   }
 ]
 
@@ -132,6 +190,38 @@ async function handleToolCall(name, args) {
   if (name === 'list_repos') {
     const r = await callControl('GET', '/repos')
     return JSON.stringify(r, null, 2)
+  }
+  if (name === 'add_repo') {
+    if (!args || !args.path) throw new Error('path is required')
+    const r = await callControl('POST', '/repos', { path: args.path, init: args.init === true })
+    if (r.added) {
+      return 'Added repo root ' + r.repoRoot + ' to Harness.'
+    }
+    return 'Repo root ' + r.repoRoot + ' is already tracked by Harness.'
+  }
+  if (name === 'remove_repo') {
+    if (!args || !args.repoRoot) throw new Error('repoRoot is required')
+    const r = await callControl(
+      'DELETE',
+      '/repos?repoRoot=' + encodeURIComponent(args.repoRoot)
+    )
+    if (r.removed) return 'Removed repo root ' + args.repoRoot + ' from Harness.'
+    return 'Repo root ' + args.repoRoot + ' was not tracked by Harness.'
+  }
+  if (name === 'remove_worktree') {
+    if (!args || !args.repoRoot || !args.path) {
+      throw new Error('repoRoot and path are required')
+    }
+    const force = args.force === true ? '&force=1' : ''
+    const r = await callControl(
+      'DELETE',
+      '/worktrees?repoRoot=' +
+        encodeURIComponent(args.repoRoot) +
+        '&path=' +
+        encodeURIComponent(args.path) +
+        force
+    )
+    return 'Removed worktree ' + (r.path || args.path) + '.'
   }
   throw new Error('unknown tool: ' + name)
 }

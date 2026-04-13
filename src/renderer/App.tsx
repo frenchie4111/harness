@@ -46,8 +46,13 @@ async function fetchMergedStatusAll(roots: string[]): Promise<Record<string, boo
   return Object.assign({}, ...results)
 }
 
+/** Synthetic repoRoot used for the standalone management workspace. Matches
+ *  MANAGEMENT_REPO_SENTINEL in src/main/management.ts. */
+const MANAGEMENT_REPO_SENTINEL = '__management__'
+
 export default function App(): JSX.Element {
   const [worktrees, setWorktrees] = useState<Worktree[]>([])
+  const [managementWorktree, setManagementWorktree] = useState<Worktree | null>(null)
   const [activeWorktreeId, setActiveWorktreeId] = useState<string | null>(null)
   const [panes, setPanes] = useState<Record<string, WorkspacePane[]>>({})
   // Which pane in each worktree is the "focused" one for hotkeys (newTab, closeTab, cycleTab).
@@ -203,6 +208,11 @@ const setQuestStep = useCallback((next: QuestStep) => {
     const flat = results.flat()
     const map: Record<string, string> = {}
     for (const wt of flat) map[wt.path] = wt.repoRoot
+    // Preserve the management workspace mapping so its panes keep persisting
+    // under `__management__` instead of falling into the orphan bucket.
+    for (const [path, repo] of Object.entries(worktreeRepoRef.current)) {
+      if (repo === MANAGEMENT_REPO_SENTINEL) map[path] = repo
+    }
     worktreeRepoRef.current = map
     return flat
   }, [])
@@ -210,16 +220,36 @@ const setQuestStep = useCallback((next: QuestStep) => {
   // Load repos, worktrees, and config on mount
   useEffect(() => {
     (async () => {
-      const [roots, overrides, cmd, persistedPanes, nameSessions] = await Promise.all([
+      const [roots, overrides, cmd, persistedPanes, nameSessions, mgmtPath] = await Promise.all([
         window.api.listRepos(),
         window.api.getHotkeyOverrides(),
         window.api.getClaudeCommand(),
         window.api.getWorkspacePanes(),
-        window.api.getNameClaudeSessions()
+        window.api.getNameClaudeSessions(),
+        window.api.getManagementWorkspacePath().catch(() => null)
       ])
       if (overrides) setHotkeyOverrides(overrides)
       setClaudeCommand(cmd)
       setNameClaudeSessions(nameSessions)
+      // Build the synthetic management worktree entry up front so the sidebar
+      // can show it even when the user has no git repos registered yet.
+      let mgmt: Worktree | null = null
+      if (mgmtPath) {
+        mgmt = {
+          path: mgmtPath,
+          branch: 'management',
+          head: '',
+          isBare: false,
+          isMain: false,
+          createdAt: 0,
+          repoRoot: MANAGEMENT_REPO_SENTINEL,
+          isManagement: true
+        }
+        setManagementWorktree(mgmt)
+        // Make the persist effect route management panes under __management__
+        // instead of the __orphan__ bucket.
+        worktreeRepoRef.current[mgmtPath] = MANAGEMENT_REPO_SENTINEL
+      }
       // Flatten the nested persisted panes (repoRoot → wtPath → panes[]) into
       // the flat renderer shape keyed by wtPath. Paths are globally unique
       // across repos in practice — git worktrees are directories on disk.
@@ -236,7 +266,11 @@ const setQuestStep = useCallback((next: QuestStep) => {
         setWorktrees(trees)
         if (trees.length > 0) {
           setActiveWorktreeId(trees[0].path)
+        } else if (mgmt) {
+          setActiveWorktreeId(mgmt.path)
         }
+      } else if (mgmt) {
+        setActiveWorktreeId(mgmt.path)
       }
       if (persistedPanes) {
         const restored: Record<string, WorkspacePane[]> = {}
@@ -499,14 +533,14 @@ const setQuestStep = useCallback((next: QuestStep) => {
       console.log(`[status] received: id=${id} status=${status}`)
       setStatuses((prev) => ({ ...prev, [id]: status as PtyStatus }))
       const wtPath = terminalToWorktree(id)
-      if (wtPath) {
+      if (wtPath && wtPath !== managementWorktree?.path) {
         markActive(wtPath)
         // Refresh PR status when Claude finishes a turn (may have pushed/created PR)
         if (status === 'waiting') fetchPRStatus(wtPath)
       }
     })
     return cleanup
-  }, [terminalToWorktree, markActive, fetchPRStatus])
+  }, [terminalToWorktree, markActive, fetchPRStatus, managementWorktree?.path])
 
   // Auto-focus the active terminal when switching worktrees so the user can
   // start typing immediately. Deferred to the next frame so the xterm layer
@@ -526,11 +560,14 @@ const setQuestStep = useCallback((next: QuestStep) => {
     // hooks + tab creation until the real path takes over.
     if (isPendingId(activeWorktreeId)) return
 
-    // Refresh PR status on focus (throttled)
-    fetchPRStatusIfStale(activeWorktreeId)
+    const isManagement = managementWorktree?.path === activeWorktreeId
 
-    // Check and install hooks if needed
-    if (!hooksChecked.current.has(activeWorktreeId)) {
+    // Refresh PR status on focus (throttled) — not applicable to management.
+    if (!isManagement) fetchPRStatusIfStale(activeWorktreeId)
+
+    // Check and install hooks if needed. The management workspace installs
+    // its own hooks in main on first launch, so no consent flow is needed.
+    if (!isManagement && !hooksChecked.current.has(activeWorktreeId)) {
       hooksChecked.current.add(activeWorktreeId)
       ;(async () => {
         const installed = await window.api.checkHooks(activeWorktreeId)
@@ -575,7 +612,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
       const pane: WorkspacePane = { id: newPaneId(), tabs, activeTabId: claudeTabId }
       return { ...prev, [activeWorktreeId]: [pane] }
     })
-  }, [activeWorktreeId, hooksConsent])
+  }, [activeWorktreeId, hooksConsent, managementWorktree?.path])
 
   const handleAcceptHooks = useCallback(async () => {
     setHooksConsent('accepted')
@@ -640,10 +677,11 @@ const setQuestStep = useCallback((next: QuestStep) => {
       const trees = await fetchAllWorktrees(nextRoots)
       setWorktrees(trees)
       if (activeWorktreeId && worktreeRepoRef.current[activeWorktreeId] === undefined) {
-        setActiveWorktreeId(trees.length > 0 ? trees[0].path : null)
+        const fallback = trees.length > 0 ? trees[0].path : managementWorktree?.path ?? null
+        setActiveWorktreeId(fallback)
       }
     },
-    [repoRoots, fetchAllWorktrees, activeWorktreeId]
+    [repoRoots, fetchAllWorktrees, activeWorktreeId, managementWorktree]
   )
 
   const handleRefreshWorktrees = useCallback(async () => {
@@ -1209,6 +1247,14 @@ const setQuestStep = useCallback((next: QuestStep) => {
       },
       toggleCommandCenter: () => setShowCommandCenter((v) => !v),
       commandPalette: () => setShowCommandPalette((v) => !v),
+      openManagement: () => {
+        if (!managementWorktree) return
+        setShowNewWorktree(false)
+        setShowActivity(false)
+        setShowCleanup(false)
+        setShowCommandCenter(false)
+        setActiveWorktreeId(managementWorktree.path)
+      },
     }),
     [
       cycleWorktree,
@@ -1221,6 +1267,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
       handleCloseTab,
       handleRefreshWorktrees,
       prStatuses,
+      managementWorktree,
     ]
   )
 
@@ -1244,6 +1291,24 @@ const setQuestStep = useCallback((next: QuestStep) => {
     }
     worktreeStatuses[wt.path] = worstStatus
   }
+
+  // Same computation for the management workspace, which lives outside the
+  // `worktrees` array so the sidebar/hotkeys don't touch it.
+  let managementStatus: PtyStatus = 'idle'
+  if (managementWorktree) {
+    const mgmtTabs = terminalTabs[managementWorktree.path] || []
+    for (const tab of mgmtTabs) {
+      const s = statuses[tab.id]
+      if (s === 'needs-approval') {
+        managementStatus = 'needs-approval'
+        break
+      }
+      if (s === 'waiting' && managementStatus !== 'needs-approval') managementStatus = 'waiting'
+      if (s === 'processing' && managementStatus === 'idle') managementStatus = 'processing'
+    }
+  }
+  const isManagementActive =
+    managementWorktree != null && activeWorktreeId === managementWorktree.path
 
   // Record activity-log transitions whenever a worktree's effective state changes.
   // Merged worktrees are terminal — once we've recorded 'merged' we stop
@@ -1284,7 +1349,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
     </div>
   ) : null
 
-  if (repoRoots.length === 0) {
+  if (repoRoots.length === 0 && !managementWorktree) {
     return (
       <HotkeysProvider bindings={resolvedHotkeys}>
       <div className="flex h-full flex-col">
@@ -1384,10 +1449,72 @@ const setQuestStep = useCallback((next: QuestStep) => {
               setShowCommandCenter(true)
             }}
             commandCenterActive={showCommandCenter}
+            managementPath={managementWorktree?.path ?? null}
+            managementActive={isManagementActive}
+            managementStatus={managementStatus}
+            onSelectManagement={() => {
+              if (!managementWorktree) return
+              setShowNewWorktree(false)
+              setShowActivity(false)
+              setShowCleanup(false)
+              setShowCommandCenter(false)
+              setActiveWorktreeId(managementWorktree.path)
+            }}
             width={sidebarWidth}
           />
         )}
         {sidebarVisible && <ResizeHandle onDelta={handleSidebarResize} />}
+        {/* Management workspace (standalone, not tied to a git repo). Lives
+           outside the `worktrees` array so it can't contaminate PR/hooks/sort
+           paths, but renders through the same WorkspaceView to reuse all the
+           pane/tab plumbing. */}
+        {managementWorktree && panes[managementWorktree.path]?.length ? (
+          <div
+            key={managementWorktree.path}
+            className="flex-1 min-w-0"
+            style={{
+              display:
+                !showNewWorktree &&
+                !showActivity &&
+                !showCleanup &&
+                !showCommandCenter &&
+                isManagementActive
+                  ? 'flex'
+                  : 'none'
+            }}
+          >
+            <WorkspaceView
+              worktreePath={managementWorktree.path}
+              repoLabel="harness"
+              branch={managementWorktree.branch}
+              panes={panes[managementWorktree.path]!}
+              focusedPaneId={
+                activePaneId[managementWorktree.path] ||
+                panes[managementWorktree.path]![0]?.id ||
+                ''
+              }
+              statuses={statuses}
+              visible={
+                !showNewWorktree &&
+                !showActivity &&
+                !showCleanup &&
+                !showCommandCenter &&
+                isManagementActive
+              }
+              claudeCommand={claudeCommand}
+              nameClaudeSessions={nameClaudeSessions}
+              onSelectTab={handleSelectTab}
+              onAddTab={handleAddTerminalTab}
+              onAddClaudeTab={handleAddClaudeTab}
+              onCloseTab={handleCloseTab}
+              onRestartClaudeTab={handleRestartClaudeTab}
+              onReorderTabs={handleReorderTabs}
+              onMoveTabToPane={handleMoveTabToPane}
+              onSplitPane={handleSplitPane}
+              onSendToClaude={handleSendToClaude}
+            />
+          </div>
+        ) : null}
         {/* Render ALL worktrees' terminals to keep PTYs alive across switches */}
         {worktrees.map((wt) => {
           const paneList = panes[wt.path]
@@ -1492,11 +1619,13 @@ const setQuestStep = useCallback((next: QuestStep) => {
           onDismiss={() => setQuestStep('done')}
           onFinish={() => setQuestStep('done')}
         />
-        {/* Right panel — hidden on the new-worktree screen so the form gets the full width */}
-        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && (
+        {/* Right panel — hidden on the new-worktree screen so the form gets the
+            full width, and also hidden for the management workspace since none
+            of the git-backed panels apply there. */}
+        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !isManagementActive && (
           <ResizeHandle onDelta={handleRightPanelResize} />
         )}
-        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && (
+        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !isManagementActive && (
           <div
             className="shrink-0 h-full flex flex-col bg-panel"
             style={{ width: rightPanelWidth }}

@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useEffect } from 'react'
-import { ChevronDown, ChevronRight, Plus, RefreshCw, FolderOpen, Loader2, Settings as SettingsIcon, Sparkles, BarChart3, Trash2, LayoutGrid, X, Layers, Rows3, AlertCircle } from 'lucide-react'
+import { ChevronDown, ChevronRight, Plus, RefreshCw, FolderOpen, Loader2, Settings as SettingsIcon, Sparkles, BarChart3, Trash2, LayoutGrid, X, Layers, Rows3, AlertCircle, Zap } from 'lucide-react'
 import { Tooltip } from './Tooltip'
 import type { Worktree, PtyStatus, PRStatus, PendingWorktree } from '../types'
 import type { GroupKey } from '../worktree-sort'
@@ -31,6 +31,13 @@ interface SidebarProps {
   onOpenCleanup: () => void
   onOpenCommandCenter: () => void
   commandCenterActive: boolean
+  /** Path to the standalone management workspace (null while still loading). */
+  managementPath: string | null
+  /** True when the management workspace is the active selection. */
+  managementActive: boolean
+  /** Aggregate status of the management Claude tab, for the sidebar dot. */
+  managementStatus: PtyStatus
+  onSelectManagement: () => void
   width: number
 }
 
@@ -57,6 +64,10 @@ export function Sidebar({
   onOpenCleanup,
   onOpenCommandCenter,
   commandCenterActive,
+  managementPath,
+  managementActive,
+  managementStatus,
+  onSelectManagement,
   width
 }: SidebarProps): JSX.Element {
   const [continueTarget, setContinueTarget] = useState<{ path: string; oldBranch: string } | null>(null)
@@ -196,6 +207,36 @@ export function Sidebar({
           <span className="text-sm font-medium">Command Center</span>
         </button>
       </div>
+
+      {/* Management workspace entry — standalone Claude session outside any repo */}
+      {managementPath && (
+        <div className="px-2 pb-1 shrink-0">
+          <Tooltip label="Open management workspace" action="openManagement" side="right">
+            <button
+              onClick={onSelectManagement}
+              className={`w-full flex items-center gap-2 px-2 py-1.5 rounded transition-colors cursor-pointer ${
+                managementActive
+                  ? 'bg-surface text-fg-bright'
+                  : 'text-muted hover:bg-panel-raised hover:text-fg'
+              }`}
+            >
+              <Zap size={14} className={managementActive ? 'text-accent' : 'text-dim'} />
+              <span className="text-sm font-medium flex-1 text-left">Management</span>
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  managementStatus === 'needs-approval'
+                    ? 'bg-danger'
+                    : managementStatus === 'waiting'
+                    ? 'bg-warning'
+                    : managementStatus === 'processing'
+                    ? 'bg-success'
+                    : 'bg-faint'
+                }`}
+              />
+            </button>
+          </Tooltip>
+        </div>
+      )}
 
       {/* Worktrees header */}
       <div className="px-3 py-1.5 flex items-center gap-2 shrink-0">

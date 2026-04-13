@@ -28,6 +28,7 @@ import {
   type QuestStep
 } from './persistence'
 import { hooksInstalled, installHooks, watchStatusDir } from './hooks'
+import { ensureManagementWorkspace } from './management'
 import { startControlServer } from './control-server'
 import { writeMcpConfigForTerminal, pruneMcpConfigs } from './mcp-config'
 import { recordActivity, getActivityLog, clearAllActivity, clearActivityForWorktree, sealAllActive, touchActivityMeta, finalizeActivity, type ActivityState, type PRState } from './activity'
@@ -739,6 +740,14 @@ function registerIpcHandlers(): void {
     return true
   })
 
+  // Management workspace — a harness-owned directory outside any git repo
+  // that hosts a single Claude Code session for meta-level control. Returns
+  // the absolute path, creating the directory and installing status hooks
+  // into it on first call.
+  ipcMain.handle('management:getPath', () => {
+    return ensureManagementWorkspace()
+  })
+
   // Hooks
   ipcMain.handle('hooks:check', (_, worktreePath: string) => {
     return hooksInstalled(worktreePath)
@@ -922,10 +931,36 @@ app.whenReady().then(() => {
   pruneTerminalHistory(keepIds)
   pruneMcpConfigs(keepIds)
 
+  // Pre-create the management workspace and install its hooks so the
+  // meta-level Claude session is ready before the user clicks into it.
+  try {
+    ensureManagementWorkspace()
+  } catch (err) {
+    log('management', 'ensureManagementWorkspace failed', err instanceof Error ? err.message : err)
+  }
+
   // Local HTTP control server for the bundled harness-control MCP bridge.
   startControlServer({
     getRepoRoots: () => config.repoRoots,
     getWorktreeBase: () => config.worktreeBase || DEFAULT_WORKTREE_BASE,
+    addRepoRoot: async (repoRoot: string) => {
+      if (config.repoRoots.includes(repoRoot)) return false
+      config.repoRoots.push(repoRoot)
+      saveConfig(config)
+      broadcastToAllWindows('repo:listChanged', config.repoRoots)
+      return true
+    },
+    removeRepoRoot: (repoRoot: string) => {
+      const idx = config.repoRoots.indexOf(repoRoot)
+      if (idx === -1) return false
+      config.repoRoots.splice(idx, 1)
+      if (config.panes && config.panes[repoRoot]) {
+        delete config.panes[repoRoot]
+      }
+      saveConfig(config)
+      broadcastToAllWindows('repo:listChanged', config.repoRoots)
+      return true
+    },
     broadcast: broadcastToAllWindows
   }).catch((err) => log('control', 'failed to start', err instanceof Error ? err.message : err))
 

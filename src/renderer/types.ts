@@ -8,6 +8,8 @@ export interface Worktree {
   createdAt: number
   /** Repo this worktree belongs to. Set by the renderer after a cross-repo listWorktrees merge. */
   repoRoot: string
+  /** Synthetic entry for the standalone management workspace (not a real worktree). */
+  isManagement?: boolean
 }
 
 export interface PendingWorktree {
@@ -282,6 +284,8 @@ export interface ElectronAPI {
   openExternal(url: string): void
   getFilePath(file: File): string
   onOpenSettings(callback: () => void): () => void
+
+  getManagementWorkspacePath(): Promise<string>
 
   checkHooks(worktreePath: string): Promise<boolean>
   installHooks(worktreePath: string): Promise<boolean>
