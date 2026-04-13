@@ -3,6 +3,7 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { SerializeAddon } from '@xterm/addon-serialize'
 import '@xterm/xterm/css/xterm.css'
+import { UsageBadge } from './UsageBadge'
 
 function ClaudeLoader() {
   return (
@@ -432,6 +433,9 @@ export function XTerminal({ terminalId, cwd, type, visible, claudeCommand, sessi
       onDrop={handleDrop}
     >
       <div ref={containerRef} className="w-full h-full" />
+      {type === 'claude' && sessionId && (
+        <UsageBadge cwd={cwd} sessionId={sessionId} />
+      )}
       {loading && (
         <div className="absolute inset-0 flex items-center justify-center bg-app/70 pointer-events-none">
           <div className="flex flex-col items-center gap-3 text-dim text-sm">

@@ -29,6 +29,7 @@ import {
 } from './persistence'
 import { loadRepoConfig, saveRepoConfig, type RepoConfig } from './repo-config'
 import { hooksInstalled, installHooks, watchStatusDir } from './hooks'
+import { getUsageForSession } from './usage'
 import { startControlServer } from './control-server'
 import { writeMcpConfigForTerminal, pruneMcpConfigs } from './mcp-config'
 import { recordActivity, getActivityLog, clearAllActivity, clearActivityForWorktree, sealAllActive, touchActivityMeta, finalizeActivity, type ActivityState, type PRState } from './activity'
@@ -734,6 +735,11 @@ function registerIpcHandlers(): void {
     } catch {
       return null
     }
+  })
+
+  // Claude session usage: sum tokens + cost from the session transcript.
+  ipcMain.handle('usage:getForSession', (_, cwd: string, sessionId: string) => {
+    return getUsageForSession(cwd, sessionId)
   })
 
   // Settings: GitHub token

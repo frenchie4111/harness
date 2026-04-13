@@ -187,6 +187,8 @@ contextBridge.exposeInMainWorld('api', {
   clearTerminalHistory: (id: string) => ipcRenderer.invoke('terminal:clearHistory', id),
   claudeSessionFileExists: (cwd: string, sessionId: string) =>
     ipcRenderer.invoke('claude:sessionFileExists', cwd, sessionId),
+  getSessionUsage: (cwd: string, sessionId: string) =>
+    ipcRenderer.invoke('usage:getForSession', cwd, sessionId),
   getLatestClaudeSessionId: (cwd: string) => ipcRenderer.invoke('claude:latestSessionId', cwd),
   onClaudeCommandChanged: (callback: (command: string) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, command: string): void => {

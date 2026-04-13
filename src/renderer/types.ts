@@ -298,6 +298,7 @@ export interface ElectronAPI {
   clearTerminalHistory(id: string): Promise<boolean>
   claudeSessionFileExists(cwd: string, sessionId: string): Promise<boolean>
   getLatestClaudeSessionId(cwd: string): Promise<string | null>
+  getSessionUsage(cwd: string, sessionId: string): Promise<SessionUsage | null>
 
   hasGithubToken(): Promise<boolean>
   setGithubToken(token: string, options?: { starRepo?: boolean }): Promise<{ ok: boolean; username?: string; error?: string; starred?: boolean }>
@@ -326,6 +327,14 @@ export interface ElectronAPI {
   recordActivity(worktreePath: string, state: string): void
   getActivityLog(): Promise<ActivityLog>
   clearActivityLog(worktreePath?: string): Promise<boolean>
+}
+
+export interface SessionUsage {
+  inputTokens: number
+  outputTokens: number
+  cacheReadTokens: number
+  cacheWriteTokens: number
+  estimatedCost: number
 }
 
 export type ActivityState = 'processing' | 'waiting' | 'needs-approval' | 'idle' | 'merged'
