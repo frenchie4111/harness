@@ -441,6 +441,16 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
     return () => window.removeEventListener('keydown', handler, true)
   }, [rebindingAction, hotkeyOverrides])
 
+  useEffect(() => {
+    const handler = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape') return
+      if (e.defaultPrevented) return
+      onClose()
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [onClose])
+
   const resolvedHotkeys = resolveHotkeys(hotkeyOverrides || undefined)
 
   const handleResetHotkey = useCallback(async (action: Action) => {
@@ -610,6 +620,7 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
         >
           <ArrowLeft size={14} />
           Back
+          <kbd className="text-[10px] text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono">ESC</kbd>
         </button>
         <span className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 text-sm font-medium text-fg pointer-events-none">
           Settings
