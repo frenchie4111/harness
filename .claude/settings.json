@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install --legacy-peer-deps)",
+      "Bash(npm install --legacy-peer-deps:*)",
+      "Bash(npx electron-vite build)",
+      "Bash(npx electron-vite build:*)",
+      "Bash(npm run build)",
+      "Bash(npm run build:*)",
+      "Bash(npm run typecheck)",
+      "Bash(npm run typecheck:*)"
+    ]
+  }
+}
