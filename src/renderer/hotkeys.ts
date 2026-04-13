@@ -22,6 +22,7 @@ export type Action =
   | 'openInEditor'
   | 'toggleCommandCenter'
   | 'commandPalette'
+  | 'splitPaneRight'
 
 export interface Modifiers {
   cmd?: boolean
@@ -59,6 +60,7 @@ export const DEFAULT_HOTKEYS: Record<Action, HotkeyBinding> = {
   openInEditor: { key: 'e', modifiers: { cmd: true, shift: true } },
   toggleCommandCenter: { key: 'k', modifiers: { cmd: true, shift: true } },
   commandPalette: { key: 'k', modifiers: { cmd: true } },
+  splitPaneRight: { key: 'd', modifiers: { cmd: true } },
 }
 
 /** Check if a KeyboardEvent matches a hotkey binding */
@@ -137,7 +139,8 @@ export const ACTION_LABELS: Record<Action, string> = {
   openPR: 'Open PR in browser',
   openInEditor: 'Open worktree in editor',
   toggleCommandCenter: 'Toggle command center',
-  commandPalette: 'Command palette'
+  commandPalette: 'Command palette',
+  splitPaneRight: 'Split pane right'
 }
 
 /** Capture a KeyboardEvent into a HotkeyBinding (for the rebind UI) */

@@ -1013,28 +1013,38 @@ const setQuestStep = useCallback((next: QuestStep) => {
     []
   )
 
-  // Split: create a new pane to the right of `fromPaneId` containing a fresh Claude tab.
+  // Split: create a new pane to the right of `fromPaneId`. The new pane mirrors the
+  // type of the source pane's active tab — except claude tabs, which split into a shell.
   const handleSplitPane = useCallback(
     (worktreePath: string, fromPaneId: string) => {
-      const tabId = `${makeTerminalId('claude', worktreePath)}-${Date.now()}`
-      const tab: TerminalTab = {
-        id: tabId,
-        type: 'claude',
-        label: 'Claude',
-        sessionId: crypto.randomUUID()
+      const list = panes[worktreePath] || []
+      const source = list.find((p) => p.id === fromPaneId)
+      const sourceActive = source?.tabs.find((t) => t.id === source.activeTabId)
+      const sourceType = sourceActive?.type
+      const shouldShell = !sourceType || sourceType === 'claude' || sourceType === 'shell'
+
+      let tab: TerminalTab
+      if (shouldShell) {
+        tab = { id: `shell-${Date.now()}`, type: 'shell', label: 'Shell' }
+      } else {
+        tab = {
+          ...sourceActive!,
+          id: `${sourceActive!.type}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+        }
       }
-      const newPane: WorkspacePane = { id: newPaneId(), tabs: [tab], activeTabId: tabId }
+
+      const newPane: WorkspacePane = { id: newPaneId(), tabs: [tab], activeTabId: tab.id }
       setPanes((prev) => {
-        const list = prev[worktreePath] || []
-        const idx = list.findIndex((p) => p.id === fromPaneId)
-        const insertAt = idx === -1 ? list.length : idx + 1
-        const nextList = list.slice()
+        const cur = prev[worktreePath] || []
+        const idx = cur.findIndex((p) => p.id === fromPaneId)
+        const insertAt = idx === -1 ? cur.length : idx + 1
+        const nextList = cur.slice()
         nextList.splice(insertAt, 0, newPane)
         return { ...prev, [worktreePath]: nextList }
       })
       setActivePaneId((prev) => ({ ...prev, [worktreePath]: newPane.id }))
     },
-    []
+    [panes]
   )
 
   const handleSendToClaude = useCallback(
@@ -1209,6 +1219,13 @@ const setQuestStep = useCallback((next: QuestStep) => {
       },
       toggleCommandCenter: () => setShowCommandCenter((v) => !v),
       commandPalette: () => setShowCommandPalette((v) => !v),
+      splitPaneRight: () => {
+        if (!activeWorktreeId) return
+        const list = panes[activeWorktreeId] || []
+        if (list.length === 0) return
+        const fromPaneId = activePaneId[activeWorktreeId] || list[list.length - 1].id
+        handleSplitPane(activeWorktreeId, fromPaneId)
+      },
     }),
     [
       cycleWorktree,
@@ -1221,6 +1238,9 @@ const setQuestStep = useCallback((next: QuestStep) => {
       handleCloseTab,
       handleRefreshWorktrees,
       prStatuses,
+      panes,
+      activePaneId,
+      handleSplitPane,
     ]
   )
 
