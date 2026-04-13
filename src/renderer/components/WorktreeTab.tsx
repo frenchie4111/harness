@@ -1,4 +1,4 @@
-import { GitPullRequest, RotateCw, Trash2 } from 'lucide-react'
+import { GitPullRequest, RotateCw, Trash2, Loader2 } from 'lucide-react'
 import type { Worktree, PtyStatus, PendingTool, PRStatus } from '../types'
 import { Tooltip } from './Tooltip'
 import { RepoIcon } from './RepoIcon'
@@ -12,6 +12,7 @@ interface WorktreeTabProps {
   isActive: boolean
   status: PtyStatus
   pendingTool?: PendingTool | null
+  shellActive?: boolean
   prStatus?: PRStatus | null
   isMerged?: boolean
   /** When set, shows a small repo hint next to the branch name. Used in
@@ -55,7 +56,7 @@ const PR_STATE_COLOR: Record<string, string> = {
   closed: 'text-danger'
 }
 
-export function WorktreeTab({ worktree, isActive, status, pendingTool, prStatus, isMerged, repoLabel, cmdOrdinal, onClick, onDelete, onContinue }: WorktreeTabProps): JSX.Element {
+export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActive, prStatus, isMerged, repoLabel, cmdOrdinal, onClick, onDelete, onContinue }: WorktreeTabProps): JSX.Element {
   const metaHeld = useMetaHeld()
   const displayStatus: PtyStatus | 'merged' = isMerged ? 'merged' : status
   const showPendingTool = displayStatus === 'needs-approval' && pendingTool
@@ -90,6 +91,13 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, prStatus,
         className={`w-2 h-2 rounded-full shrink-0 ${STATUS_COLORS[displayStatus]}`}
         title={STATUS_LABELS[displayStatus]}
       />
+      {shellActive && (
+        <Loader2
+          size={11}
+          className="animate-spin text-fg-bright shrink-0"
+          aria-label="Shell activity"
+        />
+      )}
       {prStatus && (
         <span className="relative shrink-0">
           <GitPullRequest

@@ -74,6 +74,9 @@ export default function App(): JSX.Element {
   }, [panes, activePaneId])
   const [statuses, setStatuses] = useState<Record<string, PtyStatus>>({})
   const [pendingTools, setPendingTools] = useState<Record<string, PendingTool | null>>({})
+  const [shellActivity, setShellActivity] = useState<
+    Record<string, { active: boolean; processName?: string }>
+  >({})
   const [prStatuses, setPrStatuses] = useState<Record<string, PRStatus | null>>({})
   const [mergedPaths, setMergedPaths] = useState<Record<string, boolean>>({})
   const [prLoading, setPrLoading] = useState(false)
@@ -577,6 +580,12 @@ const setQuestStep = useCallback((next: QuestStep) => {
     })
     return cleanup
   }, [terminalToWorktree, markActive, fetchPRStatus])
+
+  useEffect(() => {
+    return window.api.onShellActivity((id, payload) => {
+      setShellActivity((prev) => ({ ...prev, [id]: payload }))
+    })
+  }, [])
 
   // Auto-focus the active terminal when switching worktrees so the user can
   // start typing immediately. Deferred to the next frame so the xterm layer
@@ -1478,6 +1487,14 @@ const setQuestStep = useCallback((next: QuestStep) => {
     worktreePendingTools[wt.path] = pending
   }
 
+  const worktreeShellActivity: Record<string, boolean> = {}
+  for (const wt of worktrees) {
+    const tabs = terminalTabs[wt.path] || []
+    worktreeShellActivity[wt.path] = tabs.some(
+      (tab) => tab.type === 'shell' && shellActivity[tab.id]?.active
+    )
+  }
+
   // Record activity-log transitions whenever a worktree's effective state changes.
   // Merged worktrees are terminal — once we've recorded 'merged' we stop
   // overwriting with pty state so the timeline keeps the purple tail.
@@ -1632,6 +1649,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
             activeWorktreeId={activeWorktreeId}
             statuses={worktreeStatuses}
             pendingTools={worktreePendingTools}
+            shellActivity={worktreeShellActivity}
             prStatuses={prStatuses}
             mergedPaths={mergedPaths}
             prLoading={prLoading}
@@ -1690,6 +1708,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
                 panes={paneList}
                 focusedPaneId={activePaneId[wt.path] || paneList[0]?.id || ''}
                 statuses={statuses}
+                shellActivity={shellActivity}
                 visible={isVisible}
                 claudeCommand={claudeCommand}
                 nameClaudeSessions={nameClaudeSessions}

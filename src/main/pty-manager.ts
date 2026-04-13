@@ -1,5 +1,6 @@
 import * as pty from 'node-pty'
 import { BrowserWindow } from 'electron'
+import { execFile } from 'child_process'
 import { log } from './debug'
 import { cleanupTerminalLog } from './hooks'
 
@@ -9,10 +10,17 @@ interface PtyInstance {
   pty: pty.IPty
   status: PtyStatus
   windowId: number
+  isShell: boolean
+  activityActive: boolean
+  activityProcess?: string
+  hasBeenIdle: boolean
 }
+
+const SHELL_ACTIVITY_POLL_MS = 1500
 
 export class PtyManager {
   private ptys = new Map<string, PtyInstance>()
+  private activityTimer: NodeJS.Timeout | null = null
 
   hasTerminal(id: string): boolean {
     return this.ptys.has(id)
@@ -24,7 +32,8 @@ export class PtyManager {
     command: string,
     args: string[],
     window: BrowserWindow,
-    extraEnv?: Record<string, string>
+    extraEnv?: Record<string, string>,
+    isShell: boolean = false
   ): void {
     log('pty', `create id=${id} cmd=${command} args=${JSON.stringify(args)} cwd=${cwd}`)
     if (this.ptys.has(id)) {
@@ -57,7 +66,10 @@ export class PtyManager {
     const instance: PtyInstance = {
       pty: ptyProcess,
       status: 'processing',
-      windowId: window.id
+      windowId: window.id,
+      isShell,
+      activityActive: false,
+      hasBeenIdle: false
     }
 
     ptyProcess.onData((data: string) => {
@@ -80,6 +92,76 @@ export class PtyManager {
     })
 
     this.ptys.set(id, instance)
+    if (isShell) this.ensureActivityPoller()
+  }
+
+  private ensureActivityPoller(): void {
+    if (this.activityTimer) return
+    this.activityTimer = setInterval(() => this.pollShellActivity(), SHELL_ACTIVITY_POLL_MS)
+  }
+
+  private pollShellActivity(): void {
+    const shellInstances: Array<[string, PtyInstance]> = []
+    for (const entry of this.ptys) {
+      if (entry[1].isShell) shellInstances.push(entry)
+    }
+    if (shellInstances.length === 0) {
+      if (this.activityTimer) {
+        clearInterval(this.activityTimer)
+        this.activityTimer = null
+      }
+      return
+    }
+
+    execFile('ps', ['-A', '-o', 'pid=,ppid=,comm='], (err, stdout) => {
+      if (err) return
+      // Build ppid → first child comm map (walk once)
+      const childrenByPpid = new Map<number, string[]>()
+      for (const line of stdout.split('\n')) {
+        const trimmed = line.trim()
+        if (!trimmed) continue
+        const match = trimmed.match(/^(\d+)\s+(\d+)\s+(.+)$/)
+        if (!match) continue
+        const ppid = parseInt(match[2], 10)
+        const comm = match[3].trim()
+        const list = childrenByPpid.get(ppid)
+        if (list) list.push(comm)
+        else childrenByPpid.set(ppid, [comm])
+      }
+
+      for (const [id, instance] of shellInstances) {
+        const shellPid = instance.pty.pid
+        if (!shellPid) continue
+
+        const directChildren = childrenByPpid.get(shellPid) || []
+        const rawActive = directChildren.length > 0
+
+        // Arm detection only after we've seen the shell quiescent at least
+        // once. This skips login-shell init (nvm, starship, git subprocs)
+        // without needing a hardcoded timer.
+        if (!instance.hasBeenIdle) {
+          if (!rawActive) instance.hasBeenIdle = true
+          continue
+        }
+
+        const active = rawActive
+        const processName = active ? directChildren[0] : undefined
+        if (
+          active !== instance.activityActive ||
+          processName !== instance.activityProcess
+        ) {
+          instance.activityActive = active
+          instance.activityProcess = processName
+          const win = BrowserWindow.fromId(instance.windowId)
+          if (win && !win.isDestroyed()) {
+            win.webContents.send('terminal:shell-activity', id, {
+              active,
+              processName
+            })
+          }
+        }
+      }
+    })
   }
 
   write(id: string, data: string): void {
@@ -128,6 +210,10 @@ export class PtyManager {
   killAll(signal?: string): void {
     for (const [id] of this.ptys) {
       this.kill(id, signal)
+    }
+    if (this.activityTimer) {
+      clearInterval(this.activityTimer)
+      this.activityTimer = null
     }
   }
 
