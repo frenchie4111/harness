@@ -88,11 +88,11 @@ contextBridge.exposeInMainWorld('api', {
   prepareMcpForTerminal: (terminalId: string): Promise<string | null> =>
     ipcRenderer.invoke('mcp:prepareForTerminal', terminalId),
   onWorktreesExternalCreate: (
-    callback: (payload: { repoRoot: string; worktree: unknown }) => void
+    callback: (payload: { repoRoot: string; worktree: unknown; initialPrompt?: string }) => void
   ) => {
     const handler = (
       _event: Electron.IpcRendererEvent,
-      payload: { repoRoot: string; worktree: unknown }
+      payload: { repoRoot: string; worktree: unknown; initialPrompt?: string }
     ): void => {
       callback(payload)
     }

@@ -223,7 +223,7 @@ export interface ElectronAPI {
   onHarnessMcpEnabledChanged(callback: (enabled: boolean) => void): () => void
   prepareMcpForTerminal(terminalId: string): Promise<string | null>
   onWorktreesExternalCreate(
-    callback: (payload: { repoRoot: string; worktree: Worktree }) => void
+    callback: (payload: { repoRoot: string; worktree: Worktree; initialPrompt?: string }) => void
   ): () => void
 
   getClaudeEnvVars(): Promise<Record<string, string>>

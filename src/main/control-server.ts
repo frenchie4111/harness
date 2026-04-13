@@ -109,7 +109,8 @@ async function handleRequest(
       baseBranch: typeof body.baseBranch === 'string' ? body.baseBranch : undefined,
       fetchRemote: !body.baseBranch && mode === 'remote'
     })
-    deps.broadcast('worktrees:externalCreate', { repoRoot, worktree: created })
+    const initialPrompt = typeof body.initialPrompt === 'string' ? body.initialPrompt : undefined
+    deps.broadcast('worktrees:externalCreate', { repoRoot, worktree: created, initialPrompt })
     return sendJson(res, 200, created)
   }
 
