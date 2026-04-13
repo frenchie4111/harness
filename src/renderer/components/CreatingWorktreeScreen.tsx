@@ -1,10 +1,12 @@
-import { AlertCircle } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { AlertCircle, ChevronDown, ChevronRight, Terminal as TerminalIcon } from 'lucide-react'
 import type { PendingWorktree } from '../types'
 
 interface CreatingWorktreeScreenProps {
   pending: PendingWorktree
   onRetry: (id: string) => void
   onDismiss: (id: string) => void
+  onContinue: (id: string) => void
 }
 
 function Loader(): JSX.Element {
@@ -37,11 +39,30 @@ function Loader(): JSX.Element {
   )
 }
 
+function SetupLogViewer({ log }: { log: string }): JSX.Element {
+  const ref = useRef<HTMLPreElement>(null)
+  useEffect(() => {
+    const el = ref.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [log])
+  return (
+    <pre
+      ref={ref}
+      className="text-[11px] leading-snug text-muted bg-app border border-border rounded p-3 whitespace-pre-wrap break-words max-h-72 overflow-auto font-mono"
+    >
+      {log || <span className="text-faint">Waiting for output…</span>}
+    </pre>
+  )
+}
+
 export function CreatingWorktreeScreen({
   pending,
   onRetry,
-  onDismiss
+  onDismiss,
+  onContinue
 }: CreatingWorktreeScreenProps): JSX.Element {
+  const [logsOpen, setLogsOpen] = useState(true)
+
   if (pending.status === 'error') {
     return (
       <div className="flex-1 min-w-0 flex items-center justify-center p-8">
@@ -76,12 +97,73 @@ export function CreatingWorktreeScreen({
     )
   }
 
-  return (
-    <div className="flex-1 min-w-0 flex flex-col items-center justify-center gap-4">
-      <Loader />
-      <div className="text-sm text-muted">
-        Creating worktree <span className="font-mono text-fg">{pending.branchName}</span>…
+  if (pending.status === 'setup-failed') {
+    return (
+      <div className="flex-1 min-w-0 flex items-center justify-center p-8">
+        <div className="max-w-2xl w-full bg-panel-raised border border-border-strong rounded-lg p-6">
+          <div className="flex items-center gap-2 mb-1">
+            <AlertCircle size={18} className="text-warning" />
+            <div className="text-sm font-semibold text-fg-bright">
+              Setup script failed
+              {typeof pending.setupExitCode === 'number' && (
+                <span className="text-dim font-normal"> (exit {pending.setupExitCode})</span>
+              )}
+            </div>
+          </div>
+          <p className="text-xs text-dim mb-3">
+            <span className="font-mono text-fg">{pending.branchName}</span> was
+            created successfully, but the setup command didn't exit cleanly. You
+            can continue into the worktree or dismiss this screen.
+          </p>
+          <SetupLogViewer log={pending.setupLog || ''} />
+          <div className="flex gap-2 justify-end mt-4">
+            <button
+              onClick={() => onDismiss(pending.id)}
+              className="text-xs text-dim hover:text-fg px-3 py-1.5 transition-colors cursor-pointer"
+            >
+              Dismiss
+            </button>
+            <button
+              onClick={() => onContinue(pending.id)}
+              className="text-xs bg-accent hover:opacity-90 rounded px-3 py-1.5 text-app font-semibold transition-opacity cursor-pointer"
+            >
+              Continue anyway
+            </button>
+          </div>
+        </div>
       </div>
+    )
+  }
+
+  const inSetup = pending.status === 'setup'
+
+  return (
+    <div className="flex-1 min-w-0 flex flex-col items-center justify-center gap-4 p-8">
+      <Loader />
+      <div className="text-sm text-muted text-center">
+        {inSetup ? (
+          <>
+            Running setup for <span className="font-mono text-fg">{pending.branchName}</span>…
+          </>
+        ) : (
+          <>
+            Creating worktree <span className="font-mono text-fg">{pending.branchName}</span>…
+          </>
+        )}
+      </div>
+      {inSetup && (
+        <div className="w-full max-w-2xl">
+          <button
+            onClick={() => setLogsOpen((v) => !v)}
+            className="flex items-center gap-1.5 text-xs text-dim hover:text-fg transition-colors cursor-pointer mb-2"
+          >
+            {logsOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            <TerminalIcon size={12} />
+            {logsOpen ? 'Hide setup logs' : 'Show setup logs'}
+          </button>
+          {logsOpen && <SetupLogViewer log={pending.setupLog || ''} />}
+        </div>
+      )}
     </div>
   )
 }

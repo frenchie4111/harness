@@ -1,4 +1,4 @@
-import { execFile } from 'child_process'
+import { execFile, spawn } from 'child_process'
 import { promisify } from 'util'
 import { basename, join, resolve, relative, isAbsolute } from 'path'
 import { existsSync, mkdirSync, statSync } from 'fs'
@@ -805,6 +805,72 @@ export async function readWorktreeFile(
       error: (err as Error).message
     }
   }
+}
+
+export interface WorktreeScriptResult {
+  ok: boolean
+  exitCode: number
+  stdout: string
+  stderr: string
+  error?: string
+}
+
+/** Run a user-configured setup/teardown command via a login zsh shell so
+ * homebrew/nvm paths resolve, with cwd set to the worktree and HARNESS_*
+ * env vars exposing the worktree context. */
+export async function runWorktreeScript(
+  kind: 'setup' | 'teardown',
+  command: string,
+  ctx: { worktreePath: string; branch: string; repoRoot: string },
+  onOutput?: (stream: 'stdout' | 'stderr', chunk: string) => void
+): Promise<WorktreeScriptResult> {
+  const trimmed = command.trim()
+  if (!trimmed) {
+    return { ok: true, exitCode: 0, stdout: '', stderr: '' }
+  }
+  log('worktree', `running ${kind} script for ${ctx.worktreePath}`)
+  return new Promise((resolve) => {
+    try {
+      const child = spawn('/bin/zsh', ['-ilc', trimmed], {
+        cwd: ctx.worktreePath,
+        env: {
+          ...process.env,
+          HARNESS_WORKTREE_PATH: ctx.worktreePath,
+          HARNESS_BRANCH: ctx.branch,
+          HARNESS_REPO_ROOT: ctx.repoRoot
+        }
+      })
+      let stdout = ''
+      let stderr = ''
+      child.stdout?.on('data', (d) => {
+        const chunk = d.toString()
+        stdout += chunk
+        onOutput?.('stdout', chunk)
+      })
+      child.stderr?.on('data', (d) => {
+        const chunk = d.toString()
+        stderr += chunk
+        onOutput?.('stderr', chunk)
+      })
+      child.on('error', (err) => {
+        log('worktree', `${kind} script spawn error: ${err.message}`)
+        resolve({ ok: false, exitCode: -1, stdout, stderr, error: err.message })
+      })
+      child.on('close', (code) => {
+        const exitCode = code ?? -1
+        const ok = exitCode === 0
+        log(
+          'worktree',
+          `${kind} script finished exit=${exitCode}${stderr ? ` stderr=${stderr.trim().slice(0, 200)}` : ''}`
+        )
+        resolve({ ok, exitCode, stdout, stderr })
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      log('worktree', `${kind} script failed to start: ${msg}`)
+      resolve({ ok: false, exitCode: -1, stdout: '', stderr: '', error: msg })
+    }
+  })
 }
 
 export async function removeWorktree(repoRoot: string, path: string, force?: boolean): Promise<void> {

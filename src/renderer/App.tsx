@@ -680,10 +680,18 @@ const setQuestStep = useCallback((next: QuestStep) => {
   }, [repoRoots, fetchAllWorktrees])
 
 
+  const setupFailedRef = useRef<Record<string, boolean>>({})
+
   const runPendingCreate = useCallback(
     async (pending: PendingWorktree) => {
       try {
-        const created = await window.api.addWorktree(pending.repoRoot, pending.branchName)
+        setupFailedRef.current[pending.id] = false
+        const created = await window.api.addWorktree(
+          pending.repoRoot,
+          pending.branchName,
+          undefined,
+          pending.id
+        )
         if (pending.teleportSessionId) {
           pendingTeleportRef.current[created.path] = pending.teleportSessionId
         } else if (pending.initialPrompt) {
@@ -691,10 +699,18 @@ const setQuestStep = useCallback((next: QuestStep) => {
         }
         const trees = await fetchAllWorktrees(repoRoots)
         setWorktrees(trees)
-        // Hand the active selection over to the real path if the user was
-        // looking at the pending tab, then drop the pending entry.
-        setActiveWorktreeId((prev) => (prev === pending.id ? created.path : prev))
-        setPendingWorktrees((prev) => prev.filter((p) => p.id !== pending.id))
+        // If the setup script failed, keep the pending entry on screen so the
+        // user can review logs and decide whether to continue. Otherwise
+        // transition straight to the real worktree.
+        if (setupFailedRef.current[pending.id]) {
+          pendingCreatedRef.current[pending.id] = created.path
+          setPendingWorktrees((prev) =>
+            prev.map((p) => (p.id === pending.id ? { ...p, status: 'setup-failed' as const } : p))
+          )
+        } else {
+          setActiveWorktreeId((prev) => (prev === pending.id ? created.path : prev))
+          setPendingWorktrees((prev) => prev.filter((p) => p.id !== pending.id))
+        }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
         setPendingWorktrees((prev) =>
@@ -704,6 +720,33 @@ const setQuestStep = useCallback((next: QuestStep) => {
     },
     [repoRoots, fetchAllWorktrees]
   )
+
+  // Track the real worktree path created for each pending id so that
+  // "Continue anyway" on a setup-failed screen can transition to it.
+  const pendingCreatedRef = useRef<Record<string, string>>({})
+
+  useEffect(() => {
+    const unsub = window.api.onWorktreeScriptEvent((evt) => {
+      if (evt.phase !== 'setup') return
+      setPendingWorktrees((prev) =>
+        prev.map((p) => {
+          if (p.id !== evt.runId) return p
+          if (evt.type === 'start') {
+            return { ...p, status: 'setup', setupLog: '' }
+          }
+          if (evt.type === 'output') {
+            return { ...p, setupLog: (p.setupLog || '') + (evt.data || '') }
+          }
+          if (evt.type === 'end') {
+            if (!evt.ok) setupFailedRef.current[p.id] = true
+            return { ...p, setupExitCode: evt.exitCode }
+          }
+          return p
+        })
+      )
+    })
+    return unsub
+  }, [])
 
   const handleSubmitNewWorktree = useCallback(
     async (repoRoot: string, branchName: string, initialPrompt: string, teleportSessionId?: string) => {
@@ -739,6 +782,17 @@ const setQuestStep = useCallback((next: QuestStep) => {
   const handleDismissPendingWorktree = useCallback((id: string) => {
     setPendingWorktrees((prev) => prev.filter((p) => p.id !== id))
     setActiveWorktreeId((prev) => (prev === id ? null : prev))
+  }, [])
+
+  const handleContinuePendingWorktree = useCallback((id: string) => {
+    const createdPath = pendingCreatedRef.current[id]
+    setPendingWorktrees((prev) => prev.filter((p) => p.id !== id))
+    if (createdPath) {
+      setActiveWorktreeId(createdPath)
+      delete pendingCreatedRef.current[id]
+    } else {
+      setActiveWorktreeId((prev) => (prev === id ? null : prev))
+    }
   }, [])
 
   const handleContinueWorktree = useCallback(async (path: string, newBranchName: string) => {
@@ -1553,6 +1607,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
               pending={pending}
               onRetry={handleRetryPendingWorktree}
               onDismiss={handleDismissPendingWorktree}
+              onContinue={handleContinuePendingWorktree}
             />
           )
         })()}

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2 } from 'lucide-react'
-import type { UpdaterStatus, MergeStrategy } from '../types'
+import type { UpdaterStatus, MergeStrategy, RepoConfig } from '../types'
 import { DEFAULT_HOTKEYS, ACTION_LABELS, bindingToString, eventToBinding, resolveHotkeys, type Action, type HotkeyBinding } from '../hotkeys'
 import { Tooltip } from './Tooltip'
 
@@ -186,6 +186,18 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
   const [worktreeBase, setWorktreeBaseState] = useState<'remote' | 'local'>('remote')
   const [mergeStrategy, setMergeStrategyState] = useState<MergeStrategy>('squash')
 
+  // Worktree setup/teardown scripts (global scope — repo scope reads from repoConfigs below)
+  const [setupScript, setSetupScript] = useState<string>('')
+  const [teardownScript, setTeardownScript] = useState<string>('')
+  const [scriptsSaveResult, setScriptsSaveResult] = useState<{ ok: boolean; message: string } | null>(null)
+
+  // Per-repo scope state for scopable worktree settings. scopeRepoRoot === null
+  // means the controls bind to global config; otherwise they bind to the
+  // repo-scoped .harness.json at that repoRoot.
+  const [repoList, setRepoList] = useState<string[]>([])
+  const [repoConfigs, setRepoConfigs] = useState<Record<string, RepoConfig>>({})
+  const [scopeRepoRoot, setScopeRepoRoot] = useState<string | null>(null)
+
   useEffect(() => {
     window.api.hasGithubToken().then(setHasToken)
     window.api.getVersion().then(setVersion)
@@ -206,7 +218,41 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
     window.api.getAvailableEditors().then(setAvailableEditors)
     window.api.getWorktreeBase().then(setWorktreeBaseState)
     window.api.getMergeStrategy().then(setMergeStrategyState)
+    window.api.getWorktreeScripts().then((s) => {
+      setSetupScript(s.setup || '')
+      setTeardownScript(s.teardown || '')
+    })
+    window.api.listRepos().then(async (repos) => {
+      setRepoList(repos)
+      const entries = await Promise.all(
+        repos.map(async (r): Promise<[string, RepoConfig]> => [r, await window.api.getRepoConfig(r)])
+      )
+      setRepoConfigs(Object.fromEntries(entries))
+    })
   }, [])
+
+  useEffect(() => {
+    const unsub = window.api.onRepoConfigChanged((payload) => {
+      setRepoConfigs((prev) => ({ ...prev, [payload.repoRoot]: payload.config }))
+    })
+    return unsub
+  }, [])
+
+  const updateRepoConfig = useCallback(
+    async (repoRoot: string, patch: Record<string, unknown>) => {
+      const saved = await window.api.setRepoConfig(repoRoot, patch)
+      if (saved) setRepoConfigs((prev) => ({ ...prev, [repoRoot]: saved }))
+    },
+    []
+  )
+
+  const repoBasename = useCallback((repoRoot: string): string => {
+    const parts = repoRoot.split('/').filter(Boolean)
+    return parts[parts.length - 1] || repoRoot
+  }, [])
+
+  const [setupDraft, setSetupDraft] = useState<string>('')
+  const [teardownDraft, setTeardownDraft] = useState<string>('')
 
   const handleSelectTheme = useCallback(async (id: string) => {
     setThemeState(id)
@@ -240,10 +286,85 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
     await window.api.setWorktreeBase(mode)
   }, [])
 
-  const handleSelectMergeStrategy = useCallback(async (strategy: MergeStrategy) => {
-    setMergeStrategyState(strategy)
-    await window.api.setMergeStrategy(strategy)
-  }, [])
+  const handleSelectMergeStrategy = useCallback(
+    async (strategy: MergeStrategy) => {
+      if (scopeRepoRoot) {
+        await updateRepoConfig(scopeRepoRoot, { mergeStrategy: strategy })
+      } else {
+        setMergeStrategyState(strategy)
+        await window.api.setMergeStrategy(strategy)
+      }
+    },
+    [scopeRepoRoot, updateRepoConfig]
+  )
+
+  // Resolve what each control should display for the active scope.
+  const scopedRepoCfg = scopeRepoRoot ? repoConfigs[scopeRepoRoot] || {} : null
+  const displayedMergeStrategy: MergeStrategy = scopedRepoCfg
+    ? (scopedRepoCfg.mergeStrategy || mergeStrategy)
+    : mergeStrategy
+  const scopedMergeStrategyIsOverride = !!(scopedRepoCfg && scopedRepoCfg.mergeStrategy)
+  const displayedSetupScript = scopedRepoCfg
+    ? (scopedRepoCfg.setupCommand ?? '')
+    : setupScript
+  const displayedTeardownScript = scopedRepoCfg
+    ? (scopedRepoCfg.teardownCommand ?? '')
+    : teardownScript
+  const scopedSetupIsOverride = !!(scopedRepoCfg && scopedRepoCfg.setupCommand)
+  const scopedTeardownIsOverride = !!(scopedRepoCfg && scopedRepoCfg.teardownCommand)
+
+  // Reset the scoped script drafts whenever the active scope (or persisted
+  // value for that scope) changes, so the textareas show what's on disk.
+  useEffect(() => {
+    setSetupDraft(displayedSetupScript)
+    setTeardownDraft(displayedTeardownScript)
+  }, [scopeRepoRoot, displayedSetupScript, displayedTeardownScript])
+
+  const handleSaveWorktreeScripts = useCallback(async () => {
+    if (scopeRepoRoot) {
+      await updateRepoConfig(scopeRepoRoot, {
+        setupCommand: setupDraft.trim() || null,
+        teardownCommand: teardownDraft.trim() || null
+      })
+    } else {
+      await window.api.setWorktreeScripts({ setup: setupDraft, teardown: teardownDraft })
+      setSetupScript(setupDraft)
+      setTeardownScript(teardownDraft)
+    }
+    setScriptsSaveResult({ ok: true, message: 'Saved' })
+    setTimeout(() => setScriptsSaveResult(null), 2000)
+  }, [scopeRepoRoot, setupDraft, teardownDraft, updateRepoConfig])
+
+  const handleResetSetupToGlobal = useCallback(async () => {
+    if (!scopeRepoRoot) return
+    await updateRepoConfig(scopeRepoRoot, { setupCommand: null })
+    setSetupDraft('')
+  }, [scopeRepoRoot, updateRepoConfig])
+
+  const handleResetTeardownToGlobal = useCallback(async () => {
+    if (!scopeRepoRoot) return
+    await updateRepoConfig(scopeRepoRoot, { teardownCommand: null })
+    setTeardownDraft('')
+  }, [scopeRepoRoot, updateRepoConfig])
+
+  const handleResetMergeStrategyToGlobal = useCallback(async () => {
+    if (!scopeRepoRoot) return
+    await updateRepoConfig(scopeRepoRoot, { mergeStrategy: null })
+  }, [scopeRepoRoot, updateRepoConfig])
+
+  // Repos that override a given key — used to decorate global-scope controls
+  // with a "Overridden in N repo(s)" badge.
+  const reposOverridingKey = useCallback(
+    (key: keyof RepoConfig): string[] => {
+      return repoList.filter((r) => {
+        const cfg = repoConfigs[r]
+        if (!cfg) return false
+        const v = cfg[key]
+        return typeof v === 'string' ? v.length > 0 : v != null
+      })
+    },
+    [repoList, repoConfigs]
+  )
 
   useEffect(() => {
     const cleanup = window.api.onUpdaterStatus((status) => setUpdaterStatus(status))
@@ -854,6 +975,46 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
               <p className="text-sm text-dim mb-4">
                 Controls how new worktrees are created from the sidebar.
               </p>
+
+              {repoList.length > 0 && (
+                <div className="mb-4">
+                  <div className="flex items-center gap-1 text-[11px] text-faint mb-1.5 uppercase tracking-wide">
+                    Scope
+                  </div>
+                  <div className="flex flex-wrap gap-1 bg-panel-raised border border-border rounded p-1">
+                    <button
+                      onClick={() => setScopeRepoRoot(null)}
+                      className={`px-2.5 py-1 rounded text-xs transition-colors cursor-pointer ${
+                        scopeRepoRoot === null
+                          ? 'bg-surface text-fg-bright'
+                          : 'text-dim hover:text-fg'
+                      }`}
+                    >
+                      Global
+                    </button>
+                    {repoList.map((r) => (
+                      <button
+                        key={r}
+                        onClick={() => setScopeRepoRoot(r)}
+                        className={`px-2.5 py-1 rounded text-xs font-mono transition-colors cursor-pointer ${
+                          scopeRepoRoot === r
+                            ? 'bg-surface text-fg-bright'
+                            : 'text-dim hover:text-fg'
+                        }`}
+                        title={r}
+                      >
+                        {repoBasename(r)}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-faint mt-1.5">
+                    {scopeRepoRoot
+                      ? <>Editing <code className="bg-panel-raised px-1 rounded">.harness.json</code> in <span className="font-mono">{repoBasename(scopeRepoRoot)}</span>. Unset fields inherit from global. You can commit this file to share settings with teammates.</>
+                      : 'Editing global settings. Individual repos can override these values via their .harness.json file.'}
+                  </p>
+                </div>
+              )}
+              {scopeRepoRoot === null && (
               <div className="space-y-2">
                 {(
                   [
@@ -895,8 +1056,24 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
                   )
                 })}
               </div>
+              )}
 
-              <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">Default merge strategy</h3>
+              <div className="flex items-center justify-between mt-6 mb-1">
+                <h3 className="text-sm font-semibold text-fg-bright">Default merge strategy</h3>
+                {scopeRepoRoot === null && reposOverridingKey('mergeStrategy').length > 0 && (
+                  <span className="text-[10px] text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
+                    Overridden in {reposOverridingKey('mergeStrategy').map(repoBasename).join(', ')}
+                  </span>
+                )}
+                {scopeRepoRoot !== null && scopedMergeStrategyIsOverride && (
+                  <button
+                    onClick={handleResetMergeStrategyToGlobal}
+                    className="text-[10px] text-dim hover:text-fg underline cursor-pointer"
+                  >
+                    Reset to global
+                  </button>
+                )}
+              </div>
               <p className="text-xs text-dim mb-3">
                 Used when you run "Merge locally" on a worktree. The dropdown on
                 that button also writes back to this setting so your most recent
@@ -925,7 +1102,7 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
                     }
                   ]
                 ).map((opt) => {
-                  const isActive = mergeStrategy === opt.id
+                  const isActive = displayedMergeStrategy === opt.id
                   return (
                     <button
                       key={opt.id}
@@ -949,6 +1126,93 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
                   )
                 })}
               </div>
+
+              <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">Setup & teardown scripts</h3>
+              <p className="text-xs text-dim mb-3">
+                Optional shell commands run via a login shell
+                (<code className="bg-panel-raised px-1 rounded text-[10px]">zsh -ilc</code>) with
+                the worktree as <code className="bg-panel-raised px-1 rounded text-[10px]">cwd</code>.
+                Setup runs after a worktree is created; teardown runs before it's removed.
+                The env vars{' '}
+                <code className="bg-panel-raised px-1 rounded text-[10px]">HARNESS_WORKTREE_PATH</code>,{' '}
+                <code className="bg-panel-raised px-1 rounded text-[10px]">HARNESS_BRANCH</code>, and{' '}
+                <code className="bg-panel-raised px-1 rounded text-[10px]">HARNESS_REPO_ROOT</code>{' '}
+                are available to the command.
+              </p>
+
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs text-dim">Setup command</label>
+                {scopeRepoRoot === null && reposOverridingKey('setupCommand').length > 0 && (
+                  <span className="text-[10px] text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
+                    Overridden in {reposOverridingKey('setupCommand').map(repoBasename).join(', ')}
+                  </span>
+                )}
+                {scopeRepoRoot !== null && scopedSetupIsOverride && (
+                  <button
+                    onClick={handleResetSetupToGlobal}
+                    className="text-[10px] text-dim hover:text-fg underline cursor-pointer"
+                  >
+                    Reset to global
+                  </button>
+                )}
+              </div>
+              <textarea
+                value={setupDraft}
+                onChange={(e) => setSetupDraft(e.target.value)}
+                placeholder={
+                  scopeRepoRoot && setupScript
+                    ? `Inherits from global: ${setupScript}`
+                    : 'e.g. npm install --legacy-peer-deps'
+                }
+                rows={3}
+                className="w-full bg-panel border border-border-strong rounded px-3 py-2 text-sm text-fg-bright placeholder-faint outline-none focus:border-fg font-mono resize-y"
+              />
+
+              <div className="flex items-center justify-between mt-3 mb-1">
+                <label className="block text-xs text-dim">Teardown command</label>
+                {scopeRepoRoot === null && reposOverridingKey('teardownCommand').length > 0 && (
+                  <span className="text-[10px] text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
+                    Overridden in {reposOverridingKey('teardownCommand').map(repoBasename).join(', ')}
+                  </span>
+                )}
+                {scopeRepoRoot !== null && scopedTeardownIsOverride && (
+                  <button
+                    onClick={handleResetTeardownToGlobal}
+                    className="text-[10px] text-dim hover:text-fg underline cursor-pointer"
+                  >
+                    Reset to global
+                  </button>
+                )}
+              </div>
+              <textarea
+                value={teardownDraft}
+                onChange={(e) => setTeardownDraft(e.target.value)}
+                placeholder={
+                  scopeRepoRoot && teardownScript
+                    ? `Inherits from global: ${teardownScript}`
+                    : 'e.g. docker compose down'
+                }
+                rows={3}
+                className="w-full bg-panel border border-border-strong rounded px-3 py-2 text-sm text-fg-bright placeholder-faint outline-none focus:border-fg font-mono resize-y"
+              />
+
+              <div className="flex items-center gap-2 mt-3">
+                <button
+                  onClick={handleSaveWorktreeScripts}
+                  className="px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer"
+                >
+                  Save
+                </button>
+                {scriptsSaveResult && (
+                  <span className={`text-xs flex items-center gap-1.5 ${scriptsSaveResult.ok ? 'text-success' : 'text-danger'}`}>
+                    {scriptsSaveResult.ok ? <Check size={12} /> : <X size={12} />}
+                    {scriptsSaveResult.message}
+                  </span>
+                )}
+              </div>
+              <p className="mt-2 text-[11px] text-faint">
+                Failures are logged but don't block the worktree operation. Leave blank to disable.
+              </p>
             </section>
 
             {/* Editor section */}

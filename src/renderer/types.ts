@@ -15,10 +15,29 @@ export interface PendingWorktree {
   id: string
   repoRoot: string
   branchName: string
-  status: 'creating' | 'error'
+  status: 'creating' | 'setup' | 'setup-failed' | 'error'
   error?: string
   initialPrompt?: string
   teleportSessionId?: string
+  setupLog?: string
+  setupExitCode?: number
+}
+
+export interface RepoConfig {
+  version?: number
+  setupCommand?: string
+  teardownCommand?: string
+  mergeStrategy?: 'squash' | 'merge-commit' | 'fast-forward'
+}
+
+export interface WorktreeScriptEvent {
+  runId: string
+  phase: 'setup' | 'teardown'
+  type: 'start' | 'output' | 'end'
+  stream?: 'stdout' | 'stderr'
+  data?: string
+  ok?: boolean
+  exitCode?: number
 }
 
 export interface FileReadResult {
@@ -167,7 +186,8 @@ export interface PRStatus {
 export interface ElectronAPI {
   listWorktrees(repoRoot: string): Promise<Worktree[]>
   listBranches(repoRoot: string): Promise<string[]>
-  addWorktree(repoRoot: string, branchName: string, baseBranch?: string): Promise<Worktree>
+  addWorktree(repoRoot: string, branchName: string, baseBranch?: string, runId?: string): Promise<Worktree>
+  onWorktreeScriptEvent(callback: (event: WorktreeScriptEvent) => void): () => void
   continueWorktree(
     repoRoot: string,
     worktreePath: string,
@@ -249,6 +269,15 @@ export interface ElectronAPI {
 
   getOnboarding(): Promise<{ quest?: QuestStep }>
   setOnboardingQuest(quest: QuestStep): Promise<boolean>
+
+  getWorktreeScripts(): Promise<{ setup: string; teardown: string }>
+  setWorktreeScripts(scripts: { setup: string; teardown: string }): Promise<boolean>
+  getRepoConfig(repoRoot: string): Promise<RepoConfig>
+  setRepoConfig(repoRoot: string, next: Partial<RepoConfig>): Promise<RepoConfig | null>
+  getEffectiveMergeStrategy(repoRoot: string): Promise<MergeStrategy>
+  onRepoConfigChanged(
+    callback: (payload: { repoRoot: string; config: RepoConfig }) => void
+  ): () => void
 
   getWorktreeBase(): Promise<'remote' | 'local'>
   setWorktreeBase(mode: 'remote' | 'local'): Promise<boolean>

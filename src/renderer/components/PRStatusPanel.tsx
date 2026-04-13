@@ -95,13 +95,27 @@ function MergeLocallyBody({
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
-  // Load the persisted default strategy once on mount.
+  // Load the effective default strategy (repo override → global) whenever the
+  // active repo changes, and also refresh it when the repo-scoped config is
+  // edited in Settings.
   useEffect(() => {
-    window.api.getMergeStrategy().then((s) => {
-      setStrategy(s)
-      setStrategyLoaded(true)
+    let cancelled = false
+    const load = (): void => {
+      window.api.getEffectiveMergeStrategy(worktree.repoRoot).then((s) => {
+        if (cancelled) return
+        setStrategy(s)
+        setStrategyLoaded(true)
+      })
+    }
+    load()
+    const unsubRepo = window.api.onRepoConfigChanged((payload) => {
+      if (payload.repoRoot === worktree.repoRoot) load()
     })
-  }, [])
+    return () => {
+      cancelled = true
+      unsubRepo()
+    }
+  }, [worktree.repoRoot])
 
   const refreshStatus = useCallback(async () => {
     setBusy('checking')

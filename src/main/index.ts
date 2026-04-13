@@ -4,7 +4,7 @@ import { existsSync, readdirSync, statSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 import { PtyManager } from './pty-manager'
-import { listWorktrees, listBranches, addWorktree, continueWorktree, removeWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, readWorktreeFile, type MergeStrategy } from './worktree'
+import { listWorktrees, listBranches, addWorktree, continueWorktree, removeWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, readWorktreeFile, runWorktreeScript, type MergeStrategy } from './worktree'
 import { getPRStatus, testToken, starRepo } from './github'
 import { AVAILABLE_EDITORS, DEFAULT_EDITOR_ID, openInEditor } from './editor'
 import { setSecret, hasSecret, deleteSecret } from './secrets'
@@ -27,6 +27,7 @@ import {
   type PersistedPane,
   type QuestStep
 } from './persistence'
+import { loadRepoConfig, saveRepoConfig, type RepoConfig } from './repo-config'
 import { hooksInstalled, installHooks, watchStatusDir } from './hooks'
 import { startControlServer } from './control-server'
 import { writeMcpConfigForTerminal, pruneMcpConfigs } from './mcp-config'
@@ -105,14 +106,43 @@ function registerIpcHandlers(): void {
     return listBranches(repoRoot)
   })
 
-  ipcMain.handle('worktree:add', async (_, repoRoot: string, branchName: string, baseBranch?: string) => {
+  ipcMain.handle('worktree:add', async (
+    event,
+    repoRoot: string,
+    branchName: string,
+    baseBranch?: string,
+    runId?: string
+  ) => {
     if (!repoRoot) throw new Error('No repo root provided')
     const wtDir = defaultWorktreeDir(repoRoot)
     const mode = config.worktreeBase || DEFAULT_WORKTREE_BASE
-    return addWorktree(repoRoot, wtDir, branchName, {
+    const created = await addWorktree(repoRoot, wtDir, branchName, {
       baseBranch,
       fetchRemote: !baseBranch && mode === 'remote'
     })
+    const repoCfg = loadRepoConfig(repoRoot)
+    const setupCmd = repoCfg.setupCommand || config.worktreeSetupCommand || ''
+    if (setupCmd && runId) {
+      const sender = event.sender
+      const send = (payload: Record<string, unknown>): void => {
+        if (!sender.isDestroyed()) sender.send('worktree:scriptEvent', { runId, phase: 'setup', ...payload })
+      }
+      send({ type: 'start' })
+      const result = await runWorktreeScript(
+        'setup',
+        setupCmd,
+        { worktreePath: created.path, branch: created.branch, repoRoot },
+        (stream, chunk) => send({ type: 'output', stream, data: chunk })
+      )
+      send({ type: 'end', ok: result.ok, exitCode: result.exitCode })
+    } else if (setupCmd) {
+      await runWorktreeScript('setup', setupCmd, {
+        worktreePath: created.path,
+        branch: created.branch,
+        repoRoot
+      })
+    }
+    return created
   })
 
   ipcMain.handle(
@@ -154,6 +184,15 @@ function registerIpcHandlers(): void {
       prNumber: removeMeta?.prNumber,
       prState: removeMeta?.prState
     })
+    const teardownRepoCfg = loadRepoConfig(repoRoot)
+    const teardownCmd = teardownRepoCfg.teardownCommand || config.worktreeTeardownCommand || ''
+    if (teardownCmd) {
+      await runWorktreeScript('teardown', teardownCmd, {
+        worktreePath: path,
+        branch: wt?.branch || '',
+        repoRoot
+      })
+    }
     return removeWorktree(repoRoot, path, force)
   })
 
@@ -350,6 +389,56 @@ function registerIpcHandlers(): void {
   ipcMain.handle('config:getDefaultClaudeCommand', () => {
     return DEFAULT_CLAUDE_COMMAND
   })
+
+  ipcMain.handle('repoConfig:get', (_, repoRoot: string) => {
+    if (!repoRoot) return {}
+    return loadRepoConfig(repoRoot)
+  })
+
+  ipcMain.handle('repoConfig:set', (_, repoRoot: string, next: Record<string, unknown>) => {
+    if (!repoRoot) return null
+    const current = loadRepoConfig(repoRoot)
+    const merged: RepoConfig = { ...current }
+    for (const [k, v] of Object.entries(next || {})) {
+      if (v === null || v === undefined) {
+        delete (merged as Record<string, unknown>)[k]
+      } else {
+        ;(merged as Record<string, unknown>)[k] = v
+      }
+    }
+    const saved = saveRepoConfig(repoRoot, merged)
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed())
+        win.webContents.send('repoConfig:changed', { repoRoot, config: saved })
+    }
+    return saved
+  })
+
+  ipcMain.handle('repoConfig:getEffectiveMergeStrategy', (_, repoRoot: string) => {
+    const repo = loadRepoConfig(repoRoot)
+    return repo.mergeStrategy || config.mergeStrategy || DEFAULT_MERGE_STRATEGY
+  })
+
+  ipcMain.handle('config:getWorktreeScripts', () => {
+    return {
+      setup: config.worktreeSetupCommand || '',
+      teardown: config.worktreeTeardownCommand || ''
+    }
+  })
+
+  ipcMain.handle(
+    'config:setWorktreeScripts',
+    (_, scripts: { setup?: string; teardown?: string }) => {
+      const setup = (scripts?.setup || '').trim()
+      const teardown = (scripts?.teardown || '').trim()
+      if (setup) config.worktreeSetupCommand = setup
+      else delete config.worktreeSetupCommand
+      if (teardown) config.worktreeTeardownCommand = teardown
+      else delete config.worktreeTeardownCommand
+      saveConfig(config)
+      return true
+    }
+  )
 
   ipcMain.handle('config:getClaudeEnvVars', () => {
     return config.claudeEnvVars || {}

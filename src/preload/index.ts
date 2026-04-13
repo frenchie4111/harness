@@ -8,8 +8,25 @@ contextBridge.exposeInMainWorld('api', {
   // Worktrees — every call takes repoRoot explicitly so a window can host multiple repos.
   listWorktrees: (repoRoot: string) => ipcRenderer.invoke('worktree:list', repoRoot),
   listBranches: (repoRoot: string) => ipcRenderer.invoke('worktree:branches', repoRoot),
-  addWorktree: (repoRoot: string, branchName: string, baseBranch?: string) =>
-    ipcRenderer.invoke('worktree:add', repoRoot, branchName, baseBranch),
+  addWorktree: (repoRoot: string, branchName: string, baseBranch?: string, runId?: string) =>
+    ipcRenderer.invoke('worktree:add', repoRoot, branchName, baseBranch, runId),
+  onWorktreeScriptEvent: (
+    callback: (event: {
+      runId: string
+      phase: 'setup' | 'teardown'
+      type: 'start' | 'output' | 'end'
+      stream?: 'stdout' | 'stderr'
+      data?: string
+      ok?: boolean
+      exitCode?: number
+    }) => void
+  ) => {
+    const handler = (_event: Electron.IpcRendererEvent, payload: Parameters<typeof callback>[0]): void => {
+      callback(payload)
+    }
+    ipcRenderer.on('worktree:scriptEvent', handler)
+    return () => ipcRenderer.removeListener('worktree:scriptEvent', handler)
+  },
   continueWorktree: (repoRoot: string, worktreePath: string, newBranchName: string, baseBranch?: string) =>
     ipcRenderer.invoke('worktree:continue', repoRoot, worktreePath, newBranchName, baseBranch),
   isWorktreeDirty: (path: string) => ipcRenderer.invoke('worktree:isDirty', path),
@@ -66,6 +83,24 @@ contextBridge.exposeInMainWorld('api', {
   getClaudeCommand: () => ipcRenderer.invoke('config:getClaudeCommand'),
   setClaudeCommand: (command: string) => ipcRenderer.invoke('config:setClaudeCommand', command),
   getDefaultClaudeCommand: () => ipcRenderer.invoke('config:getDefaultClaudeCommand'),
+  getWorktreeScripts: () => ipcRenderer.invoke('config:getWorktreeScripts'),
+  setWorktreeScripts: (scripts: { setup?: string; teardown?: string }) =>
+    ipcRenderer.invoke('config:setWorktreeScripts', scripts),
+  getRepoConfig: (repoRoot: string) => ipcRenderer.invoke('repoConfig:get', repoRoot),
+  setRepoConfig: (repoRoot: string, next: Record<string, unknown>) =>
+    ipcRenderer.invoke('repoConfig:set', repoRoot, next),
+  getEffectiveMergeStrategy: (repoRoot: string) =>
+    ipcRenderer.invoke('repoConfig:getEffectiveMergeStrategy', repoRoot),
+  onRepoConfigChanged: (
+    callback: (payload: { repoRoot: string; config: Record<string, unknown> }) => void
+  ) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      payload: { repoRoot: string; config: Record<string, unknown> }
+    ): void => callback(payload)
+    ipcRenderer.on('repoConfig:changed', handler)
+    return () => ipcRenderer.removeListener('repoConfig:changed', handler)
+  },
   getClaudeEnvVars: () => ipcRenderer.invoke('config:getClaudeEnvVars'),
   setClaudeEnvVars: (vars: Record<string, string>) => ipcRenderer.invoke('config:setClaudeEnvVars', vars),
   onClaudeEnvVarsChanged: (callback: (vars: Record<string, string>) => void) => {

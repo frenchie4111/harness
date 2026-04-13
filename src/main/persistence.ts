@@ -61,6 +61,13 @@ interface Config {
   // Value is the branch-tip SHA at merge time — if the branch later advances
   // past this SHA, the flag is considered stale and the branch is no longer
   // shown as merged.
+  // Shell command to run after a worktree is created. Runs via login shell
+   // with cwd=worktree and env vars HARNESS_WORKTREE_PATH, HARNESS_BRANCH,
+   // HARNESS_REPO_ROOT. Failures are logged but don't block creation.
+  worktreeSetupCommand?: string
+  // Shell command to run before a worktree is removed. Same execution model
+   // as setup. Failures are logged but don't block removal.
+  worktreeTeardownCommand?: string
   locallyMerged?: Record<string, string>
   // First-run parallelism quest — advances through steps as the user learns.
   // When true, pass --name "repo/branch" to Claude so sessions are named by
