@@ -152,6 +152,28 @@ export function Sidebar({
   const showRepoHeaders = repoRoots.length > 1 && !unifiedRepos
   const showRepoLabelsOnTabs = repoRoots.length > 1 && unifiedRepos
 
+  // Assign Cmd+1..9 ordinals in the same order as App.tsx visibleWorktrees:
+  // iterate repos → groups, skipping collapsed repos/groups, so ordinals
+  // match the actual hotkey targets.
+  const cmdOrdinals = useMemo(() => {
+    const map = new Map<string, number>()
+    let n = 1
+    for (const { repoRoot, groups } of byRepo) {
+      if (repoRoot !== '__unified__' && collapsedRepos[repoRoot]) continue
+      for (const group of groups) {
+        if (isGroupCollapsed(repoRoot, group.key)) continue
+        for (const wt of group.worktrees) {
+          if (n > 9) break
+          map.set(wt.path, n)
+          n += 1
+        }
+        if (n > 9) break
+      }
+      if (n > 9) break
+    }
+    return map
+  }, [byRepo, collapsedRepos, isGroupCollapsed])
+
   const repoLabelFor = useCallback((repoRoot: string): string => {
     return repoRoot.split('/').pop() || repoRoot
   }, [])
@@ -256,6 +278,7 @@ export function Sidebar({
                   prStatus={prStatuses[wt.path]}
                   isMerged={group.key === 'merged'}
                   repoLabel={showRepoLabelsOnTabs ? repoLabelFor(wt.repoRoot) : undefined}
+                  cmdOrdinal={cmdOrdinals.get(wt.path)}
                   onClick={() => onSelectWorktree(wt.path)}
                   onDelete={wt.isMain ? undefined : () => onDeleteWorktree(wt.path)}
                   onContinue={wt.isMain ? undefined : () => beginContinue(wt.path, wt.branch)}
