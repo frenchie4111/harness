@@ -446,7 +446,7 @@ export function CommandCenter({
                             </div>
 
                             <div
-                              className="border-t border-border/60 px-3 py-2 overflow-hidden"
+                              className="border-t border-border/60 px-3 py-2 h-24 overflow-hidden flex flex-col justify-end"
                               style={{ backgroundColor: 'var(--color-app)' }}
                             >
                               <pre
