@@ -113,6 +113,15 @@ export function CommandCenter({
     }
   }, [])
 
+  const [terminalFont, setTerminalFont] = useState<string>(
+    "'SF Mono', 'Monaco', 'Menlo', 'Courier New', monospace"
+  )
+  useEffect(() => {
+    window.api.getTerminalFontFamily().then((v) => {
+      if (v) setTerminalFont(v)
+    }).catch(() => {})
+  }, [])
+
   // Clock tick so timelines + relative times advance.
   const [now, setNow] = useState(Date.now())
   useEffect(() => {
@@ -433,8 +442,17 @@ export function CommandCenter({
                               <span className="text-faint">{relTime(lastActive[wt.path])}</span>
                             </div>
 
-                            <div className="border-t border-border/60 bg-bg px-3 py-2 h-24 overflow-hidden">
-                              <pre className="text-[10px] leading-tight text-fg/80 font-mono whitespace-pre-wrap break-all line-clamp-6">
+                            <div
+                              className="border-t border-border/60 px-3 py-2 h-24 overflow-hidden"
+                              style={{ backgroundColor: 'var(--color-app)' }}
+                            >
+                              <pre
+                                className="text-[10px] leading-tight whitespace-pre-wrap break-all line-clamp-6"
+                                style={{
+                                  fontFamily: terminalFont,
+                                  color: 'var(--color-fg-bright)'
+                                }}
+                              >
                                 {tail || <span className="text-faint italic">no output yet</span>}
                               </pre>
                             </div>
