@@ -1,4 +1,15 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync, watch } from 'fs'
+import {
+  readFileSync,
+  writeFileSync,
+  mkdirSync,
+  existsSync,
+  watch,
+  openSync,
+  fstatSync,
+  readSync,
+  closeSync,
+  unlinkSync
+} from 'fs'
 import { join } from 'path'
 import { BrowserWindow } from 'electron'
 import type { PtyStatus } from './pty-manager'
@@ -7,38 +18,35 @@ import { log } from './debug'
 const STATUS_DIR = '/tmp/harness-status'
 const HARNESS_HOOK_MARKER = '__claude_harness__'
 // Bump this when the hook format changes to force reinstallation
-const HARNESS_HOOK_VERSION = 6
+const HARNESS_HOOK_VERSION = 7
 
-// Per-event hook commands. Each event type gets its own simple command
-// that writes the appropriate status. No jq dependency — these don't need
-// to parse stdin, they just know what event they're attached to.
-// Uses CLAUDE_HARNESS_ID env var (set by our PTY manager) to key the file.
+// Emit a bash command that appends one NDJSON line per event to the
+// terminal's log file at /tmp/harness-status/<id>.ndjson. The line wraps
+// the full stdin payload Claude Code sends to the hook, so the main process
+// has access to the raw event and can do all classification in TypeScript.
 //
-// The write is atomic: content goes to a temp file and is then renamed over
-// the target. fs.watch on macOS otherwise fires mid-write during the
-// truncate-then-write window, which caused status transitions to be lost
-// (JSON.parse on an empty file). With rename the watcher only ever sees the
-// completed file.
-function makeHookCommand(status: string): string {
-  const payload = `{"status":"${status}","ts":%s}`
-  // Inner bash script. Single quotes inside a single-quoted shell string are
-  // escaped via the classic '\'' dance (close, literal quote, reopen).
+// POSIX only — no jq, no python. The bash reads stdin into a shell var,
+// defaults empty to `null`, then emits a single printf writing one line to
+// the append-mode file. A single write(2) under PIPE_BUF (4096 bytes) is
+// guaranteed atomic vs. other O_APPEND writers on POSIX.
+function makeHookCommand(event: string): string {
   const inner =
-    `hid="$CLAUDE_HARNESS_ID"; [ -z "$hid" ] && exit 0; ` +
+    `h="$CLAUDE_HARNESS_ID"; [ -z "$h" ] && exit 0; ` +
     `d=${STATUS_DIR}; mkdir -p "$d"; ` +
-    `t="$d/.$hid.$$.tmp"; ` +
-    `printf '\\''${payload}'\\'' "$(date +%s)" > "$t" && ` +
-    `mv -f "$t" "$d/$hid.json"`
+    `p=$(cat); [ -z "$p" ] && p=null; ` +
+    `printf "{\\"event\\":\\"${event}\\",\\"ts\\":%s,\\"payload\\":%s}\\n" ` +
+    `"$(date +%s)" "$p" >> "$d/$h.ndjson"`
   return `bash -c '${inner}'`
 }
 
-// For Notification we need to distinguish idle_prompt vs permission_prompt.
-// The matcher field on the hook entry filters by notification_type, so we
-// use separate hook entries per notification type.
-const NOTIFICATION_HOOKS: { matcher: string; status: string }[] = [
-  { matcher: 'idle_prompt', status: 'waiting' },
-  { matcher: 'permission_prompt', status: 'needs-approval' },
-  { matcher: 'elicitation_dialog', status: 'needs-approval' }
+// Events we install hooks for. Every event uses the exact same shape —
+// classification happens in TS against the raw payload.
+const HOOK_EVENTS = [
+  'UserPromptSubmit',
+  'PreToolUse',
+  'PostToolUse',
+  'Stop',
+  'Notification'
 ]
 
 interface HookEntry {
@@ -70,9 +78,8 @@ function writeSettingsLocal(worktreePath: string, settings: SettingsLocal): void
   writeFileSync(getSettingsPath(worktreePath), JSON.stringify(settings, null, 2))
 }
 
-function makeHarnessHookEntry(command: string, matcher?: string): HookEntry {
+function makeHarnessHookEntry(command: string): HookEntry {
   return {
-    ...(matcher ? { matcher } : {}),
     hooks: [
       {
         type: 'command',
@@ -117,28 +124,97 @@ export function installHooks(worktreePath: string): void {
   const settings = readSettingsLocal(worktreePath)
   if (!settings.hooks) settings.hooks = {}
 
-  // Remove any old-version harness hooks first
   for (const event of Object.keys(settings.hooks)) {
     settings.hooks[event] = removeOldHarnessEntries(settings.hooks[event])
   }
 
-  // Notification hooks — for permission/approval detection
-  if (!settings.hooks['Notification']) settings.hooks['Notification'] = []
-  for (const { matcher, status } of NOTIFICATION_HOOKS) {
-    settings.hooks['Notification'].push(makeHarnessHookEntry(makeHookCommand(status), matcher))
-  }
-
-  // Stop — fires immediately when Claude finishes its turn
-  if (!settings.hooks['Stop']) settings.hooks['Stop'] = []
-  settings.hooks['Stop'].push(makeHarnessHookEntry(makeHookCommand('waiting')))
-
-  // Processing signals
-  for (const event of ['UserPromptSubmit', 'PreToolUse', 'PostToolUse']) {
+  for (const event of HOOK_EVENTS) {
     if (!settings.hooks[event]) settings.hooks[event] = []
-    settings.hooks[event].push(makeHarnessHookEntry(makeHookCommand('processing')))
+    settings.hooks[event].push(makeHarnessHookEntry(makeHookCommand(event)))
   }
 
   writeSettingsLocal(worktreePath, settings)
+}
+
+interface HookEvent {
+  event: string
+  ts: number
+  payload: Record<string, unknown> | null
+}
+
+function deriveStatus(ev: HookEvent): PtyStatus | null {
+  switch (ev.event) {
+    case 'UserPromptSubmit':
+    case 'PreToolUse':
+    case 'PostToolUse':
+      return 'processing'
+    case 'Stop':
+      return 'waiting'
+    case 'Notification': {
+      const t = (ev.payload as Record<string, unknown> | null)?.notification_type
+      if (t === 'permission_prompt' || t === 'elicitation_dialog') return 'needs-approval'
+      if (t === 'idle_prompt') return 'waiting'
+      return null
+    }
+    default:
+      return null
+  }
+}
+
+// Per-terminal byte offset into the NDJSON log. Tail from here on each
+// fs.watch firing; advance to EOF after successful read.
+const offsets = new Map<string, number>()
+// Left-over partial line from the last read (in case a write lands
+// between our read and the newline flush). Keyed by terminal id.
+const residual = new Map<string, string>()
+
+function tailLog(terminalId: string, win: BrowserWindow): void {
+  const path = join(STATUS_DIR, `${terminalId}.ndjson`)
+  let fd: number
+  try {
+    fd = openSync(path, 'r')
+  } catch {
+    return
+  }
+  try {
+    const { size } = fstatSync(fd)
+    let off = offsets.get(terminalId) ?? 0
+    if (size < off) {
+      // File was truncated or replaced — start over.
+      off = 0
+      residual.delete(terminalId)
+    }
+    if (size === off) return
+    const len = size - off
+    const buf = Buffer.alloc(len)
+    readSync(fd, buf, 0, len, off)
+    offsets.set(terminalId, size)
+
+    const text = (residual.get(terminalId) ?? '') + buf.toString('utf-8')
+    const lines = text.split('\n')
+    // Last chunk may be a partial line; stash it for next read.
+    const tail = lines.pop() ?? ''
+    if (tail) residual.set(terminalId, tail)
+    else residual.delete(terminalId)
+
+    for (const line of lines) {
+      if (!line.trim()) continue
+      let ev: HookEvent
+      try {
+        ev = JSON.parse(line) as HookEvent
+      } catch (err) {
+        log('hooks', `parse error for ${terminalId}: ${err instanceof Error ? err.message : err}`, line)
+        continue
+      }
+      log('hooks', `event terminal=${terminalId} event=${ev.event}`)
+      const status = deriveStatus(ev)
+      if (status) {
+        win.webContents.send('terminal:status', terminalId, status)
+      }
+    }
+  } finally {
+    closeSync(fd)
+  }
 }
 
 /** Watch the status directory for changes and emit status updates.
@@ -150,39 +226,29 @@ export function watchStatusDir(
 
   log('hooks', `watching status dir: ${STATUS_DIR}`)
 
-  const watcher = watch(STATUS_DIR, (eventType, filename) => {
-    if (!filename || !filename.endsWith('.json')) return
-    // Skip the atomic-rename temp files the hook writes (".<id>.<pid>.tmp")
+  const watcher = watch(STATUS_DIR, (_eventType, filename) => {
+    if (!filename || !filename.endsWith('.ndjson')) return
     if (filename.startsWith('.')) return
-    const terminalId = filename.replace('.json', '')
+    const terminalId = filename.replace(/\.ndjson$/, '')
     const win = getWindowForTerminal(terminalId)
-    if (!win) {
-      log('hooks', `status file changed for unknown terminal: ${filename}`)
-      return
+    if (!win) return
+    try {
+      tailLog(terminalId, win)
+    } catch (err) {
+      log('hooks', `tail failed for ${terminalId}`, err instanceof Error ? err.message : err)
     }
-
-    // Read with a small retry in case we race the writer (shouldn't happen
-    // now that hooks write via rename, but cheap insurance against future
-    // hook-script regressions).
-    const tryRead = (attempt: number): void => {
-      try {
-        const raw = readFileSync(join(STATUS_DIR, filename), 'utf-8')
-        const data = JSON.parse(raw)
-        const status = data.status as PtyStatus
-        log('hooks', `status update: terminal=${terminalId} status=${status}`, data)
-        if (status) {
-          win.webContents.send('terminal:status', terminalId, status)
-        }
-      } catch (err) {
-        if (attempt < 2) {
-          setTimeout(() => tryRead(attempt + 1), 25)
-        } else {
-          log('hooks', `failed to read status file after retries: ${filename}`, err instanceof Error ? err.message : err)
-        }
-      }
-    }
-    tryRead(0)
   })
 
   return () => watcher.close()
+}
+
+/** Called on terminal death — drop the log file and reset tailing state. */
+export function cleanupTerminalLog(terminalId: string): void {
+  offsets.delete(terminalId)
+  residual.delete(terminalId)
+  try {
+    unlinkSync(join(STATUS_DIR, `${terminalId}.ndjson`))
+  } catch {
+    // file may not exist; ignore
+  }
 }

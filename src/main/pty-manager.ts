@@ -1,6 +1,7 @@
 import * as pty from 'node-pty'
 import { BrowserWindow } from 'electron'
 import { log } from './debug'
+import { cleanupTerminalLog } from './hooks'
 
 export type PtyStatus = 'idle' | 'processing' | 'waiting' | 'needs-approval'
 
@@ -75,6 +76,7 @@ export class PtyManager {
         win.webContents.send('terminal:exit', id, exitCode)
       }
       this.ptys.delete(id)
+      cleanupTerminalLog(id)
     })
 
     this.ptys.set(id, instance)
@@ -120,6 +122,7 @@ export class PtyManager {
     } catch {
       // pty already dead
     }
+    cleanupTerminalLog(id)
   }
 
   killAll(signal?: string): void {
