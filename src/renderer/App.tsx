@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import type { Worktree, TerminalTab, PtyStatus, PendingTool, PRStatus, QuestStep, WorkspacePane, PendingWorktree, UpdaterStatus } from './types'
+import type { Worktree, TerminalTab, PtyStatus, PendingTool, PRStatus, QuestStep, WorkspacePane, PendingWorktree, UpdaterStatus, RepoConfig } from './types'
 import type { Action } from './hotkeys'
 import { resolveHotkeys } from './hotkeys'
 import { HotkeysProvider } from './components/Tooltip'
@@ -81,6 +81,7 @@ export default function App(): JSX.Element {
   const lastPRFetchAt = useRef<Record<string, number>>({})
   const [lastActive, setLastActive] = useState<Record<string, number>>({})
   const [repoRoots, setRepoRoots] = useState<string[]>([])
+  const [activeRepoConfig, setActiveRepoConfig] = useState<RepoConfig | null>(null)
   // Map of worktree path → repoRoot for quick lookups outside of `worktrees`.
   // Populated whenever the worktree list refreshes.
   const worktreeRepoRef = useRef<Record<string, string>>({})
@@ -419,6 +420,30 @@ const setQuestStep = useCallback((next: QuestStep) => {
       // ignore
     }
   }, [worktrees, repoRoots])
+
+  const activeRepoRoot = activeWorktreeId
+    ? worktrees.find((w) => w.path === activeWorktreeId)?.repoRoot ?? worktreeRepoRef.current[activeWorktreeId] ?? null
+    : null
+  useEffect(() => {
+    if (!activeRepoRoot) {
+      setActiveRepoConfig(null)
+      return
+    }
+    let cancelled = false
+    const load = (): void => {
+      window.api.getRepoConfig(activeRepoRoot).then((cfg) => {
+        if (!cancelled) setActiveRepoConfig(cfg ?? {})
+      })
+    }
+    load()
+    const unsub = window.api.onRepoConfigChanged((payload) => {
+      if (payload.repoRoot === activeRepoRoot) load()
+    })
+    return () => {
+      cancelled = true
+      unsub()
+    }
+  }, [activeRepoRoot])
 
   const refreshMergedStatus = useCallback(async () => {
     try {
@@ -1762,23 +1787,27 @@ const setQuestStep = useCallback((next: QuestStep) => {
             className="shrink-0 h-full flex flex-col bg-panel"
             style={{ width: rightPanelWidth }}
           >
-            <MergeLocallyPanel
-              pr={activeWorktreeId ? prStatuses[activeWorktreeId] : null}
-              worktree={worktrees.find((w) => w.path === activeWorktreeId) || null}
-              hasGithubToken={hasGithubToken}
-              onMerged={refreshMergedStatus}
-              onRemoveWorktree={handleDeleteWorktree}
-            />
-            <PRStatusPanel
-              pr={activeWorktreeId ? prStatuses[activeWorktreeId] : null}
-              hasGithubToken={hasGithubToken}
-              loading={prLoading}
-              onRefresh={fetchAllPRStatuses}
-              onConnectGithub={() => {
-                setSettingsInitialSection('github')
-                setShowSettings(true)
-              }}
-            />
+            {!activeRepoConfig?.hideMergePanel && (
+              <MergeLocallyPanel
+                pr={activeWorktreeId ? prStatuses[activeWorktreeId] : null}
+                worktree={worktrees.find((w) => w.path === activeWorktreeId) || null}
+                hasGithubToken={hasGithubToken}
+                onMerged={refreshMergedStatus}
+                onRemoveWorktree={handleDeleteWorktree}
+              />
+            )}
+            {!activeRepoConfig?.hidePrPanel && (
+              <PRStatusPanel
+                pr={activeWorktreeId ? prStatuses[activeWorktreeId] : null}
+                hasGithubToken={hasGithubToken}
+                loading={prLoading}
+                onRefresh={fetchAllPRStatuses}
+                onConnectGithub={() => {
+                  setSettingsInitialSection('github')
+                  setShowSettings(true)
+                }}
+              />
+            )}
             <BranchCommitsPanel worktreePath={activeWorktreeId} onOpenCommit={handleOpenCommit} />
             <ChangedFilesPanel
               worktreePath={activeWorktreeId}

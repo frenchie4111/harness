@@ -1224,6 +1224,47 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
               <p className="mt-2 text-[11px] text-faint">
                 Failures are logged but don't block the worktree operation. Leave blank to disable.
               </p>
+
+              {scopeRepoRoot !== null && (
+                <div className="mt-6 pt-5 border-t border-border">
+                  <label className="block text-sm text-fg-bright mb-1">Right-panel visibility</label>
+                  <p className="text-xs text-dim mb-3">
+                    Hide PR-related panels for repos that don't use Harness's PR tooling.
+                  </p>
+                  <label className="flex items-start gap-2 cursor-pointer mb-3">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 cursor-pointer"
+                      checked={!(scopedRepoCfg?.hideMergePanel ?? false)}
+                      onChange={(e) => {
+                        void updateRepoConfig(scopeRepoRoot, {
+                          hideMergePanel: e.target.checked ? null : true
+                        })
+                      }}
+                    />
+                    <div>
+                      <div className="text-sm text-fg-bright">Show merge panel</div>
+                      <div className="text-[11px] text-faint">Turn off if this repo doesn't use Harness's PR tooling.</div>
+                    </div>
+                  </label>
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 cursor-pointer"
+                      checked={!(scopedRepoCfg?.hidePrPanel ?? false)}
+                      onChange={(e) => {
+                        void updateRepoConfig(scopeRepoRoot, {
+                          hidePrPanel: e.target.checked ? null : true
+                        })
+                      }}
+                    />
+                    <div>
+                      <div className="text-sm text-fg-bright">Show PR status panel</div>
+                      <div className="text-[11px] text-faint">Turn off if this repo doesn't use Harness's PR tooling.</div>
+                    </div>
+                  </label>
+                </div>
+              )}
             </section>
 
             {/* Editor section */}
