@@ -732,14 +732,6 @@ function registerIpcHandlers(): void {
     // Skip our before-quit handler — we just did its work above.
     app.removeAllListeners('before-quit')
 
-    // Safety net only. With PTY groups nuked and before-quit removed, quit
-    // should finish in well under a second; this guards against some other
-    // unexpected hang without ever racing Squirrel's install work.
-    setTimeout(() => {
-      log('updater', 'safety-net app.exit(0) — quit took too long')
-      app.exit(0)
-    }, 30_000).unref()
-
     autoUpdater.quitAndInstall(true, true)
     return true
   })
@@ -969,24 +961,14 @@ app.on('window-all-closed', () => {
   }
 })
 
-let quitWatchdogArmed = false
 app.on('before-quit', () => {
   stopWatchingStatus?.()
   stopWatchingStatus = null
-  ptyManager.killAll()
+  // SIGKILL the whole PTY process group so zsh + claude + grandchildren
+  // all die immediately and release their libuv handles. Without this the
+  // main process can hang draining fds and Squirrel.Mac will abort an
+  // in-flight bundle swap with "original process did not end".
+  ptyManager.killAll('SIGKILL')
   sealAllActive()
   saveConfigSync(config)
-
-  // Force-exit watchdog: if a PTY child (stuck claude / shell) won't die after
-  // SIGHUP, the main process can hang indefinitely draining fds. Give the
-  // graceful path ~1.5s, then hard-exit. electron-updater's ShipIt helper has
-  // already been spawned by this point if an update is pending, so force-exit
-  // is safe — ShipIt runs independently and swaps the bundle once we're gone.
-  if (!quitWatchdogArmed) {
-    quitWatchdogArmed = true
-    setTimeout(() => {
-      log('app', 'quit watchdog fired — force-exiting')
-      app.exit(0)
-    }, 1500).unref()
-  }
 })
