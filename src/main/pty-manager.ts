@@ -96,13 +96,29 @@ export class PtyManager {
   kill(id: string, signal?: string): void {
     log('pty', `kill id=${id}${signal ? ` signal=${signal}` : ''}`)
     const instance = this.ptys.get(id)
-    if (instance) {
+    if (!instance) return
+    this.ptys.delete(id)
+
+    const pid = instance.pty.pid
+    // node-pty calls setsid() for each spawn, so the shell is its own
+    // process-group leader and PGID === pid. Signalling -pid delivers to
+    // the whole group (zsh + claude + any descendants) in one syscall,
+    // instead of leaving grandchildren attached to our libuv handles.
+    if (pid && pid > 0) {
       try {
-        instance.pty.kill(signal)
+        process.kill(-pid, (signal as NodeJS.Signals) || 'SIGKILL')
       } catch {
-        // ignore — pty may already be dead
+        // Group may already be dead.
       }
-      this.ptys.delete(id)
+    }
+    try {
+      // Belt & suspenders: close the master fd and let node-pty tear down
+      // its own handles. Without this, the read stream on the master can
+      // keep Electron's quit sequence waiting even after the descendants
+      // are gone.
+      instance.pty.kill(signal)
+    } catch {
+      // pty already dead
     }
   }
 

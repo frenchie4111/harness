@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, Menu, shell } from 'electron'
+import { app, autoUpdater as nativeAutoUpdater, BrowserWindow, ipcMain, dialog, Menu, shell } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import { existsSync, readdirSync, statSync } from 'fs'
 import { homedir } from 'os'
@@ -705,7 +705,7 @@ function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('updater:quitAndInstall', () => {
-    log('updater', 'quitAndInstall requested — cleaning up for fast exit')
+    log('updater', 'quitAndInstall requested — tearing down before handing off to Squirrel')
     try {
       stopWatchingStatus?.()
       stopWatchingStatus = null
@@ -713,6 +713,11 @@ function registerIpcHandlers(): void {
       log('updater', 'stopWatchingStatus failed', err instanceof Error ? err.message : String(err))
     }
     try {
+      // Kill the whole PTY process group (zsh + claude + any grandchildren),
+      // not just the direct shell child. Leaving descendants alive keeps
+      // libuv handles attached on our side, which makes Electron's quit
+      // sequence hang — and Squirrel.Mac then bails with "original process
+      // did not end" before ShipIt swaps the bundle.
       ptyManager.killAll('SIGKILL')
     } catch (err) {
       log('updater', 'ptyManager.killAll failed', err instanceof Error ? err.message : String(err))
@@ -724,18 +729,10 @@ function registerIpcHandlers(): void {
       log('updater', 'final persistence failed', err instanceof Error ? err.message : String(err))
     }
 
-    // Skip our before-quit handler — it's already been done above, and it can
-    // hang waiting for PTY fds to drain. We just want Squirrel to see us gone.
+    // Skip our before-quit handler — we just did its work above.
     app.removeAllListeners('before-quit')
 
-    // Hard-exit fallback. If Squirrel/Electron's quit takes longer than ~1.5s,
-    // force-kill the process so ShipIt's "target still running" check passes.
-    setTimeout(() => {
-      log('updater', 'fallback app.exit(0) — Squirrel should take over')
-      app.exit(0)
-    }, 1500)
-
-    autoUpdater.quitAndInstall(true, false)
+    autoUpdater.quitAndInstall(true, true)
     return true
   })
 
@@ -888,10 +885,23 @@ function setupAutoUpdater(): void {
     broadcastToAllWindows('updater:status', { state: 'downloaded', version: info.version })
   })
 
-  // Check on startup, then every 10 minutes
-  autoUpdater.checkForUpdatesAndNotify().catch((err) => log('updater', 'check failed', err.message))
+  // Also log native Squirrel.Mac errors. electron-updater wraps Squirrel via
+  // its own MacUpdater but doesn't surface errors from the native side, so
+  // things like "target app still running" or codesign mismatches would
+  // otherwise be invisible. These are the errors that would have diagnosed
+  // previous OTA loops in one glance.
+  if (process.platform === 'darwin') {
+    nativeAutoUpdater.on('error', (err) => {
+      log('updater', `[error] Squirrel.Mac: ${err.message}`)
+    })
+  }
+
+  // Check on startup, then every 10 minutes. We use checkForUpdates (not
+  // checkForUpdatesAndNotify) so there's no native OS notification — the
+  // renderer shows an in-app banner based on the updater:status events.
+  autoUpdater.checkForUpdates().catch((err) => log('updater', 'check failed', err.message))
   setInterval(() => {
-    autoUpdater.checkForUpdatesAndNotify().catch(() => {})
+    autoUpdater.checkForUpdates().catch(() => {})
   }, 10 * 60 * 1000)
 }
 
@@ -951,24 +961,14 @@ app.on('window-all-closed', () => {
   }
 })
 
-let quitWatchdogArmed = false
 app.on('before-quit', () => {
   stopWatchingStatus?.()
   stopWatchingStatus = null
-  ptyManager.killAll()
+  // SIGKILL the whole PTY process group so zsh + claude + grandchildren
+  // all die immediately and release their libuv handles. Without this the
+  // main process can hang draining fds and Squirrel.Mac will abort an
+  // in-flight bundle swap with "original process did not end".
+  ptyManager.killAll('SIGKILL')
   sealAllActive()
   saveConfigSync(config)
-
-  // Force-exit watchdog: if a PTY child (stuck claude / shell) won't die after
-  // SIGHUP, the main process can hang indefinitely draining fds. Give the
-  // graceful path ~1.5s, then hard-exit. electron-updater's ShipIt helper has
-  // already been spawned by this point if an update is pending, so force-exit
-  // is safe — ShipIt runs independently and swaps the bundle once we're gone.
-  if (!quitWatchdogArmed) {
-    quitWatchdogArmed = true
-    setTimeout(() => {
-      log('app', 'quit watchdog fired — force-exiting')
-      app.exit(0)
-    }, 1500).unref()
-  }
 })
