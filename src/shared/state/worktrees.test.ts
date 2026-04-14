@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   initialWorktrees,
   worktreesReducer,
+  type PendingDeletion,
   type PendingWorktree,
   type Worktree,
   type WorktreesEvent,
@@ -107,6 +108,60 @@ describe('worktreesReducer', () => {
     }
     const next = apply(start, { type: 'worktrees/pendingRemoved', payload: 'pending:a' })
     expect(next.pending.map((p) => p.id)).toEqual(['pending:b'])
+  })
+
+  it('pendingDeletionStarted appends and deduplicates by path', () => {
+    const a: PendingDeletion = {
+      path: '/tmp/wt/a',
+      repoRoot: '/tmp/repo',
+      branch: 'feature/a',
+      phase: 'running-teardown'
+    }
+    const b: PendingDeletion = { ...a, path: '/tmp/wt/b' }
+    const s1 = apply(initialWorktrees, { type: 'worktrees/pendingDeletionStarted', payload: a })
+    const s2 = apply(s1, { type: 'worktrees/pendingDeletionStarted', payload: b })
+    expect(s2.pendingDeletions.map((d) => d.path)).toEqual(['/tmp/wt/a', '/tmp/wt/b'])
+    // Re-starting the same path replaces the entry (retry behavior).
+    const s3 = apply(s2, {
+      type: 'worktrees/pendingDeletionStarted',
+      payload: { ...a, phase: 'running-teardown', error: undefined }
+    })
+    expect(s3.pendingDeletions.map((d) => d.path)).toEqual(['/tmp/wt/b', '/tmp/wt/a'])
+  })
+
+  it('pendingDeletionUpdated merges a partial patch into the matching entry', () => {
+    const start: WorktreesState = {
+      ...initialWorktrees,
+      pendingDeletions: [
+        {
+          path: '/tmp/wt/a',
+          repoRoot: '/tmp/repo',
+          branch: 'feature/a',
+          phase: 'running-teardown'
+        }
+      ]
+    }
+    const next = apply(start, {
+      type: 'worktrees/pendingDeletionUpdated',
+      payload: { path: '/tmp/wt/a', patch: { teardownLog: 'hi', phase: 'removing-worktree' } }
+    })
+    expect(next.pendingDeletions[0].phase).toBe('removing-worktree')
+    expect(next.pendingDeletions[0].teardownLog).toBe('hi')
+  })
+
+  it('pendingDeletionRemoved drops the matching entry', () => {
+    const start: WorktreesState = {
+      ...initialWorktrees,
+      pendingDeletions: [
+        { path: '/tmp/wt/a', repoRoot: '/tmp/repo', branch: 'a', phase: 'running-teardown' },
+        { path: '/tmp/wt/b', repoRoot: '/tmp/repo', branch: 'b', phase: 'running-teardown' }
+      ]
+    }
+    const next = apply(start, {
+      type: 'worktrees/pendingDeletionRemoved',
+      payload: '/tmp/wt/a'
+    })
+    expect(next.pendingDeletions.map((d) => d.path)).toEqual(['/tmp/wt/b'])
   })
 
   it('leaves unrelated slices untouched on each event', () => {

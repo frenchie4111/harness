@@ -8,10 +8,11 @@ import { Store } from './store'
 import { registerStateTransport } from './transport-electron'
 import { PRPoller } from './pr-poller'
 import { WorktreesFSM } from './worktrees-fsm'
+import { WorktreeDeletionFSM } from './worktree-deletion-fsm'
 import { PanesFSM, stripTransientTabFields } from './panes-fsm'
 import { ActivityDeriver } from './activity-deriver'
 import type { TerminalTab, WorkspacePane } from '../shared/state/terminals'
-import { listWorktrees, listBranches, continueWorktree, removeWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, readWorktreeFile, runWorktreeScript, type MergeStrategy } from './worktree'
+import { listWorktrees, listBranches, continueWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, readWorktreeFile, type MergeStrategy } from './worktree'
 import { getPRStatus, testToken, starRepo, unstarRepo, isRepoStarred } from './github'
 import { AVAILABLE_EDITORS, DEFAULT_EDITOR_ID, openInEditor } from './editor'
 import { setSecret, hasSecret, deleteSecret } from './secrets'
@@ -191,6 +192,11 @@ const worktreesFSM = new WorktreesFSM(store, {
   }
 })
 
+const worktreeDeletionFSM = new WorktreeDeletionFSM(store, {
+  getGlobalTeardownCmd: () => config.worktreeTeardownCommand || '',
+  worktreesFSM
+})
+
 const activityDeriver = new ActivityDeriver(store)
 
 /** Install Claude Code hooks into any worktree that's missing them, but only
@@ -343,7 +349,9 @@ function registerIpcHandlers(): void {
     removeMeta?: { prNumber?: number; prState?: PRState }
   ) => {
     if (!repoRoot) throw new Error('No repo root provided')
-    // Drop any locally-merged flag for the branch at this path
+    // Drop any locally-merged flag for the branch at this path. We still
+    // need the worktree record for its branch name *before* kicking off
+    // the async deletion.
     const trees = await listWorktrees(repoRoot)
     const wt = trees.find((t) => t.path === path)
     if (wt && config.locallyMerged && wt.branch && config.locallyMerged[wt.branch]) {
@@ -358,18 +366,22 @@ function registerIpcHandlers(): void {
       prNumber: removeMeta?.prNumber,
       prState: removeMeta?.prState
     })
-    const teardownRepoCfg = loadRepoConfig(repoRoot)
-    const teardownCmd = teardownRepoCfg.teardownCommand || config.worktreeTeardownCommand || ''
-    if (teardownCmd) {
-      await runWorktreeScript('teardown', teardownCmd, {
-        worktreePath: path,
-        branch: wt?.branch || '',
-        repoRoot
-      })
-    }
-    const result = await removeWorktree(repoRoot, path, force)
-    void worktreesFSM.refreshList()
-    return result
+    // Fire-and-forget: the WorktreeDeletionFSM runs the teardown script
+    // and git worktree remove in the background, streaming progress
+    // through the store. Returns immediately so the renderer can animate
+    // the deletion card instead of freezing on the row.
+    worktreeDeletionFSM.enqueue({
+      repoRoot,
+      path,
+      branch: wt?.branch || '',
+      force
+    })
+    return { queued: true }
+  })
+
+  ipcMain.handle('worktree:dismissPendingDeletion', (_, path: string) => {
+    worktreeDeletionFSM.dismiss(path)
+    return true
   })
 
   ipcMain.handle('worktree:dir', async (_, repoRoot: string) => {
