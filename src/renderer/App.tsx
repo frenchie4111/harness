@@ -10,6 +10,7 @@ import { Sidebar } from './components/Sidebar'
 import { ResizeHandle } from './components/ResizeHandle'
 import { NewWorktreeScreen } from './components/NewWorktreeScreen'
 import { CreatingWorktreeScreen } from './components/CreatingWorktreeScreen'
+import { DeletingWorktreeScreen } from './components/DeletingWorktreeScreen'
 import { QuestCard } from './components/QuestCard'
 import { WorkspaceView } from './components/WorkspaceView'
 import { ChangedFilesPanel } from './components/ChangedFilesPanel'
@@ -37,6 +38,12 @@ export default function App(): JSX.Element {
   const wtState = useWorktrees()
   const worktrees = wtState.list
   const pendingWorktrees = wtState.pending
+  const pendingDeletions = wtState.pendingDeletions ?? []
+  const pendingDeletionByPath = useMemo(() => {
+    const m: Record<string, (typeof pendingDeletions)[number]> = {}
+    for (const d of pendingDeletions) m[d.path] = d
+    return m
+  }, [pendingDeletions])
   const worktreeRepoByPath = useMemo(() => {
     const m: Record<string, string> = {}
     for (const w of worktrees) m[w.path] = w.repoRoot
@@ -317,6 +324,21 @@ const setQuestStep = useCallback((next: QuestStep) => {
     fetchPRStatusIfStale(activeWorktreeId)
   }, [activeWorktreeId, fetchPRStatusIfStale])
 
+  // If the active id points at something that no longer exists — a
+  // finished deletion, a dismissed pending creation, a stale focus after
+  // a refresh — route focus to a neighbor so the center pane doesn't
+  // collapse into an empty region.
+  useEffect(() => {
+    if (!activeWorktreeId) return
+    if (isPendingId(activeWorktreeId)) {
+      if (pendingWorktrees.some((p) => p.id === activeWorktreeId)) return
+    } else {
+      if (worktrees.some((w) => w.path === activeWorktreeId)) return
+      if (pendingDeletions.some((d) => d.path === activeWorktreeId)) return
+    }
+    setActiveWorktreeId(worktrees[0]?.path ?? null)
+  }, [activeWorktreeId, worktrees, pendingWorktrees, pendingDeletions])
+
   const handleAcceptHooks = useCallback(() => {
     void window.api.acceptHooks()
   }, [])
@@ -347,7 +369,8 @@ const setQuestStep = useCallback((next: QuestStep) => {
     handleContinuePendingWorktree,
     handleContinueWorktree,
     handleDeleteWorktree,
-    handleBulkDeleteWorktrees
+    handleBulkDeleteWorktrees,
+    handleDismissPendingDeletion
   } = useWorktreeHandlers({
     worktrees,
     pendingWorktrees,
@@ -584,6 +607,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
           <Sidebar
             worktrees={worktrees}
             pendingWorktrees={pendingWorktrees}
+            pendingDeletions={pendingDeletions}
             activeWorktreeId={activeWorktreeId}
             statuses={worktreeStatuses}
             pendingTools={worktreePendingTools}
@@ -632,7 +656,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
         {worktrees.map((wt) => {
           const paneList = panes[wt.path]
           if (!paneList || paneList.length === 0) return null
-          const isVisible = !showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && wt.path === activeWorktreeId
+          const isVisible = !showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && wt.path === activeWorktreeId && !pendingDeletionByPath[wt.path]
           return (
             <div
               key={wt.path}
@@ -730,6 +754,12 @@ const setQuestStep = useCallback((next: QuestStep) => {
             />
           )
         })()}
+        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && activeWorktreeId && pendingDeletionByPath[activeWorktreeId] && (
+          <DeletingWorktreeScreen
+            deletion={pendingDeletionByPath[activeWorktreeId]}
+            onDismiss={handleDismissPendingDeletion}
+          />
+        )}
         <QuestCard
           step={questStep}
           onDismiss={() => setQuestStep('done')}

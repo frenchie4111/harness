@@ -180,18 +180,19 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
         return next
       })
 
-      // Force remove if dirty (user already confirmed), normal remove otherwise
+      // Fire-and-forget: the main-side WorktreeDeletionFSM streams phase +
+      // teardown output through the store. We route focus off the deleted
+      // path immediately so the neighbor is selectable while deletion runs
+      // in the background.
       const pr = prStatuses[path]
       const repoRoot = worktreeRepoByPath[path]
       if (!repoRoot) return
-      await window.api.removeWorktree(
+      void window.api.removeWorktree(
         repoRoot,
         path,
         dirty,
         pr ? { prNumber: pr.number, prState: pr.state } : undefined
       )
-      // Main's worktree:remove handler calls worktreesFSM.refreshList(),
-      // which will dispatch listChanged. Switch focus if necessary.
       if (path === activeWorktreeId) {
         const next = worktrees.find((w) => w.path !== path)
         setActiveWorktreeId(next?.path ?? null)
@@ -208,9 +209,11 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
     ]
   )
 
-  // Bulk delete used by the Cleanup screen. Skips per-path confirmation — the
-  // Cleanup UI owns the single confirm — and removes each worktree sequentially
-  // so git operations don't race each other.
+  // Bulk delete used by the Cleanup screen. Fires all deletions in parallel
+  // — each one becomes its own pending-deletion entry and the main-side FSM
+  // handles the lifecycle independently. The `done` progress callback fires
+  // immediately after queueing; the user sees the actual teardown progress
+  // via the per-worktree DeletingWorktreeScreen cards.
   const handleBulkDeleteWorktrees = useCallback(
     async (
       paths: string[],
@@ -230,24 +233,18 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
           delete next[path]
           return next
         })
-        try {
-          const pr = prStatuses[path]
-          const repoRoot = worktreeRepoByPath[path]
-          if (repoRoot) {
-            await window.api.removeWorktree(
-              repoRoot,
-              path,
-              force,
-              pr ? { prNumber: pr.number, prState: pr.state } : undefined
-            )
-          }
-        } catch (err) {
-          console.error('Failed to remove worktree', path, err)
+        const pr = prStatuses[path]
+        const repoRoot = worktreeRepoByPath[path]
+        if (repoRoot) {
+          void window.api.removeWorktree(
+            repoRoot,
+            path,
+            force,
+            pr ? { prNumber: pr.number, prState: pr.state } : undefined
+          )
         }
         onProgress?.(path, 'done')
       }
-      // Main dispatched listChanged on each removeWorktree. Route focus off
-      // the deleted set if necessary.
       if (activeWorktreeId && paths.includes(activeWorktreeId)) {
         const next = worktrees.find((w) => !paths.includes(w.path))
         setActiveWorktreeId(next?.path ?? null)
@@ -264,7 +261,20 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
     ]
   )
 
+  const handleDismissPendingDeletion = useCallback(
+    (path: string) => {
+      void window.api.dismissPendingDeletion(path)
+      setActiveWorktreeId((prev) => {
+        if (prev !== path) return prev
+        const next = worktrees.find((w) => w.path !== path)
+        return next?.path ?? null
+      })
+    },
+    [worktrees, setActiveWorktreeId]
+  )
+
   return {
+    handleDismissPendingDeletion,
     handleAddRepo,
     handleRemoveRepo,
     handleRefreshWorktrees,

@@ -35,6 +35,8 @@ contextBridge.exposeInMainWorld('api', {
     force?: boolean,
     removeMeta?: { prNumber?: number; prState?: 'open' | 'draft' | 'merged' | 'closed' }
   ) => ipcRenderer.invoke('worktree:remove', repoRoot, path, force, removeMeta),
+  dismissPendingDeletion: (path: string) =>
+    ipcRenderer.invoke('worktree:dismissPendingDeletion', path),
   getWorktreeDir: (repoRoot: string) => ipcRenderer.invoke('worktree:dir', repoRoot),
   // Repos (multi-repo session state)
   listRepos: () => ipcRenderer.invoke('repo:list'),

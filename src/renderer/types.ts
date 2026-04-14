@@ -1,8 +1,8 @@
 import type { StateEvent, StateSnapshot } from '../shared/state'
 export type { StateEvent, StateSnapshot }
 
-import type { Worktree, PendingWorktree } from '../shared/state/worktrees'
-export type { Worktree, PendingWorktree }
+import type { Worktree, PendingWorktree, PendingDeletion } from '../shared/state/worktrees'
+export type { Worktree, PendingWorktree, PendingDeletion }
 
 import type { RepoConfig } from '../shared/state/repo-configs'
 export type { RepoConfig }
@@ -130,7 +130,8 @@ export interface ElectronAPI {
     path: string,
     force?: boolean,
     removeMeta?: { prNumber?: number; prState?: PRStatus['state'] }
-  ): Promise<void>
+  ): Promise<{ queued: true }>
+  dismissPendingDeletion(path: string): Promise<boolean>
   getWorktreeDir(repoRoot: string): Promise<string>
   listRepos(): Promise<string[]>
   addRepo(): Promise<string | null>

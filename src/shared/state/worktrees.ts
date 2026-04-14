@@ -34,11 +34,35 @@ export interface PendingWorktree {
   teleportSessionId?: string
 }
 
+export type PendingDeletionPhase =
+  | 'running-teardown'
+  | 'removing-worktree'
+  | 'failed'
+
+export interface PendingDeletion {
+  /** The worktree path being deleted — used as the key. */
+  path: string
+  repoRoot: string
+  branch: string
+  phase: PendingDeletionPhase
+  /** Accumulated teardown script output. Undefined when the repo has no
+   * teardown command configured — the renderer uses that to hide the log
+   * panel entirely. */
+  teardownLog?: string
+  /** Teardown script exit code once it has finished. */
+  teardownExitCode?: number
+  error?: string
+}
+
 export interface WorktreesState {
   /** Flat list of worktrees across every known repo. */
   list: Worktree[]
   repoRoots: string[]
   pending: PendingWorktree[]
+  /** In-flight deletions, keyed by worktree path. Lives in the store so
+   * the UI can animate + stream teardown output and the FSM keeps running
+   * if the user navigates away. */
+  pendingDeletions: PendingDeletion[]
 }
 
 export type WorktreesEvent =
@@ -50,11 +74,18 @@ export type WorktreesEvent =
       payload: { id: string; patch: Partial<PendingWorktree> }
     }
   | { type: 'worktrees/pendingRemoved'; payload: string }
+  | { type: 'worktrees/pendingDeletionStarted'; payload: PendingDeletion }
+  | {
+      type: 'worktrees/pendingDeletionUpdated'
+      payload: { path: string; patch: Partial<PendingDeletion> }
+    }
+  | { type: 'worktrees/pendingDeletionRemoved'; payload: string }
 
 export const initialWorktrees: WorktreesState = {
   list: [],
   repoRoots: [],
-  pending: []
+  pending: [],
+  pendingDeletions: []
 }
 
 export function worktreesReducer(
@@ -77,6 +108,26 @@ export function worktreesReducer(
       }
     case 'worktrees/pendingRemoved':
       return { ...state, pending: state.pending.filter((p) => p.id !== event.payload) }
+    case 'worktrees/pendingDeletionStarted':
+      return {
+        ...state,
+        pendingDeletions: [
+          ...state.pendingDeletions.filter((d) => d.path !== event.payload.path),
+          event.payload
+        ]
+      }
+    case 'worktrees/pendingDeletionUpdated':
+      return {
+        ...state,
+        pendingDeletions: state.pendingDeletions.map((d) =>
+          d.path === event.payload.path ? { ...d, ...event.payload.patch } : d
+        )
+      }
+    case 'worktrees/pendingDeletionRemoved':
+      return {
+        ...state,
+        pendingDeletions: state.pendingDeletions.filter((d) => d.path !== event.payload)
+      }
     default: {
       const _exhaustive: never = event
       void _exhaustive
