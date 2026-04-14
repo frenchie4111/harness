@@ -324,6 +324,21 @@ const setQuestStep = useCallback((next: QuestStep) => {
     fetchPRStatusIfStale(activeWorktreeId)
   }, [activeWorktreeId, fetchPRStatusIfStale])
 
+  // If the active id points at something that no longer exists — a
+  // finished deletion, a dismissed pending creation, a stale focus after
+  // a refresh — route focus to a neighbor so the center pane doesn't
+  // collapse into an empty region.
+  useEffect(() => {
+    if (!activeWorktreeId) return
+    if (isPendingId(activeWorktreeId)) {
+      if (pendingWorktrees.some((p) => p.id === activeWorktreeId)) return
+    } else {
+      if (worktrees.some((w) => w.path === activeWorktreeId)) return
+      if (pendingDeletions.some((d) => d.path === activeWorktreeId)) return
+    }
+    setActiveWorktreeId(worktrees[0]?.path ?? null)
+  }, [activeWorktreeId, worktrees, pendingWorktrees, pendingDeletions])
+
   const handleAcceptHooks = useCallback(() => {
     void window.api.acceptHooks()
   }, [])
