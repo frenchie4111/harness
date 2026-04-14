@@ -143,15 +143,17 @@ export function TerminalPanel({
     <div ref={setPaneDropRef} className="flex-1 flex flex-col min-w-0 bg-app">
       {/* Tab bar */}
       <div className="drag-region flex items-center border-b border-border bg-panel h-10 shrink-0">
-        <div
-          className="no-drag shrink-0 flex items-baseline gap-1.5 px-3 h-full text-xs whitespace-nowrap"
-          title={`${repoLabel} / ${branch}`}
-          style={{ alignSelf: 'stretch', display: 'flex', alignItems: 'center' }}
-        >
-          <span className={`font-medium ${repoNameColor(repoLabel)}`}>{repoLabel}</span>
-          <span className="text-faint">/</span>
-          <span className="text-fg-bright font-medium">{branch}</span>
-        </div>
+        {repoLabel && (
+          <div
+            className="no-drag shrink-0 flex items-baseline gap-1.5 px-3 h-full text-xs whitespace-nowrap"
+            title={`${repoLabel} / ${branch}`}
+            style={{ alignSelf: 'stretch', display: 'flex', alignItems: 'center' }}
+          >
+            <span className={`font-medium ${repoNameColor(repoLabel)}`}>{repoLabel}</span>
+            <span className="text-faint">/</span>
+            <span className="text-fg-bright font-medium">{branch}</span>
+          </div>
+        )}
         <div className="flex items-center h-full overflow-x-auto scrollbar-hidden pl-2 flex-1 min-w-0">
           <SortableContext items={pane.tabs.map((t) => t.id)} strategy={horizontalListSortingStrategy}>
             {pane.tabs.map((tab) => (
