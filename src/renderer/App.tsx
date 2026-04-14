@@ -1051,14 +1051,13 @@ const setQuestStep = useCallback((next: QuestStep) => {
       window.api.killTerminal(tabId)
       window.api.clearTerminalHistory(tabId)
       const newId = `${makeTerminalId('claude', worktreePath)}-${Date.now()}`
-      const newSessionId = crypto.randomUUID()
       setPanes((prev) => {
         const list = prev[worktreePath] || []
         const nextList = list.map((pane) => {
           if (!pane.tabs.some((t) => t.id === tabId)) return pane
           const tabs = pane.tabs.map((t) =>
             t.id === tabId && t.type === 'claude'
-              ? { ...t, id: newId, sessionId: newSessionId }
+              ? { ...t, id: newId }
               : t
           )
           const activeTabId = pane.activeTabId === tabId ? newId : pane.activeTabId
