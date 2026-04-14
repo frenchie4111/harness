@@ -38,7 +38,7 @@ export default function App(): JSX.Element {
   const wtState = useWorktrees()
   const worktrees = wtState.list
   const pendingWorktrees = wtState.pending
-  const pendingDeletions = wtState.pendingDeletions
+  const pendingDeletions = wtState.pendingDeletions ?? []
   const pendingDeletionByPath = useMemo(() => {
     const m: Record<string, (typeof pendingDeletions)[number]> = {}
     for (const d of pendingDeletions) m[d.path] = d
