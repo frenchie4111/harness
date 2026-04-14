@@ -1,58 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { AlertCircle, ChevronDown, ChevronRight, Terminal as TerminalIcon } from 'lucide-react'
 import type { PendingWorktree } from '../types'
+import { PendingLoader, ScriptLogViewer } from './PendingScreenParts'
 
 interface CreatingWorktreeScreenProps {
   pending: PendingWorktree
   onRetry: (id: string) => void
   onDismiss: (id: string) => void
   onContinue: (id: string) => void
-}
-
-function Loader(): JSX.Element {
-  return (
-    <div className="claude-loader" aria-label="Creating worktree">
-      <div className="claude-loader-halo" />
-      <div className="claude-loader-pulser">
-        <div className="claude-loader-rotator">
-          <svg viewBox="0 0 56 56" width="56" height="56">
-            <defs>
-              <linearGradient id="creatingWtGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#f59e0b" />
-                <stop offset="55%" stopColor="#ef4444" />
-                <stop offset="100%" stopColor="#a855f7" />
-              </linearGradient>
-            </defs>
-            <g fill="url(#creatingWtGrad)" transform="translate(28 28)">
-              {[0, 45, 90, 135].map((deg) => (
-                <path
-                  key={deg}
-                  d="M 0 -24 Q 3 0 0 24 Q -3 0 0 -24 Z"
-                  transform={`rotate(${deg})`}
-                />
-              ))}
-            </g>
-          </svg>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function SetupLogViewer({ log }: { log: string }): JSX.Element {
-  const ref = useRef<HTMLPreElement>(null)
-  useEffect(() => {
-    const el = ref.current
-    if (el) el.scrollTop = el.scrollHeight
-  }, [log])
-  return (
-    <pre
-      ref={ref}
-      className="text-[11px] leading-snug text-muted bg-app border border-border rounded p-3 whitespace-pre-wrap break-words max-h-72 overflow-auto font-mono"
-    >
-      {log || <span className="text-faint">Waiting for output…</span>}
-    </pre>
-  )
 }
 
 export function CreatingWorktreeScreen({
@@ -115,7 +70,7 @@ export function CreatingWorktreeScreen({
             created successfully, but the setup command didn't exit cleanly. You
             can continue into the worktree or dismiss this screen.
           </p>
-          <SetupLogViewer log={pending.setupLog || ''} />
+          <ScriptLogViewer log={pending.setupLog || ''} />
           <div className="flex gap-2 justify-end mt-4">
             <button
               onClick={() => onDismiss(pending.id)}
@@ -139,7 +94,7 @@ export function CreatingWorktreeScreen({
 
   return (
     <div className="flex-1 min-w-0 flex flex-col items-center justify-center gap-4 p-8">
-      <Loader />
+      <PendingLoader label="Creating worktree" />
       <div className="text-sm text-muted text-center">
         {inSetup ? (
           <>
@@ -161,7 +116,7 @@ export function CreatingWorktreeScreen({
             <TerminalIcon size={12} />
             {logsOpen ? 'Hide setup logs' : 'Show setup logs'}
           </button>
-          {logsOpen && <SetupLogViewer log={pending.setupLog || ''} />}
+          {logsOpen && <ScriptLogViewer log={pending.setupLog || ''} />}
         </div>
       )}
     </div>

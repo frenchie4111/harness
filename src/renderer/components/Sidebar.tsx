@@ -3,7 +3,7 @@ import { ChevronDown, ChevronRight, Plus, RefreshCw, FolderOpen, Loader2, Settin
 import { Tooltip } from './Tooltip'
 import { HotkeyBadge } from './HotkeyBadge'
 import { useMetaHeld } from '../hooks/useMetaHeld'
-import type { Worktree, PtyStatus, PendingTool, PRStatus, PendingWorktree } from '../types'
+import type { Worktree, PtyStatus, PendingTool, PRStatus, PendingWorktree, PendingDeletion } from '../types'
 import type { GroupKey } from '../worktree-sort'
 import { groupWorktrees } from '../worktree-sort'
 import { WorktreeTab } from './WorktreeTab'
@@ -12,6 +12,7 @@ import { repoNameColor } from './RepoIcon'
 interface SidebarProps {
   worktrees: Worktree[]
   pendingWorktrees: PendingWorktree[]
+  pendingDeletions: PendingDeletion[]
   activeWorktreeId: string | null
   statuses: Record<string, PtyStatus>
   pendingTools: Record<string, PendingTool | null>
@@ -48,6 +49,7 @@ interface SidebarProps {
 export function Sidebar({
   worktrees,
   pendingWorktrees,
+  pendingDeletions,
   activeWorktreeId,
   statuses,
   pendingTools,
@@ -80,6 +82,11 @@ export function Sidebar({
   onToggleUnifiedRepos
 }: SidebarProps): JSX.Element {
   const metaHeld = useMetaHeld()
+  const deletingPaths = useMemo(() => {
+    const s = new Set<string>()
+    for (const d of pendingDeletions) s.add(d.path)
+    return s
+  }, [pendingDeletions])
   const [continueTarget, setContinueTarget] = useState<{ path: string; oldBranch: string } | null>(null)
   const [continueBranchName, setContinueBranchName] = useState('')
   const [continuing, setContinuing] = useState(false)
@@ -286,9 +293,10 @@ export function Sidebar({
                   isMerged={group.key === 'merged'}
                   repoLabel={showRepoLabelsOnTabs ? repoLabelFor(wt.repoRoot) : undefined}
                   cmdOrdinal={cmdOrdinals.get(wt.path)}
+                  deleting={deletingPaths.has(wt.path)}
                   onClick={() => onSelectWorktree(wt.path)}
-                  onDelete={wt.isMain ? undefined : () => onDeleteWorktree(wt.path)}
-                  onContinue={wt.isMain ? undefined : () => beginContinue(wt.path, wt.branch)}
+                  onDelete={wt.isMain || deletingPaths.has(wt.path) ? undefined : () => onDeleteWorktree(wt.path)}
+                  onContinue={wt.isMain || deletingPaths.has(wt.path) ? undefined : () => beginContinue(wt.path, wt.branch)}
                 />
                 {continueTarget?.path === wt.path && (
                   <div className="border-y-2 border-accent bg-panel-raised p-2.5 shadow-inner">

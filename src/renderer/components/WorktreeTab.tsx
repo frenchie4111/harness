@@ -21,6 +21,9 @@ interface WorktreeTabProps {
   /** 1-based position in the Cmd+1..9 switch order. Undefined if this
    *  worktree isn't bound to a numeric switch hotkey. */
   cmdOrdinal?: number
+  /** When true, the worktree is in the middle of being deleted — show an
+   * inert spinner + dim the row, hide action buttons. */
+  deleting?: boolean
   onClick: () => void
   onDelete?: () => void
   onContinue?: () => void
@@ -56,7 +59,7 @@ const PR_STATE_COLOR: Record<string, string> = {
   closed: 'text-danger'
 }
 
-export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActive, prStatus, isMerged, repoLabel, cmdOrdinal, onClick, onDelete, onContinue }: WorktreeTabProps): JSX.Element {
+export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActive, prStatus, isMerged, repoLabel, cmdOrdinal, deleting, onClick, onDelete, onContinue }: WorktreeTabProps): JSX.Element {
   const metaHeld = useMetaHeld()
   const displayStatus: PtyStatus | 'merged' = isMerged ? 'merged' : status
   const showPendingTool = displayStatus === 'needs-approval' && pendingTool
@@ -82,15 +85,25 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
     <div
       onClick={onClick}
       className={`group w-full text-left px-3 py-2 flex items-center gap-2 transition-colors cursor-pointer ${
+        deleting ? 'opacity-60 italic' : ''
+      } ${
         isActive
           ? 'bg-surface text-fg-bright'
           : 'text-muted hover:bg-panel-raised hover:text-fg'
       }`}
     >
-      <span
-        className={`w-2 h-2 rounded-full shrink-0 ${STATUS_COLORS[displayStatus]}`}
-        title={STATUS_LABELS[displayStatus]}
-      />
+      {deleting ? (
+        <Loader2
+          size={11}
+          className="animate-spin text-danger shrink-0"
+          aria-label="Deleting worktree"
+        />
+      ) : (
+        <span
+          className={`w-2 h-2 rounded-full shrink-0 ${STATUS_COLORS[displayStatus]}`}
+          title={STATUS_LABELS[displayStatus]}
+        />
+      )}
       {shellActive && (
         <Loader2
           size={11}
