@@ -139,16 +139,6 @@ const prPoller = new PRPoller(store, {
 
 ptyManager.setStore(store)
 
-const worktreesFSM = new WorktreesFSM(store, {
-  getRepoRoots: () => config.repoRoots || [],
-  getWorktreeSetupCmd: () => config.worktreeSetupCommand || '',
-  getWorktreeBaseMode: () => config.worktreeBase || DEFAULT_WORKTREE_BASE,
-  onWorktreeCreated: ({ createdPath, initialPrompt, teleportSessionId }) => {
-    void prPoller.refreshAll()
-    panesFSM.ensureInitialized(createdPath, { initialPrompt, teleportSessionId })
-  }
-})
-
 // Persist panes back to config in the existing nested-by-repo shape, so the
 // on-disk format stays compatible with persistence-migrations. Strip
 // transient (in-memory only) tab fields like initialPrompt before saving.
@@ -188,6 +178,9 @@ function persistPanes(panes: Record<string, WorkspacePane[]>): void {
   saveConfig(config)
 }
 
+// Construct PanesFSM before WorktreesFSM so the latter can call
+// panesFSM.ensureInitialized directly from its onWorktreeCreated callback
+// without TDZ-ing on the const.
 const panesFSM = new PanesFSM(store, {
   persist: persistPanes,
   getRepoRootForWorktree: (wtPath) => {
@@ -195,6 +188,16 @@ const panesFSM = new PanesFSM(store, {
     return wt?.repoRoot
   },
   getLatestClaudeSessionId: async (wtPath) => latestClaudeSessionId(wtPath)
+})
+
+const worktreesFSM = new WorktreesFSM(store, {
+  getRepoRoots: () => config.repoRoots || [],
+  getWorktreeSetupCmd: () => config.worktreeSetupCommand || '',
+  getWorktreeBaseMode: () => config.worktreeBase || DEFAULT_WORKTREE_BASE,
+  onWorktreeCreated: ({ createdPath, initialPrompt, teleportSessionId }) => {
+    void prPoller.refreshAll()
+    panesFSM.ensureInitialized(createdPath, { initialPrompt, teleportSessionId })
+  }
 })
 
 const activityDeriver = new ActivityDeriver(store)
@@ -392,7 +395,6 @@ function registerIpcHandlers(): void {
         payload: { repoRoot, config: loadRepoConfig(repoRoot) }
       })
       void worktreesFSM.refreshList()
-      broadcastToAllWindows('repo:listChanged', config.repoRoots)
     }
     return repoRoot
   })
@@ -410,7 +412,6 @@ function registerIpcHandlers(): void {
     worktreesFSM.dispatchRepos([...config.repoRoots])
     store.dispatch({ type: 'repoConfigs/removed', payload: repoRoot })
     void worktreesFSM.refreshList()
-    broadcastToAllWindows('repo:listChanged', config.repoRoots)
     return true
   })
 
@@ -509,11 +510,8 @@ function registerIpcHandlers(): void {
   // inlined in PRPoller.refreshAll, which runs across all roots in one pass
   // and dispatches prs/mergedChanged.
 
-  // Config
-  ipcMain.handle('config:getHotkeys', () => {
-    return store.getSnapshot().state.settings.hotkeys
-  })
-
+  // Config — the renderer reads via useSettings() etc.; only mutation
+  // handlers and a few constant-accessors live on the IPC.
   ipcMain.handle('config:setHotkeys', (_, hotkeys: Record<string, string>) => {
     config.hotkeys = hotkeys
     saveConfig(config)
@@ -526,10 +524,6 @@ function registerIpcHandlers(): void {
     saveConfig(config)
     store.dispatch({ type: 'settings/hotkeysChanged', payload: null })
     return true
-  })
-
-  ipcMain.handle('config:getClaudeCommand', () => {
-    return store.getSnapshot().state.settings.claudeCommand
   })
 
   ipcMain.handle('config:setClaudeCommand', (_, command: string) => {
@@ -551,15 +545,6 @@ function registerIpcHandlers(): void {
     return DEFAULT_CLAUDE_COMMAND
   })
 
-  // repoConfig:get is kept as a one-shot read for cases where a caller
-  // needs the freshest value (boot-time hydration walks all repos and
-  // dispatches repoConfigs/loaded once). Most consumers should read via
-  // useRepoConfigs() in the renderer.
-  ipcMain.handle('repoConfig:get', (_, repoRoot: string) => {
-    if (!repoRoot) return {}
-    return loadRepoConfig(repoRoot)
-  })
-
   ipcMain.handle('repoConfig:set', (_, repoRoot: string, next: Record<string, unknown>) => {
     if (!repoRoot) return null
     const current = loadRepoConfig(repoRoot)
@@ -579,10 +564,6 @@ function registerIpcHandlers(): void {
     return saved
   })
 
-  ipcMain.handle('config:getWorktreeScripts', () => {
-    return store.getSnapshot().state.settings.worktreeScripts
-  })
-
   ipcMain.handle(
     'config:setWorktreeScripts',
     (_, scripts: { setup?: string; teardown?: string }) => {
@@ -600,10 +581,6 @@ function registerIpcHandlers(): void {
       return true
     }
   )
-
-  ipcMain.handle('config:getClaudeEnvVars', () => {
-    return store.getSnapshot().state.settings.claudeEnvVars
-  })
 
   ipcMain.handle('config:setClaudeEnvVars', (_, vars: Record<string, string>) => {
     const cleaned: Record<string, string> = {}
@@ -626,10 +603,6 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  ipcMain.handle('config:getHarnessMcpEnabled', () => {
-    return store.getSnapshot().state.settings.harnessMcpEnabled
-  })
-
   ipcMain.handle('config:setHarnessMcpEnabled', (_, enabled: boolean) => {
     if (enabled) {
       delete config.harnessMcpEnabled
@@ -650,10 +623,6 @@ function registerIpcHandlers(): void {
     return writeMcpConfigForTerminal(terminalId)
   })
 
-  ipcMain.handle('config:getNameClaudeSessions', () => {
-    return store.getSnapshot().state.settings.nameClaudeSessions
-  })
-
   ipcMain.handle('config:setNameClaudeSessions', (_, enabled: boolean) => {
     if (enabled) {
       config.nameClaudeSessions = true
@@ -667,10 +636,6 @@ function registerIpcHandlers(): void {
     })
     return true
   })
-  ipcMain.handle('config:getTheme', () => {
-    return store.getSnapshot().state.settings.theme
-  })
-
   ipcMain.handle('config:setTheme', (_, theme: string) => {
     if (!AVAILABLE_THEMES.includes(theme as (typeof AVAILABLE_THEMES)[number])) {
       return false
@@ -683,10 +648,6 @@ function registerIpcHandlers(): void {
     saveConfig(config)
     store.dispatch({ type: 'settings/themeChanged', payload: theme })
     return true
-  })
-
-  ipcMain.handle('config:getTerminalFontFamily', () => {
-    return store.getSnapshot().state.settings.terminalFontFamily
   })
 
   ipcMain.handle('config:setTerminalFontFamily', (_, fontFamily: string) => {
@@ -706,10 +667,6 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('config:getDefaultTerminalFontFamily', () => DEFAULT_TERMINAL_FONT_FAMILY)
 
-  ipcMain.handle('config:getTerminalFontSize', () => {
-    return store.getSnapshot().state.settings.terminalFontSize
-  })
-
   ipcMain.handle('config:setTerminalFontSize', (_, fontSize: number) => {
     const n = Number(fontSize)
     if (!Number.isFinite(n) || n < 8 || n > 48) return false
@@ -725,10 +682,6 @@ function registerIpcHandlers(): void {
       payload: config.terminalFontSize || DEFAULT_TERMINAL_FONT_SIZE
     })
     return true
-  })
-
-  ipcMain.handle('config:getEditor', () => {
-    return store.getSnapshot().state.settings.editor
   })
 
   ipcMain.handle('config:setEditor', (_, editorId: string) => {
@@ -752,10 +705,6 @@ function registerIpcHandlers(): void {
     return openInEditor(editorId, worktreePath, filePath)
   })
 
-  ipcMain.handle('config:getWorktreeBase', () => {
-    return store.getSnapshot().state.settings.worktreeBase
-  })
-
   ipcMain.handle('config:setWorktreeBase', (_, mode: 'remote' | 'local') => {
     if (mode !== 'remote' && mode !== 'local') return false
     if (mode === DEFAULT_WORKTREE_BASE) {
@@ -766,10 +715,6 @@ function registerIpcHandlers(): void {
     saveConfig(config)
     store.dispatch({ type: 'settings/worktreeBaseChanged', payload: mode })
     return true
-  })
-
-  ipcMain.handle('config:getMergeStrategy', () => {
-    return store.getSnapshot().state.settings.mergeStrategy
   })
 
   ipcMain.handle(
@@ -791,10 +736,6 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('config:getAvailableThemes', () => {
     return AVAILABLE_THEMES
-  })
-
-  ipcMain.handle('config:getOnboarding', () => {
-    return { quest: store.getSnapshot().state.onboarding.quest }
   })
 
   ipcMain.handle('config:setOnboardingQuest', (_, quest: string) => {

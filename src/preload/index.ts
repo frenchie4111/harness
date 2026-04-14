@@ -40,11 +40,6 @@ contextBridge.exposeInMainWorld('api', {
   listRepos: () => ipcRenderer.invoke('repo:list'),
   addRepo: () => ipcRenderer.invoke('repo:add'),
   removeRepo: (repoRoot: string) => ipcRenderer.invoke('repo:remove', repoRoot),
-  onReposChanged: (callback: (repos: string[]) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, repos: string[]): void => callback(repos)
-    ipcRenderer.on('repo:listChanged', handler)
-    return () => ipcRenderer.removeListener('repo:listChanged', handler)
-  },
 
   // All files (tracked + untracked, respecting .gitignore)
   listAllFiles: (worktreePath: string) => ipcRenderer.invoke('worktree:listFiles', worktreePath),
@@ -76,22 +71,18 @@ contextBridge.exposeInMainWorld('api', {
   refreshPRsOneIfStale: (worktreePath: string) =>
     ipcRenderer.invoke('prs:refreshOneIfStale', worktreePath),
 
-  // Config
-  getHotkeyOverrides: () => ipcRenderer.invoke('config:getHotkeys'),
+  // Config — getters for store-backed settings are gone. Renderer reads
+  // via useSettings() / useRepoConfigs() / useOnboarding() etc. The set*
+  // methods stay because they're how the renderer asks main to mutate.
   setHotkeyOverrides: (hotkeys: Record<string, string>) => ipcRenderer.invoke('config:setHotkeys', hotkeys),
   resetHotkeyOverrides: () => ipcRenderer.invoke('config:resetHotkeys'),
-  getClaudeCommand: () => ipcRenderer.invoke('config:getClaudeCommand'),
   setClaudeCommand: (command: string) => ipcRenderer.invoke('config:setClaudeCommand', command),
   getDefaultClaudeCommand: () => ipcRenderer.invoke('config:getDefaultClaudeCommand'),
-  getWorktreeScripts: () => ipcRenderer.invoke('config:getWorktreeScripts'),
   setWorktreeScripts: (scripts: { setup?: string; teardown?: string }) =>
     ipcRenderer.invoke('config:setWorktreeScripts', scripts),
-  getRepoConfig: (repoRoot: string) => ipcRenderer.invoke('repoConfig:get', repoRoot),
   setRepoConfig: (repoRoot: string, next: Record<string, unknown>) =>
     ipcRenderer.invoke('repoConfig:set', repoRoot, next),
-  getClaudeEnvVars: () => ipcRenderer.invoke('config:getClaudeEnvVars'),
   setClaudeEnvVars: (vars: Record<string, string>) => ipcRenderer.invoke('config:setClaudeEnvVars', vars),
-  getHarnessMcpEnabled: () => ipcRenderer.invoke('config:getHarnessMcpEnabled'),
   setHarnessMcpEnabled: (enabled: boolean) =>
     ipcRenderer.invoke('config:setHarnessMcpEnabled', enabled),
   prepareMcpForTerminal: (terminalId: string): Promise<string | null> =>
@@ -108,16 +99,12 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('worktrees:externalCreate', handler)
     return () => ipcRenderer.removeListener('worktrees:externalCreate', handler)
   },
-  getNameClaudeSessions: () => ipcRenderer.invoke('config:getNameClaudeSessions'),
   setNameClaudeSessions: (enabled: boolean) => ipcRenderer.invoke('config:setNameClaudeSessions', enabled),
-  getTheme: () => ipcRenderer.invoke('config:getTheme'),
   setTheme: (theme: string) => ipcRenderer.invoke('config:setTheme', theme),
   getAvailableThemes: () => ipcRenderer.invoke('config:getAvailableThemes'),
-  getTerminalFontFamily: () => ipcRenderer.invoke('config:getTerminalFontFamily'),
   setTerminalFontFamily: (fontFamily: string) =>
     ipcRenderer.invoke('config:setTerminalFontFamily', fontFamily),
   getDefaultTerminalFontFamily: () => ipcRenderer.invoke('config:getDefaultTerminalFontFamily'),
-  getTerminalFontSize: () => ipcRenderer.invoke('config:getTerminalFontSize'),
   setTerminalFontSize: (fontSize: number) =>
     ipcRenderer.invoke('config:setTerminalFontSize', fontSize),
 
@@ -162,19 +149,15 @@ contextBridge.exposeInMainWorld('api', {
   getLatestClaudeSessionId: (cwd: string) => ipcRenderer.invoke('claude:latestSessionId', cwd),
 
   // Onboarding quest
-  getOnboarding: () => ipcRenderer.invoke('config:getOnboarding'),
   setOnboardingQuest: (quest: string) => ipcRenderer.invoke('config:setOnboardingQuest', quest),
 
   // Worktree base
-  getWorktreeBase: () => ipcRenderer.invoke('config:getWorktreeBase'),
   setWorktreeBase: (mode: 'remote' | 'local') =>
     ipcRenderer.invoke('config:setWorktreeBase', mode),
-  getMergeStrategy: () => ipcRenderer.invoke('config:getMergeStrategy'),
   setMergeStrategy: (strategy: 'squash' | 'merge-commit' | 'fast-forward') =>
     ipcRenderer.invoke('config:setMergeStrategy', strategy),
 
   // External editor
-  getEditor: () => ipcRenderer.invoke('config:getEditor'),
   setEditor: (editorId: string) => ipcRenderer.invoke('config:setEditor', editorId),
   getAvailableEditors: () => ipcRenderer.invoke('config:getAvailableEditors'),
   openInEditor: (worktreePath: string, filePath?: string) =>

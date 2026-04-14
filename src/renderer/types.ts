@@ -133,7 +133,6 @@ export interface ElectronAPI {
   listRepos(): Promise<string[]>
   addRepo(): Promise<string | null>
   removeRepo(repoRoot: string): Promise<boolean>
-  onReposChanged(callback: (repos: string[]) => void): () => void
 
   getMainWorktreeStatus(repoRoot: string): Promise<MainWorktreeStatus>
   prepareMainForMerge(repoRoot: string): Promise<MainWorktreeStatus>
@@ -160,50 +159,29 @@ export interface ElectronAPI {
     mode?: 'working' | 'branch'
   ): Promise<string>
 
-  getHotkeyOverrides(): Promise<Record<string, string> | null>
+  // Settings — all reads come from useSettings()/useRepoConfigs()/etc.
+  // Only the mutation methods + a few constant accessors remain on the IPC.
   setHotkeyOverrides(hotkeys: Record<string, string>): Promise<boolean>
   resetHotkeyOverrides(): Promise<boolean>
-
-  getClaudeCommand(): Promise<string>
   setClaudeCommand(command: string): Promise<boolean>
   getDefaultClaudeCommand(): Promise<string>
-  getHarnessMcpEnabled(): Promise<boolean>
   setHarnessMcpEnabled(enabled: boolean): Promise<boolean>
   prepareMcpForTerminal(terminalId: string): Promise<string | null>
   onWorktreesExternalCreate(
     callback: (payload: { repoRoot: string; worktree: Worktree; initialPrompt?: string }) => void
   ): () => void
-
-  getClaudeEnvVars(): Promise<Record<string, string>>
   setClaudeEnvVars(vars: Record<string, string>): Promise<boolean>
-
-  getNameClaudeSessions(): Promise<boolean>
   setNameClaudeSessions(enabled: boolean): Promise<boolean>
-
-  getTheme(): Promise<string>
   setTheme(theme: string): Promise<boolean>
   getAvailableThemes(): Promise<readonly string[]>
-
-  getTerminalFontFamily(): Promise<string>
   setTerminalFontFamily(fontFamily: string): Promise<boolean>
   getDefaultTerminalFontFamily(): Promise<string>
-  getTerminalFontSize(): Promise<number>
   setTerminalFontSize(fontSize: number): Promise<boolean>
-
-  getOnboarding(): Promise<{ quest?: QuestStep }>
   setOnboardingQuest(quest: QuestStep): Promise<boolean>
-
-  getWorktreeScripts(): Promise<{ setup: string; teardown: string }>
   setWorktreeScripts(scripts: { setup: string; teardown: string }): Promise<boolean>
-  getRepoConfig(repoRoot: string): Promise<RepoConfig>
   setRepoConfig(repoRoot: string, next: Partial<RepoConfig>): Promise<RepoConfig | null>
-
-  getWorktreeBase(): Promise<'remote' | 'local'>
   setWorktreeBase(mode: 'remote' | 'local'): Promise<boolean>
-  getMergeStrategy(): Promise<MergeStrategy>
   setMergeStrategy(strategy: MergeStrategy): Promise<boolean>
-
-  getEditor(): Promise<string>
   setEditor(editorId: string): Promise<boolean>
   getAvailableEditors(): Promise<{ id: string; name: string }[]>
   openInEditor(worktreePath: string, filePath?: string): Promise<{ ok: true } | { ok: false; error: string }>
