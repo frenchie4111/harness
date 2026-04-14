@@ -135,15 +135,8 @@ export interface ChangedFile {
   staged: boolean
 }
 
-export interface CheckStatus {
-  name: string
-  state: 'success' | 'failure' | 'pending' | 'neutral' | 'skipped' | 'error'
-  description: string
-  /** Longer failure summary from the check's output (markdown, may be multi-line) */
-  summary?: string
-  /** External URL to the check's log / details page */
-  detailsUrl?: string
-}
+import type { CheckStatus, PRReview, PRStatus } from '../shared/state/prs'
+export type { CheckStatus, PRReview, PRStatus }
 
 export type MergeStrategy = 'squash' | 'merge-commit' | 'fast-forward'
 
@@ -170,29 +163,6 @@ export interface MergeLocalResult {
   mainPath: string
 }
 
-export interface PRReview {
-  user: string
-  avatarUrl: string
-  state: 'APPROVED' | 'CHANGES_REQUESTED' | 'COMMENTED' | 'DISMISSED' | 'PENDING'
-  body: string
-  submittedAt: string
-  htmlUrl: string
-}
-
-export interface PRStatus {
-  number: number
-  title: string
-  state: 'open' | 'draft' | 'merged' | 'closed'
-  url: string
-  branch: string
-  checks: CheckStatus[]
-  checksOverall: 'success' | 'failure' | 'pending' | 'none'
-  /** true = has conflicts with base, false = mergeable, null = still computing */
-  hasConflict: boolean | null
-  reviews: PRReview[]
-  reviewDecision: 'approved' | 'changes_requested' | 'review_required' | 'none'
-}
-
 export interface ElectronAPI {
   listWorktrees(repoRoot: string): Promise<Worktree[]>
   listBranches(repoRoot: string): Promise<string[]>
@@ -217,7 +187,6 @@ export interface ElectronAPI {
   removeRepo(repoRoot: string): Promise<boolean>
   onReposChanged(callback: (repos: string[]) => void): () => void
 
-  getPRStatus(worktreePath: string): Promise<PRStatus | null>
   getMainWorktreeStatus(repoRoot: string): Promise<MainWorktreeStatus>
   prepareMainForMerge(repoRoot: string): Promise<MainWorktreeStatus>
   previewMergeConflicts(repoRoot: string, sourceBranch: string): Promise<MergeConflictPreview>
@@ -226,7 +195,11 @@ export interface ElectronAPI {
     sourceBranch: string,
     strategy: MergeStrategy
   ): Promise<MergeLocalResult>
-  getMergedStatus(repoRoot: string): Promise<Record<string, boolean>>
+
+  refreshPRsAll(): Promise<boolean>
+  refreshPRsAllIfStale(): Promise<boolean>
+  refreshPRsOne(worktreePath: string): Promise<boolean>
+  refreshPRsOneIfStale(worktreePath: string): Promise<boolean>
   getBranchCommits(worktreePath: string): Promise<BranchCommit[]>
   getCommitDiff(worktreePath: string, hash: string): Promise<CommitDiff | null>
   listAllFiles(worktreePath: string): Promise<string[]>

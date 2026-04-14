@@ -68,14 +68,22 @@ contextBridge.exposeInMainWorld('api', {
   getBranchCommits: (worktreePath: string) => ipcRenderer.invoke('worktree:branchCommits', worktreePath),
   getCommitDiff: (worktreePath: string, hash: string) =>
     ipcRenderer.invoke('worktree:commitDiff', worktreePath, hash),
-  getPRStatus: (worktreePath: string) => ipcRenderer.invoke('worktree:prStatus', worktreePath),
   getMainWorktreeStatus: (repoRoot: string) => ipcRenderer.invoke('worktree:mainStatus', repoRoot),
   prepareMainForMerge: (repoRoot: string) => ipcRenderer.invoke('worktree:prepareMain', repoRoot),
   previewMergeConflicts: (repoRoot: string, sourceBranch: string) =>
     ipcRenderer.invoke('worktree:previewMerge', repoRoot, sourceBranch),
   mergeWorktreeLocally: (repoRoot: string, sourceBranch: string, strategy: 'squash' | 'merge-commit' | 'fast-forward') =>
     ipcRenderer.invoke('worktree:mergeLocal', repoRoot, sourceBranch, strategy),
-  getMergedStatus: (repoRoot: string) => ipcRenderer.invoke('worktree:mergedStatus', repoRoot),
+
+  // PR status lives in the main-process store (see src/main/pr-poller.ts).
+  // Consumers read via useSyncExternalStore in the renderer store; these
+  // methods trigger on-demand refreshes.
+  refreshPRsAll: () => ipcRenderer.invoke('prs:refreshAll'),
+  refreshPRsAllIfStale: () => ipcRenderer.invoke('prs:refreshAllIfStale'),
+  refreshPRsOne: (worktreePath: string) =>
+    ipcRenderer.invoke('prs:refreshOne', worktreePath),
+  refreshPRsOneIfStale: (worktreePath: string) =>
+    ipcRenderer.invoke('prs:refreshOneIfStale', worktreePath),
 
   // Config
   getHotkeyOverrides: () => ipcRenderer.invoke('config:getHotkeys'),

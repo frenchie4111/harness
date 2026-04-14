@@ -67,6 +67,7 @@ describe('Store', () => {
 
   it('accepts a custom initial state', () => {
     const store = new Store({
+      ...initialState,
       settings: { ...initialState.settings, theme: 'preseeded' }
     })
     expect(store.getSnapshot().state.settings.theme).toBe('preseeded')

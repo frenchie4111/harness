@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { useSettings } from './store'
-import type { Worktree, TerminalTab, PtyStatus, PendingTool, PRStatus, QuestStep, WorkspacePane, PendingWorktree, UpdaterStatus, RepoConfig } from './types'
+import { useSettings, usePrs } from './store'
+import type { Worktree, TerminalTab, PtyStatus, PendingTool, QuestStep, WorkspacePane, PendingWorktree, UpdaterStatus, RepoConfig } from './types'
 import type { Action } from './hotkeys'
 import { resolveHotkeys } from './hotkeys'
 import { HotkeysProvider } from './components/Tooltip'
@@ -40,13 +40,6 @@ function isPendingId(id: string | null | undefined): id is string {
   return typeof id === 'string' && id.startsWith('pending:')
 }
 
-async function fetchMergedStatusAll(roots: string[]): Promise<Record<string, boolean>> {
-  const results = await Promise.all(
-    roots.map((root) => window.api.getMergedStatus(root).catch(() => ({})))
-  )
-  return Object.assign({}, ...results)
-}
-
 export default function App(): JSX.Element {
   const [worktrees, setWorktrees] = useState<Worktree[]>([])
   const [activeWorktreeId, setActiveWorktreeId] = useState<string | null>(null)
@@ -78,11 +71,12 @@ export default function App(): JSX.Element {
   const [shellActivity, setShellActivity] = useState<
     Record<string, { active: boolean; processName?: string }>
   >({})
-  const [prStatuses, setPrStatuses] = useState<Record<string, PRStatus | null>>({})
-  const [mergedPaths, setMergedPaths] = useState<Record<string, boolean>>({})
-  const [prLoading, setPrLoading] = useState(false)
-  const lastAllPRFetchAt = useRef(0)
-  const lastPRFetchAt = useRef<Record<string, number>>({})
+  // PR state lives in the main-process store (see src/main/pr-poller.ts).
+  // Polling, on-focus refresh, and stale dedup all live there.
+  const prs = usePrs()
+  const prStatuses = prs.byPath
+  const mergedPaths = prs.mergedByPath
+  const prLoading = prs.loading
   const [lastActive, setLastActive] = useState<Record<string, number>>({})
   const [repoRoots, setRepoRoots] = useState<string[]>([])
   const [activeRepoConfig, setActiveRepoConfig] = useState<RepoConfig | null>(null)
@@ -354,35 +348,11 @@ const setQuestStep = useCallback((next: QuestStep) => {
     return cleanup
   }, [])
 
-  // Fetch PR status for all worktrees in parallel (on initial load)
-  const fetchAllPRStatuses = useCallback(async () => {
-    if (worktrees.length === 0) return
-    const now = Date.now()
-    lastAllPRFetchAt.current = now
-    for (const wt of worktrees) lastPRFetchAt.current[wt.path] = now
-    setPrLoading(true)
-    try {
-      const results = await Promise.all(
-        worktrees.map(async (wt) => {
-          try {
-            const status = await window.api.getPRStatus(wt.path)
-            return [wt.path, status] as const
-          } catch {
-            return [wt.path, null] as const
-          }
-        })
-      )
-      setPrStatuses(Object.fromEntries(results))
-    } finally {
-      setPrLoading(false)
-    }
-    try {
-      const merged = await fetchMergedStatusAll(repoRoots)
-      setMergedPaths(merged)
-    } catch {
-      // ignore
-    }
-  }, [worktrees, repoRoots])
+  // Trigger a full PR refresh in main. Used by the sidebar refresh button
+  // and after worktree creation/removal.
+  const fetchAllPRStatuses = useCallback(() => {
+    void window.api.refreshPRsAll()
+  }, [])
 
   const activeRepoRoot = activeWorktreeId
     ? worktrees.find((w) => w.path === activeWorktreeId)?.repoRoot ?? worktreeRepoRef.current[activeWorktreeId] ?? null
@@ -408,59 +378,34 @@ const setQuestStep = useCallback((next: QuestStep) => {
     }
   }, [activeRepoRoot])
 
-  const refreshMergedStatus = useCallback(async () => {
-    try {
-      const merged = await fetchMergedStatusAll(repoRoots)
-      setMergedPaths(merged)
-    } catch {
-      // ignore
-    }
-  }, [repoRoots])
-
-  // Fetch a single worktree's PR status
-  const fetchPRStatus = useCallback(async (wtPath: string) => {
-    lastPRFetchAt.current[wtPath] = Date.now()
-    try {
-      const status = await window.api.getPRStatus(wtPath)
-      setPrStatuses((prev) => ({ ...prev, [wtPath]: status }))
-    } catch {
-      // ignore
-    }
+  // After a local merge, kick the poller so the merged flag and PR state
+  // propagate to the UI without waiting for the 5-min interval.
+  const refreshMergedStatus = useCallback(() => {
+    void window.api.refreshPRsAll()
   }, [])
 
-  // Refetch a worktree's PR status if it hasn't been fetched in >60s. Used
-  // when the user activates a worktree — cheap freshness without hammering
-  // the GitHub API on rapid worktree switching.
+  // Ask main for a single-worktree PR refresh. Used by the activity observer
+  // when a terminal enters the "waiting" state (likely just pushed).
+  const fetchPRStatus = useCallback((wtPath: string) => {
+    void window.api.refreshPRsOne(wtPath)
+  }, [])
+
+  // Ask main for a stale-only single-worktree refresh. Used when the user
+  // activates a worktree — main dedups internally so rapid switching won't
+  // hammer the GitHub API.
   const fetchPRStatusIfStale = useCallback((wtPath: string) => {
-    if (Date.now() - (lastPRFetchAt.current[wtPath] ?? 0) > 60 * 1000) {
-      void fetchPRStatus(wtPath)
-    }
-  }, [fetchPRStatus])
+    void window.api.refreshPRsOneIfStale(wtPath)
+  }, [])
 
-  // Initial load
+  // On window focus, ask main for a stale-only bulk refresh. Main dedups
+  // against its own lastAllFetchAt clock.
   useEffect(() => {
-    fetchAllPRStatuses()
-  }, [fetchAllPRStatuses])
-
-  // Keep PR statuses fresh: poll every 5 min, and refetch on window focus
-  // if it's been more than 60s since the last fetch (so rapid alt-tabbing
-  // doesn't hammer the GitHub API).
-  useEffect(() => {
-    if (worktrees.length === 0) return
-    const interval = setInterval(() => {
-      void fetchAllPRStatuses()
-    }, 5 * 60 * 1000)
     const onFocus = (): void => {
-      if (Date.now() - lastAllPRFetchAt.current > 60 * 1000) {
-        void fetchAllPRStatuses()
-      }
+      void window.api.refreshPRsAllIfStale()
     }
     window.addEventListener('focus', onFocus)
-    return () => {
-      clearInterval(interval)
-      window.removeEventListener('focus', onFocus)
-    }
-  }, [fetchAllPRStatuses, worktrees.length])
+    return () => window.removeEventListener('focus', onFocus)
+  }, [])
 
   // Map a terminal ID back to its worktree path
   const terminalToWorktree = useCallback((terminalId: string): string | null => {
@@ -830,8 +775,8 @@ const setQuestStep = useCallback((next: QuestStep) => {
     const result = await window.api.continueWorktree(repoRoot, path, newBranchName)
     const trees = await fetchAllWorktrees(repoRoots)
     setWorktrees(trees)
-    // Clear cached PR status — the old branch/PR no longer belongs to this worktree
-    setPrStatuses((prev) => ({ ...prev, [path]: null }))
+    // Branch changed — re-fetch PR status for this worktree.
+    void window.api.refreshPRsOne(path)
     if (result.stashConflict) {
       window.alert(
         `Checked out ${newBranchName}, but your uncommitted changes did not apply cleanly and are still in the stash.\n\nRun \`git stash pop\` inside the worktree after resolving conflicts.`

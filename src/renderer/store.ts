@@ -46,4 +46,8 @@ export function useSettings() {
   return useAppState((s) => s.settings)
 }
 
+export function usePrs() {
+  return useAppState((s) => s.prs)
+}
+
 export type { AppState, StateEvent }

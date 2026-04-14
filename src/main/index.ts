@@ -6,6 +6,7 @@ import { join } from 'path'
 import { PtyManager } from './pty-manager'
 import { Store } from './store'
 import { registerStateTransport } from './transport-electron'
+import { PRPoller } from './pr-poller'
 import { listWorktrees, listBranches, addWorktree, continueWorktree, removeWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, readWorktreeFile, runWorktreeScript, type MergeStrategy } from './worktree'
 import { getPRStatus, testToken, starRepo } from './github'
 import { AVAILABLE_EDITORS, DEFAULT_EDITOR_ID, openInEditor } from './editor'
@@ -47,6 +48,11 @@ let config = loadConfig()
 let stopWatchingStatus: (() => void) | null = null
 
 const store = new Store({
+  prs: {
+    byPath: {},
+    mergedByPath: {},
+    loading: false
+  },
   settings: {
     theme: config.theme || DEFAULT_THEME,
     hotkeys: config.hotkeys || null,
@@ -67,6 +73,19 @@ const store = new Store({
   }
 })
 registerStateTransport(store)
+
+const prPoller = new PRPoller(store, {
+  getRepoRoots: () => config.repoRoots || [],
+  getLocallyMerged: () => config.locallyMerged || {},
+  setLocallyMerged: (next) => {
+    if (Object.keys(next).length === 0) {
+      delete config.locallyMerged
+    } else {
+      config.locallyMerged = next
+    }
+    saveConfig(config)
+  }
+})
 
 function createWindow(): BrowserWindow {
   const bounds = config.windowBounds || { width: 1400, height: 900, x: undefined!, y: undefined! }
@@ -166,6 +185,8 @@ function registerIpcHandlers(): void {
         repoRoot
       })
     }
+    // New worktree → pick up its PR status in the background.
+    void prPoller.refreshAll()
     return created
   })
 
@@ -293,8 +314,25 @@ function registerIpcHandlers(): void {
     return getCommitDiff(worktreePath, hash)
   })
 
-  ipcMain.handle('worktree:prStatus', async (_, worktreePath: string) => {
-    return getPRStatus(worktreePath)
+  // PR status lives in the main-process store, polled by PRPoller. Renderers
+  // subscribe via the state event stream; these methods trigger on-demand
+  // refreshes (new worktree created, window focus, worktree activate,
+  // terminal entered 'waiting' state).
+  ipcMain.handle('prs:refreshAll', async () => {
+    await prPoller.refreshAll()
+    return true
+  })
+  ipcMain.handle('prs:refreshAllIfStale', () => {
+    prPoller.refreshAllIfStale()
+    return true
+  })
+  ipcMain.handle('prs:refreshOne', async (_, worktreePath: string) => {
+    await prPoller.refreshOne(worktreePath)
+    return true
+  })
+  ipcMain.handle('prs:refreshOneIfStale', (_, worktreePath: string) => {
+    prPoller.refreshOneIfStale(worktreePath)
+    return true
   })
 
   ipcMain.handle('worktree:mainStatus', async (_, repoRoot: string) => {
@@ -319,54 +357,23 @@ function registerIpcHandlers(): void {
       if (!repoRoot) throw new Error('No repo root provided')
       const result = await mergeWorktreeLocally(repoRoot, sourceBranch, strategy)
       // Record the branch as locally merged at its current tip sha. If new
-      // commits are pushed to the branch later, the flag becomes stale and
-      // will stop applying (see worktree:mergedStatus).
+      // commits are pushed to the branch later, the PRPoller will detect
+      // the SHA drift on the next refresh and clear the flag.
       const sha = await getBranchSha(repoRoot, sourceBranch)
       if (sha) {
         if (!config.locallyMerged) config.locallyMerged = {}
         config.locallyMerged[sourceBranch] = sha
         saveConfig(config)
       }
+      // Kick the poller so the UI picks up the new merged flag immediately.
+      void prPoller.refreshAll()
       return result
     }
   )
 
-  /** Batched merge-status query. Returns a map keyed by worktree path → true
-   * if the branch was merged into base by Harness. Driven entirely by the
-   * persistent locallyMerged flag — a pure `git merge-base --is-ancestor`
-   * check can't tell "fork point on trunk" from "trunk position after merge",
-   * so we don't try to detect external merges automatically. The flag is
-   * auto-cleared if the branch later gains new commits. */
-  ipcMain.handle('worktree:mergedStatus', async (_, repoRoot: string) => {
-    if (!repoRoot) return {}
-    const trees = await listWorktrees(repoRoot)
-    const result: Record<string, boolean> = {}
-    const persisted = config.locallyMerged || {}
-    let dirty = false
-    for (const wt of trees) {
-      if (wt.isMain) continue
-      if (wt.branch === '(detached)') continue
-      const recordedSha = persisted[wt.branch]
-      if (!recordedSha) {
-        result[wt.path] = false
-        continue
-      }
-      const branchSha = await getBranchSha(repoRoot, wt.branch)
-      if (branchSha && branchSha === recordedSha) {
-        result[wt.path] = true
-      } else {
-        delete persisted[wt.branch]
-        dirty = true
-        result[wt.path] = false
-      }
-    }
-    if (dirty) {
-      config.locallyMerged = persisted
-      saveConfig(config)
-    }
-    return result
-  })
-
+  // Legacy worktree:mergedStatus handler is gone — the computation is now
+  // inlined in PRPoller.refreshAll, which runs across all roots in one pass
+  // and dispatches prs/mergedChanged.
 
   // Config
   ipcMain.handle('config:getHotkeys', () => {
@@ -1029,6 +1036,11 @@ app.whenReady().then(() => {
 
   buildMenu()
   registerIpcHandlers()
+
+  // Kick off the PR poller. An initial refreshAll() runs immediately and
+  // then on a 5-minute interval.
+  prPoller.start()
+  void prPoller.refreshAll()
 
   // Prune terminal history files not referenced by any persisted tab
   const keepIds = new Set<string>()
