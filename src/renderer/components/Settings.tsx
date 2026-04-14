@@ -143,8 +143,8 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
   const [token, setToken] = useState('')
   const [showToken, setShowToken] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [autoStar, setAutoStar] = useState(true)
   const [tokenResult, setTokenResult] = useState<{ ok: boolean; message: string } | null>(null)
+  const [showPatForm, setShowPatForm] = useState(false)
 
   // Updates state — updaterStatus lives in the main-process store
   const [version, setVersion] = useState<string>('')
@@ -167,6 +167,8 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
     worktreeBase,
     mergeStrategy,
     hasGithubToken: settingsHasToken,
+    githubAuthSource: authSource,
+    harnessStarred,
     worktreeScripts
   } = settings
   const setupScript = worktreeScripts.setup
@@ -349,10 +351,9 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
     setSaving(true)
     setTokenResult(null)
     try {
-      const res = await window.api.setGithubToken(token, { starRepo: autoStar })
+      const res = await window.api.setGithubToken(token)
       if (res.ok) {
-        let message = res.username ? `Connected as @${res.username}` : 'Token saved'
-        if (autoStar && res.starred) message += ' · starred Harness on GitHub'
+        const message = res.username ? `Connected as @${res.username}` : 'Token saved'
         setTokenResult({ ok: true, message })
         setToken('')
       } else {
@@ -361,7 +362,7 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
     } finally {
       setSaving(false)
     }
-  }, [token, autoStar])
+  }, [token])
 
   const handleClear = useCallback(async () => {
     await window.api.clearGithubToken()
@@ -601,7 +602,7 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
           {SECTIONS.map((section) => {
             const Icon = section.icon
             const isActive = activeSection === section.id
-            const needsAttention = section.id === 'github' && !hasToken
+            const needsAttention = section.id === 'github' && !hasToken && authSource !== 'gh-cli'
             const className = needsAttention
               ? `flex items-center gap-2 px-3 py-2 text-left text-sm transition-colors cursor-pointer ${
                   isActive ? 'bg-info/25 text-info' : 'bg-info/10 text-info hover:bg-info/20'
@@ -1272,13 +1273,55 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
 
             {/* GitHub section */}
             <section ref={(el) => { sectionRefs.current.github = el }} id="github">
-              <h2 className={`text-lg font-semibold mb-1 ${!hasToken ? 'text-info' : 'text-fg-bright'}`}>GitHub</h2>
-              <p className={`text-sm mb-4 ${!hasToken ? 'text-info/80' : 'text-dim'}`}>
-                Harness uses a personal access token to fetch PR status and check results.
-                The token is encrypted and stored locally using your macOS keychain.
+              {(() => {
+                const authed = hasToken || authSource === 'gh-cli'
+                return (
+              <>
+              <h2 className={`text-lg font-semibold mb-1 ${!authed ? 'text-info' : 'text-fg-bright'}`}>GitHub</h2>
+              <p className={`text-sm mb-4 ${!authed ? 'text-info/80' : 'text-dim'}`}>
+                Harness fetches PR status and check results from GitHub. If you have the
+                {' '}<code className="bg-panel-raised px-1 rounded">gh</code> CLI installed and authenticated,
+                it'll be used automatically. Otherwise, paste a personal access token below — it'll be
+                encrypted and stored locally using your macOS keychain.
               </p>
 
-              <div className={`rounded-lg p-4 border ${!hasToken ? 'bg-info/10 border-info/30' : 'bg-panel-raised border-border'}`}>
+              {authed && harnessStarred !== null && (
+                <label className="mb-4 flex items-center gap-2 cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={harnessStarred}
+                    onChange={(e) => { void window.api.setHarnessStarred(e.target.checked) }}
+                    className="w-3.5 h-3.5 accent-warning cursor-pointer"
+                  />
+                  <Star
+                    size={14}
+                    className={harnessStarred ? 'text-warning fill-warning shrink-0' : 'text-warning shrink-0'}
+                  />
+                  <span className="text-sm text-fg group-hover:text-fg-bright transition-colors">
+                    Star Harness on GitHub
+                  </span>
+                </label>
+              )}
+
+              {authSource === 'gh-cli' && !hasToken && (
+                <div className="mb-4 rounded-lg p-4 border bg-success/10 border-success/30">
+                  <div className="flex items-center gap-2 text-sm text-success">
+                    <Check size={14} />
+                    <span>Using <code className="bg-panel-raised px-1 rounded">gh</code> CLI token (auto-detected)</span>
+                  </div>
+                  {!showPatForm && (
+                    <button
+                      onClick={() => setShowPatForm(true)}
+                      className="mt-3 text-xs text-muted hover:text-fg-bright underline cursor-pointer"
+                    >
+                      Use a personal access token instead
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {(authSource !== 'gh-cli' || hasToken || showPatForm) && (
+              <div className={`rounded-lg p-4 border ${!authed ? 'bg-info/10 border-info/30' : 'bg-panel-raised border-border'}`}>
                 <label className="block text-sm font-medium text-fg mb-2">
                   Personal Access Token
                 </label>
@@ -1286,22 +1329,9 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
                 {hasToken && (
                   <div className="flex items-center gap-2 mb-3 text-xs text-success">
                     <Check size={14} />
-                    <span>A token is currently saved</span>
+                    <span>A token is currently saved {authSource === 'pat' ? '(in use)' : ''}</span>
                   </div>
                 )}
-
-                <label className="flex items-center gap-2 mb-3 cursor-pointer group">
-                  <input
-                    type="checkbox"
-                    checked={autoStar}
-                    onChange={(e) => setAutoStar(e.target.checked)}
-                    className="w-3.5 h-3.5 accent-warning cursor-pointer"
-                  />
-                  <Star size={12} className="text-warning shrink-0" />
-                  <span className="text-xs text-muted group-hover:text-fg transition-colors">
-                    Automatically star Harness on GitHub
-                  </span>
-                </label>
 
                 <div className="relative mb-3">
                   <input
@@ -1344,7 +1374,9 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
                   </div>
                 )}
               </div>
+              )}
 
+              {(authSource !== 'gh-cli' || hasToken || showPatForm) && (
               <div className="mt-4 text-xs text-dim space-y-2">
                 <p>
                   Create a token at{' '}
@@ -1368,6 +1400,10 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
                   or <code className="bg-panel-raised px-1 rounded">public_repo</code> for public only.
                 </p>
               </div>
+              )}
+              </>
+                )
+              })()}
             </section>
 
             {/* Hotkeys section */}

@@ -252,7 +252,15 @@ which the PtyManager sets when spawning each terminal.
 The user pastes a GitHub personal access token into Settings. It's encrypted
 via `safeStorage` and stored in `userData/secrets.enc`. All GitHub data
 (PR status, check runs, statuses) goes through `src/main/github.ts` using
-`fetch()` against the REST API — there is **no dependency on the `gh` CLI**.
+`fetch()` against the REST API.
+
+Token resolution lives in `src/main/github-auth.ts` and runs once at boot
+(re-runs on a 401): an explicit PAT in `secrets.enc` or `GITHUB_TOKEN` wins,
+then `gh auth token` (spawned through a login zsh so Homebrew's `gh` is on
+PATH), then nothing. The `gh` CLI is an **optional** auto-detect convenience
+— if it's installed and authenticated, Harness uses its token automatically;
+if not, the PAT paste flow in Settings is still the fallback. Harness has no
+hard dependency on `gh`.
 
 ## Important quirks
 
