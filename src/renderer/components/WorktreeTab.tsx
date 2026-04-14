@@ -141,11 +141,20 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
               e.stopPropagation()
               onContinue!()
             }}
-            className="opacity-0 group-hover:opacity-100 text-faint hover:text-accent transition-all shrink-0 cursor-pointer"
+            className="hidden group-hover:flex text-faint hover:text-accent transition-colors shrink-0 cursor-pointer"
           >
             <RotateCw size={12} />
           </button>
         </Tooltip>
+      )}
+      {prStatus && typeof prStatus.additions === 'number' && typeof prStatus.deletions === 'number' && (
+        <span
+          className="text-[10px] font-mono shrink-0 leading-none group-hover:hidden"
+          title={`+${prStatus.additions} additions, −${prStatus.deletions} deletions`}
+        >
+          <span className="text-success">+{prStatus.additions}</span>
+          <span className="text-danger ml-0.5">−{prStatus.deletions}</span>
+        </span>
       )}
       {onDelete && (
         <Tooltip label="Remove worktree" side="left">
@@ -154,7 +163,7 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
               e.stopPropagation()
               onDelete()
             }}
-            className="opacity-0 group-hover:opacity-100 text-faint hover:text-danger transition-all shrink-0 cursor-pointer"
+            className="hidden group-hover:flex text-faint hover:text-danger transition-colors shrink-0 cursor-pointer"
           >
             <Trash2 size={12} />
           </button>

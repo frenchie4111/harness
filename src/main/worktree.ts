@@ -234,6 +234,11 @@ export interface ChangedFile {
   path: string
   status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked'
   staged: boolean
+  /** Lines added. Undefined for binary files (numstat reports `-`) and
+   * untracked files (no diff baseline yet). */
+  additions?: number
+  /** Lines deleted. Undefined for binary files and untracked files. */
+  deletions?: number
 }
 
 export type ChangedFilesMode = 'working' | 'branch'
@@ -306,6 +311,63 @@ function mapNameStatus(code: string): ChangedFile['status'] {
   return 'modified'
 }
 
+type NumstatCounts = { additions: number; deletions: number } | null
+
+/** Parse `git diff --numstat -z` output. Rename rows look like
+ * `add\tdel\t\0oldpath\0newpath\0` and are keyed by the destination path.
+ * Binary files report `-` for both counts and map to null. */
+function parseNumstatZ(stdout: string): Map<string, NumstatCounts> {
+  const map = new Map<string, NumstatCounts>()
+  const tokens = stdout.split('\0')
+  let i = 0
+  while (i < tokens.length) {
+    const tok = tokens[i]
+    if (!tok) { i++; continue }
+    const tabs = tok.split('\t')
+    if (tabs.length < 3) { i++; continue }
+    const [addStr, delStr, pathField] = tabs
+    const counts: NumstatCounts =
+      addStr === '-' || delStr === '-'
+        ? null
+        : { additions: Number(addStr), deletions: Number(delStr) }
+    if (pathField === '') {
+      // Rename: next two NUL-separated tokens are old then new path.
+      const newPath = tokens[i + 2] ?? ''
+      if (newPath) map.set(newPath, counts)
+      i += 3
+    } else {
+      map.set(pathField, counts)
+      i++
+    }
+  }
+  return map
+}
+
+async function numstatMap(worktreePath: string, args: string[]): Promise<Map<string, NumstatCounts>> {
+  try {
+    const { stdout } = await execFileAsync('git', ['diff', '--numstat', '-z', ...args], {
+      cwd: worktreePath,
+      maxBuffer: 16 * 1024 * 1024
+    })
+    return parseNumstatZ(stdout)
+  } catch {
+    return new Map()
+  }
+}
+
+/** Renamed entries from `git status --porcelain` are stored as
+ * "old -> new" — match numstat by the destination path. */
+function destOf(p: string): string {
+  const idx = p.indexOf(' -> ')
+  return idx >= 0 ? p.slice(idx + 4) : p
+}
+
+function applyCounts(file: ChangedFile, counts: NumstatCounts | undefined): void {
+  if (!counts) return
+  file.additions = counts.additions
+  file.deletions = counts.deletions
+}
+
 /** Get changed files (staged, unstaged, and untracked) in a worktree */
 export async function getChangedFiles(
   worktreePath: string,
@@ -315,11 +377,10 @@ export async function getChangedFiles(
     const base = await getDefaultBaseRef(worktreePath)
     if (base === 'HEAD') return []
     try {
-      const { stdout } = await execFileAsync(
-        'git',
-        ['diff', '--name-status', `${base}...HEAD`],
-        { cwd: worktreePath }
-      )
+      const [{ stdout }, counts] = await Promise.all([
+        execFileAsync('git', ['diff', '--name-status', `${base}...HEAD`], { cwd: worktreePath }),
+        numstatMap(worktreePath, [`${base}...HEAD`])
+      ])
       const out: ChangedFile[] = []
       for (const line of stdout.split('\n')) {
         if (!line) continue
@@ -327,7 +388,9 @@ export async function getChangedFiles(
         const code = parts[0]
         // Renamed/copied entries have form "R100\told\tnew"
         const filePath = parts[parts.length - 1]
-        out.push({ path: filePath, status: mapNameStatus(code), staged: false })
+        const file: ChangedFile = { path: filePath, status: mapNameStatus(code), staged: false }
+        applyCounts(file, counts.get(filePath))
+        out.push(file)
       }
       return out
     } catch {
@@ -338,10 +401,14 @@ export async function getChangedFiles(
   const files: ChangedFile[] = []
   const seen = new Set<string>()
 
-  // Staged + unstaged changes via git status --porcelain
-  const { stdout } = await execFileAsync('git', ['status', '--porcelain', '-uall'], {
-    cwd: worktreePath
-  })
+  // Staged + unstaged changes via git status --porcelain, plus numstat for
+  // both halves so we can attach +/- counts. Untracked files have no diff
+  // baseline so they get no counts.
+  const [{ stdout }, stagedCounts, unstagedCounts] = await Promise.all([
+    execFileAsync('git', ['status', '--porcelain', '-uall'], { cwd: worktreePath }),
+    numstatMap(worktreePath, ['--cached']),
+    numstatMap(worktreePath, [])
+  ])
 
   for (const line of stdout.split('\n')) {
     if (!line) continue
@@ -352,7 +419,9 @@ export async function getChangedFiles(
     // Staged change
     if (x !== ' ' && x !== '?') {
       const status = x === 'A' ? 'added' : x === 'D' ? 'deleted' : x === 'R' ? 'renamed' : 'modified'
-      files.push({ path: filePath, status, staged: true })
+      const file: ChangedFile = { path: filePath, status, staged: true }
+      applyCounts(file, stagedCounts.get(destOf(filePath)))
+      files.push(file)
       seen.add(filePath)
     }
 
@@ -360,7 +429,9 @@ export async function getChangedFiles(
     if (y !== ' ' && y !== '?') {
       const status = y === 'D' ? 'deleted' : 'modified'
       if (!seen.has(filePath)) {
-        files.push({ path: filePath, status, staged: false })
+        const file: ChangedFile = { path: filePath, status, staged: false }
+        applyCounts(file, unstagedCounts.get(destOf(filePath)))
+        files.push(file)
         seen.add(filePath)
       }
     }

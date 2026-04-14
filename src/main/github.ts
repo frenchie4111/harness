@@ -88,6 +88,8 @@ interface ApiPR {
 interface ApiPRDetail extends ApiPR {
   mergeable: boolean | null
   mergeable_state: string
+  additions: number
+  deletions: number
 }
 
 interface ApiCheckRun {
@@ -272,7 +274,9 @@ export async function getPRStatus(worktreePath: string): Promise<PRStatus | null
       checksOverall: computeOverall(checks),
       hasConflict,
       reviews,
-      reviewDecision
+      reviewDecision,
+      additions: prDetail.additions,
+      deletions: prDetail.deletions
     }
   } catch (err) {
     log('github', `getPRStatus failed for ${branchName}`, err instanceof Error ? err.message : err)
