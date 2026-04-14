@@ -44,13 +44,8 @@ export interface PersistedPane {
 
 export type QuestStep = 'hidden' | 'spawn-second' | 'switch-between' | 'finale' | 'done'
 
-export type UpdaterStatus =
-  | { state: 'checking' }
-  | { state: 'available'; version: string }
-  | { state: 'not-available' }
-  | { state: 'downloading'; percent: number }
-  | { state: 'downloaded'; version: string }
-  | { state: 'error'; error: string }
+import type { UpdaterStatus } from '../shared/state/updater'
+export type { UpdaterStatus }
 
 export interface CommitDiff {
   hash: string
@@ -260,7 +255,6 @@ export interface ElectronAPI {
   getVersion(): Promise<string>
   checkForUpdates(): Promise<{ ok: boolean; available?: boolean; version?: string; releaseDate?: string; error?: string }>
   quitAndInstall(): Promise<boolean>
-  onUpdaterStatus(callback: (status: UpdaterStatus) => void): () => void
 
   openExternal(url: string): void
   getFilePath(file: File): string

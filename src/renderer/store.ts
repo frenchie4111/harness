@@ -74,4 +74,8 @@ export function useLastActive() {
   return useAppState((s) => s.terminals.lastActive)
 }
 
+export function useUpdater() {
+  return useAppState((s) => s.updater)
+}
+
 export type { AppState, StateEvent }

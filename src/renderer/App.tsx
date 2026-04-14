@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { useSettings, usePrs, useOnboarding, useHooks, useWorktrees, useTerminals, usePanes, useLastActive } from './store'
+import { useSettings, usePrs, useOnboarding, useHooks, useWorktrees, useTerminals, usePanes, useLastActive, useUpdater } from './store'
 import type { Worktree, TerminalTab, PtyStatus, PendingTool, QuestStep, PendingWorktree, UpdaterStatus, RepoConfig } from './types'
 import type { Action } from './hotkeys'
 import { resolveHotkeys } from './hotkeys'
@@ -102,7 +102,7 @@ export default function App(): JSX.Element {
   // Accept/decline dispatch through dedicated methods; the boot-time
   // "already installed?" detection lives in main.
   const { consent: hooksConsent, justInstalled: hooksJustInstalled } = useHooks()
-  const [updaterStatus, setUpdaterStatus] = useState<UpdaterStatus | null>(null)
+  const updaterStatus = useUpdater().status
   const [updateBannerDismissed, setUpdateBannerDismissed] = useState(false)
   const [sidebarVisible, setSidebarVisible] = useState(true)
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
@@ -408,15 +408,10 @@ const setQuestStep = useCallback((next: QuestStep) => {
     void window.api.declineHooks()
   }, [])
 
-  // Subscribe to auto-updater status for the in-app update banner.
+  // Re-show the update banner if a new download arrives after a prior dismiss.
   useEffect(() => {
-    const cleanup = window.api.onUpdaterStatus((status) => {
-      setUpdaterStatus(status)
-      // If a new version shows up after a prior dismiss, re-show the banner.
-      if (status.state === 'downloaded') setUpdateBannerDismissed(false)
-    })
-    return cleanup
-  }, [])
+    if (updaterStatus?.state === 'downloaded') setUpdateBannerDismissed(false)
+  }, [updaterStatus?.state])
 
   const handleUpdateRestart = useCallback(() => {
     void window.api.quitAndInstall()

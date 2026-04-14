@@ -206,13 +206,6 @@ contextBridge.exposeInMainWorld('api', {
   getVersion: () => ipcRenderer.invoke('updater:getVersion'),
   checkForUpdates: () => ipcRenderer.invoke('updater:checkForUpdates'),
   quitAndInstall: () => ipcRenderer.invoke('updater:quitAndInstall'),
-  onUpdaterStatus: (callback: (status: Record<string, unknown>) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, status: Record<string, unknown>): void => {
-      callback(status)
-    }
-    ipcRenderer.on('updater:status', handler)
-    return () => ipcRenderer.removeListener('updater:status', handler)
-  },
 
   // Shell
   openExternal: (url: string) => ipcRenderer.send('shell:openExternal', url),

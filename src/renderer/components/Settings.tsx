@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2 } from 'lucide-react'
-import { useSettings } from '../store'
+import { useSettings, useUpdater } from '../store'
 import type { UpdaterStatus, MergeStrategy, RepoConfig } from '../types'
 import { DEFAULT_HOTKEYS, ACTION_LABELS, bindingToString, eventToBinding, resolveHotkeys, type Action, type HotkeyBinding } from '../hotkeys'
 import { Tooltip } from './Tooltip'
@@ -146,9 +146,9 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
   const [autoStar, setAutoStar] = useState(true)
   const [tokenResult, setTokenResult] = useState<{ ok: boolean; message: string } | null>(null)
 
-  // Updates state
+  // Updates state — updaterStatus lives in the main-process store
   const [version, setVersion] = useState<string>('')
-  const [updaterStatus, setUpdaterStatus] = useState<UpdaterStatus | null>(null)
+  const updaterStatus = useUpdater().status
   const [checking, setChecking] = useState(false)
 
   // All long-lived settings live in the main-process store; this hook
@@ -357,11 +357,6 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
     [repoList, repoConfigs]
   )
 
-  useEffect(() => {
-    const cleanup = window.api.onUpdaterStatus((status) => setUpdaterStatus(status))
-    return cleanup
-  }, [])
-
   const handleSave = useCallback(async () => {
     setSaving(true)
     setTokenResult(null)
@@ -388,12 +383,9 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
   const handleCheckForUpdates = useCallback(async () => {
     setChecking(true)
     try {
-      const res = await window.api.checkForUpdates()
-      if (!res.ok) {
-        setUpdaterStatus({ state: 'error', error: res.error || 'unknown error' })
-      } else if (!res.available) {
-        setUpdaterStatus({ state: 'not-available' })
-      }
+      // Main dispatches the resulting updater/statusChanged event itself —
+      // we just await the call so we know when to clear the spinner.
+      await window.api.checkForUpdates()
     } finally {
       setChecking(false)
     }

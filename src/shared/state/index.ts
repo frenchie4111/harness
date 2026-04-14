@@ -34,8 +34,15 @@ import {
   type TerminalsEvent,
   type TerminalsState
 } from './terminals'
+import {
+  initialUpdater,
+  updaterReducer,
+  type UpdaterEvent,
+  type UpdaterState
+} from './updater'
 
 export type { SettingsState, SettingsEvent }
+export type { UpdaterState, UpdaterEvent, UpdaterStatus } from './updater'
 export type { PRsState, PRsEvent, PRStatus, CheckStatus, PRReview } from './prs'
 export type { OnboardingState, OnboardingEvent, QuestStep } from './onboarding'
 export type { HooksState, HooksEvent, HooksConsent } from './hooks'
@@ -63,6 +70,7 @@ export interface AppState {
   hooks: HooksState
   worktrees: WorktreesState
   terminals: TerminalsState
+  updater: UpdaterState
 }
 
 export type StateEvent =
@@ -72,6 +80,7 @@ export type StateEvent =
   | HooksEvent
   | WorktreesEvent
   | TerminalsEvent
+  | UpdaterEvent
 
 export const initialState: AppState = {
   settings: initialSettings,
@@ -79,7 +88,8 @@ export const initialState: AppState = {
   onboarding: initialOnboarding,
   hooks: initialHooks,
   worktrees: initialWorktrees,
-  terminals: initialTerminals
+  terminals: initialTerminals,
+  updater: initialUpdater
 }
 
 export function rootReducer(state: AppState, event: StateEvent): AppState {
@@ -112,6 +122,9 @@ export function rootReducer(state: AppState, event: StateEvent): AppState {
       ...state,
       terminals: terminalsReducer(state.terminals, event as TerminalsEvent)
     }
+  }
+  if (event.type.startsWith('updater/')) {
+    return { ...state, updater: updaterReducer(state.updater, event as UpdaterEvent) }
   }
   return state
 }

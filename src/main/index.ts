@@ -97,6 +97,9 @@ const store = new Store({
     panes: {},
     lastActive: {}
   },
+  updater: {
+    status: null
+  },
   settings: {
     theme: config.theme || DEFAULT_THEME,
     hotkeys: config.hotkeys || null,
@@ -946,7 +949,13 @@ function registerIpcHandlers(): void {
     }
     try {
       const result = await autoUpdater.checkForUpdates()
-      if (!result) return { ok: true, available: false }
+      if (!result) {
+        store.dispatch({
+          type: 'updater/statusChanged',
+          payload: { state: 'not-available' }
+        })
+        return { ok: true, available: false }
+      }
       const updateInfo = result.updateInfo
       const current = app.getVersion()
       return {
@@ -956,7 +965,12 @@ function registerIpcHandlers(): void {
         releaseDate: updateInfo.releaseDate
       }
     } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      const message = err instanceof Error ? err.message : String(err)
+      store.dispatch({
+        type: 'updater/statusChanged',
+        payload: { state: 'error', error: message }
+      })
+      return { ok: false, error: message }
     }
   })
 
@@ -1145,26 +1159,41 @@ function setupAutoUpdater(): void {
 
   autoUpdater.on('checking-for-update', () => {
     log('updater', 'checking for update')
-    broadcastToAllWindows('updater:status', { state: 'checking' })
+    store.dispatch({ type: 'updater/statusChanged', payload: { state: 'checking' } })
   })
   autoUpdater.on('update-available', (info) => {
     log('updater', 'update available', info.version)
-    broadcastToAllWindows('updater:status', { state: 'available', version: info.version })
+    store.dispatch({
+      type: 'updater/statusChanged',
+      payload: { state: 'available', version: info.version }
+    })
   })
   autoUpdater.on('update-not-available', () => {
     log('updater', 'no update available')
-    broadcastToAllWindows('updater:status', { state: 'not-available' })
+    store.dispatch({
+      type: 'updater/statusChanged',
+      payload: { state: 'not-available' }
+    })
   })
   autoUpdater.on('error', (err) => {
     log('updater', 'error', err.message)
-    broadcastToAllWindows('updater:status', { state: 'error', error: err.message })
+    store.dispatch({
+      type: 'updater/statusChanged',
+      payload: { state: 'error', error: err.message }
+    })
   })
   autoUpdater.on('download-progress', (p) => {
-    broadcastToAllWindows('updater:status', { state: 'downloading', percent: p.percent })
+    store.dispatch({
+      type: 'updater/statusChanged',
+      payload: { state: 'downloading', percent: p.percent }
+    })
   })
   autoUpdater.on('update-downloaded', (info) => {
     log('updater', 'update downloaded', info.version)
-    broadcastToAllWindows('updater:status', { state: 'downloaded', version: info.version })
+    store.dispatch({
+      type: 'updater/statusChanged',
+      payload: { state: 'downloaded', version: info.version }
+    })
   })
 
   // Also log native Squirrel.Mac errors. electron-updater wraps Squirrel via
