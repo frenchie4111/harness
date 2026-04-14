@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useSettings, usePrs, useOnboarding, useHooks, useWorktrees, useTerminals, usePanes, useLastActive, useUpdater, useRepoConfigs } from './store'
+import { useTailLineBuffer } from './hooks/useTailLineBuffer'
+import { useTabHandlers } from './hooks/useTabHandlers'
+import { useHotkeyHandlers } from './hooks/useHotkeyHandlers'
+import { useWorktreeHandlers } from './hooks/useWorktreeHandlers'
 import type { Worktree, TerminalTab, PtyStatus, PendingTool, QuestStep, PendingWorktree, UpdaterStatus, RepoConfig } from './types'
-import type { Action } from './hotkeys'
-import { resolveHotkeys } from './hotkeys'
 import { HotkeysProvider } from './components/Tooltip'
 import { Sidebar } from './components/Sidebar'
 import { ResizeHandle } from './components/ResizeHandle'
@@ -21,16 +23,8 @@ import { Cleanup } from './components/Cleanup'
 import { CommandCenter } from './components/CommandCenter'
 import { CommandPalette } from './components/CommandPalette'
 import iconUrl from '../../resources/icon.png'
-import { focusTerminalById, flushAllTerminalHistory, markTerminalClosing } from './components/XTerminal'
-import { useHotkeys } from './hooks/useHotkeys'
-import { groupWorktrees, getGroupKey, type GroupKey } from './worktree-sort'
-
-/** Create a filesystem-safe terminal ID from a worktree path */
-function makeTerminalId(prefix: string, worktreePath: string): string {
-  // Replace path separators with dashes, collapse multiple dashes
-  const safe = worktreePath.replace(/[/\\]/g, '-').replace(/^-+/, '').replace(/-+/g, '-')
-  return `${prefix}-${safe}`
-}
+import { focusTerminalById, flushAllTerminalHistory } from './components/XTerminal'
+import { type GroupKey } from './worktree-sort'
 
 function isPendingId(id: string | null | undefined): id is string {
   return typeof id === 'string' && id.startsWith('pending:')
@@ -165,7 +159,7 @@ export default function App(): JSX.Element {
   const [showCleanup, setShowCleanup] = useState(false)
   const [showCommandCenter, setShowCommandCenter] = useState(false)
   const [showCommandPalette, setShowCommandPalette] = useState(false)
-  const [tailLines, setTailLines] = useState<Record<string, string>>({})
+  const tailLines = useTailLineBuffer()
   const settings = useSettings()
   const { hasGithubToken, claudeCommand, nameClaudeSessions } = settings
   const hotkeyOverrides = settings.hotkeys ?? undefined
@@ -286,47 +280,6 @@ const setQuestStep = useCallback((next: QuestStep) => {
     return null
   }, [terminalTabs])
 
-  // Rolling last-line-of-output cache per terminal, for the CommandCenter preview.
-  // Tap terminal:data in the renderer — the main process already broadcasts it,
-  // so no IPC additions are needed. Buffer in a ref, flush to state every 500ms.
-  const tailBuffersRef = useRef<Record<string, string>>({})
-  const tailDirtyRef = useRef(false)
-  useEffect(() => {
-    const stripAnsi = (s: string): string =>
-      // eslint-disable-next-line no-control-regex
-      s.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '').replace(/\x1b\][^\x07\x1b]*(\x07|\x1b\\)/g, '')
-    const cleanup = window.api.onTerminalData((id, data) => {
-      const prev = tailBuffersRef.current[id] || ''
-      const next = (prev + data).slice(-4096)
-      tailBuffersRef.current[id] = next
-      tailDirtyRef.current = true
-    })
-    const flush = setInterval(() => {
-      if (!tailDirtyRef.current) return
-      tailDirtyRef.current = false
-      const out: Record<string, string> = {}
-      const isMeaningful = (line: string): boolean => {
-        const stripped = line.replace(/[\u2500-\u257F\u2580-\u259F]/g, '')
-        const wordChars = stripped.match(/[\p{L}\p{N}]/gu)
-        return !!wordChars && wordChars.length >= 3
-      }
-      for (const [id, buf] of Object.entries(tailBuffersRef.current)) {
-        const stripped = stripAnsi(buf).replace(/\r/g, '')
-        const lines = stripped
-          .split('\n')
-          .map((l) => l.replace(/[\u2500-\u257F\u2580-\u259F]+/g, ' ').replace(/\s+/g, ' ').trim())
-          .filter(isMeaningful)
-        const last = lines.slice(-4).map((l) => l.slice(0, 240))
-        out[id] = last.join('\n')
-      }
-      setTailLines(out)
-    }, 500)
-    return () => {
-      cleanup()
-      clearInterval(flush)
-    }
-  }, [])
-
   // Observe terminal status transitions to trigger PR refresh when a Claude
   // tab finishes a turn ('waiting'). lastActive timestamps are now derived
   // in main by the activity-deriver, so we don't need to track them here.
@@ -380,593 +333,89 @@ const setQuestStep = useCallback((next: QuestStep) => {
     void window.api.quitAndInstall()
   }, [])
 
-  const handleAddRepo = useCallback(async () => {
-    const root = await window.api.addRepo()
-    // Main dispatches worktrees/reposChanged and refreshes the list; all we
-    // do here is focus the new repo's main worktree once the store updates.
-    // The effect below watches worktrees.list for the added repoRoot.
-    if (root) {
-      // The store will re-dispatch shortly; poll the already-live list once
-      // it settles by using a microtask. Simpler: set a pending target and
-      // let a focus effect pick it up. For now, just read the current list
-      // — if the store has already updated by the time we reach here, this
-      // works; otherwise the first worktree from the list will be shown
-      // until the user clicks it.
-      const added =
-        worktrees.find((w) => w.repoRoot === root && w.isMain) ||
-        worktrees.find((w) => w.repoRoot === root)
-      if (added) setActiveWorktreeId(added.path)
-    }
-  }, [worktrees])
+  // All worktree + repo + pending-creation handlers. Also subscribes to
+  // external-create events from the harness-control MCP and routes focus
+  // to the new path.
+  const {
+    handleAddRepo,
+    handleRemoveRepo,
+    handleRefreshWorktrees,
+    handleSubmitNewWorktree,
+    handleRetryPendingWorktree,
+    handleDismissPendingWorktree,
+    handleContinuePendingWorktree,
+    handleContinueWorktree,
+    handleDeleteWorktree,
+    handleBulkDeleteWorktrees
+  } = useWorktreeHandlers({
+    worktrees,
+    pendingWorktrees,
+    repoRoots,
+    worktreeRepoByPath,
+    terminalTabs,
+    prStatuses,
+    activeWorktreeId,
+    setActiveWorktreeId,
+    setActivePaneId,
+    setShowNewWorktree
+  })
 
-  // External worktree creation (from the harness-control MCP). Main
-  // refreshes the store list AND seeds default panes (with the prompt
-  // embedded) before emitting this event, so we just focus the new path.
-  useEffect(() => {
-    const off = window.api.onWorktreesExternalCreate(({ repoRoot, worktree }) => {
-      if (!repoRoots.includes(repoRoot)) return
-      setActiveWorktreeId(worktree.path)
-    })
-    return off
-  }, [repoRoots])
+  // All tab/pane mutation handlers (addTab, closeTab, restartClaude,
+  // selectTab, openCommit/File/Diff, reorder, move, split, sendToClaude).
+  // Each handler dispatches an IPC method to main; per-client UI focus
+  // updates happen here.
+  const {
+    appendTabToPane,
+    handleAddTerminalTab,
+    handleAddClaudeTab,
+    handleCloseTab,
+    handleRestartClaudeTab,
+    handleRestartAllClaudeTabs,
+    handleSelectTab,
+    handleOpenCommit,
+    handleReorderTabs,
+    handleMoveTabToPane,
+    handleSplitPane,
+    handleSendToClaude,
+    handleOpenFile,
+    handleOpenDiff
+  } = useTabHandlers({
+    panes,
+    activePaneId,
+    setActivePaneId,
+    activeWorktreeId,
+    setActiveWorktreeId
+  })
 
-  const handleRemoveRepo = useCallback(
-    async (root: string) => {
-      await window.api.removeRepo(root)
-      // Main dispatches reposChanged + listChanged. If our current focus is
-      // about to disappear, switch to whatever's first in the remaining list.
-      if (activeWorktreeId) {
-        const stillExists = worktrees.some(
-          (w) => w.path === activeWorktreeId && w.repoRoot !== root
-        )
-        if (!stillExists) {
-          const next = worktrees.find((w) => w.repoRoot !== root)
-          setActiveWorktreeId(next?.path ?? null)
-        }
-      }
-    },
-    [activeWorktreeId, worktrees]
-  )
-
-  const handleRefreshWorktrees = useCallback(async () => {
-    await window.api.refreshWorktreesList()
-  }, [])
-
-  const handleSubmitNewWorktree = useCallback(
-    async (repoRoot: string, branchName: string, initialPrompt: string, teleportSessionId?: string) => {
-      const id = `pending:${crypto.randomUUID()}`
-      setActiveWorktreeId(id)
-      setShowNewWorktree(false)
-
-      // Main handles everything: addWorktree → setup script → ensureInitialized
-      // (with the prompt embedded in the new Claude tab) → outcome.
-      const result = await window.api.runPendingWorktree({
-        id,
-        repoRoot,
-        branchName,
-        initialPrompt: initialPrompt || undefined,
-        teleportSessionId
-      })
-
-      if (result.outcome === 'success') {
-        setActiveWorktreeId((prev) => (prev === id ? result.createdPath : prev))
-      }
-      // On 'setup-failed' we stay on the pending id; the user can click
-      // "Continue anyway" which transitions to result.createdPath.
-      // On 'error' we stay on the pending id so the error screen shows.
-    },
-    []
-  )
-
-  const handleRetryPendingWorktree = useCallback((id: string) => {
-    void window.api.retryPendingWorktree(id)
-  }, [])
-
-  const handleDismissPendingWorktree = useCallback(
-    (id: string) => {
-      void window.api.dismissPendingWorktree(id)
-      setActiveWorktreeId((prev) => (prev === id ? null : prev))
-    },
-    []
-  )
-
-  const handleContinuePendingWorktree = useCallback(
-    (id: string) => {
-      // "Continue anyway" from a setup-failed screen. Main already recorded
-      // createdPath on the pending entry.
-      const entry = pendingWorktrees.find((p) => p.id === id)
-      void window.api.dismissPendingWorktree(id)
-      if (entry?.createdPath) {
-        setActiveWorktreeId(entry.createdPath)
-      } else {
-        setActiveWorktreeId((prev) => (prev === id ? null : prev))
-      }
-  }, [])
-
-  const handleContinueWorktree = useCallback(async (path: string, newBranchName: string) => {
-    const repoRoot = worktreeRepoByPath[path]
-    if (!repoRoot) return
-    const result = await window.api.continueWorktree(repoRoot, path, newBranchName)
-    // Main's worktree:continue handler doesn't refresh the store yet — ask
-    // for a list refresh so the new branch name shows up.
-    void window.api.refreshWorktreesList()
-    // Branch changed — re-fetch PR status for this worktree.
-    void window.api.refreshPRsOne(path)
-    if (result.stashConflict) {
-      window.alert(
-        `Checked out ${newBranchName}, but your uncommitted changes did not apply cleanly and are still in the stash.\n\nRun \`git stash pop\` inside the worktree after resolving conflicts.`
-      )
-    }
-  }, [worktreeRepoByPath])
-
-  const handleDeleteWorktree = useCallback(async (path: string) => {
-    // Check for dirty changes
-    const dirty = await window.api.isWorktreeDirty(path)
-    if (dirty) {
-      const confirmed = window.confirm(
-        'This worktree has uncommitted changes that will be lost. Delete anyway?'
-      )
-      if (!confirmed) return
-    }
-
-    // Kill any terminals running in this worktree and drop their history
-    const tabs = terminalTabs[path] || []
-    for (const tab of tabs) {
-      if (tab.type !== 'diff' && tab.type !== 'file') markTerminalClosing(tab.id)
-      window.api.killTerminal(tab.id)
-    }
-    // Clean up pane state — main owns the panes map
-    void window.api.panesClearForWorktree(path)
-    setActivePaneId((prev) => {
-      const next = { ...prev }
-      delete next[path]
-      return next
-    })
-
-    // Force remove if dirty (user already confirmed), normal remove otherwise
-    const pr = prStatuses[path]
-    const repoRoot = worktreeRepoByPath[path]
-    if (!repoRoot) return
-    await window.api.removeWorktree(repoRoot, path, dirty, pr ? { prNumber: pr.number, prState: pr.state } : undefined)
-    // Main's worktree:remove handler calls worktreesFSM.refreshList(),
-    // which will dispatch listChanged. Switch focus if necessary.
-    if (path === activeWorktreeId) {
-      const next = worktrees.find((w) => w.path !== path)
-      setActiveWorktreeId(next?.path ?? null)
-    }
-  }, [terminalTabs, activeWorktreeId, prStatuses, worktreeRepoByPath, worktrees])
-
-  // Bulk delete used by the Cleanup screen. Skips per-path confirmation — the
-  // Cleanup UI owns the single confirm — and removes each worktree sequentially
-  // so git operations don't race each other.
-  const handleBulkDeleteWorktrees = useCallback(
-    async (
-      paths: string[],
-      force: boolean,
-      onProgress?: (path: string, phase: 'start' | 'done') => void
-    ) => {
-      for (const path of paths) {
-        onProgress?.(path, 'start')
-        const tabs = terminalTabs[path] || []
-        for (const tab of tabs) {
-          if (tab.type !== 'diff' && tab.type !== 'file') markTerminalClosing(tab.id)
-          window.api.killTerminal(tab.id)
-        }
-        void window.api.panesClearForWorktree(path)
-        setActivePaneId((prev) => {
-          const next = { ...prev }
-          delete next[path]
-          return next
-        })
-        try {
-          const pr = prStatuses[path]
-          const repoRoot = worktreeRepoByPath[path]
-          if (repoRoot) {
-            await window.api.removeWorktree(repoRoot, path, force, pr ? { prNumber: pr.number, prState: pr.state } : undefined)
-          }
-        } catch (err) {
-          console.error('Failed to remove worktree', path, err)
-        }
-        onProgress?.(path, 'done')
-      }
-      // Main dispatched listChanged on each removeWorktree. Route focus off
-      // the deleted set if necessary.
-      if (activeWorktreeId && paths.includes(activeWorktreeId)) {
-        const next = worktrees.find((w) => !paths.includes(w.path))
-        setActiveWorktreeId(next?.path ?? null)
-      }
-    },
-    [terminalTabs, activeWorktreeId, prStatuses, worktreeRepoByPath, worktrees]
-  )
-
-  // Append a tab to a specific pane (or the focused pane if paneId is omitted).
-  // Creates an initial pane if the worktree has none. Main owns the pane
-  // tree; we resolve the target pane id locally and pass it through.
-  const appendTabToPane = useCallback(
-    (worktreePath: string, tab: TerminalTab, paneId?: string) => {
-      const list = panes[worktreePath] || []
-      const targetId = paneId || activePaneId[worktreePath] || list[0]?.id
-      void window.api.panesAddTab(worktreePath, tab, targetId)
-      if (targetId) {
-        setActivePaneId((prev) => ({ ...prev, [worktreePath]: targetId }))
-      }
-    },
-    [activePaneId, panes]
-  )
-
-  const handleAddTerminalTab = useCallback(
-    (worktreePath: string, paneId?: string) => {
-      const id = `shell-${Date.now()}`
-      appendTabToPane(worktreePath, { id, type: 'shell', label: 'Shell' }, paneId)
-    },
-    [appendTabToPane]
-  )
-
-  const handleAddClaudeTab = useCallback(
-    (worktreePath: string, paneId?: string) => {
-      const id = `${makeTerminalId('claude', worktreePath)}-${Date.now()}`
-      appendTabToPane(
-        worktreePath,
-        { id, type: 'claude', label: 'Claude', sessionId: crypto.randomUUID() },
-        paneId
-      )
-    },
-    [appendTabToPane]
-  )
-
-  const handleCloseTab = useCallback(
-    (worktreePath: string, tabId: string) => {
-      // Only kill PTY for terminal tabs, not diff/file viewer tabs
-      if (!tabId.startsWith('diff-') && !tabId.startsWith('file-')) {
-        markTerminalClosing(tabId)
-        window.api.killTerminal(tabId)
-      }
-      void window.api.panesCloseTab(worktreePath, tabId)
-    },
-    []
-  )
-
-  const handleRestartClaudeTab = useCallback(
-    (worktreePath: string, tabId: string) => {
-      markTerminalClosing(tabId)
-      window.api.killTerminal(tabId)
-      window.api.clearTerminalHistory(tabId)
-      // Mint a new tab id so React remounts XTerminal and respawns the pty,
-      // but keep the existing sessionId so the new Claude resumes the same
-      // conversation via `--resume`.
-      const newId = `${makeTerminalId('claude', worktreePath)}-${Date.now()}`
-      void window.api.panesRestartClaudeTab(worktreePath, tabId, newId)
-    },
-    []
-  )
-
-  const handleRestartAllClaudeTabs = useCallback(() => {
-    for (const [worktreePath, paneList] of Object.entries(panes)) {
-      for (const pane of paneList) {
-        for (const tab of pane.tabs) {
-          if (tab.type === 'claude') {
-            handleRestartClaudeTab(worktreePath, tab.id)
-          }
-        }
-      }
-    }
-    void window.api.dismissHooksJustInstalled()
-  }, [panes, handleRestartClaudeTab])
-
-  const handleSelectTab = useCallback(
-    (worktreePath: string, paneId: string, tabId: string) => {
-      void window.api.panesSelectTab(worktreePath, paneId, tabId)
-      setActivePaneId((prev) => ({ ...prev, [worktreePath]: paneId }))
-    },
-    []
-  )
-
-  const handleOpenCommit = useCallback(
-    (hash: string, shortHash: string, subject: string) => {
-      if (!activeWorktreeId) return
-      const tabId = `diff-commit-${shortHash}`
-      const list = panes[activeWorktreeId] || []
-      const existingPane = list.find((p) => p.tabs.some((t) => t.id === tabId))
-      if (existingPane) {
-        handleSelectTab(activeWorktreeId, existingPane.id, tabId)
-        return
-      }
-      const tab: TerminalTab = {
-        id: tabId,
-        type: 'diff',
-        label: `${shortHash} ${subject}`,
-        commitHash: hash
-      }
-      appendTabToPane(activeWorktreeId, tab)
-    },
-    [activeWorktreeId, panes, handleSelectTab, appendTabToPane]
-  )
-
-  const handleReorderTabs = useCallback(
-    (worktreePath: string, paneId: string, fromId: string, toId: string) => {
-      if (fromId === toId) return
-      void window.api.panesReorderTabs(worktreePath, paneId, fromId, toId)
-    },
-    []
-  )
-
-  // Move a tab from one pane to another (or to a different index within the same pane).
-  // If toIndex is undefined, appends at the end.
-  const handleMoveTabToPane = useCallback(
-    (worktreePath: string, tabId: string, toPaneId: string, toIndex?: number) => {
-      void window.api.panesMoveTabToPane(worktreePath, tabId, toPaneId, toIndex)
-      setActivePaneId((prev) => ({ ...prev, [worktreePath]: toPaneId }))
-    },
-    []
-  )
-
-  // Split: create a new pane to the right of `fromPaneId`. Main figures out
-  // the new pane's type (claude → shell, otherwise mirror) and returns the
-  // new pane object so we can route per-client focus to it.
-  const handleSplitPane = useCallback(
-    async (worktreePath: string, fromPaneId: string) => {
-      const newPane = await window.api.panesSplitPane(worktreePath, fromPaneId)
-      if (newPane) {
-        setActivePaneId((prev) => ({ ...prev, [worktreePath]: newPane.id }))
-      }
-    },
-    []
-  )
-
-  const handleSendToClaude = useCallback(
-    (worktreePath: string, text: string) => {
-      const paneList = panes[worktreePath] || []
-      let targetPaneId: string | undefined
-      let targetTabId: string | undefined
-      // Prefer a pane whose active tab is already a claude tab
-      for (const pane of paneList) {
-        const active = pane.tabs.find((t) => t.id === pane.activeTabId)
-        if (active?.type === 'claude') {
-          targetPaneId = pane.id
-          targetTabId = active.id
-          break
-        }
-      }
-      // Otherwise pick the first claude tab we can find
-      if (!targetTabId) {
-        for (const pane of paneList) {
-          const c = pane.tabs.find((t) => t.type === 'claude')
-          if (c) {
-            targetPaneId = pane.id
-            targetTabId = c.id
-            break
-          }
-        }
-      }
-      if (!targetPaneId || !targetTabId) return
-      setActiveWorktreeId(worktreePath)
-      handleSelectTab(worktreePath, targetPaneId, targetTabId)
-      const id = targetTabId
-      requestAnimationFrame(() => {
-        window.api.writeTerminal(id, '\x1b[200~' + text + '\x1b[201~')
-        focusTerminalById(id)
-      })
-    },
-    [panes, handleSelectTab]
-  )
-
-  const handleOpenFile = useCallback(
-    (filePath: string) => {
-      if (!activeWorktreeId) return
-      const tabId = `file-${filePath}`
-      const list = panes[activeWorktreeId] || []
-      const existingPane = list.find((p) => p.tabs.some((t) => t.id === tabId))
-      if (existingPane) {
-        handleSelectTab(activeWorktreeId, existingPane.id, tabId)
-        return
-      }
-      const fileName = filePath.split('/').pop() || filePath
-      const tab: TerminalTab = {
-        id: tabId,
-        type: 'file',
-        label: fileName,
-        filePath
-      }
-      appendTabToPane(activeWorktreeId, tab)
-    },
-    [activeWorktreeId, panes, handleSelectTab, appendTabToPane]
-  )
-
-  const handleOpenDiff = useCallback(
-    (filePath: string, staged: boolean, mode: 'working' | 'branch' = 'working') => {
-      if (!activeWorktreeId) return
-      const branchDiff = mode === 'branch'
-      const kind = branchDiff ? 'branch' : staged ? 'staged' : 'unstaged'
-      const tabId = `diff-${kind}-${filePath}`
-      const list = panes[activeWorktreeId] || []
-      const existingPane = list.find((p) => p.tabs.some((t) => t.id === tabId))
-      if (existingPane) {
-        handleSelectTab(activeWorktreeId, existingPane.id, tabId)
-        return
-      }
-      const fileName = filePath.split('/').pop() || filePath
-      const tab: TerminalTab = {
-        id: tabId,
-        type: 'diff',
-        label: fileName,
-        filePath,
-        staged,
-        branchDiff
-      }
-      appendTabToPane(activeWorktreeId, tab)
-    },
-    [activeWorktreeId, panes, handleSelectTab, appendTabToPane]
-  )
-
-  // --- Hotkey action handlers ---
-  // Mirror the sidebar's grouping/rendering order so hotkey navigation matches what's on screen.
-  const byRepoGroups = useMemo(() => {
-    if (unifiedRepos && repoRoots.length > 1) {
-      return [{ repoRoot: '__unified__', groups: groupWorktrees(worktrees, prStatuses, mergedPaths) }]
-    }
-    const map = new Map<string, Worktree[]>()
-    for (const root of repoRoots) map.set(root, [])
-    for (const wt of worktrees) {
-      if (!map.has(wt.repoRoot)) map.set(wt.repoRoot, [])
-      map.get(wt.repoRoot)!.push(wt)
-    }
-    return Array.from(map.entries()).map(([repoRoot, wts]) => ({
-      repoRoot,
-      groups: groupWorktrees(wts, prStatuses, mergedPaths)
-    }))
-  }, [unifiedRepos, repoRoots, worktrees, prStatuses, mergedPaths])
-
-  const allOrderedWorktrees = useMemo(() => {
-    const out: Worktree[] = []
-    for (const { groups } of byRepoGroups) {
-      for (const group of groups) out.push(...group.worktrees)
-    }
-    return out
-  }, [byRepoGroups])
-
-  const visibleWorktrees = useMemo(() => {
-    const out: Worktree[] = []
-    for (const { repoRoot, groups } of byRepoGroups) {
-      if (collapsedRepos[repoRoot]) continue
-      for (const group of groups) {
-        if (isGroupCollapsed(repoRoot, group.key)) continue
-        out.push(...group.worktrees)
-      }
-    }
-    return out
-  }, [byRepoGroups, collapsedRepos, isGroupCollapsed])
-
-  const scopeForWorktree = useCallback(
-    (wt: Worktree): string =>
-      unifiedRepos && repoRoots.length > 1 ? '__unified__' : wt.repoRoot,
-    [unifiedRepos, repoRoots]
-  )
-
-  const ensureWorktreeVisible = useCallback(
-    (wt: Worktree) => {
-      const scope = scopeForWorktree(wt)
-      const key = getGroupKey(wt, prStatuses[wt.path], mergedPaths?.[wt.path])
-      if (isGroupCollapsed(scope, key)) {
-        setCollapsedGroups((prev) => ({ ...prev, [`${scope}:${key}`]: false }))
-      }
-      if (scope !== '__unified__' && collapsedRepos[scope]) {
-        setCollapsedRepos((prev) => ({ ...prev, [scope]: false }))
-      }
-    },
-    [scopeForWorktree, prStatuses, mergedPaths, isGroupCollapsed, collapsedRepos]
-  )
-
-  const switchToWorktreeByIndex = useCallback(
-    (index: number) => {
-      if (index < visibleWorktrees.length) {
-        setActiveWorktreeId(visibleWorktrees[index].path)
-      }
-    },
-    [visibleWorktrees]
-  )
-
-  const cycleWorktree = useCallback(
-    (delta: number) => {
-      if (allOrderedWorktrees.length === 0) return
-      const currentIdx = allOrderedWorktrees.findIndex((w) => w.path === activeWorktreeId)
-      const nextIdx =
-        (currentIdx + delta + allOrderedWorktrees.length) % allOrderedWorktrees.length
-      const next = allOrderedWorktrees[nextIdx]
-      ensureWorktreeVisible(next)
-      setActiveWorktreeId(next.path)
-    },
-    [allOrderedWorktrees, activeWorktreeId, ensureWorktreeVisible]
-  )
-
-  // Cycle tabs within the focused pane of the active worktree.
-  const cycleTab = useCallback(
-    (delta: number) => {
-      if (!activeWorktreeId) return
-      const list = panes[activeWorktreeId] || []
-      if (list.length === 0) return
-      const paneId = activePaneId[activeWorktreeId] || list[0].id
-      const pane = list.find((p) => p.id === paneId) || list[0]
-      if (pane.tabs.length === 0) return
-      const currentIdx = pane.tabs.findIndex((t) => t.id === pane.activeTabId)
-      const nextIdx = (currentIdx + delta + pane.tabs.length) % pane.tabs.length
-      handleSelectTab(activeWorktreeId, pane.id, pane.tabs[nextIdx].id)
-    },
-    [activeWorktreeId, panes, activePaneId, handleSelectTab]
-  )
-
-  const hotkeyActions = useMemo<Partial<Record<Action, () => void>>>(
-    () => ({
-      nextWorktree: () => cycleWorktree(1),
-      prevWorktree: () => cycleWorktree(-1),
-      worktree1: () => switchToWorktreeByIndex(0),
-      worktree2: () => switchToWorktreeByIndex(1),
-      worktree3: () => switchToWorktreeByIndex(2),
-      worktree4: () => switchToWorktreeByIndex(3),
-      worktree5: () => switchToWorktreeByIndex(4),
-      worktree6: () => switchToWorktreeByIndex(5),
-      worktree7: () => switchToWorktreeByIndex(6),
-      worktree8: () => switchToWorktreeByIndex(7),
-      worktree9: () => switchToWorktreeByIndex(8),
-      newShellTab: () => {
-        if (activeWorktreeId) handleAddTerminalTab(activeWorktreeId)
-      },
-      closeTab: () => {
-        if (!activeWorktreeId) return
-        const tabs = terminalTabs[activeWorktreeId] || []
-        const currentTabId = activeTabId[activeWorktreeId]
-        if (tabs.length > 1 && currentTabId) {
-          handleCloseTab(activeWorktreeId, currentTabId)
-        }
-      },
-      nextTab: () => cycleTab(1),
-      prevTab: () => cycleTab(-1),
-      newWorktree: () => setShowNewWorktree(true),
-      refreshWorktrees: handleRefreshWorktrees,
-      focusTerminal: () => {
-        if (!activeWorktreeId) return
-        const currentTabId = activeTabId[activeWorktreeId]
-        if (currentTabId) focusTerminalById(currentTabId)
-      },
-      toggleSidebar: () => setSidebarVisible((v) => !v),
-      openPR: () => {
-        if (!activeWorktreeId) return
-        const pr = prStatuses[activeWorktreeId]
-        if (pr?.url) window.api.openExternal(pr.url)
-      },
-      openInEditor: () => {
-        if (!activeWorktreeId) return
-        window.api.openInEditor(activeWorktreeId)
-      },
-      toggleCommandCenter: () => setShowCommandCenter((v) => !v),
-      commandPalette: () => setShowCommandPalette((v) => !v),
-      splitPaneRight: () => {
-        if (!activeWorktreeId) return
-        const list = panes[activeWorktreeId] || []
-        if (list.length === 0) return
-        const fromPaneId = activePaneId[activeWorktreeId] || list[list.length - 1].id
-        handleSplitPane(activeWorktreeId, fromPaneId)
-      },
-    }),
-    [
-      cycleWorktree,
-      switchToWorktreeByIndex,
-      cycleTab,
-      activeWorktreeId,
-      terminalTabs,
-      activeTabId,
-      handleAddTerminalTab,
-      handleCloseTab,
-      handleRefreshWorktrees,
-      prStatuses,
-      panes,
-      activePaneId,
-      handleSplitPane,
-    ]
-  )
-
-  useHotkeys(hotkeyActions, hotkeyOverrides)
-
-  const resolvedHotkeys = useMemo(() => resolveHotkeys(hotkeyOverrides), [hotkeyOverrides])
+  // Sidebar-aware hotkey handlers + the resolved binding map for tooltips.
+  // The hook also subscribes to keystrokes via useHotkeys internally.
+  const { hotkeyActions, resolvedHotkeys } = useHotkeyHandlers({
+    worktrees,
+    repoRoots,
+    unifiedRepos,
+    prStatuses,
+    mergedPaths,
+    collapsedRepos,
+    setCollapsedRepos,
+    setCollapsedGroups,
+    isGroupCollapsed,
+    activeWorktreeId,
+    setActiveWorktreeId,
+    panes,
+    activePaneId,
+    terminalTabs,
+    activeTabId,
+    hotkeyOverrides,
+    setSidebarVisible,
+    setShowNewWorktree,
+    setShowCommandCenter,
+    setShowCommandPalette,
+    handleAddTerminalTab,
+    handleCloseTab,
+    handleSelectTab,
+    handleSplitPane,
+    handleRefreshWorktrees
+  })
 
   // Compute aggregate status per worktree (worst status wins)
   const worktreeStatuses: Record<string, PtyStatus> = {}
