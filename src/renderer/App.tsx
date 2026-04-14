@@ -921,42 +921,43 @@ const setQuestStep = useCallback((next: QuestStep) => {
   }, [terminalTabs, activeWorktreeId, prStatuses, repoRoots, fetchAllWorktrees])
 
   // Bulk delete used by the Cleanup screen. Skips per-path confirmation — the
-  // Cleanup UI owns the single confirm — and removes each worktree sequentially
-  // so git operations don't race each other.
+  // Cleanup UI owns the single confirm.
   const handleBulkDeleteWorktrees = useCallback(
     async (
       paths: string[],
       force: boolean,
       onProgress?: (path: string, phase: 'start' | 'done') => void
     ) => {
-      for (const path of paths) {
-        onProgress?.(path, 'start')
-        const tabs = terminalTabs[path] || []
-        for (const tab of tabs) {
-          if (tab.type !== 'diff' && tab.type !== 'file') markTerminalClosing(tab.id)
-          window.api.killTerminal(tab.id)
-        }
-        setPanes((prev) => {
-          const next = { ...prev }
-          delete next[path]
-          return next
-        })
-        setActivePaneId((prev) => {
-          const next = { ...prev }
-          delete next[path]
-          return next
-        })
-        try {
-          const pr = prStatuses[path]
-          const repoRoot = worktreeRepoRef.current[path]
-          if (repoRoot) {
-            await window.api.removeWorktree(repoRoot, path, force, pr ? { prNumber: pr.number, prState: pr.state } : undefined)
+      await Promise.all(
+        paths.map(async (path) => {
+          onProgress?.(path, 'start')
+          const tabs = terminalTabs[path] || []
+          for (const tab of tabs) {
+            if (tab.type !== 'diff' && tab.type !== 'file') markTerminalClosing(tab.id)
+            window.api.killTerminal(tab.id)
           }
-        } catch (err) {
-          console.error('Failed to remove worktree', path, err)
-        }
-        onProgress?.(path, 'done')
-      }
+          setPanes((prev) => {
+            const next = { ...prev }
+            delete next[path]
+            return next
+          })
+          setActivePaneId((prev) => {
+            const next = { ...prev }
+            delete next[path]
+            return next
+          })
+          try {
+            const pr = prStatuses[path]
+            const repoRoot = worktreeRepoRef.current[path]
+            if (repoRoot) {
+              await window.api.removeWorktree(repoRoot, path, force, pr ? { prNumber: pr.number, prState: pr.state } : undefined)
+            }
+          } catch (err) {
+            console.error('Failed to remove worktree', path, err)
+          }
+          onProgress?.(path, 'done')
+        })
+      )
       const trees = await fetchAllWorktrees(repoRoots)
       setWorktrees(trees)
       if (activeWorktreeId && paths.includes(activeWorktreeId)) {
