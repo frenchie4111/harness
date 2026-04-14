@@ -280,6 +280,43 @@ export async function getPRStatus(worktreePath: string): Promise<PRStatus | null
   }
 }
 
+/** Check whether the authenticated user has starred the repo. */
+export async function isRepoStarred(token: string, owner: string, repo: string): Promise<boolean | null> {
+  try {
+    const res = await fetch(`https://api.github.com/user/starred/${owner}/${repo}`, {
+      headers: {
+        Accept: 'application/vnd.github+json',
+        'User-Agent': 'Harness',
+        Authorization: `Bearer ${token}`
+      }
+    })
+    if (res.status === 204) return true
+    if (res.status === 404) return false
+    return null
+  } catch {
+    return null
+  }
+}
+
+/** Unstar a repository. Idempotent. */
+export async function unstarRepo(token: string, owner: string, repo: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await fetch(`https://api.github.com/user/starred/${owner}/${repo}`, {
+      method: 'DELETE',
+      headers: {
+        Accept: 'application/vnd.github+json',
+        'User-Agent': 'Harness',
+        Authorization: `Bearer ${token}`,
+        'X-GitHub-Api-Version': '2022-11-28'
+      }
+    })
+    if (res.status === 204) return { ok: true }
+    return { ok: false, error: `${res.status} ${res.statusText}` }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
 /** Star a repository on behalf of the authenticated user. Idempotent. */
 export async function starRepo(token: string, owner: string, repo: string): Promise<{ ok: boolean; error?: string }> {
   try {

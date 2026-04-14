@@ -143,7 +143,6 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
   const [token, setToken] = useState('')
   const [showToken, setShowToken] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [autoStar, setAutoStar] = useState(true)
   const [tokenResult, setTokenResult] = useState<{ ok: boolean; message: string } | null>(null)
   const [showPatForm, setShowPatForm] = useState(false)
 
@@ -169,6 +168,7 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
     mergeStrategy,
     hasGithubToken: settingsHasToken,
     githubAuthSource: authSource,
+    harnessStarred,
     worktreeScripts
   } = settings
   const setupScript = worktreeScripts.setup
@@ -351,10 +351,9 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
     setSaving(true)
     setTokenResult(null)
     try {
-      const res = await window.api.setGithubToken(token, { starRepo: autoStar })
+      const res = await window.api.setGithubToken(token)
       if (res.ok) {
-        let message = res.username ? `Connected as @${res.username}` : 'Token saved'
-        if (autoStar && res.starred) message += ' · starred Harness on GitHub'
+        const message = res.username ? `Connected as @${res.username}` : 'Token saved'
         setTokenResult({ ok: true, message })
         setToken('')
       } else {
@@ -363,7 +362,7 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
     } finally {
       setSaving(false)
     }
-  }, [token, autoStar])
+  }, [token])
 
   const handleClear = useCallback(async () => {
     await window.api.clearGithubToken()
@@ -1286,6 +1285,24 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
                 encrypted and stored locally using your macOS keychain.
               </p>
 
+              {authed && harnessStarred !== null && (
+                <label className="mb-4 flex items-center gap-2 cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={harnessStarred}
+                    onChange={(e) => { void window.api.setHarnessStarred(e.target.checked) }}
+                    className="w-3.5 h-3.5 accent-warning cursor-pointer"
+                  />
+                  <Star
+                    size={14}
+                    className={harnessStarred ? 'text-warning fill-warning shrink-0' : 'text-warning shrink-0'}
+                  />
+                  <span className="text-sm text-fg group-hover:text-fg-bright transition-colors">
+                    Star Harness on GitHub
+                  </span>
+                </label>
+              )}
+
               {authSource === 'gh-cli' && !hasToken && (
                 <div className="mb-4 rounded-lg p-4 border bg-success/10 border-success/30">
                   <div className="flex items-center gap-2 text-sm text-success">
@@ -1315,19 +1332,6 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
                     <span>A token is currently saved {authSource === 'pat' ? '(in use)' : ''}</span>
                   </div>
                 )}
-
-                <label className="flex items-center gap-2 mb-3 cursor-pointer group">
-                  <input
-                    type="checkbox"
-                    checked={autoStar}
-                    onChange={(e) => setAutoStar(e.target.checked)}
-                    className="w-3.5 h-3.5 accent-warning cursor-pointer"
-                  />
-                  <Star size={12} className="text-warning shrink-0" />
-                  <span className="text-xs text-muted group-hover:text-fg transition-colors">
-                    Automatically star Harness on GitHub
-                  </span>
-                </label>
 
                 <div className="relative mb-3">
                   <input

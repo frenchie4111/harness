@@ -165,8 +165,9 @@ contextBridge.exposeInMainWorld('api', {
 
   // Settings
   hasGithubToken: () => ipcRenderer.invoke('settings:hasGithubToken'),
-  setGithubToken: (token: string, options?: { starRepo?: boolean }) => ipcRenderer.invoke('settings:setGithubToken', token, options),
+  setGithubToken: (token: string) => ipcRenderer.invoke('settings:setGithubToken', token),
   clearGithubToken: () => ipcRenderer.invoke('settings:clearGithubToken'),
+  setHarnessStarred: (starred: boolean) => ipcRenderer.invoke('settings:setHarnessStarred', starred),
 
   // Updater
   getVersion: () => ipcRenderer.invoke('updater:getVersion'),

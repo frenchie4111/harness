@@ -12,10 +12,10 @@ import { PanesFSM, stripTransientTabFields } from './panes-fsm'
 import { ActivityDeriver } from './activity-deriver'
 import type { TerminalTab, WorkspacePane } from '../shared/state/terminals'
 import { listWorktrees, listBranches, continueWorktree, removeWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, readWorktreeFile, runWorktreeScript, type MergeStrategy } from './worktree'
-import { getPRStatus, testToken, starRepo } from './github'
+import { getPRStatus, testToken, starRepo, unstarRepo, isRepoStarred } from './github'
 import { AVAILABLE_EDITORS, DEFAULT_EDITOR_ID, openInEditor } from './editor'
 import { setSecret, hasSecret, deleteSecret } from './secrets'
-import { resolveGitHubToken, getTokenSource, invalidateTokenCache } from './github-auth'
+import { resolveGitHubToken, getTokenSource, invalidateTokenCache, getCachedToken } from './github-auth'
 import {
   loadConfig,
   saveConfig,
@@ -125,6 +125,30 @@ const store = new Store({
   }
 })
 registerStateTransport(store)
+
+/** Query the harness star state, dispatch it to the slice, and auto-star
+ *  exactly once per user (sticky so manual unstars survive reboots). Safe
+ *  to call after any token resolution — boot, PAT save, etc. */
+async function refreshHarnessStarState(): Promise<void> {
+  const token = getCachedToken()
+  if (!token) {
+    store.dispatch({ type: 'settings/harnessStarredChanged', payload: null })
+    return
+  }
+  const starred = await isRepoStarred(token, 'frenchie4111', 'harness')
+  if (starred === false && !config.harnessAutoStarred) {
+    const result = await starRepo(token, 'frenchie4111', 'harness')
+    if (result.ok) {
+      config.harnessAutoStarred = true
+      saveConfig(config)
+      store.dispatch({ type: 'settings/harnessStarredChanged', payload: true })
+      log('app', 'auto-starred harness on first GitHub connection')
+      return
+    }
+    log('app', 'auto-star failed', result.error)
+  }
+  store.dispatch({ type: 'settings/harnessStarredChanged', payload: starred })
+}
 
 const prPoller = new PRPoller(store, {
   getRepoRoots: () => config.repoRoots || [],
@@ -888,13 +912,15 @@ function registerIpcHandlers(): void {
     return store.getSnapshot().state.settings.hasGithubToken
   })
 
-  ipcMain.handle('settings:setGithubToken', async (_, token: string, options?: { starRepo?: boolean }) => {
+  ipcMain.handle('settings:setGithubToken', async (_, token: string) => {
     const trimmed = token.trim()
     if (!trimmed) {
       deleteSecret('githubToken')
       store.dispatch({ type: 'settings/hasGithubTokenChanged', payload: false })
       invalidateTokenCache()
       await resolveGitHubToken()
+      store.dispatch({ type: 'settings/githubAuthSourceChanged', payload: getTokenSource() })
+      await refreshHarnessStarState()
       return { ok: true }
     }
     // Validate the token first by hitting /user
@@ -905,16 +931,8 @@ function registerIpcHandlers(): void {
     invalidateTokenCache()
     await resolveGitHubToken()
     store.dispatch({ type: 'settings/githubAuthSourceChanged', payload: getTokenSource() })
-
-    // Optionally star the repo — fire and forget, don't fail token save if this fails
-    let starred = false
-    if (options?.starRepo) {
-      const result = await starRepo(trimmed, 'frenchie4111', 'harness')
-      starred = result.ok
-      if (!result.ok) log('app', 'failed to star repo', result.error)
-    }
-
-    return { ok: true, username: test.username, starred }
+    await refreshHarnessStarState()
+    return { ok: true, username: test.username }
   })
 
   ipcMain.handle('settings:clearGithubToken', async () => {
@@ -923,7 +941,20 @@ function registerIpcHandlers(): void {
     invalidateTokenCache()
     await resolveGitHubToken()
     store.dispatch({ type: 'settings/githubAuthSourceChanged', payload: getTokenSource() })
+    await refreshHarnessStarState()
     return true
+  })
+
+  ipcMain.handle('settings:setHarnessStarred', async (_, starred: boolean) => {
+    const token = getCachedToken()
+    if (!token) return { ok: false, error: 'No GitHub token' }
+    const result = starred
+      ? await starRepo(token, 'frenchie4111', 'harness')
+      : await unstarRepo(token, 'frenchie4111', 'harness')
+    if (result.ok) {
+      store.dispatch({ type: 'settings/harnessStarredChanged', payload: starred })
+    }
+    return result
   })
 
   // Updater
@@ -1242,9 +1273,12 @@ app.whenReady().then(() => {
   // makes its first call. The poller's initial refreshAll waits on this.
   void (async () => {
     await resolveGitHubToken()
-    store.dispatch({ type: 'settings/githubAuthSourceChanged', payload: getTokenSource() })
+    const source = getTokenSource()
+    store.dispatch({ type: 'settings/githubAuthSourceChanged', payload: source })
     prPoller.start()
     void prPoller.refreshAll()
+
+    await refreshHarnessStarState()
   })()
 
   // Seed hooks.consent from disk. If any known worktree already has the

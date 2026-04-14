@@ -212,8 +212,9 @@ export interface ElectronAPI {
   getLatestClaudeSessionId(cwd: string): Promise<string | null>
 
   hasGithubToken(): Promise<boolean>
-  setGithubToken(token: string, options?: { starRepo?: boolean }): Promise<{ ok: boolean; username?: string; error?: string; starred?: boolean }>
+  setGithubToken(token: string): Promise<{ ok: boolean; username?: string; error?: string }>
   clearGithubToken(): Promise<boolean>
+  setHarnessStarred(starred: boolean): Promise<{ ok: boolean; error?: string }>
 
   getVersion(): Promise<string>
   checkForUpdates(): Promise<{ ok: boolean; available?: boolean; version?: string; releaseDate?: string; error?: string }>

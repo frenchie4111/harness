@@ -21,6 +21,7 @@ export interface SettingsState {
   mergeStrategy: MergeStrategy
   hasGithubToken: boolean
   githubAuthSource: 'pat' | 'gh-cli' | null
+  harnessStarred: boolean | null
 }
 
 export type SettingsEvent =
@@ -38,6 +39,7 @@ export type SettingsEvent =
   | { type: 'settings/mergeStrategyChanged'; payload: MergeStrategy }
   | { type: 'settings/hasGithubTokenChanged'; payload: boolean }
   | { type: 'settings/githubAuthSourceChanged'; payload: 'pat' | 'gh-cli' | null }
+  | { type: 'settings/harnessStarredChanged'; payload: boolean | null }
 
 // Client-side placeholder. Real values are seeded in the main-process Store
 // constructor from the on-disk config and secrets.
@@ -55,7 +57,8 @@ export const initialSettings: SettingsState = {
   worktreeBase: 'remote',
   mergeStrategy: 'squash',
   hasGithubToken: false,
-  githubAuthSource: null
+  githubAuthSource: null,
+  harnessStarred: null
 }
 
 export function settingsReducer(state: SettingsState, event: SettingsEvent): SettingsState {
@@ -88,6 +91,8 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, hasGithubToken: event.payload }
     case 'settings/githubAuthSourceChanged':
       return { ...state, githubAuthSource: event.payload }
+    case 'settings/harnessStarredChanged':
+      return { ...state, harnessStarred: event.payload }
     default: {
       const _exhaustive: never = event
       void _exhaustive
