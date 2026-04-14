@@ -7,7 +7,7 @@ import type { Worktree, PtyStatus, PendingTool, PRStatus, PendingWorktree } from
 import type { GroupKey } from '../worktree-sort'
 import { groupWorktrees } from '../worktree-sort'
 import { WorktreeTab } from './WorktreeTab'
-import { RepoIcon } from './RepoIcon'
+import { repoNameColor } from './RepoIcon'
 
 interface SidebarProps {
   worktrees: Worktree[]
@@ -356,8 +356,7 @@ export function Sidebar({
                   {repoCollapsed
                     ? <ChevronRight size={11} className="shrink-0" />
                     : <ChevronDown size={11} className="shrink-0" />}
-                  <RepoIcon repoName={repoName} size={14} />
-                  <span className="truncate">{repoName}</span>
+                  <span className={`truncate ${repoNameColor(repoName)}`}>{repoName}</span>
                   <span
                     role="button"
                     className="ml-auto opacity-0 group-hover:opacity-100 text-faint hover:text-danger"

@@ -12,7 +12,7 @@ import type {
 } from '../types'
 import { eventsToSegments, STATE_COLOR } from './Activity'
 import { groupWorktrees, type GroupKey } from '../worktree-sort'
-import { RepoIcon } from './RepoIcon'
+import { repoNameColor } from './RepoIcon'
 import { formatPendingTool } from '../pending-tool'
 
 interface CommandCenterProps {
@@ -359,8 +359,7 @@ export function CommandCenter({
           <div key={section.scope}>
             {section.repoLabel && (
               <div className="flex items-center gap-2 mb-5">
-                <RepoIcon repoName={section.repoLabel} size={18} />
-                <h2 className="text-base font-semibold text-fg-bright tracking-tight">
+                <h2 className={`text-base font-semibold tracking-tight ${repoNameColor(section.repoLabel)}`}>
                   {section.repoLabel}
                 </h2>
                 <div className="flex-1 border-t border-border" />
@@ -405,8 +404,7 @@ export function CommandCenter({
                               <div className="flex items-center gap-1.5 min-w-0">
                                 {showRepoLabelOnCards && (
                                   <>
-                                    <RepoIcon repoName={wt.repoRoot.split('/').pop() || wt.repoRoot} size={12} />
-                                    <span className="text-xs text-dim truncate shrink">
+                                    <span className={`text-xs truncate shrink ${repoNameColor(wt.repoRoot.split('/').pop() || wt.repoRoot)}`}>
                                       {wt.repoRoot.split('/').pop()}
                                     </span>
                                     <span className="text-faint shrink-0">/</span>

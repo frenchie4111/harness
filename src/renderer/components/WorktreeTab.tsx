@@ -1,7 +1,7 @@
 import { GitPullRequest, RotateCw, Trash2, Loader2 } from 'lucide-react'
 import type { Worktree, PtyStatus, PendingTool, PRStatus } from '../types'
 import { Tooltip } from './Tooltip'
-import { RepoIcon } from './RepoIcon'
+import { repoNameColor } from './RepoIcon'
 import { formatPendingTool } from '../pending-tool'
 import { HotkeyBadge } from './HotkeyBadge'
 import { useMetaHeld } from '../hooks/useMetaHeld'
@@ -123,8 +123,7 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
           <div className="text-xs text-faint truncate">
             {repoLabel ? (
               <span className="inline-flex items-center gap-1">
-                <RepoIcon repoName={repoLabel} size={11} />
-                <span className="text-dim">{repoLabel}</span>
+                <span className={repoNameColor(repoLabel)}>{repoLabel}</span>
                 <span className="mx-0.5">·</span>
                 {worktree.path.split('/').pop()}
               </span>
