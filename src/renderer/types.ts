@@ -65,6 +65,8 @@ export interface ChangedFile {
   path: string
   status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked'
   staged: boolean
+  additions?: number
+  deletions?: number
 }
 
 import type { CheckStatus, PRReview, PRStatus } from '../shared/state/prs'

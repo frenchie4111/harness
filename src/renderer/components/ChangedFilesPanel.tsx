@@ -207,6 +207,16 @@ function FileRow({
           </bdi>
         </span>
       </Tooltip>
+      {(file.additions !== undefined || file.deletions !== undefined) && (
+        <span className="shrink-0 font-mono text-[10px] tabular-nums">
+          {file.additions !== undefined && file.additions > 0 && (
+            <span className="text-success">+{file.additions}</span>
+          )}
+          {file.deletions !== undefined && file.deletions > 0 && (
+            <span className="text-danger ml-1">−{file.deletions}</span>
+          )}
+        </span>
+      )}
       {onSendToClaude && (
         <Tooltip label="Reference in Claude" side="left">
           <button
