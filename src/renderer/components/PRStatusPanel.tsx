@@ -290,8 +290,8 @@ function MergeLocallyBody({
                 {conflictPreview.files.length > 1 && (
                   <ul className="text-faint font-mono text-[10px] space-y-0.5 max-h-20 overflow-y-auto">
                     {conflictPreview.files.map((f) => (
-                      <li key={f} className="truncate" title={f}>
-                        {f}
+                      <li key={f} className="truncate" style={{ direction: 'rtl', textAlign: 'left' }} title={f}>
+                        <bdi>{f}</bdi>
                       </li>
                     ))}
                   </ul>
