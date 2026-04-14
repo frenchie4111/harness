@@ -208,6 +208,10 @@ const activityDeriver = new ActivityDeriver(store)
  * if the user has accepted the consent prompt. Subscribes to the store and
  * fires on worktrees/listChanged + hooks/consentChanged. */
 function installHooksForAcceptedWorktrees(): void {
+  // Demo mode uses fake on-disk paths — installing hooks would mkdir into
+  // /demo/... and crash. The driver dispatches consent='accepted' anyway
+  // so the renderer skips the consent banner.
+  if (isDemoMode) return
   const state = store.getSnapshot().state
   if (state.hooks.consent !== 'accepted') return
   for (const wt of state.worktrees.list) {
