@@ -6,6 +6,8 @@ import { join } from 'path'
 import { PtyManager } from './pty-manager'
 import { Store } from './store'
 import { registerStateTransport } from './transport-electron'
+import { isDemoMode } from './demo-mode'
+import { DemoDriver } from './demo-driver'
 import { PRPoller } from './pr-poller'
 import { WorktreesFSM } from './worktrees-fsm'
 import { WorktreeDeletionFSM } from './worktree-deletion-fsm'
@@ -122,6 +124,8 @@ ptyManager.setStore(store)
 // on-disk format stays compatible with persistence-migrations. Strip
 // transient (in-memory only) tab fields like initialPrompt before saving.
 function persistPanes(panes: Record<string, WorkspacePane[]>): void {
+  // Demo mode never touches config.json — fake panes stay in memory only.
+  if (isDemoMode) return
   const nested: Record<string, Record<string, PersistedPane[]>> = {}
   for (const [wtPath, paneList] of Object.entries(panes)) {
     // Find which repo this worktree belongs to. Use the live worktree list
@@ -1100,6 +1104,9 @@ function registerIpcHandlers(): void {
   ipcMain.on('pty:create', (event, id: string, cwd: string, cmd: string, args: string[], isClaude?: boolean) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (!win) return
+    // Demo mode: don't spawn a real pty. The DemoDriver pushes terminal:data
+    // directly to the window for hero terminals; other tabs stay blank.
+    if (isDemoMode) return
     const extraEnv = isClaude ? config.claudeEnvVars : undefined
     ptyManager.create(id, cwd, cmd, args, win, extraEnv, !isClaude)
   })
@@ -1299,35 +1306,45 @@ app.whenReady().then(() => {
 
   // Start the activity deriver — it observes terminals/prs/panes events
   // and writes recordActivity + lastActive without renderer involvement.
-  activityDeriver.start()
+  // Skipped in demo mode: it would persist fake worktree paths to the
+  // activity log on disk.
+  if (!isDemoMode) {
+    activityDeriver.start()
+  }
 
   // Resolve the GitHub token (PAT → gh CLI → none) before the PR poller
   // makes its first call. The poller's initial refreshAll waits on this.
-  void (async () => {
-    await resolveGitHubToken()
-    const source = getTokenSource()
-    store.dispatch({ type: 'settings/githubAuthSourceChanged', payload: source })
-    prPoller.start()
-    void prPoller.refreshAll()
+  // Skipped in demo mode — DemoDriver owns PR state.
+  if (!isDemoMode) {
+    void (async () => {
+      await resolveGitHubToken()
+      const source = getTokenSource()
+      store.dispatch({ type: 'settings/githubAuthSourceChanged', payload: source })
+      prPoller.start()
+      void prPoller.refreshAll()
 
-    await refreshHarnessStarState()
-  })()
+      await refreshHarnessStarState()
+    })()
+  }
 
   // Seed hooks.consent from disk. If any known worktree already has the
   // hooks installed, the user must have accepted at some point — remember
-  // that and skip the consent banner on boot.
-  void (async () => {
-    const roots = config.repoRoots || []
-    for (const root of roots) {
-      const trees = await listWorktrees(root).catch(() => [])
-      for (const wt of trees) {
-        if (hooksInstalled(wt.path)) {
-          store.dispatch({ type: 'hooks/consentChanged', payload: 'accepted' })
-          return
+  // that and skip the consent banner on boot. Skipped in demo mode —
+  // DemoDriver dispatches hooks/consentChanged='accepted' itself.
+  if (!isDemoMode) {
+    void (async () => {
+      const roots = config.repoRoots || []
+      for (const root of roots) {
+        const trees = await listWorktrees(root).catch(() => [])
+        for (const wt of trees) {
+          if (hooksInstalled(wt.path)) {
+            store.dispatch({ type: 'hooks/consentChanged', payload: 'accepted' })
+            return
+          }
         }
       }
-    }
-  })()
+    })()
+  }
 
   // Prune terminal history files not referenced by any persisted tab
   const keepIds = new Set<string>()
@@ -1369,12 +1386,27 @@ app.whenReady().then(() => {
 
   // Watch status dir globally — hook events become terminals/statusChanged
   // dispatches on the store, which the state transport fans out to all
-  // clients.
-  stopWatchingStatus = watchStatusDir(store)
+  // clients. Skipped in demo mode — DemoDriver dispatches statuses directly.
+  if (!isDemoMode) {
+    stopWatchingStatus = watchStatusDir(store)
+  }
 
   // One window shows all repos. The renderer reads `config.repoRoots` via
   // `repo:list` and opens each one on mount.
-  createWindow()
+  const mainWindow = createWindow()
+
+  if (isDemoMode) {
+    log('demo', 'demo mode active — starting DemoDriver after renderer loads')
+    const driver = new DemoDriver(store, () => {
+      const wins = BrowserWindow.getAllWindows()
+      return wins.find((w) => !w.isDestroyed()) || null
+    })
+    // Wait for the renderer to subscribe to state:event before dispatching,
+    // otherwise the seed events fire into the void.
+    mainWindow.webContents.once('did-finish-load', () => {
+      driver.start()
+    })
+  }
 
   setupAutoUpdater()
 

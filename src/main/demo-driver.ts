@@ -1,0 +1,313 @@
+// DemoDriver — scripted, looping fake state for `--demo` mode.
+//
+// The post-refactor architecture (see CLAUDE.md "Architecture") makes this
+// surprisingly small: the renderer is a passive mirror of the main store
+// driven by `state:event` IPC + the shared reducer, so we can fake the
+// entire app by dispatching pre-canned StateEvents on a timeline. Real
+// data sources (PRPoller, watchStatusDir, listWorktrees, ptyManager.create)
+// are short-circuited in main/index.ts behind the isDemoMode flag, so
+// nothing fights us.
+//
+// Terminal bytes don't flow through the store — they go over `terminal:data`
+// IPC direct from node-pty to xterm.js. We replay asciinema cast files
+// (v2 format: JSON header + JSONL `[ts, "o", data]` records) by sending
+// the same chunks at the same timings over the same channel. xterm renders
+// whatever we throw at it.
+//
+// The timeline is symmetric (state at t=0 == state at t=LOOP_MS) so the
+// loop seams invisibly. See the homepage-GIF script in the demo-mode PR
+// for the storyboard.
+
+import { readFileSync } from 'fs'
+import { join } from 'path'
+import { app, BrowserWindow } from 'electron'
+import type { Store } from './store'
+import type { StateEvent, Worktree, WorkspacePane, PRStatus } from '../shared/state'
+import { log } from './debug'
+
+const LOOP_MS = 8000
+
+const ACME_API = '/demo/repos/acme-api'
+const ACME_WEB = '/demo/repos/acme-web'
+
+const WT_FIX_AUTH = '/demo/worktrees/acme-api/fix-auth-token-refresh'
+const WT_RATE_LIMIT = '/demo/worktrees/acme-api/add-rate-limiter'
+const WT_MIGRATE_PG = '/demo/worktrees/acme-api/migrate-postgres-16'
+const WT_REDESIGN = '/demo/worktrees/acme-web/redesign-settings-page'
+const WT_FIX_FLAKY = '/demo/worktrees/acme-api/fix-flaky-login-test'
+
+const HERO_TAB_ID = 'demo-claude-fix-auth'
+
+function fakeWorktree(
+  path: string,
+  branch: string,
+  repoRoot: string,
+  isMain = false
+): Worktree {
+  return {
+    path,
+    branch,
+    head: 'demo000000000000000000000000000000000000',
+    isBare: false,
+    isMain,
+    createdAt: Date.now(),
+    repoRoot
+  }
+}
+
+function pr(
+  number: number,
+  title: string,
+  branch: string,
+  state: PRStatus['state'],
+  checks: PRStatus['checksOverall']
+): PRStatus {
+  return {
+    number,
+    title,
+    state,
+    url: `https://github.com/demo/${branch}`,
+    branch,
+    checks: [
+      {
+        name: 'ci',
+        state:
+          checks === 'success'
+            ? 'success'
+            : checks === 'pending'
+              ? 'pending'
+              : checks === 'failure'
+                ? 'failure'
+                : 'neutral',
+        description: 'Build & test'
+      }
+    ],
+    checksOverall: checks,
+    hasConflict: false,
+    reviews: [],
+    reviewDecision: 'none'
+  }
+}
+
+interface CastRecord {
+  delayMs: number
+  data: string
+}
+
+function loadCast(file: string): CastRecord[] {
+  const path = join(app.getAppPath(), 'resources', 'demo', file)
+  const raw = readFileSync(path, 'utf8')
+  const lines = raw.split('\n').filter((l) => l.trim().length > 0)
+  // First line is the header `{"version":2,...}` — skip it.
+  const records: CastRecord[] = []
+  let prevTs = 0
+  for (let i = 1; i < lines.length; i++) {
+    const parsed = JSON.parse(lines[i]) as [number, string, string]
+    const [ts, channel, data] = parsed
+    if (channel !== 'o') continue
+    records.push({ delayMs: Math.max(0, (ts - prevTs) * 1000), data })
+    prevTs = ts
+  }
+  return records
+}
+
+export class DemoDriver {
+  private store: Store
+  private getWindow: () => BrowserWindow | null
+  private timers: NodeJS.Timeout[] = []
+  private heroCast: CastRecord[] = []
+
+  constructor(store: Store, getWindow: () => BrowserWindow | null) {
+    this.store = store
+    this.getWindow = getWindow
+  }
+
+  start(): void {
+    log('demo', 'starting DemoDriver')
+    try {
+      this.heroCast = loadCast('hero.cast')
+    } catch (err) {
+      log('demo', 'failed to load hero.cast', err instanceof Error ? err.message : err)
+    }
+    this.seed()
+    this.runLoop()
+  }
+
+  stop(): void {
+    for (const t of this.timers) clearTimeout(t)
+    this.timers = []
+  }
+
+  private dispatch(event: StateEvent): void {
+    this.store.dispatch(event)
+  }
+
+  private at(ms: number, fn: () => void): void {
+    this.timers.push(setTimeout(fn, ms))
+  }
+
+  /** Seed initial state. Runs once on start() and again at the top of every
+   * loop iteration to reset state to t=0. */
+  private seed(): void {
+    this.dispatch({
+      type: 'hooks/consentChanged',
+      payload: 'accepted'
+    })
+
+    this.dispatch({
+      type: 'worktrees/reposChanged',
+      payload: [ACME_API, ACME_WEB]
+    })
+
+    const worktrees: Worktree[] = [
+      fakeWorktree(ACME_API, 'main', ACME_API, true),
+      fakeWorktree(WT_FIX_AUTH, 'fix-auth-token-refresh', ACME_API),
+      fakeWorktree(WT_RATE_LIMIT, 'add-rate-limiter', ACME_API),
+      fakeWorktree(WT_MIGRATE_PG, 'migrate-postgres-16', ACME_API),
+      fakeWorktree(WT_FIX_FLAKY, 'fix-flaky-login-test', ACME_API),
+      fakeWorktree(ACME_WEB, 'main', ACME_WEB, true),
+      fakeWorktree(WT_REDESIGN, 'redesign-settings-page', ACME_WEB)
+    ]
+    this.dispatch({ type: 'worktrees/listChanged', payload: worktrees })
+
+    // Seed panes for the hero worktree only — that's the one whose terminal
+    // we replay. The other worktrees show up in the sidebar but have no
+    // panes (renderer will lazily create them on activation, which won't
+    // happen during the demo).
+    const heroPane: WorkspacePane = {
+      id: 'demo-pane-fix-auth',
+      tabs: [
+        {
+          id: HERO_TAB_ID,
+          type: 'claude',
+          label: 'Claude',
+          sessionId: 'demo-session-fix-auth'
+        }
+      ],
+      activeTabId: HERO_TAB_ID
+    }
+    this.dispatch({
+      type: 'terminals/panesReplaced',
+      payload: { [WT_FIX_AUTH]: [heroPane] }
+    })
+
+    // Initial statuses
+    this.dispatch({
+      type: 'terminals/statusChanged',
+      payload: { id: HERO_TAB_ID, status: 'processing', pendingTool: null }
+    })
+
+    // Initial PR statuses
+    this.dispatch({
+      type: 'prs/bulkStatusChanged',
+      payload: {
+        [WT_FIX_AUTH]: pr(1823, 'Refresh expired auth tokens', 'fix-auth-token-refresh', 'open', 'pending'),
+        [WT_RATE_LIMIT]: pr(1824, 'Add rate limiter middleware', 'add-rate-limiter', 'open', 'pending'),
+        [WT_REDESIGN]: pr(442, 'Redesign settings page', 'redesign-settings-page', 'merged', 'success')
+      }
+    })
+    this.dispatch({
+      type: 'prs/mergedChanged',
+      payload: { [WT_REDESIGN]: true }
+    })
+
+    // Per-worktree lastActive so the sidebar sort is stable
+    const now = Date.now()
+    for (const [i, p] of [WT_FIX_AUTH, WT_RATE_LIMIT, WT_MIGRATE_PG, WT_FIX_FLAKY, WT_REDESIGN].entries()) {
+      this.dispatch({
+        type: 'terminals/lastActiveChanged',
+        payload: { worktreePath: p, ts: now - i * 60_000 }
+      })
+    }
+  }
+
+  /** The 8-second symmetric loop. Every change made in the first half is
+   * undone in the second half so the state at LOOP_MS exactly equals t=0
+   * and the visible loop seam is invisible. */
+  private runLoop(): void {
+    this.scheduleTimeline()
+    this.scheduleCast()
+    this.timers.push(
+      setTimeout(() => {
+        this.stop()
+        this.seed()
+        this.runLoop()
+      }, LOOP_MS)
+    )
+  }
+
+  private scheduleTimeline(): void {
+    // t=2.0  migrate-pg → needs-approval
+    this.at(2000, () => {
+      this.dispatch({
+        type: 'terminals/statusChanged',
+        payload: {
+          id: 'demo-claude-migrate-pg',
+          status: 'needs-approval',
+          pendingTool: { name: 'Bash', input: { command: 'dropdb acme_dev && createdb acme_dev' } }
+        }
+      })
+    })
+
+    // t=4.0  rate-limiter PR pending → success
+    this.at(4000, () => {
+      this.dispatch({
+        type: 'prs/statusChanged',
+        payload: {
+          path: WT_RATE_LIMIT,
+          status: pr(1824, 'Add rate limiter middleware', 'add-rate-limiter', 'open', 'success')
+        }
+      })
+    })
+
+    // t=5.0  fix-auth processing → waiting (the hero worktree finishes)
+    this.at(5000, () => {
+      this.dispatch({
+        type: 'terminals/statusChanged',
+        payload: { id: HERO_TAB_ID, status: 'waiting', pendingTool: null }
+      })
+    })
+
+    // t=6.0  fix-auth waiting → processing again (reverse for loop symmetry)
+    this.at(6000, () => {
+      this.dispatch({
+        type: 'terminals/statusChanged',
+        payload: { id: HERO_TAB_ID, status: 'processing', pendingTool: null }
+      })
+    })
+
+    // t=7.0  reverse: migrate-pg back to idle, rate-limiter back to pending
+    this.at(7000, () => {
+      this.dispatch({
+        type: 'terminals/statusChanged',
+        payload: { id: 'demo-claude-migrate-pg', status: 'idle', pendingTool: null }
+      })
+      this.dispatch({
+        type: 'prs/statusChanged',
+        payload: {
+          path: WT_RATE_LIMIT,
+          status: pr(1824, 'Add rate limiter middleware', 'add-rate-limiter', 'open', 'pending')
+        }
+      })
+    })
+  }
+
+  /** Replay the hero cast against HERO_TAB_ID. Schedules each chunk relative
+   * to loop start; chunks past LOOP_MS are dropped. */
+  private scheduleCast(): void {
+    if (this.heroCast.length === 0) return
+    let cursor = 0
+    for (const rec of this.heroCast) {
+      cursor += rec.delayMs
+      if (cursor >= LOOP_MS) break
+      const fireAt = cursor
+      const data = rec.data
+      this.at(fireAt, () => {
+        const win = this.getWindow()
+        if (win && !win.isDestroyed()) {
+          win.webContents.send('terminal:data', HERO_TAB_ID, data)
+        }
+      })
+    }
+  }
+}
