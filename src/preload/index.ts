@@ -81,13 +81,6 @@ contextBridge.exposeInMainWorld('api', {
   getHotkeyOverrides: () => ipcRenderer.invoke('config:getHotkeys'),
   setHotkeyOverrides: (hotkeys: Record<string, string>) => ipcRenderer.invoke('config:setHotkeys', hotkeys),
   resetHotkeyOverrides: () => ipcRenderer.invoke('config:resetHotkeys'),
-  onHotkeysChanged: (callback: (hotkeys: Record<string, string> | null) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, hotkeys: Record<string, string> | null): void => {
-      callback(hotkeys)
-    }
-    ipcRenderer.on('config:hotkeysChanged', handler)
-    return () => ipcRenderer.removeListener('config:hotkeysChanged', handler)
-  },
   getClaudeCommand: () => ipcRenderer.invoke('config:getClaudeCommand'),
   setClaudeCommand: (command: string) => ipcRenderer.invoke('config:setClaudeCommand', command),
   getDefaultClaudeCommand: () => ipcRenderer.invoke('config:getDefaultClaudeCommand'),
@@ -111,23 +104,9 @@ contextBridge.exposeInMainWorld('api', {
   },
   getClaudeEnvVars: () => ipcRenderer.invoke('config:getClaudeEnvVars'),
   setClaudeEnvVars: (vars: Record<string, string>) => ipcRenderer.invoke('config:setClaudeEnvVars', vars),
-  onClaudeEnvVarsChanged: (callback: (vars: Record<string, string>) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, vars: Record<string, string>): void => {
-      callback(vars)
-    }
-    ipcRenderer.on('config:claudeEnvVarsChanged', handler)
-    return () => ipcRenderer.removeListener('config:claudeEnvVarsChanged', handler)
-  },
   getHarnessMcpEnabled: () => ipcRenderer.invoke('config:getHarnessMcpEnabled'),
   setHarnessMcpEnabled: (enabled: boolean) =>
     ipcRenderer.invoke('config:setHarnessMcpEnabled', enabled),
-  onHarnessMcpEnabledChanged: (callback: (enabled: boolean) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, enabled: boolean): void => {
-      callback(enabled)
-    }
-    ipcRenderer.on('config:harnessMcpEnabledChanged', handler)
-    return () => ipcRenderer.removeListener('config:harnessMcpEnabledChanged', handler)
-  },
   prepareMcpForTerminal: (terminalId: string): Promise<string | null> =>
     ipcRenderer.invoke('mcp:prepareForTerminal', terminalId),
   onWorktreesExternalCreate: (
@@ -144,13 +123,6 @@ contextBridge.exposeInMainWorld('api', {
   },
   getNameClaudeSessions: () => ipcRenderer.invoke('config:getNameClaudeSessions'),
   setNameClaudeSessions: (enabled: boolean) => ipcRenderer.invoke('config:setNameClaudeSessions', enabled),
-  onNameClaudeSessionsChanged: (callback: (enabled: boolean) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, enabled: boolean): void => {
-      callback(enabled)
-    }
-    ipcRenderer.on('config:nameClaudeSessionsChanged', handler)
-    return () => ipcRenderer.removeListener('config:nameClaudeSessionsChanged', handler)
-  },
   getTheme: () => ipcRenderer.invoke('config:getTheme'),
   setTheme: (theme: string) => ipcRenderer.invoke('config:setTheme', theme),
   getAvailableThemes: () => ipcRenderer.invoke('config:getAvailableThemes'),
@@ -158,23 +130,9 @@ contextBridge.exposeInMainWorld('api', {
   setTerminalFontFamily: (fontFamily: string) =>
     ipcRenderer.invoke('config:setTerminalFontFamily', fontFamily),
   getDefaultTerminalFontFamily: () => ipcRenderer.invoke('config:getDefaultTerminalFontFamily'),
-  onTerminalFontFamilyChanged: (callback: (fontFamily: string) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, fontFamily: string): void => {
-      callback(fontFamily)
-    }
-    ipcRenderer.on('config:terminalFontFamilyChanged', handler)
-    return () => ipcRenderer.removeListener('config:terminalFontFamilyChanged', handler)
-  },
   getTerminalFontSize: () => ipcRenderer.invoke('config:getTerminalFontSize'),
   setTerminalFontSize: (fontSize: number) =>
     ipcRenderer.invoke('config:setTerminalFontSize', fontSize),
-  onTerminalFontSizeChanged: (callback: (fontSize: number) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, fontSize: number): void => {
-      callback(fontSize)
-    }
-    ipcRenderer.on('config:terminalFontSizeChanged', handler)
-    return () => ipcRenderer.removeListener('config:terminalFontSizeChanged', handler)
-  },
 
   getWorkspacePanes: () => ipcRenderer.invoke('config:getPanes'),
   setWorkspacePanes: (panes: unknown) =>
@@ -189,13 +147,6 @@ contextBridge.exposeInMainWorld('api', {
   claudeSessionFileExists: (cwd: string, sessionId: string) =>
     ipcRenderer.invoke('claude:sessionFileExists', cwd, sessionId),
   getLatestClaudeSessionId: (cwd: string) => ipcRenderer.invoke('claude:latestSessionId', cwd),
-  onClaudeCommandChanged: (callback: (command: string) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, command: string): void => {
-      callback(command)
-    }
-    ipcRenderer.on('config:claudeCommandChanged', handler)
-    return () => ipcRenderer.removeListener('config:claudeCommandChanged', handler)
-  },
 
   // Onboarding quest
   getOnboarding: () => ipcRenderer.invoke('config:getOnboarding'),
@@ -215,13 +166,6 @@ contextBridge.exposeInMainWorld('api', {
   getAvailableEditors: () => ipcRenderer.invoke('config:getAvailableEditors'),
   openInEditor: (worktreePath: string, filePath?: string) =>
     ipcRenderer.invoke('editor:open', worktreePath, filePath),
-  onEditorChanged: (callback: (editorId: string) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, editorId: string): void => {
-      callback(editorId)
-    }
-    ipcRenderer.on('config:editorChanged', handler)
-    return () => ipcRenderer.removeListener('config:editorChanged', handler)
-  },
 
   // Settings
   hasGithubToken: () => ipcRenderer.invoke('settings:hasGithubToken'),

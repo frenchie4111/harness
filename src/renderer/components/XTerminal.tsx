@@ -3,6 +3,7 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { SerializeAddon } from '@xterm/addon-serialize'
 import '@xterm/xterm/css/xterm.css'
+import type { StateEvent } from '../../shared/state'
 
 function ClaudeLoader() {
   return (
@@ -74,21 +75,24 @@ function applyFontToAll(): void {
   }
 }
 
-void window.api.getTerminalFontFamily().then((v) => {
-  currentFontFamily = v || DEFAULT_TERMINAL_FONT_FAMILY
+// Seed from the state snapshot and then keep in sync via the state event
+// stream. XTerminal's font cache lives at module scope (not in React state)
+// because newly mounted xterm instances read it synchronously in the
+// constructor, before any React hook could fire.
+void window.api.getStateSnapshot().then(({ state }) => {
+  currentFontFamily = state.settings.terminalFontFamily || DEFAULT_TERMINAL_FONT_FAMILY
+  currentFontSize = state.settings.terminalFontSize || DEFAULT_TERMINAL_FONT_SIZE
   applyFontToAll()
 })
-void window.api.getTerminalFontSize().then((v) => {
-  currentFontSize = v || DEFAULT_TERMINAL_FONT_SIZE
-  applyFontToAll()
-})
-window.api.onTerminalFontFamilyChanged((v) => {
-  currentFontFamily = v || DEFAULT_TERMINAL_FONT_FAMILY
-  applyFontToAll()
-})
-window.api.onTerminalFontSizeChanged((v) => {
-  currentFontSize = v || DEFAULT_TERMINAL_FONT_SIZE
-  applyFontToAll()
+window.api.onStateEvent((raw) => {
+  const event = raw as StateEvent
+  if (event.type === 'settings/terminalFontFamilyChanged') {
+    currentFontFamily = event.payload || DEFAULT_TERMINAL_FONT_FAMILY
+    applyFontToAll()
+  } else if (event.type === 'settings/terminalFontSizeChanged') {
+    currentFontSize = event.payload || DEFAULT_TERMINAL_FONT_SIZE
+    applyFontToAll()
+  }
 })
 
 /** Mark a terminal as closing: stop saving its history and clear any

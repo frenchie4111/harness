@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { X, GitPullRequest, ChevronDown, ChevronRight, Layers, Rows3 } from 'lucide-react'
+import { useSettings } from '../store'
 import type {
   Worktree,
   PtyStatus,
@@ -117,14 +118,8 @@ export function CommandCenter({
     }
   }, [])
 
-  const [terminalFont, setTerminalFont] = useState<string>(
+  const terminalFont = useSettings().terminalFontFamily ||
     "'SF Mono', 'Monaco', 'Menlo', 'Courier New', monospace"
-  )
-  useEffect(() => {
-    window.api.getTerminalFontFamily().then((v) => {
-      if (v) setTerminalFont(v)
-    }).catch(() => {})
-  }, [])
 
   // Clock tick so timelines + relative times advance.
   const [now, setNow] = useState(Date.now())

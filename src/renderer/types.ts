@@ -242,15 +242,12 @@ export interface ElectronAPI {
   getHotkeyOverrides(): Promise<Record<string, string> | null>
   setHotkeyOverrides(hotkeys: Record<string, string>): Promise<boolean>
   resetHotkeyOverrides(): Promise<boolean>
-  onHotkeysChanged(callback: (hotkeys: Record<string, string> | null) => void): () => void
 
   getClaudeCommand(): Promise<string>
   setClaudeCommand(command: string): Promise<boolean>
   getDefaultClaudeCommand(): Promise<string>
-  onClaudeCommandChanged(callback: (command: string) => void): () => void
   getHarnessMcpEnabled(): Promise<boolean>
   setHarnessMcpEnabled(enabled: boolean): Promise<boolean>
-  onHarnessMcpEnabledChanged(callback: (enabled: boolean) => void): () => void
   prepareMcpForTerminal(terminalId: string): Promise<string | null>
   onWorktreesExternalCreate(
     callback: (payload: { repoRoot: string; worktree: Worktree; initialPrompt?: string }) => void
@@ -258,11 +255,9 @@ export interface ElectronAPI {
 
   getClaudeEnvVars(): Promise<Record<string, string>>
   setClaudeEnvVars(vars: Record<string, string>): Promise<boolean>
-  onClaudeEnvVarsChanged(callback: (vars: Record<string, string>) => void): () => void
 
   getNameClaudeSessions(): Promise<boolean>
   setNameClaudeSessions(enabled: boolean): Promise<boolean>
-  onNameClaudeSessionsChanged(callback: (enabled: boolean) => void): () => void
 
   getTheme(): Promise<string>
   setTheme(theme: string): Promise<boolean>
@@ -271,10 +266,8 @@ export interface ElectronAPI {
   getTerminalFontFamily(): Promise<string>
   setTerminalFontFamily(fontFamily: string): Promise<boolean>
   getDefaultTerminalFontFamily(): Promise<string>
-  onTerminalFontFamilyChanged(callback: (fontFamily: string) => void): () => void
   getTerminalFontSize(): Promise<number>
   setTerminalFontSize(fontSize: number): Promise<boolean>
-  onTerminalFontSizeChanged(callback: (fontSize: number) => void): () => void
 
   getOnboarding(): Promise<{ quest?: QuestStep }>
   setOnboardingQuest(quest: QuestStep): Promise<boolean>
@@ -297,7 +290,6 @@ export interface ElectronAPI {
   setEditor(editorId: string): Promise<boolean>
   getAvailableEditors(): Promise<{ id: string; name: string }[]>
   openInEditor(worktreePath: string, filePath?: string): Promise<{ ok: true } | { ok: false; error: string }>
-  onEditorChanged(callback: (editorId: string) => void): () => void
 
   getWorkspacePanes(): Promise<Record<string, Record<string, PersistedPane[]>>>
   setWorkspacePanes(panes: Record<string, Record<string, PersistedPane[]>>): Promise<boolean>

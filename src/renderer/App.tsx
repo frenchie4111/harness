@@ -154,10 +154,9 @@ export default function App(): JSX.Element {
   const [showCommandCenter, setShowCommandCenter] = useState(false)
   const [showCommandPalette, setShowCommandPalette] = useState(false)
   const [tailLines, setTailLines] = useState<Record<string, string>>({})
-  const [hasGithubToken, setHasGithubToken] = useState<boolean | null>(null)
-  const [hotkeyOverrides, setHotkeyOverrides] = useState<Record<string, string> | undefined>(undefined)
-  const [claudeCommand, setClaudeCommand] = useState<string>('')
-  const [nameClaudeSessions, setNameClaudeSessions] = useState(false)
+  const settings = useSettings()
+  const { hasGithubToken, claudeCommand, nameClaudeSessions } = settings
+  const hotkeyOverrides = settings.hotkeys ?? undefined
   // Onboarding parallelism quest — see QuestCard.tsx for the steps.
   const [questStep, setQuestStepRaw] = useState<QuestStep>('hidden')
   const questLoadedRef = useRef(false)
@@ -179,12 +178,6 @@ export default function App(): JSX.Element {
   const pendingPromptsRef = useRef<Record<string, string>>({})
   // Same idea, but for --teleport session ids pasted in the new-worktree screen.
   const pendingTeleportRef = useRef<Record<string, string>>({})
-
-  // Check GitHub token presence (on mount and whenever Settings is closed)
-  useEffect(() => {
-    if (showSettings) return
-    window.api.hasGithubToken().then(setHasGithubToken).catch(() => setHasGithubToken(null))
-  }, [showSettings])
 
 const setQuestStep = useCallback((next: QuestStep) => {
     setQuestStepRaw(next)
@@ -243,19 +236,15 @@ const setQuestStep = useCallback((next: QuestStep) => {
     return flat
   }, [])
 
-  // Load repos, worktrees, and config on mount
+  // Load repos, worktrees, and panes on mount. Settings are already hydrated
+  // via the store before App mounts; we only fetch things that aren't in the
+  // settings slice here.
   useEffect(() => {
     (async () => {
-      const [roots, overrides, cmd, persistedPanes, nameSessions] = await Promise.all([
+      const [roots, persistedPanes] = await Promise.all([
         window.api.listRepos(),
-        window.api.getHotkeyOverrides(),
-        window.api.getClaudeCommand(),
-        window.api.getWorkspacePanes(),
-        window.api.getNameClaudeSessions()
+        window.api.getWorkspacePanes()
       ])
-      if (overrides) setHotkeyOverrides(overrides)
-      setClaudeCommand(cmd)
-      setNameClaudeSessions(nameSessions)
       // Flatten the nested persisted panes (repoRoot → wtPath → panes[]) into
       // the flat renderer shape keyed by wtPath. Paths are globally unique
       // across repos in practice — git worktrees are directories on disk.
@@ -355,30 +344,6 @@ const setQuestStep = useCallback((next: QuestStep) => {
     return () => window.removeEventListener('beforeunload', handler)
   }, [])
 
-  // Live-reload hotkeys when changed in settings
-  useEffect(() => {
-    const cleanup = window.api.onHotkeysChanged((hotkeys) => {
-      setHotkeyOverrides(hotkeys || undefined)
-    })
-    return cleanup
-  }, [])
-
-  // Live-reload claude command when changed in settings
-  useEffect(() => {
-    const cleanup = window.api.onClaudeCommandChanged((cmd) => {
-      setClaudeCommand(cmd)
-    })
-    return cleanup
-  }, [])
-
-  useEffect(() => {
-    const cleanup = window.api.onNameClaudeSessionsChanged((enabled) => {
-      setNameClaudeSessions(enabled)
-    })
-    return cleanup
-  }, [])
-
-  const settings = useSettings()
   useEffect(() => {
     document.documentElement.dataset.theme = settings.theme
   }, [settings.theme])

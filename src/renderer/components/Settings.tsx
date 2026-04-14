@@ -141,7 +141,6 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
 
   // GitHub state
   const [token, setToken] = useState('')
-  const [hasToken, setHasToken] = useState(false)
   const [showToken, setShowToken] = useState(false)
   const [saving, setSaving] = useState(false)
   const [autoStar, setAutoStar] = useState(true)
@@ -152,45 +151,46 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
   const [updaterStatus, setUpdaterStatus] = useState<UpdaterStatus | null>(null)
   const [checking, setChecking] = useState(false)
 
-  // Hotkeys state
-  const [hotkeyOverrides, setHotkeyOverrides] = useState<Record<string, string> | null>(null)
-  const [rebindingAction, setRebindingAction] = useState<Action | null>(null)
+  // All long-lived settings live in the main-process store; this hook
+  // re-renders Settings whenever any client updates any of them.
+  const settings = useSettings()
+  const {
+    theme,
+    hotkeys: hotkeyOverrides,
+    claudeCommand,
+    harnessMcpEnabled,
+    claudeEnvVars,
+    nameClaudeSessions,
+    terminalFontFamily,
+    terminalFontSize,
+    editor: editorId,
+    worktreeBase,
+    mergeStrategy,
+    hasGithubToken: settingsHasToken,
+    worktreeScripts
+  } = settings
+  const setupScript = worktreeScripts.setup
+  const teardownScript = worktreeScripts.teardown
 
-  // Claude command state
-  const [claudeCommand, setClaudeCommand] = useState<string>('')
+  const [rebindingAction, setRebindingAction] = useState<Action | null>(null)
   const [defaultClaudeCommand, setDefaultClaudeCommand] = useState<string>('')
   const [claudeSaveResult, setClaudeSaveResult] = useState<{ ok: boolean; message: string } | null>(null)
-  const [harnessMcpEnabled, setHarnessMcpEnabledState] = useState<boolean>(true)
+  // Alias settings.hasGithubToken to the legacy local name so existing JSX
+  // stays unchanged.
+  const hasToken = settingsHasToken
 
   // Claude env var state. Stored as an ordered list of [key, value] pairs so
-  // the user can edit a blank row without it collapsing in a Record.
-  const [claudeEnvRows, setClaudeEnvRows] = useState<{ key: string; value: string }[]>([])
+  // the user can edit a blank row without it collapsing in a Record. Seeded
+  // from settings on mount; edits live locally until "Save" dispatches through
+  // the setter IPC.
+  const [claudeEnvRows, setClaudeEnvRows] = useState<{ key: string; value: string }[]>(() =>
+    Object.entries(claudeEnvVars).map(([key, value]) => ({ key, value }))
+  )
   const [envSaveResult, setEnvSaveResult] = useState<{ ok: boolean; message: string } | null>(null)
   const [revealedEnvRows, setRevealedEnvRows] = useState<Set<number>>(new Set())
 
-  // Name sessions toggle
-  const [nameClaudeSessions, setNameClaudeSessions] = useState(false)
-
-  // Theme now lives in the main-process store; this hook re-renders Settings
-  // when any client updates it.
-  const { theme } = useSettings()
-
-  // Terminal font state
-  const [terminalFontFamily, setTerminalFontFamily] = useState<string>('')
   const [defaultTerminalFontFamily, setDefaultTerminalFontFamily] = useState<string>('')
-  const [terminalFontSize, setTerminalFontSize] = useState<number>(13)
-
-  // Editor state
-  const [editorId, setEditorId] = useState<string>('vscode')
   const [availableEditors, setAvailableEditors] = useState<{ id: string; name: string }[]>([])
-
-  // Worktree base state
-  const [worktreeBase, setWorktreeBaseState] = useState<'remote' | 'local'>('remote')
-  const [mergeStrategy, setMergeStrategyState] = useState<MergeStrategy>('squash')
-
-  // Worktree setup/teardown scripts (global scope — repo scope reads from repoConfigs below)
-  const [setupScript, setSetupScript] = useState<string>('')
-  const [teardownScript, setTeardownScript] = useState<string>('')
   const [scriptsSaveResult, setScriptsSaveResult] = useState<{ ok: boolean; message: string } | null>(null)
 
   // Per-repo scope state for scopable worktree settings. scopeRepoRoot === null
@@ -200,29 +200,13 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
   const [repoConfigs, setRepoConfigs] = useState<Record<string, RepoConfig>>({})
   const [scopeRepoRoot, setScopeRepoRoot] = useState<string | null>(null)
 
+  // Constants and non-settings state load once; live settings are already
+  // hydrated via useSettings() above.
   useEffect(() => {
-    window.api.hasGithubToken().then(setHasToken)
     window.api.getVersion().then(setVersion)
-    window.api.getHotkeyOverrides().then((v) => setHotkeyOverrides(v))
-    window.api.getClaudeCommand().then(setClaudeCommand)
     window.api.getDefaultClaudeCommand().then(setDefaultClaudeCommand)
-    window.api.getClaudeEnvVars().then((vars) => {
-      const rows = Object.entries(vars || {}).map(([key, value]) => ({ key, value }))
-      setClaudeEnvRows(rows)
-    })
-    window.api.getHarnessMcpEnabled().then(setHarnessMcpEnabledState)
-    window.api.getNameClaudeSessions().then(setNameClaudeSessions)
-    window.api.getTerminalFontFamily().then(setTerminalFontFamily)
     window.api.getDefaultTerminalFontFamily().then(setDefaultTerminalFontFamily)
-    window.api.getTerminalFontSize().then(setTerminalFontSize)
-    window.api.getEditor().then(setEditorId)
     window.api.getAvailableEditors().then(setAvailableEditors)
-    window.api.getWorktreeBase().then(setWorktreeBaseState)
-    window.api.getMergeStrategy().then(setMergeStrategyState)
-    window.api.getWorktreeScripts().then((s) => {
-      setSetupScript(s.setup || '')
-      setTeardownScript(s.teardown || '')
-    })
     window.api.listRepos().then(async (repos) => {
       setRepoList(repos)
       const entries = await Promise.all(
@@ -231,6 +215,13 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
       setRepoConfigs(Object.fromEntries(entries))
     })
   }, [])
+
+  // Whenever claudeEnvVars in the store changes (e.g. another window saved),
+  // re-seed the local editable rows. Local edits between loads are lost —
+  // same as before the migration, where Settings only read on mount.
+  useEffect(() => {
+    setClaudeEnvRows(Object.entries(claudeEnvVars).map(([key, value]) => ({ key, value })))
+  }, [claudeEnvVars])
 
   useEffect(() => {
     const unsub = window.api.onRepoConfigChanged((payload) => {
@@ -255,34 +246,37 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
   const [setupDraft, setSetupDraft] = useState<string>('')
   const [teardownDraft, setTeardownDraft] = useState<string>('')
 
+  // Editable draft for the Claude command input. Hydrated from the store and
+  // re-synced whenever the store value changes (e.g. another window edited it).
+  // The `Save` button commits the draft via the setter IPC.
+  const [claudeCommandDraft, setClaudeCommandDraft] = useState<string>(claudeCommand)
+  useEffect(() => {
+    setClaudeCommandDraft(claudeCommand)
+  }, [claudeCommand])
+
   const handleSelectTheme = useCallback(async (id: string) => {
     await window.api.setTheme(id)
   }, [])
 
   const handleTerminalFontFamilyChange = useCallback((value: string) => {
-    setTerminalFontFamily(value)
     void window.api.setTerminalFontFamily(value)
   }, [])
 
   const handleResetTerminalFontFamily = useCallback(() => {
-    setTerminalFontFamily(defaultTerminalFontFamily)
     void window.api.setTerminalFontFamily(defaultTerminalFontFamily)
   }, [defaultTerminalFontFamily])
 
   const handleTerminalFontSizeChange = useCallback((value: number) => {
     if (!Number.isFinite(value)) return
     const clamped = Math.max(8, Math.min(48, Math.round(value)))
-    setTerminalFontSize(clamped)
     void window.api.setTerminalFontSize(clamped)
   }, [])
 
   const handleSelectEditor = useCallback(async (id: string) => {
-    setEditorId(id)
     await window.api.setEditor(id)
   }, [])
 
   const handleSelectWorktreeBase = useCallback(async (mode: 'remote' | 'local') => {
-    setWorktreeBaseState(mode)
     await window.api.setWorktreeBase(mode)
   }, [])
 
@@ -291,7 +285,6 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
       if (scopeRepoRoot) {
         await updateRepoConfig(scopeRepoRoot, { mergeStrategy: strategy })
       } else {
-        setMergeStrategyState(strategy)
         await window.api.setMergeStrategy(strategy)
       }
     },
@@ -328,8 +321,6 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
       })
     } else {
       await window.api.setWorktreeScripts({ setup: setupDraft, teardown: teardownDraft })
-      setSetupScript(setupDraft)
-      setTeardownScript(teardownDraft)
     }
     setScriptsSaveResult({ ok: true, message: 'Saved' })
     setTimeout(() => setScriptsSaveResult(null), 2000)
@@ -380,7 +371,6 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
         let message = res.username ? `Connected as @${res.username}` : 'Token saved'
         if (autoStar && res.starred) message += ' · starred Harness on GitHub'
         setTokenResult({ ok: true, message })
-        setHasToken(true)
         setToken('')
       } else {
         setTokenResult({ ok: false, message: `Invalid token: ${res.error || 'unknown error'}` })
@@ -392,7 +382,6 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
 
   const handleClear = useCallback(async () => {
     await window.api.clearGithubToken()
-    setHasToken(false)
     setTokenResult({ ok: true, message: 'Token removed' })
   }, [])
 
@@ -432,7 +421,6 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
 
       const shortcut = bindingToString(binding)
       const next = { ...(hotkeyOverrides || {}), [rebindingAction]: shortcut }
-      setHotkeyOverrides(next)
       void window.api.setHotkeyOverrides(next)
       setRebindingAction(null)
     }
@@ -456,34 +444,31 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
   const handleResetHotkey = useCallback(async (action: Action) => {
     const next = { ...(hotkeyOverrides || {}) }
     delete next[action]
-    setHotkeyOverrides(next)
     await window.api.setHotkeyOverrides(next)
   }, [hotkeyOverrides])
 
   const handleResetAllHotkeys = useCallback(async () => {
-    setHotkeyOverrides(null)
     await window.api.resetHotkeyOverrides()
   }, [])
 
   const handleSaveClaudeCommand = useCallback(async () => {
     setClaudeSaveResult(null)
-    await window.api.setClaudeCommand(claudeCommand)
+    await window.api.setClaudeCommand(claudeCommandDraft)
     setClaudeSaveResult({ ok: true, message: 'Saved · new tabs will use this command' })
-  }, [claudeCommand])
+  }, [claudeCommandDraft])
 
   const handleToggleHarnessMcp = useCallback(async (enabled: boolean) => {
-    setHarnessMcpEnabledState(enabled)
     await window.api.setHarnessMcpEnabled(enabled)
   }, [])
 
-  const effectiveClaudeCommand = claudeCommand.trim() || defaultClaudeCommand
+  const effectiveClaudeCommand = claudeCommandDraft.trim() || defaultClaudeCommand
   const previewInner = harnessMcpEnabled
     ? `${effectiveClaudeCommand} --mcp-config <per-session> --session-id <uuid>`
     : `${effectiveClaudeCommand} --session-id <uuid>`
   const commandPreview = `/bin/zsh -ilc "${previewInner}"`
 
   const handleResetClaudeCommand = useCallback(async () => {
-    setClaudeCommand(defaultClaudeCommand)
+    setClaudeCommandDraft(defaultClaudeCommand)
     await window.api.setClaudeCommand(defaultClaudeCommand)
     setClaudeSaveResult({ ok: true, message: 'Reset to default' })
   }, [defaultClaudeCommand])
@@ -787,8 +772,8 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
                   Harness appends <code className="bg-panel px-1 rounded">--session-id &lt;uuid&gt;</code> to this command so each tab has its own stable, resumable Claude session.
                 </p>
                 <textarea
-                  value={claudeCommand}
-                  onChange={(e) => setClaudeCommand(e.target.value)}
+                  value={claudeCommandDraft}
+                  onChange={(e) => setClaudeCommandDraft(e.target.value)}
                   rows={3}
                   spellCheck={false}
                   className="w-full bg-panel border border-border-strong rounded px-3 py-2 text-xs text-fg-bright placeholder-faint outline-none focus:border-fg font-mono resize-y"
@@ -798,12 +783,12 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
                 <div className="flex items-center gap-2 mt-3">
                   <button
                     onClick={handleSaveClaudeCommand}
-                    disabled={!claudeCommand.trim()}
+                    disabled={!claudeCommandDraft.trim()}
                     className="px-3 py-1.5 bg-surface hover:bg-surface-hover disabled:opacity-40 rounded text-sm text-fg-bright transition-colors cursor-pointer"
                   >
                     Save
                   </button>
-                  {claudeCommand !== defaultClaudeCommand && defaultClaudeCommand && (
+                  {claudeCommandDraft !== defaultClaudeCommand && defaultClaudeCommand && (
                     <button
                       onClick={handleResetClaudeCommand}
                       className="flex items-center gap-1 px-3 py-1.5 text-sm text-dim hover:text-fg transition-colors cursor-pointer"
@@ -961,9 +946,7 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
                     type="checkbox"
                     checked={nameClaudeSessions}
                     onChange={(e) => {
-                      const enabled = e.target.checked
-                      setNameClaudeSessions(enabled)
-                      window.api.setNameClaudeSessions(enabled)
+                      void window.api.setNameClaudeSessions(e.target.checked)
                     }}
                     className="accent-current w-4 h-4 cursor-pointer"
                   />

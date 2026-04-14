@@ -48,7 +48,22 @@ let stopWatchingStatus: (() => void) | null = null
 
 const store = new Store({
   settings: {
-    theme: config.theme || DEFAULT_THEME
+    theme: config.theme || DEFAULT_THEME,
+    hotkeys: config.hotkeys || null,
+    claudeCommand: config.claudeCommand || DEFAULT_CLAUDE_COMMAND,
+    worktreeScripts: {
+      setup: config.worktreeSetupCommand || '',
+      teardown: config.worktreeTeardownCommand || ''
+    },
+    claudeEnvVars: config.claudeEnvVars || {},
+    harnessMcpEnabled: config.harnessMcpEnabled !== false,
+    nameClaudeSessions: config.nameClaudeSessions ?? false,
+    terminalFontFamily: config.terminalFontFamily || DEFAULT_TERMINAL_FONT_FAMILY,
+    terminalFontSize: config.terminalFontSize || DEFAULT_TERMINAL_FONT_SIZE,
+    editor: config.editor || DEFAULT_EDITOR_ID,
+    worktreeBase: config.worktreeBase || DEFAULT_WORKTREE_BASE,
+    mergeStrategy: config.mergeStrategy || DEFAULT_MERGE_STRATEGY,
+    hasGithubToken: hasSecret('githubToken')
   }
 })
 registerStateTransport(store)
@@ -355,30 +370,25 @@ function registerIpcHandlers(): void {
 
   // Config
   ipcMain.handle('config:getHotkeys', () => {
-    return config.hotkeys || null
+    return store.getSnapshot().state.settings.hotkeys
   })
 
   ipcMain.handle('config:setHotkeys', (_, hotkeys: Record<string, string>) => {
     config.hotkeys = hotkeys
     saveConfig(config)
-    // Broadcast to all windows so open renderers can re-resolve bindings
-    for (const win of BrowserWindow.getAllWindows()) {
-      if (!win.isDestroyed()) win.webContents.send('config:hotkeysChanged', hotkeys)
-    }
+    store.dispatch({ type: 'settings/hotkeysChanged', payload: hotkeys })
     return true
   })
 
   ipcMain.handle('config:resetHotkeys', () => {
     delete config.hotkeys
     saveConfig(config)
-    for (const win of BrowserWindow.getAllWindows()) {
-      if (!win.isDestroyed()) win.webContents.send('config:hotkeysChanged', null)
-    }
+    store.dispatch({ type: 'settings/hotkeysChanged', payload: null })
     return true
   })
 
   ipcMain.handle('config:getClaudeCommand', () => {
-    return config.claudeCommand || DEFAULT_CLAUDE_COMMAND
+    return store.getSnapshot().state.settings.claudeCommand
   })
 
   ipcMain.handle('config:setClaudeCommand', (_, command: string) => {
@@ -389,9 +399,10 @@ function registerIpcHandlers(): void {
       config.claudeCommand = trimmed
     }
     saveConfig(config)
-    for (const win of BrowserWindow.getAllWindows()) {
-      if (!win.isDestroyed()) win.webContents.send('config:claudeCommandChanged', config.claudeCommand || DEFAULT_CLAUDE_COMMAND)
-    }
+    store.dispatch({
+      type: 'settings/claudeCommandChanged',
+      payload: config.claudeCommand || DEFAULT_CLAUDE_COMMAND
+    })
     return true
   })
 
@@ -429,10 +440,7 @@ function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('config:getWorktreeScripts', () => {
-    return {
-      setup: config.worktreeSetupCommand || '',
-      teardown: config.worktreeTeardownCommand || ''
-    }
+    return store.getSnapshot().state.settings.worktreeScripts
   })
 
   ipcMain.handle(
@@ -445,12 +453,16 @@ function registerIpcHandlers(): void {
       if (teardown) config.worktreeTeardownCommand = teardown
       else delete config.worktreeTeardownCommand
       saveConfig(config)
+      store.dispatch({
+        type: 'settings/worktreeScriptsChanged',
+        payload: { setup, teardown }
+      })
       return true
     }
   )
 
   ipcMain.handle('config:getClaudeEnvVars', () => {
-    return config.claudeEnvVars || {}
+    return store.getSnapshot().state.settings.claudeEnvVars
   })
 
   ipcMain.handle('config:setClaudeEnvVars', (_, vars: Record<string, string>) => {
@@ -470,14 +482,12 @@ function registerIpcHandlers(): void {
       config.claudeEnvVars = cleaned
     }
     saveConfig(config)
-    for (const win of BrowserWindow.getAllWindows()) {
-      if (!win.isDestroyed()) win.webContents.send('config:claudeEnvVarsChanged', config.claudeEnvVars || {})
-    }
+    store.dispatch({ type: 'settings/claudeEnvVarsChanged', payload: cleaned })
     return true
   })
 
   ipcMain.handle('config:getHarnessMcpEnabled', () => {
-    return config.harnessMcpEnabled !== false
+    return store.getSnapshot().state.settings.harnessMcpEnabled
   })
 
   ipcMain.handle('config:setHarnessMcpEnabled', (_, enabled: boolean) => {
@@ -487,10 +497,10 @@ function registerIpcHandlers(): void {
       config.harnessMcpEnabled = false
     }
     saveConfig(config)
-    for (const win of BrowserWindow.getAllWindows()) {
-      if (!win.isDestroyed())
-        win.webContents.send('config:harnessMcpEnabledChanged', config.harnessMcpEnabled !== false)
-    }
+    store.dispatch({
+      type: 'settings/harnessMcpEnabledChanged',
+      payload: config.harnessMcpEnabled !== false
+    })
     return true
   })
 
@@ -501,7 +511,7 @@ function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('config:getNameClaudeSessions', () => {
-    return config.nameClaudeSessions ?? false
+    return store.getSnapshot().state.settings.nameClaudeSessions
   })
 
   ipcMain.handle('config:setNameClaudeSessions', (_, enabled: boolean) => {
@@ -511,9 +521,10 @@ function registerIpcHandlers(): void {
       delete config.nameClaudeSessions
     }
     saveConfig(config)
-    for (const win of BrowserWindow.getAllWindows()) {
-      if (!win.isDestroyed()) win.webContents.send('config:nameClaudeSessionsChanged', config.nameClaudeSessions ?? false)
-    }
+    store.dispatch({
+      type: 'settings/nameClaudeSessionsChanged',
+      payload: !!config.nameClaudeSessions
+    })
     return true
   })
   ipcMain.handle('config:getTheme', () => {
@@ -535,7 +546,7 @@ function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('config:getTerminalFontFamily', () => {
-    return config.terminalFontFamily || DEFAULT_TERMINAL_FONT_FAMILY
+    return store.getSnapshot().state.settings.terminalFontFamily
   })
 
   ipcMain.handle('config:setTerminalFontFamily', (_, fontFamily: string) => {
@@ -546,17 +557,17 @@ function registerIpcHandlers(): void {
       config.terminalFontFamily = trimmed
     }
     saveConfig(config)
-    const value = config.terminalFontFamily || DEFAULT_TERMINAL_FONT_FAMILY
-    for (const win of BrowserWindow.getAllWindows()) {
-      if (!win.isDestroyed()) win.webContents.send('config:terminalFontFamilyChanged', value)
-    }
+    store.dispatch({
+      type: 'settings/terminalFontFamilyChanged',
+      payload: config.terminalFontFamily || DEFAULT_TERMINAL_FONT_FAMILY
+    })
     return true
   })
 
   ipcMain.handle('config:getDefaultTerminalFontFamily', () => DEFAULT_TERMINAL_FONT_FAMILY)
 
   ipcMain.handle('config:getTerminalFontSize', () => {
-    return config.terminalFontSize || DEFAULT_TERMINAL_FONT_SIZE
+    return store.getSnapshot().state.settings.terminalFontSize
   })
 
   ipcMain.handle('config:setTerminalFontSize', (_, fontSize: number) => {
@@ -569,15 +580,15 @@ function registerIpcHandlers(): void {
       config.terminalFontSize = rounded
     }
     saveConfig(config)
-    const value = config.terminalFontSize || DEFAULT_TERMINAL_FONT_SIZE
-    for (const win of BrowserWindow.getAllWindows()) {
-      if (!win.isDestroyed()) win.webContents.send('config:terminalFontSizeChanged', value)
-    }
+    store.dispatch({
+      type: 'settings/terminalFontSizeChanged',
+      payload: config.terminalFontSize || DEFAULT_TERMINAL_FONT_SIZE
+    })
     return true
   })
 
   ipcMain.handle('config:getEditor', () => {
-    return config.editor || DEFAULT_EDITOR_ID
+    return store.getSnapshot().state.settings.editor
   })
 
   ipcMain.handle('config:setEditor', (_, editorId: string) => {
@@ -588,9 +599,7 @@ function registerIpcHandlers(): void {
       config.editor = editorId
     }
     saveConfig(config)
-    for (const win of BrowserWindow.getAllWindows()) {
-      if (!win.isDestroyed()) win.webContents.send('config:editorChanged', editorId)
-    }
+    store.dispatch({ type: 'settings/editorChanged', payload: editorId })
     return true
   })
 
@@ -604,7 +613,7 @@ function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('config:getWorktreeBase', () => {
-    return config.worktreeBase || DEFAULT_WORKTREE_BASE
+    return store.getSnapshot().state.settings.worktreeBase
   })
 
   ipcMain.handle('config:setWorktreeBase', (_, mode: 'remote' | 'local') => {
@@ -615,11 +624,12 @@ function registerIpcHandlers(): void {
       config.worktreeBase = mode
     }
     saveConfig(config)
+    store.dispatch({ type: 'settings/worktreeBaseChanged', payload: mode })
     return true
   })
 
   ipcMain.handle('config:getMergeStrategy', () => {
-    return config.mergeStrategy || DEFAULT_MERGE_STRATEGY
+    return store.getSnapshot().state.settings.mergeStrategy
   })
 
   ipcMain.handle(
@@ -634,6 +644,7 @@ function registerIpcHandlers(): void {
       }
       config.mergeStrategy = strategy
       saveConfig(config)
+      store.dispatch({ type: 'settings/mergeStrategyChanged', payload: strategy })
       return true
     }
   )
@@ -745,19 +756,21 @@ function registerIpcHandlers(): void {
 
   // Settings: GitHub token
   ipcMain.handle('settings:hasGithubToken', () => {
-    return hasSecret('githubToken')
+    return store.getSnapshot().state.settings.hasGithubToken
   })
 
   ipcMain.handle('settings:setGithubToken', async (_, token: string, options?: { starRepo?: boolean }) => {
     const trimmed = token.trim()
     if (!trimmed) {
       deleteSecret('githubToken')
+      store.dispatch({ type: 'settings/hasGithubTokenChanged', payload: false })
       return { ok: true }
     }
     // Validate the token first by hitting /user
     const test = await testToken(trimmed)
     if (!test.ok) return { ok: false, error: test.error }
     setSecret('githubToken', trimmed)
+    store.dispatch({ type: 'settings/hasGithubTokenChanged', payload: true })
 
     // Optionally star the repo — fire and forget, don't fail token save if this fails
     let starred = false
@@ -772,6 +785,7 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('settings:clearGithubToken', () => {
     deleteSecret('githubToken')
+    store.dispatch({ type: 'settings/hasGithubTokenChanged', payload: false })
     return true
   })
 
