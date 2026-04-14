@@ -13,7 +13,7 @@ export type { PersistedPane, PersistedTab }
 
 export type QuestStep = 'hidden' | 'spawn-second' | 'switch-between' | 'finale' | 'done'
 
-interface Config {
+export interface Config {
   /** Schema version of the on-disk config. Bumped whenever the shape changes;
    *  see `migrations` below. Always written; absent on pre-versioned configs. */
   schemaVersion?: number
