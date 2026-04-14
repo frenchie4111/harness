@@ -9,6 +9,7 @@ import { useDroppable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import type { WorkspacePane, TerminalTab, PtyStatus } from '../types'
 import { Tooltip } from './Tooltip'
+import { repoNameColor } from './RepoIcon'
 
 interface TerminalPanelProps {
   worktreePath: string
@@ -147,7 +148,7 @@ export function TerminalPanel({
           title={`${repoLabel} / ${branch}`}
           style={{ alignSelf: 'stretch', display: 'flex', alignItems: 'center' }}
         >
-          <span className="text-dim font-medium">{repoLabel}</span>
+          <span className={`font-medium ${repoNameColor(repoLabel)}`}>{repoLabel}</span>
           <span className="text-faint">/</span>
           <span className="text-fg-bright font-medium">{branch}</span>
         </div>
