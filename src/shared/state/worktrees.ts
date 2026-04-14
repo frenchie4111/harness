@@ -27,6 +27,11 @@ export interface PendingWorktree {
    * where to jump. Also included in the runPending IPC return value on
    * the success path. */
   createdPath?: string
+  /** One-shot kickoff prompt for the new Claude tab. In-memory only —
+   * stripped before persistence. */
+  initialPrompt?: string
+  /** One-shot teleport session id for the new Claude tab. In-memory only. */
+  teleportSessionId?: string
 }
 
 export interface WorktreesState {

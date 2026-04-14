@@ -18,7 +18,15 @@ interface WorktreesFSMOptions {
   getRepoRoots: () => string[]
   getWorktreeSetupCmd: () => string
   getWorktreeBaseMode: () => 'remote' | 'local'
-  onWorktreeCreated: () => void
+  /** Called after a worktree has been created on disk (and its setup
+   * script has run, regardless of script outcome). The host wires this
+   * to (a) PR poller refresh and (b) PanesFSM.ensureInitialized so the
+   * default Claude+Shell pair is created with the initial prompt. */
+  onWorktreeCreated: (params: {
+    createdPath: string
+    initialPrompt?: string
+    teleportSessionId?: string
+  }) => void
 }
 
 /** Owns the pending-creation state machine plus the "refresh the flat
@@ -57,18 +65,25 @@ export class WorktreesFSM {
 
   /** Drive the creation FSM to completion. Dispatches state transitions as
    * it goes so the pending screens stay live, and resolves with a terminal
-   * outcome that the renderer uses to route focus + stage initial prompts. */
+   * outcome that the renderer uses to route focus. The initialPrompt /
+   * teleportSessionId are carried through to onWorktreeCreated so the
+   * panes layer can embed them in the new Claude tab — the renderer
+   * never has to stage them locally. */
   async runPending(params: {
     id: string
     repoRoot: string
     branchName: string
+    initialPrompt?: string
+    teleportSessionId?: string
   }): Promise<PendingOutcome> {
-    const { id, repoRoot, branchName } = params
+    const { id, repoRoot, branchName, initialPrompt, teleportSessionId } = params
     const pending: PendingWorktree = {
       id,
       repoRoot,
       branchName,
-      status: 'creating'
+      status: 'creating',
+      initialPrompt,
+      teleportSessionId
     }
     this.store.dispatch({ type: 'worktrees/pendingAdded', payload: pending })
 
@@ -107,8 +122,13 @@ export class WorktreesFSM {
         })
       }
 
-      // Worktree exists on disk regardless of script outcome — pick it up.
-      this.opts.onWorktreeCreated()
+      // Worktree exists on disk regardless of script outcome. Pick it up,
+      // refresh the worktree list, and seed its default panes.
+      this.opts.onWorktreeCreated({
+        createdPath: created.path,
+        initialPrompt,
+        teleportSessionId
+      })
       await this.refreshList()
 
       if (setupFailed) {
@@ -153,7 +173,9 @@ export class WorktreesFSM {
     return this.runPending({
       id,
       repoRoot: current.repoRoot,
-      branchName: current.branchName
+      branchName: current.branchName,
+      initialPrompt: current.initialPrompt,
+      teleportSessionId: current.teleportSessionId
     })
   }
 

@@ -13,8 +13,13 @@ contextBridge.exposeInMainWorld('api', {
   // Pending-creation FSM. The renderer awaits runPendingWorktree end-to-end
   // for its final outcome (needed to stage initial prompts + route focus),
   // while main dispatches state transitions for the in-progress screens.
-  runPendingWorktree: (params: { id: string; repoRoot: string; branchName: string }) =>
-    ipcRenderer.invoke('worktrees:runPending', params),
+  runPendingWorktree: (params: {
+    id: string
+    repoRoot: string
+    branchName: string
+    initialPrompt?: string
+    teleportSessionId?: string
+  }) => ipcRenderer.invoke('worktrees:runPending', params),
   retryPendingWorktree: (id: string) =>
     ipcRenderer.invoke('worktrees:retryPending', id),
   dismissPendingWorktree: (id: string) =>
@@ -131,10 +136,6 @@ contextBridge.exposeInMainWorld('api', {
   // Panes — the pane/tab tree lives in the main-process store. Renderer
   // dispatches every operation as a method call instead of computing
   // local state.
-  panesEnsureInitialized: (
-    wtPath: string,
-    opts?: { initialPrompt?: string; teleportSessionId?: string }
-  ) => ipcRenderer.invoke('panes:ensureInitialized', wtPath, opts),
   panesAddTab: (wtPath: string, tab: unknown, paneId?: string) =>
     ipcRenderer.invoke('panes:addTab', wtPath, tab, paneId),
   panesCloseTab: (wtPath: string, tabId: string) =>

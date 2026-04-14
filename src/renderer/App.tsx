@@ -181,11 +181,6 @@ export default function App(): JSX.Element {
   )
   // Track which worktrees already have hooks installed so we only prompt once
   const hooksChecked = useRef(new Set<string>())
-  // Kickoff prompts staged by the new-worktree screen. Consumed (and deleted)
-  // by the effect that sets up the initial Claude tab for a fresh worktree.
-  const pendingPromptsRef = useRef<Record<string, string>>({})
-  // Same idea, but for --teleport session ids pasted in the new-worktree screen.
-  const pendingTeleportRef = useRef<Record<string, string>>({})
 
 const setQuestStep = useCallback((next: QuestStep) => {
     window.api.setOnboardingQuest(next).catch(() => {})
@@ -398,21 +393,12 @@ const setQuestStep = useCallback((next: QuestStep) => {
       })()
     }
 
-    // Initialize panes for this worktree if it has none. The pending prompt
-    // / teleport are renderer-local one-shot staging — consume them here and
-    // hand them to main, which will embed them in the new claude tab.
-    const existing = panes[activeWorktreeId] || []
-    if (!existing.some((p) => p.tabs.length > 0)) {
-      const initialPrompt = pendingPromptsRef.current[activeWorktreeId]
-      const teleportSessionId = pendingTeleportRef.current[activeWorktreeId]
-      delete pendingPromptsRef.current[activeWorktreeId]
-      delete pendingTeleportRef.current[activeWorktreeId]
-      void window.api.panesEnsureInitialized(activeWorktreeId, {
-        initialPrompt,
-        teleportSessionId
-      })
-    }
-  }, [activeWorktreeId, hooksConsent, panes])
+    // Pane initialization is handled in main now: WorktreesFSM creates
+    // the default Claude+Shell pair when a worktree is created (with any
+    // initial prompt embedded), and the boot-time pass + control-server
+    // create path do the same for pre-existing and external worktrees.
+    // The renderer just renders whatever the store has.
+  }, [activeWorktreeId, hooksConsent])
 
   const handleAcceptHooks = useCallback(() => {
     void window.api.acceptHooks()
@@ -456,14 +442,11 @@ const setQuestStep = useCallback((next: QuestStep) => {
   }, [worktrees])
 
   // External worktree creation (from the harness-control MCP). Main
-  // refreshes the store list before emitting this event, so we just need
-  // to stage the initial prompt and focus the new worktree.
+  // refreshes the store list AND seeds default panes (with the prompt
+  // embedded) before emitting this event, so we just focus the new path.
   useEffect(() => {
-    const off = window.api.onWorktreesExternalCreate(({ repoRoot, worktree, initialPrompt }) => {
+    const off = window.api.onWorktreesExternalCreate(({ repoRoot, worktree }) => {
       if (!repoRoots.includes(repoRoot)) return
-      if (initialPrompt) {
-        pendingPromptsRef.current[worktree.path] = initialPrompt
-      }
       setActiveWorktreeId(worktree.path)
     })
     return off
@@ -494,39 +477,25 @@ const setQuestStep = useCallback((next: QuestStep) => {
   const handleSubmitNewWorktree = useCallback(
     async (repoRoot: string, branchName: string, initialPrompt: string, teleportSessionId?: string) => {
       const id = `pending:${crypto.randomUUID()}`
-      // Stage initial prompt / teleport by pending id; on success we'll
-      // re-key to the real path.
-      if (initialPrompt) pendingPromptsRef.current[id] = initialPrompt
-      if (teleportSessionId) pendingTeleportRef.current[id] = teleportSessionId
       setActiveWorktreeId(id)
       setShowNewWorktree(false)
 
-      const result = await window.api.runPendingWorktree({ id, repoRoot, branchName })
-
-      const movePromptStaging = (createdPath: string): void => {
-        const prompt = pendingPromptsRef.current[id]
-        if (prompt) {
-          pendingPromptsRef.current[createdPath] = prompt
-          delete pendingPromptsRef.current[id]
-        }
-        const teleport = pendingTeleportRef.current[id]
-        if (teleport) {
-          pendingTeleportRef.current[createdPath] = teleport
-          delete pendingTeleportRef.current[id]
-        }
-      }
+      // Main handles everything: addWorktree → setup script → ensureInitialized
+      // (with the prompt embedded in the new Claude tab) → outcome.
+      const result = await window.api.runPendingWorktree({
+        id,
+        repoRoot,
+        branchName,
+        initialPrompt: initialPrompt || undefined,
+        teleportSessionId
+      })
 
       if (result.outcome === 'success') {
-        movePromptStaging(result.createdPath)
         setActiveWorktreeId((prev) => (prev === id ? result.createdPath : prev))
-      } else if (result.outcome === 'setup-failed') {
-        // Keep the user on the pending-id screen so they can review logs
-        // and decide. Move staging to the created path so "Continue anyway"
-        // below can pick it up.
-        movePromptStaging(result.createdPath)
       }
-      // On 'error', main has already dispatched status='error' — we stay on
-      // the pending id so the error screen shows.
+      // On 'setup-failed' we stay on the pending id; the user can click
+      // "Continue anyway" which transitions to result.createdPath.
+      // On 'error' we stay on the pending id so the error screen shows.
     },
     []
   )
@@ -538,9 +507,6 @@ const setQuestStep = useCallback((next: QuestStep) => {
   const handleDismissPendingWorktree = useCallback(
     (id: string) => {
       void window.api.dismissPendingWorktree(id)
-      // Clean up any renderer-local staging for this pending id.
-      delete pendingPromptsRef.current[id]
-      delete pendingTeleportRef.current[id]
       setActiveWorktreeId((prev) => (prev === id ? null : prev))
     },
     []

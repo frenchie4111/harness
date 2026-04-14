@@ -137,8 +137,9 @@ const worktreesFSM = new WorktreesFSM(store, {
   getRepoRoots: () => config.repoRoots || [],
   getWorktreeSetupCmd: () => config.worktreeSetupCommand || '',
   getWorktreeBaseMode: () => config.worktreeBase || DEFAULT_WORKTREE_BASE,
-  onWorktreeCreated: () => {
+  onWorktreeCreated: ({ createdPath, initialPrompt, teleportSessionId }) => {
     void prPoller.refreshAll()
+    panesFSM.ensureInitialized(createdPath, { initialPrompt, teleportSessionId })
   }
 })
 
@@ -254,12 +255,21 @@ function registerIpcHandlers(): void {
     return listBranches(repoRoot)
   })
 
-  // Worktree creation flows through the WorktreesFSM in main; the renderer
-  // awaits runPending end-to-end and uses the returned outcome to stage
-  // initial prompts and route focus.
+  // Worktree creation flows through the WorktreesFSM in main; main also
+  // creates the default Claude+Shell pane pair (with the initial prompt
+  // embedded) before the call returns. Renderer just awaits + focuses.
   ipcMain.handle(
     'worktrees:runPending',
-    async (_, params: { id: string; repoRoot: string; branchName: string }) => {
+    async (
+      _,
+      params: {
+        id: string
+        repoRoot: string
+        branchName: string
+        initialPrompt?: string
+        teleportSessionId?: string
+      }
+    ) => {
       return worktreesFSM.runPending(params)
     }
   )
@@ -768,18 +778,8 @@ function registerIpcHandlers(): void {
   })
 
   // Pane / tab tree — fully main-owned via PanesFSM. Renderers call these
-  // methods instead of computing pane state locally.
-  ipcMain.handle(
-    'panes:ensureInitialized',
-    (
-      _,
-      wtPath: string,
-      opts?: { initialPrompt?: string; teleportSessionId?: string }
-    ) => {
-      panesFSM.ensureInitialized(wtPath, opts)
-      return true
-    }
-  )
+  // methods instead of computing pane state locally. ensureInitialized is
+  // not exposed: main calls it directly from worktree creation paths.
   ipcMain.handle(
     'panes:addTab',
     (_, wtPath: string, tab: TerminalTab, paneId?: string) => {
@@ -1203,12 +1203,17 @@ app.whenReady().then(() => {
   registerIpcHandlers()
 
   // Seed the store's flat worktree list before the renderer hydrates, so
-  // App.tsx's first render already has the real data.
-  void worktreesFSM.refreshList()
-
-  // Restore persisted panes (with claude session id backfill) so the
-  // renderer hydrates with the real pane tree on first render.
-  void panesFSM.restoreFromConfig(config.panes)
+  // App.tsx's first render already has the real data. Then ensure every
+  // worktree has at least the default Claude+Shell pane pair — covers
+  // pre-existing worktrees the user has never activated.
+  void (async () => {
+    await panesFSM.restoreFromConfig(config.panes)
+    await worktreesFSM.refreshList()
+    const live = store.getSnapshot().state.worktrees.list
+    for (const wt of live) {
+      panesFSM.ensureInitialized(wt.path)
+    }
+  })()
 
   // Start the activity deriver — it observes terminals/prs/panes events
   // and writes recordActivity + lastActive without renderer involvement.
@@ -1254,8 +1259,20 @@ app.whenReady().then(() => {
     broadcast: (channel, payload) => {
       broadcastToAllWindows(channel, payload)
       if (channel === 'worktrees:externalCreate') {
-        // Refresh the store's list so all clients see the new worktree.
-        void worktreesFSM.refreshList()
+        // Refresh the store's list and seed default panes for the new
+        // worktree (with the initial prompt embedded). Renderer just
+        // focuses the new path when its onWorktreesExternalCreate
+        // listener fires.
+        const p = payload as {
+          repoRoot: string
+          worktree: { path: string }
+          initialPrompt?: string
+        }
+        void worktreesFSM.refreshList().then(() => {
+          panesFSM.ensureInitialized(p.worktree.path, {
+            initialPrompt: p.initialPrompt
+          })
+        })
         void prPoller.refreshAll()
       }
     }

@@ -113,6 +113,8 @@ export interface ElectronAPI {
     id: string
     repoRoot: string
     branchName: string
+    initialPrompt?: string
+    teleportSessionId?: string
   }): Promise<
     | { id: string; outcome: 'success'; createdPath: string }
     | { id: string; outcome: 'setup-failed'; createdPath: string }
@@ -221,10 +223,6 @@ export interface ElectronAPI {
   getAvailableEditors(): Promise<{ id: string; name: string }[]>
   openInEditor(worktreePath: string, filePath?: string): Promise<{ ok: true } | { ok: false; error: string }>
 
-  panesEnsureInitialized(
-    wtPath: string,
-    opts?: { initialPrompt?: string; teleportSessionId?: string }
-  ): Promise<boolean>
   panesAddTab(wtPath: string, tab: TerminalTab, paneId?: string): Promise<boolean>
   panesCloseTab(wtPath: string, tabId: string): Promise<boolean>
   panesRestartClaudeTab(
