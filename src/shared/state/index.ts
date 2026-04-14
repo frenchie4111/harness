@@ -1,3 +1,16 @@
+// This file is the canonical definition of the app's shared world state.
+// It's imported by BOTH the main process (which is the authoritative
+// store) and the renderer (which keeps a passive mirror via
+// useSyncExternalStore). The fact that the same reducer runs on both
+// sides is what makes them stay in sync — the renderer never holds a
+// local copy of anything in here.
+//
+// Adding a new piece of shared state is a 5-file edit; see CLAUDE.md
+// "Adding a new piece of shared state — the 5-file checklist" for the
+// pattern. Don't shortcut it with a useState in App.tsx unless the
+// value is genuinely per-client (focus, modal visibility, sidebar
+// width, etc.).
+
 import {
   initialSettings,
   settingsReducer,

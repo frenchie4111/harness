@@ -48,7 +48,22 @@ function effectiveActivityState(
 }
 
 /** Subscribes to the store and writes derived activity (recordActivity log
- * entries + lastActive timestamps) without any renderer involvement. */
+ * entries + lastActive timestamps) without any renderer involvement.
+ *
+ * This is the only main-side module that *consumes* state across multiple
+ * slices to derive a third thing. It reads from `terminals` (statuses,
+ * panes) AND `prs` (mergedByPath, byPath state) to compute "what's the
+ * effective state of worktree X right now?", then writes back to
+ * `terminals.lastActive` AND to the activity log on disk.
+ *
+ * Before the state migration, this logic lived in App.tsx as a
+ * `useEffect` that read `worktreeStatuses` + `mergedPaths` + `prStatuses`
+ * and called `window.api.recordActivity`. Pulling it into main
+ * eliminated (a) the dedup and debounce refs that were in the renderer
+ * and (b) duplicated calls if there were ever multiple clients of the
+ * same workspace. The trade-off is that "what triggers an activity log
+ * entry" is now invisible from the renderer — if you're debugging
+ * missing log entries, look here, not in App.tsx. */
 export class ActivityDeriver {
   private store: Store
   private debounceTimers = new Map<string, NodeJS.Timeout>()

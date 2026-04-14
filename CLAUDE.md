@@ -21,28 +21,222 @@ navigation.
 - **electron-builder** for packaging, signed with the user's personal Developer ID, notarized
 - **electron-updater** for OTA updates from GitHub releases
 
-## Key files
+## Architecture (read this before touching state)
+
+This app went through a large refactor where **the main process owns all
+shared state**, the renderer is a thin view layer, and a single transport
+(currently Electron IPC, future: WebSocket) carries both state events
+and side-effect signals. If you find yourself adding a `useState` to
+hold a value that any other client of this workspace would also want,
+you're doing it wrong — that value belongs in a slice.
+
+### The store + slice pattern
+
+State is partitioned into **slices** under `src/shared/state/`. Each
+slice has:
+- A `State` interface (the data shape)
+- An `Event` discriminated union (the mutations)
+- A `reducer(state, event) → state` pure function
+- An `initial<Slice>` constant
+- A test file with one test per event variant
+
+Current slices: `settings`, `prs`, `onboarding`, `hooks`, `worktrees`,
+`terminals` (which also owns `panes` and `lastActive`), `updater`,
+`repoConfigs`. Adding a new piece of shared state means picking the
+right slice (or making a new one) and editing the reducer + event union.
+
+### How a state mutation flows end-to-end
+
+1. **Renderer**: user clicks something. The handler calls a thin IPC
+   method like `window.api.setTheme('solarized')`.
+2. **Main / preload**: the IPC handler in `src/main/index.ts` does the
+   side effect (validation, writing to disk, etc.) and **dispatches a
+   typed event** through the store: `store.dispatch({type: 'settings/themeChanged', payload: 'solarized'})`.
+3. **Main / store**: `src/main/store.ts` runs the dispatched event
+   through the shared `rootReducer`, updates its in-memory `AppState`,
+   bumps a monotonic `seq`, and notifies subscribers.
+4. **Main / transport**: `src/main/transport-electron.ts` subscribes to
+   the store and forwards every event over the `state:event` IPC channel
+   to all `BrowserWindow`s.
+5. **Renderer / client store**: `src/renderer/store.ts` listens on
+   `state:event`, applies the **same** shared `rootReducer` to its local
+   mirror, and bumps its own seq.
+6. **Renderer / hooks**: `useSyncExternalStore` notifies any component
+   reading via `useSettings()` (or the slice-specific hook). React
+   re-renders.
+
+The key property: **main and renderer apply the exact same reducer
+function** from `src/shared/state/`, so they're guaranteed to stay in
+sync with no glue code. The renderer's "client store" is just a passive
+mirror.
+
+### Where each kind of state lives
+
+| Kind | Lives in | Why |
+|---|---|---|
+| Worktree list, panes, terminal status, PR status, settings, hooks consent, onboarding quest, updater status, repo configs, lastActive timestamps | **Main store slices** | Shared world state — every viewer of this workspace needs the same value |
+| `activeWorktreeId`, `activePaneId`, modal visibility (`showSettings` etc.), sidebar widths, tree expansion (`collapsedGroups`), form drafts | **Renderer `useState`** | Per-client UI focus / layout — different viewers can validly differ |
+| `hooksChecked` Sets, `prevStatusesRef`, debounce refs | **Renderer `useRef`** | Per-session bookkeeping that doesn't survive reload |
+| Background polling clocks, dedup state | **Main FSM/poller classes** | Lives wherever the loop runs (PRPoller, ActivityDeriver) |
+
+The test for "is this slice or renderer state": **would a second client
+connecting to the same workspace want to see the same value?** If yes,
+slice. If no, renderer.
+
+### Key files
 
 ```
 src/
-├── main/                 # Electron main process (Node)
-│   ├── index.ts          # Entry: window mgmt, IPC handlers, menu, autoUpdater
-│   ├── pty-manager.ts    # node-pty lifecycle, routes data to owning window
-│   ├── worktree.ts       # git worktree CRUD, changed files, file diffs
-│   ├── github.ts         # GitHub REST API calls (replaces gh CLI)
-│   ├── secrets.ts        # safeStorage-encrypted secrets at userData/secrets.enc
-│   ├── hooks.ts          # Installs Claude Code hooks per worktree for status detection
-│   ├── persistence.ts    # JSON config at userData/config.json
-│   └── debug.ts          # File-based debug logger
-├── preload/index.ts      # contextBridge — exposes window.api
-└── renderer/             # React app
-    ├── App.tsx           # Root component, all top-level state
-    ├── types.ts          # Shared types incl. ElectronAPI
-    ├── hotkeys.ts        # Hotkey definitions, parsing, formatting
-    ├── worktree-sort.ts  # Group worktrees by PR status, sort by activity
-    ├── components/       # React components
-    └── hooks/            # React hooks (e.g. useHotkeys)
+├── shared/state/                  # Slices imported by BOTH main and renderer
+│   ├── index.ts                   # Root reducer + AppState + StateEvent union
+│   ├── settings.ts                # Theme, hotkeys, claudeCommand, fonts, …
+│   ├── prs.ts                     # byPath PRStatus, mergedByPath, loading
+│   ├── worktrees.ts               # list, repoRoots, pending FSM entries
+│   ├── terminals.ts               # statuses, pendingTools, shellActivity, panes, lastActive
+│   ├── onboarding.ts              # quest step
+│   ├── hooks.ts                   # consent + justInstalled
+│   ├── updater.ts                 # status (checking/available/downloading/…)
+│   ├── repo-configs.ts            # byRepo: per-repo .harness.json contents
+│   └── *.test.ts                  # vitest reducer tests, one per slice
+│
+├── main/
+│   ├── index.ts                   # IPC handlers, menu, autoUpdater, store init
+│   ├── store.ts                   # The authoritative Store class (~40 lines)
+│   ├── transport-electron.ts      # Forwards store events to all windows via state:event IPC
+│   ├── pr-poller.ts               # Background PR polling, focus refresh, dedup
+│   ├── worktrees-fsm.ts           # Pending-creation FSM (addWorktree → setup script → outcome)
+│   ├── panes-fsm.ts               # Every pane/tab mutation (addTab, closeTab, splitPane, …)
+│   ├── activity-deriver.ts        # Subscribes to store, derives + records activity transitions
+│   ├── pty-manager.ts             # node-pty lifecycle, dispatches statuses to store
+│   ├── hooks.ts                   # Installs Claude Code hooks, dispatches statuses to store
+│   ├── worktree.ts                # git worktree CRUD primitives
+│   ├── github.ts                  # GitHub REST API calls
+│   ├── repo-config.ts             # Per-repo .harness.json read/write
+│   ├── persistence.ts             # JSON config at userData/config.json
+│   ├── secrets.ts                 # safeStorage-encrypted secrets
+│   └── debug.ts                   # File-based debug logger
+│
+├── preload/index.ts               # contextBridge — exposes window.api
+│
+└── renderer/
+    ├── App.tsx                    # Root component, per-client UI focus + JSX
+    ├── store.ts                   # Client mirror + useSettings/usePrs/usePanes/etc. hooks
+    ├── types.ts                   # ElectronAPI interface (re-exports shared types)
+    ├── hotkeys.ts                 # Hotkey definitions, parsing, formatting
+    ├── worktree-sort.ts           # Group worktrees by PR status
+    ├── components/                # React components
+    └── hooks/
+        ├── useHotkeys.ts          # Keyboard event subscription
+        ├── useMetaHeld.ts         # Meta key detection
+        ├── useTailLineBuffer.ts   # Rolling tail-line cache for CommandCenter
+        ├── useTabHandlers.ts      # All pane/tab mutation handlers (addTab, splitPane, …)
+        ├── useWorktreeHandlers.ts # All worktree+repo+pending-creation handlers
+        └── useHotkeyHandlers.ts   # Sidebar-aware hotkey action map + keystroke binding
 ```
+
+### Adding a new piece of shared state — the 5-file checklist
+
+This is more ceremony than just adding a `useState`, but the payoff is
+that any future client (web/mobile/another window) gets the value for
+free. Pattern is the same for every slice:
+
+1. **Add to the slice** (`src/shared/state/<slice>.ts`):
+   - Add the field to the `State` interface
+   - Add an `Event` variant for mutations
+   - Add a reducer case
+   - Update `initial<Slice>`
+2. **Seed it in main** (`src/main/index.ts`, in the `new Store({...})` block)
+3. **Add the IPC mutation handler** (in `main/index.ts` `registerIpcHandlers`):
+   ```ts
+   ipcMain.handle('myslice:setX', (_, value) => {
+     // …validation, persist…
+     store.dispatch({type: 'myslice/xChanged', payload: value})
+     return true
+   })
+   ```
+4. **Expose in preload + types**:
+   - `src/preload/index.ts`: `setX: (v) => ipcRenderer.invoke('myslice:setX', v)`
+   - `src/renderer/types.ts`: add to `ElectronAPI` interface
+5. **Add a reducer test** in `src/shared/state/<slice>.test.ts` (one
+   test per new event variant)
+
+The renderer reads the value via the existing `useSettings()` /
+`usePrs()` / etc. hook automatically — no new subscription code.
+
+### High-frequency streams (terminal data)
+
+State events are for **mutations**. They go through the reducer and
+trigger React re-renders. This is fine for events that fire a few times
+per second.
+
+PTY data is **not** a state event — it's a side-effect signal. It flows
+through its own `terminal:data` IPC channel directly to xterm.js via
+`window.api.onTerminalData`. If we put it through the reducer, every
+byte from a noisy build would re-render the world. The same conceptual
+distinction applies for any future high-frequency stream.
+
+### How the FSMs / pollers / derivers interact with the store
+
+Some main-side modules subscribe to the store and react to events:
+
+- **`PRPoller`** — owns background polling cadence + dedup. Dispatches
+  `prs/*` events. Doesn't subscribe to anything; called externally on
+  events that should kick a refresh (focus, worktree add, manual
+  refresh button).
+- **`WorktreesFSM`** — runs the pending-creation state machine
+  (addWorktree → setup script → outcome). Dispatches `worktrees/*`
+  events. On success, fires an `onWorktreeCreated` callback that the
+  host wires to (a) PR poller refresh and (b) `panesFSM.ensureInitialized`.
+- **`PanesFSM`** — owns every pane/tab mutation. Dispatches
+  `terminals/panes*` events. Auto-persists panes to disk after each
+  mutation.
+- **`ActivityDeriver`** — actively *subscribes* to the store. Watches
+  `terminals/*` and `prs/*` events, computes per-worktree effective
+  state, debounces `lastActive` updates, dedups `recordActivity` calls
+  to `activity.ts`.
+- **`installHooksForAcceptedWorktrees`** — small subscriber in
+  `main/index.ts` that listens for `worktrees/listChanged` and
+  `hooks/consentChanged`, installs hooks into any new worktree if
+  consent is `'accepted'`.
+
+Construction order in `main/index.ts` matters: `PanesFSM` is constructed
+**before** `WorktreesFSM` because the latter's `onWorktreeCreated`
+callback closes over `panesFSM`. Don't reorder without thinking.
+
+### How the renderer reads + mutates state
+
+```tsx
+// Read — re-renders this component when the slice changes.
+const settings = useSettings()
+const theme = settings.theme
+
+// Mutate — fire-and-forget IPC. The store dispatches and the read
+// above re-renders automatically.
+window.api.setTheme('solarized')
+```
+
+The renderer **never holds a local copy of shared state**. There's no
+"I'll keep my own `themeState` and re-fetch" pattern anywhere. If you
+catch yourself writing `useState` for a value that came from the store,
+delete it and read via the hook.
+
+Per-client UI state (active worktree, modal visibility, sidebar width)
+**stays as `useState` in App.tsx** — those are inherently per-viewer.
+
+### Why "where does this live" can take a few file hops to answer
+
+A `useSettings().theme` read traces through:
+1. `App.tsx` calls the hook
+2. `src/renderer/store.ts` defines the hook (`useAppState((s) => s.settings)`)
+3. `useSyncExternalStore` reads from the client mirror in `store.ts`
+4. The mirror was populated by a `state:event` IPC message
+5. Main dispatched that event from an IPC handler in `main/index.ts`
+6. The handler ran the reducer in `src/shared/state/settings.ts`
+
+Six files for one value. The mitigation: **the structure is the same
+for every slice**. Once you understand it once, every other slice
+follows the same path. Search for "settingsReducer" or grep for the
+event type if you're trying to find where something happens.
 
 ## How status detection works
 
@@ -97,12 +291,24 @@ These are how the user wants Claude to behave when working on this repo:
    changes to catch type errors and missing imports before committing.
 
 4. **Don't add comments unless asked.** Code should explain itself; comments
-   are reserved for non-obvious "why" notes.
+   are reserved for non-obvious "why" notes. The exception is the comment
+   blocks already present in `src/main/store.ts`, `src/main/index.ts`
+   (around the panesFSM/worktreesFSM construction), `src/shared/state/index.ts`,
+   `src/renderer/store.ts`, and `src/main/activity-deriver.ts` — those
+   document the load-bearing architecture decisions and should be
+   preserved/updated rather than removed.
 
-5. **Don't write planning/decision documents.** Work from conversation
+5. **State changes go through slices, not `useState`.** If you're tempted
+   to add `const [x, setX] = useState(...)` in the renderer for a value
+   that should survive a reload or be visible to other clients, stop.
+   Add it to a slice instead — see "Adding a new piece of shared state"
+   above. Per-client UI focus / modal visibility / sidebar widths stay
+   as `useState` in App.tsx; everything else is a slice.
+
+6. **Don't write planning/decision documents.** Work from conversation
    context. Don't create scratch markdown files or design docs.
 
-6. **Surface secrets concerns.** If the user pastes a token or password
+7. **Surface secrets concerns.** If the user pastes a token or password
    in chat (often via .env reminders the harness sends), warn them once
    that it's now in conversation history and tell them to rotate.
 

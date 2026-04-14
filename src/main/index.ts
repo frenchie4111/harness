@@ -178,9 +178,23 @@ function persistPanes(panes: Record<string, WorkspacePane[]>): void {
   saveConfig(config)
 }
 
-// Construct PanesFSM before WorktreesFSM so the latter can call
-// panesFSM.ensureInitialized directly from its onWorktreeCreated callback
-// without TDZ-ing on the const.
+// IMPORTANT — construction order is load-bearing.
+//
+// PanesFSM must be constructed BEFORE WorktreesFSM because WorktreesFSM's
+// onWorktreeCreated callback (defined below) closes over `panesFSM`.
+// JavaScript doesn't blow up at construction time because the closure
+// only runs later, but if you reorder these and panesFSM is in the
+// temporal dead zone when the callback fires, you'll get a
+// ReferenceError that only surfaces when a worktree is created.
+//
+// The conceptual coupling — "creating a worktree triggers pane
+// initialization" — used to live visibly in App.tsx where the renderer
+// orchestrated both. After the state migration, it became an implicit
+// contract between two main-side modules that this file wires together.
+// If you ever refactor this further, consider inverting: have PanesFSM
+// subscribe to `worktrees/listChanged` itself and call ensureInitialized
+// on any new worktree. That would make the dependency direction explicit
+// and remove the construction-order requirement.
 const panesFSM = new PanesFSM(store, {
   persist: persistPanes,
   getRepoRootForWorktree: (wtPath) => {
