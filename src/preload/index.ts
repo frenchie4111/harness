@@ -167,6 +167,7 @@ contextBridge.exposeInMainWorld('api', {
   hasGithubToken: () => ipcRenderer.invoke('settings:hasGithubToken'),
   setGithubToken: (token: string, options?: { starRepo?: boolean }) => ipcRenderer.invoke('settings:setGithubToken', token, options),
   clearGithubToken: () => ipcRenderer.invoke('settings:clearGithubToken'),
+  getGithubAuthSource: () => ipcRenderer.invoke('settings:getGithubAuthSource'),
 
   // Updater
   getVersion: () => ipcRenderer.invoke('updater:getVersion'),

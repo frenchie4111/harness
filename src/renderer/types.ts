@@ -214,6 +214,7 @@ export interface ElectronAPI {
   hasGithubToken(): Promise<boolean>
   setGithubToken(token: string, options?: { starRepo?: boolean }): Promise<{ ok: boolean; username?: string; error?: string; starred?: boolean }>
   clearGithubToken(): Promise<boolean>
+  getGithubAuthSource(): Promise<'pat' | 'gh-cli' | null>
 
   getVersion(): Promise<string>
   checkForUpdates(): Promise<{ ok: boolean; available?: boolean; version?: string; releaseDate?: string; error?: string }>

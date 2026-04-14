@@ -15,6 +15,7 @@ import { listWorktrees, listBranches, continueWorktree, removeWorktree, isWorktr
 import { getPRStatus, testToken, starRepo } from './github'
 import { AVAILABLE_EDITORS, DEFAULT_EDITOR_ID, openInEditor } from './editor'
 import { setSecret, hasSecret, deleteSecret } from './secrets'
+import { resolveGitHubToken, getTokenSource, invalidateTokenCache } from './github-auth'
 import {
   loadConfig,
   saveConfig,
@@ -891,6 +892,8 @@ function registerIpcHandlers(): void {
     if (!trimmed) {
       deleteSecret('githubToken')
       store.dispatch({ type: 'settings/hasGithubTokenChanged', payload: false })
+      invalidateTokenCache()
+      await resolveGitHubToken()
       return { ok: true }
     }
     // Validate the token first by hitting /user
@@ -898,6 +901,8 @@ function registerIpcHandlers(): void {
     if (!test.ok) return { ok: false, error: test.error }
     setSecret('githubToken', trimmed)
     store.dispatch({ type: 'settings/hasGithubTokenChanged', payload: true })
+    invalidateTokenCache()
+    await resolveGitHubToken()
 
     // Optionally star the repo — fire and forget, don't fail token save if this fails
     let starred = false
@@ -910,10 +915,16 @@ function registerIpcHandlers(): void {
     return { ok: true, username: test.username, starred }
   })
 
-  ipcMain.handle('settings:clearGithubToken', () => {
+  ipcMain.handle('settings:clearGithubToken', async () => {
     deleteSecret('githubToken')
     store.dispatch({ type: 'settings/hasGithubTokenChanged', payload: false })
+    invalidateTokenCache()
+    await resolveGitHubToken()
     return true
+  })
+
+  ipcMain.handle('settings:getGithubAuthSource', () => {
+    return getTokenSource()
   })
 
   // Updater
@@ -1228,10 +1239,13 @@ app.whenReady().then(() => {
   // and writes recordActivity + lastActive without renderer involvement.
   activityDeriver.start()
 
-  // Kick off the PR poller. An initial refreshAll() runs immediately and
-  // then on a 5-minute interval.
-  prPoller.start()
-  void prPoller.refreshAll()
+  // Resolve the GitHub token (PAT → gh CLI → none) before the PR poller
+  // makes its first call. The poller's initial refreshAll waits on this.
+  void (async () => {
+    await resolveGitHubToken()
+    prPoller.start()
+    void prPoller.refreshAll()
+  })()
 
   // Seed hooks.consent from disk. If any known worktree already has the
   // hooks installed, the user must have accepted at some point — remember

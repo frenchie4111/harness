@@ -1,16 +1,12 @@
 import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { log } from './debug'
-import { getSecret } from './secrets'
+import { getCachedToken, invalidateTokenCache, resolveGitHubToken } from './github-auth'
 import type { CheckStatus, PRReview, PRStatus } from '../shared/state/prs'
 
 export type { CheckStatus, PRReview, PRStatus }
 
 const execFileAsync = promisify(execFile)
-
-function getToken(): string | null {
-  return getSecret('githubToken') || process.env.GITHUB_TOKEN || null
-}
 
 /** Parse the GitHub owner/repo from a remote URL like git@github.com:owner/repo.git or https://github.com/owner/repo.git */
 function parseRemoteUrl(url: string): { owner: string; repo: string } | null {
@@ -52,17 +48,27 @@ async function getCurrentBranch(worktreePath: string): Promise<string | null> {
   }
 }
 
-/** Make an authenticated request to the GitHub REST API */
-async function githubFetch(url: string): Promise<unknown> {
-  const token = getToken()
+async function doFetch(url: string, token: string | null): Promise<Response> {
   const headers: Record<string, string> = {
     Accept: 'application/vnd.github+json',
     'User-Agent': 'Harness',
     'X-GitHub-Api-Version': '2022-11-28'
   }
   if (token) headers.Authorization = `Bearer ${token}`
+  return fetch(url, { headers })
+}
 
-  const res = await fetch(url, { headers })
+/** Make an authenticated request to the GitHub REST API. On 401, invalidate the token cache and retry once. */
+async function githubFetch(url: string): Promise<unknown> {
+  let token = getCachedToken()
+  let res = await doFetch(url, token)
+  if (res.status === 401) {
+    log('github', '401 from GitHub, re-resolving token')
+    invalidateTokenCache()
+    const resolved = await resolveGitHubToken()
+    token = resolved?.token ?? null
+    res = await doFetch(url, token)
+  }
   if (!res.ok) {
     throw new Error(`GitHub API ${res.status}: ${res.statusText}`)
   }
@@ -166,7 +172,7 @@ function computeOverall(checks: CheckStatus[]): PRStatus['checksOverall'] {
 
 /** Get PR status for the branch checked out in a worktree. Returns null if no PR or no token. */
 export async function getPRStatus(worktreePath: string): Promise<PRStatus | null> {
-  const token = getToken()
+  const token = getCachedToken()
   if (!token) return null
 
   const repoInfo = await getRepoInfo(worktreePath)
