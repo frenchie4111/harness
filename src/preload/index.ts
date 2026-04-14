@@ -154,13 +154,6 @@ contextBridge.exposeInMainWorld('api', {
   getTheme: () => ipcRenderer.invoke('config:getTheme'),
   setTheme: (theme: string) => ipcRenderer.invoke('config:setTheme', theme),
   getAvailableThemes: () => ipcRenderer.invoke('config:getAvailableThemes'),
-  onThemeChanged: (callback: (theme: string) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, theme: string): void => {
-      callback(theme)
-    }
-    ipcRenderer.on('config:themeChanged', handler)
-    return () => ipcRenderer.removeListener('config:themeChanged', handler)
-  },
   getTerminalFontFamily: () => ipcRenderer.invoke('config:getTerminalFontFamily'),
   setTerminalFontFamily: (fontFamily: string) =>
     ipcRenderer.invoke('config:setTerminalFontFamily', fontFamily),
@@ -322,5 +315,20 @@ contextBridge.exposeInMainWorld('api', {
     }
     ipcRenderer.on('terminal:exit', handler)
     return () => ipcRenderer.removeListener('terminal:exit', handler)
+  },
+
+  // State transport (snapshot + event stream). Replaces ad-hoc per-field
+  // getters and onXChanged subscriptions one slice at a time.
+  getStateSnapshot: () => ipcRenderer.invoke('state:getSnapshot'),
+  onStateEvent: (callback: (event: unknown, seq: number) => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      stateEvent: unknown,
+      seq: number
+    ): void => {
+      callback(stateEvent, seq)
+    }
+    ipcRenderer.on('state:event', handler)
+    return () => ipcRenderer.removeListener('state:event', handler)
   }
 })

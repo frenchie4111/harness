@@ -4,6 +4,8 @@ import { existsSync, readdirSync, statSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 import { PtyManager } from './pty-manager'
+import { Store } from './store'
+import { registerStateTransport } from './transport-electron'
 import { listWorktrees, listBranches, addWorktree, continueWorktree, removeWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, readWorktreeFile, runWorktreeScript, type MergeStrategy } from './worktree'
 import { getPRStatus, testToken, starRepo } from './github'
 import { AVAILABLE_EDITORS, DEFAULT_EDITOR_ID, openInEditor } from './editor'
@@ -43,6 +45,13 @@ if (!app.isPackaged) {
 const ptyManager = new PtyManager()
 let config = loadConfig()
 let stopWatchingStatus: (() => void) | null = null
+
+const store = new Store({
+  settings: {
+    theme: config.theme || DEFAULT_THEME
+  }
+})
+registerStateTransport(store)
 
 function createWindow(): BrowserWindow {
   const bounds = config.windowBounds || { width: 1400, height: 900, x: undefined!, y: undefined! }
@@ -508,7 +517,7 @@ function registerIpcHandlers(): void {
     return true
   })
   ipcMain.handle('config:getTheme', () => {
-    return config.theme || DEFAULT_THEME
+    return store.getSnapshot().state.settings.theme
   })
 
   ipcMain.handle('config:setTheme', (_, theme: string) => {
@@ -521,9 +530,7 @@ function registerIpcHandlers(): void {
       config.theme = theme
     }
     saveConfig(config)
-    for (const win of BrowserWindow.getAllWindows()) {
-      if (!win.isDestroyed()) win.webContents.send('config:themeChanged', theme)
-    }
+    store.dispatch({ type: 'settings/themeChanged', payload: theme })
     return true
   })
 

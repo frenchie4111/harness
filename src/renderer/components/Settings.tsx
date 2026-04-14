@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2 } from 'lucide-react'
+import { useSettings } from '../store'
 import type { UpdaterStatus, MergeStrategy, RepoConfig } from '../types'
 import { DEFAULT_HOTKEYS, ACTION_LABELS, bindingToString, eventToBinding, resolveHotkeys, type Action, type HotkeyBinding } from '../hotkeys'
 import { Tooltip } from './Tooltip'
@@ -170,8 +171,9 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
   // Name sessions toggle
   const [nameClaudeSessions, setNameClaudeSessions] = useState(false)
 
-  // Theme state
-  const [theme, setThemeState] = useState<string>('dark')
+  // Theme now lives in the main-process store; this hook re-renders Settings
+  // when any client updates it.
+  const { theme } = useSettings()
 
   // Terminal font state
   const [terminalFontFamily, setTerminalFontFamily] = useState<string>('')
@@ -210,7 +212,6 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
     })
     window.api.getHarnessMcpEnabled().then(setHarnessMcpEnabledState)
     window.api.getNameClaudeSessions().then(setNameClaudeSessions)
-    window.api.getTheme().then(setThemeState)
     window.api.getTerminalFontFamily().then(setTerminalFontFamily)
     window.api.getDefaultTerminalFontFamily().then(setDefaultTerminalFontFamily)
     window.api.getTerminalFontSize().then(setTerminalFontSize)
@@ -255,7 +256,6 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
   const [teardownDraft, setTeardownDraft] = useState<string>('')
 
   const handleSelectTheme = useCallback(async (id: string) => {
-    setThemeState(id)
     await window.api.setTheme(id)
   }, [])
 

@@ -1,3 +1,6 @@
+import type { StateEvent, StateSnapshot } from '../shared/state'
+export type { StateEvent, StateSnapshot }
+
 export interface Worktree {
   path: string
   branch: string
@@ -264,7 +267,6 @@ export interface ElectronAPI {
   getTheme(): Promise<string>
   setTheme(theme: string): Promise<boolean>
   getAvailableThemes(): Promise<readonly string[]>
-  onThemeChanged(callback: (theme: string) => void): () => void
 
   getTerminalFontFamily(): Promise<string>
   setTerminalFontFamily(fontFamily: string): Promise<boolean>
@@ -338,6 +340,9 @@ export interface ElectronAPI {
   recordActivity(worktreePath: string, state: string): void
   getActivityLog(): Promise<ActivityLog>
   clearActivityLog(worktreePath?: string): Promise<boolean>
+
+  getStateSnapshot(): Promise<StateSnapshot>
+  onStateEvent(callback: (event: StateEvent, seq: number) => void): () => void
 }
 
 export type ActivityState = 'processing' | 'waiting' | 'needs-approval' | 'idle' | 'merged'

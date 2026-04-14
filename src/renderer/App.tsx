@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useSettings } from './store'
 import type { Worktree, TerminalTab, PtyStatus, PendingTool, PRStatus, QuestStep, WorkspacePane, PendingWorktree, UpdaterStatus, RepoConfig } from './types'
 import type { Action } from './hotkeys'
 import { resolveHotkeys } from './hotkeys'
@@ -377,16 +378,10 @@ const setQuestStep = useCallback((next: QuestStep) => {
     return cleanup
   }, [])
 
-  // Load theme on mount and apply to <html data-theme="...">
+  const settings = useSettings()
   useEffect(() => {
-    window.api.getTheme().then((theme) => {
-      document.documentElement.dataset.theme = theme
-    })
-    const cleanup = window.api.onThemeChanged((theme) => {
-      document.documentElement.dataset.theme = theme
-    })
-    return cleanup
-  }, [])
+    document.documentElement.dataset.theme = settings.theme
+  }, [settings.theme])
 
   // Open Settings from the menu (Cmd+,)
   useEffect(() => {
