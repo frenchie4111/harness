@@ -190,7 +190,6 @@ function FileRow({
   onClick: () => void
   onSendToClaude?: (text: string) => void
 }): JSX.Element {
-  // Show just the filename, with directory path dimmed
   const lastSlash = file.path.lastIndexOf('/')
   const dir = lastSlash >= 0 ? file.path.slice(0, lastSlash + 1) : ''
   const name = lastSlash >= 0 ? file.path.slice(lastSlash + 1) : file.path
@@ -200,10 +199,14 @@ function FileRow({
       <span className={`shrink-0 w-3 font-mono ${STATUS_COLOR[file.status]}`}>
         {STATUS_LABEL[file.status]}
       </span>
-      <span className="truncate min-w-0 flex-1">
-        {dir && <span className="text-faint">{dir}</span>}
-        <span className="text-fg">{name}</span>
-      </span>
+      <Tooltip label={<span className="font-mono">{file.path}</span>} side="top">
+        <span className="truncate min-w-0 flex-1" style={{ direction: 'rtl', textAlign: 'left' }}>
+          <bdi>
+            {dir && <span className="text-faint">{dir}</span>}
+            <span className="text-fg">{name}</span>
+          </bdi>
+        </span>
+      </Tooltip>
       {onSendToClaude && (
         <Tooltip label="Reference in Claude" side="left">
           <button

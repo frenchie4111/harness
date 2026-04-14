@@ -72,7 +72,9 @@ export function FileView({ worktreePath, filePath, onSendToClaude }: FileViewPro
   return (
     <div className="h-full flex flex-col bg-app">
       <div className="shrink-0 flex items-center gap-3 border-b border-border bg-panel px-4 py-2 text-xs">
-        <span className="font-mono text-fg truncate flex-1 min-w-0">{filePath}</span>
+        <span className="font-mono text-fg truncate flex-1 min-w-0" style={{ direction: 'rtl', textAlign: 'left' }} title={filePath}>
+          <bdi>{filePath}</bdi>
+        </span>
         <span className="text-faint shrink-0">{formatBytes(result.size)}</span>
         {result.truncated && (
           <span className="shrink-0 text-warning">truncated</span>
