@@ -53,6 +53,13 @@ const store = new Store({
     mergedByPath: {},
     loading: false
   },
+  onboarding: {
+    quest: config.onboarding?.quest ?? 'hidden'
+  },
+  hooks: {
+    consent: 'pending',
+    justInstalled: false
+  },
   settings: {
     theme: config.theme || DEFAULT_THEME,
     hotkeys: config.hotkeys || null,
@@ -661,7 +668,7 @@ function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('config:getOnboarding', () => {
-    return config.onboarding || { quest: 'hidden' }
+    return { quest: store.getSnapshot().state.onboarding.quest }
   })
 
   ipcMain.handle('config:setOnboardingQuest', (_, quest: string) => {
@@ -669,6 +676,10 @@ function registerIpcHandlers(): void {
     if (!valid.includes(quest)) return false
     config.onboarding = { ...(config.onboarding || {}), quest: quest as QuestStep }
     saveConfig(config)
+    store.dispatch({
+      type: 'onboarding/questChanged',
+      payload: quest as QuestStep
+    })
     return true
   })
 
@@ -863,6 +874,32 @@ function registerIpcHandlers(): void {
     return true
   })
 
+  // Bulk-install hooks into every known worktree and flip consent='accepted'
+  // + justInstalled=true in a single round trip. Replaces the old
+  // renderer-side loop that walked worktrees one by one.
+  ipcMain.handle('hooks:acceptAll', async () => {
+    const roots = config.repoRoots || []
+    for (const root of roots) {
+      const trees = await listWorktrees(root).catch(() => [])
+      for (const wt of trees) {
+        if (!hooksInstalled(wt.path)) installHooks(wt.path)
+      }
+    }
+    store.dispatch({ type: 'hooks/consentChanged', payload: 'accepted' })
+    store.dispatch({ type: 'hooks/justInstalledChanged', payload: true })
+    return true
+  })
+
+  ipcMain.handle('hooks:decline', () => {
+    store.dispatch({ type: 'hooks/consentChanged', payload: 'declined' })
+    return true
+  })
+
+  ipcMain.handle('hooks:dismissJustInstalled', () => {
+    store.dispatch({ type: 'hooks/justInstalledChanged', payload: false })
+    return true
+  })
+
   // Shell
   ipcMain.on('shell:openExternal', (_, url: string) => {
     shell.openExternal(url)
@@ -1041,6 +1078,22 @@ app.whenReady().then(() => {
   // then on a 5-minute interval.
   prPoller.start()
   void prPoller.refreshAll()
+
+  // Seed hooks.consent from disk. If any known worktree already has the
+  // hooks installed, the user must have accepted at some point — remember
+  // that and skip the consent banner on boot.
+  void (async () => {
+    const roots = config.repoRoots || []
+    for (const root of roots) {
+      const trees = await listWorktrees(root).catch(() => [])
+      for (const wt of trees) {
+        if (hooksInstalled(wt.path)) {
+          store.dispatch({ type: 'hooks/consentChanged', payload: 'accepted' })
+          return
+        }
+      }
+    }
+  })()
 
   // Prune terminal history files not referenced by any persisted tab
   const keepIds = new Set<string>()

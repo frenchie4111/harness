@@ -288,6 +288,9 @@ export interface ElectronAPI {
 
   checkHooks(worktreePath: string): Promise<boolean>
   installHooks(worktreePath: string): Promise<boolean>
+  acceptHooks(): Promise<boolean>
+  declineHooks(): Promise<boolean>
+  dismissHooksJustInstalled(): Promise<boolean>
 
   createTerminal(id: string, cwd: string, cmd: string, args: string[], isClaude?: boolean): void
   writeTerminal(id: string, data: string): void

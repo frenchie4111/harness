@@ -50,4 +50,12 @@ export function usePrs() {
   return useAppState((s) => s.prs)
 }
 
+export function useOnboarding() {
+  return useAppState((s) => s.onboarding)
+}
+
+export function useHooks() {
+  return useAppState((s) => s.hooks)
+}
+
 export type { AppState, StateEvent }

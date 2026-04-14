@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { useSettings, usePrs } from './store'
+import { useSettings, usePrs, useOnboarding, useHooks } from './store'
 import type { Worktree, TerminalTab, PtyStatus, PendingTool, QuestStep, WorkspacePane, PendingWorktree, UpdaterStatus, RepoConfig } from './types'
 import type { Action } from './hotkeys'
 import { resolveHotkeys } from './hotkeys'
@@ -83,8 +83,10 @@ export default function App(): JSX.Element {
   // Map of worktree path → repoRoot for quick lookups outside of `worktrees`.
   // Populated whenever the worktree list refreshes.
   const worktreeRepoRef = useRef<Record<string, string>>({})
-  const [hooksConsent, setHooksConsent] = useState<'pending' | 'accepted' | 'declined'>('pending')
-  const [hooksJustInstalled, setHooksJustInstalled] = useState(false)
+  // Hooks consent + justInstalled live in the main-process store.
+  // Accept/decline dispatch through dedicated methods; the boot-time
+  // "already installed?" detection lives in main.
+  const { consent: hooksConsent, justInstalled: hooksJustInstalled } = useHooks()
   const [updaterStatus, setUpdaterStatus] = useState<UpdaterStatus | null>(null)
   const [updateBannerDismissed, setUpdateBannerDismissed] = useState(false)
   const [sidebarVisible, setSidebarVisible] = useState(true)
@@ -152,8 +154,9 @@ export default function App(): JSX.Element {
   const { hasGithubToken, claudeCommand, nameClaudeSessions } = settings
   const hotkeyOverrides = settings.hotkeys ?? undefined
   // Onboarding parallelism quest — see QuestCard.tsx for the steps.
-  const [questStep, setQuestStepRaw] = useState<QuestStep>('hidden')
-  const questLoadedRef = useRef(false)
+  // Quest state lives in the main-process store; its value is seeded from
+  // config on boot so it's already correct on first render.
+  const { quest: questStep } = useOnboarding()
   const questVisitedRef = useRef<Set<string>>(new Set())
 
   // Count of "real" worktrees the user has spawned — main repo doesn't count
@@ -174,26 +177,13 @@ export default function App(): JSX.Element {
   const pendingTeleportRef = useRef<Record<string, string>>({})
 
 const setQuestStep = useCallback((next: QuestStep) => {
-    setQuestStepRaw(next)
     window.api.setOnboardingQuest(next).catch(() => {})
   }, [])
 
-  // Load persisted quest state on mount
+  // Advance the quest based on how many agent worktrees exist (main excluded).
+  // No loaded-guard needed — the store is hydrated before App mounts, so
+  // questStep is already the persisted value on first render.
   useEffect(() => {
-    window.api
-      .getOnboarding()
-      .then((o) => {
-        setQuestStepRaw(o?.quest ?? 'hidden')
-      })
-      .catch(() => {})
-      .finally(() => {
-        questLoadedRef.current = true
-      })
-  }, [])
-
-  // Advance the quest based on how many agent worktrees exist (main excluded)
-  useEffect(() => {
-    if (!questLoadedRef.current) return
     if (questStep === 'done' || questStep === 'finale') return
     if (questStep === 'hidden' && agentWorktreeCount >= 1) {
       setQuestStep(agentWorktreeCount >= 2 ? 'switch-between' : 'spawn-second')
@@ -561,35 +551,13 @@ const setQuestStep = useCallback((next: QuestStep) => {
     })
   }, [activeWorktreeId, hooksConsent])
 
-  const handleAcceptHooks = useCallback(async () => {
-    setHooksConsent('accepted')
-    // Install hooks in all known worktrees
-    for (const wt of worktrees) {
-      const installed = await window.api.checkHooks(wt.path)
-      if (!installed) {
-        await window.api.installHooks(wt.path)
-      }
-    }
-    setHooksJustInstalled(true)
-  }, [worktrees])
-
-  const handleDeclineHooks = useCallback(() => {
-    setHooksConsent('declined')
+  const handleAcceptHooks = useCallback(() => {
+    void window.api.acceptHooks()
   }, [])
 
-  // Check on mount if any worktree already has our hooks (user already consented before)
-  useEffect(() => {
-    if (worktrees.length === 0) return
-    ;(async () => {
-      for (const wt of worktrees) {
-        const installed = await window.api.checkHooks(wt.path)
-        if (installed) {
-          setHooksConsent('accepted')
-          return
-        }
-      }
-    })()
-  }, [worktrees])
+  const handleDeclineHooks = useCallback(() => {
+    void window.api.declineHooks()
+  }, [])
 
   // Subscribe to auto-updater status for the in-app update banner.
   useEffect(() => {
@@ -984,7 +952,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
         }
       }
     }
-    setHooksJustInstalled(false)
+    void window.api.dismissHooksJustInstalled()
   }, [panes, handleRestartClaudeTab])
 
   const handleSelectTab = useCallback(
@@ -1537,7 +1505,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
             Restart Claude tabs
           </button>
           <button
-            onClick={() => setHooksJustInstalled(false)}
+            onClick={() => void window.api.dismissHooksJustInstalled()}
             className="px-3 py-1 text-success/80 hover:text-success text-sm transition-colors shrink-0 cursor-pointer no-drag"
           >
             Dismiss

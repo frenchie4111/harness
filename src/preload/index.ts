@@ -208,6 +208,9 @@ contextBridge.exposeInMainWorld('api', {
   // Hooks
   checkHooks: (worktreePath: string) => ipcRenderer.invoke('hooks:check', worktreePath),
   installHooks: (worktreePath: string) => ipcRenderer.invoke('hooks:install', worktreePath),
+  acceptHooks: () => ipcRenderer.invoke('hooks:acceptAll'),
+  declineHooks: () => ipcRenderer.invoke('hooks:decline'),
+  dismissHooksJustInstalled: () => ipcRenderer.invoke('hooks:dismissJustInstalled'),
 
   // PTY
   createTerminal: (id: string, cwd: string, cmd: string, args: string[], isClaude?: boolean) => {
