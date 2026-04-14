@@ -145,6 +145,13 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
   const [saving, setSaving] = useState(false)
   const [autoStar, setAutoStar] = useState(true)
   const [tokenResult, setTokenResult] = useState<{ ok: boolean; message: string } | null>(null)
+  const [authSource, setAuthSource] = useState<'pat' | 'gh-cli' | null>(null)
+  const refreshAuthSource = (): void => {
+    void window.api.getGithubAuthSource().then(setAuthSource)
+  }
+  useEffect(() => {
+    refreshAuthSource()
+  }, [])
 
   // Updates state — updaterStatus lives in the main-process store
   const [version, setVersion] = useState<string>('')
@@ -355,6 +362,7 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
         if (autoStar && res.starred) message += ' · starred Harness on GitHub'
         setTokenResult({ ok: true, message })
         setToken('')
+        refreshAuthSource()
       } else {
         setTokenResult({ ok: false, message: `Invalid token: ${res.error || 'unknown error'}` })
       }
@@ -366,6 +374,7 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
   const handleClear = useCallback(async () => {
     await window.api.clearGithubToken()
     setTokenResult({ ok: true, message: 'Token removed' })
+    refreshAuthSource()
   }, [])
 
   const handleCheckForUpdates = useCallback(async () => {
@@ -601,7 +610,7 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
           {SECTIONS.map((section) => {
             const Icon = section.icon
             const isActive = activeSection === section.id
-            const needsAttention = section.id === 'github' && !hasToken
+            const needsAttention = section.id === 'github' && !hasToken && authSource !== 'gh-cli'
             const className = needsAttention
               ? `flex items-center gap-2 px-3 py-2 text-left text-sm transition-colors cursor-pointer ${
                   isActive ? 'bg-info/25 text-info' : 'bg-info/10 text-info hover:bg-info/20'
@@ -1272,13 +1281,26 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
 
             {/* GitHub section */}
             <section ref={(el) => { sectionRefs.current.github = el }} id="github">
-              <h2 className={`text-lg font-semibold mb-1 ${!hasToken ? 'text-info' : 'text-fg-bright'}`}>GitHub</h2>
-              <p className={`text-sm mb-4 ${!hasToken ? 'text-info/80' : 'text-dim'}`}>
-                Harness uses a personal access token to fetch PR status and check results.
-                The token is encrypted and stored locally using your macOS keychain.
+              {(() => {
+                const authed = hasToken || authSource === 'gh-cli'
+                return (
+              <>
+              <h2 className={`text-lg font-semibold mb-1 ${!authed ? 'text-info' : 'text-fg-bright'}`}>GitHub</h2>
+              <p className={`text-sm mb-4 ${!authed ? 'text-info/80' : 'text-dim'}`}>
+                Harness fetches PR status and check results from GitHub. If you have the
+                {' '}<code className="bg-panel-raised px-1 rounded">gh</code> CLI installed and authenticated,
+                it'll be used automatically. Otherwise, paste a personal access token below — it'll be
+                encrypted and stored locally using your macOS keychain.
               </p>
 
-              <div className={`rounded-lg p-4 border ${!hasToken ? 'bg-info/10 border-info/30' : 'bg-panel-raised border-border'}`}>
+              {authSource === 'gh-cli' && !hasToken && (
+                <div className="mb-4 rounded-lg p-3 border bg-success/10 border-success/30 flex items-center gap-2 text-sm text-success">
+                  <Check size={14} />
+                  <span>Using <code className="bg-panel-raised px-1 rounded">gh</code> CLI token (auto-detected)</span>
+                </div>
+              )}
+
+              <div className={`rounded-lg p-4 border ${!authed ? 'bg-info/10 border-info/30' : 'bg-panel-raised border-border'}`}>
                 <label className="block text-sm font-medium text-fg mb-2">
                   Personal Access Token
                 </label>
@@ -1286,7 +1308,7 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
                 {hasToken && (
                   <div className="flex items-center gap-2 mb-3 text-xs text-success">
                     <Check size={14} />
-                    <span>A token is currently saved</span>
+                    <span>A token is currently saved {authSource === 'pat' ? '(in use)' : ''}</span>
                   </div>
                 )}
 
@@ -1368,6 +1390,9 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
                   or <code className="bg-panel-raised px-1 rounded">public_repo</code> for public only.
                 </p>
               </div>
+              </>
+                )
+              })()}
             </section>
 
             {/* Hotkeys section */}
