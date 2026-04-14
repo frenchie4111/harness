@@ -210,12 +210,7 @@ export interface ElectronAPI {
 
   panesAddTab(wtPath: string, tab: TerminalTab, paneId?: string): Promise<boolean>
   panesCloseTab(wtPath: string, tabId: string): Promise<boolean>
-  panesRestartClaudeTab(
-    wtPath: string,
-    tabId: string,
-    newId: string,
-    newSessionId: string
-  ): Promise<boolean>
+  panesRestartClaudeTab(wtPath: string, tabId: string, newId: string): Promise<boolean>
   panesSelectTab(wtPath: string, paneId: string, tabId: string): Promise<boolean>
   panesReorderTabs(
     wtPath: string,
@@ -250,8 +245,6 @@ export interface ElectronAPI {
   getFilePath(file: File): string
   onOpenSettings(callback: () => void): () => void
 
-  checkHooks(worktreePath: string): Promise<boolean>
-  installHooks(worktreePath: string): Promise<boolean>
   acceptHooks(): Promise<boolean>
   declineHooks(): Promise<boolean>
   dismissHooksJustInstalled(): Promise<boolean>

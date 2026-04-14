@@ -199,6 +199,27 @@ const panesFSM = new PanesFSM(store, {
 
 const activityDeriver = new ActivityDeriver(store)
 
+/** Install Claude Code hooks into any worktree that's missing them, but only
+ * if the user has accepted the consent prompt. Subscribes to the store and
+ * fires on worktrees/listChanged + hooks/consentChanged. */
+function installHooksForAcceptedWorktrees(): void {
+  const state = store.getSnapshot().state
+  if (state.hooks.consent !== 'accepted') return
+  for (const wt of state.worktrees.list) {
+    if (!hooksInstalled(wt.path)) {
+      installHooks(wt.path)
+    }
+  }
+}
+store.subscribe((event) => {
+  if (
+    event.type === 'worktrees/listChanged' ||
+    event.type === 'hooks/consentChanged'
+  ) {
+    installHooksForAcceptedWorktrees()
+  }
+})
+
 function createWindow(): BrowserWindow {
   const bounds = config.windowBounds || { width: 1400, height: 900, x: undefined!, y: undefined! }
 
@@ -804,14 +825,8 @@ function registerIpcHandlers(): void {
   })
   ipcMain.handle(
     'panes:restartClaudeTab',
-    (
-      _,
-      wtPath: string,
-      tabId: string,
-      newId: string,
-      newSessionId: string
-    ) => {
-      panesFSM.restartClaudeTab(wtPath, tabId, newId, newSessionId)
+    (_, wtPath: string, tabId: string, newId: string) => {
+      panesFSM.restartClaudeTab(wtPath, tabId, newId)
       return true
     }
   )
@@ -1014,15 +1029,10 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  // Hooks
-  ipcMain.handle('hooks:check', (_, worktreePath: string) => {
-    return hooksInstalled(worktreePath)
-  })
-
-  ipcMain.handle('hooks:install', async (_, worktreePath: string) => {
-    installHooks(worktreePath)
-    return true
-  })
+  // Hooks. check + install are no longer exposed: per-worktree installation
+  // happens automatically in the store subscription (see
+  // installHooksForAcceptedWorktrees) whenever the worktree list changes
+  // or the user accepts consent.
 
   // Bulk-install hooks into every known worktree and flip consent='accepted'
   // + justInstalled=true in a single round trip. Replaces the old

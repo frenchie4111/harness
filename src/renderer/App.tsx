@@ -182,7 +182,6 @@ export default function App(): JSX.Element {
     [worktrees]
   )
   // Track which worktrees already have hooks installed so we only prompt once
-  const hooksChecked = useRef(new Set<string>())
 
 const setQuestStep = useCallback((next: QuestStep) => {
     window.api.setOnboardingQuest(next).catch(() => {})
@@ -355,37 +354,14 @@ const setQuestStep = useCallback((next: QuestStep) => {
     return () => cancelAnimationFrame(raf)
   }, [activeWorktreeId, activeTabId])
 
-  // When a worktree becomes active, check hooks and set up tabs
+  // When a worktree becomes active, refresh its PR status if stale. Hooks
+  // installation and pane initialization both run in main now (see
+  // installHooksForAcceptedWorktrees + WorktreesFSM in src/main/index.ts).
   useEffect(() => {
     if (!activeWorktreeId) return
-    // Pending ids refer to worktrees that don't exist on disk yet — skip
-    // hooks + tab creation until the real path takes over.
     if (isPendingId(activeWorktreeId)) return
-
-    // Refresh PR status on focus (throttled)
     fetchPRStatusIfStale(activeWorktreeId)
-
-    // Check and install hooks if needed
-    if (!hooksChecked.current.has(activeWorktreeId)) {
-      hooksChecked.current.add(activeWorktreeId)
-      ;(async () => {
-        const installed = await window.api.checkHooks(activeWorktreeId)
-        if (!installed && hooksConsent === 'pending') {
-          // Will show the consent banner — don't install yet
-          return
-        }
-        if (!installed && hooksConsent === 'accepted') {
-          await window.api.installHooks(activeWorktreeId)
-        }
-      })()
-    }
-
-    // Pane initialization is handled in main now: WorktreesFSM creates
-    // the default Claude+Shell pair when a worktree is created (with any
-    // initial prompt embedded), and the boot-time pass + control-server
-    // create path do the same for pre-existing and external worktrees.
-    // The renderer just renders whatever the store has.
-  }, [activeWorktreeId, hooksConsent])
+  }, [activeWorktreeId, fetchPRStatusIfStale])
 
   const handleAcceptHooks = useCallback(() => {
     void window.api.acceptHooks()
@@ -655,9 +631,11 @@ const setQuestStep = useCallback((next: QuestStep) => {
       markTerminalClosing(tabId)
       window.api.killTerminal(tabId)
       window.api.clearTerminalHistory(tabId)
+      // Mint a new tab id so React remounts XTerminal and respawns the pty,
+      // but keep the existing sessionId so the new Claude resumes the same
+      // conversation via `--resume`.
       const newId = `${makeTerminalId('claude', worktreePath)}-${Date.now()}`
-      const newSessionId = crypto.randomUUID()
-      void window.api.panesRestartClaudeTab(worktreePath, tabId, newId, newSessionId)
+      void window.api.panesRestartClaudeTab(worktreePath, tabId, newId)
     },
     []
   )

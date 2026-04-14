@@ -128,13 +128,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('panes:addTab', wtPath, tab, paneId),
   panesCloseTab: (wtPath: string, tabId: string) =>
     ipcRenderer.invoke('panes:closeTab', wtPath, tabId),
-  panesRestartClaudeTab: (
-    wtPath: string,
-    tabId: string,
-    newId: string,
-    newSessionId: string
-  ) =>
-    ipcRenderer.invoke('panes:restartClaudeTab', wtPath, tabId, newId, newSessionId),
+  panesRestartClaudeTab: (wtPath: string, tabId: string, newId: string) =>
+    ipcRenderer.invoke('panes:restartClaudeTab', wtPath, tabId, newId),
   panesSelectTab: (wtPath: string, paneId: string, tabId: string) =>
     ipcRenderer.invoke('panes:selectTab', wtPath, paneId, tabId),
   panesReorderTabs: (
@@ -209,8 +204,6 @@ contextBridge.exposeInMainWorld('api', {
   },
 
   // Hooks
-  checkHooks: (worktreePath: string) => ipcRenderer.invoke('hooks:check', worktreePath),
-  installHooks: (worktreePath: string) => ipcRenderer.invoke('hooks:install', worktreePath),
   acceptHooks: () => ipcRenderer.invoke('hooks:acceptAll'),
   declineHooks: () => ipcRenderer.invoke('hooks:decline'),
   dismissHooksJustInstalled: () => ipcRenderer.invoke('hooks:dismissJustInstalled'),

@@ -175,19 +175,15 @@ export class PanesFSM {
     this.commit(wtPath, next)
   }
 
-  restartClaudeTab(
-    wtPath: string,
-    tabId: string,
-    newId: string,
-    newSessionId: string
-  ): void {
+  /** Replace the tab id (so React remounts XTerminal and spawns a fresh
+   * pty) but keep the existing sessionId so the new Claude process resumes
+   * the same conversation via `--resume`. */
+  restartClaudeTab(wtPath: string, tabId: string, newId: string): void {
     const list = this.getPanes(wtPath)
     const next = list.map((pane) => {
       if (!pane.tabs.some((t) => t.id === tabId)) return pane
       const tabs = pane.tabs.map((t) =>
-        t.id === tabId && t.type === 'claude'
-          ? { ...t, id: newId, sessionId: newSessionId }
-          : t
+        t.id === tabId && t.type === 'claude' ? { ...t, id: newId } : t
       )
       const activeTabId = pane.activeTabId === tabId ? newId : pane.activeTabId
       return { ...pane, tabs, activeTabId }
