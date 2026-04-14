@@ -4,14 +4,8 @@ export type { StateEvent, StateSnapshot }
 import type { Worktree, PendingWorktree } from '../shared/state/worktrees'
 export type { Worktree, PendingWorktree }
 
-export interface RepoConfig {
-  version?: number
-  setupCommand?: string
-  teardownCommand?: string
-  mergeStrategy?: 'squash' | 'merge-commit' | 'fast-forward'
-  hideMergePanel?: boolean
-  hidePrPanel?: boolean
-}
+import type { RepoConfig } from '../shared/state/repo-configs'
+export type { RepoConfig }
 
 export interface FileReadResult {
   content: string | null
@@ -203,10 +197,6 @@ export interface ElectronAPI {
   setWorktreeScripts(scripts: { setup: string; teardown: string }): Promise<boolean>
   getRepoConfig(repoRoot: string): Promise<RepoConfig>
   setRepoConfig(repoRoot: string, next: Partial<RepoConfig>): Promise<RepoConfig | null>
-  getEffectiveMergeStrategy(repoRoot: string): Promise<MergeStrategy>
-  onRepoConfigChanged(
-    callback: (payload: { repoRoot: string; config: RepoConfig }) => void
-  ): () => void
 
   getWorktreeBase(): Promise<'remote' | 'local'>
   setWorktreeBase(mode: 'remote' | 'local'): Promise<boolean>

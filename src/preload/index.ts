@@ -89,18 +89,6 @@ contextBridge.exposeInMainWorld('api', {
   getRepoConfig: (repoRoot: string) => ipcRenderer.invoke('repoConfig:get', repoRoot),
   setRepoConfig: (repoRoot: string, next: Record<string, unknown>) =>
     ipcRenderer.invoke('repoConfig:set', repoRoot, next),
-  getEffectiveMergeStrategy: (repoRoot: string) =>
-    ipcRenderer.invoke('repoConfig:getEffectiveMergeStrategy', repoRoot),
-  onRepoConfigChanged: (
-    callback: (payload: { repoRoot: string; config: Record<string, unknown> }) => void
-  ) => {
-    const handler = (
-      _event: Electron.IpcRendererEvent,
-      payload: { repoRoot: string; config: Record<string, unknown> }
-    ): void => callback(payload)
-    ipcRenderer.on('repoConfig:changed', handler)
-    return () => ipcRenderer.removeListener('repoConfig:changed', handler)
-  },
   getClaudeEnvVars: () => ipcRenderer.invoke('config:getClaudeEnvVars'),
   setClaudeEnvVars: (vars: Record<string, string>) => ipcRenderer.invoke('config:setClaudeEnvVars', vars),
   getHarnessMcpEnabled: () => ipcRenderer.invoke('config:getHarnessMcpEnabled'),

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { useSettings, usePrs, useOnboarding, useHooks, useWorktrees, useTerminals, usePanes, useLastActive, useUpdater } from './store'
+import { useSettings, usePrs, useOnboarding, useHooks, useWorktrees, useTerminals, usePanes, useLastActive, useUpdater, useRepoConfigs } from './store'
 import type { Worktree, TerminalTab, PtyStatus, PendingTool, QuestStep, PendingWorktree, UpdaterStatus, RepoConfig } from './types'
 import type { Action } from './hotkeys'
 import { resolveHotkeys } from './hotkeys'
@@ -95,7 +95,9 @@ export default function App(): JSX.Element {
   // activity-deriver, dispatched as terminals/lastActiveChanged events.
   const lastActive = useLastActive()
   const repoRoots = wtState.repoRoots
-  const [activeRepoConfig, setActiveRepoConfig] = useState<RepoConfig | null>(null)
+  // Per-repo config lives in the main-process store. Active repo derived
+  // below from the focused worktree.
+  const repoConfigs = useRepoConfigs()
   // Map of worktree path → repoRoot for quick lookups outside of `worktrees`.
   // Populated whenever the worktree list refreshes.
   // Hooks consent + justInstalled live in the main-process store.
@@ -242,26 +244,11 @@ const setQuestStep = useCallback((next: QuestStep) => {
   const activeRepoRoot = activeWorktreeId
     ? worktrees.find((w) => w.path === activeWorktreeId)?.repoRoot ?? worktreeRepoByPath[activeWorktreeId] ?? null
     : null
-  useEffect(() => {
-    if (!activeRepoRoot) {
-      setActiveRepoConfig(null)
-      return
-    }
-    let cancelled = false
-    const load = (): void => {
-      window.api.getRepoConfig(activeRepoRoot).then((cfg) => {
-        if (!cancelled) setActiveRepoConfig(cfg ?? {})
-      })
-    }
-    load()
-    const unsub = window.api.onRepoConfigChanged((payload) => {
-      if (payload.repoRoot === activeRepoRoot) load()
-    })
-    return () => {
-      cancelled = true
-      unsub()
-    }
-  }, [activeRepoRoot])
+  // Derive activeRepoConfig from the store. Updates propagate automatically
+  // when any client commits a setRepoConfig.
+  const activeRepoConfig: RepoConfig | null = activeRepoRoot
+    ? repoConfigs[activeRepoRoot] ?? null
+    : null
 
   // After a local merge, kick the poller so the merged flag and PR state
   // propagate to the UI without waiting for the 5-min interval.

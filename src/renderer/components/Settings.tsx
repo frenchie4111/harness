@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2 } from 'lucide-react'
-import { useSettings, useUpdater } from '../store'
+import { useSettings, useUpdater, useRepoConfigs } from '../store'
 import type { UpdaterStatus, MergeStrategy, RepoConfig } from '../types'
 import { DEFAULT_HOTKEYS, ACTION_LABELS, bindingToString, eventToBinding, resolveHotkeys, type Action, type HotkeyBinding } from '../hotkeys'
 import { Tooltip } from './Tooltip'
@@ -195,9 +195,10 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
 
   // Per-repo scope state for scopable worktree settings. scopeRepoRoot === null
   // means the controls bind to global config; otherwise they bind to the
-  // repo-scoped .harness.json at that repoRoot.
-  const [repoList, setRepoList] = useState<string[]>([])
-  const [repoConfigs, setRepoConfigs] = useState<Record<string, RepoConfig>>({})
+  // repo-scoped .harness.json at that repoRoot. The configs map itself
+  // lives in the main-process store.
+  const repoConfigs = useRepoConfigs()
+  const repoList = useMemo(() => Object.keys(repoConfigs), [repoConfigs])
   const [scopeRepoRoot, setScopeRepoRoot] = useState<string | null>(null)
 
   // Constants and non-settings state load once; live settings are already
@@ -207,13 +208,6 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
     window.api.getDefaultClaudeCommand().then(setDefaultClaudeCommand)
     window.api.getDefaultTerminalFontFamily().then(setDefaultTerminalFontFamily)
     window.api.getAvailableEditors().then(setAvailableEditors)
-    window.api.listRepos().then(async (repos) => {
-      setRepoList(repos)
-      const entries = await Promise.all(
-        repos.map(async (r): Promise<[string, RepoConfig]> => [r, await window.api.getRepoConfig(r)])
-      )
-      setRepoConfigs(Object.fromEntries(entries))
-    })
   }, [])
 
   // Whenever claudeEnvVars in the store changes (e.g. another window saved),
@@ -223,17 +217,11 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
     setClaudeEnvRows(Object.entries(claudeEnvVars).map(([key, value]) => ({ key, value })))
   }, [claudeEnvVars])
 
-  useEffect(() => {
-    const unsub = window.api.onRepoConfigChanged((payload) => {
-      setRepoConfigs((prev) => ({ ...prev, [payload.repoRoot]: payload.config }))
-    })
-    return unsub
-  }, [])
-
   const updateRepoConfig = useCallback(
     async (repoRoot: string, patch: Record<string, unknown>) => {
-      const saved = await window.api.setRepoConfig(repoRoot, patch)
-      if (saved) setRepoConfigs((prev) => ({ ...prev, [repoRoot]: saved }))
+      // Main dispatches repoConfigs/changed after saveRepoConfig commits;
+      // useRepoConfigs() re-renders us automatically.
+      await window.api.setRepoConfig(repoRoot, patch)
     },
     []
   )

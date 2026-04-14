@@ -1,15 +1,9 @@
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'fs'
 import { join } from 'path'
 import { log } from './debug'
+import type { RepoConfig } from '../shared/state/repo-configs'
 
-export interface RepoConfig {
-  version?: number
-  setupCommand?: string
-  teardownCommand?: string
-  mergeStrategy?: 'squash' | 'merge-commit' | 'fast-forward'
-  hideMergePanel?: boolean
-  hidePrPanel?: boolean
-}
+export type { RepoConfig }
 
 const REPO_CONFIG_FILENAME = '.harness.json'
 const cache = new Map<string, RepoConfig>()

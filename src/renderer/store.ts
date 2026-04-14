@@ -78,4 +78,8 @@ export function useUpdater() {
   return useAppState((s) => s.updater)
 }
 
+export function useRepoConfigs() {
+  return useAppState((s) => s.repoConfigs.byRepo)
+}
+
 export type { AppState, StateEvent }

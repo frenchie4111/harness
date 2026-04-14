@@ -40,9 +40,20 @@ import {
   type UpdaterEvent,
   type UpdaterState
 } from './updater'
+import {
+  initialRepoConfigs,
+  repoConfigsReducer,
+  type RepoConfigsEvent,
+  type RepoConfigsState
+} from './repo-configs'
 
 export type { SettingsState, SettingsEvent }
 export type { UpdaterState, UpdaterEvent, UpdaterStatus } from './updater'
+export type {
+  RepoConfigsState,
+  RepoConfigsEvent,
+  RepoConfig
+} from './repo-configs'
 export type { PRsState, PRsEvent, PRStatus, CheckStatus, PRReview } from './prs'
 export type { OnboardingState, OnboardingEvent, QuestStep } from './onboarding'
 export type { HooksState, HooksEvent, HooksConsent } from './hooks'
@@ -71,6 +82,7 @@ export interface AppState {
   worktrees: WorktreesState
   terminals: TerminalsState
   updater: UpdaterState
+  repoConfigs: RepoConfigsState
 }
 
 export type StateEvent =
@@ -81,6 +93,7 @@ export type StateEvent =
   | WorktreesEvent
   | TerminalsEvent
   | UpdaterEvent
+  | RepoConfigsEvent
 
 export const initialState: AppState = {
   settings: initialSettings,
@@ -89,7 +102,8 @@ export const initialState: AppState = {
   hooks: initialHooks,
   worktrees: initialWorktrees,
   terminals: initialTerminals,
-  updater: initialUpdater
+  updater: initialUpdater,
+  repoConfigs: initialRepoConfigs
 }
 
 export function rootReducer(state: AppState, event: StateEvent): AppState {
@@ -125,6 +139,12 @@ export function rootReducer(state: AppState, event: StateEvent): AppState {
   }
   if (event.type.startsWith('updater/')) {
     return { ...state, updater: updaterReducer(state.updater, event as UpdaterEvent) }
+  }
+  if (event.type.startsWith('repoConfigs/')) {
+    return {
+      ...state,
+      repoConfigs: repoConfigsReducer(state.repoConfigs, event as RepoConfigsEvent)
+    }
   }
   return state
 }

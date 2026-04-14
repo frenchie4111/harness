@@ -100,6 +100,9 @@ const store = new Store({
   updater: {
     status: null
   },
+  repoConfigs: {
+    byRepo: {}
+  },
   settings: {
     theme: config.theme || DEFAULT_THEME,
     hotkeys: config.hotkeys || null,
@@ -362,6 +365,11 @@ function registerIpcHandlers(): void {
       config.repoRoots.push(repoRoot)
       saveConfig(config)
       worktreesFSM.dispatchRepos([...config.repoRoots])
+      // Hydrate the new repo's config into the store.
+      store.dispatch({
+        type: 'repoConfigs/changed',
+        payload: { repoRoot, config: loadRepoConfig(repoRoot) }
+      })
       void worktreesFSM.refreshList()
       broadcastToAllWindows('repo:listChanged', config.repoRoots)
     }
@@ -379,6 +387,7 @@ function registerIpcHandlers(): void {
     }
     saveConfig(config)
     worktreesFSM.dispatchRepos([...config.repoRoots])
+    store.dispatch({ type: 'repoConfigs/removed', payload: repoRoot })
     void worktreesFSM.refreshList()
     broadcastToAllWindows('repo:listChanged', config.repoRoots)
     return true
@@ -521,6 +530,10 @@ function registerIpcHandlers(): void {
     return DEFAULT_CLAUDE_COMMAND
   })
 
+  // repoConfig:get is kept as a one-shot read for cases where a caller
+  // needs the freshest value (boot-time hydration walks all repos and
+  // dispatches repoConfigs/loaded once). Most consumers should read via
+  // useRepoConfigs() in the renderer.
   ipcMain.handle('repoConfig:get', (_, repoRoot: string) => {
     if (!repoRoot) return {}
     return loadRepoConfig(repoRoot)
@@ -538,16 +551,11 @@ function registerIpcHandlers(): void {
       }
     }
     const saved = saveRepoConfig(repoRoot, merged)
-    for (const win of BrowserWindow.getAllWindows()) {
-      if (!win.isDestroyed())
-        win.webContents.send('repoConfig:changed', { repoRoot, config: saved })
-    }
+    store.dispatch({
+      type: 'repoConfigs/changed',
+      payload: { repoRoot, config: saved }
+    })
     return saved
-  })
-
-  ipcMain.handle('repoConfig:getEffectiveMergeStrategy', (_, repoRoot: string) => {
-    const repo = loadRepoConfig(repoRoot)
-    return repo.mergeStrategy || config.mergeStrategy || DEFAULT_MERGE_STRATEGY
   })
 
   ipcMain.handle('config:getWorktreeScripts', () => {
@@ -1243,6 +1251,13 @@ app.whenReady().then(() => {
       panesFSM.ensureInitialized(wt.path)
     }
   })()
+
+  // Seed per-repo config slice from each repo's .harness.json file.
+  const initialRepoConfigsMap: Record<string, RepoConfig> = {}
+  for (const root of config.repoRoots || []) {
+    initialRepoConfigsMap[root] = loadRepoConfig(root)
+  }
+  store.dispatch({ type: 'repoConfigs/loaded', payload: initialRepoConfigsMap })
 
   // Start the activity deriver — it observes terminals/prs/panes events
   // and writes recordActivity + lastActive without renderer involvement.
