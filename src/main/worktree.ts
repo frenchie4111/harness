@@ -4,20 +4,13 @@ import { basename, join, resolve, relative, isAbsolute } from 'path'
 import { existsSync, mkdirSync, statSync } from 'fs'
 import { readFile } from 'fs/promises'
 import { log } from './debug'
+import type { Worktree } from '../shared/state/worktrees'
 
 const execFileAsync = promisify(execFile)
 
-export interface WorktreeInfo {
-  path: string
-  branch: string
-  head: string
-  isBare: boolean
-  isMain: boolean
-  /** Directory birthtime in ms since epoch; 0 if unavailable. */
-  createdAt: number
-  /** The repo this worktree belongs to. */
-  repoRoot: string
-}
+// Alias so existing imports of WorktreeInfo keep working; the canonical
+// shape now lives in src/shared/state/worktrees.ts.
+export type WorktreeInfo = Worktree
 
 function getCreatedAt(path: string): number {
   try {

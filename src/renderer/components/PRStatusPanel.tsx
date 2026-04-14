@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { ExternalLink, GitMerge, ChevronDown, Check, GitPullRequest, RefreshCw } from 'lucide-react'
+import { useRepoConfigs, useSettings } from '../store'
 import type {
   PRStatus,
   PRReview,
@@ -85,8 +86,6 @@ function MergeLocallyBody({
   onMerged?: () => void | Promise<void>
   onRemoveWorktree?: (worktreePath: string) => void | Promise<void>
 }): JSX.Element {
-  const [strategy, setStrategy] = useState<MergeStrategy>('squash')
-  const [strategyLoaded, setStrategyLoaded] = useState(false)
   const [mainStatus, setMainStatus] = useState<MainWorktreeStatus | null>(null)
   const [conflictPreview, setConflictPreview] = useState<MergeConflictPreview | null>(null)
   const [busy, setBusy] = useState<'idle' | 'checking' | 'fixing' | 'merging'>('idle')
@@ -95,27 +94,14 @@ function MergeLocallyBody({
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
-  // Load the effective default strategy (repo override → global) whenever the
-  // active repo changes, and also refresh it when the repo-scoped config is
-  // edited in Settings.
-  useEffect(() => {
-    let cancelled = false
-    const load = (): void => {
-      window.api.getEffectiveMergeStrategy(worktree.repoRoot).then((s) => {
-        if (cancelled) return
-        setStrategy(s)
-        setStrategyLoaded(true)
-      })
-    }
-    load()
-    const unsubRepo = window.api.onRepoConfigChanged((payload) => {
-      if (payload.repoRoot === worktree.repoRoot) load()
-    })
-    return () => {
-      cancelled = true
-      unsubRepo()
-    }
-  }, [worktree.repoRoot])
+  // Effective merge strategy = repo override → global default. Both come
+  // from the main-process store, so this re-renders automatically when
+  // either changes.
+  const repoConfigs = useRepoConfigs()
+  const globalStrategy = useSettings().mergeStrategy
+  const strategy: MergeStrategy =
+    repoConfigs[worktree.repoRoot]?.mergeStrategy || globalStrategy
+  const strategyLoaded = true
 
   const refreshStatus = useCallback(async () => {
     setBusy('checking')
@@ -153,9 +139,9 @@ function MergeLocallyBody({
   }, [menuOpen])
 
   const handlePickStrategy = useCallback((s: MergeStrategy) => {
-    setStrategy(s)
     setMenuOpen(false)
-    // Persist as new default — "last used wins"
+    // Persist as new default — "last used wins". The store dispatch
+    // re-renders us with the new strategy automatically.
     void window.api.setMergeStrategy(s)
   }, [])
 

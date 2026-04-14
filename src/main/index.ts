@@ -4,7 +4,14 @@ import { existsSync, readdirSync, statSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 import { PtyManager } from './pty-manager'
-import { listWorktrees, listBranches, addWorktree, continueWorktree, removeWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, readWorktreeFile, runWorktreeScript, type MergeStrategy } from './worktree'
+import { Store } from './store'
+import { registerStateTransport } from './transport-electron'
+import { PRPoller } from './pr-poller'
+import { WorktreesFSM } from './worktrees-fsm'
+import { PanesFSM, stripTransientTabFields } from './panes-fsm'
+import { ActivityDeriver } from './activity-deriver'
+import type { TerminalTab, WorkspacePane } from '../shared/state/terminals'
+import { listWorktrees, listBranches, continueWorktree, removeWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, readWorktreeFile, runWorktreeScript, type MergeStrategy } from './worktree'
 import { getPRStatus, testToken, starRepo } from './github'
 import { AVAILABLE_EDITORS, DEFAULT_EDITOR_ID, openInEditor } from './editor'
 import { setSecret, hasSecret, deleteSecret } from './secrets'
@@ -40,9 +47,195 @@ if (!app.isPackaged) {
   app.setPath('userData', join(app.getPath('appData'), 'Harness (Dev)'))
 }
 
+function latestClaudeSessionId(cwd: string): string | null {
+  try {
+    const encoded = cwd.replace(/[^a-zA-Z0-9]/g, '-')
+    const dir = join(homedir(), '.claude', 'projects', encoded)
+    const files = readdirSync(dir).filter((f) => f.endsWith('.jsonl'))
+    if (files.length === 0) return null
+    let bestId: string | null = null
+    let bestMtime = -Infinity
+    for (const file of files) {
+      const mtime = statSync(join(dir, file)).mtimeMs
+      if (mtime > bestMtime) {
+        bestMtime = mtime
+        bestId = file.replace(/\.jsonl$/, '')
+      }
+    }
+    return bestId
+  } catch {
+    return null
+  }
+}
+
 const ptyManager = new PtyManager()
 let config = loadConfig()
 let stopWatchingStatus: (() => void) | null = null
+
+const store = new Store({
+  prs: {
+    byPath: {},
+    mergedByPath: {},
+    loading: false
+  },
+  onboarding: {
+    quest: config.onboarding?.quest ?? 'hidden'
+  },
+  hooks: {
+    consent: 'pending',
+    justInstalled: false
+  },
+  worktrees: {
+    list: [],
+    repoRoots: config.repoRoots || [],
+    pending: []
+  },
+  terminals: {
+    statuses: {},
+    pendingTools: {},
+    shellActivity: {},
+    panes: {},
+    lastActive: {}
+  },
+  updater: {
+    status: null
+  },
+  repoConfigs: {
+    byRepo: {}
+  },
+  settings: {
+    theme: config.theme || DEFAULT_THEME,
+    hotkeys: config.hotkeys || null,
+    claudeCommand: config.claudeCommand || DEFAULT_CLAUDE_COMMAND,
+    worktreeScripts: {
+      setup: config.worktreeSetupCommand || '',
+      teardown: config.worktreeTeardownCommand || ''
+    },
+    claudeEnvVars: config.claudeEnvVars || {},
+    harnessMcpEnabled: config.harnessMcpEnabled !== false,
+    nameClaudeSessions: config.nameClaudeSessions ?? false,
+    terminalFontFamily: config.terminalFontFamily || DEFAULT_TERMINAL_FONT_FAMILY,
+    terminalFontSize: config.terminalFontSize || DEFAULT_TERMINAL_FONT_SIZE,
+    editor: config.editor || DEFAULT_EDITOR_ID,
+    worktreeBase: config.worktreeBase || DEFAULT_WORKTREE_BASE,
+    mergeStrategy: config.mergeStrategy || DEFAULT_MERGE_STRATEGY,
+    hasGithubToken: hasSecret('githubToken')
+  }
+})
+registerStateTransport(store)
+
+const prPoller = new PRPoller(store, {
+  getRepoRoots: () => config.repoRoots || [],
+  getLocallyMerged: () => config.locallyMerged || {},
+  setLocallyMerged: (next) => {
+    if (Object.keys(next).length === 0) {
+      delete config.locallyMerged
+    } else {
+      config.locallyMerged = next
+    }
+    saveConfig(config)
+  }
+})
+
+ptyManager.setStore(store)
+
+// Persist panes back to config in the existing nested-by-repo shape, so the
+// on-disk format stays compatible with persistence-migrations. Strip
+// transient (in-memory only) tab fields like initialPrompt before saving.
+function persistPanes(panes: Record<string, WorkspacePane[]>): void {
+  const nested: Record<string, Record<string, PersistedPane[]>> = {}
+  for (const [wtPath, paneList] of Object.entries(panes)) {
+    // Find which repo this worktree belongs to. Use the live worktree list
+    // first; fall back to '__orphan__' for entries we can't map.
+    const wt = store.getSnapshot().state.worktrees.list.find((w) => w.path === wtPath)
+    const repoRoot = wt?.repoRoot || '__orphan__'
+    const persistedPanes: PersistedPane[] = paneList
+      .map((pane) => {
+        const tabs = pane.tabs
+          .filter((t) => t.type === 'claude' || t.type === 'shell')
+          .map((t) => {
+            const stripped = stripTransientTabFields(t as TerminalTab)
+            return {
+              id: stripped.id,
+              type: stripped.type as 'claude' | 'shell',
+              label: stripped.label,
+              sessionId: stripped.sessionId
+            }
+          })
+        if (tabs.length === 0) return null
+        const validActive = tabs.some((t) => t.id === pane.activeTabId)
+          ? pane.activeTabId
+          : tabs[0].id
+        return { id: pane.id, tabs, activeTabId: validActive }
+      })
+      .filter((p): p is NonNullable<typeof p> => p !== null)
+    if (persistedPanes.length > 0) {
+      if (!nested[repoRoot]) nested[repoRoot] = {}
+      nested[repoRoot][wtPath] = persistedPanes
+    }
+  }
+  config.panes = nested
+  saveConfig(config)
+}
+
+// IMPORTANT — construction order is load-bearing.
+//
+// PanesFSM must be constructed BEFORE WorktreesFSM because WorktreesFSM's
+// onWorktreeCreated callback (defined below) closes over `panesFSM`.
+// JavaScript doesn't blow up at construction time because the closure
+// only runs later, but if you reorder these and panesFSM is in the
+// temporal dead zone when the callback fires, you'll get a
+// ReferenceError that only surfaces when a worktree is created.
+//
+// The conceptual coupling — "creating a worktree triggers pane
+// initialization" — used to live visibly in App.tsx where the renderer
+// orchestrated both. After the state migration, it became an implicit
+// contract between two main-side modules that this file wires together.
+// If you ever refactor this further, consider inverting: have PanesFSM
+// subscribe to `worktrees/listChanged` itself and call ensureInitialized
+// on any new worktree. That would make the dependency direction explicit
+// and remove the construction-order requirement.
+const panesFSM = new PanesFSM(store, {
+  persist: persistPanes,
+  getRepoRootForWorktree: (wtPath) => {
+    const wt = store.getSnapshot().state.worktrees.list.find((w) => w.path === wtPath)
+    return wt?.repoRoot
+  },
+  getLatestClaudeSessionId: async (wtPath) => latestClaudeSessionId(wtPath)
+})
+
+const worktreesFSM = new WorktreesFSM(store, {
+  getRepoRoots: () => config.repoRoots || [],
+  getWorktreeSetupCmd: () => config.worktreeSetupCommand || '',
+  getWorktreeBaseMode: () => config.worktreeBase || DEFAULT_WORKTREE_BASE,
+  onWorktreeCreated: ({ createdPath, initialPrompt, teleportSessionId }) => {
+    void prPoller.refreshAll()
+    panesFSM.ensureInitialized(createdPath, { initialPrompt, teleportSessionId })
+  }
+})
+
+const activityDeriver = new ActivityDeriver(store)
+
+/** Install Claude Code hooks into any worktree that's missing them, but only
+ * if the user has accepted the consent prompt. Subscribes to the store and
+ * fires on worktrees/listChanged + hooks/consentChanged. */
+function installHooksForAcceptedWorktrees(): void {
+  const state = store.getSnapshot().state
+  if (state.hooks.consent !== 'accepted') return
+  for (const wt of state.worktrees.list) {
+    if (!hooksInstalled(wt.path)) {
+      installHooks(wt.path)
+    }
+  }
+}
+store.subscribe((event) => {
+  if (
+    event.type === 'worktrees/listChanged' ||
+    event.type === 'hooks/consentChanged'
+  ) {
+    installHooksForAcceptedWorktrees()
+  }
+})
 
 function createWindow(): BrowserWindow {
   const bounds = config.windowBounds || { width: 1400, height: 900, x: undefined!, y: undefined! }
@@ -106,43 +299,34 @@ function registerIpcHandlers(): void {
     return listBranches(repoRoot)
   })
 
-  ipcMain.handle('worktree:add', async (
-    event,
-    repoRoot: string,
-    branchName: string,
-    baseBranch?: string,
-    runId?: string
-  ) => {
-    if (!repoRoot) throw new Error('No repo root provided')
-    const wtDir = defaultWorktreeDir(repoRoot)
-    const mode = config.worktreeBase || DEFAULT_WORKTREE_BASE
-    const created = await addWorktree(repoRoot, wtDir, branchName, {
-      baseBranch,
-      fetchRemote: !baseBranch && mode === 'remote'
-    })
-    const repoCfg = loadRepoConfig(repoRoot)
-    const setupCmd = repoCfg.setupCommand || config.worktreeSetupCommand || ''
-    if (setupCmd && runId) {
-      const sender = event.sender
-      const send = (payload: Record<string, unknown>): void => {
-        if (!sender.isDestroyed()) sender.send('worktree:scriptEvent', { runId, phase: 'setup', ...payload })
+  // Worktree creation flows through the WorktreesFSM in main; main also
+  // creates the default Claude+Shell pane pair (with the initial prompt
+  // embedded) before the call returns. Renderer just awaits + focuses.
+  ipcMain.handle(
+    'worktrees:runPending',
+    async (
+      _,
+      params: {
+        id: string
+        repoRoot: string
+        branchName: string
+        initialPrompt?: string
+        teleportSessionId?: string
       }
-      send({ type: 'start' })
-      const result = await runWorktreeScript(
-        'setup',
-        setupCmd,
-        { worktreePath: created.path, branch: created.branch, repoRoot },
-        (stream, chunk) => send({ type: 'output', stream, data: chunk })
-      )
-      send({ type: 'end', ok: result.ok, exitCode: result.exitCode })
-    } else if (setupCmd) {
-      await runWorktreeScript('setup', setupCmd, {
-        worktreePath: created.path,
-        branch: created.branch,
-        repoRoot
-      })
+    ) => {
+      return worktreesFSM.runPending(params)
     }
-    return created
+  )
+  ipcMain.handle('worktrees:retryPending', async (_, id: string) => {
+    return worktreesFSM.retryPending(id)
+  })
+  ipcMain.handle('worktrees:dismissPending', (_, id: string) => {
+    worktreesFSM.dismissPending(id)
+    return true
+  })
+  ipcMain.handle('worktrees:refreshList', async () => {
+    await worktreesFSM.refreshList()
+    return true
   })
 
   ipcMain.handle(
@@ -193,7 +377,9 @@ function registerIpcHandlers(): void {
         repoRoot
       })
     }
-    return removeWorktree(repoRoot, path, force)
+    const result = await removeWorktree(repoRoot, path, force)
+    void worktreesFSM.refreshList()
+    return result
   })
 
   ipcMain.handle('worktree:dir', async (_, repoRoot: string) => {
@@ -216,7 +402,13 @@ function registerIpcHandlers(): void {
     if (!config.repoRoots.includes(repoRoot)) {
       config.repoRoots.push(repoRoot)
       saveConfig(config)
-      broadcastToAllWindows('repo:listChanged', config.repoRoots)
+      worktreesFSM.dispatchRepos([...config.repoRoots])
+      // Hydrate the new repo's config into the store.
+      store.dispatch({
+        type: 'repoConfigs/changed',
+        payload: { repoRoot, config: loadRepoConfig(repoRoot) }
+      })
+      void worktreesFSM.refreshList()
     }
     return repoRoot
   })
@@ -231,7 +423,9 @@ function registerIpcHandlers(): void {
       delete config.panes[repoRoot]
     }
     saveConfig(config)
-    broadcastToAllWindows('repo:listChanged', config.repoRoots)
+    worktreesFSM.dispatchRepos([...config.repoRoots])
+    store.dispatch({ type: 'repoConfigs/removed', payload: repoRoot })
+    void worktreesFSM.refreshList()
     return true
   })
 
@@ -269,8 +463,25 @@ function registerIpcHandlers(): void {
     return getCommitDiff(worktreePath, hash)
   })
 
-  ipcMain.handle('worktree:prStatus', async (_, worktreePath: string) => {
-    return getPRStatus(worktreePath)
+  // PR status lives in the main-process store, polled by PRPoller. Renderers
+  // subscribe via the state event stream; these methods trigger on-demand
+  // refreshes (new worktree created, window focus, worktree activate,
+  // terminal entered 'waiting' state).
+  ipcMain.handle('prs:refreshAll', async () => {
+    await prPoller.refreshAll()
+    return true
+  })
+  ipcMain.handle('prs:refreshAllIfStale', () => {
+    prPoller.refreshAllIfStale()
+    return true
+  })
+  ipcMain.handle('prs:refreshOne', async (_, worktreePath: string) => {
+    await prPoller.refreshOne(worktreePath)
+    return true
+  })
+  ipcMain.handle('prs:refreshOneIfStale', (_, worktreePath: string) => {
+    prPoller.refreshOneIfStale(worktreePath)
+    return true
   })
 
   ipcMain.handle('worktree:mainStatus', async (_, repoRoot: string) => {
@@ -295,81 +506,38 @@ function registerIpcHandlers(): void {
       if (!repoRoot) throw new Error('No repo root provided')
       const result = await mergeWorktreeLocally(repoRoot, sourceBranch, strategy)
       // Record the branch as locally merged at its current tip sha. If new
-      // commits are pushed to the branch later, the flag becomes stale and
-      // will stop applying (see worktree:mergedStatus).
+      // commits are pushed to the branch later, the PRPoller will detect
+      // the SHA drift on the next refresh and clear the flag.
       const sha = await getBranchSha(repoRoot, sourceBranch)
       if (sha) {
         if (!config.locallyMerged) config.locallyMerged = {}
         config.locallyMerged[sourceBranch] = sha
         saveConfig(config)
       }
+      // Kick the poller so the UI picks up the new merged flag immediately.
+      void prPoller.refreshAll()
       return result
     }
   )
 
-  /** Batched merge-status query. Returns a map keyed by worktree path → true
-   * if the branch was merged into base by Harness. Driven entirely by the
-   * persistent locallyMerged flag — a pure `git merge-base --is-ancestor`
-   * check can't tell "fork point on trunk" from "trunk position after merge",
-   * so we don't try to detect external merges automatically. The flag is
-   * auto-cleared if the branch later gains new commits. */
-  ipcMain.handle('worktree:mergedStatus', async (_, repoRoot: string) => {
-    if (!repoRoot) return {}
-    const trees = await listWorktrees(repoRoot)
-    const result: Record<string, boolean> = {}
-    const persisted = config.locallyMerged || {}
-    let dirty = false
-    for (const wt of trees) {
-      if (wt.isMain) continue
-      if (wt.branch === '(detached)') continue
-      const recordedSha = persisted[wt.branch]
-      if (!recordedSha) {
-        result[wt.path] = false
-        continue
-      }
-      const branchSha = await getBranchSha(repoRoot, wt.branch)
-      if (branchSha && branchSha === recordedSha) {
-        result[wt.path] = true
-      } else {
-        delete persisted[wt.branch]
-        dirty = true
-        result[wt.path] = false
-      }
-    }
-    if (dirty) {
-      config.locallyMerged = persisted
-      saveConfig(config)
-    }
-    return result
-  })
+  // Legacy worktree:mergedStatus handler is gone — the computation is now
+  // inlined in PRPoller.refreshAll, which runs across all roots in one pass
+  // and dispatches prs/mergedChanged.
 
-
-  // Config
-  ipcMain.handle('config:getHotkeys', () => {
-    return config.hotkeys || null
-  })
-
+  // Config — the renderer reads via useSettings() etc.; only mutation
+  // handlers and a few constant-accessors live on the IPC.
   ipcMain.handle('config:setHotkeys', (_, hotkeys: Record<string, string>) => {
     config.hotkeys = hotkeys
     saveConfig(config)
-    // Broadcast to all windows so open renderers can re-resolve bindings
-    for (const win of BrowserWindow.getAllWindows()) {
-      if (!win.isDestroyed()) win.webContents.send('config:hotkeysChanged', hotkeys)
-    }
+    store.dispatch({ type: 'settings/hotkeysChanged', payload: hotkeys })
     return true
   })
 
   ipcMain.handle('config:resetHotkeys', () => {
     delete config.hotkeys
     saveConfig(config)
-    for (const win of BrowserWindow.getAllWindows()) {
-      if (!win.isDestroyed()) win.webContents.send('config:hotkeysChanged', null)
-    }
+    store.dispatch({ type: 'settings/hotkeysChanged', payload: null })
     return true
-  })
-
-  ipcMain.handle('config:getClaudeCommand', () => {
-    return config.claudeCommand || DEFAULT_CLAUDE_COMMAND
   })
 
   ipcMain.handle('config:setClaudeCommand', (_, command: string) => {
@@ -380,19 +548,15 @@ function registerIpcHandlers(): void {
       config.claudeCommand = trimmed
     }
     saveConfig(config)
-    for (const win of BrowserWindow.getAllWindows()) {
-      if (!win.isDestroyed()) win.webContents.send('config:claudeCommandChanged', config.claudeCommand || DEFAULT_CLAUDE_COMMAND)
-    }
+    store.dispatch({
+      type: 'settings/claudeCommandChanged',
+      payload: config.claudeCommand || DEFAULT_CLAUDE_COMMAND
+    })
     return true
   })
 
   ipcMain.handle('config:getDefaultClaudeCommand', () => {
     return DEFAULT_CLAUDE_COMMAND
-  })
-
-  ipcMain.handle('repoConfig:get', (_, repoRoot: string) => {
-    if (!repoRoot) return {}
-    return loadRepoConfig(repoRoot)
   })
 
   ipcMain.handle('repoConfig:set', (_, repoRoot: string, next: Record<string, unknown>) => {
@@ -407,23 +571,11 @@ function registerIpcHandlers(): void {
       }
     }
     const saved = saveRepoConfig(repoRoot, merged)
-    for (const win of BrowserWindow.getAllWindows()) {
-      if (!win.isDestroyed())
-        win.webContents.send('repoConfig:changed', { repoRoot, config: saved })
-    }
+    store.dispatch({
+      type: 'repoConfigs/changed',
+      payload: { repoRoot, config: saved }
+    })
     return saved
-  })
-
-  ipcMain.handle('repoConfig:getEffectiveMergeStrategy', (_, repoRoot: string) => {
-    const repo = loadRepoConfig(repoRoot)
-    return repo.mergeStrategy || config.mergeStrategy || DEFAULT_MERGE_STRATEGY
-  })
-
-  ipcMain.handle('config:getWorktreeScripts', () => {
-    return {
-      setup: config.worktreeSetupCommand || '',
-      teardown: config.worktreeTeardownCommand || ''
-    }
   })
 
   ipcMain.handle(
@@ -436,13 +588,13 @@ function registerIpcHandlers(): void {
       if (teardown) config.worktreeTeardownCommand = teardown
       else delete config.worktreeTeardownCommand
       saveConfig(config)
+      store.dispatch({
+        type: 'settings/worktreeScriptsChanged',
+        payload: { setup, teardown }
+      })
       return true
     }
   )
-
-  ipcMain.handle('config:getClaudeEnvVars', () => {
-    return config.claudeEnvVars || {}
-  })
 
   ipcMain.handle('config:setClaudeEnvVars', (_, vars: Record<string, string>) => {
     const cleaned: Record<string, string> = {}
@@ -461,14 +613,8 @@ function registerIpcHandlers(): void {
       config.claudeEnvVars = cleaned
     }
     saveConfig(config)
-    for (const win of BrowserWindow.getAllWindows()) {
-      if (!win.isDestroyed()) win.webContents.send('config:claudeEnvVarsChanged', config.claudeEnvVars || {})
-    }
+    store.dispatch({ type: 'settings/claudeEnvVarsChanged', payload: cleaned })
     return true
-  })
-
-  ipcMain.handle('config:getHarnessMcpEnabled', () => {
-    return config.harnessMcpEnabled !== false
   })
 
   ipcMain.handle('config:setHarnessMcpEnabled', (_, enabled: boolean) => {
@@ -478,10 +624,10 @@ function registerIpcHandlers(): void {
       config.harnessMcpEnabled = false
     }
     saveConfig(config)
-    for (const win of BrowserWindow.getAllWindows()) {
-      if (!win.isDestroyed())
-        win.webContents.send('config:harnessMcpEnabledChanged', config.harnessMcpEnabled !== false)
-    }
+    store.dispatch({
+      type: 'settings/harnessMcpEnabledChanged',
+      payload: config.harnessMcpEnabled !== false
+    })
     return true
   })
 
@@ -491,10 +637,6 @@ function registerIpcHandlers(): void {
     return writeMcpConfigForTerminal(terminalId)
   })
 
-  ipcMain.handle('config:getNameClaudeSessions', () => {
-    return config.nameClaudeSessions ?? false
-  })
-
   ipcMain.handle('config:setNameClaudeSessions', (_, enabled: boolean) => {
     if (enabled) {
       config.nameClaudeSessions = true
@@ -502,15 +644,12 @@ function registerIpcHandlers(): void {
       delete config.nameClaudeSessions
     }
     saveConfig(config)
-    for (const win of BrowserWindow.getAllWindows()) {
-      if (!win.isDestroyed()) win.webContents.send('config:nameClaudeSessionsChanged', config.nameClaudeSessions ?? false)
-    }
+    store.dispatch({
+      type: 'settings/nameClaudeSessionsChanged',
+      payload: !!config.nameClaudeSessions
+    })
     return true
   })
-  ipcMain.handle('config:getTheme', () => {
-    return config.theme || DEFAULT_THEME
-  })
-
   ipcMain.handle('config:setTheme', (_, theme: string) => {
     if (!AVAILABLE_THEMES.includes(theme as (typeof AVAILABLE_THEMES)[number])) {
       return false
@@ -521,14 +660,8 @@ function registerIpcHandlers(): void {
       config.theme = theme
     }
     saveConfig(config)
-    for (const win of BrowserWindow.getAllWindows()) {
-      if (!win.isDestroyed()) win.webContents.send('config:themeChanged', theme)
-    }
+    store.dispatch({ type: 'settings/themeChanged', payload: theme })
     return true
-  })
-
-  ipcMain.handle('config:getTerminalFontFamily', () => {
-    return config.terminalFontFamily || DEFAULT_TERMINAL_FONT_FAMILY
   })
 
   ipcMain.handle('config:setTerminalFontFamily', (_, fontFamily: string) => {
@@ -539,18 +672,14 @@ function registerIpcHandlers(): void {
       config.terminalFontFamily = trimmed
     }
     saveConfig(config)
-    const value = config.terminalFontFamily || DEFAULT_TERMINAL_FONT_FAMILY
-    for (const win of BrowserWindow.getAllWindows()) {
-      if (!win.isDestroyed()) win.webContents.send('config:terminalFontFamilyChanged', value)
-    }
+    store.dispatch({
+      type: 'settings/terminalFontFamilyChanged',
+      payload: config.terminalFontFamily || DEFAULT_TERMINAL_FONT_FAMILY
+    })
     return true
   })
 
   ipcMain.handle('config:getDefaultTerminalFontFamily', () => DEFAULT_TERMINAL_FONT_FAMILY)
-
-  ipcMain.handle('config:getTerminalFontSize', () => {
-    return config.terminalFontSize || DEFAULT_TERMINAL_FONT_SIZE
-  })
 
   ipcMain.handle('config:setTerminalFontSize', (_, fontSize: number) => {
     const n = Number(fontSize)
@@ -562,15 +691,11 @@ function registerIpcHandlers(): void {
       config.terminalFontSize = rounded
     }
     saveConfig(config)
-    const value = config.terminalFontSize || DEFAULT_TERMINAL_FONT_SIZE
-    for (const win of BrowserWindow.getAllWindows()) {
-      if (!win.isDestroyed()) win.webContents.send('config:terminalFontSizeChanged', value)
-    }
+    store.dispatch({
+      type: 'settings/terminalFontSizeChanged',
+      payload: config.terminalFontSize || DEFAULT_TERMINAL_FONT_SIZE
+    })
     return true
-  })
-
-  ipcMain.handle('config:getEditor', () => {
-    return config.editor || DEFAULT_EDITOR_ID
   })
 
   ipcMain.handle('config:setEditor', (_, editorId: string) => {
@@ -581,9 +706,7 @@ function registerIpcHandlers(): void {
       config.editor = editorId
     }
     saveConfig(config)
-    for (const win of BrowserWindow.getAllWindows()) {
-      if (!win.isDestroyed()) win.webContents.send('config:editorChanged', editorId)
-    }
+    store.dispatch({ type: 'settings/editorChanged', payload: editorId })
     return true
   })
 
@@ -596,10 +719,6 @@ function registerIpcHandlers(): void {
     return openInEditor(editorId, worktreePath, filePath)
   })
 
-  ipcMain.handle('config:getWorktreeBase', () => {
-    return config.worktreeBase || DEFAULT_WORKTREE_BASE
-  })
-
   ipcMain.handle('config:setWorktreeBase', (_, mode: 'remote' | 'local') => {
     if (mode !== 'remote' && mode !== 'local') return false
     if (mode === DEFAULT_WORKTREE_BASE) {
@@ -608,11 +727,8 @@ function registerIpcHandlers(): void {
       config.worktreeBase = mode
     }
     saveConfig(config)
+    store.dispatch({ type: 'settings/worktreeBaseChanged', payload: mode })
     return true
-  })
-
-  ipcMain.handle('config:getMergeStrategy', () => {
-    return config.mergeStrategy || DEFAULT_MERGE_STRATEGY
   })
 
   ipcMain.handle(
@@ -627,6 +743,7 @@ function registerIpcHandlers(): void {
       }
       config.mergeStrategy = strategy
       saveConfig(config)
+      store.dispatch({ type: 'settings/mergeStrategyChanged', payload: strategy })
       return true
     }
   )
@@ -635,33 +752,78 @@ function registerIpcHandlers(): void {
     return AVAILABLE_THEMES
   })
 
-  ipcMain.handle('config:getOnboarding', () => {
-    return config.onboarding || { quest: 'hidden' }
-  })
-
   ipcMain.handle('config:setOnboardingQuest', (_, quest: string) => {
     const valid = ['hidden', 'spawn-second', 'switch-between', 'finale', 'done']
     if (!valid.includes(quest)) return false
     config.onboarding = { ...(config.onboarding || {}), quest: quest as QuestStep }
     saveConfig(config)
+    store.dispatch({
+      type: 'onboarding/questChanged',
+      payload: quest as QuestStep
+    })
     return true
   })
 
-  // Persisted workspace panes (tabs per pane, per worktree, per repo).
-  ipcMain.handle('config:getPanes', () => {
-    return config.panes || {}
-  })
-
+  // Pane / tab tree — fully main-owned via PanesFSM. Renderers call these
+  // methods instead of computing pane state locally. ensureInitialized is
+  // not exposed: main calls it directly from worktree creation paths.
   ipcMain.handle(
-    'config:setPanes',
-    (_, panes: Record<string, Record<string, PersistedPane[]>>) => {
-      config.panes = panes
-      saveConfig(config)
+    'panes:addTab',
+    (_, wtPath: string, tab: TerminalTab, paneId?: string) => {
+      panesFSM.addTab(wtPath, tab, paneId)
       return true
     }
   )
+  ipcMain.handle('panes:closeTab', (_, wtPath: string, tabId: string) => {
+    panesFSM.closeTab(wtPath, tabId)
+    return true
+  })
+  ipcMain.handle(
+    'panes:restartClaudeTab',
+    (_, wtPath: string, tabId: string, newId: string) => {
+      panesFSM.restartClaudeTab(wtPath, tabId, newId)
+      return true
+    }
+  )
+  ipcMain.handle(
+    'panes:selectTab',
+    (_, wtPath: string, paneId: string, tabId: string) => {
+      panesFSM.selectTab(wtPath, paneId, tabId)
+      return true
+    }
+  )
+  ipcMain.handle(
+    'panes:reorderTabs',
+    (_, wtPath: string, paneId: string, fromId: string, toId: string) => {
+      panesFSM.reorderTabs(wtPath, paneId, fromId, toId)
+      return true
+    }
+  )
+  ipcMain.handle(
+    'panes:moveTabToPane',
+    (
+      _,
+      wtPath: string,
+      tabId: string,
+      toPaneId: string,
+      toIndex?: number
+    ) => {
+      panesFSM.moveTabToPane(wtPath, tabId, toPaneId, toIndex)
+      return true
+    }
+  )
+  ipcMain.handle('panes:splitPane', (_, wtPath: string, fromPaneId: string) => {
+    return panesFSM.splitPane(wtPath, fromPaneId)
+  })
+  ipcMain.handle('panes:clearForWorktree', (_, wtPath: string) => {
+    panesFSM.clearForWorktree(wtPath)
+    return true
+  })
 
-  // Activity log — per-worktree status transition history for the Activity view
+  // Activity log — per-worktree status transition history for the Activity view.
+  // The activity-deriver in main now calls recordActivity directly when it
+  // observes status changes; this IPC stays for any direct-from-renderer
+  // pings that haven't been migrated yet.
   ipcMain.on('activity:record', (_, worktreePath: string, state: ActivityState) => {
     recordActivity(worktreePath, state)
   })
@@ -716,41 +878,26 @@ function registerIpcHandlers(): void {
   // the new per-tab scheme without losing their session — the spawn path
   // uses `--resume` when the file exists.
   ipcMain.handle('claude:latestSessionId', (_, cwd: string): string | null => {
-    try {
-      const encoded = cwd.replace(/[^a-zA-Z0-9]/g, '-')
-      const dir = join(homedir(), '.claude', 'projects', encoded)
-      const files = readdirSync(dir).filter((f) => f.endsWith('.jsonl'))
-      if (files.length === 0) return null
-      let bestId: string | null = null
-      let bestMtime = -Infinity
-      for (const file of files) {
-        const mtime = statSync(join(dir, file)).mtimeMs
-        if (mtime > bestMtime) {
-          bestMtime = mtime
-          bestId = file.replace(/\.jsonl$/, '')
-        }
-      }
-      return bestId
-    } catch {
-      return null
-    }
+    return latestClaudeSessionId(cwd)
   })
 
   // Settings: GitHub token
   ipcMain.handle('settings:hasGithubToken', () => {
-    return hasSecret('githubToken')
+    return store.getSnapshot().state.settings.hasGithubToken
   })
 
   ipcMain.handle('settings:setGithubToken', async (_, token: string, options?: { starRepo?: boolean }) => {
     const trimmed = token.trim()
     if (!trimmed) {
       deleteSecret('githubToken')
+      store.dispatch({ type: 'settings/hasGithubTokenChanged', payload: false })
       return { ok: true }
     }
     // Validate the token first by hitting /user
     const test = await testToken(trimmed)
     if (!test.ok) return { ok: false, error: test.error }
     setSecret('githubToken', trimmed)
+    store.dispatch({ type: 'settings/hasGithubTokenChanged', payload: true })
 
     // Optionally star the repo — fire and forget, don't fail token save if this fails
     let starred = false
@@ -765,6 +912,7 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('settings:clearGithubToken', () => {
     deleteSecret('githubToken')
+    store.dispatch({ type: 'settings/hasGithubTokenChanged', payload: false })
     return true
   })
 
@@ -779,7 +927,13 @@ function registerIpcHandlers(): void {
     }
     try {
       const result = await autoUpdater.checkForUpdates()
-      if (!result) return { ok: true, available: false }
+      if (!result) {
+        store.dispatch({
+          type: 'updater/statusChanged',
+          payload: { state: 'not-available' }
+        })
+        return { ok: true, available: false }
+      }
       const updateInfo = result.updateInfo
       const current = app.getVersion()
       return {
@@ -789,7 +943,12 @@ function registerIpcHandlers(): void {
         releaseDate: updateInfo.releaseDate
       }
     } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      const message = err instanceof Error ? err.message : String(err)
+      store.dispatch({
+        type: 'updater/statusChanged',
+        payload: { state: 'error', error: message }
+      })
+      return { ok: false, error: message }
     }
   })
 
@@ -825,13 +984,34 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  // Hooks
-  ipcMain.handle('hooks:check', (_, worktreePath: string) => {
-    return hooksInstalled(worktreePath)
+  // Hooks. check + install are no longer exposed: per-worktree installation
+  // happens automatically in the store subscription (see
+  // installHooksForAcceptedWorktrees) whenever the worktree list changes
+  // or the user accepts consent.
+
+  // Bulk-install hooks into every known worktree and flip consent='accepted'
+  // + justInstalled=true in a single round trip. Replaces the old
+  // renderer-side loop that walked worktrees one by one.
+  ipcMain.handle('hooks:acceptAll', async () => {
+    const roots = config.repoRoots || []
+    for (const root of roots) {
+      const trees = await listWorktrees(root).catch(() => [])
+      for (const wt of trees) {
+        if (!hooksInstalled(wt.path)) installHooks(wt.path)
+      }
+    }
+    store.dispatch({ type: 'hooks/consentChanged', payload: 'accepted' })
+    store.dispatch({ type: 'hooks/justInstalledChanged', payload: true })
+    return true
   })
 
-  ipcMain.handle('hooks:install', async (_, worktreePath: string) => {
-    installHooks(worktreePath)
+  ipcMain.handle('hooks:decline', () => {
+    store.dispatch({ type: 'hooks/consentChanged', payload: 'declined' })
+    return true
+  })
+
+  ipcMain.handle('hooks:dismissJustInstalled', () => {
+    store.dispatch({ type: 'hooks/justInstalledChanged', payload: false })
     return true
   })
 
@@ -952,26 +1132,41 @@ function setupAutoUpdater(): void {
 
   autoUpdater.on('checking-for-update', () => {
     log('updater', 'checking for update')
-    broadcastToAllWindows('updater:status', { state: 'checking' })
+    store.dispatch({ type: 'updater/statusChanged', payload: { state: 'checking' } })
   })
   autoUpdater.on('update-available', (info) => {
     log('updater', 'update available', info.version)
-    broadcastToAllWindows('updater:status', { state: 'available', version: info.version })
+    store.dispatch({
+      type: 'updater/statusChanged',
+      payload: { state: 'available', version: info.version }
+    })
   })
   autoUpdater.on('update-not-available', () => {
     log('updater', 'no update available')
-    broadcastToAllWindows('updater:status', { state: 'not-available' })
+    store.dispatch({
+      type: 'updater/statusChanged',
+      payload: { state: 'not-available' }
+    })
   })
   autoUpdater.on('error', (err) => {
     log('updater', 'error', err.message)
-    broadcastToAllWindows('updater:status', { state: 'error', error: err.message })
+    store.dispatch({
+      type: 'updater/statusChanged',
+      payload: { state: 'error', error: err.message }
+    })
   })
   autoUpdater.on('download-progress', (p) => {
-    broadcastToAllWindows('updater:status', { state: 'downloading', percent: p.percent })
+    store.dispatch({
+      type: 'updater/statusChanged',
+      payload: { state: 'downloading', percent: p.percent }
+    })
   })
   autoUpdater.on('update-downloaded', (info) => {
     log('updater', 'update downloaded', info.version)
-    broadcastToAllWindows('updater:status', { state: 'downloaded', version: info.version })
+    store.dispatch({
+      type: 'updater/statusChanged',
+      payload: { state: 'downloaded', version: info.version }
+    })
   })
 
   // Also log native Squirrel.Mac errors. electron-updater wraps Squirrel via
@@ -1009,6 +1204,51 @@ app.whenReady().then(() => {
   buildMenu()
   registerIpcHandlers()
 
+  // Seed the store's flat worktree list before the renderer hydrates, so
+  // App.tsx's first render already has the real data. Then ensure every
+  // worktree has at least the default Claude+Shell pane pair — covers
+  // pre-existing worktrees the user has never activated.
+  void (async () => {
+    await panesFSM.restoreFromConfig(config.panes)
+    await worktreesFSM.refreshList()
+    const live = store.getSnapshot().state.worktrees.list
+    for (const wt of live) {
+      panesFSM.ensureInitialized(wt.path)
+    }
+  })()
+
+  // Seed per-repo config slice from each repo's .harness.json file.
+  const initialRepoConfigsMap: Record<string, RepoConfig> = {}
+  for (const root of config.repoRoots || []) {
+    initialRepoConfigsMap[root] = loadRepoConfig(root)
+  }
+  store.dispatch({ type: 'repoConfigs/loaded', payload: initialRepoConfigsMap })
+
+  // Start the activity deriver — it observes terminals/prs/panes events
+  // and writes recordActivity + lastActive without renderer involvement.
+  activityDeriver.start()
+
+  // Kick off the PR poller. An initial refreshAll() runs immediately and
+  // then on a 5-minute interval.
+  prPoller.start()
+  void prPoller.refreshAll()
+
+  // Seed hooks.consent from disk. If any known worktree already has the
+  // hooks installed, the user must have accepted at some point — remember
+  // that and skip the consent banner on boot.
+  void (async () => {
+    const roots = config.repoRoots || []
+    for (const root of roots) {
+      const trees = await listWorktrees(root).catch(() => [])
+      for (const wt of trees) {
+        if (hooksInstalled(wt.path)) {
+          store.dispatch({ type: 'hooks/consentChanged', payload: 'accepted' })
+          return
+        }
+      }
+    }
+  })()
+
   // Prune terminal history files not referenced by any persisted tab
   const keepIds = new Set<string>()
   for (const byRepo of Object.values(config.panes || {})) {
@@ -1025,11 +1265,32 @@ app.whenReady().then(() => {
   startControlServer({
     getRepoRoots: () => config.repoRoots,
     getWorktreeBase: () => config.worktreeBase || DEFAULT_WORKTREE_BASE,
-    broadcast: broadcastToAllWindows
+    broadcast: (channel, payload) => {
+      broadcastToAllWindows(channel, payload)
+      if (channel === 'worktrees:externalCreate') {
+        // Refresh the store's list and seed default panes for the new
+        // worktree (with the initial prompt embedded). Renderer just
+        // focuses the new path when its onWorktreesExternalCreate
+        // listener fires.
+        const p = payload as {
+          repoRoot: string
+          worktree: { path: string }
+          initialPrompt?: string
+        }
+        void worktreesFSM.refreshList().then(() => {
+          panesFSM.ensureInitialized(p.worktree.path, {
+            initialPrompt: p.initialPrompt
+          })
+        })
+        void prPoller.refreshAll()
+      }
+    }
   }).catch((err) => log('control', 'failed to start', err instanceof Error ? err.message : err))
 
-  // Watch status dir globally — route to correct window via ptyManager
-  stopWatchingStatus = watchStatusDir((id) => ptyManager.getWindowForTerminal(id))
+  // Watch status dir globally — hook events become terminals/statusChanged
+  // dispatches on the store, which the state transport fans out to all
+  // clients.
+  stopWatchingStatus = watchStatusDir(store)
 
   // One window shows all repos. The renderer reads `config.repoRoots` via
   // `repo:list` and opens each one on mount.

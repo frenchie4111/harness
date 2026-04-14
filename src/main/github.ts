@@ -2,42 +2,11 @@ import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { log } from './debug'
 import { getSecret } from './secrets'
+import type { CheckStatus, PRReview, PRStatus } from '../shared/state/prs'
+
+export type { CheckStatus, PRReview, PRStatus }
 
 const execFileAsync = promisify(execFile)
-
-export interface CheckStatus {
-  name: string
-  state: 'success' | 'failure' | 'pending' | 'neutral' | 'skipped' | 'error'
-  description: string
-  /** Longer failure summary from the check's output (markdown, may be multi-line) */
-  summary?: string
-  /** External URL to the check's log / details page */
-  detailsUrl?: string
-}
-
-export interface PRReview {
-  user: string
-  avatarUrl: string
-  state: 'APPROVED' | 'CHANGES_REQUESTED' | 'COMMENTED' | 'DISMISSED' | 'PENDING'
-  body: string
-  submittedAt: string
-  htmlUrl: string
-}
-
-export interface PRStatus {
-  number: number
-  title: string
-  state: 'open' | 'draft' | 'merged' | 'closed'
-  url: string
-  branch: string
-  checks: CheckStatus[]
-  checksOverall: 'success' | 'failure' | 'pending' | 'none'
-  /** true = has conflicts with base, false = mergeable, null = still computing */
-  hasConflict: boolean | null
-  reviews: PRReview[]
-  /** Overall review decision: approved, changes requested, or pending */
-  reviewDecision: 'approved' | 'changes_requested' | 'review_required' | 'none'
-}
 
 function getToken(): string | null {
   return getSecret('githubToken') || process.env.GITHUB_TOKEN || null

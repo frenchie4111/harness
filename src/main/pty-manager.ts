@@ -3,8 +3,10 @@ import { BrowserWindow } from 'electron'
 import { execFile } from 'child_process'
 import { log } from './debug'
 import { cleanupTerminalLog } from './hooks'
+import type { Store } from './store'
+import type { PtyStatus } from '../shared/state/terminals'
 
-export type PtyStatus = 'idle' | 'processing' | 'waiting' | 'needs-approval'
+export type { PtyStatus }
 
 interface PtyInstance {
   pty: pty.IPty
@@ -21,6 +23,15 @@ const SHELL_ACTIVITY_POLL_MS = 1500
 export class PtyManager {
   private ptys = new Map<string, PtyInstance>()
   private activityTimer: NodeJS.Timeout | null = null
+  private store: Store | null = null
+
+  /** Wire the authoritative store after it's constructed. PTY status,
+   * shell activity, and cleanup events dispatch through it; terminal:data
+   * and terminal:exit stay on direct window channels (high-frequency and
+   * view-layer respectively). */
+  setStore(store: Store): void {
+    this.store = store
+  }
 
   hasTerminal(id: string): boolean {
     return this.ptys.has(id)
@@ -59,7 +70,10 @@ export class PtyManager {
       log('pty', `spawn failed id=${id}`, err instanceof Error ? err.message : err)
       const msg = `\r\n\x1b[31mFailed to spawn "${shell}": ${err instanceof Error ? err.message : err}\x1b[0m\r\n`
       window.webContents.send('terminal:data', id, msg)
-      window.webContents.send('terminal:status', id, 'idle', null)
+      this.store?.dispatch({
+        type: 'terminals/statusChanged',
+        payload: { id, status: 'idle', pendingTool: null }
+      })
       return
     }
 
@@ -82,9 +96,16 @@ export class PtyManager {
 
     ptyProcess.onExit(({ exitCode }) => {
       log('pty', `exit id=${id} code=${exitCode}`)
+      this.store?.dispatch({
+        type: 'terminals/statusChanged',
+        payload: { id, status: 'idle', pendingTool: null }
+      })
+      this.store?.dispatch({ type: 'terminals/removed', payload: id })
       const win = BrowserWindow.fromId(instance.windowId)
       if (win && !win.isDestroyed()) {
-        win.webContents.send('terminal:status', id, 'idle', null)
+        // terminal:exit stays on a direct window channel so XTerminal can
+        // mark the specific xterm instance as closed. Status + terminals/
+        // removed propagate via the store to every client.
         win.webContents.send('terminal:exit', id, exitCode)
       }
       this.ptys.delete(id)
@@ -152,13 +173,10 @@ export class PtyManager {
         ) {
           instance.activityActive = active
           instance.activityProcess = processName
-          const win = BrowserWindow.fromId(instance.windowId)
-          if (win && !win.isDestroyed()) {
-            win.webContents.send('terminal:shell-activity', id, {
-              active,
-              processName
-            })
-          }
+          this.store?.dispatch({
+            type: 'terminals/shellActivityChanged',
+            payload: { id, active, processName }
+          })
         }
       }
     })
