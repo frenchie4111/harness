@@ -161,7 +161,8 @@ export default function App(): JSX.Element {
   const [showCommandPalette, setShowCommandPalette] = useState(false)
   const tailLines = useTailLineBuffer()
   const settings = useSettings()
-  const { hasGithubToken, claudeCommand, nameClaudeSessions } = settings
+  const { hasGithubToken: hasGithubPat, githubAuthSource, claudeCommand, nameClaudeSessions } = settings
+  const hasGithubToken = hasGithubPat || githubAuthSource === 'gh-cli'
   const hotkeyOverrides = settings.hotkeys ?? undefined
   // Onboarding parallelism quest — see QuestCard.tsx for the steps.
   // Quest state lives in the main-process store; its value is seeded from

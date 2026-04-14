@@ -115,6 +115,18 @@ describe('settingsReducer', () => {
     expect(gone.hasGithubToken).toBe(false)
   })
 
+  it('githubAuthSourceChanged updates the source', () => {
+    const gh = apply(initialSettings, {
+      type: 'settings/githubAuthSourceChanged',
+      payload: 'gh-cli'
+    })
+    expect(gh.githubAuthSource).toBe('gh-cli')
+    const pat = apply(gh, { type: 'settings/githubAuthSourceChanged', payload: 'pat' })
+    expect(pat.githubAuthSource).toBe('pat')
+    const none = apply(pat, { type: 'settings/githubAuthSourceChanged', payload: null })
+    expect(none.githubAuthSource).toBeNull()
+  })
+
   it('returns a new object reference (no mutation)', () => {
     const next = apply(initialSettings, { type: 'settings/themeChanged', payload: 'x' })
     expect(next).not.toBe(initialSettings)

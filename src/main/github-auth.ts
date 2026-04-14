@@ -53,18 +53,24 @@ function warnIfScopesShort(source: TokenSource, scopes: string[]): void {
 
 /** Try reading a token from `gh auth token`. Returns null if gh is absent or not logged in. */
 async function readGhCliToken(): Promise<string | null> {
+  // Login shell so Homebrew's gh is on PATH (matching PtyManager). Login-only
+  // (no -i) avoids .zshrc side effects that can break non-TTY invocations —
+  // PATH from Homebrew lives in .zprofile/.zlogin which login mode sources.
   try {
-    // Use login shell so Homebrew's gh is on PATH, matching PtyManager.
-    const { stdout } = await execFileAsync('/bin/zsh', ['-ilc', 'gh auth token'], {
+    const { stdout } = await execFileAsync('/bin/zsh', ['-lc', 'gh auth token'], {
       timeout: 3000
     })
+    // gh auth token can include trailing newline + nothing else on stderr.
     const token = stdout.trim()
-    if (!token) return null
+    if (!token) {
+      log('github-auth', 'gh auth token returned empty stdout')
+      return null
+    }
     return token
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    // ENOENT / non-zero exit / timeout are all "not available" — fall through silently.
-    log('github-auth', `gh auth token unavailable: ${msg}`)
+    // execFile errors carry .stdout/.stderr from the failed process.
+    const e = err as { code?: string | number; stderr?: string; stdout?: string; message?: string }
+    log('github-auth', `gh auth token failed: code=${e.code} stderr=${(e.stderr || '').trim()} stdout=${(e.stdout || '').trim()} msg=${e.message}`)
     return null
   }
 }

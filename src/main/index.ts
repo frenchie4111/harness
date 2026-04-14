@@ -120,7 +120,8 @@ const store = new Store({
     editor: config.editor || DEFAULT_EDITOR_ID,
     worktreeBase: config.worktreeBase || DEFAULT_WORKTREE_BASE,
     mergeStrategy: config.mergeStrategy || DEFAULT_MERGE_STRATEGY,
-    hasGithubToken: hasSecret('githubToken')
+    hasGithubToken: hasSecret('githubToken'),
+    githubAuthSource: null
   }
 })
 registerStateTransport(store)
@@ -903,6 +904,7 @@ function registerIpcHandlers(): void {
     store.dispatch({ type: 'settings/hasGithubTokenChanged', payload: true })
     invalidateTokenCache()
     await resolveGitHubToken()
+    store.dispatch({ type: 'settings/githubAuthSourceChanged', payload: getTokenSource() })
 
     // Optionally star the repo — fire and forget, don't fail token save if this fails
     let starred = false
@@ -920,11 +922,8 @@ function registerIpcHandlers(): void {
     store.dispatch({ type: 'settings/hasGithubTokenChanged', payload: false })
     invalidateTokenCache()
     await resolveGitHubToken()
+    store.dispatch({ type: 'settings/githubAuthSourceChanged', payload: getTokenSource() })
     return true
-  })
-
-  ipcMain.handle('settings:getGithubAuthSource', () => {
-    return getTokenSource()
   })
 
   // Updater
@@ -1243,6 +1242,7 @@ app.whenReady().then(() => {
   // makes its first call. The poller's initial refreshAll waits on this.
   void (async () => {
     await resolveGitHubToken()
+    store.dispatch({ type: 'settings/githubAuthSourceChanged', payload: getTokenSource() })
     prPoller.start()
     void prPoller.refreshAll()
   })()

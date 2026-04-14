@@ -145,13 +145,7 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
   const [saving, setSaving] = useState(false)
   const [autoStar, setAutoStar] = useState(true)
   const [tokenResult, setTokenResult] = useState<{ ok: boolean; message: string } | null>(null)
-  const [authSource, setAuthSource] = useState<'pat' | 'gh-cli' | null>(null)
-  const refreshAuthSource = (): void => {
-    void window.api.getGithubAuthSource().then(setAuthSource)
-  }
-  useEffect(() => {
-    refreshAuthSource()
-  }, [])
+  const [showPatForm, setShowPatForm] = useState(false)
 
   // Updates state — updaterStatus lives in the main-process store
   const [version, setVersion] = useState<string>('')
@@ -174,6 +168,7 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
     worktreeBase,
     mergeStrategy,
     hasGithubToken: settingsHasToken,
+    githubAuthSource: authSource,
     worktreeScripts
   } = settings
   const setupScript = worktreeScripts.setup
@@ -362,7 +357,6 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
         if (autoStar && res.starred) message += ' · starred Harness on GitHub'
         setTokenResult({ ok: true, message })
         setToken('')
-        refreshAuthSource()
       } else {
         setTokenResult({ ok: false, message: `Invalid token: ${res.error || 'unknown error'}` })
       }
@@ -374,7 +368,6 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
   const handleClear = useCallback(async () => {
     await window.api.clearGithubToken()
     setTokenResult({ ok: true, message: 'Token removed' })
-    refreshAuthSource()
   }, [])
 
   const handleCheckForUpdates = useCallback(async () => {
@@ -1294,12 +1287,23 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
               </p>
 
               {authSource === 'gh-cli' && !hasToken && (
-                <div className="mb-4 rounded-lg p-3 border bg-success/10 border-success/30 flex items-center gap-2 text-sm text-success">
-                  <Check size={14} />
-                  <span>Using <code className="bg-panel-raised px-1 rounded">gh</code> CLI token (auto-detected)</span>
+                <div className="mb-4 rounded-lg p-4 border bg-success/10 border-success/30">
+                  <div className="flex items-center gap-2 text-sm text-success">
+                    <Check size={14} />
+                    <span>Using <code className="bg-panel-raised px-1 rounded">gh</code> CLI token (auto-detected)</span>
+                  </div>
+                  {!showPatForm && (
+                    <button
+                      onClick={() => setShowPatForm(true)}
+                      className="mt-3 text-xs text-muted hover:text-fg-bright underline cursor-pointer"
+                    >
+                      Use a personal access token instead
+                    </button>
+                  )}
                 </div>
               )}
 
+              {(authSource !== 'gh-cli' || hasToken || showPatForm) && (
               <div className={`rounded-lg p-4 border ${!authed ? 'bg-info/10 border-info/30' : 'bg-panel-raised border-border'}`}>
                 <label className="block text-sm font-medium text-fg mb-2">
                   Personal Access Token
@@ -1366,7 +1370,9 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
                   </div>
                 )}
               </div>
+              )}
 
+              {(authSource !== 'gh-cli' || hasToken || showPatForm) && (
               <div className="mt-4 text-xs text-dim space-y-2">
                 <p>
                   Create a token at{' '}
@@ -1390,6 +1396,7 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
                   or <code className="bg-panel-raised px-1 rounded">public_repo</code> for public only.
                 </p>
               </div>
+              )}
               </>
                 )
               })()}
