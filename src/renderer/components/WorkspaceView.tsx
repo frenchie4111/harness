@@ -158,8 +158,8 @@ export function WorkspaceView({
               paneCount={panes.length}
               statuses={statuses}
               shellActivity={shellActivity}
-              repoLabel={repoLabel}
-              branch={branch}
+              repoLabel={idx === 0 ? repoLabel : ''}
+              branch={idx === 0 ? branch : ''}
               registerSlot={registerSlot}
               onSelectTab={(tabId) => onSelectTab(worktreePath, pane.id, tabId)}
               onAddTab={() => onAddTab(worktreePath, pane.id)}

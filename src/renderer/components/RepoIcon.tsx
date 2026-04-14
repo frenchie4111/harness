@@ -11,6 +11,19 @@ const COLORS = [
   'bg-slate-400/60'
 ]
 
+const TEXT_COLORS = [
+  'text-teal-400',
+  'text-cyan-400',
+  'text-sky-400',
+  'text-blue-400',
+  'text-indigo-400',
+  'text-violet-400',
+  'text-purple-400',
+  'text-fuchsia-400',
+  'text-pink-400',
+  'text-slate-400'
+]
+
 function hashString(s: string): number {
   let hash = 0
   for (let i = 0; i < s.length; i++) {
@@ -21,6 +34,10 @@ function hashString(s: string): number {
 
 export function repoColor(repoName: string): string {
   return COLORS[hashString(repoName) % COLORS.length]
+}
+
+export function repoNameColor(repoName: string): string {
+  return TEXT_COLORS[hashString(repoName) % TEXT_COLORS.length]
 }
 
 export function repoLetter(repoName: string): string {
