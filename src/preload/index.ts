@@ -1,14 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 
-interface PendingToolShape {
-  name: string
-  input: Record<string, unknown>
-}
-type StatusCallback = (
-  id: string,
-  status: string,
-  pendingTool: PendingToolShape | null
-) => void
 type DataCallback = (id: string, data: string) => void
 type ExitCallback = (id: string, exitCode: number) => void
 
@@ -137,9 +128,44 @@ contextBridge.exposeInMainWorld('api', {
   setTerminalFontSize: (fontSize: number) =>
     ipcRenderer.invoke('config:setTerminalFontSize', fontSize),
 
-  getWorkspacePanes: () => ipcRenderer.invoke('config:getPanes'),
-  setWorkspacePanes: (panes: unknown) =>
-    ipcRenderer.invoke('config:setPanes', panes),
+  // Panes — the pane/tab tree lives in the main-process store. Renderer
+  // dispatches every operation as a method call instead of computing
+  // local state.
+  panesEnsureInitialized: (
+    wtPath: string,
+    opts?: { initialPrompt?: string; teleportSessionId?: string }
+  ) => ipcRenderer.invoke('panes:ensureInitialized', wtPath, opts),
+  panesAddTab: (wtPath: string, tab: unknown, paneId?: string) =>
+    ipcRenderer.invoke('panes:addTab', wtPath, tab, paneId),
+  panesCloseTab: (wtPath: string, tabId: string) =>
+    ipcRenderer.invoke('panes:closeTab', wtPath, tabId),
+  panesRestartClaudeTab: (
+    wtPath: string,
+    tabId: string,
+    newId: string,
+    newSessionId: string
+  ) =>
+    ipcRenderer.invoke('panes:restartClaudeTab', wtPath, tabId, newId, newSessionId),
+  panesSelectTab: (wtPath: string, paneId: string, tabId: string) =>
+    ipcRenderer.invoke('panes:selectTab', wtPath, paneId, tabId),
+  panesReorderTabs: (
+    wtPath: string,
+    paneId: string,
+    fromId: string,
+    toId: string
+  ) => ipcRenderer.invoke('panes:reorderTabs', wtPath, paneId, fromId, toId),
+  panesMoveTabToPane: (
+    wtPath: string,
+    tabId: string,
+    toPaneId: string,
+    toIndex?: number
+  ) =>
+    ipcRenderer.invoke('panes:moveTabToPane', wtPath, tabId, toPaneId, toIndex),
+  panesSplitPane: (wtPath: string, fromPaneId: string) =>
+    ipcRenderer.invoke('panes:splitPane', wtPath, fromPaneId),
+  panesClearForWorktree: (wtPath: string) =>
+    ipcRenderer.invoke('panes:clearForWorktree', wtPath),
+
   saveTerminalHistory: (id: string, content: string) =>
     ipcRenderer.invoke('terminal:saveHistory', id, content),
   saveTerminalHistorySync: (id: string, content: string) => {
@@ -227,35 +253,11 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('terminal:data', handler)
     return () => ipcRenderer.removeListener('terminal:data', handler)
   },
-  onStatusChange: (callback: StatusCallback) => {
-    const handler = (
-      _event: Electron.IpcRendererEvent,
-      id: string,
-      status: string,
-      pendingTool?: PendingToolShape | null
-    ): void => {
-      callback(id, status, pendingTool ?? null)
-    }
-    ipcRenderer.on('terminal:status', handler)
-    return () => ipcRenderer.removeListener('terminal:status', handler)
-  },
-  onShellActivity: (
-    callback: (id: string, payload: { active: boolean; processName?: string }) => void
-  ) => {
-    const handler = (
-      _event: Electron.IpcRendererEvent,
-      id: string,
-      payload: { active: boolean; processName?: string }
-    ): void => {
-      callback(id, payload)
-    }
-    ipcRenderer.on('terminal:shell-activity', handler)
-    return () => ipcRenderer.removeListener('terminal:shell-activity', handler)
-  },
-  // Activity log
-  recordActivity: (worktreePath: string, state: string) => {
-    ipcRenderer.send('activity:record', worktreePath, state)
-  },
+  // Terminal status + shell activity live in the main-process store now;
+  // consumers read via useTerminals() in the renderer. terminal:data and
+  // terminal:exit stay on direct channels.
+  // Activity log — recordActivity is fully main-driven now (see
+  // activity-deriver.ts); the renderer only reads the persisted log.
   getActivityLog: () => ipcRenderer.invoke('activity:get'),
   clearActivityLog: (worktreePath?: string) => ipcRenderer.invoke('activity:clear', worktreePath),
 

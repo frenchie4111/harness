@@ -62,4 +62,16 @@ export function useWorktrees() {
   return useAppState((s) => s.worktrees)
 }
 
+export function useTerminals() {
+  return useAppState((s) => s.terminals)
+}
+
+export function usePanes() {
+  return useAppState((s) => s.terminals.panes)
+}
+
+export function useLastActive() {
+  return useAppState((s) => s.terminals.lastActive)
+}
+
 export type { AppState, StateEvent }

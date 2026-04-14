@@ -11,8 +11,8 @@ import {
   unlinkSync
 } from 'fs'
 import { join } from 'path'
-import { BrowserWindow } from 'electron'
 import type { PtyStatus } from './pty-manager'
+import type { Store } from './store'
 import { log } from './debug'
 
 const STATUS_DIR = '/tmp/harness-status'
@@ -204,7 +204,7 @@ const offsets = new Map<string, number>()
 // between our read and the newline flush). Keyed by terminal id.
 const residual = new Map<string, string>()
 
-function tailLog(terminalId: string, win: BrowserWindow): void {
+function tailLog(terminalId: string, store: Store): void {
   const path = join(STATUS_DIR, `${terminalId}.ndjson`)
   let fd: number
   try {
@@ -245,12 +245,14 @@ function tailLog(terminalId: string, win: BrowserWindow): void {
       log('hooks', `event terminal=${terminalId} event=${ev.event}`)
       const update = deriveStatus(terminalId, ev)
       if (update) {
-        win.webContents.send(
-          'terminal:status',
-          terminalId,
-          update.status,
-          update.pendingTool
-        )
+        store.dispatch({
+          type: 'terminals/statusChanged',
+          payload: {
+            id: terminalId,
+            status: update.status,
+            pendingTool: update.pendingTool
+          }
+        })
       }
     }
   } finally {
@@ -258,11 +260,10 @@ function tailLog(terminalId: string, win: BrowserWindow): void {
   }
 }
 
-/** Watch the status directory for changes and emit status updates.
- *  getWindowForTerminal returns the BrowserWindow that owns the terminal, or null. */
-export function watchStatusDir(
-  getWindowForTerminal: (id: string) => BrowserWindow | null
-): () => void {
+/** Watch the status directory and dispatch terminal status transitions
+ *  through the main-process store. The store's event transport fans the
+ *  events out to every client that subscribes. */
+export function watchStatusDir(store: Store): () => void {
   mkdirSync(STATUS_DIR, { recursive: true })
 
   log('hooks', `watching status dir: ${STATUS_DIR}`)
@@ -271,10 +272,8 @@ export function watchStatusDir(
     if (!filename || !filename.endsWith('.ndjson')) return
     if (filename.startsWith('.')) return
     const terminalId = filename.replace(/\.ndjson$/, '')
-    const win = getWindowForTerminal(terminalId)
-    if (!win) return
     try {
-      tailLog(terminalId, win)
+      tailLog(terminalId, store)
     } catch (err) {
       log('hooks', `tail failed for ${terminalId}`, err instanceof Error ? err.message : err)
     }

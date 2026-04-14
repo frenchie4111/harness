@@ -8,6 +8,9 @@ import { Store } from './store'
 import { registerStateTransport } from './transport-electron'
 import { PRPoller } from './pr-poller'
 import { WorktreesFSM } from './worktrees-fsm'
+import { PanesFSM, stripTransientTabFields } from './panes-fsm'
+import { ActivityDeriver } from './activity-deriver'
+import type { TerminalTab, WorkspacePane } from '../shared/state/terminals'
 import { listWorktrees, listBranches, continueWorktree, removeWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, readWorktreeFile, runWorktreeScript, type MergeStrategy } from './worktree'
 import { getPRStatus, testToken, starRepo } from './github'
 import { AVAILABLE_EDITORS, DEFAULT_EDITOR_ID, openInEditor } from './editor'
@@ -44,6 +47,27 @@ if (!app.isPackaged) {
   app.setPath('userData', join(app.getPath('appData'), 'Harness (Dev)'))
 }
 
+function latestClaudeSessionId(cwd: string): string | null {
+  try {
+    const encoded = cwd.replace(/[^a-zA-Z0-9]/g, '-')
+    const dir = join(homedir(), '.claude', 'projects', encoded)
+    const files = readdirSync(dir).filter((f) => f.endsWith('.jsonl'))
+    if (files.length === 0) return null
+    let bestId: string | null = null
+    let bestMtime = -Infinity
+    for (const file of files) {
+      const mtime = statSync(join(dir, file)).mtimeMs
+      if (mtime > bestMtime) {
+        bestMtime = mtime
+        bestId = file.replace(/\.jsonl$/, '')
+      }
+    }
+    return bestId
+  } catch {
+    return null
+  }
+}
+
 const ptyManager = new PtyManager()
 let config = loadConfig()
 let stopWatchingStatus: (() => void) | null = null
@@ -65,6 +89,13 @@ const store = new Store({
     list: [],
     repoRoots: config.repoRoots || [],
     pending: []
+  },
+  terminals: {
+    statuses: {},
+    pendingTools: {},
+    shellActivity: {},
+    panes: {},
+    lastActive: {}
   },
   settings: {
     theme: config.theme || DEFAULT_THEME,
@@ -100,6 +131,8 @@ const prPoller = new PRPoller(store, {
   }
 })
 
+ptyManager.setStore(store)
+
 const worktreesFSM = new WorktreesFSM(store, {
   getRepoRoots: () => config.repoRoots || [],
   getWorktreeSetupCmd: () => config.worktreeSetupCommand || '',
@@ -108,6 +141,56 @@ const worktreesFSM = new WorktreesFSM(store, {
     void prPoller.refreshAll()
   }
 })
+
+// Persist panes back to config in the existing nested-by-repo shape, so the
+// on-disk format stays compatible with persistence-migrations. Strip
+// transient (in-memory only) tab fields like initialPrompt before saving.
+function persistPanes(panes: Record<string, WorkspacePane[]>): void {
+  const nested: Record<string, Record<string, PersistedPane[]>> = {}
+  for (const [wtPath, paneList] of Object.entries(panes)) {
+    // Find which repo this worktree belongs to. Use the live worktree list
+    // first; fall back to '__orphan__' for entries we can't map.
+    const wt = store.getSnapshot().state.worktrees.list.find((w) => w.path === wtPath)
+    const repoRoot = wt?.repoRoot || '__orphan__'
+    const persistedPanes: PersistedPane[] = paneList
+      .map((pane) => {
+        const tabs = pane.tabs
+          .filter((t) => t.type === 'claude' || t.type === 'shell')
+          .map((t) => {
+            const stripped = stripTransientTabFields(t as TerminalTab)
+            return {
+              id: stripped.id,
+              type: stripped.type as 'claude' | 'shell',
+              label: stripped.label,
+              sessionId: stripped.sessionId
+            }
+          })
+        if (tabs.length === 0) return null
+        const validActive = tabs.some((t) => t.id === pane.activeTabId)
+          ? pane.activeTabId
+          : tabs[0].id
+        return { id: pane.id, tabs, activeTabId: validActive }
+      })
+      .filter((p): p is NonNullable<typeof p> => p !== null)
+    if (persistedPanes.length > 0) {
+      if (!nested[repoRoot]) nested[repoRoot] = {}
+      nested[repoRoot][wtPath] = persistedPanes
+    }
+  }
+  config.panes = nested
+  saveConfig(config)
+}
+
+const panesFSM = new PanesFSM(store, {
+  persist: persistPanes,
+  getRepoRootForWorktree: (wtPath) => {
+    const wt = store.getSnapshot().state.worktrees.list.find((w) => w.path === wtPath)
+    return wt?.repoRoot
+  },
+  getLatestClaudeSessionId: async (wtPath) => latestClaudeSessionId(wtPath)
+})
+
+const activityDeriver = new ActivityDeriver(store)
 
 function createWindow(): BrowserWindow {
   const bounds = config.windowBounds || { width: 1400, height: 900, x: undefined!, y: undefined! }
@@ -684,21 +767,82 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  // Persisted workspace panes (tabs per pane, per worktree, per repo).
-  ipcMain.handle('config:getPanes', () => {
-    return config.panes || {}
-  })
-
+  // Pane / tab tree — fully main-owned via PanesFSM. Renderers call these
+  // methods instead of computing pane state locally.
   ipcMain.handle(
-    'config:setPanes',
-    (_, panes: Record<string, Record<string, PersistedPane[]>>) => {
-      config.panes = panes
-      saveConfig(config)
+    'panes:ensureInitialized',
+    (
+      _,
+      wtPath: string,
+      opts?: { initialPrompt?: string; teleportSessionId?: string }
+    ) => {
+      panesFSM.ensureInitialized(wtPath, opts)
       return true
     }
   )
+  ipcMain.handle(
+    'panes:addTab',
+    (_, wtPath: string, tab: TerminalTab, paneId?: string) => {
+      panesFSM.addTab(wtPath, tab, paneId)
+      return true
+    }
+  )
+  ipcMain.handle('panes:closeTab', (_, wtPath: string, tabId: string) => {
+    panesFSM.closeTab(wtPath, tabId)
+    return true
+  })
+  ipcMain.handle(
+    'panes:restartClaudeTab',
+    (
+      _,
+      wtPath: string,
+      tabId: string,
+      newId: string,
+      newSessionId: string
+    ) => {
+      panesFSM.restartClaudeTab(wtPath, tabId, newId, newSessionId)
+      return true
+    }
+  )
+  ipcMain.handle(
+    'panes:selectTab',
+    (_, wtPath: string, paneId: string, tabId: string) => {
+      panesFSM.selectTab(wtPath, paneId, tabId)
+      return true
+    }
+  )
+  ipcMain.handle(
+    'panes:reorderTabs',
+    (_, wtPath: string, paneId: string, fromId: string, toId: string) => {
+      panesFSM.reorderTabs(wtPath, paneId, fromId, toId)
+      return true
+    }
+  )
+  ipcMain.handle(
+    'panes:moveTabToPane',
+    (
+      _,
+      wtPath: string,
+      tabId: string,
+      toPaneId: string,
+      toIndex?: number
+    ) => {
+      panesFSM.moveTabToPane(wtPath, tabId, toPaneId, toIndex)
+      return true
+    }
+  )
+  ipcMain.handle('panes:splitPane', (_, wtPath: string, fromPaneId: string) => {
+    return panesFSM.splitPane(wtPath, fromPaneId)
+  })
+  ipcMain.handle('panes:clearForWorktree', (_, wtPath: string) => {
+    panesFSM.clearForWorktree(wtPath)
+    return true
+  })
 
-  // Activity log — per-worktree status transition history for the Activity view
+  // Activity log — per-worktree status transition history for the Activity view.
+  // The activity-deriver in main now calls recordActivity directly when it
+  // observes status changes; this IPC stays for any direct-from-renderer
+  // pings that haven't been migrated yet.
   ipcMain.on('activity:record', (_, worktreePath: string, state: ActivityState) => {
     recordActivity(worktreePath, state)
   })
@@ -753,24 +897,7 @@ function registerIpcHandlers(): void {
   // the new per-tab scheme without losing their session — the spawn path
   // uses `--resume` when the file exists.
   ipcMain.handle('claude:latestSessionId', (_, cwd: string): string | null => {
-    try {
-      const encoded = cwd.replace(/[^a-zA-Z0-9]/g, '-')
-      const dir = join(homedir(), '.claude', 'projects', encoded)
-      const files = readdirSync(dir).filter((f) => f.endsWith('.jsonl'))
-      if (files.length === 0) return null
-      let bestId: string | null = null
-      let bestMtime = -Infinity
-      for (const file of files) {
-        const mtime = statSync(join(dir, file)).mtimeMs
-        if (mtime > bestMtime) {
-          bestMtime = mtime
-          bestId = file.replace(/\.jsonl$/, '')
-        }
-      }
-      return bestId
-    } catch {
-      return null
-    }
+    return latestClaudeSessionId(cwd)
   })
 
   // Settings: GitHub token
@@ -1079,6 +1206,14 @@ app.whenReady().then(() => {
   // App.tsx's first render already has the real data.
   void worktreesFSM.refreshList()
 
+  // Restore persisted panes (with claude session id backfill) so the
+  // renderer hydrates with the real pane tree on first render.
+  void panesFSM.restoreFromConfig(config.panes)
+
+  // Start the activity deriver — it observes terminals/prs/panes events
+  // and writes recordActivity + lastActive without renderer involvement.
+  activityDeriver.start()
+
   // Kick off the PR poller. An initial refreshAll() runs immediately and
   // then on a 5-minute interval.
   prPoller.start()
@@ -1126,8 +1261,10 @@ app.whenReady().then(() => {
     }
   }).catch((err) => log('control', 'failed to start', err instanceof Error ? err.message : err))
 
-  // Watch status dir globally — route to correct window via ptyManager
-  stopWatchingStatus = watchStatusDir((id) => ptyManager.getWindowForTerminal(id))
+  // Watch status dir globally — hook events become terminals/statusChanged
+  // dispatches on the store, which the state transport fans out to all
+  // clients.
+  stopWatchingStatus = watchStatusDir(store)
 
   // One window shows all repos. The renderer reads `config.repoRoots` via
   // `repo:list` and opens each one on mount.

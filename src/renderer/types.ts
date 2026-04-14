@@ -21,25 +21,13 @@ export interface FileReadResult {
   error?: string
 }
 
-export interface TerminalTab {
-  id: string
-  type: 'claude' | 'shell' | 'diff' | 'file'
-  label: string
-  /** For diff/file tabs: the file path */
-  filePath?: string
-  /** For diff tabs: whether the diff is for staged changes */
-  staged?: boolean
-  /** For diff tabs: show the branch diff (base...HEAD) instead of working-tree diff */
-  branchDiff?: boolean
-  /** For diff tabs: when set, show this commit's full diff instead of a file diff */
-  commitHash?: string
-  /** For claude tabs: UUID passed to `claude --session-id` so the tab resumes its own session. */
-  sessionId?: string
-  /** For claude tabs: one-shot kickoff prompt appended to the claude command on first spawn. Not persisted. */
-  initialPrompt?: string
-  /** For claude tabs: one-shot teleport session id. When set, spawns `claude --teleport <id>` instead of the normal flow. Not persisted. */
-  teleportSessionId?: string
-}
+import type {
+  PtyStatus,
+  PendingTool,
+  TerminalTab,
+  WorkspacePane
+} from '../shared/state/terminals'
+export type { PtyStatus, PendingTool, TerminalTab, WorkspacePane }
 
 export interface PersistedTab {
   id: string
@@ -48,23 +36,10 @@ export interface PersistedTab {
   sessionId?: string
 }
 
-export interface WorkspacePane {
-  id: string
-  tabs: TerminalTab[]
-  activeTabId: string
-}
-
 export interface PersistedPane {
   id: string
   tabs: PersistedTab[]
   activeTabId: string
-}
-
-export type PtyStatus = 'idle' | 'processing' | 'waiting' | 'needs-approval'
-
-export interface PendingTool {
-  name: string
-  input: Record<string, unknown>
 }
 
 export type QuestStep = 'hidden' | 'spawn-second' | 'switch-between' | 'finale' | 'done'
@@ -246,8 +221,33 @@ export interface ElectronAPI {
   getAvailableEditors(): Promise<{ id: string; name: string }[]>
   openInEditor(worktreePath: string, filePath?: string): Promise<{ ok: true } | { ok: false; error: string }>
 
-  getWorkspacePanes(): Promise<Record<string, Record<string, PersistedPane[]>>>
-  setWorkspacePanes(panes: Record<string, Record<string, PersistedPane[]>>): Promise<boolean>
+  panesEnsureInitialized(
+    wtPath: string,
+    opts?: { initialPrompt?: string; teleportSessionId?: string }
+  ): Promise<boolean>
+  panesAddTab(wtPath: string, tab: TerminalTab, paneId?: string): Promise<boolean>
+  panesCloseTab(wtPath: string, tabId: string): Promise<boolean>
+  panesRestartClaudeTab(
+    wtPath: string,
+    tabId: string,
+    newId: string,
+    newSessionId: string
+  ): Promise<boolean>
+  panesSelectTab(wtPath: string, paneId: string, tabId: string): Promise<boolean>
+  panesReorderTabs(
+    wtPath: string,
+    paneId: string,
+    fromId: string,
+    toId: string
+  ): Promise<boolean>
+  panesMoveTabToPane(
+    wtPath: string,
+    tabId: string,
+    toPaneId: string,
+    toIndex?: number
+  ): Promise<boolean>
+  panesSplitPane(wtPath: string, fromPaneId: string): Promise<WorkspacePane | null>
+  panesClearForWorktree(wtPath: string): Promise<boolean>
   saveTerminalHistory(id: string, content: string): Promise<boolean>
   saveTerminalHistorySync(id: string, content: string): void
   loadTerminalHistory(id: string): Promise<string | null>
@@ -279,15 +279,8 @@ export interface ElectronAPI {
   resizeTerminal(id: string, cols: number, rows: number): void
   killTerminal(id: string): void
   onTerminalData(callback: (id: string, data: string) => void): () => void
-  onStatusChange(
-    callback: (id: string, status: PtyStatus, pendingTool: PendingTool | null) => void
-  ): () => void
-  onShellActivity(
-    callback: (id: string, payload: { active: boolean; processName?: string }) => void
-  ): () => void
   onTerminalExit(callback: (id: string, exitCode: number) => void): () => void
 
-  recordActivity(worktreePath: string, state: string): void
   getActivityLog(): Promise<ActivityLog>
   clearActivityLog(worktreePath?: string): Promise<boolean>
 

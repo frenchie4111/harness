@@ -28,6 +28,12 @@ import {
   type WorktreesEvent,
   type WorktreesState
 } from './worktrees'
+import {
+  initialTerminals,
+  terminalsReducer,
+  type TerminalsEvent,
+  type TerminalsState
+} from './terminals'
 
 export type { SettingsState, SettingsEvent }
 export type { PRsState, PRsEvent, PRStatus, CheckStatus, PRReview } from './prs'
@@ -40,6 +46,15 @@ export type {
   PendingWorktree,
   PendingStatus
 } from './worktrees'
+export type {
+  TerminalsState,
+  TerminalsEvent,
+  PtyStatus,
+  PendingTool,
+  ShellActivity,
+  TerminalTab,
+  WorkspacePane
+} from './terminals'
 
 export interface AppState {
   settings: SettingsState
@@ -47,6 +62,7 @@ export interface AppState {
   onboarding: OnboardingState
   hooks: HooksState
   worktrees: WorktreesState
+  terminals: TerminalsState
 }
 
 export type StateEvent =
@@ -55,13 +71,15 @@ export type StateEvent =
   | OnboardingEvent
   | HooksEvent
   | WorktreesEvent
+  | TerminalsEvent
 
 export const initialState: AppState = {
   settings: initialSettings,
   prs: initialPRs,
   onboarding: initialOnboarding,
   hooks: initialHooks,
-  worktrees: initialWorktrees
+  worktrees: initialWorktrees,
+  terminals: initialTerminals
 }
 
 export function rootReducer(state: AppState, event: StateEvent): AppState {
@@ -87,6 +105,12 @@ export function rootReducer(state: AppState, event: StateEvent): AppState {
     return {
       ...state,
       worktrees: worktreesReducer(state.worktrees, event as WorktreesEvent)
+    }
+  }
+  if (event.type.startsWith('terminals/')) {
+    return {
+      ...state,
+      terminals: terminalsReducer(state.terminals, event as TerminalsEvent)
     }
   }
   return state

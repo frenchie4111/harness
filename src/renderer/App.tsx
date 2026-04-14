@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { useSettings, usePrs, useOnboarding, useHooks, useWorktrees } from './store'
-import type { Worktree, TerminalTab, PtyStatus, PendingTool, QuestStep, WorkspacePane, PendingWorktree, UpdaterStatus, RepoConfig } from './types'
+import { useSettings, usePrs, useOnboarding, useHooks, useWorktrees, useTerminals, usePanes, useLastActive } from './store'
+import type { Worktree, TerminalTab, PtyStatus, PendingTool, QuestStep, PendingWorktree, UpdaterStatus, RepoConfig } from './types'
 import type { Action } from './hotkeys'
 import { resolveHotkeys } from './hotkeys'
 import { HotkeysProvider } from './components/Tooltip'
@@ -32,10 +32,6 @@ function makeTerminalId(prefix: string, worktreePath: string): string {
   return `${prefix}-${safe}`
 }
 
-function newPaneId(): string {
-  return `pane-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-}
-
 function isPendingId(id: string | null | undefined): id is string {
   return typeof id === 'string' && id.startsWith('pending:')
 }
@@ -56,9 +52,11 @@ export default function App(): JSX.Element {
   const [activeWorktreeId, setActiveWorktreeId] = useState<string | null>(
     () => worktrees[0]?.path ?? null
   )
-  const [panes, setPanes] = useState<Record<string, WorkspacePane[]>>({})
-  // Which pane in each worktree is the "focused" one for hotkeys (newTab, closeTab, cycleTab).
-  // Tracks the last pane the user interacted with; defaults to the first pane.
+  // Pane / tab tree lives in the main-process store; the renderer reads it
+  // and dispatches every mutation as an IPC method call. Per-client UI
+  // focus (which pane in each worktree the user last interacted with) is
+  // still renderer-local — like activeWorktreeId.
+  const panes = usePanes()
   const [activePaneId, setActivePaneId] = useState<Record<string, string>>({})
 
   // Derived flat-tab views — preserved so the read-heavy parts of the app
@@ -79,18 +77,23 @@ export default function App(): JSX.Element {
     }
     return out
   }, [panes, activePaneId])
-  const [statuses, setStatuses] = useState<Record<string, PtyStatus>>({})
-  const [pendingTools, setPendingTools] = useState<Record<string, PendingTool | null>>({})
-  const [shellActivity, setShellActivity] = useState<
-    Record<string, { active: boolean; processName?: string }>
-  >({})
+  // Per-terminal status/pendingTool/shellActivity all live in the
+  // main-process store. Hooks in main/hooks.ts (status) and
+  // main/pty-manager.ts (shellActivity, exit) dispatch through the store;
+  // we read via useTerminals().
+  const terminals = useTerminals()
+  const statuses = terminals.statuses
+  const pendingTools = terminals.pendingTools
+  const shellActivity = terminals.shellActivity
   // PR state lives in the main-process store (see src/main/pr-poller.ts).
   // Polling, on-focus refresh, and stale dedup all live there.
   const prs = usePrs()
   const prStatuses = prs.byPath
   const mergedPaths = prs.mergedByPath
   const prLoading = prs.loading
-  const [lastActive, setLastActive] = useState<Record<string, number>>({})
+  // Per-worktree last-active timestamps — derived in main by the
+  // activity-deriver, dispatched as terminals/lastActiveChanged events.
+  const lastActive = useLastActive()
   const repoRoots = wtState.repoRoots
   const [activeRepoConfig, setActiveRepoConfig] = useState<RepoConfig | null>(null)
   // Map of worktree path → repoRoot for quick lookups outside of `worktrees`.
@@ -176,9 +179,6 @@ export default function App(): JSX.Element {
     () => worktrees.filter((w) => !w.isMain).length,
     [worktrees]
   )
-  // Flipped to true after persisted tabs finish loading, so the persist effect
-  // below doesn't overwrite the on-disk state with empty initial React state.
-  const tabsLoadedRef = useRef(false)
   // Track which worktrees already have hooks installed so we only prompt once
   const hooksChecked = useRef(new Set<string>())
   // Kickoff prompts staged by the new-worktree screen. Consumed (and deleted)
@@ -214,79 +214,12 @@ const setQuestStep = useCallback((next: QuestStep) => {
     }
   }, [activeWorktreeId, questStep, setQuestStep])
 
-  // Load persisted panes on mount. Repos + worktrees are already in the
-  // store from boot; we only fetch things that aren't in a slice.
+  // Panes + repos + worktrees are all hydrated from the main-process store
+  // before App mounts. The only thing we still need to do at mount is ask
+  // main for a fresh worktree list in case anything changed on disk.
   useEffect(() => {
-    (async () => {
-      // Ask main for a fresh list in case anything changed on disk between
-      // the initial boot-time refresh and when the renderer hydrated.
-      void window.api.refreshWorktreesList()
-      const persistedPanes = await window.api.getWorkspacePanes()
-      if (persistedPanes) {
-        const restored: Record<string, WorkspacePane[]> = {}
-        for (const byWt of Object.values(persistedPanes)) {
-          for (const [wtPath, paneList] of Object.entries(byWt)) {
-            const allTabs = paneList.flatMap((p) => p.tabs)
-            const needsBackfill = allTabs.some((t) => t.type === 'claude' && !t.sessionId)
-            const latest = needsBackfill
-              ? await window.api.getLatestClaudeSessionId(wtPath)
-              : null
-            let claimedLatest = false
-            restored[wtPath] = paneList.map((pane) => ({
-              id: pane.id,
-              activeTabId: pane.activeTabId,
-              tabs: pane.tabs.map((t) => {
-                if (t.type !== 'claude' || t.sessionId) return t as TerminalTab
-                if (latest && !claimedLatest) {
-                  claimedLatest = true
-                  return { ...t, sessionId: latest }
-                }
-                return { ...t, sessionId: crypto.randomUUID() }
-              })
-            }))
-          }
-        }
-        setPanes(restored)
-      }
-      tabsLoadedRef.current = true
-    })()
+    void window.api.refreshWorktreesList()
   }, [])
-
-  // Persist terminal tab metadata whenever it changes (claude + shell only —
-  // diff tabs are transient and derived from file state). Writes are nested
-  // by repoRoot so two repos with coincidentally equal worktree paths stay
-  // distinct. Waits for the initial load so we don't clobber on-disk state
-  // with empty initial React state.
-  useEffect(() => {
-    if (!tabsLoadedRef.current) return
-    type PersistedShape = { id: string; tabs: { id: string; type: 'claude' | 'shell'; label: string; sessionId?: string }[]; activeTabId: string }
-    const persistable: Record<string, Record<string, PersistedShape[]>> = {}
-    for (const [wtPath, paneList] of Object.entries(panes)) {
-      const repoRoot = worktreeRepoByPath[wtPath] || '__orphan__'
-      const persistedPanes = paneList
-        .map((pane) => {
-          const tabs = pane.tabs
-            .filter((t) => t.type !== 'diff' && t.type !== 'file')
-            .map((t) => ({
-              id: t.id,
-              type: t.type as 'claude' | 'shell',
-              label: t.label,
-              sessionId: t.sessionId
-            }))
-          if (tabs.length === 0) return null
-          const validActive = tabs.some((t) => t.id === pane.activeTabId)
-            ? pane.activeTabId
-            : tabs[0].id
-          return { id: pane.id, tabs, activeTabId: validActive }
-        })
-        .filter((p): p is NonNullable<typeof p> => p !== null)
-      if (persistedPanes.length > 0) {
-        if (!persistable[repoRoot]) persistable[repoRoot] = {}
-        persistable[repoRoot][wtPath] = persistedPanes
-      }
-    }
-    window.api.setWorkspacePanes(persistable)
-  }, [panes])
 
   // Flush all terminal scrollback to disk when the window is about to close
   useEffect(() => {
@@ -372,16 +305,6 @@ const setQuestStep = useCallback((next: QuestStep) => {
     return null
   }, [terminalTabs])
 
-  // Mark a worktree as recently active (debounced to avoid thrashing on rapid PTY output)
-  const activityTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
-  const markActive = useCallback((wtPath: string) => {
-    if (activityTimers.current[wtPath]) return // already scheduled
-    activityTimers.current[wtPath] = setTimeout(() => {
-      delete activityTimers.current[wtPath]
-      setLastActive((prev) => ({ ...prev, [wtPath]: Date.now() }))
-    }, 2000) // debounce: update at most every 2s per worktree
-  }, [])
-
   // Rolling last-line-of-output cache per terminal, for the CommandCenter preview.
   // Tap terminal:data in the renderer — the main process already broadcasts it,
   // so no IPC additions are needed. Buffer in a ref, flush to state every 500ms.
@@ -423,31 +346,21 @@ const setQuestStep = useCallback((next: QuestStep) => {
     }
   }, [])
 
-  // Listen for status changes from main process
+  // Observe terminal status transitions to trigger PR refresh when a Claude
+  // tab finishes a turn ('waiting'). lastActive timestamps are now derived
+  // in main by the activity-deriver, so we don't need to track them here.
+  const prevStatusesRef = useRef<Record<string, PtyStatus>>({})
   useEffect(() => {
-    const cleanup = window.api.onStatusChange((id, status, pendingTool) => {
-      console.log(`[status] received: id=${id} status=${status}`)
-      setStatuses((prev) => ({ ...prev, [id]: status as PtyStatus }))
-      setPendingTools((prev) => {
-        const next = status === 'needs-approval' ? pendingTool : null
-        if (prev[id] === next) return prev
-        return { ...prev, [id]: next }
-      })
-      const wtPath = terminalToWorktree(id)
-      if (wtPath) {
-        markActive(wtPath)
-        // Refresh PR status when Claude finishes a turn (may have pushed/created PR)
-        if (status === 'waiting') fetchPRStatus(wtPath)
+    const prev = prevStatusesRef.current
+    for (const [id, status] of Object.entries(statuses)) {
+      if (prev[id] === status) continue
+      if (status === 'waiting') {
+        const wtPath = terminalToWorktree(id)
+        if (wtPath) fetchPRStatus(wtPath)
       }
-    })
-    return cleanup
-  }, [terminalToWorktree, markActive, fetchPRStatus])
-
-  useEffect(() => {
-    return window.api.onShellActivity((id, payload) => {
-      setShellActivity((prev) => ({ ...prev, [id]: payload }))
-    })
-  }, [])
+    }
+    prevStatusesRef.current = statuses
+  }, [statuses, terminalToWorktree, fetchPRStatus])
 
   // Auto-focus the active terminal when switching worktrees so the user can
   // start typing immediately. Deferred to the next frame so the xterm layer
@@ -485,38 +398,21 @@ const setQuestStep = useCallback((next: QuestStep) => {
       })()
     }
 
-    setPanes((prev) => {
-      const existing = prev[activeWorktreeId] || []
-      if (existing.some((p) => p.tabs.length > 0)) return prev
-      const claudeTabId = makeTerminalId('claude', activeWorktreeId)
-      const pendingPrompt = pendingPromptsRef.current[activeWorktreeId]
+    // Initialize panes for this worktree if it has none. The pending prompt
+    // / teleport are renderer-local one-shot staging — consume them here and
+    // hand them to main, which will embed them in the new claude tab.
+    const existing = panes[activeWorktreeId] || []
+    if (!existing.some((p) => p.tabs.length > 0)) {
+      const initialPrompt = pendingPromptsRef.current[activeWorktreeId]
+      const teleportSessionId = pendingTeleportRef.current[activeWorktreeId]
       delete pendingPromptsRef.current[activeWorktreeId]
-      const pendingTeleport = pendingTeleportRef.current[activeWorktreeId]
       delete pendingTeleportRef.current[activeWorktreeId]
-      const shellTabId = `shell-${activeWorktreeId}-${Date.now()}`
-      const tabs: TerminalTab[] = [
-        {
-          id: claudeTabId,
-          type: 'claude',
-          label: 'Claude',
-          // Generate a UUID even in teleport mode — we pass it to
-          // `claude --teleport <id> --session-id <uuid>` so the replayed
-          // history lands in a known local session file. Reloads then resume
-          // via the standard `--resume` path.
-          sessionId: crypto.randomUUID(),
-          initialPrompt: pendingTeleport ? undefined : (pendingPrompt || undefined),
-          teleportSessionId: pendingTeleport || undefined
-        },
-        {
-          id: shellTabId,
-          type: 'shell',
-          label: 'Shell'
-        }
-      ]
-      const pane: WorkspacePane = { id: newPaneId(), tabs, activeTabId: claudeTabId }
-      return { ...prev, [activeWorktreeId]: [pane] }
-    })
-  }, [activeWorktreeId, hooksConsent])
+      void window.api.panesEnsureInitialized(activeWorktreeId, {
+        initialPrompt,
+        teleportSessionId
+      })
+    }
+  }, [activeWorktreeId, hooksConsent, panes])
 
   const handleAcceptHooks = useCallback(() => {
     void window.api.acceptHooks()
@@ -695,12 +591,8 @@ const setQuestStep = useCallback((next: QuestStep) => {
       if (tab.type !== 'diff' && tab.type !== 'file') markTerminalClosing(tab.id)
       window.api.killTerminal(tab.id)
     }
-    // Clean up pane state
-    setPanes((prev) => {
-      const next = { ...prev }
-      delete next[path]
-      return next
-    })
+    // Clean up pane state — main owns the panes map
+    void window.api.panesClearForWorktree(path)
     setActivePaneId((prev) => {
       const next = { ...prev }
       delete next[path]
@@ -736,11 +628,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
           if (tab.type !== 'diff' && tab.type !== 'file') markTerminalClosing(tab.id)
           window.api.killTerminal(tab.id)
         }
-        setPanes((prev) => {
-          const next = { ...prev }
-          delete next[path]
-          return next
-        })
+        void window.api.panesClearForWorktree(path)
         setActivePaneId((prev) => {
           const next = { ...prev }
           delete next[path]
@@ -768,28 +656,16 @@ const setQuestStep = useCallback((next: QuestStep) => {
   )
 
   // Append a tab to a specific pane (or the focused pane if paneId is omitted).
-  // Creates an initial pane if the worktree has none.
+  // Creates an initial pane if the worktree has none. Main owns the pane
+  // tree; we resolve the target pane id locally and pass it through.
   const appendTabToPane = useCallback(
     (worktreePath: string, tab: TerminalTab, paneId?: string) => {
-      setPanes((prev) => {
-        const list = prev[worktreePath] || []
-        if (list.length === 0) {
-          const pane: WorkspacePane = { id: newPaneId(), tabs: [tab], activeTabId: tab.id }
-          return { ...prev, [worktreePath]: [pane] }
-        }
-        const targetId = paneId || activePaneId[worktreePath] || list[0].id
-        const nextList = list.map((p) =>
-          p.id === targetId
-            ? { ...p, tabs: [...p.tabs, tab], activeTabId: tab.id }
-            : p
-        )
-        return { ...prev, [worktreePath]: nextList }
-      })
-      setActivePaneId((prev) => {
-        const list = panes[worktreePath] || []
-        const target = paneId || prev[worktreePath] || list[0]?.id
-        return target ? { ...prev, [worktreePath]: target } : prev
-      })
+      const list = panes[worktreePath] || []
+      const targetId = paneId || activePaneId[worktreePath] || list[0]?.id
+      void window.api.panesAddTab(worktreePath, tab, targetId)
+      if (targetId) {
+        setActivePaneId((prev) => ({ ...prev, [worktreePath]: targetId }))
+      }
     },
     [activePaneId, panes]
   )
@@ -821,27 +697,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
         markTerminalClosing(tabId)
         window.api.killTerminal(tabId)
       }
-      setPanes((prev) => {
-        const list = prev[worktreePath] || []
-        const nextList: WorkspacePane[] = []
-        for (const pane of list) {
-          if (!pane.tabs.some((t) => t.id === tabId)) {
-            nextList.push(pane)
-            continue
-          }
-          const remaining = pane.tabs.filter((t) => t.id !== tabId)
-          if (remaining.length === 0) {
-            // Drop empty panes — unless this is the worktree's only pane,
-            // in which case keep it empty so a fresh Claude tab can spawn.
-            if (list.length === 1) nextList.push({ ...pane, tabs: [], activeTabId: '' })
-            continue
-          }
-          const newActive =
-            pane.activeTabId === tabId ? remaining[0].id : pane.activeTabId
-          nextList.push({ ...pane, tabs: remaining, activeTabId: newActive })
-        }
-        return { ...prev, [worktreePath]: nextList }
-      })
+      void window.api.panesCloseTab(worktreePath, tabId)
     },
     []
   )
@@ -852,20 +708,8 @@ const setQuestStep = useCallback((next: QuestStep) => {
       window.api.killTerminal(tabId)
       window.api.clearTerminalHistory(tabId)
       const newId = `${makeTerminalId('claude', worktreePath)}-${Date.now()}`
-      setPanes((prev) => {
-        const list = prev[worktreePath] || []
-        const nextList = list.map((pane) => {
-          if (!pane.tabs.some((t) => t.id === tabId)) return pane
-          const tabs = pane.tabs.map((t) =>
-            t.id === tabId && t.type === 'claude'
-              ? { ...t, id: newId }
-              : t
-          )
-          const activeTabId = pane.activeTabId === tabId ? newId : pane.activeTabId
-          return { ...pane, tabs, activeTabId }
-        })
-        return { ...prev, [worktreePath]: nextList }
-      })
+      const newSessionId = crypto.randomUUID()
+      void window.api.panesRestartClaudeTab(worktreePath, tabId, newId, newSessionId)
     },
     []
   )
@@ -885,14 +729,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
 
   const handleSelectTab = useCallback(
     (worktreePath: string, paneId: string, tabId: string) => {
-      setPanes((prev) => {
-        const list = prev[worktreePath] || []
-        if (!list.some((p) => p.id === paneId)) return prev
-        const nextList = list.map((p) =>
-          p.id === paneId ? { ...p, activeTabId: tabId } : p
-        )
-        return { ...prev, [worktreePath]: nextList }
-      })
+      void window.api.panesSelectTab(worktreePath, paneId, tabId)
       setActivePaneId((prev) => ({ ...prev, [worktreePath]: paneId }))
     },
     []
@@ -922,20 +759,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
   const handleReorderTabs = useCallback(
     (worktreePath: string, paneId: string, fromId: string, toId: string) => {
       if (fromId === toId) return
-      setPanes((prev) => {
-        const list = prev[worktreePath] || []
-        const nextList = list.map((pane) => {
-          if (pane.id !== paneId) return pane
-          const fromIdx = pane.tabs.findIndex((t) => t.id === fromId)
-          const toIdx = pane.tabs.findIndex((t) => t.id === toId)
-          if (fromIdx === -1 || toIdx === -1) return pane
-          const tabs = pane.tabs.slice()
-          const [moved] = tabs.splice(fromIdx, 1)
-          tabs.splice(toIdx, 0, moved)
-          return { ...pane, tabs }
-        })
-        return { ...prev, [worktreePath]: nextList }
-      })
+      void window.api.panesReorderTabs(worktreePath, paneId, fromId, toId)
     },
     []
   )
@@ -944,71 +768,23 @@ const setQuestStep = useCallback((next: QuestStep) => {
   // If toIndex is undefined, appends at the end.
   const handleMoveTabToPane = useCallback(
     (worktreePath: string, tabId: string, toPaneId: string, toIndex?: number) => {
-      setPanes((prev) => {
-        const list = prev[worktreePath] || []
-        let moved: TerminalTab | null = null
-        // First pass: remove from source pane
-        const stripped = list.map((pane) => {
-          const idx = pane.tabs.findIndex((t) => t.id === tabId)
-          if (idx === -1) return pane
-          moved = pane.tabs[idx]
-          const tabs = pane.tabs.slice()
-          tabs.splice(idx, 1)
-          const activeTabId =
-            pane.activeTabId === tabId ? tabs[0]?.id || '' : pane.activeTabId
-          return { ...pane, tabs, activeTabId }
-        })
-        if (!moved) return prev
-        // Second pass: insert into target pane. Drop any now-empty source
-        // panes unless it's the only pane in the worktree.
-        const filtered =
-          stripped.length > 1 ? stripped.filter((p) => p.tabs.length > 0 || p.id === toPaneId) : stripped
-        const nextList = filtered.map((pane) => {
-          if (pane.id !== toPaneId) return pane
-          const tabs = pane.tabs.slice()
-          const insertAt = toIndex ?? tabs.length
-          tabs.splice(insertAt, 0, moved!)
-          return { ...pane, tabs, activeTabId: moved!.id }
-        })
-        return { ...prev, [worktreePath]: nextList }
-      })
+      void window.api.panesMoveTabToPane(worktreePath, tabId, toPaneId, toIndex)
       setActivePaneId((prev) => ({ ...prev, [worktreePath]: toPaneId }))
     },
     []
   )
 
-  // Split: create a new pane to the right of `fromPaneId`. The new pane mirrors the
-  // type of the source pane's active tab — except claude tabs, which split into a shell.
+  // Split: create a new pane to the right of `fromPaneId`. Main figures out
+  // the new pane's type (claude → shell, otherwise mirror) and returns the
+  // new pane object so we can route per-client focus to it.
   const handleSplitPane = useCallback(
-    (worktreePath: string, fromPaneId: string) => {
-      const list = panes[worktreePath] || []
-      const source = list.find((p) => p.id === fromPaneId)
-      const sourceActive = source?.tabs.find((t) => t.id === source.activeTabId)
-      const sourceType = sourceActive?.type
-      const shouldShell = !sourceType || sourceType === 'claude' || sourceType === 'shell'
-
-      let tab: TerminalTab
-      if (shouldShell) {
-        tab = { id: `shell-${Date.now()}`, type: 'shell', label: 'Shell' }
-      } else {
-        tab = {
-          ...sourceActive!,
-          id: `${sourceActive!.type}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-        }
+    async (worktreePath: string, fromPaneId: string) => {
+      const newPane = await window.api.panesSplitPane(worktreePath, fromPaneId)
+      if (newPane) {
+        setActivePaneId((prev) => ({ ...prev, [worktreePath]: newPane.id }))
       }
-
-      const newPane: WorkspacePane = { id: newPaneId(), tabs: [tab], activeTabId: tab.id }
-      setPanes((prev) => {
-        const cur = prev[worktreePath] || []
-        const idx = cur.findIndex((p) => p.id === fromPaneId)
-        const insertAt = idx === -1 ? cur.length : idx + 1
-        const nextList = cur.slice()
-        nextList.splice(insertAt, 0, newPane)
-        return { ...prev, [worktreePath]: nextList }
-      })
-      setActivePaneId((prev) => ({ ...prev, [worktreePath]: newPane.id }))
     },
-    [panes]
+    []
   )
 
   const handleSendToClaude = useCallback(
@@ -1295,23 +1071,9 @@ const setQuestStep = useCallback((next: QuestStep) => {
     )
   }
 
-  // Record activity-log transitions whenever a worktree's effective state changes.
-  // Merged worktrees are terminal — once we've recorded 'merged' we stop
-  // overwriting with pty state so the timeline keeps the purple tail.
-  const lastRecordedActivity = useRef<Record<string, PtyStatus | 'merged'>>({})
-  useEffect(() => {
-    for (const [path, state] of Object.entries(worktreeStatuses)) {
-      const isMerged =
-        mergedPaths[path] ||
-        prStatuses[path]?.state === 'merged' ||
-        prStatuses[path]?.state === 'closed'
-      const next: PtyStatus | 'merged' = isMerged ? 'merged' : state
-      if (lastRecordedActivity.current[path] !== next) {
-        lastRecordedActivity.current[path] = next
-        window.api.recordActivity(path, next)
-      }
-    }
-  }, [worktreeStatuses, prStatuses, mergedPaths])
+  // Activity-log transitions are recorded by main's activity-deriver
+  // (see src/main/activity-deriver.ts). The renderer no longer pings
+  // recordActivity directly.
 
   if (showGuide) {
     return <Guide onClose={() => setShowGuide(false)} />
