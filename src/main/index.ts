@@ -214,6 +214,19 @@ store.subscribe((event) => {
   }
 })
 
+// When a repo is freshly added, refreshList() discovers its existing
+// worktrees and dispatches `worktrees/listChanged`. Those worktrees have
+// never been activated, so they have no panes — without this subscriber
+// they'd stay tab-less until the next app restart (when the boot IIFE
+// loops over them). Mirror that boot behavior on every list change so
+// any newly-appearing worktree path gets the default Claude+Shell pair.
+store.subscribe((event) => {
+  if (event.type !== 'worktrees/listChanged') return
+  for (const wt of store.getSnapshot().state.worktrees.list) {
+    panesFSM.ensureInitialized(wt.path)
+  }
+})
+
 function createWindow(): BrowserWindow {
   const bounds = config.windowBounds || { width: 1400, height: 900, x: undefined!, y: undefined! }
 
