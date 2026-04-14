@@ -41,6 +41,7 @@ import { startControlServer } from './control-server'
 import { writeMcpConfigForTerminal, pruneMcpConfigs } from './mcp-config'
 import { recordActivity, getActivityLog, clearAllActivity, clearActivityForWorktree, sealAllActive, touchActivityMeta, finalizeActivity, type ActivityState, type PRState } from './activity'
 import { log, getLogFilePath } from './debug'
+import { buildInitialAppState } from './build-initial-state'
 
 // In dev, use a separate userData dir so a running dev instance doesn't
 // fight with the installed prod app over config.json / activity.json / etc.
@@ -73,57 +74,7 @@ const ptyManager = new PtyManager()
 let config = loadConfig()
 let stopWatchingStatus: (() => void) | null = null
 
-const store = new Store({
-  prs: {
-    byPath: {},
-    mergedByPath: {},
-    loading: false
-  },
-  onboarding: {
-    quest: config.onboarding?.quest ?? 'hidden'
-  },
-  hooks: {
-    consent: 'pending',
-    justInstalled: false
-  },
-  worktrees: {
-    list: [],
-    repoRoots: config.repoRoots || [],
-    pending: []
-  },
-  terminals: {
-    statuses: {},
-    pendingTools: {},
-    shellActivity: {},
-    panes: {},
-    lastActive: {}
-  },
-  updater: {
-    status: null
-  },
-  repoConfigs: {
-    byRepo: {}
-  },
-  settings: {
-    theme: config.theme || DEFAULT_THEME,
-    hotkeys: config.hotkeys || null,
-    claudeCommand: config.claudeCommand || DEFAULT_CLAUDE_COMMAND,
-    worktreeScripts: {
-      setup: config.worktreeSetupCommand || '',
-      teardown: config.worktreeTeardownCommand || ''
-    },
-    claudeEnvVars: config.claudeEnvVars || {},
-    harnessMcpEnabled: config.harnessMcpEnabled !== false,
-    nameClaudeSessions: config.nameClaudeSessions ?? false,
-    terminalFontFamily: config.terminalFontFamily || DEFAULT_TERMINAL_FONT_FAMILY,
-    terminalFontSize: config.terminalFontSize || DEFAULT_TERMINAL_FONT_SIZE,
-    editor: config.editor || DEFAULT_EDITOR_ID,
-    worktreeBase: config.worktreeBase || DEFAULT_WORKTREE_BASE,
-    mergeStrategy: config.mergeStrategy || DEFAULT_MERGE_STRATEGY,
-    hasGithubToken: hasSecret('githubToken'),
-    githubAuthSource: null
-  }
-})
+const store = new Store(buildInitialAppState(config, { hasGithubToken: hasSecret('githubToken') }))
 registerStateTransport(store)
 
 /** Query the harness star state, dispatch it to the slice, and auto-star
@@ -260,6 +211,19 @@ store.subscribe((event) => {
     event.type === 'hooks/consentChanged'
   ) {
     installHooksForAcceptedWorktrees()
+  }
+})
+
+// When a repo is freshly added, refreshList() discovers its existing
+// worktrees and dispatches `worktrees/listChanged`. Those worktrees have
+// never been activated, so they have no panes — without this subscriber
+// they'd stay tab-less until the next app restart (when the boot IIFE
+// loops over them). Mirror that boot behavior on every list change so
+// any newly-appearing worktree path gets the default Claude+Shell pair.
+store.subscribe((event) => {
+  if (event.type !== 'worktrees/listChanged') return
+  for (const wt of store.getSnapshot().state.worktrees.list) {
+    panesFSM.ensureInitialized(wt.path)
   }
 })
 
