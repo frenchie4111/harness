@@ -41,6 +41,14 @@ import { startControlServer } from './control-server'
 import { writeMcpConfigForTerminal, pruneMcpConfigs } from './mcp-config'
 import { recordActivity, getActivityLog, clearAllActivity, clearActivityForWorktree, sealAllActive, touchActivityMeta, finalizeActivity, type ActivityState, type PRState } from './activity'
 import { log, getLogFilePath } from './debug'
+import { initialPRs } from '../shared/state/prs'
+import { initialOnboarding } from '../shared/state/onboarding'
+import { initialHooks } from '../shared/state/hooks'
+import { initialWorktrees } from '../shared/state/worktrees'
+import { initialTerminals } from '../shared/state/terminals'
+import { initialUpdater } from '../shared/state/updater'
+import { initialRepoConfigs } from '../shared/state/repo-configs'
+import { initialSettings } from '../shared/state/settings'
 
 // In dev, use a separate userData dir so a running dev instance doesn't
 // fight with the installed prod app over config.json / activity.json / etc.
@@ -74,37 +82,15 @@ let config = loadConfig()
 let stopWatchingStatus: (() => void) | null = null
 
 const store = new Store({
-  prs: {
-    byPath: {},
-    mergedByPath: {},
-    loading: false
-  },
-  onboarding: {
-    quest: config.onboarding?.quest ?? 'hidden'
-  },
-  hooks: {
-    consent: 'pending',
-    justInstalled: false
-  },
-  worktrees: {
-    list: [],
-    repoRoots: config.repoRoots || [],
-    pending: []
-  },
-  terminals: {
-    statuses: {},
-    pendingTools: {},
-    shellActivity: {},
-    panes: {},
-    lastActive: {}
-  },
-  updater: {
-    status: null
-  },
-  repoConfigs: {
-    byRepo: {}
-  },
+  prs: initialPRs,
+  onboarding: { ...initialOnboarding, quest: config.onboarding?.quest ?? 'hidden' },
+  hooks: initialHooks,
+  worktrees: { ...initialWorktrees, repoRoots: config.repoRoots || [] },
+  terminals: initialTerminals,
+  updater: initialUpdater,
+  repoConfigs: initialRepoConfigs,
   settings: {
+    ...initialSettings,
     theme: config.theme || DEFAULT_THEME,
     hotkeys: config.hotkeys || null,
     claudeCommand: config.claudeCommand || DEFAULT_CLAUDE_COMMAND,
@@ -120,8 +106,7 @@ const store = new Store({
     editor: config.editor || DEFAULT_EDITOR_ID,
     worktreeBase: config.worktreeBase || DEFAULT_WORKTREE_BASE,
     mergeStrategy: config.mergeStrategy || DEFAULT_MERGE_STRATEGY,
-    hasGithubToken: hasSecret('githubToken'),
-    githubAuthSource: null
+    hasGithubToken: hasSecret('githubToken')
   }
 })
 registerStateTransport(store)
