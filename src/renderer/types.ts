@@ -330,6 +330,9 @@ export interface ElectronAPI {
   onStatusChange(
     callback: (id: string, status: PtyStatus, pendingTool: PendingTool | null) => void
   ): () => void
+  onShellActivity(
+    callback: (id: string, payload: { active: boolean; processName?: string }) => void
+  ): () => void
   onTerminalExit(callback: (id: string, exitCode: number) => void): () => void
 
   recordActivity(worktreePath: string, state: string): void

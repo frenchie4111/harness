@@ -845,7 +845,7 @@ function registerIpcHandlers(): void {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (!win) return
     const extraEnv = isClaude ? config.claudeEnvVars : undefined
-    ptyManager.create(id, cwd, cmd, args, win, extraEnv)
+    ptyManager.create(id, cwd, cmd, args, win, extraEnv, !isClaude)
   })
 
   ipcMain.on('pty:write', (_, id: string, data: string) => {

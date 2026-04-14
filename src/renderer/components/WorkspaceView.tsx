@@ -22,6 +22,7 @@ interface WorkspaceViewProps {
   panes: WorkspacePane[]
   focusedPaneId: string
   statuses: Record<string, PtyStatus>
+  shellActivity: Record<string, { active: boolean; processName?: string }>
   visible: boolean
   claudeCommand: string
   nameClaudeSessions: boolean
@@ -51,6 +52,7 @@ export function WorkspaceView({
   panes,
   focusedPaneId,
   statuses,
+  shellActivity,
   visible,
   claudeCommand,
   nameClaudeSessions,
@@ -155,6 +157,7 @@ export function WorkspaceView({
               isFocused={pane.id === focusedPaneId}
               paneCount={panes.length}
               statuses={statuses}
+              shellActivity={shellActivity}
               repoLabel={repoLabel}
               branch={branch}
               registerSlot={registerSlot}

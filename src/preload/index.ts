@@ -296,6 +296,19 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('terminal:status', handler)
     return () => ipcRenderer.removeListener('terminal:status', handler)
   },
+  onShellActivity: (
+    callback: (id: string, payload: { active: boolean; processName?: string }) => void
+  ) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      id: string,
+      payload: { active: boolean; processName?: string }
+    ): void => {
+      callback(id, payload)
+    }
+    ipcRenderer.on('terminal:shell-activity', handler)
+    return () => ipcRenderer.removeListener('terminal:shell-activity', handler)
+  },
   // Activity log
   recordActivity: (worktreePath: string, state: string) => {
     ipcRenderer.send('activity:record', worktreePath, state)

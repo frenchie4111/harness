@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react'
-import { X, Plus, Sparkles, Code2, SplitSquareHorizontal } from 'lucide-react'
+import { X, Plus, Sparkles, Code2, SplitSquareHorizontal, Loader2 } from 'lucide-react'
 import {
   SortableContext,
   horizontalListSortingStrategy,
@@ -16,6 +16,7 @@ interface TerminalPanelProps {
   isFocused: boolean
   paneCount: number
   statuses: Record<string, PtyStatus>
+  shellActivity: Record<string, { active: boolean; processName?: string }>
   repoLabel: string
   branch: string
   registerSlot: (paneId: string, el: HTMLDivElement | null) => void
@@ -37,12 +38,13 @@ interface SortableTabProps {
   tab: TerminalTab
   isActive: boolean
   status: PtyStatus
+  shellActivity?: { active: boolean; processName?: string }
   showClose: boolean
   onSelect: () => void
   onClose: () => void
 }
 
-function SortableTab({ tab, isActive, status, showClose, onSelect, onClose }: SortableTabProps): JSX.Element {
+function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect, onClose }: SortableTabProps): JSX.Element {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: tab.id
   })
@@ -77,9 +79,19 @@ function SortableTab({ tab, isActive, status, showClose, onSelect, onClose }: So
       }`}
       onClick={onSelect}
     >
-      {tab.type !== 'diff' && (
+      {tab.type === 'shell' ? (
+        shellActivity?.active ? (
+          <Loader2
+            size={10}
+            className="animate-spin text-fg-bright"
+            aria-label={`Running: ${shellActivity.processName || '?'}`}
+          />
+        ) : (
+          <span className="w-1.5 h-1.5 rounded-full bg-faint" />
+        )
+      ) : tab.type !== 'diff' && tab.type !== 'file' ? (
         <span className={`w-1.5 h-1.5 rounded-full ${TAB_STATUS_DOT[status]}`} />
-      )}
+      ) : null}
       <span>{tab.label}</span>
       {showClose && (
         <Tooltip label="Close tab" action="closeTab">
@@ -104,6 +116,7 @@ export function TerminalPanel({
   pane,
   paneCount,
   statuses,
+  shellActivity,
   repoLabel,
   branch,
   registerSlot,
@@ -146,6 +159,7 @@ export function TerminalPanel({
                 tab={tab}
                 isActive={tab.id === pane.activeTabId}
                 status={statuses[tab.id] || 'idle'}
+                shellActivity={shellActivity[tab.id]}
                 showClose={pane.tabs.length > 1 || paneCount > 1}
                 onSelect={() => onSelectTab(tab.id)}
                 onClose={() => onCloseTab(tab.id)}

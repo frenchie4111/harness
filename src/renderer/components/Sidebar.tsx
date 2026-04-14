@@ -15,6 +15,7 @@ interface SidebarProps {
   activeWorktreeId: string | null
   statuses: Record<string, PtyStatus>
   pendingTools: Record<string, PendingTool | null>
+  shellActivity: Record<string, boolean>
   prStatuses: Record<string, PRStatus | null>
   mergedPaths?: Record<string, boolean>
   prLoading: boolean
@@ -50,6 +51,7 @@ export function Sidebar({
   activeWorktreeId,
   statuses,
   pendingTools,
+  shellActivity,
   prStatuses,
   mergedPaths,
   prLoading,
@@ -279,6 +281,7 @@ export function Sidebar({
                   isActive={wt.path === activeWorktreeId}
                   status={statuses[wt.path] || 'idle'}
                   pendingTool={pendingTools[wt.path] || null}
+                  shellActive={!!shellActivity[wt.path]}
                   prStatus={prStatuses[wt.path]}
                   isMerged={group.key === 'merged'}
                   repoLabel={showRepoLabelsOnTabs ? repoLabelFor(wt.repoRoot) : undefined}
