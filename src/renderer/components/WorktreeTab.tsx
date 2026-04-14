@@ -134,6 +134,15 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
           </div>
         )}
       </div>
+      {prStatus && typeof prStatus.additions === 'number' && typeof prStatus.deletions === 'number' && (
+        <span
+          className="text-[10px] font-mono shrink-0 leading-none"
+          title={`+${prStatus.additions} additions, −${prStatus.deletions} deletions`}
+        >
+          <span className="text-success">+{prStatus.additions}</span>
+          <span className="text-danger ml-0.5">−{prStatus.deletions}</span>
+        </span>
+      )}
       {canContinue && (
         <Tooltip label="Continue on a new branch off main" side="left">
           <button

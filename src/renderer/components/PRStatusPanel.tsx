@@ -562,6 +562,12 @@ export function PRStatusPanel({
             >
               #{pr.number} {pr.title}
             </a>
+            {typeof pr.additions === 'number' && typeof pr.deletions === 'number' && (
+              <span className="text-xs font-mono shrink-0 ml-auto">
+                <span className="text-success">+{pr.additions}</span>
+                <span className="text-danger ml-1">−{pr.deletions}</span>
+              </span>
+            )}
           </div>
 
           {/* Merge conflict indicator — styled like the checks line */}

@@ -29,6 +29,8 @@ export interface PRStatus {
   hasConflict: boolean | null
   reviews: PRReview[]
   reviewDecision: 'approved' | 'changes_requested' | 'review_required' | 'none'
+  additions?: number
+  deletions?: number
 }
 
 export interface PRsState {
