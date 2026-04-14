@@ -1,30 +1,8 @@
 import type { StateEvent, StateSnapshot } from '../shared/state'
 export type { StateEvent, StateSnapshot }
 
-export interface Worktree {
-  path: string
-  branch: string
-  head: string
-  isBare: boolean
-  isMain: boolean
-  /** Directory birthtime in ms since epoch; 0 if unavailable. */
-  createdAt: number
-  /** Repo this worktree belongs to. Set by the renderer after a cross-repo listWorktrees merge. */
-  repoRoot: string
-}
-
-export interface PendingWorktree {
-  /** Prefixed id like `pending:<uuid>` so App state can use it as an activeWorktreeId. */
-  id: string
-  repoRoot: string
-  branchName: string
-  status: 'creating' | 'setup' | 'setup-failed' | 'error'
-  error?: string
-  initialPrompt?: string
-  teleportSessionId?: string
-  setupLog?: string
-  setupExitCode?: number
-}
+import type { Worktree, PendingWorktree } from '../shared/state/worktrees'
+export type { Worktree, PendingWorktree }
 
 export interface RepoConfig {
   version?: number
@@ -33,16 +11,6 @@ export interface RepoConfig {
   mergeStrategy?: 'squash' | 'merge-commit' | 'fast-forward'
   hideMergePanel?: boolean
   hidePrPanel?: boolean
-}
-
-export interface WorktreeScriptEvent {
-  runId: string
-  phase: 'setup' | 'teardown'
-  type: 'start' | 'output' | 'end'
-  stream?: 'stdout' | 'stderr'
-  data?: string
-  ok?: boolean
-  exitCode?: number
 }
 
 export interface FileReadResult {
@@ -166,8 +134,22 @@ export interface MergeLocalResult {
 export interface ElectronAPI {
   listWorktrees(repoRoot: string): Promise<Worktree[]>
   listBranches(repoRoot: string): Promise<string[]>
-  addWorktree(repoRoot: string, branchName: string, baseBranch?: string, runId?: string): Promise<Worktree>
-  onWorktreeScriptEvent(callback: (event: WorktreeScriptEvent) => void): () => void
+  runPendingWorktree(params: {
+    id: string
+    repoRoot: string
+    branchName: string
+  }): Promise<
+    | { id: string; outcome: 'success'; createdPath: string }
+    | { id: string; outcome: 'setup-failed'; createdPath: string }
+    | { id: string; outcome: 'error'; error: string }
+  >
+  retryPendingWorktree(id: string): Promise<
+    | { id: string; outcome: 'success'; createdPath: string }
+    | { id: string; outcome: 'setup-failed'; createdPath: string }
+    | { id: string; outcome: 'error'; error: string }
+  >
+  dismissPendingWorktree(id: string): Promise<boolean>
+  refreshWorktreesList(): Promise<boolean>
   continueWorktree(
     repoRoot: string,
     worktreePath: string,

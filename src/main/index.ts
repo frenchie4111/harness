@@ -7,7 +7,8 @@ import { PtyManager } from './pty-manager'
 import { Store } from './store'
 import { registerStateTransport } from './transport-electron'
 import { PRPoller } from './pr-poller'
-import { listWorktrees, listBranches, addWorktree, continueWorktree, removeWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, readWorktreeFile, runWorktreeScript, type MergeStrategy } from './worktree'
+import { WorktreesFSM } from './worktrees-fsm'
+import { listWorktrees, listBranches, continueWorktree, removeWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, readWorktreeFile, runWorktreeScript, type MergeStrategy } from './worktree'
 import { getPRStatus, testToken, starRepo } from './github'
 import { AVAILABLE_EDITORS, DEFAULT_EDITOR_ID, openInEditor } from './editor'
 import { setSecret, hasSecret, deleteSecret } from './secrets'
@@ -60,6 +61,11 @@ const store = new Store({
     consent: 'pending',
     justInstalled: false
   },
+  worktrees: {
+    list: [],
+    repoRoots: config.repoRoots || [],
+    pending: []
+  },
   settings: {
     theme: config.theme || DEFAULT_THEME,
     hotkeys: config.hotkeys || null,
@@ -91,6 +97,15 @@ const prPoller = new PRPoller(store, {
       config.locallyMerged = next
     }
     saveConfig(config)
+  }
+})
+
+const worktreesFSM = new WorktreesFSM(store, {
+  getRepoRoots: () => config.repoRoots || [],
+  getWorktreeSetupCmd: () => config.worktreeSetupCommand || '',
+  getWorktreeBaseMode: () => config.worktreeBase || DEFAULT_WORKTREE_BASE,
+  onWorktreeCreated: () => {
+    void prPoller.refreshAll()
   }
 })
 
@@ -156,45 +171,25 @@ function registerIpcHandlers(): void {
     return listBranches(repoRoot)
   })
 
-  ipcMain.handle('worktree:add', async (
-    event,
-    repoRoot: string,
-    branchName: string,
-    baseBranch?: string,
-    runId?: string
-  ) => {
-    if (!repoRoot) throw new Error('No repo root provided')
-    const wtDir = defaultWorktreeDir(repoRoot)
-    const mode = config.worktreeBase || DEFAULT_WORKTREE_BASE
-    const created = await addWorktree(repoRoot, wtDir, branchName, {
-      baseBranch,
-      fetchRemote: !baseBranch && mode === 'remote'
-    })
-    const repoCfg = loadRepoConfig(repoRoot)
-    const setupCmd = repoCfg.setupCommand || config.worktreeSetupCommand || ''
-    if (setupCmd && runId) {
-      const sender = event.sender
-      const send = (payload: Record<string, unknown>): void => {
-        if (!sender.isDestroyed()) sender.send('worktree:scriptEvent', { runId, phase: 'setup', ...payload })
-      }
-      send({ type: 'start' })
-      const result = await runWorktreeScript(
-        'setup',
-        setupCmd,
-        { worktreePath: created.path, branch: created.branch, repoRoot },
-        (stream, chunk) => send({ type: 'output', stream, data: chunk })
-      )
-      send({ type: 'end', ok: result.ok, exitCode: result.exitCode })
-    } else if (setupCmd) {
-      await runWorktreeScript('setup', setupCmd, {
-        worktreePath: created.path,
-        branch: created.branch,
-        repoRoot
-      })
+  // Worktree creation flows through the WorktreesFSM in main; the renderer
+  // awaits runPending end-to-end and uses the returned outcome to stage
+  // initial prompts and route focus.
+  ipcMain.handle(
+    'worktrees:runPending',
+    async (_, params: { id: string; repoRoot: string; branchName: string }) => {
+      return worktreesFSM.runPending(params)
     }
-    // New worktree → pick up its PR status in the background.
-    void prPoller.refreshAll()
-    return created
+  )
+  ipcMain.handle('worktrees:retryPending', async (_, id: string) => {
+    return worktreesFSM.retryPending(id)
+  })
+  ipcMain.handle('worktrees:dismissPending', (_, id: string) => {
+    worktreesFSM.dismissPending(id)
+    return true
+  })
+  ipcMain.handle('worktrees:refreshList', async () => {
+    await worktreesFSM.refreshList()
+    return true
   })
 
   ipcMain.handle(
@@ -245,7 +240,9 @@ function registerIpcHandlers(): void {
         repoRoot
       })
     }
-    return removeWorktree(repoRoot, path, force)
+    const result = await removeWorktree(repoRoot, path, force)
+    void worktreesFSM.refreshList()
+    return result
   })
 
   ipcMain.handle('worktree:dir', async (_, repoRoot: string) => {
@@ -268,6 +265,8 @@ function registerIpcHandlers(): void {
     if (!config.repoRoots.includes(repoRoot)) {
       config.repoRoots.push(repoRoot)
       saveConfig(config)
+      worktreesFSM.dispatchRepos([...config.repoRoots])
+      void worktreesFSM.refreshList()
       broadcastToAllWindows('repo:listChanged', config.repoRoots)
     }
     return repoRoot
@@ -283,6 +282,8 @@ function registerIpcHandlers(): void {
       delete config.panes[repoRoot]
     }
     saveConfig(config)
+    worktreesFSM.dispatchRepos([...config.repoRoots])
+    void worktreesFSM.refreshList()
     broadcastToAllWindows('repo:listChanged', config.repoRoots)
     return true
   })
@@ -1074,6 +1075,10 @@ app.whenReady().then(() => {
   buildMenu()
   registerIpcHandlers()
 
+  // Seed the store's flat worktree list before the renderer hydrates, so
+  // App.tsx's first render already has the real data.
+  void worktreesFSM.refreshList()
+
   // Kick off the PR poller. An initial refreshAll() runs immediately and
   // then on a 5-minute interval.
   prPoller.start()
@@ -1111,7 +1116,14 @@ app.whenReady().then(() => {
   startControlServer({
     getRepoRoots: () => config.repoRoots,
     getWorktreeBase: () => config.worktreeBase || DEFAULT_WORKTREE_BASE,
-    broadcast: broadcastToAllWindows
+    broadcast: (channel, payload) => {
+      broadcastToAllWindows(channel, payload)
+      if (channel === 'worktrees:externalCreate') {
+        // Refresh the store's list so all clients see the new worktree.
+        void worktreesFSM.refreshList()
+        void prPoller.refreshAll()
+      }
+    }
   }).catch((err) => log('control', 'failed to start', err instanceof Error ? err.message : err))
 
   // Watch status dir globally — route to correct window via ptyManager

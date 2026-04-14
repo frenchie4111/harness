@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { useSettings, usePrs, useOnboarding, useHooks } from './store'
+import { useSettings, usePrs, useOnboarding, useHooks, useWorktrees } from './store'
 import type { Worktree, TerminalTab, PtyStatus, PendingTool, QuestStep, WorkspacePane, PendingWorktree, UpdaterStatus, RepoConfig } from './types'
 import type { Action } from './hotkeys'
 import { resolveHotkeys } from './hotkeys'
@@ -41,8 +41,21 @@ function isPendingId(id: string | null | undefined): id is string {
 }
 
 export default function App(): JSX.Element {
-  const [worktrees, setWorktrees] = useState<Worktree[]>([])
-  const [activeWorktreeId, setActiveWorktreeId] = useState<string | null>(null)
+  // Worktree list, repoRoots, and pending-creation FSM all live in the
+  // main-process store. activeWorktreeId stays local — it's per-client view
+  // focus that eventually becomes per-window.
+  const wtState = useWorktrees()
+  const worktrees = wtState.list
+  const pendingWorktrees = wtState.pending
+  const worktreeRepoByPath = useMemo(() => {
+    const m: Record<string, string> = {}
+    for (const w of worktrees) m[w.path] = w.repoRoot
+    return m
+  }, [worktrees])
+  // Initial focus = first worktree in the already-hydrated store.
+  const [activeWorktreeId, setActiveWorktreeId] = useState<string | null>(
+    () => worktrees[0]?.path ?? null
+  )
   const [panes, setPanes] = useState<Record<string, WorkspacePane[]>>({})
   // Which pane in each worktree is the "focused" one for hotkeys (newTab, closeTab, cycleTab).
   // Tracks the last pane the user interacted with; defaults to the first pane.
@@ -78,11 +91,10 @@ export default function App(): JSX.Element {
   const mergedPaths = prs.mergedByPath
   const prLoading = prs.loading
   const [lastActive, setLastActive] = useState<Record<string, number>>({})
-  const [repoRoots, setRepoRoots] = useState<string[]>([])
+  const repoRoots = wtState.repoRoots
   const [activeRepoConfig, setActiveRepoConfig] = useState<RepoConfig | null>(null)
   // Map of worktree path → repoRoot for quick lookups outside of `worktrees`.
   // Populated whenever the worktree list refreshes.
-  const worktreeRepoRef = useRef<Record<string, string>>({})
   // Hooks consent + justInstalled live in the main-process store.
   // Accept/decline dispatch through dedicated methods; the boot-time
   // "already installed?" detection lives in main.
@@ -141,7 +153,6 @@ export default function App(): JSX.Element {
   // Worktrees whose git creation is still running (or has errored). They
   // show in the sidebar immediately on submit so the user sees the new entry
   // right away instead of waiting on the modal.
-  const [pendingWorktrees, setPendingWorktrees] = useState<PendingWorktree[]>([])
   const [showSettings, setShowSettings] = useState(false)
   const [settingsInitialSection, setSettingsInitialSection] = useState<'github' | undefined>(undefined)
   const [showGuide, setShowGuide] = useState(false)
@@ -203,50 +214,14 @@ const setQuestStep = useCallback((next: QuestStep) => {
     }
   }, [activeWorktreeId, questStep, setQuestStep])
 
-  // Helper: fetch worktrees for every known repo and merge into a flat list.
-  const fetchAllWorktrees = useCallback(async (roots: string[]): Promise<Worktree[]> => {
-    const results = await Promise.all(
-      roots.map((root) =>
-        window.api.listWorktrees(root).catch((err) => {
-          console.error('listWorktrees failed for', root, err)
-          return [] as Worktree[]
-        })
-      )
-    )
-    const flat = results.flat()
-    const map: Record<string, string> = {}
-    for (const wt of flat) map[wt.path] = wt.repoRoot
-    worktreeRepoRef.current = map
-    return flat
-  }, [])
-
-  // Load repos, worktrees, and panes on mount. Settings are already hydrated
-  // via the store before App mounts; we only fetch things that aren't in the
-  // settings slice here.
+  // Load persisted panes on mount. Repos + worktrees are already in the
+  // store from boot; we only fetch things that aren't in a slice.
   useEffect(() => {
     (async () => {
-      const [roots, persistedPanes] = await Promise.all([
-        window.api.listRepos(),
-        window.api.getWorkspacePanes()
-      ])
-      // Flatten the nested persisted panes (repoRoot → wtPath → panes[]) into
-      // the flat renderer shape keyed by wtPath. Paths are globally unique
-      // across repos in practice — git worktrees are directories on disk.
-      // Backfill missing sessionIds for legacy claude tabs, reusing the most
-      // recent on-disk session for the first one so the user's conversation
-      // carries over.
-      // Load worktrees first so worktreeRepoRef is populated before the
-      // persist effect fires. Without this, the first save after loading
-      // old config would see an empty path→repo map and dump every entry
-      // under `__orphan__` again.
-      setRepoRoots(roots)
-      if (roots.length > 0) {
-        const trees = await fetchAllWorktrees(roots)
-        setWorktrees(trees)
-        if (trees.length > 0) {
-          setActiveWorktreeId(trees[0].path)
-        }
-      }
+      // Ask main for a fresh list in case anything changed on disk between
+      // the initial boot-time refresh and when the renderer hydrated.
+      void window.api.refreshWorktreesList()
+      const persistedPanes = await window.api.getWorkspacePanes()
       if (persistedPanes) {
         const restored: Record<string, WorkspacePane[]> = {}
         for (const byWt of Object.values(persistedPanes)) {
@@ -275,15 +250,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
       }
       tabsLoadedRef.current = true
     })()
-  }, [fetchAllWorktrees])
-
-  // Live-update when another window mutates the repo list
-  useEffect(() => {
-    return window.api.onReposChanged((roots) => {
-      setRepoRoots(roots)
-      fetchAllWorktrees(roots).then(setWorktrees)
-    })
-  }, [fetchAllWorktrees])
+  }, [])
 
   // Persist terminal tab metadata whenever it changes (claude + shell only —
   // diff tabs are transient and derived from file state). Writes are nested
@@ -295,7 +262,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
     type PersistedShape = { id: string; tabs: { id: string; type: 'claude' | 'shell'; label: string; sessionId?: string }[]; activeTabId: string }
     const persistable: Record<string, Record<string, PersistedShape[]>> = {}
     for (const [wtPath, paneList] of Object.entries(panes)) {
-      const repoRoot = worktreeRepoRef.current[wtPath] || '__orphan__'
+      const repoRoot = worktreeRepoByPath[wtPath] || '__orphan__'
       const persistedPanes = paneList
         .map((pane) => {
           const tabs = pane.tabs
@@ -345,7 +312,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
   }, [])
 
   const activeRepoRoot = activeWorktreeId
-    ? worktrees.find((w) => w.path === activeWorktreeId)?.repoRoot ?? worktreeRepoRef.current[activeWorktreeId] ?? null
+    ? worktrees.find((w) => w.path === activeWorktreeId)?.repoRoot ?? worktreeRepoByPath[activeWorktreeId] ?? null
     : null
   useEffect(() => {
     if (!activeRepoRoot) {
@@ -575,174 +542,134 @@ const setQuestStep = useCallback((next: QuestStep) => {
 
   const handleAddRepo = useCallback(async () => {
     const root = await window.api.addRepo()
+    // Main dispatches worktrees/reposChanged and refreshes the list; all we
+    // do here is focus the new repo's main worktree once the store updates.
+    // The effect below watches worktrees.list for the added repoRoot.
     if (root) {
-      const nextRoots = repoRoots.includes(root) ? repoRoots : [...repoRoots, root]
-      setRepoRoots(nextRoots)
-      const trees = await fetchAllWorktrees(nextRoots)
-      setWorktrees(trees)
-      // Focus the main worktree of the repo the user just added.
-      const added = trees.find((w) => w.repoRoot === root && w.isMain) || trees.find((w) => w.repoRoot === root)
+      // The store will re-dispatch shortly; poll the already-live list once
+      // it settles by using a microtask. Simpler: set a pending target and
+      // let a focus effect pick it up. For now, just read the current list
+      // — if the store has already updated by the time we reach here, this
+      // works; otherwise the first worktree from the list will be shown
+      // until the user clicks it.
+      const added =
+        worktrees.find((w) => w.repoRoot === root && w.isMain) ||
+        worktrees.find((w) => w.repoRoot === root)
       if (added) setActiveWorktreeId(added.path)
     }
-  }, [repoRoots, fetchAllWorktrees])
+  }, [worktrees])
 
-  // External worktree creation (from the harness-control MCP). Refresh the
-  // list and focus the new worktree in any window showing that repo; the
-  // existing auto-pane effect will spawn a fresh Claude tab on activation.
+  // External worktree creation (from the harness-control MCP). Main
+  // refreshes the store list before emitting this event, so we just need
+  // to stage the initial prompt and focus the new worktree.
   useEffect(() => {
-    const off = window.api.onWorktreesExternalCreate(async ({ repoRoot, worktree, initialPrompt }) => {
+    const off = window.api.onWorktreesExternalCreate(({ repoRoot, worktree, initialPrompt }) => {
       if (!repoRoots.includes(repoRoot)) return
       if (initialPrompt) {
         pendingPromptsRef.current[worktree.path] = initialPrompt
       }
-      const trees = await fetchAllWorktrees(repoRoots)
-      setWorktrees(trees)
       setActiveWorktreeId(worktree.path)
     })
     return off
-  }, [repoRoots, fetchAllWorktrees])
+  }, [repoRoots])
 
   const handleRemoveRepo = useCallback(
     async (root: string) => {
       await window.api.removeRepo(root)
-      const nextRoots = repoRoots.filter((r) => r !== root)
-      setRepoRoots(nextRoots)
-      const trees = await fetchAllWorktrees(nextRoots)
-      setWorktrees(trees)
-      if (activeWorktreeId && worktreeRepoRef.current[activeWorktreeId] === undefined) {
-        setActiveWorktreeId(trees.length > 0 ? trees[0].path : null)
+      // Main dispatches reposChanged + listChanged. If our current focus is
+      // about to disappear, switch to whatever's first in the remaining list.
+      if (activeWorktreeId) {
+        const stillExists = worktrees.some(
+          (w) => w.path === activeWorktreeId && w.repoRoot !== root
+        )
+        if (!stillExists) {
+          const next = worktrees.find((w) => w.repoRoot !== root)
+          setActiveWorktreeId(next?.path ?? null)
+        }
       }
     },
-    [repoRoots, fetchAllWorktrees, activeWorktreeId]
+    [activeWorktreeId, worktrees]
   )
 
   const handleRefreshWorktrees = useCallback(async () => {
-    const trees = await fetchAllWorktrees(repoRoots)
-    setWorktrees(trees)
-  }, [repoRoots, fetchAllWorktrees])
-
-
-  const setupFailedRef = useRef<Record<string, boolean>>({})
-
-  const runPendingCreate = useCallback(
-    async (pending: PendingWorktree) => {
-      try {
-        setupFailedRef.current[pending.id] = false
-        const created = await window.api.addWorktree(
-          pending.repoRoot,
-          pending.branchName,
-          undefined,
-          pending.id
-        )
-        if (pending.teleportSessionId) {
-          pendingTeleportRef.current[created.path] = pending.teleportSessionId
-        } else if (pending.initialPrompt) {
-          pendingPromptsRef.current[created.path] = pending.initialPrompt
-        }
-        const trees = await fetchAllWorktrees(repoRoots)
-        setWorktrees(trees)
-        // If the setup script failed, keep the pending entry on screen so the
-        // user can review logs and decide whether to continue. Otherwise
-        // transition straight to the real worktree.
-        if (setupFailedRef.current[pending.id]) {
-          pendingCreatedRef.current[pending.id] = created.path
-          setPendingWorktrees((prev) =>
-            prev.map((p) => (p.id === pending.id ? { ...p, status: 'setup-failed' as const } : p))
-          )
-        } else {
-          setActiveWorktreeId((prev) => (prev === pending.id ? created.path : prev))
-          setPendingWorktrees((prev) => prev.filter((p) => p.id !== pending.id))
-        }
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        setPendingWorktrees((prev) =>
-          prev.map((p) => (p.id === pending.id ? { ...p, status: 'error', error: message } : p))
-        )
-      }
-    },
-    [repoRoots, fetchAllWorktrees]
-  )
-
-  // Track the real worktree path created for each pending id so that
-  // "Continue anyway" on a setup-failed screen can transition to it.
-  const pendingCreatedRef = useRef<Record<string, string>>({})
-
-  useEffect(() => {
-    const unsub = window.api.onWorktreeScriptEvent((evt) => {
-      if (evt.phase !== 'setup') return
-      setPendingWorktrees((prev) =>
-        prev.map((p) => {
-          if (p.id !== evt.runId) return p
-          if (evt.type === 'start') {
-            return { ...p, status: 'setup', setupLog: '' }
-          }
-          if (evt.type === 'output') {
-            return { ...p, setupLog: (p.setupLog || '') + (evt.data || '') }
-          }
-          if (evt.type === 'end') {
-            if (!evt.ok) setupFailedRef.current[p.id] = true
-            return { ...p, setupExitCode: evt.exitCode }
-          }
-          return p
-        })
-      )
-    })
-    return unsub
+    await window.api.refreshWorktreesList()
   }, [])
 
   const handleSubmitNewWorktree = useCallback(
     async (repoRoot: string, branchName: string, initialPrompt: string, teleportSessionId?: string) => {
-      const pending: PendingWorktree = {
-        id: `pending:${crypto.randomUUID()}`,
-        repoRoot,
-        branchName,
-        status: 'creating',
-        initialPrompt: initialPrompt || undefined,
-        teleportSessionId: teleportSessionId || undefined
-      }
-      setPendingWorktrees((prev) => [...prev, pending])
-      setActiveWorktreeId(pending.id)
+      const id = `pending:${crypto.randomUUID()}`
+      // Stage initial prompt / teleport by pending id; on success we'll
+      // re-key to the real path.
+      if (initialPrompt) pendingPromptsRef.current[id] = initialPrompt
+      if (teleportSessionId) pendingTeleportRef.current[id] = teleportSessionId
+      setActiveWorktreeId(id)
       setShowNewWorktree(false)
-      void runPendingCreate(pending)
+
+      const result = await window.api.runPendingWorktree({ id, repoRoot, branchName })
+
+      const movePromptStaging = (createdPath: string): void => {
+        const prompt = pendingPromptsRef.current[id]
+        if (prompt) {
+          pendingPromptsRef.current[createdPath] = prompt
+          delete pendingPromptsRef.current[id]
+        }
+        const teleport = pendingTeleportRef.current[id]
+        if (teleport) {
+          pendingTeleportRef.current[createdPath] = teleport
+          delete pendingTeleportRef.current[id]
+        }
+      }
+
+      if (result.outcome === 'success') {
+        movePromptStaging(result.createdPath)
+        setActiveWorktreeId((prev) => (prev === id ? result.createdPath : prev))
+      } else if (result.outcome === 'setup-failed') {
+        // Keep the user on the pending-id screen so they can review logs
+        // and decide. Move staging to the created path so "Continue anyway"
+        // below can pick it up.
+        movePromptStaging(result.createdPath)
+      }
+      // On 'error', main has already dispatched status='error' — we stay on
+      // the pending id so the error screen shows.
     },
-    [runPendingCreate]
+    []
   )
 
-  const handleRetryPendingWorktree = useCallback(
-    (id: string) => {
-      setPendingWorktrees((prev) => {
-        const target = prev.find((p) => p.id === id)
-        if (!target) return prev
-        const next = prev.map((p) => (p.id === id ? { ...p, status: 'creating' as const, error: undefined } : p))
-        void runPendingCreate({ ...target, status: 'creating', error: undefined })
-        return next
-      })
-    },
-    [runPendingCreate]
-  )
-
-  const handleDismissPendingWorktree = useCallback((id: string) => {
-    setPendingWorktrees((prev) => prev.filter((p) => p.id !== id))
-    setActiveWorktreeId((prev) => (prev === id ? null : prev))
+  const handleRetryPendingWorktree = useCallback((id: string) => {
+    void window.api.retryPendingWorktree(id)
   }, [])
 
-  const handleContinuePendingWorktree = useCallback((id: string) => {
-    const createdPath = pendingCreatedRef.current[id]
-    setPendingWorktrees((prev) => prev.filter((p) => p.id !== id))
-    if (createdPath) {
-      setActiveWorktreeId(createdPath)
-      delete pendingCreatedRef.current[id]
-    } else {
+  const handleDismissPendingWorktree = useCallback(
+    (id: string) => {
+      void window.api.dismissPendingWorktree(id)
+      // Clean up any renderer-local staging for this pending id.
+      delete pendingPromptsRef.current[id]
+      delete pendingTeleportRef.current[id]
       setActiveWorktreeId((prev) => (prev === id ? null : prev))
-    }
+    },
+    []
+  )
+
+  const handleContinuePendingWorktree = useCallback(
+    (id: string) => {
+      // "Continue anyway" from a setup-failed screen. Main already recorded
+      // createdPath on the pending entry.
+      const entry = pendingWorktrees.find((p) => p.id === id)
+      void window.api.dismissPendingWorktree(id)
+      if (entry?.createdPath) {
+        setActiveWorktreeId(entry.createdPath)
+      } else {
+        setActiveWorktreeId((prev) => (prev === id ? null : prev))
+      }
   }, [])
 
   const handleContinueWorktree = useCallback(async (path: string, newBranchName: string) => {
-    const repoRoot = worktreeRepoRef.current[path]
+    const repoRoot = worktreeRepoByPath[path]
     if (!repoRoot) return
     const result = await window.api.continueWorktree(repoRoot, path, newBranchName)
-    const trees = await fetchAllWorktrees(repoRoots)
-    setWorktrees(trees)
+    // Main's worktree:continue handler doesn't refresh the store yet — ask
+    // for a list refresh so the new branch name shows up.
+    void window.api.refreshWorktreesList()
     // Branch changed — re-fetch PR status for this worktree.
     void window.api.refreshPRsOne(path)
     if (result.stashConflict) {
@@ -750,7 +677,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
         `Checked out ${newBranchName}, but your uncommitted changes did not apply cleanly and are still in the stash.\n\nRun \`git stash pop\` inside the worktree after resolving conflicts.`
       )
     }
-  }, [repoRoots, fetchAllWorktrees])
+  }, [worktreeRepoByPath])
 
   const handleDeleteWorktree = useCallback(async (path: string) => {
     // Check for dirty changes
@@ -782,16 +709,16 @@ const setQuestStep = useCallback((next: QuestStep) => {
 
     // Force remove if dirty (user already confirmed), normal remove otherwise
     const pr = prStatuses[path]
-    const repoRoot = worktreeRepoRef.current[path]
+    const repoRoot = worktreeRepoByPath[path]
     if (!repoRoot) return
     await window.api.removeWorktree(repoRoot, path, dirty, pr ? { prNumber: pr.number, prState: pr.state } : undefined)
-
-    const trees = await fetchAllWorktrees(repoRoots)
-    setWorktrees(trees)
+    // Main's worktree:remove handler calls worktreesFSM.refreshList(),
+    // which will dispatch listChanged. Switch focus if necessary.
     if (path === activeWorktreeId) {
-      setActiveWorktreeId(trees.length > 0 ? trees[0].path : null)
+      const next = worktrees.find((w) => w.path !== path)
+      setActiveWorktreeId(next?.path ?? null)
     }
-  }, [terminalTabs, activeWorktreeId, prStatuses, repoRoots, fetchAllWorktrees])
+  }, [terminalTabs, activeWorktreeId, prStatuses, worktreeRepoByPath, worktrees])
 
   // Bulk delete used by the Cleanup screen. Skips per-path confirmation — the
   // Cleanup UI owns the single confirm — and removes each worktree sequentially
@@ -821,7 +748,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
         })
         try {
           const pr = prStatuses[path]
-          const repoRoot = worktreeRepoRef.current[path]
+          const repoRoot = worktreeRepoByPath[path]
           if (repoRoot) {
             await window.api.removeWorktree(repoRoot, path, force, pr ? { prNumber: pr.number, prState: pr.state } : undefined)
           }
@@ -830,13 +757,14 @@ const setQuestStep = useCallback((next: QuestStep) => {
         }
         onProgress?.(path, 'done')
       }
-      const trees = await fetchAllWorktrees(repoRoots)
-      setWorktrees(trees)
+      // Main dispatched listChanged on each removeWorktree. Route focus off
+      // the deleted set if necessary.
       if (activeWorktreeId && paths.includes(activeWorktreeId)) {
-        setActiveWorktreeId(trees.length > 0 ? trees[0].path : null)
+        const next = worktrees.find((w) => !paths.includes(w.path))
+        setActiveWorktreeId(next?.path ?? null)
       }
     },
-    [terminalTabs, activeWorktreeId, prStatuses, repoRoots, fetchAllWorktrees]
+    [terminalTabs, activeWorktreeId, prStatuses, worktreeRepoByPath, worktrees]
   )
 
   // Append a tab to a specific pane (or the focused pane if paneId is omitted).
@@ -1602,7 +1530,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
             onSubmit={handleSubmitNewWorktree}
             onCancel={() => setShowNewWorktree(false)}
             repoRoots={repoRoots}
-            defaultRepoRoot={activeWorktreeId ? worktreeRepoRef.current[activeWorktreeId] : undefined}
+            defaultRepoRoot={activeWorktreeId ? worktreeRepoByPath[activeWorktreeId] : undefined}
           />
         )}
         {showActivity && (

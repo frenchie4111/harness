@@ -58,4 +58,8 @@ export function useHooks() {
   return useAppState((s) => s.hooks)
 }
 
+export function useWorktrees() {
+  return useAppState((s) => s.worktrees)
+}
+
 export type { AppState, StateEvent }

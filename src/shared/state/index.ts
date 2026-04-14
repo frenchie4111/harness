@@ -22,26 +22,46 @@ import {
   type HooksEvent,
   type HooksState
 } from './hooks'
+import {
+  initialWorktrees,
+  worktreesReducer,
+  type WorktreesEvent,
+  type WorktreesState
+} from './worktrees'
 
 export type { SettingsState, SettingsEvent }
 export type { PRsState, PRsEvent, PRStatus, CheckStatus, PRReview } from './prs'
 export type { OnboardingState, OnboardingEvent, QuestStep } from './onboarding'
 export type { HooksState, HooksEvent, HooksConsent } from './hooks'
+export type {
+  WorktreesState,
+  WorktreesEvent,
+  Worktree,
+  PendingWorktree,
+  PendingStatus
+} from './worktrees'
 
 export interface AppState {
   settings: SettingsState
   prs: PRsState
   onboarding: OnboardingState
   hooks: HooksState
+  worktrees: WorktreesState
 }
 
-export type StateEvent = SettingsEvent | PRsEvent | OnboardingEvent | HooksEvent
+export type StateEvent =
+  | SettingsEvent
+  | PRsEvent
+  | OnboardingEvent
+  | HooksEvent
+  | WorktreesEvent
 
 export const initialState: AppState = {
   settings: initialSettings,
   prs: initialPRs,
   onboarding: initialOnboarding,
-  hooks: initialHooks
+  hooks: initialHooks,
+  worktrees: initialWorktrees
 }
 
 export function rootReducer(state: AppState, event: StateEvent): AppState {
@@ -62,6 +82,12 @@ export function rootReducer(state: AppState, event: StateEvent): AppState {
   }
   if (event.type.startsWith('hooks/')) {
     return { ...state, hooks: hooksReducer(state.hooks, event as HooksEvent) }
+  }
+  if (event.type.startsWith('worktrees/')) {
+    return {
+      ...state,
+      worktrees: worktreesReducer(state.worktrees, event as WorktreesEvent)
+    }
   }
   return state
 }

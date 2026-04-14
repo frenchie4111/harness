@@ -13,28 +13,23 @@ type DataCallback = (id: string, data: string) => void
 type ExitCallback = (id: string, exitCode: number) => void
 
 contextBridge.exposeInMainWorld('api', {
-  // Worktrees — every call takes repoRoot explicitly so a window can host multiple repos.
+  // Worktrees — list/branches stay as one-shot queries; the flat list lives
+  // in the main-process store (see src/main/worktrees-fsm.ts) and is read
+  // via useWorktrees() in the renderer.
   listWorktrees: (repoRoot: string) => ipcRenderer.invoke('worktree:list', repoRoot),
   listBranches: (repoRoot: string) => ipcRenderer.invoke('worktree:branches', repoRoot),
-  addWorktree: (repoRoot: string, branchName: string, baseBranch?: string, runId?: string) =>
-    ipcRenderer.invoke('worktree:add', repoRoot, branchName, baseBranch, runId),
-  onWorktreeScriptEvent: (
-    callback: (event: {
-      runId: string
-      phase: 'setup' | 'teardown'
-      type: 'start' | 'output' | 'end'
-      stream?: 'stdout' | 'stderr'
-      data?: string
-      ok?: boolean
-      exitCode?: number
-    }) => void
-  ) => {
-    const handler = (_event: Electron.IpcRendererEvent, payload: Parameters<typeof callback>[0]): void => {
-      callback(payload)
-    }
-    ipcRenderer.on('worktree:scriptEvent', handler)
-    return () => ipcRenderer.removeListener('worktree:scriptEvent', handler)
-  },
+
+  // Pending-creation FSM. The renderer awaits runPendingWorktree end-to-end
+  // for its final outcome (needed to stage initial prompts + route focus),
+  // while main dispatches state transitions for the in-progress screens.
+  runPendingWorktree: (params: { id: string; repoRoot: string; branchName: string }) =>
+    ipcRenderer.invoke('worktrees:runPending', params),
+  retryPendingWorktree: (id: string) =>
+    ipcRenderer.invoke('worktrees:retryPending', id),
+  dismissPendingWorktree: (id: string) =>
+    ipcRenderer.invoke('worktrees:dismissPending', id),
+  refreshWorktreesList: () => ipcRenderer.invoke('worktrees:refreshList'),
+
   continueWorktree: (repoRoot: string, worktreePath: string, newBranchName: string, baseBranch?: string) =>
     ipcRenderer.invoke('worktree:continue', repoRoot, worktreePath, newBranchName, baseBranch),
   isWorktreeDirty: (path: string) => ipcRenderer.invoke('worktree:isDirty', path),
