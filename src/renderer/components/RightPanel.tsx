@@ -6,6 +6,8 @@ interface RightPanelProps {
   id: string
   title: string
   children: ReactNode
+  /** Rendered inline next to the title (inside the collapse button). */
+  titleExtra?: ReactNode
   /** Rendered on the right side of the header. Clicks don't toggle collapse. */
   actions?: ReactNode
   /** If true, the panel claims remaining vertical space (flex-1). */
@@ -23,6 +25,7 @@ export function RightPanel({
   id,
   title,
   children,
+  titleExtra,
   actions,
   grow = false,
   maxHeight,
@@ -75,6 +78,7 @@ export function RightPanel({
           <span className="text-xs font-medium text-muted uppercase tracking-wide truncate">
             {title}
           </span>
+          {titleExtra}
         </button>
         {actions && (
           <div className="no-drag flex items-center gap-2 pr-3">{actions}</div>

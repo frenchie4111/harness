@@ -241,6 +241,29 @@ export interface ChangedFile {
   path: string
   status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked'
   staged: boolean
+  added?: number
+  removed?: number
+}
+
+interface NumstatEntry {
+  added?: number
+  removed?: number
+}
+
+function parseNumstat(stdout: string): Map<string, NumstatEntry> {
+  const map = new Map<string, NumstatEntry>()
+  for (const line of stdout.split('\n')) {
+    if (!line) continue
+    const parts = line.split('\t')
+    if (parts.length < 3) continue
+    const [a, r] = parts
+    const filePath = parts[parts.length - 1]
+    const entry: NumstatEntry = {}
+    if (a !== '-') entry.added = parseInt(a, 10) || 0
+    if (r !== '-') entry.removed = parseInt(r, 10) || 0
+    map.set(filePath, entry)
+  }
+  return map
 }
 
 export type ChangedFilesMode = 'working' | 'branch'
@@ -322,11 +345,14 @@ export async function getChangedFiles(
     const base = await getDefaultBaseRef(worktreePath)
     if (base === 'HEAD') return []
     try {
-      const { stdout } = await execFileAsync(
-        'git',
-        ['diff', '--name-status', `${base}...HEAD`],
-        { cwd: worktreePath }
-      )
+      const [{ stdout }, { stdout: numstatOut }] = await Promise.all([
+        execFileAsync('git', ['diff', '--name-status', `${base}...HEAD`], { cwd: worktreePath }),
+        execFileAsync('git', ['diff', '--numstat', `${base}...HEAD`], {
+          cwd: worktreePath,
+          maxBuffer: 8 * 1024 * 1024
+        })
+      ])
+      const stats = parseNumstat(numstatOut)
       const out: ChangedFile[] = []
       for (const line of stdout.split('\n')) {
         if (!line) continue
@@ -334,7 +360,14 @@ export async function getChangedFiles(
         const code = parts[0]
         // Renamed/copied entries have form "R100\told\tnew"
         const filePath = parts[parts.length - 1]
-        out.push({ path: filePath, status: mapNameStatus(code), staged: false })
+        const stat = stats.get(filePath)
+        out.push({
+          path: filePath,
+          status: mapNameStatus(code),
+          staged: false,
+          added: stat?.added,
+          removed: stat?.removed
+        })
       }
       return out
     } catch {
@@ -345,10 +378,19 @@ export async function getChangedFiles(
   const files: ChangedFile[] = []
   const seen = new Set<string>()
 
-  // Staged + unstaged changes via git status --porcelain
-  const { stdout } = await execFileAsync('git', ['status', '--porcelain', '-uall'], {
-    cwd: worktreePath
-  })
+  const [{ stdout }, unstagedNumstat, stagedNumstat] = await Promise.all([
+    execFileAsync('git', ['status', '--porcelain', '-uall'], { cwd: worktreePath }),
+    execFileAsync('git', ['diff', '--numstat'], {
+      cwd: worktreePath,
+      maxBuffer: 8 * 1024 * 1024
+    }).catch(() => ({ stdout: '' })),
+    execFileAsync('git', ['diff', '--numstat', '--cached'], {
+      cwd: worktreePath,
+      maxBuffer: 8 * 1024 * 1024
+    }).catch(() => ({ stdout: '' }))
+  ])
+  const unstagedStats = parseNumstat(unstagedNumstat.stdout)
+  const stagedStats = parseNumstat(stagedNumstat.stdout)
 
   for (const line of stdout.split('\n')) {
     if (!line) continue
@@ -359,7 +401,8 @@ export async function getChangedFiles(
     // Staged change
     if (x !== ' ' && x !== '?') {
       const status = x === 'A' ? 'added' : x === 'D' ? 'deleted' : x === 'R' ? 'renamed' : 'modified'
-      files.push({ path: filePath, status, staged: true })
+      const stat = stagedStats.get(filePath)
+      files.push({ path: filePath, status, staged: true, added: stat?.added, removed: stat?.removed })
       seen.add(filePath)
     }
 
@@ -367,7 +410,8 @@ export async function getChangedFiles(
     if (y !== ' ' && y !== '?') {
       const status = y === 'D' ? 'deleted' : 'modified'
       if (!seen.has(filePath)) {
-        files.push({ path: filePath, status, staged: false })
+        const stat = unstagedStats.get(filePath)
+        files.push({ path: filePath, status, staged: false, added: stat?.added, removed: stat?.removed })
         seen.add(filePath)
       }
     }

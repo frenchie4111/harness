@@ -130,6 +130,8 @@ export interface ChangedFile {
   path: string
   status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked'
   staged: boolean
+  added?: number
+  removed?: number
 }
 
 export interface CheckStatus {

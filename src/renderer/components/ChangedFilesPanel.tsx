@@ -62,6 +62,17 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToClaude }: 
   const stagedFiles = files.filter((f) => f.staged)
   const unstagedFiles = files.filter((f) => !f.staged)
 
+  const totalAdded = files.reduce((sum, f) => sum + (f.added ?? 0), 0)
+  const totalRemoved = files.reduce((sum, f) => sum + (f.removed ?? 0), 0)
+
+  const titleExtra =
+    files.length > 0 && (totalAdded > 0 || totalRemoved > 0) ? (
+      <span className="ml-2 font-mono text-[10px] normal-case tracking-normal">
+        <span className="text-success">+{totalAdded}</span>
+        <span className="text-danger ml-1.5">-{totalRemoved}</span>
+      </span>
+    ) : null
+
   const actions = (
     <>
       <div className="flex items-center rounded border border-border-strong bg-panel-raised/50 p-0.5">
@@ -107,7 +118,7 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToClaude }: 
   )
 
   return (
-    <RightPanel id="changed-files" title="Changed Files" actions={actions} grow>
+    <RightPanel id="changed-files" title="Changed Files" titleExtra={titleExtra} actions={actions} grow>
       {/* File list */}
       <div className="flex-1 overflow-y-auto min-h-0 text-xs">
         {!worktreePath && (
