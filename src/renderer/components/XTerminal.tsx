@@ -295,8 +295,6 @@ export function XTerminal({ terminalId, cwd, type, visible, claudeCommand, sessi
       // Claude on session resume (focus-out = ESC [ O).
       terminal.write(history, () => {
         if (disposed) return
-        // History is on screen — user sees something, dismiss the spinner.
-        setLoading(false)
         // Reset any reporting modes the restored session may have left on, so
         // the fresh process starts in a clean state.
         const RESET_MODES =
