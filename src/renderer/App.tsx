@@ -5,7 +5,7 @@ import { useTabHandlers } from './hooks/useTabHandlers'
 import { useHotkeyHandlers } from './hooks/useHotkeyHandlers'
 import { useWorktreeHandlers } from './hooks/useWorktreeHandlers'
 import type { Worktree, TerminalTab, PtyStatus, PendingTool, QuestStep, PendingWorktree, UpdaterStatus, RepoConfig } from './types'
-import { HotkeysProvider } from './components/Tooltip'
+import { HotkeysProvider, Tooltip } from './components/Tooltip'
 import { Sidebar } from './components/Sidebar'
 import { ResizeHandle } from './components/ResizeHandle'
 import { NewWorktreeScreen } from './components/NewWorktreeScreen'
@@ -14,6 +14,7 @@ import { DeletingWorktreeScreen } from './components/DeletingWorktreeScreen'
 import { QuestCard } from './components/QuestCard'
 import { WorkspaceView } from './components/WorkspaceView'
 import { RightColumn } from './components/RightColumn'
+import { PanelRightOpen } from 'lucide-react'
 import { Settings } from './components/Settings'
 import { Guide } from './components/Guide'
 import { Activity } from './components/Activity'
@@ -113,6 +114,12 @@ export default function App(): JSX.Element {
     const saved = Number(localStorage.getItem('harness:rightPanelWidth'))
     return Number.isFinite(saved) && saved > 0 ? saved : 256
   })
+  const [rightColumnHidden, setRightColumnHidden] = useState<boolean>(() => {
+    return localStorage.getItem('harness:rightColumnHidden') === '1'
+  })
+  useEffect(() => {
+    localStorage.setItem('harness:rightColumnHidden', rightColumnHidden ? '1' : '0')
+  }, [rightColumnHidden])
   useEffect(() => {
     localStorage.setItem('harness:sidebarWidth', String(sidebarWidth))
   }, [sidebarWidth])
@@ -437,6 +444,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
     activeTabId,
     hotkeyOverrides,
     setSidebarVisible,
+    setRightColumnHidden,
     setShowNewWorktree,
     setShowCommandCenter,
     setShowCommandPalette,
@@ -608,7 +616,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
         </div>
       )}
 
-      <div className="flex flex-1 min-h-0">
+      <div className="relative flex flex-1 min-h-0">
         {sidebarVisible && (
           <Sidebar
             worktrees={worktrees}
@@ -772,13 +780,14 @@ const setQuestStep = useCallback((next: QuestStep) => {
           onFinish={() => setQuestStep('done')}
         />
         {/* Right panel — hidden on the new-worktree screen so the form gets the full width */}
-        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && (
+        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !rightColumnHidden && (
           <ResizeHandle onDelta={handleRightPanelResize} />
         )}
-        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && (
+        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !rightColumnHidden && (
           <RightColumn
             width={rightPanelWidth}
             activeWorktreeId={activeWorktreeId}
+            activeRepoRoot={activeRepoRoot}
             worktrees={worktrees}
             prStatuses={prStatuses}
             prLoading={prLoading}
@@ -795,7 +804,21 @@ const setQuestStep = useCallback((next: QuestStep) => {
             onOpenDiff={handleOpenDiff}
             onOpenFile={handleOpenFile}
             onSendToClaude={handleSendToClaude}
+            onCollapse={() => setRightColumnHidden(true)}
           />
+        )}
+        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && rightColumnHidden && (
+          <div className="absolute top-2 right-2 z-20">
+            <Tooltip label="Show right column" action="toggleRightColumn">
+              <button
+                onClick={() => setRightColumnHidden(false)}
+                className="flex items-center justify-center w-7 h-7 rounded bg-panel/80 border border-border text-muted hover:text-fg-bright hover:bg-panel-raised/80 cursor-pointer shadow-sm"
+                aria-label="Show right column"
+              >
+                <PanelRightOpen size={14} />
+              </button>
+            </Tooltip>
+          </div>
         )}
       </div>
     </div>

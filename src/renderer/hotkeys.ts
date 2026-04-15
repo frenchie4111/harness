@@ -23,6 +23,7 @@ export type Action =
   | 'toggleCommandCenter'
   | 'commandPalette'
   | 'splitPaneRight'
+  | 'toggleRightColumn'
 
 export interface Modifiers {
   cmd?: boolean
@@ -61,6 +62,7 @@ export const DEFAULT_HOTKEYS: Record<Action, HotkeyBinding> = {
   toggleCommandCenter: { key: 'k', modifiers: { cmd: true, shift: true } },
   commandPalette: { key: 'k', modifiers: { cmd: true } },
   splitPaneRight: { key: 'd', modifiers: { cmd: true } },
+  toggleRightColumn: { key: 'b', modifiers: { cmd: true, alt: true } },
 }
 
 /** Check if a KeyboardEvent matches a hotkey binding */
@@ -162,7 +164,8 @@ export const ACTION_LABELS: Record<Action, string> = {
   openInEditor: 'Open worktree in editor',
   toggleCommandCenter: 'Toggle command center',
   commandPalette: 'Command palette',
-  splitPaneRight: 'Split pane right'
+  splitPaneRight: 'Split pane right',
+  toggleRightColumn: 'Toggle right column'
 }
 
 /** Capture a KeyboardEvent into a HotkeyBinding (for the rebind UI) */
