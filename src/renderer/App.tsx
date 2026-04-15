@@ -805,7 +805,6 @@ const setQuestStep = useCallback((next: QuestStep) => {
                 }}
               />
             )}
-            <CostPanel worktreePath={activeWorktreeId} />
             <BranchCommitsPanel worktreePath={activeWorktreeId} onOpenCommit={handleOpenCommit} />
             <ChangedFilesPanel
               worktreePath={activeWorktreeId}
@@ -825,6 +824,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
                   : undefined
               }
             />
+            <CostPanel worktreePath={activeWorktreeId} />
           </div>
         )}
       </div>

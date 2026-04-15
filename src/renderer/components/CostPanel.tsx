@@ -144,7 +144,7 @@ export function CostPanel({ worktreePath }: CostPanelProps): JSX.Element | null 
   ]
 
   return (
-    <RightPanel id="cost" title="Cost">
+    <RightPanel id="cost" title="Cost" defaultCollapsed>
       <div className="px-3 py-2 flex flex-col gap-3">
         {!hasData ? (
           <div className="text-xs text-faint italic">
