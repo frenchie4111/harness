@@ -169,7 +169,8 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
     hasGithubToken: settingsHasToken,
     githubAuthSource: authSource,
     harnessStarred,
-    worktreeScripts
+    worktreeScripts,
+    autoUpdateEnabled
   } = settings
   const setupScript = worktreeScripts.setup
   const teardownScript = worktreeScripts.teardown
@@ -440,6 +441,10 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
 
   const handleToggleHarnessMcp = useCallback(async (enabled: boolean) => {
     await window.api.setHarnessMcpEnabled(enabled)
+  }, [])
+
+  const handleToggleAutoUpdate = useCallback(async (enabled: boolean) => {
+    await window.api.setAutoUpdateEnabled(enabled)
   }, [])
 
   const effectiveClaudeCommand = claudeCommandDraft.trim() || defaultClaudeCommand
@@ -1465,7 +1470,9 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
             <section ref={(el) => { sectionRefs.current.updates = el }} id="updates">
               <h2 className="text-lg font-semibold text-fg-bright mb-1">Updates</h2>
               <p className="text-sm text-dim mb-4">
-                Harness checks for updates automatically on startup and every hour.
+                {autoUpdateEnabled
+                  ? 'Harness checks for updates automatically on startup and every 10 minutes.'
+                  : 'Automatic update checks are disabled. Use the button below to check manually.'}
               </p>
 
               <div className="bg-panel-raised border border-border rounded-lg p-4">
@@ -1491,6 +1498,24 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
                     {renderUpdaterStatus()}
                   </div>
                 )}
+
+                <div className="mt-4 pt-3 border-t border-border">
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={autoUpdateEnabled}
+                      onChange={(e) => handleToggleAutoUpdate(e.target.checked)}
+                      className="mt-0.5 cursor-pointer"
+                    />
+                    <div className="flex-1">
+                      <div className="text-sm text-fg-bright">Check for updates automatically</div>
+                      <div className="text-xs text-dim mt-0.5">
+                        When enabled, Harness checks for new releases on startup and every
+                        10 minutes. Disable to only check when you press the button above.
+                      </div>
+                    </div>
+                  </label>
+                </div>
               </div>
 
               <div className="mt-3 text-xs text-dim">

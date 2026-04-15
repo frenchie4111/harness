@@ -50,6 +50,17 @@ describe('settingsReducer', () => {
     expect(next.claudeEnvVars).toEqual({ FOO: 'bar', BAZ: 'qux' })
   })
 
+  it('autoUpdateEnabledChanged toggles auto-update flag', () => {
+    expect(initialSettings.autoUpdateEnabled).toBe(true)
+    const off = apply(initialSettings, {
+      type: 'settings/autoUpdateEnabledChanged',
+      payload: false
+    })
+    expect(off.autoUpdateEnabled).toBe(false)
+    const on = apply(off, { type: 'settings/autoUpdateEnabledChanged', payload: true })
+    expect(on.autoUpdateEnabled).toBe(true)
+  })
+
   it('harnessMcpEnabledChanged toggles mcp flag', () => {
     const off = apply(initialSettings, {
       type: 'settings/harnessMcpEnabledChanged',
