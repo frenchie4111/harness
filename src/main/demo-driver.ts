@@ -238,7 +238,6 @@ export class DemoDriver {
     this.dispatch({
       type: 'prs/bulkStatusChanged',
       payload: {
-        [WT_FIX_AUTH]: pr(1823, 'Refresh expired auth tokens', 'fix-auth-token-refresh', 'open', 'pending'),
         [WT_RATE_LIMIT]: pr(1824, 'Add rate limiter middleware', 'add-rate-limiter', 'open', 'pending'),
         [WT_REDESIGN]: pr(442, 'Redesign settings page', 'redesign-settings-page', 'merged', 'success')
       }
