@@ -223,7 +223,7 @@ export class DemoDriver {
     })
     this.dispatch({
       type: 'terminals/statusChanged',
-      payload: { id: TAB_MIGRATE_PG, status: 'idle', pendingTool: null }
+      payload: { id: TAB_MIGRATE_PG, status: 'processing', pendingTool: null }
     })
     this.dispatch({
       type: 'terminals/statusChanged',
@@ -240,7 +240,6 @@ export class DemoDriver {
       payload: {
         [WT_FIX_AUTH]: pr(1823, 'Refresh expired auth tokens', 'fix-auth-token-refresh', 'open', 'pending'),
         [WT_RATE_LIMIT]: pr(1824, 'Add rate limiter middleware', 'add-rate-limiter', 'open', 'pending'),
-        [WT_MIGRATE_PG]: pr(1825, 'Migrate to Postgres 16', 'migrate-postgres-16', 'open', 'success'),
         [WT_REDESIGN]: pr(442, 'Redesign settings page', 'redesign-settings-page', 'merged', 'success')
       }
     })
@@ -283,11 +282,11 @@ export class DemoDriver {
       })
     })
 
-    // t=22  migrate-pg needs-approval → idle (reverse)
+    // t=22  migrate-pg needs-approval → processing (reverse, green again)
     this.at(22000, () => {
       this.dispatch({
         type: 'terminals/statusChanged',
-        payload: { id: TAB_MIGRATE_PG, status: 'idle', pendingTool: null }
+        payload: { id: TAB_MIGRATE_PG, status: 'processing', pendingTool: null }
       })
     })
 
