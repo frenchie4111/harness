@@ -20,6 +20,15 @@ export interface FileWriteResult {
   error?: string
 }
 
+export interface FileDiffSides {
+  original: string
+  modified: string
+  originalExists: boolean
+  modifiedExists: boolean
+  modifiedBinary: boolean
+  error?: string
+}
+
 import type {
   PtyStatus,
   PendingTool,
@@ -171,6 +180,12 @@ export interface ElectronAPI {
     staged: boolean,
     mode?: 'working' | 'branch'
   ): Promise<string>
+  getFileDiffSides(
+    worktreePath: string,
+    filePath: string,
+    staged: boolean,
+    mode?: 'working' | 'branch'
+  ): Promise<FileDiffSides>
 
   // Settings — all reads come from useSettings()/useRepoConfigs()/etc.
   // Only the mutation methods + a few constant accessors remain on the IPC.

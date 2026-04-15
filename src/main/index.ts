@@ -12,7 +12,7 @@ import { WorktreeDeletionFSM } from './worktree-deletion-fsm'
 import { PanesFSM, stripTransientTabFields } from './panes-fsm'
 import { ActivityDeriver } from './activity-deriver'
 import type { TerminalTab, WorkspacePane } from '../shared/state/terminals'
-import { listWorktrees, listBranches, continueWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, readWorktreeFile, writeWorktreeFile, type MergeStrategy } from './worktree'
+import { listWorktrees, listBranches, continueWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, readWorktreeFile, writeWorktreeFile, getFileDiffSides, type MergeStrategy } from './worktree'
 import { getPRStatus, testToken, starRepo, unstarRepo, isRepoStarred } from './github'
 import { AVAILABLE_EDITORS, DEFAULT_EDITOR_ID, openInEditor } from './editor'
 import { setSecret, hasSecret, deleteSecret } from './secrets'
@@ -528,6 +528,19 @@ function registerIpcHandlers(): void {
     'worktree:writeFile',
     async (_, worktreePath: string, filePath: string, contents: string) => {
       return writeWorktreeFile(worktreePath, filePath, contents)
+    }
+  )
+
+  ipcMain.handle(
+    'worktree:fileDiffSides',
+    async (
+      _,
+      worktreePath: string,
+      filePath: string,
+      staged: boolean,
+      mode?: 'working' | 'branch'
+    ) => {
+      return getFileDiffSides(worktreePath, filePath, staged, mode ?? 'working')
     }
   )
 

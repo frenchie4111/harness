@@ -540,6 +540,103 @@ export async function getFileDiff(
   }
 }
 
+export interface FileDiffSides {
+  original: string
+  modified: string
+  originalExists: boolean
+  modifiedExists: boolean
+  modifiedBinary: boolean
+  error?: string
+}
+
+async function getFileAtRef(
+  worktreePath: string,
+  ref: string,
+  filePath: string
+): Promise<string | null> {
+  try {
+    const { stdout } = await execFileAsync('git', ['show', `${ref}:${filePath}`], {
+      cwd: worktreePath,
+      maxBuffer: 16 * 1024 * 1024
+    })
+    return stdout
+  } catch {
+    return null
+  }
+}
+
+async function getMergeBase(worktreePath: string, ref: string): Promise<string | null> {
+  try {
+    const { stdout } = await execFileAsync('git', ['merge-base', ref, 'HEAD'], {
+      cwd: worktreePath
+    })
+    return stdout.trim() || null
+  } catch {
+    return null
+  }
+}
+
+/** Resolve the two sides of a single-file diff as plain text, suitable for
+ * feeding Monaco's DiffEditor. Semantics match getFileDiff: working vs
+ * index (unstaged), HEAD vs index (staged), merge-base vs HEAD (branch). */
+export async function getFileDiffSides(
+  worktreePath: string,
+  filePath: string,
+  staged: boolean,
+  mode: ChangedFilesMode = 'working'
+): Promise<FileDiffSides> {
+  if (mode === 'branch') {
+    const baseRef = await getDefaultBaseRef(worktreePath)
+    if (baseRef === 'HEAD') {
+      return { original: '', modified: '', originalExists: false, modifiedExists: false, modifiedBinary: false }
+    }
+    const mb = await getMergeBase(worktreePath, baseRef)
+    const original = mb ? await getFileAtRef(worktreePath, mb, filePath) : null
+    const modified = await getFileAtRef(worktreePath, 'HEAD', filePath)
+    return {
+      original: original ?? '',
+      modified: modified ?? '',
+      originalExists: original != null,
+      modifiedExists: modified != null,
+      modifiedBinary: false
+    }
+  }
+
+  if (staged) {
+    const original = await getFileAtRef(worktreePath, 'HEAD', filePath)
+    const modified = await getFileAtRef(worktreePath, ':0', filePath)
+    return {
+      original: original ?? '',
+      modified: modified ?? '',
+      originalExists: original != null,
+      modifiedExists: modified != null,
+      modifiedBinary: false
+    }
+  }
+
+  // Unstaged working-tree diff: compare index (fallback HEAD) to working file.
+  let original = await getFileAtRef(worktreePath, ':0', filePath)
+  if (original == null) original = await getFileAtRef(worktreePath, 'HEAD', filePath)
+  const read = await readWorktreeFile(worktreePath, filePath)
+  if (read.binary) {
+    return {
+      original: original ?? '',
+      modified: '',
+      originalExists: original != null,
+      modifiedExists: true,
+      modifiedBinary: true
+    }
+  }
+  return {
+    original: original ?? '',
+    modified: read.content ?? '',
+    originalExists: original != null,
+    modifiedExists: read.content != null,
+    modifiedBinary: false,
+    error: read.error
+  }
+}
+
 export type MergeStrategy = 'squash' | 'merge-commit' | 'fast-forward'
 
 export interface MainWorktreeStatus {
