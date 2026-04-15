@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, Trash2, AlertTriangle, GitPullRequest, CheckCircle2, Loader2, ChevronDown, ChevronRight, ExternalLink } from 'lucide-react'
 import type { Worktree, PRStatus, ActivityLog, BranchCommit } from '../types'
+import { isPRMerged } from '../../shared/state/prs'
 
 interface CleanupProps {
   onClose: () => void
@@ -125,7 +126,7 @@ export function Cleanup({
     for (const w of eligible) {
       const lastMs = activityLastTs[w.path] ?? lastActive[w.path] ?? null
       const pr = prStatuses[w.path] ?? null
-      const merged = !!mergedPaths[w.path] || pr?.state === 'merged'
+      const merged = !!mergedPaths[w.path] || isPRMerged(pr)
       const dirty = !!dirtyMap[w.path]
 
       if (repoFilter !== null && w.repoRoot !== repoFilter) continue

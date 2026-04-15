@@ -1,6 +1,7 @@
 import type { Store } from './store'
 import type { AppState, StateEvent } from '../shared/state'
 import type { PtyStatus } from '../shared/state/terminals'
+import { isWorktreeMerged } from '../shared/state/prs'
 import type { ActivityState } from './activity'
 import { recordActivity } from './activity'
 
@@ -39,11 +40,7 @@ function effectiveActivityState(
   state: AppState,
   worktreePath: string
 ): ActivityState {
-  const merged =
-    state.prs.mergedByPath[worktreePath] ||
-    state.prs.byPath[worktreePath]?.state === 'merged' ||
-    state.prs.byPath[worktreePath]?.state === 'closed'
-  if (merged) return 'merged'
+  if (isWorktreeMerged(state.prs, worktreePath)) return 'merged'
   return aggregateWorktreeStatus(state, worktreePath)
 }
 

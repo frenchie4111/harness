@@ -1,4 +1,5 @@
 import type { Worktree, PRStatus } from './types'
+import { isPRMerged } from '../shared/state/prs'
 
 export type GroupKey = 'needs-attention' | 'active' | 'no-pr' | 'merged'
 
@@ -15,7 +16,7 @@ export function getGroupKey(
 ): GroupKey {
   if (locallyMerged) return 'merged'
   if (!pr) return 'no-pr'
-  if (pr.state === 'merged' || pr.state === 'closed') return 'merged'
+  if (isPRMerged(pr)) return 'merged'
   if (pr.checksOverall === 'failure' || pr.hasConflict === true || pr.reviewDecision === 'changes_requested') return 'needs-attention'
   return 'active'
 }

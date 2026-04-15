@@ -8,6 +8,7 @@ import type {
   ActivityState,
   PRStatus
 } from '../types'
+import { isPRMerged } from '../../shared/state/prs'
 
 interface ActivityProps {
   onClose: () => void
@@ -94,9 +95,7 @@ function isLiveMerged(
   prStatuses?: Record<string, PRStatus | null>,
   mergedPaths?: Record<string, boolean>
 ): boolean {
-  if (mergedPaths?.[path]) return true
-  const pr = prStatuses?.[path]
-  return pr?.state === 'merged' || pr?.state === 'closed'
+  return !!mergedPaths?.[path] || isPRMerged(prStatuses?.[path])
 }
 
 export function Activity({ onClose, worktrees, prStatuses, mergedPaths }: ActivityProps): JSX.Element {
