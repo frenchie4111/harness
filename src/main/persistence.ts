@@ -86,6 +86,10 @@ export interface Config {
   // session jsonl transcripts. Entries persist across tab/terminal death
   // so worktree-level totals survive restarts.
   costs?: CostsState
+  // When false, Harness skips background update checks on startup and
+  // on its periodic timer. The manual "Check for updates" button in
+  // Settings still works. Default is enabled (undefined/true).
+  autoUpdateEnabled?: boolean
 }
 
 export const DEFAULT_WORKTREE_BASE: 'remote' | 'local' = 'remote'

@@ -95,6 +95,8 @@ contextBridge.exposeInMainWorld('api', {
   setClaudeEnvVars: (vars: Record<string, string>) => ipcRenderer.invoke('config:setClaudeEnvVars', vars),
   setHarnessMcpEnabled: (enabled: boolean) =>
     ipcRenderer.invoke('config:setHarnessMcpEnabled', enabled),
+  setAutoUpdateEnabled: (enabled: boolean) =>
+    ipcRenderer.invoke('config:setAutoUpdateEnabled', enabled),
   prepareMcpForTerminal: (terminalId: string): Promise<string | null> =>
     ipcRenderer.invoke('mcp:prepareForTerminal', terminalId),
   onWorktreesExternalCreate: (

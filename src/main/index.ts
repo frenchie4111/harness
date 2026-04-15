@@ -715,6 +715,25 @@ function registerIpcHandlers(): void {
     return true
   })
 
+  ipcMain.handle('config:setAutoUpdateEnabled', (_, enabled: boolean) => {
+    if (enabled) {
+      delete config.autoUpdateEnabled
+    } else {
+      config.autoUpdateEnabled = false
+    }
+    saveConfig(config)
+    store.dispatch({
+      type: 'settings/autoUpdateEnabledChanged',
+      payload: config.autoUpdateEnabled !== false
+    })
+    if (config.autoUpdateEnabled === false) {
+      stopAutoUpdateChecks()
+    } else {
+      startAutoUpdateChecks()
+    }
+    return true
+  })
+
   ipcMain.handle('config:setHarnessMcpEnabled', (_, enabled: boolean) => {
     if (enabled) {
       delete config.harnessMcpEnabled
@@ -1301,13 +1320,32 @@ function setupAutoUpdater(): void {
     })
   }
 
+  // Background polling is gated on the autoUpdateEnabled setting so users
+  // can opt out. The manual "Check for updates" button in Settings remains
+  // available regardless.
+  startAutoUpdateChecks()
+}
+
+let autoUpdateTimer: NodeJS.Timeout | null = null
+
+function startAutoUpdateChecks(): void {
+  if (!app.isPackaged) return
+  if (config.autoUpdateEnabled === false) return
+  if (autoUpdateTimer) return
   // Check on startup, then every 10 minutes. We use checkForUpdates (not
   // checkForUpdatesAndNotify) so there's no native OS notification — the
   // renderer shows an in-app banner based on the updater:status events.
   autoUpdater.checkForUpdates().catch((err) => log('updater', 'check failed', err.message))
-  setInterval(() => {
+  autoUpdateTimer = setInterval(() => {
     autoUpdater.checkForUpdates().catch(() => {})
   }, 10 * 60 * 1000)
+}
+
+function stopAutoUpdateChecks(): void {
+  if (autoUpdateTimer) {
+    clearInterval(autoUpdateTimer)
+    autoUpdateTimer = null
+  }
 }
 
 app.whenReady().then(() => {
