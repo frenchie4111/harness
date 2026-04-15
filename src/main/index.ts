@@ -543,18 +543,28 @@ function registerIpcHandlers(): void {
   // refreshes (new worktree created, window focus, worktree activate,
   // terminal entered 'waiting' state).
   ipcMain.handle('prs:refreshAll', async () => {
+    // Demo mode: any refresh would call the real poller, which fetches PR
+    // status for the user's real Harness (Dev) repo roots and dispatches
+    // prs/bulkStatusChanged — wiping the demo PR seeds. The renderer fires
+    // refreshAll/refreshAllIfStale on focus and worktree activation, so
+    // without this guard the demo PRs disappear the moment you click into
+    // the window.
+    if (isDemoMode) return true
     await prPoller.refreshAll()
     return true
   })
   ipcMain.handle('prs:refreshAllIfStale', () => {
+    if (isDemoMode) return true
     prPoller.refreshAllIfStale()
     return true
   })
   ipcMain.handle('prs:refreshOne', async (_, worktreePath: string) => {
+    if (isDemoMode) return true
     await prPoller.refreshOne(worktreePath)
     return true
   })
   ipcMain.handle('prs:refreshOneIfStale', (_, worktreePath: string) => {
+    if (isDemoMode) return true
     prPoller.refreshOneIfStale(worktreePath)
     return true
   })
