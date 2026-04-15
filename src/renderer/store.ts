@@ -99,4 +99,8 @@ export function useRepoConfigs() {
   return useAppState((s) => s.repoConfigs.byRepo)
 }
 
+export function useCosts() {
+  return useAppState((s) => s.costs)
+}
+
 export type { AppState, StateEvent }

@@ -17,6 +17,7 @@ import { ChangedFilesPanel } from './components/ChangedFilesPanel'
 import { AllFilesPanel } from './components/AllFilesPanel'
 import { BranchCommitsPanel } from './components/BranchCommitsPanel'
 import { PRStatusPanel, MergeLocallyPanel } from './components/PRStatusPanel'
+import { CostPanel } from './components/CostPanel'
 import { Settings } from './components/Settings'
 import { Guide } from './components/Guide'
 import { Activity } from './components/Activity'
@@ -804,6 +805,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
                 }}
               />
             )}
+            <CostPanel worktreePath={activeWorktreeId} />
             <BranchCommitsPanel worktreePath={activeWorktreeId} onOpenCommit={handleOpenCommit} />
             <ChangedFilesPanel
               worktreePath={activeWorktreeId}
