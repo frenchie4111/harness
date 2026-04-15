@@ -240,6 +240,7 @@ export class DemoDriver {
       payload: {
         [WT_FIX_AUTH]: pr(1823, 'Refresh expired auth tokens', 'fix-auth-token-refresh', 'open', 'pending'),
         [WT_RATE_LIMIT]: pr(1824, 'Add rate limiter middleware', 'add-rate-limiter', 'open', 'pending'),
+        [WT_MIGRATE_PG]: pr(1825, 'Migrate to Postgres 16', 'migrate-postgres-16', 'open', 'success'),
         [WT_REDESIGN]: pr(442, 'Redesign settings page', 'redesign-settings-page', 'merged', 'success')
       }
     })
