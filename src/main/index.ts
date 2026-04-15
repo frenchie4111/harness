@@ -5,7 +5,7 @@ import { homedir } from 'os'
 import { join } from 'path'
 import { PtyManager } from './pty-manager'
 import { Store } from './store'
-import { registerStateTransport } from './transport-electron'
+import { ElectronServerTransport } from './transport-electron'
 import { PerfMonitor } from './perf-monitor'
 import { PRPoller } from './pr-poller'
 import { WorktreesFSM } from './worktrees-fsm'
@@ -77,7 +77,8 @@ let stopWatchingStatus: (() => void) | null = null
 
 const store = new Store(buildInitialAppState(config, { hasGithubToken: hasSecret('githubToken') }))
 const perfMonitor = new PerfMonitor()
-registerStateTransport(store, perfMonitor)
+const transport = new ElectronServerTransport(store, perfMonitor)
+transport.start()
 
 // Tails Claude Code session jsonl transcripts on Stop hook events,
 // sums per-model usage, and dispatches costs/usageUpdated. See
