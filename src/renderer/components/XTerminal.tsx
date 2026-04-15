@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
-import { SerializeAddon } from '@xterm/addon-serialize'
 import '@xterm/xterm/css/xterm.css'
 import type { StateEvent } from '../../shared/state'
 
@@ -43,11 +42,6 @@ const DEFAULT_TERMINAL_FONT_SIZE = 13
 const terminalRegistry = new Map<string, Terminal>()
 /** Fit addons keyed by terminal id, so font-change listeners can refit. */
 const fitRegistry = new Map<string, FitAddon>()
-/** Serialize addons keyed by terminal id, so we can flush all on window unload */
-const serializeRegistry = new Map<string, SerializeAddon>()
-/** Ids whose history is being cleared — suppress saves from pending intervals
- * and the window beforeunload flush so we don't resurrect deleted history. */
-const closingIds = new Set<string>()
 
 export function focusTerminalById(id: string): void {
   terminalRegistry.get(id)?.focus()
@@ -95,24 +89,12 @@ window.api.onStateEvent((raw) => {
   }
 })
 
-/** Mark a terminal as closing: stop saving its history and clear any
- * already-persisted history file. Call this before removing the tab. */
+/** Mark a terminal as closing: drop its main-side scrollback buffer + file so
+ * a future tab with a different id doesn't inherit stale bytes. Scrollback
+ * ownership lives in main (PtyManager), so this is a one-shot fire-and-forget
+ * IPC with no renderer-side suppression needed. */
 export function markTerminalClosing(id: string): void {
-  closingIds.add(id)
   window.api.clearTerminalHistory(id)
-}
-
-/** Flush every live terminal's scrollback to disk. Called on window unload —
- * uses the sync IPC variant so writes complete before the window closes. */
-export function flushAllTerminalHistory(): void {
-  for (const [id, addon] of serializeRegistry) {
-    if (closingIds.has(id)) continue
-    try {
-      window.api.saveTerminalHistorySync(id, addon.serialize())
-    } catch {
-      // ignore
-    }
-  }
 }
 
 interface XTerminalProps {
@@ -200,9 +182,6 @@ export function XTerminal({ terminalId, cwd, type, visible, claudeCommand, sessi
     const fitAddon = new FitAddon()
     terminal.loadAddon(fitAddon)
 
-    const serializeAddon = new SerializeAddon()
-    terminal.loadAddon(serializeAddon)
-
     // Translate Shift+Enter into "backslash + Enter" (\\\r). By default xterm
     // sends bare \r for both Enter and Shift+Enter, so Claude Code can't tell
     // them apart and treats Shift+Enter as submit. Sending `\` then Enter
@@ -234,7 +213,6 @@ export function XTerminal({ terminalId, cwd, type, visible, claudeCommand, sessi
     terminalRef.current = terminal
     fitAddonRef.current = fitAddon
     terminalRegistry.set(terminalId, terminal)
-    serializeRegistry.set(terminalId, serializeAddon)
     fitRegistry.set(terminalId, fitAddon)
 
     // Restore scrollback (if any) before spawning the PTY so historical output
@@ -298,17 +276,17 @@ export function XTerminal({ terminalId, cwd, type, visible, claudeCommand, sessi
       })
     }
 
-    window.api.loadTerminalHistory(terminalId).then((history) => {
+    window.api.getTerminalHistory(terminalId).then((history) => {
       if (disposed) return
       if (!history) {
         spawnPty()
         return
       }
-      // Replay scrollback. Wait for xterm to finish parsing before attaching
-      // onData, otherwise any response sequences xterm generates mid-parse
-      // (e.g. focus reports from CSI ?1004h in the saved history) get sent to
-      // the freshly spawned PTY — which is how a stray "O" was leaking into
-      // Claude on session resume (focus-out = ESC [ O).
+      // Replay raw scrollback. Wait for xterm to finish parsing before
+      // attaching onData, otherwise any response sequences xterm generates
+      // mid-parse (e.g. focus reports from CSI ?1004h in the saved history)
+      // get sent to the freshly spawned PTY — which is how a stray "O" was
+      // leaking into Claude on session resume (focus-out = ESC [ O).
       terminal.write(history, () => {
         if (disposed) return
         // Reset any reporting modes the restored session may have left on, so
@@ -349,27 +327,13 @@ export function XTerminal({ terminalId, cwd, type, visible, claudeCommand, sessi
     })
     resizeObserver.observe(containerRef.current)
 
-    // Periodic snapshot so a crash doesn't lose too much scrollback
-    const snapshotInterval = setInterval(() => {
-      if (closingIds.has(terminalId)) return
-      try {
-        window.api.saveTerminalHistory(terminalId, serializeAddon.serialize())
-      } catch {
-        // ignore
-      }
-    }, 30_000)
-
     return () => {
       disposed = true
-      // NOTE: intentionally do NOT save here. Unmount happens on both
-      // tab-close (history should be cleared) and app-quit (history is
-      // flushed via beforeunload). Saving here would race with
-      // clearTerminalHistory on close.
-      clearInterval(snapshotInterval)
+      // Scrollback is owned by main (PtyManager); nothing to flush here.
+      // Tab close routes through markTerminalClosing → terminal:forgetHistory
+      // before unmount to drop the main-side buffer + file.
       terminalRegistry.delete(terminalId)
-      serializeRegistry.delete(terminalId)
       fitRegistry.delete(terminalId)
-      closingIds.delete(terminalId)
       resizeObserver.disconnect()
       cleanupData?.()
       cleanupExit?.()

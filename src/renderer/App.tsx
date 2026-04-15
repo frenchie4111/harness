@@ -25,7 +25,7 @@ import { Cleanup } from './components/Cleanup'
 import { CommandCenter } from './components/CommandCenter'
 import { CommandPalette } from './components/CommandPalette'
 import iconUrl from '../../resources/icon.png'
-import { focusTerminalById, flushAllTerminalHistory } from './components/XTerminal'
+import { focusTerminalById } from './components/XTerminal'
 import { type GroupKey } from './worktree-sort'
 
 function isPendingId(id: string | null | undefined): id is string {
@@ -218,13 +218,6 @@ const setQuestStep = useCallback((next: QuestStep) => {
   // main for a fresh worktree list in case anything changed on disk.
   useEffect(() => {
     void window.api.refreshWorktreesList()
-  }, [])
-
-  // Flush all terminal scrollback to disk when the window is about to close
-  useEffect(() => {
-    const handler = (): void => flushAllTerminalHistory()
-    window.addEventListener('beforeunload', handler)
-    return () => window.removeEventListener('beforeunload', handler)
   }, [])
 
   useEffect(() => {

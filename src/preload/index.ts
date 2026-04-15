@@ -151,13 +151,8 @@ contextBridge.exposeInMainWorld('api', {
   panesEnsureInitialized: (wtPath: string) =>
     ipcRenderer.invoke('panes:ensureInitialized', wtPath),
 
-  saveTerminalHistory: (id: string, content: string) =>
-    ipcRenderer.invoke('terminal:saveHistory', id, content),
-  saveTerminalHistorySync: (id: string, content: string) => {
-    ipcRenderer.sendSync('terminal:saveHistorySync', id, content)
-  },
-  loadTerminalHistory: (id: string) => ipcRenderer.invoke('terminal:loadHistory', id),
-  clearTerminalHistory: (id: string) => ipcRenderer.invoke('terminal:clearHistory', id),
+  getTerminalHistory: (id: string) => ipcRenderer.invoke('terminal:getHistory', id),
+  clearTerminalHistory: (id: string) => ipcRenderer.invoke('terminal:forgetHistory', id),
   claudeSessionFileExists: (cwd: string, sessionId: string) =>
     ipcRenderer.invoke('claude:sessionFileExists', cwd, sessionId),
   getLatestClaudeSessionId: (cwd: string) => ipcRenderer.invoke('claude:latestSessionId', cwd),

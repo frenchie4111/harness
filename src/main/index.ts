@@ -29,9 +29,6 @@ import {
   DEFAULT_TERMINAL_FONT_SIZE,
   DEFAULT_WORKTREE_BASE,
   DEFAULT_MERGE_STRATEGY,
-  saveTerminalHistory,
-  loadTerminalHistory,
-  clearTerminalHistory,
   pruneTerminalHistory,
   type PersistedPane,
   type QuestStep
@@ -963,24 +960,16 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  // Terminal scrollback persistence
-  ipcMain.handle('terminal:saveHistory', (_, id: string, content: string) => {
-    saveTerminalHistory(id, content)
-    return true
+  // Terminal scrollback — owned entirely by main. PtyManager tees the PTY
+  // onData stream into a per-id ring buffer, persists it on a 30s cadence and
+  // on before-quit, and hands it back here on request. Renderer replays it
+  // into a fresh xterm instance before wiring up live data.
+  ipcMain.handle('terminal:getHistory', (_, id: string) => {
+    return ptyManager.getHistory(id)
   })
 
-  // Sync variant used by beforeunload so writes complete before window closes
-  ipcMain.on('terminal:saveHistorySync', (event, id: string, content: string) => {
-    saveTerminalHistory(id, content)
-    event.returnValue = true
-  })
-
-  ipcMain.handle('terminal:loadHistory', (_, id: string) => {
-    return loadTerminalHistory(id)
-  })
-
-  ipcMain.handle('terminal:clearHistory', (_, id: string) => {
-    clearTerminalHistory(id)
+  ipcMain.handle('terminal:forgetHistory', (_, id: string) => {
+    ptyManager.forgetHistory(id)
     return true
   })
 
