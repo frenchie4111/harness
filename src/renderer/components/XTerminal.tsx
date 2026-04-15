@@ -122,6 +122,11 @@ export function XTerminal({ terminalId, cwd, type, visible, claudeCommand, sessi
   const [loading, setLoading] = useState(type === 'claude')
   const visibleRef = useRef(visible)
   const initializedRef = useRef(false)
+  // When the terminal mounts in a display:none wrapper (background tab or
+  // non-active worktree), the container has zero size and FitAddon can't
+  // compute dimensions. We stash the deferred spawn here so the visible
+  // effect kicks it off once the container actually has layout.
+  const pendingSpawnRef = useRef<(() => void) | null>(null)
 
   // Keep ref in sync so the ResizeObserver callback sees current value
   visibleRef.current = visible
@@ -258,17 +263,29 @@ export function XTerminal({ terminalId, cwd, type, visible, claudeCommand, sessi
 
     const spawnPty = async (): Promise<void> => {
       if (disposed) return
+      // If the container has no layout yet (display:none background tab),
+      // defer the spawn. The visible useEffect below will call this again
+      // once the tab becomes visible and FitAddon can compute real dims.
+      // Spawning now would come up at the fallback 120x30 and every burst
+      // of output before the first resize IPC would paint at the wrong
+      // column, producing a visible "flash" when the worktree is opened.
+      const rect = containerRef.current?.getBoundingClientRect()
+      if (!rect || rect.width < 20 || rect.height < 20) {
+        pendingSpawnRef.current = () => { void spawnPty() }
+        return
+      }
+      pendingSpawnRef.current = null
+
       const shell = '/bin/zsh'
       const claudeArg = type === 'claude' ? await buildClaudeArg() : ''
       if (disposed) return
       const args = type === 'claude' ? ['-ilc', claudeArg] : ['-il']
       // Pass the renderer's fitted dimensions so the PTY spawns at the
-      // right grid size. Without this it comes up at a hardcoded 120x30
-      // and any cursor-positioned output landing before ResizeObserver's
-      // catch-up resizeTerminal() paints at the wrong column.
+      // right grid size instead of main's fallback 120x30.
       let spawnCols: number | undefined
       let spawnRows: number | undefined
       try {
+        fitAddon.fit()
         const dims = fitAddon.proposeDimensions()
         if (dims && dims.cols > 0 && dims.rows > 0) {
           spawnCols = dims.cols
@@ -367,6 +384,15 @@ export function XTerminal({ terminalId, cwd, type, visible, claudeCommand, sessi
       console.log(`[xterm] doFit reason=${reason} id=${terminalId} rect=${Math.round(rect.width)}x${Math.round(rect.height)}`)
       if (rect.width === 0 || rect.height === 0) return
       fitAddonRef.current.fit()
+      // If the PTY spawn was deferred because the container was hidden at
+      // mount, fire it now that we have real dimensions — before any
+      // resize IPC, so the very first spawn lands at the right grid size.
+      if (pendingSpawnRef.current) {
+        const pending = pendingSpawnRef.current
+        pendingSpawnRef.current = null
+        pending()
+        return
+      }
       const dims = fitAddonRef.current.proposeDimensions()
       if (dims) {
         console.log(`[xterm] resize id=${terminalId} cols=${dims.cols} rows=${dims.rows}`)
