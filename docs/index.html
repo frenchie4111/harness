@@ -43,6 +43,56 @@
       50% { opacity: 1; transform: scale(1.1); }
     }
     .pulse-dot { animation: pulse-dot 2s ease-in-out infinite; }
+
+    /* Flagship hero animations — transforms/opacity only, no layout shift. */
+    @keyframes bar-fill {
+      0%   { transform: scaleX(0); }
+      55%  { transform: scaleX(var(--bar-target, 1)); }
+      85%  { transform: scaleX(var(--bar-target, 1)); }
+      100% { transform: scaleX(0); }
+    }
+    @keyframes dot-breathe {
+      0%, 100% { opacity: 0.55; transform: scale(0.9); }
+      50%      { opacity: 1;    transform: scale(1.1); }
+    }
+    @keyframes mcp-typing {
+      0%   { transform: scaleX(1); }
+      35%  { transform: scaleX(0); }
+      90%  { transform: scaleX(0); }
+      100% { transform: scaleX(1); }
+    }
+    @keyframes mcp-caret {
+      0%, 49%  { opacity: 1; }
+      50%, 100% { opacity: 0; }
+    }
+    @keyframes mcp-reply {
+      0%, 38%  { opacity: 0; transform: translateY(4px); }
+      45%, 88% { opacity: 1; transform: translateY(0); }
+      95%, 100% { opacity: 0; transform: translateY(4px); }
+    }
+    @keyframes mcp-row-in {
+      0%, 50%  { opacity: 0; transform: translateY(-6px); }
+      60%, 88% { opacity: 1; transform: translateY(0); }
+      95%, 100% { opacity: 0; transform: translateY(-6px); }
+    }
+
+    /* Static defaults — these hold the "finished" visual so reduced-motion
+       users still see a meaningful snapshot instead of empty mid-animation frames. */
+    .parallel-bar       { transform-origin: left center; transform: scaleX(var(--bar-target, 1)); }
+    .parallel-dot       { opacity: 1; }
+    .mcp-typing-mask    { transform-origin: right center; transform: scaleX(0); }
+    .mcp-caret          { opacity: 0; }
+    .mcp-reply          { opacity: 1; transform: translateY(0); }
+    .mcp-new-row        { opacity: 1; transform: translateY(0); }
+
+    @media (prefers-reduced-motion: no-preference) {
+      .parallel-bar { animation: bar-fill 8s ease-in-out infinite; }
+      .parallel-dot { animation: dot-breathe 2.4s ease-in-out infinite; }
+      .mcp-typing-mask { animation: mcp-typing 8s steps(30, end) infinite; }
+      .mcp-caret       { animation: mcp-caret 1s step-end infinite; }
+      .mcp-reply       { animation: mcp-reply 8s ease-in-out infinite; }
+      .mcp-new-row     { animation: mcp-row-in 8s ease-in-out infinite; }
+    }
   </style>
 </head>
 <body class="min-h-screen grid-bg">
@@ -98,6 +148,136 @@
     </video>
   </section>
 
+  <!-- Flagship: Parallel agents -->
+  <section class="max-w-6xl mx-auto px-6 py-24">
+    <div class="grid md:grid-cols-2 gap-12 items-center">
+      <div>
+        <div class="text-xs uppercase tracking-widest text-amber-400/80 font-semibold mb-4">Parallel agents</div>
+        <h2 class="text-4xl md:text-5xl font-bold tracking-tight mb-5">
+          Ten Claudes.<br />
+          <span class="gradient-text">One window.</span>
+        </h2>
+        <p class="text-lg text-neutral-400 leading-relaxed">
+          Kick off a task, switch to the next one, and another. Harness keeps every agent
+          in its own worktree so they never step on each other — and one glance tells you
+          which ones are working, which are waiting, and which need you.
+        </p>
+      </div>
+      <div class="bg-neutral-950/60 border border-neutral-800 rounded-2xl p-5 shadow-2xl">
+        <div class="text-[10px] uppercase tracking-wider text-neutral-600 font-mono mb-3 px-1">worktrees</div>
+        <div class="space-y-2.5">
+          <!-- Row template: dot + label + progress bar track + animated fill -->
+          <div class="flex items-center gap-3">
+            <span class="w-2 h-2 rounded-full bg-green-500 parallel-dot flex-shrink-0" style="animation-delay: 0s;"></span>
+            <span class="text-xs font-mono text-neutral-300 w-36 truncate">feat/onboarding</span>
+            <div class="flex-1 h-1.5 rounded-full bg-neutral-900 overflow-hidden">
+              <div class="h-full bg-green-500/80 parallel-bar" style="--bar-target: 0.72; animation-delay: 0s;"></div>
+            </div>
+          </div>
+          <div class="flex items-center gap-3">
+            <span class="w-2 h-2 rounded-full bg-amber-400 parallel-dot flex-shrink-0" style="animation-delay: 0.3s;"></span>
+            <span class="text-xs font-mono text-neutral-300 w-36 truncate">fix/login-flash</span>
+            <div class="flex-1 h-1.5 rounded-full bg-neutral-900 overflow-hidden">
+              <div class="h-full bg-amber-400/80 parallel-bar" style="--bar-target: 0.94; animation-delay: 1.2s;"></div>
+            </div>
+          </div>
+          <div class="flex items-center gap-3">
+            <span class="w-2 h-2 rounded-full bg-green-500 parallel-dot flex-shrink-0" style="animation-delay: 0.6s;"></span>
+            <span class="text-xs font-mono text-neutral-300 w-36 truncate">refactor/auth</span>
+            <div class="flex-1 h-1.5 rounded-full bg-neutral-900 overflow-hidden">
+              <div class="h-full bg-green-500/80 parallel-bar" style="--bar-target: 0.45; animation-delay: 0.4s;"></div>
+            </div>
+          </div>
+          <div class="flex items-center gap-3">
+            <span class="w-2 h-2 rounded-full bg-red-500 parallel-dot flex-shrink-0" style="animation-delay: 0.9s;"></span>
+            <span class="text-xs font-mono text-neutral-300 w-36 truncate">chore/deps-bump</span>
+            <div class="flex-1 h-1.5 rounded-full bg-neutral-900 overflow-hidden">
+              <div class="h-full bg-red-500/80 parallel-bar" style="--bar-target: 0.3; animation-delay: 2.1s;"></div>
+            </div>
+          </div>
+          <div class="flex items-center gap-3">
+            <span class="w-2 h-2 rounded-full bg-green-500 parallel-dot flex-shrink-0" style="animation-delay: 1.2s;"></span>
+            <span class="text-xs font-mono text-neutral-300 w-36 truncate">docs/api-reference</span>
+            <div class="flex-1 h-1.5 rounded-full bg-neutral-900 overflow-hidden">
+              <div class="h-full bg-green-500/80 parallel-bar" style="--bar-target: 0.6; animation-delay: 0.9s;"></div>
+            </div>
+          </div>
+          <div class="flex items-center gap-3">
+            <span class="w-2 h-2 rounded-full bg-amber-400 parallel-dot flex-shrink-0" style="animation-delay: 1.5s;"></span>
+            <span class="text-xs font-mono text-neutral-300 w-36 truncate">perf/query-cache</span>
+            <div class="flex-1 h-1.5 rounded-full bg-neutral-900 overflow-hidden">
+              <div class="h-full bg-amber-400/80 parallel-bar" style="--bar-target: 0.82; animation-delay: 1.6s;"></div>
+            </div>
+          </div>
+          <div class="flex items-center gap-3">
+            <span class="w-2 h-2 rounded-full bg-green-500 parallel-dot flex-shrink-0" style="animation-delay: 1.8s;"></span>
+            <span class="text-xs font-mono text-neutral-300 w-36 truncate">test/e2e-checkout</span>
+            <div class="flex-1 h-1.5 rounded-full bg-neutral-900 overflow-hidden">
+              <div class="h-full bg-green-500/80 parallel-bar" style="--bar-target: 0.5; animation-delay: 0.2s;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Flagship: Claude controls Harness (MCP) -->
+  <section class="max-w-6xl mx-auto px-6 py-24">
+    <div class="grid md:grid-cols-2 gap-12 items-center">
+      <div class="md:order-2">
+        <div class="text-xs uppercase tracking-widest text-purple-400/80 font-semibold mb-4">MCP built in</div>
+        <h2 class="text-4xl md:text-5xl font-bold tracking-tight mb-5">
+          Claude spawns<br />
+          <span class="gradient-text">its own worktrees.</span>
+        </h2>
+        <p class="text-lg text-neutral-400 leading-relaxed">
+          A built-in MCP server gives Claude the keys to Harness. Ask it to spin up a
+          new worktree for a refactor and it just does it — no terminal detour, no
+          context switch, no "let me set that up for you."
+        </p>
+      </div>
+      <div class="md:order-1 bg-neutral-950/60 border border-neutral-800 rounded-2xl p-5 shadow-2xl font-mono text-[11px] leading-relaxed">
+        <div class="text-[10px] uppercase tracking-wider text-neutral-600 mb-3 px-1">claude</div>
+
+        <!-- Typed command — mask slides away revealing text, with a blinking caret. -->
+        <div class="flex items-center gap-2 mb-2">
+          <span class="text-neutral-600">&gt;</span>
+          <div class="relative flex-1">
+            <span class="text-neutral-200">spin up a worktree for the auth refactor</span>
+            <!-- Mask: same bg as card, slides from full-width to zero -->
+            <div class="mcp-typing-mask absolute inset-y-0 right-0 left-0 bg-neutral-950"></div>
+            <span class="mcp-caret absolute top-0 bottom-0 w-[1px] bg-neutral-200" style="left: 0;"></span>
+          </div>
+        </div>
+
+        <!-- MCP reply -->
+        <div class="mcp-reply flex items-center gap-2 text-green-400 pl-4 mb-4">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          <span>Created worktree: auth-refactor</span>
+        </div>
+
+        <!-- Sidebar mock -->
+        <div class="border-t border-neutral-800 pt-3">
+          <div class="text-[10px] uppercase tracking-wider text-neutral-600 mb-2 px-1">sidebar</div>
+          <div class="space-y-1.5">
+            <div class="flex items-center gap-2 px-2 py-1 rounded">
+              <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+              <span class="text-neutral-300">feat/onboarding</span>
+            </div>
+            <div class="flex items-center gap-2 px-2 py-1 rounded">
+              <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+              <span class="text-neutral-300">fix/login-flash</span>
+            </div>
+            <div class="mcp-new-row flex items-center gap-2 px-2 py-1 rounded bg-green-500/5 border border-green-500/20">
+              <span class="w-1.5 h-1.5 rounded-full bg-green-500 pulse-dot"></span>
+              <span class="text-green-300">auth-refactor</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- Features -->
   <section id="features" class="max-w-6xl mx-auto px-6 py-16">
     <h2 class="text-4xl font-bold text-center mb-4">Built for parallel work</h2>
@@ -151,31 +331,32 @@
         </p>
       </div>
 
-      <!-- Feature: activity timeline -->
+      <!-- Feature: full editor -->
       <div class="bg-neutral-950/60 border border-neutral-800 rounded-xl p-6">
-        <div class="h-16 mb-4 flex flex-col justify-center gap-1.5 bg-neutral-900/40 rounded-lg border border-neutral-800/60 px-3">
-          <div class="flex h-2 rounded overflow-hidden border border-neutral-800">
-            <div class="bg-green-500/60" style="flex:3"></div>
-            <div class="bg-amber-400/60" style="flex:1"></div>
-            <div class="bg-green-500/60" style="flex:4"></div>
-            <div class="bg-blue-400/40" style="flex:2"></div>
+        <div class="h-16 mb-4 flex flex-col justify-center gap-0.5 bg-neutral-900/40 rounded-lg border border-neutral-800/60 px-3 py-2 font-mono text-[10px]">
+          <div class="flex items-center gap-2">
+            <span class="text-neutral-700 w-3 text-right">1</span>
+            <span class="text-purple-400">const</span>
+            <span class="text-blue-300">user</span>
+            <span class="text-neutral-500">=</span>
+            <span class="text-amber-300">await</span>
+            <span class="text-green-400">fetch</span><span class="text-neutral-500">(</span>
           </div>
-          <div class="flex h-2 rounded overflow-hidden border border-neutral-800">
-            <div class="bg-amber-400/60" style="flex:1"></div>
-            <div class="bg-green-500/60" style="flex:5"></div>
-            <div class="bg-amber-400/60" style="flex:2"></div>
-            <div class="bg-green-500/60" style="flex:2"></div>
+          <div class="flex items-center gap-2">
+            <span class="text-neutral-700 w-3 text-right">2</span>
+            <span class="text-neutral-500 ml-2">'/api/me'</span><span class="text-neutral-500">)</span>
+            <span class="inline-block w-[1px] h-3 bg-neutral-200 ml-0.5"></span>
           </div>
-          <div class="flex h-2 rounded overflow-hidden border border-neutral-800">
-            <div class="bg-green-500/60" style="flex:6"></div>
-            <div class="bg-amber-400/60" style="flex:1"></div>
-            <div class="bg-green-500/60" style="flex:3"></div>
+          <div class="flex items-center gap-2">
+            <span class="text-neutral-700 w-3 text-right">3</span>
+            <span class="text-neutral-600 italic ml-2">// signed in</span>
           </div>
         </div>
-        <h3 class="text-lg font-semibold mb-2">Activity timeline</h3>
+        <h3 class="text-lg font-semibold mb-2">Full editor built in</h3>
         <p class="text-sm text-neutral-500">
-          A dedicated Activity view tracks every worktree's status history. See at a
-          glance which agents have been productive and which got stuck.
+          Click any file for a Monaco-powered editor with syntax highlighting for
+          every language, multi-cursor, find-and-replace, and ⌘S to save. Diffs
+          auto-collapse unchanged regions and expand on click.
         </p>
       </div>
 
@@ -199,70 +380,6 @@
         <p class="text-sm text-neutral-500">
           See open PRs and CI checks for every worktree. The list re-sorts so the one
           that needs your attention floats to the top. ⌘⇧G opens it in the browser.
-        </p>
-      </div>
-
-      <!-- Feature: inline diffs -->
-      <div class="bg-neutral-950/60 border border-neutral-800 rounded-xl p-6">
-        <div class="h-16 mb-4 flex flex-col justify-center gap-1 bg-neutral-900/40 rounded-lg border border-neutral-800/60 px-3 py-2 font-mono text-[10px]">
-          <div class="flex items-center gap-2"><span class="text-amber-400">M</span><span class="text-neutral-300 flex-1 truncate">src/api.ts</span><span class="text-green-500">+24</span><span class="text-red-500">-3</span></div>
-          <div class="flex items-center gap-2"><span class="text-green-400">A</span><span class="text-neutral-300 flex-1 truncate">src/auth/middleware.ts</span><span class="text-green-500">+88</span></div>
-          <div class="flex items-center gap-2"><span class="text-amber-400">M</span><span class="text-neutral-300 flex-1 truncate">tests/login.spec.ts</span><span class="text-green-500">+12</span><span class="text-red-500">-7</span></div>
-        </div>
-        <h3 class="text-lg font-semibold mb-2">Inline diffs</h3>
-        <p class="text-sm text-neutral-500">
-          A changed-files panel sits next to the terminal. Click any file for a full
-          diff tab so you can review what Claude changed without leaving the app.
-        </p>
-      </div>
-
-      <!-- Feature: tabs per worktree -->
-      <div class="bg-neutral-950/60 border border-neutral-800 rounded-xl p-6">
-        <div class="h-16 mb-4 flex items-end bg-neutral-900/40 rounded-lg border border-neutral-800/60 px-2 pt-3 gap-1">
-          <div class="px-2 py-1 rounded-t bg-neutral-800 border border-neutral-700 border-b-0 text-[10px] text-neutral-100 font-mono flex items-center gap-1">
-            <span class="w-1.5 h-1.5 rounded-full bg-green-500 pulse-dot"></span> claude
-          </div>
-          <div class="px-2 py-1 rounded-t bg-neutral-900 border border-neutral-800 border-b-0 text-[10px] text-neutral-400 font-mono">shell</div>
-          <div class="px-2 py-1 rounded-t bg-neutral-900 border border-neutral-800 border-b-0 text-[10px] text-neutral-400 font-mono">api.ts</div>
-        </div>
-        <h3 class="text-lg font-semibold mb-2">Tabs for everything</h3>
-        <p class="text-sm text-neutral-500">
-          Every worktree opens with a Claude tab and a shell tab side by side. Add
-          more shells, open diffs as tabs — all scoped to that checkout.
-        </p>
-      </div>
-
-      <!-- Feature: kickoff prompts / onboarding -->
-      <div class="bg-neutral-950/60 border border-neutral-800 rounded-xl p-6">
-        <div class="h-16 mb-4 flex flex-col justify-center gap-1.5 bg-neutral-900/40 rounded-lg border border-neutral-800/60 px-3">
-          <div class="text-[9px] uppercase tracking-wider text-neutral-600">Try a starter prompt</div>
-          <div class="flex flex-wrap gap-1">
-            <div class="px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-[10px] text-amber-300">Fix a bug</div>
-            <div class="px-2 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/30 text-[10px] text-purple-300">Add tests</div>
-            <div class="px-2 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/30 text-[10px] text-blue-300">Refactor</div>
-          </div>
-        </div>
-        <h3 class="text-lg font-semibold mb-2">Kickoff prompts</h3>
-        <p class="text-sm text-neutral-500">
-          A full-screen new-worktree flow with starter prompts gets an agent moving
-          in seconds. Built-in nudges walk you through your first parallel session.
-        </p>
-      </div>
-
-      <!-- Feature: themes -->
-      <div class="bg-neutral-950/60 border border-neutral-800 rounded-xl p-6">
-        <div class="h-16 mb-4 flex items-center justify-center gap-2 bg-neutral-900/40 rounded-lg border border-neutral-800/60">
-          <div class="w-6 h-6 rounded-full bg-gradient-to-br from-amber-400 to-red-500 ring-2 ring-neutral-700"></div>
-          <div class="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 ring-1 ring-neutral-800"></div>
-          <div class="w-6 h-6 rounded-full bg-gradient-to-br from-emerald-400 to-teal-600 ring-1 ring-neutral-800"></div>
-          <div class="w-6 h-6 rounded-full bg-gradient-to-br from-pink-500 to-rose-600 ring-1 ring-neutral-800"></div>
-          <div class="w-6 h-6 rounded-full bg-gradient-to-br from-neutral-200 to-neutral-500 ring-1 ring-neutral-800"></div>
-          <div class="w-6 h-6 rounded-full bg-gradient-to-br from-yellow-300 to-orange-500 ring-1 ring-neutral-800"></div>
-        </div>
-        <h3 class="text-lg font-semibold mb-2">Nine built-in themes</h3>
-        <p class="text-sm text-neutral-500">
-          Match your editor or just pick the one you like. Switch themes from
-          Settings any time without restarting the app.
         </p>
       </div>
 
@@ -298,20 +415,6 @@
         </p>
       </div>
 
-      <!-- Feature: MCP -->
-      <div class="bg-neutral-950/60 border border-neutral-800 rounded-xl p-6">
-        <div class="h-16 mb-4 flex flex-col justify-center gap-1 bg-neutral-900/40 rounded-lg border border-neutral-800/60 px-3 py-2 font-mono text-[10px]">
-          <div class="text-neutral-500">> create a worktree for the auth refactor</div>
-          <div class="text-green-400">Created worktree: auth-refactor</div>
-          <div class="text-neutral-500">> list worktrees</div>
-        </div>
-        <h3 class="text-lg font-semibold mb-2">Claude controls Harness</h3>
-        <p class="text-sm text-neutral-500">
-          A built-in MCP server lets Claude create and list worktrees on its own.
-          Ask Claude to spin up a new worktree and it just does it.
-        </p>
-      </div>
-
       <!-- Feature: command center -->
       <div class="bg-neutral-950/60 border border-neutral-800 rounded-xl p-6">
         <div class="h-16 mb-4 grid grid-cols-3 gap-1 bg-neutral-900/40 rounded-lg border border-neutral-800/60 p-2">
@@ -342,23 +445,8 @@
         </div>
         <h3 class="text-lg font-semibold mb-2">Command center</h3>
         <p class="text-sm text-neutral-500">
-          Bird's-eye view of every worktree in one grid. See which Claudes are
-          working, which need you, and which are idle — with mini activity timelines.
-        </p>
-      </div>
-
-      <!-- Feature: hotkeys -->
-      <div class="bg-neutral-950/60 border border-neutral-800 rounded-xl p-6">
-        <div class="h-16 mb-4 flex items-center justify-center gap-1.5 bg-neutral-900/40 rounded-lg border border-neutral-800/60">
-          <kbd class="px-1.5 py-0.5 rounded bg-neutral-800 border border-neutral-700 text-[10px] text-neutral-200 font-mono">⌘1</kbd>
-          <kbd class="px-1.5 py-0.5 rounded bg-neutral-800 border border-neutral-700 text-[10px] text-neutral-200 font-mono">⌘T</kbd>
-          <kbd class="px-1.5 py-0.5 rounded bg-neutral-800 border border-neutral-700 text-[10px] text-neutral-200 font-mono">⌘⇧G</kbd>
-          <kbd class="px-1.5 py-0.5 rounded bg-neutral-800 border border-neutral-700 text-[10px] text-neutral-200 font-mono">⌘B</kbd>
-        </div>
-        <h3 class="text-lg font-semibold mb-2">Configurable hotkeys</h3>
-        <p class="text-sm text-neutral-500">
-          ⌘1–⌘9 jumps between worktrees. ⌘T opens a new shell. ⌘⇧G opens the active
-          PR. ⌘B hides the sidebar. All rebindable in Settings.
+          Bird's-eye view of every worktree in one grid, with mini activity timelines
+          showing which agents have been productive and which got stuck.
         </p>
       </div>
 
