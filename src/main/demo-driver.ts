@@ -253,18 +253,14 @@ export class DemoDriver {
   }
 
   /** The 8-second symmetric loop. Every change made in the first half is
-   * undone in the second half so the state at LOOP_MS exactly equals t=0
-   * and the visible loop seam is invisible. */
+   * undone in the second half so the state at LOOP_MS exactly equals t=0.
+   * That means we only need to reschedule timeline + cast at the loop
+   * boundary, not re-seed — re-seeding caused the sidebar to repaint
+   * wholesale and the PR badge to re-animate every loop. */
   private runLoop(): void {
     this.scheduleTimeline()
     this.scheduleCast()
-    this.timers.push(
-      setTimeout(() => {
-        this.stop()
-        this.seed()
-        this.runLoop()
-      }, LOOP_MS)
-    )
+    this.timers.push(setTimeout(() => this.runLoop(), LOOP_MS))
   }
 
   private scheduleTimeline(): void {
