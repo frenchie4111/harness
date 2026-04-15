@@ -25,7 +25,7 @@ import type { Store } from './store'
 import type { StateEvent, Worktree, WorkspacePane, PRStatus } from '../shared/state'
 import { log } from './debug'
 
-const LOOP_MS = 8000
+const LOOP_MS = 30000
 
 const ACME_API = '/demo/repos/acme-api'
 const ACME_WEB = '/demo/repos/acme-web'
@@ -270,8 +270,8 @@ export class DemoDriver {
   }
 
   private scheduleTimeline(): void {
-    // t=2.0  migrate-pg → needs-approval
-    this.at(2000, () => {
+    // t=6  migrate-pg → needs-approval
+    this.at(6000, () => {
       this.dispatch({
         type: 'terminals/statusChanged',
         payload: {
@@ -282,8 +282,8 @@ export class DemoDriver {
       })
     })
 
-    // t=4.0  rate-limiter PR pending → success
-    this.at(4000, () => {
+    // t=12  rate-limiter PR pending → success
+    this.at(12000, () => {
       this.dispatch({
         type: 'prs/statusChanged',
         payload: {
@@ -293,34 +293,38 @@ export class DemoDriver {
       })
     })
 
-    // t=5.0  fix-auth processing → waiting (the hero worktree finishes)
-    this.at(5000, () => {
+    // t=15  fix-auth processing → waiting (the hero worktree finishes)
+    this.at(15000, () => {
       this.dispatch({
         type: 'terminals/statusChanged',
         payload: { id: HERO_TAB_ID, status: 'waiting', pendingTool: null }
       })
     })
 
-    // t=6.0  fix-auth waiting → processing again (reverse for loop symmetry)
-    this.at(6000, () => {
+    // t=18  fix-auth waiting → processing again (reverse for loop symmetry)
+    this.at(18000, () => {
       this.dispatch({
         type: 'terminals/statusChanged',
         payload: { id: HERO_TAB_ID, status: 'processing', pendingTool: null }
       })
     })
 
-    // t=7.0  reverse: migrate-pg back to idle, rate-limiter back to pending
-    this.at(7000, () => {
-      this.dispatch({
-        type: 'terminals/statusChanged',
-        payload: { id: TAB_MIGRATE_PG, status: 'idle', pendingTool: null }
-      })
+    // t=24  rate-limiter PR success → pending (reverse)
+    this.at(24000, () => {
       this.dispatch({
         type: 'prs/statusChanged',
         payload: {
           path: WT_RATE_LIMIT,
           status: pr(1824, 'Add rate limiter middleware', 'add-rate-limiter', 'open', 'pending')
         }
+      })
+    })
+
+    // t=27  migrate-pg needs-approval → idle (reverse)
+    this.at(27000, () => {
+      this.dispatch({
+        type: 'terminals/statusChanged',
+        payload: { id: TAB_MIGRATE_PG, status: 'idle', pendingTool: null }
       })
     })
   }
