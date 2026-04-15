@@ -37,6 +37,10 @@ const WT_REDESIGN = '/demo/worktrees/acme-web/redesign-settings-page'
 const WT_FIX_FLAKY = '/demo/worktrees/acme-api/fix-flaky-login-test'
 
 const HERO_TAB_ID = 'demo-claude-fix-auth'
+const TAB_RATE_LIMIT = 'demo-claude-rate-limit'
+const TAB_MIGRATE_PG = TAB_MIGRATE_PG
+const TAB_FIX_FLAKY = 'demo-claude-fix-flaky'
+const TAB_REDESIGN = 'demo-claude-redesign'
 
 function fakeWorktree(
   path: string,
@@ -170,31 +174,58 @@ export class DemoDriver {
     ]
     this.dispatch({ type: 'worktrees/listChanged', payload: worktrees })
 
-    // Seed panes for the hero worktree only — that's the one whose terminal
-    // we replay. The other worktrees show up in the sidebar but have no
-    // panes (renderer will lazily create them on activation, which won't
-    // happen during the demo).
-    const heroPane: WorkspacePane = {
-      id: 'demo-pane-fix-auth',
+    // Seed a pane with a single Claude tab for every demo worktree. The
+    // sidebar's per-worktree status is derived by looking up panes for that
+    // path, walking the tabs, and reading terminals.statuses[tab.id]. So
+    // every worktree we want to flip in the timeline needs a tab whose id
+    // matches what the timeline dispatches.
+    //
+    // Only the active worktree (fix-auth) has its xterm component actually
+    // mounted; the others render invisibly. pty:create is a no-op in demo
+    // mode so no real ptys spawn for any of them.
+    const seedPane = (tabId: string): WorkspacePane => ({
+      id: `demo-pane-${tabId}`,
       tabs: [
         {
-          id: HERO_TAB_ID,
+          id: tabId,
           type: 'claude',
           label: 'Claude',
-          sessionId: 'demo-session-fix-auth'
+          sessionId: `demo-session-${tabId}`
         }
       ],
-      activeTabId: HERO_TAB_ID
-    }
+      activeTabId: tabId
+    })
     this.dispatch({
       type: 'terminals/panesReplaced',
-      payload: { [WT_FIX_AUTH]: [heroPane] }
+      payload: {
+        [WT_FIX_AUTH]: [seedPane(HERO_TAB_ID)],
+        [WT_RATE_LIMIT]: [seedPane(TAB_RATE_LIMIT)],
+        [WT_MIGRATE_PG]: [seedPane(TAB_MIGRATE_PG)],
+        [WT_FIX_FLAKY]: [seedPane(TAB_FIX_FLAKY)],
+        [WT_REDESIGN]: [seedPane(TAB_REDESIGN)]
+      }
     })
 
-    // Initial statuses
+    // Initial statuses — opening frame
     this.dispatch({
       type: 'terminals/statusChanged',
       payload: { id: HERO_TAB_ID, status: 'processing', pendingTool: null }
+    })
+    this.dispatch({
+      type: 'terminals/statusChanged',
+      payload: { id: TAB_RATE_LIMIT, status: 'processing', pendingTool: null }
+    })
+    this.dispatch({
+      type: 'terminals/statusChanged',
+      payload: { id: TAB_MIGRATE_PG, status: 'idle', pendingTool: null }
+    })
+    this.dispatch({
+      type: 'terminals/statusChanged',
+      payload: { id: TAB_FIX_FLAKY, status: 'idle', pendingTool: null }
+    })
+    this.dispatch({
+      type: 'terminals/statusChanged',
+      payload: { id: TAB_REDESIGN, status: 'idle', pendingTool: null }
     })
 
     // Initial PR statuses
@@ -242,7 +273,7 @@ export class DemoDriver {
       this.dispatch({
         type: 'terminals/statusChanged',
         payload: {
-          id: 'demo-claude-migrate-pg',
+          id: TAB_MIGRATE_PG,
           status: 'needs-approval',
           pendingTool: { name: 'Bash', input: { command: 'dropdb acme_dev && createdb acme_dev' } }
         }
@@ -280,7 +311,7 @@ export class DemoDriver {
     this.at(7000, () => {
       this.dispatch({
         type: 'terminals/statusChanged',
-        payload: { id: 'demo-claude-migrate-pg', status: 'idle', pendingTool: null }
+        payload: { id: TAB_MIGRATE_PG, status: 'idle', pendingTool: null }
       })
       this.dispatch({
         type: 'prs/statusChanged',
