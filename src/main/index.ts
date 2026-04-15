@@ -275,6 +275,12 @@ function drainBootInit(force: boolean): void {
 }
 
 store.subscribe((event) => {
+  // Demo mode: DemoDriver hand-seeds panes for the hero worktree only and
+  // leaves the other rows paneless on purpose. The auto-init would
+  // overwrite the seeded fix-auth pane with a fresh one (different id) and
+  // create real default panes for /demo/... paths, causing the renderer to
+  // spawn xterm components for them.
+  if (isDemoMode) return
   if (event.type === 'worktrees/listChanged') {
     const list = store.getSnapshot().state.worktrees.list
     if (bootDrained) {
@@ -397,6 +403,7 @@ function registerIpcHandlers(): void {
   )
 
   ipcMain.handle('worktree:isDirty', async (_, path: string) => {
+    if (isDemoMode) return false
     return isWorktreeDirty(path)
   })
 
@@ -492,6 +499,7 @@ function registerIpcHandlers(): void {
 
   // Changed files
   ipcMain.handle('worktree:changedFiles', async (_, worktreePath: string, mode?: 'working' | 'branch') => {
+    if (isDemoMode) return []
     return getChangedFiles(worktreePath, mode ?? 'working')
   })
 
@@ -509,6 +517,7 @@ function registerIpcHandlers(): void {
   )
 
   ipcMain.handle('worktree:listFiles', async (_, worktreePath: string) => {
+    if (isDemoMode) return []
     return listAllFiles(worktreePath)
   })
 
@@ -517,6 +526,7 @@ function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('worktree:branchCommits', async (_, worktreePath: string) => {
+    if (isDemoMode) return []
     return getBranchCommits(worktreePath)
   })
 
@@ -546,11 +556,22 @@ function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('worktree:mainStatus', async (_, repoRoot: string) => {
+    if (isDemoMode) {
+      return {
+        path: repoRoot,
+        currentBranch: 'main',
+        baseBranch: 'main',
+        isOnBase: true,
+        isDirty: false,
+        ready: true
+      }
+    }
     if (!repoRoot) throw new Error('No repo root provided')
     return getMainWorktreeStatus(repoRoot)
   })
 
   ipcMain.handle('worktree:previewMerge', async (_, repoRoot: string, sourceBranch: string) => {
+    if (isDemoMode) return { hasConflict: false, files: [] }
     if (!repoRoot) throw new Error('No repo root provided')
     const status = await getMainWorktreeStatus(repoRoot)
     return previewMergeConflicts(repoRoot, sourceBranch, status.baseBranch)
@@ -885,6 +906,7 @@ function registerIpcHandlers(): void {
   // skips merged worktrees, so this is the only path that wakes them.
   // No-op for paths that already have panes.
   ipcMain.handle('panes:ensureInitialized', (_, wtPath: string) => {
+    if (isDemoMode) return true
     panesFSM.ensureInitialized(wtPath)
     return true
   })
@@ -1296,10 +1318,15 @@ app.whenReady().then(() => {
   // discovered worktrees is handled by the sleep-on-boot subscriber above
   // — refreshList() dispatches `worktrees/listChanged`, which queues every
   // path for init pending the first PR-poller pass (or a 3s timeout).
-  void (async () => {
-    await panesFSM.restoreFromConfig(config.panes)
-    await worktreesFSM.refreshList()
-  })()
+  // Skipped in demo mode — DemoDriver owns the worktree list and panes.
+  // restoreFromConfig would re-hydrate prior real worktrees from the dev
+  // config.json into the demo store.
+  if (!isDemoMode) {
+    void (async () => {
+      await panesFSM.restoreFromConfig(config.panes)
+      await worktreesFSM.refreshList()
+    })()
+  }
 
   // Seed per-repo config slice from each repo's .harness.json file.
   const initialRepoConfigsMap: Record<string, RepoConfig> = {}
