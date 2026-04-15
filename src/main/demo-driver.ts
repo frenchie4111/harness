@@ -330,8 +330,14 @@ export class DemoDriver {
   }
 
   /** Replay the hero cast against HERO_TAB_ID. Schedules each chunk relative
-   * to loop start; chunks past LOOP_MS are dropped. */
+   * to loop start; chunks past LOOP_MS are dropped. The first byte sent is
+   * a full terminal reset (RIS, ESC c) so each loop starts with a clean
+   * screen instead of layering on top of the previous loop's content. */
   private scheduleCast(): void {
+    const win = this.getWindow()
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('terminal:data', HERO_TAB_ID, '\x1bc')
+    }
     if (this.heroCast.length === 0) return
     let cursor = 0
     for (const rec of this.heroCast) {
@@ -340,9 +346,9 @@ export class DemoDriver {
       const fireAt = cursor
       const data = rec.data
       this.at(fireAt, () => {
-        const win = this.getWindow()
-        if (win && !win.isDestroyed()) {
-          win.webContents.send('terminal:data', HERO_TAB_ID, data)
+        const w = this.getWindow()
+        if (w && !w.isDestroyed()) {
+          w.webContents.send('terminal:data', HERO_TAB_ID, data)
         }
       })
     }
