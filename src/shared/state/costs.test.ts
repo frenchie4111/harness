@@ -23,6 +23,14 @@ function stubUsage(overrides: Partial<SessionUsage> = {}): SessionUsage {
         cost: 1.23
       }
     },
+    breakdown: {
+      text: 0.1,
+      thinking: 0.05,
+      toolUse: 0.2,
+      userPrompt: 0.1,
+      assistantEcho: 0.3,
+      toolResults: { Bash: 0.4, Read: 0.08 }
+    },
     ...overrides
   }
 }

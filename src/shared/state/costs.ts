@@ -12,12 +12,54 @@ export interface ModelTally {
   cost: number
 }
 
+/** Estimated dollar attribution of a session's total cost across the
+ *  content categories that drove it. All fields are dollars and sum to
+ *  (roughly) the session total. The split is computed by char-length
+ *  proportion within each turn — exact per-block token counts aren't
+ *  in the Anthropic usage field, so this is an estimate. Good enough
+ *  for a "where are my tokens going" bar chart; not an accounting
+ *  receipt.
+ *
+ *  Output side (what Claude produced this turn):
+ *    text         — assistant text replies to the user
+ *    thinking     — extended-thinking blocks
+ *    toolUse      — the JSON args passed to tool calls
+ *
+ *  Input side (what was fed back in as context on this turn). A single
+ *  tool_result or user prompt contributes to every subsequent turn's
+ *  input cost — a big Read output early in a long session is "doubly
+ *  expensive" because it gets re-paid on every cached turn after. The
+ *  input-side attribution captures that amortized cost naturally.
+ *    userPrompt     — things the user typed
+ *    assistantEcho  — prior assistant messages replayed in context
+ *    toolResults    — stdout of tool calls, keyed by tool name
+ */
+export interface ContentBreakdown {
+  text: number
+  thinking: number
+  toolUse: number
+  userPrompt: number
+  assistantEcho: number
+  toolResults: Record<string, number>
+}
+
+export const emptyBreakdown: ContentBreakdown = {
+  text: 0,
+  thinking: 0,
+  toolUse: 0,
+  userPrompt: 0,
+  assistantEcho: 0,
+  toolResults: {}
+}
+
 export interface SessionUsage {
   sessionId: string
   transcriptPath: string
   /** Per-model accumulator. A single session can span multiple models
    *  if the user runs `/model` mid-session. */
   byModel: Record<string, ModelTally>
+  /** Dollar attribution across content categories (see ContentBreakdown). */
+  breakdown: ContentBreakdown
   /** Most recently seen assistant-message model — drives the "right now"
    *  badge in the UI. */
   currentModel: string | null
@@ -71,6 +113,29 @@ export function costsReducer(state: CostsState, event: CostsEvent): CostsState {
       void _exhaustive
       return state
     }
+  }
+}
+
+/** Sum two breakdowns into `target` in place. */
+export function addBreakdown(target: ContentBreakdown, src: ContentBreakdown): void {
+  target.text += src.text
+  target.thinking += src.thinking
+  target.toolUse += src.toolUse
+  target.userPrompt += src.userPrompt
+  target.assistantEcho += src.assistantEcho
+  for (const [k, v] of Object.entries(src.toolResults)) {
+    target.toolResults[k] = (target.toolResults[k] ?? 0) + v
+  }
+}
+
+export function cloneBreakdown(b: ContentBreakdown): ContentBreakdown {
+  return {
+    text: b.text,
+    thinking: b.thinking,
+    toolUse: b.toolUse,
+    userPrompt: b.userPrompt,
+    assistantEcho: b.assistantEcho,
+    toolResults: { ...b.toolResults }
   }
 }
 

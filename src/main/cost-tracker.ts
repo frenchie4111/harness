@@ -1,31 +1,54 @@
-// CostTracker subscribes to Stop hook events, tails the session jsonl
-// pointed at by `transcript_path`, sums per-model usage, and dispatches
-// costs/usageUpdated through the store. The renderer mirrors it via
-// `useCosts()` — see CLAUDE.md "main owns state, renderer mirrors".
+// CostTracker subscribes to Stop hook events, reads the session jsonl
+// pointed at by `transcript_path`, and produces:
+//   - per-model usage totals (tokens + $)
+//   - a ContentBreakdown attributing the session's $ total across
+//     content categories (see src/shared/state/costs.ts).
 //
-// Tailing is offset-based, keyed by transcriptPath (not terminalId), so
-// if a tab is restarted with `--resume <sessionId>` against the same
-// jsonl we don't double-count. Only delta bytes since the last read are
-// parsed and applied.
+// Strategy: on each Stop, re-parse the whole transcript from scratch
+// and dispatch the fresh totals via costs/usageUpdated. Transcripts are
+// small (MBs at most) and Stop events are infrequent (once per
+// assistant turn), so the simpler full-reparse beats incremental
+// tailing + state juggling.
+//
+// Per-block token counts aren't in the Anthropic usage field, so we
+// estimate the $ split by char-length proportion within each turn:
+// the turn's known output-rate cost is divided across this message's
+// text/thinking/tool_use blocks by their char lengths; the turn's
+// input-rate cost is divided across the running context composition
+// (accumulated from prior messages' content). A single big tool_result
+// naturally gets credited on every subsequent turn's input attribution,
+// which captures the "doubly expensive" insight that early large
+// outputs keep costing money as long as they sit in the context.
 
-import { openSync, fstatSync, readSync, closeSync } from 'fs'
+import { readFileSync } from 'fs'
 import type { Store } from './store'
 import { onStopEvent, type StopEvent } from './hooks'
 import {
   emptyTally,
+  emptyBreakdown,
+  cloneBreakdown,
+  type ContentBreakdown,
   type ModelTally,
   type SessionUsage
 } from '../shared/state/costs'
-import { priceFor, isKnownModel, type TokenUsage } from '../shared/pricing'
+import { priceFor, rateFor, type TokenUsage } from '../shared/pricing'
 import { log } from './debug'
 
-interface Offset {
-  bytes: number
-  residual: string
+type Block = Record<string, unknown>
+
+interface CtxChars {
+  userPrompt: number
+  assistantEcho: number
+  toolResults: Record<string, number>
+}
+
+interface ParseResult {
+  byModel: Record<string, ModelTally>
+  breakdown: ContentBreakdown
+  currentModel: string | null
 }
 
 export class CostTracker {
-  private offsets = new Map<string, Offset>()
   private unsubscribe: (() => void) | null = null
 
   constructor(private store: Store) {}
@@ -41,7 +64,19 @@ export class CostTracker {
 
   private handleStop(ev: StopEvent): void {
     try {
-      this.ingestTranscript(ev)
+      const parsed = parseTranscript(ev.transcriptPath)
+      const usage: SessionUsage = {
+        sessionId: ev.sessionId,
+        transcriptPath: ev.transcriptPath,
+        byModel: parsed.byModel,
+        breakdown: parsed.breakdown,
+        currentModel: parsed.currentModel,
+        updatedAt: ev.ts * 1000
+      }
+      this.store.dispatch({
+        type: 'costs/usageUpdated',
+        payload: { terminalId: ev.terminalId, usage }
+      })
     } catch (err) {
       log(
         'cost-tracker',
@@ -49,109 +84,169 @@ export class CostTracker {
       )
     }
   }
+}
 
-  private ingestTranscript(ev: StopEvent): void {
-    const path = ev.transcriptPath
-    let fd: number
-    try {
-      fd = openSync(path, 'r')
-    } catch {
-      return
-    }
-    let delta: { tally: Record<string, ModelTally>; lastModel: string | null }
-    try {
-      const { size } = fstatSync(fd)
-      const prior = this.offsets.get(path) ?? { bytes: 0, residual: '' }
-      let start = prior.bytes
-      let residual = prior.residual
-      if (size < start) {
-        start = 0
-        residual = ''
-      }
-      if (size === start) {
-        closeSync(fd)
-        return
-      }
-      const len = size - start
-      const buf = Buffer.alloc(len)
-      readSync(fd, buf, 0, len, start)
-      this.offsets.set(path, { bytes: size, residual: '' })
-      delta = this.parseDelta(residual + buf.toString('utf-8'), path)
-    } finally {
-      closeSync(fd)
-    }
-
-    const existing = this.store.getSnapshot().state.costs.byTerminal[ev.terminalId]
-    const merged = mergeUsage(existing, ev, delta)
-    this.store.dispatch({
-      type: 'costs/usageUpdated',
-      payload: { terminalId: ev.terminalId, usage: merged }
-    })
+function parseTranscript(path: string): ParseResult {
+  let text: string
+  try {
+    text = readFileSync(path, 'utf-8')
+  } catch {
+    return { byModel: {}, breakdown: cloneBreakdown(emptyBreakdown), currentModel: null }
   }
 
-  private parseDelta(
-    text: string,
-    path: string
-  ): { tally: Record<string, ModelTally>; lastModel: string | null } {
-    const lines = text.split('\n')
-    // Last chunk may be partial; stash for next read.
-    const tail = lines.pop() ?? ''
-    if (tail) this.offsets.get(path)!.residual = tail
+  const byModel: Record<string, ModelTally> = {}
+  const breakdown: ContentBreakdown = cloneBreakdown(emptyBreakdown)
+  const ctx: CtxChars = { userPrompt: 0, assistantEcho: 0, toolResults: {} }
+  const toolNameById: Record<string, string> = {}
+  let currentModel: string | null = null
 
-    const tally: Record<string, ModelTally> = {}
-    let lastModel: string | null = null
-    for (const line of lines) {
-      if (!line.trim()) continue
-      let obj: Record<string, unknown>
-      try {
-        obj = JSON.parse(line) as Record<string, unknown>
-      } catch {
-        continue
-      }
-      if (obj.type !== 'assistant') continue
-      const msg = obj.message as Record<string, unknown> | undefined
-      if (!msg) continue
-      const model = typeof msg.model === 'string' ? msg.model : null
-      const usage = (msg.usage ?? null) as TokenUsage | null
-      if (!model || !usage) continue
-      if (!isKnownModel(model)) {
-        log('cost-tracker', `unknown model: ${model}`)
-      }
-      lastModel = model
-      const t = (tally[model] ??= { ...emptyTally })
-      t.messages += 1
-      t.input += usage.input_tokens ?? 0
-      t.output += usage.output_tokens ?? 0
-      t.cacheRead += usage.cache_read_input_tokens ?? 0
-      t.cacheWrite += usage.cache_creation_input_tokens ?? 0
-      t.cost += priceFor(model, usage)
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue
+    let obj: Record<string, unknown>
+    try {
+      obj = JSON.parse(line) as Record<string, unknown>
+    } catch {
+      continue
     }
-    return { tally, lastModel }
+    const type = obj.type
+    if (type === 'user') {
+      handleUserMessage(obj, ctx, toolNameById)
+      continue
+    }
+    if (type === 'assistant') {
+      const model = handleAssistantMessage(obj, ctx, toolNameById, byModel, breakdown)
+      if (model) currentModel = model
+    }
+  }
+
+  return { byModel, breakdown, currentModel }
+}
+
+function handleUserMessage(
+  obj: Record<string, unknown>,
+  ctx: CtxChars,
+  toolNameById: Record<string, string>
+): void {
+  const msg = obj.message as Record<string, unknown> | undefined
+  if (!msg) return
+  const content = msg.content
+  if (typeof content === 'string') {
+    ctx.userPrompt += content.length
+    return
+  }
+  if (!Array.isArray(content)) return
+  for (const raw of content) {
+    if (!raw || typeof raw !== 'object') continue
+    const block = raw as Block
+    const btype = block.type
+    if (btype === 'text') {
+      const t = block.text
+      if (typeof t === 'string') ctx.userPrompt += t.length
+    } else if (btype === 'tool_result') {
+      const id = block.tool_use_id as string | undefined
+      const name = (id && toolNameById[id]) || 'unknown'
+      const chars = charLenOfToolResultContent(block.content)
+      ctx.toolResults[name] = (ctx.toolResults[name] ?? 0) + chars
+    }
   }
 }
 
-function mergeUsage(
-  existing: SessionUsage | undefined,
-  ev: StopEvent,
-  delta: { tally: Record<string, ModelTally>; lastModel: string | null }
-): SessionUsage {
-  const byModel: Record<string, ModelTally> = existing ? { ...existing.byModel } : {}
-  for (const [model, t] of Object.entries(delta.tally)) {
-    const prev = byModel[model] ?? { ...emptyTally }
-    byModel[model] = {
-      messages: prev.messages + t.messages,
-      input: prev.input + t.input,
-      output: prev.output + t.output,
-      cacheRead: prev.cacheRead + t.cacheRead,
-      cacheWrite: prev.cacheWrite + t.cacheWrite,
-      cost: prev.cost + t.cost
+function handleAssistantMessage(
+  obj: Record<string, unknown>,
+  ctx: CtxChars,
+  toolNameById: Record<string, string>,
+  byModel: Record<string, ModelTally>,
+  breakdown: ContentBreakdown
+): string | null {
+  const msg = obj.message as Record<string, unknown> | undefined
+  if (!msg) return null
+  const model = typeof msg.model === 'string' ? msg.model : null
+  const usage = (msg.usage ?? null) as TokenUsage | null
+  if (!model || !usage) return null
+
+  // Walk this turn's output content and collect char counts by block type.
+  const content = Array.isArray(msg.content) ? (msg.content as Block[]) : []
+  let textChars = 0
+  let thinkingChars = 0
+  let toolUseChars = 0
+  for (const block of content) {
+    if (!block || typeof block !== 'object') continue
+    const btype = block.type
+    if (btype === 'text') {
+      const t = block.text
+      if (typeof t === 'string') textChars += t.length
+    } else if (btype === 'thinking') {
+      const t = block.thinking
+      if (typeof t === 'string') thinkingChars += t.length
+    } else if (btype === 'tool_use') {
+      const id = block.id as string | undefined
+      const name = block.name as string | undefined
+      if (id && name) toolNameById[id] = name
+      toolUseChars += JSON.stringify(block.input ?? null).length
     }
   }
-  return {
-    sessionId: ev.sessionId,
-    transcriptPath: ev.transcriptPath,
-    byModel,
-    currentModel: delta.lastModel ?? existing?.currentModel ?? null,
-    updatedAt: ev.ts * 1000
+
+  const turnCost = priceFor(model, usage)
+  const rate = rateFor(model)
+  const outputCost = rate ? ((usage.output_tokens ?? 0) * rate.out) / 1_000_000 : 0
+  const inputCost = Math.max(0, turnCost - outputCost)
+
+  // Output-side attribution: split outputCost across this turn's blocks.
+  const outTotal = textChars + thinkingChars + toolUseChars
+  if (outTotal > 0 && outputCost > 0) {
+    breakdown.text += (outputCost * textChars) / outTotal
+    breakdown.thinking += (outputCost * thinkingChars) / outTotal
+    breakdown.toolUse += (outputCost * toolUseChars) / outTotal
+  } else {
+    // Degenerate turn with cost but no parseable blocks — lump into text.
+    breakdown.text += outputCost
   }
+
+  // Input-side attribution: split inputCost across the running context
+  // composition as it stood BEFORE this turn's assistant output was added.
+  const ctxToolTotal = Object.values(ctx.toolResults).reduce((a, b) => a + b, 0)
+  const ctxTotal = ctx.userPrompt + ctx.assistantEcho + ctxToolTotal
+  if (ctxTotal > 0 && inputCost > 0) {
+    breakdown.userPrompt += (inputCost * ctx.userPrompt) / ctxTotal
+    breakdown.assistantEcho += (inputCost * ctx.assistantEcho) / ctxTotal
+    for (const [name, chars] of Object.entries(ctx.toolResults)) {
+      breakdown.toolResults[name] =
+        (breakdown.toolResults[name] ?? 0) + (inputCost * chars) / ctxTotal
+    }
+  } else if (inputCost > 0) {
+    // First turn — no prior context, but we still paid an input-rate bill
+    // (system prompt, etc.). Park it under assistantEcho as the closest
+    // "not user, not tool output" bucket. Rare and small.
+    breakdown.assistantEcho += inputCost
+  }
+
+  // This assistant message now joins the running context for future turns.
+  ctx.assistantEcho += textChars + thinkingChars + toolUseChars
+
+  // Update per-model tally.
+  const tally = (byModel[model] ??= { ...emptyTally })
+  tally.messages += 1
+  tally.input += usage.input_tokens ?? 0
+  tally.output += usage.output_tokens ?? 0
+  tally.cacheRead += usage.cache_read_input_tokens ?? 0
+  tally.cacheWrite += usage.cache_creation_input_tokens ?? 0
+  tally.cost += turnCost
+
+  return model
+}
+
+function charLenOfToolResultContent(content: unknown): number {
+  if (typeof content === 'string') return content.length
+  if (Array.isArray(content)) {
+    let total = 0
+    for (const part of content) {
+      if (!part || typeof part !== 'object') continue
+      const p = part as Block
+      if (p.type === 'text' && typeof p.text === 'string') total += p.text.length
+      // image blocks contribute nontrivially but we can't char-count them;
+      // ignore for now — they're rare in tool_results.
+    }
+    return total
+  }
+  return 0
 }

@@ -3,9 +3,12 @@ import { RightPanel } from './RightPanel'
 import { useCosts, usePanes } from '../store'
 import {
   totalForSession,
+  addBreakdown,
+  cloneBreakdown,
+  emptyBreakdown,
   emptyTally,
-  type ModelTally,
-  type SessionUsage
+  type ContentBreakdown,
+  type ModelTally
 } from '../../shared/state/costs'
 
 interface CostPanelProps {
@@ -15,34 +18,77 @@ interface CostPanelProps {
 function formatCost(n: number): string {
   if (n === 0) return '$0.00'
   if (n < 0.01) return '<$0.01'
+  if (n < 1) return `$${n.toFixed(2)}`
   return `$${n.toFixed(2)}`
-}
-
-function formatTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`
-  return `${n}`
 }
 
 function shortModel(model: string): string {
   return model.replace(/^claude-/, '')
 }
 
-function sumInto(target: ModelTally, src: ModelTally): void {
-  target.messages += src.messages
-  target.input += src.input
-  target.output += src.output
-  target.cacheRead += src.cacheRead
-  target.cacheWrite += src.cacheWrite
-  target.cost += src.cost
+interface Row {
+  label: string
+  cost: number
+}
+
+function Bar({
+  row,
+  max,
+  total
+}: {
+  row: Row
+  max: number
+  total: number
+}): JSX.Element {
+  const pct = total > 0 ? (row.cost / total) * 100 : 0
+  const width = max > 0 ? (row.cost / max) * 100 : 0
+  return (
+    <div className="flex items-center gap-2 text-[11px] leading-tight">
+      <span className="text-faint truncate w-20 shrink-0">{row.label}</span>
+      <div className="flex-1 h-1.5 bg-panel-raised/40 rounded-sm overflow-hidden">
+        <div
+          className="h-full bg-accent/70"
+          style={{ width: `${width}%` }}
+        />
+      </div>
+      <span className="text-faint tabular-nums w-10 text-right shrink-0">
+        {pct >= 1 ? `${Math.round(pct)}%` : '<1%'}
+      </span>
+      <span className="text-text tabular-nums w-12 text-right shrink-0">
+        {formatCost(row.cost)}
+      </span>
+    </div>
+  )
+}
+
+function Section({
+  title,
+  rows,
+  total
+}: {
+  title: string
+  rows: Row[]
+  total: number
+}): JSX.Element | null {
+  const nonZero = rows.filter((r) => r.cost > 0).sort((a, b) => b.cost - a.cost)
+  if (nonZero.length === 0) return null
+  const max = nonZero[0].cost
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="text-[10px] uppercase tracking-wide text-faint">{title}</div>
+      {nonZero.map((r) => (
+        <Bar key={r.label} row={r} max={max} total={total} />
+      ))}
+    </div>
+  )
 }
 
 export function CostPanel({ worktreePath }: CostPanelProps): JSX.Element | null {
   const costs = useCosts()
   const panes = usePanes()
 
-  const { byModel, total, currentModel, hasData } = useMemo(() => {
-    const byModel: Record<string, ModelTally> = {}
+  const { total, breakdown, currentModel, hasData } = useMemo(() => {
+    const breakdown: ContentBreakdown = cloneBreakdown(emptyBreakdown)
     const total: ModelTally = { ...emptyTally }
     let currentModel: string | null = null
     let latestTs = -Infinity
@@ -56,42 +102,61 @@ export function CostPanel({ worktreePath }: CostPanelProps): JSX.Element | null 
           if (tab.type === 'claude') terminalIds.add(tab.id)
         }
       }
-      const seen = new Set<SessionUsage>()
+      // Dedup by transcriptPath so a tab that was restarted with
+      // --resume against the same jsonl doesn't double-count.
+      const seenTranscripts = new Set<string>()
       for (const tid of terminalIds) {
         const usage = costs.byTerminal[tid]
-        if (!usage || seen.has(usage)) continue
-        seen.add(usage)
+        if (!usage || seenTranscripts.has(usage.transcriptPath)) continue
+        seenTranscripts.add(usage.transcriptPath)
         hasData = true
-        for (const [model, tally] of Object.entries(usage.byModel)) {
-          const prev = byModel[model] ?? { ...emptyTally }
-          sumInto(prev, tally)
-          byModel[model] = prev
-        }
-        sumInto(total, totalForSession(usage))
+        const sessionTotal = totalForSession(usage)
+        total.messages += sessionTotal.messages
+        total.input += sessionTotal.input
+        total.output += sessionTotal.output
+        total.cacheRead += sessionTotal.cacheRead
+        total.cacheWrite += sessionTotal.cacheWrite
+        total.cost += sessionTotal.cost
+        addBreakdown(breakdown, usage.breakdown)
         if (usage.updatedAt > latestTs && usage.currentModel) {
           latestTs = usage.updatedAt
           currentModel = usage.currentModel
         }
       }
     }
-    return { byModel, total, currentModel, hasData }
+    return { total, breakdown, currentModel, hasData }
   }, [worktreePath, costs, panes])
 
   if (!worktreePath) return null
 
-  const modelRows = Object.entries(byModel).sort((a, b) => b[1].cost - a[1].cost)
+  const outputRows: Row[] = [
+    { label: 'text', cost: breakdown.text },
+    { label: 'thinking', cost: breakdown.thinking },
+    { label: 'tool_use', cost: breakdown.toolUse }
+  ]
+  const inputRows: Row[] = [
+    { label: 'user prompt', cost: breakdown.userPrompt },
+    { label: 'asst echo', cost: breakdown.assistantEcho },
+    ...Object.entries(breakdown.toolResults).map(([name, cost]) => ({
+      label: name,
+      cost
+    }))
+  ]
 
   return (
     <RightPanel id="cost" title="Cost">
-      <div className="px-3 py-2 text-xs">
+      <div className="px-3 py-2 flex flex-col gap-3">
         {!hasData ? (
-          <div className="text-faint italic">
+          <div className="text-xs text-faint italic">
             No usage yet. Tallies update after each Claude turn.
           </div>
         ) : (
           <>
-            <div className="flex items-baseline justify-between gap-2 mb-2">
-              <span className="text-base font-medium text-text tabular-nums">
+            <div className="flex items-baseline justify-between gap-2">
+              <span
+                className="text-base font-medium text-text tabular-nums"
+                title={`${total.messages} assistant messages`}
+              >
                 {formatCost(total.cost)}
               </span>
               {currentModel && (
@@ -100,23 +165,13 @@ export function CostPanel({ worktreePath }: CostPanelProps): JSX.Element | null 
                 </span>
               )}
             </div>
-            <div className="flex flex-col gap-1">
-              {modelRows.map(([model, tally]) => (
-                <div
-                  key={model}
-                  className="flex items-baseline justify-between gap-2 text-faint"
-                  title={
-                    `in ${formatTokens(tally.input)}  out ${formatTokens(tally.output)}\n` +
-                    `cache read ${formatTokens(tally.cacheRead)}  write ${formatTokens(tally.cacheWrite)}\n` +
-                    `${tally.messages} assistant msgs`
-                  }
-                >
-                  <span className="truncate">{shortModel(model)}</span>
-                  <span className="tabular-nums shrink-0">
-                    {tally.messages} · {formatCost(tally.cost)}
-                  </span>
-                </div>
-              ))}
+            <Section title="Output (produced)" rows={outputRows} total={total.cost} />
+            <Section title="Input (context)" rows={inputRows} total={total.cost} />
+            <div
+              className="text-[10px] text-faint italic"
+              title="Per-block token counts aren't in the Anthropic usage field. Category splits are estimated by char-length proportion within each turn. The top-line total is exact."
+            >
+              breakdown is estimated
             </div>
           </>
         )}

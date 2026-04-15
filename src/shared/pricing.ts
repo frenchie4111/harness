@@ -29,7 +29,7 @@ const RATES: Record<string, ModelRate> = {
   'claude-haiku-4-5': { in: 1, out: 5 }
 }
 
-function rateFor(model: string): ModelRate | null {
+export function rateFor(model: string): ModelRate | null {
   if (RATES[model]) return RATES[model]
   for (const key of Object.keys(RATES)) {
     if (model.startsWith(key)) return RATES[key]

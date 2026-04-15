@@ -87,9 +87,15 @@ export type {
   CostsState,
   CostsEvent,
   ModelTally,
-  SessionUsage
+  SessionUsage,
+  ContentBreakdown
 } from './costs'
-export { totalForSession } from './costs'
+export {
+  totalForSession,
+  addBreakdown,
+  cloneBreakdown,
+  emptyBreakdown
+} from './costs'
 export type {
   TerminalsState,
   TerminalsEvent,
