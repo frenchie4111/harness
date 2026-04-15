@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  effectiveHiddenRightPanels,
   initialRepoConfigs,
   repoConfigsReducer,
   type RepoConfig,
@@ -56,6 +57,34 @@ describe('repoConfigsReducer', () => {
       payload: '/missing'
     })
     expect(next).toBe(start)
+  })
+
+  it('effectiveHiddenRightPanels migrates legacy hideMergePanel / hidePrPanel', () => {
+    expect(effectiveHiddenRightPanels({ hideMergePanel: true })).toEqual({ merge: true })
+    expect(effectiveHiddenRightPanels({ hidePrPanel: true })).toEqual({ pr: true })
+    expect(
+      effectiveHiddenRightPanels({
+        hideMergePanel: true,
+        hiddenRightPanels: { pr: true, commits: true }
+      })
+    ).toEqual({ merge: true, pr: true, commits: true })
+  })
+
+  it('effectiveHiddenRightPanels prefers new field over legacy', () => {
+    // Legacy says "hide merge", new explicitly sets merge: false.
+    // effectiveHiddenRightPanels only adds legacy when new is undefined.
+    expect(
+      effectiveHiddenRightPanels({
+        hideMergePanel: true,
+        hiddenRightPanels: { merge: false }
+      })
+    ).toEqual({ merge: false })
+  })
+
+  it('effectiveHiddenRightPanels handles null/empty config', () => {
+    expect(effectiveHiddenRightPanels(null)).toEqual({})
+    expect(effectiveHiddenRightPanels(undefined)).toEqual({})
+    expect(effectiveHiddenRightPanels({})).toEqual({})
   })
 
   it('returns a new object reference on real changes', () => {
