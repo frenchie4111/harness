@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Search, GitPullRequest, ArrowRight } from 'lucide-react'
+import { Search, GitPullRequest, ArrowRight, FileText } from 'lucide-react'
 import type { Worktree, PtyStatus, PRStatus } from '../types'
 import type { Action, HotkeyBinding } from '../hotkeys'
 import { ACTION_LABELS, bindingToString } from '../hotkeys'
 import { groupWorktrees, GROUP_ORDER, GROUP_LABELS, type GroupKey } from '../worktree-sort'
 import { repoNameColor } from './RepoIcon'
+import { fuzzyMatch } from '../fuzzy'
+
+export type PaletteMode = 'root' | 'files'
 
 interface CommandPaletteProps {
   worktrees: Worktree[]
@@ -13,15 +16,77 @@ interface CommandPaletteProps {
   mergedPaths: Record<string, boolean>
   activeWorktreeId: string | null
   resolvedHotkeys: Record<Action, HotkeyBinding>
+  initialMode?: PaletteMode
   onClose: () => void
   onSelectWorktree: (path: string) => void
   onAction: (action: Action) => void
+  onOpenFile: (filePath: string) => void
 }
 
 type PaletteItem =
   | { kind: 'worktree'; wt: Worktree }
   | { kind: 'action'; action: Action; label: string; hint?: string }
+  | { kind: 'open-files'; label: string }
   | { kind: 'heading'; label: string }
+
+type FileItem = {
+  path: string
+  indices: number[]
+  recent: boolean
+}
+
+const FILE_CACHE = new Map<string, { files: string[]; ts: number }>()
+const FILE_CACHE_TTL_MS = 10_000
+const MAX_FILE_RESULTS = 100
+const RECENTS_LIMIT = 20
+
+function recentsKey(worktreePath: string): string {
+  return `file-picker-recents:${worktreePath}`
+}
+
+function loadRecents(worktreePath: string): string[] {
+  try {
+    const raw = localStorage.getItem(recentsKey(worktreePath))
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed.filter((p) => typeof p === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+function highlightChars(
+  text: string,
+  indices: number[],
+  offset: number
+): JSX.Element[] {
+  const out: JSX.Element[] = []
+  const set = new Set<number>()
+  for (const i of indices) {
+    const local = i - offset
+    if (local >= 0 && local < text.length) set.add(local)
+  }
+  for (let i = 0; i < text.length; i++) {
+    const matched = set.has(i)
+    out.push(
+      <span key={i} className={matched ? 'text-accent font-semibold' : undefined}>
+        {text[i]}
+      </span>
+    )
+  }
+  return out
+}
+
+function pushRecent(worktreePath: string, filePath: string): void {
+  try {
+    const existing = loadRecents(worktreePath).filter((p) => p !== filePath)
+    existing.unshift(filePath)
+    const trimmed = existing.slice(0, RECENTS_LIMIT)
+    localStorage.setItem(recentsKey(worktreePath), JSON.stringify(trimmed))
+  } catch {
+    /* ignore */
+  }
+}
 
 const STATUS_COLORS: Record<PtyStatus | 'merged', string> = {
   idle: 'bg-faint',
@@ -57,6 +122,7 @@ const EXCLUDED_ACTIONS: Set<Action> = new Set([
   'worktree1', 'worktree2', 'worktree3', 'worktree4', 'worktree5',
   'worktree6', 'worktree7', 'worktree8', 'worktree9',
   'commandPalette',
+  'fileQuickOpen',
 ])
 
 function fuzzyScore(query: string, text: string): number {
@@ -95,18 +161,54 @@ export function CommandPalette({
   mergedPaths,
   activeWorktreeId,
   resolvedHotkeys,
+  initialMode = 'root',
   onClose,
   onSelectWorktree,
   onAction,
+  onOpenFile,
 }: CommandPaletteProps): JSX.Element {
+  const [mode, setMode] = useState<PaletteMode>(initialMode)
   const [query, setQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
+  const [files, setFiles] = useState<string[]>([])
+  const [filesLoading, setFilesLoading] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     inputRef.current?.focus()
   }, [])
+
+  // Fetch files when entering files mode (with cache).
+  useEffect(() => {
+    if (mode !== 'files' || !activeWorktreeId) return
+    const cached = FILE_CACHE.get(activeWorktreeId)
+    const now = Date.now()
+    if (cached && now - cached.ts < FILE_CACHE_TTL_MS) {
+      setFiles(cached.files)
+      return
+    }
+    let cancelled = false
+    setFilesLoading(true)
+    window.api.listAllFiles(activeWorktreeId).then((result) => {
+      if (cancelled) return
+      FILE_CACHE.set(activeWorktreeId, { files: result, ts: Date.now() })
+      setFiles(result)
+      setFilesLoading(false)
+    }).catch(() => {
+      if (!cancelled) setFilesLoading(false)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [mode, activeWorktreeId])
+
+  // Reset query + selection when mode changes.
+  useEffect(() => {
+    setQuery('')
+    setSelectedIndex(0)
+    inputRef.current?.focus()
+  }, [mode])
 
   const multiRepo = useMemo(() => {
     const roots = new Set(worktrees.map((wt) => wt.repoRoot))
@@ -128,7 +230,41 @@ export function CommandPalette({
     return items
   }, [resolvedHotkeys])
 
+  const fileItems = useMemo<FileItem[]>(() => {
+    if (mode !== 'files' || !activeWorktreeId) return []
+    const q = query.trim()
+    const recents = loadRecents(activeWorktreeId)
+    const recentSet = new Set(recents)
+
+    if (q.length === 0) {
+      const items: FileItem[] = []
+      for (const p of recents) {
+        if (files.includes(p)) items.push({ path: p, indices: [], recent: true })
+      }
+      for (const p of files) {
+        if (items.length >= 50 + recents.length) break
+        if (!recentSet.has(p)) items.push({ path: p, indices: [], recent: false })
+      }
+      return items
+    }
+
+    const ranked = fuzzyMatch(q, files)
+    return ranked.slice(0, MAX_FILE_RESULTS).map((r) => ({
+      path: r.item,
+      indices: r.indices,
+      recent: recentSet.has(r.item),
+    }))
+  }, [mode, activeWorktreeId, query, files])
+
   const { items: flatItems, selectableCount } = useMemo(() => {
+    if (mode === 'files') {
+      const items: PaletteItem[] = []
+      // Use a synthetic encoding: we render file rows inline via fileItems,
+      // but to share the keyboard nav infra we represent each file as a
+      // lightweight selectable item. We piggyback the 'action' shape with a
+      // distinct kind below.
+      return { items, selectableCount: fileItems.length }
+    }
     const isSearching = query.trim().length > 0
     const items: PaletteItem[] = []
     let selectable = 0
@@ -162,6 +298,11 @@ export function CommandPalette({
           selectable++
         }
       }
+      // "Open File..." virtual action, matches any query containing "open" or "file"
+      if (/open|file/i.test(query)) {
+        items.push({ kind: 'open-files', label: 'Open File…' })
+        selectable++
+      }
     } else {
       for (const group of groups) {
         items.push({ kind: 'heading', label: GROUP_LABELS[group.key] })
@@ -171,6 +312,8 @@ export function CommandPalette({
         }
       }
       items.push({ kind: 'heading', label: 'Commands' })
+      items.push({ kind: 'open-files', label: 'Open File…' })
+      selectable++
       for (const a of actionItems) {
         items.push({ kind: 'action', ...a })
         selectable++
@@ -178,7 +321,7 @@ export function CommandPalette({
     }
 
     return { items, selectableCount: selectable }
-  }, [query, worktrees, groups, actionItems])
+  }, [mode, fileItems, query, worktrees, groups, actionItems])
 
   // Map from selectable index → flat index
   const selectableIndices = useMemo(() => {
@@ -191,7 +334,16 @@ export function CommandPalette({
 
   useEffect(() => {
     setSelectedIndex(0)
-  }, [query])
+  }, [query, mode])
+
+  const openFile = useCallback(
+    (filePath: string) => {
+      if (activeWorktreeId) pushRecent(activeWorktreeId, filePath)
+      onOpenFile(filePath)
+      onClose()
+    },
+    [activeWorktreeId, onOpenFile, onClose]
+  )
 
   const execute = useCallback(
     (item: PaletteItem) => {
@@ -199,6 +351,9 @@ export function CommandPalette({
         onSelectWorktree(item.wt.path)
       } else if (item.kind === 'action') {
         onAction(item.action)
+      } else if (item.kind === 'open-files') {
+        setMode('files')
+        return
       }
       onClose()
     },
@@ -209,7 +364,14 @@ export function CommandPalette({
     (e: React.KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault()
-        onClose()
+        if (mode === 'files') {
+          setMode('root')
+        } else {
+          onClose()
+        }
+      } else if (e.key === 'Backspace' && mode === 'files' && query.length === 0) {
+        e.preventDefault()
+        setMode('root')
       } else if (e.key === 'ArrowDown') {
         e.preventDefault()
         setSelectedIndex((i) => Math.min(i + 1, selectableCount - 1))
@@ -218,19 +380,25 @@ export function CommandPalette({
         setSelectedIndex((i) => Math.max(i - 1, 0))
       } else if (e.key === 'Enter') {
         e.preventDefault()
+        if (mode === 'files') {
+          const file = fileItems[selectedIndex]
+          if (file) openFile(file.path)
+          return
+        }
         const flatIdx = selectableIndices[selectedIndex]
         if (flatIdx !== undefined) execute(flatItems[flatIdx])
       }
     },
-    [flatItems, selectableIndices, selectedIndex, selectableCount, execute, onClose]
+    [mode, query, fileItems, openFile, flatItems, selectableIndices, selectedIndex, selectableCount, execute, onClose]
   )
 
   useEffect(() => {
-    const flatIdx = selectableIndices[selectedIndex]
-    if (flatIdx === undefined) return
-    const el = listRef.current?.querySelector(`[data-idx="${flatIdx}"]`) as HTMLElement | undefined
+    const target =
+      mode === 'files' ? selectedIndex : selectableIndices[selectedIndex]
+    if (target === undefined) return
+    const el = listRef.current?.querySelector(`[data-idx="${target}"]`) as HTMLElement | undefined
     el?.scrollIntoView({ block: 'nearest' })
-  }, [selectedIndex, selectableIndices])
+  }, [selectedIndex, selectableIndices, mode])
 
   let selectableIdx = -1
 
@@ -242,20 +410,64 @@ export function CommandPalette({
       >
         <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
           <Search size={16} className="text-dim shrink-0" />
+          {mode === 'files' && (
+            <span className="inline-flex items-center gap-1 text-[11px] bg-accent/15 text-accent px-1.5 py-0.5 rounded font-medium shrink-0">
+              <FileText size={11} />
+              Open File
+            </span>
+          )}
           <input
             ref={inputRef}
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Search worktrees and commands..."
+            placeholder={mode === 'files' ? 'Search files…' : 'Search worktrees and commands...'}
             className="flex-1 bg-transparent text-fg-bright text-sm outline-none placeholder:text-faint"
           />
           <kbd className="text-[10px] text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono">ESC</kbd>
         </div>
 
         <div ref={listRef} className="max-h-80 overflow-y-auto py-1">
-          {selectableCount === 0 && (
+          {mode === 'files' && filesLoading && files.length === 0 && (
+            <div className="px-4 py-8 text-center text-dim text-sm">Loading files…</div>
+          )}
+          {mode === 'files' && !filesLoading && fileItems.length === 0 && (
+            <div className="px-4 py-8 text-center text-dim text-sm">No files match</div>
+          )}
+          {mode === 'files' &&
+            fileItems.map((f, idx) => {
+              const isSelected = idx === selectedIndex
+              const lastSlash = f.path.lastIndexOf('/')
+              const dir = lastSlash >= 0 ? f.path.slice(0, lastSlash) : ''
+              const name = lastSlash >= 0 ? f.path.slice(lastSlash + 1) : f.path
+              const nameStart = lastSlash + 1
+              return (
+                <button
+                  key={f.path}
+                  data-idx={idx}
+                  className={`w-full flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer transition-colors ${
+                    isSelected ? 'bg-accent/15 text-fg-bright' : 'text-fg hover:bg-surface-hover'
+                  }`}
+                  onMouseEnter={() => setSelectedIndex(idx)}
+                  onClick={() => openFile(f.path)}
+                >
+                  <FileText size={13} className="text-dim shrink-0" />
+                  <span className="truncate text-left text-fg-bright">
+                    {highlightChars(name, f.indices, nameStart)}
+                  </span>
+                  {dir && (
+                    <span className="truncate text-left text-faint text-xs min-w-0 flex-1">
+                      {highlightChars(dir, f.indices, 0)}
+                    </span>
+                  )}
+                  {f.recent && !query && (
+                    <span className="text-[10px] text-faint shrink-0">recent</span>
+                  )}
+                </button>
+              )
+            })}
+          {mode === 'root' && selectableCount === 0 && (
             <div className="px-4 py-8 text-center text-dim text-sm">No results</div>
           )}
 
@@ -327,6 +539,29 @@ export function CommandPalette({
               )
             }
 
+            if (item.kind === 'open-files') {
+              const openBinding = resolvedHotkeys['fileQuickOpen' as Action]
+              return (
+                <button
+                  key={`open-files-${flatIdx}`}
+                  data-idx={flatIdx}
+                  className={`w-full flex items-center gap-2 px-3 py-2 text-sm cursor-pointer transition-colors ${
+                    isSelected ? 'bg-accent/15 text-fg-bright' : 'text-fg hover:bg-surface-hover'
+                  }`}
+                  onMouseEnter={() => setSelectedIndex(mySelectableIdx)}
+                  onClick={() => execute(item)}
+                >
+                  <FileText size={14} className="text-dim shrink-0" />
+                  <span className="truncate flex-1 text-left">{item.label}</span>
+                  {openBinding && (
+                    <kbd className="text-[10px] text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono shrink-0">
+                      {bindingToString(openBinding)}
+                    </kbd>
+                  )}
+                </button>
+              )
+            }
+
             return (
               <button
                 key={item.action}
@@ -348,6 +583,12 @@ export function CommandPalette({
             )
           })}
         </div>
+        {mode === 'files' && files.length > 0 && (
+          <div className="px-3 py-1.5 border-t border-border text-[10px] text-faint flex items-center justify-between">
+            <span>{files.length} files · {fileItems.length} shown</span>
+            <span className="font-mono">↵ open · esc back</span>
+          </div>
+        )}
       </div>
     </div>
   )

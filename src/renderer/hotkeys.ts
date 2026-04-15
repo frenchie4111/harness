@@ -22,6 +22,7 @@ export type Action =
   | 'openInEditor'
   | 'toggleCommandCenter'
   | 'commandPalette'
+  | 'fileQuickOpen'
   | 'splitPaneRight'
   | 'toggleRightColumn'
 
@@ -61,6 +62,7 @@ export const DEFAULT_HOTKEYS: Record<Action, HotkeyBinding> = {
   openInEditor: { key: 'e', modifiers: { cmd: true, shift: true } },
   toggleCommandCenter: { key: 'k', modifiers: { cmd: true, shift: true } },
   commandPalette: { key: 'k', modifiers: { cmd: true } },
+  fileQuickOpen: { key: 'p', modifiers: { cmd: true } },
   splitPaneRight: { key: 'd', modifiers: { cmd: true } },
   toggleRightColumn: { key: 'b', modifiers: { cmd: true, alt: true } },
 }
@@ -164,6 +166,7 @@ export const ACTION_LABELS: Record<Action, string> = {
   openInEditor: 'Open worktree in editor',
   toggleCommandCenter: 'Toggle command center',
   commandPalette: 'Command palette',
+  fileQuickOpen: 'Open file...',
   splitPaneRight: 'Split pane right',
   toggleRightColumn: 'Toggle right column'
 }

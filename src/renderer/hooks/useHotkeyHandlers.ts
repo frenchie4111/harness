@@ -27,6 +27,7 @@ interface UseHotkeyHandlersArgs {
   setShowNewWorktree: React.Dispatch<React.SetStateAction<boolean>>
   setShowCommandCenter: React.Dispatch<React.SetStateAction<boolean>>
   setShowCommandPalette: React.Dispatch<React.SetStateAction<boolean>>
+  setCommandPaletteMode: React.Dispatch<React.SetStateAction<'root' | 'files'>>
   // Imperative hooks into other handlers — passed in to avoid this hook
   // depending on useTabHandlers + useWorktreeHandlers directly.
   handleAddTerminalTab: (worktreePath: string, paneId?: string) => void
@@ -66,6 +67,7 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
     setShowNewWorktree,
     setShowCommandCenter,
     setShowCommandPalette,
+    setCommandPaletteMode,
     handleAddTerminalTab,
     handleCloseTab,
     handleSelectTab,
@@ -213,7 +215,14 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
         window.api.openInEditor(activeWorktreeId)
       },
       toggleCommandCenter: () => setShowCommandCenter((v) => !v),
-      commandPalette: () => setShowCommandPalette((v) => !v),
+      commandPalette: () => {
+        setCommandPaletteMode('root')
+        setShowCommandPalette((v) => !v)
+      },
+      fileQuickOpen: () => {
+        setCommandPaletteMode('files')
+        setShowCommandPalette(true)
+      },
       splitPaneRight: () => {
         if (!activeWorktreeId) return
         const list = panes[activeWorktreeId] || []
@@ -240,7 +249,8 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       setRightColumnHidden,
       setShowNewWorktree,
       setShowCommandCenter,
-      setShowCommandPalette
+      setShowCommandPalette,
+      setCommandPaletteMode
     ]
   )
 
