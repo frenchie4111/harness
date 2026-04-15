@@ -320,6 +320,15 @@ function createWindow(): BrowserWindow {
     }
   })
 
+  // Route link clicks (xterm OSC 8 hyperlinks, anchor tags) to the system browser
+  // instead of letting Electron spawn an in-app popup window.
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('mailto:')) {
+      shell.openExternal(url)
+    }
+    return { action: 'deny' }
+  })
+
   // Forward renderer console logs to debug log
   win.webContents.on('console-message', (_event, level, message) => {
     const levelName = ['verbose', 'info', 'warn', 'error'][level] || 'log'
