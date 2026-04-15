@@ -15,7 +15,9 @@
   <a href="https://harness.mikelyons.org/guide.html">Guide</a>
 </p>
 
-![Screenshot](screenshot.png)
+<p align="center">
+  <video src="https://github.com/user-attachments/assets/a948dab1-1566-4a5b-aedf-2585b0c424cd" autoplay loop muted playsinline></video>
+</p>
 
 ## Download
 
