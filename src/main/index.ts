@@ -1349,18 +1349,19 @@ app.whenReady().then(() => {
 
   // Resolve the GitHub token (PAT → gh CLI → none) before the PR poller
   // makes its first call. The poller's initial refreshAll waits on this.
-  // Skipped in demo mode — DemoDriver owns PR state.
-  if (!isDemoMode) {
-    void (async () => {
-      await resolveGitHubToken()
-      const source = getTokenSource()
-      store.dispatch({ type: 'settings/githubAuthSourceChanged', payload: source })
+  // In demo mode, still resolve the token + dispatch the auth source so
+  // the UI shows authenticated, but skip the PR poller (DemoDriver owns
+  // PR state) and the harness star state refresh.
+  void (async () => {
+    await resolveGitHubToken()
+    const source = getTokenSource()
+    store.dispatch({ type: 'settings/githubAuthSourceChanged', payload: source })
+    if (!isDemoMode) {
       prPoller.start()
       void prPoller.refreshAll()
-
       await refreshHarnessStarState()
-    })()
-  }
+    }
+  })()
 
   // Seed hooks.consent from disk. If any known worktree already has the
   // hooks installed, the user must have accepted at some point — remember
