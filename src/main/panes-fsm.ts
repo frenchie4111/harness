@@ -37,10 +37,23 @@ function stripTransientTabFields(tab: TerminalTab): TerminalTab {
 export class PanesFSM {
   private store: Store
   private opts: PanesFSMOptions
+  /** Persisted panes that haven't been pushed into the store yet. Populated
+   * by restoreFromConfig at boot; drained lazily by ensureInitialized when
+   * a worktree wakes up. This is how sleep-on-boot for merged worktrees
+   * works: the panes exist on disk but aren't in the store, so the renderer
+   * doesn't mount xterm and PtyManager doesn't spawn Claude. They have to
+   * be merged into every persist payload so unrelated commits don't blow
+   * them away from disk. */
+  private sleepingPanes = new Map<string, WorkspacePane[]>()
 
   constructor(store: Store, opts: PanesFSMOptions) {
     this.store = store
     this.opts = opts
+  }
+
+  /** True if a worktree has persisted panes waiting to be woken. */
+  hasSleepingPanes(wtPath: string): boolean {
+    return this.sleepingPanes.has(wtPath)
   }
 
   /** Read the current panes for a worktree from the store snapshot. */
@@ -52,22 +65,37 @@ export class PanesFSM {
     return this.store.getSnapshot().state.terminals.panes
   }
 
+  /** Build the persist payload: live panes from the store, plus any
+   * sleeping panes still on disk. Merging is required so that committing
+   * an awake worktree doesn't accidentally evict sleeping ones from the
+   * persisted config. */
+  private buildPersistPayload(): Record<string, WorkspacePane[]> {
+    const out: Record<string, WorkspacePane[]> = {}
+    for (const [path, panes] of this.sleepingPanes) out[path] = panes
+    for (const [path, panes] of Object.entries(this.getAllPanes())) out[path] = panes
+    return out
+  }
+
   /** Dispatch a per-worktree change and persist all panes. */
   private commit(wtPath: string, next: WorkspacePane[]): void {
     this.store.dispatch({
       type: 'terminals/panesForWorktreeChanged',
       payload: { worktreePath: wtPath, panes: next }
     })
-    this.opts.persist(this.getAllPanes())
+    this.opts.persist(this.buildPersistPayload())
   }
 
   /** Boot-time restore from on-disk persisted panes. Backfills missing
-   * Claude session ids the same way the renderer used to. */
+   * Claude session ids the same way the renderer used to. Loads panes
+   * into the sleepingPanes buffer rather than the store — they get
+   * promoted to live state lazily by ensureInitialized() when each
+   * worktree wakes up (boot drain for non-merged paths, activation IPC
+   * for merged paths). */
   async restoreFromConfig(
     persistedNested: Record<string, Record<string, PersistedPane[]>> | undefined
   ): Promise<void> {
     if (!persistedNested) return
-    const restored: Record<string, WorkspacePane[]> = {}
+    this.sleepingPanes.clear()
     for (const byWt of Object.values(persistedNested)) {
       for (const [wtPath, paneList] of Object.entries(byWt)) {
         const allTabs = paneList.flatMap((p) => p.tabs)
@@ -78,7 +106,7 @@ export class PanesFSM {
           ? await this.opts.getLatestClaudeSessionId(wtPath).catch(() => null)
           : null
         let claimedLatest = false
-        restored[wtPath] = paneList.map((pane) => ({
+        const panes: WorkspacePane[] = paneList.map((pane) => ({
           id: pane.id,
           activeTabId: pane.activeTabId,
           tabs: pane.tabs.map((t): TerminalTab => {
@@ -96,12 +124,9 @@ export class PanesFSM {
             return { ...base, sessionId: crypto.randomUUID() }
           })
         }))
+        this.sleepingPanes.set(wtPath, panes)
       }
     }
-    this.store.dispatch({
-      type: 'terminals/panesReplaced',
-      payload: restored
-    })
   }
 
   /** If a worktree has no panes, create the default Claude+Shell pair.
@@ -115,6 +140,17 @@ export class PanesFSM {
   ): WorkspacePane[] {
     const existing = this.getPanes(wtPath)
     if (existing.some((p) => p.tabs.length > 0)) return existing
+
+    // Wake from sleep: if persisted panes exist for this path, promote
+    // them into the live store rather than creating a fresh Claude+Shell
+    // pair. This preserves terminal history and Claude session ids
+    // across the sleep/wake cycle.
+    const sleeping = this.sleepingPanes.get(wtPath)
+    if (sleeping && sleeping.some((p) => p.tabs.length > 0)) {
+      this.sleepingPanes.delete(wtPath)
+      this.commit(wtPath, sleeping)
+      return sleeping
+    }
 
     const claudeTabId = `claude-${wtPath.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}`
     const shellTabId = `shell-${wtPath}-${Date.now()}`
@@ -289,12 +325,16 @@ export class PanesFSM {
   }
 
   clearForWorktree(wtPath: string): void {
-    if (!(wtPath in this.getAllPanes())) return
-    this.store.dispatch({
-      type: 'terminals/panesForWorktreeCleared',
-      payload: wtPath
-    })
-    this.opts.persist(this.getAllPanes())
+    const inLive = wtPath in this.getAllPanes()
+    const inSleeping = this.sleepingPanes.delete(wtPath)
+    if (!inLive && !inSleeping) return
+    if (inLive) {
+      this.store.dispatch({
+        type: 'terminals/panesForWorktreeCleared',
+        payload: wtPath
+      })
+    }
+    this.opts.persist(this.buildPersistPayload())
   }
 }
 

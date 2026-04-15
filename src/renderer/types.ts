@@ -207,6 +207,7 @@ export interface ElectronAPI {
   ): Promise<boolean>
   panesSplitPane(wtPath: string, fromPaneId: string): Promise<WorkspacePane | null>
   panesClearForWorktree(wtPath: string): Promise<boolean>
+  panesEnsureInitialized(wtPath: string): Promise<boolean>
   saveTerminalHistory(id: string, content: string): Promise<boolean>
   saveTerminalHistorySync(id: string, content: string): void
   loadTerminalHistory(id: string): Promise<string | null>

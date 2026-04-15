@@ -1,5 +1,6 @@
 import { GitPullRequest, RotateCw, Trash2, Loader2 } from 'lucide-react'
 import type { Worktree, PtyStatus, PendingTool, PRStatus } from '../types'
+import { isPRMerged } from '../../shared/state/prs'
 import { Tooltip } from './Tooltip'
 import { repoNameColor } from './RepoIcon'
 import { formatPendingTool } from '../pending-tool'
@@ -63,7 +64,7 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
   const metaHeld = useMetaHeld()
   const displayStatus: PtyStatus | 'merged' = isMerged ? 'merged' : status
   const showPendingTool = displayStatus === 'needs-approval' && pendingTool
-  const canContinue = !!onContinue && (prStatus?.state === 'merged' || prStatus?.state === 'closed')
+  const canContinue = !!onContinue && isPRMerged(prStatus)
   // Priority: merged/closed state always wins, then merge conflict, then check
   // status, then PR state
   let iconColor = ''

@@ -12,6 +12,7 @@ import type {
 } from '../types'
 import { eventsToSegments, STATE_COLOR } from './Activity'
 import { groupWorktrees, type GroupKey } from '../worktree-sort'
+import { isPRMerged } from '../../shared/state/prs'
 import { repoNameColor } from './RepoIcon'
 import { formatPendingTool } from '../pending-tool'
 
@@ -133,11 +134,7 @@ export function CommandCenter({
     const c = emptySample()
     for (const wt of worktrees) {
       if (wt.isMain) continue
-      const merged =
-        mergedPaths[wt.path] ||
-        prStatuses[wt.path]?.state === 'merged' ||
-        prStatuses[wt.path]?.state === 'closed'
-      if (merged) continue
+      if (mergedPaths[wt.path] || isPRMerged(prStatuses[wt.path])) continue
       const s = worktreeStatuses[wt.path] || 'idle'
       c[s] = (c[s] || 0) + 1
     }
@@ -266,11 +263,7 @@ export function CommandCenter({
   const pickRecord = (wtPath: string): ActivityRecord | undefined => log[wtPath]
 
   const cardDisplay = (wt: Worktree): DisplayStatus => {
-    const merged =
-      mergedPaths[wt.path] ||
-      prStatuses[wt.path]?.state === 'merged' ||
-      prStatuses[wt.path]?.state === 'closed'
-    if (merged) return 'merged'
+    if (mergedPaths[wt.path] || isPRMerged(prStatuses[wt.path])) return 'merged'
     return worktreeStatuses[wt.path] || 'idle'
   }
 
