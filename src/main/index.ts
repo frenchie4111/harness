@@ -39,6 +39,7 @@ import {
 import { loadRepoConfig, saveRepoConfig, type RepoConfig } from './repo-config'
 import { isWorktreeMerged } from '../shared/state/prs'
 import { hooksInstalled, installHooks, watchStatusDir } from './hooks'
+import { CostTracker } from './cost-tracker'
 import { startControlServer } from './control-server'
 import { writeMcpConfigForTerminal, pruneMcpConfigs } from './mcp-config'
 import { recordActivity, getActivityLog, clearAllActivity, clearActivityForWorktree, sealAllActive, touchActivityMeta, finalizeActivity, type ActivityState, type PRState } from './activity'
@@ -78,6 +79,21 @@ let stopWatchingStatus: (() => void) | null = null
 
 const store = new Store(buildInitialAppState(config, { hasGithubToken: hasSecret('githubToken') }))
 registerStateTransport(store)
+
+// Tails Claude Code session jsonl transcripts on Stop hook events,
+// sums per-model usage, and dispatches costs/usageUpdated. See
+// src/main/cost-tracker.ts and src/shared/state/costs.ts.
+const costTracker = new CostTracker(store)
+costTracker.start()
+
+// Auto-persist the costs slice to config.json on each change. Debounced
+// inside saveConfig; cheap to fire on every dispatch.
+store.subscribe((event) => {
+  if (event.type.startsWith('costs/')) {
+    config.costs = store.getSnapshot().state.costs
+    saveConfig(config)
+  }
+})
 
 /** Query the harness star state, dispatch it to the slice, and auto-star
  *  exactly once per user (sticky so manual unstars survive reboots). Safe

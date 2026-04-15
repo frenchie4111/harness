@@ -204,6 +204,43 @@ const offsets = new Map<string, number>()
 // between our read and the newline flush). Keyed by terminal id.
 const residual = new Map<string, string>()
 
+export interface StopEvent {
+  terminalId: string
+  sessionId: string
+  transcriptPath: string
+  ts: number
+}
+
+type StopListener = (ev: StopEvent) => void
+const stopListeners = new Set<StopListener>()
+
+/** Subscribe to Stop hook events with their raw payload (notably
+ *  transcript_path). Used by CostTracker to know when to re-tail a
+ *  session jsonl. Returns an unsubscribe fn. */
+export function onStopEvent(listener: StopListener): () => void {
+  stopListeners.add(listener)
+  return () => {
+    stopListeners.delete(listener)
+  }
+}
+
+function emitStopIfRelevant(terminalId: string, ev: HookEvent): void {
+  if (ev.event !== 'Stop') return
+  const p = ev.payload as Record<string, unknown> | null
+  if (!p) return
+  const sessionId = p.session_id
+  const transcriptPath = p.transcript_path
+  if (typeof sessionId !== 'string' || typeof transcriptPath !== 'string') return
+  const payload: StopEvent = { terminalId, sessionId, transcriptPath, ts: ev.ts }
+  for (const l of stopListeners) {
+    try {
+      l(payload)
+    } catch (err) {
+      log('hooks', 'stop listener error', err instanceof Error ? err.message : err)
+    }
+  }
+}
+
 function tailLog(terminalId: string, store: Store): void {
   const path = join(STATUS_DIR, `${terminalId}.ndjson`)
   let fd: number
@@ -243,6 +280,7 @@ function tailLog(terminalId: string, store: Store): void {
         continue
       }
       log('hooks', `event terminal=${terminalId} event=${ev.event}`)
+      emitStopIfRelevant(terminalId, ev)
       const update = deriveStatus(terminalId, ev)
       if (update) {
         store.dispatch({
