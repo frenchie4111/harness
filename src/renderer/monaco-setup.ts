@@ -18,6 +18,46 @@ import TsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker'
   }
 }
 
+// Configure the TS/JS language defaults so JSX parses correctly and we
+// don't get semantic noise from unresolved imports (no project-wide type
+// graph — Monaco only sees one file at a time).
+function configureTypescriptDefaults(): void {
+  const ts = monaco.languages.typescript
+  const tsOptions = {
+    ...ts.typescriptDefaults.getCompilerOptions(),
+    jsx: ts.JsxEmit.Preserve,
+    jsxFactory: 'React.createElement',
+    reactNamespace: 'React',
+    allowNonTsExtensions: true,
+    target: ts.ScriptTarget.Latest,
+    moduleResolution: ts.ModuleResolutionKind.NodeJs,
+    esModuleInterop: true,
+    allowJs: true
+  }
+  ts.typescriptDefaults.setCompilerOptions(tsOptions)
+  ts.typescriptDefaults.setDiagnosticsOptions({
+    noSemanticValidation: true,
+    noSyntaxValidation: false
+  })
+  ts.javascriptDefaults.setCompilerOptions({
+    ...ts.javascriptDefaults.getCompilerOptions(),
+    jsx: ts.JsxEmit.Preserve,
+    jsxFactory: 'React.createElement',
+    reactNamespace: 'React',
+    allowNonTsExtensions: true,
+    target: ts.ScriptTarget.Latest,
+    moduleResolution: ts.ModuleResolutionKind.NodeJs,
+    esModuleInterop: true,
+    allowJs: true
+  })
+  ts.javascriptDefaults.setDiagnosticsOptions({
+    noSemanticValidation: true,
+    noSyntaxValidation: false
+  })
+}
+
+configureTypescriptDefaults()
+
 // Pull current Tailwind theme tokens from the document and build a Monaco
 // theme that tracks them. Called once at boot and on theme changes.
 function readVar(name: string, fallback: string): string {
