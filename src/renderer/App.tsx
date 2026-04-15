@@ -324,6 +324,15 @@ const setQuestStep = useCallback((next: QuestStep) => {
     fetchPRStatusIfStale(activeWorktreeId)
   }, [activeWorktreeId, fetchPRStatusIfStale])
 
+  // Wake-on-activation: merged worktrees stay asleep at boot, so we need
+  // to force pane init on first focus. No-op for paths that already have
+  // panes (ensureInitialized in main returns early).
+  useEffect(() => {
+    if (!activeWorktreeId) return
+    if (isPendingId(activeWorktreeId)) return
+    void window.api.panesEnsureInitialized(activeWorktreeId)
+  }, [activeWorktreeId])
+
   // If the active id points at something that no longer exists — a
   // finished deletion, a dismissed pending creation, a stale focus after
   // a refresh — route focus to a neighbor so the center pane doesn't

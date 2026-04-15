@@ -37,6 +37,7 @@ import {
   type QuestStep
 } from './persistence'
 import { loadRepoConfig, saveRepoConfig, type RepoConfig } from './repo-config'
+import { isWorktreeMerged } from '../shared/state/prs'
 import { hooksInstalled, installHooks, watchStatusDir } from './hooks'
 import { startControlServer } from './control-server'
 import { writeMcpConfigForTerminal, pruneMcpConfigs } from './mcp-config'
@@ -220,16 +221,66 @@ store.subscribe((event) => {
   }
 })
 
-// When a repo is freshly added, refreshList() discovers its existing
-// worktrees and dispatches `worktrees/listChanged`. Those worktrees have
-// never been activated, so they have no panes — without this subscriber
-// they'd stay tab-less until the next app restart (when the boot IIFE
-// loops over them). Mirror that boot behavior on every list change so
-// any newly-appearing worktree path gets the default Claude+Shell pair.
+// Sleep-on-boot for merged worktrees.
+//
+// At boot, we don't want to spin up a Claude process for every worktree
+// the user has lying around — most users have many old merged branches
+// they'll never look at again. Instead, we wait for the first PR-poller
+// pass to land (so we know which worktrees are merged), then init only
+// the non-merged ones. Merged worktrees stay "asleep" until the user
+// explicitly clicks them (the renderer fires panes:ensureInitialized on
+// activation — see the useEffect on activeWorktreeId in App.tsx).
+//
+// Three cases the state machine has to handle:
+//   1. Boot drain on prs/mergedChanged — happy path with a token + GH
+//      reachable. Init non-merged paths from the pending queue.
+//   2. Boot drain on 3s timeout — no token, no network, brand-new repo,
+//      etc. Init everything in the pending queue unconditionally so we
+//      don't strand the user.
+//   3. Post-boot worktrees/listChanged — a repo is added later. Mirror
+//      the previous behavior and init every wt unconditionally so any
+//      newly-appearing worktree gets the default Claude+Shell pair.
+//
+// Rule: this only prevents *starting* Claude for merged-at-boot
+// worktrees. If a PR flips to merged mid-session, the already-running
+// Claude is left alone (the activity-deriver handles the visual merged
+// treatment separately).
+const BOOT_INIT_TIMEOUT_MS = 3000
+let bootDrained = false
+const pendingBootInit = new Set<string>()
+let bootTimer: NodeJS.Timeout | null = null
+
+function drainBootInit(force: boolean): void {
+  if (bootDrained) return
+  bootDrained = true
+  if (bootTimer) {
+    clearTimeout(bootTimer)
+    bootTimer = null
+  }
+  const state = store.getSnapshot().state
+  for (const path of pendingBootInit) {
+    if (force || !isWorktreeMerged(state.prs, path)) {
+      panesFSM.ensureInitialized(path)
+    }
+  }
+  pendingBootInit.clear()
+}
+
 store.subscribe((event) => {
-  if (event.type !== 'worktrees/listChanged') return
-  for (const wt of store.getSnapshot().state.worktrees.list) {
-    panesFSM.ensureInitialized(wt.path)
+  if (event.type === 'worktrees/listChanged') {
+    const list = store.getSnapshot().state.worktrees.list
+    if (bootDrained) {
+      for (const wt of list) panesFSM.ensureInitialized(wt.path)
+      return
+    }
+    for (const wt of list) pendingBootInit.add(wt.path)
+    if (!bootTimer) {
+      bootTimer = setTimeout(() => drainBootInit(true), BOOT_INIT_TIMEOUT_MS)
+    }
+    return
+  }
+  if (event.type === 'prs/mergedChanged' && !bootDrained) {
+    drainBootInit(false)
   }
 })
 
@@ -821,6 +872,14 @@ function registerIpcHandlers(): void {
     panesFSM.clearForWorktree(wtPath)
     return true
   })
+  // Wake-on-activation. Renderer fires this whenever the user focuses a
+  // worktree (sidebar click, hotkey, command palette). Boot-time sleep
+  // skips merged worktrees, so this is the only path that wakes them.
+  // No-op for paths that already have panes.
+  ipcMain.handle('panes:ensureInitialized', (_, wtPath: string) => {
+    panesFSM.ensureInitialized(wtPath)
+    return true
+  })
 
   // Activity log — per-worktree status transition history for the Activity view.
   // The activity-deriver in main now calls recordActivity directly when it
@@ -1222,16 +1281,13 @@ app.whenReady().then(() => {
   registerIpcHandlers()
 
   // Seed the store's flat worktree list before the renderer hydrates, so
-  // App.tsx's first render already has the real data. Then ensure every
-  // worktree has at least the default Claude+Shell pane pair — covers
-  // pre-existing worktrees the user has never activated.
+  // App.tsx's first render already has the real data. Pane init for the
+  // discovered worktrees is handled by the sleep-on-boot subscriber above
+  // — refreshList() dispatches `worktrees/listChanged`, which queues every
+  // path for init pending the first PR-poller pass (or a 3s timeout).
   void (async () => {
     await panesFSM.restoreFromConfig(config.panes)
     await worktreesFSM.refreshList()
-    const live = store.getSnapshot().state.worktrees.list
-    for (const wt of live) {
-      panesFSM.ensureInitialized(wt.path)
-    }
   })()
 
   // Seed per-repo config slice from each repo's .harness.json file.

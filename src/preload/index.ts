@@ -138,6 +138,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('panes:splitPane', wtPath, fromPaneId),
   panesClearForWorktree: (wtPath: string) =>
     ipcRenderer.invoke('panes:clearForWorktree', wtPath),
+  panesEnsureInitialized: (wtPath: string) =>
+    ipcRenderer.invoke('panes:ensureInitialized', wtPath),
 
   saveTerminalHistory: (id: string, content: string) =>
     ipcRenderer.invoke('terminal:saveHistory', id, content),
