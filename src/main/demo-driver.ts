@@ -293,24 +293,9 @@ export class DemoDriver {
       })
     })
 
-    // t=15  fix-auth processing → waiting (the hero worktree finishes)
-    this.at(15000, () => {
-      this.dispatch({
-        type: 'terminals/statusChanged',
-        payload: { id: HERO_TAB_ID, status: 'waiting', pendingTool: null }
-      })
-    })
-
-    // t=18  fix-auth waiting → processing again (reverse for loop symmetry)
-    this.at(18000, () => {
-      this.dispatch({
-        type: 'terminals/statusChanged',
-        payload: { id: HERO_TAB_ID, status: 'processing', pendingTool: null }
-      })
-    })
-
-    // t=24  rate-limiter PR success → pending (reverse)
-    this.at(24000, () => {
+    // t=20  rate-limiter PR success → pending (reverse, pulled earlier so
+    //       the climax beat at t=24 is just the fix-auth flip)
+    this.at(20000, () => {
       this.dispatch({
         type: 'prs/statusChanged',
         payload: {
@@ -320,11 +305,31 @@ export class DemoDriver {
       })
     })
 
-    // t=27  migrate-pg needs-approval → idle (reverse)
-    this.at(27000, () => {
+    // t=22  migrate-pg needs-approval → idle (reverse)
+    this.at(22000, () => {
       this.dispatch({
         type: 'terminals/statusChanged',
         payload: { id: TAB_MIGRATE_PG, status: 'idle', pendingTool: null }
+      })
+    })
+
+    // t=24  fix-auth processing → waiting — synced to ~23.7s into the
+    //       cast where Claude prints "Fixed refreshSession ... Updated
+    //       the test." This is the visual climax: the hero worktree's
+    //       sidebar status flips at the same instant the terminal shows
+    //       Claude finishing its edits.
+    this.at(24000, () => {
+      this.dispatch({
+        type: 'terminals/statusChanged',
+        payload: { id: HERO_TAB_ID, status: 'waiting', pendingTool: null }
+      })
+    })
+
+    // t=29  fix-auth waiting → processing (reverse, just before loop restart)
+    this.at(29000, () => {
+      this.dispatch({
+        type: 'terminals/statusChanged',
+        payload: { id: HERO_TAB_ID, status: 'processing', pendingTool: null }
       })
     })
   }
