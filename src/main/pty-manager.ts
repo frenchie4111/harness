@@ -100,9 +100,11 @@ export class PtyManager {
     args: string[],
     window: BrowserWindow,
     extraEnv?: Record<string, string>,
-    isShell: boolean = false
+    isShell: boolean = false,
+    cols: number = 120,
+    rows: number = 30
   ): void {
-    log('pty', `create id=${id} cmd=${command} args=${JSON.stringify(args)} cwd=${cwd}`)
+    log('pty', `create id=${id} cmd=${command} args=${JSON.stringify(args)} cwd=${cwd} cols=${cols} rows=${rows}`)
     if (this.ptys.has(id)) {
       this.kill(id)
     }
@@ -117,8 +119,12 @@ export class PtyManager {
     try {
       ptyProcess = pty.spawn(shell, args, {
         name: 'xterm-256color',
-        cols: 120,
-        rows: 30,
+        // Spawn at the renderer's fitted dimensions so the first burst of
+        // output paints at the correct grid size. Falling back to 120x30
+        // races the eventual ResizeObserver fit, and any cursor-positioned
+        // output that arrives in the gap lands at the wrong column.
+        cols,
+        rows,
         cwd,
         env
       })

@@ -262,7 +262,22 @@ export function XTerminal({ terminalId, cwd, type, visible, claudeCommand, sessi
       const claudeArg = type === 'claude' ? await buildClaudeArg() : ''
       if (disposed) return
       const args = type === 'claude' ? ['-ilc', claudeArg] : ['-il']
-      window.api.createTerminal(terminalId, cwd, shell, args, type === 'claude')
+      // Pass the renderer's fitted dimensions so the PTY spawns at the
+      // right grid size. Without this it comes up at a hardcoded 120x30
+      // and any cursor-positioned output landing before ResizeObserver's
+      // catch-up resizeTerminal() paints at the wrong column.
+      let spawnCols: number | undefined
+      let spawnRows: number | undefined
+      try {
+        const dims = fitAddon.proposeDimensions()
+        if (dims && dims.cols > 0 && dims.rows > 0) {
+          spawnCols = dims.cols
+          spawnRows = dims.rows
+        }
+      } catch {
+        // fall back to main's defaults
+      }
+      window.api.createTerminal(terminalId, cwd, shell, args, type === 'claude', spawnCols, spawnRows)
 
       terminal.onData((data) => {
         window.api.writeTerminal(terminalId, data)

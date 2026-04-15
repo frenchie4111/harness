@@ -1150,11 +1150,11 @@ function registerIpcHandlers(): void {
   })
 
   // PTY handlers — route to the calling window
-  ipcMain.on('pty:create', (event, id: string, cwd: string, cmd: string, args: string[], isClaude?: boolean) => {
+  ipcMain.on('pty:create', (event, id: string, cwd: string, cmd: string, args: string[], isClaude?: boolean, cols?: number, rows?: number) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (!win) return
     const extraEnv = isClaude ? config.claudeEnvVars : undefined
-    ptyManager.create(id, cwd, cmd, args, win, extraEnv, !isClaude)
+    ptyManager.create(id, cwd, cmd, args, win, extraEnv, !isClaude, cols, rows)
   })
 
   ipcMain.on('pty:write', (_, id: string, data: string) => {

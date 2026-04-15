@@ -202,8 +202,16 @@ contextBridge.exposeInMainWorld('api', {
   dismissHooksJustInstalled: () => ipcRenderer.invoke('hooks:dismissJustInstalled'),
 
   // PTY
-  createTerminal: (id: string, cwd: string, cmd: string, args: string[], isClaude?: boolean) => {
-    ipcRenderer.send('pty:create', id, cwd, cmd, args, isClaude)
+  createTerminal: (
+    id: string,
+    cwd: string,
+    cmd: string,
+    args: string[],
+    isClaude?: boolean,
+    cols?: number,
+    rows?: number
+  ) => {
+    ipcRenderer.send('pty:create', id, cwd, cmd, args, isClaude, cols, rows)
   },
   writeTerminal: (id: string, data: string) => {
     ipcRenderer.send('pty:write', id, data)
