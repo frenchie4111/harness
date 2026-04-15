@@ -219,7 +219,7 @@ export class DemoDriver {
     })
     this.dispatch({
       type: 'terminals/statusChanged',
-      payload: { id: TAB_RATE_LIMIT, status: 'processing', pendingTool: null }
+      payload: { id: TAB_RATE_LIMIT, status: 'waiting', pendingTool: null }
     })
     this.dispatch({
       type: 'terminals/statusChanged',
@@ -227,7 +227,7 @@ export class DemoDriver {
     })
     this.dispatch({
       type: 'terminals/statusChanged',
-      payload: { id: TAB_FIX_FLAKY, status: 'idle', pendingTool: null }
+      payload: { id: TAB_FIX_FLAKY, status: 'waiting', pendingTool: null }
     })
     this.dispatch({
       type: 'terminals/statusChanged',
@@ -278,29 +278,6 @@ export class DemoDriver {
           id: TAB_MIGRATE_PG,
           status: 'needs-approval',
           pendingTool: { name: 'Bash', input: { command: 'dropdb acme_dev && createdb acme_dev' } }
-        }
-      })
-    })
-
-    // t=12  rate-limiter PR pending → success
-    this.at(12000, () => {
-      this.dispatch({
-        type: 'prs/statusChanged',
-        payload: {
-          path: WT_RATE_LIMIT,
-          status: pr(1824, 'Add rate limiter middleware', 'add-rate-limiter', 'open', 'success')
-        }
-      })
-    })
-
-    // t=20  rate-limiter PR success → pending (reverse, pulled earlier so
-    //       the climax beat at t=24 is just the fix-auth flip)
-    this.at(20000, () => {
-      this.dispatch({
-        type: 'prs/statusChanged',
-        payload: {
-          path: WT_RATE_LIMIT,
-          status: pr(1824, 'Add rate limiter middleware', 'add-rate-limiter', 'open', 'pending')
         }
       })
     })
