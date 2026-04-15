@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
+  DEFAULT_RIGHT_PANEL_ORDER,
+  effectiveHiddenRightPanels,
+  effectiveRightPanelOrder,
   initialRepoConfigs,
   repoConfigsReducer,
   type RepoConfig,
@@ -56,6 +59,68 @@ describe('repoConfigsReducer', () => {
       payload: '/missing'
     })
     expect(next).toBe(start)
+  })
+
+  it('effectiveHiddenRightPanels migrates legacy hideMergePanel / hidePrPanel', () => {
+    expect(effectiveHiddenRightPanels({ hideMergePanel: true })).toEqual({ merge: true })
+    expect(effectiveHiddenRightPanels({ hidePrPanel: true })).toEqual({ pr: true })
+    expect(
+      effectiveHiddenRightPanels({
+        hideMergePanel: true,
+        hiddenRightPanels: { pr: true, commits: true }
+      })
+    ).toEqual({ merge: true, pr: true, commits: true })
+  })
+
+  it('effectiveHiddenRightPanels prefers new field over legacy', () => {
+    // Legacy says "hide merge", new explicitly sets merge: false.
+    // effectiveHiddenRightPanels only adds legacy when new is undefined.
+    expect(
+      effectiveHiddenRightPanels({
+        hideMergePanel: true,
+        hiddenRightPanels: { merge: false }
+      })
+    ).toEqual({ merge: false })
+  })
+
+  it('effectiveRightPanelOrder returns default when unset', () => {
+    expect(effectiveRightPanelOrder(null)).toEqual(DEFAULT_RIGHT_PANEL_ORDER)
+    expect(effectiveRightPanelOrder({})).toEqual(DEFAULT_RIGHT_PANEL_ORDER)
+    expect(effectiveRightPanelOrder({ rightPanelOrder: [] })).toEqual(DEFAULT_RIGHT_PANEL_ORDER)
+  })
+
+  it('effectiveRightPanelOrder honors saved order', () => {
+    expect(
+      effectiveRightPanelOrder({
+        rightPanelOrder: ['cost', 'pr', 'merge', 'commits', 'changedFiles', 'allFiles']
+      })
+    ).toEqual(['cost', 'pr', 'merge', 'commits', 'changedFiles', 'allFiles'])
+  })
+
+  it('effectiveRightPanelOrder fills in missing keys and drops unknown', () => {
+    // Partial saved order — the two missing keys get appended in canonical order
+    const result = effectiveRightPanelOrder({
+      rightPanelOrder: ['cost', 'pr'] as never
+    })
+    expect(result[0]).toBe('cost')
+    expect(result[1]).toBe('pr')
+    // Remaining keys in canonical order
+    expect(result.slice(2)).toEqual(['merge', 'commits', 'changedFiles', 'allFiles'])
+    expect(result).toHaveLength(6)
+  })
+
+  it('effectiveRightPanelOrder deduplicates repeated keys', () => {
+    const result = effectiveRightPanelOrder({
+      rightPanelOrder: ['pr', 'pr', 'merge'] as never
+    })
+    expect(result.filter((k) => k === 'pr')).toHaveLength(1)
+    expect(result).toHaveLength(6)
+  })
+
+  it('effectiveHiddenRightPanels handles null/empty config', () => {
+    expect(effectiveHiddenRightPanels(null)).toEqual({})
+    expect(effectiveHiddenRightPanels(undefined)).toEqual({})
+    expect(effectiveHiddenRightPanels({})).toEqual({})
   })
 
   it('returns a new object reference on real changes', () => {

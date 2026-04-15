@@ -40,8 +40,18 @@ export function saveRepoConfig(repoRoot: string, next: RepoConfig): RepoConfig {
   if (setup) cleaned.setupCommand = setup
   if (teardown) cleaned.teardownCommand = teardown
   if (next.mergeStrategy) cleaned.mergeStrategy = next.mergeStrategy
-  if (next.hideMergePanel) cleaned.hideMergePanel = true
-  if (next.hidePrPanel) cleaned.hidePrPanel = true
+  // Migrate legacy hideMergePanel / hidePrPanel into hiddenRightPanels
+  // on write. Only the new field is persisted going forward.
+  const hidden: Record<string, boolean> = { ...(next.hiddenRightPanels || {}) }
+  if (next.hideMergePanel && hidden.merge === undefined) hidden.merge = true
+  if (next.hidePrPanel && hidden.pr === undefined) hidden.pr = true
+  for (const k of Object.keys(hidden)) {
+    if (!hidden[k]) delete hidden[k]
+  }
+  if (Object.keys(hidden).length > 0) cleaned.hiddenRightPanels = hidden
+  if (Array.isArray(next.rightPanelOrder) && next.rightPanelOrder.length > 0) {
+    cleaned.rightPanelOrder = [...next.rightPanelOrder]
+  }
 
   const hasAny = Object.keys(cleaned).some((k) => k !== 'version')
   const path = configPath(repoRoot)

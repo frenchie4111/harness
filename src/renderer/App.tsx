@@ -5,7 +5,7 @@ import { useTabHandlers } from './hooks/useTabHandlers'
 import { useHotkeyHandlers } from './hooks/useHotkeyHandlers'
 import { useWorktreeHandlers } from './hooks/useWorktreeHandlers'
 import type { Worktree, TerminalTab, PtyStatus, PendingTool, QuestStep, PendingWorktree, UpdaterStatus, RepoConfig } from './types'
-import { HotkeysProvider } from './components/Tooltip'
+import { HotkeysProvider, Tooltip } from './components/Tooltip'
 import { Sidebar } from './components/Sidebar'
 import { ResizeHandle } from './components/ResizeHandle'
 import { NewWorktreeScreen } from './components/NewWorktreeScreen'
@@ -13,11 +13,7 @@ import { CreatingWorktreeScreen } from './components/CreatingWorktreeScreen'
 import { DeletingWorktreeScreen } from './components/DeletingWorktreeScreen'
 import { QuestCard } from './components/QuestCard'
 import { WorkspaceView } from './components/WorkspaceView'
-import { ChangedFilesPanel } from './components/ChangedFilesPanel'
-import { AllFilesPanel } from './components/AllFilesPanel'
-import { BranchCommitsPanel } from './components/BranchCommitsPanel'
-import { PRStatusPanel, MergeLocallyPanel } from './components/PRStatusPanel'
-import { CostPanel } from './components/CostPanel'
+import { RightColumn } from './components/RightColumn'
 import { Settings } from './components/Settings'
 import { Guide } from './components/Guide'
 import { Activity } from './components/Activity'
@@ -117,6 +113,12 @@ export default function App(): JSX.Element {
     const saved = Number(localStorage.getItem('harness:rightPanelWidth'))
     return Number.isFinite(saved) && saved > 0 ? saved : 256
   })
+  const [rightColumnHidden, setRightColumnHidden] = useState<boolean>(() => {
+    return localStorage.getItem('harness:rightColumnHidden') === '1'
+  })
+  useEffect(() => {
+    localStorage.setItem('harness:rightColumnHidden', rightColumnHidden ? '1' : '0')
+  }, [rightColumnHidden])
   useEffect(() => {
     localStorage.setItem('harness:sidebarWidth', String(sidebarWidth))
   }, [sidebarWidth])
@@ -441,6 +443,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
     activeTabId,
     hotkeyOverrides,
     setSidebarVisible,
+    setRightColumnHidden,
     setShowNewWorktree,
     setShowCommandCenter,
     setShowCommandPalette,
@@ -644,6 +647,8 @@ const setQuestStep = useCallback((next: QuestStep) => {
             onOpenSettings={() => setShowSettings(true)}
             onOpenActivity={() => setShowActivity(true)}
             onOpenCleanup={() => setShowCleanup(true)}
+            rightColumnHidden={rightColumnHidden}
+            onShowRightColumn={() => setRightColumnHidden(false)}
             onOpenCommandCenter={() => {
               setShowNewWorktree(false)
               setShowActivity(false)
@@ -776,56 +781,32 @@ const setQuestStep = useCallback((next: QuestStep) => {
           onFinish={() => setQuestStep('done')}
         />
         {/* Right panel — hidden on the new-worktree screen so the form gets the full width */}
-        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && (
+        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !rightColumnHidden && (
           <ResizeHandle onDelta={handleRightPanelResize} />
         )}
-        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && (
-          <div
-            className="shrink-0 h-full flex flex-col bg-panel"
-            style={{ width: rightPanelWidth }}
-          >
-            {!activeRepoConfig?.hideMergePanel && (
-              <MergeLocallyPanel
-                pr={activeWorktreeId ? prStatuses[activeWorktreeId] : null}
-                worktree={worktrees.find((w) => w.path === activeWorktreeId) || null}
-                hasGithubToken={hasGithubToken}
-                onMerged={refreshMergedStatus}
-                onRemoveWorktree={handleDeleteWorktree}
-              />
-            )}
-            {!activeRepoConfig?.hidePrPanel && (
-              <PRStatusPanel
-                pr={activeWorktreeId ? prStatuses[activeWorktreeId] : null}
-                hasGithubToken={hasGithubToken}
-                loading={prLoading}
-                onRefresh={fetchAllPRStatuses}
-                onConnectGithub={() => {
-                  setSettingsInitialSection('github')
-                  setShowSettings(true)
-                }}
-              />
-            )}
-            <BranchCommitsPanel worktreePath={activeWorktreeId} onOpenCommit={handleOpenCommit} />
-            <ChangedFilesPanel
-              worktreePath={activeWorktreeId}
-              onOpenDiff={handleOpenDiff}
-              onSendToClaude={
-                activeWorktreeId
-                  ? (text) => handleSendToClaude(activeWorktreeId, text)
-                  : undefined
-              }
-            />
-            <AllFilesPanel
-              worktreePath={activeWorktreeId}
-              onOpenFile={handleOpenFile}
-              onSendToClaude={
-                activeWorktreeId
-                  ? (text) => handleSendToClaude(activeWorktreeId, text)
-                  : undefined
-              }
-            />
-            <CostPanel worktreePath={activeWorktreeId} />
-          </div>
+        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !rightColumnHidden && (
+          <RightColumn
+            width={rightPanelWidth}
+            activeWorktreeId={activeWorktreeId}
+            activeRepoRoot={activeRepoRoot}
+            worktrees={worktrees}
+            prStatuses={prStatuses}
+            prLoading={prLoading}
+            hasGithubToken={hasGithubToken}
+            activeRepoConfig={activeRepoConfig}
+            onRefreshPRs={fetchAllPRStatuses}
+            onOpenGithubSettings={() => {
+              setSettingsInitialSection('github')
+              setShowSettings(true)
+            }}
+            onMerged={refreshMergedStatus}
+            onRemoveWorktree={handleDeleteWorktree}
+            onOpenCommit={handleOpenCommit}
+            onOpenDiff={handleOpenDiff}
+            onOpenFile={handleOpenFile}
+            onSendToClaude={handleSendToClaude}
+            onCollapse={() => setRightColumnHidden(true)}
+          />
         )}
       </div>
     </div>
