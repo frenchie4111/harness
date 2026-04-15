@@ -52,33 +52,81 @@ stream-json session. The session jsonl persistence is shared between TUI
 and JSON mode, so Harness's existing `latestClaudeSessionId` logic should
 work for JSON tabs.
 
-### Permissions — the big unknown (partially blocking)
+### Permissions — initially thought to be blocking, turns out it's fine
 
-- In `-p` mode **there is no interactive approval flow**. Permission is
-  decided by `--permission-mode` + `--allowedTools`/`--disallowedTools`
-  flags at spawn time.
-- There is no `--permission-prompt-tool` flag visible in this version
-  (2.1.109). Earlier versions of Claude Code documented one; it may be
-  gated behind an MCP permission-prompt server.
-- Observed: with `--permission-mode default`, a `Bash echo hello` ran
-  without prompting (auto-approved for safe commands). With
-  `--disallowedTools Bash`, the tool is simply hidden from the model.
-- `result` events include a `permission_denials` array we can surface.
+**Initial finding (wrong):** `claude --help` doesn't show any
+permission-prompt mechanism, just `--permission-mode`. In `-p` mode I
+couldn't find a way to hook per-tool approvals.
 
-**Implication:** To replicate the TUI's per-tool approval dialog in JSON
-mode we need one of:
-1. Spawn with `bypassPermissions` and ship an in-harness guard that
-   intercepts tool calls via hook events (`--include-hook-events`,
-   `PreToolUse`) — but hook events are *post-facto* notifications, they
-   don't block execution.
-2. Keep a whitelist of pre-approved tools per tab, and upgrade the list
-   over time via process restart (ugly, loses context unless combined
-   with `--resume`).
-3. Ship a tiny MCP "permission prompt" server the CLI can consult, if a
-   flag for that surfaces in a newer CLI release.
+**Corrected finding:** `--permission-prompt-tool <mcp-tool-name>`
+exists. It's declared with `.hideHelp()` in the binary so it doesn't
+show up in `--help`, but the flag works today in 2.1.109.
 
-None of the above are as clean as the TUI's inline approval. This is the
-single biggest architectural risk for a full-replacement approach.
+Contract (reverse-engineered from the decompiled binary, then verified
+end-to-end against `spike-mcp-approval.mjs` in this worktree):
+
+1. Pass any MCP tool: `--permission-prompt-tool mcp__<server>__<tool>`.
+   Must be a real MCP tool (has an `inputJSONSchema`).
+2. When Claude wants to invoke a tool that would normally prompt, it
+   calls your MCP tool synchronously via stdio with:
+   ```json
+   {"tool_name": "Write",
+    "input": {"file_path": "...", "content": "..."},
+    "tool_use_id": "toolu_..."}
+   ```
+3. Your MCP tool returns a text content block whose text is a JSON
+   `PermissionResult`:
+   - `{"behavior": "allow", "updatedInput": {...}, "updatedPermissions": [...]}`
+     — allow, optionally rewriting input, optionally persisting rules
+   - `{"behavior": "deny", "message": "reason"}` — tool returns to model
+     as `is_error: true` with your message, run continues
+   - `{"behavior": "deny", "message": "...", "interrupt": true}` — aborts
+     the whole turn via the session AbortController
+4. Synchronous from Claude's POV — it blocks on the MCP reply just like
+   the TUI blocks on a keystroke.
+
+Decompiled from the binary:
+```js
+function KmH(H, _, q, K) {
+  let O = { type: "permissionPromptTool",
+            permissionPromptToolName: _.name, toolResult: H }
+  if (H.behavior === "allow") {
+    let T = H.updatedPermissions
+    if (T) K.setToolPermissionContext((A) => JN(A, T)), ep(T)
+    let $ = Object.keys(H.updatedInput).length > 0 ? H.updatedInput : q
+    return { ...H, updatedInput: $, decisionReason: O }
+  } else if (H.behavior === "deny" && H.interrupt) {
+    K.abortController.abort()
+  }
+  return { ...H, decisionReason: O }
+}
+```
+
+End-to-end verified in this worktree:
+- **Deny path:** deny-all approver blocked `Write` and `Bash rm` cleanly;
+  file was never written; `result.permission_denials[]` captured both
+  with full original `tool_input`.
+- **Input mutation on allow:** approver accepted a Write but returned
+  `updatedInput.content = "REWRITTEN_BY_APPROVER"`. The bytes on disk
+  matched the rewritten content, not what the model asked for. Power-
+  user feature the TUI doesn't have.
+
+**One caveat:** the prompt tool is only consulted for tools that would
+*otherwise* require approval. Reads and safe Bash (`echo hi`) under
+`--permission-mode default` are auto-approved by the classifier and
+never reach the approver. Desirable (no nag spam); means full
+visibility requires pairing with `--include-hook-events` for
+observation.
+
+**Implication:** This completely unblocks the full-replacement /
+dual-mode story. We can build a proper React approval card, route
+through a bundled stdio MCP server, and have synchronous per-tool
+approval exactly like the TUI — and better, because we can mutate
+inputs before execution.
+
+**Risk:** the flag is `.hideHelp()`. Anthropic can rename/remove it
+with no warning. Ship behind a feature flag, pin CLI versions, smoke-
+test on every bump.
 
 ### Slash commands in JSON mode
 
@@ -204,27 +252,33 @@ items above — including a usable approval flow, which is currently
 unresolved. The maintenance tax is real: every Claude Code release that
 adds a TUI feature becomes a Harness porting task.
 
-### Recommendation
+### Recommendation (revised after permission-prompt-tool finding)
 
-**Do the sidecar first** — but with a twist: *don't* double-spawn, tail
-the session jsonl file Harness already locates via
-`latestClaudeSessionId`. It's a pure read path, zero subprocess cost,
-zero protocol risk, and gives us an activity/tool/cost panel that works
-immediately on every existing Claude tab. That's a ~1 week deliverable
-with real user-visible value.
+Earlier draft of this doc said "sidecar only, full replacement blocked."
+That was based on the wrong assumption that there was no way to do
+per-tool approvals in `-p` mode. Now that we've verified the
+`--permission-prompt-tool` path works end-to-end, dual-mode is viable.
 
-After shipping the sidecar, reassess. If the JSON event stream proves
-stable and rich enough, AND Anthropic lands a proper permission-prompt
-mechanism for `-p` mode, THEN consider dual-mode. Do not commit to full
-replacement under current CLI constraints — the permission story alone
-would force us to ship an app that's strictly worse than the TUI for
-power users, and we'd eat the parity treadmill forever.
+Full phased plan lives in `plans/json-mode-native-chat.md`. Short
+version:
 
-If the sidecar experiment reveals that the jsonl tail is surprisingly
-powerful (e.g., we can drive a real React chat view off it *without*
-taking over input), that might collapse the dual-mode phase to something
-much smaller — an add-on view that reads but doesn't write, with input
-still going through xterm.
+- **Phase 0: jsonl-tail sidecar (~1 week).** Read-only activity panel
+  next to existing xterm tabs. Zero risk, ships regardless. Worth doing
+  even if we stop here.
+- **Phase 1: MCP permission bridge (~1-2 weeks).** Productionize
+  `spike-mcp-approval.mjs` as a bundled stdio MCP server that talks
+  back to Harness main over a Unix socket. This is the backbone of
+  every subsequent phase.
+- **Phase 2: minimal json-claude tab behind a feature flag (~2-3 weeks).**
+  Turn the spike prototype into something usable: real markdown,
+  per-tool cards, session persistence via `--session-id`/`--resume`,
+  interrupt handling, approval card wired to Phase 1 bridge.
+- **Phase 3: parity grind (~4-8 weeks).** Slash commands, image paste,
+  @-mentions, hook events for the auto-approved path, partial message
+  streaming, sub-agent nesting, plan mode, model switching. Pausable at
+  any point.
+- **Phase 4: full replacement.** Not recommended in the foreseeable
+  future. Dual-mode is the resting state.
 
 ### Risks and unknowns
 
