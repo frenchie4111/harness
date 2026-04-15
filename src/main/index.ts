@@ -1346,24 +1346,28 @@ app.whenReady().then(() => {
     getRepoRoots: () => config.repoRoots,
     getWorktreeBase: () => config.worktreeBase || DEFAULT_WORKTREE_BASE,
     broadcast: (channel, payload) => {
-      broadcastToAllWindows(channel, payload)
       if (channel === 'worktrees:externalCreate') {
-        // Refresh the store's list and seed default panes for the new
-        // worktree (with the initial prompt embedded). Renderer just
-        // focuses the new path when its onWorktreesExternalCreate
-        // listener fires.
+        // Seed panes with the initial prompt BEFORE refreshList — the
+        // worktrees/listChanged subscriber also calls ensureInitialized
+        // (without opts) for every worktree in the new list, and whoever
+        // gets there first wins. Prime the pane with the prompt, then
+        // refresh the list so subsequent ensureInitialized calls are
+        // no-ops, then tell the renderer to focus the new path.
         const p = payload as {
           repoRoot: string
           worktree: { path: string }
           initialPrompt?: string
         }
+        panesFSM.ensureInitialized(p.worktree.path, {
+          initialPrompt: p.initialPrompt
+        })
         void worktreesFSM.refreshList().then(() => {
-          panesFSM.ensureInitialized(p.worktree.path, {
-            initialPrompt: p.initialPrompt
-          })
+          broadcastToAllWindows(channel, payload)
         })
         void prPoller.refreshAll()
+        return
       }
+      broadcastToAllWindows(channel, payload)
     }
   }).catch((err) => log('control', 'failed to start', err instanceof Error ? err.message : err))
 
