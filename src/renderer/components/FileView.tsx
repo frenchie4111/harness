@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
-import { AtSign, Code2 } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { AtSign, Code2, Save } from 'lucide-react'
 import type { FileReadResult } from '../types'
 import { Tooltip } from './Tooltip'
-import { detectLanguage, highlightToLines } from '../syntax'
+import { MonacoEditor } from './MonacoEditor'
+import { useSettings } from '../store'
 
 interface FileViewProps {
   worktreePath: string
@@ -17,18 +18,27 @@ function formatBytes(n: number): string {
 }
 
 export function FileView({ worktreePath, filePath, onSendToClaude }: FileViewProps): JSX.Element {
+  const settings = useSettings()
   const [result, setResult] = useState<FileReadResult | null>(null)
   const [loading, setLoading] = useState(true)
+  const [value, setValue] = useState('')
+  const [savedValue, setSavedValue] = useState('')
+  const [saveError, setSaveError] = useState<string | null>(null)
 
-  const highlightedLines = useMemo(() => {
-    if (!result || result.binary || result.content == null) return [] as string[]
-    return highlightToLines(result.content, detectLanguage(filePath))
-  }, [result, filePath])
+  const valueRef = useRef(value)
+  const savedRef = useRef(savedValue)
+  valueRef.current = value
+  savedRef.current = savedValue
+
+  const dirty = value !== savedValue
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
     setResult(null)
+    setValue('')
+    setSavedValue('')
+    setSaveError(null)
     if (!filePath) {
       setLoading(false)
       return
@@ -36,12 +46,42 @@ export function FileView({ worktreePath, filePath, onSendToClaude }: FileViewPro
     window.api.readWorktreeFile(worktreePath, filePath).then((r) => {
       if (cancelled) return
       setResult(r)
+      const content = r.content ?? ''
+      setValue(content)
+      setSavedValue(content)
       setLoading(false)
     })
     return () => {
       cancelled = true
     }
   }, [worktreePath, filePath])
+
+  const save = useCallback(async () => {
+    if (!filePath) return
+    const current = valueRef.current
+    if (current === savedRef.current) return
+    setSaveError(null)
+    const r = await window.api.writeWorktreeFile(worktreePath, filePath, current)
+    if (r.ok) {
+      setSavedValue(current)
+    } else {
+      setSaveError(r.error || 'Save failed')
+    }
+  }, [worktreePath, filePath])
+
+  // Warn if the tab is about to be closed/unmounted with unsaved changes.
+  // beforeunload covers window-level close; the component-unmount case is
+  // handled with a confirm() on the last-render cleanup.
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent): void => {
+      if (valueRef.current !== savedRef.current) {
+        e.preventDefault()
+        e.returnValue = ''
+      }
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [])
 
   if (!filePath) {
     return (
@@ -67,18 +107,33 @@ export function FileView({ worktreePath, filePath, onSendToClaude }: FileViewPro
     )
   }
 
-  const lines = highlightedLines
-
   return (
     <div className="h-full flex flex-col bg-app">
       <div className="shrink-0 flex items-center gap-3 border-b border-border bg-panel px-4 py-2 text-xs">
-        <span className="font-mono text-fg truncate flex-1 min-w-0" style={{ direction: 'rtl', textAlign: 'left' }} title={filePath}>
+        <span
+          className="font-mono text-fg truncate flex-1 min-w-0"
+          style={{ direction: 'rtl', textAlign: 'left' }}
+          title={filePath}
+        >
           <bdi>{filePath}</bdi>
+          {dirty && <span className="text-warning ml-1">●</span>}
         </span>
-        <span className="text-faint shrink-0">{formatBytes(result.size)}</span>
-        {result.truncated && (
-          <span className="shrink-0 text-warning">truncated</span>
+        {saveError && (
+          <span className="shrink-0 text-danger truncate max-w-[40%]" title={saveError}>
+            {saveError}
+          </span>
         )}
+        <span className="text-faint shrink-0">{formatBytes(result.size)}</span>
+        {result.truncated && <span className="shrink-0 text-warning">truncated</span>}
+        <Tooltip label={dirty ? 'Save (⌘S)' : 'Saved'}>
+          <button
+            onClick={save}
+            disabled={!dirty || result.binary}
+            className="shrink-0 text-faint hover:text-fg disabled:opacity-40 disabled:hover:text-faint cursor-pointer disabled:cursor-default"
+          >
+            <Save size={12} />
+          </button>
+        </Tooltip>
         {onSendToClaude && (
           <Tooltip label="Reference file in Claude">
             <button
@@ -98,38 +153,28 @@ export function FileView({ worktreePath, filePath, onSendToClaude }: FileViewPro
           </button>
         </Tooltip>
       </div>
-      <div className="flex-1 overflow-auto min-h-0">
+      <div className="flex-1 min-h-0">
         {result.binary ? (
           <div className="p-4 text-faint text-sm">Binary file — not shown.</div>
-        ) : (
-          <div className="font-mono text-xs leading-5 min-w-fit">
-            {lines.map((line, i) => {
-              const lineNo = i + 1
-              return (
-                <div key={i} className="flex group/line hover:bg-panel-raised/30">
-                  <span className="shrink-0 w-12 text-right pr-2 select-none text-faint border-r border-border/50">
-                    {lineNo}
-                  </span>
-                  <span className="shrink-0 w-5 flex items-center justify-center">
-                    {onSendToClaude && (
-                      <Tooltip label="Reference this line in Claude" side="right">
-                        <button
-                          onClick={() => onSendToClaude(`@${filePath}:${lineNo} `)}
-                          className="opacity-0 group-hover/line:opacity-100 text-faint hover:text-fg transition-opacity cursor-pointer"
-                        >
-                          <AtSign size={10} />
-                        </button>
-                      </Tooltip>
-                    )}
-                  </span>
-                  <span
-                    className="whitespace-pre pr-4 text-muted hljs"
-                    dangerouslySetInnerHTML={{ __html: line }}
-                  />
-                </div>
-              )
-            })}
+        ) : result.truncated ? (
+          <div className="h-full flex items-center justify-center text-faint text-sm px-4 text-center">
+            File is larger than 2 MB — editing disabled. Open in your external editor.
           </div>
+        ) : (
+          <MonacoEditor
+            value={value}
+            filePath={filePath}
+            readOnly={false}
+            fontFamily={settings.terminalFontFamily || undefined}
+            fontSize={settings.terminalFontSize}
+            onChange={setValue}
+            onSave={save}
+            onReferenceLine={
+              onSendToClaude
+                ? (ln) => onSendToClaude(`@${filePath}:${ln} `)
+                : undefined
+            }
+          />
         )}
       </div>
     </div>

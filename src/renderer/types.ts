@@ -15,6 +15,20 @@ export interface FileReadResult {
   error?: string
 }
 
+export interface FileWriteResult {
+  ok: boolean
+  error?: string
+}
+
+export interface FileDiffSides {
+  original: string
+  modified: string
+  originalExists: boolean
+  modifiedExists: boolean
+  modifiedBinary: boolean
+  error?: string
+}
+
 import type {
   PtyStatus,
   PendingTool,
@@ -154,6 +168,11 @@ export interface ElectronAPI {
   getCommitDiff(worktreePath: string, hash: string): Promise<CommitDiff | null>
   listAllFiles(worktreePath: string): Promise<string[]>
   readWorktreeFile(worktreePath: string, filePath: string): Promise<FileReadResult>
+  writeWorktreeFile(
+    worktreePath: string,
+    filePath: string,
+    contents: string
+  ): Promise<FileWriteResult>
   getChangedFiles(worktreePath: string, mode?: 'working' | 'branch'): Promise<ChangedFile[]>
   getFileDiff(
     worktreePath: string,
@@ -161,6 +180,12 @@ export interface ElectronAPI {
     staged: boolean,
     mode?: 'working' | 'branch'
   ): Promise<string>
+  getFileDiffSides(
+    worktreePath: string,
+    filePath: string,
+    staged: boolean,
+    mode?: 'working' | 'branch'
+  ): Promise<FileDiffSides>
 
   // Settings — all reads come from useSettings()/useRepoConfigs()/etc.
   // Only the mutation methods + a few constant accessors remain on the IPC.

@@ -1,8 +1,8 @@
 import { execFile, spawn } from 'child_process'
 import { promisify } from 'util'
 import { basename, join, resolve, relative, isAbsolute } from 'path'
-import { existsSync, mkdirSync, statSync } from 'fs'
-import { readFile } from 'fs/promises'
+import { existsSync, mkdirSync, statSync, lstatSync } from 'fs'
+import { readFile, writeFile } from 'fs/promises'
 import { log } from './debug'
 import type { Worktree } from '../shared/state/worktrees'
 
@@ -540,6 +540,103 @@ export async function getFileDiff(
   }
 }
 
+export interface FileDiffSides {
+  original: string
+  modified: string
+  originalExists: boolean
+  modifiedExists: boolean
+  modifiedBinary: boolean
+  error?: string
+}
+
+async function getFileAtRef(
+  worktreePath: string,
+  ref: string,
+  filePath: string
+): Promise<string | null> {
+  try {
+    const { stdout } = await execFileAsync('git', ['show', `${ref}:${filePath}`], {
+      cwd: worktreePath,
+      maxBuffer: 16 * 1024 * 1024
+    })
+    return stdout
+  } catch {
+    return null
+  }
+}
+
+async function getMergeBase(worktreePath: string, ref: string): Promise<string | null> {
+  try {
+    const { stdout } = await execFileAsync('git', ['merge-base', ref, 'HEAD'], {
+      cwd: worktreePath
+    })
+    return stdout.trim() || null
+  } catch {
+    return null
+  }
+}
+
+/** Resolve the two sides of a single-file diff as plain text, suitable for
+ * feeding Monaco's DiffEditor. Semantics match getFileDiff: working vs
+ * index (unstaged), HEAD vs index (staged), merge-base vs HEAD (branch). */
+export async function getFileDiffSides(
+  worktreePath: string,
+  filePath: string,
+  staged: boolean,
+  mode: ChangedFilesMode = 'working'
+): Promise<FileDiffSides> {
+  if (mode === 'branch') {
+    const baseRef = await getDefaultBaseRef(worktreePath)
+    if (baseRef === 'HEAD') {
+      return { original: '', modified: '', originalExists: false, modifiedExists: false, modifiedBinary: false }
+    }
+    const mb = await getMergeBase(worktreePath, baseRef)
+    const original = mb ? await getFileAtRef(worktreePath, mb, filePath) : null
+    const modified = await getFileAtRef(worktreePath, 'HEAD', filePath)
+    return {
+      original: original ?? '',
+      modified: modified ?? '',
+      originalExists: original != null,
+      modifiedExists: modified != null,
+      modifiedBinary: false
+    }
+  }
+
+  if (staged) {
+    const original = await getFileAtRef(worktreePath, 'HEAD', filePath)
+    const modified = await getFileAtRef(worktreePath, ':0', filePath)
+    return {
+      original: original ?? '',
+      modified: modified ?? '',
+      originalExists: original != null,
+      modifiedExists: modified != null,
+      modifiedBinary: false
+    }
+  }
+
+  // Unstaged working-tree diff: compare index (fallback HEAD) to working file.
+  let original = await getFileAtRef(worktreePath, ':0', filePath)
+  if (original == null) original = await getFileAtRef(worktreePath, 'HEAD', filePath)
+  const read = await readWorktreeFile(worktreePath, filePath)
+  if (read.binary) {
+    return {
+      original: original ?? '',
+      modified: '',
+      originalExists: original != null,
+      modifiedExists: true,
+      modifiedBinary: true
+    }
+  }
+  return {
+    original: original ?? '',
+    modified: read.content ?? '',
+    originalExists: original != null,
+    modifiedExists: read.content != null,
+    modifiedBinary: false,
+    error: read.error
+  }
+}
+
 export type MergeStrategy = 'squash' | 'merge-commit' | 'fast-forward'
 
 export interface MainWorktreeStatus {
@@ -868,6 +965,52 @@ export async function readWorktreeFile(
       truncated: false,
       error: (err as Error).message
     }
+  }
+}
+
+export interface FileWriteResult {
+  ok: boolean
+  error?: string
+}
+
+const MAX_FILE_WRITE_BYTES = 5 * 1024 * 1024
+
+/** Write a single file within a worktree. Rejects paths that escape the
+ * worktree and refuses symlinks. Last-write-wins — no concurrent-edit
+ * detection in v1. */
+export async function writeWorktreeFile(
+  worktreePath: string,
+  filePath: string,
+  contents: string
+): Promise<FileWriteResult> {
+  const base = resolve(worktreePath)
+  const target = isAbsolute(filePath) ? resolve(filePath) : resolve(base, filePath)
+  const rel = relative(base, target)
+  if (rel.startsWith('..') || isAbsolute(rel)) {
+    return { ok: false, error: 'Path escapes worktree' }
+  }
+  const byteLen = Buffer.byteLength(contents, 'utf8')
+  if (byteLen > MAX_FILE_WRITE_BYTES) {
+    return { ok: false, error: `File too large (${byteLen} bytes, max ${MAX_FILE_WRITE_BYTES})` }
+  }
+  try {
+    // Refuse to clobber a symlink — the real file lives somewhere we
+    // haven't validated.
+    try {
+      const lst = lstatSync(target)
+      if (lst.isSymbolicLink()) {
+        return { ok: false, error: 'Refusing to write through a symlink' }
+      }
+      if (lst.isDirectory()) {
+        return { ok: false, error: 'Target is a directory' }
+      }
+    } catch {
+      // Target may not exist yet — that's fine, we're creating it.
+    }
+    await writeFile(target, contents, 'utf8')
+    return { ok: true }
+  } catch (err) {
+    return { ok: false, error: (err as Error).message }
   }
 }
 

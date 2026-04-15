@@ -396,3 +396,23 @@ button, [role="button"], a[href], [onclick] {
 .hljs-strong {
   font-weight: 600;
 }
+
+/* Monaco gutter affordance: per-line "reference in Claude" button.
+ * Set imperatively as a glyph-margin decoration on whichever line the
+ * cursor is currently hovering (see MonacoEditor / MonacoDiffEditor).
+ * The @-sign is inlined as an SVG so it picks up currentColor via mask. */
+.monaco-editor .ref-line-glyph {
+  cursor: pointer;
+  background-color: var(--color-faint);
+  mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='4'/><path d='M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8'/></svg>");
+  -webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='4'/><path d='M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8'/></svg>");
+  mask-size: 12px 12px;
+  -webkit-mask-size: 12px 12px;
+  mask-repeat: no-repeat;
+  -webkit-mask-repeat: no-repeat;
+  mask-position: center;
+  -webkit-mask-position: center;
+}
+.monaco-editor .ref-line-glyph:hover {
+  background-color: var(--color-fg);
+}

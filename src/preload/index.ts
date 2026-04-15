@@ -47,12 +47,20 @@ contextBridge.exposeInMainWorld('api', {
   listAllFiles: (worktreePath: string) => ipcRenderer.invoke('worktree:listFiles', worktreePath),
   readWorktreeFile: (worktreePath: string, filePath: string) =>
     ipcRenderer.invoke('worktree:readFile', worktreePath, filePath),
+  writeWorktreeFile: (worktreePath: string, filePath: string, contents: string) =>
+    ipcRenderer.invoke('worktree:writeFile', worktreePath, filePath, contents),
 
   // Changed files
   getChangedFiles: (worktreePath: string, mode?: 'working' | 'branch') =>
     ipcRenderer.invoke('worktree:changedFiles', worktreePath, mode),
   getFileDiff: (worktreePath: string, filePath: string, staged: boolean, mode?: 'working' | 'branch') =>
     ipcRenderer.invoke('worktree:fileDiff', worktreePath, filePath, staged, mode),
+  getFileDiffSides: (
+    worktreePath: string,
+    filePath: string,
+    staged: boolean,
+    mode?: 'working' | 'branch'
+  ) => ipcRenderer.invoke('worktree:fileDiffSides', worktreePath, filePath, staged, mode),
   getBranchCommits: (worktreePath: string) => ipcRenderer.invoke('worktree:branchCommits', worktreePath),
   getCommitDiff: (worktreePath: string, hash: string) =>
     ipcRenderer.invoke('worktree:commitDiff', worktreePath, hash),
