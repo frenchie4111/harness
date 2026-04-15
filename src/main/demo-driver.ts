@@ -102,14 +102,20 @@ function loadCast(file: string): CastRecord[] {
   const path = join(app.getAppPath(), 'resources', 'demo', file)
   const raw = readFileSync(path, 'utf8')
   const lines = raw.split('\n').filter((l) => l.trim().length > 0)
-  // First line is the header `{"version":2,...}` — skip it.
+  // Header line is JSON: `{"version":2,...}` or `{"version":3,...}`.
+  // v2: `[absoluteTs, "o", data]` — timestamps are absolute, deltas are derived.
+  // v3: `[relativeTs, "o", data]` — timestamps are already deltas from prior record.
+  const header = JSON.parse(lines[0]) as { version?: number }
+  const version = header.version ?? 2
   const records: CastRecord[] = []
   let prevTs = 0
   for (let i = 1; i < lines.length; i++) {
     const parsed = JSON.parse(lines[i]) as [number, string, string]
     const [ts, channel, data] = parsed
     if (channel !== 'o') continue
-    records.push({ delayMs: Math.max(0, (ts - prevTs) * 1000), data })
+    const delayMs =
+      version >= 3 ? Math.max(0, ts * 1000) : Math.max(0, (ts - prevTs) * 1000)
+    records.push({ delayMs, data })
     prevTs = ts
   }
   return records
