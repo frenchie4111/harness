@@ -1,5 +1,14 @@
 export type RightPanelKey = 'merge' | 'pr' | 'commits' | 'changedFiles' | 'allFiles' | 'cost'
 
+export const DEFAULT_RIGHT_PANEL_ORDER: RightPanelKey[] = [
+  'merge',
+  'pr',
+  'commits',
+  'changedFiles',
+  'allFiles',
+  'cost'
+]
+
 export type HiddenRightPanels = Partial<Record<RightPanelKey, boolean>>
 
 export interface RepoConfig {
@@ -13,6 +22,32 @@ export interface RepoConfig {
   hidePrPanel?: boolean
   /** Per-panel visibility. A key set to true hides that panel. */
   hiddenRightPanels?: HiddenRightPanels
+  /** Order of right-column panels. Unknown / missing keys fall back to
+   * DEFAULT_RIGHT_PANEL_ORDER (any key absent from the saved order is
+   * appended to the end in canonical order). */
+  rightPanelOrder?: RightPanelKey[]
+}
+
+/** Read an effective panel order, filling in any keys missing from the
+ * saved order with the canonical default order (appended at the end)
+ * and dropping any unknown keys. Always returns all six keys exactly
+ * once. */
+export function effectiveRightPanelOrder(config: RepoConfig | null | undefined): RightPanelKey[] {
+  const saved = config?.rightPanelOrder
+  if (!saved || saved.length === 0) return [...DEFAULT_RIGHT_PANEL_ORDER]
+  const known = new Set<RightPanelKey>(DEFAULT_RIGHT_PANEL_ORDER)
+  const seen = new Set<RightPanelKey>()
+  const out: RightPanelKey[] = []
+  for (const k of saved) {
+    if (known.has(k) && !seen.has(k)) {
+      out.push(k)
+      seen.add(k)
+    }
+  }
+  for (const k of DEFAULT_RIGHT_PANEL_ORDER) {
+    if (!seen.has(k)) out.push(k)
+  }
+  return out
 }
 
 /** Read an effective hidden map, migrating legacy hideMergePanel /

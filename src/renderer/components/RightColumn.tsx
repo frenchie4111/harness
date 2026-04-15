@@ -1,7 +1,9 @@
 import type { PRStatus, Worktree, RepoConfig } from '../types'
 import {
   effectiveHiddenRightPanels,
-  type HiddenRightPanels
+  effectiveRightPanelOrder,
+  type HiddenRightPanels,
+  type RightPanelKey
 } from '../../shared/state/repo-configs'
 import { PRStatusPanel, MergeLocallyPanel } from './PRStatusPanel'
 import { BranchCommitsPanel } from './BranchCommitsPanel'
@@ -54,6 +56,7 @@ export function RightColumn({
   onCollapse
 }: RightColumnProps): JSX.Element {
   const hidden = effectiveHiddenRightPanels(activeRepoConfig)
+  const order = effectiveRightPanelOrder(activeRepoConfig)
 
   const handleChangeHidden = (next: HiddenRightPanels): void => {
     if (!activeRepoRoot) return
@@ -66,6 +69,73 @@ export function RightColumn({
     } as unknown as Partial<RepoConfig>)
   }
 
+  const handleChangeOrder = (next: RightPanelKey[]): void => {
+    if (!activeRepoRoot) return
+    void window.api.setRepoConfig(activeRepoRoot, {
+      rightPanelOrder: next
+    } as unknown as Partial<RepoConfig>)
+  }
+
+  const renderPanel = (key: RightPanelKey): JSX.Element | null => {
+    if (hidden[key]) return null
+    switch (key) {
+      case 'merge':
+        return (
+          <MergeLocallyPanel
+            key="merge"
+            pr={activeWorktreeId ? prStatuses[activeWorktreeId] : null}
+            worktree={worktrees.find((w) => w.path === activeWorktreeId) || null}
+            hasGithubToken={hasGithubToken}
+            onMerged={onMerged}
+            onRemoveWorktree={onRemoveWorktree}
+          />
+        )
+      case 'pr':
+        return (
+          <PRStatusPanel
+            key="pr"
+            pr={activeWorktreeId ? prStatuses[activeWorktreeId] : null}
+            hasGithubToken={hasGithubToken}
+            loading={prLoading}
+            onRefresh={onRefreshPRs}
+            onConnectGithub={onOpenGithubSettings}
+          />
+        )
+      case 'commits':
+        return (
+          <BranchCommitsPanel
+            key="commits"
+            worktreePath={activeWorktreeId}
+            onOpenCommit={onOpenCommit}
+          />
+        )
+      case 'changedFiles':
+        return (
+          <ChangedFilesPanel
+            key="changedFiles"
+            worktreePath={activeWorktreeId}
+            onOpenDiff={onOpenDiff}
+            onSendToClaude={
+              activeWorktreeId ? (text) => onSendToClaude(activeWorktreeId, text) : undefined
+            }
+          />
+        )
+      case 'allFiles':
+        return (
+          <AllFilesPanel
+            key="allFiles"
+            worktreePath={activeWorktreeId}
+            onOpenFile={onOpenFile}
+            onSendToClaude={
+              activeWorktreeId ? (text) => onSendToClaude(activeWorktreeId, text) : undefined
+            }
+          />
+        )
+      case 'cost':
+        return <CostPanel key="cost" worktreePath={activeWorktreeId} />
+    }
+  }
+
   return (
     <div
       className="shrink-0 h-full flex flex-col bg-panel"
@@ -73,50 +143,13 @@ export function RightColumn({
     >
       <RightColumnToolbar
         hidden={hidden}
+        order={order}
         onChangeHidden={handleChangeHidden}
+        onChangeOrder={handleChangeOrder}
         onCollapse={onCollapse}
         canConfigure={!!activeRepoRoot}
       />
-      {!hidden.merge && (
-        <MergeLocallyPanel
-          pr={activeWorktreeId ? prStatuses[activeWorktreeId] : null}
-          worktree={worktrees.find((w) => w.path === activeWorktreeId) || null}
-          hasGithubToken={hasGithubToken}
-          onMerged={onMerged}
-          onRemoveWorktree={onRemoveWorktree}
-        />
-      )}
-      {!hidden.pr && (
-        <PRStatusPanel
-          pr={activeWorktreeId ? prStatuses[activeWorktreeId] : null}
-          hasGithubToken={hasGithubToken}
-          loading={prLoading}
-          onRefresh={onRefreshPRs}
-          onConnectGithub={onOpenGithubSettings}
-        />
-      )}
-      {!hidden.commits && (
-        <BranchCommitsPanel worktreePath={activeWorktreeId} onOpenCommit={onOpenCommit} />
-      )}
-      {!hidden.changedFiles && (
-        <ChangedFilesPanel
-          worktreePath={activeWorktreeId}
-          onOpenDiff={onOpenDiff}
-          onSendToClaude={
-            activeWorktreeId ? (text) => onSendToClaude(activeWorktreeId, text) : undefined
-          }
-        />
-      )}
-      {!hidden.allFiles && (
-        <AllFilesPanel
-          worktreePath={activeWorktreeId}
-          onOpenFile={onOpenFile}
-          onSendToClaude={
-            activeWorktreeId ? (text) => onSendToClaude(activeWorktreeId, text) : undefined
-          }
-        />
-      )}
-      {!hidden.cost && <CostPanel worktreePath={activeWorktreeId} />}
+      {order.map((key) => renderPanel(key))}
     </div>
   )
 }

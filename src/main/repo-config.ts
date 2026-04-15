@@ -49,6 +49,9 @@ export function saveRepoConfig(repoRoot: string, next: RepoConfig): RepoConfig {
     if (!hidden[k]) delete hidden[k]
   }
   if (Object.keys(hidden).length > 0) cleaned.hiddenRightPanels = hidden
+  if (Array.isArray(next.rightPanelOrder) && next.rightPanelOrder.length > 0) {
+    cleaned.rightPanelOrder = [...next.rightPanelOrder]
+  }
 
   const hasAny = Object.keys(cleaned).some((k) => k !== 'version')
   const path = configPath(repoRoot)

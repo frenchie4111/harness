@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
+  DEFAULT_RIGHT_PANEL_ORDER,
   effectiveHiddenRightPanels,
+  effectiveRightPanelOrder,
   initialRepoConfigs,
   repoConfigsReducer,
   type RepoConfig,
@@ -79,6 +81,40 @@ describe('repoConfigsReducer', () => {
         hiddenRightPanels: { merge: false }
       })
     ).toEqual({ merge: false })
+  })
+
+  it('effectiveRightPanelOrder returns default when unset', () => {
+    expect(effectiveRightPanelOrder(null)).toEqual(DEFAULT_RIGHT_PANEL_ORDER)
+    expect(effectiveRightPanelOrder({})).toEqual(DEFAULT_RIGHT_PANEL_ORDER)
+    expect(effectiveRightPanelOrder({ rightPanelOrder: [] })).toEqual(DEFAULT_RIGHT_PANEL_ORDER)
+  })
+
+  it('effectiveRightPanelOrder honors saved order', () => {
+    expect(
+      effectiveRightPanelOrder({
+        rightPanelOrder: ['cost', 'pr', 'merge', 'commits', 'changedFiles', 'allFiles']
+      })
+    ).toEqual(['cost', 'pr', 'merge', 'commits', 'changedFiles', 'allFiles'])
+  })
+
+  it('effectiveRightPanelOrder fills in missing keys and drops unknown', () => {
+    // Partial saved order — the two missing keys get appended in canonical order
+    const result = effectiveRightPanelOrder({
+      rightPanelOrder: ['cost', 'pr'] as never
+    })
+    expect(result[0]).toBe('cost')
+    expect(result[1]).toBe('pr')
+    // Remaining keys in canonical order
+    expect(result.slice(2)).toEqual(['merge', 'commits', 'changedFiles', 'allFiles'])
+    expect(result).toHaveLength(6)
+  })
+
+  it('effectiveRightPanelOrder deduplicates repeated keys', () => {
+    const result = effectiveRightPanelOrder({
+      rightPanelOrder: ['pr', 'pr', 'merge'] as never
+    })
+    expect(result.filter((k) => k === 'pr')).toHaveLength(1)
+    expect(result).toHaveLength(6)
   })
 
   it('effectiveHiddenRightPanels handles null/empty config', () => {
