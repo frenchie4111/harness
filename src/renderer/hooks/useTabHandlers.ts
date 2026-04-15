@@ -58,10 +58,24 @@ export function useTabHandlers({
     [appendTabToPane]
   )
 
+  const handleAddJsonClaudeTab = useCallback(
+    (worktreePath: string, paneId?: string) => {
+      const id = `json-claude-${Date.now()}`
+      appendTabToPane(
+        worktreePath,
+        { id, type: 'json-claude', label: 'Claude (JSON)' },
+        paneId
+      )
+    },
+    [appendTabToPane]
+  )
+
   const handleCloseTab = useCallback(
     (worktreePath: string, tabId: string) => {
       // Only kill PTY for terminal tabs, not diff/file viewer tabs
-      if (!tabId.startsWith('diff-') && !tabId.startsWith('file-')) {
+      if (tabId.startsWith('json-claude-')) {
+        window.api.killJsonClaude(tabId)
+      } else if (!tabId.startsWith('diff-') && !tabId.startsWith('file-')) {
         markTerminalClosing(tabId)
         window.api.killTerminal(tabId)
       }
@@ -241,6 +255,7 @@ export function useTabHandlers({
     appendTabToPane,
     handleAddTerminalTab,
     handleAddClaudeTab,
+    handleAddJsonClaudeTab,
     handleCloseTab,
     handleRestartClaudeTab,
     handleRestartAllClaudeTabs,

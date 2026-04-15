@@ -232,6 +232,24 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('terminal:exit', handler)
   },
 
+  // JSON-mode Claude (spike)
+  startJsonClaude: (id: string, cwd: string) => {
+    ipcRenderer.send('json-claude:create', id, cwd)
+  },
+  sendJsonClaudeMessage: (id: string, text: string) => {
+    ipcRenderer.send('json-claude:send', id, text)
+  },
+  killJsonClaude: (id: string) => {
+    ipcRenderer.send('json-claude:kill', id)
+  },
+  onJsonClaudeEvent: (callback: (id: string, event: unknown) => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, id: string, event: unknown): void => {
+      callback(id, event)
+    }
+    ipcRenderer.on('json-claude:event', handler)
+    return () => ipcRenderer.removeListener('json-claude:event', handler)
+  },
+
   // State transport (snapshot + event stream). Replaces ad-hoc per-field
   // getters and onXChanged subscriptions one slice at a time.
   getStateSnapshot: () => ipcRenderer.invoke('state:getSnapshot'),

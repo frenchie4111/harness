@@ -4,6 +4,7 @@ import { existsSync, readdirSync, statSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 import { PtyManager } from './pty-manager'
+import { JsonClaudeManager } from './json-claude-manager'
 import { Store } from './store'
 import { registerStateTransport } from './transport-electron'
 import { PRPoller } from './pr-poller'
@@ -74,6 +75,7 @@ function latestClaudeSessionId(cwd: string): string | null {
 }
 
 const ptyManager = new PtyManager()
+const jsonClaudeManager = new JsonClaudeManager()
 let config = loadConfig()
 let stopWatchingStatus: (() => void) | null = null
 
@@ -1059,6 +1061,7 @@ function registerIpcHandlers(): void {
       // sequence hang — and Squirrel.Mac then bails with "original process
       // did not end" before ShipIt swaps the bundle.
       ptyManager.killAll('SIGKILL')
+  jsonClaudeManager.killAll()
     } catch (err) {
       log('updater', 'ptyManager.killAll failed', err instanceof Error ? err.message : String(err))
     }
@@ -1130,6 +1133,19 @@ function registerIpcHandlers(): void {
 
   ipcMain.on('pty:kill', (_, id: string) => {
     ptyManager.kill(id)
+  })
+
+  // JSON-mode Claude (spike) — separate subprocess model for stream-json IO.
+  ipcMain.on('json-claude:create', (event, id: string, cwd: string) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win) return
+    jsonClaudeManager.create(id, cwd, win, config.claudeCommand || DEFAULT_CLAUDE_COMMAND)
+  })
+  ipcMain.on('json-claude:send', (_, id: string, text: string) => {
+    jsonClaudeManager.send(id, text)
+  })
+  ipcMain.on('json-claude:kill', (_, id: string) => {
+    jsonClaudeManager.kill(id)
   })
 }
 
@@ -1419,6 +1435,7 @@ app.on('before-quit', () => {
   // main process can hang draining fds and Squirrel.Mac will abort an
   // in-flight bundle swap with "original process did not end".
   ptyManager.killAll('SIGKILL')
+  jsonClaudeManager.killAll()
   sealAllActive()
   saveConfigSync(config)
 })

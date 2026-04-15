@@ -12,7 +12,7 @@ export interface ShellActivity {
 
 export interface TerminalTab {
   id: string
-  type: 'claude' | 'shell' | 'diff' | 'file'
+  type: 'claude' | 'shell' | 'diff' | 'file' | 'json-claude'
   label: string
   /** For diff/file tabs: the file path */
   filePath?: string

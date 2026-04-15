@@ -24,6 +24,7 @@ interface TerminalPanelProps {
   onSelectTab: (tabId: string) => void
   onAddTab: () => void
   onAddClaudeTab: () => void
+  onAddJsonClaudeTab: () => void
   onCloseTab: (tabId: string) => void
   onSplit: () => void
 }
@@ -124,6 +125,7 @@ export function TerminalPanel({
   onSelectTab,
   onAddTab,
   onAddClaudeTab,
+  onAddJsonClaudeTab,
   onCloseTab,
   onSplit
 }: TerminalPanelProps): JSX.Element {
@@ -169,9 +171,12 @@ export function TerminalPanel({
               />
             ))}
           </SortableContext>
-          <Tooltip label="New Claude tab">
+          <Tooltip label="New Claude tab (alt-click for JSON mode spike)">
             <button
-              onClick={onAddClaudeTab}
+              onClick={(e) => {
+                if (e.altKey) onAddJsonClaudeTab()
+                else onAddClaudeTab()
+              }}
               className="no-drag shrink-0 px-2 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"
             >
               <Sparkles size={12} />

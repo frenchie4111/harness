@@ -402,6 +402,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
     appendTabToPane,
     handleAddTerminalTab,
     handleAddClaudeTab,
+    handleAddJsonClaudeTab,
     handleCloseTab,
     handleRestartClaudeTab,
     handleRestartAllClaudeTabs,
@@ -687,6 +688,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
                 onSelectTab={handleSelectTab}
                 onAddTab={handleAddTerminalTab}
                 onAddClaudeTab={handleAddClaudeTab}
+                onAddJsonClaudeTab={handleAddJsonClaudeTab}
                 onCloseTab={handleCloseTab}
                 onRestartClaudeTab={handleRestartClaudeTab}
                 onReorderTabs={handleReorderTabs}
