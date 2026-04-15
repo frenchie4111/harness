@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { AtSign } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { AtSign, Save } from 'lucide-react'
 import type { CommitDiff, FileDiffSides } from '../types'
 import { Tooltip } from './Tooltip'
 import { detectLanguage, highlightLine } from '../syntax'
@@ -35,23 +35,66 @@ function FileDiffView({
   const settings = useSettings()
   const [sides, setSides] = useState<FileDiffSides | null>(null)
   const [loading, setLoading] = useState(true)
+  const [modifiedValue, setModifiedValue] = useState('')
+  const [savedValue, setSavedValue] = useState('')
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  const valueRef = useRef(modifiedValue)
+  const savedRef = useRef(savedValue)
+  valueRef.current = modifiedValue
+  savedRef.current = savedValue
+
+  // Only unstaged working diffs have a modified side that IS the working
+  // tree — the only place edits can meaningfully land. Everything else
+  // (staged / branch) is read-only.
+  const editable = !staged && !branchDiff
+  const dirty = editable && modifiedValue !== savedValue
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
     setSides(null)
+    setModifiedValue('')
+    setSavedValue('')
+    setSaveError(null)
     if (!filePath) return
     window.api
       .getFileDiffSides(worktreePath, filePath, staged ?? false, branchDiff ? 'branch' : 'working')
       .then((r) => {
         if (cancelled) return
         setSides(r)
+        setModifiedValue(r.modified)
+        setSavedValue(r.modified)
         setLoading(false)
       })
     return () => {
       cancelled = true
     }
   }, [worktreePath, filePath, staged, branchDiff])
+
+  const save = useCallback(async () => {
+    if (!filePath || !editable) return
+    const current = valueRef.current
+    if (current === savedRef.current) return
+    setSaveError(null)
+    const r = await window.api.writeWorktreeFile(worktreePath, filePath, current)
+    if (r.ok) {
+      setSavedValue(current)
+    } else {
+      setSaveError(r.error || 'Save failed')
+    }
+  }, [worktreePath, filePath, editable])
+
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent): void => {
+      if (valueRef.current !== savedRef.current) {
+        e.preventDefault()
+        e.returnValue = ''
+      }
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [])
 
   if (loading) {
     return (
@@ -77,7 +120,7 @@ function FileDiffView({
     )
   }
 
-  if (sides.original === sides.modified) {
+  if (!dirty && sides.original === sides.modified) {
     return (
       <div className="flex items-center justify-center h-full text-faint text-sm">
         No changes
@@ -86,8 +129,10 @@ function FileDiffView({
   }
 
   const readOnlyBanner = branchDiff
-    ? 'Viewing branch diff — edits apply to the working copy (coming next).'
-    : null
+    ? 'Viewing branch diff (base…HEAD) — read-only.'
+    : staged
+      ? 'Viewing staged diff — read-only. Unstage the file to edit here.'
+      : null
 
   return (
     <div className="h-full flex flex-col bg-app">
@@ -98,11 +143,28 @@ function FileDiffView({
           title={filePath}
         >
           <bdi>{filePath}</bdi>
+          {dirty && <span className="text-warning ml-1">●</span>}
         </span>
+        {saveError && (
+          <span className="shrink-0 text-danger truncate max-w-[40%]" title={saveError}>
+            {saveError}
+          </span>
+        )}
         {staged && !branchDiff && <span className="shrink-0 text-info">staged</span>}
         {branchDiff && <span className="shrink-0 text-info">branch</span>}
         {!sides.originalExists && <span className="shrink-0 text-success">new file</span>}
         {!sides.modifiedExists && <span className="shrink-0 text-danger">deleted</span>}
+        {editable && (
+          <Tooltip label={dirty ? 'Save (⌘S)' : 'Saved'}>
+            <button
+              onClick={save}
+              disabled={!dirty}
+              className="shrink-0 text-faint hover:text-fg disabled:opacity-40 disabled:hover:text-faint cursor-pointer disabled:cursor-default"
+            >
+              <Save size={12} />
+            </button>
+          </Tooltip>
+        )}
         {onSendToClaude && filePath && (
           <Tooltip label="Reference file in Claude">
             <button
@@ -122,11 +184,13 @@ function FileDiffView({
       <div className="flex-1 min-h-0">
         <MonacoDiffEditor
           original={sides.original}
-          modified={sides.modified}
+          modified={editable ? modifiedValue : sides.modified}
           filePath={filePath}
-          readOnly
+          readOnly={!editable}
           fontFamily={settings.terminalFontFamily || undefined}
           fontSize={settings.terminalFontSize}
+          onModifiedChange={editable ? setModifiedValue : undefined}
+          onSave={editable ? save : undefined}
           onReferenceLine={
             onSendToClaude && filePath
               ? (ln) => onSendToClaude(`@${filePath}:${ln} `)
