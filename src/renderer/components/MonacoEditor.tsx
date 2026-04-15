@@ -107,8 +107,11 @@ export function MonacoEditor({
       leaveSub.dispose()
       downSub.dispose()
       glyphCollection.clear()
-      editor.getModel()?.dispose()
+      // Dispose the editor before its model — reversing this order fires
+      // "TextModel got disposed before ..." from Monaco's listeners.
+      const model = editor.getModel()
       editor.dispose()
+      model?.dispose()
       editorRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

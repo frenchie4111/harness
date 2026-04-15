@@ -120,9 +120,13 @@ export function MonacoDiffEditor({
       leaveSub.dispose()
       downSub.dispose()
       glyphCollection.clear()
+      // Dispose the editor before the models it holds. Disposing models
+      // first fires "TextModel got disposed before DiffEditorWidget model
+      // got reset" from Monaco's internal listeners and poisons the React
+      // tree so subsequent diff tabs silently fail to render.
+      editor.dispose()
       originalModel.dispose()
       modifiedModel.dispose()
-      editor.dispose()
       editorRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
