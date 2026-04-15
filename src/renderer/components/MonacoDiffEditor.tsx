@@ -11,6 +11,7 @@ interface MonacoDiffEditorProps {
   fontSize?: number
   onModifiedChange?: (value: string) => void
   onSave?: () => void
+  onReferenceLine?: (lineNumber: number) => void
 }
 
 export function MonacoDiffEditor({
@@ -21,14 +22,17 @@ export function MonacoDiffEditor({
   fontFamily,
   fontSize,
   onModifiedChange,
-  onSave
+  onSave,
+  onReferenceLine
 }: MonacoDiffEditorProps): JSX.Element {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const editorRef = useRef<monaco.editor.IStandaloneDiffEditor | null>(null)
   const onChangeRef = useRef(onModifiedChange)
   const onSaveRef = useRef(onSave)
+  const onRefRef = useRef(onReferenceLine)
   onChangeRef.current = onModifiedChange
   onSaveRef.current = onSave
+  onRefRef.current = onReferenceLine
 
   useEffect(() => {
     if (!hostRef.current) return
@@ -42,6 +46,7 @@ export function MonacoDiffEditor({
       readOnly,
       originalEditable: false,
       automaticLayout: true,
+      glyphMargin: true,
       fontFamily: fontFamily || undefined,
       fontSize: fontSize || 13,
       minimap: { enabled: false },
@@ -77,8 +82,44 @@ export function MonacoDiffEditor({
       }
     )
 
+    // Hover-tracked glyph-margin button for "reference line in Claude".
+    // Inline diff means both sides flow through the modified editor's DOM;
+    // we hook onto it for hover/click.
+    const modifiedEd = editor.getModifiedEditor()
+    const glyphCollection = modifiedEd.createDecorationsCollection()
+    const setHoverLine = (lineNumber: number | null): void => {
+      if (!onRefRef.current || lineNumber == null) {
+        glyphCollection.clear()
+        return
+      }
+      glyphCollection.set([
+        {
+          range: new monaco.Range(lineNumber, 1, lineNumber, 1),
+          options: {
+            glyphMarginClassName: 'ref-line-glyph',
+            glyphMarginHoverMessage: { value: 'Reference this line in Claude' }
+          }
+        }
+      ])
+    }
+    const moveSub = modifiedEd.onMouseMove((e) => {
+      if (!onRefRef.current) return
+      setHoverLine(e.target.position?.lineNumber ?? null)
+    })
+    const leaveSub = modifiedEd.onMouseLeave(() => setHoverLine(null))
+    const downSub = modifiedEd.onMouseDown((e) => {
+      if (!onRefRef.current) return
+      if (e.target.type !== monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) return
+      const ln = e.target.position?.lineNumber
+      if (ln != null) onRefRef.current(ln)
+    })
+
     return () => {
       changeSub.dispose()
+      moveSub.dispose()
+      leaveSub.dispose()
+      downSub.dispose()
+      glyphCollection.clear()
       originalModel.dispose()
       modifiedModel.dispose()
       editor.dispose()

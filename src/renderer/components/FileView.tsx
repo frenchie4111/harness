@@ -169,6 +169,11 @@ export function FileView({ worktreePath, filePath, onSendToClaude }: FileViewPro
             fontSize={settings.terminalFontSize}
             onChange={setValue}
             onSave={save}
+            onReferenceLine={
+              onSendToClaude
+                ? (ln) => onSendToClaude(`@${filePath}:${ln} `)
+                : undefined
+            }
           />
         )}
       </div>

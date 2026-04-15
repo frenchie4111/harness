@@ -127,6 +127,11 @@ function FileDiffView({
           readOnly
           fontFamily={settings.terminalFontFamily || undefined}
           fontSize={settings.terminalFontSize}
+          onReferenceLine={
+            onSendToClaude && filePath
+              ? (ln) => onSendToClaude(`@${filePath}:${ln} `)
+              : undefined
+          }
         />
       </div>
     </div>
