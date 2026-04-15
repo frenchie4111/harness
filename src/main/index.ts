@@ -386,6 +386,10 @@ function registerIpcHandlers(): void {
     return true
   })
   ipcMain.handle('worktrees:refreshList', async () => {
+    // Demo mode: the renderer fires this on mount and on focus. Letting it
+    // through would call listWorktrees() against config.repoRoots and
+    // dispatch a fresh worktrees/listChanged that wipes the demo seed.
+    if (isDemoMode) return true
     await worktreesFSM.refreshList()
     return true
   })
