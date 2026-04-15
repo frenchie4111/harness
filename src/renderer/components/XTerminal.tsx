@@ -161,6 +161,18 @@ export function XTerminal({ terminalId, cwd, type, visible, claudeCommand, sessi
       cursorBlink: true,
       cursorStyle: 'bar',
       allowProposedApi: true,
+      // Route OSC 8 hyperlink clicks to the system browser. Without this,
+      // xterm's default handler shows a confirm prompt and then calls
+      // window.open, which Electron silently swallows.
+      linkHandler: {
+        activate: (_event, uri) => {
+          if (uri.startsWith('http://') || uri.startsWith('https://') || uri.startsWith('mailto:')) {
+            window.api.openExternal(uri)
+          }
+        },
+        hover: () => {},
+        leave: () => {}
+      },
       theme: {
         background: bg,
         foreground: fg,
