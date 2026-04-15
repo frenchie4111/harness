@@ -234,9 +234,7 @@ export interface ElectronAPI {
   panesSplitPane(wtPath: string, fromPaneId: string): Promise<WorkspacePane | null>
   panesClearForWorktree(wtPath: string): Promise<boolean>
   panesEnsureInitialized(wtPath: string): Promise<boolean>
-  saveTerminalHistory(id: string, content: string): Promise<boolean>
-  saveTerminalHistorySync(id: string, content: string): void
-  loadTerminalHistory(id: string): Promise<string | null>
+  getTerminalHistory(id: string): Promise<string>
   clearTerminalHistory(id: string): Promise<boolean>
   claudeSessionFileExists(cwd: string, sessionId: string): Promise<boolean>
   getLatestClaudeSessionId(cwd: string): Promise<string | null>
@@ -258,7 +256,15 @@ export interface ElectronAPI {
   declineHooks(): Promise<boolean>
   dismissHooksJustInstalled(): Promise<boolean>
 
-  createTerminal(id: string, cwd: string, cmd: string, args: string[], isClaude?: boolean): void
+  createTerminal(
+    id: string,
+    cwd: string,
+    cmd: string,
+    args: string[],
+    isClaude?: boolean,
+    cols?: number,
+    rows?: number
+  ): void
   writeTerminal(id: string, data: string): void
   resizeTerminal(id: string, cols: number, rows: number): void
   killTerminal(id: string): void

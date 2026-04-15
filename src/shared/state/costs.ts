@@ -116,8 +116,11 @@ export function costsReducer(state: CostsState, event: CostsEvent): CostsState {
   }
 }
 
-/** Sum two breakdowns into `target` in place. */
-export function addBreakdown(target: ContentBreakdown, src: ContentBreakdown): void {
+/** Sum two breakdowns into `target` in place. No-ops if `src` is missing —
+ * persisted SessionUsage records from before ContentBreakdown was added lack
+ * the field, and we don't want CostPanel to crash on old state. */
+export function addBreakdown(target: ContentBreakdown, src: ContentBreakdown | undefined): void {
+  if (!src) return
   target.text += src.text
   target.thinking += src.thinking
   target.toolUse += src.toolUse

@@ -3,6 +3,11 @@ import { BrowserWindow } from 'electron'
 import { execFile } from 'child_process'
 import { log } from './debug'
 import { cleanupTerminalLog } from './hooks'
+import {
+  saveTerminalHistory,
+  loadTerminalHistory,
+  clearTerminalHistory
+} from './persistence'
 import type { Store } from './store'
 import type { PtyStatus } from '../shared/state/terminals'
 
@@ -19,11 +24,62 @@ interface PtyInstance {
 }
 
 const SHELL_ACTIVITY_POLL_MS = 1500
+// Cap per-terminal raw scrollback at ~1MB. The renderer replays this into a
+// fresh xterm.js instance on reload; 1MB of ANSI-wrapped output is enough to
+// cover a long Claude session without ballooning disk usage.
+const HISTORY_CAP_BYTES = 1024 * 1024
+const HISTORY_FLUSH_INTERVAL_MS = 30_000
+
+// Ring-buffered raw PTY output. Appends truncate from the front when we exceed
+// the cap. Stored as strings because `terminal:data` already ships strings
+// (node-pty decodes UTF-8 for us), and we replay through xterm's string write.
+class HistoryBuffer {
+  private chunks: string[] = []
+  private size = 0
+
+  append(data: string): void {
+    this.chunks.push(data)
+    this.size += data.length
+    while (this.size > HISTORY_CAP_BYTES && this.chunks.length > 1) {
+      const dropped = this.chunks.shift()!
+      this.size -= dropped.length
+    }
+    if (this.size > HISTORY_CAP_BYTES) {
+      // Single chunk exceeds cap — trim it from the front.
+      const only = this.chunks[0]
+      const overflow = this.size - HISTORY_CAP_BYTES
+      this.chunks[0] = only.slice(overflow)
+      this.size -= overflow
+    }
+  }
+
+  seed(data: string): void {
+    this.chunks = [data]
+    this.size = data.length
+  }
+
+  toString(): string {
+    if (this.chunks.length > 1) {
+      const joined = this.chunks.join('')
+      this.chunks = [joined]
+      return joined
+    }
+    return this.chunks[0] || ''
+  }
+}
 
 export class PtyManager {
   private ptys = new Map<string, PtyInstance>()
   private activityTimer: NodeJS.Timeout | null = null
   private store: Store | null = null
+  // Per-terminal raw-byte scrollback owned by main. Populated from disk on
+  // create() (if a history file exists), appended to from the PTY onData
+  // stream, and returned on getHistory(id). Persistence to
+  // userData/terminal-history/<id> happens on a throttled cadence and on
+  // before-quit via flushAllHistory().
+  private history = new Map<string, HistoryBuffer>()
+  private historyDirty = new Set<string>()
+  private historyFlushTimer: NodeJS.Timeout | null = null
 
   /** Wire the authoritative store after it's constructed. PTY status,
    * shell activity, and cleanup events dispatch through it; terminal:data
@@ -44,9 +100,11 @@ export class PtyManager {
     args: string[],
     window: BrowserWindow,
     extraEnv?: Record<string, string>,
-    isShell: boolean = false
+    isShell: boolean = false,
+    cols: number = 120,
+    rows: number = 30
   ): void {
-    log('pty', `create id=${id} cmd=${command} args=${JSON.stringify(args)} cwd=${cwd}`)
+    log('pty', `create id=${id} cmd=${command} args=${JSON.stringify(args)} cwd=${cwd} cols=${cols} rows=${rows}`)
     if (this.ptys.has(id)) {
       this.kill(id)
     }
@@ -61,8 +119,12 @@ export class PtyManager {
     try {
       ptyProcess = pty.spawn(shell, args, {
         name: 'xterm-256color',
-        cols: 120,
-        rows: 30,
+        // Spawn at the renderer's fitted dimensions so the first burst of
+        // output paints at the correct grid size. Falling back to 120x30
+        // races the eventual ResizeObserver fit, and any cursor-positioned
+        // output that arrives in the gap lands at the wrong column.
+        cols,
+        rows,
         cwd,
         env
       })
@@ -86,7 +148,23 @@ export class PtyManager {
       hasBeenIdle: false
     }
 
+    // Seed the history buffer from disk if a file exists. Renderer calls
+    // getHistory(id) right after createTerminal and writes the bytes into a
+    // fresh xterm instance before wiring up live data.
+    let buf = this.history.get(id)
+    if (!buf) {
+      buf = new HistoryBuffer()
+      const existing = loadTerminalHistory(id)
+      if (existing) buf.seed(existing)
+      this.history.set(id, buf)
+    }
+
     ptyProcess.onData((data: string) => {
+      // Tee into the history ring buffer before forwarding, so a reload
+      // right after output arrives still sees it.
+      buf!.append(data)
+      this.historyDirty.add(id)
+      this.ensureHistoryFlushTimer()
       // Route data to the owning window (if it still exists)
       const win = BrowserWindow.fromId(instance.windowId)
       if (win && !win.isDestroyed()) {
@@ -114,6 +192,40 @@ export class PtyManager {
 
     this.ptys.set(id, instance)
     if (isShell) this.ensureActivityPoller()
+  }
+
+  /** Raw PTY scrollback for `id`, or empty string if none. */
+  getHistory(id: string): string {
+    return this.history.get(id)?.toString() || ''
+  }
+
+  /** Drop the in-memory buffer + delete the persisted file. Called on tab
+   * close (before killTerminal) so a new tab with a fresh id doesn't
+   * inherit stale content, and also used for any explicit "clear". */
+  forgetHistory(id: string): void {
+    this.history.delete(id)
+    this.historyDirty.delete(id)
+    clearTerminalHistory(id)
+  }
+
+  private ensureHistoryFlushTimer(): void {
+    if (this.historyFlushTimer) return
+    this.historyFlushTimer = setInterval(
+      () => this.flushAllHistory(),
+      HISTORY_FLUSH_INTERVAL_MS
+    )
+  }
+
+  /** Persist any dirty buffers to disk. Called on a throttled cadence and on
+   * before-quit so scrollback survives reload/quit without a sync IPC. */
+  flushAllHistory(): void {
+    if (this.historyDirty.size === 0) return
+    for (const id of this.historyDirty) {
+      const buf = this.history.get(id)
+      if (!buf) continue
+      saveTerminalHistory(id, buf.toString())
+    }
+    this.historyDirty.clear()
   }
 
   private ensureActivityPoller(): void {
@@ -226,12 +338,20 @@ export class PtyManager {
   }
 
   killAll(signal?: string): void {
+    // Persist any dirty scrollback before tearing down. kill() itself leaves
+    // the history buffer intact — reload relies on that — so flushing here
+    // ensures a subsequent process start reads the latest bytes from disk.
+    this.flushAllHistory()
     for (const [id] of this.ptys) {
       this.kill(id, signal)
     }
     if (this.activityTimer) {
       clearInterval(this.activityTimer)
       this.activityTimer = null
+    }
+    if (this.historyFlushTimer) {
+      clearInterval(this.historyFlushTimer)
+      this.historyFlushTimer = null
     }
   }
 
