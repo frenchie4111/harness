@@ -6,6 +6,7 @@ import { initialWorktrees } from '../shared/state/worktrees'
 import { initialTerminals } from '../shared/state/terminals'
 import { initialUpdater } from '../shared/state/updater'
 import { initialRepoConfigs } from '../shared/state/repo-configs'
+import { initialCosts, type CostsState } from '../shared/state/costs'
 import { initialSettings } from '../shared/state/settings'
 import {
   DEFAULT_CLAUDE_COMMAND,
@@ -30,6 +31,7 @@ export function buildInitialAppState(
     terminals: initialTerminals,
     updater: initialUpdater,
     repoConfigs: initialRepoConfigs,
+    costs: config.costs ? { ...initialCosts, ...config.costs } : initialCosts,
     settings: {
       ...initialSettings,
       theme: config.theme || DEFAULT_THEME,

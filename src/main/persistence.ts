@@ -8,6 +8,7 @@ import {
   type PersistedPane,
   type PersistedTab
 } from './persistence-migrations'
+import type { CostsState } from '../shared/state/costs'
 
 export type { PersistedPane, PersistedTab }
 
@@ -81,6 +82,10 @@ export interface Config {
   // gh-cli-detected user. Sticky — if they later unstar manually, we
   // don't re-star on next boot.
   harnessAutoStarred?: boolean
+  // Per-terminal token usage + estimated cost, tallied from Claude Code
+  // session jsonl transcripts. Entries persist across tab/terminal death
+  // so worktree-level totals survive restarts.
+  costs?: CostsState
 }
 
 export const DEFAULT_WORKTREE_BASE: 'remote' | 'local' = 'remote'

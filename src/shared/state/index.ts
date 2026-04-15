@@ -59,6 +59,12 @@ import {
   type RepoConfigsEvent,
   type RepoConfigsState
 } from './repo-configs'
+import {
+  initialCosts,
+  costsReducer,
+  type CostsEvent,
+  type CostsState
+} from './costs'
 
 export type { SettingsState, SettingsEvent }
 export type { UpdaterState, UpdaterEvent, UpdaterStatus } from './updater'
@@ -78,6 +84,13 @@ export type {
   PendingStatus
 } from './worktrees'
 export type {
+  CostsState,
+  CostsEvent,
+  ModelTally,
+  SessionUsage
+} from './costs'
+export { totalForSession } from './costs'
+export type {
   TerminalsState,
   TerminalsEvent,
   PtyStatus,
@@ -96,6 +109,7 @@ export interface AppState {
   terminals: TerminalsState
   updater: UpdaterState
   repoConfigs: RepoConfigsState
+  costs: CostsState
 }
 
 export type StateEvent =
@@ -107,6 +121,7 @@ export type StateEvent =
   | TerminalsEvent
   | UpdaterEvent
   | RepoConfigsEvent
+  | CostsEvent
 
 export const initialState: AppState = {
   settings: initialSettings,
@@ -116,7 +131,8 @@ export const initialState: AppState = {
   worktrees: initialWorktrees,
   terminals: initialTerminals,
   updater: initialUpdater,
-  repoConfigs: initialRepoConfigs
+  repoConfigs: initialRepoConfigs,
+  costs: initialCosts
 }
 
 export function rootReducer(state: AppState, event: StateEvent): AppState {
@@ -158,6 +174,9 @@ export function rootReducer(state: AppState, event: StateEvent): AppState {
       ...state,
       repoConfigs: repoConfigsReducer(state.repoConfigs, event as RepoConfigsEvent)
     }
+  }
+  if (event.type.startsWith('costs/')) {
+    return { ...state, costs: costsReducer(state.costs, event as CostsEvent) }
   }
   return state
 }
