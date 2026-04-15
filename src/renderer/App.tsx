@@ -13,11 +13,7 @@ import { CreatingWorktreeScreen } from './components/CreatingWorktreeScreen'
 import { DeletingWorktreeScreen } from './components/DeletingWorktreeScreen'
 import { QuestCard } from './components/QuestCard'
 import { WorkspaceView } from './components/WorkspaceView'
-import { ChangedFilesPanel } from './components/ChangedFilesPanel'
-import { AllFilesPanel } from './components/AllFilesPanel'
-import { BranchCommitsPanel } from './components/BranchCommitsPanel'
-import { PRStatusPanel, MergeLocallyPanel } from './components/PRStatusPanel'
-import { CostPanel } from './components/CostPanel'
+import { RightColumn } from './components/RightColumn'
 import { Settings } from './components/Settings'
 import { Guide } from './components/Guide'
 import { Activity } from './components/Activity'
@@ -780,52 +776,26 @@ const setQuestStep = useCallback((next: QuestStep) => {
           <ResizeHandle onDelta={handleRightPanelResize} />
         )}
         {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && (
-          <div
-            className="shrink-0 h-full flex flex-col bg-panel"
-            style={{ width: rightPanelWidth }}
-          >
-            {!activeRepoConfig?.hideMergePanel && (
-              <MergeLocallyPanel
-                pr={activeWorktreeId ? prStatuses[activeWorktreeId] : null}
-                worktree={worktrees.find((w) => w.path === activeWorktreeId) || null}
-                hasGithubToken={hasGithubToken}
-                onMerged={refreshMergedStatus}
-                onRemoveWorktree={handleDeleteWorktree}
-              />
-            )}
-            {!activeRepoConfig?.hidePrPanel && (
-              <PRStatusPanel
-                pr={activeWorktreeId ? prStatuses[activeWorktreeId] : null}
-                hasGithubToken={hasGithubToken}
-                loading={prLoading}
-                onRefresh={fetchAllPRStatuses}
-                onConnectGithub={() => {
-                  setSettingsInitialSection('github')
-                  setShowSettings(true)
-                }}
-              />
-            )}
-            <BranchCommitsPanel worktreePath={activeWorktreeId} onOpenCommit={handleOpenCommit} />
-            <ChangedFilesPanel
-              worktreePath={activeWorktreeId}
-              onOpenDiff={handleOpenDiff}
-              onSendToClaude={
-                activeWorktreeId
-                  ? (text) => handleSendToClaude(activeWorktreeId, text)
-                  : undefined
-              }
-            />
-            <AllFilesPanel
-              worktreePath={activeWorktreeId}
-              onOpenFile={handleOpenFile}
-              onSendToClaude={
-                activeWorktreeId
-                  ? (text) => handleSendToClaude(activeWorktreeId, text)
-                  : undefined
-              }
-            />
-            <CostPanel worktreePath={activeWorktreeId} />
-          </div>
+          <RightColumn
+            width={rightPanelWidth}
+            activeWorktreeId={activeWorktreeId}
+            worktrees={worktrees}
+            prStatuses={prStatuses}
+            prLoading={prLoading}
+            hasGithubToken={hasGithubToken}
+            activeRepoConfig={activeRepoConfig}
+            onRefreshPRs={fetchAllPRStatuses}
+            onOpenGithubSettings={() => {
+              setSettingsInitialSection('github')
+              setShowSettings(true)
+            }}
+            onMerged={refreshMergedStatus}
+            onRemoveWorktree={handleDeleteWorktree}
+            onOpenCommit={handleOpenCommit}
+            onOpenDiff={handleOpenDiff}
+            onOpenFile={handleOpenFile}
+            onSendToClaude={handleSendToClaude}
+          />
         )}
       </div>
     </div>
