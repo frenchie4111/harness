@@ -1,8 +1,8 @@
 import { execFile, spawn } from 'child_process'
 import { promisify } from 'util'
 import { basename, join, resolve, relative, isAbsolute } from 'path'
-import { existsSync, mkdirSync, statSync } from 'fs'
-import { readFile } from 'fs/promises'
+import { existsSync, mkdirSync, statSync, lstatSync } from 'fs'
+import { readFile, writeFile } from 'fs/promises'
 import { log } from './debug'
 import type { Worktree } from '../shared/state/worktrees'
 
@@ -868,6 +868,52 @@ export async function readWorktreeFile(
       truncated: false,
       error: (err as Error).message
     }
+  }
+}
+
+export interface FileWriteResult {
+  ok: boolean
+  error?: string
+}
+
+const MAX_FILE_WRITE_BYTES = 5 * 1024 * 1024
+
+/** Write a single file within a worktree. Rejects paths that escape the
+ * worktree and refuses symlinks. Last-write-wins — no concurrent-edit
+ * detection in v1. */
+export async function writeWorktreeFile(
+  worktreePath: string,
+  filePath: string,
+  contents: string
+): Promise<FileWriteResult> {
+  const base = resolve(worktreePath)
+  const target = isAbsolute(filePath) ? resolve(filePath) : resolve(base, filePath)
+  const rel = relative(base, target)
+  if (rel.startsWith('..') || isAbsolute(rel)) {
+    return { ok: false, error: 'Path escapes worktree' }
+  }
+  const byteLen = Buffer.byteLength(contents, 'utf8')
+  if (byteLen > MAX_FILE_WRITE_BYTES) {
+    return { ok: false, error: `File too large (${byteLen} bytes, max ${MAX_FILE_WRITE_BYTES})` }
+  }
+  try {
+    // Refuse to clobber a symlink — the real file lives somewhere we
+    // haven't validated.
+    try {
+      const lst = lstatSync(target)
+      if (lst.isSymbolicLink()) {
+        return { ok: false, error: 'Refusing to write through a symlink' }
+      }
+      if (lst.isDirectory()) {
+        return { ok: false, error: 'Target is a directory' }
+      }
+    } catch {
+      // Target may not exist yet — that's fine, we're creating it.
+    }
+    await writeFile(target, contents, 'utf8')
+    return { ok: true }
+  } catch (err) {
+    return { ok: false, error: (err as Error).message }
   }
 }
 

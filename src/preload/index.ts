@@ -47,6 +47,8 @@ contextBridge.exposeInMainWorld('api', {
   listAllFiles: (worktreePath: string) => ipcRenderer.invoke('worktree:listFiles', worktreePath),
   readWorktreeFile: (worktreePath: string, filePath: string) =>
     ipcRenderer.invoke('worktree:readFile', worktreePath, filePath),
+  writeWorktreeFile: (worktreePath: string, filePath: string, contents: string) =>
+    ipcRenderer.invoke('worktree:writeFile', worktreePath, filePath, contents),
 
   // Changed files
   getChangedFiles: (worktreePath: string, mode?: 'working' | 'branch') =>

@@ -15,6 +15,11 @@ export interface FileReadResult {
   error?: string
 }
 
+export interface FileWriteResult {
+  ok: boolean
+  error?: string
+}
+
 import type {
   PtyStatus,
   PendingTool,
@@ -154,6 +159,11 @@ export interface ElectronAPI {
   getCommitDiff(worktreePath: string, hash: string): Promise<CommitDiff | null>
   listAllFiles(worktreePath: string): Promise<string[]>
   readWorktreeFile(worktreePath: string, filePath: string): Promise<FileReadResult>
+  writeWorktreeFile(
+    worktreePath: string,
+    filePath: string,
+    contents: string
+  ): Promise<FileWriteResult>
   getChangedFiles(worktreePath: string, mode?: 'working' | 'branch'): Promise<ChangedFile[]>
   getFileDiff(
     worktreePath: string,
