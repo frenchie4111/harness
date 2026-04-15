@@ -38,7 +38,7 @@ const WT_FIX_FLAKY = '/demo/worktrees/acme-api/fix-flaky-login-test'
 
 const HERO_TAB_ID = 'demo-claude-fix-auth'
 const TAB_RATE_LIMIT = 'demo-claude-rate-limit'
-const TAB_MIGRATE_PG = TAB_MIGRATE_PG
+const TAB_MIGRATE_PG = 'demo-claude-migrate-pg'
 const TAB_FIX_FLAKY = 'demo-claude-fix-flaky'
 const TAB_REDESIGN = 'demo-claude-redesign'
 
