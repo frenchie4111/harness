@@ -16,7 +16,6 @@ import { TerminalPanel } from './TerminalPanel'
 import { XTerminal } from './XTerminal'
 import { DiffView } from './DiffView'
 import { FileView } from './FileView'
-import { JsonModeChat } from './JsonModeChat'
 
 interface WorkspaceViewProps {
   worktreePath: string
@@ -32,7 +31,6 @@ interface WorkspaceViewProps {
   onSelectTab: (worktreePath: string, paneId: string, tabId: string) => void
   onAddTab: (worktreePath: string, paneId?: string) => void
   onAddClaudeTab: (worktreePath: string, paneId?: string) => void
-  onAddJsonClaudeTab: (worktreePath: string, paneId?: string) => void
   onCloseTab: (worktreePath: string, tabId: string) => void
   onRestartClaudeTab: (worktreePath: string, tabId: string) => void
   onReorderTabs: (worktreePath: string, paneId: string, fromId: string, toId: string) => void
@@ -61,7 +59,6 @@ export function WorkspaceView({
   onSelectTab,
   onAddTab,
   onAddClaudeTab,
-  onAddJsonClaudeTab,
   onCloseTab,
   onRestartClaudeTab,
   onReorderTabs,
@@ -167,7 +164,6 @@ export function WorkspaceView({
               onSelectTab={(tabId) => onSelectTab(worktreePath, pane.id, tabId)}
               onAddTab={() => onAddTab(worktreePath, pane.id)}
               onAddClaudeTab={() => onAddClaudeTab(worktreePath, pane.id)}
-              onAddJsonClaudeTab={() => onAddJsonClaudeTab(worktreePath, pane.id)}
               onCloseTab={(tabId) => onCloseTab(worktreePath, tabId)}
               onSplit={() => onSplitPane(worktreePath, pane.id)}
             />
@@ -187,9 +183,7 @@ export function WorkspaceView({
               className="absolute inset-0"
               style={{ display: isActiveInPane ? 'block' : 'none' }}
             >
-              {tab.type === 'json-claude' ? (
-                <JsonModeChat terminalId={tab.id} worktreePath={worktreePath} />
-              ) : tab.type === 'diff' ? (
+              {tab.type === 'diff' ? (
                 <DiffView
                   worktreePath={worktreePath}
                   filePath={tab.filePath}

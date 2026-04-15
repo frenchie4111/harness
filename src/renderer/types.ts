@@ -242,11 +242,6 @@ export interface ElectronAPI {
   getActivityLog(): Promise<ActivityLog>
   clearActivityLog(worktreePath?: string): Promise<boolean>
 
-  startJsonClaude(id: string, cwd: string): void
-  sendJsonClaudeMessage(id: string, text: string): void
-  killJsonClaude(id: string): void
-  onJsonClaudeEvent(callback: (id: string, event: unknown) => void): () => void
-
   getStateSnapshot(): Promise<StateSnapshot>
   onStateEvent(callback: (event: StateEvent, seq: number) => void): () => void
 }
