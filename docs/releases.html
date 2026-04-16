@@ -78,6 +78,33 @@
   <!-- Releases -->
   <div class="max-w-3xl mx-auto px-6 pb-24">
 
+    <!-- v2.3.0 -->
+    <section class="release-section py-10">
+      <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
+        <h2 class="text-3xl font-bold tracking-tight">v2.3.0</h2>
+        <span class="text-sm text-neutral-500">April 16, 2026</span>
+      </div>
+      <a href="https://github.com/frenchie4111/harness/releases/tag/v2.3.0" class="text-sm text-amber-400/80 hover:text-amber-300 transition-colors">Download &rarr;</a>
+      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">Per-agent model selection, a fuzzy file picker, a performance monitor with time-series charts, and initial Codex support.</p>
+      <div class="note-body">
+        <h4>New features</h4>
+        <ul>
+          <li><strong>Agent model selector</strong> — choose which Claude model powers each agent, so you can mix Opus, Sonnet, and Haiku across worktrees.</li>
+          <li><strong>Fuzzy file picker</strong> — jump to any file in the worktree instantly with a keyboard-driven fuzzy search.</li>
+          <li><strong>Performance monitor</strong> — track token usage and latency per agent with a live time-series chart.</li>
+          <li><strong>Hotkey cheat sheet</strong> — press <code>?</code> to bring up a full reference of every keyboard shortcut.</li>
+          <li><strong>In-app PR review screen</strong> — browse pull request diffs and check CI status without leaving Harness.</li>
+          <li><strong>Codex support</strong> — run Codex-powered agents alongside Claude sessions in the same workspace.</li>
+          <li><strong>First-repo onboarding</strong> — new users see a guided setup flow before adding their first repository.</li>
+        </ul>
+        <h4>Improvements</h4>
+        <ul>
+          <li>Hooks are now installed globally across all worktrees at once, rather than one at a time.</li>
+          <li>Last-active timestamps are more precise with improved debounce tuning.</li>
+        </ul>
+      </div>
+    </section>
+
     <!-- v2.2.0 -->
     <section class="release-section py-10">
       <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
