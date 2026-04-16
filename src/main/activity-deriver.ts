@@ -5,7 +5,7 @@ import { isWorktreeMerged } from '../shared/state/prs'
 import type { ActivityState } from './activity'
 import { recordActivity } from './activity'
 
-const DEBOUNCE_MS = 2000
+const DEBOUNCE_MS = 30000
 
 const STATUS_RANK: Record<PtyStatus | 'merged', number> = {
   idle: 0,
@@ -150,8 +150,10 @@ export class ActivityDeriver {
       recordActivity(wtPath, next)
     }
 
-    // Debounce lastActive updates per worktree (2s window) so rapid status
-    // churn doesn't thrash the sidebar sort.
+    // Debounce lastActive updates per worktree (30s window). Consumers
+    // (CommandCenter relative-time label, Cleanup sort) only need
+    // minute-level precision, so a relaxed window keeps this event off
+    // the hot path.
     if (this.debounceTimers.has(wtPath)) return
     const timer = setTimeout(() => {
       this.debounceTimers.delete(wtPath)
