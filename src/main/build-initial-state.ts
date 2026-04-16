@@ -25,7 +25,11 @@ export function buildInitialAppState(
 ): AppState {
   return {
     prs: initialPRs,
-    onboarding: { ...initialOnboarding, quest: config.onboarding?.quest ?? 'hidden' },
+    onboarding: {
+      ...initialOnboarding,
+      quest: config.onboarding?.quest
+        ?? (config.defaultAgent ? 'hidden' : 'pick-agent')
+    },
     hooks: initialHooks,
     worktrees: { ...initialWorktrees, repoRoots: config.repoRoots || [] },
     terminals: initialTerminals,

@@ -1,14 +1,50 @@
-import { X, Sparkles, Zap, PartyPopper } from 'lucide-react'
+import { X, Sparkles, Zap, PartyPopper, Bot } from 'lucide-react'
 import type { QuestStep } from '../types'
 
 interface QuestCardProps {
   step: QuestStep
   onDismiss: () => void
   onFinish: () => void
+  onPickAgent?: (agent: 'claude' | 'codex') => void
 }
 
-export function QuestCard({ step, onDismiss, onFinish }: QuestCardProps): JSX.Element | null {
+export function QuestCard({ step, onDismiss, onFinish, onPickAgent }: QuestCardProps): JSX.Element | null {
   if (step === 'hidden' || step === 'done') return null
+
+  if (step === 'pick-agent') {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-app/80 backdrop-blur-sm">
+        <div className="w-96 max-w-[calc(100vw-2rem)] bg-panel-raised border border-border-strong rounded-2xl shadow-2xl overflow-hidden">
+          <div className="brand-gradient-bg h-1" />
+          <div className="p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Bot size={20} className="text-accent" />
+              <span className="text-lg font-semibold text-fg-bright">Choose your agent</span>
+            </div>
+            <p className="text-sm text-muted mb-6">
+              Which AI coding agent do you use? You can change this later in Settings.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => onPickAgent?.('claude')}
+                className="flex-1 p-4 rounded-xl border border-border hover:border-fg bg-panel hover:bg-panel-raised transition-all cursor-pointer text-center"
+              >
+                <div className="text-base font-semibold text-fg-bright mb-1">Claude Code</div>
+                <div className="text-xs text-dim">by Anthropic</div>
+              </button>
+              <button
+                onClick={() => onPickAgent?.('codex')}
+                className="flex-1 p-4 rounded-xl border border-border hover:border-fg bg-panel hover:bg-panel-raised transition-all cursor-pointer text-center"
+              >
+                <div className="text-base font-semibold text-fg-bright mb-1">Codex</div>
+                <div className="text-xs text-dim">by OpenAI</div>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   const content = (() => {
     if (step === 'spawn-second') {
@@ -42,7 +78,7 @@ export function QuestCard({ step, onDismiss, onFinish }: QuestCardProps): JSX.El
     return {
       icon: <PartyPopper size={16} className="text-accent" />,
       eyebrow: 'Harnessed up',
-      title: 'You just ran two Claudes in parallel.',
+      title: 'You just ran two agents in parallel.',
       body: 'Do it with ten next time. Harness is happiest when it has a lot to juggle — the status dots keep you honest so nothing slips.',
       hint: null
     }

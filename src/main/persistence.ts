@@ -12,7 +12,7 @@ import type { CostsState } from '../shared/state/costs'
 
 export type { PersistedPane, PersistedTab }
 
-export type QuestStep = 'hidden' | 'spawn-second' | 'switch-between' | 'finale' | 'done'
+export type QuestStep = 'pick-agent' | 'hidden' | 'spawn-second' | 'switch-between' | 'finale' | 'done'
 
 export interface Config {
   /** Schema version of the on-disk config. Bumped whenever the shape changes;
