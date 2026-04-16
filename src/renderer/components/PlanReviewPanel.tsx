@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
 import Markdown from 'react-markdown'
-import { CheckCircle2, XCircle, FileText } from 'lucide-react'
+import { Check, X, Terminal, FileText } from 'lucide-react'
+import { Tooltip } from './Tooltip'
 
 interface PlanReviewPanelProps {
   planText: string
@@ -9,6 +10,7 @@ interface PlanReviewPanelProps {
 
 export function PlanReviewPanel({ planText, terminalId }: PlanReviewPanelProps): JSX.Element {
   const [responding, setResponding] = useState(false)
+  const [collapsed, setCollapsed] = useState(false)
 
   const handleApprove = useCallback(() => {
     setResponding(true)
@@ -20,38 +22,67 @@ export function PlanReviewPanel({ planText, terminalId }: PlanReviewPanelProps):
     window.api.writeTerminal(terminalId, 'n')
   }, [terminalId])
 
+  if (collapsed) {
+    return (
+      <div className="absolute bottom-3 right-3 z-10">
+        <Tooltip label="Show plan" side="left">
+          <button
+            onClick={() => setCollapsed(false)}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-panel border border-border text-muted hover:text-fg-bright hover:bg-surface transition-colors cursor-pointer shadow-lg"
+          >
+            <FileText size={14} />
+            <span className="text-xs font-medium">Plan</span>
+          </button>
+        </Tooltip>
+      </div>
+    )
+  }
+
   return (
-    <div className="absolute inset-0 z-10 flex flex-col bg-app/97">
-      <div className="flex items-center gap-2 px-6 pt-5 pb-3 border-b border-border shrink-0">
-        <FileText size={16} className="text-accent" />
-        <h2 className="text-base font-semibold text-fg-bright">Plan review</h2>
+    <div className="absolute inset-0 z-10 flex flex-col bg-app">
+      {/* Header */}
+      <div className="flex items-center h-10 px-4 border-b border-border bg-panel shrink-0">
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <FileText size={13} className="text-accent shrink-0" />
+          <span className="text-xs font-medium text-fg-bright">Plan review</span>
+        </div>
+        <Tooltip label="Show terminal" side="left">
+          <button
+            onClick={() => setCollapsed(true)}
+            className="p-1.5 rounded text-faint hover:text-fg hover:bg-surface transition-colors cursor-pointer"
+          >
+            <Terminal size={13} />
+          </button>
+        </Tooltip>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 py-5">
+      {/* Scrollable plan content */}
+      <div className="flex-1 overflow-y-auto px-6 py-5 min-h-0">
         <div className="max-w-[720px] plan-markdown">
           <Markdown>{planText}</Markdown>
         </div>
       </div>
 
-      <div className="flex items-center gap-3 px-6 py-4 border-t border-border bg-panel shrink-0">
+      {/* Action bar */}
+      <div className="flex items-center gap-2 px-4 py-3 border-t border-border bg-panel shrink-0">
         <button
           onClick={handleApprove}
           disabled={responding}
-          className="flex items-center gap-2 px-4 py-2 rounded bg-success/20 text-success hover:bg-success/30 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-default"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-border bg-panel text-fg-bright hover:bg-border transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-default text-xs"
         >
-          <CheckCircle2 size={14} />
-          Approve plan
+          <Check size={12} className="text-success" />
+          Approve
         </button>
         <button
           onClick={handleReject}
           disabled={responding}
-          className="flex items-center gap-2 px-4 py-2 rounded bg-danger/20 text-danger hover:bg-danger/30 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-default"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-border bg-panel text-muted hover:text-fg-bright hover:bg-border transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-default text-xs"
         >
-          <XCircle size={14} />
+          <X size={12} />
           Reject
         </button>
         {responding && (
-          <span className="text-xs text-dim ml-2">Sending response…</span>
+          <span className="text-xs text-dim ml-1">Sending…</span>
         )}
       </div>
     </div>
