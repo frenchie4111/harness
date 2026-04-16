@@ -11,7 +11,7 @@ import {
   type DragOverEvent,
   type CollisionDetection
 } from '@dnd-kit/core'
-import type { WorkspacePane, PtyStatus } from '../types'
+import type { WorkspacePane, PtyStatus, AgentKind } from '../types'
 import { TerminalPanel } from './TerminalPanel'
 import { XTerminal } from './XTerminal'
 import { DiffView } from './DiffView'
@@ -29,7 +29,8 @@ interface WorkspaceViewProps {
   branch: string
   onSelectTab: (worktreePath: string, paneId: string, tabId: string) => void
   onAddTab: (worktreePath: string, paneId?: string) => void
-  onAddAgentTab: (worktreePath: string, paneId?: string) => void
+  defaultAgent: AgentKind
+  onAddAgentTab: (worktreePath: string, agentKind?: AgentKind, paneId?: string) => void
   onCloseTab: (worktreePath: string, tabId: string) => void
   onRestartAgentTab: (worktreePath: string, tabId: string) => void
   onReorderTabs: (worktreePath: string, paneId: string, fromId: string, toId: string) => void
@@ -161,7 +162,8 @@ export function WorkspaceView({
               registerSlot={registerSlot}
               onSelectTab={(tabId) => onSelectTab(worktreePath, pane.id, tabId)}
               onAddTab={() => onAddTab(worktreePath, pane.id)}
-              onAddAgentTab={() => onAddAgentTab(worktreePath, pane.id)}
+              defaultAgent={defaultAgent}
+              onAddAgentTab={(kind) => onAddAgentTab(worktreePath, kind, pane.id)}
               onCloseTab={(tabId) => onCloseTab(worktreePath, tabId)}
               onSplit={() => onSplitPane(worktreePath, pane.id)}
             />

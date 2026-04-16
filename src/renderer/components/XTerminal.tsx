@@ -98,6 +98,7 @@ export function markTerminalClosing(id: string): void {
 }
 
 import type { AgentKind } from '../../shared/state/terminals'
+import { agentDisplayName } from '../../shared/agent-registry'
 
 interface XTerminalProps {
   terminalId: string
@@ -436,7 +437,7 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
           <div className="flex flex-col items-center gap-3 text-dim text-sm">
             <ClaudeLoader />
             <div className="flex items-center">
-              <span>Starting {agentKind === 'codex' ? 'Codex' : 'Claude'}</span>
+              <span>Starting {agentDisplayName(agentKind)}</span>
               <span className="claude-loader-dots ml-1">
                 <span />
                 <span />
@@ -449,7 +450,7 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
       {exited && type === 'agent' && onRestartAgent && (
         <div className="absolute inset-0 flex items-center justify-center bg-app/80">
           <div className="flex flex-col items-center gap-3 text-sm">
-            <div className="text-dim">{agentKind === 'codex' ? 'Codex' : 'Claude'} exited.</div>
+            <div className="text-dim">{agentDisplayName(agentKind)} exited.</div>
             <button
               onClick={onRestartAgent}
               className="px-3 py-1.5 rounded border border-border bg-panel text-fg-bright hover:bg-border transition-colors"

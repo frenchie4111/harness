@@ -1,6 +1,7 @@
 import type { Store } from './store'
 import type { AgentKind, TerminalTab, WorkspacePane } from '../shared/state/terminals'
 import type { PersistedPane } from './persistence'
+import { agentDisplayName } from '../shared/agent-registry'
 import { log } from './debug'
 
 interface PanesFSMOptions {
@@ -157,7 +158,7 @@ export class PanesFSM {
     }
 
     const agentKind = this.opts.getDefaultAgentKind?.() ?? 'claude'
-    const agentLabel = agentKind === 'codex' ? 'Codex' : 'Claude'
+    const agentLabel = agentDisplayName(agentKind)
     const agentTabId = `agent-${wtPath.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}`
     const shellTabId = `shell-${wtPath}-${Date.now()}`
     const tabs: TerminalTab[] = [

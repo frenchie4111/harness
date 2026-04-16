@@ -1,11 +1,13 @@
 import { X, Sparkles, Zap, PartyPopper, Bot } from 'lucide-react'
 import type { QuestStep } from '../types'
+import type { AgentKind } from '../../shared/state/terminals'
+import { AGENT_REGISTRY } from '../../shared/agent-registry'
 
 interface QuestCardProps {
   step: QuestStep
   onDismiss: () => void
   onFinish: () => void
-  onPickAgent?: (agent: 'claude' | 'codex') => void
+  onPickAgent?: (agent: AgentKind) => void
 }
 
 export function QuestCard({ step, onDismiss, onFinish, onPickAgent }: QuestCardProps): JSX.Element | null {
@@ -25,20 +27,16 @@ export function QuestCard({ step, onDismiss, onFinish, onPickAgent }: QuestCardP
               Which AI coding agent do you use? You can change this later in Settings.
             </p>
             <div className="flex gap-3">
-              <button
-                onClick={() => onPickAgent?.('claude')}
-                className="flex-1 p-4 rounded-xl border border-border hover:border-fg bg-panel hover:bg-panel-raised transition-all cursor-pointer text-center"
-              >
-                <div className="text-base font-semibold text-fg-bright mb-1">Claude Code</div>
-                <div className="text-xs text-dim">by Anthropic</div>
-              </button>
-              <button
-                onClick={() => onPickAgent?.('codex')}
-                className="flex-1 p-4 rounded-xl border border-border hover:border-fg bg-panel hover:bg-panel-raised transition-all cursor-pointer text-center"
-              >
-                <div className="text-base font-semibold text-fg-bright mb-1">Codex</div>
-                <div className="text-xs text-dim">by OpenAI</div>
-              </button>
+              {AGENT_REGISTRY.map((agent) => (
+                <button
+                  key={agent.kind}
+                  onClick={() => onPickAgent?.(agent.kind)}
+                  className="flex-1 p-4 rounded-xl border border-border hover:border-fg bg-panel hover:bg-panel-raised transition-all cursor-pointer text-center"
+                >
+                  <div className="text-base font-semibold text-fg-bright mb-1">{agent.displayName}</div>
+                  <div className="text-xs text-dim">by {agent.vendor}</div>
+                </button>
+              ))}
             </div>
           </div>
         </div>

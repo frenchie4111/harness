@@ -4,6 +4,7 @@ import { useSettings, useUpdater, useRepoConfigs } from '../store'
 import type { UpdaterStatus, MergeStrategy, RepoConfig } from '../types'
 import { DEFAULT_HOTKEYS, ACTION_LABELS, bindingToString, eventToBinding, resolveHotkeys, type Action, type HotkeyBinding } from '../hotkeys'
 import { Tooltip } from './Tooltip'
+import { AGENT_REGISTRY, agentDisplayName } from '../../shared/agent-registry'
 
 interface SettingsProps {
   onClose: () => void
@@ -794,17 +795,17 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
               <div className="bg-panel-raised border border-border rounded-lg p-4 mb-6">
                 <label className="block text-sm font-medium text-fg mb-3">Default agent</label>
                 <div className="flex gap-2">
-                  {(['claude', 'codex'] as const).map((kind) => (
+                  {AGENT_REGISTRY.map((agent) => (
                     <button
-                      key={kind}
-                      onClick={() => window.api.setDefaultAgent(kind)}
+                      key={agent.kind}
+                      onClick={() => window.api.setDefaultAgent(agent.kind)}
                       className={`px-4 py-2 rounded text-sm font-medium transition-colors cursor-pointer ${
-                        defaultAgent === kind
+                        defaultAgent === agent.kind
                           ? 'bg-surface text-fg-bright border border-fg'
                           : 'bg-panel border border-border text-dim hover:text-fg hover:border-border-strong'
                       }`}
                     >
-                      {kind === 'claude' ? 'Claude Code' : 'Codex'}
+                      {agent.displayName}
                     </button>
                   ))}
                 </div>

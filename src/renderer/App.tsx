@@ -703,7 +703,8 @@ const setQuestStep = useCallback((next: QuestStep) => {
                 nameAgentSessions={nameAgentSessions}
                 onSelectTab={handleSelectTab}
                 onAddTab={handleAddTerminalTab}
-                onAddAgentTab={(wt, paneId) => handleAddAgentTab(wt, defaultAgent ?? 'claude', paneId)}
+                defaultAgent={defaultAgent ?? 'claude'}
+                onAddAgentTab={(wt, kind, paneId) => handleAddAgentTab(wt, kind ?? defaultAgent ?? 'claude', paneId)}
                 onCloseTab={handleCloseTab}
                 onRestartAgentTab={handleRestartAgentTab}
                 onReorderTabs={handleReorderTabs}

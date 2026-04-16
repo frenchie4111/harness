@@ -1,5 +1,6 @@
 import { useCallback } from 'react'
 import type { AgentKind, TerminalTab, WorkspacePane } from '../types'
+import { agentDisplayName } from '../../shared/agent-registry'
 import { focusTerminalById, markTerminalClosing } from '../components/XTerminal'
 
 /** Create a filesystem-safe terminal ID from a worktree path. */
@@ -48,7 +49,7 @@ export function useTabHandlers({
 
   const handleAddAgentTab = useCallback(
     (worktreePath: string, agentKind: AgentKind = 'claude', paneId?: string) => {
-      const label = agentKind === 'codex' ? 'Codex' : 'Claude'
+      const label = agentDisplayName(agentKind)
       const id = `${makeTerminalId('agent', worktreePath)}-${Date.now()}`
       appendTabToPane(
         worktreePath,
