@@ -60,9 +60,10 @@ function buildGroups(hotkeys: Record<Action, HotkeyBinding>): ShortcutGroup[] {
 interface HotkeyCheatsheetProps {
   resolvedHotkeys: Record<Action, HotkeyBinding>
   onClose: () => void
+  onOpenCommandPalette: () => void
 }
 
-export function HotkeyCheatsheet({ resolvedHotkeys, onClose }: HotkeyCheatsheetProps): JSX.Element {
+export function HotkeyCheatsheet({ resolvedHotkeys, onClose, onOpenCommandPalette }: HotkeyCheatsheetProps): JSX.Element {
   const panelRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -91,11 +92,15 @@ export function HotkeyCheatsheet({ resolvedHotkeys, onClose }: HotkeyCheatsheetP
         </div>
 
         <div className="max-h-[60vh] overflow-y-auto px-5 py-4">
-          <div
-            className="mb-5 rounded-lg px-4 py-3.5 flex items-center justify-between"
+          <button
+            className="mb-5 rounded-lg px-4 py-3.5 flex items-center justify-between w-full text-left cursor-pointer transition-opacity hover:opacity-80"
             style={{
               background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(239, 68, 68, 0.10) 50%, rgba(168, 85, 247, 0.12) 100%)',
               border: '1px solid rgba(245, 158, 11, 0.2)',
+            }}
+            onClick={() => {
+              onClose()
+              onOpenCommandPalette()
             }}
           >
             <div>
@@ -103,7 +108,7 @@ export function HotkeyCheatsheet({ resolvedHotkeys, onClose }: HotkeyCheatsheetP
               <div className="text-xs text-muted mt-0.5">Search worktrees, commands, and files</div>
             </div>
             <HotkeyBadge binding={bindingToString(resolvedHotkeys.commandPalette)} variant="strong" />
-          </div>
+          </button>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-5">
             {groups.map((group) => (

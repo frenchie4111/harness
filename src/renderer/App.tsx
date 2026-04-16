@@ -854,6 +854,10 @@ const setQuestStep = useCallback((next: QuestStep) => {
       <HotkeyCheatsheet
         resolvedHotkeys={resolvedHotkeys}
         onClose={() => setShowHotkeyCheatsheet(false)}
+        onOpenCommandPalette={() => {
+          setCommandPaletteMode('root')
+          setShowCommandPalette(true)
+        }}
       />
     )}
     </HotkeysProvider>
