@@ -12,6 +12,7 @@ const HARNESS_HOOK_MARKER = '__codex_harness__'
 const HARNESS_HOOK_VERSION = 1
 
 export const defaultCommand = 'codex'
+export const assignsSessionId = false
 
 export const hookEvents = [
   'SessionStart',

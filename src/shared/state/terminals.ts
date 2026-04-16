@@ -82,6 +82,10 @@ export type TerminalsEvent =
       type: 'terminals/lastActiveChanged'
       payload: { worktreePath: string; ts: number }
     }
+  | {
+      type: 'terminals/sessionIdDiscovered'
+      payload: { terminalId: string; sessionId: string }
+    }
 
 export const initialTerminals: TerminalsState = {
   statuses: {},
@@ -162,6 +166,22 @@ export function terminalsReducer(
         ...state,
         lastActive: { ...state.lastActive, [worktreePath]: ts }
       }
+    }
+    case 'terminals/sessionIdDiscovered': {
+      const { terminalId, sessionId } = event.payload
+      const nextPanes: Record<string, WorkspacePane[]> = {}
+      let changed = false
+      for (const [path, paneList] of Object.entries(state.panes)) {
+        nextPanes[path] = paneList.map((pane) => ({
+          ...pane,
+          tabs: pane.tabs.map((tab) => {
+            if (tab.id !== terminalId || tab.sessionId) return tab
+            changed = true
+            return { ...tab, sessionId }
+          })
+        }))
+      }
+      return changed ? { ...state, panes: nextPanes } : state
     }
     default: {
       const _exhaustive: never = event

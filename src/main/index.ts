@@ -75,6 +75,14 @@ store.subscribe((event) => {
   }
 })
 
+// When a session ID is discovered from a hook event (e.g. Codex assigns
+// its own session ID), persist panes immediately so the ID survives a quit.
+store.subscribe((event) => {
+  if (event.type === 'terminals/sessionIdDiscovered') {
+    persistPanes(store.getSnapshot().state.terminals.panes)
+  }
+})
+
 /** Query the harness star state, dispatch it to the slice, and auto-star
  *  exactly once per user (sticky so manual unstars survive reboots). Safe
  *  to call after any token resolution — boot, PAT save, etc. */

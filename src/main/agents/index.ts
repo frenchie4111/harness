@@ -17,6 +17,10 @@ export interface AgentSpawnOpts {
 export interface AgentModule {
   hookEvents: string[]
   defaultCommand: string
+  /** If true, Harness generates the session ID and passes it to the agent
+   * CLI on first spawn (e.g. Claude's --session-id). If false, the agent
+   * assigns its own ID and Harness discovers it from the first hook event. */
+  assignsSessionId: boolean
   installHooks(worktreePath: string): void
   hooksInstalled(worktreePath: string): boolean
   sessionFileExists(cwd: string, sessionId: string): boolean

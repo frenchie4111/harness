@@ -1,7 +1,7 @@
 import type { Store } from './store'
 import type { AgentKind, TerminalTab, WorkspacePane } from '../shared/state/terminals'
 import type { PersistedPane } from './persistence'
-import { agentDisplayName } from '../shared/agent-registry'
+import { agentDisplayName, getAgentInfo } from '../shared/agent-registry'
 import { log } from './debug'
 
 interface PanesFSMOptions {
@@ -158,7 +158,7 @@ export class PanesFSM {
     }
 
     const agentKind = this.opts.getDefaultAgentKind?.() ?? 'claude'
-    const agentLabel = agentDisplayName(agentKind)
+    const agentInfo = getAgentInfo(agentKind)
     const agentTabId = `agent-${wtPath.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}`
     const shellTabId = `shell-${wtPath}-${Date.now()}`
     const tabs: TerminalTab[] = [
@@ -166,8 +166,8 @@ export class PanesFSM {
         id: agentTabId,
         type: 'agent',
         agentKind,
-        label: agentLabel,
-        sessionId: crypto.randomUUID(),
+        label: agentInfo.displayName,
+        sessionId: agentInfo.assignsSessionId ? crypto.randomUUID() : undefined,
         initialPrompt: opts?.teleportSessionId ? undefined : opts?.initialPrompt,
         teleportSessionId: opts?.teleportSessionId
       },

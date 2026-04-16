@@ -4,11 +4,15 @@ export interface AgentInfo {
   kind: AgentKind
   displayName: string
   vendor: string
+  /** If true, Harness generates a session ID and passes it to the CLI on
+   * first spawn. If false, the agent assigns its own ID and Harness
+   * discovers it from the first hook event. */
+  assignsSessionId: boolean
 }
 
 export const AGENT_REGISTRY: AgentInfo[] = [
-  { kind: 'claude', displayName: 'Claude Code', vendor: 'Anthropic' },
-  { kind: 'codex', displayName: 'Codex', vendor: 'OpenAI' }
+  { kind: 'claude', displayName: 'Claude Code', vendor: 'Anthropic', assignsSessionId: true },
+  { kind: 'codex', displayName: 'Codex', vendor: 'OpenAI', assignsSessionId: false }
 ]
 
 export function getAgentInfo(kind: AgentKind): AgentInfo {
