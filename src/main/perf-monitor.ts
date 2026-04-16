@@ -1,8 +1,19 @@
 import type { Store } from './store'
 
+export interface PerfSample {
+  t: number
+  storeEventsPerSec: number
+  ipcMessagesPerSec: number
+  totalTerminalBytesPerSec: number
+  eventLoopLagMs: number
+  memoryRssMB: number
+  memoryHeapUsedMB: number
+  memoryHeapTotalMB: number
+  eventTypeCounts: Record<string, number>
+}
+
 export interface PerfMetrics {
   storeEventsPerSec: number
-  recentEventTypes: string[]
   ipcMessagesPerSec: number
   terminalBytesPerSec: Record<string, number>
   totalTerminalBytesPerSec: number
@@ -10,15 +21,16 @@ export interface PerfMetrics {
   eventLoopLagMs: number
   memoryMB: { rss: number; heapUsed: number; heapTotal: number }
   uptimeSeconds: number
+  history: PerfSample[]
 }
 
-const EVENT_HISTORY_SIZE = 50
+const HISTORY_SIZE = 120
 const LAG_CHECK_INTERVAL_MS = 500
 
 export class PerfMonitor {
   private storeEventCount = 0
   private storeEventsPerSec = 0
-  private recentEventTypes: string[] = []
+  private eventTypeCountsCurrent: Record<string, number> = {}
 
   private ipcMessageCount = 0
   private ipcMessagesPerSec = 0
@@ -33,6 +45,11 @@ export class PerfMonitor {
   private rateTimer: NodeJS.Timeout | null = null
   private startTime = Date.now()
 
+  // Ring buffer: fixed capacity HISTORY_SIZE, oldest at head / newest at tail.
+  private history: PerfSample[] = []
+  private historyHead = 0
+  private historyLen = 0
+
   private activePtyCountFn: (() => number) | null = null
   private unsubscribe: (() => void) | null = null
 
@@ -42,29 +59,43 @@ export class PerfMonitor {
 
     this.unsubscribe = store.subscribe((event) => {
       this.storeEventCount++
-      this.recentEventTypes.push(event.type)
-      if (this.recentEventTypes.length > EVENT_HISTORY_SIZE) {
-        this.recentEventTypes.shift()
-      }
+      this.eventTypeCountsCurrent[event.type] =
+        (this.eventTypeCountsCurrent[event.type] || 0) + 1
     })
 
-    // Rate calculation — every 1 second, snapshot the counters and reset
+    // Rate calculation — every 1 second, snapshot the counters, push a sample,
+    // and reset.
     this.rateTimer = setInterval(() => {
       this.storeEventsPerSec = this.storeEventCount
-      this.storeEventCount = 0
-
       this.ipcMessagesPerSec = this.ipcMessageCount
-      this.ipcMessageCount = 0
 
       let total = 0
-      const snapshot: Record<string, number> = {}
+      const tSnapshot: Record<string, number> = {}
       for (const [id, bytes] of Object.entries(this.terminalBytes)) {
-        snapshot[id] = bytes
+        tSnapshot[id] = bytes
         total += bytes
       }
-      this.terminalBytesPerSec = snapshot
+      this.terminalBytesPerSec = tSnapshot
       this.totalTerminalBytesPerSec = total
+
+      const mem = process.memoryUsage()
+      const sample: PerfSample = {
+        t: Date.now(),
+        storeEventsPerSec: this.storeEventsPerSec,
+        ipcMessagesPerSec: this.ipcMessagesPerSec,
+        totalTerminalBytesPerSec: total,
+        eventLoopLagMs: this.eventLoopLagMs,
+        memoryRssMB: Math.round(mem.rss / 1024 / 1024),
+        memoryHeapUsedMB: Math.round(mem.heapUsed / 1024 / 1024),
+        memoryHeapTotalMB: Math.round(mem.heapTotal / 1024 / 1024),
+        eventTypeCounts: this.eventTypeCountsCurrent,
+      }
+      this.pushSample(sample)
+
+      this.storeEventCount = 0
+      this.ipcMessageCount = 0
       this.terminalBytes = {}
+      this.eventTypeCountsCurrent = {}
     }, 1000)
 
     // Event loop lag detection
@@ -88,7 +119,6 @@ export class PerfMonitor {
     const mem = process.memoryUsage()
     return {
       storeEventsPerSec: this.storeEventsPerSec,
-      recentEventTypes: [...this.recentEventTypes],
       ipcMessagesPerSec: this.ipcMessagesPerSec,
       terminalBytesPerSec: { ...this.terminalBytesPerSec },
       totalTerminalBytesPerSec: this.totalTerminalBytesPerSec,
@@ -97,15 +127,35 @@ export class PerfMonitor {
       memoryMB: {
         rss: Math.round(mem.rss / 1024 / 1024),
         heapUsed: Math.round(mem.heapUsed / 1024 / 1024),
-        heapTotal: Math.round(mem.heapTotal / 1024 / 1024)
+        heapTotal: Math.round(mem.heapTotal / 1024 / 1024),
       },
-      uptimeSeconds: Math.floor((Date.now() - this.startTime) / 1000)
+      uptimeSeconds: Math.floor((Date.now() - this.startTime) / 1000),
+      history: this.getHistory(),
     }
+  }
+
+  getHistory(): PerfSample[] {
+    const out: PerfSample[] = []
+    for (let i = 0; i < this.historyLen; i++) {
+      const idx = (this.historyHead + i) % HISTORY_SIZE
+      out.push(this.history[idx])
+    }
+    return out
   }
 
   stop(): void {
     if (this.rateTimer) clearInterval(this.rateTimer)
     if (this.lagTimer) clearInterval(this.lagTimer)
     this.unsubscribe?.()
+  }
+
+  private pushSample(sample: PerfSample): void {
+    if (this.historyLen < HISTORY_SIZE) {
+      this.history[this.historyLen] = sample
+      this.historyLen++
+    } else {
+      this.history[this.historyHead] = sample
+      this.historyHead = (this.historyHead + 1) % HISTORY_SIZE
+    }
   }
 }
