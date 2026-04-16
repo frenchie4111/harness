@@ -5,7 +5,7 @@ import { useTabHandlers } from './hooks/useTabHandlers'
 import { useHotkeyHandlers } from './hooks/useHotkeyHandlers'
 import { useWorktreeHandlers } from './hooks/useWorktreeHandlers'
 import type { Worktree, TerminalTab, PtyStatus, PendingTool, QuestStep, PendingWorktree, UpdaterStatus, RepoConfig } from './types'
-import { CheckCircle2, Layers, GitBranch, Zap, FolderOpen } from 'lucide-react'
+import { CheckCircle2, FolderOpen } from 'lucide-react'
 import { HotkeysProvider, Tooltip } from './components/Tooltip'
 import { Sidebar } from './components/Sidebar'
 import { ResizeHandle } from './components/ResizeHandle'
@@ -552,17 +552,55 @@ const setQuestStep = useCallback((next: QuestStep) => {
 
             <div className="grid grid-cols-3 gap-2 mb-8">
               <div className="rounded-lg border border-border bg-panel p-3">
-                <Layers className="w-4 h-4 text-accent mb-2" />
+                <div className="h-14 mb-3 flex flex-col justify-center gap-1.5 bg-app/50 rounded border border-border px-2 py-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-success shrink-0" />
+                    <span className="text-[9px] font-mono text-muted flex-1 truncate">feat/onboarding</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-warning shrink-0" />
+                    <span className="text-[9px] font-mono text-muted flex-1 truncate">fix/login-flash</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-success shrink-0" />
+                    <span className="text-[9px] font-mono text-muted flex-1 truncate">refactor/auth</span>
+                  </div>
+                </div>
                 <div className="text-xs text-fg-bright font-medium mb-0.5">Parallel agents</div>
                 <div className="text-[11px] text-dim leading-snug">One window, many sessions</div>
               </div>
               <div className="rounded-lg border border-border bg-panel p-3">
-                <GitBranch className="w-4 h-4 text-accent mb-2" />
+                <div className="h-14 mb-3 flex items-center justify-center bg-app/50 rounded border border-border">
+                  <div className="flex flex-col items-center">
+                    <div className="px-1.5 py-0.5 rounded bg-surface border border-border-strong text-[8px] font-mono text-fg-bright">.git</div>
+                    <svg width="60" height="12" viewBox="0 0 60 12" className="text-faint">
+                      <path d="M30 0 L30 5 L10 5 L10 12 M30 5 L30 12 M30 5 L50 5 L50 12" stroke="currentColor" strokeWidth="1" fill="none" />
+                    </svg>
+                    <div className="flex gap-1.5">
+                      <div className="w-2.5 h-2.5 rounded bg-success/20 border border-success/50" />
+                      <div className="w-2.5 h-2.5 rounded bg-info/20 border border-info/50" />
+                      <div className="w-2.5 h-2.5 rounded bg-warning/20 border border-warning/50" />
+                    </div>
+                  </div>
+                </div>
                 <div className="text-xs text-fg-bright font-medium mb-0.5">Worktrees handled</div>
                 <div className="text-[11px] text-dim leading-snug">Your original repo stays clean</div>
               </div>
               <div className="rounded-lg border border-border bg-panel p-3">
-                <Zap className="w-4 h-4 text-accent mb-2" />
+                <div className="h-14 mb-3 flex flex-col items-center justify-center gap-1 bg-app/50 rounded border border-border px-2">
+                  <div className="flex items-center gap-1.5 w-full">
+                    <span className="w-1.5 h-1.5 rounded-full bg-success shrink-0" />
+                    <span className="text-[9px] text-muted font-mono">working</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 w-full">
+                    <span className="w-1.5 h-1.5 rounded-full bg-warning shrink-0" />
+                    <span className="text-[9px] text-muted font-mono">waiting</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 w-full">
+                    <span className="w-1.5 h-1.5 rounded-full bg-danger shrink-0" />
+                    <span className="text-[9px] text-muted font-mono">approve</span>
+                  </div>
+                </div>
                 <div className="text-xs text-fg-bright font-medium mb-0.5">Status at a glance</div>
                 <div className="text-[11px] text-dim leading-snug">Dots show who's waiting</div>
               </div>
