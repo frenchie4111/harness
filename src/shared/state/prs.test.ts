@@ -67,8 +67,8 @@ describe('prsReducer', () => {
       type: 'prs/bulkStatusChanged',
       payload: { '/a': stubPR({ number: 42 }) }
     })
-    // /b and /c are gone — a full refresh is authoritative about which
-    // worktrees currently exist.
+    // The poller pre-merges stale data for failed fetches before
+    // dispatching, so the reducer can do a simple replace.
     expect(Object.keys(next.byPath)).toEqual(['/a'])
     expect(next.byPath['/a']?.number).toBe(42)
   })

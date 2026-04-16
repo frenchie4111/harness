@@ -1,5 +1,6 @@
 import { listWorktrees, getBranchSha } from './worktree'
 import { getPRStatus } from './github'
+import type { PRStatus } from '../shared/state/prs'
 import { log } from './debug'
 import type { Store } from './store'
 
@@ -61,19 +62,36 @@ export class PRPoller {
       this.lastAllFetchAt = now
       for (const wt of allWorktrees) this.lastFetchAtByPath.set(wt.path, now)
 
+      const FETCH_ERROR = Symbol('fetchError')
       const statusResults = await Promise.all(
         allWorktrees.map(async (wt) => {
           try {
             return [wt.path, await getPRStatus(wt.path)] as const
           } catch (err) {
             log('pr-poller', `getPRStatus failed for ${wt.path}`, err instanceof Error ? err.message : err)
-            return [wt.path, null] as const
+            return [wt.path, FETCH_ERROR] as const
           }
         })
       )
+      // Only include successful results (including legitimate null = "no PR").
+      // Failed fetches preserve whatever data was already in the store so a
+      // transient network blip doesn't wipe the UI.
+      const successEntries = statusResults.filter(
+        (r): r is [string, PRStatus | null] => r[1] !== FETCH_ERROR
+      )
+      const existingByPath = this.store.getSnapshot().state.prs.byPath
+      const merged: Record<string, PRStatus | null> = {}
+      // Start with existing data for paths that failed this round
+      for (const [path] of statusResults) {
+        if (path in existingByPath) merged[path] = existingByPath[path]
+      }
+      // Overwrite with successful results
+      for (const [path, status] of successEntries) {
+        merged[path] = status
+      }
       this.store.dispatch({
         type: 'prs/bulkStatusChanged',
-        payload: Object.fromEntries(statusResults)
+        payload: merged
       })
 
       // Merged status per repo, then flatten. Stale branches get pruned from
