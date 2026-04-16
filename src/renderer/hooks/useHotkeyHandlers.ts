@@ -220,10 +220,12 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       },
       toggleCommandCenter: () => setShowCommandCenter((v) => !v),
       commandPalette: () => {
+        setShowHotkeyCheatsheet(false)
         setCommandPaletteMode('root')
         setShowCommandPalette((v) => !v)
       },
       fileQuickOpen: () => {
+        setShowHotkeyCheatsheet(false)
         setCommandPaletteMode('files')
         setShowCommandPalette(true)
       },
