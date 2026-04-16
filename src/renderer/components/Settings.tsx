@@ -934,13 +934,17 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
                     {codexSaveResult.ok ? <Check size={12} /> : <X size={12} />}{codexSaveResult.message}
                   </div>
                 )}
-                <div className="mt-3 text-xs text-dim">
-                  <p>
-                    Common variations:{' '}
-                    <code className="bg-panel px-1 rounded text-[10px]">codex --full-auto</code>,{' '}
-                    <code className="bg-panel px-1 rounded text-[10px]">codex -m o3</code>
-                  </p>
-                </div>
+                {(() => {
+                  const effectiveCodexCommand = codexCommandDraft.trim() || 'codex'
+                  const codexModelPart = codexModel && !effectiveCodexCommand.includes('--model') && !effectiveCodexCommand.includes('-m ') ? ` --model ${codexModel}` : ''
+                  const codexPreviewInner = `${effectiveCodexCommand}${codexModelPart}`
+                  return (
+                    <div className="mt-4 pt-3 border-t border-border">
+                      <label className="block text-xs font-medium text-fg mb-1">Full command preview</label>
+                      <div className="bg-panel border border-border rounded px-3 py-2 text-[11px] text-fg-bright font-mono break-all">{`/bin/zsh -ilc "${codexPreviewInner}"`}</div>
+                    </div>
+                  )
+                })()}
               </div>
 
               <div className="mt-4 bg-panel-raised border border-border rounded-lg p-4">
