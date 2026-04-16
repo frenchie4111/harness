@@ -296,7 +296,7 @@ store.subscribe((event) => {
 })
 
 function createWindow(): BrowserWindow {
-  const bounds = config.windowBounds || { width: 1400, height: 900, x: undefined!, y: undefined! }
+  const bounds = config.windowBounds || { width: 1600, height: 1000, x: undefined!, y: undefined! }
 
   const win = new BrowserWindow({
     width: bounds.width,
