@@ -117,6 +117,7 @@ export class PanesFSM {
               id: t.id,
               type: t.type,
               label: t.label,
+              agentKind: t.agentKind,
               sessionId: t.sessionId
             }
             if (base.type !== 'agent' || base.sessionId) return base
