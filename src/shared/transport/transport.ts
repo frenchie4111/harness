@@ -28,8 +28,15 @@
 
 import type { StateEvent, StateSnapshot } from '../state'
 
-export type RequestHandler = (...args: unknown[]) => unknown | Promise<unknown>
-export type SignalHandler = (...args: unknown[]) => void
+// Handler args are typed as `any[]` because the wire boundary is
+// inherently untyped — the transport doesn't know what each channel's
+// arg shape is. Individual handlers declare their own concrete types at
+// the call site (e.g. `(repoRoot: string) => …`). This mirrors how
+// ipcMain.handle / ipcRenderer.invoke are typed in @types/electron.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type RequestHandler = (...args: any[]) => unknown | Promise<unknown>
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type SignalHandler = (...args: any[]) => void
 export type StateEventListener = (event: StateEvent, seq: number) => void
 
 export interface ServerTransport {
