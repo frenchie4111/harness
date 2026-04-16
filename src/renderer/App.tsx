@@ -169,6 +169,7 @@ export default function App(): JSX.Element {
   const [showCleanup, setShowCleanup] = useState(false)
   const [showCommandCenter, setShowCommandCenter] = useState(false)
   const [showCommandPalette, setShowCommandPalette] = useState(false)
+  const [commandPaletteMode, setCommandPaletteMode] = useState<'root' | 'files'>('root')
   const tailLines = useTailLineBuffer()
   const settings = useSettings()
   const { hasGithubToken: hasGithubPat, githubAuthSource, claudeCommand, nameClaudeSessions } = settings
@@ -440,6 +441,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
     setShowNewWorktree,
     setShowCommandCenter,
     setShowCommandPalette,
+    setCommandPaletteMode,
     handleAddTerminalTab,
     handleCloseTab,
     handleSelectTab,
@@ -812,6 +814,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
         mergedPaths={mergedPaths}
         activeWorktreeId={activeWorktreeId}
         resolvedHotkeys={resolvedHotkeys}
+        initialMode={commandPaletteMode}
         onClose={() => setShowCommandPalette(false)}
         onSelectWorktree={(path) => {
           setShowNewWorktree(false)
@@ -824,6 +827,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
           const handler = hotkeyActions[action]
           if (handler) handler()
         }}
+        onOpenFile={(filePath) => handleOpenFile(filePath)}
       />
     )}
     </HotkeysProvider>

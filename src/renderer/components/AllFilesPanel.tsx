@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { RefreshCw, AtSign, Code2, ChevronRight, Folder, FolderOpen, FileText } from 'lucide-react'
 import { Tooltip } from './Tooltip'
 import { RightPanel } from './RightPanel'
+import { useSettings } from '../store'
+import { bindingToString, formatBindingGlyphs, resolveHotkeys } from '../hotkeys'
 
 interface AllFilesPanelProps {
   worktreePath: string | null
@@ -58,6 +60,11 @@ export function AllFilesPanel({
   const [hasLoaded, setHasLoaded] = useState(false)
   const [filter, setFilter] = useState('')
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(['']))
+  const settings = useSettings()
+  const quickOpenGlyphs = useMemo(() => {
+    const binding = resolveHotkeys(settings.hotkeys ?? undefined).fileQuickOpen
+    return formatBindingGlyphs(bindingToString(binding))
+  }, [settings.hotkeys])
 
   const refresh = useCallback(async () => {
     if (!worktreePath) return
@@ -148,9 +155,12 @@ export function AllFilesPanel({
         )}
       </div>
       {files.length > 0 && (
-        <div className="px-3 py-1.5 border-t border-border text-[10px] text-faint shrink-0">
-          {filtering ? `${filtered.length} / ${files.length}` : files.length} file
-          {files.length !== 1 ? 's' : ''}
+        <div className="px-3 py-1.5 border-t border-border text-[10px] text-faint shrink-0 flex items-center justify-between">
+          <span>
+            {filtering ? `${filtered.length} / ${files.length}` : files.length} file
+            {files.length !== 1 ? 's' : ''}
+          </span>
+          <kbd className="font-mono">{quickOpenGlyphs} fuzzy open</kbd>
         </div>
       )}
     </RightPanel>
