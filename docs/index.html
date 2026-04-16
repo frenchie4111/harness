@@ -4,12 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Harness — run a team of Claude Code agents</title>
-  <meta name="description" content="A native macOS app for managing many Claude Code instances across git worktrees, with reliable status detection, PR tracking, and inline diffs." />
+  <meta name="description" content="A native macOS app for managing parallel Claude Code and Codex sessions across git worktrees, with reliable status detection and PR tracking." />
 
   <!-- Open Graph -->
   <meta property="og:site_name" content="Harness" />
   <meta property="og:title" content="Harness — run a team of agents" />
-  <meta property="og:description" content="Run ten Claudes at once without losing your mind. A native macOS app for managing parallel Claude Code sessions across git worktrees." />
+  <meta property="og:description" content="Run ten Claudes at once without losing your mind. A native macOS app for managing parallel Claude Code and Codex sessions across git worktrees." />
   <meta property="og:image" content="https://harness.mikelyons.org/og-image.png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
@@ -21,7 +21,7 @@
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="Harness — run a team of agents" />
-  <meta name="twitter:description" content="Run ten Claudes at once without losing your mind. A native macOS app for managing parallel Claude Code sessions across git worktrees." />
+  <meta name="twitter:description" content="Run ten Claudes at once without losing your mind. A native macOS app for managing parallel Claude Code and Codex sessions across git worktrees." />
   <meta name="twitter:image" content="https://harness.mikelyons.org/og-image.png" />
   <meta name="twitter:image:alt" content="Screenshot of Harness showing the worktree sidebar, terminal tabs, and changed-files panel." />
 
@@ -118,10 +118,11 @@
       Run a team<br />
       <span class="gradient-text">of agents.</span>
     </h1>
-    <p class="text-lg md:text-xl text-neutral-400 max-w-2xl mx-auto mb-10">
-      Run ten Claudes at once without losing your mind.
+    <p class="text-lg md:text-xl text-neutral-400 max-w-2xl mx-auto mb-3">
+      Run ten Claudes<sup class="text-amber-400/80">*</sup> at once without losing your mind.
       Ship more, faster, with every session at your fingertips.
     </p>
+    <p class="text-xs text-neutral-500 mb-10">*or Codexes, if you prefer</p>
     <div class="flex flex-col sm:flex-row gap-3 justify-center items-center">
       <a href="#install" class="px-8 py-3 bg-white text-black rounded-lg font-semibold hover:bg-neutral-200 transition-colors">
         Download for macOS
@@ -131,6 +132,23 @@
       </a>
     </div>
     <p class="text-xs text-neutral-600 mt-4">Free · Open source</p>
+    <div class="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 mt-4 text-xs text-neutral-500">
+      <span>Supports</span>
+      <span class="flex items-center gap-1.5 text-neutral-400">
+        <!-- Claude Code — stylized starburst mark -->
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+          <circle cx="12" cy="12" r="3" /><line x1="12" y1="2" x2="12" y2="6" /><line x1="12" y1="18" x2="12" y2="22" /><line x1="2" y1="12" x2="6" y2="12" /><line x1="18" y1="12" x2="22" y2="12" /><line x1="4.93" y1="4.93" x2="7.76" y2="7.76" /><line x1="16.24" y1="16.24" x2="19.07" y2="19.07" /><line x1="4.93" y1="19.07" x2="7.76" y2="16.24" /><line x1="16.24" y1="7.76" x2="19.07" y2="4.93" />
+        </svg>
+        Claude Code
+      </span>
+      <span class="flex items-center gap-1.5 text-neutral-400">
+        <!-- Codex — terminal prompt icon -->
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="4 17 10 11 4 5" /><line x1="12" y1="19" x2="20" y2="19" />
+        </svg>
+        Codex
+      </span>
+    </div>
   </section>
 
   <!-- Demo video -->
