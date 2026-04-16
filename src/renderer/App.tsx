@@ -16,6 +16,7 @@ import { WorkspaceView } from './components/WorkspaceView'
 import { RightColumn } from './components/RightColumn'
 import { Settings } from './components/Settings'
 import { Guide } from './components/Guide'
+import { AGENT_REGISTRY } from '../shared/agent-registry'
 import { Activity } from './components/Activity'
 import { Cleanup } from './components/Cleanup'
 import { CommandCenter } from './components/CommandCenter'
@@ -534,7 +535,22 @@ const setQuestStep = useCallback((next: QuestStep) => {
             style={{ boxShadow: '0 0 60px rgba(245, 158, 11, 0.15)' }}
           />
           <h1 className="gradient-text text-4xl font-extrabold tracking-tight mb-4">Harness</h1>
-          <p className="text-dim mb-6">Select a git repository to get started</p>
+          <p className="text-dim mb-6">Select your agent and a git repository to get started</p>
+          <div className="flex gap-3 justify-center mb-6">
+            {AGENT_REGISTRY.map((agent) => (
+              <button
+                key={agent.kind}
+                onClick={() => window.api.setDefaultAgent(agent.kind)}
+                className={`px-5 py-3 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
+                  defaultAgent === agent.kind
+                    ? 'bg-surface text-fg-bright border border-fg'
+                    : 'bg-panel border border-border text-dim hover:text-fg hover:border-border-strong'
+                }`}
+              >
+                {agent.displayName}
+              </button>
+            ))}
+          </div>
           <button
             onClick={handleAddRepo}
             className="px-6 py-3 bg-surface hover:bg-surface-hover rounded-lg text-fg-bright transition-colors cursor-pointer"

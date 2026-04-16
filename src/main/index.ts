@@ -266,6 +266,10 @@ let bootTimer: NodeJS.Timeout | null = null
 
 function drainBootInit(force: boolean): void {
   if (bootDrained) return
+  // Don't create tabs until the user has picked their default agent.
+  // The drain will fire again when settings/defaultAgentChanged arrives.
+  const quest = store.getSnapshot().state.onboarding.quest
+  if (quest === 'pick-agent') return
   bootDrained = true
   if (bootTimer) {
     clearTimeout(bootTimer)
@@ -295,6 +299,11 @@ store.subscribe((event) => {
   }
   if (event.type === 'prs/mergedChanged' && !bootDrained) {
     drainBootInit(false)
+  }
+  // User picked their default agent during onboarding — now it's safe
+  // to create the initial tabs with the correct agent kind.
+  if (event.type === 'settings/defaultAgentChanged' && !bootDrained) {
+    drainBootInit(true)
   }
 })
 
