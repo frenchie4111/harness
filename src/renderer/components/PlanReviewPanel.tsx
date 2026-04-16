@@ -46,14 +46,6 @@ export function PlanReviewPanel({ planText, terminalId }: PlanReviewPanelProps):
           <FileText size={13} className="text-accent shrink-0" />
           <span className="text-xs font-medium text-fg-bright">Plan review</span>
         </div>
-        <Tooltip label="Show terminal" side="left">
-          <button
-            onClick={() => setCollapsed(true)}
-            className="p-1.5 rounded text-faint hover:text-fg hover:bg-surface transition-colors cursor-pointer"
-          >
-            <Terminal size={13} />
-          </button>
-        </Tooltip>
       </div>
 
       {/* Scrollable plan content */}
@@ -84,6 +76,16 @@ export function PlanReviewPanel({ planText, terminalId }: PlanReviewPanelProps):
         {responding && (
           <span className="text-xs text-dim ml-1">Sending…</span>
         )}
+        <div className="flex-1" />
+        <Tooltip label="Show terminal" side="left">
+          <button
+            onClick={() => setCollapsed(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-border bg-panel text-muted hover:text-fg-bright hover:bg-border transition-colors cursor-pointer text-xs"
+          >
+            <Terminal size={12} />
+            Terminal
+          </button>
+        </Tooltip>
       </div>
     </div>
   )
