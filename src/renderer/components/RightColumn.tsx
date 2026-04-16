@@ -33,6 +33,7 @@ interface RightColumnProps {
   onOpenDiff: ChangedFilesPanelProps['onOpenDiff']
   onOpenFile: AllFilesPanelProps['onOpenFile']
   onSendToAgent: (worktreePath: string, text: string) => void
+  onOpenReview: (mode: 'working' | 'branch') => void
   onCollapse: () => void
 }
 
@@ -53,6 +54,7 @@ export function RightColumn({
   onOpenDiff,
   onOpenFile,
   onSendToAgent,
+  onOpenReview,
   onCollapse
 }: RightColumnProps): JSX.Element {
   const hidden = effectiveHiddenRightPanels(activeRepoConfig)
@@ -118,6 +120,7 @@ export function RightColumn({
             onSendToAgent={
               activeWorktreeId ? (text) => onSendToAgent(activeWorktreeId, text) : undefined
             }
+            onOpenReview={onOpenReview}
           />
         )
       case 'allFiles':

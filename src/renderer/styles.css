@@ -416,3 +416,21 @@ button, [role="button"], a[href], [onclick] {
 .monaco-editor .ref-line-glyph:hover {
   background-color: var(--color-fg);
 }
+
+/* Review screen: per-line "add comment" button (+ icon). */
+.monaco-editor .comment-line-glyph {
+  cursor: pointer;
+  background-color: var(--color-info, #58a6ff);
+  opacity: 0.7;
+  mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><line x1='12' y1='5' x2='12' y2='19'/><line x1='5' y1='12' x2='19' y2='12'/></svg>");
+  -webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><line x1='12' y1='5' x2='12' y2='19'/><line x1='5' y1='12' x2='19' y2='12'/></svg>");
+  mask-size: 14px 14px;
+  -webkit-mask-size: 14px 14px;
+  mask-repeat: no-repeat;
+  -webkit-mask-repeat: no-repeat;
+  mask-position: center;
+  -webkit-mask-position: center;
+}
+.monaco-editor .comment-line-glyph:hover {
+  opacity: 1;
+}
