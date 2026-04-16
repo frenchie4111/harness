@@ -533,7 +533,14 @@ const setQuestStep = useCallback((next: QuestStep) => {
   if (repoRoots.length === 0) {
     const step1Complete = themeChosen
     const step2Complete = agentChosen
-    const activeStep: 1 | 2 | 3 = !step1Complete ? 1 : !step2Complete ? 2 : 3
+    const step3Complete = hooksConsent !== 'pending'
+    const activeStep: 1 | 2 | 3 | 4 = !step1Complete
+      ? 1
+      : !step2Complete
+        ? 2
+        : !step3Complete
+          ? 3
+          : 4
     return (
       <HotkeysProvider bindings={resolvedHotkeys}>
       <div className="flex h-full flex-col">
@@ -719,12 +726,64 @@ const setQuestStep = useCallback((next: QuestStep) => {
                 }`}
               >
                 <div className="flex items-start gap-3 mb-3">
-                  <div
-                    className={`w-5 h-5 rounded-full border-2 text-[11px] font-bold flex items-center justify-center shrink-0 mt-0.5 ${
-                      activeStep === 3 ? 'border-accent text-accent' : 'border-border-strong text-dim'
+                  {step3Complete ? (
+                    <CheckCircle2 className="w-5 h-5 text-success shrink-0 mt-0.5" />
+                  ) : (
+                    <div
+                      className={`w-5 h-5 rounded-full border-2 text-[11px] font-bold flex items-center justify-center shrink-0 mt-0.5 ${
+                        activeStep === 3 ? 'border-accent text-accent' : 'border-border-strong text-dim'
+                      }`}
+                    >
+                      3
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="text-fg-bright text-sm font-medium">Install status hooks</div>
+                    <div className="text-xs text-dim mt-0.5">
+                      Adds a small hook at <code className="bg-app/50 px-1 rounded">~/.claude/settings.json</code> (and the Codex equivalent) so Harness can tell when an agent is working, waiting, or asking for approval. Only fires for sessions Harness launches — others are untouched.
+                    </div>
+                  </div>
+                </div>
+                <div className="flex gap-2 ml-8">
+                  <button
+                    onClick={handleAcceptHooks}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
+                      hooksConsent === 'accepted'
+                        ? 'bg-surface text-fg-bright border border-fg'
+                        : activeStep === 3
+                          ? 'bg-accent/20 hover:bg-accent/30 text-fg-bright border border-accent/40'
+                          : 'bg-panel border border-border text-dim hover:text-fg hover:border-border-strong'
                     }`}
                   >
-                    3
+                    Install hooks
+                  </button>
+                  <button
+                    onClick={handleDeclineHooks}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
+                      hooksConsent === 'declined'
+                        ? 'bg-surface text-fg-bright border border-fg'
+                        : 'bg-panel border border-border text-dim hover:text-fg hover:border-border-strong'
+                    }`}
+                  >
+                    Not now
+                  </button>
+                </div>
+              </div>
+
+              <div
+                className={`rounded-xl border bg-panel p-4 transition-colors ${
+                  activeStep === 4
+                    ? 'border-accent/50 ring-1 ring-accent/25'
+                    : 'border-border'
+                }`}
+              >
+                <div className="flex items-start gap-3 mb-3">
+                  <div
+                    className={`w-5 h-5 rounded-full border-2 text-[11px] font-bold flex items-center justify-center shrink-0 mt-0.5 ${
+                      activeStep === 4 ? 'border-accent text-accent' : 'border-border-strong text-dim'
+                    }`}
+                  >
+                    4
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-fg-bright text-sm font-medium">Open a git repository</div>
@@ -735,7 +794,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
                   <button
                     onClick={handleAddRepo}
                     className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
-                      activeStep === 3
+                      activeStep === 4
                         ? 'bg-accent/20 hover:bg-accent/30 text-fg-bright border border-accent/40'
                         : 'bg-panel border border-border text-dim hover:text-fg hover:border-border-strong'
                     }`}
