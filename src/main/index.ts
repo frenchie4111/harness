@@ -1,4 +1,4 @@
-import { app, autoUpdater as nativeAutoUpdater, BrowserWindow, dialog, Menu, shell } from 'electron'
+import { app, autoUpdater as nativeAutoUpdater, BrowserWindow, dialog, Menu, screen, shell } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import { existsSync, readdirSync, statSync } from 'fs'
 import { homedir } from 'os'
@@ -296,7 +296,17 @@ store.subscribe((event) => {
 })
 
 function createWindow(): BrowserWindow {
-  const bounds = config.windowBounds || { width: 1600, height: 1000, x: undefined!, y: undefined! }
+  // First-launch defaults: aim for 1600x1000, but clamp to the primary
+  // display's work area so smaller screens (13" MBP = 1440x900 native)
+  // don't get a window that spills off-screen. Returning users' saved
+  // windowBounds pass through untouched.
+  const work = screen.getPrimaryDisplay().workAreaSize
+  const bounds = config.windowBounds || {
+    width: Math.min(1600, work.width - 40),
+    height: Math.min(1000, work.height - 40),
+    x: undefined!,
+    y: undefined!
+  }
 
   const win = new BrowserWindow({
     width: bounds.width,
