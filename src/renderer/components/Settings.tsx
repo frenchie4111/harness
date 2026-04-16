@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2 } from 'lucide-react'
-import { useSettings, useUpdater, useRepoConfigs } from '../store'
+import { useSettings, useUpdater, useRepoConfigs, useHooks } from '../store'
 import type { UpdaterStatus, MergeStrategy, RepoConfig } from '../types'
 import { DEFAULT_HOTKEYS, ACTION_LABELS, bindingToString, eventToBinding, resolveHotkeys, type Action, type HotkeyBinding } from '../hotkeys'
 import { Tooltip } from './Tooltip'
@@ -217,6 +217,9 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
   const repoConfigs = useRepoConfigs()
   const repoList = useMemo(() => Object.keys(repoConfigs), [repoConfigs])
   const [scopeRepoRoot, setScopeRepoRoot] = useState<string | null>(null)
+
+  // Hooks consent — drives the copy in the "Status hooks" card below.
+  const { consent: hooksConsent } = useHooks()
 
   // Constants and non-settings state load once; live settings are already
   // hydrated via useSettings() above.
@@ -976,6 +979,46 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
                     {codexEnvSaveResult.ok ? <Check size={12} /> : <X size={12} />}{codexEnvSaveResult.message}
                   </div>
                 )}
+              </div>
+
+              {/* ── Status hooks subsection ── */}
+              <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-3">
+                Status hooks
+              </h3>
+              <div className="bg-panel-raised border border-border rounded-lg p-4">
+                <p className="text-xs text-dim mb-3">
+                  Harness installs a small hook at{' '}
+                  <code className="bg-panel px-1 rounded">~/.claude/settings.json</code> and{' '}
+                  <code className="bg-panel px-1 rounded">~/.codex/hooks.json</code> so it can
+                  detect when each agent tab is processing, waiting, or awaiting approval.
+                  The hook only emits when <code className="bg-panel px-1 rounded">$HARNESS_TERMINAL_ID</code>{' '}
+                  is set — sessions you launch outside Harness are untouched.
+                </p>
+                <div className="flex items-center gap-2">
+                  {hooksConsent === 'accepted' ? (
+                    <>
+                      <span className="text-xs text-success flex items-center gap-1"><Check size={12} />Installed</span>
+                      <button
+                        onClick={() => void window.api.uninstallHooks()}
+                        className="ml-auto px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer"
+                      >
+                        Remove hooks
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-xs text-dim">
+                        {hooksConsent === 'declined' ? 'Declined' : 'Not installed'}
+                      </span>
+                      <button
+                        onClick={() => void window.api.acceptHooks()}
+                        className="ml-auto px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer"
+                      >
+                        Install hooks
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
             </section>
 

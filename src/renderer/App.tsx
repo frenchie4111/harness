@@ -103,10 +103,10 @@ export default function App(): JSX.Element {
   const repoConfigs = useRepoConfigs()
   // Map of worktree path → repoRoot for quick lookups outside of `worktrees`.
   // Populated whenever the worktree list refreshes.
-  // Hooks consent + justInstalled live in the main-process store.
-  // Accept/decline dispatch through dedicated methods; the boot-time
-  // "already installed?" detection lives in main.
-  const { consent: hooksConsent, justInstalled: hooksJustInstalled } = useHooks()
+  // Hooks consent lives in the main-process store. Accept/decline
+  // dispatch through dedicated methods; the boot-time "already installed?"
+  // detection lives in main.
+  const { consent: hooksConsent } = useHooks()
   const updaterStatus = useUpdater().status
   const [updateBannerDismissed, setUpdateBannerDismissed] = useState(false)
   const [sidebarVisible, setSidebarVisible] = useState(true)
@@ -420,7 +420,6 @@ const setQuestStep = useCallback((next: QuestStep) => {
     handleAddAgentTab,
     handleCloseTab,
     handleRestartAgentTab,
-    handleRestartAllAgentTabs,
     handleSelectTab,
     handleOpenCommit,
     handleReorderTabs,
@@ -603,13 +602,16 @@ const setQuestStep = useCallback((next: QuestStep) => {
         </div>
       )}
 
-      {/* Hooks consent banner */}
+      {/* Hooks consent banner — one-time prompt at first launch. Harness
+          installs agent status hooks at ~/.claude/settings.json (+ Codex
+          equivalent). The hook command is gated on $HARNESS_TERMINAL_ID
+          so sessions spawned outside Harness are unaffected. */}
       {hooksConsent === 'pending' && (
         <div className="bg-warning/15 border-b border-warning/30 pl-20 pr-4 py-2.5 drag-region flex items-center gap-3 shrink-0">
           <span className="text-warning text-sm flex-1">
-            Harness needs to install hooks in your worktrees to detect agent status
-            (waiting, processing, needs approval) — without them the sidebar status dots and
-            command center won't work.
+            Harness installs status hooks at <code className="text-xs">~/.claude/settings.json</code> to detect
+            agent state (waiting, processing, needs approval). They only fire for agents you
+            launch inside Harness and can be removed at any time from Settings.
           </span>
           <button
             onClick={handleAcceptHooks}
@@ -622,27 +624,6 @@ const setQuestStep = useCallback((next: QuestStep) => {
             className="px-3 py-1 text-warning/80 hover:text-warning text-sm transition-colors shrink-0 cursor-pointer no-drag"
           >
             Skip
-          </button>
-        </div>
-      )}
-
-      {/* Hooks installed — prompt to restart agent tabs */}
-      {hooksJustInstalled && (
-        <div className="bg-success/15 border-b border-success/30 pl-20 pr-4 py-2.5 drag-region flex items-center gap-3 shrink-0">
-          <span className="text-success text-sm flex-1">
-            Hooks installed! Restart any active agent tabs to see status updates.
-          </span>
-          <button
-            onClick={handleRestartAllAgentTabs}
-            className="px-3 py-1 bg-success/30 hover:bg-success/40 rounded text-sm text-success transition-colors shrink-0 cursor-pointer no-drag"
-          >
-            Restart agent tabs
-          </button>
-          <button
-            onClick={() => void window.api.dismissHooksJustInstalled()}
-            className="px-3 py-1 text-success/80 hover:text-success text-sm transition-colors shrink-0 cursor-pointer no-drag"
-          >
-            Dismiss
           </button>
         </div>
       )}

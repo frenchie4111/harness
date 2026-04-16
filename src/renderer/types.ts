@@ -271,7 +271,7 @@ export interface ElectronAPI {
 
   acceptHooks(): Promise<boolean>
   declineHooks(): Promise<boolean>
-  dismissHooksJustInstalled(): Promise<boolean>
+  uninstallHooks(): Promise<boolean>
 
   createTerminal(
     id: string,

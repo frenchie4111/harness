@@ -28,28 +28,31 @@ interface HookEntry {
   hooks: { type: string; command: string; timeout?: number; _marker?: string }[]
 }
 
-interface SettingsLocal {
+interface SettingsFile {
   hooks?: Record<string, HookEntry[]>
   [key: string]: unknown
 }
 
-function getSettingsPath(worktreePath: string): string {
+function globalSettingsPath(): string {
+  return join(homedir(), '.claude', 'settings.json')
+}
+
+function worktreeSettingsPath(worktreePath: string): string {
   return join(worktreePath, '.claude', 'settings.local.json')
 }
 
-function readSettingsLocal(worktreePath: string): SettingsLocal {
-  const p = getSettingsPath(worktreePath)
+function readSettings(path: string): SettingsFile {
   try {
-    return JSON.parse(readFileSync(p, 'utf-8'))
+    return JSON.parse(readFileSync(path, 'utf-8'))
   } catch {
     return {}
   }
 }
 
-function writeSettingsLocal(worktreePath: string, settings: SettingsLocal): void {
-  const dir = join(worktreePath, '.claude')
+function writeSettings(path: string, settings: SettingsFile): void {
+  const dir = join(path, '..')
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-  writeFileSync(getSettingsPath(worktreePath), JSON.stringify(settings, null, 2))
+  writeFileSync(path, JSON.stringify(settings, null, 2))
 }
 
 function makeHarnessHookEntry(command: string): HookEntry {
@@ -75,8 +78,8 @@ function removeOldHarnessEntries(entries: HookEntry[]): HookEntry[] {
   })
 }
 
-export function hooksInstalled(worktreePath: string): boolean {
-  const settings = readSettingsLocal(worktreePath)
+export function hooksInstalled(): boolean {
+  const settings = readSettings(globalSettingsPath())
   const hooks = settings.hooks
   if (!hooks) return false
   for (const entries of Object.values(hooks)) {
@@ -90,9 +93,10 @@ export function hooksInstalled(worktreePath: string): boolean {
   return false
 }
 
-export function installHooks(worktreePath: string): void {
-  log('hooks', `installing Claude hooks in ${worktreePath}`)
-  const settings = readSettingsLocal(worktreePath)
+export function installHooks(): void {
+  const path = globalSettingsPath()
+  log('hooks', `installing Claude hooks into ${path}`)
+  const settings = readSettings(path)
   if (!settings.hooks) settings.hooks = {}
 
   for (const event of Object.keys(settings.hooks)) {
@@ -104,7 +108,44 @@ export function installHooks(worktreePath: string): void {
     settings.hooks[event].push(makeHarnessHookEntry(makeHookCommand(event)))
   }
 
-  writeSettingsLocal(worktreePath, settings)
+  writeSettings(path, settings)
+}
+
+/** Remove our entries from ~/.claude/settings.json but leave any user-authored
+ *  hooks + unrelated keys intact. No-op if we're not installed. */
+export function uninstallHooks(): void {
+  const path = globalSettingsPath()
+  if (!existsSync(path)) return
+  const settings = readSettings(path)
+  if (!settings.hooks) return
+  for (const event of Object.keys(settings.hooks)) {
+    settings.hooks[event] = removeOldHarnessEntries(settings.hooks[event])
+    if (settings.hooks[event].length === 0) delete settings.hooks[event]
+  }
+  if (Object.keys(settings.hooks).length === 0) delete settings.hooks
+  writeSettings(path, settings)
+  log('hooks', `uninstalled Claude hooks from ${path}`)
+}
+
+/** Strip any legacy Harness entries from a worktree's .claude/settings.local.json.
+ *  Returns true if the file was modified. Leaves user-authored hooks alone. */
+export function stripHooksFromWorktree(worktreePath: string): boolean {
+  const path = worktreeSettingsPath(worktreePath)
+  if (!existsSync(path)) return false
+  const settings = readSettings(path)
+  if (!settings.hooks) return false
+  let changed = false
+  for (const event of Object.keys(settings.hooks)) {
+    const before = settings.hooks[event].length
+    settings.hooks[event] = removeOldHarnessEntries(settings.hooks[event])
+    if (settings.hooks[event].length !== before) changed = true
+    if (settings.hooks[event].length === 0) delete settings.hooks[event]
+  }
+  if (!changed) return false
+  if (Object.keys(settings.hooks).length === 0) delete settings.hooks
+  writeSettings(path, settings)
+  log('hooks', `stripped legacy Harness entries from ${path}`)
+  return true
 }
 
 export function sessionFileExists(cwd: string, sessionId: string): boolean {

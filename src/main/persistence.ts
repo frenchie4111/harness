@@ -94,6 +94,15 @@ export interface Config {
   // on its periodic timer. The manual "Check for updates" button in
   // Settings still works. Default is enabled (undefined/true).
   autoUpdateEnabled?: boolean
+  // User's choice for installing agent status hooks at user scope
+  // (~/.claude/settings.json, ~/.codex/hooks.json). Persisted so a
+  // declined user doesn't see the banner again on next launch.
+  hooksConsent?: 'pending' | 'accepted' | 'declined'
+  // One-shot migration flag: once true, we've swept all known worktrees'
+  // per-worktree .claude/settings.local.json + .codex/hooks.json files
+  // and stripped any legacy Harness entries. Prevents re-running the
+  // migration on every boot.
+  hooksMigratedToGlobal?: boolean
 }
 
 export const DEFAULT_WORKTREE_BASE: 'remote' | 'local' = 'remote'

@@ -32,23 +32,26 @@ interface CodexHooksFile {
   hooks?: Record<string, CodexHookEntry[]>
 }
 
-function getHooksPath(worktreePath: string): string {
+function globalHooksPath(): string {
+  return join(homedir(), '.codex', 'hooks.json')
+}
+
+function worktreeHooksPath(worktreePath: string): string {
   return join(worktreePath, '.codex', 'hooks.json')
 }
 
-function readHooksFile(worktreePath: string): CodexHooksFile {
-  const p = getHooksPath(worktreePath)
+function readHooksFile(path: string): CodexHooksFile {
   try {
-    return JSON.parse(readFileSync(p, 'utf-8'))
+    return JSON.parse(readFileSync(path, 'utf-8'))
   } catch {
     return {}
   }
 }
 
-function writeHooksFile(worktreePath: string, data: CodexHooksFile): void {
-  const dir = join(worktreePath, '.codex')
+function writeHooksFile(path: string, data: CodexHooksFile): void {
+  const dir = join(path, '..')
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-  writeFileSync(getHooksPath(worktreePath), JSON.stringify(data, null, 2))
+  writeFileSync(path, JSON.stringify(data, null, 2))
 }
 
 function makeHarnessHookEntry(command: string): CodexHookEntry {
@@ -88,8 +91,8 @@ function ensureCodexHooksEnabled(): void {
   }
 }
 
-export function hooksInstalled(worktreePath: string): boolean {
-  const data = readHooksFile(worktreePath)
+export function hooksInstalled(): boolean {
+  const data = readHooksFile(globalHooksPath())
   const hooks = data.hooks
   if (!hooks) return false
   for (const entries of Object.values(hooks)) {
@@ -103,12 +106,13 @@ export function hooksInstalled(worktreePath: string): boolean {
   return false
 }
 
-export function installHooks(worktreePath: string): void {
-  log('hooks', `installing Codex hooks in ${worktreePath}`)
+export function installHooks(): void {
+  const path = globalHooksPath()
+  log('hooks', `installing Codex hooks into ${path}`)
 
   ensureCodexHooksEnabled()
 
-  const data = readHooksFile(worktreePath)
+  const data = readHooksFile(path)
   if (!data.hooks) data.hooks = {}
 
   for (const event of Object.keys(data.hooks)) {
@@ -120,7 +124,40 @@ export function installHooks(worktreePath: string): void {
     data.hooks[event].push(makeHarnessHookEntry(makeHookCommand(event)))
   }
 
-  writeHooksFile(worktreePath, data)
+  writeHooksFile(path, data)
+}
+
+export function uninstallHooks(): void {
+  const path = globalHooksPath()
+  if (!existsSync(path)) return
+  const data = readHooksFile(path)
+  if (!data.hooks) return
+  for (const event of Object.keys(data.hooks)) {
+    data.hooks[event] = removeOldHarnessEntries(data.hooks[event])
+    if (data.hooks[event].length === 0) delete data.hooks[event]
+  }
+  if (Object.keys(data.hooks).length === 0) delete data.hooks
+  writeHooksFile(path, data)
+  log('hooks', `uninstalled Codex hooks from ${path}`)
+}
+
+export function stripHooksFromWorktree(worktreePath: string): boolean {
+  const path = worktreeHooksPath(worktreePath)
+  if (!existsSync(path)) return false
+  const data = readHooksFile(path)
+  if (!data.hooks) return false
+  let changed = false
+  for (const event of Object.keys(data.hooks)) {
+    const before = data.hooks[event].length
+    data.hooks[event] = removeOldHarnessEntries(data.hooks[event])
+    if (data.hooks[event].length !== before) changed = true
+    if (data.hooks[event].length === 0) delete data.hooks[event]
+  }
+  if (!changed) return false
+  if (Object.keys(data.hooks).length === 0) delete data.hooks
+  writeHooksFile(path, data)
+  log('hooks', `stripped legacy Harness Codex entries from ${path}`)
+  return true
 }
 
 export function sessionFileExists(_cwd: string, sessionId: string): boolean {
@@ -156,7 +193,6 @@ export function latestSessionId(_cwd: string): string | null {
           const mtime = statSync(full).mtimeMs
           if (mtime > bestMtime) {
             bestMtime = mtime
-            // Extract UUID from filename: <name>-<uuid>.jsonl
             const stem = entry.name.replace(/\.jsonl$/, '')
             const uuidMatch = stem.match(/([0-9a-f]{4,}-[0-9a-f-]+)$/)
             bestId = uuidMatch ? uuidMatch[1] : stem

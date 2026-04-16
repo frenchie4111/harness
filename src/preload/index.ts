@@ -202,9 +202,9 @@ contextBridge.exposeInMainWorld('api', {
   onOpenKeyboardShortcuts: (callback: () => void) => transport.onSignal('app:openKeyboardShortcuts', () => callback()),
 
   // Hooks
-  acceptHooks: () => req('hooks:acceptAll'),
+  acceptHooks: () => req('hooks:accept'),
   declineHooks: () => req('hooks:decline'),
-  dismissHooksJustInstalled: () => req('hooks:dismissJustInstalled'),
+  uninstallHooks: () => req('hooks:uninstall'),
 
   // PTY
   createTerminal: (
