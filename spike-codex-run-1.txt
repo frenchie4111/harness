@@ -1,9 +1,0 @@
-{"type":"thread.started","thread_id":"019d93d9-828f-7f62-8698-cd75c433d84a"}
-{"type":"turn.started"}
-{"type":"error","message":"stream error: exceeded retry limit, last status: 401 Unauthorized, request id: 9ecf53bb2be8091f-SEA; retrying 1/5 in 194ms…"}
-{"type":"error","message":"stream error: exceeded retry limit, last status: 401 Unauthorized, request id: 9ecf53d4988f091f-SEA; retrying 2/5 in 426ms…"}
-{"type":"error","message":"stream error: exceeded retry limit, last status: 401 Unauthorized, request id: 9ecf53edde61091f-SEA; retrying 3/5 in 776ms…"}
-{"type":"error","message":"stream error: exceeded retry limit, last status: 401 Unauthorized, request id: 9ecf540a9dc976eb-SEA; retrying 4/5 in 1.607s…"}
-{"type":"error","message":"stream error: exceeded retry limit, last status: 401 Unauthorized, request id: 9ecf542b8b6076eb-SEA; retrying 5/5 in 3.492s…"}
-{"type":"error","message":"exceeded retry limit, last status: 401 Unauthorized, request id: 9ecf54591c3f76eb-SEA"}
-{"type":"turn.failed","error":{"message":"exceeded retry limit, last status: 401 Unauthorized, request id: 9ecf54591c3f76eb-SEA"}}

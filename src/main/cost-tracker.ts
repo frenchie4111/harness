@@ -94,6 +94,81 @@ function parseTranscript(path: string): ParseResult {
     return { byModel: {}, breakdown: cloneBreakdown(emptyBreakdown), currentModel: null }
   }
 
+  // Detect Codex session format: first non-empty line has type=session_meta
+  // or type=event_msg or type=response_item (OpenAI Codex JSONL format).
+  const firstLine = text.split('\n').find((l) => l.trim())
+  if (firstLine) {
+    try {
+      const first = JSON.parse(firstLine) as Record<string, unknown>
+      if (first.type === 'session_meta' || first.type === 'event_msg' || first.type === 'response_item' || first.type === 'turn_context') {
+        return parseCodexTranscript(text)
+      }
+    } catch { /* fall through to Claude parser */ }
+  }
+
+  return parseClaudeTranscript(text)
+}
+
+function parseCodexTranscript(text: string): ParseResult {
+  const byModel: Record<string, ModelTally> = {}
+  const breakdown: ContentBreakdown = cloneBreakdown(emptyBreakdown)
+  let currentModel: string | null = null
+
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue
+    let obj: Record<string, unknown>
+    try {
+      obj = JSON.parse(line) as Record<string, unknown>
+    } catch {
+      continue
+    }
+
+    // Extract model from turn_context events
+    if (obj.type === 'turn_context') {
+      const payload = obj.payload as Record<string, unknown> | undefined
+      if (payload && typeof payload.model === 'string') {
+        currentModel = payload.model
+      }
+    }
+
+    // Extract token usage from event_msg with type=token_count
+    if (obj.type === 'event_msg') {
+      const payload = obj.payload as Record<string, unknown> | undefined
+      if (payload?.type !== 'token_count') continue
+      const info = payload.info as Record<string, unknown> | undefined
+      const lastUsage = info?.last_token_usage as Record<string, unknown> | undefined
+      if (!lastUsage || !currentModel) continue
+
+      const inputTokens = (lastUsage.input_tokens as number) ?? 0
+      const cachedInputTokens = (lastUsage.cached_input_tokens as number) ?? 0
+      const outputTokens = (lastUsage.output_tokens as number) ?? 0
+      const reasoningTokens = (lastUsage.reasoning_output_tokens as number) ?? 0
+
+      const usage = {
+        input_tokens: inputTokens,
+        output_tokens: outputTokens,
+        cached_input_tokens: cachedInputTokens,
+        reasoning_output_tokens: reasoningTokens
+      }
+      const cost = priceFor(currentModel, usage)
+
+      const tally = (byModel[currentModel] ??= { ...emptyTally })
+      tally.messages += 1
+      tally.input += inputTokens
+      tally.output += outputTokens
+      tally.cacheRead += cachedInputTokens
+      tally.cost += cost
+
+      // Attribute entire cost to text output for simplicity (Codex
+      // transcripts don't have per-block character counts like Claude's)
+      breakdown.text += cost
+    }
+  }
+
+  return { byModel, breakdown, currentModel }
+}
+
+function parseClaudeTranscript(text: string): ParseResult {
   const byModel: Record<string, ModelTally> = {}
   const breakdown: ContentBreakdown = cloneBreakdown(emptyBreakdown)
   const ctx: CtxChars = { userPrompt: 0, assistantEcho: 0, toolResults: {} }
