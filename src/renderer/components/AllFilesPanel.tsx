@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { RefreshCw, AtSign, Code2, ChevronRight, Folder, FolderOpen, FileText } from 'lucide-react'
 import { Tooltip } from './Tooltip'
 import { RightPanel } from './RightPanel'
+import { useSettings } from '../store'
+import { bindingToString, formatBindingGlyphs, resolveHotkeys } from '../hotkeys'
 
 interface AllFilesPanelProps {
   worktreePath: string | null
@@ -58,6 +60,11 @@ export function AllFilesPanel({
   const [hasLoaded, setHasLoaded] = useState(false)
   const [filter, setFilter] = useState('')
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(['']))
+  const settings = useSettings()
+  const quickOpenGlyphs = useMemo(() => {
+    const binding = resolveHotkeys(settings.hotkeys ?? undefined).fileQuickOpen
+    return formatBindingGlyphs(bindingToString(binding))
+  }, [settings.hotkeys])
 
   const refresh = useCallback(async () => {
     if (!worktreePath) return
@@ -117,7 +124,7 @@ export function AllFilesPanel({
 
   return (
     <RightPanel id="all-files" title="All Files" actions={actions} grow defaultCollapsed>
-      <div className="shrink-0 p-2 border-b border-border">
+      <div className="shrink-0 p-2 border-b border-border space-y-1.5">
         <input
           type="text"
           value={filter}
@@ -125,6 +132,12 @@ export function AllFilesPanel({
           placeholder="Filter files..."
           className="w-full bg-panel-raised border border-border rounded px-2 py-1 text-xs text-fg placeholder:text-faint focus:outline-none focus:border-border-strong"
         />
+        <div className="flex items-center justify-between text-[10px] text-faint">
+          <span>Fuzzy open file</span>
+          <kbd className="bg-bg px-1.5 py-0.5 rounded border border-border font-mono text-faint">
+            {quickOpenGlyphs}
+          </kbd>
+        </div>
       </div>
       <div className="flex-1 overflow-y-auto min-h-0 text-xs">
         {!worktreePath && <div className="p-3 text-faint">No worktree selected</div>}
