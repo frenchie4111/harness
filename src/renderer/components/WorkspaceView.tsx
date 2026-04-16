@@ -11,7 +11,7 @@ import {
   type DragOverEvent,
   type CollisionDetection
 } from '@dnd-kit/core'
-import type { WorkspacePane, PtyStatus } from '../types'
+import type { WorkspacePane, PtyStatus, AgentKind } from '../types'
 import { TerminalPanel } from './TerminalPanel'
 import { XTerminal } from './XTerminal'
 import { DiffView } from './DiffView'
@@ -24,19 +24,19 @@ interface WorkspaceViewProps {
   statuses: Record<string, PtyStatus>
   shellActivity: Record<string, { active: boolean; processName?: string }>
   visible: boolean
-  claudeCommand: string
-  nameClaudeSessions: boolean
+  nameAgentSessions: boolean
   repoLabel: string
   branch: string
   onSelectTab: (worktreePath: string, paneId: string, tabId: string) => void
   onAddTab: (worktreePath: string, paneId?: string) => void
-  onAddClaudeTab: (worktreePath: string, paneId?: string) => void
+  defaultAgent: AgentKind
+  onAddAgentTab: (worktreePath: string, agentKind?: AgentKind, paneId?: string) => void
   onCloseTab: (worktreePath: string, tabId: string) => void
-  onRestartClaudeTab: (worktreePath: string, tabId: string) => void
+  onRestartAgentTab: (worktreePath: string, tabId: string) => void
   onReorderTabs: (worktreePath: string, paneId: string, fromId: string, toId: string) => void
   onMoveTabToPane: (worktreePath: string, tabId: string, toPaneId: string, toIndex?: number) => void
   onSplitPane: (worktreePath: string, fromPaneId: string) => void
-  onSendToClaude?: (worktreePath: string, text: string) => void
+  onSendToAgent?: (worktreePath: string, text: string) => void
 }
 
 // Collision strategy: prefer direct hits (pointerWithin) so dropping over a
@@ -54,17 +54,17 @@ export function WorkspaceView({
   statuses,
   shellActivity,
   visible,
-  claudeCommand,
-  nameClaudeSessions,
+  nameAgentSessions,
   onSelectTab,
   onAddTab,
-  onAddClaudeTab,
+  defaultAgent,
+  onAddAgentTab,
   onCloseTab,
-  onRestartClaudeTab,
+  onRestartAgentTab,
   onReorderTabs,
   onMoveTabToPane,
   onSplitPane,
-  onSendToClaude,
+  onSendToAgent,
   repoLabel,
   branch
 }: WorkspaceViewProps): JSX.Element {
@@ -163,7 +163,8 @@ export function WorkspaceView({
               registerSlot={registerSlot}
               onSelectTab={(tabId) => onSelectTab(worktreePath, pane.id, tabId)}
               onAddTab={() => onAddTab(worktreePath, pane.id)}
-              onAddClaudeTab={() => onAddClaudeTab(worktreePath, pane.id)}
+              defaultAgent={defaultAgent}
+              onAddAgentTab={(kind) => onAddAgentTab(worktreePath, kind, pane.id)}
               onCloseTab={(tabId) => onCloseTab(worktreePath, tabId)}
               onSplit={() => onSplitPane(worktreePath, pane.id)}
             />
@@ -190,9 +191,9 @@ export function WorkspaceView({
                   staged={tab.staged ?? false}
                   branchDiff={tab.branchDiff ?? false}
                   commitHash={tab.commitHash}
-                  onSendToClaude={
-                    onSendToClaude
-                      ? (text) => onSendToClaude(worktreePath, text)
+                  onSendToAgent={
+                    onSendToAgent
+                      ? (text) => onSendToAgent(worktreePath, text)
                       : undefined
                   }
                 />
@@ -200,9 +201,9 @@ export function WorkspaceView({
                 <FileView
                   worktreePath={worktreePath}
                   filePath={tab.filePath}
-                  onSendToClaude={
-                    onSendToClaude
-                      ? (text) => onSendToClaude(worktreePath, text)
+                  onSendToAgent={
+                    onSendToAgent
+                      ? (text) => onSendToAgent(worktreePath, text)
                       : undefined
                   }
                 />
@@ -210,16 +211,16 @@ export function WorkspaceView({
                 <XTerminal
                   terminalId={tab.id}
                   cwd={worktreePath}
-                  type={tab.type as 'claude' | 'shell'}
+                  type={tab.type as 'agent' | 'shell'}
+                  agentKind={tab.agentKind}
                   visible={visible && isActiveInPane}
-                  claudeCommand={claudeCommand}
-                  sessionName={tab.type === 'claude' && nameClaudeSessions ? `${repoLabel}/${branch}` : undefined}
+                  sessionName={tab.type === 'agent' && nameAgentSessions ? `${repoLabel}/${branch}` : undefined}
                   sessionId={tab.sessionId}
                   initialPrompt={tab.initialPrompt}
                   teleportSessionId={tab.teleportSessionId}
-                  onRestartClaude={
-                    tab.type === 'claude'
-                      ? (): void => onRestartClaudeTab(worktreePath, tab.id)
+                  onRestartAgent={
+                    tab.type === 'agent'
+                      ? (): void => onRestartAgentTab(worktreePath, tab.id)
                       : undefined
                   }
                 />

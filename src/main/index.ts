@@ -36,7 +36,12 @@ import {
 } from './persistence'
 import { loadRepoConfig, saveRepoConfig, type RepoConfig } from './repo-config'
 import { isWorktreeMerged } from '../shared/state/prs'
-import { hooksInstalled, installHooks, watchStatusDir } from './hooks'
+import { watchStatusDir } from './hooks'
+import { getAgent, type AgentKind } from './agents'
+
+function toAgentKind(value: string | undefined): AgentKind {
+  return value === 'codex' ? 'codex' : 'claude'
+}
 import { CostTracker } from './cost-tracker'
 import { startControlServer } from './control-server'
 import { writeMcpConfigForTerminal, pruneMcpConfigs } from './mcp-config'
@@ -48,27 +53,6 @@ import { buildInitialAppState } from './build-initial-state'
 // fight with the installed prod app over config.json / activity.json / etc.
 if (!app.isPackaged) {
   app.setPath('userData', join(app.getPath('appData'), 'Harness (Dev)'))
-}
-
-function latestClaudeSessionId(cwd: string): string | null {
-  try {
-    const encoded = cwd.replace(/[^a-zA-Z0-9]/g, '-')
-    const dir = join(homedir(), '.claude', 'projects', encoded)
-    const files = readdirSync(dir).filter((f) => f.endsWith('.jsonl'))
-    if (files.length === 0) return null
-    let bestId: string | null = null
-    let bestMtime = -Infinity
-    for (const file of files) {
-      const mtime = statSync(join(dir, file)).mtimeMs
-      if (mtime > bestMtime) {
-        bestMtime = mtime
-        bestId = file.replace(/\.jsonl$/, '')
-      }
-    }
-    return bestId
-  } catch {
-    return null
-  }
 }
 
 const ptyManager = new PtyManager()
@@ -92,6 +76,14 @@ store.subscribe((event) => {
   if (event.type.startsWith('costs/')) {
     config.costs = store.getSnapshot().state.costs
     saveConfig(config)
+  }
+})
+
+// When a session ID is discovered from a hook event (e.g. Codex assigns
+// its own session ID), persist panes immediately so the ID survives a quit.
+store.subscribe((event) => {
+  if (event.type === 'terminals/sessionIdDiscovered') {
+    persistPanes(store.getSnapshot().state.terminals.panes)
   }
 })
 
@@ -150,13 +142,14 @@ function persistPanes(panes: Record<string, WorkspacePane[]>): void {
     const persistedPanes: PersistedPane[] = paneList
       .map((pane) => {
         const tabs = pane.tabs
-          .filter((t) => t.type === 'claude' || t.type === 'shell')
+          .filter((t) => t.type === 'agent' || t.type === 'shell')
           .map((t) => {
             const stripped = stripTransientTabFields(t as TerminalTab)
             return {
               id: stripped.id,
-              type: stripped.type as 'claude' | 'shell',
+              type: stripped.type as 'agent' | 'shell',
               label: stripped.label,
+              agentKind: stripped.agentKind,
               sessionId: stripped.sessionId
             }
           })
@@ -199,7 +192,11 @@ const panesFSM = new PanesFSM(store, {
     const wt = store.getSnapshot().state.worktrees.list.find((w) => w.path === wtPath)
     return wt?.repoRoot
   },
-  getLatestClaudeSessionId: async (wtPath) => latestClaudeSessionId(wtPath)
+  getLatestClaudeSessionId: async (wtPath) => {
+    const kind = store.getSnapshot().state.settings.defaultAgent ?? 'claude'
+    return getAgent(kind).latestSessionId(wtPath)
+  },
+  getDefaultAgentKind: () => toAgentKind(store.getSnapshot().state.settings.defaultAgent)
 })
 
 const worktreesFSM = new WorktreesFSM(store, {
@@ -219,15 +216,17 @@ const worktreeDeletionFSM = new WorktreeDeletionFSM(store, {
 
 const activityDeriver = new ActivityDeriver(store)
 
-/** Install Claude Code hooks into any worktree that's missing them, but only
- * if the user has accepted the consent prompt. Subscribes to the store and
- * fires on worktrees/listChanged + hooks/consentChanged. */
+/** Install agent hooks into any worktree that's missing them, but only
+ * if the user has accepted the consent prompt. Installs hooks for the
+ * user's configured default agent. */
 function installHooksForAcceptedWorktrees(): void {
   const state = store.getSnapshot().state
   if (state.hooks.consent !== 'accepted') return
+  const agentKind = state.settings.defaultAgent ?? 'claude'
+  const agent = getAgent(agentKind)
   for (const wt of state.worktrees.list) {
-    if (!hooksInstalled(wt.path)) {
-      installHooks(wt.path)
+    if (!agent.hooksInstalled(wt.path)) {
+      agent.installHooks(wt.path)
     }
   }
 }
@@ -654,6 +653,40 @@ function registerIpcHandlers(): void {
     return DEFAULT_CLAUDE_COMMAND
   })
 
+  transport.onRequest('config:setDefaultAgent', (agent: string) => {
+    const kind = agent === 'codex' ? 'codex' : 'claude'
+    config.defaultAgent = kind
+    saveConfig(config)
+    store.dispatch({ type: 'settings/defaultAgentChanged', payload: kind })
+    return true
+  })
+
+  transport.onRequest('config:setCodexCommand', (command: string) => {
+    const trimmed = command.trim()
+    if (!trimmed || trimmed === 'codex') {
+      delete config.codexCommand
+    } else {
+      config.codexCommand = trimmed
+    }
+    saveConfig(config)
+    store.dispatch({
+      type: 'settings/codexCommandChanged',
+      payload: config.codexCommand || 'codex'
+    })
+    return true
+  })
+
+  transport.onRequest('config:setCodexEnvVars', (vars: Record<string, string>) => {
+    if (!vars || Object.keys(vars).length === 0) {
+      delete config.codexEnvVars
+    } else {
+      config.codexEnvVars = vars
+    }
+    saveConfig(config)
+    store.dispatch({ type: 'settings/codexEnvVarsChanged', payload: config.codexEnvVars || {} })
+    return true
+  })
+
   transport.onRequest('repoConfig:set', (repoRoot: string, next: Record<string, unknown>) => {
     if (!repoRoot) return null
     const current = loadRepoConfig(repoRoot)
@@ -893,9 +926,9 @@ function registerIpcHandlers(): void {
     return true
   })
   transport.onRequest(
-    'panes:restartClaudeTab',
+    'panes:restartAgentTab',
     (wtPath: string, tabId: string, newId: string) => {
-      panesFSM.restartClaudeTab(wtPath, tabId, newId)
+      panesFSM.restartAgentTab(wtPath, tabId, newId)
       return true
     }
   )
@@ -972,27 +1005,32 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  // Check whether a Claude session file already exists on disk for
-  // `<cwd>/<sessionId>.jsonl`. When it does, the tab should spawn with
-  // `--resume <id>` instead of `--session-id <id>` — claude refuses the
-  // latter on an existing session file with "is already in use".
-  transport.onRequest('claude:sessionFileExists', (cwd: string, sessionId: string): boolean => {
-    try {
-      const encoded = cwd.replace(/[^a-zA-Z0-9]/g, '-')
-      return existsSync(join(homedir(), '.claude', 'projects', encoded, `${sessionId}.jsonl`))
-    } catch {
-      return false
-    }
+  transport.onRequest('agent:sessionFileExists', (cwd: string, sessionId: string, agentKind?: string): boolean => {
+    const kind = toAgentKind(agentKind)
+    return getAgent(kind).sessionFileExists(cwd, sessionId)
   })
 
-  // Find the most recent Claude Code session ID for a given worktree path,
-  // by reading ~/.claude/projects/<encoded-cwd>/*.jsonl sorted by mtime.
-  // Used to migrate legacy Claude tabs (which resumed via `--continue`) onto
-  // the new per-tab scheme without losing their session — the spawn path
-  // uses `--resume` when the file exists.
-  transport.onRequest('claude:latestSessionId', (cwd: string): string | null => {
-    return latestClaudeSessionId(cwd)
+  transport.onRequest('agent:latestSessionId', (cwd: string, agentKind?: string): string | null => {
+    const kind = toAgentKind(agentKind)
+    return getAgent(kind).latestSessionId(cwd)
   })
+
+  transport.onRequest(
+    'agent:buildSpawnArgs',
+    (agentKind: string, opts: {
+      terminalId: string; cwd: string; sessionId?: string;
+      initialPrompt?: string; teleportSessionId?: string;
+      sessionName?: string
+    }): string => {
+      const kind = toAgentKind(agentKind)
+      const agent = getAgent(kind)
+      const command = kind === 'claude'
+        ? (config.claudeCommand || agent.defaultCommand)
+        : (config.codexCommand || agent.defaultCommand)
+      const mcpConfigPath = writeMcpConfigForTerminal(opts.terminalId)
+      return agent.buildSpawnArgs({ ...opts, command, mcpConfigPath })
+    }
+  )
 
   // Settings: GitHub token
   transport.onRequest('settings:hasGithubToken', () => {
@@ -1124,11 +1162,13 @@ function registerIpcHandlers(): void {
   // + justInstalled=true in a single round trip. Replaces the old
   // renderer-side loop that walked worktrees one by one.
   transport.onRequest('hooks:acceptAll', async () => {
+    const agentKind = store.getSnapshot().state.settings.defaultAgent ?? 'claude'
+    const agent = getAgent(agentKind)
     const roots = config.repoRoots || []
     for (const root of roots) {
       const trees = await listWorktrees(root).catch(() => [])
       for (const wt of trees) {
-        if (!hooksInstalled(wt.path)) installHooks(wt.path)
+        if (!agent.hooksInstalled(wt.path)) agent.installHooks(wt.path)
       }
     }
     store.dispatch({ type: 'hooks/consentChanged', payload: 'accepted' })
@@ -1151,9 +1191,12 @@ function registerIpcHandlers(): void {
     shell.openExternal(url)
   })
 
-  transport.onSignal('pty:create', (id: string, cwd: string, cmd: string, args: string[], isClaude?: boolean, cols?: number, rows?: number) => {
-    const extraEnv = isClaude ? config.claudeEnvVars : undefined
-    ptyManager.create(id, cwd, cmd, args, extraEnv, !isClaude, cols, rows)
+  transport.onSignal('pty:create', (id: string, cwd: string, cmd: string, args: string[], agentKind?: string, cols?: number, rows?: number) => {
+    const isAgent = !!agentKind
+    const extraEnv = agentKind === 'claude' ? config.claudeEnvVars
+      : agentKind === 'codex' ? config.codexEnvVars
+      : undefined
+    ptyManager.create(id, cwd, cmd, args, extraEnv, !isAgent, cols, rows)
   })
 
   transport.onSignal('pty:write', (id: string, data: string) => {

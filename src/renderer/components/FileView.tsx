@@ -8,7 +8,7 @@ import { useSettings } from '../store'
 interface FileViewProps {
   worktreePath: string
   filePath?: string
-  onSendToClaude?: (text: string) => void
+  onSendToAgent?: (text: string) => void
 }
 
 function formatBytes(n: number): string {
@@ -17,7 +17,7 @@ function formatBytes(n: number): string {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`
 }
 
-export function FileView({ worktreePath, filePath, onSendToClaude }: FileViewProps): JSX.Element {
+export function FileView({ worktreePath, filePath, onSendToAgent }: FileViewProps): JSX.Element {
   const settings = useSettings()
   const [result, setResult] = useState<FileReadResult | null>(null)
   const [loading, setLoading] = useState(true)
@@ -134,10 +134,10 @@ export function FileView({ worktreePath, filePath, onSendToClaude }: FileViewPro
             <Save size={12} />
           </button>
         </Tooltip>
-        {onSendToClaude && (
+        {onSendToAgent && (
           <Tooltip label="Reference file in Claude">
             <button
-              onClick={() => onSendToClaude(`@${filePath} `)}
+              onClick={() => onSendToAgent(`@${filePath} `)}
               className="shrink-0 text-faint hover:text-fg cursor-pointer"
             >
               <AtSign size={12} />
@@ -170,8 +170,8 @@ export function FileView({ worktreePath, filePath, onSendToClaude }: FileViewPro
             onChange={setValue}
             onSave={save}
             onReferenceLine={
-              onSendToClaude
-                ? (ln) => onSendToClaude(`@${filePath}:${ln} `)
+              onSendToAgent
+                ? (ln) => onSendToAgent(`@${filePath}:${ln} `)
                 : undefined
             }
           />

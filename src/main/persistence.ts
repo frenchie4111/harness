@@ -23,13 +23,17 @@ export interface Config {
   repoRoots: string[]
   // Custom hotkey overrides: action name → shortcut string (e.g. "Cmd+Shift+T")
   hotkeys?: Record<string, string>
+  // Which agent CLI to default to when creating new tabs: 'claude' or 'codex'.
+  defaultAgent?: 'claude' | 'codex'
   // Command used to launch Claude in a worktree terminal. Runs via login shell.
   // Harness appends `--session-id <uuid>` so each tab has a stable resumable session.
   claudeCommand?: string
+  // Command used to launch Codex in a worktree terminal.
+  codexCommand?: string
   // Extra environment variables injected into the PTY when spawning a Claude tab.
-  // Merged on top of process.env so users can set things like ANTHROPIC_API_KEY,
-  // DISABLE_TELEMETRY, etc. without editing their shell config.
   claudeEnvVars?: Record<string, string>
+  // Extra environment variables injected into the PTY when spawning a Codex tab.
+  codexEnvVars?: Record<string, string>
   // When false, Harness won't inject `--mcp-config <path>` pointing at the
   // bundled harness-control MCP server. Default is enabled (undefined/true).
   harnessMcpEnabled?: boolean

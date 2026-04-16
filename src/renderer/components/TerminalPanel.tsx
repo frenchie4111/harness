@@ -7,7 +7,8 @@ import {
 } from '@dnd-kit/sortable'
 import { useDroppable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
-import type { WorkspacePane, TerminalTab, PtyStatus } from '../types'
+import type { WorkspacePane, TerminalTab, PtyStatus, AgentKind } from '../types'
+import { AGENT_REGISTRY, agentDisplayName } from '../../shared/agent-registry'
 import { Tooltip } from './Tooltip'
 import { repoNameColor } from './RepoIcon'
 
@@ -23,7 +24,8 @@ interface TerminalPanelProps {
   registerSlot: (paneId: string, el: HTMLDivElement | null) => void
   onSelectTab: (tabId: string) => void
   onAddTab: () => void
-  onAddClaudeTab: () => void
+  onAddAgentTab: (agentKind?: AgentKind) => void
+  defaultAgent: AgentKind
   onCloseTab: (tabId: string) => void
   onSplit: () => void
 }
@@ -123,7 +125,8 @@ export function TerminalPanel({
   registerSlot,
   onSelectTab,
   onAddTab,
-  onAddClaudeTab,
+  onAddAgentTab,
+  defaultAgent,
   onCloseTab,
   onSplit
 }: TerminalPanelProps): JSX.Element {
@@ -169,9 +172,16 @@ export function TerminalPanel({
               />
             ))}
           </SortableContext>
-          <Tooltip label="New Claude tab">
+          <Tooltip label={`New ${agentDisplayName(defaultAgent)} tab` + (AGENT_REGISTRY.length > 1 ? ` · ⌥-click for ${agentDisplayName(AGENT_REGISTRY.find((a) => a.kind !== defaultAgent)?.kind)}` : '')}>
             <button
-              onClick={onAddClaudeTab}
+              onClick={(e) => {
+                if (e.altKey && AGENT_REGISTRY.length > 1) {
+                  const other = AGENT_REGISTRY.find((a) => a.kind !== defaultAgent)
+                  onAddAgentTab(other?.kind)
+                } else {
+                  onAddAgentTab(defaultAgent)
+                }
+              }}
               className="no-drag shrink-0 px-2 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"
             >
               <Sparkles size={12} />

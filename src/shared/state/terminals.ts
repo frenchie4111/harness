@@ -10,10 +10,14 @@ export interface ShellActivity {
   processName?: string
 }
 
+export type AgentKind = 'claude' | 'codex'
+
 export interface TerminalTab {
   id: string
-  type: 'claude' | 'shell' | 'diff' | 'file'
+  type: 'agent' | 'shell' | 'diff' | 'file'
   label: string
+  /** For agent tabs: which CLI agent this tab runs. */
+  agentKind?: AgentKind
   /** For diff/file tabs: the file path */
   filePath?: string
   /** For diff tabs: whether the diff is for staged changes */
@@ -22,11 +26,11 @@ export interface TerminalTab {
   branchDiff?: boolean
   /** For diff tabs: when set, show this commit's full diff instead of a file diff */
   commitHash?: string
-  /** For claude tabs: UUID passed to `claude --session-id` so the tab resumes its own session. */
+  /** For agent tabs: UUID passed to the agent CLI so the tab resumes its own session. */
   sessionId?: string
-  /** For claude tabs: one-shot kickoff prompt. In-memory only — main strips it before persistence. */
+  /** For agent tabs: one-shot kickoff prompt. In-memory only — main strips it before persistence. */
   initialPrompt?: string
-  /** For claude tabs: one-shot teleport session id. In-memory only — main strips it before persistence. */
+  /** For agent tabs: one-shot teleport session id. In-memory only — main strips it before persistence. */
   teleportSessionId?: string
 }
 
@@ -77,6 +81,10 @@ export type TerminalsEvent =
   | {
       type: 'terminals/lastActiveChanged'
       payload: { worktreePath: string; ts: number }
+    }
+  | {
+      type: 'terminals/sessionIdDiscovered'
+      payload: { terminalId: string; sessionId: string }
     }
 
 export const initialTerminals: TerminalsState = {
@@ -158,6 +166,22 @@ export function terminalsReducer(
         ...state,
         lastActive: { ...state.lastActive, [worktreePath]: ts }
       }
+    }
+    case 'terminals/sessionIdDiscovered': {
+      const { terminalId, sessionId } = event.payload
+      const nextPanes: Record<string, WorkspacePane[]> = {}
+      let changed = false
+      for (const [path, paneList] of Object.entries(state.panes)) {
+        nextPanes[path] = paneList.map((pane) => ({
+          ...pane,
+          tabs: pane.tabs.map((tab) => {
+            if (tab.id !== terminalId || tab.sessionId) return tab
+            changed = true
+            return { ...tab, sessionId }
+          })
+        }))
+      }
+      return changed ? { ...state, panes: nextPanes } : state
     }
     default: {
       const _exhaustive: never = event

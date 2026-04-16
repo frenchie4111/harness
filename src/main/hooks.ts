@@ -34,9 +34,9 @@ export interface PendingTool {
 // defaults empty to `null`, then emits a single printf writing one line to
 // the append-mode file. A single write(2) under PIPE_BUF (4096 bytes) is
 // guaranteed atomic vs. other O_APPEND writers on POSIX.
-function makeHookCommand(event: string): string {
+export function makeHookCommand(event: string): string {
   const inner =
-    `h="$CLAUDE_HARNESS_ID"; [ -z "$h" ] && exit 0; ` +
+    `h="${'$HARNESS_TERMINAL_ID'}"; [ -z "$h" ] && h="$CLAUDE_HARNESS_ID"; [ -z "$h" ] && exit 0; ` +
     `d=${STATUS_DIR}; mkdir -p "$d"; ` +
     `p=$(cat); [ -z "$p" ] && p=null; ` +
     `printf "{\\"event\\":\\"${event}\\",\\"ts\\":%s,\\"payload\\":%s}\\n" ` +
@@ -203,6 +203,9 @@ const offsets = new Map<string, number>()
 // Left-over partial line from the last read (in case a write lands
 // between our read and the newline flush). Keyed by terminal id.
 const residual = new Map<string, string>()
+// Terminals whose session ID has already been discovered and dispatched.
+// Prevents repeated dispatches on every subsequent hook event.
+const sessionIdDiscovered = new Set<string>()
 
 export interface StopEvent {
   terminalId: string
@@ -280,6 +283,19 @@ function tailLog(terminalId: string, store: Store): void {
         continue
       }
       log('hooks', `event terminal=${terminalId} event=${ev.event}`)
+      // Discover the agent-assigned session ID from the first hook event
+      // that carries one. This is how Codex (and future agents that don't
+      // let you set the session ID up front) get their ID stored on the tab.
+      if (!sessionIdDiscovered.has(terminalId) && ev.payload) {
+        const sid = (ev.payload as Record<string, unknown>).session_id
+        if (typeof sid === 'string' && sid) {
+          sessionIdDiscovered.add(terminalId)
+          store.dispatch({
+            type: 'terminals/sessionIdDiscovered',
+            payload: { terminalId, sessionId: sid }
+          })
+        }
+      }
       emitStopIfRelevant(terminalId, ev)
       const update = deriveStatus(terminalId, ev)
       if (update) {
@@ -325,6 +341,7 @@ export function cleanupTerminalLog(terminalId: string): void {
   offsets.delete(terminalId)
   residual.delete(terminalId)
   lastPreTool.delete(terminalId)
+  sessionIdDiscovered.delete(terminalId)
   try {
     unlinkSync(join(STATUS_DIR, `${terminalId}.ndjson`))
   } catch {

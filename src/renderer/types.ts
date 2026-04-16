@@ -30,17 +30,19 @@ export interface FileDiffSides {
 }
 
 import type {
+  AgentKind,
   PtyStatus,
   PendingTool,
   TerminalTab,
   WorkspacePane
 } from '../shared/state/terminals'
-export type { PtyStatus, PendingTool, TerminalTab, WorkspacePane }
+export type { AgentKind, PtyStatus, PendingTool, TerminalTab, WorkspacePane }
 
 export interface PersistedTab {
   id: string
-  type: 'claude' | 'shell'
+  type: 'agent' | 'shell'
   label: string
+  agentKind?: AgentKind
   sessionId?: string
 }
 
@@ -203,6 +205,9 @@ export interface ElectronAPI {
     callback: (payload: { repoRoot: string; worktree: Worktree; initialPrompt?: string }) => void
   ): () => void
   setClaudeEnvVars(vars: Record<string, string>): Promise<boolean>
+  setDefaultAgent(agent: string): Promise<boolean>
+  setCodexCommand(command: string): Promise<boolean>
+  setCodexEnvVars(vars: Record<string, string>): Promise<boolean>
   setNameClaudeSessions(enabled: boolean): Promise<boolean>
   setTheme(theme: string): Promise<boolean>
   getAvailableThemes(): Promise<readonly string[]>
@@ -220,7 +225,7 @@ export interface ElectronAPI {
 
   panesAddTab(wtPath: string, tab: TerminalTab, paneId?: string): Promise<boolean>
   panesCloseTab(wtPath: string, tabId: string): Promise<boolean>
-  panesRestartClaudeTab(wtPath: string, tabId: string, newId: string): Promise<boolean>
+  panesRestartAgentTab(wtPath: string, tabId: string, newId: string): Promise<boolean>
   panesSelectTab(wtPath: string, paneId: string, tabId: string): Promise<boolean>
   panesReorderTabs(
     wtPath: string,
@@ -239,8 +244,13 @@ export interface ElectronAPI {
   panesEnsureInitialized(wtPath: string): Promise<boolean>
   getTerminalHistory(id: string): Promise<string>
   clearTerminalHistory(id: string): Promise<boolean>
-  claudeSessionFileExists(cwd: string, sessionId: string): Promise<boolean>
-  getLatestClaudeSessionId(cwd: string): Promise<string | null>
+  agentSessionFileExists(cwd: string, sessionId: string, agentKind?: AgentKind): Promise<boolean>
+  getLatestAgentSessionId(cwd: string, agentKind?: AgentKind): Promise<string | null>
+  buildAgentSpawnArgs(agentKind: string, opts: {
+    terminalId: string; cwd: string; sessionId?: string;
+    initialPrompt?: string; teleportSessionId?: string;
+    sessionName?: string
+  }): Promise<string>
 
   hasGithubToken(): Promise<boolean>
   setGithubToken(token: string): Promise<{ ok: boolean; username?: string; error?: string }>
@@ -268,7 +278,7 @@ export interface ElectronAPI {
     cwd: string,
     cmd: string,
     args: string[],
-    isClaude?: boolean,
+    agentKind?: AgentKind,
     cols?: number,
     rows?: number
   ): void

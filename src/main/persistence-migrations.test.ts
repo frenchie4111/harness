@@ -14,7 +14,12 @@ function runOne(from: number, config: AnyConfig): AnyConfig {
   return config
 }
 
-function tab(id: string, type: 'claude' | 'shell' = 'shell'): PersistedTab {
+function tab(id: string, type: 'agent' | 'shell' = 'shell', agentKind?: 'claude' | 'codex'): PersistedTab {
+  return { id, type, label: id, agentKind: type === 'agent' ? (agentKind ?? 'claude') : undefined }
+}
+
+/** Create a legacy tab with type 'claude' (pre-v4 format) for migration tests. */
+function legacyTab(id: string, type: 'claude' | 'shell' = 'shell'): Record<string, unknown> {
   return { id, type, label: id }
 }
 
@@ -76,7 +81,7 @@ describe('v1 → v2: terminalTabs → flat panes', () => {
     const c: AnyConfig = {
       terminalTabs: {
         '/wt/a': [tab('t1'), tab('t2')],
-        '/wt/b': [tab('t3', 'claude')]
+        '/wt/b': [legacyTab('t3', 'claude')]
       },
       activeTabId: { '/wt/a': 't2' }
     }
@@ -242,15 +247,47 @@ describe('v2 → v3: flat panes → nested by repoRoot', () => {
   })
 })
 
+describe('v3 → v4: tab type claude → agent + agentKind', () => {
+  it('migrates claude tabs to agent with agentKind: claude', () => {
+    const c: AnyConfig = {
+      panes: {
+        '/a/repo1': {
+          '/a/repo1': [pane('p1', [legacyTab('t1', 'claude') as unknown as PersistedTab, tab('t2', 'shell')])]
+        }
+      }
+    }
+    runOne(3, c)
+    const nested = c.panes as Record<string, Record<string, PersistedPane[]>>
+    const tabs = nested['/a/repo1']['/a/repo1'][0].tabs
+    expect(tabs[0].type).toBe('agent')
+    expect((tabs[0] as Record<string, unknown>).agentKind).toBe('claude')
+    expect(tabs[1].type).toBe('shell')
+    expect((tabs[1] as Record<string, unknown>).agentKind).toBeUndefined()
+  })
+
+  it('is a no-op on already-migrated tabs', () => {
+    const c: AnyConfig = {
+      panes: {
+        '/a/repo1': {
+          '/a/repo1': [pane('p1', [tab('t1', 'agent', 'claude')])]
+        }
+      }
+    }
+    const before = JSON.parse(JSON.stringify(c))
+    runOne(3, c)
+    expect(c).toEqual(before)
+  })
+})
+
 describe('runMigrations (end-to-end)', () => {
   it('runs every migration on a pristine v0 config', () => {
     const c: AnyConfig = {
       repoRoot: '/Users/mike/projects/harness',
       terminalTabs: {
-        '/Users/mike/projects/harness': [tab('main-t1', 'claude')],
+        '/Users/mike/projects/harness': [legacyTab('main-t1', 'claude')],
         '/Users/mike/projects/harness-worktrees/feature': [
-          tab('wt-t1', 'claude'),
-          tab('wt-t2', 'shell')
+          legacyTab('wt-t1', 'claude'),
+          legacyTab('wt-t2', 'shell')
         ]
       },
       activeTabId: {

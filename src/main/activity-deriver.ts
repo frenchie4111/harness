@@ -25,7 +25,7 @@ function aggregateWorktreeStatus(
   let worst: PtyStatus = 'idle'
   for (const pane of panes) {
     for (const tab of pane.tabs) {
-      if (tab.type !== 'claude' && tab.type !== 'shell') continue
+      if (tab.type !== 'agent' && tab.type !== 'shell') continue
       const s = state.terminals.statuses[tab.id]
       if (!s) continue
       if (STATUS_RANK[s] > STATUS_RANK[worst]) worst = s

@@ -1,5 +1,6 @@
 import { useCallback } from 'react'
-import type { TerminalTab, WorkspacePane } from '../types'
+import type { AgentKind, TerminalTab, WorkspacePane } from '../types'
+import { agentDisplayName, getAgentInfo } from '../../shared/agent-registry'
 import { focusTerminalById, markTerminalClosing } from '../components/XTerminal'
 
 /** Create a filesystem-safe terminal ID from a worktree path. */
@@ -46,12 +47,14 @@ export function useTabHandlers({
     [appendTabToPane]
   )
 
-  const handleAddClaudeTab = useCallback(
-    (worktreePath: string, paneId?: string) => {
-      const id = `${makeTerminalId('claude', worktreePath)}-${Date.now()}`
+  const handleAddAgentTab = useCallback(
+    (worktreePath: string, agentKind: AgentKind = 'claude', paneId?: string) => {
+      const label = agentDisplayName(agentKind)
+      const info = getAgentInfo(agentKind)
+      const id = `${makeTerminalId('agent', worktreePath)}-${Date.now()}`
       appendTabToPane(
         worktreePath,
-        { id, type: 'claude', label: 'Claude', sessionId: crypto.randomUUID() },
+        { id, type: 'agent', agentKind, label, sessionId: info.assignsSessionId ? crypto.randomUUID() : undefined },
         paneId
       )
     },
@@ -70,32 +73,29 @@ export function useTabHandlers({
     []
   )
 
-  const handleRestartClaudeTab = useCallback(
+  const handleRestartAgentTab = useCallback(
     (worktreePath: string, tabId: string) => {
       markTerminalClosing(tabId)
       window.api.killTerminal(tabId)
       window.api.clearTerminalHistory(tabId)
-      // Mint a new tab id so React remounts XTerminal and respawns the pty,
-      // but keep the existing sessionId so the new Claude resumes the same
-      // conversation via `--resume`.
-      const newId = `${makeTerminalId('claude', worktreePath)}-${Date.now()}`
-      void window.api.panesRestartClaudeTab(worktreePath, tabId, newId)
+      const newId = `${makeTerminalId('agent', worktreePath)}-${Date.now()}`
+      void window.api.panesRestartAgentTab(worktreePath, tabId, newId)
     },
     []
   )
 
-  const handleRestartAllClaudeTabs = useCallback(() => {
+  const handleRestartAllAgentTabs = useCallback(() => {
     for (const [worktreePath, paneList] of Object.entries(panes)) {
       for (const pane of paneList) {
         for (const tab of pane.tabs) {
-          if (tab.type === 'claude') {
-            handleRestartClaudeTab(worktreePath, tab.id)
+          if (tab.type === 'agent') {
+            handleRestartAgentTab(worktreePath, tab.id)
           }
         }
       }
     }
     void window.api.dismissHooksJustInstalled()
-  }, [panes, handleRestartClaudeTab])
+  }, [panes, handleRestartAgentTab])
 
   const handleSelectTab = useCallback(
     (worktreePath: string, paneId: string, tabId: string) => {
@@ -152,24 +152,24 @@ export function useTabHandlers({
     [setActivePaneId]
   )
 
-  const handleSendToClaude = useCallback(
+  const handleSendToAgent = useCallback(
     (worktreePath: string, text: string) => {
       const paneList = panes[worktreePath] || []
       let targetPaneId: string | undefined
       let targetTabId: string | undefined
-      // Prefer a pane whose active tab is already a claude tab
+      // Prefer a pane whose active tab is already an agent tab
       for (const pane of paneList) {
         const active = pane.tabs.find((t) => t.id === pane.activeTabId)
-        if (active?.type === 'claude') {
+        if (active?.type === 'agent') {
           targetPaneId = pane.id
           targetTabId = active.id
           break
         }
       }
-      // Otherwise pick the first claude tab we can find
+      // Otherwise pick the first agent tab we can find
       if (!targetTabId) {
         for (const pane of paneList) {
-          const c = pane.tabs.find((t) => t.type === 'claude')
+          const c = pane.tabs.find((t) => t.type === 'agent')
           if (c) {
             targetPaneId = pane.id
             targetTabId = c.id
@@ -240,16 +240,16 @@ export function useTabHandlers({
   return {
     appendTabToPane,
     handleAddTerminalTab,
-    handleAddClaudeTab,
+    handleAddAgentTab,
     handleCloseTab,
-    handleRestartClaudeTab,
-    handleRestartAllClaudeTabs,
+    handleRestartAgentTab,
+    handleRestartAllAgentTabs,
     handleSelectTab,
     handleOpenCommit,
     handleReorderTabs,
     handleMoveTabToPane,
     handleSplitPane,
-    handleSendToClaude,
+    handleSendToAgent,
     handleOpenFile,
     handleOpenDiff
   }

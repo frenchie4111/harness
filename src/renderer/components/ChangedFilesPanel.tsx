@@ -9,7 +9,7 @@ type Mode = 'working' | 'branch'
 interface ChangedFilesPanelProps {
   worktreePath: string | null
   onOpenDiff: (filePath: string, staged: boolean, mode: Mode) => void
-  onSendToClaude?: (text: string) => void
+  onSendToAgent?: (text: string) => void
 }
 
 const STATUS_LABEL: Record<ChangedFile['status'], string> = {
@@ -28,7 +28,7 @@ const STATUS_COLOR: Record<ChangedFile['status'], string> = {
   untracked: 'text-dim'
 }
 
-export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToClaude }: ChangedFilesPanelProps): JSX.Element {
+export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToAgent }: ChangedFilesPanelProps): JSX.Element {
   const [files, setFiles] = useState<ChangedFile[]>([])
   const [hasLoaded, setHasLoaded] = useState(false)
   const [mode, setMode] = useState<Mode>('working')
@@ -128,7 +128,7 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToClaude }: 
                 file={file}
                 worktreePath={worktreePath}
                 onClick={() => onOpenDiff(file.path, false, 'branch')}
-                onSendToClaude={onSendToClaude}
+                onSendToAgent={onSendToAgent}
               />
             ))}
           </div>
@@ -145,7 +145,7 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToClaude }: 
                 file={file}
                 worktreePath={worktreePath}
                 onClick={() => onOpenDiff(file.path, true, 'working')}
-                onSendToClaude={onSendToClaude}
+                onSendToAgent={onSendToAgent}
               />
             ))}
           </div>
@@ -162,7 +162,7 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToClaude }: 
                 file={file}
                 worktreePath={worktreePath}
                 onClick={() => onOpenDiff(file.path, false, 'working')}
-                onSendToClaude={onSendToClaude}
+                onSendToAgent={onSendToAgent}
               />
             ))}
           </div>
@@ -183,12 +183,12 @@ function FileRow({
   file,
   worktreePath,
   onClick,
-  onSendToClaude
+  onSendToAgent
 }: {
   file: ChangedFile
   worktreePath: string | null
   onClick: () => void
-  onSendToClaude?: (text: string) => void
+  onSendToAgent?: (text: string) => void
 }): JSX.Element {
   const lastSlash = file.path.lastIndexOf('/')
   const dir = lastSlash >= 0 ? file.path.slice(0, lastSlash + 1) : ''
@@ -217,12 +217,12 @@ function FileRow({
           )}
         </span>
       )}
-      {onSendToClaude && (
+      {onSendToAgent && (
         <Tooltip label="Reference in Claude" side="left">
           <button
             onClick={(e) => {
               e.stopPropagation()
-              onSendToClaude(`@${file.path} `)
+              onSendToAgent(`@${file.path} `)
             }}
             className="shrink-0 opacity-0 group-hover:opacity-100 text-faint hover:text-fg transition-all cursor-pointer"
           >

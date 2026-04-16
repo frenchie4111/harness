@@ -32,7 +32,7 @@ interface RightColumnProps {
   onOpenCommit: BranchCommitsPanelProps['onOpenCommit']
   onOpenDiff: ChangedFilesPanelProps['onOpenDiff']
   onOpenFile: AllFilesPanelProps['onOpenFile']
-  onSendToClaude: (worktreePath: string, text: string) => void
+  onSendToAgent: (worktreePath: string, text: string) => void
   onCollapse: () => void
 }
 
@@ -52,7 +52,7 @@ export function RightColumn({
   onOpenCommit,
   onOpenDiff,
   onOpenFile,
-  onSendToClaude,
+  onSendToAgent,
   onCollapse
 }: RightColumnProps): JSX.Element {
   const hidden = effectiveHiddenRightPanels(activeRepoConfig)
@@ -115,8 +115,8 @@ export function RightColumn({
             key="changedFiles"
             worktreePath={activeWorktreeId}
             onOpenDiff={onOpenDiff}
-            onSendToClaude={
-              activeWorktreeId ? (text) => onSendToClaude(activeWorktreeId, text) : undefined
+            onSendToAgent={
+              activeWorktreeId ? (text) => onSendToAgent(activeWorktreeId, text) : undefined
             }
           />
         )
@@ -126,8 +126,8 @@ export function RightColumn({
             key="allFiles"
             worktreePath={activeWorktreeId}
             onOpenFile={onOpenFile}
-            onSendToClaude={
-              activeWorktreeId ? (text) => onSendToClaude(activeWorktreeId, text) : undefined
+            onSendToAgent={
+              activeWorktreeId ? (text) => onSendToAgent(activeWorktreeId, text) : undefined
             }
           />
         )

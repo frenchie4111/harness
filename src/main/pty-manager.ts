@@ -125,7 +125,8 @@ export class PtyManager {
     const env = {
       ...process.env,
       ...(extraEnv || {}),
-      CLAUDE_HARNESS_ID: id
+      CLAUDE_HARNESS_ID: id,
+      HARNESS_TERMINAL_ID: id
     } as Record<string, string>
     const shell = command || env.SHELL || '/bin/zsh'
     let ptyProcess: pty.IPty
