@@ -1,11 +1,11 @@
-import { app, autoUpdater as nativeAutoUpdater, BrowserWindow, ipcMain, dialog, Menu, shell } from 'electron'
+import { app, autoUpdater as nativeAutoUpdater, BrowserWindow, dialog, Menu, shell } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import { existsSync, readdirSync, statSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 import { PtyManager } from './pty-manager'
 import { Store } from './store'
-import { registerStateTransport } from './transport-electron'
+import { ElectronServerTransport } from './transport-electron'
 import { PerfMonitor } from './perf-monitor'
 import { PRPoller } from './pr-poller'
 import { WorktreesFSM } from './worktrees-fsm'
@@ -77,7 +77,8 @@ let stopWatchingStatus: (() => void) | null = null
 
 const store = new Store(buildInitialAppState(config, { hasGithubToken: hasSecret('githubToken') }))
 const perfMonitor = new PerfMonitor()
-registerStateTransport(store, perfMonitor)
+const transport = new ElectronServerTransport(store, perfMonitor)
+transport.start()
 
 // Tails Claude Code session jsonl transcripts on Stop hook events,
 // sums per-model usage, and dispatches costs/usageUpdated. See
@@ -132,6 +133,7 @@ const prPoller = new PRPoller(store, {
 })
 
 ptyManager.setStore(store)
+ptyManager.setSendSignal((channel, ...args) => transport.sendSignal(channel, ...args))
 ptyManager.setPerfMonitor(perfMonitor)
 perfMonitor.start(store, () => ptyManager.getActivePtyCount())
 
@@ -358,7 +360,7 @@ function createWindow(): BrowserWindow {
 function registerIpcHandlers(): void {
   // Worktree handlers — every call takes an explicit repoRoot, since a single
   // window now shows worktrees from multiple repos at once.
-  ipcMain.handle('worktree:list', async (_, repoRoot: string) => {
+  transport.onRequest('worktree:list', async (repoRoot: string) => {
     if (!repoRoot) return []
     const trees = await listWorktrees(repoRoot)
     for (const wt of trees) {
@@ -367,7 +369,7 @@ function registerIpcHandlers(): void {
     return trees
   })
 
-  ipcMain.handle('worktree:branches', async (_, repoRoot: string) => {
+  transport.onRequest('worktree:branches', async (repoRoot: string) => {
     if (!repoRoot) return []
     return listBranches(repoRoot)
   })
@@ -375,36 +377,33 @@ function registerIpcHandlers(): void {
   // Worktree creation flows through the WorktreesFSM in main; main also
   // creates the default Claude+Shell pane pair (with the initial prompt
   // embedded) before the call returns. Renderer just awaits + focuses.
-  ipcMain.handle(
+  transport.onRequest(
     'worktrees:runPending',
-    async (
-      _,
-      params: {
-        id: string
-        repoRoot: string
-        branchName: string
-        initialPrompt?: string
-        teleportSessionId?: string
-      }
-    ) => {
+    async (params: {
+      id: string
+      repoRoot: string
+      branchName: string
+      initialPrompt?: string
+      teleportSessionId?: string
+    }) => {
       return worktreesFSM.runPending(params)
     }
   )
-  ipcMain.handle('worktrees:retryPending', async (_, id: string) => {
+  transport.onRequest('worktrees:retryPending', async (id: string) => {
     return worktreesFSM.retryPending(id)
   })
-  ipcMain.handle('worktrees:dismissPending', (_, id: string) => {
+  transport.onRequest('worktrees:dismissPending', (id: string) => {
     worktreesFSM.dismissPending(id)
     return true
   })
-  ipcMain.handle('worktrees:refreshList', async () => {
+  transport.onRequest('worktrees:refreshList', async () => {
     await worktreesFSM.refreshList()
     return true
   })
 
-  ipcMain.handle(
+  transport.onRequest(
     'worktree:continue',
-    async (_, repoRoot: string, worktreePath: string, newBranchName: string, baseBranch?: string) => {
+    async (repoRoot: string, worktreePath: string, newBranchName: string, baseBranch?: string) => {
       if (!repoRoot) throw new Error('No repo root provided')
       const mode = config.worktreeBase || DEFAULT_WORKTREE_BASE
       return continueWorktree(repoRoot, worktreePath, newBranchName, {
@@ -414,12 +413,11 @@ function registerIpcHandlers(): void {
     }
   )
 
-  ipcMain.handle('worktree:isDirty', async (_, path: string) => {
+  transport.onRequest('worktree:isDirty', async (path: string) => {
     return isWorktreeDirty(path)
   })
 
-  ipcMain.handle('worktree:remove', async (
-    _,
+  transport.onRequest('worktree:remove', async (
     repoRoot: string,
     path: string,
     force?: boolean,
@@ -456,22 +454,22 @@ function registerIpcHandlers(): void {
     return { queued: true }
   })
 
-  ipcMain.handle('worktree:dismissPendingDeletion', (_, path: string) => {
+  transport.onRequest('worktree:dismissPendingDeletion', (path: string) => {
     worktreeDeletionFSM.dismiss(path)
     return true
   })
 
-  ipcMain.handle('worktree:dir', async (_, repoRoot: string) => {
+  transport.onRequest('worktree:dir', async (repoRoot: string) => {
     if (!repoRoot) return ''
     return defaultWorktreeDir(repoRoot)
   })
 
-  ipcMain.handle('repo:list', () => {
+  transport.onRequest('repo:list', () => {
     return config.repoRoots
   })
 
-  ipcMain.handle('repo:add', async (event) => {
-    const win = BrowserWindow.fromWebContents(event.sender)
+  transport.onRequest('repo:add', async () => {
+    const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0]
     const result = await dialog.showOpenDialog(win!, {
       properties: ['openDirectory'],
       title: 'Open Git Repository'
@@ -492,7 +490,7 @@ function registerIpcHandlers(): void {
     return repoRoot
   })
 
-  ipcMain.handle('repo:remove', (_, repoRoot: string) => {
+  transport.onRequest('repo:remove', (repoRoot: string) => {
     const idx = config.repoRoots.indexOf(repoRoot)
     if (idx === -1) return false
     config.repoRoots.splice(idx, 1)
@@ -509,14 +507,13 @@ function registerIpcHandlers(): void {
   })
 
   // Changed files
-  ipcMain.handle('worktree:changedFiles', async (_, worktreePath: string, mode?: 'working' | 'branch') => {
+  transport.onRequest('worktree:changedFiles', async (worktreePath: string, mode?: 'working' | 'branch') => {
     return getChangedFiles(worktreePath, mode ?? 'working')
   })
 
-  ipcMain.handle(
+  transport.onRequest(
     'worktree:fileDiff',
     async (
-      _,
       worktreePath: string,
       filePath: string,
       staged: boolean,
@@ -526,25 +523,24 @@ function registerIpcHandlers(): void {
     }
   )
 
-  ipcMain.handle('worktree:listFiles', async (_, worktreePath: string) => {
+  transport.onRequest('worktree:listFiles', async (worktreePath: string) => {
     return listAllFiles(worktreePath)
   })
 
-  ipcMain.handle('worktree:readFile', async (_, worktreePath: string, filePath: string) => {
+  transport.onRequest('worktree:readFile', async (worktreePath: string, filePath: string) => {
     return readWorktreeFile(worktreePath, filePath)
   })
 
-  ipcMain.handle(
+  transport.onRequest(
     'worktree:writeFile',
-    async (_, worktreePath: string, filePath: string, contents: string) => {
+    async (worktreePath: string, filePath: string, contents: string) => {
       return writeWorktreeFile(worktreePath, filePath, contents)
     }
   )
 
-  ipcMain.handle(
+  transport.onRequest(
     'worktree:fileDiffSides',
     async (
-      _,
       worktreePath: string,
       filePath: string,
       staged: boolean,
@@ -554,11 +550,11 @@ function registerIpcHandlers(): void {
     }
   )
 
-  ipcMain.handle('worktree:branchCommits', async (_, worktreePath: string) => {
+  transport.onRequest('worktree:branchCommits', async (worktreePath: string) => {
     return getBranchCommits(worktreePath)
   })
 
-  ipcMain.handle('worktree:commitDiff', async (_, worktreePath: string, hash: string) => {
+  transport.onRequest('worktree:commitDiff', async (worktreePath: string, hash: string) => {
     return getCommitDiff(worktreePath, hash)
   })
 
@@ -566,42 +562,42 @@ function registerIpcHandlers(): void {
   // subscribe via the state event stream; these methods trigger on-demand
   // refreshes (new worktree created, window focus, worktree activate,
   // terminal entered 'waiting' state).
-  ipcMain.handle('prs:refreshAll', async () => {
+  transport.onRequest('prs:refreshAll', async () => {
     await prPoller.refreshAll()
     return true
   })
-  ipcMain.handle('prs:refreshAllIfStale', () => {
+  transport.onRequest('prs:refreshAllIfStale', () => {
     prPoller.refreshAllIfStale()
     return true
   })
-  ipcMain.handle('prs:refreshOne', async (_, worktreePath: string) => {
+  transport.onRequest('prs:refreshOne', async (worktreePath: string) => {
     await prPoller.refreshOne(worktreePath)
     return true
   })
-  ipcMain.handle('prs:refreshOneIfStale', (_, worktreePath: string) => {
+  transport.onRequest('prs:refreshOneIfStale', (worktreePath: string) => {
     prPoller.refreshOneIfStale(worktreePath)
     return true
   })
 
-  ipcMain.handle('worktree:mainStatus', async (_, repoRoot: string) => {
+  transport.onRequest('worktree:mainStatus', async (repoRoot: string) => {
     if (!repoRoot) throw new Error('No repo root provided')
     return getMainWorktreeStatus(repoRoot)
   })
 
-  ipcMain.handle('worktree:previewMerge', async (_, repoRoot: string, sourceBranch: string) => {
+  transport.onRequest('worktree:previewMerge', async (repoRoot: string, sourceBranch: string) => {
     if (!repoRoot) throw new Error('No repo root provided')
     const status = await getMainWorktreeStatus(repoRoot)
     return previewMergeConflicts(repoRoot, sourceBranch, status.baseBranch)
   })
 
-  ipcMain.handle('worktree:prepareMain', async (_, repoRoot: string) => {
+  transport.onRequest('worktree:prepareMain', async (repoRoot: string) => {
     if (!repoRoot) throw new Error('No repo root provided')
     return prepareMainForMerge(repoRoot)
   })
 
-  ipcMain.handle(
+  transport.onRequest(
     'worktree:mergeLocal',
-    async (_, repoRoot: string, sourceBranch: string, strategy: MergeStrategy) => {
+    async (repoRoot: string, sourceBranch: string, strategy: MergeStrategy) => {
       if (!repoRoot) throw new Error('No repo root provided')
       const result = await mergeWorktreeLocally(repoRoot, sourceBranch, strategy)
       // Record the branch as locally merged at its current tip sha. If new
@@ -625,21 +621,21 @@ function registerIpcHandlers(): void {
 
   // Config — the renderer reads via useSettings() etc.; only mutation
   // handlers and a few constant-accessors live on the IPC.
-  ipcMain.handle('config:setHotkeys', (_, hotkeys: Record<string, string>) => {
+  transport.onRequest('config:setHotkeys', (hotkeys: Record<string, string>) => {
     config.hotkeys = hotkeys
     saveConfig(config)
     store.dispatch({ type: 'settings/hotkeysChanged', payload: hotkeys })
     return true
   })
 
-  ipcMain.handle('config:resetHotkeys', () => {
+  transport.onRequest('config:resetHotkeys', () => {
     delete config.hotkeys
     saveConfig(config)
     store.dispatch({ type: 'settings/hotkeysChanged', payload: null })
     return true
   })
 
-  ipcMain.handle('config:setClaudeCommand', (_, command: string) => {
+  transport.onRequest('config:setClaudeCommand', (command: string) => {
     const trimmed = command.trim()
     if (!trimmed || trimmed === DEFAULT_CLAUDE_COMMAND) {
       delete config.claudeCommand
@@ -654,11 +650,11 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  ipcMain.handle('config:getDefaultClaudeCommand', () => {
+  transport.onRequest('config:getDefaultClaudeCommand', () => {
     return DEFAULT_CLAUDE_COMMAND
   })
 
-  ipcMain.handle('repoConfig:set', (_, repoRoot: string, next: Record<string, unknown>) => {
+  transport.onRequest('repoConfig:set', (repoRoot: string, next: Record<string, unknown>) => {
     if (!repoRoot) return null
     const current = loadRepoConfig(repoRoot)
     const merged: RepoConfig = { ...current }
@@ -677,9 +673,9 @@ function registerIpcHandlers(): void {
     return saved
   })
 
-  ipcMain.handle(
+  transport.onRequest(
     'config:setWorktreeScripts',
-    (_, scripts: { setup?: string; teardown?: string }) => {
+    (scripts: { setup?: string; teardown?: string }) => {
       const setup = (scripts?.setup || '').trim()
       const teardown = (scripts?.teardown || '').trim()
       if (setup) config.worktreeSetupCommand = setup
@@ -695,7 +691,7 @@ function registerIpcHandlers(): void {
     }
   )
 
-  ipcMain.handle('config:setClaudeEnvVars', (_, vars: Record<string, string>) => {
+  transport.onRequest('config:setClaudeEnvVars', (vars: Record<string, string>) => {
     const cleaned: Record<string, string> = {}
     if (vars && typeof vars === 'object') {
       for (const [rawKey, rawVal] of Object.entries(vars)) {
@@ -716,7 +712,7 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  ipcMain.handle('config:setAutoUpdateEnabled', (_, enabled: boolean) => {
+  transport.onRequest('config:setAutoUpdateEnabled', (enabled: boolean) => {
     if (enabled) {
       delete config.autoUpdateEnabled
     } else {
@@ -735,7 +731,7 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  ipcMain.handle('config:setHarnessMcpEnabled', (_, enabled: boolean) => {
+  transport.onRequest('config:setHarnessMcpEnabled', (enabled: boolean) => {
     if (enabled) {
       delete config.harnessMcpEnabled
     } else {
@@ -749,13 +745,13 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  ipcMain.handle('mcp:prepareForTerminal', (_, terminalId: string): string | null => {
+  transport.onRequest('mcp:prepareForTerminal', (terminalId: string): string | null => {
     if (config.harnessMcpEnabled === false) return null
     if (!terminalId) return null
     return writeMcpConfigForTerminal(terminalId)
   })
 
-  ipcMain.handle('config:setNameClaudeSessions', (_, enabled: boolean) => {
+  transport.onRequest('config:setNameClaudeSessions', (enabled: boolean) => {
     if (enabled) {
       config.nameClaudeSessions = true
     } else {
@@ -768,7 +764,7 @@ function registerIpcHandlers(): void {
     })
     return true
   })
-  ipcMain.handle('config:setTheme', (_, theme: string) => {
+  transport.onRequest('config:setTheme', (theme: string) => {
     if (!AVAILABLE_THEMES.includes(theme as (typeof AVAILABLE_THEMES)[number])) {
       return false
     }
@@ -782,7 +778,7 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  ipcMain.handle('config:setTerminalFontFamily', (_, fontFamily: string) => {
+  transport.onRequest('config:setTerminalFontFamily', (fontFamily: string) => {
     const trimmed = (fontFamily || '').trim()
     if (!trimmed || trimmed === DEFAULT_TERMINAL_FONT_FAMILY) {
       delete config.terminalFontFamily
@@ -797,9 +793,9 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  ipcMain.handle('config:getDefaultTerminalFontFamily', () => DEFAULT_TERMINAL_FONT_FAMILY)
+  transport.onRequest('config:getDefaultTerminalFontFamily', () => DEFAULT_TERMINAL_FONT_FAMILY)
 
-  ipcMain.handle('config:setTerminalFontSize', (_, fontSize: number) => {
+  transport.onRequest('config:setTerminalFontSize', (fontSize: number) => {
     const n = Number(fontSize)
     if (!Number.isFinite(n) || n < 8 || n > 48) return false
     const rounded = Math.round(n)
@@ -816,7 +812,7 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  ipcMain.handle('config:setEditor', (_, editorId: string) => {
+  transport.onRequest('config:setEditor', (editorId: string) => {
     if (!AVAILABLE_EDITORS.some((e) => e.id === editorId)) return false
     if (editorId === DEFAULT_EDITOR_ID) {
       delete config.editor
@@ -828,16 +824,16 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  ipcMain.handle('config:getAvailableEditors', () => {
+  transport.onRequest('config:getAvailableEditors', () => {
     return AVAILABLE_EDITORS.map(({ id, name }) => ({ id, name }))
   })
 
-  ipcMain.handle('editor:open', (_, worktreePath: string, filePath?: string) => {
+  transport.onRequest('editor:open', (worktreePath: string, filePath?: string) => {
     const editorId = config.editor || DEFAULT_EDITOR_ID
     return openInEditor(editorId, worktreePath, filePath)
   })
 
-  ipcMain.handle('config:setWorktreeBase', (_, mode: 'remote' | 'local') => {
+  transport.onRequest('config:setWorktreeBase', (mode: 'remote' | 'local') => {
     if (mode !== 'remote' && mode !== 'local') return false
     if (mode === DEFAULT_WORKTREE_BASE) {
       delete config.worktreeBase
@@ -849,9 +845,9 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  ipcMain.handle(
+  transport.onRequest(
     'config:setMergeStrategy',
-    (_, strategy: 'squash' | 'merge-commit' | 'fast-forward') => {
+    (strategy: 'squash' | 'merge-commit' | 'fast-forward') => {
       if (
         strategy !== 'squash' &&
         strategy !== 'merge-commit' &&
@@ -866,11 +862,11 @@ function registerIpcHandlers(): void {
     }
   )
 
-  ipcMain.handle('config:getAvailableThemes', () => {
+  transport.onRequest('config:getAvailableThemes', () => {
     return AVAILABLE_THEMES
   })
 
-  ipcMain.handle('config:setOnboardingQuest', (_, quest: string) => {
+  transport.onRequest('config:setOnboardingQuest', (quest: string) => {
     const valid = ['hidden', 'spawn-second', 'switch-between', 'finale', 'done']
     if (!valid.includes(quest)) return false
     config.onboarding = { ...(config.onboarding || {}), quest: quest as QuestStep }
@@ -885,42 +881,41 @@ function registerIpcHandlers(): void {
   // Pane / tab tree — fully main-owned via PanesFSM. Renderers call these
   // methods instead of computing pane state locally. ensureInitialized is
   // not exposed: main calls it directly from worktree creation paths.
-  ipcMain.handle(
+  transport.onRequest(
     'panes:addTab',
-    (_, wtPath: string, tab: TerminalTab, paneId?: string) => {
+    (wtPath: string, tab: TerminalTab, paneId?: string) => {
       panesFSM.addTab(wtPath, tab, paneId)
       return true
     }
   )
-  ipcMain.handle('panes:closeTab', (_, wtPath: string, tabId: string) => {
+  transport.onRequest('panes:closeTab', (wtPath: string, tabId: string) => {
     panesFSM.closeTab(wtPath, tabId)
     return true
   })
-  ipcMain.handle(
+  transport.onRequest(
     'panes:restartClaudeTab',
-    (_, wtPath: string, tabId: string, newId: string) => {
+    (wtPath: string, tabId: string, newId: string) => {
       panesFSM.restartClaudeTab(wtPath, tabId, newId)
       return true
     }
   )
-  ipcMain.handle(
+  transport.onRequest(
     'panes:selectTab',
-    (_, wtPath: string, paneId: string, tabId: string) => {
+    (wtPath: string, paneId: string, tabId: string) => {
       panesFSM.selectTab(wtPath, paneId, tabId)
       return true
     }
   )
-  ipcMain.handle(
+  transport.onRequest(
     'panes:reorderTabs',
-    (_, wtPath: string, paneId: string, fromId: string, toId: string) => {
+    (wtPath: string, paneId: string, fromId: string, toId: string) => {
       panesFSM.reorderTabs(wtPath, paneId, fromId, toId)
       return true
     }
   )
-  ipcMain.handle(
+  transport.onRequest(
     'panes:moveTabToPane',
     (
-      _,
       wtPath: string,
       tabId: string,
       toPaneId: string,
@@ -930,10 +925,10 @@ function registerIpcHandlers(): void {
       return true
     }
   )
-  ipcMain.handle('panes:splitPane', (_, wtPath: string, fromPaneId: string) => {
+  transport.onRequest('panes:splitPane', (wtPath: string, fromPaneId: string) => {
     return panesFSM.splitPane(wtPath, fromPaneId)
   })
-  ipcMain.handle('panes:clearForWorktree', (_, wtPath: string) => {
+  transport.onRequest('panes:clearForWorktree', (wtPath: string) => {
     panesFSM.clearForWorktree(wtPath)
     return true
   })
@@ -941,7 +936,7 @@ function registerIpcHandlers(): void {
   // worktree (sidebar click, hotkey, command palette). Boot-time sleep
   // skips merged worktrees, so this is the only path that wakes them.
   // No-op for paths that already have panes.
-  ipcMain.handle('panes:ensureInitialized', (_, wtPath: string) => {
+  transport.onRequest('panes:ensureInitialized', (wtPath: string) => {
     panesFSM.ensureInitialized(wtPath)
     return true
   })
@@ -950,15 +945,15 @@ function registerIpcHandlers(): void {
   // The activity-deriver in main now calls recordActivity directly when it
   // observes status changes; this IPC stays for any direct-from-renderer
   // pings that haven't been migrated yet.
-  ipcMain.on('activity:record', (_, worktreePath: string, state: ActivityState) => {
+  transport.onSignal('activity:record', (worktreePath: string, state: ActivityState) => {
     recordActivity(worktreePath, state)
   })
 
-  ipcMain.handle('activity:get', () => {
+  transport.onRequest('activity:get', () => {
     return getActivityLog()
   })
 
-  ipcMain.handle('activity:clear', (_, worktreePath?: string) => {
+  transport.onRequest('activity:clear', (worktreePath?: string) => {
     if (worktreePath) clearActivityForWorktree(worktreePath)
     else clearAllActivity()
     return true
@@ -968,11 +963,11 @@ function registerIpcHandlers(): void {
   // onData stream into a per-id ring buffer, persists it on a 30s cadence and
   // on before-quit, and hands it back here on request. Renderer replays it
   // into a fresh xterm instance before wiring up live data.
-  ipcMain.handle('terminal:getHistory', (_, id: string) => {
+  transport.onRequest('terminal:getHistory', (id: string) => {
     return ptyManager.getHistory(id)
   })
 
-  ipcMain.handle('terminal:forgetHistory', (_, id: string) => {
+  transport.onRequest('terminal:forgetHistory', (id: string) => {
     ptyManager.forgetHistory(id)
     return true
   })
@@ -981,7 +976,7 @@ function registerIpcHandlers(): void {
   // `<cwd>/<sessionId>.jsonl`. When it does, the tab should spawn with
   // `--resume <id>` instead of `--session-id <id>` — claude refuses the
   // latter on an existing session file with "is already in use".
-  ipcMain.handle('claude:sessionFileExists', (_, cwd: string, sessionId: string): boolean => {
+  transport.onRequest('claude:sessionFileExists', (cwd: string, sessionId: string): boolean => {
     try {
       const encoded = cwd.replace(/[^a-zA-Z0-9]/g, '-')
       return existsSync(join(homedir(), '.claude', 'projects', encoded, `${sessionId}.jsonl`))
@@ -995,16 +990,16 @@ function registerIpcHandlers(): void {
   // Used to migrate legacy Claude tabs (which resumed via `--continue`) onto
   // the new per-tab scheme without losing their session — the spawn path
   // uses `--resume` when the file exists.
-  ipcMain.handle('claude:latestSessionId', (_, cwd: string): string | null => {
+  transport.onRequest('claude:latestSessionId', (cwd: string): string | null => {
     return latestClaudeSessionId(cwd)
   })
 
   // Settings: GitHub token
-  ipcMain.handle('settings:hasGithubToken', () => {
+  transport.onRequest('settings:hasGithubToken', () => {
     return store.getSnapshot().state.settings.hasGithubToken
   })
 
-  ipcMain.handle('settings:setGithubToken', async (_, token: string) => {
+  transport.onRequest('settings:setGithubToken', async (token: string) => {
     const trimmed = token.trim()
     if (!trimmed) {
       deleteSecret('githubToken')
@@ -1027,7 +1022,7 @@ function registerIpcHandlers(): void {
     return { ok: true, username: test.username }
   })
 
-  ipcMain.handle('settings:clearGithubToken', async () => {
+  transport.onRequest('settings:clearGithubToken', async () => {
     deleteSecret('githubToken')
     store.dispatch({ type: 'settings/hasGithubTokenChanged', payload: false })
     invalidateTokenCache()
@@ -1037,7 +1032,7 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  ipcMain.handle('settings:setHarnessStarred', async (_, starred: boolean) => {
+  transport.onRequest('settings:setHarnessStarred', async (starred: boolean) => {
     const token = getCachedToken()
     if (!token) return { ok: false, error: 'No GitHub token' }
     const result = starred
@@ -1050,11 +1045,11 @@ function registerIpcHandlers(): void {
   })
 
   // Updater
-  ipcMain.handle('updater:getVersion', () => {
+  transport.onRequest('updater:getVersion', () => {
     return app.getVersion()
   })
 
-  ipcMain.handle('updater:checkForUpdates', async () => {
+  transport.onRequest('updater:checkForUpdates', async () => {
     if (!app.isPackaged) {
       return { ok: false, error: 'Updates are only available in packaged builds' }
     }
@@ -1085,7 +1080,7 @@ function registerIpcHandlers(): void {
     }
   })
 
-  ipcMain.handle('updater:quitAndInstall', () => {
+  transport.onRequest('updater:quitAndInstall', () => {
     log('updater', 'quitAndInstall requested — tearing down before handing off to Squirrel')
     try {
       stopWatchingStatus?.()
@@ -1118,7 +1113,7 @@ function registerIpcHandlers(): void {
   })
 
   // Performance monitor
-  ipcMain.handle('perf:getMetrics', () => perfMonitor.getMetrics())
+  transport.onRequest('perf:getMetrics', () => perfMonitor.getMetrics())
 
   // Hooks. check + install are no longer exposed: per-worktree installation
   // happens automatically in the store subscription (see
@@ -1128,7 +1123,7 @@ function registerIpcHandlers(): void {
   // Bulk-install hooks into every known worktree and flip consent='accepted'
   // + justInstalled=true in a single round trip. Replaces the old
   // renderer-side loop that walked worktrees one by one.
-  ipcMain.handle('hooks:acceptAll', async () => {
+  transport.onRequest('hooks:acceptAll', async () => {
     const roots = config.repoRoots || []
     for (const root of roots) {
       const trees = await listWorktrees(root).catch(() => [])
@@ -1141,61 +1136,49 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  ipcMain.handle('hooks:decline', () => {
+  transport.onRequest('hooks:decline', () => {
     store.dispatch({ type: 'hooks/consentChanged', payload: 'declined' })
     return true
   })
 
-  ipcMain.handle('hooks:dismissJustInstalled', () => {
+  transport.onRequest('hooks:dismissJustInstalled', () => {
     store.dispatch({ type: 'hooks/justInstalledChanged', payload: false })
     return true
   })
 
   // Shell
-  ipcMain.on('shell:openExternal', (_, url: string) => {
+  transport.onSignal('shell:openExternal', (url: string) => {
     shell.openExternal(url)
   })
 
-  // PTY handlers — route to the calling window
-  ipcMain.on('pty:create', (event, id: string, cwd: string, cmd: string, args: string[], isClaude?: boolean, cols?: number, rows?: number) => {
-    const win = BrowserWindow.fromWebContents(event.sender)
-    if (!win) return
+  transport.onSignal('pty:create', (id: string, cwd: string, cmd: string, args: string[], isClaude?: boolean, cols?: number, rows?: number) => {
     const extraEnv = isClaude ? config.claudeEnvVars : undefined
-    ptyManager.create(id, cwd, cmd, args, win, extraEnv, !isClaude, cols, rows)
+    ptyManager.create(id, cwd, cmd, args, extraEnv, !isClaude, cols, rows)
   })
 
-  ipcMain.on('pty:write', (_, id: string, data: string) => {
+  transport.onSignal('pty:write', (id: string, data: string) => {
     ptyManager.write(id, data)
   })
 
-  ipcMain.on('pty:resize', (_, id: string, cols: number, rows: number) => {
+  transport.onSignal('pty:resize', (id: string, cols: number, rows: number) => {
     ptyManager.resize(id, cols, rows)
   })
 
-  ipcMain.on('pty:kill', (_, id: string) => {
+  transport.onSignal('pty:kill', (id: string) => {
     ptyManager.kill(id)
   })
 }
 
 function openSettingsInFocusedWindow(): void {
-  const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0]
-  if (win && !win.isDestroyed()) {
-    win.webContents.send('app:openSettings')
-  }
+  transport.sendSignal('app:openSettings')
 }
 
 function togglePerfMonitorInFocusedWindow(): void {
-  const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0]
-  if (win && !win.isDestroyed()) {
-    win.webContents.send('app:togglePerfMonitor')
-  }
+  transport.sendSignal('app:togglePerfMonitor')
 }
 
 function openKeyboardShortcutsInFocusedWindow(): void {
-  const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0]
-  if (win && !win.isDestroyed()) {
-    win.webContents.send('app:openKeyboardShortcuts')
-  }
+  transport.sendSignal('app:openKeyboardShortcuts')
 }
 
 function buildMenu(): void {
@@ -1280,9 +1263,7 @@ function buildMenu(): void {
 }
 
 function broadcastToAllWindows(channel: string, ...args: unknown[]): void {
-  for (const win of BrowserWindow.getAllWindows()) {
-    if (!win.isDestroyed()) win.webContents.send(channel, ...args)
-  }
+  transport.sendSignal(channel, ...args)
 }
 
 function setupAutoUpdater(): void {
