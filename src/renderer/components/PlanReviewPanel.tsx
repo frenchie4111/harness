@@ -19,7 +19,7 @@ export function PlanReviewPanel({ planText, terminalId }: PlanReviewPanelProps):
 
   const handleReject = useCallback(() => {
     setResponding(true)
-    window.api.writeTerminal(terminalId, '2')
+    window.api.writeTerminal(terminalId, '\x1b')
   }, [terminalId])
 
   if (collapsed) {
