@@ -628,7 +628,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
                   )}
                   <div className="flex-1 min-w-0">
                     <div className="text-fg-bright text-sm font-medium">Pick a theme</div>
-                    <div className="text-xs text-dim mt-0.5">Applies instantly. Change it any time in Settings.</div>
+                    <div className="text-xs text-dim mt-0.5">Obviously the most important step. And for the love of god don't pick a light theme.</div>
                   </div>
                 </div>
                 <div className="grid grid-cols-3 gap-1.5 ml-8">
