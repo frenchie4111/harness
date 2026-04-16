@@ -1,10 +1,21 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
-import type { PerfMetrics } from '../types'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import type { PerfMetrics, PerfSample } from '../types'
+
+const COLOR_SUCCESS = '#4ade80'
+const COLOR_WARNING = '#fbbf24'
+const COLOR_ERROR = '#f87171'
+const COLOR_NEUTRAL = '#9ca3af'
 
 function statusColor(value: number, green: number, amber: number): string {
   if (value < green) return 'text-success'
   if (value < amber) return 'text-warning'
   return 'text-error'
+}
+
+function statusColorHex(value: number, green: number, amber: number): string {
+  if (value < green) return COLOR_SUCCESS
+  if (value < amber) return COLOR_WARNING
+  return COLOR_ERROR
 }
 
 function fpsColor(fps: number): string {
@@ -14,7 +25,7 @@ function fpsColor(fps: number): string {
 }
 
 function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B/s`
+  if (bytes < 1024) return `${Math.round(bytes)} B/s`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB/s`
   return `${(bytes / 1024 / 1024).toFixed(1)} MB/s`
 }
@@ -26,14 +37,123 @@ function formatUptime(seconds: number): string {
   return `${m}m ${seconds % 60}s`
 }
 
-function dedupeEventTypes(types: string[]): Array<{ type: string; count: number }> {
-  const counts = new Map<string, number>()
-  for (const t of types) {
-    counts.set(t, (counts.get(t) || 0) + 1)
+type WindowMode = '1s' | '10s'
+
+function downsample(samples: PerfSample[], bucketSize: number): PerfSample[] {
+  if (bucketSize <= 1 || samples.length === 0) return samples
+  const out: PerfSample[] = []
+  for (let i = 0; i < samples.length; i += bucketSize) {
+    const bucket = samples.slice(i, i + bucketSize)
+    if (bucket.length === 0) continue
+    const n = bucket.length
+    const mergedEventCounts: Record<string, number> = {}
+    let storeSum = 0
+    let ipcSum = 0
+    let termSum = 0
+    let lagSum = 0
+    let rssSum = 0
+    let heapUsedSum = 0
+    let heapTotalSum = 0
+    for (const s of bucket) {
+      storeSum += s.storeEventsPerSec
+      ipcSum += s.ipcMessagesPerSec
+      termSum += s.totalTerminalBytesPerSec
+      lagSum += s.eventLoopLagMs
+      rssSum += s.memoryRssMB
+      heapUsedSum += s.memoryHeapUsedMB
+      heapTotalSum += s.memoryHeapTotalMB
+      for (const [k, v] of Object.entries(s.eventTypeCounts)) {
+        mergedEventCounts[k] = (mergedEventCounts[k] || 0) + v
+      }
+    }
+    // Averages across the bucket — each source sample is already a /sec rate,
+    // so the average is still in units of /sec.
+    const avgEventCounts: Record<string, number> = {}
+    for (const [k, v] of Object.entries(mergedEventCounts)) {
+      avgEventCounts[k] = v / n
+    }
+    out.push({
+      t: bucket[bucket.length - 1].t,
+      storeEventsPerSec: storeSum / n,
+      ipcMessagesPerSec: ipcSum / n,
+      totalTerminalBytesPerSec: termSum / n,
+      eventLoopLagMs: lagSum / n,
+      memoryRssMB: rssSum / n,
+      memoryHeapUsedMB: heapUsedSum / n,
+      memoryHeapTotalMB: heapTotalSum / n,
+      eventTypeCounts: avgEventCounts,
+    })
   }
-  return Array.from(counts.entries())
-    .map(([type, count]) => ({ type, count }))
-    .sort((a, b) => b.count - a.count)
+  return out
+}
+
+function aggregateEventTypes(
+  samples: PerfSample[]
+): Array<{ type: string; perSec: number }> {
+  if (samples.length === 0) return []
+  const totals = new Map<string, number>()
+  for (const s of samples) {
+    for (const [type, count] of Object.entries(s.eventTypeCounts)) {
+      totals.set(type, (totals.get(type) || 0) + count)
+    }
+  }
+  return Array.from(totals.entries())
+    .map(([type, count]) => ({ type, perSec: count / samples.length }))
+    .filter((e) => e.perSec > 0)
+    .sort((a, b) => b.perSec - a.perSec)
+}
+
+function formatPerSec(value: number): string {
+  if (value >= 10) return `${value.toFixed(0)}/s`
+  if (value >= 1) return `${value.toFixed(1)}/s`
+  return `${value.toFixed(2)}/s`
+}
+
+interface SparklineProps {
+  data: number[]
+  color: string
+  width?: number
+  height?: number
+}
+
+function Sparkline({
+  data,
+  color,
+  width = 72,
+  height = 16,
+}: SparklineProps): JSX.Element {
+  if (data.length < 2) {
+    return (
+      <svg
+        width={width}
+        height={height}
+        style={{ display: 'block', opacity: 0.3 }}
+      >
+        <line
+          x1={0}
+          x2={width}
+          y1={height - 1}
+          y2={height - 1}
+          stroke={color}
+          strokeWidth={1}
+        />
+      </svg>
+    )
+  }
+  const max = Math.max(...data, 1)
+  const stepX = width / (data.length - 1)
+  const points = data
+    .map((v, i) => {
+      const x = i * stepX
+      const y = height - 1 - (v / max) * (height - 2)
+      return `${x.toFixed(1)},${y.toFixed(1)}`
+    })
+    .join(' ')
+  return (
+    <svg width={width} height={height} style={{ display: 'block' }}>
+      <polyline points={points} fill="none" stroke={color} strokeWidth={1} />
+    </svg>
+  )
 }
 
 interface Props {
@@ -44,11 +164,11 @@ export function PerfMonitorHUD({ onClose }: Props): JSX.Element {
   const [metrics, setMetrics] = useState<PerfMetrics | null>(null)
   const [fps, setFps] = useState(60)
   const [rendererMemoryMB, setRendererMemoryMB] = useState(0)
+  const [windowMode, setWindowMode] = useState<WindowMode>('1s')
   const frameCountRef = useRef(0)
   const lastFpsTimeRef = useRef(performance.now())
   const rafRef = useRef(0)
 
-  // FPS counter via requestAnimationFrame
   useEffect(() => {
     let running = true
     const tick = (): void => {
@@ -70,7 +190,6 @@ export function PerfMonitorHUD({ onClose }: Props): JSX.Element {
     }
   }, [])
 
-  // Poll main-process metrics every 1 second
   useEffect(() => {
     let active = true
     const poll = async (): Promise<void> => {
@@ -90,7 +209,6 @@ export function PerfMonitorHUD({ onClose }: Props): JSX.Element {
     }
   }, [])
 
-  // Renderer memory (Chrome-only API)
   useEffect(() => {
     const update = (): void => {
       const perf = performance as { memory?: { usedJSHeapSize: number } }
@@ -111,7 +229,18 @@ export function PerfMonitorHUD({ onClose }: Props): JSX.Element {
     [onClose]
   )
 
-  const recentEvents = metrics ? dedupeEventTypes(metrics.recentEventTypes) : []
+  const windowed = useMemo(() => {
+    const history = metrics?.history ?? []
+    return windowMode === '10s' ? downsample(history, 10) : history
+  }, [metrics, windowMode])
+
+  const eventRows = useMemo(() => aggregateEventTypes(windowed), [windowed])
+
+  const storeSeries = windowed.map((s) => s.storeEventsPerSec)
+  const ipcSeries = windowed.map((s) => s.ipcMessagesPerSec)
+  const termSeries = windowed.map((s) => s.totalTerminalBytesPerSec)
+  const lagSeries = windowed.map((s) => s.eventLoopLagMs)
+  const memSeries = windowed.map((s) => s.memoryRssMB)
 
   return (
     <div
@@ -119,7 +248,7 @@ export function PerfMonitorHUD({ onClose }: Props): JSX.Element {
         position: 'fixed',
         bottom: 16,
         right: 16,
-        width: 320,
+        width: 360,
         zIndex: 9999,
         pointerEvents: 'auto',
         fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace',
@@ -134,7 +263,6 @@ export function PerfMonitorHUD({ onClose }: Props): JSX.Element {
       }}
       tabIndex={-1}
     >
-      {/* Header */}
       <div
         style={{
           display: 'flex',
@@ -150,79 +278,117 @@ export function PerfMonitorHUD({ onClose }: Props): JSX.Element {
         }}
       >
         <span>Performance</span>
-        <button
-          onClick={handleClose}
-          style={{
-            background: 'none',
-            border: 'none',
-            color: '#999',
-            cursor: 'pointer',
-            fontSize: 14,
-            lineHeight: 1,
-            padding: '0 2px',
-          }}
-          tabIndex={-1}
-        >
-          &times;
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <WindowToggle mode={windowMode} onChange={setWindowMode} />
+          <button
+            onClick={handleClose}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#999',
+              cursor: 'pointer',
+              fontSize: 14,
+              lineHeight: 1,
+              padding: '0 2px',
+            }}
+            tabIndex={-1}
+          >
+            &times;
+          </button>
+        </div>
       </div>
 
-      {/* Metrics rows */}
       <div style={{ padding: '4px 10px 6px' }}>
-        <Row label="FPS" value={String(fps)} className={fpsColor(fps)} />
+        <Row label="FPS" value={String(fps)} valueClassName={fpsColor(fps)} />
         <Row
           label="Event loop"
           value={metrics ? `${metrics.eventLoopLagMs}ms` : '—'}
-          className={metrics ? statusColor(metrics.eventLoopLagMs, 10, 50) : ''}
+          valueClassName={metrics ? statusColor(metrics.eventLoopLagMs, 10, 50) : ''}
+          sparkData={lagSeries}
+          sparkColor={
+            metrics ? statusColorHex(metrics.eventLoopLagMs, 10, 50) : COLOR_NEUTRAL
+          }
         />
         <Row
           label="Store events"
           value={metrics ? `${metrics.storeEventsPerSec}/sec` : '—'}
-          className={metrics ? statusColor(metrics.storeEventsPerSec, 20, 100) : ''}
+          valueClassName={
+            metrics ? statusColor(metrics.storeEventsPerSec, 20, 100) : ''
+          }
+          sparkData={storeSeries}
+          sparkColor={
+            metrics
+              ? statusColorHex(metrics.storeEventsPerSec, 20, 100)
+              : COLOR_NEUTRAL
+          }
         />
         <Row
           label="IPC messages"
           value={metrics ? `${metrics.ipcMessagesPerSec}/sec` : '—'}
-          className={metrics ? statusColor(metrics.ipcMessagesPerSec, 30, 150) : ''}
+          valueClassName={
+            metrics ? statusColor(metrics.ipcMessagesPerSec, 30, 150) : ''
+          }
+          sparkData={ipcSeries}
+          sparkColor={
+            metrics
+              ? statusColorHex(metrics.ipcMessagesPerSec, 30, 150)
+              : COLOR_NEUTRAL
+          }
         />
         <Row
           label="Terminal data"
           value={metrics ? formatBytes(metrics.totalTerminalBytesPerSec) : '—'}
-          className={
+          valueClassName={
             metrics
               ? statusColor(metrics.totalTerminalBytesPerSec, 100 * 1024, 1024 * 1024)
               : ''
+          }
+          sparkData={termSeries}
+          sparkColor={
+            metrics
+              ? statusColorHex(
+                  metrics.totalTerminalBytesPerSec,
+                  100 * 1024,
+                  1024 * 1024
+                )
+              : COLOR_NEUTRAL
           }
         />
         <Row
           label="Active PTYs"
           value={metrics ? String(metrics.activePtyCount) : '—'}
-          className=""
+          valueClassName=""
         />
         <Row
           label="Memory (main)"
           value={metrics ? `${metrics.memoryMB.rss} MB` : '—'}
-          className={metrics ? statusColor(metrics.memoryMB.rss, 200, 500) : ''}
+          valueClassName={metrics ? statusColor(metrics.memoryMB.rss, 200, 500) : ''}
+          sparkData={memSeries}
+          sparkColor={
+            metrics ? statusColorHex(metrics.memoryMB.rss, 200, 500) : COLOR_NEUTRAL
+          }
         />
         <Row
           label="Memory (render)"
           value={`${rendererMemoryMB} MB`}
-          className={statusColor(rendererMemoryMB, 200, 500)}
+          valueClassName={statusColor(rendererMemoryMB, 200, 500)}
         />
         <Row
           label="Uptime"
           value={metrics ? formatUptime(metrics.uptimeSeconds) : '—'}
-          className=""
+          valueClassName=""
         />
 
-        {/* Recent events */}
-        {recentEvents.length > 0 && (
+        {eventRows.length > 0 && (
           <>
             <div
               style={{
                 marginTop: 6,
                 paddingTop: 6,
                 borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'baseline',
                 fontSize: 10,
                 color: '#777',
                 textTransform: 'uppercase',
@@ -230,10 +396,13 @@ export function PerfMonitorHUD({ onClose }: Props): JSX.Element {
                 marginBottom: 2,
               }}
             >
-              Recent events
+              <span>Events by type</span>
+              <span style={{ fontSize: 9, textTransform: 'none', color: '#555' }}>
+                avg /sec over {windowed.length}{windowMode === '10s' ? '×10s' : 's'}
+              </span>
             </div>
-            <div style={{ maxHeight: 100, overflowY: 'auto' }}>
-              {recentEvents.slice(0, 10).map((e) => (
+            <div style={{ maxHeight: 120, overflowY: 'auto' }}>
+              {eventRows.slice(0, 12).map((e) => (
                 <div
                   key={e.type}
                   style={{
@@ -242,11 +411,29 @@ export function PerfMonitorHUD({ onClose }: Props): JSX.Element {
                     padding: '1px 0',
                   }}
                 >
-                  <span style={{ color: '#aaa', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginRight: 8 }}>
+                  <span
+                    style={{
+                      color: '#aaa',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      marginRight: 8,
+                    }}
+                  >
                     {e.type}
                   </span>
-                  <span style={{ color: e.count > 10 ? '#f87171' : e.count > 3 ? '#fbbf24' : '#9ca3af', flexShrink: 0 }}>
-                    &times;{e.count}
+                  <span
+                    style={{
+                      color:
+                        e.perSec > 10
+                          ? COLOR_ERROR
+                          : e.perSec > 3
+                            ? COLOR_WARNING
+                            : COLOR_NEUTRAL,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {formatPerSec(e.perSec)}
                   </span>
                 </div>
               ))}
@@ -258,19 +445,92 @@ export function PerfMonitorHUD({ onClose }: Props): JSX.Element {
   )
 }
 
+function WindowToggle({
+  mode,
+  onChange,
+}: {
+  mode: WindowMode
+  onChange: (m: WindowMode) => void
+}): JSX.Element {
+  const base: React.CSSProperties = {
+    background: 'none',
+    border: '1px solid rgba(255, 255, 255, 0.15)',
+    color: '#777',
+    cursor: 'pointer',
+    fontSize: 10,
+    lineHeight: 1,
+    padding: '2px 5px',
+    fontFamily: 'inherit',
+    textTransform: 'none',
+    letterSpacing: 0,
+  }
+  const active: React.CSSProperties = {
+    ...base,
+    color: '#e0e0e0',
+    background: 'rgba(255, 255, 255, 0.08)',
+  }
+  return (
+    <div style={{ display: 'flex', gap: 2 }}>
+      <button
+        onClick={() => onChange('1s')}
+        style={mode === '1s' ? active : base}
+        tabIndex={-1}
+      >
+        1s
+      </button>
+      <button
+        onClick={() => onChange('10s')}
+        style={mode === '10s' ? active : base}
+        tabIndex={-1}
+      >
+        10s
+      </button>
+    </div>
+  )
+}
+
 function Row({
   label,
   value,
-  className,
+  valueClassName,
+  sparkData,
+  sparkColor,
 }: {
   label: string
   value: string
-  className: string
+  valueClassName: string
+  sparkData?: number[]
+  sparkColor?: string
 }): JSX.Element {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0' }}>
-      <span style={{ color: '#999' }}>{label}</span>
-      <span className={className}>{value}</span>
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '1px 0',
+        gap: 8,
+      }}
+    >
+      <span style={{ color: '#999', flexShrink: 0 }}>{label}</span>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          minWidth: 0,
+        }}
+      >
+        {sparkData && (
+          <Sparkline data={sparkData} color={sparkColor || COLOR_NEUTRAL} />
+        )}
+        <span
+          className={valueClassName}
+          style={{ minWidth: 68, textAlign: 'right' }}
+        >
+          {value}
+        </span>
+      </div>
     </div>
   )
 }
