@@ -21,7 +21,7 @@ interface Section {
 
 const SECTIONS: Section[] = [
   { id: 'appearance', label: 'Appearance', icon: Palette },
-  { id: 'claude', label: 'Claude', icon: TerminalIcon },
+  { id: 'agent', label: 'Agent', icon: TerminalIcon },
   { id: 'worktrees', label: 'Worktrees', icon: GitBranch },
   { id: 'editor', label: 'Editor', icon: Code2 },
   { id: 'github', label: 'GitHub', icon: GitPullRequest },
@@ -157,9 +157,12 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
   const {
     theme,
     hotkeys: hotkeyOverrides,
+    defaultAgent,
     claudeCommand,
+    codexCommand,
     harnessMcpEnabled,
     claudeEnvVars,
+    codexEnvVars,
     nameClaudeSessions,
     terminalFontFamily,
     terminalFontSize,
@@ -741,11 +744,34 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
               </div>
             </section>
 
-            {/* Claude section */}
-            <section ref={(el) => { sectionRefs.current.claude = el }} id="claude">
-              <h2 className="text-lg font-semibold text-fg-bright mb-1">Claude</h2>
+            {/* Agent section */}
+            <section ref={(el) => { sectionRefs.current.agent = el }} id="agent">
+              <h2 className="text-lg font-semibold text-fg-bright mb-1">Agent</h2>
+
+              <div className="bg-panel-raised border border-border rounded-lg p-4 mb-4">
+                <label className="block text-sm font-medium text-fg mb-2">Default agent</label>
+                <p className="text-xs text-dim mb-3">
+                  Choose which AI coding agent Harness launches in new tabs.
+                </p>
+                <div className="flex gap-2">
+                  {(['claude', 'codex'] as const).map((kind) => (
+                    <button
+                      key={kind}
+                      onClick={() => window.api.setDefaultAgent(kind)}
+                      className={`px-4 py-2 rounded text-sm font-medium transition-colors cursor-pointer ${
+                        defaultAgent === kind
+                          ? 'bg-surface text-fg-bright border border-fg'
+                          : 'bg-panel border border-border text-dim hover:text-fg hover:border-border-strong'
+                      }`}
+                    >
+                      {kind === 'claude' ? 'Claude' : 'Codex'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <p className="text-sm text-dim mb-4">
-                The shell command run inside each Claude tab. The command is executed via{' '}
+                The shell command run inside each {defaultAgent === 'codex' ? 'Codex' : 'Claude'} tab. The command is executed via{' '}
                 <code className="bg-panel-raised px-1 rounded text-xs">/bin/zsh -ilc</code>{' '}
                 so your full PATH and shell config are available.
               </p>
