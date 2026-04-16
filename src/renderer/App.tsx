@@ -6,6 +6,7 @@ import { useHotkeyHandlers } from './hooks/useHotkeyHandlers'
 import { useWorktreeHandlers } from './hooks/useWorktreeHandlers'
 import type { Worktree, TerminalTab, PtyStatus, PendingTool, QuestStep, PendingWorktree, UpdaterStatus, RepoConfig } from './types'
 import { CheckCircle2, FolderOpen } from 'lucide-react'
+import { THEME_OPTIONS } from './themes'
 import { HotkeysProvider, Tooltip } from './components/Tooltip'
 import { Sidebar } from './components/Sidebar'
 import { ResizeHandle } from './components/ResizeHandle'
@@ -180,12 +181,13 @@ export default function App(): JSX.Element {
   const [commandPaletteMode, setCommandPaletteMode] = useState<'root' | 'files'>('root')
   const [showPerfMonitor, setShowPerfMonitor] = useState(false)
   const [showHotkeyCheatsheet, setShowHotkeyCheatsheet] = useState(false)
-  // `defaultAgent` is seeded to 'claude' at init, so we track explicit
-  // confirmation separately for the onboarding step checkmark.
+  // `theme` and `defaultAgent` are both seeded at init, so we track
+  // explicit confirmation separately for the onboarding step checkmarks.
+  const [themeChosen, setThemeChosen] = useState(false)
   const [agentChosen, setAgentChosen] = useState(false)
   const tailLines = useTailLineBuffer()
   const settings = useSettings()
-  const { hasGithubToken: hasGithubPat, githubAuthSource, nameClaudeSessions, defaultAgent } = settings
+  const { hasGithubToken: hasGithubPat, githubAuthSource, nameClaudeSessions, defaultAgent, theme: activeTheme } = settings
   const nameAgentSessions = nameClaudeSessions
   const hasGithubToken = hasGithubPat || githubAuthSource === 'gh-cli'
   const hotkeyOverrides = settings.hotkeys ?? undefined
@@ -529,8 +531,10 @@ const setQuestStep = useCallback((next: QuestStep) => {
   ) : null
 
   if (repoRoots.length === 0) {
-    const step1Complete = agentChosen
+    const step1Complete = themeChosen
     const step2Enabled = step1Complete
+    const step2Complete = step1Complete && agentChosen
+    const step3Enabled = step2Complete
     return (
       <HotkeysProvider bindings={resolvedHotkeys}>
       <div className="flex h-full flex-col">
@@ -623,6 +627,64 @@ const setQuestStep = useCallback((next: QuestStep) => {
                     </div>
                   )}
                   <div className="flex-1 min-w-0">
+                    <div className="text-fg-bright text-sm font-medium">Pick a theme</div>
+                    <div className="text-xs text-dim mt-0.5">Applies instantly. Change it any time in Settings.</div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-1.5 ml-8">
+                  {THEME_OPTIONS.map((opt) => {
+                    const isActive = activeTheme === opt.id && themeChosen
+                    return (
+                      <button
+                        key={opt.id}
+                        onClick={() => {
+                          window.api.setTheme(opt.id)
+                          setThemeChosen(true)
+                        }}
+                        className={`flex items-center gap-2 px-2 py-1.5 rounded-lg border transition-colors cursor-pointer ${
+                          isActive
+                            ? 'bg-surface text-fg-bright border-fg'
+                            : 'bg-panel border-border text-dim hover:text-fg hover:border-border-strong'
+                        }`}
+                      >
+                        <div className="flex gap-0.5 shrink-0">
+                          {opt.swatches.map((c) => (
+                            <span
+                              key={c}
+                              className="w-2.5 h-2.5 rounded-sm border border-border-strong"
+                              style={{ backgroundColor: c }}
+                            />
+                          ))}
+                        </div>
+                        <span className="text-[11px] font-medium truncate">{opt.label}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div
+                className={`rounded-xl border bg-panel p-4 transition-colors ${
+                  !step2Enabled
+                    ? 'border-border opacity-60'
+                    : step2Complete
+                      ? 'border-border'
+                      : 'border-accent/50 ring-1 ring-accent/25'
+                }`}
+              >
+                <div className="flex items-start gap-3 mb-3">
+                  {step2Complete ? (
+                    <CheckCircle2 className="w-5 h-5 text-success shrink-0 mt-0.5" />
+                  ) : (
+                    <div
+                      className={`w-5 h-5 rounded-full border-2 text-[11px] font-bold flex items-center justify-center shrink-0 mt-0.5 ${
+                        step2Enabled ? 'border-accent text-accent' : 'border-border-strong text-dim'
+                      }`}
+                    >
+                      2
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
                     <div className="text-fg-bright text-sm font-medium">Choose your default agent</div>
                     <div className="text-xs text-dim mt-0.5">This is what new tabs will spawn. You can change it later in Settings.</div>
                   </div>
@@ -632,13 +694,17 @@ const setQuestStep = useCallback((next: QuestStep) => {
                     <button
                       key={agent.kind}
                       onClick={() => {
+                        if (!step2Enabled) return
                         window.api.setDefaultAgent(agent.kind)
                         setAgentChosen(true)
                       }}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
+                      disabled={!step2Enabled}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                         defaultAgent === agent.kind && agentChosen
-                          ? 'bg-surface text-fg-bright border border-fg'
-                          : 'bg-panel border border-border text-dim hover:text-fg hover:border-border-strong'
+                          ? 'bg-surface text-fg-bright border border-fg cursor-pointer'
+                          : step2Enabled
+                            ? 'bg-panel border border-border text-dim hover:text-fg hover:border-border-strong cursor-pointer'
+                            : 'bg-panel border border-border text-dim cursor-not-allowed'
                       }`}
                     >
                       <AgentIcon kind={agent.kind} size={14} />
@@ -650,7 +716,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
 
               <div
                 className={`rounded-xl border bg-panel p-4 transition-colors ${
-                  !step2Enabled
+                  !step3Enabled
                     ? 'border-border opacity-60'
                     : 'border-accent/50 ring-1 ring-accent/25'
                 }`}
@@ -658,10 +724,10 @@ const setQuestStep = useCallback((next: QuestStep) => {
                 <div className="flex items-start gap-3 mb-3">
                   <div
                     className={`w-5 h-5 rounded-full border-2 text-[11px] font-bold flex items-center justify-center shrink-0 mt-0.5 ${
-                      step2Enabled ? 'border-accent text-accent' : 'border-border-strong text-dim'
+                      step3Enabled ? 'border-accent text-accent' : 'border-border-strong text-dim'
                     }`}
                   >
-                    2
+                    3
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-fg-bright text-sm font-medium">Open a git repository</div>
@@ -671,9 +737,9 @@ const setQuestStep = useCallback((next: QuestStep) => {
                 <div className="ml-8">
                   <button
                     onClick={handleAddRepo}
-                    disabled={!step2Enabled}
+                    disabled={!step3Enabled}
                     className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      step2Enabled
+                      step3Enabled
                         ? 'bg-accent/20 hover:bg-accent/30 text-fg-bright border border-accent/40 cursor-pointer'
                         : 'bg-panel border border-border text-dim cursor-not-allowed'
                     }`}
