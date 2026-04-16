@@ -1,5 +1,6 @@
 import { X, Sparkles, Zap, PartyPopper } from 'lucide-react'
 import type { QuestStep } from '../types'
+import { HotkeyBadge } from './HotkeyBadge'
 
 interface QuestCardProps {
   step: QuestStep
@@ -19,7 +20,7 @@ export function QuestCard({ step, onDismiss, onFinish }: QuestCardProps): JSX.El
         body: 'The whole point of Harness is that you don\u2019t have to sit and watch. While this one works, fork a second worktree and give it a different task.',
         hint: (
           <>
-            Hit <kbd className="font-mono text-fg-bright">\u2318N</kbd> or use the sidebar to create another.
+            Hit <HotkeyBadge action="newWorktree" /> or use the sidebar to create another.
           </>
         )
       }
@@ -32,8 +33,8 @@ export function QuestCard({ step, onDismiss, onFinish }: QuestCardProps): JSX.El
         body: 'Jump between running agents with number hotkeys so you can keep an eye on both without losing your place.',
         hint: (
           <>
-            <kbd className="font-mono text-fg-bright">\u23181</kbd> for the first,{' '}
-            <kbd className="font-mono text-fg-bright">\u23182</kbd> for the second. Try both.
+            <HotkeyBadge action="worktree1" /> for the first,{' '}
+            <HotkeyBadge action="worktree2" /> for the second. Try both.
           </>
         )
       }
@@ -80,7 +81,7 @@ export function QuestCard({ step, onDismiss, onFinish }: QuestCardProps): JSX.El
               onClick={onFinish}
               className="mt-4 w-full brand-gradient-bg text-white font-semibold text-sm px-4 py-2 rounded-lg hover:brightness-110 transition-all cursor-pointer"
             >
-              Let's go \u26A1
+              Let's go ⚡
             </button>
           )}
         </div>
