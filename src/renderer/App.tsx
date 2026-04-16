@@ -201,7 +201,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
 
   // Advance the quest based on how many agent worktrees exist (main excluded).
   useEffect(() => {
-    if (questStep === 'done' || questStep === 'finale' || questStep === 'pick-agent') return
+    if (questStep === 'done' || questStep === 'finale') return
     if (questStep === 'hidden' && agentWorktreeCount >= 1) {
       setQuestStep(agentWorktreeCount >= 2 ? 'switch-between' : 'spawn-second')
       return
@@ -808,10 +808,6 @@ const setQuestStep = useCallback((next: QuestStep) => {
           step={questStep}
           onDismiss={() => setQuestStep('done')}
           onFinish={() => setQuestStep('done')}
-          onPickAgent={(agent) => {
-            void window.api.setDefaultAgent(agent)
-            setQuestStep('hidden')
-          }}
         />
         {/* Right panel — hidden on the new-worktree screen so the form gets the full width */}
         {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !rightColumnHidden && (

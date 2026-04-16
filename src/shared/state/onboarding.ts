@@ -1,4 +1,4 @@
-export type QuestStep = 'pick-agent' | 'hidden' | 'spawn-second' | 'switch-between' | 'finale' | 'done'
+export type QuestStep = 'hidden' | 'spawn-second' | 'switch-between' | 'finale' | 'done'
 
 export interface OnboardingState {
   quest: QuestStep

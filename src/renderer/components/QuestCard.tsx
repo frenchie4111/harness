@@ -1,59 +1,25 @@
-import { X, Sparkles, Zap, PartyPopper, Bot } from 'lucide-react'
+import { X, Sparkles, Zap, PartyPopper } from 'lucide-react'
 import type { QuestStep } from '../types'
-import type { AgentKind } from '../../shared/state/terminals'
-import { AGENT_REGISTRY } from '../../shared/agent-registry'
 
 interface QuestCardProps {
   step: QuestStep
   onDismiss: () => void
   onFinish: () => void
-  onPickAgent?: (agent: AgentKind) => void
 }
 
-export function QuestCard({ step, onDismiss, onFinish, onPickAgent }: QuestCardProps): JSX.Element | null {
+export function QuestCard({ step, onDismiss, onFinish }: QuestCardProps): JSX.Element | null {
   if (step === 'hidden' || step === 'done') return null
-
-  if (step === 'pick-agent') {
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-app/80 backdrop-blur-sm">
-        <div className="w-96 max-w-[calc(100vw-2rem)] bg-panel-raised border border-border-strong rounded-2xl shadow-2xl overflow-hidden">
-          <div className="brand-gradient-bg h-1" />
-          <div className="p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <Bot size={20} className="text-accent" />
-              <span className="text-lg font-semibold text-fg-bright">Choose your agent</span>
-            </div>
-            <p className="text-sm text-muted mb-6">
-              Which AI coding agent do you use? You can change this later in Settings.
-            </p>
-            <div className="flex gap-3">
-              {AGENT_REGISTRY.map((agent) => (
-                <button
-                  key={agent.kind}
-                  onClick={() => onPickAgent?.(agent.kind)}
-                  className="flex-1 p-4 rounded-xl border border-border hover:border-fg bg-panel hover:bg-panel-raised transition-all cursor-pointer text-center"
-                >
-                  <div className="text-base font-semibold text-fg-bright mb-1">{agent.displayName}</div>
-                  <div className="text-xs text-dim">by {agent.vendor}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    )
-  }
 
   const content = (() => {
     if (step === 'spawn-second') {
       return {
         icon: <Zap size={16} className="text-accent" />,
         eyebrow: 'Step 1 of 2',
-        title: 'One agent running. Don’t wait — spawn another.',
-        body: 'The whole point of Harness is that you don’t have to sit and watch. While this one works, fork a second worktree and give it a different task.',
+        title: 'One agent running. Don\u2019t wait \u2014 spawn another.',
+        body: 'The whole point of Harness is that you don\u2019t have to sit and watch. While this one works, fork a second worktree and give it a different task.',
         hint: (
           <>
-            Hit <kbd className="font-mono text-fg-bright">⌘N</kbd> or use the sidebar to create another.
+            Hit <kbd className="font-mono text-fg-bright">\u2318N</kbd> or use the sidebar to create another.
           </>
         )
       }
@@ -66,8 +32,8 @@ export function QuestCard({ step, onDismiss, onFinish, onPickAgent }: QuestCardP
         body: 'Jump between running agents with number hotkeys so you can keep an eye on both without losing your place.',
         hint: (
           <>
-            <kbd className="font-mono text-fg-bright">⌘1</kbd> for the first,{' '}
-            <kbd className="font-mono text-fg-bright">⌘2</kbd> for the second. Try both.
+            <kbd className="font-mono text-fg-bright">\u23181</kbd> for the first,{' '}
+            <kbd className="font-mono text-fg-bright">\u23182</kbd> for the second. Try both.
           </>
         )
       }
@@ -77,7 +43,7 @@ export function QuestCard({ step, onDismiss, onFinish, onPickAgent }: QuestCardP
       icon: <PartyPopper size={16} className="text-accent" />,
       eyebrow: 'Harnessed up',
       title: 'You just ran two agents in parallel.',
-      body: 'Do it with ten next time. Harness is happiest when it has a lot to juggle — the status dots keep you honest so nothing slips.',
+      body: 'Do it with ten next time. Harness is happiest when it has a lot to juggle \u2014 the status dots keep you honest so nothing slips.',
       hint: null
     }
   })()
@@ -114,7 +80,7 @@ export function QuestCard({ step, onDismiss, onFinish, onPickAgent }: QuestCardP
               onClick={onFinish}
               className="mt-4 w-full brand-gradient-bg text-white font-semibold text-sm px-4 py-2 rounded-lg hover:brightness-110 transition-all cursor-pointer"
             >
-              Let’s go ⚡
+              Let's go \u26A1
             </button>
           )}
         </div>
