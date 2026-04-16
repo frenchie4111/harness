@@ -1191,6 +1191,13 @@ function togglePerfMonitorInFocusedWindow(): void {
   }
 }
 
+function openKeyboardShortcutsInFocusedWindow(): void {
+  const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0]
+  if (win && !win.isDestroyed()) {
+    win.webContents.send('app:openKeyboardShortcuts')
+  }
+}
+
 function buildMenu(): void {
   const template: Electron.MenuItemConstructorOptions[] = [
     {
@@ -1257,6 +1264,15 @@ function buildMenu(): void {
         { role: 'zoom' },
         { type: 'separator' },
         { role: 'front' }
+      ]
+    },
+    {
+      label: 'Help',
+      submenu: [
+        {
+          label: 'Keyboard Shortcuts',
+          click: openKeyboardShortcutsInFocusedWindow
+        }
       ]
     }
   ]

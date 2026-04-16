@@ -204,6 +204,12 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('app:togglePerfMonitor', handler)
   },
 
+  onOpenKeyboardShortcuts: (callback: () => void) => {
+    const handler = (): void => callback()
+    ipcRenderer.on('app:openKeyboardShortcuts', handler)
+    return () => ipcRenderer.removeListener('app:openKeyboardShortcuts', handler)
+  },
+
   // Hooks
   acceptHooks: () => ipcRenderer.invoke('hooks:acceptAll'),
   declineHooks: () => ipcRenderer.invoke('hooks:decline'),

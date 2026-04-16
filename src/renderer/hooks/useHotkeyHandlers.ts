@@ -29,6 +29,7 @@ interface UseHotkeyHandlersArgs {
   setShowCommandPalette: React.Dispatch<React.SetStateAction<boolean>>
   setCommandPaletteMode: React.Dispatch<React.SetStateAction<'root' | 'files'>>
   setShowPerfMonitor: React.Dispatch<React.SetStateAction<boolean>>
+  setShowHotkeyCheatsheet: React.Dispatch<React.SetStateAction<boolean>>
   // Imperative hooks into other handlers — passed in to avoid this hook
   // depending on useTabHandlers + useWorktreeHandlers directly.
   handleAddTerminalTab: (worktreePath: string, paneId?: string) => void
@@ -70,6 +71,7 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
     setShowCommandPalette,
     setCommandPaletteMode,
     setShowPerfMonitor,
+    setShowHotkeyCheatsheet,
     handleAddTerminalTab,
     handleCloseTab,
     handleSelectTab,
@@ -218,10 +220,12 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       },
       toggleCommandCenter: () => setShowCommandCenter((v) => !v),
       commandPalette: () => {
+        setShowHotkeyCheatsheet(false)
         setCommandPaletteMode('root')
         setShowCommandPalette((v) => !v)
       },
       fileQuickOpen: () => {
+        setShowHotkeyCheatsheet(false)
         setCommandPaletteMode('files')
         setShowCommandPalette(true)
       },
@@ -232,7 +236,8 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
         const fromPaneId = activePaneId[activeWorktreeId] || list[list.length - 1].id
         handleSplitPane(activeWorktreeId, fromPaneId)
       },
-      togglePerfMonitor: () => setShowPerfMonitor((v) => !v)
+      togglePerfMonitor: () => setShowPerfMonitor((v) => !v),
+      hotkeyCheatsheet: () => setShowHotkeyCheatsheet((v) => !v)
     }),
     [
       cycleWorktree,
@@ -254,7 +259,8 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       setShowCommandCenter,
       setShowCommandPalette,
       setCommandPaletteMode,
-      setShowPerfMonitor
+      setShowPerfMonitor,
+      setShowHotkeyCheatsheet
     ]
   )
 

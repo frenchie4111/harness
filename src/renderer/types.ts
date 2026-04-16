@@ -257,6 +257,7 @@ export interface ElectronAPI {
   getFilePath(file: File): string
   onOpenSettings(callback: () => void): () => void
   onTogglePerfMonitor(callback: () => void): () => void
+  onOpenKeyboardShortcuts(callback: () => void): () => void
 
   acceptHooks(): Promise<boolean>
   declineHooks(): Promise<boolean>
