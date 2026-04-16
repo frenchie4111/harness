@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>How to Stop Doom Scrolling While You Wait for Claude — Harness</title>
-  <meta name="description" content="A short guide to git worktrees, why they matter for running many Claude Code agents in parallel, and how Harness turns them into a workflow you'll actually use." />
+  <title>A practical guide to git worktrees | Harness</title>
+  <meta name="description" content="What git worktrees are, the commands you'll actually use, the common gotchas, and why they're the thing that makes running Claude Code agents in parallel feasible." />
 
-  <meta property="og:title" content="Worktree Guide — Harness" />
-  <meta property="og:description" content="Stop doom scrolling while Claude thinks. A short guide to git worktrees, why they unlock parallel Claude Code agents, and how Harness turns them into a workflow you'll actually use." />
-  <meta name="twitter:description" content="Stop doom scrolling while Claude thinks. A short guide to git worktrees, why they unlock parallel Claude Code agents, and how Harness turns them into a workflow you'll actually use." />
+  <meta property="og:title" content="A practical guide to git worktrees" />
+  <meta property="og:description" content="What worktrees are, the commands you'll actually use, the common gotchas, and why they're the thing that makes running Claude Code agents in parallel feasible." />
+  <meta name="twitter:description" content="What worktrees are, the commands you'll actually use, the common gotchas, and why they're the thing that makes running Claude Code agents in parallel feasible." />
   <meta property="og:image" content="https://harness.mikelyons.org/guide-og-image.png" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:image" content="https://harness.mikelyons.org/guide-og-image.png" />
@@ -107,13 +107,13 @@
   <section class="max-w-3xl mx-auto px-6 pt-12 pb-12">
     <div class="text-xs uppercase tracking-widest text-neutral-500 mb-4">The Guide</div>
     <h1 class="text-5xl md:text-6xl font-extrabold tracking-tight mb-6 leading-tight">
-      Run many Claudes<br />
-      <span class="gradient-text">in parallel.</span>
+      A practical guide to<br />
+      <span class="gradient-text">git worktrees.</span>
     </h1>
     <p class="text-lg text-neutral-400 leading-relaxed">
-      A short guide to git worktrees, why they matter for agentic coding, and
-      how Harness turns them into a workflow you'll actually use. About a
-      five-minute read.
+      What they are, the commands you'll actually use, the common gotchas,
+      and why they're the thing that makes running Claude Code agents in
+      parallel feasible. About five minutes.
     </p>
   </section>
 
@@ -153,40 +153,34 @@
           <span><i style="background: rgba(251, 191, 36, 0.6);"></i>review</span>
           <span><i style="background: rgba(34, 197, 94, 0.7);"></i>Claude working</span>
         </div>
-        <figcaption>One Claude. You "wait." Your screen-time report knows the truth.</figcaption>
+        <figcaption>One Claude running. You have nothing to do but scroll.</figcaption>
       </figure>
 
       <div class="prose-custom">
         <p>
-          Be honest. How much of this week did you spend scrolling Instagram reels
-          while a single Claude crunched through one task? Five minutes here, ten
-          minutes there. Your screen-time report is doing things it has never done
-          before, and the only ones who know are you and Apple.
+          How much of this week did you spend scrolling while a single Claude
+          chewed through one task? Five minutes here, ten minutes there. It
+          adds up fast.
         </p>
         <p>
-          Meanwhile every AI influencer on your feed is breathlessly explaining
-          <em>&ldquo;agent swarms&rdquo;</em> and <em>&ldquo;multi-agent orchestration&rdquo;</em>
-          like it's a sacred incantation. The actual idea under the buzzwords is much
-          simpler than they let on: <strong>stop running one Claude. Run several, on
-          different problems, at the same time.</strong>
+          There's a lot of noise right now about
+          <em>&ldquo;agent swarms&rdquo;</em> and
+          <em>&ldquo;multi-agent orchestration.&rdquo;</em> The underlying idea is
+          pretty mundane: instead of running one Claude, run a few on different
+          problems at the same time.
         </p>
         <p>
-          The reason you're not already doing this isn't that it's hard — it's that
-          nothing makes it easy. One terminal, one folder, one Claude. Two Claudes
-          pointed at the same folder will trip over each other's edits within thirty
-          seconds. So you wait. And scroll.
+          The reason most people don't is that nothing makes it easy. One
+          terminal, one folder, one Claude. Point two Claudes at the same folder
+          and they'll stomp on each other's edits within a minute.
         </p>
         <p>
-          Here's the alternative. While Claude #1 is grinding through that auth
-          refactor, Claude #2 is fixing yesterday's bug, and Claude #3 is writing the
-          tests you've been procrastinating on. You glance over occasionally, unblock
-          whichever one is waiting on you, and ship three things in the time it used
-          to take to ship one. <strong>You become the bottleneck only when you want
-          to be.</strong>
-        </p>
-        <p class="text-neutral-500 text-sm">
-          Doing this safely takes one small git primitive most people have never
-          touched. That's the rest of this guide.
+          The fix is a git feature called a worktree. It predates AI agents by
+          over a decade and is useful in plenty of situations that have nothing
+          to do with them. Most of this guide covers worktrees on their own
+          terms: what they are, the four commands you'll actually use, the
+          gotchas. The last couple of sections are about running agents across
+          them, and about Harness, a tool built for that specific case.
         </p>
       </div>
     </section>
@@ -201,16 +195,17 @@
       </div>
       <div class="prose-custom">
         <p>
-          You know branches. Normally a repo has one working directory — the
-          folder you <code>cd</code> into — and swapping branches rewrites the
-          files on disk. That's fine until you want to work on two branches at
-          once. Stash, checkout, stash-pop, forget which stash was which.
+          You know branches. A repo normally has one working directory (the
+          folder you <code>cd</code> into), and switching branches rewrites the
+          files on disk. That works until you want two branches open at once.
+          Then it's stash, checkout, stash-pop, and trying to remember which
+          stash was which.
         </p>
         <p>
-          <code>git worktree</code> solves this. A worktree is a
-          <strong>second (or third, or tenth) working copy</strong> of the same
-          repo, checked out to a different branch, sharing the same underlying
-          <code>.git</code> directory. Create one like this:
+          <code>git worktree</code> solves this. A worktree is a second working
+          copy of the same repo, checked out to a different branch, sharing the
+          same <code>.git</code> directory. You can have as many as you want.
+          Create one like this:
         </p>
         <pre><code>git worktree add ../myrepo-feature-x -b feature-x</code></pre>
 
@@ -247,16 +242,109 @@
         </figure>
 
         <p>
-          Now <code>../myrepo-feature-x</code> exists on disk, living on
-          <code>feature-x</code>, while your main clone stays on
-          <code>main</code>. Both are real checkouts. Both can be edited, built,
-          and tested independently. Commits and fetches in one are immediately
-          visible to the other because they share the same git objects.
+          Now <code>../myrepo-feature-x</code> exists on disk on the
+          <code>feature-x</code> branch, while your main clone stays on
+          <code>main</code>. Both are real checkouts you can edit, build, and
+          test independently. Commits and fetches in one show up in the other
+          immediately because they share git objects.
         </p>
         <p class="text-neutral-500 text-sm">
-          The one rule: the same branch can't be checked out in two worktrees
-          at once. That's it.
+          The one rule is that the same branch can't be checked out in two
+          worktrees at once.
         </p>
+      </div>
+    </section>
+
+    <!-- Section: when worktrees earn their keep -->
+    <section class="mb-16">
+      <div class="flex items-center gap-3 mb-5">
+        <div class="section-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        </div>
+        <h2 class="text-2xl font-bold text-neutral-100">When worktrees earn their keep</h2>
+      </div>
+      <div class="prose-custom">
+        <p>
+          Worktrees aren't an everyday tool. They pay off in specific
+          situations where swapping branches in place is a hassle:
+        </p>
+        <ul>
+          <li>A production hotfix lands while your feature branch is half-rebased. Open a second worktree on <code>main</code>, fix it, ship it, come back.</li>
+          <li>A slow test suite or build is running on one branch. Spin up a worktree so you can keep coding on another while it finishes.</li>
+          <li>You want to review a colleague's PR locally without blowing away your WIP. Check their branch out into its own worktree, poke around, delete it when you're done.</li>
+          <li>You're maintaining a long-running release branch alongside <code>main</code>. Keep each one checked out permanently instead of swapping back and forth.</li>
+          <li>You're running several Claude agents in parallel. Each one needs its own folder. This is the case the second half of this guide focuses on.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Section: commands -->
+    <section class="mb-16">
+      <div class="flex items-center gap-3 mb-5">
+        <div class="section-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+        </div>
+        <h2 class="text-2xl font-bold text-neutral-100">Commands you'll actually use</h2>
+      </div>
+      <div class="prose-custom">
+        <p>
+          A typical day looks like this. One worktree for a quick UI fix,
+          another for some backend work running in parallel, and cleanup at the
+          end.
+        </p>
+        <pre><code># Spin up a worktree for a UI bug
+git worktree add ../myrepo-ui-fix -b fix/login-flash
+cd ../myrepo-ui-fix
+npm install
+claude
+# ...work on the fix, commit, push, open a PR as usual...
+
+# Meanwhile, in another terminal tab, another worktree for API work
+git worktree add ../myrepo-api -b fix/api-400s
+cd ../myrepo-api
+npm install
+claude
+# ...work in parallel, commit, push...
+
+# Whenever you lose track of what's open
+git worktree list
+
+# Once the PRs are merged, clean up
+git worktree remove ../myrepo-ui-fix
+git worktree remove ../myrepo-api</code></pre>
+        <p>
+          You can also check out an existing branch instead of creating one,
+          which is handy for reviewing a teammate's PR locally:
+        </p>
+        <pre><code>git worktree add ../myrepo-review origin/their-branch</code></pre>
+        <p>
+          If you delete a worktree folder manually instead of using
+          <code>git worktree remove</code>, git holds on to a stale reference.
+          <code>git worktree prune</code> cleans those up.
+        </p>
+        <p class="text-neutral-500 text-sm">
+          <code>git help worktree</code> has the rest, including <code>lock</code>,
+          <code>move</code>, and <code>repair</code>. You'll rarely need them.
+        </p>
+      </div>
+    </section>
+
+    <!-- Section: gotchas -->
+    <section class="mb-16">
+      <div class="flex items-center gap-3 mb-5">
+        <div class="section-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        </div>
+        <h2 class="text-2xl font-bold text-neutral-100">Common gotchas</h2>
+      </div>
+      <div class="prose-custom">
+        <ul>
+          <li>The same branch can't be checked out in two worktrees at once. Git errors out clearly when you try.</li>
+          <li>Gitignored files don't follow. Every new worktree starts without <code>.env</code>, without <code>node_modules</code>, without any local-only config. Copy or symlink what you need.</li>
+          <li>Dependencies install per-worktree. Each one gets its own <code>node_modules</code> / <code>venv</code> / <code>target</code>, and the disk bill adds up fast. Delete worktrees you're done with.</li>
+          <li>Some tools assume a single working directory. Most are fine, but watch out for IDE project state, <code>docker-compose</code> volumes, and anything that caches absolute paths.</li>
+          <li>Your shell prompt probably won't tell you which worktree you're in. If you've got several, label your terminal tabs or put the directory name in your prompt.</li>
+        </ul>
       </div>
     </section>
 
@@ -270,20 +358,19 @@
       </div>
       <div class="prose-custom">
         <p>
-          Claude Code edits files on disk. If five Claude sessions share one
-          working directory, they will stomp on each other — half-written
-          files, conflicting edits, broken builds you can't attribute to
-          anyone.
+          Claude Code edits files on disk. Five Claudes sharing one working
+          directory means half-written files, conflicting edits, and broken
+          builds nobody can explain.
         </p>
         <p>
-          One worktree per task fixes this completely. Five sessions, five
-          folders, five isolated sandboxes. You become an orchestrator: kick
-          off task A, kick off task B, walk away, come back, review A while
-          Claude is still thinking about B.
+          One worktree per task fixes that. Each session gets its own folder,
+          and they can't see each other's in-progress edits. You kick off task
+          A, kick off task B, walk away, come back, and review A while Claude
+          is still working on B.
         </p>
         <p>
-          This is the single biggest change to how coding feels once you adopt
-          it. You stop being the throughput bottleneck.
+          This is the change that makes running several Claudes at once
+          actually feasible.
         </p>
       </div>
 
@@ -328,7 +415,7 @@
             </div>
           </div>
         </div>
-        <figcaption>One working copy means collisions. One worktree per task means isolation.</figcaption>
+        <figcaption>Sharing one folder causes collisions. One worktree per task keeps them separated.</figcaption>
       </figure>
     </section>
 
@@ -338,7 +425,7 @@
         <div class="section-icon">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
         </div>
-        <h2 class="text-2xl font-bold text-neutral-100">The raw flow — and where it breaks down</h2>
+        <h2 class="text-2xl font-bold text-neutral-100">The raw flow, and where it breaks down</h2>
       </div>
       <div class="prose-custom">
         <pre><code>git worktree add ../myrepo-bug-123 -b bug-123
@@ -346,15 +433,15 @@ cd ../myrepo-bug-123
 npm install
 claude</code></pre>
         <p>
-          Repeat in a new terminal for every task. This works — for about two
-          tasks. Then you lose track of which terminal is running which branch,
-          you can't tell from across the room which Claudes are waiting for
-          input, reviewing diffs means <code>git diff</code> in yet another
-          pane, PR status lives on github.com, and cleaning up orphan
-          <code>node_modules</code> eats a Sunday afternoon.
+          Repeat in a new terminal for every task. This works up to about two
+          tasks. After that, you lose track of which terminal is running which
+          branch. You can't tell at a glance which Claudes are waiting for
+          input. Reviewing diffs means <code>git diff</code> in another pane.
+          PR status lives on github.com. Cleaning up orphan
+          <code>node_modules</code> folders eats a Sunday afternoon.
         </p>
         <p>
-          Worktrees are the right primitive. They just need a frontend.
+          The primitive is right. It just needs a frontend.
         </p>
       </div>
     </section>
@@ -362,15 +449,20 @@ claude</code></pre>
     <!-- Section 4 -->
     <section class="mb-16">
       <div class="flex items-center gap-3 mb-5">
-        <div class="section-icon">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-        </div>
-        <h2 class="text-2xl font-bold text-neutral-100">What Harness does for you</h2>
+        <img src="icon.png" alt="Harness icon" class="w-9 h-9 rounded-lg flex-shrink-0" />
+        <h2 class="text-2xl font-bold text-neutral-100">Where Harness comes in</h2>
       </div>
       <div class="prose-custom">
         <p>
-          Harness is a single window that holds every worktree and every Claude
-          session in one place.
+          Everything up to this point works with plain git and a terminal
+          multiplexer. If that's enough for you, you can stop reading. The rest
+          is a pitch for a tool I built for when it isn't.
+        </p>
+        <p>
+          Harness is a macOS app that puts every worktree and every Claude
+          session in a single window. It's opinionated around the specific
+          workflow of running several agents at once, and it handles the
+          papercuts that pile up past two or three parallel tasks.
         </p>
       </div>
 
@@ -404,7 +496,7 @@ claude</code></pre>
             </div>
           </div>
         </div>
-        <figcaption>A peek at the sidebar: every worktree, every status, one window.</figcaption>
+        <figcaption>The sidebar: one row per worktree, with its current status.</figcaption>
       </figure>
 
       <div class="grid sm:grid-cols-2 gap-4 mt-6">
@@ -441,7 +533,7 @@ claude</code></pre>
         <div class="section-icon">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
         </div>
-        <h2 class="text-2xl font-bold text-neutral-100">A workflow that actually works</h2>
+        <h2 class="text-2xl font-bold text-neutral-100">A workflow that works</h2>
       </div>
 
       <figure class="figure">
@@ -477,16 +569,16 @@ claude</code></pre>
           <span><i style="background: rgba(251, 191, 36, 0.7);"></i>waiting on you</span>
           <span><i style="background: rgba(96, 165, 250, 0.5);"></i>merged</span>
         </div>
-        <figcaption>Three tasks running in parallel. You jump to whichever is waiting on you.</figcaption>
+        <figcaption>Three tasks running in parallel. You jump to whichever is waiting.</figcaption>
       </figure>
 
       <div class="prose-custom">
         <ol>
-          <li><strong>One worktree, one task.</strong> Keep each worktree scoped to a single discrete unit of work — one bug, one feature, one refactor.</li>
-          <li><strong>Start two or three in parallel.</strong> Begin small. Kick off a couple of Claudes with clear instructions, then let them cook.</li>
-          <li><strong>Let the dots drive you.</strong> When a dot turns yellow, that Claude needs you. Jump over, unblock it, move on.</li>
-          <li><strong>Review in the side panel.</strong> Before telling Claude to push, scan the changed files. Catch surprises early, while the context is still fresh.</li>
-          <li><strong>Ship and clean up.</strong> When Claude opens a PR, CI kicks in — watch it from the PR panel. After merge, delete the worktree to free disk space and keep things tidy.</li>
+          <li>One worktree per task. Keep each one scoped to a single unit of work: one bug, one feature, one refactor.</li>
+          <li>Start with two or three. Kick off a couple of Claudes with clear instructions and let them run.</li>
+          <li>Let the status dots drive you. When a dot turns yellow, that Claude needs you. Jump over, unblock it, move on.</li>
+          <li>Scan diffs in the side panel before telling Claude to push. It's easier to catch problems while the context is still in your head.</li>
+          <li>When Claude opens a PR, watch CI from the PR panel. Delete the worktree after merge so the disk doesn't fill up.</li>
         </ol>
       </div>
     </section>
@@ -501,20 +593,21 @@ claude</code></pre>
       </div>
       <div class="prose-custom">
         <ul>
-          <li><strong>Independent tasks win.</strong> Parallel work pays off most when tasks don't touch the same files. Merge conflicts erase the time you saved.</li>
-          <li><strong>Keep one worktree on <code>main</code>.</strong> Use it for reviewing PRs, running experiments, or sanity-checking things without disturbing running agents.</li>
-          <li><strong>Delete aggressively.</strong> Each worktree holds its own <code>node_modules</code>, build outputs, and disk space. Old ones pile up fast.</li>
-          <li><strong>Fresh worktrees are fresh folders.</strong> Dependencies install from scratch in each one. A script that detects this and auto-installs is worth the hour it takes to write.</li>
-          <li><strong>Give Claude enough rope.</strong> The whole point is to not babysit. Write instructions detailed enough that you can walk away for ten minutes without worrying.</li>
+          <li>Parallel works best when tasks don't overlap. If two Claudes end up editing the same files, the merge conflict will eat the time you saved.</li>
+          <li>Keep one worktree on <code>main</code>. It's useful for reviewing PRs or trying things out without disturbing the agents you've got running.</li>
+          <li>Delete worktrees when you're done with them. Each one has its own <code>node_modules</code> and build output, and they add up quickly.</li>
+          <li>Fresh worktrees are fresh folders. Dependencies install from scratch every time. A small script that detects this and runs the install is worth writing.</li>
+          <li>Let Claude run. The point is to not babysit. Give it enough context up front that you can walk away for ten minutes.</li>
         </ul>
       </div>
     </section>
 
     <!-- CTA -->
     <div class="mt-20 p-8 bg-neutral-950 border border-neutral-800 rounded-2xl text-center">
-      <h3 class="text-2xl font-bold text-neutral-100 mb-3">Ready to try it?</h3>
+      <h3 class="text-2xl font-bold text-neutral-100 mb-3">If you want the frontend</h3>
       <p class="text-neutral-500 mb-6 max-w-md mx-auto">
-        Download Harness and be running five Claudes in parallel inside five minutes.
+        Harness is free and open source. macOS only for now. You'll be
+        running a few Claudes in parallel a couple of minutes after opening it.
       </p>
       <a href="/#install" class="inline-block px-8 py-3 bg-white text-black rounded-lg font-semibold hover:bg-neutral-200 transition-colors">
         Download for macOS
