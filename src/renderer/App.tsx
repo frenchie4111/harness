@@ -604,10 +604,9 @@ const setQuestStep = useCallback((next: QuestStep) => {
       {hooksConsent === 'pending' && (
         <div className="bg-warning/15 border-b border-warning/30 pl-20 pr-4 py-2.5 drag-region flex items-center gap-3 shrink-0">
           <span className="text-warning text-sm flex-1">
-            Claude Harness needs to install hooks in your worktrees to detect Claude's status
+            Harness needs to install hooks in your worktrees to detect agent status
             (waiting, processing, needs approval) — without them the sidebar status dots and
-            command center won't work. This adds entries to each worktree's{' '}
-            <code className="bg-warning/20 px-1 rounded text-xs">.claude/settings.local.json</code>.
+            command center won't work.
           </span>
           <button
             onClick={handleAcceptHooks}
@@ -624,17 +623,17 @@ const setQuestStep = useCallback((next: QuestStep) => {
         </div>
       )}
 
-      {/* Hooks installed — prompt to restart Claude tabs */}
+      {/* Hooks installed — prompt to restart agent tabs */}
       {hooksJustInstalled && (
         <div className="bg-success/15 border-b border-success/30 pl-20 pr-4 py-2.5 drag-region flex items-center gap-3 shrink-0">
           <span className="text-success text-sm flex-1">
-            Hooks installed! You will need to restart any active Claude instances to see the changes.
+            Hooks installed! Restart any active agent tabs to see status updates.
           </span>
           <button
             onClick={handleRestartAllAgentTabs}
             className="px-3 py-1 bg-success/30 hover:bg-success/40 rounded text-sm text-success transition-colors shrink-0 cursor-pointer no-drag"
           >
-            Restart Claude tabs
+            Restart agent tabs
           </button>
           <button
             onClick={() => void window.api.dismissHooksJustInstalled()}
