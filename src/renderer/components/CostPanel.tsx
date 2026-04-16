@@ -99,7 +99,7 @@ export function CostPanel({ worktreePath }: CostPanelProps): JSX.Element | null 
       const terminalIds = new Set<string>()
       for (const pane of worktreePanes) {
         for (const tab of pane.tabs) {
-          if (tab.type === 'claude') terminalIds.add(tab.id)
+          if (tab.type === 'agent') terminalIds.add(tab.id)
         }
       }
       // Dedup by transcriptPath so a tab that was restarted with

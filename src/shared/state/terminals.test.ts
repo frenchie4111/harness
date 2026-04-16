@@ -131,7 +131,7 @@ describe('terminalsReducer', () => {
       id: 'p1',
       tabs: [
         { id: 't1', type: 'shell', label: 'Shell' },
-        { id: 't3', type: 'claude', label: 'Claude' }
+        { id: 't3', type: 'agent', label: 'Claude', agentKind: 'claude' }
       ],
       activeTabId: 't3'
     }

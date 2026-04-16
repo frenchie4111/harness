@@ -12,7 +12,7 @@ interface DiffViewProps {
   staged?: boolean
   branchDiff?: boolean
   commitHash?: string
-  onSendToClaude?: (text: string) => void
+  onSendToAgent?: (text: string) => void
 }
 
 export function DiffView(props: DiffViewProps): JSX.Element {
@@ -30,7 +30,7 @@ function FileDiffView({
   filePath,
   staged,
   branchDiff,
-  onSendToClaude
+  onSendToAgent
 }: DiffViewProps): JSX.Element {
   const settings = useSettings()
   const [sides, setSides] = useState<FileDiffSides | null>(null)
@@ -165,10 +165,10 @@ function FileDiffView({
             </button>
           </Tooltip>
         )}
-        {onSendToClaude && filePath && (
+        {onSendToAgent && filePath && (
           <Tooltip label="Reference file in Claude">
             <button
-              onClick={() => onSendToClaude(`@${filePath} `)}
+              onClick={() => onSendToAgent(`@${filePath} `)}
               className="shrink-0 text-faint hover:text-fg cursor-pointer"
             >
               <AtSign size={12} />
@@ -192,8 +192,8 @@ function FileDiffView({
           onModifiedChange={editable ? setModifiedValue : undefined}
           onSave={editable ? save : undefined}
           onReferenceLine={
-            onSendToClaude && filePath
-              ? (ln) => onSendToClaude(`@${filePath}:${ln} `)
+            onSendToAgent && filePath
+              ? (ln) => onSendToAgent(`@${filePath}:${ln} `)
               : undefined
           }
         />
@@ -208,7 +208,7 @@ function FileDiffView({
 function CommitDiffView({
   worktreePath,
   commitHash,
-  onSendToClaude
+  onSendToAgent
 }: DiffViewProps): JSX.Element {
   const [commit, setCommit] = useState<CommitDiff | null>(null)
   const [loading, setLoading] = useState(true)
@@ -260,7 +260,7 @@ function CommitDiffView({
               {line.type === 'remove' || line.type === 'context' ? line.oldLine : ''}
             </span>
             <span className="shrink-0 w-5 flex items-center justify-center">
-              {onSendToClaude &&
+              {onSendToAgent &&
                 (line.type === 'add' || line.type === 'remove' || line.type === 'context') &&
                 line.file && (
                   <Tooltip label="Reference this line in Claude" side="right">
@@ -270,7 +270,7 @@ function CommitDiffView({
                           line.type === 'add' || line.type === 'context'
                             ? line.newLine
                             : line.oldLine
-                        onSendToClaude(ln ? `@${line.file}:${ln} ` : `@${line.file} `)
+                        onSendToAgent(ln ? `@${line.file}:${ln} ` : `@${line.file} `)
                       }}
                       className="opacity-0 group-hover/line:opacity-100 text-faint hover:text-fg transition-opacity cursor-pointer"
                     >

@@ -23,7 +23,7 @@ interface TerminalPanelProps {
   registerSlot: (paneId: string, el: HTMLDivElement | null) => void
   onSelectTab: (tabId: string) => void
   onAddTab: () => void
-  onAddClaudeTab: () => void
+  onAddAgentTab: () => void
   onCloseTab: (tabId: string) => void
   onSplit: () => void
 }
@@ -123,7 +123,7 @@ export function TerminalPanel({
   registerSlot,
   onSelectTab,
   onAddTab,
-  onAddClaudeTab,
+  onAddAgentTab,
   onCloseTab,
   onSplit
 }: TerminalPanelProps): JSX.Element {
@@ -171,7 +171,7 @@ export function TerminalPanel({
           </SortableContext>
           <Tooltip label="New Claude tab">
             <button
-              onClick={onAddClaudeTab}
+              onClick={onAddAgentTab}
               className="no-drag shrink-0 px-2 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"
             >
               <Sparkles size={12} />

@@ -71,6 +71,27 @@ function latestClaudeSessionId(cwd: string): string | null {
   }
 }
 
+function codexSessionFileExists(sessionId: string): boolean {
+  try {
+    const sessionsDir = join(homedir(), '.codex', 'sessions')
+    // Codex stores sessions in YYYY/MM/DD/ subdirectories with format
+    // <name>-<uuid>.jsonl. Walk the tree looking for a file containing the UUID.
+    const walkDir = (dir: string): boolean => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        if (entry.isDirectory()) {
+          if (walkDir(join(dir, entry.name))) return true
+        } else if (entry.name.includes(sessionId) && entry.name.endsWith('.jsonl')) {
+          return true
+        }
+      }
+      return false
+    }
+    return walkDir(sessionsDir)
+  } catch {
+    return false
+  }
+}
+
 const ptyManager = new PtyManager()
 let config = loadConfig()
 let stopWatchingStatus: (() => void) | null = null
@@ -150,13 +171,14 @@ function persistPanes(panes: Record<string, WorkspacePane[]>): void {
     const persistedPanes: PersistedPane[] = paneList
       .map((pane) => {
         const tabs = pane.tabs
-          .filter((t) => t.type === 'claude' || t.type === 'shell')
+          .filter((t) => t.type === 'agent' || t.type === 'shell')
           .map((t) => {
             const stripped = stripTransientTabFields(t as TerminalTab)
             return {
               id: stripped.id,
-              type: stripped.type as 'claude' | 'shell',
+              type: stripped.type as 'agent' | 'shell',
               label: stripped.label,
+              agentKind: stripped.agentKind,
               sessionId: stripped.sessionId
             }
           })
@@ -893,9 +915,9 @@ function registerIpcHandlers(): void {
     return true
   })
   transport.onRequest(
-    'panes:restartClaudeTab',
+    'panes:restartAgentTab',
     (wtPath: string, tabId: string, newId: string) => {
-      panesFSM.restartClaudeTab(wtPath, tabId, newId)
+      panesFSM.restartAgentTab(wtPath, tabId, newId)
       return true
     }
   )
@@ -972,11 +994,14 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  // Check whether a Claude session file already exists on disk for
-  // `<cwd>/<sessionId>.jsonl`. When it does, the tab should spawn with
-  // `--resume <id>` instead of `--session-id <id>` — claude refuses the
-  // latter on an existing session file with "is already in use".
-  transport.onRequest('claude:sessionFileExists', (cwd: string, sessionId: string): boolean => {
+  // Check whether an agent session file already exists on disk. For Claude,
+  // this is ~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl. For Codex,
+  // we search ~/.codex/sessions/ (date-nested). When it exists, the tab
+  // spawns with --resume instead of --session-id.
+  transport.onRequest('agent:sessionFileExists', (cwd: string, sessionId: string, agentKind?: string): boolean => {
+    if (agentKind === 'codex') {
+      return codexSessionFileExists(sessionId)
+    }
     try {
       const encoded = cwd.replace(/[^a-zA-Z0-9]/g, '-')
       return existsSync(join(homedir(), '.claude', 'projects', encoded, `${sessionId}.jsonl`))
@@ -985,12 +1010,8 @@ function registerIpcHandlers(): void {
     }
   })
 
-  // Find the most recent Claude Code session ID for a given worktree path,
-  // by reading ~/.claude/projects/<encoded-cwd>/*.jsonl sorted by mtime.
-  // Used to migrate legacy Claude tabs (which resumed via `--continue`) onto
-  // the new per-tab scheme without losing their session — the spawn path
-  // uses `--resume` when the file exists.
-  transport.onRequest('claude:latestSessionId', (cwd: string): string | null => {
+  transport.onRequest('agent:latestSessionId', (cwd: string, agentKind?: string): string | null => {
+    if (agentKind === 'codex') return null
     return latestClaudeSessionId(cwd)
   })
 
@@ -1151,9 +1172,12 @@ function registerIpcHandlers(): void {
     shell.openExternal(url)
   })
 
-  transport.onSignal('pty:create', (id: string, cwd: string, cmd: string, args: string[], isClaude?: boolean, cols?: number, rows?: number) => {
-    const extraEnv = isClaude ? config.claudeEnvVars : undefined
-    ptyManager.create(id, cwd, cmd, args, extraEnv, !isClaude, cols, rows)
+  transport.onSignal('pty:create', (id: string, cwd: string, cmd: string, args: string[], agentKind?: string, cols?: number, rows?: number) => {
+    const isAgent = !!agentKind
+    const extraEnv = agentKind === 'claude' ? config.claudeEnvVars
+      : agentKind === 'codex' ? config.codexEnvVars
+      : undefined
+    ptyManager.create(id, cwd, cmd, args, extraEnv, !isAgent, cols, rows)
   })
 
   transport.onSignal('pty:write', (id: string, data: string) => {

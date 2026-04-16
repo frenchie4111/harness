@@ -14,10 +14,13 @@
 
 import { basename, dirname, join } from 'path'
 
+import type { AgentKind } from '../shared/state/terminals'
+
 export interface PersistedTab {
   id: string
-  type: 'claude' | 'shell'
+  type: 'agent' | 'shell'
   label: string
+  agentKind?: AgentKind
   sessionId?: string
 }
 
@@ -98,6 +101,29 @@ export const migrations: Migration[] = [
     // lossless.
     c.legacyPanes = flat
     c.panes = nested
+  },
+
+  // v3 → v4: tab type 'claude' → 'agent' with agentKind: 'claude'.
+  // Walk all persisted panes (nested by repoRoot → wtPath) and migrate
+  // each tab's type field.
+  (c) => {
+    const panes = c.panes as Record<string, Record<string, { tabs: { type: string; agentKind?: string }[] }[]>> | undefined
+    if (!panes || typeof panes !== 'object') return
+    for (const byWt of Object.values(panes)) {
+      if (!byWt || typeof byWt !== 'object') continue
+      for (const paneList of Object.values(byWt)) {
+        if (!Array.isArray(paneList)) continue
+        for (const pane of paneList) {
+          if (!pane?.tabs || !Array.isArray(pane.tabs)) continue
+          for (const tab of pane.tabs) {
+            if (tab.type === 'claude') {
+              tab.type = 'agent'
+              tab.agentKind = 'claude'
+            }
+          }
+        }
+      }
+    }
   }
 ]
 

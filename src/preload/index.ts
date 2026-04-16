@@ -136,8 +136,8 @@ contextBridge.exposeInMainWorld('api', {
   panesAddTab: (wtPath: string, tab: unknown, paneId?: string) =>
     req('panes:addTab', wtPath, tab, paneId),
   panesCloseTab: (wtPath: string, tabId: string) => req('panes:closeTab', wtPath, tabId),
-  panesRestartClaudeTab: (wtPath: string, tabId: string, newId: string) =>
-    req('panes:restartClaudeTab', wtPath, tabId, newId),
+  panesRestartAgentTab: (wtPath: string, tabId: string, newId: string) =>
+    req('panes:restartAgentTab', wtPath, tabId, newId),
   panesSelectTab: (wtPath: string, paneId: string, tabId: string) =>
     req('panes:selectTab', wtPath, paneId, tabId),
   panesReorderTabs: (wtPath: string, paneId: string, fromId: string, toId: string) =>
@@ -150,9 +150,10 @@ contextBridge.exposeInMainWorld('api', {
 
   getTerminalHistory: (id: string) => req('terminal:getHistory', id),
   clearTerminalHistory: (id: string) => req('terminal:forgetHistory', id),
-  claudeSessionFileExists: (cwd: string, sessionId: string) =>
-    req('claude:sessionFileExists', cwd, sessionId),
-  getLatestClaudeSessionId: (cwd: string) => req('claude:latestSessionId', cwd),
+  agentSessionFileExists: (cwd: string, sessionId: string, agentKind?: string) =>
+    req('agent:sessionFileExists', cwd, sessionId, agentKind),
+  getLatestAgentSessionId: (cwd: string, agentKind?: string) =>
+    req('agent:latestSessionId', cwd, agentKind),
 
   // Onboarding quest
   setOnboardingQuest: (quest: string) => req('config:setOnboardingQuest', quest),
@@ -204,11 +205,11 @@ contextBridge.exposeInMainWorld('api', {
     cwd: string,
     cmd: string,
     args: string[],
-    isClaude?: boolean,
+    agentKind?: string,
     cols?: number,
     rows?: number
   ) => {
-    sig('pty:create', id, cwd, cmd, args, isClaude, cols, rows)
+    sig('pty:create', id, cwd, cmd, args, agentKind, cols, rows)
   },
   writeTerminal: (id: string, data: string) => {
     sig('pty:write', id, data)

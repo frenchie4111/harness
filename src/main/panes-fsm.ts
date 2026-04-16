@@ -1,5 +1,5 @@
 import type { Store } from './store'
-import type { TerminalTab, WorkspacePane } from '../shared/state/terminals'
+import type { AgentKind, TerminalTab, WorkspacePane } from '../shared/state/terminals'
 import type { PersistedPane } from './persistence'
 import { log } from './debug'
 
@@ -11,9 +11,12 @@ interface PanesFSMOptions {
   /** Look up the repoRoot for a given worktree path. PanesFSM uses this
    * to nest persisted panes by repo (existing config layout). */
   getRepoRootForWorktree: (worktreePath: string) => string | undefined
-  /** Look up the most recent on-disk Claude session id for a worktree
+  /** Look up the most recent on-disk agent session id for a worktree
    * (used by the boot-time backfill). */
   getLatestClaudeSessionId: (worktreePath: string) => Promise<string | null>
+  /** Return the user's configured default agent kind. Used when creating
+   * the initial agent tab for a new worktree. */
+  getDefaultAgentKind?: () => AgentKind
 }
 
 function newPaneId(): string {
@@ -100,7 +103,7 @@ export class PanesFSM {
       for (const [wtPath, paneList] of Object.entries(byWt)) {
         const allTabs = paneList.flatMap((p) => p.tabs)
         const needsBackfill = allTabs.some(
-          (t) => t.type === 'claude' && !t.sessionId
+          (t) => t.type === 'agent' && !t.sessionId
         )
         const latest = needsBackfill
           ? await this.opts.getLatestClaudeSessionId(wtPath).catch(() => null)
@@ -116,7 +119,7 @@ export class PanesFSM {
               label: t.label,
               sessionId: t.sessionId
             }
-            if (base.type !== 'claude' || base.sessionId) return base
+            if (base.type !== 'agent' || base.sessionId) return base
             if (latest && !claimedLatest) {
               claimedLatest = true
               return { ...base, sessionId: latest }
@@ -152,13 +155,16 @@ export class PanesFSM {
       return sleeping
     }
 
-    const claudeTabId = `claude-${wtPath.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}`
+    const agentKind = this.opts.getDefaultAgentKind?.() ?? 'claude'
+    const agentLabel = agentKind === 'codex' ? 'Codex' : 'Claude'
+    const agentTabId = `agent-${wtPath.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}`
     const shellTabId = `shell-${wtPath}-${Date.now()}`
     const tabs: TerminalTab[] = [
       {
-        id: claudeTabId,
-        type: 'claude',
-        label: 'Claude',
+        id: agentTabId,
+        type: 'agent',
+        agentKind,
+        label: agentLabel,
         sessionId: crypto.randomUUID(),
         initialPrompt: opts?.teleportSessionId ? undefined : opts?.initialPrompt,
         teleportSessionId: opts?.teleportSessionId
@@ -168,7 +174,7 @@ export class PanesFSM {
     const pane: WorkspacePane = {
       id: newPaneId(),
       tabs,
-      activeTabId: claudeTabId
+      activeTabId: agentTabId
     }
     this.commit(wtPath, [pane])
     return [pane]
@@ -214,12 +220,12 @@ export class PanesFSM {
   /** Replace the tab id (so React remounts XTerminal and spawns a fresh
    * pty) but keep the existing sessionId so the new Claude process resumes
    * the same conversation via `--resume`. */
-  restartClaudeTab(wtPath: string, tabId: string, newId: string): void {
+  restartAgentTab(wtPath: string, tabId: string, newId: string): void {
     const list = this.getPanes(wtPath)
     const next = list.map((pane) => {
       if (!pane.tabs.some((t) => t.id === tabId)) return pane
       const tabs = pane.tabs.map((t) =>
-        t.id === tabId && t.type === 'claude' ? { ...t, id: newId } : t
+        t.id === tabId && t.type === 'agent' ? { ...t, id: newId } : t
       )
       const activeTabId = pane.activeTabId === tabId ? newId : pane.activeTabId
       return { ...pane, tabs, activeTabId }
@@ -299,7 +305,7 @@ export class PanesFSM {
     const sourceActive = source?.tabs.find((t) => t.id === source.activeTabId)
     const sourceType = sourceActive?.type
     const shouldShell =
-      !sourceType || sourceType === 'claude' || sourceType === 'shell'
+      !sourceType || sourceType === 'agent' || sourceType === 'shell'
 
     let tab: TerminalTab
     if (shouldShell) {

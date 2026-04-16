@@ -97,29 +97,32 @@ export function markTerminalClosing(id: string): void {
   window.api.clearTerminalHistory(id)
 }
 
+import type { AgentKind } from '../../shared/state/terminals'
+
 interface XTerminalProps {
   terminalId: string
   cwd: string
-  type: 'claude' | 'shell'
+  type: 'agent' | 'shell'
+  agentKind?: AgentKind
   visible: boolean
-  claudeCommand: string
+  agentCommand: string
   sessionName?: string
   sessionId?: string
   initialPrompt?: string
   teleportSessionId?: string
-  onRestartClaude?: () => void
+  onRestartAgent?: () => void
 }
 
 function shellQuote(s: string): string {
   return "'" + s.replace(/'/g, "'\\''") + "'"
 }
 
-export function XTerminal({ terminalId, cwd, type, visible, claudeCommand, sessionName, sessionId, initialPrompt, teleportSessionId, onRestartClaude }: XTerminalProps): JSX.Element {
+export function XTerminal({ terminalId, cwd, type, agentKind, visible, agentCommand, sessionName, sessionId, initialPrompt, teleportSessionId, onRestartAgent }: XTerminalProps): JSX.Element {
   const [exited, setExited] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
-  const [loading, setLoading] = useState(type === 'claude')
+  const [loading, setLoading] = useState(type === 'agent')
   const visibleRef = useRef(visible)
   const initializedRef = useRef(false)
   // When the terminal mounts in a display:none wrapper (background tab or
@@ -226,23 +229,19 @@ export function XTerminal({ terminalId, cwd, type, visible, claudeCommand, sessi
     let cleanupExit: (() => void) | null = null
     let disposed = false
 
-    if (type === 'claude') {
+    if (type === 'agent') {
       cleanupExit = window.api.onTerminalExit((id) => {
         if (id === terminalId && !disposed) setExited(true)
       })
     }
 
-    const buildClaudeArg = async (): Promise<string> => {
+    const buildAgentArg = async (): Promise<string> => {
       const mcpPath = await window.api.prepareMcpForTerminal(terminalId)
       const mcpFlag = mcpPath ? ` --mcp-config ${shellQuote(mcpPath)}` : ''
       const nameFlag = sessionName ? ` --name ${shellQuote(sessionName)}` : ''
-      const cmd = `${claudeCommand}${mcpFlag}${nameFlag}`
+      const cmd = `${agentCommand}${mcpFlag}${nameFlag}`
       if (teleportSessionId && sessionId) {
-        // If the session file already exists (e.g. user restarted the tab
-        // after teleport already replayed history), fall through to the
-        // regular --resume path — re-running --teleport would hit
-        // "Session ID is already in use".
-        const exists = await window.api.claudeSessionFileExists(cwd, sessionId)
+        const exists = await window.api.agentSessionFileExists(cwd, sessionId, agentKind)
         if (!exists) {
           return `${cmd} --teleport ${teleportSessionId} --session-id ${sessionId}`
         }
@@ -250,12 +249,7 @@ export function XTerminal({ terminalId, cwd, type, visible, claudeCommand, sessi
       if (!sessionId) {
         return initialPrompt ? `${cmd} ${shellQuote(initialPrompt)}` : cmd
       }
-      // If a session file already exists for this id, resume it; otherwise
-      // create a new session with this id. `claude --session-id <id>` errors
-      // with "is already in use" when the file exists, so we can't use it
-      // idempotently across launches. Only forward the kickoff prompt on a
-      // fresh session — a resume should never replay it.
-      const exists = await window.api.claudeSessionFileExists(cwd, sessionId)
+      const exists = await window.api.agentSessionFileExists(cwd, sessionId, agentKind)
       if (exists) return `${cmd} --resume ${sessionId}`
       const base = `${cmd} --session-id ${sessionId}`
       return initialPrompt ? `${base} ${shellQuote(initialPrompt)}` : base
@@ -277,9 +271,9 @@ export function XTerminal({ terminalId, cwd, type, visible, claudeCommand, sessi
       pendingSpawnRef.current = null
 
       const shell = '/bin/zsh'
-      const claudeArg = type === 'claude' ? await buildClaudeArg() : ''
+      const agentArg = type === 'agent' ? await buildAgentArg() : ''
       if (disposed) return
-      const args = type === 'claude' ? ['-ilc', claudeArg] : ['-il']
+      const args = type === 'agent' ? ['-ilc', agentArg] : ['-il']
       // Pass the renderer's fitted dimensions so the PTY spawns at the
       // right grid size instead of main's fallback 120x30.
       let spawnCols: number | undefined
@@ -294,7 +288,7 @@ export function XTerminal({ terminalId, cwd, type, visible, claudeCommand, sessi
       } catch {
         // fall back to main's defaults
       }
-      window.api.createTerminal(terminalId, cwd, shell, args, type === 'claude', spawnCols, spawnRows)
+      window.api.createTerminal(terminalId, cwd, shell, args, type === 'agent' ? agentKind : undefined, spawnCols, spawnRows)
 
       terminal.onData((data) => {
         window.api.writeTerminal(terminalId, data)
@@ -456,7 +450,7 @@ export function XTerminal({ terminalId, cwd, type, visible, claudeCommand, sessi
           <div className="flex flex-col items-center gap-3 text-dim text-sm">
             <ClaudeLoader />
             <div className="flex items-center">
-              <span>Starting Claude</span>
+              <span>Starting {agentKind === 'codex' ? 'Codex' : 'Claude'}</span>
               <span className="claude-loader-dots ml-1">
                 <span />
                 <span />
@@ -466,12 +460,12 @@ export function XTerminal({ terminalId, cwd, type, visible, claudeCommand, sessi
           </div>
         </div>
       )}
-      {exited && type === 'claude' && onRestartClaude && (
+      {exited && type === 'agent' && onRestartAgent && (
         <div className="absolute inset-0 flex items-center justify-center bg-app/80">
           <div className="flex flex-col items-center gap-3 text-sm">
-            <div className="text-dim">Claude exited.</div>
+            <div className="text-dim">{agentKind === 'codex' ? 'Codex' : 'Claude'} exited.</div>
             <button
-              onClick={onRestartClaude}
+              onClick={onRestartAgent}
               className="px-3 py-1.5 rounded border border-border bg-panel text-fg-bright hover:bg-border transition-colors"
             >
               Start a new session

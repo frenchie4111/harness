@@ -176,7 +176,9 @@ export default function App(): JSX.Element {
   const [showHotkeyCheatsheet, setShowHotkeyCheatsheet] = useState(false)
   const tailLines = useTailLineBuffer()
   const settings = useSettings()
-  const { hasGithubToken: hasGithubPat, githubAuthSource, claudeCommand, nameClaudeSessions } = settings
+  const { hasGithubToken: hasGithubPat, githubAuthSource, claudeCommand, nameClaudeSessions, defaultAgent } = settings
+  const agentCommand = defaultAgent === 'codex' ? (settings.codexCommand || 'codex') : claudeCommand
+  const nameAgentSessions = nameClaudeSessions
   const hasGithubToken = hasGithubPat || githubAuthSource === 'gh-cli'
   const hotkeyOverrides = settings.hotkeys ?? undefined
   // Onboarding parallelism quest — see QuestCard.tsx for the steps.
@@ -413,16 +415,16 @@ const setQuestStep = useCallback((next: QuestStep) => {
   const {
     appendTabToPane,
     handleAddTerminalTab,
-    handleAddClaudeTab,
+    handleAddAgentTab,
     handleCloseTab,
-    handleRestartClaudeTab,
-    handleRestartAllClaudeTabs,
+    handleRestartAgentTab,
+    handleRestartAllAgentTabs,
     handleSelectTab,
     handleOpenCommit,
     handleReorderTabs,
     handleMoveTabToPane,
     handleSplitPane,
-    handleSendToClaude,
+    handleSendToAgent,
     handleOpenFile,
     handleOpenDiff
   } = useTabHandlers({
@@ -614,7 +616,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
             Hooks installed! You will need to restart any active Claude instances to see the changes.
           </span>
           <button
-            onClick={handleRestartAllClaudeTabs}
+            onClick={handleRestartAllAgentTabs}
             className="px-3 py-1 bg-success/30 hover:bg-success/40 rounded text-sm text-success transition-colors shrink-0 cursor-pointer no-drag"
           >
             Restart Claude tabs
@@ -701,17 +703,17 @@ const setQuestStep = useCallback((next: QuestStep) => {
                 statuses={statuses}
                 shellActivity={shellActivity}
                 visible={isVisible}
-                claudeCommand={claudeCommand}
-                nameClaudeSessions={nameClaudeSessions}
+                agentCommand={agentCommand}
+                nameAgentSessions={nameAgentSessions}
                 onSelectTab={handleSelectTab}
                 onAddTab={handleAddTerminalTab}
-                onAddClaudeTab={handleAddClaudeTab}
+                onAddAgentTab={(wt, paneId) => handleAddAgentTab(wt, defaultAgent ?? 'claude', paneId)}
                 onCloseTab={handleCloseTab}
-                onRestartClaudeTab={handleRestartClaudeTab}
+                onRestartAgentTab={handleRestartAgentTab}
                 onReorderTabs={handleReorderTabs}
                 onMoveTabToPane={handleMoveTabToPane}
                 onSplitPane={handleSplitPane}
-                onSendToClaude={handleSendToClaude}
+                onSendToAgent={handleSendToAgent}
               />
             </div>
           )
@@ -818,7 +820,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
             onOpenCommit={handleOpenCommit}
             onOpenDiff={handleOpenDiff}
             onOpenFile={handleOpenFile}
-            onSendToClaude={handleSendToClaude}
+            onSendToAgent={handleSendToAgent}
             onCollapse={() => setRightColumnHidden(true)}
           />
         )}

@@ -8,7 +8,7 @@ import { bindingToString, formatBindingGlyphs, resolveHotkeys } from '../hotkeys
 interface AllFilesPanelProps {
   worktreePath: string | null
   onOpenFile: (filePath: string) => void
-  onSendToClaude?: (text: string) => void
+  onSendToAgent?: (text: string) => void
 }
 
 interface TreeNode {
@@ -54,7 +54,7 @@ function sortChildren(node: TreeNode): TreeNode[] {
 export function AllFilesPanel({
   worktreePath,
   onOpenFile,
-  onSendToClaude
+  onSendToAgent
 }: AllFilesPanelProps): JSX.Element {
   const [files, setFiles] = useState<string[]>([])
   const [hasLoaded, setHasLoaded] = useState(false)
@@ -150,7 +150,7 @@ export function AllFilesPanel({
             worktreePath={worktreePath}
             onToggle={toggle}
             onOpenFile={onOpenFile}
-            onSendToClaude={onSendToClaude}
+            onSendToAgent={onSendToAgent}
           />
         )}
       </div>
@@ -175,7 +175,7 @@ interface TreeBranchProps {
   worktreePath: string
   onToggle: (path: string) => void
   onOpenFile: (filePath: string) => void
-  onSendToClaude?: (text: string) => void
+  onSendToAgent?: (text: string) => void
 }
 
 function TreeBranch({
@@ -186,7 +186,7 @@ function TreeBranch({
   worktreePath,
   onToggle,
   onOpenFile,
-  onSendToClaude
+  onSendToAgent
 }: TreeBranchProps): JSX.Element {
   const children = sortChildren(node)
   return (
@@ -201,7 +201,7 @@ function TreeBranch({
               depth={depth}
               worktreePath={worktreePath}
               onOpenFile={onOpenFile}
-              onSendToClaude={onSendToClaude}
+              onSendToAgent={onSendToAgent}
             />
           )
         }
@@ -224,7 +224,7 @@ function TreeBranch({
                 worktreePath={worktreePath}
                 onToggle={onToggle}
                 onOpenFile={onOpenFile}
-                onSendToClaude={onSendToClaude}
+                onSendToAgent={onSendToAgent}
               />
             )}
           </div>
@@ -272,14 +272,14 @@ function FileRow({
   depth,
   worktreePath,
   onOpenFile,
-  onSendToClaude
+  onSendToAgent
 }: {
   name: string
   path: string
   depth: number
   worktreePath: string
   onOpenFile: (filePath: string) => void
-  onSendToClaude?: (text: string) => void
+  onSendToAgent?: (text: string) => void
 }): JSX.Element {
   return (
     <div
@@ -289,12 +289,12 @@ function FileRow({
     >
       <FileText size={11} className="shrink-0 text-faint" />
       <span className="truncate min-w-0 flex-1 text-fg">{name}</span>
-      {onSendToClaude && (
+      {onSendToAgent && (
         <Tooltip label="Reference in Claude" side="left">
           <button
             onClick={(e) => {
               e.stopPropagation()
-              onSendToClaude(`@${path} `)
+              onSendToAgent(`@${path} `)
             }}
             className="shrink-0 opacity-0 group-hover:opacity-100 text-faint hover:text-fg transition-all cursor-pointer"
           >
