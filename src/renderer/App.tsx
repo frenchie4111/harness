@@ -5,6 +5,7 @@ import { useTabHandlers } from './hooks/useTabHandlers'
 import { useHotkeyHandlers } from './hooks/useHotkeyHandlers'
 import { useWorktreeHandlers } from './hooks/useWorktreeHandlers'
 import type { Worktree, TerminalTab, PtyStatus, PendingTool, QuestStep, PendingWorktree, UpdaterStatus, RepoConfig } from './types'
+import { CheckCircle2, Layers, GitBranch, Zap, FolderOpen } from 'lucide-react'
 import { HotkeysProvider, Tooltip } from './components/Tooltip'
 import { Sidebar } from './components/Sidebar'
 import { ResizeHandle } from './components/ResizeHandle'
@@ -179,6 +180,9 @@ export default function App(): JSX.Element {
   const [commandPaletteMode, setCommandPaletteMode] = useState<'root' | 'files'>('root')
   const [showPerfMonitor, setShowPerfMonitor] = useState(false)
   const [showHotkeyCheatsheet, setShowHotkeyCheatsheet] = useState(false)
+  // `defaultAgent` is seeded to 'claude' at init, so we track explicit
+  // confirmation separately for the onboarding step checkmark.
+  const [agentChosen, setAgentChosen] = useState(false)
   const tailLines = useTailLineBuffer()
   const settings = useSettings()
   const { hasGithubToken: hasGithubPat, githubAuthSource, nameClaudeSessions, defaultAgent } = settings
@@ -525,52 +529,133 @@ const setQuestStep = useCallback((next: QuestStep) => {
   ) : null
 
   if (repoRoots.length === 0) {
+    const step1Complete = agentChosen
+    const step2Enabled = step1Complete
     return (
       <HotkeysProvider bindings={resolvedHotkeys}>
       <div className="flex h-full flex-col">
         <div className="drag-region h-10 shrink-0" />
-        <div className="flex flex-1 items-center justify-center">
-        <div className="text-center">
-          <img
-            src={iconUrl}
-            alt="Harness"
-            className="w-28 h-28 mx-auto rounded-3xl mb-8"
-            style={{ boxShadow: '0 0 60px rgba(245, 158, 11, 0.15)' }}
-          />
-          <h1 className="gradient-text text-4xl font-extrabold tracking-tight mb-4">Harness</h1>
-          <p className="text-dim mb-6">Select your agent and a git repository to get started</p>
-          <div className="flex gap-3 justify-center mb-6">
-            {AGENT_REGISTRY.map((agent) => (
-              <button
-                key={agent.kind}
-                onClick={() => window.api.setDefaultAgent(agent.kind)}
-                className={`flex items-center gap-2 px-5 py-3 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
-                  defaultAgent === agent.kind
-                    ? 'bg-surface text-fg-bright border border-fg'
-                    : 'bg-panel border border-border text-dim hover:text-fg hover:border-border-strong'
+        <div className="flex-1 overflow-y-auto">
+          <div className="mx-auto max-w-xl w-full px-6 py-6">
+            <div className="text-center mb-6">
+              <img
+                src={iconUrl}
+                alt="Harness"
+                className="w-16 h-16 mx-auto rounded-2xl mb-4 brand-glow-amber"
+              />
+              <h1 className="gradient-text text-3xl font-extrabold tracking-tight mb-2">Harness</h1>
+              <p className="text-fg text-sm leading-relaxed max-w-md mx-auto">
+                Run many coding agents in parallel — one window, isolated git worktrees,
+                clear status on who needs you.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 mb-8">
+              <div className="rounded-lg border border-border bg-panel p-3">
+                <Layers className="w-4 h-4 text-accent mb-2" />
+                <div className="text-xs text-fg-bright font-medium mb-0.5">Parallel agents</div>
+                <div className="text-[11px] text-dim leading-snug">One window, many sessions</div>
+              </div>
+              <div className="rounded-lg border border-border bg-panel p-3">
+                <GitBranch className="w-4 h-4 text-accent mb-2" />
+                <div className="text-xs text-fg-bright font-medium mb-0.5">Worktrees handled</div>
+                <div className="text-[11px] text-dim leading-snug">Your original repo stays clean</div>
+              </div>
+              <div className="rounded-lg border border-border bg-panel p-3">
+                <Zap className="w-4 h-4 text-accent mb-2" />
+                <div className="text-xs text-fg-bright font-medium mb-0.5">Status at a glance</div>
+                <div className="text-[11px] text-dim leading-snug">Dots show who's waiting</div>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div
+                className={`rounded-xl border bg-panel p-4 transition-colors ${
+                  step1Complete
+                    ? 'border-border'
+                    : 'border-accent/50 ring-1 ring-accent/25'
                 }`}
               >
-                <AgentIcon kind={agent.kind} size={16} />
-                {agent.displayName}
+                <div className="flex items-start gap-3 mb-3">
+                  {step1Complete ? (
+                    <CheckCircle2 className="w-5 h-5 text-success shrink-0 mt-0.5" />
+                  ) : (
+                    <div className="w-5 h-5 rounded-full border-2 border-accent text-accent text-[11px] font-bold flex items-center justify-center shrink-0 mt-0.5">
+                      1
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="text-fg-bright text-sm font-medium">Choose your default agent</div>
+                    <div className="text-xs text-dim mt-0.5">This is what new tabs will spawn. You can change it later in Settings.</div>
+                  </div>
+                </div>
+                <div className="flex gap-2 ml-8">
+                  {AGENT_REGISTRY.map((agent) => (
+                    <button
+                      key={agent.kind}
+                      onClick={() => {
+                        window.api.setDefaultAgent(agent.kind)
+                        setAgentChosen(true)
+                      }}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
+                        defaultAgent === agent.kind && agentChosen
+                          ? 'bg-surface text-fg-bright border border-fg'
+                          : 'bg-panel border border-border text-dim hover:text-fg hover:border-border-strong'
+                      }`}
+                    >
+                      <AgentIcon kind={agent.kind} size={14} />
+                      {agent.displayName}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div
+                className={`rounded-xl border bg-panel p-4 transition-colors ${
+                  !step2Enabled
+                    ? 'border-border opacity-60'
+                    : 'border-accent/50 ring-1 ring-accent/25'
+                }`}
+              >
+                <div className="flex items-start gap-3 mb-3">
+                  <div
+                    className={`w-5 h-5 rounded-full border-2 text-[11px] font-bold flex items-center justify-center shrink-0 mt-0.5 ${
+                      step2Enabled ? 'border-accent text-accent' : 'border-border-strong text-dim'
+                    }`}
+                  >
+                    2
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-fg-bright text-sm font-medium">Open a git repository</div>
+                    <div className="text-xs text-dim mt-0.5">Harness creates worktrees inside a sibling folder — your original repo stays untouched.</div>
+                  </div>
+                </div>
+                <div className="ml-8">
+                  <button
+                    onClick={handleAddRepo}
+                    disabled={!step2Enabled}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      step2Enabled
+                        ? 'bg-accent/20 hover:bg-accent/30 text-fg-bright border border-accent/40 cursor-pointer'
+                        : 'bg-panel border border-border text-dim cursor-not-allowed'
+                    }`}
+                  >
+                    <FolderOpen className="w-4 h-4" />
+                    Open Repository
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 pt-5 border-t border-border/60 text-center">
+              <button
+                onClick={() => setShowGuide(true)}
+                className="text-xs text-accent hover:underline cursor-pointer"
+              >
+                New to multi-agent workflows? Read the worktree guide →
               </button>
-            ))}
+            </div>
           </div>
-          <button
-            onClick={handleAddRepo}
-            className="px-6 py-3 bg-surface hover:bg-surface-hover rounded-lg text-fg-bright transition-colors cursor-pointer"
-          >
-            Open Repository
-          </button>
-          <div className="mt-8 pt-8 border-t border-border/60 max-w-sm mx-auto">
-            <p className="text-xs text-dim mb-2">New to multi-agent workflows?</p>
-            <button
-              onClick={() => setShowGuide(true)}
-              className="text-sm text-accent hover:underline cursor-pointer"
-            >
-              Read the worktree guide →
-            </button>
-          </div>
-        </div>
         </div>
       </div>
       {settingsOverlay}
