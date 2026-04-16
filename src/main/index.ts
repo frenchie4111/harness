@@ -37,7 +37,11 @@ import {
 import { loadRepoConfig, saveRepoConfig, type RepoConfig } from './repo-config'
 import { isWorktreeMerged } from '../shared/state/prs'
 import { watchStatusDir } from './hooks'
-import { getAgent } from './agents'
+import { getAgent, type AgentKind } from './agents'
+
+function toAgentKind(value: string | undefined): AgentKind {
+  return value === 'codex' ? 'codex' : 'claude'
+}
 import { CostTracker } from './cost-tracker'
 import { startControlServer } from './control-server'
 import { writeMcpConfigForTerminal, pruneMcpConfigs } from './mcp-config'
@@ -192,7 +196,7 @@ const panesFSM = new PanesFSM(store, {
     const kind = store.getSnapshot().state.settings.defaultAgent ?? 'claude'
     return getAgent(kind).latestSessionId(wtPath)
   },
-  getDefaultAgentKind: () => (store.getSnapshot().state.settings.defaultAgent ?? 'claude') as 'claude' | 'codex'
+  getDefaultAgentKind: () => toAgentKind(store.getSnapshot().state.settings.defaultAgent)
 })
 
 const worktreesFSM = new WorktreesFSM(store, {
@@ -1002,12 +1006,12 @@ function registerIpcHandlers(): void {
   })
 
   transport.onRequest('agent:sessionFileExists', (cwd: string, sessionId: string, agentKind?: string): boolean => {
-    const kind = (agentKind as 'claude' | 'codex') || 'claude'
+    const kind = toAgentKind(agentKind)
     return getAgent(kind).sessionFileExists(cwd, sessionId)
   })
 
   transport.onRequest('agent:latestSessionId', (cwd: string, agentKind?: string): string | null => {
-    const kind = (agentKind as 'claude' | 'codex') || 'claude'
+    const kind = toAgentKind(agentKind)
     return getAgent(kind).latestSessionId(cwd)
   })
 
@@ -1018,7 +1022,7 @@ function registerIpcHandlers(): void {
       initialPrompt?: string; teleportSessionId?: string;
       sessionName?: string
     }): string => {
-      const kind = (agentKind as 'claude' | 'codex') || 'claude'
+      const kind = toAgentKind(agentKind)
       const agent = getAgent(kind)
       const command = kind === 'claude'
         ? (config.claudeCommand || agent.defaultCommand)

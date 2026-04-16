@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSy
 import { join } from 'path'
 import { homedir } from 'os'
 import { log } from '../debug'
+import { makeHookCommand } from '../hooks'
 import type { AgentSpawnOpts } from './index'
 
 function shellQuote(s: string): string {
@@ -90,8 +91,6 @@ export function hooksInstalled(worktreePath: string): boolean {
 }
 
 export function installHooks(worktreePath: string): void {
-  // Import makeHookCommand dynamically to avoid circular deps
-  const { makeHookCommand } = require('../hooks') as { makeHookCommand: (event: string) => string }
   log('hooks', `installing Claude hooks in ${worktreePath}`)
   const settings = readSettingsLocal(worktreePath)
   if (!settings.hooks) settings.hooks = {}

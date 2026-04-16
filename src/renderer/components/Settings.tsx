@@ -13,7 +13,7 @@ interface SettingsProps {
   initialSection?: SectionId
 }
 
-type SectionId = 'appearance' | 'claude' | 'worktrees' | 'editor' | 'github' | 'hotkeys' | 'updates'
+type SectionId = 'appearance' | 'agent' | 'worktrees' | 'editor' | 'github' | 'hotkeys' | 'updates'
 
 interface Section {
   id: SectionId
@@ -93,7 +93,7 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
   const scrollRef = useRef<HTMLDivElement>(null)
   const sectionRefs = useRef<Record<SectionId, HTMLElement | null>>({
     appearance: null,
-    claude: null,
+    agent: null,
     worktrees: null,
     editor: null,
     github: null,
