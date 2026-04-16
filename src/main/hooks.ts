@@ -1,14 +1,11 @@
 import {
-  readFileSync,
-  writeFileSync,
-  mkdirSync,
-  existsSync,
   watch,
   openSync,
   fstatSync,
   readSync,
   closeSync,
-  unlinkSync
+  unlinkSync,
+  mkdirSync
 } from 'fs'
 import { join } from 'path'
 import type { PtyStatus } from './pty-manager'
@@ -16,9 +13,6 @@ import type { Store } from './store'
 import { log } from './debug'
 
 const STATUS_DIR = '/tmp/harness-status'
-const HARNESS_HOOK_MARKER = '__claude_harness__'
-// Bump this when the hook format changes to force reinstallation
-const HARNESS_HOOK_VERSION = 8
 
 export interface PendingTool {
   name: string
@@ -29,6 +23,12 @@ export interface PendingTool {
 // terminal's log file at /tmp/harness-status/<id>.ndjson. The line wraps
 // the full stdin payload Claude Code sends to the hook, so the main process
 // has access to the raw event and can do all classification in TypeScript.
+//
+// Gated on $HARNESS_TERMINAL_ID / $CLAUDE_HARNESS_ID — these are only set
+// by PtyManager when it spawns a terminal on our behalf. Sessions started
+// outside Harness (plain `claude` in a terminal, CI, etc.) hit the exit 0
+// on the first line and do nothing. That inert-by-default behavior is why
+// a global user-scope install is safe.
 //
 // POSIX only — no jq, no python. The bash reads stdin into a shell var,
 // defaults empty to `null`, then emits a single printf writing one line to
@@ -42,103 +42,6 @@ export function makeHookCommand(event: string): string {
     `printf "{\\"event\\":\\"${event}\\",\\"ts\\":%s,\\"payload\\":%s}\\n" ` +
     `"$(date +%s)" "$p" >> "$d/$h.ndjson"`
   return `bash -c '${inner}'`
-}
-
-// Events we install hooks for. Every event uses the exact same shape —
-// classification happens in TS against the raw payload.
-const HOOK_EVENTS = [
-  'UserPromptSubmit',
-  'PreToolUse',
-  'PostToolUse',
-  'Stop',
-  'Notification'
-]
-
-interface HookEntry {
-  matcher?: string
-  hooks: { type: string; command: string; timeout?: number; _marker?: string }[]
-}
-
-interface SettingsLocal {
-  hooks?: Record<string, HookEntry[]>
-  [key: string]: unknown
-}
-
-function getSettingsPath(worktreePath: string): string {
-  return join(worktreePath, '.claude', 'settings.local.json')
-}
-
-function readSettingsLocal(worktreePath: string): SettingsLocal {
-  const p = getSettingsPath(worktreePath)
-  try {
-    return JSON.parse(readFileSync(p, 'utf-8'))
-  } catch {
-    return {}
-  }
-}
-
-function writeSettingsLocal(worktreePath: string, settings: SettingsLocal): void {
-  const dir = join(worktreePath, '.claude')
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-  writeFileSync(getSettingsPath(worktreePath), JSON.stringify(settings, null, 2))
-}
-
-function makeHarnessHookEntry(command: string): HookEntry {
-  return {
-    hooks: [
-      {
-        type: 'command',
-        command,
-        timeout: 5,
-        _marker: HARNESS_HOOK_MARKER,
-        _version: HARNESS_HOOK_VERSION
-      } as HookEntry['hooks'][number]
-    ]
-  }
-}
-
-/** Returns true if our hooks are installed AND at the current version */
-export function hooksInstalled(worktreePath: string): boolean {
-  const settings = readSettingsLocal(worktreePath)
-  const hooks = settings.hooks
-  if (!hooks) return false
-  for (const entries of Object.values(hooks)) {
-    for (const entry of entries) {
-      for (const h of entry.hooks || []) {
-        const rec = h as Record<string, unknown>
-        if (rec._marker === HARNESS_HOOK_MARKER && rec._version === HARNESS_HOOK_VERSION) return true
-      }
-    }
-  }
-  return false
-}
-
-/** Remove all old harness hooks from a hook entry array */
-function removeOldHarnessEntries(entries: HookEntry[]): HookEntry[] {
-  return entries.filter((entry) => {
-    const hasOurMarker = entry.hooks?.some(
-      (h) => (h as Record<string, unknown>)._marker === HARNESS_HOOK_MARKER
-    )
-    return !hasOurMarker
-  })
-}
-
-/** Install our hooks into the worktree's .claude/settings.local.json, merging with existing */
-export function installHooks(worktreePath: string): void {
-  log('hooks', `installing hooks in ${worktreePath}`)
-  const settings = readSettingsLocal(worktreePath)
-  if (!settings.hooks) settings.hooks = {}
-
-  for (const event of Object.keys(settings.hooks)) {
-    settings.hooks[event] = removeOldHarnessEntries(settings.hooks[event])
-  }
-
-  for (const event of HOOK_EVENTS) {
-    if (!settings.hooks[event]) settings.hooks[event] = []
-    settings.hooks[event].push(makeHarnessHookEntry(makeHookCommand(event)))
-  }
-
-  writeSettingsLocal(worktreePath, settings)
 }
 
 interface HookEvent {

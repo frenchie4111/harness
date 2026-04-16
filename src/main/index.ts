@@ -216,28 +216,21 @@ const worktreeDeletionFSM = new WorktreeDeletionFSM(store, {
 
 const activityDeriver = new ActivityDeriver(store)
 
-/** Install agent hooks into any worktree that's missing them, but only
- * if the user has accepted the consent prompt. Installs hooks for the
- * user's configured default agent. */
-function installHooksForAcceptedWorktrees(): void {
-  const state = store.getSnapshot().state
-  if (state.hooks.consent !== 'accepted') return
-  const agentKind = state.settings.defaultAgent ?? 'claude'
-  const agent = getAgent(agentKind)
-  for (const wt of state.worktrees.list) {
-    if (!agent.hooksInstalled(wt.path)) {
-      agent.installHooks(wt.path)
-    }
+/** Install agent status hooks at the user-scope settings file for both
+ *  supported agents. Called once when consent flips to 'accepted'. The
+ *  hook command is env-gated on $HARNESS_TERMINAL_ID, so it no-ops for
+ *  sessions started outside Harness. */
+function installHooksGlobally(): void {
+  for (const agent of [getAgent('claude'), getAgent('codex')]) {
+    if (!agent.hooksInstalled()) agent.installHooks()
   }
 }
-store.subscribe((event) => {
-  if (
-    event.type === 'worktrees/listChanged' ||
-    event.type === 'hooks/consentChanged'
-  ) {
-    installHooksForAcceptedWorktrees()
+
+function uninstallHooksGlobally(): void {
+  for (const agent of [getAgent('claude'), getAgent('codex')]) {
+    agent.uninstallHooks()
   }
-})
+}
 
 // Sleep-on-boot for merged worktrees.
 //
@@ -1153,36 +1146,29 @@ function registerIpcHandlers(): void {
   // Performance monitor
   transport.onRequest('perf:getMetrics', () => perfMonitor.getMetrics())
 
-  // Hooks. check + install are no longer exposed: per-worktree installation
-  // happens automatically in the store subscription (see
-  // installHooksForAcceptedWorktrees) whenever the worktree list changes
-  // or the user accepts consent.
-
-  // Bulk-install hooks into every known worktree and flip consent='accepted'
-  // + justInstalled=true in a single round trip. Replaces the old
-  // renderer-side loop that walked worktrees one by one.
-  transport.onRequest('hooks:acceptAll', async () => {
-    const agentKind = store.getSnapshot().state.settings.defaultAgent ?? 'claude'
-    const agent = getAgent(agentKind)
-    const roots = config.repoRoots || []
-    for (const root of roots) {
-      const trees = await listWorktrees(root).catch(() => [])
-      for (const wt of trees) {
-        if (!agent.hooksInstalled(wt.path)) agent.installHooks(wt.path)
-      }
-    }
+  // Hooks. Install/uninstall happen once at user scope — the hook command
+  // is env-gated on $HARNESS_TERMINAL_ID so sessions spawned outside
+  // Harness are unaffected.
+  transport.onRequest('hooks:accept', () => {
+    installHooksGlobally()
+    config.hooksConsent = 'accepted'
+    saveConfig(config)
     store.dispatch({ type: 'hooks/consentChanged', payload: 'accepted' })
-    store.dispatch({ type: 'hooks/justInstalledChanged', payload: true })
     return true
   })
 
   transport.onRequest('hooks:decline', () => {
+    config.hooksConsent = 'declined'
+    saveConfig(config)
     store.dispatch({ type: 'hooks/consentChanged', payload: 'declined' })
     return true
   })
 
-  transport.onRequest('hooks:dismissJustInstalled', () => {
-    store.dispatch({ type: 'hooks/justInstalledChanged', payload: false })
+  transport.onRequest('hooks:uninstall', () => {
+    uninstallHooksGlobally()
+    config.hooksConsent = 'pending'
+    saveConfig(config)
+    store.dispatch({ type: 'hooks/consentChanged', payload: 'pending' })
     return true
   })
 
@@ -1445,20 +1431,68 @@ app.whenReady().then(() => {
     await refreshHarnessStarState()
   })()
 
-  // Seed hooks.consent from disk. If any known worktree already has the
-  // hooks installed, the user must have accepted at some point — remember
-  // that and skip the consent banner on boot.
+  // Seed hooks.consent from disk and migrate legacy per-worktree hooks
+  // to a single user-scope install. Runs once per app install; migrated
+  // state sticks via config.hooksMigratedToGlobal.
   void (async () => {
-    const roots = config.repoRoots || []
-    for (const root of roots) {
-      const trees = await listWorktrees(root).catch(() => [])
-      for (const wt of trees) {
-        if (hooksInstalled(wt.path)) {
-          store.dispatch({ type: 'hooks/consentChanged', payload: 'accepted' })
-          return
+    const claudeAgent = getAgent('claude')
+    const codexAgent = getAgent('codex')
+
+    // 1. Decide what the user's previous consent was.
+    //    - Explicit persisted value wins (including 'declined').
+    //    - Otherwise infer from the current state of disk: any global
+    //      install implies 'accepted'; otherwise scan worktrees for
+    //      legacy per-worktree markers as evidence of a prior accept.
+    let consent: 'pending' | 'accepted' | 'declined' | undefined = config.hooksConsent
+    if (!consent) {
+      if (claudeAgent.hooksInstalled() || codexAgent.hooksInstalled()) {
+        consent = 'accepted'
+      } else {
+        let foundLegacy = false
+        for (const root of config.repoRoots || []) {
+          const trees = await listWorktrees(root).catch(() => [])
+          for (const wt of trees) {
+            // Probe via strip helper dry-run: we check existence of the
+            // per-worktree file + its contents cheaply here by attempting
+            // a strip and rolling back mentally — actually easier to just
+            // run the strip and treat the "changed" bit as evidence.
+            if (claudeAgent.stripHooksFromWorktree(wt.path)) foundLegacy = true
+            if (codexAgent.stripHooksFromWorktree(wt.path)) foundLegacy = true
+          }
+        }
+        consent = foundLegacy ? 'accepted' : 'pending'
+        if (foundLegacy) {
+          // Migration already happened above as a side-effect.
+          config.hooksMigratedToGlobal = true
         }
       }
+      config.hooksConsent = consent
+      saveConfig(config)
     }
+
+    // 2. If user previously accepted but the global install is missing
+    //    (fresh upgrade), install now so status tracking keeps working.
+    if (consent === 'accepted') {
+      installHooksGlobally()
+    }
+
+    // 3. Run the one-shot migration sweep to strip legacy per-worktree
+    //    hooks — needed when config.hooksConsent was already persisted
+    //    (explicit path above didn't run the sweep) but we haven't
+    //    swept yet.
+    if (!config.hooksMigratedToGlobal) {
+      for (const root of config.repoRoots || []) {
+        const trees = await listWorktrees(root).catch(() => [])
+        for (const wt of trees) {
+          claudeAgent.stripHooksFromWorktree(wt.path)
+          codexAgent.stripHooksFromWorktree(wt.path)
+        }
+      }
+      config.hooksMigratedToGlobal = true
+      saveConfig(config)
+    }
+
+    store.dispatch({ type: 'hooks/consentChanged', payload: consent })
   })()
 
   // Prune terminal history files not referenced by any persisted tab

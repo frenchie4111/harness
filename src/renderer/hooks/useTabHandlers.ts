@@ -94,7 +94,6 @@ export function useTabHandlers({
         }
       }
     }
-    void window.api.dismissHooksJustInstalled()
   }, [panes, handleRestartAgentTab])
 
   const handleSelectTab = useCallback(
