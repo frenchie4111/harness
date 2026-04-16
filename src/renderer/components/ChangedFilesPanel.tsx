@@ -105,17 +105,16 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToAgent, onO
         </button>
       </Tooltip>
       {onOpenReview && files.length > 0 && (
-        <Tooltip label="Review all changes">
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              onOpenReview(mode)
-            }}
-            className="text-faint hover:text-fg transition-colors cursor-pointer"
-          >
-            <ClipboardCheck size={12} />
-          </button>
-        </Tooltip>
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            onOpenReview(mode)
+          }}
+          className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-accent text-fg text-[10px] font-medium hover:bg-accent/80 transition-colors cursor-pointer"
+        >
+          <ClipboardCheck size={10} />
+          Review
+        </button>
       )}
     </>
   )
