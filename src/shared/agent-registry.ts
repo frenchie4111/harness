@@ -37,13 +37,19 @@ export const CLAUDE_MODELS: ModelOption[] = [
 ]
 
 export const CODEX_MODELS: ModelOption[] = [
-  { id: 'o3', displayName: 'o3', tier: 'current' },
-  { id: 'o4-mini', displayName: 'o4-mini', tier: 'current' },
-  { id: 'gpt-4.1', displayName: 'GPT-4.1', tier: 'current' },
-  { id: 'gpt-4.1-mini', displayName: 'GPT-4.1 Mini', tier: 'current' },
-  { id: 'gpt-4.1-nano', displayName: 'GPT-4.1 Nano', tier: 'current' },
-  { id: 'o3-mini', displayName: 'o3-mini', tier: 'legacy' },
-  { id: 'gpt-4o', displayName: 'GPT-4o', tier: 'legacy' }
+  { id: 'gpt-5-codex', displayName: 'GPT-5 Codex', tier: 'current' },
+  { id: 'gpt-5.3-codex', displayName: 'GPT-5.3 Codex', tier: 'current' },
+  { id: 'gpt-5.2-codex', displayName: 'GPT-5.2 Codex', tier: 'current' },
+  { id: 'gpt-5.1-codex', displayName: 'GPT-5.1 Codex', tier: 'current' },
+  { id: 'gpt-5.1-codex-max', displayName: 'GPT-5.1 Codex Max', tier: 'current' },
+  { id: 'gpt-5.1-codex-mini', displayName: 'GPT-5.1 Codex Mini', tier: 'current' },
+  { id: 'gpt-5.4', displayName: 'GPT-5.4', tier: 'current' },
+  { id: 'gpt-5.4-mini', displayName: 'GPT-5.4 Mini', tier: 'current' },
+  { id: 'gpt-5.4-nano', displayName: 'GPT-5.4 Nano', tier: 'current' },
+  { id: 'o3', displayName: 'o3', tier: 'legacy' },
+  { id: 'o4-mini', displayName: 'o4-mini', tier: 'legacy' },
+  { id: 'gpt-4.1', displayName: 'GPT-4.1', tier: 'legacy' },
+  { id: 'gpt-4.1-mini', displayName: 'GPT-4.1 Mini', tier: 'legacy' },
 ]
 
 export function getAgentInfo(kind: AgentKind): AgentInfo {
