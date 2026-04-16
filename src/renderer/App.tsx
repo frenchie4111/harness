@@ -740,7 +740,19 @@ const setQuestStep = useCallback((next: QuestStep) => {
                   <div className="flex-1 min-w-0">
                     <div className="text-fg-bright text-sm font-medium">Install status hooks</div>
                     <div className="text-xs text-dim mt-0.5">
-                      Adds a small hook at <code className="bg-app/50 px-1 rounded">~/.claude/settings.json</code> (and the Codex equivalent) so Harness can tell when an agent is working, waiting, or asking for approval. Only fires for sessions Harness launches — others are untouched.
+                      Adds a small hook at <code className="bg-app/50 px-1 rounded">~/.claude/settings.json</code> (and the Codex equivalent) so Harness can tell when an agent is{' '}
+                      <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                        <span className="w-1.5 h-1.5 rounded-full bg-success" />
+                        <span className="text-fg">working</span>
+                      </span>,{' '}
+                      <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                        <span className="w-1.5 h-1.5 rounded-full bg-warning" />
+                        <span className="text-fg">waiting</span>
+                      </span>, or{' '}
+                      <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                        <span className="w-1.5 h-1.5 rounded-full bg-danger" />
+                        <span className="text-fg">asking for approval</span>
+                      </span>. Only fires for sessions Harness launches — others are untouched.
                     </div>
                   </div>
                 </div>
