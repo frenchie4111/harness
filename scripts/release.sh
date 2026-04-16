@@ -91,6 +91,12 @@ if ! gh auth status >/dev/null 2>&1; then
 fi
 ok "gh CLI is authenticated"
 
+# claude CLI must be available (used for release notes generation)
+if ! command -v claude >/dev/null 2>&1; then
+  fail "claude CLI is not installed. Install with: npm install -g @anthropic-ai/claude-code"
+fi
+ok "claude CLI is available"
+
 # Ensure deps are installed (electron-vite@5 + vite@7 peer range needs --legacy-peer-deps)
 npm install --legacy-peer-deps --silent
 ok "Dependencies installed"
@@ -141,9 +147,52 @@ for (const f of files) {
 "
 ok "Download links updated"
 
-git add package.json package-lock.json README.md docs/index.html
+# ---- Generate release notes for docs/releases.html ----
+step "Generating release notes with Claude"
+PREV_TAG=$(git describe --tags --abbrev=0 HEAD 2>/dev/null || true)
+if [ -z "$PREV_TAG" ]; then
+  CHANGES=$(git log --pretty=format:'- %s' HEAD)
+else
+  CHANGES=$(git log --pretty=format:'- %s' "${PREV_TAG}..HEAD" | grep -v "^- Co-Authored-By:" | grep -v "^- Release v" || true)
+fi
+
+CHANGES_FILE=$(mktemp)
+echo "$CHANGES" > "$CHANGES_FILE"
+
+RELEASE_DATE=$(date +"%B %-d, %Y")
+
+claude -p "Add a release entry for ${TAG} (released ${RELEASE_DATE}) to docs/releases.html.
+
+The raw commit messages since the last release are in ${CHANGES_FILE} — read that file.
+
+Read docs/releases.html to understand the existing HTML structure and writing style,
+then insert the new entry at the top of the releases list (right after the <!-- Releases -->
+div opening, before the first existing release section).
+
+Rules:
+- Match the exact HTML structure, CSS classes, and formatting of existing entries.
+- Rewrite commit messages into user-facing release notes. Write for users, not developers.
+- Group under h4 headings: \"New features\", \"Improvements\", \"Fixes\" — only include sections that have content.
+- Skip meta commits: version bumps, README updates, CI fixes, squash labels.
+- A short 1-2 sentence headline summary in the <p> tag after the download link.
+- Date format: \"${RELEASE_DATE}\".
+- Download link points to: https://github.com/frenchie4111/harness/releases/tag/${TAG}
+- Do NOT modify any existing release entries. Only add the new one." \
+  --allowedTools Read,Edit --model sonnet \
+  || warn "Claude failed to update release notes — continuing anyway"
+
+rm -f "$CHANGES_FILE"
+
+if ! git diff --quiet docs/releases.html 2>/dev/null; then
+  ok "Release notes page updated"
+else
+  warn "Claude did not modify docs/releases.html — continuing anyway"
+fi
+
+# ---- Commit version bump + release notes together ----
+git add package.json package-lock.json README.md docs/index.html docs/releases.html
 git commit -m "Release v${VERSION}"
-ok "Committed version bump and download link updates"
+ok "Committed version bump, download links, and release notes"
 
 # ---- Build / sign / notarize ----
 step "Building, signing, and notarizing (this takes several minutes)"
