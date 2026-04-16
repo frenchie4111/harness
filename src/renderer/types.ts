@@ -247,9 +247,9 @@ export interface ElectronAPI {
   agentSessionFileExists(cwd: string, sessionId: string, agentKind?: AgentKind): Promise<boolean>
   getLatestAgentSessionId(cwd: string, agentKind?: AgentKind): Promise<string | null>
   buildAgentSpawnArgs(agentKind: string, opts: {
-    command: string; cwd: string; sessionId?: string;
+    terminalId: string; cwd: string; sessionId?: string;
     initialPrompt?: string; teleportSessionId?: string;
-    sessionName?: string; mcpConfigPath?: string | null
+    sessionName?: string
   }): Promise<string>
 
   hasGithubToken(): Promise<boolean>

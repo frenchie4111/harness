@@ -105,7 +105,6 @@ interface XTerminalProps {
   type: 'agent' | 'shell'
   agentKind?: AgentKind
   visible: boolean
-  agentCommand: string
   sessionName?: string
   sessionId?: string
   initialPrompt?: string
@@ -113,7 +112,7 @@ interface XTerminalProps {
   onRestartAgent?: () => void
 }
 
-export function XTerminal({ terminalId, cwd, type, agentKind, visible, agentCommand, sessionName, sessionId, initialPrompt, teleportSessionId, onRestartAgent }: XTerminalProps): JSX.Element {
+export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionName, sessionId, initialPrompt, teleportSessionId, onRestartAgent }: XTerminalProps): JSX.Element {
   const [exited, setExited] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
@@ -232,15 +231,13 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, agentComm
     }
 
     const buildAgentArg = async (): Promise<string> => {
-      const mcpPath = await window.api.prepareMcpForTerminal(terminalId)
       return window.api.buildAgentSpawnArgs(agentKind || 'claude', {
-        command: agentCommand,
+        terminalId,
         cwd,
         sessionId,
         initialPrompt,
         teleportSessionId,
-        sessionName,
-        mcpConfigPath: mcpPath
+        sessionName
       })
     }
 

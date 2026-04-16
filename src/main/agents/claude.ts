@@ -11,6 +11,8 @@ function shellQuote(s: string): string {
 const HARNESS_HOOK_MARKER = '__claude_harness__'
 const HARNESS_HOOK_VERSION = 8
 
+export const defaultCommand = 'claude'
+
 export const hookEvents = [
   'UserPromptSubmit',
   'PreToolUse',

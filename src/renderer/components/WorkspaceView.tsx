@@ -24,7 +24,6 @@ interface WorkspaceViewProps {
   statuses: Record<string, PtyStatus>
   shellActivity: Record<string, { active: boolean; processName?: string }>
   visible: boolean
-  agentCommand: string
   nameAgentSessions: boolean
   repoLabel: string
   branch: string
@@ -54,7 +53,6 @@ export function WorkspaceView({
   statuses,
   shellActivity,
   visible,
-  agentCommand,
   nameAgentSessions,
   onSelectTab,
   onAddTab,
@@ -213,7 +211,6 @@ export function WorkspaceView({
                   type={tab.type as 'agent' | 'shell'}
                   agentKind={tab.agentKind}
                   visible={visible && isActiveInPane}
-                  agentCommand={agentCommand}
                   sessionName={tab.type === 'agent' && nameAgentSessions ? `${repoLabel}/${branch}` : undefined}
                   sessionId={tab.sessionId}
                   initialPrompt={tab.initialPrompt}

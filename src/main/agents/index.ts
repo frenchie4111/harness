@@ -16,6 +16,7 @@ export interface AgentSpawnOpts {
 
 export interface AgentModule {
   hookEvents: string[]
+  defaultCommand: string
   installHooks(worktreePath: string): void
   hooksInstalled(worktreePath: string): boolean
   sessionFileExists(cwd: string, sessionId: string): boolean

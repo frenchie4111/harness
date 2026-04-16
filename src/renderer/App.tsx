@@ -176,8 +176,7 @@ export default function App(): JSX.Element {
   const [showHotkeyCheatsheet, setShowHotkeyCheatsheet] = useState(false)
   const tailLines = useTailLineBuffer()
   const settings = useSettings()
-  const { hasGithubToken: hasGithubPat, githubAuthSource, claudeCommand, nameClaudeSessions, defaultAgent } = settings
-  const agentCommand = defaultAgent === 'codex' ? (settings.codexCommand || 'codex') : claudeCommand
+  const { hasGithubToken: hasGithubPat, githubAuthSource, nameClaudeSessions, defaultAgent } = settings
   const nameAgentSessions = nameClaudeSessions
   const hasGithubToken = hasGithubPat || githubAuthSource === 'gh-cli'
   const hotkeyOverrides = settings.hotkeys ?? undefined
@@ -701,7 +700,6 @@ const setQuestStep = useCallback((next: QuestStep) => {
                 statuses={statuses}
                 shellActivity={shellActivity}
                 visible={isVisible}
-                agentCommand={agentCommand}
                 nameAgentSessions={nameAgentSessions}
                 onSelectTab={handleSelectTab}
                 onAddTab={handleAddTerminalTab}

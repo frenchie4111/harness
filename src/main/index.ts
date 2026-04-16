@@ -1006,12 +1006,17 @@ function registerIpcHandlers(): void {
   transport.onRequest(
     'agent:buildSpawnArgs',
     (agentKind: string, opts: {
-      command: string; cwd: string; sessionId?: string;
+      terminalId: string; cwd: string; sessionId?: string;
       initialPrompt?: string; teleportSessionId?: string;
-      sessionName?: string; mcpConfigPath?: string | null
+      sessionName?: string
     }): string => {
       const kind = (agentKind as 'claude' | 'codex') || 'claude'
-      return getAgent(kind).buildSpawnArgs(opts)
+      const agent = getAgent(kind)
+      const command = kind === 'claude'
+        ? (config.claudeCommand || agent.defaultCommand)
+        : (config.codexCommand || agent.defaultCommand)
+      const mcpConfigPath = writeMcpConfigForTerminal(opts.terminalId)
+      return agent.buildSpawnArgs({ ...opts, command, mcpConfigPath })
     }
   )
 
