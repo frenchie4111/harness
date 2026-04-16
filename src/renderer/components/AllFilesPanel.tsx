@@ -124,7 +124,7 @@ export function AllFilesPanel({
 
   return (
     <RightPanel id="all-files" title="All Files" actions={actions} grow defaultCollapsed>
-      <div className="shrink-0 p-2 border-b border-border space-y-1.5">
+      <div className="shrink-0 p-2 border-b border-border">
         <input
           type="text"
           value={filter}
@@ -132,12 +132,6 @@ export function AllFilesPanel({
           placeholder="Filter files..."
           className="w-full bg-panel-raised border border-border rounded px-2 py-1 text-xs text-fg placeholder:text-faint focus:outline-none focus:border-border-strong"
         />
-        <div className="flex items-center justify-between text-[10px] text-faint">
-          <span>Fuzzy open file</span>
-          <kbd className="bg-bg px-1.5 py-0.5 rounded border border-border font-mono text-faint">
-            {quickOpenGlyphs}
-          </kbd>
-        </div>
       </div>
       <div className="flex-1 overflow-y-auto min-h-0 text-xs">
         {!worktreePath && <div className="p-3 text-faint">No worktree selected</div>}
@@ -161,9 +155,12 @@ export function AllFilesPanel({
         )}
       </div>
       {files.length > 0 && (
-        <div className="px-3 py-1.5 border-t border-border text-[10px] text-faint shrink-0">
-          {filtering ? `${filtered.length} / ${files.length}` : files.length} file
-          {files.length !== 1 ? 's' : ''}
+        <div className="px-3 py-1.5 border-t border-border text-[10px] text-faint shrink-0 flex items-center justify-between">
+          <span>
+            {filtering ? `${filtered.length} / ${files.length}` : files.length} file
+            {files.length !== 1 ? 's' : ''}
+          </span>
+          <kbd className="font-mono">{quickOpenGlyphs} fuzzy open</kbd>
         </div>
       )}
     </RightPanel>
