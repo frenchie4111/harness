@@ -5,6 +5,7 @@ import type { UpdaterStatus, MergeStrategy, RepoConfig } from '../types'
 import { DEFAULT_HOTKEYS, ACTION_LABELS, bindingToString, eventToBinding, resolveHotkeys, type Action, type HotkeyBinding } from '../hotkeys'
 import { Tooltip } from './Tooltip'
 import { AGENT_REGISTRY, agentDisplayName } from '../../shared/agent-registry'
+import { AgentIcon } from './AgentIcon'
 
 interface SettingsProps {
   onClose: () => void
@@ -799,12 +800,13 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
                     <button
                       key={agent.kind}
                       onClick={() => window.api.setDefaultAgent(agent.kind)}
-                      className={`px-4 py-2 rounded text-sm font-medium transition-colors cursor-pointer ${
+                      className={`flex items-center gap-2 px-4 py-2 rounded text-sm font-medium transition-colors cursor-pointer ${
                         defaultAgent === agent.kind
                           ? 'bg-surface text-fg-bright border border-fg'
                           : 'bg-panel border border-border text-dim hover:text-fg hover:border-border-strong'
                       }`}
                     >
+                      <AgentIcon kind={agent.kind} size={14} />
                       {agent.displayName}
                     </button>
                   ))}

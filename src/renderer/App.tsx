@@ -17,6 +17,7 @@ import { RightColumn } from './components/RightColumn'
 import { Settings } from './components/Settings'
 import { Guide } from './components/Guide'
 import { AGENT_REGISTRY } from '../shared/agent-registry'
+import { AgentIcon } from './components/AgentIcon'
 import { Activity } from './components/Activity'
 import { Cleanup } from './components/Cleanup'
 import { CommandCenter } from './components/CommandCenter'
@@ -541,12 +542,13 @@ const setQuestStep = useCallback((next: QuestStep) => {
               <button
                 key={agent.kind}
                 onClick={() => window.api.setDefaultAgent(agent.kind)}
-                className={`px-5 py-3 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
+                className={`flex items-center gap-2 px-5 py-3 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
                   defaultAgent === agent.kind
                     ? 'bg-surface text-fg-bright border border-fg'
                     : 'bg-panel border border-border text-dim hover:text-fg hover:border-border-strong'
                 }`}
               >
+                <AgentIcon kind={agent.kind} size={16} />
                 {agent.displayName}
               </button>
             ))}
