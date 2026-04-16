@@ -57,6 +57,7 @@ export function WorkspaceView({
   nameAgentSessions,
   onSelectTab,
   onAddTab,
+  defaultAgent,
   onAddAgentTab,
   onCloseTab,
   onRestartAgentTab,
