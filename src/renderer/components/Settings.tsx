@@ -195,6 +195,15 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
   const [envSaveResult, setEnvSaveResult] = useState<{ ok: boolean; message: string } | null>(null)
   const [revealedEnvRows, setRevealedEnvRows] = useState<Set<number>>(new Set())
 
+  const [codexCommandDraft, setCodexCommandDraft] = useState<string>(codexCommand)
+  useEffect(() => { setCodexCommandDraft(codexCommand) }, [codexCommand])
+  const [codexSaveResult, setCodexSaveResult] = useState<{ ok: boolean; message: string } | null>(null)
+  const [codexEnvRows, setCodexEnvRows] = useState<{ key: string; value: string }[]>(() =>
+    Object.entries(codexEnvVars).map(([key, value]) => ({ key, value }))
+  )
+  const [codexEnvSaveResult, setCodexEnvSaveResult] = useState<{ ok: boolean; message: string } | null>(null)
+  const [codexRevealedEnvRows, setCodexRevealedEnvRows] = useState<Set<number>>(new Set())
+
   const [defaultTerminalFontFamily, setDefaultTerminalFontFamily] = useState<string>('')
   const [availableEditors, setAvailableEditors] = useState<{ id: string; name: string }[]>([])
   const [scriptsSaveResult, setScriptsSaveResult] = useState<{ ok: boolean; message: string } | null>(null)
@@ -521,6 +530,37 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
     setEnvSaveResult({ ok: true, message: 'Saved · new Claude tabs will see these' })
   }, [claudeEnvRows])
 
+  const handleSaveCodexCommand = useCallback(async () => {
+    setCodexSaveResult(null)
+    await window.api.setCodexCommand(codexCommandDraft)
+    setCodexSaveResult({ ok: true, message: 'Saved · new tabs will use this command' })
+  }, [codexCommandDraft])
+
+  const handleResetCodexCommand = useCallback(async () => {
+    setCodexCommandDraft('codex')
+    await window.api.setCodexCommand('codex')
+    setCodexSaveResult({ ok: true, message: 'Reset to default' })
+  }, [])
+
+  const handleSaveCodexEnvVars = useCallback(async () => {
+    const vars: Record<string, string> = {}
+    const seen = new Set<string>()
+    const invalidNames: string[] = []
+    const duplicates: string[] = []
+    for (const { key, value } of codexEnvRows) {
+      const k = key.trim()
+      if (!k) continue
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(k)) { invalidNames.push(k); continue }
+      if (seen.has(k)) { duplicates.push(k); continue }
+      seen.add(k)
+      vars[k] = value
+    }
+    if (invalidNames.length > 0) { setCodexEnvSaveResult({ ok: false, message: `Invalid name(s): ${invalidNames.join(', ')}` }); return }
+    if (duplicates.length > 0) { setCodexEnvSaveResult({ ok: false, message: `Duplicate name(s): ${duplicates.join(', ')}` }); return }
+    await window.api.setCodexEnvVars(vars)
+    setCodexEnvSaveResult({ ok: true, message: 'Saved · new Codex tabs will see these' })
+  }, [codexEnvRows])
+
   const isOverridden = (action: Action): boolean => {
     if (!hotkeyOverrides || !(action in hotkeyOverrides)) return false
     const defaultStr = bindingToString(DEFAULT_HOTKEYS[action])
@@ -747,12 +787,12 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
             {/* Agent section */}
             <section ref={(el) => { sectionRefs.current.agent = el }} id="agent">
               <h2 className="text-lg font-semibold text-fg-bright mb-1">Agent</h2>
+              <p className="text-sm text-dim mb-4">
+                Choose which AI coding agent Harness launches in new tabs.
+              </p>
 
-              <div className="bg-panel-raised border border-border rounded-lg p-4 mb-4">
-                <label className="block text-sm font-medium text-fg mb-2">Default agent</label>
-                <p className="text-xs text-dim mb-3">
-                  Choose which AI coding agent Harness launches in new tabs.
-                </p>
+              <div className="bg-panel-raised border border-border rounded-lg p-4 mb-6">
+                <label className="block text-sm font-medium text-fg mb-3">Default agent</label>
                 <div className="flex gap-2">
                   {(['claude', 'codex'] as const).map((kind) => (
                     <button
@@ -764,214 +804,175 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
                           : 'bg-panel border border-border text-dim hover:text-fg hover:border-border-strong'
                       }`}
                     >
-                      {kind === 'claude' ? 'Claude' : 'Codex'}
+                      {kind === 'claude' ? 'Claude Code' : 'Codex'}
                     </button>
                   ))}
                 </div>
+                <p className="mt-2 text-xs text-faint">
+                  New agent tabs will use the selected default. Existing tabs are unaffected.
+                </p>
               </div>
 
-              <p className="text-sm text-dim mb-4">
-                The shell command run inside each {defaultAgent === 'codex' ? 'Codex' : 'Claude'} tab. The command is executed via{' '}
-                <code className="bg-panel-raised px-1 rounded text-xs">/bin/zsh -ilc</code>{' '}
-                so your full PATH and shell config are available.
-              </p>
+              {/* ── Claude subsection ── */}
+              <h3 className="text-sm font-semibold text-fg-bright mb-3 flex items-center gap-2">
+                Claude Code
+                {defaultAgent === 'claude' && <span className="text-[10px] font-normal text-dim bg-panel px-1.5 py-0.5 rounded">default</span>}
+              </h3>
 
               <div className="bg-panel-raised border border-border rounded-lg p-4">
-                <label className="block text-sm font-medium text-fg mb-1">
-                  Launch command
-                </label>
+                <label className="block text-sm font-medium text-fg mb-1">Launch command</label>
                 <p className="text-xs text-dim mb-2">
-                  Harness appends <code className="bg-panel px-1 rounded">--session-id &lt;uuid&gt;</code> to this command so each tab has its own stable, resumable Claude session.
+                  Harness appends <code className="bg-panel px-1 rounded">--session-id &lt;uuid&gt;</code> so each tab has its own stable, resumable session.
                 </p>
                 <textarea
                   value={claudeCommandDraft}
                   onChange={(e) => setClaudeCommandDraft(e.target.value)}
-                  rows={3}
+                  rows={2}
                   spellCheck={false}
                   className="w-full bg-panel border border-border-strong rounded px-3 py-2 text-xs text-fg-bright placeholder-faint outline-none focus:border-fg font-mono resize-y"
                   placeholder={defaultClaudeCommand}
                 />
-
                 <div className="flex items-center gap-2 mt-3">
-                  <button
-                    onClick={handleSaveClaudeCommand}
-                    disabled={!claudeCommandDraft.trim()}
-                    className="px-3 py-1.5 bg-surface hover:bg-surface-hover disabled:opacity-40 rounded text-sm text-fg-bright transition-colors cursor-pointer"
-                  >
-                    Save
-                  </button>
+                  <button onClick={handleSaveClaudeCommand} disabled={!claudeCommandDraft.trim()} className="px-3 py-1.5 bg-surface hover:bg-surface-hover disabled:opacity-40 rounded text-sm text-fg-bright transition-colors cursor-pointer">Save</button>
                   {claudeCommandDraft !== defaultClaudeCommand && defaultClaudeCommand && (
-                    <button
-                      onClick={handleResetClaudeCommand}
-                      className="flex items-center gap-1 px-3 py-1.5 text-sm text-dim hover:text-fg transition-colors cursor-pointer"
-                    >
-                      <RotateCcw size={12} />
-                      Reset to default
-                    </button>
+                    <button onClick={handleResetClaudeCommand} className="flex items-center gap-1 px-3 py-1.5 text-sm text-dim hover:text-fg transition-colors cursor-pointer"><RotateCcw size={12} />Reset</button>
                   )}
                 </div>
-
                 {claudeSaveResult && (
                   <div className={`mt-3 text-xs flex items-center gap-1.5 ${claudeSaveResult.ok ? 'text-success' : 'text-danger'}`}>
-                    {claudeSaveResult.ok ? <Check size={12} /> : <X size={12} />}
-                    {claudeSaveResult.message}
+                    {claudeSaveResult.ok ? <Check size={12} /> : <X size={12} />}{claudeSaveResult.message}
                   </div>
                 )}
 
                 <div className="mt-4 pt-3 border-t border-border">
-                  <label className="block text-xs font-medium text-fg mb-1">
-                    Full command preview
-                  </label>
-                  <p className="text-xs text-dim mb-2">
-                    What Harness actually spawns for a new Claude tab, including
-                    the login-shell wrap{harnessMcpEnabled ? ' and the harness-control MCP injection' : ''}.
-                  </p>
-                  <div className="bg-panel border border-border rounded px-3 py-2 text-[11px] text-fg-bright font-mono break-all">
-                    {commandPreview}
-                  </div>
+                  <label className="block text-xs font-medium text-fg mb-1">Full command preview</label>
+                  <div className="bg-panel border border-border rounded px-3 py-2 text-[11px] text-fg-bright font-mono break-all">{commandPreview}</div>
                 </div>
 
                 <div className="mt-4 pt-3 border-t border-border">
                   <label className="flex items-start gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={harnessMcpEnabled}
-                      onChange={(e) => handleToggleHarnessMcp(e.target.checked)}
-                      className="mt-0.5 cursor-pointer"
-                    />
+                    <input type="checkbox" checked={harnessMcpEnabled} onChange={(e) => handleToggleHarnessMcp(e.target.checked)} className="mt-0.5 cursor-pointer" />
                     <div className="flex-1">
                       <div className="text-sm text-fg-bright">Enable Harness MCP</div>
                       <div className="text-xs text-dim mt-0.5">
-                        Auto-injects a <code className="bg-panel px-1 rounded text-[10px]">harness-control</code>{' '}
-                        MCP server into every Claude tab via{' '}
-                        <code className="bg-panel px-1 rounded text-[10px]">--mcp-config</code>, so Claude can
-                        create new worktrees (and chats) inside Harness. Merges additively with your existing MCPs.
+                        Injects <code className="bg-panel px-1 rounded text-[10px]">harness-control</code> MCP server via <code className="bg-panel px-1 rounded text-[10px]">--mcp-config</code>.
                       </div>
+                    </div>
+                  </label>
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-border">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input type="checkbox" checked={nameClaudeSessions} onChange={(e) => { void window.api.setNameClaudeSessions(e.target.checked) }} className="accent-current w-4 h-4 cursor-pointer" />
+                    <div>
+                      <span className="text-sm font-medium text-fg">Name sessions by worktree</span>
+                      <p className="text-xs text-dim mt-0.5">Passes <code className="bg-panel px-1 rounded">--name &quot;repo/branch&quot;</code> to Claude.</p>
                     </div>
                   </label>
                 </div>
               </div>
 
-              <div className="mt-4 text-xs text-dim space-y-2">
-                <p>
-                  Default: <code className="bg-panel-raised px-1 rounded text-[10px] break-all">{defaultClaudeCommand}</code>
-                </p>
-                <p>
-                  Common variations:{' '}
-                  <code className="bg-panel-raised px-1 rounded text-[10px]">claude --model opus-4</code>,{' '}
-                  <code className="bg-panel-raised px-1 rounded text-[10px]">claude --dangerously-skip-permissions</code>
-                </p>
-                <p className="text-faint">
-                  Note: changes apply to newly created Claude tabs. Existing terminals are unaffected.
-                </p>
-              </div>
-
-              <div className="mt-6 bg-panel-raised border border-border rounded-lg p-4">
-                <label className="block text-sm font-medium text-fg mb-1">
-                  Environment variables
-                </label>
+              <div className="mt-4 bg-panel-raised border border-border rounded-lg p-4">
+                <label className="block text-sm font-medium text-fg mb-1">Environment variables</label>
                 <p className="text-xs text-dim mb-3">
-                  Injected into the PTY before Claude launches. Use for things like{' '}
-                  <code className="bg-panel px-1 rounded">ANTHROPIC_API_KEY</code>,{' '}
-                  <code className="bg-panel px-1 rounded">ANTHROPIC_BASE_URL</code>, or{' '}
-                  <code className="bg-panel px-1 rounded">DISABLE_TELEMETRY</code>. Only applied to Claude tabs, not raw shells.
+                  Injected into Claude tabs. Use for <code className="bg-panel px-1 rounded">ANTHROPIC_API_KEY</code> etc.
                 </p>
-
                 {claudeEnvRows.length > 0 && (
                   <div className="space-y-2 mb-3">
                     {claudeEnvRows.map((row, index) => {
                       const revealed = revealedEnvRows.has(index)
                       return (
                         <div key={index} className="flex items-center gap-2">
-                          <input
-                            type="text"
-                            value={row.key}
-                            onChange={(e) => handleUpdateEnvRow(index, 'key', e.target.value)}
-                            placeholder="NAME"
-                            spellCheck={false}
-                            className="w-44 bg-panel border border-border-strong rounded px-2 py-1.5 text-xs text-fg-bright placeholder-faint outline-none focus:border-fg font-mono"
-                          />
+                          <input type="text" value={row.key} onChange={(e) => handleUpdateEnvRow(index, 'key', e.target.value)} placeholder="NAME" spellCheck={false} className="w-44 bg-panel border border-border-strong rounded px-2 py-1.5 text-xs text-fg-bright placeholder-faint outline-none focus:border-fg font-mono" />
                           <span className="text-dim text-xs">=</span>
-                          <input
-                            type={revealed ? 'text' : 'password'}
-                            value={row.value}
-                            onChange={(e) => handleUpdateEnvRow(index, 'value', e.target.value)}
-                            placeholder="value"
-                            spellCheck={false}
-                            className="flex-1 bg-panel border border-border-strong rounded px-2 py-1.5 text-xs text-fg-bright placeholder-faint outline-none focus:border-fg font-mono"
-                          />
-                          <Tooltip label={revealed ? 'Hide value' : 'Reveal value'}>
-                            <button
-                              onClick={() => handleToggleRevealEnvRow(index)}
-                              className="p-1.5 text-dim hover:text-fg transition-colors cursor-pointer"
-                              aria-label={revealed ? 'Hide value' : 'Reveal value'}
-                            >
-                              {revealed ? <EyeOff size={14} /> : <Eye size={14} />}
-                            </button>
-                          </Tooltip>
-                          <Tooltip label="Remove">
-                            <button
-                              onClick={() => handleRemoveEnvRow(index)}
-                              className="p-1.5 text-dim hover:text-danger transition-colors cursor-pointer"
-                              aria-label="Remove variable"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </Tooltip>
+                          <input type={revealed ? 'text' : 'password'} value={row.value} onChange={(e) => handleUpdateEnvRow(index, 'value', e.target.value)} placeholder="value" spellCheck={false} className="flex-1 bg-panel border border-border-strong rounded px-2 py-1.5 text-xs text-fg-bright placeholder-faint outline-none focus:border-fg font-mono" />
+                          <Tooltip label={revealed ? 'Hide value' : 'Reveal value'}><button onClick={() => handleToggleRevealEnvRow(index)} className="p-1.5 text-dim hover:text-fg transition-colors cursor-pointer">{revealed ? <EyeOff size={14} /> : <Eye size={14} />}</button></Tooltip>
+                          <Tooltip label="Remove"><button onClick={() => handleRemoveEnvRow(index)} className="p-1.5 text-dim hover:text-danger transition-colors cursor-pointer"><Trash2 size={14} /></button></Tooltip>
                         </div>
                       )
                     })}
                   </div>
                 )}
-
                 <div className="flex items-center gap-2">
-                  <button
-                    onClick={handleAddEnvRow}
-                    className="flex items-center gap-1 px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer"
-                  >
-                    <Plus size={12} />
-                    Add variable
-                  </button>
-                  <button
-                    onClick={handleSaveClaudeEnvVars}
-                    className="px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer"
-                  >
-                    Save
-                  </button>
+                  <button onClick={handleAddEnvRow} className="flex items-center gap-1 px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer"><Plus size={12} />Add variable</button>
+                  <button onClick={handleSaveClaudeEnvVars} className="px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer">Save</button>
                 </div>
-
                 {envSaveResult && (
                   <div className={`mt-3 text-xs flex items-center gap-1.5 ${envSaveResult.ok ? 'text-success' : 'text-danger'}`}>
-                    {envSaveResult.ok ? <Check size={12} /> : <X size={12} />}
-                    {envSaveResult.message}
+                    {envSaveResult.ok ? <Check size={12} /> : <X size={12} />}{envSaveResult.message}
                   </div>
                 )}
-
-                <p className="mt-3 text-xs text-faint">
-                  Values are stored in <code className="bg-panel px-1 rounded">config.json</code> in plain text. Variables already set in your shell environment will be overridden by values set here.
-                </p>
               </div>
 
-              <div className="mt-6 bg-panel-raised border border-border rounded-lg p-4">
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={nameClaudeSessions}
-                    onChange={(e) => {
-                      void window.api.setNameClaudeSessions(e.target.checked)
-                    }}
-                    className="accent-current w-4 h-4 cursor-pointer"
-                  />
-                  <div>
-                    <span className="text-sm font-medium text-fg">Name sessions by worktree</span>
-                    <p className="text-xs text-dim mt-0.5">
-                      Passes <code className="bg-panel px-1 rounded">--name &quot;repo/branch&quot;</code> when launching Claude so sessions are named after their worktree instead of auto-summarized. This name is also visible to <code className="bg-panel px-1 rounded">claude --resume</code> and remote control via <code className="bg-panel px-1 rounded">claude --name</code>.
-                    </p>
-                  </div>
-                </label>
-                <p className="mt-3 text-xs text-faint">
-                  Changes apply to newly created Claude tabs. Existing terminals are unaffected.
+              {/* ── Codex subsection ── */}
+              <h3 className="text-sm font-semibold text-fg-bright mt-8 mb-3 flex items-center gap-2">
+                Codex
+                {defaultAgent === 'codex' && <span className="text-[10px] font-normal text-dim bg-panel px-1.5 py-0.5 rounded">default</span>}
+              </h3>
+
+              <div className="bg-panel-raised border border-border rounded-lg p-4">
+                <label className="block text-sm font-medium text-fg mb-1">Launch command</label>
+                <p className="text-xs text-dim mb-2">
+                  The Codex CLI command. Harness manages session resume automatically.
                 </p>
+                <textarea
+                  value={codexCommandDraft}
+                  onChange={(e) => setCodexCommandDraft(e.target.value)}
+                  rows={2}
+                  spellCheck={false}
+                  className="w-full bg-panel border border-border-strong rounded px-3 py-2 text-xs text-fg-bright placeholder-faint outline-none focus:border-fg font-mono resize-y"
+                  placeholder="codex"
+                />
+                <div className="flex items-center gap-2 mt-3">
+                  <button onClick={handleSaveCodexCommand} disabled={!codexCommandDraft.trim()} className="px-3 py-1.5 bg-surface hover:bg-surface-hover disabled:opacity-40 rounded text-sm text-fg-bright transition-colors cursor-pointer">Save</button>
+                  {codexCommandDraft !== 'codex' && (
+                    <button onClick={handleResetCodexCommand} className="flex items-center gap-1 px-3 py-1.5 text-sm text-dim hover:text-fg transition-colors cursor-pointer"><RotateCcw size={12} />Reset</button>
+                  )}
+                </div>
+                {codexSaveResult && (
+                  <div className={`mt-3 text-xs flex items-center gap-1.5 ${codexSaveResult.ok ? 'text-success' : 'text-danger'}`}>
+                    {codexSaveResult.ok ? <Check size={12} /> : <X size={12} />}{codexSaveResult.message}
+                  </div>
+                )}
+                <div className="mt-3 text-xs text-dim">
+                  <p>
+                    Common variations:{' '}
+                    <code className="bg-panel px-1 rounded text-[10px]">codex --full-auto</code>,{' '}
+                    <code className="bg-panel px-1 rounded text-[10px]">codex -m o3</code>
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-4 bg-panel-raised border border-border rounded-lg p-4">
+                <label className="block text-sm font-medium text-fg mb-1">Environment variables</label>
+                <p className="text-xs text-dim mb-3">
+                  Injected into Codex tabs. Use for <code className="bg-panel px-1 rounded">OPENAI_API_KEY</code> etc.
+                </p>
+                {codexEnvRows.length > 0 && (
+                  <div className="space-y-2 mb-3">
+                    {codexEnvRows.map((row, index) => {
+                      const revealed = codexRevealedEnvRows.has(index)
+                      return (
+                        <div key={index} className="flex items-center gap-2">
+                          <input type="text" value={row.key} onChange={(e) => { setCodexEnvRows((prev) => prev.map((r, i) => (i === index ? { ...r, key: e.target.value } : r))); setCodexEnvSaveResult(null) }} placeholder="NAME" spellCheck={false} className="w-44 bg-panel border border-border-strong rounded px-2 py-1.5 text-xs text-fg-bright placeholder-faint outline-none focus:border-fg font-mono" />
+                          <span className="text-dim text-xs">=</span>
+                          <input type={revealed ? 'text' : 'password'} value={row.value} onChange={(e) => { setCodexEnvRows((prev) => prev.map((r, i) => (i === index ? { ...r, value: e.target.value } : r))); setCodexEnvSaveResult(null) }} placeholder="value" spellCheck={false} className="flex-1 bg-panel border border-border-strong rounded px-2 py-1.5 text-xs text-fg-bright placeholder-faint outline-none focus:border-fg font-mono" />
+                          <Tooltip label={revealed ? 'Hide value' : 'Reveal value'}><button onClick={() => setCodexRevealedEnvRows((prev) => { const next = new Set(prev); if (next.has(index)) next.delete(index); else next.add(index); return next })} className="p-1.5 text-dim hover:text-fg transition-colors cursor-pointer">{revealed ? <EyeOff size={14} /> : <Eye size={14} />}</button></Tooltip>
+                          <Tooltip label="Remove"><button onClick={() => { setCodexEnvRows((prev) => prev.filter((_, i) => i !== index)); setCodexEnvSaveResult(null) }} className="p-1.5 text-dim hover:text-danger transition-colors cursor-pointer"><Trash2 size={14} /></button></Tooltip>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+                <div className="flex items-center gap-2">
+                  <button onClick={() => { setCodexEnvRows((prev) => [...prev, { key: '', value: '' }]); setCodexEnvSaveResult(null) }} className="flex items-center gap-1 px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer"><Plus size={12} />Add variable</button>
+                  <button onClick={handleSaveCodexEnvVars} className="px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer">Save</button>
+                </div>
+                {codexEnvSaveResult && (
+                  <div className={`mt-3 text-xs flex items-center gap-1.5 ${codexEnvSaveResult.ok ? 'text-success' : 'text-danger'}`}>
+                    {codexEnvSaveResult.ok ? <Check size={12} /> : <X size={12} />}{codexEnvSaveResult.message}
+                  </div>
+                )}
               </div>
             </section>
 
