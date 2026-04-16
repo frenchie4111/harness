@@ -14,14 +14,12 @@ export function PlanReviewPanel({ planText, terminalId }: PlanReviewPanelProps):
 
   const handleApprove = useCallback(() => {
     setResponding(true)
-    // Send 'y' then Enter — covers both single-key and line-input prompt modes
-    window.api.writeTerminal(terminalId, 'y\r')
+    window.api.writeTerminal(terminalId, '1')
   }, [terminalId])
 
   const handleReject = useCallback(() => {
     setResponding(true)
-    // Escape is the universal TUI "cancel/reject"
-    window.api.writeTerminal(terminalId, '\x1b')
+    window.api.writeTerminal(terminalId, '2')
   }, [terminalId])
 
   if (collapsed) {
