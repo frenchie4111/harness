@@ -36,7 +36,8 @@ import {
 } from './persistence'
 import { loadRepoConfig, saveRepoConfig, type RepoConfig } from './repo-config'
 import { isWorktreeMerged } from '../shared/state/prs'
-import { hooksInstalled, installHooks, watchStatusDir } from './hooks'
+import { watchStatusDir } from './hooks'
+import { getAgent } from './agents'
 import { CostTracker } from './cost-tracker'
 import { startControlServer } from './control-server'
 import { writeMcpConfigForTerminal, pruneMcpConfigs } from './mcp-config'
@@ -48,48 +49,6 @@ import { buildInitialAppState } from './build-initial-state'
 // fight with the installed prod app over config.json / activity.json / etc.
 if (!app.isPackaged) {
   app.setPath('userData', join(app.getPath('appData'), 'Harness (Dev)'))
-}
-
-function latestClaudeSessionId(cwd: string): string | null {
-  try {
-    const encoded = cwd.replace(/[^a-zA-Z0-9]/g, '-')
-    const dir = join(homedir(), '.claude', 'projects', encoded)
-    const files = readdirSync(dir).filter((f) => f.endsWith('.jsonl'))
-    if (files.length === 0) return null
-    let bestId: string | null = null
-    let bestMtime = -Infinity
-    for (const file of files) {
-      const mtime = statSync(join(dir, file)).mtimeMs
-      if (mtime > bestMtime) {
-        bestMtime = mtime
-        bestId = file.replace(/\.jsonl$/, '')
-      }
-    }
-    return bestId
-  } catch {
-    return null
-  }
-}
-
-function codexSessionFileExists(sessionId: string): boolean {
-  try {
-    const sessionsDir = join(homedir(), '.codex', 'sessions')
-    // Codex stores sessions in YYYY/MM/DD/ subdirectories with format
-    // <name>-<uuid>.jsonl. Walk the tree looking for a file containing the UUID.
-    const walkDir = (dir: string): boolean => {
-      for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        if (entry.isDirectory()) {
-          if (walkDir(join(dir, entry.name))) return true
-        } else if (entry.name.includes(sessionId) && entry.name.endsWith('.jsonl')) {
-          return true
-        }
-      }
-      return false
-    }
-    return walkDir(sessionsDir)
-  } catch {
-    return false
-  }
 }
 
 const ptyManager = new PtyManager()
@@ -221,7 +180,11 @@ const panesFSM = new PanesFSM(store, {
     const wt = store.getSnapshot().state.worktrees.list.find((w) => w.path === wtPath)
     return wt?.repoRoot
   },
-  getLatestClaudeSessionId: async (wtPath) => latestClaudeSessionId(wtPath)
+  getLatestClaudeSessionId: async (wtPath) => {
+    const kind = store.getSnapshot().state.settings.defaultAgent ?? 'claude'
+    return getAgent(kind).latestSessionId(wtPath)
+  },
+  getDefaultAgentKind: () => (store.getSnapshot().state.settings.defaultAgent ?? 'claude') as 'claude' | 'codex'
 })
 
 const worktreesFSM = new WorktreesFSM(store, {
@@ -241,15 +204,17 @@ const worktreeDeletionFSM = new WorktreeDeletionFSM(store, {
 
 const activityDeriver = new ActivityDeriver(store)
 
-/** Install Claude Code hooks into any worktree that's missing them, but only
- * if the user has accepted the consent prompt. Subscribes to the store and
- * fires on worktrees/listChanged + hooks/consentChanged. */
+/** Install agent hooks into any worktree that's missing them, but only
+ * if the user has accepted the consent prompt. Installs hooks for the
+ * user's configured default agent. */
 function installHooksForAcceptedWorktrees(): void {
   const state = store.getSnapshot().state
   if (state.hooks.consent !== 'accepted') return
+  const agentKind = state.settings.defaultAgent ?? 'claude'
+  const agent = getAgent(agentKind)
   for (const wt of state.worktrees.list) {
-    if (!hooksInstalled(wt.path)) {
-      installHooks(wt.path)
+    if (!agent.hooksInstalled(wt.path)) {
+      agent.installHooks(wt.path)
     }
   }
 }
@@ -676,6 +641,40 @@ function registerIpcHandlers(): void {
     return DEFAULT_CLAUDE_COMMAND
   })
 
+  transport.onRequest('config:setDefaultAgent', (agent: string) => {
+    const kind = agent === 'codex' ? 'codex' : 'claude'
+    config.defaultAgent = kind
+    saveConfig(config)
+    store.dispatch({ type: 'settings/defaultAgentChanged', payload: kind })
+    return true
+  })
+
+  transport.onRequest('config:setCodexCommand', (command: string) => {
+    const trimmed = command.trim()
+    if (!trimmed || trimmed === 'codex') {
+      delete config.codexCommand
+    } else {
+      config.codexCommand = trimmed
+    }
+    saveConfig(config)
+    store.dispatch({
+      type: 'settings/codexCommandChanged',
+      payload: config.codexCommand || 'codex'
+    })
+    return true
+  })
+
+  transport.onRequest('config:setCodexEnvVars', (vars: Record<string, string>) => {
+    if (!vars || Object.keys(vars).length === 0) {
+      delete config.codexEnvVars
+    } else {
+      config.codexEnvVars = vars
+    }
+    saveConfig(config)
+    store.dispatch({ type: 'settings/codexEnvVarsChanged', payload: config.codexEnvVars || {} })
+    return true
+  })
+
   transport.onRequest('repoConfig:set', (repoRoot: string, next: Record<string, unknown>) => {
     if (!repoRoot) return null
     const current = loadRepoConfig(repoRoot)
@@ -994,25 +993,14 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  // Check whether an agent session file already exists on disk. For Claude,
-  // this is ~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl. For Codex,
-  // we search ~/.codex/sessions/ (date-nested). When it exists, the tab
-  // spawns with --resume instead of --session-id.
   transport.onRequest('agent:sessionFileExists', (cwd: string, sessionId: string, agentKind?: string): boolean => {
-    if (agentKind === 'codex') {
-      return codexSessionFileExists(sessionId)
-    }
-    try {
-      const encoded = cwd.replace(/[^a-zA-Z0-9]/g, '-')
-      return existsSync(join(homedir(), '.claude', 'projects', encoded, `${sessionId}.jsonl`))
-    } catch {
-      return false
-    }
+    const kind = (agentKind as 'claude' | 'codex') || 'claude'
+    return getAgent(kind).sessionFileExists(cwd, sessionId)
   })
 
   transport.onRequest('agent:latestSessionId', (cwd: string, agentKind?: string): string | null => {
-    if (agentKind === 'codex') return null
-    return latestClaudeSessionId(cwd)
+    const kind = (agentKind as 'claude' | 'codex') || 'claude'
+    return getAgent(kind).latestSessionId(cwd)
   })
 
   // Settings: GitHub token
@@ -1145,11 +1133,13 @@ function registerIpcHandlers(): void {
   // + justInstalled=true in a single round trip. Replaces the old
   // renderer-side loop that walked worktrees one by one.
   transport.onRequest('hooks:acceptAll', async () => {
+    const agentKind = store.getSnapshot().state.settings.defaultAgent ?? 'claude'
+    const agent = getAgent(agentKind)
     const roots = config.repoRoots || []
     for (const root of roots) {
       const trees = await listWorktrees(root).catch(() => [])
       for (const wt of trees) {
-        if (!hooksInstalled(wt.path)) installHooks(wt.path)
+        if (!agent.hooksInstalled(wt.path)) agent.installHooks(wt.path)
       }
     }
     store.dispatch({ type: 'hooks/consentChanged', payload: 'accepted' })

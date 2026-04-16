@@ -6,12 +6,17 @@ export interface WorktreeScripts {
 export type MergeStrategy = 'squash' | 'merge-commit' | 'fast-forward'
 export type WorktreeBase = 'remote' | 'local'
 
+export type AgentKindSetting = 'claude' | 'codex'
+
 export interface SettingsState {
   theme: string
   hotkeys: Record<string, string> | null
+  defaultAgent: AgentKindSetting
   claudeCommand: string
+  codexCommand: string
   worktreeScripts: WorktreeScripts
   claudeEnvVars: Record<string, string>
+  codexEnvVars: Record<string, string>
   harnessMcpEnabled: boolean
   nameClaudeSessions: boolean
   terminalFontFamily: string
@@ -28,9 +33,12 @@ export interface SettingsState {
 export type SettingsEvent =
   | { type: 'settings/themeChanged'; payload: string }
   | { type: 'settings/hotkeysChanged'; payload: Record<string, string> | null }
+  | { type: 'settings/defaultAgentChanged'; payload: AgentKindSetting }
   | { type: 'settings/claudeCommandChanged'; payload: string }
+  | { type: 'settings/codexCommandChanged'; payload: string }
   | { type: 'settings/worktreeScriptsChanged'; payload: WorktreeScripts }
   | { type: 'settings/claudeEnvVarsChanged'; payload: Record<string, string> }
+  | { type: 'settings/codexEnvVarsChanged'; payload: Record<string, string> }
   | { type: 'settings/harnessMcpEnabledChanged'; payload: boolean }
   | { type: 'settings/nameClaudeSessionsChanged'; payload: boolean }
   | { type: 'settings/terminalFontFamilyChanged'; payload: string }
@@ -48,9 +56,12 @@ export type SettingsEvent =
 export const initialSettings: SettingsState = {
   theme: 'dark',
   hotkeys: null,
+  defaultAgent: 'claude',
   claudeCommand: '',
+  codexCommand: '',
   worktreeScripts: { setup: '', teardown: '' },
   claudeEnvVars: {},
+  codexEnvVars: {},
   harnessMcpEnabled: true,
   nameClaudeSessions: false,
   terminalFontFamily: '',
@@ -70,12 +81,18 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, theme: event.payload }
     case 'settings/hotkeysChanged':
       return { ...state, hotkeys: event.payload }
+    case 'settings/defaultAgentChanged':
+      return { ...state, defaultAgent: event.payload }
     case 'settings/claudeCommandChanged':
       return { ...state, claudeCommand: event.payload }
+    case 'settings/codexCommandChanged':
+      return { ...state, codexCommand: event.payload }
     case 'settings/worktreeScriptsChanged':
       return { ...state, worktreeScripts: event.payload }
     case 'settings/claudeEnvVarsChanged':
       return { ...state, claudeEnvVars: event.payload }
+    case 'settings/codexEnvVarsChanged':
+      return { ...state, codexEnvVars: event.payload }
     case 'settings/harnessMcpEnabledChanged':
       return { ...state, harnessMcpEnabled: event.payload }
     case 'settings/nameClaudeSessionsChanged':

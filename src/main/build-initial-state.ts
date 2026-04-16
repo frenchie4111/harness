@@ -36,12 +36,15 @@ export function buildInitialAppState(
       ...initialSettings,
       theme: config.theme || DEFAULT_THEME,
       hotkeys: config.hotkeys || null,
+      defaultAgent: config.defaultAgent || 'claude',
       claudeCommand: config.claudeCommand || DEFAULT_CLAUDE_COMMAND,
+      codexCommand: config.codexCommand || 'codex',
       worktreeScripts: {
         setup: config.worktreeSetupCommand || '',
         teardown: config.worktreeTeardownCommand || ''
       },
       claudeEnvVars: config.claudeEnvVars || {},
+      codexEnvVars: config.codexEnvVars || {},
       harnessMcpEnabled: config.harnessMcpEnabled !== false,
       nameClaudeSessions: config.nameClaudeSessions ?? false,
       terminalFontFamily: config.terminalFontFamily || DEFAULT_TERMINAL_FONT_FAMILY,

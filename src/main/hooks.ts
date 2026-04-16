@@ -34,9 +34,9 @@ export interface PendingTool {
 // defaults empty to `null`, then emits a single printf writing one line to
 // the append-mode file. A single write(2) under PIPE_BUF (4096 bytes) is
 // guaranteed atomic vs. other O_APPEND writers on POSIX.
-function makeHookCommand(event: string): string {
+export function makeHookCommand(event: string): string {
   const inner =
-    `h="$CLAUDE_HARNESS_ID"; [ -z "$h" ] && exit 0; ` +
+    `h="${'$HARNESS_TERMINAL_ID'}"; [ -z "$h" ] && h="$CLAUDE_HARNESS_ID"; [ -z "$h" ] && exit 0; ` +
     `d=${STATUS_DIR}; mkdir -p "$d"; ` +
     `p=$(cat); [ -z "$p" ] && p=null; ` +
     `printf "{\\"event\\":\\"${event}\\",\\"ts\\":%s,\\"payload\\":%s}\\n" ` +

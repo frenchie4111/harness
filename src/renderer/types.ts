@@ -205,6 +205,9 @@ export interface ElectronAPI {
     callback: (payload: { repoRoot: string; worktree: Worktree; initialPrompt?: string }) => void
   ): () => void
   setClaudeEnvVars(vars: Record<string, string>): Promise<boolean>
+  setDefaultAgent(agent: string): Promise<boolean>
+  setCodexCommand(command: string): Promise<boolean>
+  setCodexEnvVars(vars: Record<string, string>): Promise<boolean>
   setNameClaudeSessions(enabled: boolean): Promise<boolean>
   setTheme(theme: string): Promise<boolean>
   getAvailableThemes(): Promise<readonly string[]>
