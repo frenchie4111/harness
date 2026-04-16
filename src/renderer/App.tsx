@@ -532,9 +532,8 @@ const setQuestStep = useCallback((next: QuestStep) => {
 
   if (repoRoots.length === 0) {
     const step1Complete = themeChosen
-    const step2Enabled = step1Complete
-    const step2Complete = step1Complete && agentChosen
-    const step3Enabled = step2Complete
+    const step2Complete = agentChosen
+    const activeStep: 1 | 2 | 3 = !step1Complete ? 1 : !step2Complete ? 2 : 3
     return (
       <HotkeysProvider bindings={resolvedHotkeys}>
       <div className="flex h-full flex-col">
@@ -613,16 +612,20 @@ const setQuestStep = useCallback((next: QuestStep) => {
             <div className="space-y-3">
               <div
                 className={`rounded-xl border bg-panel p-4 transition-colors ${
-                  step1Complete
-                    ? 'border-border'
-                    : 'border-accent/50 ring-1 ring-accent/25'
+                  activeStep === 1
+                    ? 'border-accent/50 ring-1 ring-accent/25'
+                    : 'border-border'
                 }`}
               >
                 <div className="flex items-start gap-3 mb-3">
                   {step1Complete ? (
                     <CheckCircle2 className="w-5 h-5 text-success shrink-0 mt-0.5" />
                   ) : (
-                    <div className="w-5 h-5 rounded-full border-2 border-accent text-accent text-[11px] font-bold flex items-center justify-center shrink-0 mt-0.5">
+                    <div
+                      className={`w-5 h-5 rounded-full border-2 text-[11px] font-bold flex items-center justify-center shrink-0 mt-0.5 ${
+                        activeStep === 1 ? 'border-accent text-accent' : 'border-border-strong text-dim'
+                      }`}
+                    >
                       1
                     </div>
                   )}
@@ -665,11 +668,9 @@ const setQuestStep = useCallback((next: QuestStep) => {
 
               <div
                 className={`rounded-xl border bg-panel p-4 transition-colors ${
-                  !step2Enabled
-                    ? 'border-border opacity-60'
-                    : step2Complete
-                      ? 'border-border'
-                      : 'border-accent/50 ring-1 ring-accent/25'
+                  activeStep === 2
+                    ? 'border-accent/50 ring-1 ring-accent/25'
+                    : 'border-border'
                 }`}
               >
                 <div className="flex items-start gap-3 mb-3">
@@ -678,7 +679,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
                   ) : (
                     <div
                       className={`w-5 h-5 rounded-full border-2 text-[11px] font-bold flex items-center justify-center shrink-0 mt-0.5 ${
-                        step2Enabled ? 'border-accent text-accent' : 'border-border-strong text-dim'
+                        activeStep === 2 ? 'border-accent text-accent' : 'border-border-strong text-dim'
                       }`}
                     >
                       2
@@ -694,17 +695,13 @@ const setQuestStep = useCallback((next: QuestStep) => {
                     <button
                       key={agent.kind}
                       onClick={() => {
-                        if (!step2Enabled) return
                         window.api.setDefaultAgent(agent.kind)
                         setAgentChosen(true)
                       }}
-                      disabled={!step2Enabled}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
                         defaultAgent === agent.kind && agentChosen
-                          ? 'bg-surface text-fg-bright border border-fg cursor-pointer'
-                          : step2Enabled
-                            ? 'bg-panel border border-border text-dim hover:text-fg hover:border-border-strong cursor-pointer'
-                            : 'bg-panel border border-border text-dim cursor-not-allowed'
+                          ? 'bg-surface text-fg-bright border border-fg'
+                          : 'bg-panel border border-border text-dim hover:text-fg hover:border-border-strong'
                       }`}
                     >
                       <AgentIcon kind={agent.kind} size={14} />
@@ -716,15 +713,15 @@ const setQuestStep = useCallback((next: QuestStep) => {
 
               <div
                 className={`rounded-xl border bg-panel p-4 transition-colors ${
-                  !step3Enabled
-                    ? 'border-border opacity-60'
-                    : 'border-accent/50 ring-1 ring-accent/25'
+                  activeStep === 3
+                    ? 'border-accent/50 ring-1 ring-accent/25'
+                    : 'border-border'
                 }`}
               >
                 <div className="flex items-start gap-3 mb-3">
                   <div
                     className={`w-5 h-5 rounded-full border-2 text-[11px] font-bold flex items-center justify-center shrink-0 mt-0.5 ${
-                      step3Enabled ? 'border-accent text-accent' : 'border-border-strong text-dim'
+                      activeStep === 3 ? 'border-accent text-accent' : 'border-border-strong text-dim'
                     }`}
                   >
                     3
@@ -737,11 +734,10 @@ const setQuestStep = useCallback((next: QuestStep) => {
                 <div className="ml-8">
                   <button
                     onClick={handleAddRepo}
-                    disabled={!step3Enabled}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      step3Enabled
-                        ? 'bg-accent/20 hover:bg-accent/30 text-fg-bright border border-accent/40 cursor-pointer'
-                        : 'bg-panel border border-border text-dim cursor-not-allowed'
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
+                      activeStep === 3
+                        ? 'bg-accent/20 hover:bg-accent/30 text-fg-bright border border-accent/40'
+                        : 'bg-panel border border-border text-dim hover:text-fg hover:border-border-strong'
                     }`}
                   >
                     <FolderOpen className="w-4 h-4" />
