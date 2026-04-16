@@ -21,6 +21,7 @@ import { Cleanup } from './components/Cleanup'
 import { CommandCenter } from './components/CommandCenter'
 import { CommandPalette } from './components/CommandPalette'
 import iconUrl from '../../resources/icon.png'
+import { PerfMonitorHUD } from './components/PerfMonitorHUD'
 import { focusTerminalById } from './components/XTerminal'
 import { type GroupKey } from './worktree-sort'
 
@@ -170,6 +171,7 @@ export default function App(): JSX.Element {
   const [showCommandCenter, setShowCommandCenter] = useState(false)
   const [showCommandPalette, setShowCommandPalette] = useState(false)
   const [commandPaletteMode, setCommandPaletteMode] = useState<'root' | 'files'>('root')
+  const [showPerfMonitor, setShowPerfMonitor] = useState(false)
   const tailLines = useTailLineBuffer()
   const settings = useSettings()
   const { hasGithubToken: hasGithubPat, githubAuthSource, claudeCommand, nameClaudeSessions } = settings
@@ -230,6 +232,12 @@ const setQuestStep = useCallback((next: QuestStep) => {
   // Open Settings from the menu (Cmd+,)
   useEffect(() => {
     const cleanup = window.api.onOpenSettings(() => setShowSettings(true))
+    return cleanup
+  }, [])
+
+  // Toggle perf monitor from the menu (Cmd+Shift+D)
+  useEffect(() => {
+    const cleanup = window.api.onTogglePerfMonitor(() => setShowPerfMonitor((v) => !v))
     return cleanup
   }, [])
 
@@ -442,6 +450,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
     setShowCommandCenter,
     setShowCommandPalette,
     setCommandPaletteMode,
+    setShowPerfMonitor,
     handleAddTerminalTab,
     handleCloseTab,
     handleSelectTab,
@@ -806,6 +815,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
       </div>
     </div>
     {settingsOverlay}
+    {showPerfMonitor && <PerfMonitorHUD onClose={() => setShowPerfMonitor(false)} />}
     {showCommandPalette && (
       <CommandPalette
         worktrees={worktrees}

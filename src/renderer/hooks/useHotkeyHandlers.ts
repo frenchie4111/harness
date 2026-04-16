@@ -28,6 +28,7 @@ interface UseHotkeyHandlersArgs {
   setShowCommandCenter: React.Dispatch<React.SetStateAction<boolean>>
   setShowCommandPalette: React.Dispatch<React.SetStateAction<boolean>>
   setCommandPaletteMode: React.Dispatch<React.SetStateAction<'root' | 'files'>>
+  setShowPerfMonitor: React.Dispatch<React.SetStateAction<boolean>>
   // Imperative hooks into other handlers — passed in to avoid this hook
   // depending on useTabHandlers + useWorktreeHandlers directly.
   handleAddTerminalTab: (worktreePath: string, paneId?: string) => void
@@ -68,6 +69,7 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
     setShowCommandCenter,
     setShowCommandPalette,
     setCommandPaletteMode,
+    setShowPerfMonitor,
     handleAddTerminalTab,
     handleCloseTab,
     handleSelectTab,
@@ -229,7 +231,8 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
         if (list.length === 0) return
         const fromPaneId = activePaneId[activeWorktreeId] || list[list.length - 1].id
         handleSplitPane(activeWorktreeId, fromPaneId)
-      }
+      },
+      togglePerfMonitor: () => setShowPerfMonitor((v) => !v)
     }),
     [
       cycleWorktree,
@@ -250,7 +253,8 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       setShowNewWorktree,
       setShowCommandCenter,
       setShowCommandPalette,
-      setCommandPaletteMode
+      setCommandPaletteMode,
+      setShowPerfMonitor
     ]
   )
 
