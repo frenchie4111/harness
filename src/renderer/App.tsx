@@ -21,6 +21,7 @@ import { AgentIcon } from './components/AgentIcon'
 import { Activity } from './components/Activity'
 import { Cleanup } from './components/Cleanup'
 import { CommandCenter } from './components/CommandCenter'
+import { ReviewScreen } from './components/ReviewScreen'
 import { CommandPalette } from './components/CommandPalette'
 import { HotkeyCheatsheet } from './components/HotkeyCheatsheet'
 import iconUrl from '../../resources/icon.png'
@@ -172,6 +173,8 @@ export default function App(): JSX.Element {
   const [showActivity, setShowActivity] = useState(false)
   const [showCleanup, setShowCleanup] = useState(false)
   const [showCommandCenter, setShowCommandCenter] = useState(false)
+  const [showReview, setShowReview] = useState(false)
+  const [reviewMode, setReviewMode] = useState<'working' | 'branch'>('branch')
   const [showCommandPalette, setShowCommandPalette] = useState(false)
   const [commandPaletteMode, setCommandPaletteMode] = useState<'root' | 'files'>('root')
   const [showPerfMonitor, setShowPerfMonitor] = useState(false)
@@ -701,7 +704,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
         {worktrees.map((wt) => {
           const paneList = panes[wt.path]
           if (!paneList || paneList.length === 0) return null
-          const isVisible = !showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && wt.path === activeWorktreeId && !pendingDeletionByPath[wt.path]
+          const isVisible = !showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && wt.path === activeWorktreeId && !pendingDeletionByPath[wt.path]
           return (
             <div
               key={wt.path}
@@ -782,12 +785,23 @@ const setQuestStep = useCallback((next: QuestStep) => {
             }}
           />
         )}
-        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !activeWorktreeId && worktrees.length > 0 && (
+        {showReview && activeWorktreeId && (
+          <div className="flex-1 min-w-0 flex">
+            <ReviewScreen
+              worktreePath={activeWorktreeId}
+              branchName={worktrees.find((w) => w.path === activeWorktreeId)?.branch ?? 'unknown'}
+              mode={reviewMode}
+              onClose={() => setShowReview(false)}
+              onSendToAgent={handleSendToAgent}
+            />
+          </div>
+        )}
+        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && !activeWorktreeId && worktrees.length > 0 && (
           <div className="flex-1 flex items-center justify-center text-dim">
             Select a worktree to begin
           </div>
         )}
-        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && isPendingId(activeWorktreeId) && (() => {
+        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && isPendingId(activeWorktreeId) && (() => {
           const pending = pendingWorktrees.find((p) => p.id === activeWorktreeId)
           if (!pending) return null
           return (
@@ -799,7 +813,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
             />
           )
         })()}
-        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && activeWorktreeId && pendingDeletionByPath[activeWorktreeId] && (
+        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && activeWorktreeId && pendingDeletionByPath[activeWorktreeId] && (
           <DeletingWorktreeScreen
             deletion={pendingDeletionByPath[activeWorktreeId]}
             onDismiss={handleDismissPendingDeletion}
@@ -811,10 +825,10 @@ const setQuestStep = useCallback((next: QuestStep) => {
           onFinish={() => setQuestStep('done')}
         />
         {/* Right panel — hidden on the new-worktree screen so the form gets the full width */}
-        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !rightColumnHidden && (
+        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && !rightColumnHidden && (
           <ResizeHandle onDelta={handleRightPanelResize} />
         )}
-        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !rightColumnHidden && (
+        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && !rightColumnHidden && (
           <RightColumn
             width={rightPanelWidth}
             activeWorktreeId={activeWorktreeId}
@@ -835,6 +849,10 @@ const setQuestStep = useCallback((next: QuestStep) => {
             onOpenDiff={handleOpenDiff}
             onOpenFile={handleOpenFile}
             onSendToAgent={handleSendToAgent}
+            onOpenReview={(mode) => {
+              setReviewMode(mode)
+              setShowReview(true)
+            }}
             onCollapse={() => setRightColumnHidden(true)}
           />
         )}

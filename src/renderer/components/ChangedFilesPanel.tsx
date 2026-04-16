@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { RefreshCw, FileEdit, GitBranch, Code2, AtSign } from 'lucide-react'
+import { RefreshCw, FileEdit, GitBranch, Code2, AtSign, ClipboardCheck } from 'lucide-react'
 import type { ChangedFile } from '../types'
 import { Tooltip } from './Tooltip'
 import { RightPanel } from './RightPanel'
@@ -10,6 +10,7 @@ interface ChangedFilesPanelProps {
   worktreePath: string | null
   onOpenDiff: (filePath: string, staged: boolean, mode: Mode) => void
   onSendToAgent?: (text: string) => void
+  onOpenReview?: (mode: Mode) => void
 }
 
 const STATUS_LABEL: Record<ChangedFile['status'], string> = {
@@ -28,7 +29,7 @@ const STATUS_COLOR: Record<ChangedFile['status'], string> = {
   untracked: 'text-dim'
 }
 
-export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToAgent }: ChangedFilesPanelProps): JSX.Element {
+export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToAgent, onOpenReview }: ChangedFilesPanelProps): JSX.Element {
   const [files, setFiles] = useState<ChangedFile[]>([])
   const [hasLoaded, setHasLoaded] = useState(false)
   const [mode, setMode] = useState<Mode>('working')
@@ -103,6 +104,19 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToAgent }: C
           <RefreshCw size={12} />
         </button>
       </Tooltip>
+      {onOpenReview && files.length > 0 && (
+        <Tooltip label="Review all changes">
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onOpenReview(mode)
+            }}
+            className="text-faint hover:text-fg transition-colors cursor-pointer"
+          >
+            <ClipboardCheck size={12} />
+          </button>
+        </Tooltip>
+      )}
     </>
   )
 
