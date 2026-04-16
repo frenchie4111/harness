@@ -144,23 +144,16 @@ export class PanesFSM {
     opts?: { initialPrompt?: string; teleportSessionId?: string }
   ): WorkspacePane[] {
     const existing = this.getPanes(wtPath)
-    if (existing.some((p) => p.tabs.length > 0)) {
-      const existingAgent = existing.flatMap((p) => p.tabs).find((t) => t.type === 'agent')
-      log('panes', `ensureInitialized: ${wtPath} already has panes (agent=${existingAgent?.agentKind ?? 'none'})`)
-      return existing
-    }
+    if (existing.some((p) => p.tabs.length > 0)) return existing
 
     const sleeping = this.sleepingPanes.get(wtPath)
     if (sleeping && sleeping.some((p) => p.tabs.length > 0)) {
-      const sleepingAgent = sleeping.flatMap((p) => p.tabs).find((t) => t.type === 'agent')
-      log('panes', `ensureInitialized: ${wtPath} waking sleeping panes (agent=${sleepingAgent?.agentKind ?? 'none'})`)
       this.sleepingPanes.delete(wtPath)
       this.commit(wtPath, sleeping)
       return sleeping
     }
 
     const agentKind = this.opts.getDefaultAgentKind?.() ?? 'claude'
-    log('panes', `ensureInitialized: ${wtPath} creating fresh (defaultAgent=${agentKind})`)
     const agentInfo = getAgentInfo(agentKind)
     const agentTabId = `agent-${wtPath.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}`
     const shellTabId = `shell-${wtPath}-${Date.now()}`

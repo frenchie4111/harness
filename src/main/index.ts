@@ -655,7 +655,6 @@ function registerIpcHandlers(): void {
 
   transport.onRequest('config:setDefaultAgent', (agent: string) => {
     const kind = agent === 'codex' ? 'codex' : 'claude'
-    log('config', `setDefaultAgent: ${agent} → ${kind}`)
     config.defaultAgent = kind
     saveConfig(config)
     store.dispatch({ type: 'settings/defaultAgentChanged', payload: kind })
