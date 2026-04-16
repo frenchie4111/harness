@@ -411,9 +411,9 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
   }, [])
 
   const effectiveClaudeCommand = claudeCommandDraft.trim() || defaultClaudeCommand
-  const previewInner = harnessMcpEnabled
-    ? `${effectiveClaudeCommand} --mcp-config <per-session> --session-id <uuid>`
-    : `${effectiveClaudeCommand} --session-id <uuid>`
+  const modelPart = claudeModel && !effectiveClaudeCommand.includes('--model') ? ` --model ${claudeModel}` : ''
+  const mcpPart = harnessMcpEnabled ? ' --mcp-config <per-session>' : ''
+  const previewInner = `${effectiveClaudeCommand}${modelPart}${mcpPart} --session-id <uuid>`
   const commandPreview = `/bin/zsh -ilc "${previewInner}"`
 
   const handleResetClaudeCommand = useCallback(async () => {
