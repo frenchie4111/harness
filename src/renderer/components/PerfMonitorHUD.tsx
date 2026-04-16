@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import type { PerfMetrics, PerfSample } from '../types'
+import { renderMetrics, type RenderSample } from '../render-metrics'
 
 const COLOR_NEUTRAL = '#9ca3af'
 const COLOR_WARNING = '#fbbf24'
@@ -11,10 +12,18 @@ const LINE_COLORS = {
   terminalBytes: '#34d399',
   eventLoopLag: '#fbbf24',
   memory: '#f472b6',
+  reactCommits: '#22d3ee',
+  reactRenderMs: '#fb923c',
 } as const
 
 type MetricKey = keyof typeof LINE_COLORS
 type WindowMode = '1s' | '10s'
+
+interface CombinedSample extends PerfSample {
+  reactCommits: number
+  reactRenderMs: number
+  reactMaxMs: number
+}
 
 function statusClass(value: number, green: number, amber: number): string {
   if (value < green) return 'text-success'
@@ -47,9 +56,31 @@ function formatPerSec(v: number): string {
   return `${v.toFixed(2)}/s`
 }
 
-function downsample(samples: PerfSample[], bucketSize: number): PerfSample[] {
+function zipHistories(
+  main: PerfSample[],
+  render: RenderSample[]
+): CombinedSample[] {
+  const n = Math.min(main.length, render.length)
+  if (n === 0) return []
+  const out: CombinedSample[] = []
+  const mStart = main.length - n
+  const rStart = render.length - n
+  for (let i = 0; i < n; i++) {
+    const m = main[mStart + i]
+    const r = render[rStart + i]
+    out.push({
+      ...m,
+      reactCommits: r.commits,
+      reactRenderMs: r.totalDurationMs,
+      reactMaxMs: r.maxDurationMs,
+    })
+  }
+  return out
+}
+
+function downsample(samples: CombinedSample[], bucketSize: number): CombinedSample[] {
   if (bucketSize <= 1 || samples.length === 0) return samples
-  const out: PerfSample[] = []
+  const out: CombinedSample[] = []
   for (let i = 0; i < samples.length; i += bucketSize) {
     const bucket = samples.slice(i, i + bucketSize)
     if (bucket.length === 0) continue
@@ -61,7 +92,10 @@ function downsample(samples: PerfSample[], bucketSize: number): PerfSample[] {
       ls = 0,
       rs = 0,
       hus = 0,
-      hts = 0
+      hts = 0,
+      rc = 0,
+      rm = 0,
+      rx = 0
     for (const s of bucket) {
       ss += s.storeEventsPerSec
       is += s.ipcMessagesPerSec
@@ -70,6 +104,9 @@ function downsample(samples: PerfSample[], bucketSize: number): PerfSample[] {
       rs += s.memoryRssMB
       hus += s.memoryHeapUsedMB
       hts += s.memoryHeapTotalMB
+      rc += s.reactCommits
+      rm += s.reactRenderMs
+      if (s.reactMaxMs > rx) rx = s.reactMaxMs
       for (const [k, v] of Object.entries(s.eventTypeCounts)) {
         merged[k] = (merged[k] || 0) + v
       }
@@ -86,6 +123,9 @@ function downsample(samples: PerfSample[], bucketSize: number): PerfSample[] {
       memoryHeapUsedMB: hus / n,
       memoryHeapTotalMB: hts / n,
       eventTypeCounts: avg,
+      reactCommits: rc / n,
+      reactRenderMs: rm / n,
+      reactMaxMs: rx,
     })
   }
   return out
@@ -102,7 +142,7 @@ function typeColor(type: string): string {
 }
 
 function aggregateEventTypes(
-  samples: PerfSample[]
+  samples: CombinedSample[]
 ): Array<{ type: string; perSec: number }> {
   if (samples.length === 0) return []
   const totals = new Map<string, number>()
@@ -127,7 +167,7 @@ function Chart({
   samples,
   enabled,
 }: {
-  samples: PerfSample[]
+  samples: CombinedSample[]
   enabled: Set<MetricKey>
 }): JSX.Element {
   const barBaseY = LINE_H + GAP
@@ -160,6 +200,8 @@ function Chart({
     terminalBytes: samples.map((s) => s.totalTerminalBytesPerSec),
     eventLoopLag: samples.map((s) => s.eventLoopLagMs),
     memory: samples.map((s) => s.memoryRssMB),
+    reactCommits: samples.map((s) => s.reactCommits),
+    reactRenderMs: samples.map((s) => s.reactRenderMs),
   }
 
   // Event type stacked bars: order types by total descending so the biggest
@@ -256,6 +298,10 @@ const HUD_WIDTH = 520
 
 export function PerfMonitorHUD({ onClose }: Props): JSX.Element {
   const [metrics, setMetrics] = useState<PerfMetrics | null>(null)
+  const [renderHistory, setRenderHistory] = useState<RenderSample[]>([])
+  const [renderLatest, setRenderLatest] = useState<RenderSample>(() =>
+    renderMetrics.getLatest()
+  )
   const [fps, setFps] = useState(60)
   const [rendererMemoryMB, setRendererMemoryMB] = useState(0)
   const [windowMode, setWindowMode] = useState<WindowMode>('1s')
@@ -267,6 +313,8 @@ export function PerfMonitorHUD({ onClose }: Props): JSX.Element {
         'terminalBytes',
         'eventLoopLag',
         'memory',
+        'reactCommits',
+        'reactRenderMs',
       ])
   )
   const frameCountRef = useRef(0)
@@ -300,7 +348,11 @@ export function PerfMonitorHUD({ onClose }: Props): JSX.Element {
       if (!active) return
       try {
         const m = await window.api.getPerfMetrics()
-        if (active) setMetrics(m)
+        if (active) {
+          setMetrics(m)
+          setRenderHistory(renderMetrics.getHistory())
+          setRenderLatest(renderMetrics.getLatest())
+        }
       } catch {
         // ignore
       }
@@ -343,9 +395,9 @@ export function PerfMonitorHUD({ onClose }: Props): JSX.Element {
   }, [])
 
   const windowed = useMemo(() => {
-    const history = metrics?.history ?? []
-    return windowMode === '10s' ? downsample(history, 10) : history
-  }, [metrics, windowMode])
+    const zipped = zipHistories(metrics?.history ?? [], renderHistory)
+    return windowMode === '10s' ? downsample(zipped, 10) : zipped
+  }, [metrics, renderHistory, windowMode])
 
   const eventRows = useMemo(() => aggregateEventTypes(windowed), [windowed])
 
@@ -389,6 +441,18 @@ export function PerfMonitorHUD({ onClose }: Props): JSX.Element {
           label: 'Memory (main)',
           value: `${metrics.memoryMB.rss} MB`,
           valueClassName: statusClass(metrics.memoryMB.rss, 200, 500),
+        },
+        {
+          key: 'reactCommits',
+          label: 'React commits',
+          value: `${renderLatest.commits}/s`,
+          valueClassName: statusClass(renderLatest.commits, 20, 60),
+        },
+        {
+          key: 'reactRenderMs',
+          label: 'React time',
+          value: `${renderLatest.totalDurationMs.toFixed(1)}ms/s`,
+          valueClassName: statusClass(renderLatest.totalDurationMs, 16, 100),
         },
       ]
     : []
@@ -442,6 +506,11 @@ export function PerfMonitorHUD({ onClose }: Props): JSX.Element {
           label="Memory (render)"
           value={`${rendererMemoryMB} MB`}
           className={statusClass(rendererMemoryMB, 200, 500)}
+        />
+        <Scalar
+          label="Max commit"
+          value={`${renderLatest.maxDurationMs.toFixed(1)}ms`}
+          className={statusClass(renderLatest.maxDurationMs, 8, 16)}
         />
       </div>
 
