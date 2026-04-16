@@ -182,6 +182,7 @@ interface ViewZoneEntry {
   zoneId: string
   root: Root
   domNode: HTMLDivElement
+  stickyWrapper: HTMLDivElement
 }
 
 export function ReviewDiffPane({
@@ -270,10 +271,21 @@ export function ReviewDiffPane({
 
     if (items.length === 0) return
 
+    const contentWidth = modifiedEd.getLayoutInfo().contentWidth
+
     modifiedEd.changeViewZones((accessor) => {
       for (const item of items) {
         const domNode = document.createElement('div')
         domNode.style.zIndex = '10'
+
+        // The view zone domNode stretches to the full scrollable content
+        // width (which can be very wide with long lines). Pin the actual
+        // content to the visible viewport using sticky positioning.
+        const stickyWrapper = document.createElement('div')
+        stickyWrapper.style.position = 'sticky'
+        stickyWrapper.style.left = '0'
+        stickyWrapper.style.width = `${contentWidth}px`
+        domNode.appendChild(stickyWrapper)
 
         const heightInLines = item.type === 'input' ? 7 : 2
         const zoneId = accessor.addZone({
@@ -283,7 +295,7 @@ export function ReviewDiffPane({
           suppressMouseDown: false
         })
 
-        const root = createRoot(domNode)
+        const root = createRoot(stickyWrapper)
         if (item.type === 'comment' && item.comment) {
           const c = item.comment
           root.render(
@@ -302,7 +314,7 @@ export function ReviewDiffPane({
           )
         }
 
-        newZones.push({ zoneId, root, domNode })
+        newZones.push({ zoneId, root, domNode, stickyWrapper })
       }
     })
 
@@ -325,6 +337,12 @@ export function ReviewDiffPane({
   const handleEditorMount = useCallback(
     (editor: monaco.editor.IStandaloneDiffEditor) => {
       editorRef.current = editor
+      // Keep sticky wrappers sized to the visible viewport on resize
+      editor.getModifiedEditor().onDidLayoutChange((layout) => {
+        for (const z of viewZonesRef.current) {
+          z.stickyWrapper.style.width = `${layout.contentWidth}px`
+        }
+      })
     },
     []
   )
