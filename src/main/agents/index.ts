@@ -20,6 +20,7 @@ export interface AgentModule {
   hooksInstalled(worktreePath: string): boolean
   sessionFileExists(cwd: string, sessionId: string): boolean
   latestSessionId(cwd: string): string | null
+  buildSpawnArgs(opts: AgentSpawnOpts): string
 }
 
 const agents: Record<AgentKind, AgentModule> = { claude, codex }

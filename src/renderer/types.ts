@@ -246,6 +246,11 @@ export interface ElectronAPI {
   clearTerminalHistory(id: string): Promise<boolean>
   agentSessionFileExists(cwd: string, sessionId: string, agentKind?: AgentKind): Promise<boolean>
   getLatestAgentSessionId(cwd: string, agentKind?: AgentKind): Promise<string | null>
+  buildAgentSpawnArgs(agentKind: string, opts: {
+    command: string; cwd: string; sessionId?: string;
+    initialPrompt?: string; teleportSessionId?: string;
+    sessionName?: string; mcpConfigPath?: string | null
+  }): Promise<string>
 
   hasGithubToken(): Promise<boolean>
   setGithubToken(token: string): Promise<{ ok: boolean; username?: string; error?: string }>

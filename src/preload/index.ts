@@ -157,6 +157,8 @@ contextBridge.exposeInMainWorld('api', {
     req('agent:sessionFileExists', cwd, sessionId, agentKind),
   getLatestAgentSessionId: (cwd: string, agentKind?: string) =>
     req('agent:latestSessionId', cwd, agentKind),
+  buildAgentSpawnArgs: (agentKind: string, opts: Record<string, unknown>) =>
+    req('agent:buildSpawnArgs', agentKind, opts),
 
   // Onboarding quest
   setOnboardingQuest: (quest: string) => req('config:setOnboardingQuest', quest),

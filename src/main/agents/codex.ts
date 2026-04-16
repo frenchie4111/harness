@@ -2,6 +2,11 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSy
 import { join } from 'path'
 import { homedir } from 'os'
 import { log } from '../debug'
+import type { AgentSpawnOpts } from './index'
+
+function shellQuote(s: string): string {
+  return "'" + s.replace(/'/g, "'\\''") + "'"
+}
 
 const HARNESS_HOOK_MARKER = '__codex_harness__'
 const HARNESS_HOOK_VERSION = 1
@@ -161,4 +166,20 @@ export function latestSessionId(_cwd: string): string | null {
   } catch {
     return null
   }
+}
+
+export function buildSpawnArgs(opts: AgentSpawnOpts): string {
+  // Codex MCP is configured globally via ~/.codex/config.toml, not per-terminal
+  // flags. The mcpConfigPath is unused here but the MCP server was already
+  // registered by the prepareMcpForTerminal IPC call.
+  let cmd = opts.command
+
+  if (!opts.sessionId) {
+    return opts.initialPrompt ? `${cmd} ${shellQuote(opts.initialPrompt)}` : cmd
+  }
+
+  const exists = sessionFileExists(opts.cwd, opts.sessionId)
+  if (exists) return `${cmd} resume ${opts.sessionId}`
+
+  return opts.initialPrompt ? `${cmd} ${shellQuote(opts.initialPrompt)}` : cmd
 }

@@ -113,10 +113,6 @@ interface XTerminalProps {
   onRestartAgent?: () => void
 }
 
-function shellQuote(s: string): string {
-  return "'" + s.replace(/'/g, "'\\''") + "'"
-}
-
 export function XTerminal({ terminalId, cwd, type, agentKind, visible, agentCommand, sessionName, sessionId, initialPrompt, teleportSessionId, onRestartAgent }: XTerminalProps): JSX.Element {
   const [exited, setExited] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -237,22 +233,15 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, agentComm
 
     const buildAgentArg = async (): Promise<string> => {
       const mcpPath = await window.api.prepareMcpForTerminal(terminalId)
-      const mcpFlag = mcpPath ? ` --mcp-config ${shellQuote(mcpPath)}` : ''
-      const nameFlag = sessionName ? ` --name ${shellQuote(sessionName)}` : ''
-      const cmd = `${agentCommand}${mcpFlag}${nameFlag}`
-      if (teleportSessionId && sessionId) {
-        const exists = await window.api.agentSessionFileExists(cwd, sessionId, agentKind)
-        if (!exists) {
-          return `${cmd} --teleport ${teleportSessionId} --session-id ${sessionId}`
-        }
-      }
-      if (!sessionId) {
-        return initialPrompt ? `${cmd} ${shellQuote(initialPrompt)}` : cmd
-      }
-      const exists = await window.api.agentSessionFileExists(cwd, sessionId, agentKind)
-      if (exists) return `${cmd} --resume ${sessionId}`
-      const base = `${cmd} --session-id ${sessionId}`
-      return initialPrompt ? `${base} ${shellQuote(initialPrompt)}` : base
+      return window.api.buildAgentSpawnArgs(agentKind || 'claude', {
+        command: agentCommand,
+        cwd,
+        sessionId,
+        initialPrompt,
+        teleportSessionId,
+        sessionName,
+        mcpConfigPath: mcpPath
+      })
     }
 
     const spawnPty = async (): Promise<void> => {

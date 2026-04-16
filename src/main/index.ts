@@ -1003,6 +1003,18 @@ function registerIpcHandlers(): void {
     return getAgent(kind).latestSessionId(cwd)
   })
 
+  transport.onRequest(
+    'agent:buildSpawnArgs',
+    (agentKind: string, opts: {
+      command: string; cwd: string; sessionId?: string;
+      initialPrompt?: string; teleportSessionId?: string;
+      sessionName?: string; mcpConfigPath?: string | null
+    }): string => {
+      const kind = (agentKind as 'claude' | 'codex') || 'claude'
+      return getAgent(kind).buildSpawnArgs(opts)
+    }
+  )
+
   // Settings: GitHub token
   transport.onRequest('settings:hasGithubToken', () => {
     return store.getSnapshot().state.settings.hasGithubToken

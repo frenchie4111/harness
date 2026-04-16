@@ -2,6 +2,11 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSy
 import { join } from 'path'
 import { homedir } from 'os'
 import { log } from '../debug'
+import type { AgentSpawnOpts } from './index'
+
+function shellQuote(s: string): string {
+  return "'" + s.replace(/'/g, "'\\''") + "'"
+}
 
 const HARNESS_HOOK_MARKER = '__claude_harness__'
 const HARNESS_HOOK_VERSION = 8
@@ -128,4 +133,26 @@ export function latestSessionId(cwd: string): string | null {
   } catch {
     return null
   }
+}
+
+export function buildSpawnArgs(opts: AgentSpawnOpts): string {
+  const mcpFlag = opts.mcpConfigPath ? ` --mcp-config ${shellQuote(opts.mcpConfigPath)}` : ''
+  const nameFlag = opts.sessionName ? ` --name ${shellQuote(opts.sessionName)}` : ''
+  const cmd = `${opts.command}${mcpFlag}${nameFlag}`
+
+  if (opts.teleportSessionId && opts.sessionId) {
+    const exists = sessionFileExists(opts.cwd, opts.sessionId)
+    if (!exists) {
+      return `${cmd} --teleport ${opts.teleportSessionId} --session-id ${opts.sessionId}`
+    }
+  }
+
+  if (!opts.sessionId) {
+    return opts.initialPrompt ? `${cmd} ${shellQuote(opts.initialPrompt)}` : cmd
+  }
+
+  const exists = sessionFileExists(opts.cwd, opts.sessionId)
+  if (exists) return `${cmd} --resume ${opts.sessionId}`
+  const base = `${cmd} --session-id ${opts.sessionId}`
+  return opts.initialPrompt ? `${base} ${shellQuote(opts.initialPrompt)}` : base
 }
