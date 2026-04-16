@@ -20,6 +20,7 @@ import { Activity } from './components/Activity'
 import { Cleanup } from './components/Cleanup'
 import { CommandCenter } from './components/CommandCenter'
 import { CommandPalette } from './components/CommandPalette'
+import { HotkeyCheatsheet } from './components/HotkeyCheatsheet'
 import iconUrl from '../../resources/icon.png'
 import { PerfMonitorHUD } from './components/PerfMonitorHUD'
 import { focusTerminalById } from './components/XTerminal'
@@ -172,6 +173,7 @@ export default function App(): JSX.Element {
   const [showCommandPalette, setShowCommandPalette] = useState(false)
   const [commandPaletteMode, setCommandPaletteMode] = useState<'root' | 'files'>('root')
   const [showPerfMonitor, setShowPerfMonitor] = useState(false)
+  const [showHotkeyCheatsheet, setShowHotkeyCheatsheet] = useState(false)
   const tailLines = useTailLineBuffer()
   const settings = useSettings()
   const { hasGithubToken: hasGithubPat, githubAuthSource, claudeCommand, nameClaudeSessions } = settings
@@ -238,6 +240,12 @@ const setQuestStep = useCallback((next: QuestStep) => {
   // Toggle perf monitor from the menu (Cmd+Shift+D)
   useEffect(() => {
     const cleanup = window.api.onTogglePerfMonitor(() => setShowPerfMonitor((v) => !v))
+    return cleanup
+  }, [])
+
+  // Open Keyboard Shortcuts from the menu
+  useEffect(() => {
+    const cleanup = window.api.onOpenKeyboardShortcuts(() => setShowHotkeyCheatsheet(true))
     return cleanup
   }, [])
 
@@ -451,6 +459,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
     setShowCommandPalette,
     setCommandPaletteMode,
     setShowPerfMonitor,
+    setShowHotkeyCheatsheet,
     handleAddTerminalTab,
     handleCloseTab,
     handleSelectTab,
@@ -649,6 +658,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
             onAddRepo={handleAddRepo}
             onRemoveRepo={handleRemoveRepo}
             onOpenSettings={() => setShowSettings(true)}
+            onOpenHotkeyCheatsheet={() => setShowHotkeyCheatsheet(true)}
             onOpenActivity={() => setShowActivity(true)}
             onOpenCleanup={() => setShowCleanup(true)}
             rightColumnHidden={rightColumnHidden}
@@ -838,6 +848,12 @@ const setQuestStep = useCallback((next: QuestStep) => {
           if (handler) handler()
         }}
         onOpenFile={(filePath) => handleOpenFile(filePath)}
+      />
+    )}
+    {showHotkeyCheatsheet && (
+      <HotkeyCheatsheet
+        resolvedHotkeys={resolvedHotkeys}
+        onClose={() => setShowHotkeyCheatsheet(false)}
       />
     )}
     </HotkeysProvider>

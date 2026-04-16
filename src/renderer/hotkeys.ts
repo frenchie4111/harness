@@ -26,6 +26,7 @@ export type Action =
   | 'splitPaneRight'
   | 'toggleRightColumn'
   | 'togglePerfMonitor'
+  | 'hotkeyCheatsheet'
 
 export interface Modifiers {
   cmd?: boolean
@@ -67,6 +68,7 @@ export const DEFAULT_HOTKEYS: Record<Action, HotkeyBinding> = {
   splitPaneRight: { key: 'd', modifiers: { cmd: true } },
   toggleRightColumn: { key: 'b', modifiers: { cmd: true, alt: true } },
   togglePerfMonitor: { key: 'd', modifiers: { cmd: true, shift: true } },
+  hotkeyCheatsheet: { key: '/', modifiers: { cmd: true } },
 }
 
 /** Check if a KeyboardEvent matches a hotkey binding */
@@ -171,7 +173,8 @@ export const ACTION_LABELS: Record<Action, string> = {
   fileQuickOpen: 'Open file...',
   splitPaneRight: 'Split pane right',
   toggleRightColumn: 'Toggle right column',
-  togglePerfMonitor: 'Performance monitor'
+  togglePerfMonitor: 'Performance monitor',
+  hotkeyCheatsheet: 'Keyboard shortcuts'
 }
 
 /** Capture a KeyboardEvent into a HotkeyBinding (for the rebind UI) */

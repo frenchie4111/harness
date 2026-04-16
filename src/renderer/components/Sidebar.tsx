@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from 'react'
-import { ChevronDown, ChevronRight, Plus, RefreshCw, FolderOpen, Loader2, Settings as SettingsIcon, Sparkles, BarChart3, Trash2, LayoutGrid, X, Layers, Rows3, AlertCircle, PanelRightOpen } from 'lucide-react'
+import { ChevronDown, ChevronRight, Plus, RefreshCw, FolderOpen, Loader2, Settings as SettingsIcon, Sparkles, BarChart3, Trash2, LayoutGrid, X, Layers, Rows3, AlertCircle, PanelRightOpen, CircleHelp } from 'lucide-react'
 import { Tooltip } from './Tooltip'
 import { HotkeyBadge } from './HotkeyBadge'
 import { useMetaHeld } from '../hooks/useMetaHeld'
@@ -32,6 +32,7 @@ interface SidebarProps {
   onAddRepo: () => void
   onRemoveRepo: (repoRoot: string) => Promise<void>
   onOpenSettings: () => void
+  onOpenHotkeyCheatsheet: () => void
   onOpenActivity: () => void
   onOpenCleanup: () => void
   rightColumnHidden: boolean
@@ -70,6 +71,7 @@ export function Sidebar({
   onAddRepo,
   onRemoveRepo,
   onOpenSettings,
+  onOpenHotkeyCheatsheet,
   onOpenActivity,
   onOpenCleanup,
   rightColumnHidden,
@@ -448,6 +450,14 @@ export function Sidebar({
             </button>
           </Tooltip>
         )}
+        <Tooltip label="Keyboard shortcuts" action="hotkeyCheatsheet" side="top">
+          <button
+            onClick={onOpenHotkeyCheatsheet}
+            className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
+          >
+            <CircleHelp size={14} />
+          </button>
+        </Tooltip>
         <Tooltip label="Settings" side="top">
           <button
             onClick={onOpenSettings}
