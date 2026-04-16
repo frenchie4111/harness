@@ -678,6 +678,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
                 panes={paneList}
                 focusedPaneId={activePaneId[wt.path] || paneList[0]?.id || ''}
                 statuses={statuses}
+                pendingTools={pendingTools}
                 shellActivity={shellActivity}
                 visible={isVisible}
                 claudeCommand={claudeCommand}

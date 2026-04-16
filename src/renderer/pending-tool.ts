@@ -48,6 +48,8 @@ export function formatPendingTool(tool: PendingTool): string {
       const pattern = str(input, 'pattern')
       return pattern ? `${tool.name} ${truncate(pattern)}` : tool.name
     }
+    case 'ExitPlanMode':
+      return 'Plan ready for review'
     default:
       return tool.name
   }

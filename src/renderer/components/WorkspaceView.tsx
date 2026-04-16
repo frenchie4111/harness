@@ -11,17 +11,19 @@ import {
   type DragOverEvent,
   type CollisionDetection
 } from '@dnd-kit/core'
-import type { WorkspacePane, PtyStatus } from '../types'
+import type { WorkspacePane, PtyStatus, PendingTool } from '../types'
 import { TerminalPanel } from './TerminalPanel'
 import { XTerminal } from './XTerminal'
 import { DiffView } from './DiffView'
 import { FileView } from './FileView'
+import { PlanReviewPanel } from './PlanReviewPanel'
 
 interface WorkspaceViewProps {
   worktreePath: string
   panes: WorkspacePane[]
   focusedPaneId: string
   statuses: Record<string, PtyStatus>
+  pendingTools: Record<string, PendingTool | null>
   shellActivity: Record<string, { active: boolean; processName?: string }>
   visible: boolean
   claudeCommand: string
@@ -52,6 +54,7 @@ export function WorkspaceView({
   panes,
   focusedPaneId,
   statuses,
+  pendingTools,
   shellActivity,
   visible,
   claudeCommand,
@@ -207,22 +210,33 @@ export function WorkspaceView({
                   }
                 />
               ) : (
-                <XTerminal
-                  terminalId={tab.id}
-                  cwd={worktreePath}
-                  type={tab.type as 'claude' | 'shell'}
-                  visible={visible && isActiveInPane}
-                  claudeCommand={claudeCommand}
-                  sessionName={tab.type === 'claude' && nameClaudeSessions ? `${repoLabel}/${branch}` : undefined}
-                  sessionId={tab.sessionId}
-                  initialPrompt={tab.initialPrompt}
-                  teleportSessionId={tab.teleportSessionId}
-                  onRestartClaude={
-                    tab.type === 'claude'
-                      ? (): void => onRestartClaudeTab(worktreePath, tab.id)
-                      : undefined
-                  }
-                />
+                <>
+                  <XTerminal
+                    terminalId={tab.id}
+                    cwd={worktreePath}
+                    type={tab.type as 'claude' | 'shell'}
+                    visible={visible && isActiveInPane}
+                    claudeCommand={claudeCommand}
+                    sessionName={tab.type === 'claude' && nameClaudeSessions ? `${repoLabel}/${branch}` : undefined}
+                    sessionId={tab.sessionId}
+                    initialPrompt={tab.initialPrompt}
+                    teleportSessionId={tab.teleportSessionId}
+                    onRestartClaude={
+                      tab.type === 'claude'
+                        ? (): void => onRestartClaudeTab(worktreePath, tab.id)
+                        : undefined
+                    }
+                  />
+                  {tab.type === 'claude' &&
+                    statuses[tab.id] === 'needs-approval' &&
+                    pendingTools[tab.id]?.name === 'ExitPlanMode' &&
+                    typeof pendingTools[tab.id]?.input?.plan === 'string' && (
+                      <PlanReviewPanel
+                        planText={pendingTools[tab.id]!.input.plan as string}
+                        terminalId={tab.id}
+                      />
+                    )}
+                </>
               )}
             </div>,
             slot,
