@@ -6,6 +6,7 @@ import { join } from 'path'
 import { PtyManager } from './pty-manager'
 import { Store } from './store'
 import { registerStateTransport } from './transport-electron'
+import { PerfMonitor } from './perf-monitor'
 import { PRPoller } from './pr-poller'
 import { WorktreesFSM } from './worktrees-fsm'
 import { WorktreeDeletionFSM } from './worktree-deletion-fsm'
@@ -75,7 +76,8 @@ let config = loadConfig()
 let stopWatchingStatus: (() => void) | null = null
 
 const store = new Store(buildInitialAppState(config, { hasGithubToken: hasSecret('githubToken') }))
-registerStateTransport(store)
+const perfMonitor = new PerfMonitor()
+registerStateTransport(store, perfMonitor)
 
 // Tails Claude Code session jsonl transcripts on Stop hook events,
 // sums per-model usage, and dispatches costs/usageUpdated. See
@@ -130,6 +132,8 @@ const prPoller = new PRPoller(store, {
 })
 
 ptyManager.setStore(store)
+ptyManager.setPerfMonitor(perfMonitor)
+perfMonitor.start(store, () => ptyManager.getActivePtyCount())
 
 // Persist panes back to config in the existing nested-by-repo shape, so the
 // on-disk format stays compatible with persistence-migrations. Strip
@@ -1113,6 +1117,9 @@ function registerIpcHandlers(): void {
     return true
   })
 
+  // Performance monitor
+  ipcMain.handle('perf:getMetrics', () => perfMonitor.getMetrics())
+
   // Hooks. check + install are no longer exposed: per-worktree installation
   // happens automatically in the store subscription (see
   // installHooksForAcceptedWorktrees) whenever the worktree list changes
@@ -1177,6 +1184,13 @@ function openSettingsInFocusedWindow(): void {
   }
 }
 
+function togglePerfMonitorInFocusedWindow(): void {
+  const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0]
+  if (win && !win.isDestroyed()) {
+    win.webContents.send('app:togglePerfMonitor')
+  }
+}
+
 function buildMenu(): void {
   const template: Electron.MenuItemConstructorOptions[] = [
     {
@@ -1227,7 +1241,13 @@ function buildMenu(): void {
         { role: 'forceReload' },
         { role: 'toggleDevTools' },
         { type: 'separator' },
-        { role: 'togglefullscreen' }
+        { role: 'togglefullscreen' },
+        { type: 'separator' },
+        {
+          label: 'Performance Monitor',
+          accelerator: 'CmdOrCtrl+Shift+D',
+          click: () => togglePerfMonitorInFocusedWindow()
+        }
       ]
     },
     {

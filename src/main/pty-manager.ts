@@ -9,6 +9,7 @@ import {
   clearTerminalHistory
 } from './persistence'
 import type { Store } from './store'
+import type { PerfMonitor } from './perf-monitor'
 import type { PtyStatus } from '../shared/state/terminals'
 
 export type { PtyStatus }
@@ -80,6 +81,7 @@ export class PtyManager {
   private history = new Map<string, HistoryBuffer>()
   private historyDirty = new Set<string>()
   private historyFlushTimer: NodeJS.Timeout | null = null
+  private perfMonitor: PerfMonitor | null = null
 
   /** Wire the authoritative store after it's constructed. PTY status,
    * shell activity, and cleanup events dispatch through it; terminal:data
@@ -87,6 +89,14 @@ export class PtyManager {
    * view-layer respectively). */
   setStore(store: Store): void {
     this.store = store
+  }
+
+  setPerfMonitor(monitor: PerfMonitor): void {
+    this.perfMonitor = monitor
+  }
+
+  getActivePtyCount(): number {
+    return this.ptys.size
   }
 
   hasTerminal(id: string): boolean {
@@ -165,6 +175,7 @@ export class PtyManager {
       buf!.append(data)
       this.historyDirty.add(id)
       this.ensureHistoryFlushTimer()
+      this.perfMonitor?.recordTerminalBytes(id, data.length)
       // Route data to the owning window (if it still exists)
       const win = BrowserWindow.fromId(instance.windowId)
       if (win && !win.isDestroyed()) {

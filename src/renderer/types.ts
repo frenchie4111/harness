@@ -83,6 +83,9 @@ export interface ChangedFile {
   deletions?: number
 }
 
+import type { PerfMetrics } from '../main/perf-monitor'
+export type { PerfMetrics }
+
 import type { CheckStatus, PRReview, PRStatus } from '../shared/state/prs'
 export type { CheckStatus, PRReview, PRStatus }
 
@@ -248,9 +251,12 @@ export interface ElectronAPI {
   checkForUpdates(): Promise<{ ok: boolean; available?: boolean; version?: string; releaseDate?: string; error?: string }>
   quitAndInstall(): Promise<boolean>
 
+  getPerfMetrics(): Promise<PerfMetrics>
+
   openExternal(url: string): void
   getFilePath(file: File): string
   onOpenSettings(callback: () => void): () => void
+  onTogglePerfMonitor(callback: () => void): () => void
 
   acceptHooks(): Promise<boolean>
   declineHooks(): Promise<boolean>

@@ -189,11 +189,19 @@ contextBridge.exposeInMainWorld('api', {
   // Resolve a dropped File's absolute path. File.path was removed in Electron 32+.
   getFilePath: (file: File) => webUtils.getPathForFile(file),
 
+  // Performance monitor
+  getPerfMetrics: () => ipcRenderer.invoke('perf:getMetrics'),
+
   // App-level events from menu
   onOpenSettings: (callback: () => void) => {
     const handler = (): void => callback()
     ipcRenderer.on('app:openSettings', handler)
     return () => ipcRenderer.removeListener('app:openSettings', handler)
+  },
+  onTogglePerfMonitor: (callback: () => void) => {
+    const handler = (): void => callback()
+    ipcRenderer.on('app:togglePerfMonitor', handler)
+    return () => ipcRenderer.removeListener('app:togglePerfMonitor', handler)
   },
 
   // Hooks
