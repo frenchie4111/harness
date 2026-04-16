@@ -387,6 +387,8 @@ export function ReviewDiffPane({
             fontSize={settings.fontSize}
             onReferenceLine={handleReferenceLine}
             onEditorMount={handleEditorMount}
+            glyphClassName="comment-line-glyph"
+            glyphHoverMessage="Add a comment on this line"
           />
         )}
         {!loading && sides?.error && (

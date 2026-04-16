@@ -13,6 +13,8 @@ interface MonacoDiffEditorProps {
   onSave?: () => void
   onReferenceLine?: (lineNumber: number) => void
   onEditorMount?: (editor: monaco.editor.IStandaloneDiffEditor) => void
+  glyphClassName?: string
+  glyphHoverMessage?: string
 }
 
 export function MonacoDiffEditor({
@@ -25,7 +27,9 @@ export function MonacoDiffEditor({
   onModifiedChange,
   onSave,
   onReferenceLine,
-  onEditorMount
+  onEditorMount,
+  glyphClassName = 'ref-line-glyph',
+  glyphHoverMessage = 'Reference this line in Claude'
 }: MonacoDiffEditorProps): JSX.Element {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const editorRef = useRef<monaco.editor.IStandaloneDiffEditor | null>(null)
@@ -33,10 +37,14 @@ export function MonacoDiffEditor({
   const onSaveRef = useRef(onSave)
   const onRefRef = useRef(onReferenceLine)
   const onMountRef = useRef(onEditorMount)
+  const glyphClassRef = useRef(glyphClassName)
+  const glyphHoverRef = useRef(glyphHoverMessage)
   onChangeRef.current = onModifiedChange
   onSaveRef.current = onSave
   onRefRef.current = onReferenceLine
   onMountRef.current = onEditorMount
+  glyphClassRef.current = glyphClassName
+  glyphHoverRef.current = glyphHoverMessage
 
   useEffect(() => {
     if (!hostRef.current) return
@@ -102,8 +110,8 @@ export function MonacoDiffEditor({
         {
           range: new monaco.Range(lineNumber, 1, lineNumber, 1),
           options: {
-            glyphMarginClassName: 'ref-line-glyph',
-            glyphMarginHoverMessage: { value: 'Reference this line in Claude' }
+            glyphMarginClassName: glyphClassRef.current,
+            glyphMarginHoverMessage: { value: glyphHoverRef.current }
           }
         }
       ])

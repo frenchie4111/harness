@@ -84,6 +84,28 @@ function flatFileList(groups: FileGroup[], collapsedDirs: Set<string>): ChangedF
   return result
 }
 
+const MAX_STAT_BLOCKS = 5
+
+function DiffStatBar({ additions, deletions }: { additions: number; deletions: number }): JSX.Element {
+  const total = additions + deletions
+  if (total === 0) return <span className="shrink-0 w-[50px]" />
+  const addBlocks = Math.round((additions / total) * MAX_STAT_BLOCKS)
+  const delBlocks = MAX_STAT_BLOCKS - addBlocks
+  return (
+    <span className="shrink-0 flex items-center gap-1">
+      <span className="font-mono text-[10px] tabular-nums text-faint">{total}</span>
+      <span className="flex gap-px">
+        {Array.from({ length: addBlocks }, (_, i) => (
+          <span key={`a${i}`} className="w-[6px] h-[6px] rounded-[1px] bg-success" />
+        ))}
+        {Array.from({ length: delBlocks }, (_, i) => (
+          <span key={`d${i}`} className="w-[6px] h-[6px] rounded-[1px] bg-danger" />
+        ))}
+      </span>
+    </span>
+  )
+}
+
 export function ReviewFileTree({
   files,
   selectedFile,
@@ -156,7 +178,23 @@ export function ReviewFileTree({
         navigateUnreviewed(-1)
       } else if (e.key === 'r' && !e.metaKey && !e.ctrlKey) {
         e.preventDefault()
-        if (selectedFile) onToggleReviewed(selectedFile)
+        if (selectedFile) {
+          const wasReviewed = reviewedFiles.has(selectedFile)
+          onToggleReviewed(selectedFile)
+          if (!wasReviewed) {
+            // Auto-advance to next unreviewed file
+            const unreviewed = navigableFiles.filter(
+              (f) => !reviewedFiles.has(f.path) && f.path !== selectedFile
+            )
+            if (unreviewed.length > 0) {
+              const currentIdx = navigableFiles.findIndex((f) => f.path === selectedFile)
+              const next = unreviewed.find(
+                (f) => navigableFiles.indexOf(f) > currentIdx
+              ) ?? unreviewed[0]
+              onSelectFile(next.path)
+            }
+          }
+        }
       }
     }
     window.addEventListener('keydown', handler)
@@ -218,14 +256,7 @@ export function ReviewFileTree({
                     <span className="truncate flex-1 text-fg">{name}</span>
 
                     {(file.additions !== undefined || file.deletions !== undefined) && (
-                      <span className="shrink-0 font-mono text-[10px] tabular-nums">
-                        {file.additions !== undefined && file.additions > 0 && (
-                          <span className="text-success">+{file.additions}</span>
-                        )}
-                        {file.deletions !== undefined && file.deletions > 0 && (
-                          <span className="text-danger ml-0.5">−{file.deletions}</span>
-                        )}
-                      </span>
+                      <DiffStatBar additions={file.additions ?? 0} deletions={file.deletions ?? 0} />
                     )}
 
                     {commentCount > 0 && (
