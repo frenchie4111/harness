@@ -158,6 +158,7 @@ export class PanesFSM {
     }
 
     const agentKind = this.opts.getDefaultAgentKind?.() ?? 'claude'
+    log('panes', `ensureInitialized creating fresh tabs for ${wtPath} agentKind=${agentKind}`)
     const agentInfo = getAgentInfo(agentKind)
     const agentTabId = `agent-${wtPath.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}`
     const shellTabId = `shell-${wtPath}-${Date.now()}`
