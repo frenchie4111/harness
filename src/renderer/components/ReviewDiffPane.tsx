@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from 'react'
-import { Check, Trash2 } from 'lucide-react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { createRoot, type Root } from 'react-dom/client'
+import * as monaco from 'monaco-editor'
+import { Check } from 'lucide-react'
 import type { FileDiffSides, ChangedFile } from '../types'
 import type { ReviewComment } from './ReviewFileTree'
 import { MonacoDiffEditor } from './MonacoDiffEditor'
-import { ReviewCommentInput } from './ReviewCommentInput'
 import { useSettings } from '../store'
 
 interface ReviewDiffPaneProps {
@@ -33,6 +34,156 @@ const STATUS_COLOR: Record<ChangedFile['status'], string> = {
   untracked: 'text-dim'
 }
 
+function InlineComment({
+  comment,
+  onDelete
+}: {
+  comment: ReviewComment
+  onDelete: () => void
+}): JSX.Element {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: '8px',
+        padding: '6px 12px',
+        fontSize: '12px',
+        borderLeft: '3px solid var(--color-info, #58a6ff)',
+        background: 'color-mix(in srgb, var(--color-info, #58a6ff) 8%, transparent)',
+        margin: '2px 8px'
+      }}
+    >
+      <span style={{ flex: 1, color: 'var(--color-fg)', whiteSpace: 'pre-wrap' }}>
+        {comment.body}
+      </span>
+      <button
+        onClick={onDelete}
+        style={{
+          flexShrink: 0,
+          color: 'var(--color-faint)',
+          cursor: 'pointer',
+          background: 'none',
+          border: 'none',
+          fontSize: '11px',
+          padding: '0 2px'
+        }}
+        onMouseOver={(e) => (e.currentTarget.style.color = 'var(--color-danger, #f85149)')}
+        onMouseOut={(e) => (e.currentTarget.style.color = 'var(--color-faint)')}
+      >
+        ✕
+      </button>
+    </div>
+  )
+}
+
+function InlineCommentInput({
+  lineNumber,
+  onSubmit,
+  onCancel
+}: {
+  lineNumber: number
+  onSubmit: (body: string) => void
+  onCancel: () => void
+}): JSX.Element {
+  const [body, setBody] = useState('')
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    textareaRef.current?.focus()
+  }, [])
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '6px',
+        padding: '8px 12px',
+        margin: '2px 8px',
+        borderRadius: '4px',
+        border: '1px solid var(--color-border-strong)',
+        background: 'var(--color-panel-raised)'
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontSize: '10px', color: 'var(--color-faint)', fontFamily: 'monospace' }}>
+          Line {lineNumber}
+        </span>
+        <button
+          onClick={onCancel}
+          style={{
+            color: 'var(--color-faint)',
+            cursor: 'pointer',
+            background: 'none',
+            border: 'none',
+            fontSize: '12px'
+          }}
+        >
+          ✕
+        </button>
+      </div>
+      <textarea
+        ref={textareaRef}
+        value={body}
+        onChange={(e) => setBody(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault()
+            if (body.trim()) onSubmit(body.trim())
+          }
+          if (e.key === 'Escape') {
+            e.preventDefault()
+            onCancel()
+          }
+          e.stopPropagation()
+        }}
+        placeholder="Leave a comment..."
+        rows={2}
+        style={{
+          width: '100%',
+          background: 'var(--color-surface)',
+          color: 'var(--color-fg)',
+          fontSize: '12px',
+          borderRadius: '4px',
+          border: '1px solid var(--color-border)',
+          padding: '6px 8px',
+          resize: 'none',
+          outline: 'none',
+          fontFamily: 'inherit'
+        }}
+      />
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontSize: '10px', color: 'var(--color-faint)' }}>⌘Enter to submit</span>
+        <button
+          onClick={() => {
+            if (body.trim()) onSubmit(body.trim())
+          }}
+          disabled={!body.trim()}
+          style={{
+            fontSize: '11px',
+            padding: '2px 8px',
+            borderRadius: '4px',
+            background: body.trim() ? 'var(--color-accent)' : 'var(--color-border)',
+            color: 'var(--color-fg)',
+            border: 'none',
+            cursor: body.trim() ? 'pointer' : 'default',
+            opacity: body.trim() ? 1 : 0.3
+          }}
+        >
+          Add Comment
+        </button>
+      </div>
+    </div>
+  )
+}
+
+interface ViewZoneEntry {
+  zoneId: string
+  root: Root
+  domNode: HTMLDivElement
+}
+
 export function ReviewDiffPane({
   worktreePath,
   file,
@@ -47,6 +198,8 @@ export function ReviewDiffPane({
   const [sides, setSides] = useState<FileDiffSides | null>(null)
   const [loading, setLoading] = useState(false)
   const [commentLine, setCommentLine] = useState<number | null>(null)
+  const editorRef = useRef<monaco.editor.IStandaloneDiffEditor | null>(null)
+  const viewZonesRef = useRef<ViewZoneEntry[]>([])
 
   useEffect(() => {
     if (!file) {
@@ -72,9 +225,109 @@ export function ReviewDiffPane({
     }
   }, [worktreePath, file?.path, file?.staged, mode])
 
+  const clearViewZones = useCallback(() => {
+    const editor = editorRef.current
+    if (!editor) return
+    const modifiedEd = editor.getModifiedEditor()
+    const zones = viewZonesRef.current
+    if (zones.length === 0) return
+    modifiedEd.changeViewZones((accessor) => {
+      for (const z of zones) {
+        accessor.removeZone(z.zoneId)
+        z.root.unmount()
+      }
+    })
+    viewZonesRef.current = []
+  }, [])
+
+  // Sync view zones whenever comments or commentLine changes
+  useEffect(() => {
+    const editor = editorRef.current
+    if (!editor) return
+
+    clearViewZones()
+
+    const modifiedEd = editor.getModifiedEditor()
+    const newZones: ViewZoneEntry[] = []
+
+    // Collect all items to render: existing comments + the input (if active)
+    interface ZoneItem {
+      type: 'comment' | 'input'
+      lineNumber: number
+      comment?: ReviewComment
+    }
+    const items: ZoneItem[] = []
+
+    for (const c of comments) {
+      items.push({ type: 'comment', lineNumber: c.lineNumber, comment: c })
+    }
+    if (commentLine !== null) {
+      items.push({ type: 'input', lineNumber: commentLine })
+    }
+
+    // Sort by line number so zones don't interfere with each other
+    items.sort((a, b) => a.lineNumber - b.lineNumber)
+
+    if (items.length === 0) return
+
+    modifiedEd.changeViewZones((accessor) => {
+      for (const item of items) {
+        const domNode = document.createElement('div')
+        domNode.style.zIndex = '10'
+
+        const heightInLines = item.type === 'input' ? 7 : 2
+        const zoneId = accessor.addZone({
+          afterLineNumber: item.lineNumber,
+          heightInLines,
+          domNode,
+          suppressMouseDown: false
+        })
+
+        const root = createRoot(domNode)
+        if (item.type === 'comment' && item.comment) {
+          const c = item.comment
+          root.render(
+            <InlineComment comment={c} onDelete={() => onDeleteComment(c.id)} />
+          )
+        } else if (item.type === 'input') {
+          root.render(
+            <InlineCommentInput
+              lineNumber={item.lineNumber}
+              onSubmit={(body) => {
+                onAddComment(item.lineNumber, body)
+                setCommentLine(null)
+              }}
+              onCancel={() => setCommentLine(null)}
+            />
+          )
+        }
+
+        newZones.push({ zoneId, root, domNode })
+      }
+    })
+
+    viewZonesRef.current = newZones
+  }, [comments, commentLine, clearViewZones, onAddComment, onDeleteComment])
+
+  // Clean up view zones on unmount
+  useEffect(() => {
+    return () => {
+      const zones = viewZonesRef.current
+      for (const z of zones) z.root.unmount()
+      viewZonesRef.current = []
+    }
+  }, [])
+
   const handleReferenceLine = useCallback((lineNumber: number) => {
     setCommentLine(lineNumber)
   }, [])
+
+  const handleEditorMount = useCallback(
+    (editor: monaco.editor.IStandaloneDiffEditor) => {
+      editorRef.current = editor
+    },
+    []
+  )
 
   if (!file) {
     return (
@@ -117,7 +370,7 @@ export function ReviewDiffPane({
         )}
       </div>
 
-      {/* Diff */}
+      {/* Diff with inline comments via view zones */}
       <div className="flex-1 min-h-0 relative">
         {loading && (
           <div className="absolute inset-0 flex items-center justify-center text-faint text-sm z-10">
@@ -133,6 +386,7 @@ export function ReviewDiffPane({
             fontFamily={settings.fontFamily}
             fontSize={settings.fontSize}
             onReferenceLine={handleReferenceLine}
+            onEditorMount={handleEditorMount}
           />
         )}
         {!loading && sides?.error && (
@@ -146,44 +400,6 @@ export function ReviewDiffPane({
           </div>
         )}
       </div>
-
-      {/* Comment input */}
-      {commentLine !== null && (
-        <div className="shrink-0 border-t border-border">
-          <ReviewCommentInput
-            lineNumber={commentLine}
-            onSubmit={(body) => {
-              onAddComment(commentLine, body)
-              setCommentLine(null)
-            }}
-            onCancel={() => setCommentLine(null)}
-          />
-        </div>
-      )}
-
-      {/* Pending comments for this file */}
-      {comments.length > 0 && (
-        <div className="shrink-0 border-t border-border max-h-40 overflow-y-auto">
-          <div className="px-3 py-1.5 text-[10px] font-medium text-dim uppercase tracking-wider bg-panel-raised/50">
-            Comments ({comments.length})
-          </div>
-          {comments.map((c) => (
-            <div
-              key={c.id}
-              className="flex items-start gap-2 px-3 py-1.5 text-xs border-b border-border/50 group"
-            >
-              <span className="shrink-0 font-mono text-[10px] text-faint">L{c.lineNumber}</span>
-              <span className="flex-1 text-fg whitespace-pre-wrap">{c.body}</span>
-              <button
-                onClick={() => onDeleteComment(c.id)}
-                className="shrink-0 opacity-0 group-hover:opacity-100 text-faint hover:text-danger transition-all cursor-pointer"
-              >
-                <Trash2 size={11} />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   )
 }

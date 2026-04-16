@@ -12,6 +12,7 @@ interface MonacoDiffEditorProps {
   onModifiedChange?: (value: string) => void
   onSave?: () => void
   onReferenceLine?: (lineNumber: number) => void
+  onEditorMount?: (editor: monaco.editor.IStandaloneDiffEditor) => void
 }
 
 export function MonacoDiffEditor({
@@ -23,16 +24,19 @@ export function MonacoDiffEditor({
   fontSize,
   onModifiedChange,
   onSave,
-  onReferenceLine
+  onReferenceLine,
+  onEditorMount
 }: MonacoDiffEditorProps): JSX.Element {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const editorRef = useRef<monaco.editor.IStandaloneDiffEditor | null>(null)
   const onChangeRef = useRef(onModifiedChange)
   const onSaveRef = useRef(onSave)
   const onRefRef = useRef(onReferenceLine)
+  const onMountRef = useRef(onEditorMount)
   onChangeRef.current = onModifiedChange
   onSaveRef.current = onSave
   onRefRef.current = onReferenceLine
+  onMountRef.current = onEditorMount
 
   useEffect(() => {
     if (!hostRef.current) return
@@ -68,6 +72,8 @@ export function MonacoDiffEditor({
     })
     editor.setModel({ original: originalModel, modified: modifiedModel })
     editorRef.current = editor
+
+    onMountRef.current?.(editor)
 
     const changeSub = editor
       .getModifiedEditor()
