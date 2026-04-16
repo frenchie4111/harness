@@ -1,0 +1,63 @@
+Codex hooks system vs Claude Code hooks — side-by-side comparison
+
+Source: https://developers.openai.com/codex/hooks
+
+HOOK EVENTS
+  Claude Code:  UserPromptSubmit, PreToolUse, PostToolUse, Stop, Notification
+  Codex:        UserPromptSubmit, PreToolUse, PostToolUse, Stop, SessionStart
+
+  Key gap: Codex has NO Notification event.
+  Harness uses Notification with notification_type=permission_prompt to detect needs-approval.
+  Codex has SessionStart instead (useful but not equivalent).
+
+CONFIGURATION
+  Claude Code: .claude/settings.local.json → hooks.<EventName>[].hooks[].command
+  Codex:       .codex/hooks.json (repo-level) or ~/.codex/hooks.json (user-level)
+               Requires [features] codex_hooks = true in config.toml
+
+  Same structure: event → matcher groups → handler array
+  Both pass JSON on stdin to the hook script.
+
+STDIN PAYLOAD (shared fields)
+  Claude Code: session_id, transcript_path, cwd, hook_event_name + event-specific fields
+  Codex:       session_id, transcript_path, cwd, hook_event_name, model, turn_id + event-specific
+
+  Codex passes MORE data (model, turn_id). Same session_id/transcript_path/cwd as Claude.
+
+HOOK OUTPUT
+  Claude Code: hooks can return JSON; PreToolUse can block with decision=deny
+  Codex:       hooks can return JSON; PreToolUse can block with continue=false
+
+  Slightly different field names but same capability.
+
+MATCHERS
+  Claude Code: PreToolUse/PostToolUse matchers match on tool name (e.g., "Bash", "Read")
+  Codex:       PreToolUse/PostToolUse matchers match tool name (currently "Bash" only)
+
+  Codex is more limited — only Bash tool has hooks currently.
+
+IMPACT ON HARNESS
+  1. Hook installation: different file path (.codex/hooks.json vs .claude/settings.local.json)
+     and different JSON structure, but same conceptual shape. Easy to abstract.
+
+  2. Status detection: PreToolUse→processing, PostToolUse→processing, Stop→waiting all work.
+     Missing: needs-approval detection (no Notification event in Codex).
+     Workaround: in untrusted approval mode, PreToolUse fires before Codex prompts for approval.
+     We could use a heuristic: PreToolUse + no PostToolUse within N seconds = needs-approval.
+     Or: accept degraded status (no needs-approval dot) for Codex tabs.
+
+  3. The hook scripts are nearly identical in shape — same stdin JSON, same concept.
+     The makeHookCommand() function in hooks.ts would work with minimal changes.
+     Main difference: Codex reads from .codex/hooks.json, not .claude/settings.local.json.
+
+MCP CONFIGURATION
+  Claude Code: --mcp-config <path> flag pointing to a per-terminal JSON file
+  Codex:       config.toml [mcp_servers.<name>] or codex mcp add (global/project .codex/config.toml)
+
+  Different mechanism. Harness currently writes per-terminal MCP JSON files and passes via --mcp-config.
+  For Codex, we'd need to either:
+  a) Write a project-level .codex/config.toml with the MCP server config, or
+  b) Use codex mcp add to register globally (but then all sessions share it)
+
+  The MCP protocol itself is compatible — both use JSON-RPC over stdio.
+  Harness's harness-control server should work as-is once connected.
