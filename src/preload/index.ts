@@ -115,6 +115,8 @@ contextBridge.exposeInMainWorld('api', {
   setClaudeEnvVars: (vars: Record<string, string>) => req('config:setClaudeEnvVars', vars),
   setDefaultAgent: (agent: string) => req('config:setDefaultAgent', agent),
   setCodexCommand: (command: string) => req('config:setCodexCommand', command),
+  setClaudeModel: (model: string | null) => req('config:setClaudeModel', model),
+  setCodexModel: (model: string | null) => req('config:setCodexModel', model),
   setCodexEnvVars: (vars: Record<string, string>) => req('config:setCodexEnvVars', vars),
   setHarnessMcpEnabled: (enabled: boolean) => req('config:setHarnessMcpEnabled', enabled),
   setAutoUpdateEnabled: (enabled: boolean) => req('config:setAutoUpdateEnabled', enabled),

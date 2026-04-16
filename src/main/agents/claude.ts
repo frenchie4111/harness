@@ -179,9 +179,10 @@ export function latestSessionId(cwd: string): string | null {
 }
 
 export function buildSpawnArgs(opts: AgentSpawnOpts): string {
+  const modelFlag = opts.model && !opts.command.includes('--model') ? ` --model ${shellQuote(opts.model)}` : ''
   const mcpFlag = opts.mcpConfigPath ? ` --mcp-config ${shellQuote(opts.mcpConfigPath)}` : ''
   const nameFlag = opts.sessionName ? ` --name ${shellQuote(opts.sessionName)}` : ''
-  const cmd = `${opts.command}${mcpFlag}${nameFlag}`
+  const cmd = `${opts.command}${modelFlag}${mcpFlag}${nameFlag}`
 
   if (opts.teleportSessionId && opts.sessionId) {
     const exists = sessionFileExists(opts.cwd, opts.sessionId)

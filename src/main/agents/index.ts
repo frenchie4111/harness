@@ -12,6 +12,7 @@ export interface AgentSpawnOpts {
   teleportSessionId?: string
   sessionName?: string
   mcpConfigPath?: string | null
+  model?: string | null
 }
 
 export interface AgentModule {

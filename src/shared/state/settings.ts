@@ -24,6 +24,8 @@ export interface SettingsState {
   editor: string
   worktreeBase: WorktreeBase
   mergeStrategy: MergeStrategy
+  claudeModel: string | null
+  codexModel: string | null
   hasGithubToken: boolean
   githubAuthSource: 'pat' | 'gh-cli' | null
   harnessStarred: boolean | null
@@ -49,6 +51,8 @@ export type SettingsEvent =
   | { type: 'settings/hasGithubTokenChanged'; payload: boolean }
   | { type: 'settings/githubAuthSourceChanged'; payload: 'pat' | 'gh-cli' | null }
   | { type: 'settings/harnessStarredChanged'; payload: boolean | null }
+  | { type: 'settings/claudeModelChanged'; payload: string | null }
+  | { type: 'settings/codexModelChanged'; payload: string | null }
   | { type: 'settings/autoUpdateEnabledChanged'; payload: boolean }
 
 // Client-side placeholder. Real values are seeded in the main-process Store
@@ -69,6 +73,8 @@ export const initialSettings: SettingsState = {
   editor: 'vscode',
   worktreeBase: 'remote',
   mergeStrategy: 'squash',
+  claudeModel: null,
+  codexModel: null,
   hasGithubToken: false,
   githubAuthSource: null,
   harnessStarred: null,
@@ -113,6 +119,10 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, githubAuthSource: event.payload }
     case 'settings/harnessStarredChanged':
       return { ...state, harnessStarred: event.payload }
+    case 'settings/claudeModelChanged':
+      return { ...state, claudeModel: event.payload }
+    case 'settings/codexModelChanged':
+      return { ...state, codexModel: event.payload }
     case 'settings/autoUpdateEnabledChanged':
       return { ...state, autoUpdateEnabled: event.payload }
     default: {

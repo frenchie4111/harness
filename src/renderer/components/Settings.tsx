@@ -4,7 +4,7 @@ import { useSettings, useUpdater, useRepoConfigs, useHooks } from '../store'
 import type { UpdaterStatus, MergeStrategy, RepoConfig } from '../types'
 import { DEFAULT_HOTKEYS, ACTION_LABELS, bindingToString, eventToBinding, resolveHotkeys, type Action, type HotkeyBinding } from '../hotkeys'
 import { Tooltip } from './Tooltip'
-import { AGENT_REGISTRY, agentDisplayName } from '../../shared/agent-registry'
+import { AGENT_REGISTRY, agentDisplayName, CLAUDE_MODELS, CODEX_MODELS } from '../../shared/agent-registry'
 import { AgentIcon } from './AgentIcon'
 import { THEME_OPTIONS } from '../themes'
 
@@ -110,6 +110,8 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
     claudeEnvVars,
     codexEnvVars,
     nameClaudeSessions,
+    claudeModel,
+    codexModel,
     terminalFontFamily,
     terminalFontSize,
     editor: editorId,
@@ -409,9 +411,9 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
   }, [])
 
   const effectiveClaudeCommand = claudeCommandDraft.trim() || defaultClaudeCommand
-  const previewInner = harnessMcpEnabled
-    ? `${effectiveClaudeCommand} --mcp-config <per-session> --session-id <uuid>`
-    : `${effectiveClaudeCommand} --session-id <uuid>`
+  const modelPart = claudeModel && !effectiveClaudeCommand.includes('--model') ? ` --model ${claudeModel}` : ''
+  const mcpPart = harnessMcpEnabled ? ' --mcp-config <per-session>' : ''
+  const previewInner = `${effectiveClaudeCommand}${modelPart}${mcpPart} --session-id <uuid>`
   const commandPreview = `/bin/zsh -ilc "${previewInner}"`
 
   const handleResetClaudeCommand = useCallback(async () => {
@@ -769,6 +771,30 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
                 {defaultAgent === 'claude' && <span className="text-[10px] font-normal text-dim bg-panel px-1.5 py-0.5 rounded">default</span>}
               </h3>
 
+              <div className="bg-panel-raised border border-border rounded-lg p-4 mb-4">
+                <label className="block text-sm font-medium text-fg mb-1">Model</label>
+                <p className="text-xs text-dim mb-2">
+                  Appends <code className="bg-panel px-1 rounded">--model</code> to the launch command. Leave on default to let the CLI choose.
+                </p>
+                <select
+                  value={claudeModel || ''}
+                  onChange={(e) => { void window.api.setClaudeModel(e.target.value || null) }}
+                  className="w-full bg-panel border border-border-strong rounded px-3 py-2 text-sm text-fg-bright outline-none focus:border-fg cursor-pointer"
+                >
+                  <option value="">(Default — let CLI choose)</option>
+                  <optgroup label="Current">
+                    {CLAUDE_MODELS.filter((m) => m.tier === 'current').map((m) => (
+                      <option key={m.id} value={m.id}>{m.displayName}</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Legacy">
+                    {CLAUDE_MODELS.filter((m) => m.tier === 'legacy').map((m) => (
+                      <option key={m.id} value={m.id}>{m.displayName}</option>
+                    ))}
+                  </optgroup>
+                </select>
+              </div>
+
               <div className="bg-panel-raised border border-border rounded-lg p-4">
                 <label className="block text-sm font-medium text-fg mb-1">Launch command</label>
                 <p className="text-xs text-dim mb-2">
@@ -860,6 +886,30 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
                 {defaultAgent === 'codex' && <span className="text-[10px] font-normal text-dim bg-panel px-1.5 py-0.5 rounded">default</span>}
               </h3>
 
+              <div className="bg-panel-raised border border-border rounded-lg p-4 mb-4">
+                <label className="block text-sm font-medium text-fg mb-1">Model</label>
+                <p className="text-xs text-dim mb-2">
+                  Appends <code className="bg-panel px-1 rounded">--model</code> to the launch command. Leave on default to let the CLI choose.
+                </p>
+                <select
+                  value={codexModel || ''}
+                  onChange={(e) => { void window.api.setCodexModel(e.target.value || null) }}
+                  className="w-full bg-panel border border-border-strong rounded px-3 py-2 text-sm text-fg-bright outline-none focus:border-fg cursor-pointer"
+                >
+                  <option value="">(Default — let CLI choose)</option>
+                  <optgroup label="Current">
+                    {CODEX_MODELS.filter((m) => m.tier === 'current').map((m) => (
+                      <option key={m.id} value={m.id}>{m.displayName}</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Legacy">
+                    {CODEX_MODELS.filter((m) => m.tier === 'legacy').map((m) => (
+                      <option key={m.id} value={m.id}>{m.displayName}</option>
+                    ))}
+                  </optgroup>
+                </select>
+              </div>
+
               <div className="bg-panel-raised border border-border rounded-lg p-4">
                 <label className="block text-sm font-medium text-fg mb-1">Launch command</label>
                 <p className="text-xs text-dim mb-2">
@@ -884,13 +934,17 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
                     {codexSaveResult.ok ? <Check size={12} /> : <X size={12} />}{codexSaveResult.message}
                   </div>
                 )}
-                <div className="mt-3 text-xs text-dim">
-                  <p>
-                    Common variations:{' '}
-                    <code className="bg-panel px-1 rounded text-[10px]">codex --full-auto</code>,{' '}
-                    <code className="bg-panel px-1 rounded text-[10px]">codex -m o3</code>
-                  </p>
-                </div>
+                {(() => {
+                  const effectiveCodexCommand = codexCommandDraft.trim() || 'codex'
+                  const codexModelPart = codexModel && !effectiveCodexCommand.includes('--model') && !effectiveCodexCommand.includes('-m ') ? ` --model ${codexModel}` : ''
+                  const codexPreviewInner = `${effectiveCodexCommand}${codexModelPart}`
+                  return (
+                    <div className="mt-4 pt-3 border-t border-border">
+                      <label className="block text-xs font-medium text-fg mb-1">Full command preview</label>
+                      <div className="bg-panel border border-border rounded px-3 py-2 text-[11px] text-fg-bright font-mono break-all">{`/bin/zsh -ilc "${codexPreviewInner}"`}</div>
+                    </div>
+                  )
+                })()}
               </div>
 
               <div className="mt-4 bg-panel-raised border border-border rounded-lg p-4">

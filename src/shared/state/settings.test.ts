@@ -147,6 +147,46 @@ describe('settingsReducer', () => {
     expect(none.githubAuthSource).toBeNull()
   })
 
+  it('claudeModelChanged sets the model', () => {
+    const next = apply(initialSettings, {
+      type: 'settings/claudeModelChanged',
+      payload: 'claude-opus-4-7'
+    })
+    expect(next.claudeModel).toBe('claude-opus-4-7')
+  })
+
+  it('claudeModelChanged clears with null', () => {
+    const withModel = apply(initialSettings, {
+      type: 'settings/claudeModelChanged',
+      payload: 'claude-opus-4-7'
+    })
+    const cleared = apply(withModel, {
+      type: 'settings/claudeModelChanged',
+      payload: null
+    })
+    expect(cleared.claudeModel).toBeNull()
+  })
+
+  it('codexModelChanged sets the model', () => {
+    const next = apply(initialSettings, {
+      type: 'settings/codexModelChanged',
+      payload: 'o3'
+    })
+    expect(next.codexModel).toBe('o3')
+  })
+
+  it('codexModelChanged clears with null', () => {
+    const withModel = apply(initialSettings, {
+      type: 'settings/codexModelChanged',
+      payload: 'o3'
+    })
+    const cleared = apply(withModel, {
+      type: 'settings/codexModelChanged',
+      payload: null
+    })
+    expect(cleared.codexModel).toBeNull()
+  })
+
   it('returns a new object reference (no mutation)', () => {
     const next = apply(initialSettings, { type: 'settings/themeChanged', payload: 'x' })
     expect(next).not.toBe(initialSettings)
