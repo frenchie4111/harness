@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react'
-import { RefreshCw, FileEdit, GitBranch, Code2, AtSign, ClipboardCheck } from 'lucide-react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { RefreshCw, Code2, AtSign, ClipboardCheck } from 'lucide-react'
 import type { ChangedFile } from '../types'
 import { Tooltip } from './Tooltip'
 import { RightPanel } from './RightPanel'
@@ -10,7 +10,7 @@ interface ChangedFilesPanelProps {
   worktreePath: string | null
   onOpenDiff: (filePath: string, staged: boolean, mode: Mode) => void
   onSendToAgent?: (text: string) => void
-  onOpenReview?: (mode: Mode) => void
+  onOpenReview?: () => void
 }
 
 const STATUS_LABEL: Record<ChangedFile['status'], string> = {
@@ -30,69 +30,52 @@ const STATUS_COLOR: Record<ChangedFile['status'], string> = {
 }
 
 export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToAgent, onOpenReview }: ChangedFilesPanelProps): JSX.Element {
-  const [files, setFiles] = useState<ChangedFile[]>([])
+  const [workingFiles, setWorkingFiles] = useState<ChangedFile[]>([])
+  const [branchFiles, setBranchFiles] = useState<ChangedFile[]>([])
   const [hasLoaded, setHasLoaded] = useState(false)
-  const [mode, setMode] = useState<Mode>('working')
+  const mountedRef = useRef(true)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
 
   const refresh = useCallback(async () => {
     if (!worktreePath) return
     try {
-      const result = await window.api.getChangedFiles(worktreePath, mode)
-      setFiles(result)
+      const [working, branch] = await Promise.all([
+        window.api.getChangedFiles(worktreePath, 'working'),
+        window.api.getChangedFiles(worktreePath, 'branch'),
+      ])
+      if (!mountedRef.current) return
+      setWorkingFiles(working)
+      setBranchFiles(branch)
     } catch (err) {
       console.error('Failed to get changed files:', err)
-      setFiles([])
+      if (!mountedRef.current) return
+      setWorkingFiles([])
+      setBranchFiles([])
     } finally {
-      setHasLoaded(true)
+      if (mountedRef.current) setHasLoaded(true)
     }
-  }, [worktreePath, mode])
+  }, [worktreePath])
 
-  // Reset loaded flag when the worktree or mode changes so the initial fetch
-  // doesn't flash a stale empty state from the previous selection.
   useEffect(() => {
     setHasLoaded(false)
-  }, [worktreePath, mode])
+  }, [worktreePath])
 
   useEffect(() => {
     refresh()
-    // Poll for changes every 3 seconds
     const interval = setInterval(refresh, 3000)
     return () => clearInterval(interval)
   }, [refresh])
 
-  const stagedFiles = files.filter((f) => f.staged)
-  const unstagedFiles = files.filter((f) => !f.staged)
+  const stagedFiles = workingFiles.filter((f) => f.staged)
+  const unstagedFiles = workingFiles.filter((f) => !f.staged)
+  const totalCount = workingFiles.length + branchFiles.length
 
   const actions = (
     <>
-      <div className="flex items-center rounded border border-border-strong bg-panel-raised/50 p-0.5">
-        <Tooltip label="Working tree — uncommitted changes">
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              setMode('working')
-            }}
-            className={`flex items-center rounded px-1.5 py-0.5 transition-colors cursor-pointer ${
-              mode === 'working' ? 'bg-surface text-fg' : 'text-faint hover:text-fg'
-            }`}
-          >
-            <FileEdit size={12} />
-          </button>
-        </Tooltip>
-        <Tooltip label="Branch diff — files changed vs. the base branch (same as the PR)">
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              setMode('branch')
-            }}
-            className={`flex items-center rounded px-1.5 py-0.5 transition-colors cursor-pointer ${
-              mode === 'branch' ? 'bg-surface text-fg' : 'text-faint hover:text-fg'
-            }`}
-          >
-            <GitBranch size={12} />
-          </button>
-        </Tooltip>
-      </div>
       <Tooltip label="Refresh">
         <button
           onClick={(e) => {
@@ -104,11 +87,11 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToAgent, onO
           <RefreshCw size={12} />
         </button>
       </Tooltip>
-      {onOpenReview && files.length > 0 && (
+      {onOpenReview && branchFiles.length > 0 && (
         <button
           onClick={(e) => {
             e.stopPropagation()
-            onOpenReview(mode)
+            onOpenReview()
           }}
           className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-accent text-fg text-[10px] font-medium hover:bg-accent/80 transition-colors cursor-pointer"
         >
@@ -121,71 +104,78 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToAgent, onO
 
   return (
     <RightPanel id="changed-files" title="Changed Files" actions={actions} grow>
-      {/* File list */}
       <div className="flex-1 overflow-y-auto min-h-0 text-xs">
         {!worktreePath && (
           <div className="p-3 text-faint">No worktree selected</div>
         )}
 
-        {worktreePath && files.length === 0 && hasLoaded && (
-          <div className="p-3 text-faint">
-            {mode === 'branch' ? 'No commits on this branch yet' : 'No changes'}
-          </div>
-        )}
-
-        {mode === 'branch' && files.length > 0 && (
-          <div>
-            {files.map((file) => (
-              <FileRow
-                key={`branch-${file.path}`}
-                file={file}
-                worktreePath={worktreePath}
-                onClick={() => onOpenDiff(file.path, false, 'branch')}
-                onSendToAgent={onSendToAgent}
-              />
-            ))}
-          </div>
-        )}
-
-        {mode === 'working' && stagedFiles.length > 0 && (
-          <div>
+        {worktreePath && hasLoaded && (
+          <>
+            {/* Uncommitted section */}
             <div className="px-3 py-1.5 text-[10px] font-medium text-dim uppercase tracking-wider bg-panel-raised/50">
-              Staged
+              Uncommitted
             </div>
-            {stagedFiles.map((file) => (
-              <FileRow
-                key={`staged-${file.path}`}
-                file={file}
-                worktreePath={worktreePath}
-                onClick={() => onOpenDiff(file.path, true, 'working')}
-                onSendToAgent={onSendToAgent}
-              />
-            ))}
-          </div>
-        )}
+            {workingFiles.length === 0 ? (
+              <div className="px-3 py-2 text-faint italic">No changes</div>
+            ) : (
+              <>
+                {stagedFiles.length > 0 && unstagedFiles.length > 0 && (
+                  <div className="px-3 py-1 text-[9px] font-medium text-dim uppercase tracking-wider">
+                    Staged
+                  </div>
+                )}
+                {stagedFiles.map((file) => (
+                  <FileRow
+                    key={`staged-${file.path}`}
+                    file={file}
+                    worktreePath={worktreePath}
+                    onClick={() => onOpenDiff(file.path, true, 'working')}
+                    onSendToAgent={onSendToAgent}
+                  />
+                ))}
+                {stagedFiles.length > 0 && unstagedFiles.length > 0 && (
+                  <div className="px-3 py-1 text-[9px] font-medium text-dim uppercase tracking-wider">
+                    Unstaged
+                  </div>
+                )}
+                {unstagedFiles.map((file) => (
+                  <FileRow
+                    key={`unstaged-${file.path}`}
+                    file={file}
+                    worktreePath={worktreePath}
+                    onClick={() => onOpenDiff(file.path, false, 'working')}
+                    onSendToAgent={onSendToAgent}
+                  />
+                ))}
+              </>
+            )}
 
-        {mode === 'working' && unstagedFiles.length > 0 && (
-          <div>
-            <div className="px-3 py-1.5 text-[10px] font-medium text-dim uppercase tracking-wider bg-panel-raised/50">
-              {stagedFiles.length > 0 ? 'Unstaged' : 'Changes'}
+            {/* Branch diff section */}
+            <div className="px-3 py-1.5 text-[10px] font-medium text-dim uppercase tracking-wider bg-panel-raised/50 mt-1">
+              Committed
             </div>
-            {unstagedFiles.map((file) => (
-              <FileRow
-                key={`unstaged-${file.path}`}
-                file={file}
-                worktreePath={worktreePath}
-                onClick={() => onOpenDiff(file.path, false, 'working')}
-                onSendToAgent={onSendToAgent}
-              />
-            ))}
-          </div>
+            {branchFiles.length === 0 ? (
+              <div className="px-3 py-2 text-faint italic">No commits on this branch yet</div>
+            ) : (
+              branchFiles.map((file) => (
+                <FileRow
+                  key={`branch-${file.path}`}
+                  file={file}
+                  worktreePath={worktreePath}
+                  onClick={() => onOpenDiff(file.path, false, 'branch')}
+                  onSendToAgent={onSendToAgent}
+                />
+              ))
+            )}
+          </>
         )}
       </div>
 
-      {/* Footer summary */}
-      {files.length > 0 && (
+      {totalCount > 0 && (
         <div className="px-3 py-1.5 border-t border-border text-[10px] text-faint shrink-0">
-          {files.length} file{files.length !== 1 ? 's' : ''} changed
+          {workingFiles.length > 0 && <span>{workingFiles.length} uncommitted</span>}
+          {workingFiles.length > 0 && branchFiles.length > 0 && <span> · </span>}
+          {branchFiles.length > 0 && <span>{branchFiles.length} committed</span>}
         </div>
       )}
     </RightPanel>

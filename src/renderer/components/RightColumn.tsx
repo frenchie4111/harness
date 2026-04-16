@@ -33,7 +33,7 @@ interface RightColumnProps {
   onOpenDiff: ChangedFilesPanelProps['onOpenDiff']
   onOpenFile: AllFilesPanelProps['onOpenFile']
   onSendToAgent: (worktreePath: string, text: string) => void
-  onOpenReview: (mode: 'working' | 'branch') => void
+  onOpenReview: () => void
   onCollapse: () => void
 }
 

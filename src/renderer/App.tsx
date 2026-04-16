@@ -469,6 +469,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
     setCommandPaletteMode,
     setShowPerfMonitor,
     setShowHotkeyCheatsheet,
+    setShowReview,
     handleAddTerminalTab,
     handleCloseTab,
     handleSelectTab,
@@ -1086,8 +1087,8 @@ const setQuestStep = useCallback((next: QuestStep) => {
             onOpenDiff={handleOpenDiff}
             onOpenFile={handleOpenFile}
             onSendToAgent={handleSendToAgent}
-            onOpenReview={(mode) => {
-              setReviewMode(mode)
+            onOpenReview={() => {
+              setReviewMode('branch')
               setShowReview(true)
             }}
             onCollapse={() => setRightColumnHidden(true)}
