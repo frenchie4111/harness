@@ -1,5 +1,4 @@
 import * as pty from 'node-pty'
-import { BrowserWindow } from 'electron'
 import { execFile } from 'child_process'
 import { log } from './debug'
 import { cleanupTerminalLog } from './hooks'
@@ -17,7 +16,6 @@ export type { PtyStatus }
 interface PtyInstance {
   pty: pty.IPty
   status: PtyStatus
-  windowId: number
   isShell: boolean
   activityActive: boolean
   activityProcess?: string
@@ -73,6 +71,7 @@ export class PtyManager {
   private ptys = new Map<string, PtyInstance>()
   private activityTimer: NodeJS.Timeout | null = null
   private store: Store | null = null
+  private sendSignal: ((channel: string, ...args: unknown[]) => void) | null = null
   // Per-terminal raw-byte scrollback owned by main. Populated from disk on
   // create() (if a history file exists), appended to from the PTY onData
   // stream, and returned on getHistory(id). Persistence to
@@ -84,9 +83,7 @@ export class PtyManager {
   private perfMonitor: PerfMonitor | null = null
 
   /** Wire the authoritative store after it's constructed. PTY status,
-   * shell activity, and cleanup events dispatch through it; terminal:data
-   * and terminal:exit stay on direct window channels (high-frequency and
-   * view-layer respectively). */
+   * shell activity, and cleanup events dispatch through it. */
   setStore(store: Store): void {
     this.store = store
   }
@@ -99,6 +96,13 @@ export class PtyManager {
     return this.ptys.size
   }
 
+  /** Wire the transport's sendSignal so terminal:data and terminal:exit
+   * flow through the transport abstraction instead of reaching for
+   * BrowserWindow.webContents directly. */
+  setSendSignal(fn: (channel: string, ...args: unknown[]) => void): void {
+    this.sendSignal = fn
+  }
+
   hasTerminal(id: string): boolean {
     return this.ptys.has(id)
   }
@@ -108,7 +112,6 @@ export class PtyManager {
     cwd: string,
     command: string,
     args: string[],
-    window: BrowserWindow,
     extraEnv?: Record<string, string>,
     isShell: boolean = false,
     cols: number = 120,
@@ -141,7 +144,7 @@ export class PtyManager {
     } catch (err) {
       log('pty', `spawn failed id=${id}`, err instanceof Error ? err.message : err)
       const msg = `\r\n\x1b[31mFailed to spawn "${shell}": ${err instanceof Error ? err.message : err}\x1b[0m\r\n`
-      window.webContents.send('terminal:data', id, msg)
+      this.sendSignal?.('terminal:data', id, msg)
       this.store?.dispatch({
         type: 'terminals/statusChanged',
         payload: { id, status: 'idle', pendingTool: null }
@@ -152,7 +155,6 @@ export class PtyManager {
     const instance: PtyInstance = {
       pty: ptyProcess,
       status: 'processing',
-      windowId: window.id,
       isShell,
       activityActive: false,
       hasBeenIdle: false
@@ -176,11 +178,7 @@ export class PtyManager {
       this.historyDirty.add(id)
       this.ensureHistoryFlushTimer()
       this.perfMonitor?.recordTerminalBytes(id, data.length)
-      // Route data to the owning window (if it still exists)
-      const win = BrowserWindow.fromId(instance.windowId)
-      if (win && !win.isDestroyed()) {
-        win.webContents.send('terminal:data', id, data)
-      }
+      this.sendSignal?.('terminal:data', id, data)
     })
 
     ptyProcess.onExit(({ exitCode }) => {
@@ -190,13 +188,7 @@ export class PtyManager {
         payload: { id, status: 'idle', pendingTool: null }
       })
       this.store?.dispatch({ type: 'terminals/removed', payload: id })
-      const win = BrowserWindow.fromId(instance.windowId)
-      if (win && !win.isDestroyed()) {
-        // terminal:exit stays on a direct window channel so XTerminal can
-        // mark the specific xterm instance as closed. Status + terminals/
-        // removed propagate via the store to every client.
-        win.webContents.send('terminal:exit', id, exitCode)
-      }
+      this.sendSignal?.('terminal:exit', id, exitCode)
       this.ptys.delete(id)
       cleanupTerminalLog(id)
     })
@@ -364,13 +356,5 @@ export class PtyManager {
       clearInterval(this.historyFlushTimer)
       this.historyFlushTimer = null
     }
-  }
-
-  /** Get the window that owns a terminal, for routing status updates */
-  getWindowForTerminal(id: string): BrowserWindow | null {
-    const instance = this.ptys.get(id)
-    if (!instance) return null
-    const win = BrowserWindow.fromId(instance.windowId)
-    return win && !win.isDestroyed() ? win : null
   }
 }

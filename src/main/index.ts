@@ -1,4 +1,4 @@
-import { app, autoUpdater as nativeAutoUpdater, BrowserWindow, ipcMain, dialog, Menu, shell } from 'electron'
+import { app, autoUpdater as nativeAutoUpdater, BrowserWindow, dialog, Menu, shell } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import { existsSync, readdirSync, statSync } from 'fs'
 import { homedir } from 'os'
@@ -133,6 +133,7 @@ const prPoller = new PRPoller(store, {
 })
 
 ptyManager.setStore(store)
+ptyManager.setSendSignal((channel, ...args) => transport.sendSignal(channel, ...args))
 ptyManager.setPerfMonitor(perfMonitor)
 perfMonitor.start(store, () => ptyManager.getActivePtyCount())
 
@@ -467,11 +468,8 @@ function registerIpcHandlers(): void {
     return config.repoRoots
   })
 
-  // Left on raw ipcMain: needs event.sender to find the BrowserWindow for
-  // the native dialog parent. Future transports will need a client-identity
-  // concept before this can move to transport.onRequest.
-  ipcMain.handle('repo:add', async (event) => {
-    const win = BrowserWindow.fromWebContents(event.sender)
+  transport.onRequest('repo:add', async () => {
+    const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0]
     const result = await dialog.showOpenDialog(win!, {
       properties: ['openDirectory'],
       title: 'Open Git Repository'
@@ -1115,7 +1113,7 @@ function registerIpcHandlers(): void {
   })
 
   // Performance monitor
-  ipcMain.handle('perf:getMetrics', () => perfMonitor.getMetrics())
+  transport.onRequest('perf:getMetrics', () => perfMonitor.getMetrics())
 
   // Hooks. check + install are no longer exposed: per-worktree installation
   // happens automatically in the store subscription (see
@@ -1153,15 +1151,9 @@ function registerIpcHandlers(): void {
     shell.openExternal(url)
   })
 
-  // Left on raw ipcMain: pty:create needs event.sender to resolve the
-  // BrowserWindow that PtyManager sends terminal:data/exit back to.
-  // Future transports will need a client-identity concept before this
-  // can move to transport.onSignal.
-  ipcMain.on('pty:create', (event, id: string, cwd: string, cmd: string, args: string[], isClaude?: boolean, cols?: number, rows?: number) => {
-    const win = BrowserWindow.fromWebContents(event.sender)
-    if (!win) return
+  transport.onSignal('pty:create', (id: string, cwd: string, cmd: string, args: string[], isClaude?: boolean, cols?: number, rows?: number) => {
     const extraEnv = isClaude ? config.claudeEnvVars : undefined
-    ptyManager.create(id, cwd, cmd, args, win, extraEnv, !isClaude, cols, rows)
+    ptyManager.create(id, cwd, cmd, args, extraEnv, !isClaude, cols, rows)
   })
 
   transport.onSignal('pty:write', (id: string, data: string) => {
@@ -1178,24 +1170,15 @@ function registerIpcHandlers(): void {
 }
 
 function openSettingsInFocusedWindow(): void {
-  const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0]
-  if (win && !win.isDestroyed()) {
-    win.webContents.send('app:openSettings')
-  }
+  transport.sendSignal('app:openSettings')
 }
 
 function togglePerfMonitorInFocusedWindow(): void {
-  const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0]
-  if (win && !win.isDestroyed()) {
-    win.webContents.send('app:togglePerfMonitor')
-  }
+  transport.sendSignal('app:togglePerfMonitor')
 }
 
 function openKeyboardShortcutsInFocusedWindow(): void {
-  const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0]
-  if (win && !win.isDestroyed()) {
-    win.webContents.send('app:openKeyboardShortcuts')
-  }
+  transport.sendSignal('app:openKeyboardShortcuts')
 }
 
 function buildMenu(): void {
@@ -1280,9 +1263,7 @@ function buildMenu(): void {
 }
 
 function broadcastToAllWindows(channel: string, ...args: unknown[]): void {
-  for (const win of BrowserWindow.getAllWindows()) {
-    if (!win.isDestroyed()) win.webContents.send(channel, ...args)
-  }
+  transport.sendSignal(channel, ...args)
 }
 
 function setupAutoUpdater(): void {
