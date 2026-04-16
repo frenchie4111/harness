@@ -679,6 +679,28 @@ function registerIpcHandlers(): void {
     return true
   })
 
+  transport.onRequest('config:setClaudeModel', (model: string | null) => {
+    if (model) {
+      config.claudeModel = model
+    } else {
+      delete config.claudeModel
+    }
+    saveConfig(config)
+    store.dispatch({ type: 'settings/claudeModelChanged', payload: model })
+    return true
+  })
+
+  transport.onRequest('config:setCodexModel', (model: string | null) => {
+    if (model) {
+      config.codexModel = model
+    } else {
+      delete config.codexModel
+    }
+    saveConfig(config)
+    store.dispatch({ type: 'settings/codexModelChanged', payload: model })
+    return true
+  })
+
   transport.onRequest('config:setCodexEnvVars', (vars: Record<string, string>) => {
     if (!vars || Object.keys(vars).length === 0) {
       delete config.codexEnvVars
@@ -1030,8 +1052,9 @@ function registerIpcHandlers(): void {
       const command = kind === 'claude'
         ? (config.claudeCommand || agent.defaultCommand)
         : (config.codexCommand || agent.defaultCommand)
+      const model = kind === 'claude' ? (config.claudeModel || null) : (config.codexModel || null)
       const mcpConfigPath = writeMcpConfigForTerminal(opts.terminalId)
-      return agent.buildSpawnArgs({ ...opts, command, mcpConfigPath })
+      return agent.buildSpawnArgs({ ...opts, command, mcpConfigPath, model })
     }
   )
 

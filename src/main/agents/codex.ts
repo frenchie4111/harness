@@ -212,6 +212,9 @@ export function buildSpawnArgs(opts: AgentSpawnOpts): string {
   // flags. The mcpConfigPath is unused here but the MCP server was already
   // registered by the prepareMcpForTerminal IPC call.
   let cmd = opts.command
+  if (opts.model && !opts.command.includes('--model') && !opts.command.includes('-m ')) {
+    cmd += ` --model ${shellQuote(opts.model)}`
+  }
 
   if (!opts.sessionId) {
     return opts.initialPrompt ? `${cmd} ${shellQuote(opts.initialPrompt)}` : cmd

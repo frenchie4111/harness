@@ -55,6 +55,8 @@ export function buildInitialAppState(
       editor: config.editor || DEFAULT_EDITOR_ID,
       worktreeBase: config.worktreeBase || DEFAULT_WORKTREE_BASE,
       mergeStrategy: config.mergeStrategy || DEFAULT_MERGE_STRATEGY,
+      claudeModel: config.claudeModel || null,
+      codexModel: config.codexModel || null,
       hasGithubToken: opts.hasGithubToken,
       autoUpdateEnabled: config.autoUpdateEnabled !== false
     }

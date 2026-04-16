@@ -32,6 +32,10 @@ export interface Config {
   codexCommand?: string
   // Extra environment variables injected into the PTY when spawning a Claude tab.
   claudeEnvVars?: Record<string, string>
+  // Model override for Claude Code (passed as --model <id>).
+  claudeModel?: string
+  // Model override for Codex (passed as --model <id>).
+  codexModel?: string
   // Extra environment variables injected into the PTY when spawning a Codex tab.
   codexEnvVars?: Record<string, string>
   // When false, Harness won't inject `--mcp-config <path>` pointing at the

@@ -207,6 +207,8 @@ export interface ElectronAPI {
   setClaudeEnvVars(vars: Record<string, string>): Promise<boolean>
   setDefaultAgent(agent: string): Promise<boolean>
   setCodexCommand(command: string): Promise<boolean>
+  setClaudeModel(model: string | null): Promise<boolean>
+  setCodexModel(model: string | null): Promise<boolean>
   setCodexEnvVars(vars: Record<string, string>): Promise<boolean>
   setNameClaudeSessions(enabled: boolean): Promise<boolean>
   setTheme(theme: string): Promise<boolean>
