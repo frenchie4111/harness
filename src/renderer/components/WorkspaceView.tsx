@@ -11,7 +11,7 @@ import {
   type DragOverEvent,
   type CollisionDetection
 } from '@dnd-kit/core'
-import type { WorkspacePane, PtyStatus, AgentKind } from '../types'
+import type { WorkspacePane, PtyStatus, AgentKind, SplitDirection } from '../types'
 import { TerminalPanel } from './TerminalPanel'
 import { XTerminal } from './XTerminal'
 import { DiffView } from './DiffView'
@@ -20,6 +20,7 @@ import { FileView } from './FileView'
 interface WorkspaceViewProps {
   worktreePath: string
   panes: WorkspacePane[]
+  splitDirection: SplitDirection
   focusedPaneId: string
   statuses: Record<string, PtyStatus>
   shellActivity: Record<string, { active: boolean; processName?: string }>
@@ -35,7 +36,7 @@ interface WorkspaceViewProps {
   onRestartAgentTab: (worktreePath: string, tabId: string) => void
   onReorderTabs: (worktreePath: string, paneId: string, fromId: string, toId: string) => void
   onMoveTabToPane: (worktreePath: string, tabId: string, toPaneId: string, toIndex?: number) => void
-  onSplitPane: (worktreePath: string, fromPaneId: string) => void
+  onSplitPane: (worktreePath: string, fromPaneId: string, direction?: 'horizontal' | 'vertical') => void
   onSendToAgent?: (worktreePath: string, text: string) => void
 }
 
@@ -50,6 +51,7 @@ const collisionDetection: CollisionDetection = (args) => {
 export function WorkspaceView({
   worktreePath,
   panes,
+  splitDirection,
   focusedPaneId,
   statuses,
   shellActivity,
@@ -68,6 +70,7 @@ export function WorkspaceView({
   repoLabel,
   branch
 }: WorkspaceViewProps): JSX.Element {
+  const isVertical = splitDirection === 'vertical'
   // Slot elements per pane — TerminalPanel registers its content-area div
   // here so WorkspaceView can portal the right terminals into each slot.
   const [slotEls, setSlotEls] = useState<Record<string, HTMLDivElement | null>>({})
@@ -145,11 +148,11 @@ export function WorkspaceView({
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
     >
-      <div className="flex-1 flex min-w-0 bg-app">
+      <div className={`flex-1 flex ${isVertical ? 'flex-col' : ''} min-w-0 bg-app`}>
         {panes.map((pane, idx) => (
           <div
             key={pane.id}
-            className={`flex-1 flex min-w-0 ${idx > 0 ? 'border-l border-border' : ''}`}
+            className={`flex-1 flex ${isVertical ? 'min-h-0' : 'min-w-0'} ${idx > 0 ? (isVertical ? 'border-t border-border' : 'border-l border-border') : ''}`}
           >
             <TerminalPanel
               worktreePath={worktreePath}
@@ -166,7 +169,8 @@ export function WorkspaceView({
               defaultAgent={defaultAgent}
               onAddAgentTab={(kind) => onAddAgentTab(worktreePath, kind, pane.id)}
               onCloseTab={(tabId) => onCloseTab(worktreePath, tabId)}
-              onSplit={() => onSplitPane(worktreePath, pane.id)}
+              onSplitRight={() => onSplitPane(worktreePath, pane.id, 'horizontal')}
+              onSplitDown={() => onSplitPane(worktreePath, pane.id, 'vertical')}
             />
           </div>
         ))}

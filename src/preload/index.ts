@@ -149,7 +149,10 @@ contextBridge.exposeInMainWorld('api', {
     req('panes:reorderTabs', wtPath, paneId, fromId, toId),
   panesMoveTabToPane: (wtPath: string, tabId: string, toPaneId: string, toIndex?: number) =>
     req('panes:moveTabToPane', wtPath, tabId, toPaneId, toIndex),
-  panesSplitPane: (wtPath: string, fromPaneId: string) => req('panes:splitPane', wtPath, fromPaneId),
+  panesSplitPane: (wtPath: string, fromPaneId: string, direction?: 'horizontal' | 'vertical') =>
+    req('panes:splitPane', wtPath, fromPaneId, direction),
+  panesSetSplitDirection: (wtPath: string, direction: 'horizontal' | 'vertical') =>
+    req('panes:setSplitDirection', wtPath, direction),
   panesClearForWorktree: (wtPath: string) => req('panes:clearForWorktree', wtPath),
   panesEnsureInitialized: (wtPath: string) => req('panes:ensureInitialized', wtPath),
 

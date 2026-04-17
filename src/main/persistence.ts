@@ -45,6 +45,7 @@ export interface Config {
   // Two repos can have worktrees with identical paths in theory, and the
   // multi-repo UI shows them together, so we key by repo to keep them distinct.
   panes?: Record<string, Record<string, PersistedPane[]>>
+  paneSplitDirections?: Record<string, 'horizontal' | 'vertical'>
   // Legacy flat shape (worktreePath → panes). Migrated into the nested form on
   // first load — entries are grouped under whichever known `repoRoot` is a
   // prefix of the worktree path; unmatched entries land in `__orphan__`.

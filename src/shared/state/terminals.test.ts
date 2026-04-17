@@ -167,6 +167,26 @@ describe('terminalsReducer', () => {
     expect(next).toBe(start)
   })
 
+  it('splitDirectionChanged sets the direction for a worktree', () => {
+    const next = apply(initialTerminals, {
+      type: 'terminals/splitDirectionChanged',
+      payload: { worktreePath: '/wt/a', direction: 'vertical' }
+    })
+    expect(next.splitDirections['/wt/a']).toBe('vertical')
+  })
+
+  it('splitDirectionChanged is a no-op when direction unchanged', () => {
+    const start: TerminalsState = {
+      ...initialTerminals,
+      splitDirections: { '/wt/a': 'vertical' }
+    }
+    const next = apply(start, {
+      type: 'terminals/splitDirectionChanged',
+      payload: { worktreePath: '/wt/a', direction: 'vertical' }
+    })
+    expect(next).toBe(start)
+  })
+
   it('lastActiveChanged sets the timestamp for a worktree', () => {
     const next = apply(initialTerminals, {
       type: 'terminals/lastActiveChanged',

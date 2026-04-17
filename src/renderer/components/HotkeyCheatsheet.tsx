@@ -34,6 +34,7 @@ function buildGroups(hotkeys: Record<Action, HotkeyBinding>): ShortcutGroup[] {
         { label: 'Next tab', binding: b('nextTab') },
         { label: 'Previous tab', binding: b('prevTab') },
         { label: 'Split pane right', binding: b('splitPaneRight') },
+        { label: 'Split pane down', binding: b('splitPaneDown') },
       ],
     },
     {

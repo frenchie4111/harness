@@ -983,9 +983,38 @@ function registerIpcHandlers(): void {
       return true
     }
   )
-  transport.onRequest('panes:splitPane', (wtPath: string, fromPaneId: string) => {
-    return panesFSM.splitPane(wtPath, fromPaneId)
-  })
+  transport.onRequest(
+    'panes:splitPane',
+    (wtPath: string, fromPaneId: string, direction?: 'horizontal' | 'vertical') => {
+      if (direction) {
+        store.dispatch({
+          type: 'terminals/splitDirectionChanged',
+          payload: { worktreePath: wtPath, direction }
+        })
+        config.paneSplitDirections = {
+          ...config.paneSplitDirections,
+          [wtPath]: direction
+        }
+        saveConfig(config)
+      }
+      return panesFSM.splitPane(wtPath, fromPaneId)
+    }
+  )
+  transport.onRequest(
+    'panes:setSplitDirection',
+    (wtPath: string, direction: 'horizontal' | 'vertical') => {
+      store.dispatch({
+        type: 'terminals/splitDirectionChanged',
+        payload: { worktreePath: wtPath, direction }
+      })
+      config.paneSplitDirections = {
+        ...config.paneSplitDirections,
+        [wtPath]: direction
+      }
+      saveConfig(config)
+      return true
+    }
+  )
   transport.onRequest('panes:clearForWorktree', (wtPath: string) => {
     panesFSM.clearForWorktree(wtPath)
     return true

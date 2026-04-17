@@ -24,6 +24,7 @@ export type Action =
   | 'commandPalette'
   | 'fileQuickOpen'
   | 'splitPaneRight'
+  | 'splitPaneDown'
   | 'toggleRightColumn'
   | 'togglePerfMonitor'
   | 'hotkeyCheatsheet'
@@ -66,6 +67,7 @@ export const DEFAULT_HOTKEYS: Record<Action, HotkeyBinding> = {
   commandPalette: { key: 'k', modifiers: { cmd: true } },
   fileQuickOpen: { key: 'p', modifiers: { cmd: true } },
   splitPaneRight: { key: 'd', modifiers: { cmd: true } },
+  splitPaneDown: { key: 'd', modifiers: { cmd: true, alt: true } },
   toggleRightColumn: { key: 'b', modifiers: { cmd: true, alt: true } },
   togglePerfMonitor: { key: 'd', modifiers: { cmd: true, shift: true } },
   hotkeyCheatsheet: { key: '/', modifiers: { cmd: true } },
@@ -172,6 +174,7 @@ export const ACTION_LABELS: Record<Action, string> = {
   commandPalette: 'Command palette',
   fileQuickOpen: 'Open file...',
   splitPaneRight: 'Split pane right',
+  splitPaneDown: 'Split pane down',
   toggleRightColumn: 'Toggle right column',
   togglePerfMonitor: 'Performance monitor',
   hotkeyCheatsheet: 'Keyboard shortcuts'

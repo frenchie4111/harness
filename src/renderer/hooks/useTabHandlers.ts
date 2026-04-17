@@ -142,8 +142,12 @@ export function useTabHandlers({
   )
 
   const handleSplitPane = useCallback(
-    async (worktreePath: string, fromPaneId: string) => {
-      const newPane = await window.api.panesSplitPane(worktreePath, fromPaneId)
+    async (
+      worktreePath: string,
+      fromPaneId: string,
+      direction?: 'horizontal' | 'vertical'
+    ) => {
+      const newPane = await window.api.panesSplitPane(worktreePath, fromPaneId, direction)
       if (newPane) {
         setActivePaneId((prev) => ({ ...prev, [worktreePath]: newPane.id }))
       }

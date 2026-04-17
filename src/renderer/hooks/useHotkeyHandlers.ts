@@ -234,7 +234,14 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
         const list = panes[activeWorktreeId] || []
         if (list.length === 0) return
         const fromPaneId = activePaneId[activeWorktreeId] || list[list.length - 1].id
-        handleSplitPane(activeWorktreeId, fromPaneId)
+        handleSplitPane(activeWorktreeId, fromPaneId, 'horizontal')
+      },
+      splitPaneDown: () => {
+        if (!activeWorktreeId) return
+        const list = panes[activeWorktreeId] || []
+        if (list.length === 0) return
+        const fromPaneId = activePaneId[activeWorktreeId] || list[list.length - 1].id
+        handleSplitPane(activeWorktreeId, fromPaneId, 'vertical')
       },
       togglePerfMonitor: () => setShowPerfMonitor((v) => !v),
       hotkeyCheatsheet: () => setShowHotkeyCheatsheet((v) => !v)

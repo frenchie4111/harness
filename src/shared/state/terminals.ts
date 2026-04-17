@@ -40,6 +40,8 @@ export interface WorkspacePane {
   activeTabId: string
 }
 
+export type SplitDirection = 'horizontal' | 'vertical'
+
 export interface TerminalsState {
   /** PTY status per terminal id. */
   statuses: Record<string, PtyStatus>
@@ -50,6 +52,9 @@ export interface TerminalsState {
   /** Pane / tab tree per worktree path. Authored entirely in main via the
    * panes-fsm methods. */
   panes: Record<string, WorkspacePane[]>
+  /** Per-worktree pane layout direction. 'horizontal' = side by side (default),
+   * 'vertical' = stacked top/bottom. */
+  splitDirections: Record<string, SplitDirection>
   /** Per-worktree most-recent-activity timestamp (ms since epoch). Used by
    * the sidebar for recency sort. Updated by the activity-deriver in main
    * whenever a contained terminal changes status. */
@@ -83,6 +88,10 @@ export type TerminalsEvent =
       payload: { worktreePath: string; ts: number }
     }
   | {
+      type: 'terminals/splitDirectionChanged'
+      payload: { worktreePath: string; direction: SplitDirection }
+    }
+  | {
       type: 'terminals/sessionIdDiscovered'
       payload: { terminalId: string; sessionId: string }
     }
@@ -92,6 +101,7 @@ export const initialTerminals: TerminalsState = {
   pendingTools: {},
   shellActivity: {},
   panes: {},
+  splitDirections: {},
   lastActive: {}
 }
 
@@ -165,6 +175,14 @@ export function terminalsReducer(
       return {
         ...state,
         lastActive: { ...state.lastActive, [worktreePath]: ts }
+      }
+    }
+    case 'terminals/splitDirectionChanged': {
+      const { worktreePath, direction } = event.payload
+      if (state.splitDirections[worktreePath] === direction) return state
+      return {
+        ...state,
+        splitDirections: { ...state.splitDirections, [worktreePath]: direction }
       }
     }
     case 'terminals/sessionIdDiscovered': {

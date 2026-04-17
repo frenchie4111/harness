@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { useSettings, usePrs, useOnboarding, useHooks, useWorktrees, useTerminals, usePanes, useLastActive, useUpdater, useRepoConfigs } from './store'
+import { useSettings, usePrs, useOnboarding, useHooks, useWorktrees, useTerminals, usePanes, useSplitDirections, useLastActive, useUpdater, useRepoConfigs } from './store'
 import { useTailLineBuffer } from './hooks/useTailLineBuffer'
 import { useTabHandlers } from './hooks/useTabHandlers'
 import { useHotkeyHandlers } from './hooks/useHotkeyHandlers'
@@ -62,6 +62,7 @@ export default function App(): JSX.Element {
   // focus (which pane in each worktree the user last interacted with) is
   // still renderer-local — like activeWorktreeId.
   const panes = usePanes()
+  const splitDirections = useSplitDirections()
   const [activePaneId, setActivePaneId] = useState<Record<string, string>>({})
 
   // Derived flat-tab views — preserved so the read-heavy parts of the app
@@ -953,6 +954,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
                 repoLabel={wt.repoRoot.split('/').pop() || wt.repoRoot}
                 branch={wt.branch}
                 panes={paneList}
+                splitDirection={splitDirections[wt.path] || 'horizontal'}
                 focusedPaneId={activePaneId[wt.path] || paneList[0]?.id || ''}
                 statuses={statuses}
                 shellActivity={shellActivity}
