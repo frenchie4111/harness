@@ -1553,11 +1553,17 @@ app.whenReady().then(() => {
 
   // Prune terminal history files not referenced by any persisted tab
   const keepIds = new Set<string>()
+  function collectTabIds(node: PersistedPaneNode): void {
+    if (node.type === 'leaf') {
+      for (const tab of node.tabs) keepIds.add(tab.id)
+    } else {
+      collectTabIds(node.children[0])
+      collectTabIds(node.children[1])
+    }
+  }
   for (const byRepo of Object.values(config.panes || {})) {
-    for (const panes of Object.values(byRepo)) {
-      for (const pane of panes) {
-        for (const tab of pane.tabs) keepIds.add(tab.id)
-      }
+    for (const tree of Object.values(byRepo)) {
+      collectTabIds(tree)
     }
   }
   pruneTerminalHistory(keepIds)
