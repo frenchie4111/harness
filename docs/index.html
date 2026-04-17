@@ -44,6 +44,121 @@
     }
     .pulse-dot { animation: pulse-dot 2s ease-in-out infinite; }
 
+    .logo-tip { position: relative; cursor: pointer; }
+    .logo-tip .tip {
+      position: absolute;
+      bottom: calc(100% + 12px);
+      left: 50%;
+      transform: translateX(-50%) translateY(4px);
+      width: 280px;
+      padding: 8px;
+      background: #000;
+      border: 1px solid #2a2a2a;
+      border-radius: 14px;
+      font-size: 13px;
+      line-height: 1.4;
+      color: white;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+      z-index: 50;
+      text-align: left;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .logo-tip .tip::after {
+      content: '';
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      border: 6px solid transparent;
+      border-top-color: #2a2a2a;
+    }
+    .logo-tip:hover .tip { opacity: 1; pointer-events: auto; transform: translateX(-50%) translateY(0); }
+    .logo-tip .bubble {
+      padding: 7px 12px;
+      border-radius: 18px;
+      max-width: 220px;
+      word-wrap: break-word;
+    }
+    .logo-tip .sent {
+      background: #2563eb;
+      color: white;
+      align-self: flex-end;
+      border-bottom-right-radius: 4px;
+    }
+    .logo-tip .sent + .sent { border-top-right-radius: 4px; }
+    .logo-tip .rcvd {
+      background: #303030;
+      color: #e5e5e5;
+      align-self: flex-start;
+      border-bottom-left-radius: 4px;
+    }
+    .logo-tip .rcvd + .rcvd { border-top-left-radius: 4px; }
+    .logo-tip .gap { height: 6px; }
+    .logo-tip .link-card {
+      align-self: flex-end;
+      width: 200px;
+      border-radius: 14px;
+      overflow: hidden;
+      border-bottom-right-radius: 4px;
+    }
+    .logo-tip .link-card .link-preview {
+      background: linear-gradient(135deg, #1a1a1a 0%, #111 100%);
+      padding: 10px 12px;
+      border-bottom: 1px solid #333;
+    }
+    .logo-tip .link-card .link-preview .link-icon {
+      width: 32px;
+      height: 32px;
+      background: linear-gradient(135deg, #f59e0b, #ef4444, #a855f7);
+      border-radius: 8px;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      font-weight: 800;
+      color: white;
+    }
+    .logo-tip .link-card .link-preview .link-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: #e5e5e5;
+    }
+    .logo-tip .link-card .link-preview .link-domain {
+      font-size: 10px;
+      color: #737373;
+      margin-top: 2px;
+    }
+    .logo-tip .link-card .link-body {
+      background: #2563eb;
+      padding: 7px 12px;
+      color: white;
+      font-size: 13px;
+    }
+
+    .logo-tip .reply-card {
+      align-self: flex-end;
+      max-width: 220px;
+      border-radius: 14px;
+      overflow: hidden;
+      background: #2563eb;
+      border-bottom-right-radius: 4px;
+    }
+    .logo-tip .reply-card img {
+      width: 100%;
+      display: block;
+      border-bottom: 1px solid rgba(255,255,255,0.15);
+    }
+    .logo-tip .reply-card .reply-text {
+      padding: 7px 12px;
+      color: white;
+      font-size: 13px;
+    }
+
     /* Flagship hero animations — transforms/opacity only, no layout shift. */
     @keyframes bar-fill {
       0%   { transform: scaleX(0); }
@@ -143,6 +258,123 @@
         <svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M14.949 6.547a3.94 3.94 0 0 0-.348-3.273 4.11 4.11 0 0 0-4.4-1.934 4.1 4.1 0 0 0-1.778-.113 4.15 4.15 0 0 0-2.118.114 4.1 4.1 0 0 0-1.891.948 4.04 4.04 0 0 0-1.158 1.753 4.1 4.1 0 0 0-1.563.679 4 4 0 0 0-1.14 1.252 3.99 3.99 0 0 0 .502 4.731 3.94 3.94 0 0 0 .346 3.274 4.11 4.11 0 0 0 4.402 1.933c.382.425.852.764 1.377.995.526.231 1.095.35 1.67.346 1.78.002 3.358-1.132 3.901-2.804a4.1 4.1 0 0 0 1.563-.68 4 4 0 0 0 1.14-1.253 3.99 3.99 0 0 0-.506-4.716m-6.097 8.406a3.05 3.05 0 0 1-1.945-.694l.096-.054 3.23-1.838a.53.53 0 0 0 .265-.455v-4.49l1.366.778q.02.011.025.035v3.722c-.003 1.653-1.361 2.992-3.037 2.996m-6.53-2.75a2.95 2.95 0 0 1-.36-2.01l.095.057L5.29 12.09a.53.53 0 0 0 .527 0l3.949-2.246v1.555a.05.05 0 0 1-.022.041L6.473 13.3c-1.454.826-3.311.335-4.15-1.098m-.85-6.94A3.02 3.02 0 0 1 3.07 3.949v3.785a.51.51 0 0 0 .262.451l3.93 2.237-1.366.779a.05.05 0 0 1-.048 0L2.585 9.342a2.98 2.98 0 0 1-1.113-4.094zm11.216 2.571L8.747 5.576l1.362-.776a.05.05 0 0 1 .048 0l3.265 1.86a3 3 0 0 1 1.173 1.207 2.96 2.96 0 0 1-.27 3.2 3.05 3.05 0 0 1-1.36.997V8.279a.52.52 0 0 0-.276-.445m1.36-2.015-.097-.057-3.226-1.855a.53.53 0 0 0-.53 0L6.249 6.153V4.598a.04.04 0 0 1 .019-.04L9.533 2.7a3.07 3.07 0 0 1 3.257.139c.474.325.843.778 1.066 1.303.223.526.289 1.103.191 1.664zM5.503 8.575 4.139 7.8a.05.05 0 0 1-.026-.037V4.049c0-.57.166-1.127.476-1.607s.752-.864 1.275-1.105a3.08 3.08 0 0 1 3.234.41l-.096.054-3.23 1.838a.53.53 0 0 0-.265.455zm.742-1.577 1.758-1 1.762 1v2l-1.755 1-1.762-1z"/></svg>
         Codex
       </span>
+    </div>
+    <div class="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 mt-3 text-xs text-neutral-500">
+      <span>Loved by engineers at</span>
+      <div class="logo-tip">
+        <img src="clay-logo.png" alt="Clay" height="16" class="h-4 object-contain" />
+        <div class="tip">
+          <div class="bubble sent">dude check this out</div>
+          <div class="link-card">
+            <div class="link-preview">
+              <div class="link-icon">H</div>
+              <div class="link-title">Harness — run a team of agents</div>
+              <div class="link-domain">harness.mikelyons.org</div>
+            </div>
+            <div class="link-body">you need this</div>
+          </div>
+          <div class="gap"></div>
+          <div class="bubble rcvd">Dude</div>
+          <div class="bubble rcvd">This is so sick</div>
+          <div class="bubble rcvd">Allow me to choose between using cursor agent and codex and you could sell this</div>
+          <div class="gap"></div>
+          <div class="bubble sent">I don't even want to sell it I just want people to use it</div>
+          <div class="gap"></div>
+          <div class="reply-card">
+            <img src="screenshot-codex.png" alt="Codex support" />
+            <div class="reply-text">added codex</div>
+          </div>
+        </div>
+      </div>
+      <div class="logo-tip">
+        <svg viewBox="2.5 3 92 20" width="58" height="13" fill="none">
+          <path fill-rule="evenodd" clip-rule="evenodd" d="M9.489 15.105 20.554 3.874a.611.611 0 0 1 .862 0l3.609 3.661a.625.625 0 0 1 0 .874L14.391 19.203a.611.611 0 0 1-.863 0l-4.04-4.098Z" fill="#a3a3a3"/>
+          <path fill-rule="evenodd" clip-rule="evenodd" d="M2.896 8.412a.625.625 0 0 1 0-.874l3.609-3.662a.611.611 0 0 1 .863 0l5.595 5.678-4.473 4.536-5.594-5.678Z" fill="#a3a3a3"/>
+          <path d="M32.932 5.755h2.208l3.483 9.398 3.483-9.398h2.208l-4.502 12.071h-2.378l-4.502-12.071Z" fill="#a3a3a3"/>
+          <path fill-rule="evenodd" clip-rule="evenodd" d="M47.78 18c2.379 0 3.483-1.466 3.483-1.466l-1.102-1.397s-.85 1.052-2.293 1.052c-1.361 0-2.175-.86-2.38-1.81h6.2s.085-.431.085-.95c0-2.296-1.655-4.175-3.984-4.223-2.118-.046-4.005 1.518-4.362 3.637C42.966 15.587 45.061 18 47.78 18Zm-.17-6.899c1.104 0 1.785.69 2.04 1.639h-4.163c.254-.95.933-1.639 2.123-1.639Z" fill="#a3a3a3"/>
+          <path d="M53.353 9.377h1.954v1.208h.085s.85-1.379 2.38-1.379h.339v2.155s-.254-.087-.68-.087c-1.189 0-2.122.95-2.122 2.415v4.139h-1.954V9.377h-.002Z" fill="#a3a3a3"/>
+          <path d="M59.338 5.755h1.954v7.33l3.312-3.708h2.379l-3.143 3.534 3.312 4.915h-2.208l-2.379-3.536-1.275 1.466v2.07h-1.954V5.755h.002Z" fill="#a3a3a3"/>
+          <path fill-rule="evenodd" clip-rule="evenodd" d="M72.846 16.706h.083v1.118h1.954v-5.26c0-1.844-1.444-3.362-3.483-3.362-2.123 0-3.312 1.724-3.312 1.724l1.19 1.207s.798-1.034 2.04-1.034c.935 0 1.614.692 1.614 1.295l-2.804.518c-1.443.258-2.462 1.294-2.462 2.673 0 1.295 1.104 2.416 2.719 2.416 1.697 0 2.462-1.295 2.462-1.295Zm-1.87-2.416 1.954-.344h.003v.258c0 1.205-.935 2.155-2.04 2.155-.764 0-1.275-.518-1.275-1.034 0-.516.34-.847 1.358-1.035Z" fill="#a3a3a3"/>
+          <path fill-rule="evenodd" clip-rule="evenodd" d="M82.666 16.619h.085v1.207h1.954V5.755h-1.954v4.828h-.085s-.765-1.38-2.719-1.38c-1.954 0-3.737 1.81-3.737 4.397s1.783 4.397 3.737 4.397c1.954 0 2.719-1.379 2.719-1.379Zm-2.209-5.434c1.275 0 2.294 1.037 2.294 2.415 0 1.381-1.019 2.415-2.294 2.415s-2.293-1.036-2.293-2.415c0-1.38 1.018-2.415 2.293-2.415Z" fill="#a3a3a3"/>
+          <path fill-rule="evenodd" clip-rule="evenodd" d="M91.246 16.706h.083v1.118h1.954v-5.26c0-1.844-1.443-3.362-3.483-3.362-2.123 0-3.312 1.724-3.312 1.724l1.19 1.207s.8-1.034 2.04-1.034c.935 0 1.614.692 1.614 1.295l-2.804.518c-1.443.258-2.462 1.294-2.462 2.673 0 1.295 1.104 2.416 2.719 2.416 1.697 0 2.462-1.295 2.462-1.295Zm-1.87-2.416 1.954-.344h.003v.258c0 1.205-.936 2.155-2.04 2.155-.765 0-1.275-.518-1.275-1.034 0-.516.34-.847 1.358-1.035Z" fill="#a3a3a3"/>
+        </svg>
+        <div class="tip">
+          <div class="bubble sent">dude check this out</div>
+          <div class="link-card">
+            <div class="link-preview">
+              <div class="link-icon">H</div>
+              <div class="link-title">Harness — run a team of agents</div>
+              <div class="link-domain">harness.mikelyons.org</div>
+            </div>
+            <div class="link-body">you need this</div>
+          </div>
+          <div class="gap"></div>
+          <div class="bubble rcvd">Nice I'm gonna try it</div>
+          <div class="bubble rcvd">You should just toss it on HN</div>
+        </div>
+      </div>
+      <div class="logo-tip">
+        <svg viewBox="0 0 814 1000" width="13" height="16" class="text-neutral-400" fill="currentColor">
+          <path d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76.5 0-103.7 40.8-165.9 40.8s-105.6-57.8-155.5-127.4c-58.1-81-105.3-207.2-105.3-327.1 0-192.8 125.3-295.2 248.3-295.2 65.3 0 119.7 42.9 160.7 42.9 39.1 0 100-45.4 174.4-45.4 28.2 0 129.6 2.6 196.5 99.2zM554.1 159.4c31.1-36.9 53.1-88.1 53.1-139.4 0-7.1-.6-14.3-1.9-20.1-50.6 1.9-110.8 33.7-147.1 75.8-28.2 32.4-55.8 83.6-55.8 135.7 0 7.8.6 15.6 1.3 18.2 2.5.6 6.4 1.3 10.2 1.3 45.4 0 103.3-30.4 140.2-71.5z"/>
+        </svg>
+        <div class="tip">
+          <div class="bubble sent">dude check this out</div>
+          <div class="link-card">
+            <div class="link-preview">
+              <div class="link-icon">H</div>
+              <div class="link-title">Harness — run a team of agents</div>
+              <div class="link-domain">harness.mikelyons.org</div>
+            </div>
+            <div class="link-body">you need this</div>
+          </div>
+          <div class="gap"></div>
+          <div class="bubble rcvd">This is sick</div>
+          <div class="bubble rcvd">I'll share it w my team today too</div>
+        </div>
+      </div>
+      <div class="logo-tip">
+        <svg viewBox="0 0 20 20" width="18" height="18" fill="none">
+          <rect width="20" height="20" rx="2" fill="#FF6600"/>
+          <text x="10" y="15" text-anchor="middle" font-family="system-ui, sans-serif" font-weight="700" font-size="14" fill="white">Y</text>
+        </svg>
+        <div class="tip">
+          <div class="bubble sent">dude check this out</div>
+          <div class="link-card">
+            <div class="link-preview">
+              <div class="link-icon">H</div>
+              <div class="link-title">Harness — run a team of agents</div>
+              <div class="link-domain">harness.mikelyons.org</div>
+            </div>
+            <div class="link-body">you need this</div>
+          </div>
+          <div class="gap"></div>
+          <div class="bubble rcvd" style="opacity: 0.5">...</div>
+        </div>
+      </div>
+      <div class="logo-tip">
+        <svg viewBox="0 0 100 20" width="80" height="16" fill="none">
+          <text x="0" y="15" font-family="'Times New Roman', Georgia, serif" font-weight="400" font-size="16" letter-spacing="1.5" fill="#8C1515">Stanford</text>
+        </svg>
+        <div class="tip">
+          <div class="bubble sent">dude check this out</div>
+          <div class="link-card">
+            <div class="link-preview">
+              <div class="link-icon">H</div>
+              <div class="link-title">Harness — run a team of agents</div>
+              <div class="link-domain">harness.mikelyons.org</div>
+            </div>
+            <div class="link-body">you need this</div>
+          </div>
+          <div class="gap"></div>
+          <div class="bubble rcvd">Nice, that's pretty sick</div>
+          <div class="bubble rcvd">Hey! Just downloaded harness and have an immediate feature request. cmd+d to split my tab</div>
+          <div class="gap"></div>
+          <div class="reply-card">
+            <img src="screenshot-split-pane.png" alt="Split pane feature" />
+            <div class="reply-text">added it</div>
+          </div>
+        </div>
+      </div>
     </div>
   </section>
 
