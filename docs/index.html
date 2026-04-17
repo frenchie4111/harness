@@ -140,6 +140,25 @@
       font-size: 13px;
     }
 
+    .logo-tip .reply-card {
+      align-self: flex-end;
+      max-width: 220px;
+      border-radius: 14px;
+      overflow: hidden;
+      background: #2563eb;
+      border-bottom-right-radius: 4px;
+    }
+    .logo-tip .reply-card img {
+      width: 100%;
+      display: block;
+      border-bottom: 1px solid rgba(255,255,255,0.15);
+    }
+    .logo-tip .reply-card .reply-text {
+      padding: 7px 12px;
+      color: white;
+      font-size: 13px;
+    }
+
     /* Flagship hero animations — transforms/opacity only, no layout shift. */
     @keyframes bar-fill {
       0%   { transform: scaleX(0); }
@@ -254,8 +273,14 @@
             <div class="link-body">you need this</div>
           </div>
           <div class="gap"></div>
-          <div class="bubble rcvd">This is sick</div>
-          <div class="bubble rcvd">I'll share it w my team today too</div>
+          <div class="bubble rcvd">Dude</div>
+          <div class="bubble rcvd">This is so sick</div>
+          <div class="bubble rcvd">Allow me to choose between using cursor agent and codex and you could sell this</div>
+          <div class="gap"></div>
+          <div class="reply-card">
+            <img src="screenshot-codex.png" alt="Codex support" />
+            <div class="reply-text">added codex. but we're never selling this lol</div>
+          </div>
         </div>
       </div>
       <div class="logo-tip">
@@ -300,11 +325,8 @@
             <div class="link-body">you need this</div>
           </div>
           <div class="gap"></div>
-          <div class="bubble rcvd">Dude</div>
-          <div class="bubble rcvd">This is so sick</div>
-          <div class="bubble rcvd">Allow me to choose between using cursor agent and codex and you could sell this</div>
-          <div class="gap"></div>
-          <div class="bubble sent">We added Codex support immediately after this, but we don't plan to ever sell this.</div>
+          <div class="bubble rcvd">This is sick</div>
+          <div class="bubble rcvd">I'll share it w my team today too</div>
         </div>
       </div>
       <div class="logo-tip">
@@ -344,7 +366,10 @@
           <div class="bubble rcvd">Nice, that's pretty sick</div>
           <div class="bubble rcvd">Hey! Just downloaded harness and have an immediate feature request. cmd+d to split my tab</div>
           <div class="gap"></div>
-          <div class="bubble sent">We immediately added that feature.</div>
+          <div class="reply-card">
+            <img src="screenshot-split-pane.png" alt="Split pane feature" />
+            <div class="reply-text">added it</div>
+          </div>
         </div>
       </div>
     </div>
