@@ -423,14 +423,6 @@ export function Sidebar({
 
       {/* Bottom actions */}
       <div className="border-t border-border p-2 flex justify-center gap-1 shrink-0">
-        <Tooltip label="New worktree" action="newWorktree" side="top">
-          <button
-            onClick={onNewWorktree}
-            className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
-          >
-            <Plus size={14} />
-          </button>
-        </Tooltip>
         <Tooltip label="Refresh worktrees" action="refreshWorktrees" side="top">
           <button
             onClick={onRefresh}
