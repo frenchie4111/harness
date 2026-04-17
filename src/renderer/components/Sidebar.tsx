@@ -391,10 +391,20 @@ export function Sidebar({
             </div>
           )
         })}
-        {worktrees.length === 0 && (
+        {worktrees.length === 0 && agentCount > 0 && (
           <div className="px-4 py-3 text-xs text-faint">
             No worktrees found
           </div>
+        )}
+        {agentCount > 0 && (
+          <button
+            onClick={onNewWorktree}
+            className="group w-full flex items-center gap-2 px-3 py-2 mt-1 text-dim hover:bg-panel-raised hover:text-fg-bright transition-colors cursor-pointer"
+          >
+            <Plus size={13} className="shrink-0 text-dim group-hover:text-accent transition-colors" />
+            <span className="text-sm font-medium">Add worktree</span>
+            <HotkeyBadge action="newWorktree" className="ml-auto" />
+          </button>
         )}
       </div>
 
