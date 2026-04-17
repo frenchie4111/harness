@@ -83,6 +83,10 @@ contextBridge.exposeInMainWorld('api', {
   getBranchCommits: (worktreePath: string) => req('worktree:branchCommits', worktreePath),
   getCommitDiff: (worktreePath: string, hash: string) =>
     req('worktree:commitDiff', worktreePath, hash),
+  getCommitChangedFiles: (worktreePath: string, hash: string) =>
+    req('worktree:commitChangedFiles', worktreePath, hash),
+  getCommitFileDiffSides: (worktreePath: string, hash: string, filePath: string) =>
+    req('worktree:commitFileDiffSides', worktreePath, hash, filePath),
   getMainWorktreeStatus: (repoRoot: string) => req('worktree:mainStatus', repoRoot),
   prepareMainForMerge: (repoRoot: string) => req('worktree:prepareMain', repoRoot),
   previewMergeConflicts: (repoRoot: string, sourceBranch: string, worktreePath?: string) =>

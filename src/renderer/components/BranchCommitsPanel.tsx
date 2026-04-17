@@ -6,10 +6,10 @@ import { RightPanel } from './RightPanel'
 
 interface BranchCommitsPanelProps {
   worktreePath: string | null
-  onOpenCommit?: (hash: string, shortHash: string, subject: string) => void
+  onOpenCommitReview?: (hash: string, shortHash: string, subject: string) => void
 }
 
-export function BranchCommitsPanel({ worktreePath, onOpenCommit }: BranchCommitsPanelProps): JSX.Element | null {
+export function BranchCommitsPanel({ worktreePath, onOpenCommitReview }: BranchCommitsPanelProps): JSX.Element | null {
   const [commits, setCommits] = useState<BranchCommit[]>([])
   const [hasLoaded, setHasLoaded] = useState(false)
 
@@ -72,7 +72,7 @@ export function BranchCommitsPanel({ worktreePath, onOpenCommit }: BranchCommits
           return (
             <Tooltip key={c.hash} label={`${c.shortHash} · ${c.author} · ${c.relativeDate}`} side="left">
               <div
-                onClick={() => onOpenCommit?.(c.hash, c.shortHash, c.subject)}
+                onClick={() => onOpenCommitReview?.(c.hash, c.shortHash, c.subject)}
                 className="group relative flex items-center gap-2.5 pl-4 pr-3 py-1.5 hover:bg-panel-raised cursor-pointer"
               >
                 {/* Tree line + dot */}

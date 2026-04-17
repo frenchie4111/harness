@@ -176,6 +176,8 @@ export interface ElectronAPI {
   refreshPRsOneIfStale(worktreePath: string): Promise<boolean>
   getBranchCommits(worktreePath: string): Promise<BranchCommit[]>
   getCommitDiff(worktreePath: string, hash: string): Promise<CommitDiff | null>
+  getCommitChangedFiles(worktreePath: string, hash: string): Promise<ChangedFile[]>
+  getCommitFileDiffSides(worktreePath: string, hash: string, filePath: string): Promise<FileDiffSides>
   listAllFiles(worktreePath: string): Promise<string[]>
   readWorktreeFile(worktreePath: string, filePath: string): Promise<FileReadResult>
   writeWorktreeFile(

@@ -14,7 +14,7 @@ import { PanesFSM, stripTransientTabFields } from './panes-fsm'
 import { ActivityDeriver } from './activity-deriver'
 import type { TerminalTab, PaneNode, PaneLeaf } from '../shared/state/terminals'
 import { getLeaves, mapLeaves } from '../shared/state/terminals'
-import { listWorktrees, listBranches, continueWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, readWorktreeFile, writeWorktreeFile, getFileDiffSides, getCurrentBranch, type MergeStrategy } from './worktree'
+import { listWorktrees, listBranches, continueWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getCommitChangedFiles, getCommitFileDiffSides, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, readWorktreeFile, writeWorktreeFile, getFileDiffSides, getCurrentBranch, type MergeStrategy } from './worktree'
 import { getPRStatus, testToken, starRepo, unstarRepo, isRepoStarred } from './github'
 import { AVAILABLE_EDITORS, DEFAULT_EDITOR_ID, openInEditor } from './editor'
 import { setSecret, hasSecret, deleteSecret } from './secrets'
@@ -577,6 +577,17 @@ function registerIpcHandlers(): void {
   transport.onRequest('worktree:commitDiff', async (worktreePath: string, hash: string) => {
     return getCommitDiff(worktreePath, hash)
   })
+
+  transport.onRequest('worktree:commitChangedFiles', async (worktreePath: string, hash: string) => {
+    return getCommitChangedFiles(worktreePath, hash)
+  })
+
+  transport.onRequest(
+    'worktree:commitFileDiffSides',
+    async (worktreePath: string, hash: string, filePath: string) => {
+      return getCommitFileDiffSides(worktreePath, hash, filePath)
+    }
+  )
 
   // PR status lives in the main-process store, polled by PRPoller. Renderers
   // subscribe via the state event stream; these methods trigger on-demand
