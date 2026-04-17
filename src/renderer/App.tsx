@@ -430,7 +430,6 @@ const setQuestStep = useCallback((next: QuestStep) => {
     handleCloseTab,
     handleRestartAgentTab,
     handleSelectTab,
-    handleOpenCommit,
     handleReorderTabs,
     handleMoveTabToPane,
     handleSplitPane,
@@ -1096,7 +1095,6 @@ const setQuestStep = useCallback((next: QuestStep) => {
             }}
             onMerged={refreshMergedStatus}
             onRemoveWorktree={handleDeleteWorktree}
-            onOpenCommit={handleOpenCommit}
             onOpenDiff={handleOpenDiff}
             onOpenFile={handleOpenFile}
             onSendToAgent={handleSendToAgent}

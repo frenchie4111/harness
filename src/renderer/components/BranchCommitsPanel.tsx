@@ -1,16 +1,15 @@
 import { useState, useEffect, useCallback } from 'react'
-import { RefreshCw, ScanSearch } from 'lucide-react'
+import { RefreshCw } from 'lucide-react'
 import type { BranchCommit } from '../types'
 import { Tooltip } from './Tooltip'
 import { RightPanel } from './RightPanel'
 
 interface BranchCommitsPanelProps {
   worktreePath: string | null
-  onOpenCommit?: (hash: string, shortHash: string, subject: string) => void
   onOpenCommitReview?: (hash: string, shortHash: string, subject: string) => void
 }
 
-export function BranchCommitsPanel({ worktreePath, onOpenCommit, onOpenCommitReview }: BranchCommitsPanelProps): JSX.Element | null {
+export function BranchCommitsPanel({ worktreePath, onOpenCommitReview }: BranchCommitsPanelProps): JSX.Element | null {
   const [commits, setCommits] = useState<BranchCommit[]>([])
   const [hasLoaded, setHasLoaded] = useState(false)
 
@@ -73,7 +72,7 @@ export function BranchCommitsPanel({ worktreePath, onOpenCommit, onOpenCommitRev
           return (
             <Tooltip key={c.hash} label={`${c.shortHash} · ${c.author} · ${c.relativeDate}`} side="left">
               <div
-                onClick={() => onOpenCommit?.(c.hash, c.shortHash, c.subject)}
+                onClick={() => onOpenCommitReview?.(c.hash, c.shortHash, c.subject)}
                 className="group relative flex items-center gap-2.5 pl-4 pr-3 py-1.5 hover:bg-panel-raised cursor-pointer"
               >
                 {/* Tree line + dot */}
@@ -86,19 +85,6 @@ export function BranchCommitsPanel({ worktreePath, onOpenCommit, onOpenCommitRev
                 </div>
                 <span className="shrink-0 font-mono text-[10px] text-faint">{c.shortHash}</span>
                 <span className="truncate min-w-0 flex-1 text-fg">{c.subject}</span>
-                {onOpenCommitReview && (
-                  <Tooltip label="Review commit" side="left">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onOpenCommitReview(c.hash, c.shortHash, c.subject)
-                      }}
-                      className="shrink-0 opacity-0 group-hover:opacity-100 text-faint hover:text-info transition-all cursor-pointer"
-                    >
-                      <ScanSearch size={13} />
-                    </button>
-                  </Tooltip>
-                )}
               </div>
             </Tooltip>
           )
