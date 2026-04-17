@@ -87,10 +87,6 @@ export function usePanes() {
   return useAppState((s) => s.terminals.panes)
 }
 
-export function useSplitDirections() {
-  return useAppState((s) => s.terminals.splitDirections)
-}
-
 export function useLastActive() {
   return useAppState((s) => s.terminals.lastActive)
 }

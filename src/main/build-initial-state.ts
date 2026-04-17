@@ -31,10 +31,7 @@ export function buildInitialAppState(
     },
     hooks: initialHooks,
     worktrees: { ...initialWorktrees, repoRoots: config.repoRoots || [] },
-    terminals: {
-      ...initialTerminals,
-      splitDirections: config.paneSplitDirections || {}
-    },
+    terminals: initialTerminals,
     updater: initialUpdater,
     repoConfigs: initialRepoConfigs,
     costs: config.costs ? { ...initialCosts, ...config.costs } : initialCosts,

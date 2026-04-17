@@ -1,16 +1,16 @@
 import { useCallback } from 'react'
-import type { AgentKind, TerminalTab, WorkspacePane } from '../types'
+import type { AgentKind, TerminalTab, PaneNode } from '../types'
+import { getLeaves, findLeaf, findLeafByTabId } from '../../shared/state/terminals'
 import { agentDisplayName, getAgentInfo } from '../../shared/agent-registry'
 import { focusTerminalById, markTerminalClosing } from '../components/XTerminal'
 
-/** Create a filesystem-safe terminal ID from a worktree path. */
 function makeTerminalId(prefix: string, worktreePath: string): string {
   const safe = worktreePath.replace(/[/\\]/g, '-').replace(/^-+/, '').replace(/-+/g, '-')
   return `${prefix}-${safe}`
 }
 
 interface UseTabHandlersArgs {
-  panes: Record<string, WorkspacePane[]>
+  panes: Record<string, PaneNode>
   activePaneId: Record<string, string>
   setActivePaneId: React.Dispatch<React.SetStateAction<Record<string, string>>>
   activeWorktreeId: string | null
@@ -29,8 +29,9 @@ export function useTabHandlers({
 }: UseTabHandlersArgs) {
   const appendTabToPane = useCallback(
     (worktreePath: string, tab: TerminalTab, paneId?: string) => {
-      const list = panes[worktreePath] || []
-      const targetId = paneId || activePaneId[worktreePath] || list[0]?.id
+      const tree = panes[worktreePath]
+      const leaves = tree ? getLeaves(tree) : []
+      const targetId = paneId || activePaneId[worktreePath] || leaves[0]?.id
       void window.api.panesAddTab(worktreePath, tab, targetId)
       if (targetId) {
         setActivePaneId((prev) => ({ ...prev, [worktreePath]: targetId }))
@@ -85,9 +86,9 @@ export function useTabHandlers({
   )
 
   const handleRestartAllAgentTabs = useCallback(() => {
-    for (const [worktreePath, paneList] of Object.entries(panes)) {
-      for (const pane of paneList) {
-        for (const tab of pane.tabs) {
+    for (const [worktreePath, tree] of Object.entries(panes)) {
+      for (const leaf of getLeaves(tree)) {
+        for (const tab of leaf.tabs) {
           if (tab.type === 'agent') {
             handleRestartAgentTab(worktreePath, tab.id)
           }
@@ -108,10 +109,10 @@ export function useTabHandlers({
     (hash: string, shortHash: string, subject: string) => {
       if (!activeWorktreeId) return
       const tabId = `diff-commit-${shortHash}`
-      const list = panes[activeWorktreeId] || []
-      const existingPane = list.find((p) => p.tabs.some((t) => t.id === tabId))
-      if (existingPane) {
-        handleSelectTab(activeWorktreeId, existingPane.id, tabId)
+      const tree = panes[activeWorktreeId]
+      const existingLeaf = tree ? findLeafByTabId(tree, tabId) : null
+      if (existingLeaf) {
+        handleSelectTab(activeWorktreeId, existingLeaf.id, tabId)
         return
       }
       const tab: TerminalTab = {
@@ -157,24 +158,23 @@ export function useTabHandlers({
 
   const handleSendToAgent = useCallback(
     (worktreePath: string, text: string) => {
-      const paneList = panes[worktreePath] || []
+      const tree = panes[worktreePath]
+      const leaves = tree ? getLeaves(tree) : []
       let targetPaneId: string | undefined
       let targetTabId: string | undefined
-      // Prefer a pane whose active tab is already an agent tab
-      for (const pane of paneList) {
-        const active = pane.tabs.find((t) => t.id === pane.activeTabId)
+      for (const leaf of leaves) {
+        const active = leaf.tabs.find((t) => t.id === leaf.activeTabId)
         if (active?.type === 'agent') {
-          targetPaneId = pane.id
+          targetPaneId = leaf.id
           targetTabId = active.id
           break
         }
       }
-      // Otherwise pick the first agent tab we can find
       if (!targetTabId) {
-        for (const pane of paneList) {
-          const c = pane.tabs.find((t) => t.type === 'agent')
+        for (const leaf of leaves) {
+          const c = leaf.tabs.find((t) => t.type === 'agent')
           if (c) {
-            targetPaneId = pane.id
+            targetPaneId = leaf.id
             targetTabId = c.id
             break
           }
@@ -196,10 +196,10 @@ export function useTabHandlers({
     (filePath: string) => {
       if (!activeWorktreeId) return
       const tabId = `file-${filePath}`
-      const list = panes[activeWorktreeId] || []
-      const existingPane = list.find((p) => p.tabs.some((t) => t.id === tabId))
-      if (existingPane) {
-        handleSelectTab(activeWorktreeId, existingPane.id, tabId)
+      const tree = panes[activeWorktreeId]
+      const existingLeaf = tree ? findLeafByTabId(tree, tabId) : null
+      if (existingLeaf) {
+        handleSelectTab(activeWorktreeId, existingLeaf.id, tabId)
         return
       }
       const fileName = filePath.split('/').pop() || filePath
@@ -220,10 +220,10 @@ export function useTabHandlers({
       const branchDiff = mode === 'branch'
       const kind = branchDiff ? 'branch' : staged ? 'staged' : 'unstaged'
       const tabId = `diff-${kind}-${filePath}`
-      const list = panes[activeWorktreeId] || []
-      const existingPane = list.find((p) => p.tabs.some((t) => t.id === tabId))
-      if (existingPane) {
-        handleSelectTab(activeWorktreeId, existingPane.id, tabId)
+      const tree = panes[activeWorktreeId]
+      const existingLeaf = tree ? findLeafByTabId(tree, tabId) : null
+      if (existingLeaf) {
+        handleSelectTab(activeWorktreeId, existingLeaf.id, tabId)
         return
       }
       const fileName = filePath.split('/').pop() || filePath

@@ -151,8 +151,8 @@ contextBridge.exposeInMainWorld('api', {
     req('panes:moveTabToPane', wtPath, tabId, toPaneId, toIndex),
   panesSplitPane: (wtPath: string, fromPaneId: string, direction?: 'horizontal' | 'vertical') =>
     req('panes:splitPane', wtPath, fromPaneId, direction),
-  panesSetSplitDirection: (wtPath: string, direction: 'horizontal' | 'vertical') =>
-    req('panes:setSplitDirection', wtPath, direction),
+  panesSetRatio: (wtPath: string, splitId: string, ratio: number) =>
+    req('panes:setRatio', wtPath, splitId, ratio),
   panesClearForWorktree: (wtPath: string) => req('panes:clearForWorktree', wtPath),
   panesEnsureInitialized: (wtPath: string) => req('panes:ensureInitialized', wtPath),
 

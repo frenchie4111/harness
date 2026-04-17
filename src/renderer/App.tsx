@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { useSettings, usePrs, useOnboarding, useHooks, useWorktrees, useTerminals, usePanes, useSplitDirections, useLastActive, useUpdater, useRepoConfigs } from './store'
+import { useSettings, usePrs, useOnboarding, useHooks, useWorktrees, useTerminals, usePanes, useLastActive, useUpdater, useRepoConfigs } from './store'
 import { useTailLineBuffer } from './hooks/useTailLineBuffer'
 import { useTabHandlers } from './hooks/useTabHandlers'
 import { useHotkeyHandlers } from './hooks/useHotkeyHandlers'
 import { useWorktreeHandlers } from './hooks/useWorktreeHandlers'
-import type { Worktree, TerminalTab, PtyStatus, PendingTool, QuestStep, PendingWorktree, UpdaterStatus, RepoConfig } from './types'
+import type { Worktree, TerminalTab, PtyStatus, PendingTool, QuestStep, PendingWorktree, UpdaterStatus, RepoConfig, PaneNode } from './types'
+import { getLeaves, findLeaf } from '../shared/state/terminals'
 import { CheckCircle2, FolderOpen } from 'lucide-react'
 import { THEME_OPTIONS } from './themes'
 import { HotkeysProvider, Tooltip } from './components/Tooltip'
@@ -62,23 +63,23 @@ export default function App(): JSX.Element {
   // focus (which pane in each worktree the user last interacted with) is
   // still renderer-local — like activeWorktreeId.
   const panes = usePanes()
-  const splitDirections = useSplitDirections()
   const [activePaneId, setActivePaneId] = useState<Record<string, string>>({})
 
   // Derived flat-tab views — preserved so the read-heavy parts of the app
   // (status aggregation, hotkeys, PR refresh) don't need pane awareness.
   const terminalTabs = useMemo<Record<string, TerminalTab[]>>(() => {
     const out: Record<string, TerminalTab[]> = {}
-    for (const [wtPath, paneList] of Object.entries(panes)) {
-      out[wtPath] = paneList.flatMap((p) => p.tabs)
+    for (const [wtPath, tree] of Object.entries(panes)) {
+      out[wtPath] = getLeaves(tree).flatMap((l) => l.tabs)
     }
     return out
   }, [panes])
   const activeTabId = useMemo<Record<string, string>>(() => {
     const out: Record<string, string> = {}
-    for (const [wtPath, paneList] of Object.entries(panes)) {
-      const focusedId = activePaneId[wtPath] ?? paneList[0]?.id
-      const focused = paneList.find((p) => p.id === focusedId) || paneList[0]
+    for (const [wtPath, tree] of Object.entries(panes)) {
+      const leaves = getLeaves(tree)
+      const focusedId = activePaneId[wtPath] ?? leaves[0]?.id
+      const focused = findLeaf(tree, focusedId) || leaves[0]
       if (focused) out[wtPath] = focused.activeTabId
     }
     return out
@@ -940,8 +941,10 @@ const setQuestStep = useCallback((next: QuestStep) => {
         {sidebarVisible && <ResizeHandle onDelta={handleSidebarResize} />}
         {/* Render ALL worktrees' terminals to keep PTYs alive across switches */}
         {worktrees.map((wt) => {
-          const paneList = panes[wt.path]
-          if (!paneList || paneList.length === 0) return null
+          const paneTree = panes[wt.path]
+          if (!paneTree) return null
+          const leaves = getLeaves(paneTree)
+          if (leaves.length === 0 || !leaves.some((l) => l.tabs.length > 0)) return null
           const isVisible = !showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && wt.path === activeWorktreeId && !pendingDeletionByPath[wt.path]
           return (
             <div
@@ -953,9 +956,8 @@ const setQuestStep = useCallback((next: QuestStep) => {
                 worktreePath={wt.path}
                 repoLabel={wt.repoRoot.split('/').pop() || wt.repoRoot}
                 branch={wt.branch}
-                panes={paneList}
-                splitDirection={splitDirections[wt.path] || 'horizontal'}
-                focusedPaneId={activePaneId[wt.path] || paneList[0]?.id || ''}
+                paneTree={paneTree}
+                focusedPaneId={activePaneId[wt.path] || leaves[0]?.id || ''}
                 statuses={statuses}
                 shellActivity={shellActivity}
                 visible={isVisible}

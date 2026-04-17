@@ -34,13 +34,102 @@ export interface TerminalTab {
   teleportSessionId?: string
 }
 
-export interface WorkspacePane {
+// ---------------------------------------------------------------------------
+// Pane tree types — the layout is a binary tree where leaves hold tabs and
+// split nodes define a direction + ratio for their two children.
+// ---------------------------------------------------------------------------
+
+export type SplitDirection = 'horizontal' | 'vertical'
+
+export interface PaneLeaf {
+  type: 'leaf'
   id: string
   tabs: TerminalTab[]
   activeTabId: string
 }
 
-export type SplitDirection = 'horizontal' | 'vertical'
+export interface PaneSplit {
+  type: 'split'
+  id: string
+  direction: SplitDirection
+  children: [PaneNode, PaneNode]
+  ratio: number
+}
+
+export type PaneNode = PaneLeaf | PaneSplit
+
+/** Backwards-compat alias — some call sites still reference the old name. */
+export type WorkspacePane = PaneLeaf
+
+// ---------------------------------------------------------------------------
+// Tree helpers — pure functions used by both the reducer and PanesFSM.
+// ---------------------------------------------------------------------------
+
+export function getLeaves(node: PaneNode): PaneLeaf[] {
+  if (node.type === 'leaf') return [node]
+  return [...getLeaves(node.children[0]), ...getLeaves(node.children[1])]
+}
+
+export function findLeaf(node: PaneNode, paneId: string): PaneLeaf | null {
+  if (node.type === 'leaf') return node.id === paneId ? node : null
+  return findLeaf(node.children[0], paneId) || findLeaf(node.children[1], paneId)
+}
+
+export function findLeafByTabId(node: PaneNode, tabId: string): PaneLeaf | null {
+  if (node.type === 'leaf') return node.tabs.some((t) => t.id === tabId) ? node : null
+  return (
+    findLeafByTabId(node.children[0], tabId) || findLeafByTabId(node.children[1], tabId)
+  )
+}
+
+export function hasAnyTabs(node: PaneNode): boolean {
+  if (node.type === 'leaf') return node.tabs.length > 0
+  return hasAnyTabs(node.children[0]) || hasAnyTabs(node.children[1])
+}
+
+export function mapLeaves(node: PaneNode, fn: (leaf: PaneLeaf) => PaneLeaf): PaneNode {
+  if (node.type === 'leaf') return fn(node)
+  const left = mapLeaves(node.children[0], fn)
+  const right = mapLeaves(node.children[1], fn)
+  if (left === node.children[0] && right === node.children[1]) return node
+  return { ...node, children: [left, right] }
+}
+
+export function replaceNode(
+  root: PaneNode,
+  nodeId: string,
+  replacement: PaneNode
+): PaneNode {
+  if (root.id === nodeId) return replacement
+  if (root.type === 'leaf') return root
+  const left = replaceNode(root.children[0], nodeId, replacement)
+  const right = replaceNode(root.children[1], nodeId, replacement)
+  if (left === root.children[0] && right === root.children[1]) return root
+  return { ...root, children: [left, right] }
+}
+
+/** Remove a leaf by id. If the leaf is a child of a split, the split
+ * collapses to the remaining sibling. Returns null if the root itself
+ * is the removed leaf. */
+export function removeLeaf(root: PaneNode, leafId: string): PaneNode | null {
+  if (root.type === 'leaf') return root.id === leafId ? null : root
+  const [left, right] = root.children
+  if (left.type === 'leaf' && left.id === leafId) return right
+  if (right.type === 'leaf' && right.id === leafId) return left
+  const newLeft = removeLeaf(left, leafId)
+  if (newLeft !== left) {
+    return newLeft === null ? right : { ...root, children: [newLeft, right] }
+  }
+  const newRight = removeLeaf(right, leafId)
+  if (newRight !== right) {
+    return newRight === null ? left : { ...root, children: [left, newRight] }
+  }
+  return root
+}
+
+// ---------------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------------
 
 export interface TerminalsState {
   /** PTY status per terminal id. */
@@ -49,12 +138,9 @@ export interface TerminalsState {
   pendingTools: Record<string, PendingTool | null>
   /** Per-terminal foreground-process indicator for shell tabs. */
   shellActivity: Record<string, ShellActivity>
-  /** Pane / tab tree per worktree path. Authored entirely in main via the
+  /** Pane layout tree per worktree path. Authored entirely in main via the
    * panes-fsm methods. */
-  panes: Record<string, WorkspacePane[]>
-  /** Per-worktree pane layout direction. 'horizontal' = side by side (default),
-   * 'vertical' = stacked top/bottom. */
-  splitDirections: Record<string, SplitDirection>
+  panes: Record<string, PaneNode>
   /** Per-worktree most-recent-activity timestamp (ms since epoch). Used by
    * the sidebar for recency sort. Updated by the activity-deriver in main
    * whenever a contained terminal changes status. */
@@ -73,11 +159,11 @@ export type TerminalsEvent =
   | { type: 'terminals/removed'; payload: string }
   | {
       type: 'terminals/panesReplaced'
-      payload: Record<string, WorkspacePane[]>
+      payload: Record<string, PaneNode>
     }
   | {
       type: 'terminals/panesForWorktreeChanged'
-      payload: { worktreePath: string; panes: WorkspacePane[] }
+      payload: { worktreePath: string; panes: PaneNode }
     }
   | {
       type: 'terminals/panesForWorktreeCleared'
@@ -88,8 +174,8 @@ export type TerminalsEvent =
       payload: { worktreePath: string; ts: number }
     }
   | {
-      type: 'terminals/splitDirectionChanged'
-      payload: { worktreePath: string; direction: SplitDirection }
+      type: 'terminals/paneRatioChanged'
+      payload: { worktreePath: string; splitId: string; ratio: number }
     }
   | {
       type: 'terminals/sessionIdDiscovered'
@@ -101,7 +187,6 @@ export const initialTerminals: TerminalsState = {
   pendingTools: {},
   shellActivity: {},
   panes: {},
-  splitDirections: {},
   lastActive: {}
 }
 
@@ -177,27 +262,30 @@ export function terminalsReducer(
         lastActive: { ...state.lastActive, [worktreePath]: ts }
       }
     }
-    case 'terminals/splitDirectionChanged': {
-      const { worktreePath, direction } = event.payload
-      if (state.splitDirections[worktreePath] === direction) return state
-      return {
-        ...state,
-        splitDirections: { ...state.splitDirections, [worktreePath]: direction }
-      }
+    case 'terminals/paneRatioChanged': {
+      const { worktreePath, splitId, ratio } = event.payload
+      const tree = state.panes[worktreePath]
+      if (!tree) return state
+      const updated = replaceNode(tree, splitId, {
+        ...findSplit(tree, splitId)!,
+        ratio
+      })
+      if (updated === tree) return state
+      return { ...state, panes: { ...state.panes, [worktreePath]: updated } }
     }
     case 'terminals/sessionIdDiscovered': {
       const { terminalId, sessionId } = event.payload
-      const nextPanes: Record<string, WorkspacePane[]> = {}
+      const nextPanes: Record<string, PaneNode> = {}
       let changed = false
-      for (const [path, paneList] of Object.entries(state.panes)) {
-        nextPanes[path] = paneList.map((pane) => ({
-          ...pane,
-          tabs: pane.tabs.map((tab) => {
+      for (const [path, tree] of Object.entries(state.panes)) {
+        nextPanes[path] = mapLeaves(tree, (leaf) => {
+          const newTabs = leaf.tabs.map((tab) => {
             if (tab.id !== terminalId || tab.sessionId) return tab
             changed = true
             return { ...tab, sessionId }
           })
-        }))
+          return newTabs === leaf.tabs ? leaf : { ...leaf, tabs: newTabs }
+        })
       }
       return changed ? { ...state, panes: nextPanes } : state
     }
@@ -207,4 +295,10 @@ export function terminalsReducer(
       return state
     }
   }
+}
+
+function findSplit(node: PaneNode, splitId: string): PaneSplit | null {
+  if (node.type === 'leaf') return null
+  if (node.id === splitId) return node
+  return findSplit(node.children[0], splitId) || findSplit(node.children[1], splitId)
 }

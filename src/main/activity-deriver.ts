@@ -1,6 +1,7 @@
 import type { Store } from './store'
 import type { AppState, StateEvent } from '../shared/state'
 import type { PtyStatus } from '../shared/state/terminals'
+import { getLeaves } from '../shared/state/terminals'
 import { isWorktreeMerged } from '../shared/state/prs'
 import type { ActivityState } from './activity'
 import { recordActivity } from './activity'
@@ -21,10 +22,12 @@ function aggregateWorktreeStatus(
   state: AppState,
   worktreePath: string
 ): PtyStatus {
-  const panes = state.terminals.panes[worktreePath] || []
+  const tree = state.terminals.panes[worktreePath]
+  if (!tree) return 'idle'
+  const leaves = getLeaves(tree)
   let worst: PtyStatus = 'idle'
-  for (const pane of panes) {
-    for (const tab of pane.tabs) {
+  for (const leaf of leaves) {
+    for (const tab of leaf.tabs) {
       if (tab.type !== 'agent' && tab.type !== 'shell') continue
       const s = state.terminals.statuses[tab.id]
       if (!s) continue
@@ -131,9 +134,9 @@ export class ActivityDeriver {
     state: AppState,
     terminalId: string
   ): string | null {
-    for (const [wtPath, panes] of Object.entries(state.terminals.panes)) {
-      for (const pane of panes) {
-        if (pane.tabs.some((t) => t.id === terminalId)) return wtPath
+    for (const [wtPath, tree] of Object.entries(state.terminals.panes)) {
+      for (const leaf of getLeaves(tree)) {
+        if (leaf.tabs.some((t) => t.id === terminalId)) return wtPath
       }
     }
     return null

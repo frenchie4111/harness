@@ -30,6 +30,16 @@ export interface PersistedPane {
   activeTabId: string
 }
 
+export type PersistedPaneNode =
+  | { type: 'leaf'; id: string; tabs: PersistedTab[]; activeTabId: string }
+  | {
+      type: 'split'
+      id: string
+      direction: 'horizontal' | 'vertical'
+      children: [PersistedPaneNode, PersistedPaneNode]
+      ratio: number
+    }
+
 export type AnyConfig = Record<string, unknown>
 export type Migration = (c: AnyConfig) => void
 
@@ -124,8 +134,59 @@ export const migrations: Migration[] = [
         }
       }
     }
+  },
+
+  // v4 → v5: flat panes arrays → tree (PaneNode). Each PersistedPane[]
+  // becomes a PaneNode tree (a chain of horizontal splits for multi-pane
+  // arrays; a single leaf for single-pane). This enables mixed
+  // horizontal/vertical splits.
+  (c) => {
+    const panes = c.panes as Record<string, Record<string, PersistedPane[]>> | undefined
+    if (!panes || typeof panes !== 'object') return
+    const alreadyTree = Object.values(panes).some((byWt) =>
+      Object.values(byWt).some((v) => v && typeof v === 'object' && 'type' in v)
+    )
+    if (alreadyTree) return
+    const migrated: Record<string, Record<string, PersistedPaneNode>> = {}
+    for (const [repo, byWt] of Object.entries(panes)) {
+      migrated[repo] = {}
+      for (const [wtPath, paneList] of Object.entries(byWt)) {
+        if (!Array.isArray(paneList) || paneList.length === 0) continue
+        migrated[repo][wtPath] = flatPanesToTree(paneList)
+      }
+    }
+    c.panes = migrated
+    delete c.paneSplitDirections
   }
 ]
+
+function flatPanesToTree(panes: PersistedPane[]): PersistedPaneNode {
+  if (panes.length === 1) {
+    return {
+      type: 'leaf',
+      id: panes[0].id,
+      tabs: panes[0].tabs,
+      activeTabId: panes[0].activeTabId
+    }
+  }
+  const leaves: PersistedPaneNode[] = panes.map((p) => ({
+    type: 'leaf' as const,
+    id: p.id,
+    tabs: p.tabs,
+    activeTabId: p.activeTabId
+  }))
+  let result: PersistedPaneNode = leaves[leaves.length - 1]
+  for (let i = leaves.length - 2; i >= 0; i--) {
+    result = {
+      type: 'split',
+      id: `split-migrated-${i}`,
+      direction: 'horizontal',
+      children: [leaves[i], result],
+      ratio: 1 / (leaves.length - i)
+    }
+  }
+  return result
+}
 
 export const SCHEMA_VERSION = migrations.length
 

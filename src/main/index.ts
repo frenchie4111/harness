@@ -12,7 +12,8 @@ import { WorktreesFSM } from './worktrees-fsm'
 import { WorktreeDeletionFSM } from './worktree-deletion-fsm'
 import { PanesFSM, stripTransientTabFields } from './panes-fsm'
 import { ActivityDeriver } from './activity-deriver'
-import type { TerminalTab, WorkspacePane } from '../shared/state/terminals'
+import type { TerminalTab, PaneNode, PaneLeaf } from '../shared/state/terminals'
+import { getLeaves, mapLeaves } from '../shared/state/terminals'
 import { listWorktrees, listBranches, continueWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, readWorktreeFile, writeWorktreeFile, getFileDiffSides, type MergeStrategy } from './worktree'
 import { getPRStatus, testToken, starRepo, unstarRepo, isRepoStarred } from './github'
 import { AVAILABLE_EDITORS, DEFAULT_EDITOR_ID, openInEditor } from './editor'
@@ -31,7 +32,7 @@ import {
   DEFAULT_WORKTREE_BASE,
   DEFAULT_MERGE_STRATEGY,
   pruneTerminalHistory,
-  type PersistedPane,
+  type PersistedPaneNode,
   type QuestStep
 } from './persistence'
 import { loadRepoConfig, saveRepoConfig, type RepoConfig } from './repo-config'
@@ -129,44 +130,56 @@ ptyManager.setSendSignal((channel, ...args) => transport.sendSignal(channel, ...
 ptyManager.setPerfMonitor(perfMonitor)
 perfMonitor.start(store, () => ptyManager.getActivePtyCount())
 
-// Persist panes back to config in the existing nested-by-repo shape, so the
-// on-disk format stays compatible with persistence-migrations. Strip
-// transient (in-memory only) tab fields like initialPrompt before saving.
-function persistPanes(panes: Record<string, WorkspacePane[]>): void {
-  const nested: Record<string, Record<string, PersistedPane[]>> = {}
-  for (const [wtPath, paneList] of Object.entries(panes)) {
-    // Find which repo this worktree belongs to. Use the live worktree list
-    // first; fall back to '__orphan__' for entries we can't map.
+// Persist pane trees back to config in the nested-by-repo shape. Walks
+// the tree, strips transient tab fields, and drops leaves with no
+// persistable tabs (diff/file viewer tabs are ephemeral).
+function persistPanes(panes: Record<string, PaneNode>): void {
+  const nested: Record<string, Record<string, PersistedPaneNode>> = {}
+  for (const [wtPath, tree] of Object.entries(panes)) {
     const wt = store.getSnapshot().state.worktrees.list.find((w) => w.path === wtPath)
     const repoRoot = wt?.repoRoot || '__orphan__'
-    const persistedPanes: PersistedPane[] = paneList
-      .map((pane) => {
-        const tabs = pane.tabs
-          .filter((t) => t.type === 'agent' || t.type === 'shell')
-          .map((t) => {
-            const stripped = stripTransientTabFields(t as TerminalTab)
-            return {
-              id: stripped.id,
-              type: stripped.type as 'agent' | 'shell',
-              label: stripped.label,
-              agentKind: stripped.agentKind,
-              sessionId: stripped.sessionId
-            }
-          })
-        if (tabs.length === 0) return null
-        const validActive = tabs.some((t) => t.id === pane.activeTabId)
-          ? pane.activeTabId
-          : tabs[0].id
-        return { id: pane.id, tabs, activeTabId: validActive }
-      })
-      .filter((p): p is NonNullable<typeof p> => p !== null)
-    if (persistedPanes.length > 0) {
+    const persisted = treeToPersistedNode(tree)
+    if (persisted) {
       if (!nested[repoRoot]) nested[repoRoot] = {}
-      nested[repoRoot][wtPath] = persistedPanes
+      nested[repoRoot][wtPath] = persisted
     }
   }
   config.panes = nested
   saveConfig(config)
+}
+
+function treeToPersistedNode(node: PaneNode): PersistedPaneNode | null {
+  if (node.type === 'leaf') {
+    const tabs = node.tabs
+      .filter((t) => t.type === 'agent' || t.type === 'shell')
+      .map((t) => {
+        const stripped = stripTransientTabFields(t as TerminalTab)
+        return {
+          id: stripped.id,
+          type: stripped.type as 'agent' | 'shell',
+          label: stripped.label,
+          agentKind: stripped.agentKind,
+          sessionId: stripped.sessionId
+        }
+      })
+    if (tabs.length === 0) return null
+    const validActive = tabs.some((t) => t.id === node.activeTabId)
+      ? node.activeTabId
+      : tabs[0].id
+    return { type: 'leaf', id: node.id, tabs, activeTabId: validActive }
+  }
+  const left = treeToPersistedNode(node.children[0])
+  const right = treeToPersistedNode(node.children[1])
+  if (!left && !right) return null
+  if (!left) return right
+  if (!right) return left
+  return {
+    type: 'split',
+    id: node.id,
+    direction: node.direction,
+    children: [left, right],
+    ratio: node.ratio
+  }
 }
 
 // IMPORTANT — construction order is load-bearing.
@@ -986,32 +999,13 @@ function registerIpcHandlers(): void {
   transport.onRequest(
     'panes:splitPane',
     (wtPath: string, fromPaneId: string, direction?: 'horizontal' | 'vertical') => {
-      if (direction) {
-        store.dispatch({
-          type: 'terminals/splitDirectionChanged',
-          payload: { worktreePath: wtPath, direction }
-        })
-        config.paneSplitDirections = {
-          ...config.paneSplitDirections,
-          [wtPath]: direction
-        }
-        saveConfig(config)
-      }
-      return panesFSM.splitPane(wtPath, fromPaneId)
+      return panesFSM.splitPane(wtPath, fromPaneId, direction || 'horizontal')
     }
   )
   transport.onRequest(
-    'panes:setSplitDirection',
-    (wtPath: string, direction: 'horizontal' | 'vertical') => {
-      store.dispatch({
-        type: 'terminals/splitDirectionChanged',
-        payload: { worktreePath: wtPath, direction }
-      })
-      config.paneSplitDirections = {
-        ...config.paneSplitDirections,
-        [wtPath]: direction
-      }
-      saveConfig(config)
+    'panes:setRatio',
+    (wtPath: string, splitId: string, ratio: number) => {
+      panesFSM.setRatio(wtPath, splitId, ratio)
       return true
     }
   )

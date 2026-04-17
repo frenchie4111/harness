@@ -6,11 +6,12 @@ import {
   SCHEMA_VERSION,
   type AnyConfig,
   type PersistedPane,
+  type PersistedPaneNode,
   type PersistedTab
 } from './persistence-migrations'
 import type { CostsState } from '../shared/state/costs'
 
-export type { PersistedPane, PersistedTab }
+export type { PersistedPane, PersistedPaneNode, PersistedTab }
 
 export type QuestStep = 'hidden' | 'spawn-second' | 'switch-between' | 'finale' | 'done'
 
@@ -44,8 +45,7 @@ export interface Config {
   // Persisted workspace panes nested by repoRoot → worktreePath → panes[].
   // Two repos can have worktrees with identical paths in theory, and the
   // multi-repo UI shows them together, so we key by repo to keep them distinct.
-  panes?: Record<string, Record<string, PersistedPane[]>>
-  paneSplitDirections?: Record<string, 'horizontal' | 'vertical'>
+  panes?: Record<string, Record<string, PersistedPaneNode>>
   // Legacy flat shape (worktreePath → panes). Migrated into the nested form on
   // first load — entries are grouped under whichever known `repoRoot` is a
   // prefix of the worktree path; unmatched entries land in `__orphan__`.

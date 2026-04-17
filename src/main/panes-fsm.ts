@@ -1,22 +1,28 @@
 import type { Store } from './store'
-import type { AgentKind, TerminalTab, WorkspacePane } from '../shared/state/terminals'
-import type { PersistedPane } from './persistence'
+import type {
+  AgentKind,
+  TerminalTab,
+  PaneNode,
+  PaneLeaf,
+  SplitDirection
+} from '../shared/state/terminals'
+import {
+  getLeaves,
+  findLeaf,
+  findLeafByTabId,
+  hasAnyTabs,
+  mapLeaves,
+  replaceNode,
+  removeLeaf
+} from '../shared/state/terminals'
+import type { PersistedPaneNode } from './persistence'
 import { agentDisplayName, getAgentInfo } from '../shared/agent-registry'
 import { log } from './debug'
 
 interface PanesFSMOptions {
-  /** Persist a flat Record<wtPath, WorkspacePane[]> back to the on-disk
-   * config. PanesFSM calls this on every mutation; the impl should
-   * debounce/coalesce if the cost matters. */
-  persist: (panes: Record<string, WorkspacePane[]>) => void
-  /** Look up the repoRoot for a given worktree path. PanesFSM uses this
-   * to nest persisted panes by repo (existing config layout). */
+  persist: (panes: Record<string, PaneNode>) => void
   getRepoRootForWorktree: (worktreePath: string) => string | undefined
-  /** Look up the most recent on-disk agent session id for a worktree
-   * (used by the boot-time backfill). */
   getLatestClaudeSessionId: (worktreePath: string) => Promise<string | null>
-  /** Return the user's configured default agent kind. Used when creating
-   * the initial agent tab for a new worktree. */
   getDefaultAgentKind?: () => AgentKind
 }
 
@@ -24,9 +30,10 @@ function newPaneId(): string {
   return `pane-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
-/** Strip in-memory-only fields before persisting. initialPrompt and
- * teleportSessionId are one-shot consumption signals — they're meaningful
- * the first time a Claude tab spawns and stale forever after. */
+function newSplitId(): string {
+  return `split-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
 function stripTransientTabFields(tab: TerminalTab): TerminalTab {
   if (!tab.initialPrompt && !tab.teleportSessionId) return tab
   const { initialPrompt: _ip, teleportSessionId: _ts, ...rest } = tab
@@ -35,53 +42,36 @@ function stripTransientTabFields(tab: TerminalTab): TerminalTab {
   return rest
 }
 
-/** Owns the pane/tab state machine. Every operation mutates the store and
- * triggers a persist. Renderer thinness goal: the renderer should never
- * compute new pane state locally — it always calls one of these methods. */
 export class PanesFSM {
   private store: Store
   private opts: PanesFSMOptions
-  /** Persisted panes that haven't been pushed into the store yet. Populated
-   * by restoreFromConfig at boot; drained lazily by ensureInitialized when
-   * a worktree wakes up. This is how sleep-on-boot for merged worktrees
-   * works: the panes exist on disk but aren't in the store, so the renderer
-   * doesn't mount xterm and PtyManager doesn't spawn Claude. They have to
-   * be merged into every persist payload so unrelated commits don't blow
-   * them away from disk. */
-  private sleepingPanes = new Map<string, WorkspacePane[]>()
+  private sleepingPanes = new Map<string, PaneNode>()
 
   constructor(store: Store, opts: PanesFSMOptions) {
     this.store = store
     this.opts = opts
   }
 
-  /** True if a worktree has persisted panes waiting to be woken. */
   hasSleepingPanes(wtPath: string): boolean {
     return this.sleepingPanes.has(wtPath)
   }
 
-  /** Read the current panes for a worktree from the store snapshot. */
-  private getPanes(wtPath: string): WorkspacePane[] {
-    return this.store.getSnapshot().state.terminals.panes[wtPath] || []
+  private getTree(wtPath: string): PaneNode | null {
+    return this.store.getSnapshot().state.terminals.panes[wtPath] || null
   }
 
-  private getAllPanes(): Record<string, WorkspacePane[]> {
+  private getAllPanes(): Record<string, PaneNode> {
     return this.store.getSnapshot().state.terminals.panes
   }
 
-  /** Build the persist payload: live panes from the store, plus any
-   * sleeping panes still on disk. Merging is required so that committing
-   * an awake worktree doesn't accidentally evict sleeping ones from the
-   * persisted config. */
-  private buildPersistPayload(): Record<string, WorkspacePane[]> {
-    const out: Record<string, WorkspacePane[]> = {}
-    for (const [path, panes] of this.sleepingPanes) out[path] = panes
-    for (const [path, panes] of Object.entries(this.getAllPanes())) out[path] = panes
+  private buildPersistPayload(): Record<string, PaneNode> {
+    const out: Record<string, PaneNode> = {}
+    for (const [path, tree] of this.sleepingPanes) out[path] = tree
+    for (const [path, tree] of Object.entries(this.getAllPanes())) out[path] = tree
     return out
   }
 
-  /** Dispatch a per-worktree change and persist all panes. */
-  private commit(wtPath: string, next: WorkspacePane[]): void {
+  private commit(wtPath: string, next: PaneNode): void {
     this.store.dispatch({
       type: 'terminals/panesForWorktreeChanged',
       payload: { worktreePath: wtPath, panes: next }
@@ -89,65 +79,76 @@ export class PanesFSM {
     this.opts.persist(this.buildPersistPayload())
   }
 
-  /** Boot-time restore from on-disk persisted panes. Backfills missing
-   * Claude session ids the same way the renderer used to. Loads panes
-   * into the sleepingPanes buffer rather than the store — they get
-   * promoted to live state lazily by ensureInitialized() when each
-   * worktree wakes up (boot drain for non-merged paths, activation IPC
-   * for merged paths). */
   async restoreFromConfig(
-    persistedNested: Record<string, Record<string, PersistedPane[]>> | undefined
+    persistedNested:
+      | Record<string, Record<string, PersistedPaneNode>>
+      | undefined
   ): Promise<void> {
     if (!persistedNested) return
     this.sleepingPanes.clear()
     for (const byWt of Object.values(persistedNested)) {
-      for (const [wtPath, paneList] of Object.entries(byWt)) {
-        const allTabs = paneList.flatMap((p) => p.tabs)
-        const needsBackfill = allTabs.some(
-          (t) => t.type === 'agent' && !t.sessionId
-        )
-        const latest = needsBackfill
-          ? await this.opts.getLatestClaudeSessionId(wtPath).catch(() => null)
-          : null
-        let claimedLatest = false
-        const panes: WorkspacePane[] = paneList.map((pane) => ({
-          id: pane.id,
-          activeTabId: pane.activeTabId,
-          tabs: pane.tabs.map((t): TerminalTab => {
-            const base: TerminalTab = {
-              id: t.id,
-              type: t.type,
-              label: t.label,
-              agentKind: t.agentKind,
-              sessionId: t.sessionId
-            }
-            if (base.type !== 'agent' || base.sessionId) return base
-            if (latest && !claimedLatest) {
-              claimedLatest = true
-              return { ...base, sessionId: latest }
-            }
-            return { ...base, sessionId: crypto.randomUUID() }
-          })
-        }))
-        this.sleepingPanes.set(wtPath, panes)
+      for (const [wtPath, paneTree] of Object.entries(byWt)) {
+        const tree = await this.hydratePersistedTree(paneTree, wtPath)
+        this.sleepingPanes.set(wtPath, tree)
       }
     }
   }
 
-  /** If a worktree has no panes, create the default Claude+Shell pair.
-   * Renderer calls this on first activation; subsequent activations are
-   * no-ops because the panes already exist. The optional initialPrompt /
-   * teleportSessionId are one-shot signals consumed by XTerminal on
-   * first spawn. */
+  private async hydratePersistedTree(
+    node: PersistedPaneNode,
+    wtPath: string
+  ): Promise<PaneNode> {
+    if (node.type === 'split') {
+      const [left, right] = await Promise.all([
+        this.hydratePersistedTree(node.children[0], wtPath),
+        this.hydratePersistedTree(node.children[1], wtPath)
+      ])
+      return {
+        type: 'split',
+        id: node.id,
+        direction: node.direction,
+        ratio: node.ratio,
+        children: [left, right]
+      }
+    }
+    const allTabs = node.tabs
+    const needsBackfill = allTabs.some((t) => t.type === 'agent' && !t.sessionId)
+    const latest = needsBackfill
+      ? await this.opts.getLatestClaudeSessionId(wtPath).catch(() => null)
+      : null
+    let claimedLatest = false
+    const tabs: TerminalTab[] = allTabs.map((t): TerminalTab => {
+      const base: TerminalTab = {
+        id: t.id,
+        type: t.type,
+        label: t.label,
+        agentKind: t.agentKind,
+        sessionId: t.sessionId
+      }
+      if (base.type !== 'agent' || base.sessionId) return base
+      if (latest && !claimedLatest) {
+        claimedLatest = true
+        return { ...base, sessionId: latest }
+      }
+      return { ...base, sessionId: crypto.randomUUID() }
+    })
+    return {
+      type: 'leaf',
+      id: node.id,
+      tabs,
+      activeTabId: node.activeTabId
+    }
+  }
+
   ensureInitialized(
     wtPath: string,
     opts?: { initialPrompt?: string; teleportSessionId?: string }
-  ): WorkspacePane[] {
-    const existing = this.getPanes(wtPath)
-    if (existing.some((p) => p.tabs.length > 0)) return existing
+  ): PaneNode {
+    const existing = this.getTree(wtPath)
+    if (existing && hasAnyTabs(existing)) return existing
 
     const sleeping = this.sleepingPanes.get(wtPath)
-    if (sleeping && sleeping.some((p) => p.tabs.length > 0)) {
+    if (sleeping && hasAnyTabs(sleeping)) {
       this.sleepingPanes.delete(wtPath)
       this.commit(wtPath, sleeping)
       return sleeping
@@ -169,75 +170,83 @@ export class PanesFSM {
       },
       { id: shellTabId, type: 'shell', label: 'Shell' }
     ]
-    const pane: WorkspacePane = {
+    const pane: PaneLeaf = {
+      type: 'leaf',
       id: newPaneId(),
       tabs,
       activeTabId: agentTabId
     }
-    this.commit(wtPath, [pane])
-    return [pane]
+    this.commit(wtPath, pane)
+    return pane
   }
 
-  /** Append a tab to a target pane, creating the initial pane if none. */
   addTab(wtPath: string, tab: TerminalTab, paneId?: string): void {
-    const list = this.getPanes(wtPath)
-    if (list.length === 0) {
-      const pane: WorkspacePane = { id: newPaneId(), tabs: [tab], activeTabId: tab.id }
-      this.commit(wtPath, [pane])
+    const tree = this.getTree(wtPath)
+    if (!tree) {
+      const pane: PaneLeaf = {
+        type: 'leaf',
+        id: newPaneId(),
+        tabs: [tab],
+        activeTabId: tab.id
+      }
+      this.commit(wtPath, pane)
       return
     }
-    const targetId = paneId || list[0].id
-    const next = list.map((p) =>
-      p.id === targetId ? { ...p, tabs: [...p.tabs, tab], activeTabId: tab.id } : p
-    )
-    this.commit(wtPath, next)
+    const leaves = getLeaves(tree)
+    const targetId = paneId || leaves[0].id
+    const updated = mapLeaves(tree, (leaf) => {
+      if (leaf.id !== targetId) return leaf
+      return { ...leaf, tabs: [...leaf.tabs, tab], activeTabId: tab.id }
+    })
+    this.commit(wtPath, updated)
   }
 
   closeTab(wtPath: string, tabId: string): void {
-    const list = this.getPanes(wtPath)
-    const next: WorkspacePane[] = []
-    for (const pane of list) {
-      if (!pane.tabs.some((t) => t.id === tabId)) {
-        next.push(pane)
-        continue
+    const tree = this.getTree(wtPath)
+    if (!tree) return
+    const leaf = findLeafByTabId(tree, tabId)
+    if (!leaf) return
+    const remaining = leaf.tabs.filter((t) => t.id !== tabId)
+    if (remaining.length === 0) {
+      const collapsed = removeLeaf(tree, leaf.id)
+      if (collapsed === null) {
+        this.commit(wtPath, { ...leaf, tabs: [], activeTabId: '' })
+      } else {
+        this.commit(wtPath, collapsed)
       }
-      const remaining = pane.tabs.filter((t) => t.id !== tabId)
-      if (remaining.length === 0) {
-        // Drop empty panes — unless this is the worktree's only pane,
-        // in which case keep it empty so a fresh Claude tab can spawn.
-        if (list.length === 1) next.push({ ...pane, tabs: [], activeTabId: '' })
-        continue
-      }
-      const newActive =
-        pane.activeTabId === tabId ? remaining[0].id : pane.activeTabId
-      next.push({ ...pane, tabs: remaining, activeTabId: newActive })
+      return
     }
-    this.commit(wtPath, next)
+    const newActive =
+      leaf.activeTabId === tabId ? remaining[0].id : leaf.activeTabId
+    const updated = replaceNode(tree, leaf.id, {
+      ...leaf,
+      tabs: remaining,
+      activeTabId: newActive
+    })
+    this.commit(wtPath, updated)
   }
 
-  /** Replace the tab id (so React remounts XTerminal and spawns a fresh
-   * pty) but keep the existing sessionId so the new Claude process resumes
-   * the same conversation via `--resume`. */
   restartAgentTab(wtPath: string, tabId: string, newId: string): void {
-    const list = this.getPanes(wtPath)
-    const next = list.map((pane) => {
-      if (!pane.tabs.some((t) => t.id === tabId)) return pane
-      const tabs = pane.tabs.map((t) =>
+    const tree = this.getTree(wtPath)
+    if (!tree) return
+    const updated = mapLeaves(tree, (leaf) => {
+      if (!leaf.tabs.some((t) => t.id === tabId)) return leaf
+      const tabs = leaf.tabs.map((t) =>
         t.id === tabId && t.type === 'agent' ? { ...t, id: newId } : t
       )
-      const activeTabId = pane.activeTabId === tabId ? newId : pane.activeTabId
-      return { ...pane, tabs, activeTabId }
+      const activeTabId = leaf.activeTabId === tabId ? newId : leaf.activeTabId
+      return { ...leaf, tabs, activeTabId }
     })
-    this.commit(wtPath, next)
+    this.commit(wtPath, updated)
   }
 
   selectTab(wtPath: string, paneId: string, tabId: string): void {
-    const list = this.getPanes(wtPath)
-    if (!list.some((p) => p.id === paneId)) return
-    const next = list.map((p) =>
-      p.id === paneId ? { ...p, activeTabId: tabId } : p
+    const tree = this.getTree(wtPath)
+    if (!tree || !findLeaf(tree, paneId)) return
+    const updated = mapLeaves(tree, (leaf) =>
+      leaf.id === paneId ? { ...leaf, activeTabId: tabId } : leaf
     )
-    this.commit(wtPath, next)
+    this.commit(wtPath, updated)
   }
 
   reorderTabs(
@@ -247,18 +256,19 @@ export class PanesFSM {
     toId: string
   ): void {
     if (fromId === toId) return
-    const list = this.getPanes(wtPath)
-    const next = list.map((pane) => {
-      if (pane.id !== paneId) return pane
-      const fromIdx = pane.tabs.findIndex((t) => t.id === fromId)
-      const toIdx = pane.tabs.findIndex((t) => t.id === toId)
-      if (fromIdx === -1 || toIdx === -1) return pane
-      const tabs = pane.tabs.slice()
+    const tree = this.getTree(wtPath)
+    if (!tree) return
+    const updated = mapLeaves(tree, (leaf) => {
+      if (leaf.id !== paneId) return leaf
+      const fromIdx = leaf.tabs.findIndex((t) => t.id === fromId)
+      const toIdx = leaf.tabs.findIndex((t) => t.id === toId)
+      if (fromIdx === -1 || toIdx === -1) return leaf
+      const tabs = leaf.tabs.slice()
       const [moved] = tabs.splice(fromIdx, 1)
       tabs.splice(toIdx, 0, moved)
-      return { ...pane, tabs }
+      return { ...leaf, tabs }
     })
-    this.commit(wtPath, next)
+    this.commit(wtPath, updated)
   }
 
   moveTabToPane(
@@ -267,40 +277,62 @@ export class PanesFSM {
     toPaneId: string,
     toIndex?: number
   ): void {
-    const list = this.getPanes(wtPath)
-    let moved: TerminalTab | null = null
-    const stripped = list.map((pane) => {
-      const idx = pane.tabs.findIndex((t) => t.id === tabId)
-      if (idx === -1) return pane
-      moved = pane.tabs[idx]
-      const tabs = pane.tabs.slice()
-      tabs.splice(idx, 1)
-      const activeTabId =
-        pane.activeTabId === tabId ? tabs[0]?.id || '' : pane.activeTabId
-      return { ...pane, tabs, activeTabId }
-    })
-    if (!moved) return
-    // Drop now-empty source panes unless dropping would leave nothing.
-    const filtered =
-      stripped.length > 1
-        ? stripped.filter((p) => p.tabs.length > 0 || p.id === toPaneId)
-        : stripped
-    const next = filtered.map((pane) => {
-      if (pane.id !== toPaneId) return pane
-      const tabs = pane.tabs.slice()
-      const insertAt = toIndex ?? tabs.length
-      tabs.splice(insertAt, 0, moved!)
-      return { ...pane, tabs, activeTabId: moved!.id }
-    })
-    this.commit(wtPath, next)
+    const tree = this.getTree(wtPath)
+    if (!tree) return
+    const sourceLeaf = findLeafByTabId(tree, tabId)
+    if (!sourceLeaf) return
+    const moved = sourceLeaf.tabs.find((t) => t.id === tabId)!
+    const sourceTabs = sourceLeaf.tabs.filter((t) => t.id !== tabId)
+    const sourceActive =
+      sourceLeaf.activeTabId === tabId
+        ? sourceTabs[0]?.id || ''
+        : sourceLeaf.activeTabId
+
+    let updated: PaneNode
+    if (sourceTabs.length === 0 && sourceLeaf.id !== toPaneId) {
+      const collapsed = removeLeaf(tree, sourceLeaf.id)
+      if (!collapsed) {
+        updated = mapLeaves(tree, (leaf) => {
+          if (leaf.id !== toPaneId) return leaf
+          const tabs = leaf.tabs.slice()
+          tabs.splice(toIndex ?? tabs.length, 0, moved)
+          return { ...leaf, tabs, activeTabId: moved.id }
+        })
+      } else {
+        updated = mapLeaves(collapsed, (leaf) => {
+          if (leaf.id !== toPaneId) return leaf
+          const tabs = leaf.tabs.slice()
+          tabs.splice(toIndex ?? tabs.length, 0, moved)
+          return { ...leaf, tabs, activeTabId: moved.id }
+        })
+      }
+    } else {
+      updated = mapLeaves(tree, (leaf) => {
+        if (leaf.id === sourceLeaf.id && leaf.id !== toPaneId) {
+          return { ...leaf, tabs: sourceTabs, activeTabId: sourceActive }
+        }
+        if (leaf.id === toPaneId) {
+          const baseTabs =
+            leaf.id === sourceLeaf.id ? sourceTabs : leaf.tabs.slice()
+          baseTabs.splice(toIndex ?? baseTabs.length, 0, moved)
+          return { ...leaf, tabs: baseTabs, activeTabId: moved.id }
+        }
+        return leaf
+      })
+    }
+    this.commit(wtPath, updated)
   }
 
-  /** Split: create a new pane to the right of `fromPaneId`. The new pane
-   * mirrors the source pane's active tab type, except claude → shell. */
-  splitPane(wtPath: string, fromPaneId: string): WorkspacePane | null {
-    const list = this.getPanes(wtPath)
-    const source = list.find((p) => p.id === fromPaneId)
-    const sourceActive = source?.tabs.find((t) => t.id === source.activeTabId)
+  splitPane(
+    wtPath: string,
+    fromPaneId: string,
+    direction: SplitDirection = 'horizontal'
+  ): PaneLeaf | null {
+    const tree = this.getTree(wtPath)
+    if (!tree) return null
+    const source = findLeaf(tree, fromPaneId)
+    if (!source) return null
+    const sourceActive = source.tabs.find((t) => t.id === source.activeTabId)
     const sourceType = sourceActive?.type
     const shouldShell =
       !sourceType || sourceType === 'agent' || sourceType === 'shell'
@@ -315,17 +347,32 @@ export class PanesFSM {
       }
     }
 
-    const newPane: WorkspacePane = {
+    const newLeaf: PaneLeaf = {
+      type: 'leaf',
       id: newPaneId(),
       tabs: [tab],
       activeTabId: tab.id
     }
-    const idx = list.findIndex((p) => p.id === fromPaneId)
-    const insertAt = idx === -1 ? list.length : idx + 1
-    const next = list.slice()
-    next.splice(insertAt, 0, newPane)
-    this.commit(wtPath, next)
-    return newPane
+
+    const splitNode: PaneNode = {
+      type: 'split',
+      id: newSplitId(),
+      direction,
+      children: [source, newLeaf],
+      ratio: 0.5
+    }
+
+    const updated = replaceNode(tree, fromPaneId, splitNode)
+    this.commit(wtPath, updated)
+    return newLeaf
+  }
+
+  setRatio(wtPath: string, splitId: string, ratio: number): void {
+    this.store.dispatch({
+      type: 'terminals/paneRatioChanged',
+      payload: { worktreePath: wtPath, splitId, ratio }
+    })
+    this.opts.persist(this.buildPersistPayload())
   }
 
   clearForWorktree(wtPath: string): void {
