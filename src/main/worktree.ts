@@ -492,6 +492,53 @@ export async function getCommitDiff(
   }
 }
 
+export async function getCommitChangedFiles(
+  worktreePath: string,
+  hash: string
+): Promise<ChangedFile[]> {
+  if (!/^[0-9a-fA-F]{4,64}$/.test(hash)) return []
+  try {
+    const [{ stdout: nameStatus }, counts] = await Promise.all([
+      execFileAsync('git', ['diff-tree', '--no-commit-id', '-r', '--name-status', hash], {
+        cwd: worktreePath
+      }),
+      numstatMap(worktreePath, [`${hash}^`, hash])
+    ])
+    const out: ChangedFile[] = []
+    for (const line of nameStatus.split('\n')) {
+      if (!line) continue
+      const parts = line.split('\t')
+      const code = parts[0]
+      const filePath = parts[parts.length - 1]
+      const file: ChangedFile = { path: filePath, status: mapNameStatus(code), staged: false }
+      applyCounts(file, counts.get(filePath))
+      out.push(file)
+    }
+    return out
+  } catch {
+    return []
+  }
+}
+
+export async function getCommitFileDiffSides(
+  worktreePath: string,
+  hash: string,
+  filePath: string
+): Promise<FileDiffSides> {
+  if (!/^[0-9a-fA-F]{4,64}$/.test(hash)) {
+    return { original: '', modified: '', originalExists: false, modifiedExists: false, modifiedBinary: false }
+  }
+  const original = await getFileAtRef(worktreePath, `${hash}^`, filePath)
+  const modified = await getFileAtRef(worktreePath, hash, filePath)
+  return {
+    original: original ?? '',
+    modified: modified ?? '',
+    originalExists: original != null,
+    modifiedExists: modified != null,
+    modifiedBinary: false
+  }
+}
+
 /** Get the diff for a single file in a worktree */
 export async function getFileDiff(
   worktreePath: string,

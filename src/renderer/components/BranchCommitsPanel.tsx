@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { RefreshCw } from 'lucide-react'
+import { RefreshCw, ScanSearch } from 'lucide-react'
 import type { BranchCommit } from '../types'
 import { Tooltip } from './Tooltip'
 import { RightPanel } from './RightPanel'
@@ -7,9 +7,10 @@ import { RightPanel } from './RightPanel'
 interface BranchCommitsPanelProps {
   worktreePath: string | null
   onOpenCommit?: (hash: string, shortHash: string, subject: string) => void
+  onOpenCommitReview?: (hash: string, shortHash: string, subject: string) => void
 }
 
-export function BranchCommitsPanel({ worktreePath, onOpenCommit }: BranchCommitsPanelProps): JSX.Element | null {
+export function BranchCommitsPanel({ worktreePath, onOpenCommit, onOpenCommitReview }: BranchCommitsPanelProps): JSX.Element | null {
   const [commits, setCommits] = useState<BranchCommit[]>([])
   const [hasLoaded, setHasLoaded] = useState(false)
 
@@ -85,6 +86,19 @@ export function BranchCommitsPanel({ worktreePath, onOpenCommit }: BranchCommits
                 </div>
                 <span className="shrink-0 font-mono text-[10px] text-faint">{c.shortHash}</span>
                 <span className="truncate min-w-0 flex-1 text-fg">{c.subject}</span>
+                {onOpenCommitReview && (
+                  <Tooltip label="Review commit" side="left">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onOpenCommitReview(c.hash, c.shortHash, c.subject)
+                      }}
+                      className="shrink-0 opacity-0 group-hover:opacity-100 text-faint hover:text-info transition-all cursor-pointer"
+                    >
+                      <ScanSearch size={13} />
+                    </button>
+                  </Tooltip>
+                )}
               </div>
             </Tooltip>
           )

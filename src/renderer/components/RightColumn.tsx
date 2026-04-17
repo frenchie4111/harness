@@ -30,6 +30,7 @@ interface RightColumnProps {
   onMerged: () => void
   onRemoveWorktree: (path: string) => void
   onOpenCommit: BranchCommitsPanelProps['onOpenCommit']
+  onOpenCommitReview: (hash: string, shortHash: string, subject: string) => void
   onOpenDiff: ChangedFilesPanelProps['onOpenDiff']
   onOpenFile: AllFilesPanelProps['onOpenFile']
   onSendToAgent: (worktreePath: string, text: string) => void
@@ -51,6 +52,7 @@ export function RightColumn({
   onMerged,
   onRemoveWorktree,
   onOpenCommit,
+  onOpenCommitReview,
   onOpenDiff,
   onOpenFile,
   onSendToAgent,
@@ -109,6 +111,7 @@ export function RightColumn({
             key="commits"
             worktreePath={activeWorktreeId}
             onOpenCommit={onOpenCommit}
+            onOpenCommitReview={onOpenCommitReview}
           />
         )
       case 'changedFiles':

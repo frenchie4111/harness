@@ -11,6 +11,7 @@ interface ReviewDiffPaneProps {
   worktreePath: string
   file: ChangedFile | null
   mode: 'working' | 'branch'
+  commitHash?: string
   reviewed: boolean
   comments: ReviewComment[]
   onToggleReviewed: () => void
@@ -189,6 +190,7 @@ export function ReviewDiffPane({
   worktreePath,
   file,
   mode,
+  commitHash,
   reviewed,
   comments,
   onToggleReviewed,
@@ -210,8 +212,10 @@ export function ReviewDiffPane({
     let cancelled = false
     setLoading(true)
     setCommentLine(null)
-    window.api
-      .getFileDiffSides(worktreePath, file.path, file.staged, mode)
+    const promise = commitHash
+      ? window.api.getCommitFileDiffSides(worktreePath, commitHash, file.path)
+      : window.api.getFileDiffSides(worktreePath, file.path, file.staged, mode)
+    promise
       .then((result) => {
         if (!cancelled) setSides(result)
       })
@@ -224,7 +228,7 @@ export function ReviewDiffPane({
     return () => {
       cancelled = true
     }
-  }, [worktreePath, file?.path, file?.staged, mode])
+  }, [worktreePath, file?.path, file?.staged, mode, commitHash])
 
   const clearViewZones = useCallback(() => {
     const editor = editorRef.current

@@ -1,10 +1,12 @@
-import { ArrowLeft, MessageSquare, Send, Clipboard, Check } from 'lucide-react'
+import { ArrowLeft, MessageSquare, Send, Clipboard, Check, GitCommitHorizontal } from 'lucide-react'
 import { Tooltip } from './Tooltip'
 import { repoNameColor } from './RepoIcon'
+import type { ReviewCommit } from './ReviewScreen'
 
 interface ReviewSummaryBarProps {
   branchName: string
   repoLabel: string
+  commit?: ReviewCommit
   fileCount: number
   additions: number
   deletions: number
@@ -18,6 +20,7 @@ interface ReviewSummaryBarProps {
 export function ReviewSummaryBar({
   branchName,
   repoLabel,
+  commit,
   fileCount,
   additions,
   deletions,
@@ -42,10 +45,18 @@ export function ReviewSummaryBar({
           </button>
         </Tooltip>
 
-        <div className="flex items-baseline gap-1.5 text-xs truncate">
+        <div className="flex items-baseline gap-1.5 text-xs truncate min-w-0">
           <span className={`font-medium ${repoNameColor(repoLabel)}`}>{repoLabel}</span>
           <span className="text-faint">/</span>
           <span className="text-fg-bright font-medium">{branchName}</span>
+          {commit && (
+            <>
+              <span className="text-faint">/</span>
+              <GitCommitHorizontal size={12} className="text-info shrink-0 relative top-[1px]" />
+              <span className="font-mono text-info">{commit.shortHash}</span>
+              <span className="text-dim truncate">{commit.subject}</span>
+            </>
+          )}
         </div>
 
         <div className="flex items-center gap-2 text-[11px] text-faint">

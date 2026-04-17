@@ -179,6 +179,7 @@ export default function App(): JSX.Element {
   const [showCommandCenter, setShowCommandCenter] = useState(false)
   const [showReview, setShowReview] = useState(false)
   const [reviewMode, setReviewMode] = useState<'working' | 'branch'>('branch')
+  const [reviewCommit, setReviewCommit] = useState<{ hash: string; shortHash: string; subject: string } | undefined>(undefined)
   const [showCommandPalette, setShowCommandPalette] = useState(false)
   const [commandPaletteMode, setCommandPaletteMode] = useState<'root' | 'files'>('root')
   const [showPerfMonitor, setShowPerfMonitor] = useState(false)
@@ -1036,7 +1037,11 @@ const setQuestStep = useCallback((next: QuestStep) => {
                 branchName={reviewWt?.branch ?? 'unknown'}
                 repoLabel={reviewWt ? (reviewWt.repoRoot.split('/').pop() || reviewWt.repoRoot) : ''}
                 mode={reviewMode}
-                onClose={() => setShowReview(false)}
+                commit={reviewCommit}
+                onClose={() => {
+                  setShowReview(false)
+                  setReviewCommit(undefined)
+                }}
                 onSendToAgent={handleSendToAgent}
               />
             </div>
@@ -1097,6 +1102,12 @@ const setQuestStep = useCallback((next: QuestStep) => {
             onSendToAgent={handleSendToAgent}
             onOpenReview={() => {
               setReviewMode('branch')
+              setReviewCommit(undefined)
+              setShowReview(true)
+            }}
+            onOpenCommitReview={(hash, shortHash, subject) => {
+              setReviewMode('branch')
+              setReviewCommit({ hash, shortHash, subject })
               setShowReview(true)
             }}
             onCollapse={() => setRightColumnHidden(true)}

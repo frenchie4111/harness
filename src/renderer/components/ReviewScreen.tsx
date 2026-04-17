@@ -5,11 +5,18 @@ import { ReviewSummaryBar } from './ReviewSummaryBar'
 import { ReviewFileTree } from './ReviewFileTree'
 import { ReviewDiffPane } from './ReviewDiffPane'
 
+export interface ReviewCommit {
+  hash: string
+  shortHash: string
+  subject: string
+}
+
 interface ReviewScreenProps {
   worktreePath: string
   branchName: string
   repoLabel: string
   mode: 'working' | 'branch'
+  commit?: ReviewCommit
   onClose: () => void
   onSendToAgent: (worktreePath: string, text: string) => void
 }
@@ -21,6 +28,7 @@ export function ReviewScreen({
   branchName,
   repoLabel,
   mode,
+  commit,
   onClose,
   onSendToAgent
 }: ReviewScreenProps): JSX.Element {
@@ -34,7 +42,9 @@ export function ReviewScreen({
     let cancelled = false
     const load = async (): Promise<void> => {
       try {
-        const result = await window.api.getChangedFiles(worktreePath, mode)
+        const result = commit
+          ? await window.api.getCommitChangedFiles(worktreePath, commit.hash)
+          : await window.api.getChangedFiles(worktreePath, mode)
         if (!cancelled) {
           setFiles(result)
           if (!selectedFile && result.length > 0) {
@@ -49,7 +59,7 @@ export function ReviewScreen({
     return () => {
       cancelled = true
     }
-  }, [worktreePath, mode])
+  }, [worktreePath, mode, commit?.hash])
 
   useEffect(() => {
     const handler = (e: KeyboardEvent): void => {
@@ -159,6 +169,7 @@ export function ReviewScreen({
       <ReviewSummaryBar
         branchName={branchName}
         repoLabel={repoLabel}
+        commit={commit}
         fileCount={files.length}
         additions={totalAdditions}
         deletions={totalDeletions}
@@ -190,6 +201,7 @@ export function ReviewScreen({
             worktreePath={worktreePath}
             file={selectedFileObj}
             mode={mode}
+            commitHash={commit?.hash}
             reviewed={selectedFile ? reviewedFiles.has(selectedFile) : false}
             comments={fileComments}
             onToggleReviewed={() => {
