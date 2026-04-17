@@ -216,8 +216,12 @@ export class PanesFSM {
       }
       return
     }
-    const newActive =
-      leaf.activeTabId === tabId ? remaining[0].id : leaf.activeTabId
+    let newActive = leaf.activeTabId
+    if (leaf.activeTabId === tabId) {
+      const closedIdx = leaf.tabs.findIndex((t) => t.id === tabId)
+      const targetIdx = Math.max(0, Math.min(closedIdx - 1, remaining.length - 1))
+      newActive = remaining[targetIdx].id
+    }
     const updated = replaceNode(tree, leaf.id, {
       ...leaf,
       tabs: remaining,
