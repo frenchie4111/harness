@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { RightPanel } from './RightPanel'
 import { useCosts, usePanes } from '../store'
+import { getLeaves } from '../../shared/state/terminals'
 import {
   totalForSession,
   addBreakdown,
@@ -95,11 +96,13 @@ export function CostPanel({ worktreePath }: CostPanelProps): JSX.Element | null 
     let hasData = false
 
     if (worktreePath) {
-      const worktreePanes = panes[worktreePath] ?? []
+      const tree = panes[worktreePath]
       const terminalIds = new Set<string>()
-      for (const pane of worktreePanes) {
-        for (const tab of pane.tabs) {
-          if (tab.type === 'agent') terminalIds.add(tab.id)
+      if (tree) {
+        for (const leaf of getLeaves(tree)) {
+          for (const tab of leaf.tabs) {
+            if (tab.type === 'agent') terminalIds.add(tab.id)
+          }
         }
       }
       // Dedup by transcriptPath so a tab that was restarted with

@@ -103,7 +103,20 @@ export type {
   PendingTool,
   ShellActivity,
   TerminalTab,
-  WorkspacePane
+  WorkspacePane,
+  PaneNode,
+  PaneLeaf,
+  PaneSplit,
+  SplitDirection
+} from './terminals'
+export {
+  getLeaves,
+  findLeaf,
+  findLeafByTabId,
+  hasAnyTabs,
+  mapLeaves,
+  replaceNode,
+  removeLeaf
 } from './terminals'
 
 export interface AppState {

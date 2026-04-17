@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react'
-import { X, Plus, Sparkles, Code2, SplitSquareHorizontal, Loader2 } from 'lucide-react'
+import { X, SquareTerminal, Sparkles, Code2, SplitSquareHorizontal, SplitSquareVertical, Loader2 } from 'lucide-react'
 import {
   SortableContext,
   horizontalListSortingStrategy,
@@ -27,7 +27,8 @@ interface TerminalPanelProps {
   onAddAgentTab: (agentKind?: AgentKind) => void
   defaultAgent: AgentKind
   onCloseTab: (tabId: string) => void
-  onSplit: () => void
+  onSplitRight: () => void
+  onSplitDown: () => void
 }
 
 const TAB_STATUS_DOT: Record<PtyStatus, string> = {
@@ -128,7 +129,8 @@ export function TerminalPanel({
   onAddAgentTab,
   defaultAgent,
   onCloseTab,
-  onSplit
+  onSplitRight,
+  onSplitDown
 }: TerminalPanelProps): JSX.Element {
   // Droppable target for the pane itself — lets users drop a tab onto an
   // empty pane or past the last tab.
@@ -192,15 +194,23 @@ export function TerminalPanel({
               onClick={onAddTab}
               className="no-drag shrink-0 px-2 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"
             >
-              <Plus size={12} />
+              <SquareTerminal size={12} />
             </button>
           </Tooltip>
           <Tooltip label="Split pane right" action="splitPaneRight">
             <button
-              onClick={onSplit}
+              onClick={onSplitRight}
               className="no-drag shrink-0 px-2 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"
             >
               <SplitSquareHorizontal size={12} />
+            </button>
+          </Tooltip>
+          <Tooltip label="Split pane down" action="splitPaneDown">
+            <button
+              onClick={onSplitDown}
+              className="no-drag shrink-0 px-2 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"
+            >
+              <SplitSquareVertical size={12} />
             </button>
           </Tooltip>
         </div>

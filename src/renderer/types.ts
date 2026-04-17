@@ -33,10 +33,14 @@ import type {
   AgentKind,
   PtyStatus,
   PendingTool,
+  SplitDirection,
   TerminalTab,
-  WorkspacePane
+  WorkspacePane,
+  PaneNode,
+  PaneLeaf,
+  PaneSplit
 } from '../shared/state/terminals'
-export type { AgentKind, PtyStatus, PendingTool, TerminalTab, WorkspacePane }
+export type { AgentKind, PtyStatus, PendingTool, SplitDirection, TerminalTab, WorkspacePane, PaneNode, PaneLeaf, PaneSplit }
 
 export interface PersistedTab {
   id: string
@@ -245,7 +249,16 @@ export interface ElectronAPI {
     toPaneId: string,
     toIndex?: number
   ): Promise<boolean>
-  panesSplitPane(wtPath: string, fromPaneId: string): Promise<WorkspacePane | null>
+  panesSplitPane(
+    wtPath: string,
+    fromPaneId: string,
+    direction?: 'horizontal' | 'vertical'
+  ): Promise<PaneLeaf | null>
+  panesSetRatio(
+    wtPath: string,
+    splitId: string,
+    ratio: number
+  ): Promise<boolean>
   panesClearForWorktree(wtPath: string): Promise<boolean>
   panesEnsureInitialized(wtPath: string): Promise<boolean>
   getTerminalHistory(id: string): Promise<string>

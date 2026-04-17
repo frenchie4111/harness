@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from 'react'
-import type { Worktree, PRStatus, WorkspacePane, TerminalTab } from '../types'
+import type { Worktree, PRStatus, PaneNode, TerminalTab } from '../types'
+import { getLeaves, findLeaf } from '../../shared/state/terminals'
 import { resolveHotkeys, type Action, type HotkeyBinding } from '../hotkeys'
 import { useHotkeys } from './useHotkeys'
 import { groupWorktrees, getGroupKey, type GroupKey } from '../worktree-sort'
@@ -17,7 +18,7 @@ interface UseHotkeyHandlersArgs {
   isGroupCollapsed: (scope: string, key: GroupKey) => boolean
   activeWorktreeId: string | null
   setActiveWorktreeId: React.Dispatch<React.SetStateAction<string | null>>
-  panes: Record<string, WorkspacePane[]>
+  panes: Record<string, PaneNode>
   activePaneId: Record<string, string>
   terminalTabs: Record<string, TerminalTab[]>
   activeTabId: Record<string, string>
@@ -36,7 +37,7 @@ interface UseHotkeyHandlersArgs {
   handleAddTerminalTab: (worktreePath: string, paneId?: string) => void
   handleCloseTab: (worktreePath: string, tabId: string) => void
   handleSelectTab: (worktreePath: string, paneId: string, tabId: string) => void
-  handleSplitPane: (worktreePath: string, fromPaneId: string) => void
+  handleSplitPane: (worktreePath: string, fromPaneId: string, direction?: 'horizontal' | 'vertical') => void
   handleRefreshWorktrees: () => void
 }
 
@@ -164,14 +165,16 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
   const cycleTab = useCallback(
     (delta: number) => {
       if (!activeWorktreeId) return
-      const list = panes[activeWorktreeId] || []
-      if (list.length === 0) return
-      const paneId = activePaneId[activeWorktreeId] || list[0].id
-      const pane = list.find((p) => p.id === paneId) || list[0]
-      if (pane.tabs.length === 0) return
-      const currentIdx = pane.tabs.findIndex((t) => t.id === pane.activeTabId)
-      const nextIdx = (currentIdx + delta + pane.tabs.length) % pane.tabs.length
-      handleSelectTab(activeWorktreeId, pane.id, pane.tabs[nextIdx].id)
+      const tree = panes[activeWorktreeId]
+      if (!tree) return
+      const leaves = getLeaves(tree)
+      if (leaves.length === 0) return
+      const paneId = activePaneId[activeWorktreeId] || leaves[0].id
+      const leaf = findLeaf(tree, paneId) || leaves[0]
+      if (leaf.tabs.length === 0) return
+      const currentIdx = leaf.tabs.findIndex((t) => t.id === leaf.activeTabId)
+      const nextIdx = (currentIdx + delta + leaf.tabs.length) % leaf.tabs.length
+      handleSelectTab(activeWorktreeId, leaf.id, leaf.tabs[nextIdx].id)
     },
     [activeWorktreeId, panes, activePaneId, handleSelectTab]
   )
@@ -194,11 +197,16 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       },
       closeTab: () => {
         if (!activeWorktreeId) return
-        const tabs = terminalTabs[activeWorktreeId] || []
-        const currentTabId = activeTabId[activeWorktreeId]
-        if (tabs.length > 1 && currentTabId) {
-          handleCloseTab(activeWorktreeId, currentTabId)
-        }
+        const tree = panes[activeWorktreeId]
+        if (!tree) return
+        const leaves = getLeaves(tree)
+        const focusedId = activePaneId[activeWorktreeId] || leaves[0]?.id
+        const leaf = findLeaf(tree, focusedId) || leaves[0]
+        if (!leaf) return
+        const currentTabId = leaf.activeTabId
+        if (!currentTabId) return
+        if (leaf.tabs.length === 1 && leaves.length === 1) return
+        handleCloseTab(activeWorktreeId, currentTabId)
       },
       nextTab: () => cycleTab(1),
       prevTab: () => cycleTab(-1),
@@ -233,10 +241,21 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       },
       splitPaneRight: () => {
         if (!activeWorktreeId) return
-        const list = panes[activeWorktreeId] || []
-        if (list.length === 0) return
-        const fromPaneId = activePaneId[activeWorktreeId] || list[list.length - 1].id
-        handleSplitPane(activeWorktreeId, fromPaneId)
+        const tree = panes[activeWorktreeId]
+        if (!tree) return
+        const leaves = getLeaves(tree)
+        if (leaves.length === 0) return
+        const fromPaneId = activePaneId[activeWorktreeId] || leaves[leaves.length - 1].id
+        handleSplitPane(activeWorktreeId, fromPaneId, 'horizontal')
+      },
+      splitPaneDown: () => {
+        if (!activeWorktreeId) return
+        const tree = panes[activeWorktreeId]
+        if (!tree) return
+        const leaves = getLeaves(tree)
+        if (leaves.length === 0) return
+        const fromPaneId = activePaneId[activeWorktreeId] || leaves[leaves.length - 1].id
+        handleSplitPane(activeWorktreeId, fromPaneId, 'vertical')
       },
       togglePerfMonitor: () => setShowPerfMonitor((v) => !v),
       hotkeyCheatsheet: () => setShowHotkeyCheatsheet((v) => !v),

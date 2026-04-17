@@ -5,6 +5,7 @@ import {
   SCHEMA_VERSION,
   type AnyConfig,
   type PersistedPane,
+  type PersistedPaneNode,
   type PersistedTab
 } from './persistence-migrations'
 
@@ -300,16 +301,15 @@ describe('runMigrations (end-to-end)', () => {
     expect(c.repoRoot).toBeUndefined()
     expect(c.repoRoots).toEqual(['/Users/mike/projects/harness'])
 
-    const nested = c.panes as Record<string, Record<string, PersistedPane[]>>
+    const nested = c.panes as Record<string, Record<string, PersistedPaneNode>>
     expect(Object.keys(nested)).toEqual(['/Users/mike/projects/harness'])
     const repo = nested['/Users/mike/projects/harness']
     expect(Object.keys(repo).sort()).toEqual([
       '/Users/mike/projects/harness',
       '/Users/mike/projects/harness-worktrees/feature'
     ])
-    expect(repo['/Users/mike/projects/harness-worktrees/feature'][0].activeTabId).toBe(
-      'wt-t2'
-    )
+    const featureTree = repo['/Users/mike/projects/harness-worktrees/feature'] as PersistedPaneNode
+    expect(featureTree.type).toBe('leaf')
     expect(nested['__orphan__']).toBeUndefined()
   })
 
@@ -347,8 +347,8 @@ describe('runMigrations (end-to-end)', () => {
     }
     runMigrations(c)
     expect(c.repoRoot).toBe('/should/stay/because/v0/did/not/rerun')
-    // But v2→v3 did run, so panes are now nested.
-    const nested = c.panes as Record<string, Record<string, PersistedPane[]>>
+    // v2→v3 nested by repo, v4→v5 converted to tree
+    const nested = c.panes as Record<string, Record<string, PersistedPaneNode>>
     expect(nested['/a/repo1']).toBeDefined()
     expect(Array.isArray(nested['/a/repo1'])).toBe(false)
   })
@@ -359,7 +359,7 @@ describe('runMigrations (end-to-end)', () => {
       repoRoots: ['/a/repo1'],
       panes: {
         '/a/repo1': {
-          '/a/repo1': [pane('p1', [tab('t1')])]
+          '/a/repo1': { type: 'leaf', id: 'p1', tabs: [tab('t1')], activeTabId: 't1' }
         }
       }
     }
