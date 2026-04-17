@@ -658,7 +658,7 @@ async function getLocalBaseBranch(repoRoot: string): Promise<string> {
 }
 
 /** Get the current branch of a worktree, or empty string if detached. */
-async function getCurrentBranch(worktreePath: string): Promise<string> {
+export async function getCurrentBranch(worktreePath: string): Promise<string> {
   try {
     const { stdout } = await execFileAsync('git', ['symbolic-ref', '--short', 'HEAD'], {
       cwd: worktreePath

@@ -108,7 +108,7 @@ function MergeLocallyBody({
     try {
       const [status, preview] = await Promise.all([
         window.api.getMainWorktreeStatus(worktree.repoRoot),
-        window.api.previewMergeConflicts(worktree.repoRoot, worktree.branch).catch(() => null)
+        window.api.previewMergeConflicts(worktree.repoRoot, worktree.branch, worktree.path).catch(() => null)
       ])
       setMainStatus(status)
       setConflictPreview(preview)
@@ -166,7 +166,7 @@ function MergeLocallyBody({
     try {
       // Persist strategy on use too, in case the user never opened the dropdown.
       void window.api.setMergeStrategy(strategy)
-      const result = await window.api.mergeWorktreeLocally(worktree.repoRoot, worktree.branch, strategy)
+      const result = await window.api.mergeWorktreeLocally(worktree.repoRoot, worktree.branch, strategy, worktree.path)
       setSuccess(`Merged into ${result.baseBranch}`)
       if (onMerged) await onMerged()
     } catch (err) {
