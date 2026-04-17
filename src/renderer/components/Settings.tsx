@@ -61,24 +61,32 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
     'agent-claude': null,
     'agent-codex': null
   })
+  const programmaticScrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const suppressScrollTracking = useCallback(() => {
+    if (programmaticScrollTimer.current) clearTimeout(programmaticScrollTimer.current)
+    programmaticScrollTimer.current = setTimeout(() => { programmaticScrollTimer.current = null }, 500)
+  }, [])
 
   const scrollToSection = useCallback((id: SectionId) => {
     setActiveSection(id)
     const section = SECTIONS.find((s) => s.id === id)
     setActiveSubSection(section?.children?.[0]?.id ?? null)
+    suppressScrollTracking()
     const el = sectionRefs.current[id]
     if (el && scrollRef.current) {
       scrollRef.current.scrollTo({ top: el.offsetTop - 24, behavior: 'smooth' })
     }
-  }, [])
+  }, [suppressScrollTracking])
 
   const scrollToSubSection = useCallback((id: SubSectionId) => {
     setActiveSubSection(id)
+    suppressScrollTracking()
     const el = subSectionRefs.current[id]
     if (el && scrollRef.current) {
       scrollRef.current.scrollTo({ top: el.offsetTop - 24, behavior: 'smooth' })
     }
-  }, [])
+  }, [suppressScrollTracking])
 
   // Honor `initialSection` once the section refs are wired up.
   useEffect(() => {
@@ -95,6 +103,7 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
     if (!container) return
 
     const onScroll = (): void => {
+      if (programmaticScrollTimer.current) return
       const scrollTop = container.scrollTop
       let current: SectionId = 'appearance'
       for (const section of SECTIONS) {
@@ -654,7 +663,7 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
               <div key={section.id}>
                 <button
                   onClick={() => scrollToSection(section.id)}
-                  className={className}
+                  className={`w-full ${className}`}
                 >
                   <Icon size={14} className="shrink-0" />
                   <span>{section.label}</span>
