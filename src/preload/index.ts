@@ -85,13 +85,14 @@ contextBridge.exposeInMainWorld('api', {
     req('worktree:commitDiff', worktreePath, hash),
   getMainWorktreeStatus: (repoRoot: string) => req('worktree:mainStatus', repoRoot),
   prepareMainForMerge: (repoRoot: string) => req('worktree:prepareMain', repoRoot),
-  previewMergeConflicts: (repoRoot: string, sourceBranch: string) =>
-    req('worktree:previewMerge', repoRoot, sourceBranch),
+  previewMergeConflicts: (repoRoot: string, sourceBranch: string, worktreePath?: string) =>
+    req('worktree:previewMerge', repoRoot, sourceBranch, worktreePath),
   mergeWorktreeLocally: (
     repoRoot: string,
     sourceBranch: string,
-    strategy: 'squash' | 'merge-commit' | 'fast-forward'
-  ) => req('worktree:mergeLocal', repoRoot, sourceBranch, strategy),
+    strategy: 'squash' | 'merge-commit' | 'fast-forward',
+    worktreePath?: string
+  ) => req('worktree:mergeLocal', repoRoot, sourceBranch, strategy, worktreePath),
 
   // PR status lives in the main-process store (see src/main/pr-poller.ts).
   // Consumers read via useSyncExternalStore in the renderer store; these

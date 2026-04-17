@@ -158,11 +158,12 @@ export interface ElectronAPI {
 
   getMainWorktreeStatus(repoRoot: string): Promise<MainWorktreeStatus>
   prepareMainForMerge(repoRoot: string): Promise<MainWorktreeStatus>
-  previewMergeConflicts(repoRoot: string, sourceBranch: string): Promise<MergeConflictPreview>
+  previewMergeConflicts(repoRoot: string, sourceBranch: string, worktreePath?: string): Promise<MergeConflictPreview>
   mergeWorktreeLocally(
     repoRoot: string,
     sourceBranch: string,
-    strategy: MergeStrategy
+    strategy: MergeStrategy,
+    worktreePath?: string
   ): Promise<MergeLocalResult>
 
   refreshPRsAll(): Promise<boolean>
