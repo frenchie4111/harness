@@ -61,32 +61,27 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
     'agent-claude': null,
     'agent-codex': null
   })
-  const programmaticScrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  const suppressScrollTracking = useCallback(() => {
-    if (programmaticScrollTimer.current) clearTimeout(programmaticScrollTimer.current)
-    programmaticScrollTimer.current = setTimeout(() => { programmaticScrollTimer.current = null }, 500)
-  }, [])
+  const isProgrammaticScroll = useRef(false)
 
   const scrollToSection = useCallback((id: SectionId) => {
     setActiveSection(id)
     const section = SECTIONS.find((s) => s.id === id)
     setActiveSubSection(section?.children?.[0]?.id ?? null)
-    suppressScrollTracking()
+    isProgrammaticScroll.current = true
     const el = sectionRefs.current[id]
     if (el && scrollRef.current) {
       scrollRef.current.scrollTo({ top: el.offsetTop - 24, behavior: 'smooth' })
     }
-  }, [suppressScrollTracking])
+  }, [])
 
   const scrollToSubSection = useCallback((id: SubSectionId) => {
     setActiveSubSection(id)
-    suppressScrollTracking()
+    isProgrammaticScroll.current = true
     const el = subSectionRefs.current[id]
     if (el && scrollRef.current) {
       scrollRef.current.scrollTo({ top: el.offsetTop - 24, behavior: 'smooth' })
     }
-  }, [suppressScrollTracking])
+  }, [])
 
   // Honor `initialSection` once the section refs are wired up.
   useEffect(() => {
@@ -102,8 +97,10 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
     const container = scrollRef.current
     if (!container) return
 
+    const onScrollEnd = (): void => { isProgrammaticScroll.current = false }
+
     const onScroll = (): void => {
-      if (programmaticScrollTimer.current) return
+      if (isProgrammaticScroll.current) return
       const scrollTop = container.scrollTop
       let current: SectionId = 'appearance'
       for (const section of SECTIONS) {
@@ -130,7 +127,11 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
     }
 
     container.addEventListener('scroll', onScroll)
-    return () => container.removeEventListener('scroll', onScroll)
+    container.addEventListener('scrollend', onScrollEnd)
+    return () => {
+      container.removeEventListener('scroll', onScroll)
+      container.removeEventListener('scrollend', onScrollEnd)
+    }
   }, [])
 
   // GitHub state
