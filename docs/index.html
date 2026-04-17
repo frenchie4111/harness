@@ -50,10 +50,9 @@
       bottom: calc(100% + 12px);
       left: 50%;
       transform: translateX(-50%) translateY(4px);
-      width: max-content;
-      max-width: 280px;
+      width: 280px;
       padding: 8px;
-      background: #1a1a1a;
+      background: #000;
       border: 1px solid #2a2a2a;
       border-radius: 14px;
       font-size: 13px;
@@ -66,7 +65,7 @@
       text-align: left;
       display: flex;
       flex-direction: column;
-      gap: 3px;
+      gap: 2px;
     }
     .logo-tip .tip::after {
       content: '';
@@ -79,26 +78,67 @@
     }
     .logo-tip:hover .tip { opacity: 1; pointer-events: auto; transform: translateX(-50%) translateY(0); }
     .logo-tip .bubble {
-      padding: 6px 12px;
-      border-radius: 16px;
-      max-width: 240px;
+      padding: 7px 12px;
+      border-radius: 18px;
+      max-width: 220px;
       word-wrap: break-word;
     }
-    .logo-tip .them {
+    .logo-tip .sent {
       background: #2563eb;
       color: white;
       align-self: flex-end;
       border-bottom-right-radius: 4px;
     }
-    .logo-tip .them + .them { border-top-right-radius: 4px; }
-    .logo-tip .us {
-      background: #2a2a2a;
-      color: #d4d4d4;
+    .logo-tip .sent + .sent { border-top-right-radius: 4px; }
+    .logo-tip .rcvd {
+      background: #303030;
+      color: #e5e5e5;
       align-self: flex-start;
       border-bottom-left-radius: 4px;
     }
-    .logo-tip .us + .us { border-top-left-radius: 4px; }
-    .logo-tip .gap { height: 4px; }
+    .logo-tip .rcvd + .rcvd { border-top-left-radius: 4px; }
+    .logo-tip .gap { height: 6px; }
+    .logo-tip .link-card {
+      align-self: flex-end;
+      width: 200px;
+      border-radius: 14px;
+      overflow: hidden;
+      border-bottom-right-radius: 4px;
+    }
+    .logo-tip .link-card .link-preview {
+      background: linear-gradient(135deg, #1a1a1a 0%, #111 100%);
+      padding: 10px 12px;
+      border-bottom: 1px solid #333;
+    }
+    .logo-tip .link-card .link-preview .link-icon {
+      width: 32px;
+      height: 32px;
+      background: linear-gradient(135deg, #f59e0b, #ef4444, #a855f7);
+      border-radius: 8px;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      font-weight: 800;
+      color: white;
+    }
+    .logo-tip .link-card .link-preview .link-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: #e5e5e5;
+    }
+    .logo-tip .link-card .link-preview .link-domain {
+      font-size: 10px;
+      color: #737373;
+      margin-top: 2px;
+    }
+    .logo-tip .link-card .link-body {
+      background: #2563eb;
+      padding: 7px 12px;
+      color: white;
+      font-size: 13px;
+    }
 
     /* Flagship hero animations — transforms/opacity only, no layout shift. */
     @keyframes bar-fill {
@@ -204,8 +244,18 @@
       <div class="logo-tip">
         <img src="clay-logo.png" alt="Clay" height="16" class="h-4 object-contain" />
         <div class="tip">
-          <div class="bubble them">This is sick</div>
-          <div class="bubble them">I'll share it w my team today too</div>
+          <div class="bubble sent">dude check this out</div>
+          <div class="link-card">
+            <div class="link-preview">
+              <div class="link-icon">H</div>
+              <div class="link-title">Harness — run a team of agents</div>
+              <div class="link-domain">harness.mikelyons.org</div>
+            </div>
+            <div class="link-body">you need this</div>
+          </div>
+          <div class="gap"></div>
+          <div class="bubble rcvd">This is sick</div>
+          <div class="bubble rcvd">I'll share it w my team today too</div>
         </div>
       </div>
       <div class="logo-tip">
@@ -221,8 +271,18 @@
           <path fill-rule="evenodd" clip-rule="evenodd" d="M91.246 16.706h.083v1.118h1.954v-5.26c0-1.844-1.443-3.362-3.483-3.362-2.123 0-3.312 1.724-3.312 1.724l1.19 1.207s.8-1.034 2.04-1.034c.935 0 1.614.692 1.614 1.295l-2.804.518c-1.443.258-2.462 1.294-2.462 2.673 0 1.295 1.104 2.416 2.719 2.416 1.697 0 2.462-1.295 2.462-1.295Zm-1.87-2.416 1.954-.344h.003v.258c0 1.205-.936 2.155-2.04 2.155-.765 0-1.275-.518-1.275-1.034 0-.516.34-.847 1.358-1.035Z" fill="#a3a3a3"/>
         </svg>
         <div class="tip">
-          <div class="bubble them">Nice I'm gonna try it</div>
-          <div class="bubble them">You should just toss it on HN</div>
+          <div class="bubble sent">dude check this out</div>
+          <div class="link-card">
+            <div class="link-preview">
+              <div class="link-icon">H</div>
+              <div class="link-title">Harness — run a team of agents</div>
+              <div class="link-domain">harness.mikelyons.org</div>
+            </div>
+            <div class="link-body">you need this</div>
+          </div>
+          <div class="gap"></div>
+          <div class="bubble rcvd">Nice I'm gonna try it</div>
+          <div class="bubble rcvd">You should just toss it on HN</div>
         </div>
       </div>
       <div class="logo-tip">
@@ -230,11 +290,21 @@
           <path d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76.5 0-103.7 40.8-165.9 40.8s-105.6-57.8-155.5-127.4c-58.1-81-105.3-207.2-105.3-327.1 0-192.8 125.3-295.2 248.3-295.2 65.3 0 119.7 42.9 160.7 42.9 39.1 0 100-45.4 174.4-45.4 28.2 0 129.6 2.6 196.5 99.2zM554.1 159.4c31.1-36.9 53.1-88.1 53.1-139.4 0-7.1-.6-14.3-1.9-20.1-50.6 1.9-110.8 33.7-147.1 75.8-28.2 32.4-55.8 83.6-55.8 135.7 0 7.8.6 15.6 1.3 18.2 2.5.6 6.4 1.3 10.2 1.3 45.4 0 103.3-30.4 140.2-71.5z"/>
         </svg>
         <div class="tip">
-          <div class="bubble them">Dude</div>
-          <div class="bubble them">This is so sick</div>
-          <div class="bubble them">Allow me to choose between using cursor agent and codex and you could sell this</div>
+          <div class="bubble sent">dude check this out</div>
+          <div class="link-card">
+            <div class="link-preview">
+              <div class="link-icon">H</div>
+              <div class="link-title">Harness — run a team of agents</div>
+              <div class="link-domain">harness.mikelyons.org</div>
+            </div>
+            <div class="link-body">you need this</div>
+          </div>
           <div class="gap"></div>
-          <div class="bubble us">We added Codex support immediately after this, but we don't plan to ever sell this.</div>
+          <div class="bubble rcvd">Dude</div>
+          <div class="bubble rcvd">This is so sick</div>
+          <div class="bubble rcvd">Allow me to choose between using cursor agent and codex and you could sell this</div>
+          <div class="gap"></div>
+          <div class="bubble sent">We added Codex support immediately after this, but we don't plan to ever sell this.</div>
         </div>
       </div>
       <div class="logo-tip">
@@ -243,7 +313,17 @@
           <text x="10" y="15" text-anchor="middle" font-family="system-ui, sans-serif" font-weight="700" font-size="14" fill="white">Y</text>
         </svg>
         <div class="tip">
-          <div class="bubble them" style="opacity: 0.5">...</div>
+          <div class="bubble sent">dude check this out</div>
+          <div class="link-card">
+            <div class="link-preview">
+              <div class="link-icon">H</div>
+              <div class="link-title">Harness — run a team of agents</div>
+              <div class="link-domain">harness.mikelyons.org</div>
+            </div>
+            <div class="link-body">you need this</div>
+          </div>
+          <div class="gap"></div>
+          <div class="bubble rcvd" style="opacity: 0.5">...</div>
         </div>
       </div>
       <div class="logo-tip">
@@ -251,10 +331,20 @@
           <text x="0" y="15" font-family="'Times New Roman', Georgia, serif" font-weight="400" font-size="16" letter-spacing="1.5" fill="#8C1515">Stanford</text>
         </svg>
         <div class="tip">
-          <div class="bubble them">Nice, that's pretty sick</div>
-          <div class="bubble them">Hey! Just downloaded harness and have an immediate feature request. cmd+d to split my tab</div>
+          <div class="bubble sent">dude check this out</div>
+          <div class="link-card">
+            <div class="link-preview">
+              <div class="link-icon">H</div>
+              <div class="link-title">Harness — run a team of agents</div>
+              <div class="link-domain">harness.mikelyons.org</div>
+            </div>
+            <div class="link-body">you need this</div>
+          </div>
           <div class="gap"></div>
-          <div class="bubble us">We immediately added that feature.</div>
+          <div class="bubble rcvd">Nice, that's pretty sick</div>
+          <div class="bubble rcvd">Hey! Just downloaded harness and have an immediate feature request. cmd+d to split my tab</div>
+          <div class="gap"></div>
+          <div class="bubble sent">We immediately added that feature.</div>
         </div>
       </div>
     </div>
