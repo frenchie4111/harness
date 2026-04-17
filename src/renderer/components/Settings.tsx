@@ -15,16 +15,27 @@ interface SettingsProps {
 }
 
 type SectionId = 'appearance' | 'agent' | 'worktrees' | 'editor' | 'github' | 'hotkeys' | 'updates'
+type SubSectionId = 'agent-general' | 'agent-claude' | 'agent-codex'
+
+interface SubSection {
+  id: SubSectionId
+  label: string
+}
 
 interface Section {
   id: SectionId
   label: string
   icon: React.ComponentType<{ size?: number; className?: string }>
+  children?: SubSection[]
 }
 
 const SECTIONS: Section[] = [
   { id: 'appearance', label: 'Appearance', icon: Palette },
-  { id: 'agent', label: 'Agent', icon: TerminalIcon },
+  { id: 'agent', label: 'Agent', icon: TerminalIcon, children: [
+    { id: 'agent-general', label: 'General' },
+    { id: 'agent-claude', label: 'Claude' },
+    { id: 'agent-codex', label: 'Codex' }
+  ]},
   { id: 'worktrees', label: 'Worktrees', icon: GitBranch },
   { id: 'editor', label: 'Editor', icon: Code2 },
   { id: 'github', label: 'GitHub', icon: GitPullRequest },
@@ -34,6 +45,7 @@ const SECTIONS: Section[] = [
 
 export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps): JSX.Element {
   const [activeSection, setActiveSection] = useState<SectionId>(initialSection ?? 'appearance')
+  const [activeSubSection, setActiveSubSection] = useState<SubSectionId | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const sectionRefs = useRef<Record<SectionId, HTMLElement | null>>({
     appearance: null,
@@ -44,11 +56,25 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
     hotkeys: null,
     updates: null
   })
+  const subSectionRefs = useRef<Record<SubSectionId, HTMLElement | null>>({
+    'agent-general': null,
+    'agent-claude': null,
+    'agent-codex': null
+  })
 
-  // Scroll to a section when the sidebar item is clicked
   const scrollToSection = useCallback((id: SectionId) => {
     setActiveSection(id)
+    const section = SECTIONS.find((s) => s.id === id)
+    setActiveSubSection(section?.children?.[0]?.id ?? null)
     const el = sectionRefs.current[id]
+    if (el && scrollRef.current) {
+      scrollRef.current.scrollTo({ top: el.offsetTop - 24, behavior: 'smooth' })
+    }
+  }, [])
+
+  const scrollToSubSection = useCallback((id: SubSectionId) => {
+    setActiveSubSection(id)
+    const el = subSectionRefs.current[id]
     if (el && scrollRef.current) {
       scrollRef.current.scrollTo({ top: el.offsetTop - 24, behavior: 'smooth' })
     }
@@ -64,7 +90,6 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Update active section based on scroll position
   useEffect(() => {
     const container = scrollRef.current
     if (!container) return
@@ -79,6 +104,20 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
         }
       }
       setActiveSection(current)
+
+      const currentSection = SECTIONS.find((s) => s.id === current)
+      if (currentSection?.children) {
+        let currentSub: SubSectionId | null = currentSection.children[0].id
+        for (const child of currentSection.children) {
+          const el = subSectionRefs.current[child.id]
+          if (el && el.offsetTop - 48 <= scrollTop) {
+            currentSub = child.id
+          }
+        }
+        setActiveSubSection(currentSub)
+      } else {
+        setActiveSubSection(null)
+      }
     }
 
     container.addEventListener('scroll', onScroll)
@@ -612,14 +651,41 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
                     : 'text-muted hover:bg-panel-raised hover:text-fg-bright'
                 }`
             return (
-              <button
-                key={section.id}
-                onClick={() => scrollToSection(section.id)}
-                className={className}
-              >
-                <Icon size={14} className="shrink-0" />
-                <span>{section.label}</span>
-              </button>
+              <div key={section.id}>
+                <button
+                  onClick={() => scrollToSection(section.id)}
+                  className={className}
+                >
+                  <Icon size={14} className="shrink-0" />
+                  <span>{section.label}</span>
+                </button>
+                {section.children && (
+                  <div
+                    className="overflow-hidden transition-all duration-200"
+                    style={{
+                      maxHeight: isActive ? `${section.children.length * 36}px` : '0px',
+                      opacity: isActive ? 1 : 0
+                    }}
+                  >
+                    {section.children.map((child) => {
+                      const isSubActive = activeSubSection === child.id
+                      return (
+                        <button
+                          key={child.id}
+                          onClick={() => scrollToSubSection(child.id)}
+                          className={`w-full pl-9 pr-3 py-1.5 text-left text-xs transition-colors cursor-pointer ${
+                            isSubActive
+                              ? 'text-fg-bright bg-surface/60'
+                              : 'text-muted hover:text-fg-bright hover:bg-panel-raised'
+                          }`}
+                        >
+                          {child.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
             )
           })}
 
@@ -742,6 +808,8 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
                 Choose which AI coding agent Harness launches in new tabs.
               </p>
 
+              {/* ── General subsection ── */}
+              <div ref={(el) => { subSectionRefs.current['agent-general'] = el }} id="agent-general">
               <div className="bg-panel-raised border border-border rounded-lg p-4 mb-6">
                 <label className="block text-sm font-medium text-fg mb-3">Default agent</label>
                 <div className="flex gap-2">
@@ -765,7 +833,48 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
                 </p>
               </div>
 
+              <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-3">
+                Status hooks
+              </h3>
+              <div className="bg-panel-raised border border-border rounded-lg p-4">
+                <p className="text-xs text-dim mb-3">
+                  Harness installs a small hook at{' '}
+                  <code className="bg-panel px-1 rounded">~/.claude/settings.json</code> and{' '}
+                  <code className="bg-panel px-1 rounded">~/.codex/hooks.json</code> so it can
+                  detect when each agent tab is processing, waiting, or awaiting approval.
+                  The hook only emits when <code className="bg-panel px-1 rounded">$HARNESS_TERMINAL_ID</code>{' '}
+                  is set — sessions you launch outside Harness are untouched.
+                </p>
+                <div className="flex items-center gap-2">
+                  {hooksConsent === 'accepted' ? (
+                    <>
+                      <span className="text-xs text-success flex items-center gap-1"><Check size={12} />Installed</span>
+                      <button
+                        onClick={() => void window.api.uninstallHooks()}
+                        className="ml-auto px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer"
+                      >
+                        Remove hooks
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-xs text-dim">
+                        {hooksConsent === 'declined' ? 'Declined' : 'Not installed'}
+                      </span>
+                      <button
+                        onClick={() => void window.api.acceptHooks()}
+                        className="ml-auto px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer"
+                      >
+                        Install hooks
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+              </div>
+
               {/* ── Claude subsection ── */}
+              <div ref={(el) => { subSectionRefs.current['agent-claude'] = el }} id="agent-claude" className="mt-8">
               <h3 className="text-sm font-semibold text-fg-bright mb-3 flex items-center gap-2">
                 Claude Code
                 {defaultAgent === 'claude' && <span className="text-[10px] font-normal text-dim bg-panel px-1.5 py-0.5 rounded">default</span>}
@@ -880,8 +989,11 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
                 )}
               </div>
 
+              </div>
+
               {/* ── Codex subsection ── */}
-              <h3 className="text-sm font-semibold text-fg-bright mt-8 mb-3 flex items-center gap-2">
+              <div ref={(el) => { subSectionRefs.current['agent-codex'] = el }} id="agent-codex" className="mt-8">
+              <h3 className="text-sm font-semibold text-fg-bright mb-3 flex items-center gap-2">
                 Codex
                 {defaultAgent === 'codex' && <span className="text-[10px] font-normal text-dim bg-panel px-1.5 py-0.5 rounded">default</span>}
               </h3>
@@ -978,45 +1090,6 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
                   </div>
                 )}
               </div>
-
-              {/* ── Status hooks subsection ── */}
-              <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-3">
-                Status hooks
-              </h3>
-              <div className="bg-panel-raised border border-border rounded-lg p-4">
-                <p className="text-xs text-dim mb-3">
-                  Harness installs a small hook at{' '}
-                  <code className="bg-panel px-1 rounded">~/.claude/settings.json</code> and{' '}
-                  <code className="bg-panel px-1 rounded">~/.codex/hooks.json</code> so it can
-                  detect when each agent tab is processing, waiting, or awaiting approval.
-                  The hook only emits when <code className="bg-panel px-1 rounded">$HARNESS_TERMINAL_ID</code>{' '}
-                  is set — sessions you launch outside Harness are untouched.
-                </p>
-                <div className="flex items-center gap-2">
-                  {hooksConsent === 'accepted' ? (
-                    <>
-                      <span className="text-xs text-success flex items-center gap-1"><Check size={12} />Installed</span>
-                      <button
-                        onClick={() => void window.api.uninstallHooks()}
-                        className="ml-auto px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer"
-                      >
-                        Remove hooks
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <span className="text-xs text-dim">
-                        {hooksConsent === 'declined' ? 'Declined' : 'Not installed'}
-                      </span>
-                      <button
-                        onClick={() => void window.api.acceptHooks()}
-                        className="ml-auto px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer"
-                      >
-                        Install hooks
-                      </button>
-                    </>
-                  )}
-                </div>
               </div>
             </section>
 
