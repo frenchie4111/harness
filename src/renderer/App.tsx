@@ -471,6 +471,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
     setCommandPaletteMode,
     setShowPerfMonitor,
     setShowHotkeyCheatsheet,
+    setShowReview,
     handleAddTerminalTab,
     handleCloseTab,
     handleSelectTab,
@@ -1026,17 +1027,21 @@ const setQuestStep = useCallback((next: QuestStep) => {
             }}
           />
         )}
-        {showReview && activeWorktreeId && (
-          <div className="flex-1 min-w-0 flex">
-            <ReviewScreen
-              worktreePath={activeWorktreeId}
-              branchName={worktrees.find((w) => w.path === activeWorktreeId)?.branch ?? 'unknown'}
-              mode={reviewMode}
-              onClose={() => setShowReview(false)}
-              onSendToAgent={handleSendToAgent}
-            />
-          </div>
-        )}
+        {showReview && activeWorktreeId && (() => {
+          const reviewWt = worktrees.find((w) => w.path === activeWorktreeId)
+          return (
+            <div className="flex-1 min-w-0 flex">
+              <ReviewScreen
+                worktreePath={activeWorktreeId}
+                branchName={reviewWt?.branch ?? 'unknown'}
+                repoLabel={reviewWt ? (reviewWt.repoRoot.split('/').pop() || reviewWt.repoRoot) : ''}
+                mode={reviewMode}
+                onClose={() => setShowReview(false)}
+                onSendToAgent={handleSendToAgent}
+              />
+            </div>
+          )
+        })()}
         {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && !activeWorktreeId && worktrees.length > 0 && (
           <div className="flex-1 flex items-center justify-center text-dim">
             Select a worktree to begin
@@ -1090,8 +1095,8 @@ const setQuestStep = useCallback((next: QuestStep) => {
             onOpenDiff={handleOpenDiff}
             onOpenFile={handleOpenFile}
             onSendToAgent={handleSendToAgent}
-            onOpenReview={(mode) => {
-              setReviewMode(mode)
+            onOpenReview={() => {
+              setReviewMode('branch')
               setShowReview(true)
             }}
             onCollapse={() => setRightColumnHidden(true)}

@@ -14,7 +14,7 @@ import { PanesFSM, stripTransientTabFields } from './panes-fsm'
 import { ActivityDeriver } from './activity-deriver'
 import type { TerminalTab, PaneNode, PaneLeaf } from '../shared/state/terminals'
 import { getLeaves, mapLeaves } from '../shared/state/terminals'
-import { listWorktrees, listBranches, continueWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, readWorktreeFile, writeWorktreeFile, getFileDiffSides, type MergeStrategy } from './worktree'
+import { listWorktrees, listBranches, continueWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, readWorktreeFile, writeWorktreeFile, getFileDiffSides, getCurrentBranch, type MergeStrategy } from './worktree'
 import { getPRStatus, testToken, starRepo, unstarRepo, isRepoStarred } from './github'
 import { AVAILABLE_EDITORS, DEFAULT_EDITOR_ID, openInEditor } from './editor'
 import { setSecret, hasSecret, deleteSecret } from './secrets'
@@ -31,6 +31,8 @@ import {
   DEFAULT_TERMINAL_FONT_SIZE,
   DEFAULT_WORKTREE_BASE,
   DEFAULT_MERGE_STRATEGY,
+  DEFAULT_HARNESS_SYSTEM_PROMPT,
+  DEFAULT_HARNESS_SYSTEM_PROMPT_MAIN,
   pruneTerminalHistory,
   type PersistedPaneNode,
   type QuestStep
@@ -219,6 +221,9 @@ const worktreesFSM = new WorktreesFSM(store, {
   onWorktreeCreated: ({ createdPath, initialPrompt, teleportSessionId }) => {
     void prPoller.refreshAll()
     panesFSM.ensureInitialized(createdPath, { initialPrompt, teleportSessionId })
+    if (teleportSessionId) {
+      setTimeout(() => void worktreesFSM.refreshList(), 10_000)
+    }
   }
 })
 
@@ -599,10 +604,15 @@ function registerIpcHandlers(): void {
     return getMainWorktreeStatus(repoRoot)
   })
 
-  transport.onRequest('worktree:previewMerge', async (repoRoot: string, sourceBranch: string) => {
+  transport.onRequest('worktree:previewMerge', async (repoRoot: string, sourceBranch: string, worktreePath?: string) => {
     if (!repoRoot) throw new Error('No repo root provided')
+    let branch = sourceBranch
+    if (worktreePath) {
+      const resolved = await getCurrentBranch(worktreePath)
+      if (resolved) branch = resolved
+    }
     const status = await getMainWorktreeStatus(repoRoot)
-    return previewMergeConflicts(repoRoot, sourceBranch, status.baseBranch)
+    return previewMergeConflicts(repoRoot, branch, status.baseBranch)
   })
 
   transport.onRequest('worktree:prepareMain', async (repoRoot: string) => {
@@ -612,19 +622,20 @@ function registerIpcHandlers(): void {
 
   transport.onRequest(
     'worktree:mergeLocal',
-    async (repoRoot: string, sourceBranch: string, strategy: MergeStrategy) => {
+    async (repoRoot: string, sourceBranch: string, strategy: MergeStrategy, worktreePath?: string) => {
       if (!repoRoot) throw new Error('No repo root provided')
-      const result = await mergeWorktreeLocally(repoRoot, sourceBranch, strategy)
-      // Record the branch as locally merged at its current tip sha. If new
-      // commits are pushed to the branch later, the PRPoller will detect
-      // the SHA drift on the next refresh and clear the flag.
-      const sha = await getBranchSha(repoRoot, sourceBranch)
+      let branch = sourceBranch
+      if (worktreePath) {
+        const resolved = await getCurrentBranch(worktreePath)
+        if (resolved) branch = resolved
+      }
+      const result = await mergeWorktreeLocally(repoRoot, branch, strategy)
+      const sha = await getBranchSha(repoRoot, branch)
       if (sha) {
         if (!config.locallyMerged) config.locallyMerged = {}
-        config.locallyMerged[sourceBranch] = sha
+        config.locallyMerged[branch] = sha
         saveConfig(config)
       }
-      // Kick the poller so the UI picks up the new merged flag immediately.
       void prPoller.refreshAll()
       return result
     }
@@ -799,6 +810,50 @@ function registerIpcHandlers(): void {
     } else {
       startAutoUpdateChecks()
     }
+    return true
+  })
+
+  transport.onRequest('config:setHarnessSystemPromptEnabled', (enabled: boolean) => {
+    if (enabled) {
+      delete config.harnessSystemPromptEnabled
+    } else {
+      config.harnessSystemPromptEnabled = false
+    }
+    saveConfig(config)
+    store.dispatch({
+      type: 'settings/harnessSystemPromptEnabledChanged',
+      payload: config.harnessSystemPromptEnabled !== false
+    })
+    return true
+  })
+
+  transport.onRequest('config:setHarnessSystemPrompt', (prompt: string) => {
+    const trimmed = prompt.trim()
+    if (!trimmed || trimmed === DEFAULT_HARNESS_SYSTEM_PROMPT) {
+      delete config.harnessSystemPrompt
+    } else {
+      config.harnessSystemPrompt = prompt
+    }
+    saveConfig(config)
+    store.dispatch({
+      type: 'settings/harnessSystemPromptChanged',
+      payload: config.harnessSystemPrompt || DEFAULT_HARNESS_SYSTEM_PROMPT
+    })
+    return true
+  })
+
+  transport.onRequest('config:setHarnessSystemPromptMain', (prompt: string) => {
+    const trimmed = prompt.trim()
+    if (!trimmed || trimmed === DEFAULT_HARNESS_SYSTEM_PROMPT_MAIN) {
+      delete config.harnessSystemPromptMain
+    } else {
+      config.harnessSystemPromptMain = prompt
+    }
+    saveConfig(config)
+    store.dispatch({
+      type: 'settings/harnessSystemPromptMainChanged',
+      payload: config.harnessSystemPromptMain || DEFAULT_HARNESS_SYSTEM_PROMPT_MAIN
+    })
     return true
   })
 
@@ -1077,7 +1132,22 @@ function registerIpcHandlers(): void {
         : (config.codexCommand || agent.defaultCommand)
       const model = kind === 'claude' ? (config.claudeModel || null) : (config.codexModel || null)
       const mcpConfigPath = writeMcpConfigForTerminal(opts.terminalId)
-      return agent.buildSpawnArgs({ ...opts, command, mcpConfigPath, model })
+
+      let systemPrompt: string | undefined
+      if (kind === 'claude' && config.harnessSystemPromptEnabled !== false) {
+        const base = config.harnessSystemPrompt || DEFAULT_HARNESS_SYSTEM_PROMPT
+        const wt = store.getSnapshot().state.worktrees.list.find(w => w.path === opts.cwd)
+        const isMain = wt?.isMain ?? false
+        if (isMain) {
+          const mainAddition = config.harnessSystemPromptMain || DEFAULT_HARNESS_SYSTEM_PROMPT_MAIN
+          systemPrompt = `${base}\n\n${mainAddition}`
+        } else {
+          systemPrompt = base
+        }
+        if (!systemPrompt.trim()) systemPrompt = undefined
+      }
+
+      return agent.buildSpawnArgs({ ...opts, command, mcpConfigPath, model, systemPrompt })
     }
   )
 

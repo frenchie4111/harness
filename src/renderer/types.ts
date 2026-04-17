@@ -162,11 +162,12 @@ export interface ElectronAPI {
 
   getMainWorktreeStatus(repoRoot: string): Promise<MainWorktreeStatus>
   prepareMainForMerge(repoRoot: string): Promise<MainWorktreeStatus>
-  previewMergeConflicts(repoRoot: string, sourceBranch: string): Promise<MergeConflictPreview>
+  previewMergeConflicts(repoRoot: string, sourceBranch: string, worktreePath?: string): Promise<MergeConflictPreview>
   mergeWorktreeLocally(
     repoRoot: string,
     sourceBranch: string,
-    strategy: MergeStrategy
+    strategy: MergeStrategy,
+    worktreePath?: string
   ): Promise<MergeLocalResult>
 
   refreshPRsAll(): Promise<boolean>
@@ -204,6 +205,9 @@ export interface ElectronAPI {
   getDefaultClaudeCommand(): Promise<string>
   setHarnessMcpEnabled(enabled: boolean): Promise<boolean>
   setAutoUpdateEnabled(enabled: boolean): Promise<boolean>
+  setHarnessSystemPromptEnabled(enabled: boolean): Promise<boolean>
+  setHarnessSystemPrompt(prompt: string): Promise<boolean>
+  setHarnessSystemPromptMain(prompt: string): Promise<boolean>
   prepareMcpForTerminal(terminalId: string): Promise<string | null>
   onWorktreesExternalCreate(
     callback: (payload: { repoRoot: string; worktree: Worktree; initialPrompt?: string }) => void

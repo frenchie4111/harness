@@ -108,6 +108,9 @@ export interface Config {
   // and stripped any legacy Harness entries. Prevents re-running the
   // migration on every boot.
   hooksMigratedToGlobal?: boolean
+  harnessSystemPromptEnabled?: boolean
+  harnessSystemPrompt?: string
+  harnessSystemPromptMain?: string
 }
 
 export const DEFAULT_WORKTREE_BASE: 'remote' | 'local' = 'remote'
@@ -141,6 +144,15 @@ export const THEME_APP_BG: Record<string, string> = {
 }
 
 export const DEFAULT_CLAUDE_COMMAND = 'claude'
+
+export const DEFAULT_HARNESS_SYSTEM_PROMPT = `You are running inside Harness, a desktop app that manages multiple Claude Code sessions across git worktrees. You have access to harness-control MCP tools:
+
+- mcp__harness-control__create_worktree: Create a new worktree with its own Claude session. Always provide a detailed initialPrompt so the new session has full context.
+- mcp__harness-control__list_worktrees: List all active worktrees.
+
+When the user wants to start a new task, fix, or investigation that would benefit from isolation, suggest creating a worktree for it rather than doing everything inline. Each worktree is an independent git branch with its own terminal and Claude session.`
+
+export const DEFAULT_HARNESS_SYSTEM_PROMPT_MAIN = `You are on the main worktree. This is the primary checkout — avoid making direct changes here unless the user explicitly asks. Instead, use this session to plan, review, and coordinate work across worktrees. When the user describes a task, create a new worktree for it with a thorough initialPrompt that gives the new Claude session all the context it needs to work independently.`
 
 export const DEFAULT_TERMINAL_FONT_FAMILY =
   "'SF Mono', 'Monaco', 'Menlo', 'Courier New', monospace"

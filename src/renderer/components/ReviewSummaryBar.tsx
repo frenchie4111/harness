@@ -1,8 +1,10 @@
 import { ArrowLeft, MessageSquare, Send, Clipboard, Check } from 'lucide-react'
 import { Tooltip } from './Tooltip'
+import { repoNameColor } from './RepoIcon'
 
 interface ReviewSummaryBarProps {
   branchName: string
+  repoLabel: string
   fileCount: number
   additions: number
   deletions: number
@@ -15,6 +17,7 @@ interface ReviewSummaryBarProps {
 
 export function ReviewSummaryBar({
   branchName,
+  repoLabel,
   fileCount,
   additions,
   deletions,
@@ -39,7 +42,11 @@ export function ReviewSummaryBar({
           </button>
         </Tooltip>
 
-        <span className="text-xs font-mono text-dim truncate">{branchName}</span>
+        <div className="flex items-baseline gap-1.5 text-xs truncate">
+          <span className={`font-medium ${repoNameColor(repoLabel)}`}>{repoLabel}</span>
+          <span className="text-faint">/</span>
+          <span className="text-fg-bright font-medium">{branchName}</span>
+        </div>
 
         <div className="flex items-center gap-2 text-[11px] text-faint">
           <span>{fileCount} file{fileCount !== 1 ? 's' : ''}</span>

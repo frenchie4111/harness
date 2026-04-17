@@ -182,7 +182,8 @@ export function buildSpawnArgs(opts: AgentSpawnOpts): string {
   const modelFlag = opts.model && !opts.command.includes('--model') ? ` --model ${shellQuote(opts.model)}` : ''
   const mcpFlag = opts.mcpConfigPath ? ` --mcp-config ${shellQuote(opts.mcpConfigPath)}` : ''
   const nameFlag = opts.sessionName ? ` --name ${shellQuote(opts.sessionName)}` : ''
-  const cmd = `${opts.command}${modelFlag}${mcpFlag}${nameFlag}`
+  const systemPromptFlag = opts.systemPrompt ? ` --append-system-prompt ${shellQuote(opts.systemPrompt)}` : ''
+  const cmd = `${opts.command}${modelFlag}${mcpFlag}${nameFlag}${systemPromptFlag}`
 
   if (opts.teleportSessionId && opts.sessionId) {
     const exists = sessionFileExists(opts.cwd, opts.sessionId)

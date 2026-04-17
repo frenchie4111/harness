@@ -8,6 +8,7 @@ import { ReviewDiffPane } from './ReviewDiffPane'
 interface ReviewScreenProps {
   worktreePath: string
   branchName: string
+  repoLabel: string
   mode: 'working' | 'branch'
   onClose: () => void
   onSendToAgent: (worktreePath: string, text: string) => void
@@ -18,6 +19,7 @@ let commentIdCounter = 0
 export function ReviewScreen({
   worktreePath,
   branchName,
+  repoLabel,
   mode,
   onClose,
   onSendToAgent
@@ -156,6 +158,7 @@ export function ReviewScreen({
     <div className="flex flex-col h-full w-full bg-bg">
       <ReviewSummaryBar
         branchName={branchName}
+        repoLabel={repoLabel}
         fileCount={files.length}
         additions={totalAdditions}
         deletions={totalDeletions}

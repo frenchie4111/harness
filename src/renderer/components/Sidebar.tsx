@@ -200,6 +200,15 @@ export function Sidebar({
       className="shrink-0 bg-panel flex flex-col h-full"
       style={{ width }}
     >
+      <svg width="0" height="0" className="absolute" aria-hidden="true">
+        <defs>
+          <linearGradient id="harness-add-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#f59e0b" />
+            <stop offset="50%" stopColor="#ef4444" />
+            <stop offset="100%" stopColor="#a855f7" />
+          </linearGradient>
+        </defs>
+      </svg>
       {/* Title bar drag region with app name — vertically aligned with traffic lights at y:12 */}
       <div className="drag-region h-10 relative shrink-0">
         <span className="gradient-text text-xs font-semibold absolute left-20 top-[11px]">Harness</span>
@@ -391,23 +400,29 @@ export function Sidebar({
             </div>
           )
         })}
-        {worktrees.length === 0 && (
+        {worktrees.length === 0 && agentCount > 0 && (
           <div className="px-4 py-3 text-xs text-faint">
             No worktrees found
           </div>
+        )}
+        {agentCount > 0 && (
+          <button
+            onClick={onNewWorktree}
+            className="group relative w-full flex items-center gap-2 px-3 py-2 mt-1 text-dim hover:bg-panel-raised transition-colors cursor-pointer overflow-hidden"
+          >
+            <span className="absolute left-0 top-0 bottom-0 w-0.5 brand-gradient-flow-bar opacity-0 group-hover:opacity-100 transition-opacity" />
+            <Plus
+              size={13}
+              className="shrink-0 text-dim group-hover:[stroke:url(#harness-add-gradient)] transition-colors"
+            />
+            <span className="text-sm font-medium brand-gradient-flow-text-hover">Add worktree</span>
+            <HotkeyBadge action="newWorktree" className="ml-auto" />
+          </button>
         )}
       </div>
 
       {/* Bottom actions */}
       <div className="border-t border-border p-2 flex justify-center gap-1 shrink-0">
-        <Tooltip label="New worktree" action="newWorktree" side="top">
-          <button
-            onClick={onNewWorktree}
-            className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
-          >
-            <Plus size={14} />
-          </button>
-        </Tooltip>
         <Tooltip label="Refresh worktrees" action="refreshWorktrees" side="top">
           <button
             onClick={onRefresh}
