@@ -195,11 +195,16 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       },
       closeTab: () => {
         if (!activeWorktreeId) return
-        const tabs = terminalTabs[activeWorktreeId] || []
-        const currentTabId = activeTabId[activeWorktreeId]
-        if (tabs.length > 1 && currentTabId) {
-          handleCloseTab(activeWorktreeId, currentTabId)
-        }
+        const tree = panes[activeWorktreeId]
+        if (!tree) return
+        const leaves = getLeaves(tree)
+        const focusedId = activePaneId[activeWorktreeId] || leaves[0]?.id
+        const leaf = findLeaf(tree, focusedId) || leaves[0]
+        if (!leaf) return
+        const currentTabId = leaf.activeTabId
+        if (!currentTabId) return
+        if (leaf.tabs.length === 1 && leaves.length === 1) return
+        handleCloseTab(activeWorktreeId, currentTabId)
       },
       nextTab: () => cycleTab(1),
       prevTab: () => cycleTab(-1),
