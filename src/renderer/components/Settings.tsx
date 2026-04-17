@@ -121,7 +121,10 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
     githubAuthSource: authSource,
     harnessStarred,
     worktreeScripts,
-    autoUpdateEnabled
+    autoUpdateEnabled,
+    harnessSystemPromptEnabled,
+    harnessSystemPrompt,
+    harnessSystemPromptMain
   } = settings
   const setupScript = worktreeScripts.setup
   const teardownScript = worktreeScripts.teardown
@@ -151,6 +154,12 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
   )
   const [codexEnvSaveResult, setCodexEnvSaveResult] = useState<{ ok: boolean; message: string } | null>(null)
   const [codexRevealedEnvRows, setCodexRevealedEnvRows] = useState<Set<number>>(new Set())
+
+  const [systemPromptDraft, setSystemPromptDraft] = useState<string>(harnessSystemPrompt)
+  useEffect(() => { setSystemPromptDraft(harnessSystemPrompt) }, [harnessSystemPrompt])
+  const [systemPromptMainDraft, setSystemPromptMainDraft] = useState<string>(harnessSystemPromptMain)
+  useEffect(() => { setSystemPromptMainDraft(harnessSystemPromptMain) }, [harnessSystemPromptMain])
+  const [systemPromptSaveResult, setSystemPromptSaveResult] = useState<{ ok: boolean; message: string } | null>(null)
 
   const [defaultTerminalFontFamily, setDefaultTerminalFontFamily] = useState<string>('')
   const [availableEditors, setAvailableEditors] = useState<{ id: string; name: string }[]>([])
@@ -408,6 +417,20 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
 
   const handleToggleAutoUpdate = useCallback(async (enabled: boolean) => {
     await window.api.setAutoUpdateEnabled(enabled)
+  }, [])
+
+  const handleSaveSystemPrompt = useCallback(async () => {
+    await window.api.setHarnessSystemPrompt(systemPromptDraft)
+    await window.api.setHarnessSystemPromptMain(systemPromptMainDraft)
+    setSystemPromptSaveResult({ ok: true, message: 'Saved · new sessions will use this prompt' })
+    setTimeout(() => setSystemPromptSaveResult(null), 2000)
+  }, [systemPromptDraft, systemPromptMainDraft])
+
+  const handleResetSystemPrompt = useCallback(async () => {
+    await window.api.setHarnessSystemPrompt('')
+    await window.api.setHarnessSystemPromptMain('')
+    setSystemPromptSaveResult({ ok: true, message: 'Reset to defaults' })
+    setTimeout(() => setSystemPromptSaveResult(null), 2000)
   }, [])
 
   const effectiveClaudeCommand = claudeCommandDraft.trim() || defaultClaudeCommand
@@ -1017,6 +1040,77 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
                     </>
                   )}
                 </div>
+              </div>
+
+              {/* ── System prompt subsection ── */}
+              <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-3">
+                System prompt
+              </h3>
+              <div className="bg-panel-raised border border-border rounded-lg p-4">
+                <label className="flex items-start gap-2 cursor-pointer mb-4">
+                  <input
+                    type="checkbox"
+                    checked={harnessSystemPromptEnabled}
+                    onChange={(e) => { void window.api.setHarnessSystemPromptEnabled(e.target.checked) }}
+                    className="mt-0.5 cursor-pointer"
+                  />
+                  <div className="flex-1">
+                    <div className="text-sm text-fg-bright">Inject Harness context into Claude sessions</div>
+                    <div className="text-xs text-dim mt-0.5">
+                      Appends <code className="bg-panel px-1 rounded text-[10px]">--append-system-prompt</code> with context about Harness and MCP tools.
+                    </div>
+                  </div>
+                </label>
+
+                {harnessSystemPromptEnabled && (
+                  <>
+                    <div className="mb-4">
+                      <label className="block text-xs font-medium text-fg mb-1">Base prompt</label>
+                      <p className="text-[11px] text-dim mb-2">Sent to every Claude session.</p>
+                      <textarea
+                        value={systemPromptDraft}
+                        onChange={(e) => setSystemPromptDraft(e.target.value)}
+                        rows={6}
+                        spellCheck={false}
+                        className="w-full bg-panel border border-border-strong rounded px-3 py-2 text-xs text-fg-bright placeholder-faint outline-none focus:border-fg font-mono resize-y"
+                      />
+                    </div>
+
+                    <div className="mb-4">
+                      <label className="block text-xs font-medium text-fg mb-1">Main worktree addition</label>
+                      <p className="text-[11px] text-dim mb-2">Appended when Claude is running on the main/primary worktree.</p>
+                      <textarea
+                        value={systemPromptMainDraft}
+                        onChange={(e) => setSystemPromptMainDraft(e.target.value)}
+                        rows={4}
+                        spellCheck={false}
+                        className="w-full bg-panel border border-border-strong rounded px-3 py-2 text-xs text-fg-bright placeholder-faint outline-none focus:border-fg font-mono resize-y"
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleSaveSystemPrompt}
+                        className="px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer"
+                      >
+                        Save
+                      </button>
+                      <button
+                        onClick={handleResetSystemPrompt}
+                        className="flex items-center gap-1 px-3 py-1.5 text-sm text-dim hover:text-fg transition-colors cursor-pointer"
+                      >
+                        <RotateCcw size={12} />
+                        Reset to defaults
+                      </button>
+                    </div>
+                    {systemPromptSaveResult && (
+                      <div className={`mt-3 text-xs flex items-center gap-1.5 ${systemPromptSaveResult.ok ? 'text-success' : 'text-danger'}`}>
+                        {systemPromptSaveResult.ok ? <Check size={12} /> : <X size={12} />}{systemPromptSaveResult.message}
+                      </div>
+                    )}
+                    <p className="mt-3 text-[11px] text-faint">Changes apply to new sessions only.</p>
+                  </>
+                )}
               </div>
             </section>
 

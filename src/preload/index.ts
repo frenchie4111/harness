@@ -121,6 +121,9 @@ contextBridge.exposeInMainWorld('api', {
   setCodexEnvVars: (vars: Record<string, string>) => req('config:setCodexEnvVars', vars),
   setHarnessMcpEnabled: (enabled: boolean) => req('config:setHarnessMcpEnabled', enabled),
   setAutoUpdateEnabled: (enabled: boolean) => req('config:setAutoUpdateEnabled', enabled),
+  setHarnessSystemPromptEnabled: (enabled: boolean) => req('config:setHarnessSystemPromptEnabled', enabled),
+  setHarnessSystemPrompt: (prompt: string) => req('config:setHarnessSystemPrompt', prompt),
+  setHarnessSystemPromptMain: (prompt: string) => req('config:setHarnessSystemPromptMain', prompt),
   prepareMcpForTerminal: (terminalId: string): Promise<string | null> =>
     req('mcp:prepareForTerminal', terminalId) as Promise<string | null>,
   onWorktreesExternalCreate: (
