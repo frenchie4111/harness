@@ -13,6 +13,7 @@ export interface AgentSpawnOpts {
   sessionName?: string
   mcpConfigPath?: string | null
   model?: string | null
+  systemPrompt?: string
 }
 
 export interface AgentModule {

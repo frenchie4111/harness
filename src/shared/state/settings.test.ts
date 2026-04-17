@@ -187,6 +187,35 @@ describe('settingsReducer', () => {
     expect(cleared.codexModel).toBeNull()
   })
 
+  it('harnessSystemPromptEnabledChanged toggles flag', () => {
+    const off = apply(initialSettings, {
+      type: 'settings/harnessSystemPromptEnabledChanged',
+      payload: false
+    })
+    expect(off.harnessSystemPromptEnabled).toBe(false)
+    const on = apply(off, {
+      type: 'settings/harnessSystemPromptEnabledChanged',
+      payload: true
+    })
+    expect(on.harnessSystemPromptEnabled).toBe(true)
+  })
+
+  it('harnessSystemPromptChanged sets the prompt', () => {
+    const next = apply(initialSettings, {
+      type: 'settings/harnessSystemPromptChanged',
+      payload: 'custom prompt'
+    })
+    expect(next.harnessSystemPrompt).toBe('custom prompt')
+  })
+
+  it('harnessSystemPromptMainChanged sets the main prompt', () => {
+    const next = apply(initialSettings, {
+      type: 'settings/harnessSystemPromptMainChanged',
+      payload: 'main only text'
+    })
+    expect(next.harnessSystemPromptMain).toBe('main only text')
+  })
+
   it('returns a new object reference (no mutation)', () => {
     const next = apply(initialSettings, { type: 'settings/themeChanged', payload: 'x' })
     expect(next).not.toBe(initialSettings)

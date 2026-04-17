@@ -15,6 +15,8 @@ import {
   DEFAULT_TERMINAL_FONT_SIZE,
   DEFAULT_WORKTREE_BASE,
   DEFAULT_MERGE_STRATEGY,
+  DEFAULT_HARNESS_SYSTEM_PROMPT,
+  DEFAULT_HARNESS_SYSTEM_PROMPT_MAIN,
   type Config
 } from './persistence'
 import { DEFAULT_EDITOR_ID } from './editor'
@@ -58,7 +60,10 @@ export function buildInitialAppState(
       claudeModel: config.claudeModel || null,
       codexModel: config.codexModel || null,
       hasGithubToken: opts.hasGithubToken,
-      autoUpdateEnabled: config.autoUpdateEnabled !== false
+      autoUpdateEnabled: config.autoUpdateEnabled !== false,
+      harnessSystemPromptEnabled: config.harnessSystemPromptEnabled !== false,
+      harnessSystemPrompt: config.harnessSystemPrompt || DEFAULT_HARNESS_SYSTEM_PROMPT,
+      harnessSystemPromptMain: config.harnessSystemPromptMain || DEFAULT_HARNESS_SYSTEM_PROMPT_MAIN
     }
   }
 }

@@ -30,6 +30,8 @@ import {
   DEFAULT_TERMINAL_FONT_SIZE,
   DEFAULT_WORKTREE_BASE,
   DEFAULT_MERGE_STRATEGY,
+  DEFAULT_HARNESS_SYSTEM_PROMPT,
+  DEFAULT_HARNESS_SYSTEM_PROMPT_MAIN,
   pruneTerminalHistory,
   type PersistedPane,
   type QuestStep
@@ -789,6 +791,50 @@ function registerIpcHandlers(): void {
     return true
   })
 
+  transport.onRequest('config:setHarnessSystemPromptEnabled', (enabled: boolean) => {
+    if (enabled) {
+      delete config.harnessSystemPromptEnabled
+    } else {
+      config.harnessSystemPromptEnabled = false
+    }
+    saveConfig(config)
+    store.dispatch({
+      type: 'settings/harnessSystemPromptEnabledChanged',
+      payload: config.harnessSystemPromptEnabled !== false
+    })
+    return true
+  })
+
+  transport.onRequest('config:setHarnessSystemPrompt', (prompt: string) => {
+    const trimmed = prompt.trim()
+    if (!trimmed || trimmed === DEFAULT_HARNESS_SYSTEM_PROMPT) {
+      delete config.harnessSystemPrompt
+    } else {
+      config.harnessSystemPrompt = prompt
+    }
+    saveConfig(config)
+    store.dispatch({
+      type: 'settings/harnessSystemPromptChanged',
+      payload: config.harnessSystemPrompt || DEFAULT_HARNESS_SYSTEM_PROMPT
+    })
+    return true
+  })
+
+  transport.onRequest('config:setHarnessSystemPromptMain', (prompt: string) => {
+    const trimmed = prompt.trim()
+    if (!trimmed || trimmed === DEFAULT_HARNESS_SYSTEM_PROMPT_MAIN) {
+      delete config.harnessSystemPromptMain
+    } else {
+      config.harnessSystemPromptMain = prompt
+    }
+    saveConfig(config)
+    store.dispatch({
+      type: 'settings/harnessSystemPromptMainChanged',
+      payload: config.harnessSystemPromptMain || DEFAULT_HARNESS_SYSTEM_PROMPT_MAIN
+    })
+    return true
+  })
+
   transport.onRequest('config:setHarnessMcpEnabled', (enabled: boolean) => {
     if (enabled) {
       delete config.harnessMcpEnabled
@@ -1054,7 +1100,22 @@ function registerIpcHandlers(): void {
         : (config.codexCommand || agent.defaultCommand)
       const model = kind === 'claude' ? (config.claudeModel || null) : (config.codexModel || null)
       const mcpConfigPath = writeMcpConfigForTerminal(opts.terminalId)
-      return agent.buildSpawnArgs({ ...opts, command, mcpConfigPath, model })
+
+      let systemPrompt: string | undefined
+      if (kind === 'claude' && config.harnessSystemPromptEnabled !== false) {
+        const base = config.harnessSystemPrompt || DEFAULT_HARNESS_SYSTEM_PROMPT
+        const wt = store.getSnapshot().state.worktrees.list.find(w => w.path === opts.cwd)
+        const isMain = wt?.isMain ?? false
+        if (isMain) {
+          const mainAddition = config.harnessSystemPromptMain || DEFAULT_HARNESS_SYSTEM_PROMPT_MAIN
+          systemPrompt = `${base}\n\n${mainAddition}`
+        } else {
+          systemPrompt = base
+        }
+        if (!systemPrompt.trim()) systemPrompt = undefined
+      }
+
+      return agent.buildSpawnArgs({ ...opts, command, mcpConfigPath, model, systemPrompt })
     }
   )
 

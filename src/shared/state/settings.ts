@@ -30,6 +30,9 @@ export interface SettingsState {
   githubAuthSource: 'pat' | 'gh-cli' | null
   harnessStarred: boolean | null
   autoUpdateEnabled: boolean
+  harnessSystemPromptEnabled: boolean
+  harnessSystemPrompt: string
+  harnessSystemPromptMain: string
 }
 
 export type SettingsEvent =
@@ -54,6 +57,9 @@ export type SettingsEvent =
   | { type: 'settings/claudeModelChanged'; payload: string | null }
   | { type: 'settings/codexModelChanged'; payload: string | null }
   | { type: 'settings/autoUpdateEnabledChanged'; payload: boolean }
+  | { type: 'settings/harnessSystemPromptEnabledChanged'; payload: boolean }
+  | { type: 'settings/harnessSystemPromptChanged'; payload: string }
+  | { type: 'settings/harnessSystemPromptMainChanged'; payload: string }
 
 // Client-side placeholder. Real values are seeded in the main-process Store
 // constructor from the on-disk config and secrets.
@@ -78,7 +84,10 @@ export const initialSettings: SettingsState = {
   hasGithubToken: false,
   githubAuthSource: null,
   harnessStarred: null,
-  autoUpdateEnabled: true
+  autoUpdateEnabled: true,
+  harnessSystemPromptEnabled: true,
+  harnessSystemPrompt: '',
+  harnessSystemPromptMain: ''
 }
 
 export function settingsReducer(state: SettingsState, event: SettingsEvent): SettingsState {
@@ -125,6 +134,12 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, codexModel: event.payload }
     case 'settings/autoUpdateEnabledChanged':
       return { ...state, autoUpdateEnabled: event.payload }
+    case 'settings/harnessSystemPromptEnabledChanged':
+      return { ...state, harnessSystemPromptEnabled: event.payload }
+    case 'settings/harnessSystemPromptChanged':
+      return { ...state, harnessSystemPrompt: event.payload }
+    case 'settings/harnessSystemPromptMainChanged':
+      return { ...state, harnessSystemPromptMain: event.payload }
     default: {
       const _exhaustive: never = event
       void _exhaustive
