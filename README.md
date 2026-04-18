@@ -42,6 +42,10 @@ Grab the latest release from the [releases page](https://github.com/frenchie4111
 - [`claude`](https://code.claude.com) CLI installed and on your login shell's `PATH`
 - `git` installed (preinstalled on macOS via Xcode Command Line Tools)
 
+### Network access
+
+Harness makes outbound network calls to two places: `api.github.com` (for PR status, check runs, and review state on worktrees that have an open PR) and this project's own GitHub releases feed (for auto-updates via `electron-updater`). If you have the [`gh`](https://cli.github.com) CLI installed and authenticated, Harness will optionally pick up your token from it instead of requiring you to paste a PAT.
+
 ## Uninstallation
 
 1. **Remove the Claude Code hooks** (do this while Harness is still running). Open Settings → **Agent** → **Status hooks** and click **Remove hooks**. This strips Harness's entries from `~/.claude/settings.json` and leaves any user-authored hooks intact.
