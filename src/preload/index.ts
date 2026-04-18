@@ -57,6 +57,14 @@ contextBridge.exposeInMainWorld('api', {
   listRepos: () => req('repo:list'),
   addRepo: () => req('repo:add'),
   removeRepo: (repoRoot: string) => req('repo:remove', repoRoot),
+  createNewProject: (opts: {
+    parentDir: string
+    name: string
+    includeReadme: boolean
+    gitignorePreset: 'none' | 'node' | 'python' | 'macos'
+  }) => req('repo:createNewProject', opts),
+  pickDirectory: (opts?: { defaultPath?: string; title?: string }) =>
+    req('dialog:pickDirectory', opts),
 
   // All files (tracked + untracked, respecting .gitignore)
   listAllFiles: (worktreePath: string) => req('worktree:listFiles', worktreePath),
@@ -231,6 +239,7 @@ contextBridge.exposeInMainWorld('api', {
   onOpenSettings: (callback: () => void) => transport.onSignal('app:openSettings', () => callback()),
   onTogglePerfMonitor: (callback: () => void) => transport.onSignal('app:togglePerfMonitor', () => callback()),
   onOpenKeyboardShortcuts: (callback: () => void) => transport.onSignal('app:openKeyboardShortcuts', () => callback()),
+  onOpenNewProject: (callback: () => void) => transport.onSignal('menu:newProject', () => callback()),
 
   // Hooks
   acceptHooks: () => req('hooks:accept'),

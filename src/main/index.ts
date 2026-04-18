@@ -39,6 +39,7 @@ import {
   type QuestStep
 } from './persistence'
 import { loadRepoConfig, saveRepoConfig, type RepoConfig } from './repo-config'
+import { createNewProject, type GitignorePreset } from './repo-create'
 import { isWorktreeMerged } from '../shared/state/prs'
 import { watchStatusDir } from './hooks'
 import { getAgent, type AgentKind } from './agents'
@@ -629,6 +630,45 @@ function registerIpcHandlers(): void {
     }
     return repoRoot
   })
+
+  transport.onRequest(
+    'dialog:pickDirectory',
+    async (opts?: { defaultPath?: string; title?: string }) => {
+      const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0]
+      const result = await dialog.showOpenDialog(win!, {
+        properties: ['openDirectory', 'createDirectory'],
+        defaultPath: opts?.defaultPath,
+        title: opts?.title ?? 'Pick a folder'
+      })
+      if (result.canceled || result.filePaths.length === 0) return null
+      return result.filePaths[0]
+    }
+  )
+
+  transport.onRequest(
+    'repo:createNewProject',
+    async (opts: {
+      parentDir: string
+      name: string
+      includeReadme: boolean
+      gitignorePreset: GitignorePreset
+    }) => {
+      const result = await createNewProject(opts)
+      if ('error' in result) return result
+      const repoRoot = result.path
+      if (!config.repoRoots.includes(repoRoot)) {
+        config.repoRoots.push(repoRoot)
+        saveConfig(config)
+        worktreesFSM.dispatchRepos([...config.repoRoots])
+        store.dispatch({
+          type: 'repoConfigs/changed',
+          payload: { repoRoot, config: loadRepoConfig(repoRoot) }
+        })
+        void worktreesFSM.refreshList()
+      }
+      return { path: repoRoot }
+    }
+  )
 
   transport.onRequest('repo:remove', (repoRoot: string) => {
     const idx = config.repoRoots.indexOf(repoRoot)
@@ -1551,6 +1591,10 @@ function openKeyboardShortcutsInFocusedWindow(): void {
   transport.sendSignal('app:openKeyboardShortcuts')
 }
 
+function openNewProjectInFocusedWindow(): void {
+  transport.sendSignal('menu:newProject')
+}
+
 function buildMenu(): void {
   const template: Electron.MenuItemConstructorOptions[] = [
     {
@@ -1574,6 +1618,11 @@ function buildMenu(): void {
     {
       label: 'File',
       submenu: [
+        {
+          label: 'New Project…',
+          accelerator: 'CmdOrCtrl+N',
+          click: openNewProjectInFocusedWindow
+        },
         {
           label: 'New Window',
           accelerator: 'CmdOrCtrl+Shift+N',
