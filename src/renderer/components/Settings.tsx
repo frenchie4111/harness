@@ -170,6 +170,7 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
     githubAuthSource: authSource,
     harnessStarred,
     worktreeScripts,
+    shareClaudeSettings,
     autoUpdateEnabled,
     harnessSystemPromptEnabled,
     harnessSystemPrompt,
@@ -1441,6 +1442,31 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
               <p className="mt-2 text-[11px] text-faint">
                 Failures are logged but don't block the worktree operation. Leave blank to disable.
               </p>
+
+              {scopeRepoRoot === null && (
+                <>
+                  <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">Share Claude Code permissions</h3>
+                  <p className="text-xs text-dim mb-3">
+                    Symlink each worktree's{' '}
+                    <code className="bg-panel-raised px-1 rounded text-[10px]">.claude/settings.local.json</code>{' '}
+                    to the main worktree's copy so "Don't ask again"
+                    permissions granted in any worktree apply everywhere.
+                    Only takes effect for worktrees created while enabled
+                    (plus a one-shot boot migration of existing ones).
+                  </p>
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={shareClaudeSettings}
+                      onChange={(e) => { void window.api.setShareClaudeSettings(e.target.checked) }}
+                      className="accent-current w-4 h-4 cursor-pointer"
+                    />
+                    <span className="text-sm text-fg">
+                      Share settings.local.json across worktrees
+                    </span>
+                  </label>
+                </>
+              )}
 
               {scopeRepoRoot !== null && (
                 <div className="mt-6 pt-5 border-t border-border">

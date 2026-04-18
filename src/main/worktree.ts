@@ -1,7 +1,16 @@
 import { execFile, spawn } from 'child_process'
 import { promisify } from 'util'
 import { basename, join, resolve, relative, isAbsolute } from 'path'
-import { existsSync, mkdirSync, statSync, lstatSync } from 'fs'
+import {
+  existsSync,
+  mkdirSync,
+  statSync,
+  lstatSync,
+  symlinkSync,
+  unlinkSync,
+  readFileSync,
+  writeFileSync
+} from 'fs'
 import { readFile, writeFile } from 'fs/promises'
 import { log } from './debug'
 import type { Worktree } from '../shared/state/worktrees'
@@ -1156,6 +1165,39 @@ export async function runWorktreeScript(
       resolve({ ok: false, exitCode: -1, stdout: '', stderr: '', error: msg })
     }
   })
+}
+
+/** Point a worktree's `.claude/settings.local.json` at the main worktree's
+ * copy via a symlink, so "Don't ask again" permissions granted in any
+ * worktree apply to all of them. No-op if main has no settings.local.json
+ * yet — we don't want to create one just to have something to symlink.
+ * Idempotent: if the target is already a symlink, does nothing. If a
+ * regular file already exists in the new worktree, it is merged into
+ * main's copy (shallow merge) before being replaced with the symlink. */
+export function symlinkClaudeSettings(mainWorktreePath: string, newWorktreePath: string): void {
+  if (mainWorktreePath === newWorktreePath) return
+  const mainSettingsPath = join(mainWorktreePath, '.claude', 'settings.local.json')
+  if (!existsSync(mainSettingsPath)) return
+
+  const newClaudeDir = join(newWorktreePath, '.claude')
+  const newSettingsPath = join(newClaudeDir, 'settings.local.json')
+
+  if (!existsSync(newClaudeDir)) mkdirSync(newClaudeDir, { recursive: true })
+
+  if (existsSync(newSettingsPath)) {
+    const stat = lstatSync(newSettingsPath)
+    if (stat.isSymbolicLink()) return
+    try {
+      const mainSettings = JSON.parse(readFileSync(mainSettingsPath, 'utf-8'))
+      const newSettings = JSON.parse(readFileSync(newSettingsPath, 'utf-8'))
+      writeFileSync(mainSettingsPath, JSON.stringify({ ...mainSettings, ...newSettings }, null, 2))
+    } catch {
+      // If either file is corrupt JSON, fall through and let the symlink win.
+    }
+    unlinkSync(newSettingsPath)
+  }
+
+  symlinkSync(mainSettingsPath, newSettingsPath)
 }
 
 export async function removeWorktree(repoRoot: string, path: string, force?: boolean): Promise<void> {

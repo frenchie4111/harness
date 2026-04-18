@@ -24,6 +24,7 @@ export interface SettingsState {
   editor: string
   worktreeBase: WorktreeBase
   mergeStrategy: MergeStrategy
+  shareClaudeSettings: boolean
   claudeModel: string | null
   codexModel: string | null
   hasGithubToken: boolean
@@ -51,6 +52,7 @@ export type SettingsEvent =
   | { type: 'settings/editorChanged'; payload: string }
   | { type: 'settings/worktreeBaseChanged'; payload: WorktreeBase }
   | { type: 'settings/mergeStrategyChanged'; payload: MergeStrategy }
+  | { type: 'settings/shareClaudeSettingsChanged'; payload: boolean }
   | { type: 'settings/hasGithubTokenChanged'; payload: boolean }
   | { type: 'settings/githubAuthSourceChanged'; payload: 'pat' | 'gh-cli' | null }
   | { type: 'settings/harnessStarredChanged'; payload: boolean | null }
@@ -79,6 +81,7 @@ export const initialSettings: SettingsState = {
   editor: 'vscode',
   worktreeBase: 'remote',
   mergeStrategy: 'squash',
+  shareClaudeSettings: true,
   claudeModel: null,
   codexModel: null,
   hasGithubToken: false,
@@ -122,6 +125,8 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, worktreeBase: event.payload }
     case 'settings/mergeStrategyChanged':
       return { ...state, mergeStrategy: event.payload }
+    case 'settings/shareClaudeSettingsChanged':
+      return { ...state, shareClaudeSettings: event.payload }
     case 'settings/hasGithubTokenChanged':
       return { ...state, hasGithubToken: event.payload }
     case 'settings/githubAuthSourceChanged':

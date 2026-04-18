@@ -99,6 +99,10 @@ export interface Config {
   // on its periodic timer. The manual "Check for updates" button in
   // Settings still works. Default is enabled (undefined/true).
   autoUpdateEnabled?: boolean
+  // When false, new worktrees don't symlink their .claude/settings.local.json
+  // to the main worktree's copy, and the boot migration doesn't convert
+  // existing regular files. Default is enabled (undefined/true).
+  shareClaudeSettings?: boolean
   // User's choice for installing agent status hooks at user scope
   // (~/.claude/settings.json, ~/.codex/hooks.json). Persisted so a
   // declined user doesn't see the banner again on next launch.
