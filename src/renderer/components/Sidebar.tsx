@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from 'react'
-import { ChevronDown, ChevronRight, Plus, RefreshCw, FolderOpen, Loader2, Settings as SettingsIcon, Sparkles, BarChart3, Trash2, LayoutGrid, X, Layers, Rows3, AlertCircle, PanelRightOpen, CircleHelp } from 'lucide-react'
+import { ChevronDown, ChevronRight, Plus, RefreshCw, FolderOpen, Loader2, Settings as SettingsIcon, Sparkles, BarChart3, Trash2, LayoutGrid, X, Layers, Rows3, AlertCircle, CircleHelp } from 'lucide-react'
 import { Tooltip } from './Tooltip'
 import { HotkeyBadge } from './HotkeyBadge'
 import { useMetaHeld } from '../hooks/useMetaHeld'
@@ -35,8 +35,6 @@ interface SidebarProps {
   onOpenHotkeyCheatsheet: () => void
   onOpenActivity: () => void
   onOpenCleanup: () => void
-  rightColumnHidden: boolean
-  onShowRightColumn: () => void
   onOpenCommandCenter: () => void
   commandCenterActive: boolean
   width: number
@@ -74,8 +72,6 @@ export function Sidebar({
   onOpenHotkeyCheatsheet,
   onOpenActivity,
   onOpenCleanup,
-  rightColumnHidden,
-  onShowRightColumn,
   onOpenCommandCenter,
   commandCenterActive,
   width,
@@ -455,16 +451,6 @@ export function Sidebar({
             <BarChart3 size={14} />
           </button>
         </Tooltip>
-        {rightColumnHidden && (
-          <Tooltip label="Show right column" action="toggleRightColumn" side="top">
-            <button
-              onClick={onShowRightColumn}
-              className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
-            >
-              <PanelRightOpen size={14} />
-            </button>
-          </Tooltip>
-        )}
         <Tooltip label="Keyboard shortcuts" action="hotkeyCheatsheet" side="top">
           <button
             onClick={onOpenHotkeyCheatsheet}
