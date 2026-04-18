@@ -357,6 +357,7 @@ export function CommandPalette({
       const recentPaletteItems: PaletteItem[] = []
       for (const r of recents) {
         if (r.type === 'worktree') {
+          if (r.id === activeWorktreeId) continue
           const wt = worktrees.find((w) => w.path === r.id)
           if (wt) recentPaletteItems.push({ kind: 'recent-worktree', wt })
         } else if (r.type === 'action') {
