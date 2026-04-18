@@ -28,6 +28,7 @@ import { ReviewScreen } from './components/ReviewScreen'
 import { CommandPalette } from './components/CommandPalette'
 import { HotkeyCheatsheet } from './components/HotkeyCheatsheet'
 import { NewProjectScreen } from './components/NewProjectScreen'
+import { ReportIssueScreen, onOpenReportIssue, type OpenReportIssueDetail } from './components/ReportIssueScreen'
 import iconUrl from '../../resources/icon.png'
 import { PerfMonitorHUD } from './components/PerfMonitorHUD'
 import { focusTerminalById } from './components/XTerminal'
@@ -187,6 +188,8 @@ export default function App(): JSX.Element {
   const [showPerfMonitor, setShowPerfMonitor] = useState(false)
   const [showHotkeyCheatsheet, setShowHotkeyCheatsheet] = useState(false)
   const [showNewProject, setShowNewProject] = useState(false)
+  const [reportIssueState, setReportIssueState] = useState<OpenReportIssueDetail | null>(null)
+  const [crashedTabIds, setCrashedTabIds] = useState<ReadonlySet<string>>(() => new Set())
   // `theme` and `defaultAgent` are both seeded at init, so we track
   // explicit confirmation separately for the onboarding step checkmarks.
   const [themeChosen, setThemeChosen] = useState(false)
@@ -270,6 +273,46 @@ const setQuestStep = useCallback((next: QuestStep) => {
     const cleanup = window.api.onOpenNewProject(() => setShowNewProject(true))
     return cleanup
   }, [])
+
+  // Report Issue — triggered from the Help menu, the sidebar, the
+  // Settings Support section, and the openReportIssueFor() helper (used
+  // by the error boundary). Closes any open overlay (Settings, hotkey
+  // cheatsheet) so the full-screen report takes over the center area.
+  useEffect(() => {
+    const openReport = (detail: OpenReportIssueDetail): void => {
+      setShowSettings(false)
+      setShowHotkeyCheatsheet(false)
+      setReportIssueState(detail)
+    }
+    const cleanupMenu = window.api.onOpenReportIssue(() => openReport({}))
+    const cleanupBus = onOpenReportIssue((detail) => openReport(detail))
+    return () => {
+      cleanupMenu()
+      cleanupBus()
+    }
+  }, [])
+
+  // Debug: Crash Focused Tab (Help menu → for testing the ErrorBoundary).
+  // Finds the active worktree's active pane and flips its active tab into
+  // a throwing render. The boundary catches it inside the tab.
+  useEffect(() => {
+    return window.api.onDebugCrashFocusedTab(() => {
+      const wtPath = activeWorktreeId
+      if (!wtPath) return
+      const tree = panes[wtPath]
+      if (!tree) return
+      const leaves = getLeaves(tree)
+      const paneId = activePaneId[wtPath] ?? leaves[0]?.id
+      const leaf = leaves.find((l) => l.id === paneId) ?? leaves[0]
+      const tabId = leaf?.activeTabId
+      if (!tabId) return
+      setCrashedTabIds((prev) => {
+        const next = new Set(prev)
+        next.add(tabId)
+        return next
+      })
+    })
+  }, [activeWorktreeId, panes, activePaneId])
 
   // Trigger a full PR refresh in main. Used by the sidebar refresh button
   // and after worktree creation/removal.
@@ -975,7 +1018,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
           if (!paneTree) return null
           const leaves = getLeaves(paneTree)
           if (leaves.length === 0 || !leaves.some((l) => l.tabs.length > 0)) return null
-          const isVisible = !showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && wt.path === activeWorktreeId && !pendingDeletionByPath[wt.path]
+          const isVisible = !showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && reportIssueState === null && wt.path === activeWorktreeId && !pendingDeletionByPath[wt.path]
           return (
             <div
               key={wt.path}
@@ -992,6 +1035,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
                   statuses={statuses}
                   shellActivity={shellActivity}
                   visible={isVisible}
+                  crashedTabIds={crashedTabIds}
                   nameAgentSessions={nameAgentSessions}
                   onSelectTab={handleSelectTab}
                   onAddTab={handleAddTerminalTab}
@@ -1017,6 +1061,15 @@ const setQuestStep = useCallback((next: QuestStep) => {
             onCancel={() => setShowNewWorktree(false)}
             repoRoots={repoRoots}
             defaultRepoRoot={activeWorktreeId ? worktreeRepoByPath[activeWorktreeId] : undefined}
+          />
+        )}
+        {reportIssueState !== null && (
+          <ReportIssueScreen
+            onClose={() => setReportIssueState(null)}
+            initialKind={reportIssueState.kind}
+            initialTitle={reportIssueState.title}
+            initialBody={reportIssueState.body}
+            prefilledContext={reportIssueState.context}
           />
         )}
         {showActivity && (
@@ -1080,12 +1133,12 @@ const setQuestStep = useCallback((next: QuestStep) => {
             </div>
           )
         })()}
-        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && !activeWorktreeId && worktrees.length > 0 && (
+        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && reportIssueState === null && !activeWorktreeId && worktrees.length > 0 && (
           <div className="flex-1 flex items-center justify-center text-dim">
             Select a worktree to begin
           </div>
         )}
-        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && isPendingId(activeWorktreeId) && (() => {
+        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && reportIssueState === null && isPendingId(activeWorktreeId) && (() => {
           const pending = pendingWorktrees.find((p) => p.id === activeWorktreeId)
           if (!pending) return null
           return (
@@ -1097,7 +1150,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
             />
           )
         })()}
-        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && activeWorktreeId && pendingDeletionByPath[activeWorktreeId] && (
+        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && reportIssueState === null && activeWorktreeId && pendingDeletionByPath[activeWorktreeId] && (
           <DeletingWorktreeScreen
             deletion={pendingDeletionByPath[activeWorktreeId]}
             onDismiss={handleDismissPendingDeletion}
@@ -1109,10 +1162,10 @@ const setQuestStep = useCallback((next: QuestStep) => {
           onFinish={() => setQuestStep('done')}
         />
         {/* Right panel — hidden on the new-worktree screen so the form gets the full width */}
-        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && !rightColumnHidden && (
+        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && reportIssueState === null && !rightColumnHidden && (
           <ResizeHandle onDelta={handleRightPanelResize} />
         )}
-        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && !rightColumnHidden && (
+        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && reportIssueState === null && !rightColumnHidden && (
           <RightColumn
             width={rightPanelWidth}
             activeWorktreeId={activeWorktreeId}

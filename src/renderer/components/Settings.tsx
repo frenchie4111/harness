@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2 } from 'lucide-react'
+import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2, LifeBuoy, Bug, Lightbulb } from 'lucide-react'
+import { openReportIssue } from './ReportIssueScreen'
+import { HARNESS_RELEASES_URL } from '../../shared/constants'
 import { useSettings, useUpdater, useRepoConfigs, useHooks } from '../store'
 import type { UpdaterStatus, MergeStrategy, RepoConfig } from '../types'
 import { DEFAULT_HOTKEYS, ACTION_LABELS, bindingToString, eventToBinding, resolveHotkeys, type Action, type HotkeyBinding } from '../hotkeys'
@@ -14,7 +16,7 @@ interface SettingsProps {
   initialSection?: SectionId
 }
 
-type SectionId = 'appearance' | 'agent' | 'worktrees' | 'editor' | 'github' | 'hotkeys' | 'updates'
+type SectionId = 'appearance' | 'agent' | 'worktrees' | 'editor' | 'github' | 'hotkeys' | 'updates' | 'support'
 type SubSectionId = 'agent-general' | 'agent-claude' | 'agent-codex'
 
 interface SubSection {
@@ -40,7 +42,8 @@ const SECTIONS: Section[] = [
   { id: 'editor', label: 'Editor', icon: Code2 },
   { id: 'github', label: 'GitHub', icon: GitPullRequest },
   { id: 'hotkeys', label: 'Hotkeys', icon: Keyboard },
-  { id: 'updates', label: 'Updates', icon: DownloadCloud }
+  { id: 'updates', label: 'Updates', icon: DownloadCloud },
+  { id: 'support', label: 'Support', icon: LifeBuoy }
 ]
 
 export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps): JSX.Element {
@@ -54,7 +57,8 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
     editor: null,
     github: null,
     hotkeys: null,
-    updates: null
+    updates: null,
+    support: null
   })
   const subSectionRefs = useRef<Record<SubSectionId, HTMLElement | null>>({
     'agent-general': null,
@@ -1804,12 +1808,43 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
 
               <div className="mt-3 text-xs text-dim">
                 <a
-                  onClick={() => window.api.openExternal('https://github.com/frenchie4111/harness/releases')}
+                  onClick={() => window.api.openExternal(HARNESS_RELEASES_URL)}
                   className="text-muted hover:text-fg-bright underline cursor-pointer"
                 >
                   View all releases on GitHub
                 </a>
               </div>
+            </section>
+
+            {/* Support section */}
+            <section ref={(el) => { sectionRefs.current.support = el }} id="support">
+              <h2 className="text-lg font-semibold text-fg-bright mb-1">Support</h2>
+              <p className="text-sm text-dim mb-4">
+                Found a bug or want to request a feature? Let us know on GitHub.
+              </p>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => openReportIssue({ kind: 'bug' })}
+                  className="flex items-center gap-2 px-3 py-2 bg-panel-raised border border-border rounded-lg text-sm text-fg-bright hover:bg-surface transition-colors cursor-pointer"
+                >
+                  <Bug size={14} />
+                  Report a bug
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openReportIssue({ kind: 'feature' })}
+                  className="flex items-center gap-2 px-3 py-2 bg-panel-raised border border-border rounded-lg text-sm text-fg-bright hover:bg-surface transition-colors cursor-pointer"
+                >
+                  <Lightbulb size={14} />
+                  Request a feature
+                </button>
+              </div>
+
+              <p className="mt-3 text-xs text-dim">
+                Opens a prefilled GitHub issue in your browser. No data is sent from Harness directly.
+              </p>
             </section>
           </div>
         </div>

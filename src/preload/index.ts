@@ -212,6 +212,7 @@ contextBridge.exposeInMainWorld('api', {
 
   // Updater
   getVersion: () => req('updater:getVersion'),
+  readRecentLog: (maxLines?: number) => req('debug:readRecentLog', maxLines),
   checkForUpdates: () => req('updater:checkForUpdates'),
   quitAndInstall: () => req('updater:quitAndInstall'),
 
@@ -245,6 +246,8 @@ contextBridge.exposeInMainWorld('api', {
   onTogglePerfMonitor: (callback: () => void) => transport.onSignal('app:togglePerfMonitor', () => callback()),
   onOpenKeyboardShortcuts: (callback: () => void) => transport.onSignal('app:openKeyboardShortcuts', () => callback()),
   onOpenNewProject: (callback: () => void) => transport.onSignal('menu:newProject', () => callback()),
+  onOpenReportIssue: (callback: () => void) => transport.onSignal('app:openReportIssue', () => callback()),
+  onDebugCrashFocusedTab: (callback: () => void) => transport.onSignal('app:debugCrashFocusedTab', () => callback()),
 
   // Hooks
   acceptHooks: () => req('hooks:accept'),

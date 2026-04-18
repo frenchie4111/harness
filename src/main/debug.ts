@@ -1,4 +1,4 @@
-import { appendFileSync, writeFileSync } from 'fs'
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { app } from 'electron'
 
@@ -33,4 +33,17 @@ export function log(category: string, message: string, data?: unknown): void {
 
 export function getLogFilePath(): string {
   return getLogPath()
+}
+
+export function readRecentDebugLog(maxLines = 200): string {
+  const path = getLogPath()
+  if (!existsSync(path)) return ''
+  try {
+    const content = readFileSync(path, 'utf-8')
+    const lines = content.split('\n')
+    const tail = lines.slice(-Math.max(1, maxLines))
+    return tail.join('\n').trim()
+  } catch {
+    return ''
+  }
 }

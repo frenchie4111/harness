@@ -297,6 +297,7 @@ export interface ElectronAPI {
   setHarnessStarred(starred: boolean): Promise<{ ok: boolean; error?: string }>
 
   getVersion(): Promise<string>
+  readRecentLog(maxLines?: number): Promise<string>
   checkForUpdates(): Promise<{ ok: boolean; available?: boolean; version?: string; releaseDate?: string; error?: string }>
   quitAndInstall(): Promise<boolean>
 
@@ -314,6 +315,8 @@ export interface ElectronAPI {
   onTogglePerfMonitor(callback: () => void): () => void
   onOpenKeyboardShortcuts(callback: () => void): () => void
   onOpenNewProject(callback: () => void): () => void
+  onOpenReportIssue(callback: () => void): () => void
+  onDebugCrashFocusedTab(callback: () => void): () => void
 
   acceptHooks(): Promise<boolean>
   declineHooks(): Promise<boolean>
