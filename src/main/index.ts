@@ -1808,7 +1808,11 @@ app.whenReady().then(() => {
       getTabUrl: (tabId) => browserManager.getUrl(tabId),
       getTabConsoleLogs: (tabId) => browserManager.getConsoleLogs(tabId),
       screenshotTab: (tabId) => browserManager.capturePage(tabId),
-      getTabDom: (tabId) => browserManager.getDom(tabId)
+      getTabDom: (tabId) => browserManager.getDom(tabId),
+      navigateTab: (tabId, url) => browserManager.navigate(tabId, url),
+      backTab: (tabId) => browserManager.back(tabId),
+      forwardTab: (tabId) => browserManager.forward(tabId),
+      reloadTab: (tabId) => browserManager.reload(tabId)
     },
     broadcast: (channel, payload) => {
       if (channel === 'worktrees:externalCreate') {

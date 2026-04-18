@@ -162,6 +162,52 @@ const TOOLS = [
       },
       required: ['tab_id']
     }
+  },
+  {
+    name: 'navigate_tab',
+    description:
+      "Navigate a browser tab in this worktree to a URL. Accepts a bare host (e.g. 'github.com') — https:// is prepended automatically if no scheme is present.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tab_id: { type: 'string', description: 'Browser tab id from list_browser_tabs.' },
+        url: { type: 'string', description: 'URL to load.' }
+      },
+      required: ['tab_id', 'url']
+    }
+  },
+  {
+    name: 'back_tab',
+    description: 'Navigate the tab one step backward in its history (no-op if no back entry).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tab_id: { type: 'string', description: 'Browser tab id from list_browser_tabs.' }
+      },
+      required: ['tab_id']
+    }
+  },
+  {
+    name: 'forward_tab',
+    description: 'Navigate the tab one step forward in its history (no-op if no forward entry).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tab_id: { type: 'string', description: 'Browser tab id from list_browser_tabs.' }
+      },
+      required: ['tab_id']
+    }
+  },
+  {
+    name: 'reload_tab',
+    description: 'Reload the current page in the tab.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tab_id: { type: 'string', description: 'Browser tab id from list_browser_tabs.' }
+      },
+      required: ['tab_id']
+    }
   }
 ]
 
@@ -232,6 +278,30 @@ async function handleToolCall(name, args) {
       '/browser/console?tabId=' + encodeURIComponent(args.tab_id)
     )
     return JSON.stringify((r && r.logs) || [], null, 2)
+  }
+  if (name === 'navigate_tab') {
+    if (!args || !args.tab_id) throw new Error('tab_id is required')
+    if (!args.url) throw new Error('url is required')
+    await callControl('POST', '/browser/navigate', {
+      tabId: args.tab_id,
+      url: args.url
+    })
+    return 'navigated ' + args.tab_id + ' → ' + args.url
+  }
+  if (name === 'back_tab') {
+    if (!args || !args.tab_id) throw new Error('tab_id is required')
+    await callControl('POST', '/browser/back', { tabId: args.tab_id })
+    return 'back ' + args.tab_id
+  }
+  if (name === 'forward_tab') {
+    if (!args || !args.tab_id) throw new Error('tab_id is required')
+    await callControl('POST', '/browser/forward', { tabId: args.tab_id })
+    return 'forward ' + args.tab_id
+  }
+  if (name === 'reload_tab') {
+    if (!args || !args.tab_id) throw new Error('tab_id is required')
+    await callControl('POST', '/browser/reload', { tabId: args.tab_id })
+    return 'reloaded ' + args.tab_id
   }
   throw new Error('unknown tool: ' + name)
 }

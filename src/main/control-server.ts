@@ -20,6 +20,10 @@ export interface BrowserQueries {
   ) => Array<{ ts: number; level: string; message: string }>
   screenshotTab: (tabId: string) => Promise<string | null>
   getTabDom: (tabId: string) => Promise<string | null>
+  navigateTab: (tabId: string, url: string) => void
+  backTab: (tabId: string) => void
+  forwardTab: (tabId: string) => void
+  reloadTab: (tabId: string) => void
 }
 
 export interface ControlServerDeps {
@@ -163,9 +167,14 @@ async function handleRequest(
       })
     }
 
-    const tabId = url.searchParams.get('tabId') || ''
+    // Write endpoints read tabId from the JSON body; read endpoints take it
+    // as a query param so they can stay GET.
+    const body = req.method === 'POST' ? await readJson(req) : {}
+    const tabId = String(
+      (body.tabId as string | undefined) ?? url.searchParams.get('tabId') ?? ''
+    )
     if (!tabId) {
-      return sendJson(res, 400, { error: 'tabId query param required' })
+      return sendJson(res, 400, { error: 'tabId required' })
     }
     const bad = assertSameWorktree(tabId)
     if (bad) return sendJson(res, 404, { error: bad })
@@ -189,6 +198,24 @@ async function handleRequest(
         html: dom,
         error: dom != null ? undefined : 'dom read failed'
       })
+    }
+    if (req.method === 'POST' && path === '/browser/navigate') {
+      const nextUrl = String(body.url || '').trim()
+      if (!nextUrl) return sendJson(res, 400, { error: 'url required' })
+      deps.browser.navigateTab(tabId, nextUrl)
+      return sendJson(res, 200, { ok: true })
+    }
+    if (req.method === 'POST' && path === '/browser/back') {
+      deps.browser.backTab(tabId)
+      return sendJson(res, 200, { ok: true })
+    }
+    if (req.method === 'POST' && path === '/browser/forward') {
+      deps.browser.forwardTab(tabId)
+      return sendJson(res, 200, { ok: true })
+    }
+    if (req.method === 'POST' && path === '/browser/reload') {
+      deps.browser.reloadTab(tabId)
+      return sendJson(res, 200, { ok: true })
     }
 
     res.writeHead(404)
