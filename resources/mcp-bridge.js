@@ -10,6 +10,16 @@ const PORT = process.env.HARNESS_PORT
 const TOKEN = process.env.HARNESS_TOKEN
 const TERMINAL_ID = process.env.HARNESS_TERMINAL_ID || ''
 
+// Scope set at spawn by src/main/mcp-config.ts. The server re-resolves
+// scope from TERMINAL_ID on every call (authoritative), so these are a
+// best-effort hint used to customize the advertised tool list/descriptions
+// for feature-worktree callers. Can go stale if the session teleports.
+const SCOPE = {
+  worktreeId: process.env.HARNESS_WORKTREE_ID || '',
+  repoRoot: process.env.HARNESS_REPO_ROOT || '',
+  isMain: process.env.HARNESS_IS_MAIN === '1'
+}
+
 if (!PORT || !TOKEN) {
   process.stderr.write('harness-mcp: HARNESS_PORT and HARNESS_TOKEN required\n')
   process.exit(1)
@@ -65,7 +75,7 @@ const TOOLS = [
   {
     name: 'create_worktree',
     description:
-      'Create a new git worktree in a Harness-managed repo. Harness will open a new Claude chat tab inside the new worktree automatically.',
+      "Create a new git worktree in a Harness-managed repo. Harness will open a new Claude chat tab inside the new worktree automatically. Defaults to the caller's current repo when repoRoot is omitted.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -76,7 +86,7 @@ const TOOLS = [
         repoRoot: {
           type: 'string',
           description:
-            'Absolute path to the repo root. Optional when only one repo is open in Harness.'
+            "Absolute path to the repo root. Optional — defaults to the caller's current repo."
         },
         baseBranch: {
           type: 'string',

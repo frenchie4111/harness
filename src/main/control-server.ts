@@ -10,8 +10,6 @@ export interface BrowserTabSummary {
 }
 
 export interface BrowserQueries {
-  /** Given the MCP caller's terminal id, find the worktree it lives in. */
-  getWorktreeForTerminalId: (terminalId: string) => string | null
   listTabsForWorktree: (worktreePath: string) => BrowserTabSummary[]
   getTabWorktree: (tabId: string) => string | null
   getTabUrl: (tabId: string) => string | null
@@ -27,10 +25,23 @@ export interface BrowserQueries {
   createTab: (worktreePath: string, url: string) => { id: string; url: string }
 }
 
+/** Scope derived from the caller's terminal id on every request. The
+ * source of truth — env vars injected into the MCP bridge can go stale
+ * (teleport sessions, deleted worktrees), so each tool call re-resolves. */
+export interface CallerScope {
+  terminalId: string
+  worktreePath: string
+  repoRoot: string
+  isMain: boolean
+}
+
 export interface ControlServerDeps {
   getRepoRoots: () => string[]
   getWorktreeBase: () => 'remote' | 'local'
   broadcast: (channel: string, ...args: unknown[]) => void
+  /** Returns the caller's current scope, or null if the terminal is not
+   * associated with any known worktree (e.g. the worktree was deleted). */
+  resolveCallerScope: (terminalId: string) => CallerScope | null
   browser: BrowserQueries
 }
 
@@ -70,6 +81,15 @@ export function startControlServer(deps: ControlServerDeps): Promise<void> {
   })
 }
 
+function resolveScope(
+  req: IncomingMessage,
+  deps: ControlServerDeps
+): { scope: CallerScope | null; terminalId: string } {
+  const terminalId = String(req.headers['x-harness-terminal-id'] || '')
+  if (!terminalId) return { scope: null, terminalId: '' }
+  return { scope: deps.resolveCallerScope(terminalId), terminalId }
+}
+
 async function handleRequest(
   req: IncomingMessage,
   res: ServerResponse,
@@ -90,10 +110,17 @@ async function handleRequest(
     return sendJson(res, 200, { ok: true })
   }
 
+  // list_repos is workspace-wide for every caller — read-only metadata that
+  // helps agents understand the overall harness state.
   if (req.method === 'GET' && path === '/repos') {
     return sendJson(res, 200, { repoRoots: deps.getRepoRoots() })
   }
 
+  // Worktree management tools are workspace-wide for every caller — a
+  // feature-worktree session might spin off a new worktree for a related
+  // idea, and listing siblings across repos is useful context. Runtime
+  // tools (browser, future dev-servers) are the ones that need per-worktree
+  // scoping, since those resources physically live inside a single worktree.
   if (req.method === 'GET' && path === '/worktrees') {
     const repoRoot = url.searchParams.get('repoRoot')
     const roots = repoRoot ? [repoRoot] : deps.getRepoRoots()
@@ -112,18 +139,27 @@ async function handleRequest(
     const body = await readJson(req)
     let repoRoot = typeof body.repoRoot === 'string' ? body.repoRoot : undefined
     if (!repoRoot) {
-      const roots = deps.getRepoRoots()
-      if (roots.length === 1) {
-        repoRoot = roots[0]
-      } else if (roots.length === 0) {
-        return sendJson(res, 400, { error: 'no repos open in Harness' })
+      // Prefer the caller's repo when we can infer it — a feature-worktree
+      // agent "make a sibling worktree for idea X" reads most naturally
+      // without having to pass repoRoot.
+      const { scope } = resolveScope(req, deps)
+      if (scope) {
+        repoRoot = scope.repoRoot
       } else {
-        return sendJson(res, 400, {
-          error: 'repoRoot required when multiple repos are open',
-          repoRoots: roots
-        })
+        const roots = deps.getRepoRoots()
+        if (roots.length === 1) {
+          repoRoot = roots[0]
+        } else if (roots.length === 0) {
+          return sendJson(res, 400, { error: 'no repos open in Harness' })
+        } else {
+          return sendJson(res, 400, {
+            error: 'repoRoot required when multiple repos are open',
+            repoRoots: roots
+          })
+        }
       }
     }
+
     const branchName = String(body.branchName || '').trim()
     if (!branchName) {
       return sendJson(res, 400, { error: 'branchName required' })
@@ -139,26 +175,31 @@ async function handleRequest(
     return sendJson(res, 200, created)
   }
 
-  // Browser MCP endpoints. All calls require an `X-Harness-Terminal-Id` header
-  // (set by the bridge from HARNESS_TERMINAL_ID) so we can scope tab access
-  // to the worktree that hosts the calling MCP session. Tabs outside that
-  // worktree are invisible.
+  // Browser MCP endpoints. Every call is scoped to the caller's worktree
+  // regardless of whether the caller is main or a feature worktree —
+  // runtime things (tabs, dev servers) live physically inside one worktree
+  // and shouldn't be reachable across boundaries.
   if (path.startsWith('/browser/')) {
-    const callerTerminalId = String(req.headers['x-harness-terminal-id'] || '')
-    if (!callerTerminalId) {
+    const { scope, terminalId } = resolveScope(req, deps)
+    if (!terminalId) {
       return sendJson(res, 400, { error: 'X-Harness-Terminal-Id header required' })
     }
-    const callerWorktree = deps.browser.getWorktreeForTerminalId(callerTerminalId)
-    if (!callerWorktree) {
+    if (!scope) {
       return sendJson(res, 404, {
         error: 'caller terminal is not associated with a worktree'
       })
     }
+    const callerWorktree = scope.worktreePath
 
     const assertSameWorktree = (tabId: string): string | null => {
       const wt = deps.browser.getTabWorktree(tabId)
       if (!wt) return 'tab not found'
-      if (wt !== callerWorktree) return 'tab belongs to a different worktree'
+      if (wt !== callerWorktree) {
+        return (
+          `cross-worktree access denied: this session is scoped to worktree ${callerWorktree}. ` +
+          `Use list_browser_tabs() to see accessible tabs.`
+        )
+      }
       return null
     }
 
@@ -184,7 +225,7 @@ async function handleRequest(
       return sendJson(res, 400, { error: 'tabId required' })
     }
     const bad = assertSameWorktree(tabId)
-    if (bad) return sendJson(res, 404, { error: bad })
+    if (bad) return sendJson(res, 403, { error: bad })
 
     if (req.method === 'GET' && path === '/browser/url') {
       return sendJson(res, 200, { url: deps.browser.getTabUrl(tabId) })
@@ -228,6 +269,17 @@ async function handleRequest(
     res.writeHead(404)
     res.end('browser endpoint not found')
     return
+  }
+
+  // /scope — returns the caller's current scope. The MCP bridge calls this
+  // once at startup so it can adapt tool descriptions (e.g. signalling
+  // "create_worktree defaults to this repo" for feature callers).
+  if (req.method === 'GET' && path === '/scope') {
+    const { scope, terminalId } = resolveScope(req, deps)
+    if (!terminalId) {
+      return sendJson(res, 400, { error: 'X-Harness-Terminal-Id header required' })
+    }
+    return sendJson(res, 200, { scope })
   }
 
   res.writeHead(404)

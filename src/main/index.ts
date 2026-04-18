@@ -46,6 +46,38 @@ import { getAgent, type AgentKind } from './agents'
 function toAgentKind(value: string | undefined): AgentKind {
   return value === 'codex' ? 'codex' : 'claude'
 }
+
+// Resolves the caller's MCP scope from their terminal id. Used by both
+// the control HTTP server (on every tool call, authoritative) and
+// writeMcpConfigForTerminal (to seed best-effort HARNESS_* env vars in
+// the spawned bridge). Lives at module scope so IPC handlers registered
+// inside registerIpcHandlers can close over it — the store reference is
+// hoisted the same way.
+function resolveCallerScope(terminalId: string) {
+  if (!terminalId) return null
+  const panes = store.getSnapshot().state.terminals.panes
+  let worktreePath: string | null = null
+  for (const [wtPath, tree] of Object.entries(panes)) {
+    for (const leaf of getLeaves(tree)) {
+      if (leaf.tabs.some((t) => t.id === terminalId)) {
+        worktreePath = wtPath
+        break
+      }
+    }
+    if (worktreePath) break
+  }
+  if (!worktreePath) return null
+  const wt = store
+    .getSnapshot()
+    .state.worktrees.list.find((w) => w.path === worktreePath)
+  if (!wt) return null
+  return {
+    terminalId,
+    worktreePath,
+    repoRoot: wt.repoRoot,
+    isMain: wt.isMain
+  }
+}
 import { CostTracker } from './cost-tracker'
 import { startControlServer } from './control-server'
 import { writeMcpConfigForTerminal, pruneMcpConfigs } from './mcp-config'
@@ -987,7 +1019,7 @@ function registerIpcHandlers(): void {
   transport.onRequest('mcp:prepareForTerminal', (terminalId: string): string | null => {
     if (config.harnessMcpEnabled === false) return null
     if (!terminalId) return null
-    return writeMcpConfigForTerminal(terminalId)
+    return writeMcpConfigForTerminal(terminalId, resolveCallerScope(terminalId))
   })
 
   transport.onRequest('config:setClaudeTuiFullscreen', (enabled: boolean) => {
@@ -1258,7 +1290,10 @@ function registerIpcHandlers(): void {
         ? (config.claudeCommand || agent.defaultCommand)
         : (config.codexCommand || agent.defaultCommand)
       const model = kind === 'claude' ? (config.claudeModel || null) : (config.codexModel || null)
-      const mcpConfigPath = writeMcpConfigForTerminal(opts.terminalId)
+      const mcpConfigPath = writeMcpConfigForTerminal(
+        opts.terminalId,
+        resolveCallerScope(opts.terminalId)
+      )
 
       let systemPrompt: string | undefined
       if (kind === 'claude' && config.harnessSystemPromptEnabled !== false) {
@@ -1808,25 +1843,12 @@ app.whenReady().then(() => {
   pruneTerminalHistory(keepIds)
   pruneMcpConfigs(keepIds)
 
-  // Helper: look up the worktree path that hosts a given terminal id, by
-  // scanning the current pane tree. Used by the browser MCP endpoints to
-  // scope tab access to the caller's worktree.
-  const getWorktreeForTerminalId = (terminalId: string): string | null => {
-    const panes = store.getSnapshot().state.terminals.panes
-    for (const [wtPath, tree] of Object.entries(panes)) {
-      for (const leaf of getLeaves(tree)) {
-        if (leaf.tabs.some((t) => t.id === terminalId)) return wtPath
-      }
-    }
-    return null
-  }
-
   // Local HTTP control server for the bundled harness-control MCP bridge.
   startControlServer({
     getRepoRoots: () => config.repoRoots,
     getWorktreeBase: () => config.worktreeBase || DEFAULT_WORKTREE_BASE,
+    resolveCallerScope,
     browser: {
-      getWorktreeForTerminalId,
       listTabsForWorktree: (wtPath) => {
         const ids = browserManager.listTabsForWorktree(wtPath)
         const out: Array<{ id: string; url: string; title: string }> = []
