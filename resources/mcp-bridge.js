@@ -235,6 +235,75 @@ const TOOLS = [
     }
   },
   {
+    name: 'click_tab',
+    description:
+      "Synthesize a mouse click at viewport-relative (x, y) coordinates inside a browser tab. Origin is the top-left of the tab's web view. Use a screenshot first to figure out where to click. A visible cursor + click ripple is overlaid on the page so the user can watch the interaction.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tab_id: { type: 'string', description: 'Browser tab id from list_browser_tabs.' },
+        x: { type: 'number', description: 'Viewport x coordinate (CSS pixels).' },
+        y: { type: 'number', description: 'Viewport y coordinate (CSS pixels).' },
+        button: {
+          type: 'string',
+          enum: ['left', 'right', 'middle'],
+          description: 'Mouse button (default left).'
+        },
+        click_count: {
+          type: 'number',
+          description: 'Number of clicks; use 2 for double-click. Default 1, max 3.'
+        }
+      },
+      required: ['tab_id', 'x', 'y']
+    }
+  },
+  {
+    name: 'type_tab',
+    description:
+      "Type text into the focused element of a browser tab. Click the field first with click_tab to focus it. Pass `text` for literal characters (\\n becomes Enter, \\t becomes Tab). Pass `key` to press a single special key (Enter, Tab, Backspace, Delete, Escape, ArrowUp/Down/Left/Right, Home, End, PageUp, PageDown, Space). You can pass both — `key` fires first, then `text`.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tab_id: { type: 'string', description: 'Browser tab id from list_browser_tabs.' },
+        text: { type: 'string', description: 'Literal text to insert.' },
+        key: {
+          type: 'string',
+          description:
+            "Optional special key to press (e.g. 'Enter', 'Backspace', 'ArrowDown')."
+        }
+      },
+      required: ['tab_id']
+    }
+  },
+  {
+    name: 'scroll_tab',
+    description:
+      "Scroll a browser tab by (delta_x, delta_y) CSS pixels. Positive delta_y scrolls down. Equivalent to window.scrollBy in the page.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tab_id: { type: 'string', description: 'Browser tab id from list_browser_tabs.' },
+        delta_x: { type: 'number', description: 'Horizontal scroll in CSS pixels (default 0).' },
+        delta_y: { type: 'number', description: 'Vertical scroll in CSS pixels (default 0).' }
+      },
+      required: ['tab_id']
+    }
+  },
+  {
+    name: 'show_cursor',
+    description:
+      "Render or move the visible fake cursor overlay at (x, y) inside a browser tab without clicking. Useful for showing the user where you're about to click. click_tab calls this automatically.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tab_id: { type: 'string', description: 'Browser tab id from list_browser_tabs.' },
+        x: { type: 'number', description: 'Viewport x coordinate (CSS pixels).' },
+        y: { type: 'number', description: 'Viewport y coordinate (CSS pixels).' }
+      },
+      required: ['tab_id', 'x', 'y']
+    }
+  },
+  {
     name: 'list_shells',
     description:
       "List shell tabs in the caller's worktree. Each entry includes id, label, command (if started with one), cwd, and alive (whether its PTY is still running). Use the returned id with read_shell_output/kill_shell. Prefer reading an existing shell over spawning a new one when you just want to inspect recent output.",
@@ -400,6 +469,56 @@ async function handleToolCall(name, args) {
     if (!args || !args.tab_id) throw new Error('tab_id is required')
     await callControl('POST', '/browser/reload', { tabId: args.tab_id })
     return 'reloaded ' + args.tab_id
+  }
+  if (name === 'click_tab') {
+    if (!args || !args.tab_id) throw new Error('tab_id is required')
+    if (typeof args.x !== 'number' || typeof args.y !== 'number') {
+      throw new Error('x and y (numbers) are required')
+    }
+    await callControl('POST', '/browser/click', {
+      tabId: args.tab_id,
+      x: args.x,
+      y: args.y,
+      button: args.button,
+      clickCount: args.click_count
+    })
+    return 'clicked ' + args.tab_id + ' at (' + args.x + ', ' + args.y + ')'
+  }
+  if (name === 'type_tab') {
+    if (!args || !args.tab_id) throw new Error('tab_id is required')
+    if (!args.text && !args.key) throw new Error('text or key is required')
+    await callControl('POST', '/browser/type', {
+      tabId: args.tab_id,
+      text: args.text || '',
+      key: args.key
+    })
+    const parts = []
+    if (args.key) parts.push('key=' + args.key)
+    if (args.text) parts.push(JSON.stringify(args.text))
+    return 'typed into ' + args.tab_id + ' ' + parts.join(' + ')
+  }
+  if (name === 'scroll_tab') {
+    if (!args || !args.tab_id) throw new Error('tab_id is required')
+    const dx = typeof args.delta_x === 'number' ? args.delta_x : 0
+    const dy = typeof args.delta_y === 'number' ? args.delta_y : 0
+    await callControl('POST', '/browser/scroll', {
+      tabId: args.tab_id,
+      deltaX: dx,
+      deltaY: dy
+    })
+    return 'scrolled ' + args.tab_id + ' by (' + dx + ', ' + dy + ')'
+  }
+  if (name === 'show_cursor') {
+    if (!args || !args.tab_id) throw new Error('tab_id is required')
+    if (typeof args.x !== 'number' || typeof args.y !== 'number') {
+      throw new Error('x and y (numbers) are required')
+    }
+    await callControl('POST', '/browser/cursor', {
+      tabId: args.tab_id,
+      x: args.x,
+      y: args.y
+    })
+    return 'cursor at (' + args.x + ', ' + args.y + ') in ' + args.tab_id
   }
   if (name === 'list_shells') {
     const r = await callControl('GET', '/shells')
