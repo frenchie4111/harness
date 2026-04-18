@@ -79,6 +79,7 @@ export interface BranchCommit {
   author: string
   relativeDate: string
   timestamp: number
+  pushed: boolean
 }
 
 export interface ChangedFile {

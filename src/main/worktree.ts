@@ -270,6 +270,32 @@ export interface BranchCommit {
   author: string
   relativeDate: string
   timestamp: number
+  pushed: boolean
+}
+
+/** Hashes of commits on this branch not yet reachable from origin/<branch>.
+ * Empty set if the branch has no remote tracking ref (all commits are local). */
+async function getUnpushedHashes(worktreePath: string): Promise<Set<string> | null> {
+  const branch = await getCurrentBranch(worktreePath)
+  if (!branch) return null
+  const remoteRef = `refs/remotes/origin/${branch}`
+  try {
+    await execFileAsync('git', ['rev-parse', '--verify', '--quiet', remoteRef], {
+      cwd: worktreePath
+    })
+  } catch {
+    return null
+  }
+  try {
+    const { stdout } = await execFileAsync(
+      'git',
+      ['log', `origin/${branch}..HEAD`, '--pretty=format:%H', '--max-count=500'],
+      { cwd: worktreePath }
+    )
+    return new Set(stdout.split('\n').filter(Boolean))
+  } catch {
+    return new Set()
+  }
 }
 
 /** Get commits unique to this branch (i.e. base..HEAD). */
@@ -278,22 +304,27 @@ export async function getBranchCommits(worktreePath: string): Promise<BranchComm
   if (base === 'HEAD') return []
   try {
     const sep = '\x1f'
-    const { stdout } = await execFileAsync(
-      'git',
-      ['log', `${base}..HEAD`, `--pretty=format:%H${sep}%h${sep}%s${sep}%an${sep}%ar${sep}%at`, '--max-count=200'],
-      { cwd: worktreePath }
-    )
+    const [{ stdout }, unpushed] = await Promise.all([
+      execFileAsync(
+        'git',
+        ['log', `${base}..HEAD`, `--pretty=format:%H${sep}%h${sep}%s${sep}%an${sep}%ar${sep}%at`, '--max-count=200'],
+        { cwd: worktreePath }
+      ),
+      getUnpushedHashes(worktreePath)
+    ])
     const out: BranchCommit[] = []
     for (const line of stdout.split('\n')) {
       if (!line) continue
       const [hash, shortHash, subject, author, relativeDate, ts] = line.split(sep)
+      const pushed = unpushed === null ? false : !unpushed.has(hash)
       out.push({
         hash,
         shortHash,
         subject,
         author,
         relativeDate,
-        timestamp: Number(ts) || 0
+        timestamp: Number(ts) || 0,
+        pushed
       })
     }
     return out
