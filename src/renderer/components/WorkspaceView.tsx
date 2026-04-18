@@ -113,7 +113,7 @@ function SplitRenderer({
   nameAgentSessions,
   leafCount,
   isFirstLeaf,
-  lastLeafId,
+  topRightLeafId,
   showExpandRightColumn,
   onShowRightColumn,
   registerSlot,
@@ -136,7 +136,7 @@ function SplitRenderer({
   nameAgentSessions: boolean
   leafCount: number
   isFirstLeaf: { value: boolean }
-  lastLeafId: string
+  topRightLeafId: string
   showExpandRightColumn: boolean
   onShowRightColumn: () => void
   registerSlot: (paneId: string, el: HTMLDivElement | null) => void
@@ -173,7 +173,7 @@ function SplitRenderer({
           onCloseTab={onCloseTab}
           onSplitRight={() => onSplitRight(node.id)}
           onSplitDown={() => onSplitDown(node.id)}
-          showExpandRightColumn={showExpandRightColumn && node.id === lastLeafId}
+          showExpandRightColumn={showExpandRightColumn && node.id === topRightLeafId}
           onShowRightColumn={onShowRightColumn}
         />
       </div>
@@ -205,7 +205,7 @@ function SplitRenderer({
           nameAgentSessions={nameAgentSessions}
           leafCount={leafCount}
           isFirstLeaf={isFirstLeaf}
-          lastLeafId={lastLeafId}
+          topRightLeafId={topRightLeafId}
           showExpandRightColumn={showExpandRightColumn}
           onShowRightColumn={onShowRightColumn}
           registerSlot={registerSlot}
@@ -240,7 +240,7 @@ function SplitRenderer({
           nameAgentSessions={nameAgentSessions}
           leafCount={leafCount}
           isFirstLeaf={isFirstLeaf}
-          lastLeafId={lastLeafId}
+          topRightLeafId={topRightLeafId}
           showExpandRightColumn={showExpandRightColumn}
           onShowRightColumn={onShowRightColumn}
           registerSlot={registerSlot}
@@ -357,7 +357,7 @@ export function WorkspaceView({
   )
 
   const isFirstLeaf = { value: true }
-  const lastLeafId = leaves[leaves.length - 1]?.id ?? ''
+  const topRightLeafId = findTopRightLeaf(paneTree).id
 
   return (
     <DndContext
@@ -378,7 +378,7 @@ export function WorkspaceView({
           nameAgentSessions={nameAgentSessions}
           leafCount={leaves.length}
           isFirstLeaf={isFirstLeaf}
-          lastLeafId={lastLeafId}
+          topRightLeafId={topRightLeafId}
           showExpandRightColumn={rightColumnHidden}
           onShowRightColumn={onShowRightColumn}
           registerSlot={registerSlot}
@@ -452,6 +452,12 @@ export function WorkspaceView({
       )}
     </DndContext>
   )
+}
+
+function findTopRightLeaf(node: PaneNode): PaneLeaf {
+  if (node.type === 'leaf') return node
+  const next = node.direction === 'horizontal' ? node.children[1] : node.children[0]
+  return findTopRightLeaf(next)
 }
 
 function findSplitRatio(node: PaneNode, splitId: string): number {
