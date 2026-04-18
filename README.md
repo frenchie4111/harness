@@ -40,6 +40,42 @@ Grab the latest release from the [releases page](https://github.com/frenchie4111
 - [`claude`](https://code.claude.com) CLI installed and on your login shell's `PATH`
 - `git` installed (preinstalled on macOS via Xcode Command Line Tools)
 
+## Uninstallation
+
+1. **Remove the Claude Code hooks** (do this while Harness is still running). Open Settings → **Agent** → **Status hooks** and click **Remove hooks**. This strips Harness's entries from `~/.claude/settings.json` and leaves any user-authored hooks intact.
+
+2. **Quit Harness** with ⌘Q.
+
+3. **Delete the app:**
+
+   ```sh
+   rm -rf /Applications/Harness.app
+   ```
+
+   (or drag it to the Trash.)
+
+4. **Remove app data** (optional, for a fully clean uninstall):
+
+   ```sh
+   rm -rf ~/Library/Application\ Support/Harness
+   rm -rf ~/Library/Preferences/org.mikelyons.harness.plist
+   rm -rf ~/Library/Saved\ Application\ State/org.mikelyons.harness.savedState
+   rm -rf ~/Library/Caches/org.mikelyons.harness
+   rm -rf ~/Library/Logs/Harness
+   ```
+
+5. **If you skipped step 1** and already deleted the app, you can remove the hooks by hand. Open `~/.claude/settings.json` and delete any hook entries whose object contains `"_marker": "__claude_harness__"` — every Harness-managed hook is tagged with that marker, so they're safe to identify and remove.
+
+6. **Optional — clean up worktrees.** Harness may have created git worktrees under `claude-harness-worktrees/` next to your repos. These are normal git worktrees and aren't removed automatically. To clean them up:
+
+   ```sh
+   cd <your-repo>
+   git worktree list
+   git worktree remove <path>
+   ```
+
+   Or delete the `claude-harness-worktrees/` directories from disk and run `git worktree prune` in each repo.
+
 ## Features
 
 - **Multi-repo** — manage multiple repos in a single window, switch between them or see everything at once
