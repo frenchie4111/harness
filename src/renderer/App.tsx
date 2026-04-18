@@ -834,11 +834,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
                 <div className="ml-8 flex items-center gap-3 flex-wrap">
                   <button
                     onClick={handleAddRepo}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
-                      activeStep === 4
-                        ? 'bg-fg-bright text-app hover:bg-fg border border-fg-bright'
-                        : 'bg-panel border border-border text-dim hover:text-fg hover:border-border-strong'
-                    }`}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer bg-fg-bright text-app hover:bg-fg border border-fg-bright"
                   >
                     <FolderOpen className="w-4 h-4" />
                     Open Repository
