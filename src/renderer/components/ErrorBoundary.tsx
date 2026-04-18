@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
-import { AlertTriangle, RotateCcw, Copy, Check, RefreshCw } from 'lucide-react'
+import { AlertTriangle, RotateCcw, Copy, Check, RefreshCw, MessageSquare } from 'lucide-react'
+import { openReportIssueFor } from './ReportIssueModal'
 
 interface FallbackRenderProps {
   error: Error
@@ -81,6 +82,12 @@ export class ErrorBoundary extends Component<Props, State> {
     location.reload()
   }
 
+  handleReport = (): void => {
+    const { error, info } = this.state
+    if (!error) return
+    openReportIssueFor(error, { componentStack: info?.componentStack ?? '' })
+  }
+
   toggleExpanded = (): void => {
     this.setState((s) => ({ expanded: !s.expanded }))
   }
@@ -130,6 +137,13 @@ export class ErrorBoundary extends Component<Props, State> {
             >
               {copied ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" />}
               {copied ? 'Copied' : 'Copy error details'}
+            </button>
+            <button
+              onClick={this.handleReport}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-panel border border-border text-fg-bright hover:border-border-strong transition-colors cursor-pointer"
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              Report error
             </button>
             <button
               onClick={this.toggleExpanded}
