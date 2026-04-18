@@ -1,28 +1,7 @@
 import type { Store } from './store'
+import type { PerfMetrics, PerfSample } from '../shared/perf-types'
 
-export interface PerfSample {
-  t: number
-  storeEventsPerSec: number
-  ipcMessagesPerSec: number
-  totalTerminalBytesPerSec: number
-  eventLoopLagMs: number
-  memoryRssMB: number
-  memoryHeapUsedMB: number
-  memoryHeapTotalMB: number
-  eventTypeCounts: Record<string, number>
-}
-
-export interface PerfMetrics {
-  storeEventsPerSec: number
-  ipcMessagesPerSec: number
-  terminalBytesPerSec: Record<string, number>
-  totalTerminalBytesPerSec: number
-  activePtyCount: number
-  eventLoopLagMs: number
-  memoryMB: { rss: number; heapUsed: number; heapTotal: number }
-  uptimeSeconds: number
-  history: PerfSample[]
-}
+export type { PerfMetrics, PerfSample }
 
 const HISTORY_SIZE = 120
 const LAG_CHECK_INTERVAL_MS = 500

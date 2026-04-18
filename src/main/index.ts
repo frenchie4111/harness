@@ -1644,7 +1644,7 @@ function setupAutoUpdater(): void {
     warn: (msg: string) => log('updater', `[warn] ${msg}`),
     error: (msg: string) => log('updater', `[error] ${msg}`),
     debug: () => {}
-  } as Electron.Logger
+  }
 
   autoUpdater.on('checking-for-update', () => {
     log('updater', 'checking for update')

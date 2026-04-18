@@ -295,8 +295,13 @@ These are how the user wants Claude to behave when working on this repo:
    immediately after a commit succeeds. The user does not want commits
    piling up locally.
 
-3. **Build to verify.** Run `npx electron-vite build` after any TS/TSX
-   changes to catch type errors and missing imports before committing.
+3. **Verify before committing.** After any TS/TSX change, run both:
+   - `npm run typecheck` — catches type errors across main + renderer via
+     project references. `electron-vite build` does NOT run `tsc`, so the
+     build alone will miss type errors.
+   - `npx electron-vite build` — catches missing imports, asset resolution,
+     and other bundler-level issues.
+   Run `npx vitest run` too if the change could affect reducer/FSM behavior.
 
 4. **Don't add comments unless asked.** Code should explain itself; comments
    are reserved for non-obvious "why" notes. The exception is the comment

@@ -495,7 +495,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
         pending = pendingTools[tab.id] || null
         break
       }
-      if (s === 'waiting' && worstStatus !== 'needs-approval') worstStatus = 'waiting'
+      if (s === 'waiting') worstStatus = 'waiting'
       if (s === 'processing' && worstStatus === 'idle') worstStatus = 'processing'
     }
     worktreeStatuses[wt.path] = worstStatus
