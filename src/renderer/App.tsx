@@ -28,6 +28,7 @@ import { ReviewScreen } from './components/ReviewScreen'
 import { CommandPalette } from './components/CommandPalette'
 import { HotkeyCheatsheet } from './components/HotkeyCheatsheet'
 import { NewProjectScreen } from './components/NewProjectScreen'
+import { ReportIssueModal, onOpenReportIssue, type OpenReportIssueDetail } from './components/ReportIssueModal'
 import iconUrl from '../../resources/icon.png'
 import { PerfMonitorHUD } from './components/PerfMonitorHUD'
 import { focusTerminalById } from './components/XTerminal'
@@ -187,6 +188,7 @@ export default function App(): JSX.Element {
   const [showPerfMonitor, setShowPerfMonitor] = useState(false)
   const [showHotkeyCheatsheet, setShowHotkeyCheatsheet] = useState(false)
   const [showNewProject, setShowNewProject] = useState(false)
+  const [reportIssueState, setReportIssueState] = useState<OpenReportIssueDetail | null>(null)
   // `theme` and `defaultAgent` are both seeded at init, so we track
   // explicit confirmation separately for the onboarding step checkmarks.
   const [themeChosen, setThemeChosen] = useState(false)
@@ -269,6 +271,17 @@ const setQuestStep = useCallback((next: QuestStep) => {
   useEffect(() => {
     const cleanup = window.api.onOpenNewProject(() => setShowNewProject(true))
     return cleanup
+  }, [])
+
+  // Report Issue — triggered from the Help menu and from the
+  // openReportIssueFor() helper (used by the error boundary).
+  useEffect(() => {
+    const cleanupMenu = window.api.onOpenReportIssue(() => setReportIssueState({}))
+    const cleanupBus = onOpenReportIssue((detail) => setReportIssueState(detail))
+    return () => {
+      cleanupMenu()
+      cleanupBus()
+    }
   }, [])
 
   // Trigger a full PR refresh in main. Used by the sidebar refresh button
@@ -1183,6 +1196,14 @@ const setQuestStep = useCallback((next: QuestStep) => {
         }}
       />
     )}
+    <ReportIssueModal
+      open={reportIssueState !== null}
+      onClose={() => setReportIssueState(null)}
+      initialKind={reportIssueState?.kind}
+      initialTitle={reportIssueState?.title}
+      initialBody={reportIssueState?.body}
+      prefilledContext={reportIssueState?.context}
+    />
     </HotkeysProvider>
   )
 }

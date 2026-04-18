@@ -43,6 +43,8 @@ import { createNewProject, type GitignorePreset } from './repo-create'
 import { isWorktreeMerged } from '../shared/state/prs'
 import { watchStatusDir } from './hooks'
 import { getAgent, type AgentKind } from './agents'
+import { HARNESS_REPO_OWNER, HARNESS_REPO_NAME } from '../shared/constants'
+import { readRecentDebugLog } from './debug'
 
 function toAgentKind(value: string | undefined): AgentKind {
   return value === 'codex' ? 'codex' : 'claude'
@@ -149,9 +151,9 @@ async function refreshHarnessStarState(): Promise<void> {
     store.dispatch({ type: 'settings/harnessStarredChanged', payload: null })
     return
   }
-  const starred = await isRepoStarred(token, 'frenchie4111', 'harness')
+  const starred = await isRepoStarred(token, HARNESS_REPO_OWNER, HARNESS_REPO_NAME)
   if (starred === false && !config.harnessAutoStarred) {
-    const result = await starRepo(token, 'frenchie4111', 'harness')
+    const result = await starRepo(token, HARNESS_REPO_OWNER, HARNESS_REPO_NAME)
     if (result.ok) {
       config.harnessAutoStarred = true
       saveConfig(config)
@@ -1413,8 +1415,8 @@ function registerIpcHandlers(): void {
     const token = getCachedToken()
     if (!token) return { ok: false, error: 'No GitHub token' }
     const result = starred
-      ? await starRepo(token, 'frenchie4111', 'harness')
-      : await unstarRepo(token, 'frenchie4111', 'harness')
+      ? await starRepo(token, HARNESS_REPO_OWNER, HARNESS_REPO_NAME)
+      : await unstarRepo(token, HARNESS_REPO_OWNER, HARNESS_REPO_NAME)
     if (result.ok) {
       store.dispatch({ type: 'settings/harnessStarredChanged', payload: starred })
     }
@@ -1424,6 +1426,10 @@ function registerIpcHandlers(): void {
   // Updater
   transport.onRequest('updater:getVersion', () => {
     return app.getVersion()
+  })
+
+  transport.onRequest('debug:readRecentLog', (maxLines?: number) => {
+    return readRecentDebugLog(maxLines)
   })
 
   transport.onRequest('updater:checkForUpdates', async () => {
@@ -1612,6 +1618,10 @@ function openNewProjectInFocusedWindow(): void {
   transport.sendSignal('menu:newProject')
 }
 
+function openReportIssueInFocusedWindow(): void {
+  transport.sendSignal('app:openReportIssue')
+}
+
 function buildMenu(): void {
   const template: Electron.MenuItemConstructorOptions[] = [
     {
@@ -1691,6 +1701,11 @@ function buildMenu(): void {
         {
           label: 'Keyboard Shortcuts',
           click: openKeyboardShortcutsInFocusedWindow
+        },
+        { type: 'separator' },
+        {
+          label: 'Report an Issue…',
+          click: openReportIssueInFocusedWindow
         }
       ]
     }
