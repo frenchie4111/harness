@@ -460,7 +460,7 @@ export function Sidebar({
             <CircleHelp size={14} />
           </button>
         </Tooltip>
-        <Tooltip label="Report an issue" side="top">
+        <Tooltip label="Report an issue / request a feature / submit a suggestion" side="top">
           <button
             onClick={() => openReportIssue()}
             className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
