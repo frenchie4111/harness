@@ -17,6 +17,8 @@
 
 ![Harness](docs/harness-demo-poster.jpg)
 
+> **→ Visit [harness.mikelyons.org](https://harness.mikelyons.org) for screenshots, feature walkthroughs, and release notes.**
+
 ## Download
 
 Grab the latest release from the [releases page](https://github.com/frenchie4111/harness/releases/latest).
@@ -32,7 +34,7 @@ Grab the latest release from the [releases page](https://github.com/frenchie4111
 4. On first launch:
    - Pick a git repository when prompted.
    - Click the ⚙ gear icon in the sidebar and paste a [GitHub personal access token](https://github.com/settings/tokens?type=beta) (fine-grained or classic, with `repo` scope). This is optional but required for the PR status panel and checks.
-   - When the hooks consent banner appears, click **Enable** so Harness can install status-tracking hooks in your worktrees. These are stored in each worktree's `.claude/settings.local.json` (gitignored by default) and are what make the sidebar status dots reliable.
+   - When the hooks consent banner appears, click **Enable** so Harness can install status-tracking hooks globally at `~/.claude/settings.json`. One install covers every worktree and is what makes the sidebar status dots reliable.
 
 ### Requirements
 
@@ -78,22 +80,23 @@ Grab the latest release from the [releases page](https://github.com/frenchie4111
 
 ## Features
 
+- **Multi-agent** — run Claude Code or Codex in the same window, one harness for both
 - **Multi-repo** — manage multiple repos in a single window, switch between them or see everything at once
-- **Status at a glance** — sidebar dots show which Claude is working, waiting, or needs approval (powered by Claude Code hooks)
-- **MCP: Claude controls Harness** — a built-in MCP server lets Claude create and list worktrees on its own
-- **Command center** — bird's-eye grid of every worktree with mini activity timelines
-- **Activity tracking** — visual timeline of what each Claude has been doing across hours or days
 - **Live PR status** — see open PRs and CI checks for every worktree, auto-sorted by urgency
-- **Inline diffs** — syntax-highlighted changed-files panel next to the terminal
-- **Tabs per worktree** — Claude, shells, and diff tabs scoped to each checkout
+- **Embedded editor** — full Monaco-powered editor for tweaking files without leaving Harness
+- **Full code review tool** — side-by-side syntax-highlighted diffs for every changed file in a worktree
+- **Status at a glance** — sidebar dots show which agent is working, waiting, or needs approval (powered by Claude Code hooks)
+- **Command center** — bird's-eye grid of every worktree with mini activity timelines
+- **Tabs + vertical split panes** — Claude, shells, and editor/diff tabs scoped to each checkout, splittable side-by-side
 - **9 themes** — dark, dracula, nord, gruvbox, tokyo night, catppuccin, one dark, solarized dark/light
 - **Configurable hotkeys** — ⌘1–⌘9 to jump between worktrees, all rebindable
+- **MCP: Claude controls Harness** — a built-in MCP server lets Claude create and list worktrees on its own
 
 ## Why did I build this
 
 Honestly I have been using [Conductor](https://www.conductor.build) for a while as a fairly happy customer, but some rough edges have really started to annoy me so on a random Thursday morning I decided to build my own version of it that works the way I want to. Oh yeah did I mention:
 
-> This app is entirely vibe coded - I literally haven't opened the code once. Future travelers be warned
+> Originally vibe coded start to finish — these days I occasionally crack open the actual source. Future travelers: still mostly vibes.
 
 # How's it work?
 
@@ -120,9 +123,17 @@ It will create a worktree directory at `../<your repo folder>-worktree` and star
 - [x] Activity tracking — visual timeline of agent status history
 - [x] Syntax-highlighted diffs
 - [x] 9 built-in themes
-- [ ] Support other LLM CLI Tools - Honestly I currently only use Claude so this probably won't happen unless I
-- [ ] Notifications when cluades are ready for you (maybe peon noises?)
-- [ ] Whatever else people want - add a github issue or email me directly!
+- [x] Support other LLM CLI tools — Codex is now supported alongside Claude Code
+- [x] Per-agent model selection
+- [x] Vertical split panes
+- [x] Contextual system prompt injection so the agent knows it's inside Harness
+- [x] Shared permissions via symlinked Claude settings
+- [x] Release notes page inside the app
+- [ ] Browser panes — view localhost dev servers next to the terminal
+- [ ] Dev server management — start/stop/inspect dev servers per worktree
+- [ ] Notifications when claudes are ready for you (maybe peon noises?)
+- [ ] Mobile app
+- [ ] Whatever else people want — add a github issue or email me directly!
 
 # Setup, building, and running locally
 
