@@ -1893,6 +1893,7 @@ app.whenReady().then(() => {
       getTabConsoleLogs: (tabId) => browserManager.getConsoleLogs(tabId),
       screenshotTab: (tabId) => browserManager.capturePage(tabId),
       getTabDom: (tabId) => browserManager.getDom(tabId),
+      getTabClickables: (tabId) => browserManager.getClickables(tabId),
       navigateTab: (tabId, url) => browserManager.navigate(tabId, url),
       backTab: (tabId) => browserManager.back(tabId),
       forwardTab: (tabId) => browserManager.forward(tabId),

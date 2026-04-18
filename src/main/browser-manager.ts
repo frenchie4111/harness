@@ -53,6 +53,104 @@ function mapSpecialKey(key: string): string | null {
   return SPECIAL_KEYS[key.trim().toLowerCase()] ?? null
 }
 
+const CLICKABLES_SCRIPT = `(() => {
+  const SEL = 'a[href],button,input:not([type=hidden]),textarea,select,summary,[role=button],[role=link],[role=tab],[role=menuitem],[role=menuitemcheckbox],[role=menuitemradio],[role=checkbox],[role=radio],[role=switch],[role=option],[role=combobox],[role=searchbox],[role=textbox],[contenteditable=""],[contenteditable=true],[tabindex]:not([tabindex="-1"]),[onclick]';
+  const MAX = 500;
+  function clip(s) { return (s || '').replace(/\\s+/g, ' ').trim().slice(0, 100); }
+  function getRole(el) {
+    const ex = el.getAttribute('role');
+    if (ex) return ex;
+    const tag = el.tagName.toLowerCase();
+    if (tag === 'a' && el.hasAttribute('href')) return 'link';
+    if (tag === 'button') return 'button';
+    if (tag === 'input') {
+      const t = ((el.type || 'text') + '').toLowerCase();
+      if (t === 'checkbox') return 'checkbox';
+      if (t === 'radio') return 'radio';
+      if (t === 'submit' || t === 'button' || t === 'reset' || t === 'image') return 'button';
+      if (t === 'range') return 'slider';
+      return 'textbox';
+    }
+    if (tag === 'select') return 'combobox';
+    if (tag === 'textarea') return 'textbox';
+    if (tag === 'summary') return 'button';
+    return tag;
+  }
+  function getName(el) {
+    const al = el.getAttribute('aria-label');
+    if (al) return clip(al);
+    const lb = el.getAttribute('aria-labelledby');
+    if (lb) {
+      const txt = lb.split(/\\s+/).map(id => {
+        const n = document.getElementById(id);
+        return n ? n.textContent : '';
+      }).join(' ');
+      if (txt.trim()) return clip(txt);
+    }
+    if (el.id) {
+      try {
+        const lbl = document.querySelector('label[for="' + CSS.escape(el.id) + '"]');
+        if (lbl && lbl.textContent) return clip(lbl.textContent);
+      } catch (e) {}
+    }
+    const wrap = el.closest && el.closest('label');
+    if (wrap && wrap.textContent) return clip(wrap.textContent);
+    const tag = el.tagName.toLowerCase();
+    if (tag === 'input' || tag === 'textarea') {
+      if (el.placeholder) return clip(el.placeholder);
+      if (el.value) return clip(el.value);
+    }
+    if (tag === 'img' && el.alt) return clip(el.alt);
+    const txt = el.textContent;
+    if (txt && txt.trim()) return clip(txt);
+    if (el.title) return clip(el.title);
+    return '';
+  }
+  function isVisible(el) {
+    const s = getComputedStyle(el);
+    if (s.display === 'none' || s.visibility === 'hidden') return false;
+    const op = parseFloat(s.opacity);
+    if (!isNaN(op) && op === 0) return false;
+    return true;
+  }
+  const queue = [document];
+  const items = [];
+  const seen = new Set();
+  let truncated = false;
+  outer: while (queue.length) {
+    const node = queue.shift();
+    const matches = node.querySelectorAll(SEL);
+    for (const el of matches) {
+      if (seen.has(el)) continue;
+      seen.add(el);
+      const r = el.getBoundingClientRect();
+      if (r.width < 1 || r.height < 1) continue;
+      if (!isVisible(el)) continue;
+      if (r.bottom <= 0 || r.right <= 0 || r.top >= window.innerHeight || r.left >= window.innerWidth) continue;
+      items.push({
+        role: getRole(el),
+        name: getName(el),
+        cx: Math.round(r.left + r.width / 2),
+        cy: Math.round(r.top + r.height / 2),
+        w: Math.round(r.width),
+        h: Math.round(r.height)
+      });
+      if (items.length >= MAX) { truncated = true; break outer; }
+    }
+    const all = node.querySelectorAll('*');
+    for (const el of all) {
+      if (el.shadowRoot && el.shadowRoot.mode === 'open') queue.push(el.shadowRoot);
+    }
+  }
+  return {
+    viewport: { w: window.innerWidth, h: window.innerHeight },
+    scroll: { x: Math.round(window.scrollX), y: Math.round(window.scrollY) },
+    pageHeight: Math.round(document.documentElement.scrollHeight),
+    items,
+    truncated
+  };
+})()`;
+
 /**
  * Owns `WebContentsView` instances keyed by browser tab id. Each tab gets
  * its own persistent session partition scoped to its worktree so cookies /
@@ -397,6 +495,18 @@ export class BrowserManager {
       await inst.view.webContents.executeJavaScript(script)
     } catch (err) {
       log('browser', `showCursor failed tab=${tabId}`, err instanceof Error ? err.message : err)
+    }
+  }
+
+  async getClickables(tabId: string): Promise<unknown | null> {
+    const inst = this.instances.get(tabId)
+    if (!inst) return null
+    try {
+      const result = await inst.view.webContents.executeJavaScript(CLICKABLES_SCRIPT)
+      return result ?? null
+    } catch (err) {
+      log('browser', `getClickables failed tab=${tabId}`, err instanceof Error ? err.message : err)
+      return null
     }
   }
 

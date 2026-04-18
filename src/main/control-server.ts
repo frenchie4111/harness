@@ -18,6 +18,7 @@ export interface BrowserQueries {
   ) => Array<{ ts: number; level: string; message: string }>
   screenshotTab: (tabId: string) => Promise<string | null>
   getTabDom: (tabId: string) => Promise<string | null>
+  getTabClickables: (tabId: string) => Promise<unknown | null>
   navigateTab: (tabId: string, url: string) => void
   backTab: (tabId: string) => void
   forwardTab: (tabId: string) => void
@@ -287,6 +288,13 @@ async function handleRequest(
       return sendJson(res, dom != null ? 200 : 500, {
         html: dom,
         error: dom != null ? undefined : 'dom read failed'
+      })
+    }
+    if (req.method === 'GET' && path === '/browser/clickables') {
+      const data = await deps.browser.getTabClickables(tabId)
+      return sendJson(res, data != null ? 200 : 500, {
+        snapshot: data,
+        error: data != null ? undefined : 'clickables read failed'
       })
     }
     if (req.method === 'POST' && path === '/browser/navigate') {

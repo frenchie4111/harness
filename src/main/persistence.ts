@@ -164,7 +164,8 @@ Harness also exposes embedded browser tabs — you can open a browser alongside 
 - create_browser_tab: open a new browser tab in this worktree (optionally navigating to a URL).
 - list_browser_tabs, get_tab_url, get_tab_dom, screenshot_tab, get_tab_console_logs: inspect what's in the tab.
 - navigate_tab, back_tab, forward_tab, reload_tab: drive the tab.
-- click_tab, type_tab, scroll_tab, show_cursor: interact with the page — click at (x, y), type into the focused field, scroll, or just move the visible cursor overlay so the user can see what you're about to do. Take a screenshot first to find coordinates.
+- get_tab_clickables: get a compact JSON list of in-viewport interactive elements with their roles, accessible names, and click coordinates. Prefer this over screenshot+vision for click targeting when the target is a real DOM element.
+- click_tab, type_tab, scroll_tab, show_cursor: interact with the page — click at (x, y), type into the focused field, scroll, or just move the visible cursor overlay so the user can see what you're about to do.
 
 Prefer these over blind curl/fetch — or shelling out to \`open <url>\`, which launches the user's default browser outside Harness where you can't see the result — when you need to verify rendered UI, inspect a dev server, debug a page the user is looking at, or confirm your changes actually work in the browser.`
 

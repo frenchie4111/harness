@@ -235,6 +235,18 @@ const TOOLS = [
     }
   },
   {
+    name: 'get_tab_clickables',
+    description:
+      "Return a JSON snapshot of in-viewport interactive elements (buttons, links, inputs, [role=button|link|tab|menuitem|checkbox|radio|switch|option|combobox|searchbox|textbox], [tabindex], [contenteditable], [onclick]) — including elements inside open shadow roots. Each item is {role, name, cx, cy, w, h} where cx/cy is the viewport-relative center to pass to click_tab. Use this for click targeting instead of screenshot+vision when the targets are real DOM elements with sensible names. Capped at 500 items; off-viewport elements are excluded — scroll first if needed.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tab_id: { type: 'string', description: 'Browser tab id from list_browser_tabs.' }
+      },
+      required: ['tab_id']
+    }
+  },
+  {
     name: 'click_tab',
     description:
       "Synthesize a mouse click at viewport-relative (x, y) coordinates inside a browser tab. Origin is the top-left of the tab's web view. Use a screenshot first to figure out where to click. A visible cursor + click ripple is overlaid on the page so the user can watch the interaction.",
@@ -469,6 +481,15 @@ async function handleToolCall(name, args) {
     if (!args || !args.tab_id) throw new Error('tab_id is required')
     await callControl('POST', '/browser/reload', { tabId: args.tab_id })
     return 'reloaded ' + args.tab_id
+  }
+  if (name === 'get_tab_clickables') {
+    if (!args || !args.tab_id) throw new Error('tab_id is required')
+    const r = await callControl(
+      'GET',
+      '/browser/clickables?tabId=' + encodeURIComponent(args.tab_id)
+    )
+    if (!r || r.snapshot == null) throw new Error(r && r.error ? r.error : 'clickables read failed')
+    return JSON.stringify(r.snapshot, null, 2)
   }
   if (name === 'click_tab') {
     if (!args || !args.tab_id) throw new Error('tab_id is required')
