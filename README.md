@@ -81,19 +81,16 @@ Grab the latest release from the [releases page](https://github.com/frenchie4111
 ## Features
 
 - **Multi-agent** — run Claude Code or Codex in the same window, one harness for both
-- **Per-agent model selector** — pick the model per session, not globally
 - **Multi-repo** — manage multiple repos in a single window, switch between them or see everything at once
-- **Status at a glance** — sidebar dots show which agent is working, waiting, or needs approval (powered by Claude Code hooks)
-- **MCP: Claude controls Harness** — a built-in MCP server lets Claude create and list worktrees on its own
-- **Contextual system prompt** — Harness injects context so the agent knows it's running inside a worktree
-- **Command center** — bird's-eye grid of every worktree with mini activity timelines
-- **Activity tracking** — visual timeline of what each agent has been doing across hours or days
 - **Live PR status** — see open PRs and CI checks for every worktree, auto-sorted by urgency
 - **Embedded editor** — full Monaco-powered editor for tweaking files without leaving Harness
-- **Diff viewer** — side-by-side syntax-highlighted diffs for every changed file in a worktree
+- **Full code review tool** — side-by-side syntax-highlighted diffs for every changed file in a worktree
+- **Status at a glance** — sidebar dots show which agent is working, waiting, or needs approval (powered by Claude Code hooks)
+- **Command center** — bird's-eye grid of every worktree with mini activity timelines
 - **Tabs + vertical split panes** — Claude, shells, and editor/diff tabs scoped to each checkout, splittable side-by-side
 - **9 themes** — dark, dracula, nord, gruvbox, tokyo night, catppuccin, one dark, solarized dark/light
 - **Configurable hotkeys** — ⌘1–⌘9 to jump between worktrees, all rebindable
+- **MCP: Claude controls Harness** — a built-in MCP server lets Claude create and list worktrees on its own
 
 ## Why did I build this
 
@@ -135,6 +132,7 @@ It will create a worktree directory at `../<your repo folder>-worktree` and star
 - [ ] Browser panes — view localhost dev servers next to the terminal
 - [ ] Dev server management — start/stop/inspect dev servers per worktree
 - [ ] Notifications when claudes are ready for you (maybe peon noises?)
+- [ ] Mobile app
 - [ ] Whatever else people want — add a github issue or email me directly!
 
 # Setup, building, and running locally
