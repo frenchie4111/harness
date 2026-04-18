@@ -38,6 +38,8 @@ interface WorkspaceViewProps {
   onMoveTabToPane: (worktreePath: string, tabId: string, toPaneId: string, toIndex?: number) => void
   onSplitPane: (worktreePath: string, fromPaneId: string, direction?: 'horizontal' | 'vertical') => void
   onSendToAgent?: (worktreePath: string, text: string) => void
+  rightColumnHidden: boolean
+  onShowRightColumn: () => void
 }
 
 const collisionDetection: CollisionDetection = (args) => {
@@ -119,7 +121,9 @@ function SplitRenderer({
   onCloseTab,
   onSplitRight,
   onSplitDown,
-  onResizeEnd
+  onResizeEnd,
+  rightColumnHidden,
+  onShowRightColumn
 }: {
   node: PaneNode
   worktreePath: string
@@ -140,6 +144,8 @@ function SplitRenderer({
   onSplitRight: (paneId: string) => void
   onSplitDown: (paneId: string) => void
   onResizeEnd: (splitId: string, delta: number, containerSize: number) => void
+  rightColumnHidden: boolean
+  onShowRightColumn: () => void
 }): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -165,6 +171,8 @@ function SplitRenderer({
           onCloseTab={onCloseTab}
           onSplitRight={() => onSplitRight(node.id)}
           onSplitDown={() => onSplitDown(node.id)}
+          rightColumnHidden={rightColumnHidden}
+          onShowRightColumn={onShowRightColumn}
         />
       </div>
     )
@@ -204,6 +212,8 @@ function SplitRenderer({
           onSplitRight={onSplitRight}
           onSplitDown={onSplitDown}
           onResizeEnd={onResizeEnd}
+          rightColumnHidden={rightColumnHidden}
+          onShowRightColumn={onShowRightColumn}
         />
       </div>
       <PaneDivider
@@ -236,6 +246,8 @@ function SplitRenderer({
           onSplitRight={onSplitRight}
           onSplitDown={onSplitDown}
           onResizeEnd={onResizeEnd}
+          rightColumnHidden={rightColumnHidden}
+          onShowRightColumn={onShowRightColumn}
         />
       </div>
     </div>
@@ -261,7 +273,9 @@ export function WorkspaceView({
   onSplitPane,
   onSendToAgent,
   repoLabel,
-  branch
+  branch,
+  rightColumnHidden,
+  onShowRightColumn
 }: WorkspaceViewProps): JSX.Element {
   const [slotEls, setSlotEls] = useState<Record<string, HTMLDivElement | null>>({})
 
@@ -368,6 +382,8 @@ export function WorkspaceView({
           onSplitRight={(paneId) => onSplitPane(worktreePath, paneId, 'horizontal')}
           onSplitDown={(paneId) => onSplitPane(worktreePath, paneId, 'vertical')}
           onResizeEnd={handleResizeEnd}
+          rightColumnHidden={rightColumnHidden}
+          onShowRightColumn={onShowRightColumn}
         />
       </div>
 

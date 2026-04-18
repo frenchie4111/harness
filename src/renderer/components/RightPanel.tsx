@@ -60,7 +60,7 @@ export function RightPanel({
       className={`flex flex-col border-b border-border bg-panel ${outerSize} ${containerClassName}`}
     >
       <div
-        className={`drag-region flex items-stretch h-9 shrink-0 ${
+        className={`drag-region flex items-stretch h-10 shrink-0 ${
           collapsed ? '' : 'border-b border-border'
         } ${headerClassName}`}
       >

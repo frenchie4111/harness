@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react'
-import { X, SquareTerminal, Sparkles, Code2, SplitSquareHorizontal, SplitSquareVertical, Loader2 } from 'lucide-react'
+import { X, SquareTerminal, Sparkles, Code2, SplitSquareHorizontal, SplitSquareVertical, Loader2, PanelRightOpen } from 'lucide-react'
 import {
   SortableContext,
   horizontalListSortingStrategy,
@@ -29,6 +29,8 @@ interface TerminalPanelProps {
   onCloseTab: (tabId: string) => void
   onSplitRight: () => void
   onSplitDown: () => void
+  rightColumnHidden: boolean
+  onShowRightColumn: () => void
 }
 
 const TAB_STATUS_DOT: Record<PtyStatus, string> = {
@@ -130,7 +132,9 @@ export function TerminalPanel({
   defaultAgent,
   onCloseTab,
   onSplitRight,
-  onSplitDown
+  onSplitDown,
+  rightColumnHidden,
+  onShowRightColumn
 }: TerminalPanelProps): JSX.Element {
   // Droppable target for the pane itself — lets users drop a tab onto an
   // empty pane or past the last tab.
@@ -222,6 +226,17 @@ export function TerminalPanel({
             <Code2 size={13} />
           </button>
         </Tooltip>
+        {rightColumnHidden && (
+          <Tooltip label="Show right column" action="toggleRightColumn" side="left">
+            <button
+              onClick={onShowRightColumn}
+              className="no-drag shrink-0 px-3 h-full text-faint hover:text-fg transition-colors cursor-pointer"
+              aria-label="Show right column"
+            >
+              <PanelRightOpen size={13} />
+            </button>
+          </Tooltip>
+        )}
       </div>
 
       {/* Content slot — terminals / diffs are portaled in by WorkspaceView */}

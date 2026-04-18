@@ -71,7 +71,7 @@ export function RightColumnToolbar({
   }
 
   return (
-    <div className="drag-region flex items-center justify-end h-9 shrink-0 border-b border-border bg-panel px-2 gap-1">
+    <div className="drag-region flex items-center justify-end h-10 shrink-0 border-b border-border bg-panel px-2 gap-1">
       <div className="no-drag relative" ref={menuRef}>
         <Tooltip label="Panel visibility">
           <button
