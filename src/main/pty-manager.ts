@@ -17,6 +17,11 @@ interface PtyInstance {
   pty: pty.IPty
   status: PtyStatus
   isShell: boolean
+  /** True when the shell was spawned in exec mode (`zsh -ilc <command>`).
+   * For these the activity poller's "direct children" signal is unreliable
+   * (the shell often exec's into the command itself, sharing PID), so we
+   * skip polling and treat them as active for the PTY's lifetime. */
+  isCommandShell: boolean
   activityActive: boolean
   activityProcess?: string
   hasBeenIdle: boolean
@@ -153,12 +158,13 @@ export class PtyManager {
       return
     }
 
-    // Shells spawned with an exec-mode flag (`-c`, `-ilc`, `-lc`, `-ic`) go
-    // straight into running the command — they never quiesce to a prompt, so
-    // the hasBeenIdle gate below would never arm. Pre-arm it so the activity
-    // poller reports the command as a running foreground process from t=0.
-    // This is how agent-spawned dev-server shells show the running spinner
-    // in the tab bar + propagate to the sidebar.
+    // Shells spawned with an exec-mode flag (`-c`, `-ilc`, `-lc`, `-ic`) run
+    // a single command and exit. The activity poller can't reliably track
+    // them via `ps` direct children — zsh often exec's into the target
+    // command, so the PTY pid becomes the command itself (no children until
+    // the command forks workers). Mark them so pollShellActivity skips
+    // them, and fire an active=true dispatch right now so the spinner shows
+    // from t=0 and keeps showing until onExit clears shellActivity.
     const isCommandShell =
       isShell &&
       args.some((a) => a === '-c' || a === '-ilc' || a === '-lc' || a === '-ic')
@@ -167,7 +173,8 @@ export class PtyManager {
       pty: ptyProcess,
       status: 'processing',
       isShell,
-      activityActive: false,
+      isCommandShell,
+      activityActive: isCommandShell,
       hasBeenIdle: isCommandShell
     }
 
@@ -206,6 +213,19 @@ export class PtyManager {
 
     this.ptys.set(id, instance)
     if (isShell) this.ensureActivityPoller()
+
+    if (isCommandShell) {
+      // Extract the first whitespace-delimited token of the command for a
+      // human-readable processName label ("npm run dev" → "npm"). The last
+      // arg to `zsh -ilc` is the command string.
+      const cmdStr = args[args.length - 1] || ''
+      const firstWord = cmdStr.trim().split(/\s+/)[0] || cmdStr
+      instance.activityProcess = firstWord
+      this.store?.dispatch({
+        type: 'terminals/shellActivityChanged',
+        payload: { id, active: true, processName: firstWord }
+      })
+    }
   }
 
   /** Raw PTY scrollback for `id`, or empty string if none. */
@@ -250,7 +270,9 @@ export class PtyManager {
   private pollShellActivity(): void {
     const shellInstances: Array<[string, PtyInstance]> = []
     for (const entry of this.ptys) {
-      if (entry[1].isShell) shellInstances.push(entry)
+      // Command shells manage their own activity state (set active=true at
+      // create, cleared on exit via terminals/removed), so skip them here.
+      if (entry[1].isShell && !entry[1].isCommandShell) shellInstances.push(entry)
     }
     if (shellInstances.length === 0) {
       if (this.activityTimer) {
