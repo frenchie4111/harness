@@ -46,6 +46,38 @@ import { getAgent, type AgentKind } from './agents'
 function toAgentKind(value: string | undefined): AgentKind {
   return value === 'codex' ? 'codex' : 'claude'
 }
+
+// Resolves the caller's MCP scope from their terminal id. Used by both
+// the control HTTP server (on every tool call, authoritative) and
+// writeMcpConfigForTerminal (to seed best-effort HARNESS_* env vars in
+// the spawned bridge). Lives at module scope so IPC handlers registered
+// inside registerIpcHandlers can close over it — the store reference is
+// hoisted the same way.
+function resolveCallerScope(terminalId: string) {
+  if (!terminalId) return null
+  const panes = store.getSnapshot().state.terminals.panes
+  let worktreePath: string | null = null
+  for (const [wtPath, tree] of Object.entries(panes)) {
+    for (const leaf of getLeaves(tree)) {
+      if (leaf.tabs.some((t) => t.id === terminalId)) {
+        worktreePath = wtPath
+        break
+      }
+    }
+    if (worktreePath) break
+  }
+  if (!worktreePath) return null
+  const wt = store
+    .getSnapshot()
+    .state.worktrees.list.find((w) => w.path === worktreePath)
+  if (!wt) return null
+  return {
+    terminalId,
+    worktreePath,
+    repoRoot: wt.repoRoot,
+    isMain: wt.isMain
+  }
+}
 import { CostTracker } from './cost-tracker'
 import { startControlServer } from './control-server'
 import { writeMcpConfigForTerminal, pruneMcpConfigs } from './mcp-config'
@@ -1795,36 +1827,6 @@ app.whenReady().then(() => {
   }
   pruneTerminalHistory(keepIds)
   pruneMcpConfigs(keepIds)
-
-  // Helper: resolve the caller's MCP scope from their terminal id. Every
-  // harness-control tool call re-resolves, so a worktree deletion (or any
-  // other change to terminal → worktree mapping) takes effect immediately
-  // instead of leaving stale env-var scope in the MCP bridge.
-  const resolveCallerScope = (terminalId: string) => {
-    if (!terminalId) return null
-    const panes = store.getSnapshot().state.terminals.panes
-    let worktreePath: string | null = null
-    for (const [wtPath, tree] of Object.entries(panes)) {
-      for (const leaf of getLeaves(tree)) {
-        if (leaf.tabs.some((t) => t.id === terminalId)) {
-          worktreePath = wtPath
-          break
-        }
-      }
-      if (worktreePath) break
-    }
-    if (!worktreePath) return null
-    const wt = store
-      .getSnapshot()
-      .state.worktrees.list.find((w) => w.path === worktreePath)
-    if (!wt) return null
-    return {
-      terminalId,
-      worktreePath,
-      repoRoot: wt.repoRoot,
-      isMain: wt.isMain
-    }
-  }
 
   // Local HTTP control server for the bundled harness-control MCP bridge.
   startControlServer({
