@@ -78,6 +78,37 @@
   <!-- Releases -->
   <div class="max-w-3xl mx-auto px-6 pb-24">
 
+    <!-- v2.4.0 -->
+    <section class="release-section py-10">
+      <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
+        <h2 class="text-3xl font-bold tracking-tight">v2.4.0</h2>
+        <span class="text-sm text-neutral-500">April 17, 2026</span>
+      </div>
+      <a href="https://github.com/frenchie4111/harness/releases/tag/v2.4.0" class="text-sm text-amber-400/80 hover:text-amber-300 transition-colors">Download &rarr;</a>
+      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">Commit and push status in the sidebar, recent items in the command palette, a new add-worktree hotkey, and Claude settings synced across all worktrees.</p>
+      <div class="note-body">
+        <h4>New features</h4>
+        <ul>
+          <li><strong>Commit &amp; push status</strong> — the sidebar now shows whether each worktree has unpushed commits, so you always know what's waiting to land.</li>
+          <li><strong>Command palette recents</strong> — recently used worktrees and actions float to the top of the command palette for faster access.</li>
+          <li><strong>Commit view in the review panel</strong> — the PR review panel now includes a commit list alongside the diff so you can navigate changes commit by commit.</li>
+          <li><strong>Add-worktree hotkey</strong> — create a new worktree from the keyboard without reaching for the mouse.</li>
+          <li><strong>Harness system prompt</strong> — Claude sessions now start with workspace context baked in, so Claude understands your project setup from the first message.</li>
+          <li><strong>Claude settings sync</strong> — Claude Code settings are symlinked across all worktrees so configuration changes apply everywhere at once.</li>
+        </ul>
+        <h4>Improvements</h4>
+        <ul>
+          <li>Settings panels are now organized into sub-menus for easier navigation.</li>
+          <li>Split panes now support a vertical orientation in addition to the existing horizontal layout.</li>
+        </ul>
+        <h4>Fixes</h4>
+        <ul>
+          <li>Fixed several UX rough edges in the changed-files panel.</li>
+          <li>Fixed teleport incorrectly navigating to a merged branch instead of the target worktree.</li>
+        </ul>
+      </div>
+    </section>
+
     <!-- v2.3.0 -->
     <section class="release-section py-10">
       <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
