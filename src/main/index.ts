@@ -1935,9 +1935,9 @@ app.whenReady().then(() => {
         return out
       },
       getShellWorktree: (shellId) => findShellWorktree(shellId),
-      readShellOutput: (shellId, lines) => {
+      readShellOutput: (shellId, { lines, match, context }) => {
         const raw = ptyManager.getHistory(shellId)
-        if (!raw) return ''
+        if (!raw) return { output: '' }
         // Strip ANSI CSI + OSC sequences so agents don't waste tokens on
         // cursor/color control bytes. Keep printable chars + newlines.
         const stripped = raw
@@ -1945,9 +1945,43 @@ app.whenReady().then(() => {
           .replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '')
           .replace(/\x1b\(./g, '')
           .replace(/\r/g, '')
-        const parts = stripped.split('\n')
-        if (parts.length <= lines) return stripped
-        return parts.slice(-lines).join('\n')
+        const allLines = stripped.split('\n')
+
+        if (!match) {
+          if (allLines.length <= lines) return { output: stripped }
+          return { output: allLines.slice(-lines).join('\n') }
+        }
+
+        let re: RegExp
+        try {
+          re = new RegExp(match, 'i')
+        } catch (err) {
+          return { output: '', error: `invalid regex: ${(err as Error).message}` }
+        }
+
+        const ctx = context || 0
+        const keep = new Set<number>()
+        let matchCount = 0
+        for (let i = 0; i < allLines.length; i++) {
+          if (!re.test(allLines[i])) continue
+          matchCount++
+          for (let j = Math.max(0, i - ctx); j <= Math.min(allLines.length - 1, i + ctx); j++) {
+            keep.add(j)
+          }
+        }
+        // Emit a gap marker ("---") between non-contiguous kept ranges so
+        // agents can tell where we skipped, without counting every gap as a
+        // token-expensive blank line.
+        const kept: string[] = []
+        const indices = Array.from(keep).sort((a, b) => a - b)
+        let prev = -2
+        for (const i of indices) {
+          if (i !== prev + 1 && kept.length > 0) kept.push('---')
+          kept.push(allLines[i])
+          prev = i
+        }
+        const finalLines = kept.length > lines ? kept.slice(-lines) : kept
+        return { output: finalLines.join('\n'), matchCount }
       },
       createShell: (wtPath, { command, cwd, label }) => {
         const id = `shell-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`

@@ -33,10 +33,23 @@ export interface ShellTabSummary {
   alive: boolean
 }
 
+export interface ReadShellOutputOptions {
+  lines: number
+  /** Case-insensitive regex. When set, keep only matching lines (plus any
+   * requested context) from the output before applying the `lines` cap. */
+  match?: string
+  /** Lines of context to include before/after each match. Ignored when `match`
+   * is not set. */
+  context?: number
+}
+
 export interface ShellQueries {
   listShellsForWorktree: (worktreePath: string) => ShellTabSummary[]
   getShellWorktree: (shellId: string) => string | null
-  readShellOutput: (shellId: string, lines: number) => string
+  readShellOutput: (
+    shellId: string,
+    opts: ReadShellOutputOptions
+  ) => { output: string; matchCount?: number; error?: string }
   createShell: (
     worktreePath: string,
     opts: { command?: string; cwd?: string; label?: string }
@@ -353,9 +366,14 @@ async function handleRequest(
       const lines = linesParam
         ? Math.max(1, Math.min(5000, parseInt(linesParam, 10) || 200))
         : 200
-      return sendJson(res, 200, {
-        output: deps.shell.readShellOutput(shellId, lines)
-      })
+      const match = url.searchParams.get('match') || undefined
+      const contextParam = url.searchParams.get('context')
+      const context = contextParam
+        ? Math.max(0, Math.min(20, parseInt(contextParam, 10) || 0))
+        : 0
+      const result = deps.shell.readShellOutput(shellId, { lines, match, context })
+      if (result.error) return sendJson(res, 400, { error: result.error })
+      return sendJson(res, 200, result)
     }
     if (req.method === 'POST' && path === '/shells/kill') {
       deps.shell.killShell(shellId)

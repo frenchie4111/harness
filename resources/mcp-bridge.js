@@ -268,14 +268,22 @@ const TOOLS = [
   {
     name: 'read_shell_output',
     description:
-      "Return the most recent output from a shell tab in this worktree (cleaned of ANSI escape codes). Works whether the shell is still running or has already exited — handy for reading the final error after a failed build. Default lines=200; cap is 5000.",
+      "Return the most recent output from a shell tab in this worktree (cleaned of ANSI escape codes). Works whether the shell is still running or has already exited — handy for reading the final error after a failed build. Use `match` + `context` to narrow results and save tokens when looking for errors in a long dev-server log. Returns { output, matchCount? }.",
     inputSchema: {
       type: 'object',
       properties: {
         shell_id: { type: 'string', description: 'Shell id from list_shells or create_shell.' },
         lines: {
           type: 'number',
-          description: 'Number of trailing lines to return. Default 200, max 5000.'
+          description: 'Number of trailing lines to return. Default 200, max 5000. Applied after filtering when `match` is set.'
+        },
+        match: {
+          type: 'string',
+          description: "Case-insensitive regex. When set, only lines matching this pattern are returned (e.g. 'error|warn|fail'). Gap separators ('---') indicate skipped ranges."
+        },
+        context: {
+          type: 'number',
+          description: 'Lines of context to keep before/after each match. Default 0, max 20. Ignored when `match` is unset.'
         }
       },
       required: ['shell_id']
@@ -410,8 +418,16 @@ async function handleToolCall(name, args) {
     if (!args || !args.shell_id) throw new Error('shell_id is required')
     const q = new URLSearchParams({ shellId: args.shell_id })
     if (args.lines != null) q.set('lines', String(args.lines))
+    if (args.match) q.set('match', String(args.match))
+    if (args.context != null) q.set('context', String(args.context))
     const r = await callControl('GET', '/shells/output?' + q.toString())
-    return r && r.output ? r.output : ''
+    const output = (r && r.output) || ''
+    if (r && typeof r.matchCount === 'number') {
+      return output
+        ? `[${r.matchCount} match${r.matchCount === 1 ? '' : 'es'}]\n${output}`
+        : `[${r.matchCount} matches]`
+    }
+    return output
   }
   if (name === 'kill_shell') {
     if (!args || !args.shell_id) throw new Error('shell_id is required')
