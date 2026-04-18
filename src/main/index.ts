@@ -1907,7 +1907,11 @@ app.whenReady().then(() => {
           url: finalUrl
         })
         return { id, url: finalUrl }
-      }
+      },
+      clickTab: (tabId, x, y, options) => browserManager.clickTab(tabId, x, y, options),
+      typeTab: (tabId, text, key) => browserManager.typeTab(tabId, text, key),
+      scrollTab: (tabId, dx, dy) => browserManager.scrollTab(tabId, dx, dy),
+      showCursor: (tabId, x, y) => browserManager.showCursor(tabId, x, y)
     },
     shell: {
       listShellsForWorktree: (wtPath) => {

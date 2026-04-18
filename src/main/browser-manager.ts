@@ -26,6 +26,33 @@ function sanitizePartition(worktreePath: string): string {
   return worktreePath.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120)
 }
 
+const SPECIAL_KEYS: Record<string, string> = {
+  enter: 'Return',
+  return: 'Return',
+  tab: 'Tab',
+  backspace: 'Backspace',
+  delete: 'Delete',
+  escape: 'Escape',
+  esc: 'Escape',
+  up: 'Up',
+  down: 'Down',
+  left: 'Left',
+  right: 'Right',
+  arrowup: 'Up',
+  arrowdown: 'Down',
+  arrowleft: 'Left',
+  arrowright: 'Right',
+  home: 'Home',
+  end: 'End',
+  pageup: 'PageUp',
+  pagedown: 'PageDown',
+  space: 'Space'
+}
+
+function mapSpecialKey(key: string): string | null {
+  return SPECIAL_KEYS[key.trim().toLowerCase()] ?? null
+}
+
 /**
  * Owns `WebContentsView` instances keyed by browser tab id. Each tab gets
  * its own persistent session partition scoped to its worktree so cookies /
@@ -259,6 +286,118 @@ export class BrowserManager {
     inst.attachedWindow = null
     inst.visible = false
     inst.lastBounds = null
+  }
+
+  clickTab(
+    tabId: string,
+    x: number,
+    y: number,
+    options?: { button?: 'left' | 'right' | 'middle'; clickCount?: number }
+  ): void {
+    const inst = this.instances.get(tabId)
+    if (!inst) return
+    const wc = inst.view.webContents
+    const button = options?.button ?? 'left'
+    const clickCount = Math.max(1, Math.min(3, options?.clickCount ?? 1))
+    wc.sendInputEvent({ type: 'mouseMove', x, y })
+    wc.sendInputEvent({ type: 'mouseDown', x, y, button, clickCount })
+    wc.sendInputEvent({ type: 'mouseUp', x, y, button, clickCount })
+    void this.showCursor(tabId, x, y, { pulse: true })
+  }
+
+  typeTab(tabId: string, text: string, key?: string): void {
+    const inst = this.instances.get(tabId)
+    if (!inst) return
+    const wc = inst.view.webContents
+
+    if (key) {
+      const mapped = mapSpecialKey(key)
+      if (mapped) {
+        wc.sendInputEvent({ type: 'keyDown', keyCode: mapped })
+        wc.sendInputEvent({ type: 'keyUp', keyCode: mapped })
+      }
+    }
+
+    if (text) {
+      for (const ch of text) {
+        if (ch === '\n') {
+          wc.sendInputEvent({ type: 'keyDown', keyCode: 'Return' })
+          wc.sendInputEvent({ type: 'char', keyCode: '\r' })
+          wc.sendInputEvent({ type: 'keyUp', keyCode: 'Return' })
+          continue
+        }
+        if (ch === '\t') {
+          wc.sendInputEvent({ type: 'keyDown', keyCode: 'Tab' })
+          wc.sendInputEvent({ type: 'char', keyCode: '\t' })
+          wc.sendInputEvent({ type: 'keyUp', keyCode: 'Tab' })
+          continue
+        }
+        wc.sendInputEvent({ type: 'keyDown', keyCode: ch })
+        wc.sendInputEvent({ type: 'char', keyCode: ch })
+        wc.sendInputEvent({ type: 'keyUp', keyCode: ch })
+      }
+    }
+  }
+
+  async scrollTab(tabId: string, deltaX: number, deltaY: number): Promise<void> {
+    const inst = this.instances.get(tabId)
+    if (!inst) return
+    try {
+      await inst.view.webContents.executeJavaScript(
+        `window.scrollBy(${Number(deltaX) || 0}, ${Number(deltaY) || 0})`
+      )
+    } catch (err) {
+      log('browser', `scrollTab failed tab=${tabId}`, err instanceof Error ? err.message : err)
+    }
+  }
+
+  async showCursor(
+    tabId: string,
+    x: number,
+    y: number,
+    opts?: { pulse?: boolean }
+  ): Promise<void> {
+    const inst = this.instances.get(tabId)
+    if (!inst) return
+    const px = Math.round(Number(x) || 0)
+    const py = Math.round(Number(y) || 0)
+    const pulse = opts?.pulse ? 1 : 0
+    const script = `(() => {
+      const ID = '__harness_cursor__';
+      let el = document.getElementById(ID);
+      if (!el) {
+        el = document.createElement('div');
+        el.id = ID;
+        el.style.cssText = 'position:fixed;left:0;top:0;width:24px;height:24px;pointer-events:none;z-index:2147483647;transition:transform 60ms linear;will-change:transform;';
+        el.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="filter:drop-shadow(0 1px 2px rgba(0,0,0,.45))"><path d="M3 2 L3 19 L8 14 L11 22 L14 21 L11 13 L18 13 Z" fill="#fff" stroke="#111" stroke-width="1.5" stroke-linejoin="round"/></svg>';
+        (document.body || document.documentElement).appendChild(el);
+      }
+      el.style.transform = 'translate(${px}px,${py}px)';
+      if (${pulse}) {
+        const ringId = '__harness_cursor_ring__';
+        let ring = document.getElementById(ringId);
+        if (!ring) {
+          ring = document.createElement('div');
+          ring.id = ringId;
+          ring.style.cssText = 'position:fixed;left:0;top:0;width:20px;height:20px;border-radius:9999px;pointer-events:none;z-index:2147483646;border:2px solid rgba(56,189,248,.9);background:rgba(56,189,248,.2);';
+          (document.body || document.documentElement).appendChild(ring);
+        }
+        ring.style.transform = 'translate(${px - 10}px,${py - 10}px) scale(.4)';
+        ring.style.opacity = '1';
+        ring.animate(
+          [
+            { transform: 'translate(${px - 10}px,${py - 10}px) scale(.4)', opacity: 1 },
+            { transform: 'translate(${px - 20}px,${py - 20}px) scale(2)', opacity: 0 }
+          ],
+          { duration: 380, easing: 'ease-out', fill: 'forwards' }
+        );
+      }
+    })()`
+    try {
+      await inst.view.webContents.executeJavaScript(script)
+    } catch (err) {
+      log('browser', `showCursor failed tab=${tabId}`, err instanceof Error ? err.message : err)
+    }
   }
 
   async capturePage(tabId: string): Promise<string | null> {

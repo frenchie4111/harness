@@ -23,6 +23,15 @@ export interface BrowserQueries {
   forwardTab: (tabId: string) => void
   reloadTab: (tabId: string) => void
   createTab: (worktreePath: string, url: string) => { id: string; url: string }
+  clickTab: (
+    tabId: string,
+    x: number,
+    y: number,
+    options?: { button?: 'left' | 'right' | 'middle'; clickCount?: number }
+  ) => void
+  typeTab: (tabId: string, text: string, key?: string) => void
+  scrollTab: (tabId: string, deltaX: number, deltaY: number) => Promise<void>
+  showCursor: (tabId: string, x: number, y: number) => Promise<void>
 }
 
 export interface ShellTabSummary {
@@ -296,6 +305,44 @@ async function handleRequest(
     }
     if (req.method === 'POST' && path === '/browser/reload') {
       deps.browser.reloadTab(tabId)
+      return sendJson(res, 200, { ok: true })
+    }
+    if (req.method === 'POST' && path === '/browser/click') {
+      const x = Number(body.x)
+      const y = Number(body.y)
+      if (!Number.isFinite(x) || !Number.isFinite(y)) {
+        return sendJson(res, 400, { error: 'x and y (numbers) required' })
+      }
+      const button = body.button === 'right' || body.button === 'middle' ? body.button : 'left'
+      const rawCount = Number(body.clickCount)
+      const clickCount = Number.isFinite(rawCount)
+        ? Math.max(1, Math.min(3, Math.floor(rawCount)))
+        : 1
+      deps.browser.clickTab(tabId, x, y, { button, clickCount })
+      return sendJson(res, 200, { ok: true })
+    }
+    if (req.method === 'POST' && path === '/browser/type') {
+      const text = typeof body.text === 'string' ? body.text : ''
+      const key = typeof body.key === 'string' ? body.key : undefined
+      if (!text && !key) {
+        return sendJson(res, 400, { error: 'text or key required' })
+      }
+      deps.browser.typeTab(tabId, text, key)
+      return sendJson(res, 200, { ok: true })
+    }
+    if (req.method === 'POST' && path === '/browser/scroll') {
+      const dx = Number(body.deltaX) || 0
+      const dy = Number(body.deltaY) || 0
+      await deps.browser.scrollTab(tabId, dx, dy)
+      return sendJson(res, 200, { ok: true })
+    }
+    if (req.method === 'POST' && path === '/browser/cursor') {
+      const x = Number(body.x)
+      const y = Number(body.y)
+      if (!Number.isFinite(x) || !Number.isFinite(y)) {
+        return sendJson(res, 400, { error: 'x and y (numbers) required' })
+      }
+      await deps.browser.showCursor(tabId, x, y)
       return sendJson(res, 200, { ok: true })
     }
 
