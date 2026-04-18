@@ -831,7 +831,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
                     <div className="text-xs text-dim mt-0.5">Harness creates worktrees inside a sibling folder — your original repo stays untouched.</div>
                   </div>
                 </div>
-                <div className="ml-8 flex flex-wrap items-center gap-2">
+                <div className="ml-8 flex items-center gap-3 flex-wrap">
                   <button
                     onClick={handleAddRepo}
                     className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
@@ -843,12 +843,15 @@ const setQuestStep = useCallback((next: QuestStep) => {
                     <FolderOpen className="w-4 h-4" />
                     Open Repository
                   </button>
-                  <button
-                    onClick={() => setShowNewProject(true)}
-                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer bg-panel border border-border text-dim hover:text-fg hover:border-border-strong"
-                  >
-                    Start a new project
-                  </button>
+                  <span className="text-xs text-dim">
+                    or{' '}
+                    <button
+                      onClick={() => setShowNewProject(true)}
+                      className="text-accent hover:underline cursor-pointer"
+                    >
+                      start a new project
+                    </button>
+                  </span>
                 </div>
               </div>
             </div>
