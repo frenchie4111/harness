@@ -2,6 +2,7 @@ import { app } from 'electron'
 import { mkdirSync, writeFileSync, existsSync, readdirSync, unlinkSync } from 'fs'
 import { join } from 'path'
 import { getControlServerInfo } from './control-server'
+import type { CallerScope } from './control-server'
 import { log } from './debug'
 
 function getConfigDir(): string {
@@ -24,28 +25,45 @@ function sanitize(id: string): string {
 /**
  * Write a per-terminal MCP config file pointing Claude Code at the bundled
  * harness-control MCP server. Returns the absolute path, or null if the
- * control server isn't running. Uses `ELECTRON_RUN_AS_NODE=1` so the Electron
- * binary executes the bridge script as a plain Node process — no separate
- * Node install required.
+ * control server isn't running.
+ *
+ * Injects scope env vars (HARNESS_WORKTREE_ID, HARNESS_REPO_ROOT,
+ * HARNESS_IS_MAIN, HARNESS_SESSION_ID) so the bridge can advertise
+ * scope-appropriate tool descriptions at tools/list time. The server side
+ * still re-resolves scope from the terminal id on every call — the env
+ * vars are a hint, not the source of truth.
+ *
+ * Uses `ELECTRON_RUN_AS_NODE=1` so the Electron binary executes the bridge
+ * script as a plain Node process — no separate Node install required.
  */
-export function writeMcpConfigForTerminal(terminalId: string): string | null {
+export function writeMcpConfigForTerminal(
+  terminalId: string,
+  scope: CallerScope | null
+): string | null {
   const info = getControlServerInfo()
   if (!info) {
     log('mcp', 'control server not ready — skipping MCP config write')
     return null
   }
   const configPath = join(getConfigDir(), `${sanitize(terminalId)}.json`)
+  const env: Record<string, string> = {
+    ELECTRON_RUN_AS_NODE: '1',
+    HARNESS_PORT: String(info.port),
+    HARNESS_TOKEN: info.token,
+    HARNESS_TERMINAL_ID: terminalId,
+    HARNESS_SESSION_ID: terminalId
+  }
+  if (scope) {
+    env.HARNESS_WORKTREE_ID = scope.worktreePath
+    env.HARNESS_REPO_ROOT = scope.repoRoot
+    if (scope.isMain) env.HARNESS_IS_MAIN = '1'
+  }
   const config = {
     mcpServers: {
       'harness-control': {
         command: process.execPath,
         args: [getBridgeScriptPath()],
-        env: {
-          ELECTRON_RUN_AS_NODE: '1',
-          HARNESS_PORT: String(info.port),
-          HARNESS_TOKEN: info.token,
-          HARNESS_TERMINAL_ID: terminalId
-        }
+        env
       }
     }
   }

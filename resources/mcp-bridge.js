@@ -10,6 +10,16 @@ const PORT = process.env.HARNESS_PORT
 const TOKEN = process.env.HARNESS_TOKEN
 const TERMINAL_ID = process.env.HARNESS_TERMINAL_ID || ''
 
+// Scope set at spawn by src/main/mcp-config.ts. The server re-resolves
+// scope from TERMINAL_ID on every call (authoritative), so these are a
+// best-effort hint used to customize the advertised tool list/descriptions
+// for feature-worktree callers. Can go stale if the session teleports.
+const SCOPE = {
+  worktreeId: process.env.HARNESS_WORKTREE_ID || '',
+  repoRoot: process.env.HARNESS_REPO_ROOT || '',
+  isMain: process.env.HARNESS_IS_MAIN === '1'
+}
+
 if (!PORT || !TOKEN) {
   process.stderr.write('harness-mcp: HARNESS_PORT and HARNESS_TOKEN required\n')
   process.exit(1)
@@ -61,12 +71,47 @@ function callControl(method, path, body) {
   })
 }
 
-const TOOLS = [
-  {
-    name: 'create_worktree',
-    description:
-      'Create a new git worktree in a Harness-managed repo. Harness will open a new Claude chat tab inside the new worktree automatically.',
-    inputSchema: {
+// Whether this session is allowed to manage worktrees workspace-wide.
+// Main-worktree callers see every repo; feature-worktree callers are
+// scoped to their own repo (and repoRoot args are rejected if they don't
+// match). If SCOPE isn't populated (older session, missing env), fall
+// back to the workspace-wide behavior — the server still enforces.
+const SCOPED_TO_REPO = !SCOPE.isMain && !!SCOPE.repoRoot
+
+const createWorktreeDesc = SCOPED_TO_REPO
+  ? 'Create a new git worktree in the caller\'s current repo. Harness will open a new Claude chat tab inside the new worktree automatically. This session is scoped to repo ' +
+    SCOPE.repoRoot +
+    ' — do not pass repoRoot.'
+  : 'Create a new git worktree in a Harness-managed repo. Harness will open a new Claude chat tab inside the new worktree automatically. This session can create worktrees in any open repo; pass repoRoot when more than one repo is open.'
+
+const listWorktreesDesc = SCOPED_TO_REPO
+  ? 'List git worktrees for the caller\'s repo (' +
+    SCOPE.repoRoot +
+    '). This session cannot see worktrees in other repos.'
+  : 'List git worktrees currently managed by Harness across every open repo.'
+
+const createWorktreeSchema = SCOPED_TO_REPO
+  ? {
+      type: 'object',
+      properties: {
+        branchName: {
+          type: 'string',
+          description: 'Name of the new branch to create for the worktree.'
+        },
+        baseBranch: {
+          type: 'string',
+          description:
+            "Branch to fork the new worktree from. Defaults to the repo's configured base."
+        },
+        initialPrompt: {
+          type: 'string',
+          description:
+            'A prompt to automatically send to the Claude chat tab when it opens in the new worktree.'
+        }
+      },
+      required: ['branchName']
+    }
+  : {
       type: 'object',
       properties: {
         branchName: {
@@ -91,11 +136,10 @@ const TOOLS = [
       },
       required: ['branchName']
     }
-  },
-  {
-    name: 'list_worktrees',
-    description: 'List git worktrees currently managed by Harness.',
-    inputSchema: {
+
+const listWorktreesSchema = SCOPED_TO_REPO
+  ? { type: 'object', properties: {} }
+  : {
       type: 'object',
       properties: {
         repoRoot: {
@@ -104,10 +148,22 @@ const TOOLS = [
         }
       }
     }
+
+const TOOLS = [
+  {
+    name: 'create_worktree',
+    description: createWorktreeDesc,
+    inputSchema: createWorktreeSchema
+  },
+  {
+    name: 'list_worktrees',
+    description: listWorktreesDesc,
+    inputSchema: listWorktreesSchema
   },
   {
     name: 'list_repos',
-    description: 'List the repo roots currently open in Harness.',
+    description:
+      'List the repo roots currently open in Harness. Returns workspace-wide metadata regardless of caller scope.',
     inputSchema: { type: 'object', properties: {} }
   },
   {
@@ -226,9 +282,21 @@ const TOOLS = [
   }
 ]
 
+function rejectCrossRepo(argRepo) {
+  if (!SCOPED_TO_REPO) return
+  if (argRepo && argRepo !== SCOPE.repoRoot) {
+    throw new Error(
+      'cross-worktree access denied: this session is scoped to repo ' +
+        SCOPE.repoRoot +
+        '. Omit repoRoot to operate on the caller\'s repo.'
+    )
+  }
+}
+
 async function handleToolCall(name, args) {
   if (name === 'create_worktree') {
     if (!args || !args.branchName) throw new Error('branchName is required')
+    rejectCrossRepo(args.repoRoot)
     const r = await callControl('POST', '/worktrees', {
       terminalId: TERMINAL_ID,
       repoRoot: args.repoRoot,
@@ -245,6 +313,7 @@ async function handleToolCall(name, args) {
     )
   }
   if (name === 'list_worktrees') {
+    rejectCrossRepo(args && args.repoRoot)
     const q =
       args && args.repoRoot ? '?repoRoot=' + encodeURIComponent(args.repoRoot) : ''
     const r = await callControl('GET', '/worktrees' + q)
