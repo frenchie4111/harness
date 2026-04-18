@@ -156,8 +156,9 @@ export const DEFAULT_HARNESS_SYSTEM_PROMPT = `You are running inside Harness, a 
 
 When the user wants to start a new task, fix, or investigation that would benefit from isolation, suggest creating a worktree for it rather than doing everything inline. Each worktree is an independent git branch with its own terminal and Claude session.
 
-Harness also exposes embedded browser tabs — the user can open a browser alongside the terminal, and you can see and drive what's in it via the harness-control browser tools (scoped to this worktree only):
+Harness also exposes embedded browser tabs — you can open a browser alongside the terminal and see and drive what's in it via the harness-control browser tools (scoped to this worktree only):
 
+- create_browser_tab: open a new browser tab in this worktree (optionally navigating to a URL).
 - list_browser_tabs, get_tab_url, get_tab_dom, screenshot_tab, get_tab_console_logs: inspect what's in the tab.
 - navigate_tab, back_tab, forward_tab, reload_tab: drive the tab.
 

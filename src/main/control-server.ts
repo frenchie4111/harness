@@ -24,6 +24,7 @@ export interface BrowserQueries {
   backTab: (tabId: string) => void
   forwardTab: (tabId: string) => void
   reloadTab: (tabId: string) => void
+  createTab: (worktreePath: string, url: string) => { id: string; url: string }
 }
 
 export interface ControlServerDeps {
@@ -165,6 +166,12 @@ async function handleRequest(
       return sendJson(res, 200, {
         tabs: deps.browser.listTabsForWorktree(callerWorktree)
       })
+    }
+    if (req.method === 'POST' && path === '/browser/tabs') {
+      const body = await readJson(req)
+      const url = typeof body.url === 'string' ? body.url : ''
+      const created = deps.browser.createTab(callerWorktree, url)
+      return sendJson(res, 200, created)
     }
 
     // Write endpoints read tabId from the JSON body; read endpoints take it

@@ -117,6 +117,21 @@ const TOOLS = [
     inputSchema: { type: 'object', properties: {} }
   },
   {
+    name: 'create_browser_tab',
+    description:
+      "Open a new browser tab in this worktree. Returns the new tab's id. Optionally navigates to a URL; otherwise opens at about:blank. Prefer this over telling the user to click the Browser button.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        url: {
+          type: 'string',
+          description:
+            "Optional URL to load. Accepts a bare host (e.g. 'github.com') — https:// is prepended if no scheme is present."
+        }
+      }
+    }
+  },
+  {
     name: 'screenshot_tab',
     description:
       "Take a PNG screenshot of a browser tab in this worktree. Returns base64-encoded PNG bytes. The tab id comes from list_browser_tabs.",
@@ -242,6 +257,12 @@ async function handleToolCall(name, args) {
   if (name === 'list_browser_tabs') {
     const r = await callControl('GET', '/browser/tabs')
     return JSON.stringify(r.tabs || [], null, 2)
+  }
+  if (name === 'create_browser_tab') {
+    const r = await callControl('POST', '/browser/tabs', {
+      url: (args && args.url) || ''
+    })
+    return 'Created browser tab ' + r.id + ' → ' + r.url
   }
   if (name === 'screenshot_tab') {
     if (!args || !args.tab_id) throw new Error('tab_id is required')

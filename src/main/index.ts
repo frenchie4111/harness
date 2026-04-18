@@ -1812,7 +1812,18 @@ app.whenReady().then(() => {
       navigateTab: (tabId, url) => browserManager.navigate(tabId, url),
       backTab: (tabId) => browserManager.back(tabId),
       forwardTab: (tabId) => browserManager.forward(tabId),
-      reloadTab: (tabId) => browserManager.reload(tabId)
+      reloadTab: (tabId) => browserManager.reload(tabId),
+      createTab: (wtPath, url) => {
+        const id = `browser-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+        const finalUrl = url && url.trim() ? url.trim() : 'about:blank'
+        panesFSM.addTab(wtPath, {
+          id,
+          type: 'browser',
+          label: 'Browser',
+          url: finalUrl
+        })
+        return { id, url: finalUrl }
+      }
     },
     broadcast: (channel, payload) => {
       if (channel === 'worktrees:externalCreate') {
