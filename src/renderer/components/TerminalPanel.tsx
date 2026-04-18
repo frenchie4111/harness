@@ -139,13 +139,14 @@ export function TerminalPanel({
   // Droppable target for the pane itself — lets users drop a tab onto an
   // empty pane or past the last tab.
   const { setNodeRef: setPaneDropRef } = useDroppable({ id: pane.id })
-  const slotRef = useRef<HTMLDivElement | null>(null)
+  const slotHostRef = useRef<HTMLDivElement | null>(null)
 
-  // Register the content slot div with WorkspaceView so it can portal
-  // terminal content into this pane.
+  // Register this pane's slot host with WorkspaceView. WorkspaceView owns a
+  // stable slot DOM element per pane.id and appends it into whichever host
+  // currently exists, so a split (which unmounts + remounts this panel at a
+  // deeper tree position) does not destroy the xterm portal's target.
   useEffect(() => {
-    registerSlot(pane.id, slotRef.current)
-    return () => registerSlot(pane.id, null)
+    registerSlot(pane.id, slotHostRef.current)
   }, [pane.id, registerSlot])
 
   return (
@@ -238,8 +239,10 @@ export function TerminalPanel({
         )}
       </div>
 
-      {/* Content slot — terminals / diffs are portaled in by WorkspaceView */}
-      <div ref={slotRef} className="flex-1 relative min-h-0" />
+      {/* Content slot host — WorkspaceView imperatively appends a stable
+          slot div (the portal target for xterm/diff content) into this host.
+          The host is empty from React's perspective; see slotHostRef. */}
+      <div ref={slotHostRef} className="flex-1 relative min-h-0" />
     </div>
   )
 }
