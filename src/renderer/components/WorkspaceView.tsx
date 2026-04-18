@@ -38,6 +38,8 @@ interface WorkspaceViewProps {
   onMoveTabToPane: (worktreePath: string, tabId: string, toPaneId: string, toIndex?: number) => void
   onSplitPane: (worktreePath: string, fromPaneId: string, direction?: 'horizontal' | 'vertical') => void
   onSendToAgent?: (worktreePath: string, text: string) => void
+  rightColumnHidden: boolean
+  onShowRightColumn: () => void
 }
 
 const collisionDetection: CollisionDetection = (args) => {
@@ -111,6 +113,9 @@ function SplitRenderer({
   nameAgentSessions,
   leafCount,
   isFirstLeaf,
+  lastLeafId,
+  showExpandRightColumn,
+  onShowRightColumn,
   registerSlot,
   onSelectTab,
   onAddTab,
@@ -131,6 +136,9 @@ function SplitRenderer({
   nameAgentSessions: boolean
   leafCount: number
   isFirstLeaf: { value: boolean }
+  lastLeafId: string
+  showExpandRightColumn: boolean
+  onShowRightColumn: () => void
   registerSlot: (paneId: string, el: HTMLDivElement | null) => void
   onSelectTab: (tabId: string, paneId: string) => void
   onAddTab: (paneId: string) => void
@@ -165,6 +173,8 @@ function SplitRenderer({
           onCloseTab={onCloseTab}
           onSplitRight={() => onSplitRight(node.id)}
           onSplitDown={() => onSplitDown(node.id)}
+          showExpandRightColumn={showExpandRightColumn && node.id === lastLeafId}
+          onShowRightColumn={onShowRightColumn}
         />
       </div>
     )
@@ -195,6 +205,9 @@ function SplitRenderer({
           nameAgentSessions={nameAgentSessions}
           leafCount={leafCount}
           isFirstLeaf={isFirstLeaf}
+          lastLeafId={lastLeafId}
+          showExpandRightColumn={showExpandRightColumn}
+          onShowRightColumn={onShowRightColumn}
           registerSlot={registerSlot}
           onSelectTab={onSelectTab}
           onAddTab={onAddTab}
@@ -227,6 +240,9 @@ function SplitRenderer({
           nameAgentSessions={nameAgentSessions}
           leafCount={leafCount}
           isFirstLeaf={isFirstLeaf}
+          lastLeafId={lastLeafId}
+          showExpandRightColumn={showExpandRightColumn}
+          onShowRightColumn={onShowRightColumn}
           registerSlot={registerSlot}
           onSelectTab={onSelectTab}
           onAddTab={onAddTab}
@@ -261,7 +277,9 @@ export function WorkspaceView({
   onSplitPane,
   onSendToAgent,
   repoLabel,
-  branch
+  branch,
+  rightColumnHidden,
+  onShowRightColumn
 }: WorkspaceViewProps): JSX.Element {
   const [slotEls, setSlotEls] = useState<Record<string, HTMLDivElement | null>>({})
 
@@ -339,6 +357,7 @@ export function WorkspaceView({
   )
 
   const isFirstLeaf = { value: true }
+  const lastLeafId = leaves[leaves.length - 1]?.id ?? ''
 
   return (
     <DndContext
@@ -359,6 +378,9 @@ export function WorkspaceView({
           nameAgentSessions={nameAgentSessions}
           leafCount={leaves.length}
           isFirstLeaf={isFirstLeaf}
+          lastLeafId={lastLeafId}
+          showExpandRightColumn={rightColumnHidden}
+          onShowRightColumn={onShowRightColumn}
           registerSlot={registerSlot}
           onSelectTab={(tabId, paneId) => onSelectTab(worktreePath, paneId, tabId)}
           onAddTab={(paneId) => onAddTab(worktreePath, paneId)}

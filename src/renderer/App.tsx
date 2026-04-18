@@ -920,8 +920,6 @@ const setQuestStep = useCallback((next: QuestStep) => {
             onOpenHotkeyCheatsheet={() => setShowHotkeyCheatsheet(true)}
             onOpenActivity={() => setShowActivity(true)}
             onOpenCleanup={() => setShowCleanup(true)}
-            rightColumnHidden={rightColumnHidden}
-            onShowRightColumn={() => setRightColumnHidden(false)}
             onOpenCommandCenter={() => {
               setShowNewWorktree(false)
               setShowActivity(false)
@@ -973,6 +971,8 @@ const setQuestStep = useCallback((next: QuestStep) => {
                 onMoveTabToPane={handleMoveTabToPane}
                 onSplitPane={handleSplitPane}
                 onSendToAgent={handleSendToAgent}
+                rightColumnHidden={rightColumnHidden}
+                onShowRightColumn={() => setRightColumnHidden(false)}
               />
             </div>
           )
