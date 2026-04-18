@@ -89,9 +89,9 @@ Grab the latest release from the [releases page](https://github.com/frenchie4111
 - **Command center** — bird's-eye grid of every worktree with mini activity timelines
 - **Activity tracking** — visual timeline of what each agent has been doing across hours or days
 - **Live PR status** — see open PRs and CI checks for every worktree, auto-sorted by urgency
-- **Inline diffs** — syntax-highlighted changed-files panel next to the terminal
-- **Tabs + vertical split panes** — Claude, shells, and diff tabs scoped to each checkout, splittable side-by-side
-- **Release notes page** — see what changed in each version without leaving the app
+- **Embedded editor** — full Monaco-powered editor for tweaking files without leaving Harness
+- **Diff viewer** — side-by-side syntax-highlighted diffs for every changed file in a worktree
+- **Tabs + vertical split panes** — Claude, shells, and editor/diff tabs scoped to each checkout, splittable side-by-side
 - **9 themes** — dark, dracula, nord, gruvbox, tokyo night, catppuccin, one dark, solarized dark/light
 - **Configurable hotkeys** — ⌘1–⌘9 to jump between worktrees, all rebindable
 
