@@ -227,6 +227,17 @@ describe('settingsReducer', () => {
     expect(next.harnessSystemPromptMain).toBe('main only text')
   })
 
+  it('claudeTuiFullscreenChanged toggles flag', () => {
+    expect(initialSettings.claudeTuiFullscreen).toBe(true)
+    const off = apply(initialSettings, {
+      type: 'settings/claudeTuiFullscreenChanged',
+      payload: false
+    })
+    expect(off.claudeTuiFullscreen).toBe(false)
+    const on = apply(off, { type: 'settings/claudeTuiFullscreenChanged', payload: true })
+    expect(on.claudeTuiFullscreen).toBe(true)
+  })
+
   it('returns a new object reference (no mutation)', () => {
     const next = apply(initialSettings, { type: 'settings/themeChanged', payload: 'x' })
     expect(next).not.toBe(initialSettings)

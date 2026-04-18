@@ -183,7 +183,8 @@ export function buildSpawnArgs(opts: AgentSpawnOpts): string {
   const mcpFlag = opts.mcpConfigPath ? ` --mcp-config ${shellQuote(opts.mcpConfigPath)}` : ''
   const nameFlag = opts.sessionName ? ` --name ${shellQuote(opts.sessionName)}` : ''
   const systemPromptFlag = opts.systemPrompt ? ` --append-system-prompt ${shellQuote(opts.systemPrompt)}` : ''
-  const cmd = `${opts.command}${modelFlag}${mcpFlag}${nameFlag}${systemPromptFlag}`
+  const tuiPrefix = opts.tuiFullscreen ? 'CLAUDE_CODE_NO_FLICKER=1 ' : ''
+  const cmd = `${tuiPrefix}${opts.command}${modelFlag}${mcpFlag}${nameFlag}${systemPromptFlag}`
 
   if (opts.teleportSessionId && opts.sessionId) {
     const exists = sessionFileExists(opts.cwd, opts.sessionId)
