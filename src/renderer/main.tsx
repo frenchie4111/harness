@@ -5,6 +5,7 @@ import App from './App'
 import { initStore } from './store'
 import { defineHarnessTheme } from './monaco-setup'
 import { renderMetrics } from './render-metrics'
+import { ErrorBoundary } from './components/ErrorBoundary'
 
 const onRender: ProfilerOnRenderCallback = (_id, _phase, actualDuration) => {
   renderMetrics.record(actualDuration)
@@ -13,8 +14,10 @@ const onRender: ProfilerOnRenderCallback = (_id, _phase, actualDuration) => {
 initStore().then(() => {
   defineHarnessTheme()
   createRoot(document.getElementById('root')!).render(
-    <Profiler id="app" onRender={onRender}>
-      <App />
-    </Profiler>
+    <ErrorBoundary label="app:root" showReload>
+      <Profiler id="app" onRender={onRender}>
+        <App />
+      </Profiler>
+    </ErrorBoundary>
   )
 })

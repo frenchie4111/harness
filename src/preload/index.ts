@@ -211,6 +211,22 @@ contextBridge.exposeInMainWorld('api', {
   // Performance monitor
   getPerfMetrics: () => req('perf:getMetrics'),
 
+  // Renderer error-boundary reporting. Error + ErrorInfo don't cross
+  // structured-clone cleanly, so we flatten to strings here.
+  logError: (
+    label: string,
+    error: { name?: string; message?: string; stack?: string },
+    info?: { componentStack?: string | null }
+  ) =>
+    req(
+      'debug:logError',
+      label,
+      error?.name ?? 'Error',
+      error?.message ?? '',
+      error?.stack ?? '',
+      info?.componentStack ?? ''
+    ),
+
   // App-level events from menu
   onOpenSettings: (callback: () => void) => transport.onSignal('app:openSettings', () => callback()),
   onTogglePerfMonitor: (callback: () => void) => transport.onSignal('app:togglePerfMonitor', () => callback()),

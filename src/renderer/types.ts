@@ -290,6 +290,12 @@ export interface ElectronAPI {
 
   getPerfMetrics(): Promise<PerfMetrics>
 
+  logError(
+    label: string,
+    error: { name?: string; message?: string; stack?: string },
+    info?: { componentStack?: string | null }
+  ): Promise<boolean>
+
   openExternal(url: string): void
   getFilePath(file: File): string
   onOpenSettings(callback: () => void): () => void
