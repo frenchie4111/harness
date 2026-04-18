@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react'
+import { useCallback, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import {
   DndContext,
@@ -281,17 +281,51 @@ export function WorkspaceView({
   rightColumnHidden,
   onShowRightColumn
 }: WorkspaceViewProps): JSX.Element {
-  const [slotEls, setSlotEls] = useState<Record<string, HTMLDivElement | null>>({})
+  // Stable slot DOM elements keyed by pane.id. Created imperatively and
+  // reparented as the pane tree changes, so a split (which causes the
+  // source pane's TerminalPanel to unmount + remount at a deeper position)
+  // does not destroy the portal target. If the slot were a React-owned
+  // child of TerminalPanel, the unmount would detach it and the XTerminal
+  // portal would briefly render to null — tripping the cleanup that kills
+  // the PTY.
+  const slotElsRef = useRef<Map<string, HTMLDivElement>>(new Map())
 
-  const registerSlot = useCallback((paneId: string, el: HTMLDivElement | null) => {
-    setSlotEls((prev) => (prev[paneId] === el ? prev : { ...prev, [paneId]: el }))
+  const ensureSlot = useCallback((paneId: string): HTMLDivElement => {
+    let slot = slotElsRef.current.get(paneId)
+    if (!slot) {
+      slot = document.createElement('div')
+      slot.className = 'absolute inset-0'
+      slotElsRef.current.set(paneId, slot)
+    }
+    return slot
   }, [])
+
+  const attachSlot = useCallback(
+    (paneId: string, host: HTMLDivElement | null) => {
+      if (!host) return
+      const slot = ensureSlot(paneId)
+      if (slot.parentElement !== host) host.appendChild(slot)
+    },
+    [ensureSlot]
+  )
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } })
   )
 
   const leaves = getLeaves(paneTree)
+
+  // Drop slots for leaves that no longer exist so the element can be GC'd
+  // and, if a pane with the same id is ever re-created, it starts fresh.
+  useEffect(() => {
+    const current = new Set(leaves.map((l) => l.id))
+    for (const [id, slot] of slotElsRef.current) {
+      if (!current.has(id)) {
+        slot.remove()
+        slotElsRef.current.delete(id)
+      }
+    }
+  }, [leaves])
 
   const findPaneOfTab = useCallback(
     (tabId: string): PaneLeaf | undefined => {
@@ -381,7 +415,7 @@ export function WorkspaceView({
           topRightLeafId={topRightLeafId}
           showExpandRightColumn={rightColumnHidden}
           onShowRightColumn={onShowRightColumn}
-          registerSlot={registerSlot}
+          registerSlot={attachSlot}
           onSelectTab={(tabId, paneId) => onSelectTab(worktreePath, paneId, tabId)}
           onAddTab={(paneId) => onAddTab(worktreePath, paneId)}
           defaultAgent={defaultAgent}
@@ -395,8 +429,7 @@ export function WorkspaceView({
 
       {leaves.flatMap((leaf) =>
         leaf.tabs.map((tab) => {
-          const slot = slotEls[leaf.id]
-          if (!slot) return null
+          const slot = ensureSlot(leaf.id)
           const isActiveInPane = leaf.activeTabId === tab.id
           return createPortal(
             <div
