@@ -164,8 +164,10 @@ Harness also exposes embedded browser tabs — you can open a browser alongside 
 - create_browser_tab: open a new browser tab in this worktree (optionally navigating to a URL).
 - list_browser_tabs, get_tab_url, get_tab_dom, screenshot_tab, get_tab_console_logs: inspect what's in the tab.
 - navigate_tab, back_tab, forward_tab, reload_tab: drive the tab.
-- get_tab_clickables: get a compact JSON list of in-viewport interactive elements with their roles, accessible names, and click coordinates. Prefer this over screenshot+vision for click targeting when the target is a real DOM element.
+- get_tab_clickables: returns a compact JSON snapshot of in-viewport interactive elements (buttons, links, inputs, [role=button|link|tab|menuitem|checkbox|radio|switch|option|combobox|searchbox|textbox], [tabindex], [contenteditable], [onclick]) — including elements inside open shadow roots. Each entry is {role, name, cx, cy, w, h} with the click center already computed.
 - click_tab, type_tab, scroll_tab, show_cursor: interact with the page — click at (x, y), type into the focused field, scroll, or just move the visible cursor overlay so the user can see what you're about to do.
+
+Click targeting workflow: prefer get_tab_clickables → match by role + name → call click_tab(cx, cy). It's far cheaper than screenshot + vision and far more reliable for real DOM targets. Fall back to screenshot_tab only when the target is canvas/SVG/an image/anything without an accessible name, when nothing matches what you expected (the page may have changed), or for verifying that a click had the visual effect you wanted. The snapshot is in-viewport only and capped at 500 items — if the target isn't there, scroll_tab first, then re-snapshot. To type into a field: click_tab on it first to focus, then type_tab. type_tab also accepts a \`key\` argument (Enter, Tab, Backspace, ArrowDown, …) for submitting forms or navigating menus.
 
 Prefer these over blind curl/fetch — or shelling out to \`open <url>\`, which launches the user's default browser outside Harness where you can't see the result — when you need to verify rendered UI, inspect a dev server, debug a page the user is looking at, or confirm your changes actually work in the browser.`
 
