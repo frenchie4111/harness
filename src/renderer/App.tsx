@@ -30,6 +30,7 @@ import { HotkeyCheatsheet } from './components/HotkeyCheatsheet'
 import iconUrl from '../../resources/icon.png'
 import { PerfMonitorHUD } from './components/PerfMonitorHUD'
 import { focusTerminalById } from './components/XTerminal'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { type GroupKey } from './worktree-sort'
 
 function isPendingId(id: string | null | undefined): id is string {
@@ -952,30 +953,32 @@ const setQuestStep = useCallback((next: QuestStep) => {
               className="flex-1 min-w-0"
               style={{ display: isVisible ? 'flex' : 'none' }}
             >
-              <WorkspaceView
-                worktreePath={wt.path}
-                repoLabel={wt.repoRoot.split('/').pop() || wt.repoRoot}
-                branch={wt.branch}
-                paneTree={paneTree}
-                focusedPaneId={activePaneId[wt.path] || leaves[0]?.id || ''}
-                statuses={statuses}
-                shellActivity={shellActivity}
-                visible={isVisible}
-                nameAgentSessions={nameAgentSessions}
-                onSelectTab={handleSelectTab}
-                onAddTab={handleAddTerminalTab}
-                defaultAgent={defaultAgent ?? 'claude'}
-                onAddAgentTab={(wt, kind, paneId) => handleAddAgentTab(wt, kind ?? defaultAgent ?? 'claude', paneId)}
-                onAddBrowserTab={handleAddBrowserTab}
-                onCloseTab={handleCloseTab}
-                onRestartAgentTab={handleRestartAgentTab}
-                onReorderTabs={handleReorderTabs}
-                onMoveTabToPane={handleMoveTabToPane}
-                onSplitPane={handleSplitPane}
-                onSendToAgent={handleSendToAgent}
-                rightColumnHidden={rightColumnHidden}
-                onShowRightColumn={() => setRightColumnHidden(false)}
-              />
+              <ErrorBoundary label={`worktree:${wt.path}`}>
+                <WorkspaceView
+                  worktreePath={wt.path}
+                  repoLabel={wt.repoRoot.split('/').pop() || wt.repoRoot}
+                  branch={wt.branch}
+                  paneTree={paneTree}
+                  focusedPaneId={activePaneId[wt.path] || leaves[0]?.id || ''}
+                  statuses={statuses}
+                  shellActivity={shellActivity}
+                  visible={isVisible}
+                  nameAgentSessions={nameAgentSessions}
+                  onSelectTab={handleSelectTab}
+                  onAddTab={handleAddTerminalTab}
+                  defaultAgent={defaultAgent ?? 'claude'}
+                  onAddAgentTab={(wt, kind, paneId) => handleAddAgentTab(wt, kind ?? defaultAgent ?? 'claude', paneId)}
+                  onAddBrowserTab={handleAddBrowserTab}
+                  onCloseTab={handleCloseTab}
+                  onRestartAgentTab={handleRestartAgentTab}
+                  onReorderTabs={handleReorderTabs}
+                  onMoveTabToPane={handleMoveTabToPane}
+                  onSplitPane={handleSplitPane}
+                  onSendToAgent={handleSendToAgent}
+                  rightColumnHidden={rightColumnHidden}
+                  onShowRightColumn={() => setRightColumnHidden(false)}
+                />
+              </ErrorBoundary>
             </div>
           )
         })}

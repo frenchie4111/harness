@@ -18,6 +18,7 @@ import { XTerminal } from './XTerminal'
 import { DiffView } from './DiffView'
 import { FileView } from './FileView'
 import { BrowserPanel } from './BrowserPanel'
+import { ErrorBoundary } from './ErrorBoundary'
 
 interface WorkspaceViewProps {
   worktreePath: string
@@ -445,53 +446,55 @@ export function WorkspaceView({
               className="absolute inset-0"
               style={{ display: isActiveInPane ? 'block' : 'none' }}
             >
-              {tab.type === 'diff' ? (
-                <DiffView
-                  worktreePath={worktreePath}
-                  filePath={tab.filePath}
-                  staged={tab.staged ?? false}
-                  branchDiff={tab.branchDiff ?? false}
-                  commitHash={tab.commitHash}
-                  onSendToAgent={
-                    onSendToAgent
-                      ? (text) => onSendToAgent(worktreePath, text)
-                      : undefined
-                  }
-                />
-              ) : tab.type === 'file' ? (
-                <FileView
-                  worktreePath={worktreePath}
-                  filePath={tab.filePath}
-                  onSendToAgent={
-                    onSendToAgent
-                      ? (text) => onSendToAgent(worktreePath, text)
-                      : undefined
-                  }
-                />
-              ) : tab.type === 'browser' ? (
-                <BrowserPanel
-                  tabId={tab.id}
-                  visible={visible && isActiveInPane}
-                  initialUrl={tab.url || 'about:blank'}
-                />
-              ) : (
-                <XTerminal
-                  terminalId={tab.id}
-                  cwd={worktreePath}
-                  type={tab.type as 'agent' | 'shell'}
-                  agentKind={tab.agentKind}
-                  visible={visible && isActiveInPane}
-                  sessionName={tab.type === 'agent' && nameAgentSessions ? `${repoLabel}/${branch}` : undefined}
-                  sessionId={tab.sessionId}
-                  initialPrompt={tab.initialPrompt}
-                  teleportSessionId={tab.teleportSessionId}
-                  onRestartAgent={
-                    tab.type === 'agent'
-                      ? (): void => onRestartAgentTab(worktreePath, tab.id)
-                      : undefined
-                  }
-                />
-              )}
+              <ErrorBoundary label={`pane:${tab.type}:${tab.id}`}>
+                {tab.type === 'diff' ? (
+                  <DiffView
+                    worktreePath={worktreePath}
+                    filePath={tab.filePath}
+                    staged={tab.staged ?? false}
+                    branchDiff={tab.branchDiff ?? false}
+                    commitHash={tab.commitHash}
+                    onSendToAgent={
+                      onSendToAgent
+                        ? (text) => onSendToAgent(worktreePath, text)
+                        : undefined
+                    }
+                  />
+                ) : tab.type === 'file' ? (
+                  <FileView
+                    worktreePath={worktreePath}
+                    filePath={tab.filePath}
+                    onSendToAgent={
+                      onSendToAgent
+                        ? (text) => onSendToAgent(worktreePath, text)
+                        : undefined
+                    }
+                  />
+                ) : tab.type === 'browser' ? (
+                  <BrowserPanel
+                    tabId={tab.id}
+                    visible={visible && isActiveInPane}
+                    initialUrl={tab.url || 'about:blank'}
+                  />
+                ) : (
+                  <XTerminal
+                    terminalId={tab.id}
+                    cwd={worktreePath}
+                    type={tab.type as 'agent' | 'shell'}
+                    agentKind={tab.agentKind}
+                    visible={visible && isActiveInPane}
+                    sessionName={tab.type === 'agent' && nameAgentSessions ? `${repoLabel}/${branch}` : undefined}
+                    sessionId={tab.sessionId}
+                    initialPrompt={tab.initialPrompt}
+                    teleportSessionId={tab.teleportSessionId}
+                    onRestartAgent={
+                      tab.type === 'agent'
+                        ? (): void => onRestartAgentTab(worktreePath, tab.id)
+                        : undefined
+                    }
+                  />
+                )}
+              </ErrorBoundary>
             </div>,
             slot,
             tab.id

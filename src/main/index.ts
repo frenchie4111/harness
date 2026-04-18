@@ -1435,6 +1435,19 @@ function registerIpcHandlers(): void {
   // Performance monitor
   transport.onRequest('perf:getMetrics', () => perfMonitor.getMetrics())
 
+  // Renderer error-boundary reporting — the preload flattens Error/ErrorInfo
+  // into plain strings because Error objects don't survive structured-clone.
+  transport.onRequest(
+    'debug:logError',
+    (label: string, name: string, message: string, stack: string, componentStack: string) => {
+      log(
+        'renderer-error',
+        `[${label}] ${name}: ${message}\nStack:\n${stack}\nComponent stack:\n${componentStack}`
+      )
+      return true
+    }
+  )
+
   // Hooks. Install/uninstall happen once at user scope — the hook command
   // is env-gated on $HARNESS_TERMINAL_ID so sessions spawned outside
   // Harness are unaffected.
