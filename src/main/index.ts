@@ -1,6 +1,6 @@
 import { app, autoUpdater as nativeAutoUpdater, BrowserWindow, dialog, Menu, screen, shell } from 'electron'
 import { autoUpdater } from 'electron-updater'
-import { existsSync, readdirSync, statSync } from 'fs'
+import { existsSync, lstatSync, readdirSync, statSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 import { PtyManager } from './pty-manager'
@@ -14,7 +14,7 @@ import { PanesFSM, stripTransientTabFields } from './panes-fsm'
 import { ActivityDeriver } from './activity-deriver'
 import type { TerminalTab, PaneNode, PaneLeaf } from '../shared/state/terminals'
 import { getLeaves, mapLeaves } from '../shared/state/terminals'
-import { listWorktrees, listBranches, continueWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getCommitChangedFiles, getCommitFileDiffSides, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, readWorktreeFile, writeWorktreeFile, getFileDiffSides, getCurrentBranch, type MergeStrategy } from './worktree'
+import { listWorktrees, listBranches, continueWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getCommitChangedFiles, getCommitFileDiffSides, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, readWorktreeFile, writeWorktreeFile, getFileDiffSides, getCurrentBranch, symlinkClaudeSettings, type MergeStrategy } from './worktree'
 import { getPRStatus, testToken, starRepo, unstarRepo, isRepoStarred } from './github'
 import { AVAILABLE_EDITORS, DEFAULT_EDITOR_ID, openInEditor } from './editor'
 import { setSecret, hasSecret, deleteSecret } from './secrets'
@@ -247,6 +247,36 @@ function installHooksGlobally(): void {
 function uninstallHooksGlobally(): void {
   for (const agent of [getAgent('claude'), getAgent('codex')]) {
     agent.uninstallHooks()
+  }
+}
+
+/** One-shot boot migration: for every non-main worktree that has a real
+ *  .claude/settings.local.json file (not a symlink), replace it with a
+ *  symlink to main's copy so permissions sync. New worktrees get the
+ *  symlink at creation time in WorktreesFSM.runPending. */
+function migrateClaudeSettingsToSymlinks(): void {
+  const list = store.getSnapshot().state.worktrees.list
+  const mainByRepo = new Map<string, string>()
+  for (const wt of list) {
+    if (wt.isMain) mainByRepo.set(wt.repoRoot, wt.path)
+  }
+  for (const wt of list) {
+    if (wt.isMain) continue
+    const mainPath = mainByRepo.get(wt.repoRoot)
+    if (!mainPath || mainPath === wt.path) continue
+    const settingsPath = join(wt.path, '.claude', 'settings.local.json')
+    if (!existsSync(settingsPath)) continue
+    try {
+      if (lstatSync(settingsPath).isSymbolicLink()) continue
+    } catch {
+      continue
+    }
+    try {
+      symlinkClaudeSettings(mainPath, wt.path)
+      log('hooks', `migrated .claude/settings.local.json to symlink: ${wt.path} → ${mainPath}`)
+    } catch (err) {
+      log('hooks', `migrate symlink failed for ${wt.path}`, err instanceof Error ? err.message : err)
+    }
   }
 }
 
@@ -1543,6 +1573,7 @@ app.whenReady().then(() => {
   void (async () => {
     await panesFSM.restoreFromConfig(config.panes)
     await worktreesFSM.refreshList()
+    migrateClaudeSettingsToSymlinks()
   })()
 
   // Seed per-repo config slice from each repo's .harness.json file.

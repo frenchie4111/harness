@@ -2,7 +2,8 @@ import {
   addWorktree,
   defaultWorktreeDir,
   listWorktrees,
-  runWorktreeScript
+  runWorktreeScript,
+  symlinkClaudeSettings
 } from './worktree'
 import { loadRepoConfig } from './repo-config'
 import { log } from './debug'
@@ -120,6 +121,21 @@ export class WorktreesFSM {
           type: 'worktrees/pendingUpdated',
           payload: { id, patch: { setupExitCode: result.exitCode } }
         })
+      }
+
+      // Share .claude/settings.local.json with the main worktree so
+      // "Don't ask again" permissions granted in any worktree apply to
+      // all of them. Best-effort — log and continue on failure.
+      try {
+        const mainWt = this.store
+          .getSnapshot()
+          .state.worktrees.list.find((w) => w.repoRoot === repoRoot && w.isMain)
+        if (mainWt && mainWt.path !== created.path) {
+          symlinkClaudeSettings(mainWt.path, created.path)
+          log('hooks', `symlinked .claude/settings.local.json ${created.path} → ${mainWt.path}`)
+        }
+      } catch (err) {
+        log('hooks', `symlinkClaudeSettings failed for ${created.path}`, err instanceof Error ? err.message : err)
       }
 
       // Worktree exists on disk regardless of script outcome. Pick it up,
