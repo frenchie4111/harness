@@ -847,7 +847,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
                     or{' '}
                     <button
                       onClick={() => setShowNewProject(true)}
-                      className="text-accent hover:underline cursor-pointer"
+                      className="text-fg-bright hover:underline cursor-pointer"
                     >
                       start a new project
                     </button>
