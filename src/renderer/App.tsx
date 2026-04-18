@@ -836,7 +836,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
                     onClick={handleAddRepo}
                     className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
                       activeStep === 4
-                        ? 'bg-accent/20 hover:bg-accent/30 text-fg-bright border border-accent/40'
+                        ? 'bg-fg-bright text-app hover:bg-fg border border-fg-bright'
                         : 'bg-panel border border-border text-dim hover:text-fg hover:border-border-strong'
                     }`}
                   >
