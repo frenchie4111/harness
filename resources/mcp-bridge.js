@@ -233,6 +233,65 @@ const TOOLS = [
       },
       required: ['tab_id']
     }
+  },
+  {
+    name: 'list_shells',
+    description:
+      "List shell tabs in the caller's worktree. Each entry includes id, label, command (if started with one), cwd, and alive (whether its PTY is still running). Use the returned id with read_shell_output/kill_shell. Prefer reading an existing shell over spawning a new one when you just want to inspect recent output.",
+    inputSchema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'create_shell',
+    description:
+      "Spawn a new shell tab in this worktree. If `command` is set, runs it via `zsh -ilc <command>`; otherwise opens an interactive login shell. Returns the new shell's id — keep it so you can read_shell_output / kill_shell later. Use this instead of telling the user to run `npm run dev` by hand.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        command: {
+          type: 'string',
+          description:
+            'Shell command to run (e.g. "npm run dev"). Leave empty to open an interactive shell.'
+        },
+        cwd: {
+          type: 'string',
+          description:
+            'Directory to spawn in. Relative paths resolve against the worktree root; absolute paths are used as-is. Defaults to the worktree root.'
+        },
+        label: {
+          type: 'string',
+          description:
+            'Optional short label shown on the tab. Defaults to a truncated form of the command.'
+        }
+      }
+    }
+  },
+  {
+    name: 'read_shell_output',
+    description:
+      "Return the most recent output from a shell tab in this worktree (cleaned of ANSI escape codes). Works whether the shell is still running or has already exited — handy for reading the final error after a failed build. Default lines=200; cap is 5000.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        shell_id: { type: 'string', description: 'Shell id from list_shells or create_shell.' },
+        lines: {
+          type: 'number',
+          description: 'Number of trailing lines to return. Default 200, max 5000.'
+        }
+      },
+      required: ['shell_id']
+    }
+  },
+  {
+    name: 'kill_shell',
+    description:
+      "Terminate the process running in a shell tab in this worktree. The tab stays open so you (and the user) can still read the final output via read_shell_output.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        shell_id: { type: 'string', description: 'Shell id from list_shells.' }
+      },
+      required: ['shell_id']
+    }
   }
 ]
 
@@ -333,6 +392,31 @@ async function handleToolCall(name, args) {
     if (!args || !args.tab_id) throw new Error('tab_id is required')
     await callControl('POST', '/browser/reload', { tabId: args.tab_id })
     return 'reloaded ' + args.tab_id
+  }
+  if (name === 'list_shells') {
+    const r = await callControl('GET', '/shells')
+    return JSON.stringify((r && r.shells) || [], null, 2)
+  }
+  if (name === 'create_shell') {
+    const r = await callControl('POST', '/shells', {
+      command: (args && args.command) || '',
+      cwd: (args && args.cwd) || '',
+      label: (args && args.label) || ''
+    })
+    const commandPart = args && args.command ? ' (' + args.command + ')' : ''
+    return 'Created shell ' + r.id + ' "' + r.label + '"' + commandPart
+  }
+  if (name === 'read_shell_output') {
+    if (!args || !args.shell_id) throw new Error('shell_id is required')
+    const q = new URLSearchParams({ shellId: args.shell_id })
+    if (args.lines != null) q.set('lines', String(args.lines))
+    const r = await callControl('GET', '/shells/output?' + q.toString())
+    return r && r.output ? r.output : ''
+  }
+  if (name === 'kill_shell') {
+    if (!args || !args.shell_id) throw new Error('shell_id is required')
+    await callControl('POST', '/shells/kill', { shellId: args.shell_id })
+    return 'killed ' + args.shell_id
   }
   throw new Error('unknown tool: ' + name)
 }
