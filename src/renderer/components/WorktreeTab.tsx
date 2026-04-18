@@ -113,12 +113,11 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
         />
       )}
       {prStatus && (
-        <span className="relative shrink-0">
-          <GitPullRequest
-            size={13}
-            className={iconColor}
-            title={`PR #${prStatus.number}${prStatus.checksOverall !== 'none' ? ` \u2014 checks ${prStatus.checksOverall}` : ''}${iconTitleSuffix}${prStatus.reviewDecision === 'approved' ? ' \u2014 approved' : prStatus.reviewDecision === 'changes_requested' ? ' \u2014 changes requested' : ''}`}
-          />
+        <span
+          className="relative shrink-0"
+          title={`PR #${prStatus.number}${prStatus.checksOverall !== 'none' ? ` \u2014 checks ${prStatus.checksOverall}` : ''}${iconTitleSuffix}${prStatus.reviewDecision === 'approved' ? ' \u2014 approved' : prStatus.reviewDecision === 'changes_requested' ? ' \u2014 changes requested' : ''}`}
+        >
+          <GitPullRequest size={13} className={iconColor} />
           {prStatus.reviewDecision === 'approved' && (
             <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-success ring-1 ring-panel" />
           )}

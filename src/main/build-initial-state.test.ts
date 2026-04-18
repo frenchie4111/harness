@@ -50,7 +50,7 @@ describe('buildInitialAppState', () => {
 
   for (const [name, initial] of Object.entries(slices)) {
     it(`seeds every key from initial${name[0].toUpperCase() + name.slice(1)}`, () => {
-      const slice = seeded[name as keyof typeof slices] as Record<string, unknown>
+      const slice = seeded[name as keyof typeof slices] as unknown as Record<string, unknown>
       for (const key of Object.keys(initial)) {
         expect(slice, `${name}.${key} missing from seed`).toHaveProperty(key)
       }

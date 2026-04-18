@@ -168,7 +168,8 @@ describe('worktreesReducer', () => {
     const start: WorktreesState = {
       list: [stubWorktree()],
       repoRoots: ['/tmp/repo'],
-      pending: [stubPending()]
+      pending: [stubPending()],
+      pendingDeletions: []
     }
     const next = apply(start, { type: 'worktrees/reposChanged', payload: ['/tmp/other'] })
     expect(next.list).toBe(start.list)

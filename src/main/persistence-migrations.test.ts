@@ -261,9 +261,9 @@ describe('v3 → v4: tab type claude → agent + agentKind', () => {
     const nested = c.panes as Record<string, Record<string, PersistedPane[]>>
     const tabs = nested['/a/repo1']['/a/repo1'][0].tabs
     expect(tabs[0].type).toBe('agent')
-    expect((tabs[0] as Record<string, unknown>).agentKind).toBe('claude')
+    expect((tabs[0] as unknown as Record<string, unknown>).agentKind).toBe('claude')
     expect(tabs[1].type).toBe('shell')
-    expect((tabs[1] as Record<string, unknown>).agentKind).toBeUndefined()
+    expect((tabs[1] as unknown as Record<string, unknown>).agentKind).toBeUndefined()
   })
 
   it('is a no-op on already-migrated tabs', () => {

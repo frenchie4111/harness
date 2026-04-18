@@ -90,7 +90,7 @@ export interface ChangedFile {
   deletions?: number
 }
 
-import type { PerfMetrics, PerfSample } from '../main/perf-monitor'
+import type { PerfMetrics, PerfSample } from '../shared/perf-types'
 export type { PerfMetrics, PerfSample }
 
 import type { CheckStatus, PRReview, PRStatus } from '../shared/state/prs'

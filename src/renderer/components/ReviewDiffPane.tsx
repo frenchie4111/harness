@@ -405,8 +405,8 @@ export function ReviewDiffPane({
             modified={sides.modified}
             filePath={file.path}
             readOnly
-            fontFamily={settings.fontFamily}
-            fontSize={settings.fontSize}
+            fontFamily={settings.terminalFontFamily || undefined}
+            fontSize={settings.terminalFontSize}
             onReferenceLine={handleReferenceLine}
             onEditorMount={handleEditorMount}
             glyphClassName="comment-line-glyph"

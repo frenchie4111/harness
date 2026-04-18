@@ -22,7 +22,7 @@ import TsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker'
 // don't get semantic noise from unresolved imports (no project-wide type
 // graph — Monaco only sees one file at a time).
 function configureTypescriptDefaults(): void {
-  const ts = monaco.languages.typescript
+  const ts = monaco.typescript
   const tsOptions = {
     ...ts.typescriptDefaults.getCompilerOptions(),
     jsx: ts.JsxEmit.Preserve,
