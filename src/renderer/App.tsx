@@ -27,7 +27,7 @@ import { CommandCenter } from './components/CommandCenter'
 import { ReviewScreen } from './components/ReviewScreen'
 import { CommandPalette } from './components/CommandPalette'
 import { HotkeyCheatsheet } from './components/HotkeyCheatsheet'
-import { NewProjectModal } from './components/NewProjectModal'
+import { NewProjectScreen } from './components/NewProjectScreen'
 import iconUrl from '../../resources/icon.png'
 import { PerfMonitorHUD } from './components/PerfMonitorHUD'
 import { focusTerminalById } from './components/XTerminal'
@@ -526,6 +526,21 @@ const setQuestStep = useCallback((next: QuestStep) => {
     return <Guide onClose={() => setShowGuide(false)} />
   }
 
+  if (showNewProject) {
+    return (
+      <NewProjectScreen
+        onCancel={() => setShowNewProject(false)}
+        onCreated={(createdPath) => {
+          setShowNewProject(false)
+          const main =
+            worktrees.find((w) => w.repoRoot === createdPath && w.isMain) ||
+            worktrees.find((w) => w.repoRoot === createdPath)
+          if (main) setActiveWorktreeId(main.path)
+        }}
+      />
+    )
+  }
+
   const settingsOverlay = showSettings ? (
     <div className="fixed inset-0 z-50">
       <Settings
@@ -543,18 +558,6 @@ const setQuestStep = useCallback((next: QuestStep) => {
     </div>
   ) : null
 
-  const newProjectOverlay = showNewProject ? (
-    <NewProjectModal
-      onClose={() => setShowNewProject(false)}
-      onCreated={(createdPath) => {
-        setShowNewProject(false)
-        const main =
-          worktrees.find((w) => w.repoRoot === createdPath && w.isMain) ||
-          worktrees.find((w) => w.repoRoot === createdPath)
-        if (main) setActiveWorktreeId(main.path)
-      }}
-    />
-  ) : null
 
   if (repoRoots.length === 0) {
     const step1Complete = themeChosen
@@ -862,7 +865,6 @@ const setQuestStep = useCallback((next: QuestStep) => {
         </div>
       </div>
       {settingsOverlay}
-      {newProjectOverlay}
       </HotkeysProvider>
     )
   }
@@ -1147,7 +1149,6 @@ const setQuestStep = useCallback((next: QuestStep) => {
       </div>
     </div>
     {settingsOverlay}
-    {newProjectOverlay}
     {showPerfMonitor && <PerfMonitorHUD onClose={() => setShowPerfMonitor(false)} />}
     {showCommandPalette && (
       <CommandPalette
