@@ -103,4 +103,8 @@ export function useCosts() {
   return useAppState((s) => s.costs)
 }
 
+export function useBrowser() {
+  return useAppState((s) => s.browser)
+}
+
 export type { AppState, StateEvent }

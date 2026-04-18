@@ -18,10 +18,12 @@ import type { AgentKind } from '../shared/state/terminals'
 
 export interface PersistedTab {
   id: string
-  type: 'agent' | 'shell'
+  type: 'agent' | 'shell' | 'browser'
   label: string
   agentKind?: AgentKind
   sessionId?: string
+  /** For browser tabs: last URL so we can restore the tab on reload. */
+  url?: string
 }
 
 export interface PersistedPane {

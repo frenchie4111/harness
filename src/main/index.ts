@@ -4,6 +4,7 @@ import { existsSync, lstatSync, readdirSync, statSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 import { PtyManager } from './pty-manager'
+import { BrowserManager } from './browser-manager'
 import { Store } from './store'
 import { ElectronServerTransport } from './transport-electron'
 import { PerfMonitor } from './perf-monitor'
@@ -59,6 +60,7 @@ if (!app.isPackaged) {
 }
 
 const ptyManager = new PtyManager()
+const browserManager = new BrowserManager()
 let config = loadConfig()
 let stopWatchingStatus: (() => void) | null = null
 
@@ -132,6 +134,43 @@ ptyManager.setSendSignal((channel, ...args) => transport.sendSignal(channel, ...
 ptyManager.setPerfMonitor(perfMonitor)
 perfMonitor.start(store, () => ptyManager.getActivePtyCount())
 
+browserManager.setStore(store)
+
+// Reconcile BrowserManager with the pane tree: for every 'browser' tab in
+// the store, make sure a WebContentsView exists; for every view we own
+// that no longer has a corresponding tab, destroy it.
+function reconcileBrowserViews(): void {
+  const panes = store.getSnapshot().state.terminals.panes
+  const live = new Map<string, { worktreePath: string; url: string }>()
+  for (const [wtPath, tree] of Object.entries(panes)) {
+    for (const leaf of getLeaves(tree)) {
+      for (const tab of leaf.tabs) {
+        if (tab.type === 'browser') {
+          live.set(tab.id, { worktreePath: wtPath, url: tab.url || 'about:blank' })
+        }
+      }
+    }
+  }
+  for (const [tabId, info] of live) {
+    if (!browserManager.hasTab(tabId)) {
+      browserManager.create(tabId, info.worktreePath, info.url)
+    }
+  }
+  for (const tabId of browserManager.listAllTabIds()) {
+    if (!live.has(tabId)) browserManager.destroy(tabId)
+  }
+}
+
+store.subscribe((event) => {
+  if (
+    event.type === 'terminals/panesForWorktreeChanged' ||
+    event.type === 'terminals/panesForWorktreeCleared' ||
+    event.type === 'terminals/panesReplaced'
+  ) {
+    reconcileBrowserViews()
+  }
+})
+
 // Persist pane trees back to config in the nested-by-repo shape. Walks
 // the tree, strips transient tab fields, and drops leaves with no
 // persistable tabs (diff/file viewer tabs are ephemeral).
@@ -153,15 +192,16 @@ function persistPanes(panes: Record<string, PaneNode>): void {
 function treeToPersistedNode(node: PaneNode): PersistedPaneNode | null {
   if (node.type === 'leaf') {
     const tabs = node.tabs
-      .filter((t) => t.type === 'agent' || t.type === 'shell')
+      .filter((t) => t.type === 'agent' || t.type === 'shell' || t.type === 'browser')
       .map((t) => {
         const stripped = stripTransientTabFields(t as TerminalTab)
         return {
           id: stripped.id,
-          type: stripped.type as 'agent' | 'shell',
+          type: stripped.type as 'agent' | 'shell' | 'browser',
           label: stripped.label,
           agentKind: stripped.agentKind,
-          sessionId: stripped.sessionId
+          sessionId: stripped.sessionId,
+          url: stripped.url
         }
       })
     if (tabs.length === 0) return null
@@ -1359,6 +1399,45 @@ function registerIpcHandlers(): void {
     shell.openExternal(url)
   })
 
+  // Browser tabs — WebContentsView instances owned by BrowserManager. The
+  // renderer sends bounds updates from a placeholder div's geometry and we
+  // reposition the native view over it.
+  transport.onRequest('browser:navigate', (tabId: string, url: string) => {
+    browserManager.navigate(tabId, url)
+    return true
+  })
+  transport.onRequest('browser:back', (tabId: string) => {
+    browserManager.back(tabId)
+    return true
+  })
+  transport.onRequest('browser:forward', (tabId: string) => {
+    browserManager.forward(tabId)
+    return true
+  })
+  transport.onRequest('browser:reload', (tabId: string) => {
+    browserManager.reload(tabId)
+    return true
+  })
+  transport.onRequest('browser:openDevTools', (tabId: string) => {
+    browserManager.openDevTools(tabId)
+    return true
+  })
+  transport.onSignal(
+    'browser:setBounds',
+    (tabId: string, bounds: { x: number; y: number; width: number; height: number } | null) => {
+      if (!bounds) {
+        browserManager.hide(tabId)
+        return
+      }
+      const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0]
+      if (!win) return
+      browserManager.setBounds(tabId, win, bounds)
+    }
+  )
+  transport.onSignal('browser:hide', (tabId: string) => {
+    browserManager.hide(tabId)
+  })
+
   transport.onSignal('pty:create', (id: string, cwd: string, cmd: string, args: string[], agentKind?: string, cols?: number, rows?: number) => {
     const isAgent = !!agentKind
     const extraEnv = agentKind === 'claude' ? config.claudeEnvVars
@@ -1589,6 +1668,7 @@ app.whenReady().then(() => {
     await panesFSM.restoreFromConfig(config.panes)
     await worktreesFSM.refreshList()
     migrateClaudeSettingsToSymlinks()
+    reconcileBrowserViews()
   })()
 
   // Seed per-repo config slice from each repo's .harness.json file.
@@ -1696,10 +1776,40 @@ app.whenReady().then(() => {
   pruneTerminalHistory(keepIds)
   pruneMcpConfigs(keepIds)
 
+  // Helper: look up the worktree path that hosts a given terminal id, by
+  // scanning the current pane tree. Used by the browser MCP endpoints to
+  // scope tab access to the caller's worktree.
+  const getWorktreeForTerminalId = (terminalId: string): string | null => {
+    const panes = store.getSnapshot().state.terminals.panes
+    for (const [wtPath, tree] of Object.entries(panes)) {
+      for (const leaf of getLeaves(tree)) {
+        if (leaf.tabs.some((t) => t.id === terminalId)) return wtPath
+      }
+    }
+    return null
+  }
+
   // Local HTTP control server for the bundled harness-control MCP bridge.
   startControlServer({
     getRepoRoots: () => config.repoRoots,
     getWorktreeBase: () => config.worktreeBase || DEFAULT_WORKTREE_BASE,
+    browser: {
+      getWorktreeForTerminalId,
+      listTabsForWorktree: (wtPath) => {
+        const ids = browserManager.listTabsForWorktree(wtPath)
+        const out: Array<{ id: string; url: string; title: string }> = []
+        for (const id of ids) {
+          const info = browserManager.getTabInfo(id)
+          if (info) out.push(info)
+        }
+        return out
+      },
+      getTabWorktree: (tabId) => browserManager.getWorktreePath(tabId),
+      getTabUrl: (tabId) => browserManager.getUrl(tabId),
+      getTabConsoleLogs: (tabId) => browserManager.getConsoleLogs(tabId),
+      screenshotTab: (tabId) => browserManager.capturePage(tabId),
+      getTabDom: (tabId) => browserManager.getDom(tabId)
+    },
     broadcast: (channel, payload) => {
       if (channel === 'worktrees:externalCreate') {
         // Seed panes with the initial prompt BEFORE refreshList — the
@@ -1758,6 +1868,7 @@ app.on('before-quit', () => {
   // main process can hang draining fds and Squirrel.Mac will abort an
   // in-flight bundle swap with "original process did not end".
   ptyManager.killAll('SIGKILL')
+  browserManager.destroyAll()
   sealAllActive()
   saveConfigSync(config)
 })

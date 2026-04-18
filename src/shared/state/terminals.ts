@@ -14,7 +14,7 @@ export type AgentKind = 'claude' | 'codex'
 
 export interface TerminalTab {
   id: string
-  type: 'agent' | 'shell' | 'diff' | 'file'
+  type: 'agent' | 'shell' | 'diff' | 'file' | 'browser'
   label: string
   /** For agent tabs: which CLI agent this tab runs. */
   agentKind?: AgentKind
@@ -32,6 +32,8 @@ export interface TerminalTab {
   initialPrompt?: string
   /** For agent tabs: one-shot teleport session id. In-memory only — main strips it before persistence. */
   teleportSessionId?: string
+  /** For browser tabs: the URL currently loaded (restored on reload). */
+  url?: string
 }
 
 // ---------------------------------------------------------------------------

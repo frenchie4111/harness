@@ -123,7 +123,8 @@ export class PanesFSM {
         type: t.type,
         label: t.label,
         agentKind: t.agentKind,
-        sessionId: t.sessionId
+        sessionId: t.sessionId,
+        url: t.url
       }
       if (base.type !== 'agent' || base.sessionId) return base
       if (latest && !claimedLatest) {
@@ -339,7 +340,10 @@ export class PanesFSM {
     const sourceActive = source.tabs.find((t) => t.id === source.activeTabId)
     const sourceType = sourceActive?.type
     const shouldShell =
-      !sourceType || sourceType === 'agent' || sourceType === 'shell'
+      !sourceType ||
+      sourceType === 'agent' ||
+      sourceType === 'shell' ||
+      sourceType === 'browser'
 
     let tab: TerminalTab
     if (shouldShell) {

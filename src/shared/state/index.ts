@@ -65,6 +65,12 @@ import {
   type CostsEvent,
   type CostsState
 } from './costs'
+import {
+  initialBrowser,
+  browserReducer,
+  type BrowserEvent,
+  type BrowserState
+} from './browser'
 
 export type { SettingsState, SettingsEvent }
 export type { UpdaterState, UpdaterEvent, UpdaterStatus } from './updater'
@@ -119,6 +125,8 @@ export {
   removeLeaf
 } from './terminals'
 
+export type { BrowserState, BrowserEvent, BrowserTabState } from './browser'
+
 export interface AppState {
   settings: SettingsState
   prs: PRsState
@@ -129,6 +137,7 @@ export interface AppState {
   updater: UpdaterState
   repoConfigs: RepoConfigsState
   costs: CostsState
+  browser: BrowserState
 }
 
 export type StateEvent =
@@ -141,6 +150,7 @@ export type StateEvent =
   | UpdaterEvent
   | RepoConfigsEvent
   | CostsEvent
+  | BrowserEvent
 
 export const initialState: AppState = {
   settings: initialSettings,
@@ -151,7 +161,8 @@ export const initialState: AppState = {
   terminals: initialTerminals,
   updater: initialUpdater,
   repoConfigs: initialRepoConfigs,
-  costs: initialCosts
+  costs: initialCosts,
+  browser: initialBrowser
 }
 
 export function rootReducer(state: AppState, event: StateEvent): AppState {
@@ -196,6 +207,9 @@ export function rootReducer(state: AppState, event: StateEvent): AppState {
   }
   if (event.type.startsWith('costs/')) {
     return { ...state, costs: costsReducer(state.costs, event as CostsEvent) }
+  }
+  if (event.type.startsWith('browser/')) {
+    return { ...state, browser: browserReducer(state.browser, event as BrowserEvent) }
   }
   return state
 }

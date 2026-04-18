@@ -35,6 +35,7 @@ function callControl(method, path, body) {
         headers: {
           Authorization: 'Bearer ' + TOKEN,
           'Content-Type': 'application/json',
+          'X-Harness-Terminal-Id': TERMINAL_ID,
           ...(data ? { 'Content-Length': Buffer.byteLength(data) } : {})
         }
       },
@@ -108,6 +109,59 @@ const TOOLS = [
     name: 'list_repos',
     description: 'List the repo roots currently open in Harness.',
     inputSchema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'list_browser_tabs',
+    description:
+      'List the browser tabs currently open in the SAME worktree as the calling agent. Returns [{id, url, title}]. Use the returned ids with screenshot_tab, get_tab_dom, get_tab_url, and get_tab_console_logs.',
+    inputSchema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'screenshot_tab',
+    description:
+      "Take a PNG screenshot of a browser tab in this worktree. Returns base64-encoded PNG bytes. The tab id comes from list_browser_tabs.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tab_id: { type: 'string', description: 'Browser tab id from list_browser_tabs.' }
+      },
+      required: ['tab_id']
+    }
+  },
+  {
+    name: 'get_tab_dom',
+    description:
+      "Return the serialized outer HTML of the tab's document. Useful for inspecting rendered DOM that an HTTP fetch wouldn't see.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tab_id: { type: 'string', description: 'Browser tab id from list_browser_tabs.' }
+      },
+      required: ['tab_id']
+    }
+  },
+  {
+    name: 'get_tab_url',
+    description: 'Return the current URL of the tab (may differ from the last-navigated URL if the page redirected).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tab_id: { type: 'string', description: 'Browser tab id from list_browser_tabs.' }
+      },
+      required: ['tab_id']
+    }
+  },
+  {
+    name: 'get_tab_console_logs',
+    description:
+      "Return the most recent (up to ~200) console messages captured from the tab since it was opened. Entries are {ts, level, message}.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tab_id: { type: 'string', description: 'Browser tab id from list_browser_tabs.' }
+      },
+      required: ['tab_id']
+    }
   }
 ]
 
@@ -139,6 +193,46 @@ async function handleToolCall(name, args) {
     const r = await callControl('GET', '/repos')
     return JSON.stringify(r, null, 2)
   }
+  if (name === 'list_browser_tabs') {
+    const r = await callControl('GET', '/browser/tabs')
+    return JSON.stringify(r.tabs || [], null, 2)
+  }
+  if (name === 'screenshot_tab') {
+    if (!args || !args.tab_id) throw new Error('tab_id is required')
+    const r = await callControl(
+      'GET',
+      '/browser/screenshot?tabId=' + encodeURIComponent(args.tab_id)
+    )
+    if (!r || !r.pngBase64) throw new Error(r && r.error ? r.error : 'screenshot failed')
+    return {
+      content: [{ type: 'image', data: r.pngBase64, mimeType: 'image/png' }]
+    }
+  }
+  if (name === 'get_tab_dom') {
+    if (!args || !args.tab_id) throw new Error('tab_id is required')
+    const r = await callControl(
+      'GET',
+      '/browser/dom?tabId=' + encodeURIComponent(args.tab_id)
+    )
+    if (r == null || r.html == null) throw new Error(r && r.error ? r.error : 'dom read failed')
+    return r.html
+  }
+  if (name === 'get_tab_url') {
+    if (!args || !args.tab_id) throw new Error('tab_id is required')
+    const r = await callControl(
+      'GET',
+      '/browser/url?tabId=' + encodeURIComponent(args.tab_id)
+    )
+    return r && r.url ? r.url : ''
+  }
+  if (name === 'get_tab_console_logs') {
+    if (!args || !args.tab_id) throw new Error('tab_id is required')
+    const r = await callControl(
+      'GET',
+      '/browser/console?tabId=' + encodeURIComponent(args.tab_id)
+    )
+    return JSON.stringify((r && r.logs) || [], null, 2)
+  }
   throw new Error('unknown tool: ' + name)
 }
 
@@ -163,14 +257,18 @@ async function handle(msg) {
       return { jsonrpc: '2.0', id, result: { tools: TOOLS } }
     }
     if (method === 'tools/call') {
-      const text = await handleToolCall(
+      const result = await handleToolCall(
         params && params.name,
         (params && params.arguments) || {}
       )
+      const content =
+        result && typeof result === 'object' && Array.isArray(result.content)
+          ? result.content
+          : [{ type: 'text', text: String(result) }]
       return {
         jsonrpc: '2.0',
         id,
-        result: { content: [{ type: 'text', text }] }
+        result: { content }
       }
     }
     return {
