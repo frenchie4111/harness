@@ -62,10 +62,26 @@ export function useTabHandlers({
     [appendTabToPane]
   )
 
+  const handleAddBrowserTab = useCallback(
+    (worktreePath: string, paneId?: string) => {
+      const id = `browser-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      appendTabToPane(
+        worktreePath,
+        { id, type: 'browser', label: 'Browser', url: 'about:blank' },
+        paneId
+      )
+    },
+    [appendTabToPane]
+  )
+
   const handleCloseTab = useCallback(
     (worktreePath: string, tabId: string) => {
-      // Only kill PTY for terminal tabs, not diff/file viewer tabs
-      if (!tabId.startsWith('diff-') && !tabId.startsWith('file-')) {
+      // Only kill PTY for terminal tabs, not diff/file/browser viewer tabs
+      if (
+        !tabId.startsWith('diff-') &&
+        !tabId.startsWith('file-') &&
+        !tabId.startsWith('browser-')
+      ) {
         markTerminalClosing(tabId)
         window.api.killTerminal(tabId)
       }
@@ -244,6 +260,7 @@ export function useTabHandlers({
     appendTabToPane,
     handleAddTerminalTab,
     handleAddAgentTab,
+    handleAddBrowserTab,
     handleCloseTab,
     handleRestartAgentTab,
     handleRestartAllAgentTabs,

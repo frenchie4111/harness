@@ -17,6 +17,7 @@ import { TerminalPanel } from './TerminalPanel'
 import { XTerminal } from './XTerminal'
 import { DiffView } from './DiffView'
 import { FileView } from './FileView'
+import { BrowserPanel } from './BrowserPanel'
 
 interface WorkspaceViewProps {
   worktreePath: string
@@ -32,6 +33,7 @@ interface WorkspaceViewProps {
   onAddTab: (worktreePath: string, paneId?: string) => void
   defaultAgent: AgentKind
   onAddAgentTab: (worktreePath: string, agentKind?: AgentKind, paneId?: string) => void
+  onAddBrowserTab: (worktreePath: string, paneId?: string) => void
   onCloseTab: (worktreePath: string, tabId: string) => void
   onRestartAgentTab: (worktreePath: string, tabId: string) => void
   onReorderTabs: (worktreePath: string, paneId: string, fromId: string, toId: string) => void
@@ -121,6 +123,7 @@ function SplitRenderer({
   onAddTab,
   defaultAgent,
   onAddAgentTab,
+  onAddBrowserTab,
   onCloseTab,
   onSplitRight,
   onSplitDown,
@@ -144,6 +147,7 @@ function SplitRenderer({
   onAddTab: (paneId: string) => void
   defaultAgent: AgentKind
   onAddAgentTab: (kind: AgentKind | undefined, paneId: string) => void
+  onAddBrowserTab: (paneId: string) => void
   onCloseTab: (tabId: string) => void
   onSplitRight: (paneId: string) => void
   onSplitDown: (paneId: string) => void
@@ -170,6 +174,7 @@ function SplitRenderer({
           onAddTab={() => onAddTab(node.id)}
           defaultAgent={defaultAgent}
           onAddAgentTab={(kind) => onAddAgentTab(kind, node.id)}
+          onAddBrowserTab={() => onAddBrowserTab(node.id)}
           onCloseTab={onCloseTab}
           onSplitRight={() => onSplitRight(node.id)}
           onSplitDown={() => onSplitDown(node.id)}
@@ -213,6 +218,7 @@ function SplitRenderer({
           onAddTab={onAddTab}
           defaultAgent={defaultAgent}
           onAddAgentTab={onAddAgentTab}
+          onAddBrowserTab={onAddBrowserTab}
           onCloseTab={onCloseTab}
           onSplitRight={onSplitRight}
           onSplitDown={onSplitDown}
@@ -248,6 +254,7 @@ function SplitRenderer({
           onAddTab={onAddTab}
           defaultAgent={defaultAgent}
           onAddAgentTab={onAddAgentTab}
+          onAddBrowserTab={onAddBrowserTab}
           onCloseTab={onCloseTab}
           onSplitRight={onSplitRight}
           onSplitDown={onSplitDown}
@@ -270,6 +277,7 @@ export function WorkspaceView({
   onAddTab,
   defaultAgent,
   onAddAgentTab,
+  onAddBrowserTab,
   onCloseTab,
   onRestartAgentTab,
   onReorderTabs,
@@ -420,6 +428,7 @@ export function WorkspaceView({
           onAddTab={(paneId) => onAddTab(worktreePath, paneId)}
           defaultAgent={defaultAgent}
           onAddAgentTab={(kind, paneId) => onAddAgentTab(worktreePath, kind, paneId)}
+          onAddBrowserTab={(paneId) => onAddBrowserTab(worktreePath, paneId)}
           onCloseTab={(tabId) => onCloseTab(worktreePath, tabId)}
           onSplitRight={(paneId) => onSplitPane(worktreePath, paneId, 'horizontal')}
           onSplitDown={(paneId) => onSplitPane(worktreePath, paneId, 'vertical')}
@@ -458,6 +467,12 @@ export function WorkspaceView({
                       ? (text) => onSendToAgent(worktreePath, text)
                       : undefined
                   }
+                />
+              ) : tab.type === 'browser' ? (
+                <BrowserPanel
+                  tabId={tab.id}
+                  visible={visible && isActiveInPane}
+                  initialUrl={tab.url || 'about:blank'}
                 />
               ) : (
                 <XTerminal

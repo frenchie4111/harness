@@ -96,6 +96,9 @@ export type { PerfMetrics, PerfSample }
 import type { CheckStatus, PRReview, PRStatus } from '../shared/state/prs'
 export type { CheckStatus, PRReview, PRStatus }
 
+import type { BrowserState, BrowserTabState } from '../shared/state/browser'
+export type { BrowserState, BrowserTabState }
+
 export type MergeStrategy = 'squash' | 'merge-commit' | 'fast-forward'
 
 export interface MainWorktreeStatus {
@@ -295,6 +298,17 @@ export interface ElectronAPI {
   acceptHooks(): Promise<boolean>
   declineHooks(): Promise<boolean>
   uninstallHooks(): Promise<boolean>
+
+  browserNavigate(tabId: string, url: string): Promise<boolean>
+  browserBack(tabId: string): Promise<boolean>
+  browserForward(tabId: string): Promise<boolean>
+  browserReload(tabId: string): Promise<boolean>
+  browserOpenDevTools(tabId: string): Promise<boolean>
+  browserSetBounds(
+    tabId: string,
+    bounds: { x: number; y: number; width: number; height: number } | null
+  ): void
+  browserHide(tabId: string): void
 
   createTerminal(
     id: string,

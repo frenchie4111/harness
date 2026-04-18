@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react'
-import { X, SquareTerminal, Sparkles, Code2, SplitSquareHorizontal, SplitSquareVertical, Loader2, PanelRightOpen } from 'lucide-react'
+import { X, SquareTerminal, Sparkles, Code2, SplitSquareHorizontal, SplitSquareVertical, Loader2, PanelRightOpen, Globe } from 'lucide-react'
 import {
   SortableContext,
   horizontalListSortingStrategy,
@@ -25,6 +25,7 @@ interface TerminalPanelProps {
   onSelectTab: (tabId: string) => void
   onAddTab: () => void
   onAddAgentTab: (agentKind?: AgentKind) => void
+  onAddBrowserTab: () => void
   defaultAgent: AgentKind
   onCloseTab: (tabId: string) => void
   onSplitRight: () => void
@@ -129,6 +130,7 @@ export function TerminalPanel({
   onSelectTab,
   onAddTab,
   onAddAgentTab,
+  onAddBrowserTab,
   defaultAgent,
   onCloseTab,
   onSplitRight,
@@ -200,6 +202,14 @@ export function TerminalPanel({
               className="no-drag shrink-0 px-2 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"
             >
               <SquareTerminal size={12} />
+            </button>
+          </Tooltip>
+          <Tooltip label="New browser tab">
+            <button
+              onClick={onAddBrowserTab}
+              className="no-drag shrink-0 px-2 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"
+            >
+              <Globe size={12} />
             </button>
           </Tooltip>
           <Tooltip label="Split pane right" action="splitPaneRight">

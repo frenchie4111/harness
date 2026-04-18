@@ -3,10 +3,35 @@ import { randomBytes } from 'crypto'
 import { addWorktree, listWorktrees, defaultWorktreeDir, WorktreeInfo } from './worktree'
 import { log } from './debug'
 
+export interface BrowserTabSummary {
+  id: string
+  url: string
+  title: string
+}
+
+export interface BrowserQueries {
+  /** Given the MCP caller's terminal id, find the worktree it lives in. */
+  getWorktreeForTerminalId: (terminalId: string) => string | null
+  listTabsForWorktree: (worktreePath: string) => BrowserTabSummary[]
+  getTabWorktree: (tabId: string) => string | null
+  getTabUrl: (tabId: string) => string | null
+  getTabConsoleLogs: (
+    tabId: string
+  ) => Array<{ ts: number; level: string; message: string }>
+  screenshotTab: (tabId: string) => Promise<string | null>
+  getTabDom: (tabId: string) => Promise<string | null>
+  navigateTab: (tabId: string, url: string) => void
+  backTab: (tabId: string) => void
+  forwardTab: (tabId: string) => void
+  reloadTab: (tabId: string) => void
+  createTab: (worktreePath: string, url: string) => { id: string; url: string }
+}
+
 export interface ControlServerDeps {
   getRepoRoots: () => string[]
   getWorktreeBase: () => 'remote' | 'local'
   broadcast: (channel: string, ...args: unknown[]) => void
+  browser: BrowserQueries
 }
 
 let serverInfo: { port: number; token: string } | null = null
@@ -112,6 +137,97 @@ async function handleRequest(
     const initialPrompt = typeof body.initialPrompt === 'string' ? body.initialPrompt : undefined
     deps.broadcast('worktrees:externalCreate', { repoRoot, worktree: created, initialPrompt })
     return sendJson(res, 200, created)
+  }
+
+  // Browser MCP endpoints. All calls require an `X-Harness-Terminal-Id` header
+  // (set by the bridge from HARNESS_TERMINAL_ID) so we can scope tab access
+  // to the worktree that hosts the calling MCP session. Tabs outside that
+  // worktree are invisible.
+  if (path.startsWith('/browser/')) {
+    const callerTerminalId = String(req.headers['x-harness-terminal-id'] || '')
+    if (!callerTerminalId) {
+      return sendJson(res, 400, { error: 'X-Harness-Terminal-Id header required' })
+    }
+    const callerWorktree = deps.browser.getWorktreeForTerminalId(callerTerminalId)
+    if (!callerWorktree) {
+      return sendJson(res, 404, {
+        error: 'caller terminal is not associated with a worktree'
+      })
+    }
+
+    const assertSameWorktree = (tabId: string): string | null => {
+      const wt = deps.browser.getTabWorktree(tabId)
+      if (!wt) return 'tab not found'
+      if (wt !== callerWorktree) return 'tab belongs to a different worktree'
+      return null
+    }
+
+    if (req.method === 'GET' && path === '/browser/tabs') {
+      return sendJson(res, 200, {
+        tabs: deps.browser.listTabsForWorktree(callerWorktree)
+      })
+    }
+    if (req.method === 'POST' && path === '/browser/tabs') {
+      const body = await readJson(req)
+      const url = typeof body.url === 'string' ? body.url : ''
+      const created = deps.browser.createTab(callerWorktree, url)
+      return sendJson(res, 200, created)
+    }
+
+    // Write endpoints read tabId from the JSON body; read endpoints take it
+    // as a query param so they can stay GET.
+    const body = req.method === 'POST' ? await readJson(req) : {}
+    const tabId = String(
+      (body.tabId as string | undefined) ?? url.searchParams.get('tabId') ?? ''
+    )
+    if (!tabId) {
+      return sendJson(res, 400, { error: 'tabId required' })
+    }
+    const bad = assertSameWorktree(tabId)
+    if (bad) return sendJson(res, 404, { error: bad })
+
+    if (req.method === 'GET' && path === '/browser/url') {
+      return sendJson(res, 200, { url: deps.browser.getTabUrl(tabId) })
+    }
+    if (req.method === 'GET' && path === '/browser/console') {
+      return sendJson(res, 200, { logs: deps.browser.getTabConsoleLogs(tabId) })
+    }
+    if (req.method === 'GET' && path === '/browser/screenshot') {
+      const data = await deps.browser.screenshotTab(tabId)
+      return sendJson(res, data ? 200 : 500, {
+        pngBase64: data,
+        error: data ? undefined : 'capture failed'
+      })
+    }
+    if (req.method === 'GET' && path === '/browser/dom') {
+      const dom = await deps.browser.getTabDom(tabId)
+      return sendJson(res, dom != null ? 200 : 500, {
+        html: dom,
+        error: dom != null ? undefined : 'dom read failed'
+      })
+    }
+    if (req.method === 'POST' && path === '/browser/navigate') {
+      const nextUrl = String(body.url || '').trim()
+      if (!nextUrl) return sendJson(res, 400, { error: 'url required' })
+      deps.browser.navigateTab(tabId, nextUrl)
+      return sendJson(res, 200, { ok: true })
+    }
+    if (req.method === 'POST' && path === '/browser/back') {
+      deps.browser.backTab(tabId)
+      return sendJson(res, 200, { ok: true })
+    }
+    if (req.method === 'POST' && path === '/browser/forward') {
+      deps.browser.forwardTab(tabId)
+      return sendJson(res, 200, { ok: true })
+    }
+    if (req.method === 'POST' && path === '/browser/reload') {
+      deps.browser.reloadTab(tabId)
+      return sendJson(res, 200, { ok: true })
+    }
+
+    res.writeHead(404)
+    res.end('browser endpoint not found')
+    return
   }
 
   res.writeHead(404)

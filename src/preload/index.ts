@@ -220,6 +220,22 @@ contextBridge.exposeInMainWorld('api', {
   declineHooks: () => req('hooks:decline'),
   uninstallHooks: () => req('hooks:uninstall'),
 
+  // Browser tabs (WebContentsView-backed)
+  browserNavigate: (tabId: string, url: string) => req('browser:navigate', tabId, url),
+  browserBack: (tabId: string) => req('browser:back', tabId),
+  browserForward: (tabId: string) => req('browser:forward', tabId),
+  browserReload: (tabId: string) => req('browser:reload', tabId),
+  browserOpenDevTools: (tabId: string) => req('browser:openDevTools', tabId),
+  browserSetBounds: (
+    tabId: string,
+    bounds: { x: number; y: number; width: number; height: number } | null
+  ) => {
+    sig('browser:setBounds', tabId, bounds)
+  },
+  browserHide: (tabId: string) => {
+    sig('browser:hide', tabId)
+  },
+
   // PTY
   createTerminal: (
     id: string,
