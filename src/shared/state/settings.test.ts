@@ -238,6 +238,25 @@ describe('settingsReducer', () => {
     expect(on.claudeTuiFullscreen).toBe(true)
   })
 
+  it('wsTransportEnabledChanged toggles flag', () => {
+    expect(initialSettings.wsTransportEnabled).toBe(false)
+    const on = apply(initialSettings, {
+      type: 'settings/wsTransportEnabledChanged',
+      payload: true
+    })
+    expect(on.wsTransportEnabled).toBe(true)
+    const off = apply(on, { type: 'settings/wsTransportEnabledChanged', payload: false })
+    expect(off.wsTransportEnabled).toBe(false)
+  })
+
+  it('wsTransportPortChanged sets the port', () => {
+    const next = apply(initialSettings, {
+      type: 'settings/wsTransportPortChanged',
+      payload: 55555
+    })
+    expect(next.wsTransportPort).toBe(55555)
+  })
+
   it('returns a new object reference (no mutation)', () => {
     const next = apply(initialSettings, { type: 'settings/themeChanged', payload: 'x' })
     expect(next).not.toBe(initialSettings)

@@ -35,6 +35,8 @@ export interface SettingsState {
   harnessSystemPrompt: string
   harnessSystemPromptMain: string
   claudeTuiFullscreen: boolean
+  wsTransportEnabled: boolean
+  wsTransportPort: number
 }
 
 export type SettingsEvent =
@@ -64,6 +66,8 @@ export type SettingsEvent =
   | { type: 'settings/harnessSystemPromptChanged'; payload: string }
   | { type: 'settings/harnessSystemPromptMainChanged'; payload: string }
   | { type: 'settings/claudeTuiFullscreenChanged'; payload: boolean }
+  | { type: 'settings/wsTransportEnabledChanged'; payload: boolean }
+  | { type: 'settings/wsTransportPortChanged'; payload: number }
 
 // Client-side placeholder. Real values are seeded in the main-process Store
 // constructor from the on-disk config and secrets.
@@ -93,7 +97,9 @@ export const initialSettings: SettingsState = {
   harnessSystemPromptEnabled: true,
   harnessSystemPrompt: '',
   harnessSystemPromptMain: '',
-  claudeTuiFullscreen: true
+  claudeTuiFullscreen: true,
+  wsTransportEnabled: false,
+  wsTransportPort: 37291
 }
 
 export function settingsReducer(state: SettingsState, event: SettingsEvent): SettingsState {
@@ -150,6 +156,10 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, harnessSystemPromptMain: event.payload }
     case 'settings/claudeTuiFullscreenChanged':
       return { ...state, claudeTuiFullscreen: event.payload }
+    case 'settings/wsTransportEnabledChanged':
+      return { ...state, wsTransportEnabled: event.payload }
+    case 'settings/wsTransportPortChanged':
+      return { ...state, wsTransportPort: event.payload }
     default: {
       const _exhaustive: never = event
       void _exhaustive
