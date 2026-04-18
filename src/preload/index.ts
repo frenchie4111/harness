@@ -125,6 +125,7 @@ contextBridge.exposeInMainWorld('api', {
   setCodexEnvVars: (vars: Record<string, string>) => req('config:setCodexEnvVars', vars),
   setHarnessMcpEnabled: (enabled: boolean) => req('config:setHarnessMcpEnabled', enabled),
   setAutoUpdateEnabled: (enabled: boolean) => req('config:setAutoUpdateEnabled', enabled),
+  setShareClaudeSettings: (enabled: boolean) => req('config:setShareClaudeSettings', enabled),
   setHarnessSystemPromptEnabled: (enabled: boolean) => req('config:setHarnessSystemPromptEnabled', enabled),
   setHarnessSystemPrompt: (prompt: string) => req('config:setHarnessSystemPrompt', prompt),
   setHarnessSystemPromptMain: (prompt: string) => req('config:setHarnessSystemPromptMain', prompt),

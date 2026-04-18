@@ -61,6 +61,17 @@ describe('settingsReducer', () => {
     expect(on.autoUpdateEnabled).toBe(true)
   })
 
+  it('shareClaudeSettingsChanged toggles the share flag', () => {
+    expect(initialSettings.shareClaudeSettings).toBe(true)
+    const off = apply(initialSettings, {
+      type: 'settings/shareClaudeSettingsChanged',
+      payload: false
+    })
+    expect(off.shareClaudeSettings).toBe(false)
+    const on = apply(off, { type: 'settings/shareClaudeSettingsChanged', payload: true })
+    expect(on.shareClaudeSettings).toBe(true)
+  })
+
   it('harnessMcpEnabledChanged toggles mcp flag', () => {
     const off = apply(initialSettings, {
       type: 'settings/harnessMcpEnabledChanged',

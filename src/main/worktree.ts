@@ -1138,20 +1138,18 @@ export async function runWorktreeScript(
 
 /** Point a worktree's `.claude/settings.local.json` at the main worktree's
  * copy via a symlink, so "Don't ask again" permissions granted in any
- * worktree apply to all of them. Idempotent: if the target is already a
- * symlink, does nothing. If a regular file already exists, it is merged
- * into main's copy (shallow merge) before being replaced with the symlink. */
+ * worktree apply to all of them. No-op if main has no settings.local.json
+ * yet — we don't want to create one just to have something to symlink.
+ * Idempotent: if the target is already a symlink, does nothing. If a
+ * regular file already exists in the new worktree, it is merged into
+ * main's copy (shallow merge) before being replaced with the symlink. */
 export function symlinkClaudeSettings(mainWorktreePath: string, newWorktreePath: string): void {
   if (mainWorktreePath === newWorktreePath) return
-  const mainClaudeDir = join(mainWorktreePath, '.claude')
-  const mainSettingsPath = join(mainClaudeDir, 'settings.local.json')
+  const mainSettingsPath = join(mainWorktreePath, '.claude', 'settings.local.json')
+  if (!existsSync(mainSettingsPath)) return
+
   const newClaudeDir = join(newWorktreePath, '.claude')
   const newSettingsPath = join(newClaudeDir, 'settings.local.json')
-
-  if (!existsSync(mainSettingsPath)) {
-    if (!existsSync(mainClaudeDir)) mkdirSync(mainClaudeDir, { recursive: true })
-    writeFileSync(mainSettingsPath, '{}')
-  }
 
   if (!existsSync(newClaudeDir)) mkdirSync(newClaudeDir, { recursive: true })
 

@@ -126,16 +126,18 @@ export class WorktreesFSM {
       // Share .claude/settings.local.json with the main worktree so
       // "Don't ask again" permissions granted in any worktree apply to
       // all of them. Best-effort — log and continue on failure.
-      try {
-        const mainWt = this.store
-          .getSnapshot()
-          .state.worktrees.list.find((w) => w.repoRoot === repoRoot && w.isMain)
-        if (mainWt && mainWt.path !== created.path) {
-          symlinkClaudeSettings(mainWt.path, created.path)
-          log('hooks', `symlinked .claude/settings.local.json ${created.path} → ${mainWt.path}`)
+      const snapshot = this.store.getSnapshot().state
+      if (snapshot.settings.shareClaudeSettings) {
+        try {
+          const mainWt = snapshot.worktrees.list.find(
+            (w) => w.repoRoot === repoRoot && w.isMain
+          )
+          if (mainWt && mainWt.path !== created.path) {
+            symlinkClaudeSettings(mainWt.path, created.path)
+          }
+        } catch (err) {
+          log('hooks', `symlinkClaudeSettings failed for ${created.path}`, err instanceof Error ? err.message : err)
         }
-      } catch (err) {
-        log('hooks', `symlinkClaudeSettings failed for ${created.path}`, err instanceof Error ? err.message : err)
       }
 
       // Worktree exists on disk regardless of script outcome. Pick it up,

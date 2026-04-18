@@ -207,6 +207,7 @@ export interface ElectronAPI {
   getDefaultClaudeCommand(): Promise<string>
   setHarnessMcpEnabled(enabled: boolean): Promise<boolean>
   setAutoUpdateEnabled(enabled: boolean): Promise<boolean>
+  setShareClaudeSettings(enabled: boolean): Promise<boolean>
   setHarnessSystemPromptEnabled(enabled: boolean): Promise<boolean>
   setHarnessSystemPrompt(prompt: string): Promise<boolean>
   setHarnessSystemPromptMain(prompt: string): Promise<boolean>

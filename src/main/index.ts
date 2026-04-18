@@ -255,6 +255,7 @@ function uninstallHooksGlobally(): void {
  *  symlink to main's copy so permissions sync. New worktrees get the
  *  symlink at creation time in WorktreesFSM.runPending. */
 function migrateClaudeSettingsToSymlinks(): void {
+  if (config.shareClaudeSettings === false) return
   const list = store.getSnapshot().state.worktrees.list
   const mainByRepo = new Map<string, string>()
   for (const wt of list) {
@@ -832,6 +833,20 @@ function registerIpcHandlers(): void {
     }
     saveConfig(config)
     store.dispatch({ type: 'settings/claudeEnvVarsChanged', payload: cleaned })
+    return true
+  })
+
+  transport.onRequest('config:setShareClaudeSettings', (enabled: boolean) => {
+    if (enabled) {
+      delete config.shareClaudeSettings
+    } else {
+      config.shareClaudeSettings = false
+    }
+    saveConfig(config)
+    store.dispatch({
+      type: 'settings/shareClaudeSettingsChanged',
+      payload: config.shareClaudeSettings !== false
+    })
     return true
   })
 
