@@ -6,7 +6,7 @@
     "name": "Mike Lyons",
     "email": "mike@mikelyons.org"
   },
-  "license": "ISC",
+  "license": "MIT",
   "description": "Harness - manage multiple Claude Code instances across git worktrees",
   "scripts": {
     "dev": "electron-vite dev",
