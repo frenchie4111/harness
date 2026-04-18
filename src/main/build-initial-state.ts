@@ -7,6 +7,7 @@ import { initialTerminals } from '../shared/state/terminals'
 import { initialUpdater } from '../shared/state/updater'
 import { initialRepoConfigs } from '../shared/state/repo-configs'
 import { initialCosts, type CostsState } from '../shared/state/costs'
+import { initialBrowser } from '../shared/state/browser'
 import { initialSettings } from '../shared/state/settings'
 import {
   DEFAULT_CLAUDE_COMMAND,
@@ -37,6 +38,7 @@ export function buildInitialAppState(
     updater: initialUpdater,
     repoConfigs: initialRepoConfigs,
     costs: config.costs ? { ...initialCosts, ...config.costs } : initialCosts,
+    browser: initialBrowser,
     settings: {
       ...initialSettings,
       theme: config.theme || DEFAULT_THEME,
