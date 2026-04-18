@@ -153,12 +153,22 @@ export class PtyManager {
       return
     }
 
+    // Shells spawned with an exec-mode flag (`-c`, `-ilc`, `-lc`, `-ic`) go
+    // straight into running the command — they never quiesce to a prompt, so
+    // the hasBeenIdle gate below would never arm. Pre-arm it so the activity
+    // poller reports the command as a running foreground process from t=0.
+    // This is how agent-spawned dev-server shells show the running spinner
+    // in the tab bar + propagate to the sidebar.
+    const isCommandShell =
+      isShell &&
+      args.some((a) => a === '-c' || a === '-ilc' || a === '-lc' || a === '-ic')
+
     const instance: PtyInstance = {
       pty: ptyProcess,
       status: 'processing',
       isShell,
       activityActive: false,
-      hasBeenIdle: false
+      hasBeenIdle: isCommandShell
     }
 
     // Seed the history buffer from disk if a file exists. Renderer calls
