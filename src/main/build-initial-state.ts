@@ -66,7 +66,8 @@ export function buildInitialAppState(
       shareClaudeSettings: config.shareClaudeSettings !== false,
       harnessSystemPromptEnabled: config.harnessSystemPromptEnabled !== false,
       harnessSystemPrompt: config.harnessSystemPrompt || DEFAULT_HARNESS_SYSTEM_PROMPT,
-      harnessSystemPromptMain: config.harnessSystemPromptMain || DEFAULT_HARNESS_SYSTEM_PROMPT_MAIN
+      harnessSystemPromptMain: config.harnessSystemPromptMain || DEFAULT_HARNESS_SYSTEM_PROMPT_MAIN,
+      claudeTuiFullscreen: config.claudeTuiFullscreen !== false
     }
   }
 }

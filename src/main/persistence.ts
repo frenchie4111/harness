@@ -115,6 +115,9 @@ export interface Config {
   harnessSystemPromptEnabled?: boolean
   harnessSystemPrompt?: string
   harnessSystemPromptMain?: string
+  // When false, Claude sessions spawn without CLAUDE_CODE_NO_FLICKER=1, so they
+  // use the inline (non-fullscreen) TUI mode. Default is enabled (undefined/true).
+  claudeTuiFullscreen?: boolean
 }
 
 export const DEFAULT_WORKTREE_BASE: 'remote' | 'local' = 'remote'

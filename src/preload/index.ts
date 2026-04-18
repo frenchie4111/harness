@@ -124,6 +124,7 @@ contextBridge.exposeInMainWorld('api', {
   setCodexModel: (model: string | null) => req('config:setCodexModel', model),
   setCodexEnvVars: (vars: Record<string, string>) => req('config:setCodexEnvVars', vars),
   setHarnessMcpEnabled: (enabled: boolean) => req('config:setHarnessMcpEnabled', enabled),
+  setClaudeTuiFullscreen: (enabled: boolean) => req('config:setClaudeTuiFullscreen', enabled),
   setAutoUpdateEnabled: (enabled: boolean) => req('config:setAutoUpdateEnabled', enabled),
   setShareClaudeSettings: (enabled: boolean) => req('config:setShareClaudeSettings', enabled),
   setHarnessSystemPromptEnabled: (enabled: boolean) => req('config:setHarnessSystemPromptEnabled', enabled),

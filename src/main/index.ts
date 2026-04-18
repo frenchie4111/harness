@@ -990,6 +990,20 @@ function registerIpcHandlers(): void {
     return writeMcpConfigForTerminal(terminalId)
   })
 
+  transport.onRequest('config:setClaudeTuiFullscreen', (enabled: boolean) => {
+    if (enabled) {
+      delete config.claudeTuiFullscreen
+    } else {
+      config.claudeTuiFullscreen = false
+    }
+    saveConfig(config)
+    store.dispatch({
+      type: 'settings/claudeTuiFullscreenChanged',
+      payload: config.claudeTuiFullscreen !== false
+    })
+    return true
+  })
+
   transport.onRequest('config:setNameClaudeSessions', (enabled: boolean) => {
     if (enabled) {
       config.nameClaudeSessions = true
@@ -1260,7 +1274,8 @@ function registerIpcHandlers(): void {
         if (!systemPrompt.trim()) systemPrompt = undefined
       }
 
-      return agent.buildSpawnArgs({ ...opts, command, mcpConfigPath, model, systemPrompt })
+      const tuiFullscreen = kind === 'claude' ? config.claudeTuiFullscreen !== false : undefined
+      return agent.buildSpawnArgs({ ...opts, command, mcpConfigPath, model, systemPrompt, tuiFullscreen })
     }
   )
 

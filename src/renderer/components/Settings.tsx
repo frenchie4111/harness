@@ -174,7 +174,8 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
     autoUpdateEnabled,
     harnessSystemPromptEnabled,
     harnessSystemPrompt,
-    harnessSystemPromptMain
+    harnessSystemPromptMain,
+    claudeTuiFullscreen
   } = settings
   const setupScript = worktreeScripts.setup
   const teardownScript = worktreeScripts.teardown
@@ -986,6 +987,18 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
                     <div>
                       <span className="text-sm font-medium text-fg">Name sessions by worktree</span>
                       <p className="text-xs text-dim mt-0.5">Passes <code className="bg-panel px-1 rounded">--name &quot;repo/branch&quot;</code> to Claude.</p>
+                    </div>
+                  </label>
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-border">
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input type="checkbox" checked={claudeTuiFullscreen} onChange={(e) => { void window.api.setClaudeTuiFullscreen(e.target.checked) }} className="mt-0.5 cursor-pointer" />
+                    <div className="flex-1">
+                      <div className="text-sm text-fg-bright">Fullscreen TUI by default</div>
+                      <div className="text-xs text-dim mt-0.5">
+                        Sets <code className="bg-panel px-1 rounded text-[10px]">CLAUDE_CODE_NO_FLICKER=1</code> so Claude runs in fullscreen TUI mode instead of taking over your scrollback.
+                      </div>
                     </div>
                   </label>
                 </div>

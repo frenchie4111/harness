@@ -14,6 +14,7 @@ export interface AgentSpawnOpts {
   mcpConfigPath?: string | null
   model?: string | null
   systemPrompt?: string
+  tuiFullscreen?: boolean
 }
 
 export interface AgentModule {
