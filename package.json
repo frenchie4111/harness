@@ -15,7 +15,7 @@
     "log:clear": "rm -f ~/Library/Application\\ Support/harness/debug.log",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc -b --force",
     "test": "vitest run",
     "test:watch": "vitest",
     "postinstall": "electron-builder install-app-deps",
