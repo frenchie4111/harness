@@ -78,6 +78,21 @@ function resolveCallerScope(terminalId: string) {
     isMain: wt.isMain
   }
 }
+
+/** Find the worktree that owns a given shell tab id. Only matches tabs whose
+ * type is 'shell'; agent/browser/diff/file tabs are not addressable via the
+ * shell MCP even if an id collision were possible. */
+function findShellWorktree(shellId: string): string | null {
+  const panes = store.getSnapshot().state.terminals.panes
+  for (const [wtPath, tree] of Object.entries(panes)) {
+    for (const leaf of getLeaves(tree)) {
+      for (const tab of leaf.tabs) {
+        if (tab.id === shellId && tab.type === 'shell') return wtPath
+      }
+    }
+  }
+  return null
+}
 import { CostTracker } from './cost-tracker'
 import { startControlServer } from './control-server'
 import { writeMcpConfigForTerminal, pruneMcpConfigs } from './mcp-config'
@@ -250,7 +265,9 @@ function treeToPersistedNode(node: PaneNode): PersistedPaneNode | null {
           label: stripped.label,
           agentKind: stripped.agentKind,
           sessionId: stripped.sessionId,
-          url: liveUrl || stripped.url
+          url: liveUrl || stripped.url,
+          command: stripped.command,
+          cwd: stripped.cwd
         }
       })
     if (tabs.length === 0) return null
@@ -1890,6 +1907,97 @@ app.whenReady().then(() => {
           url: finalUrl
         })
         return { id, url: finalUrl }
+      }
+    },
+    shell: {
+      listShellsForWorktree: (wtPath) => {
+        const tree = store.getSnapshot().state.terminals.panes[wtPath]
+        if (!tree) return []
+        const out: Array<{
+          id: string
+          label: string
+          command?: string
+          cwd?: string
+          alive: boolean
+        }> = []
+        for (const leaf of getLeaves(tree)) {
+          for (const tab of leaf.tabs) {
+            if (tab.type !== 'shell') continue
+            out.push({
+              id: tab.id,
+              label: tab.label,
+              command: tab.command,
+              cwd: tab.cwd,
+              alive: ptyManager.hasTerminal(tab.id)
+            })
+          }
+        }
+        return out
+      },
+      getShellWorktree: (shellId) => findShellWorktree(shellId),
+      readShellOutput: (shellId, { lines, match, context }) => {
+        const raw = ptyManager.getHistory(shellId)
+        if (!raw) return { output: '' }
+        // Strip ANSI CSI + OSC sequences so agents don't waste tokens on
+        // cursor/color control bytes. Keep printable chars + newlines.
+        const stripped = raw
+          .replace(/\x1b\][^\x07\x1b]*(\x07|\x1b\\)/g, '')
+          .replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '')
+          .replace(/\x1b\(./g, '')
+          .replace(/\r/g, '')
+        const allLines = stripped.split('\n')
+
+        if (!match) {
+          if (allLines.length <= lines) return { output: stripped }
+          return { output: allLines.slice(-lines).join('\n') }
+        }
+
+        let re: RegExp
+        try {
+          re = new RegExp(match, 'i')
+        } catch (err) {
+          return { output: '', error: `invalid regex: ${(err as Error).message}` }
+        }
+
+        const ctx = context || 0
+        const keep = new Set<number>()
+        let matchCount = 0
+        for (let i = 0; i < allLines.length; i++) {
+          if (!re.test(allLines[i])) continue
+          matchCount++
+          for (let j = Math.max(0, i - ctx); j <= Math.min(allLines.length - 1, i + ctx); j++) {
+            keep.add(j)
+          }
+        }
+        // Emit a gap marker ("---") between non-contiguous kept ranges so
+        // agents can tell where we skipped, without counting every gap as a
+        // token-expensive blank line.
+        const kept: string[] = []
+        const indices = Array.from(keep).sort((a, b) => a - b)
+        let prev = -2
+        for (const i of indices) {
+          if (i !== prev + 1 && kept.length > 0) kept.push('---')
+          kept.push(allLines[i])
+          prev = i
+        }
+        const finalLines = kept.length > lines ? kept.slice(-lines) : kept
+        return { output: finalLines.join('\n'), matchCount }
+      },
+      createShell: (wtPath, { command, cwd, label }) => {
+        const id = `shell-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+        const fallback = command ? command.slice(0, 32) : 'Shell'
+        const finalLabel = (label && label.trim()) || fallback
+        panesFSM.addTab(wtPath, {
+          id,
+          type: 'shell',
+          label: finalLabel,
+          command,
+          cwd
+        })
+        return { id, label: finalLabel }
+      },
+      killShell: (shellId) => {
+        ptyManager.kill(shellId)
       }
     },
     broadcast: (channel, payload) => {

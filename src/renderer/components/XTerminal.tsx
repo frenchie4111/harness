@@ -110,10 +110,16 @@ interface XTerminalProps {
   sessionId?: string
   initialPrompt?: string
   teleportSessionId?: string
+  /** Shell tabs only: when set, spawn `/bin/zsh -ilc <command>` instead of an
+   * interactive login shell. Used for agent-spawned shells. */
+  shellCommand?: string
+  /** Shell tabs only: directory to spawn in. Relative paths resolve against
+   * `cwd` (the worktree root); absolute paths are used as-is. */
+  shellCwd?: string
   onRestartAgent?: () => void
 }
 
-export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionName, sessionId, initialPrompt, teleportSessionId, onRestartAgent }: XTerminalProps): JSX.Element {
+export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionName, sessionId, initialPrompt, teleportSessionId, shellCommand, shellCwd, onRestartAgent }: XTerminalProps): JSX.Element {
   const [exited, setExited] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
@@ -260,7 +266,17 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
       const shell = '/bin/zsh'
       const agentArg = type === 'agent' ? await buildAgentArg() : ''
       if (disposed) return
-      const args = type === 'agent' ? ['-ilc', agentArg] : ['-il']
+      const args =
+        type === 'agent'
+          ? ['-ilc', agentArg]
+          : shellCommand
+            ? ['-ilc', shellCommand]
+            : ['-il']
+      const spawnCwd = shellCwd
+        ? shellCwd.startsWith('/')
+          ? shellCwd
+          : `${cwd}/${shellCwd}`
+        : cwd
       // Pass the renderer's fitted dimensions so the PTY spawns at the
       // right grid size instead of main's fallback 120x30.
       let spawnCols: number | undefined
@@ -275,7 +291,7 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
       } catch {
         // fall back to main's defaults
       }
-      window.api.createTerminal(terminalId, cwd, shell, args, type === 'agent' ? agentKind : undefined, spawnCols, spawnRows)
+      window.api.createTerminal(terminalId, spawnCwd, shell, args, type === 'agent' ? agentKind : undefined, spawnCols, spawnRows)
 
       terminal.onData((data) => {
         window.api.writeTerminal(terminalId, data)

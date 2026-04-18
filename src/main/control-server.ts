@@ -25,6 +25,38 @@ export interface BrowserQueries {
   createTab: (worktreePath: string, url: string) => { id: string; url: string }
 }
 
+export interface ShellTabSummary {
+  id: string
+  label: string
+  command?: string
+  cwd?: string
+  alive: boolean
+}
+
+export interface ReadShellOutputOptions {
+  lines: number
+  /** Case-insensitive regex. When set, keep only matching lines (plus any
+   * requested context) from the output before applying the `lines` cap. */
+  match?: string
+  /** Lines of context to include before/after each match. Ignored when `match`
+   * is not set. */
+  context?: number
+}
+
+export interface ShellQueries {
+  listShellsForWorktree: (worktreePath: string) => ShellTabSummary[]
+  getShellWorktree: (shellId: string) => string | null
+  readShellOutput: (
+    shellId: string,
+    opts: ReadShellOutputOptions
+  ) => { output: string; matchCount?: number; error?: string }
+  createShell: (
+    worktreePath: string,
+    opts: { command?: string; cwd?: string; label?: string }
+  ) => { id: string; label: string }
+  killShell: (shellId: string) => void
+}
+
 /** Scope derived from the caller's terminal id on every request. The
  * source of truth — env vars injected into the MCP bridge can go stale
  * (teleport sessions, deleted worktrees), so each tool call re-resolves. */
@@ -43,6 +75,7 @@ export interface ControlServerDeps {
    * associated with any known worktree (e.g. the worktree was deleted). */
   resolveCallerScope: (terminalId: string) => CallerScope | null
   browser: BrowserQueries
+  shell: ShellQueries
 }
 
 let serverInfo: { port: number; token: string } | null = null
@@ -268,6 +301,87 @@ async function handleRequest(
 
     res.writeHead(404)
     res.end('browser endpoint not found')
+    return
+  }
+
+  // Shell MCP endpoints. Same worktree-scoping model as /browser/*: agents
+  // can spawn shells, read their output, and kill them, but only within
+  // their own worktree. Reading another worktree's logs is explicitly
+  // denied.
+  if (path.startsWith('/shells')) {
+    const { scope, terminalId } = resolveScope(req, deps)
+    if (!terminalId) {
+      return sendJson(res, 400, { error: 'X-Harness-Terminal-Id header required' })
+    }
+    if (!scope) {
+      return sendJson(res, 404, {
+        error: 'caller terminal is not associated with a worktree'
+      })
+    }
+    const callerWorktree = scope.worktreePath
+
+    const assertSameWorktree = (shellId: string): string | null => {
+      const wt = deps.shell.getShellWorktree(shellId)
+      if (!wt) return 'shell not found'
+      if (wt !== callerWorktree) {
+        return (
+          `cross-worktree access denied: this session is scoped to worktree ${callerWorktree}. ` +
+          `Use list_shells() to see accessible shells.`
+        )
+      }
+      return null
+    }
+
+    if (req.method === 'GET' && path === '/shells') {
+      return sendJson(res, 200, {
+        shells: deps.shell.listShellsForWorktree(callerWorktree)
+      })
+    }
+    if (req.method === 'POST' && path === '/shells') {
+      const body = await readJson(req)
+      const command = typeof body.command === 'string' ? body.command.trim() : ''
+      const cwd = typeof body.cwd === 'string' ? body.cwd.trim() : ''
+      const label = typeof body.label === 'string' ? body.label.trim() : ''
+      const created = deps.shell.createShell(callerWorktree, {
+        command: command || undefined,
+        cwd: cwd || undefined,
+        label: label || undefined
+      })
+      return sendJson(res, 200, created)
+    }
+
+    // Remaining routes take a shell_id from body (POST) or query (GET).
+    const body = req.method === 'POST' ? await readJson(req) : {}
+    const shellId = String(
+      (body.shellId as string | undefined) ?? url.searchParams.get('shellId') ?? ''
+    )
+    if (!shellId) {
+      return sendJson(res, 400, { error: 'shellId required' })
+    }
+    const bad = assertSameWorktree(shellId)
+    if (bad) return sendJson(res, 403, { error: bad })
+
+    if (req.method === 'GET' && path === '/shells/output') {
+      const linesParam = url.searchParams.get('lines')
+      const lines = linesParam
+        ? Math.max(1, Math.min(5000, parseInt(linesParam, 10) || 200))
+        : 200
+      const match = url.searchParams.get('match') || undefined
+      const contextParam = url.searchParams.get('context')
+      const context = contextParam
+        ? Math.max(0, Math.min(20, parseInt(contextParam, 10) || 0))
+        : 0
+      const result = deps.shell.readShellOutput(shellId, { lines, match, context })
+      if (result.error) return sendJson(res, 400, { error: result.error })
+      return sendJson(res, 200, result)
+    }
+    if (req.method === 'POST' && path === '/shells/kill') {
+      deps.shell.killShell(shellId)
+      return sendJson(res, 200, { ok: true })
+    }
+
+    res.writeHead(404)
+    res.end('shell endpoint not found')
     return
   }
 

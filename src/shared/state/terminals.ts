@@ -34,6 +34,12 @@ export interface TerminalTab {
   teleportSessionId?: string
   /** For browser tabs: the URL currently loaded (restored on reload). */
   url?: string
+  /** For shell tabs: command to run via `zsh -ilc <command>` instead of
+   * spawning an interactive login shell. Set by agents via the shell MCP. */
+  command?: string
+  /** For shell tabs: directory to run in. Relative paths resolve against the
+   * worktree root; absolute paths are used as-is. */
+  cwd?: string
 }
 
 // ---------------------------------------------------------------------------

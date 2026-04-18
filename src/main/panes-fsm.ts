@@ -124,7 +124,9 @@ export class PanesFSM {
         label: t.label,
         agentKind: t.agentKind,
         sessionId: t.sessionId,
-        url: t.url
+        url: t.url,
+        command: t.command,
+        cwd: t.cwd
       }
       if (base.type !== 'agent' || base.sessionId) return base
       if (latest && !claimedLatest) {
