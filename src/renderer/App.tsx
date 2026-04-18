@@ -27,6 +27,7 @@ import { CommandCenter } from './components/CommandCenter'
 import { ReviewScreen } from './components/ReviewScreen'
 import { CommandPalette } from './components/CommandPalette'
 import { HotkeyCheatsheet } from './components/HotkeyCheatsheet'
+import { NewProjectScreen } from './components/NewProjectScreen'
 import iconUrl from '../../resources/icon.png'
 import { PerfMonitorHUD } from './components/PerfMonitorHUD'
 import { focusTerminalById } from './components/XTerminal'
@@ -185,6 +186,7 @@ export default function App(): JSX.Element {
   const [commandPaletteMode, setCommandPaletteMode] = useState<'root' | 'files'>('root')
   const [showPerfMonitor, setShowPerfMonitor] = useState(false)
   const [showHotkeyCheatsheet, setShowHotkeyCheatsheet] = useState(false)
+  const [showNewProject, setShowNewProject] = useState(false)
   // `theme` and `defaultAgent` are both seeded at init, so we track
   // explicit confirmation separately for the onboarding step checkmarks.
   const [themeChosen, setThemeChosen] = useState(false)
@@ -260,6 +262,12 @@ const setQuestStep = useCallback((next: QuestStep) => {
   // Open Keyboard Shortcuts from the menu
   useEffect(() => {
     const cleanup = window.api.onOpenKeyboardShortcuts(() => setShowHotkeyCheatsheet(true))
+    return cleanup
+  }, [])
+
+  // File → New Project… (Cmd+N)
+  useEffect(() => {
+    const cleanup = window.api.onOpenNewProject(() => setShowNewProject(true))
     return cleanup
   }, [])
 
@@ -518,6 +526,21 @@ const setQuestStep = useCallback((next: QuestStep) => {
     return <Guide onClose={() => setShowGuide(false)} />
   }
 
+  if (showNewProject) {
+    return (
+      <NewProjectScreen
+        onCancel={() => setShowNewProject(false)}
+        onCreated={(createdPath) => {
+          setShowNewProject(false)
+          const main =
+            worktrees.find((w) => w.repoRoot === createdPath && w.isMain) ||
+            worktrees.find((w) => w.repoRoot === createdPath)
+          if (main) setActiveWorktreeId(main.path)
+        }}
+      />
+    )
+  }
+
   const settingsOverlay = showSettings ? (
     <div className="fixed inset-0 z-50">
       <Settings
@@ -534,6 +557,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
       />
     </div>
   ) : null
+
 
   if (repoRoots.length === 0) {
     const step1Complete = themeChosen
@@ -807,18 +831,23 @@ const setQuestStep = useCallback((next: QuestStep) => {
                     <div className="text-xs text-dim mt-0.5">Harness creates worktrees inside a sibling folder — your original repo stays untouched.</div>
                   </div>
                 </div>
-                <div className="ml-8">
+                <div className="ml-8 flex items-center gap-3 flex-wrap">
                   <button
                     onClick={handleAddRepo}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
-                      activeStep === 4
-                        ? 'bg-accent/20 hover:bg-accent/30 text-fg-bright border border-accent/40'
-                        : 'bg-panel border border-border text-dim hover:text-fg hover:border-border-strong'
-                    }`}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer bg-fg-bright text-app hover:bg-fg border border-fg-bright"
                   >
                     <FolderOpen className="w-4 h-4" />
                     Open Repository
                   </button>
+                  <span className="text-xs text-dim">
+                    or{' '}
+                    <button
+                      onClick={() => setShowNewProject(true)}
+                      className="text-fg-bright hover:underline cursor-pointer"
+                    >
+                      start a new project
+                    </button>
+                  </span>
                 </div>
               </div>
             </div>
