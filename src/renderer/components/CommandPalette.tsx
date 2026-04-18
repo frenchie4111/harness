@@ -28,6 +28,9 @@ type PaletteItem =
   | { kind: 'action'; action: Action; label: string; hint?: string }
   | { kind: 'open-files'; label: string }
   | { kind: 'heading'; label: string }
+  | { kind: 'recent-worktree'; wt: Worktree }
+  | { kind: 'recent-action'; action: Action; label: string; hint?: string }
+  | { kind: 'recent-file'; path: string; label: string }
 
 type FileItem = {
   path: string
@@ -35,10 +38,20 @@ type FileItem = {
   recent: boolean
 }
 
+interface PaletteRecent {
+  id: string
+  type: 'worktree' | 'action' | 'file'
+  label: string
+  timestamp: number
+  worktreePath?: string
+}
+
 const FILE_CACHE = new Map<string, { files: string[]; ts: number }>()
 const FILE_CACHE_TTL_MS = 10_000
 const MAX_FILE_RESULTS = 100
 const RECENTS_LIMIT = 20
+const PALETTE_RECENTS_KEY = 'harness:commandPalette:recents'
+const PALETTE_RECENTS_LIMIT = 3
 
 function recentsKey(worktreePath: string): string {
   return `file-picker-recents:${worktreePath}`
@@ -52,6 +65,42 @@ function loadRecents(worktreePath: string): string[] {
     return Array.isArray(parsed) ? parsed.filter((p) => typeof p === 'string') : []
   } catch {
     return []
+  }
+}
+
+function loadPaletteRecents(): PaletteRecent[] {
+  try {
+    const raw = localStorage.getItem(PALETTE_RECENTS_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter(
+      (r: unknown): r is PaletteRecent => {
+        if (typeof r !== 'object' || r === null) return false
+        const rec = r as Partial<PaletteRecent>
+        return (
+          typeof rec.id === 'string' &&
+          (rec.type === 'worktree' || rec.type === 'action' || rec.type === 'file') &&
+          typeof rec.label === 'string' &&
+          typeof rec.timestamp === 'number'
+        )
+      }
+    )
+  } catch {
+    return []
+  }
+}
+
+function pushPaletteRecent(recent: Omit<PaletteRecent, 'timestamp'>): void {
+  try {
+    const existing = loadPaletteRecents().filter(
+      (r) => !(r.type === recent.type && r.id === recent.id)
+    )
+    existing.unshift({ ...recent, timestamp: Date.now() })
+    const trimmed = existing.slice(0, PALETTE_RECENTS_LIMIT)
+    localStorage.setItem(PALETTE_RECENTS_KEY, JSON.stringify(trimmed))
+  } catch {
+    /* ignore */
   }
 }
 
@@ -172,6 +221,7 @@ export function CommandPalette({
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [files, setFiles] = useState<string[]>([])
   const [filesLoading, setFilesLoading] = useState(false)
+  const [recents] = useState<PaletteRecent[]>(() => loadPaletteRecents())
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
 
@@ -304,6 +354,36 @@ export function CommandPalette({
         selectable++
       }
     } else {
+      const recentPaletteItems: PaletteItem[] = []
+      for (const r of recents) {
+        if (r.type === 'worktree') {
+          const wt = worktrees.find((w) => w.path === r.id)
+          if (wt) recentPaletteItems.push({ kind: 'recent-worktree', wt })
+        } else if (r.type === 'action') {
+          const action = r.id as Action
+          if (ACTION_LABELS[action] && !EXCLUDED_ACTIONS.has(action)) {
+            const binding = resolvedHotkeys[action]
+            recentPaletteItems.push({
+              kind: 'recent-action',
+              action,
+              label: ACTION_LABELS[action],
+              hint: binding ? bindingToString(binding) : undefined,
+            })
+          }
+        } else if (r.type === 'file') {
+          if (r.worktreePath && r.worktreePath === activeWorktreeId) {
+            recentPaletteItems.push({ kind: 'recent-file', path: r.id, label: r.label })
+          }
+        }
+      }
+      if (recentPaletteItems.length > 0) {
+        items.push({ kind: 'heading', label: 'Recents' })
+        for (const item of recentPaletteItems) {
+          items.push(item)
+          selectable++
+        }
+      }
+
       for (const group of groups) {
         items.push({ kind: 'heading', label: GROUP_LABELS[group.key] })
         for (const wt of group.worktrees) {
@@ -321,7 +401,7 @@ export function CommandPalette({
     }
 
     return { items, selectableCount: selectable }
-  }, [mode, fileItems, query, worktrees, groups, actionItems])
+  }, [mode, fileItems, query, worktrees, groups, actionItems, recents, resolvedHotkeys, activeWorktreeId])
 
   // Map from selectable index → flat index
   const selectableIndices = useMemo(() => {
@@ -338,7 +418,17 @@ export function CommandPalette({
 
   const openFile = useCallback(
     (filePath: string) => {
-      if (activeWorktreeId) pushRecent(activeWorktreeId, filePath)
+      if (activeWorktreeId) {
+        pushRecent(activeWorktreeId, filePath)
+        const lastSlash = filePath.lastIndexOf('/')
+        const name = lastSlash >= 0 ? filePath.slice(lastSlash + 1) : filePath
+        pushPaletteRecent({
+          id: filePath,
+          type: 'file',
+          label: name,
+          worktreePath: activeWorktreeId,
+        })
+      }
       onOpenFile(filePath)
       onClose()
     },
@@ -347,17 +437,33 @@ export function CommandPalette({
 
   const execute = useCallback(
     (item: PaletteItem) => {
-      if (item.kind === 'worktree') {
-        onSelectWorktree(item.wt.path)
-      } else if (item.kind === 'action') {
+      if (item.kind === 'worktree' || item.kind === 'recent-worktree') {
+        const wt = item.wt
+        pushPaletteRecent({
+          id: wt.path,
+          type: 'worktree',
+          label: wt.branch || wt.path.split('/').pop() || wt.path,
+        })
+        onSelectWorktree(wt.path)
+      } else if (item.kind === 'action' || item.kind === 'recent-action') {
+        pushPaletteRecent({ id: item.action, type: 'action', label: item.label })
         onAction(item.action)
       } else if (item.kind === 'open-files') {
         setMode('files')
         return
+      } else if (item.kind === 'recent-file') {
+        if (activeWorktreeId) pushRecent(activeWorktreeId, item.path)
+        pushPaletteRecent({
+          id: item.path,
+          type: 'file',
+          label: item.label,
+          worktreePath: activeWorktreeId ?? undefined,
+        })
+        onOpenFile(item.path)
       }
       onClose()
     },
-    [onClose, onSelectWorktree, onAction]
+    [onClose, onSelectWorktree, onAction, onOpenFile, activeWorktreeId]
   )
 
   const handleKeyDown = useCallback(
@@ -487,7 +593,7 @@ export function CommandPalette({
             const mySelectableIdx = selectableIdx
             const isSelected = mySelectableIdx === selectedIndex
 
-            if (item.kind === 'worktree') {
+            if (item.kind === 'worktree' || item.kind === 'recent-worktree') {
               const { wt } = item
               const status = worktreeStatuses[wt.path] || 'idle'
               const isMerged = !!mergedPaths[wt.path]
@@ -501,9 +607,11 @@ export function CommandPalette({
                 iconColor = prIconColor(pr)
               }
 
+              const key = item.kind === 'recent-worktree' ? `recent-wt-${wt.path}` : wt.path
+
               return (
                 <button
-                  key={wt.path}
+                  key={key}
                   data-idx={flatIdx}
                   className={`w-full flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors ${
                     isSelected ? 'bg-accent/15 text-fg-bright' : 'text-fg hover:bg-surface-hover'
@@ -539,6 +647,31 @@ export function CommandPalette({
               )
             }
 
+            if (item.kind === 'recent-file') {
+              const lastSlash = item.path.lastIndexOf('/')
+              const dir = lastSlash >= 0 ? item.path.slice(0, lastSlash) : ''
+              const name = lastSlash >= 0 ? item.path.slice(lastSlash + 1) : item.path
+              return (
+                <button
+                  key={`recent-file-${item.path}`}
+                  data-idx={flatIdx}
+                  className={`w-full flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer transition-colors ${
+                    isSelected ? 'bg-accent/15 text-fg-bright' : 'text-fg hover:bg-surface-hover'
+                  }`}
+                  onMouseEnter={() => setSelectedIndex(mySelectableIdx)}
+                  onClick={() => execute(item)}
+                >
+                  <FileText size={13} className="text-dim shrink-0" />
+                  <span className="truncate text-left text-fg-bright">{name}</span>
+                  {dir && (
+                    <span className="truncate text-left text-faint text-xs min-w-0 flex-1">
+                      {dir}
+                    </span>
+                  )}
+                </button>
+              )
+            }
+
             if (item.kind === 'open-files') {
               const openBinding = resolvedHotkeys['fileQuickOpen' as Action]
               return (
@@ -562,9 +695,11 @@ export function CommandPalette({
               )
             }
 
+            const actionKey =
+              item.kind === 'recent-action' ? `recent-act-${item.action}` : item.action
             return (
               <button
-                key={item.action}
+                key={actionKey}
                 data-idx={flatIdx}
                 className={`w-full flex items-center gap-2 px-3 py-2 text-sm cursor-pointer transition-colors ${
                   isSelected ? 'bg-accent/15 text-fg-bright' : 'text-fg hover:bg-surface-hover'
