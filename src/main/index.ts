@@ -1622,6 +1622,10 @@ function openReportIssueInFocusedWindow(): void {
   transport.sendSignal('app:openReportIssue')
 }
 
+function crashFocusedTabInFocusedWindow(): void {
+  transport.sendSignal('app:debugCrashFocusedTab')
+}
+
 function buildMenu(): void {
   const template: Electron.MenuItemConstructorOptions[] = [
     {
@@ -1706,6 +1710,11 @@ function buildMenu(): void {
         {
           label: 'Report an Issue…',
           click: openReportIssueInFocusedWindow
+        },
+        { type: 'separator' },
+        {
+          label: 'Debug: Crash Focused Tab',
+          click: crashFocusedTabInFocusedWindow
         }
       ]
     }

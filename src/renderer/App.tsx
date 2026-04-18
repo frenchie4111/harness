@@ -189,6 +189,7 @@ export default function App(): JSX.Element {
   const [showHotkeyCheatsheet, setShowHotkeyCheatsheet] = useState(false)
   const [showNewProject, setShowNewProject] = useState(false)
   const [reportIssueState, setReportIssueState] = useState<OpenReportIssueDetail | null>(null)
+  const [crashedTabIds, setCrashedTabIds] = useState<ReadonlySet<string>>(() => new Set())
   // `theme` and `defaultAgent` are both seeded at init, so we track
   // explicit confirmation separately for the onboarding step checkmarks.
   const [themeChosen, setThemeChosen] = useState(false)
@@ -283,6 +284,28 @@ const setQuestStep = useCallback((next: QuestStep) => {
       cleanupBus()
     }
   }, [])
+
+  // Debug: Crash Focused Tab (Help menu → for testing the ErrorBoundary).
+  // Finds the active worktree's active pane and flips its active tab into
+  // a throwing render. The boundary catches it inside the tab.
+  useEffect(() => {
+    return window.api.onDebugCrashFocusedTab(() => {
+      const wtPath = activeWorktreeId
+      if (!wtPath) return
+      const tree = panes[wtPath]
+      if (!tree) return
+      const leaves = getLeaves(tree)
+      const paneId = activePaneId[wtPath] ?? leaves[0]?.id
+      const leaf = leaves.find((l) => l.id === paneId) ?? leaves[0]
+      const tabId = leaf?.activeTabId
+      if (!tabId) return
+      setCrashedTabIds((prev) => {
+        const next = new Set(prev)
+        next.add(tabId)
+        return next
+      })
+    })
+  }, [activeWorktreeId, panes, activePaneId])
 
   // Trigger a full PR refresh in main. Used by the sidebar refresh button
   // and after worktree creation/removal.
@@ -988,7 +1011,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
           if (!paneTree) return null
           const leaves = getLeaves(paneTree)
           if (leaves.length === 0 || !leaves.some((l) => l.tabs.length > 0)) return null
-          const isVisible = !showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && wt.path === activeWorktreeId && !pendingDeletionByPath[wt.path]
+          const isVisible = !showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && reportIssueState === null && wt.path === activeWorktreeId && !pendingDeletionByPath[wt.path]
           return (
             <div
               key={wt.path}
@@ -1005,6 +1028,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
                   statuses={statuses}
                   shellActivity={shellActivity}
                   visible={isVisible}
+                  crashedTabIds={crashedTabIds}
                   nameAgentSessions={nameAgentSessions}
                   onSelectTab={handleSelectTab}
                   onAddTab={handleAddTerminalTab}

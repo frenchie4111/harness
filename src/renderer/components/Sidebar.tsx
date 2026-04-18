@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo } from 'react'
-import { ChevronDown, ChevronRight, Plus, RefreshCw, FolderOpen, Loader2, Settings as SettingsIcon, Sparkles, BarChart3, Trash2, LayoutGrid, X, Layers, Rows3, AlertCircle, CircleHelp } from 'lucide-react'
+import { ChevronDown, ChevronRight, Plus, RefreshCw, FolderOpen, Loader2, Settings as SettingsIcon, Sparkles, BarChart3, Trash2, LayoutGrid, X, Layers, Rows3, AlertCircle, CircleHelp, MessageSquare } from 'lucide-react'
+import { openReportIssue } from './ReportIssueModal'
 import { Tooltip } from './Tooltip'
 import { HotkeyBadge } from './HotkeyBadge'
 import { useMetaHeld } from '../hooks/useMetaHeld'
@@ -457,6 +458,14 @@ export function Sidebar({
             className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
           >
             <CircleHelp size={14} />
+          </button>
+        </Tooltip>
+        <Tooltip label="Report an issue" side="top">
+          <button
+            onClick={() => openReportIssue()}
+            className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
+          >
+            <MessageSquare size={14} />
           </button>
         </Tooltip>
         <Tooltip label="Settings" side="top">

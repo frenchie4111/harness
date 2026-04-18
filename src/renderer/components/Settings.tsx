@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2, LifeBuoy, Bug, Lightbulb } from 'lucide-react'
-import { ReportIssueModal, type IssueKind } from './ReportIssueModal'
+import { openReportIssue } from './ReportIssueModal'
 import { HARNESS_RELEASES_URL } from '../../shared/constants'
 import { useSettings, useUpdater, useRepoConfigs, useHooks } from '../store'
 import type { UpdaterStatus, MergeStrategy, RepoConfig } from '../types'
@@ -49,7 +49,6 @@ const SECTIONS: Section[] = [
 export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps): JSX.Element {
   const [activeSection, setActiveSection] = useState<SectionId>(initialSection ?? 'appearance')
   const [activeSubSection, setActiveSubSection] = useState<SubSectionId | null>(null)
-  const [reportIssueKind, setReportIssueKind] = useState<IssueKind | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const sectionRefs = useRef<Record<SectionId, HTMLElement | null>>({
     appearance: null,
@@ -1798,7 +1797,7 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
               <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() => setReportIssueKind('bug')}
+                  onClick={() => openReportIssue({ kind: 'bug' })}
                   className="flex items-center gap-2 px-3 py-2 bg-panel-raised border border-border rounded-lg text-sm text-fg-bright hover:bg-surface transition-colors cursor-pointer"
                 >
                   <Bug size={14} />
@@ -1806,7 +1805,7 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
                 </button>
                 <button
                   type="button"
-                  onClick={() => setReportIssueKind('feature')}
+                  onClick={() => openReportIssue({ kind: 'feature' })}
                   className="flex items-center gap-2 px-3 py-2 bg-panel-raised border border-border rounded-lg text-sm text-fg-bright hover:bg-surface transition-colors cursor-pointer"
                 >
                   <Lightbulb size={14} />
@@ -1821,11 +1820,6 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
           </div>
         </div>
       </div>
-      <ReportIssueModal
-        open={reportIssueKind !== null}
-        onClose={() => setReportIssueKind(null)}
-        initialKind={reportIssueKind ?? 'bug'}
-      />
     </div>
   )
 }

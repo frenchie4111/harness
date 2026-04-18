@@ -242,6 +242,7 @@ contextBridge.exposeInMainWorld('api', {
   onOpenKeyboardShortcuts: (callback: () => void) => transport.onSignal('app:openKeyboardShortcuts', () => callback()),
   onOpenNewProject: (callback: () => void) => transport.onSignal('menu:newProject', () => callback()),
   onOpenReportIssue: (callback: () => void) => transport.onSignal('app:openReportIssue', () => callback()),
+  onDebugCrashFocusedTab: (callback: () => void) => transport.onSignal('app:debugCrashFocusedTab', () => callback()),
 
   // Hooks
   acceptHooks: () => req('hooks:accept'),

@@ -88,11 +88,15 @@ export interface OpenReportIssueDetail {
  * subscribes via `onOpenReportIssue` and flips the modal open. Intended to be
  * called from the ErrorBoundary fallback UI (see error-boundaries worktree).
  */
+export function openReportIssue(detail: OpenReportIssueDetail = {}): void {
+  window.dispatchEvent(new CustomEvent(REPORT_ISSUE_EVENT, { detail }))
+}
+
 export function openReportIssueFor(
   error: Error,
   info: { componentStack: string }
 ): void {
-  const detail: OpenReportIssueDetail = {
+  openReportIssue({
     kind: 'bug',
     title: error.message?.slice(0, 120) ?? 'Unhandled error',
     context: {
@@ -100,8 +104,7 @@ export function openReportIssueFor(
       stack: error.stack,
       componentStack: info.componentStack
     }
-  }
-  window.dispatchEvent(new CustomEvent(REPORT_ISSUE_EVENT, { detail }))
+  })
 }
 
 export function onOpenReportIssue(

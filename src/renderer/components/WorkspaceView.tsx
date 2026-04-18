@@ -43,6 +43,11 @@ interface WorkspaceViewProps {
   onSendToAgent?: (worktreePath: string, text: string) => void
   rightColumnHidden: boolean
   onShowRightColumn: () => void
+  crashedTabIds?: ReadonlySet<string>
+}
+
+function DebugCrashTrigger({ tabId }: { tabId: string }): JSX.Element {
+  throw new Error(`debug: forced crash for tab ${tabId}`)
 }
 
 const collisionDetection: CollisionDetection = (args) => {
@@ -288,7 +293,8 @@ export function WorkspaceView({
   repoLabel,
   branch,
   rightColumnHidden,
-  onShowRightColumn
+  onShowRightColumn,
+  crashedTabIds
 }: WorkspaceViewProps): JSX.Element {
   // Stable slot DOM elements keyed by pane.id. Created imperatively and
   // reparented as the pane tree changes, so a split (which causes the
@@ -447,7 +453,9 @@ export function WorkspaceView({
               style={{ display: isActiveInPane ? 'block' : 'none' }}
             >
               <ErrorBoundary label={`pane:${tab.type}:${tab.id}`}>
-                {tab.type === 'diff' ? (
+                {crashedTabIds?.has(tab.id) ? (
+                  <DebugCrashTrigger tabId={tab.id} />
+                ) : tab.type === 'diff' ? (
                   <DiffView
                     worktreePath={worktreePath}
                     filePath={tab.filePath}
