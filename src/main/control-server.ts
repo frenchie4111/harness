@@ -116,24 +116,14 @@ async function handleRequest(
     return sendJson(res, 200, { repoRoots: deps.getRepoRoots() })
   }
 
+  // Worktree management tools are workspace-wide for every caller — a
+  // feature-worktree session might spin off a new worktree for a related
+  // idea, and listing siblings across repos is useful context. Runtime
+  // tools (browser, future dev-servers) are the ones that need per-worktree
+  // scoping, since those resources physically live inside a single worktree.
   if (req.method === 'GET' && path === '/worktrees') {
-    const { scope } = resolveScope(req, deps)
-    const requestedRepo = url.searchParams.get('repoRoot') || undefined
-
-    let roots: string[]
-    if (scope && !scope.isMain) {
-      if (requestedRepo && requestedRepo !== scope.repoRoot) {
-        return sendJson(res, 403, {
-          error:
-            `cross-worktree access denied: this session is scoped to repo ${scope.repoRoot}. ` +
-            `Use list_worktrees() with no arguments to see accessible worktrees.`
-        })
-      }
-      roots = [scope.repoRoot]
-    } else {
-      roots = requestedRepo ? [requestedRepo] : deps.getRepoRoots()
-    }
-
+    const repoRoot = url.searchParams.get('repoRoot')
+    const roots = repoRoot ? [repoRoot] : deps.getRepoRoots()
     const all: WorktreeInfo[] = []
     for (const r of roots) {
       try {
@@ -147,22 +137,15 @@ async function handleRequest(
 
   if (req.method === 'POST' && path === '/worktrees') {
     const body = await readJson(req)
-    const { scope } = resolveScope(req, deps)
-    const requestedRepo = typeof body.repoRoot === 'string' ? body.repoRoot : undefined
-
-    let repoRoot: string | undefined
-    if (scope && !scope.isMain) {
-      if (requestedRepo && requestedRepo !== scope.repoRoot) {
-        return sendJson(res, 403, {
-          error:
-            `cross-worktree access denied: this session is scoped to repo ${scope.repoRoot}. ` +
-            `create_worktree defaults to the caller's repo — do not pass repoRoot.`
-        })
-      }
-      repoRoot = scope.repoRoot
-    } else {
-      repoRoot = requestedRepo
-      if (!repoRoot) {
+    let repoRoot = typeof body.repoRoot === 'string' ? body.repoRoot : undefined
+    if (!repoRoot) {
+      // Prefer the caller's repo when we can infer it — a feature-worktree
+      // agent "make a sibling worktree for idea X" reads most naturally
+      // without having to pass repoRoot.
+      const { scope } = resolveScope(req, deps)
+      if (scope) {
+        repoRoot = scope.repoRoot
+      } else {
         const roots = deps.getRepoRoots()
         if (roots.length === 1) {
           repoRoot = roots[0]

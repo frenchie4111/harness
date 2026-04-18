@@ -71,47 +71,12 @@ function callControl(method, path, body) {
   })
 }
 
-// Whether this session is allowed to manage worktrees workspace-wide.
-// Main-worktree callers see every repo; feature-worktree callers are
-// scoped to their own repo (and repoRoot args are rejected if they don't
-// match). If SCOPE isn't populated (older session, missing env), fall
-// back to the workspace-wide behavior — the server still enforces.
-const SCOPED_TO_REPO = !SCOPE.isMain && !!SCOPE.repoRoot
-
-const createWorktreeDesc = SCOPED_TO_REPO
-  ? 'Create a new git worktree in the caller\'s current repo. Harness will open a new Claude chat tab inside the new worktree automatically. This session is scoped to repo ' +
-    SCOPE.repoRoot +
-    ' — do not pass repoRoot.'
-  : 'Create a new git worktree in a Harness-managed repo. Harness will open a new Claude chat tab inside the new worktree automatically. This session can create worktrees in any open repo; pass repoRoot when more than one repo is open.'
-
-const listWorktreesDesc = SCOPED_TO_REPO
-  ? 'List git worktrees for the caller\'s repo (' +
-    SCOPE.repoRoot +
-    '). This session cannot see worktrees in other repos.'
-  : 'List git worktrees currently managed by Harness across every open repo.'
-
-const createWorktreeSchema = SCOPED_TO_REPO
-  ? {
-      type: 'object',
-      properties: {
-        branchName: {
-          type: 'string',
-          description: 'Name of the new branch to create for the worktree.'
-        },
-        baseBranch: {
-          type: 'string',
-          description:
-            "Branch to fork the new worktree from. Defaults to the repo's configured base."
-        },
-        initialPrompt: {
-          type: 'string',
-          description:
-            'A prompt to automatically send to the Claude chat tab when it opens in the new worktree.'
-        }
-      },
-      required: ['branchName']
-    }
-  : {
+const TOOLS = [
+  {
+    name: 'create_worktree',
+    description:
+      "Create a new git worktree in a Harness-managed repo. Harness will open a new Claude chat tab inside the new worktree automatically. Defaults to the caller's current repo when repoRoot is omitted.",
+    inputSchema: {
       type: 'object',
       properties: {
         branchName: {
@@ -121,7 +86,7 @@ const createWorktreeSchema = SCOPED_TO_REPO
         repoRoot: {
           type: 'string',
           description:
-            'Absolute path to the repo root. Optional when only one repo is open in Harness.'
+            "Absolute path to the repo root. Optional — defaults to the caller's current repo."
         },
         baseBranch: {
           type: 'string',
@@ -136,10 +101,11 @@ const createWorktreeSchema = SCOPED_TO_REPO
       },
       required: ['branchName']
     }
-
-const listWorktreesSchema = SCOPED_TO_REPO
-  ? { type: 'object', properties: {} }
-  : {
+  },
+  {
+    name: 'list_worktrees',
+    description: 'List git worktrees currently managed by Harness.',
+    inputSchema: {
       type: 'object',
       properties: {
         repoRoot: {
@@ -148,22 +114,10 @@ const listWorktreesSchema = SCOPED_TO_REPO
         }
       }
     }
-
-const TOOLS = [
-  {
-    name: 'create_worktree',
-    description: createWorktreeDesc,
-    inputSchema: createWorktreeSchema
-  },
-  {
-    name: 'list_worktrees',
-    description: listWorktreesDesc,
-    inputSchema: listWorktreesSchema
   },
   {
     name: 'list_repos',
-    description:
-      'List the repo roots currently open in Harness. Returns workspace-wide metadata regardless of caller scope.',
+    description: 'List the repo roots currently open in Harness.',
     inputSchema: { type: 'object', properties: {} }
   },
   {
@@ -282,21 +236,9 @@ const TOOLS = [
   }
 ]
 
-function rejectCrossRepo(argRepo) {
-  if (!SCOPED_TO_REPO) return
-  if (argRepo && argRepo !== SCOPE.repoRoot) {
-    throw new Error(
-      'cross-worktree access denied: this session is scoped to repo ' +
-        SCOPE.repoRoot +
-        '. Omit repoRoot to operate on the caller\'s repo.'
-    )
-  }
-}
-
 async function handleToolCall(name, args) {
   if (name === 'create_worktree') {
     if (!args || !args.branchName) throw new Error('branchName is required')
-    rejectCrossRepo(args.repoRoot)
     const r = await callControl('POST', '/worktrees', {
       terminalId: TERMINAL_ID,
       repoRoot: args.repoRoot,
@@ -313,7 +255,6 @@ async function handleToolCall(name, args) {
     )
   }
   if (name === 'list_worktrees') {
-    rejectCrossRepo(args && args.repoRoot)
     const q =
       args && args.repoRoot ? '?repoRoot=' + encodeURIComponent(args.repoRoot) : ''
     const r = await callControl('GET', '/worktrees' + q)
