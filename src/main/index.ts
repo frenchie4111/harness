@@ -169,6 +169,16 @@ store.subscribe((event) => {
   ) {
     reconcileBrowserViews()
   }
+  // When a browser tab navigates the event lands in the `browser` slice
+  // instead of mutating the pane tree, so the pane-FSM's auto-persist
+  // doesn't fire. Trigger one here when the URL changes so reload
+  // restores where the user actually navigated to, not the blank tab
+  // they originally opened.
+  if (event.type === 'browser/tabStateChanged') {
+    if ('url' in (event.payload.state as Record<string, unknown>)) {
+      persistPanes(store.getSnapshot().state.terminals.panes)
+    }
+  }
 })
 
 // Persist pane trees back to config in the nested-by-repo shape. Walks
@@ -195,13 +205,20 @@ function treeToPersistedNode(node: PaneNode): PersistedPaneNode | null {
       .filter((t) => t.type === 'agent' || t.type === 'shell' || t.type === 'browser')
       .map((t) => {
         const stripped = stripTransientTabFields(t as TerminalTab)
+        // For browser tabs, the tab's state.url field is set once at
+        // creation and never updated — navigation events flow into the
+        // `browser` slice, not the pane tree. Pull the live URL from the
+        // BrowserManager so the persisted snapshot reflects where the
+        // user actually navigated to.
+        const liveUrl =
+          stripped.type === 'browser' ? browserManager.getUrl(stripped.id) : null
         return {
           id: stripped.id,
           type: stripped.type as 'agent' | 'shell' | 'browser',
           label: stripped.label,
           agentKind: stripped.agentKind,
           sessionId: stripped.sessionId,
-          url: stripped.url
+          url: liveUrl || stripped.url
         }
       })
     if (tabs.length === 0) return null
