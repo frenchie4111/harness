@@ -28,7 +28,7 @@ import { ReviewScreen } from './components/ReviewScreen'
 import { CommandPalette } from './components/CommandPalette'
 import { HotkeyCheatsheet } from './components/HotkeyCheatsheet'
 import { NewProjectScreen } from './components/NewProjectScreen'
-import { ReportIssueModal, onOpenReportIssue, type OpenReportIssueDetail } from './components/ReportIssueModal'
+import { ReportIssueScreen, onOpenReportIssue, type OpenReportIssueDetail } from './components/ReportIssueScreen'
 import iconUrl from '../../resources/icon.png'
 import { PerfMonitorHUD } from './components/PerfMonitorHUD'
 import { focusTerminalById } from './components/XTerminal'
@@ -274,11 +274,18 @@ const setQuestStep = useCallback((next: QuestStep) => {
     return cleanup
   }, [])
 
-  // Report Issue — triggered from the Help menu and from the
-  // openReportIssueFor() helper (used by the error boundary).
+  // Report Issue — triggered from the Help menu, the sidebar, the
+  // Settings Support section, and the openReportIssueFor() helper (used
+  // by the error boundary). Closes any open overlay (Settings, hotkey
+  // cheatsheet) so the full-screen report takes over the center area.
   useEffect(() => {
-    const cleanupMenu = window.api.onOpenReportIssue(() => setReportIssueState({}))
-    const cleanupBus = onOpenReportIssue((detail) => setReportIssueState(detail))
+    const openReport = (detail: OpenReportIssueDetail): void => {
+      setShowSettings(false)
+      setShowHotkeyCheatsheet(false)
+      setReportIssueState(detail)
+    }
+    const cleanupMenu = window.api.onOpenReportIssue(() => openReport({}))
+    const cleanupBus = onOpenReportIssue((detail) => openReport(detail))
     return () => {
       cleanupMenu()
       cleanupBus()
@@ -1056,6 +1063,15 @@ const setQuestStep = useCallback((next: QuestStep) => {
             defaultRepoRoot={activeWorktreeId ? worktreeRepoByPath[activeWorktreeId] : undefined}
           />
         )}
+        {reportIssueState !== null && (
+          <ReportIssueScreen
+            onClose={() => setReportIssueState(null)}
+            initialKind={reportIssueState.kind}
+            initialTitle={reportIssueState.title}
+            initialBody={reportIssueState.body}
+            prefilledContext={reportIssueState.context}
+          />
+        )}
         {showActivity && (
           <div className="flex-1 min-w-0 flex">
             <Activity
@@ -1117,12 +1133,12 @@ const setQuestStep = useCallback((next: QuestStep) => {
             </div>
           )
         })()}
-        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && !activeWorktreeId && worktrees.length > 0 && (
+        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && reportIssueState === null && !activeWorktreeId && worktrees.length > 0 && (
           <div className="flex-1 flex items-center justify-center text-dim">
             Select a worktree to begin
           </div>
         )}
-        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && isPendingId(activeWorktreeId) && (() => {
+        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && reportIssueState === null && isPendingId(activeWorktreeId) && (() => {
           const pending = pendingWorktrees.find((p) => p.id === activeWorktreeId)
           if (!pending) return null
           return (
@@ -1134,7 +1150,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
             />
           )
         })()}
-        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && activeWorktreeId && pendingDeletionByPath[activeWorktreeId] && (
+        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && reportIssueState === null && activeWorktreeId && pendingDeletionByPath[activeWorktreeId] && (
           <DeletingWorktreeScreen
             deletion={pendingDeletionByPath[activeWorktreeId]}
             onDismiss={handleDismissPendingDeletion}
@@ -1146,10 +1162,10 @@ const setQuestStep = useCallback((next: QuestStep) => {
           onFinish={() => setQuestStep('done')}
         />
         {/* Right panel — hidden on the new-worktree screen so the form gets the full width */}
-        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && !rightColumnHidden && (
+        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && reportIssueState === null && !rightColumnHidden && (
           <ResizeHandle onDelta={handleRightPanelResize} />
         )}
-        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && !rightColumnHidden && (
+        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && reportIssueState === null && !rightColumnHidden && (
           <RightColumn
             width={rightPanelWidth}
             activeWorktreeId={activeWorktreeId}
@@ -1220,14 +1236,6 @@ const setQuestStep = useCallback((next: QuestStep) => {
         }}
       />
     )}
-    <ReportIssueModal
-      open={reportIssueState !== null}
-      onClose={() => setReportIssueState(null)}
-      initialKind={reportIssueState?.kind}
-      initialTitle={reportIssueState?.title}
-      initialBody={reportIssueState?.body}
-      prefilledContext={reportIssueState?.context}
-    />
     </HotkeysProvider>
   )
 }

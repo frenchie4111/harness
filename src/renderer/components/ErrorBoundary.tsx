@@ -1,6 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { AlertTriangle, RotateCcw, Copy, Check, RefreshCw, MessageSquare } from 'lucide-react'
-import { openReportIssueFor } from './ReportIssueModal'
+import { openReportIssueFor } from './ReportIssueScreen'
 
 interface FallbackRenderProps {
   error: Error
@@ -82,16 +82,10 @@ export class ErrorBoundary extends Component<Props, State> {
     location.reload()
   }
 
-  handleReport = (e: React.MouseEvent): void => {
-    e.preventDefault()
-    e.stopPropagation()
+  handleReport = (): void => {
     const { error, info } = this.state
     if (!error) return
-    // Defer to a microtask so the click event fully drains before the
-    // modal mounts — avoids any in-flight keystroke/focus side effect
-    // from the click landing inside the opened modal.
-    const payload = { error, componentStack: info?.componentStack ?? '' }
-    queueMicrotask(() => openReportIssueFor(payload.error, { componentStack: payload.componentStack }))
+    openReportIssueFor(error, { componentStack: info?.componentStack ?? '' })
   }
 
   toggleExpanded = (): void => {

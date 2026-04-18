@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Bug, Lightbulb, ExternalLink } from 'lucide-react'
+import { Bug, Lightbulb, ExternalLink, X } from 'lucide-react'
 import { HARNESS_NEW_ISSUE_URL } from '../../shared/constants'
 
 export type IssueKind = 'bug' | 'feature'
@@ -10,8 +10,7 @@ export interface ReportIssueContext {
   componentStack?: string
 }
 
-interface ReportIssueModalProps {
-  open: boolean
+interface ReportIssueScreenProps {
   onClose: () => void
   initialKind?: IssueKind
   initialTitle?: string
@@ -82,16 +81,15 @@ export interface OpenReportIssueDetail {
   context?: ReportIssueContext
 }
 
-/**
- * Helper for error boundaries: call this with the caught error + componentStack
- * to open the report modal with a crash template prefilled. The mounted App
- * subscribes via `onOpenReportIssue` and flips the modal open. Intended to be
- * called from the ErrorBoundary fallback UI (see error-boundaries worktree).
- */
 export function openReportIssue(detail: OpenReportIssueDetail = {}): void {
   window.dispatchEvent(new CustomEvent(REPORT_ISSUE_EVENT, { detail }))
 }
 
+/**
+ * Helper for error boundaries: call with the caught error + componentStack
+ * to open the report screen with a crash template prefilled. The App
+ * subscribes via `onOpenReportIssue` and flips the screen on.
+ */
 export function openReportIssueFor(
   error: Error,
   info: { componentStack: string }
@@ -117,14 +115,13 @@ export function onOpenReportIssue(
   return () => window.removeEventListener(REPORT_ISSUE_EVENT, listener)
 }
 
-export function ReportIssueModal({
-  open,
+export function ReportIssueScreen({
   onClose,
   initialKind = 'bug',
   initialTitle = '',
   initialBody = '',
   prefilledContext
-}: ReportIssueModalProps): JSX.Element | null {
+}: ReportIssueScreenProps): JSX.Element {
   const [kind, setKind] = useState<IssueKind>(initialKind)
   const [title, setTitle] = useState(initialTitle)
   const [body, setBody] = useState(
@@ -136,28 +133,26 @@ export function ReportIssueModal({
   const titleInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    if (!open) return
-    setKind(initialKind)
-    setTitle(initialTitle)
-    setBody(initialBody || (prefilledContext ? buildCrashTemplate(prefilledContext) : ''))
-    setIncludeLog(true)
     void window.api.readRecentLog(200).then(setLog).catch(() => setLog(''))
     void window.api.getVersion().then(setVersion).catch(() => setVersion(''))
     const t = setTimeout(() => titleInputRef.current?.focus(), 50)
     return () => clearTimeout(t)
-  }, [open, initialKind, initialTitle, initialBody, prefilledContext])
+  }, [])
 
   useEffect(() => {
-    if (!open) return
     const handler = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') {
+      if (
+        e.key === 'Escape' &&
+        !(e.target instanceof HTMLTextAreaElement) &&
+        !(e.target instanceof HTMLInputElement)
+      ) {
         e.preventDefault()
         onClose()
       }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [open, onClose])
+  }, [onClose])
 
   const logLineCount = useMemo(
     () => (log ? log.split('\n').length : 0),
@@ -165,8 +160,6 @@ export function ReportIssueModal({
   )
 
   const canSubmit = title.trim().length > 0 && body.trim().length > 0
-
-  if (!open) return null
 
   const handleSubmit = (): void => {
     if (!canSubmit) return
@@ -203,66 +196,61 @@ export function ReportIssueModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-[60] flex items-start justify-center pt-[8vh] bg-black/30"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-2xl bg-surface rounded-xl shadow-2xl border border-border overflow-hidden flex flex-col max-h-[85vh]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-border shrink-0">
-          <h2 className="text-sm font-semibold text-fg-bright">
-            {prefilledContext ? 'Report this crash' : 'Report an issue or request a feature'}
-          </h2>
-          <kbd className="text-[10px] text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono">
-            ESC
-          </kbd>
-        </div>
+    <div className="flex-1 flex flex-col min-w-0 bg-app">
+      <div className="drag-region h-10 shrink-0 border-b border-border relative">
+        <button
+          onClick={onClose}
+          className="no-drag absolute left-4 top-1/2 -translate-y-1/2 text-dim hover:text-fg p-1.5 rounded transition-colors cursor-pointer"
+          title="Close (Esc)"
+          type="button"
+        >
+          <X size={16} />
+        </button>
+        <span className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 text-sm font-medium text-fg pointer-events-none">
+          {prefilledContext ? 'Report this crash' : 'Report an issue or request a feature'}
+        </span>
+      </div>
 
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+      <div className="flex-1 overflow-y-auto">
+        <div className="max-w-2xl mx-auto px-8 py-8 space-y-6">
           <div>
-            <label className="text-[10px] font-semibold uppercase tracking-wider text-faint block mb-1.5">
+            <label className="text-[11px] font-semibold uppercase tracking-wider text-dim block mb-2">
               Kind
             </label>
-            <div className="inline-flex rounded-lg border border-border overflow-hidden">
+            <div className="inline-flex p-1 bg-panel border border-border-strong rounded-lg">
               <button
                 type="button"
                 onClick={() => setKind('bug')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors cursor-pointer ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
                   kind === 'bug'
-                    ? 'bg-surface text-fg-bright'
-                    : 'bg-panel-raised text-muted hover:text-fg-bright'
+                    ? 'bg-app text-fg-bright shadow-sm'
+                    : 'text-dim hover:text-fg'
                 }`}
               >
-                <Bug size={14} />
+                <Bug size={12} />
                 Bug
               </button>
               <button
                 type="button"
                 onClick={() => setKind('feature')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors cursor-pointer border-l border-border ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
                   kind === 'feature'
-                    ? 'bg-surface text-fg-bright'
-                    : 'bg-panel-raised text-muted hover:text-fg-bright'
+                    ? 'bg-app text-fg-bright shadow-sm'
+                    : 'text-dim hover:text-fg'
                 }`}
               >
-                <Lightbulb size={14} />
+                <Lightbulb size={12} />
                 Feature request
               </button>
             </div>
           </div>
 
-          <div>
-            <label
-              htmlFor="report-issue-title"
-              className="text-[10px] font-semibold uppercase tracking-wider text-faint block mb-1.5"
-            >
+          <label className="block">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-dim block mb-2">
               Title
-            </label>
+            </div>
             <input
               ref={titleInputRef}
-              id="report-issue-title"
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
@@ -271,33 +259,31 @@ export function ReportIssueModal({
                   ? 'Short summary of the problem'
                   : 'Short summary of the requested feature'
               }
-              className="w-full bg-panel-raised border border-border rounded-lg px-3 py-2 text-sm text-fg placeholder-faint focus:outline-none focus:border-border-strong"
+              style={{ fontSize: '13px' }}
+              className="w-full bg-panel border-2 border-border-strong rounded-lg px-3 py-2.5 text-fg-bright placeholder-faint outline-none focus:border-accent transition-colors"
             />
-          </div>
+          </label>
 
-          <div>
-            <label
-              htmlFor="report-issue-body"
-              className="text-[10px] font-semibold uppercase tracking-wider text-faint block mb-1.5"
-            >
+          <label className="block">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-dim block mb-2">
               Description
-            </label>
+            </div>
             <textarea
-              id="report-issue-body"
               value={body}
               onChange={(e) => setBody(e.target.value)}
-              rows={8}
+              rows={10}
               placeholder={
                 kind === 'bug'
                   ? 'What happened? What did you expect? Steps to reproduce?'
                   : 'What would you like Harness to do? What problem would it solve?'
               }
-              className="w-full bg-panel-raised border border-border rounded-lg px-3 py-2 text-sm text-fg placeholder-faint font-mono resize-y min-h-[160px] focus:outline-none focus:border-border-strong"
+              style={{ fontSize: '13px' }}
+              className="w-full bg-panel border-2 border-border-strong rounded-lg px-3 py-2.5 font-mono text-fg placeholder-faint outline-none focus:border-accent transition-colors resize-y min-h-[200px]"
             />
-          </div>
+          </label>
 
-          <div className="bg-panel-raised border border-border rounded-lg p-3 space-y-2">
-            <label className="flex items-start gap-2 cursor-pointer">
+          <div className="bg-panel border border-border rounded-lg p-4 space-y-3">
+            <label className="flex items-start gap-2.5 cursor-pointer">
               <input
                 type="checkbox"
                 checked={includeLog}
@@ -314,35 +300,35 @@ export function ReportIssueModal({
             </label>
 
             {includeLog && (
-              <div className="pt-1">
+              <div>
                 <div className="text-[11px] text-muted mb-1.5">
                   Review for sensitive info (paths, branch names) before submitting.
                 </div>
-                <pre className="bg-bg border border-border rounded-md px-3 py-2 text-[11px] font-mono text-muted max-h-[200px] overflow-auto whitespace-pre">
+                <pre className="bg-app border border-border rounded-md px-3 py-2 text-[11px] font-mono text-muted max-h-[200px] overflow-auto whitespace-pre">
                   {log || '(no log content yet — interact with the app to generate entries)'}
                 </pre>
               </div>
             )}
           </div>
-        </div>
 
-        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-border shrink-0">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-3 py-1.5 text-sm text-muted hover:text-fg-bright transition-colors cursor-pointer"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleSubmit}
-            disabled={!canSubmit}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-info text-white text-sm font-medium hover:bg-info/90 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            <ExternalLink size={13} />
-            Open on GitHub
-          </button>
+          <div className="flex items-center justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-sm text-muted hover:text-fg-bright transition-colors cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={!canSubmit}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-md bg-info text-white text-sm font-medium hover:bg-info/90 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <ExternalLink size={13} />
+              Open on GitHub
+            </button>
+          </div>
         </div>
       </div>
     </div>
