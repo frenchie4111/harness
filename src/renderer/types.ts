@@ -163,6 +163,13 @@ export interface ElectronAPI {
   listRepos(): Promise<string[]>
   addRepo(): Promise<string | null>
   removeRepo(repoRoot: string): Promise<boolean>
+  createNewProject(opts: {
+    parentDir: string
+    name: string
+    includeReadme: boolean
+    gitignorePreset: 'none' | 'node' | 'python' | 'macos'
+  }): Promise<{ path: string } | { error: string }>
+  pickDirectory(opts?: { defaultPath?: string; title?: string }): Promise<string | null>
 
   getMainWorktreeStatus(repoRoot: string): Promise<MainWorktreeStatus>
   prepareMainForMerge(repoRoot: string): Promise<MainWorktreeStatus>
@@ -306,6 +313,7 @@ export interface ElectronAPI {
   onOpenSettings(callback: () => void): () => void
   onTogglePerfMonitor(callback: () => void): () => void
   onOpenKeyboardShortcuts(callback: () => void): () => void
+  onOpenNewProject(callback: () => void): () => void
 
   acceptHooks(): Promise<boolean>
   declineHooks(): Promise<boolean>
