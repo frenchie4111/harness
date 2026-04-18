@@ -161,7 +161,7 @@ Harness also exposes embedded browser tabs — the user can open a browser along
 - list_browser_tabs, get_tab_url, get_tab_dom, screenshot_tab, get_tab_console_logs: inspect what's in the tab.
 - navigate_tab, back_tab, forward_tab, reload_tab: drive the tab.
 
-Prefer these over blind curl/fetch when you need to verify rendered UI, inspect a dev server, debug a page the user is looking at, or confirm your changes actually work in the browser.`
+Prefer these over blind curl/fetch — or shelling out to \`open <url>\`, which launches the user's default browser outside Harness where you can't see the result — when you need to verify rendered UI, inspect a dev server, debug a page the user is looking at, or confirm your changes actually work in the browser.`
 
 export const DEFAULT_HARNESS_SYSTEM_PROMPT_MAIN = `You are on the main worktree. This is the primary checkout — avoid making direct changes here unless the user explicitly asks. Instead, use this session to plan, review, and coordinate work across worktrees. When the user describes a task, create a new worktree for it with a thorough initialPrompt that gives the new Claude session all the context it needs to work independently.`
 
