@@ -3,6 +3,7 @@ import { createRequire } from 'module'
 import { join } from 'path'
 import { PtyManager } from './pty-manager'
 import { ApprovalBridge } from './approval-bridge'
+import { JsonClaudeManager } from './json-claude-manager'
 import { Store } from './store'
 import { WebSocketServerTransport } from './transport-websocket'
 import { CompoundServerTransport } from './transport-compound'
@@ -139,6 +140,14 @@ let stopWatchingStatus: (() => void) | null = null
 
 const store = new Store(buildInitialAppState(config, { hasGithubToken: hasSecret('githubToken') }))
 const approvalBridge = new ApprovalBridge(store)
+const jsonClaudeManager = new JsonClaudeManager(store, {
+  getClaudeCommand: () =>
+    store.getSnapshot().state.settings.claudeCommand || DEFAULT_CLAUDE_COMMAND,
+  getApprovalSocketPath: (sessionId) => approvalBridge.startSession(sessionId),
+  closeApprovalSession: (sessionId) => approvalBridge.stopSession(sessionId),
+  getClaudeEnvVars: () =>
+    store.getSnapshot().state.settings.claudeEnvVars || {}
+})
 const perfMonitor = new PerfMonitor()
 
 // In Electron mode createDesktopShell applies the dev-mode userData
@@ -1752,6 +1761,34 @@ function registerIpcHandlers(): void {
     }
   )
 
+  // JSON-mode Claude subprocess lifecycle. start == spawn claude -p with
+  // stream-json IO + the bundled permission-prompt MCP server. The
+  // sessionId doubles as the tab id and is used by panesFSM to persist
+  // the tab across reload; spawn picks --resume vs. --session-id based
+  // on whether the jsonl already exists on disk.
+  transport.onRequest('jsonClaude:start', (_ctx, sessionId: string, cwd: string) => {
+    if (!sessionId || !cwd) return false
+    // Seed the session entry BEFORE spawning so the 'running' dispatch
+    // inside create() lands on a session that exists in the store.
+    store.dispatch({
+      type: 'jsonClaude/sessionStarted',
+      payload: { sessionId, worktreePath: cwd }
+    })
+    jsonClaudeManager.create(sessionId, cwd)
+    return true
+  })
+  transport.onSignal('jsonClaude:send', (_ctx, sessionId: string, text: string) => {
+    jsonClaudeManager.send(sessionId, text)
+  })
+  transport.onRequest('jsonClaude:kill', (_ctx, sessionId: string) => {
+    jsonClaudeManager.kill(sessionId)
+    return true
+  })
+  transport.onRequest('jsonClaude:interrupt', (_ctx, sessionId: string) => {
+    jsonClaudeManager.interrupt(sessionId)
+    return true
+  })
+
   transport.onSignal('terminal:join', (ctx, id: string) => {
     store.dispatch({
       type: 'terminals/clientJoined',
@@ -2119,6 +2156,7 @@ if (desktopShellMod && desktopEarly) {
       void worktreesFSM.refreshList()
     },
     onBeforeQuit: () => {
+      jsonClaudeManager.killAll()
       approvalBridge.stopAll()
     }
   })
@@ -2137,6 +2175,7 @@ if (desktopShellMod && desktopEarly) {
     stopWatchingStatus?.()
     stopWatchingStatus = null
     ptyManager.killAll('SIGKILL')
+    jsonClaudeManager.killAll()
     approvalBridge.stopAll()
     browserManager.destroyAll()
     sealAllActive()
