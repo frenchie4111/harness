@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ChevronLeft, GitBranch, GitPullRequest, Activity as ActivityIcon, ExternalLink, RefreshCw, List as ListIcon, Terminal as TerminalIcon, Loader2 } from 'lucide-react'
+import { ChevronDown, GitPullRequest, RefreshCw, Loader2, SquareTerminal, FileText, FileDiff, Globe, X, ExternalLink } from 'lucide-react'
 import { useWorktrees, usePanes, useTerminals, usePrs } from '../store'
 import { groupWorktrees, type WorktreeGroup } from '../worktree-sort'
 import { getLeaves } from '../../shared/state/terminals'
 import type { PtyStatus, TerminalTab, Worktree, PRStatus } from '../types'
 import { MobileTerminal } from './MobileTerminal'
 import { useViewport } from '../hooks/useViewport'
+import { AgentIcon } from './AgentIcon'
 
-type MobileView = 'list' | 'terminal' | 'pr'
+type RunnableTab = TerminalTab & { type: 'agent' | 'shell' }
 
 const STATUS_DOT: Record<PtyStatus, string> = {
   idle: 'bg-faint',
@@ -16,36 +17,23 @@ const STATUS_DOT: Record<PtyStatus, string> = {
   'needs-approval': 'bg-danger'
 }
 
-type RunnableTab = TerminalTab & { type: 'agent' | 'shell' }
-
-function findFirstAgentTab(panes: ReturnType<typeof usePanes>, wtPath: string): RunnableTab | null {
+function flatTabs(panes: ReturnType<typeof usePanes>, wtPath: string): TerminalTab[] {
   const tree = panes[wtPath]
-  if (!tree) return null
-  for (const leaf of getLeaves(tree)) {
-    for (const tab of leaf.tabs) {
-      if (tab.type === 'agent') return tab as RunnableTab
-    }
-  }
-  // Fall back to the first agent/shell tab so the user still sees a
-  // running session instead of an "empty" placeholder. Skip diff/file/
-  // browser tabs — those have no PTY behind them.
-  for (const leaf of getLeaves(tree)) {
-    for (const tab of leaf.tabs) {
-      if (tab.type === 'shell') return tab as RunnableTab
-    }
-  }
-  return null
+  if (!tree) return []
+  return getLeaves(tree).flatMap((l) => l.tabs)
 }
 
-function aggregateStatus(tabs: TerminalTab[], statuses: Record<string, PtyStatus>): PtyStatus {
-  let worst: PtyStatus = 'idle'
-  for (const t of tabs) {
-    const s = statuses[t.id]
-    if (s === 'needs-approval') return 'needs-approval'
-    if (s === 'waiting') worst = 'waiting'
-    if (s === 'processing' && worst === 'idle') worst = 'processing'
-  }
-  return worst
+function isRunnable(tab: TerminalTab): tab is RunnableTab {
+  return tab.type === 'agent' || tab.type === 'shell'
+}
+
+function pickInitialTab(tabs: TerminalTab[]): string | null {
+  return (
+    tabs.find((t) => t.type === 'agent')?.id ??
+    tabs.find((t) => t.type === 'shell')?.id ??
+    tabs[0]?.id ??
+    null
+  )
 }
 
 export function MobileApp(): JSX.Element {
@@ -56,71 +44,76 @@ export function MobileApp(): JSX.Element {
   const { viewportHeight } = useViewport()
 
   const worktrees = wtState.list
-  const [view, setView] = useState<MobileView>('list')
   const [activeWorktreeId, setActiveWorktreeId] = useState<string | null>(
     () => worktrees[0]?.path ?? null
   )
+  // Mobile's own per-worktree tab focus. Independent of the desktop
+  // pane-level activeTabId: changing the mobile selection shouldn't
+  // yank another client's split pane around.
+  const [selectedTabByWorktree, setSelectedTabByWorktree] = useState<Record<string, string>>({})
+  const [pickerOpen, setPickerOpen] = useState(false)
 
-  // Force the visualViewport-derived height onto the root so children can
-  // read it via 100% / flex without competing with the layout viewport
-  // when the keyboard opens.
+  // Apply visualViewport height to the root so the layout stays above
+  // the on-screen keyboard when it opens.
   useEffect(() => {
     if (viewportHeight > 0) {
       document.documentElement.style.setProperty('--viewport-h', `${viewportHeight}px`)
     }
   }, [viewportHeight])
 
-  // Keep the active worktree in sync if it disappears (deleted, dismissed).
   useEffect(() => {
     if (!activeWorktreeId) return
     if (worktrees.some((w) => w.path === activeWorktreeId)) return
     setActiveWorktreeId(worktrees[0]?.path ?? null)
-    setView('list')
   }, [activeWorktreeId, worktrees])
 
-  // Make sure the active worktree's panes are initialized so we have a
-  // tab to render when entering the terminal view.
   useEffect(() => {
     if (!activeWorktreeId) return
     void window.api.panesEnsureInitialized(activeWorktreeId)
   }, [activeWorktreeId])
 
-  // Initial data refresh — the desktop App runs this at mount; mobile
-  // needs the same kick so the worktree list is current after a reload.
   useEffect(() => {
     void window.api.refreshWorktreesList()
     void window.api.refreshPRsAllIfStale()
   }, [])
 
-  const groups = useMemo<WorktreeGroup[]>(
-    () => groupWorktrees(worktrees, prs.byPath, prs.mergedByPath),
-    [worktrees, prs.byPath, prs.mergedByPath]
-  )
-
-  const terminalTabs = useMemo<Record<string, TerminalTab[]>>(() => {
-    const out: Record<string, TerminalTab[]> = {}
-    for (const [wtPath, tree] of Object.entries(panes)) {
-      out[wtPath] = getLeaves(tree).flatMap((l) => l.tabs)
-    }
-    return out
-  }, [panes])
-
-  const worktreeStatuses = useMemo<Record<string, PtyStatus>>(() => {
-    const out: Record<string, PtyStatus> = {}
-    for (const wt of worktrees) {
-      out[wt.path] = aggregateStatus(terminalTabs[wt.path] ?? [], terminals.statuses)
-    }
-    return out
-  }, [worktrees, terminalTabs, terminals.statuses])
-
-  const handleSelectWorktree = useCallback((wtPath: string) => {
-    setActiveWorktreeId(wtPath)
-    setView('terminal')
-  }, [])
-
   const activeWorktree = useMemo(
     () => worktrees.find((w) => w.path === activeWorktreeId) ?? null,
     [worktrees, activeWorktreeId]
+  )
+
+  const tabs = useMemo(
+    () => (activeWorktree ? flatTabs(panes, activeWorktree.path) : []),
+    [panes, activeWorktree]
+  )
+
+  // If the current mobile selection vanished (tab closed on desktop,
+  // worktree switched), fall back to the first sensible tab.
+  const selectedTabId = useMemo(() => {
+    if (!activeWorktree) return null
+    const claimed = selectedTabByWorktree[activeWorktree.path]
+    if (claimed && tabs.some((t) => t.id === claimed)) return claimed
+    return pickInitialTab(tabs)
+  }, [activeWorktree, selectedTabByWorktree, tabs])
+
+  const selectedTab = useMemo(
+    () => tabs.find((t) => t.id === selectedTabId) ?? null,
+    [tabs, selectedTabId]
+  )
+
+  const aggregateStatuses = useAggregateStatuses(worktrees, panes, terminals.statuses)
+
+  const handleSelectWorktree = useCallback((wtPath: string) => {
+    setActiveWorktreeId(wtPath)
+    setPickerOpen(false)
+  }, [])
+
+  const handleSelectTab = useCallback(
+    (tabId: string) => {
+      if (!activeWorktree) return
+      setSelectedTabByWorktree((prev) => ({ ...prev, [activeWorktree.path]: tabId }))
+    },
+    [activeWorktree]
   )
 
   return (
@@ -131,115 +124,221 @@ export function MobileApp(): JSX.Element {
         paddingTop: 'env(safe-area-inset-top, 0px)'
       }}
     >
-      <div className="flex-1 min-h-0 overflow-hidden">
-        {view === 'list' && (
-          <WorktreeList
-            groups={groups}
-            statuses={worktreeStatuses}
-            prStatuses={prs.byPath}
-            activeWorktreeId={activeWorktreeId}
-            loading={prs.loading}
-            onSelect={handleSelectWorktree}
-            onRefresh={() => void window.api.refreshPRsAll()}
-          />
+      <Header
+        worktree={activeWorktree}
+        tabs={tabs}
+        selectedTabId={selectedTabId}
+        statuses={terminals.statuses}
+        shellActivity={terminals.shellActivity}
+        pickerOpen={pickerOpen}
+        onTogglePicker={() => setPickerOpen((v) => !v)}
+        onSelectTab={handleSelectTab}
+      />
+
+      <div className="flex-1 min-h-0 relative">
+        {activeWorktree && selectedTab && isRunnable(selectedTab) && (
+          <MobileTerminal worktreePath={activeWorktree.path} tab={selectedTab} />
         )}
-        {view === 'terminal' && activeWorktree && (
-          <TerminalScreen
-            worktree={activeWorktree}
-            tab={findFirstAgentTab(panes, activeWorktree.path)}
-            onBack={() => setView('list')}
-          />
+        {activeWorktree && selectedTab && !isRunnable(selectedTab) && (
+          <NonRunnableTabPlaceholder tab={selectedTab} />
         )}
-        {view === 'terminal' && !activeWorktree && (
-          <EmptyScreen message="Select a worktree from the list to open its terminal." />
+        {activeWorktree && !selectedTab && (
+          <EmptyScreen message="This worktree has no tabs yet. Open it on desktop to spawn one." />
         )}
-        {view === 'pr' && (
-          <PrScreen
+        {!activeWorktree && worktrees.length === 0 && (
+          <EmptyScreen message="No worktrees yet. Create one from the desktop app to get started." />
+        )}
+        {!activeWorktree && worktrees.length > 0 && (
+          <EmptyScreen message="Pick a worktree above to open it." />
+        )}
+
+        {pickerOpen && (
+          <WorktreePickerSheet
             worktrees={worktrees}
             prStatuses={prs.byPath}
             mergedPaths={prs.mergedByPath}
             loading={prs.loading}
             activeWorktreeId={activeWorktreeId}
+            aggregateStatuses={aggregateStatuses}
             onSelect={handleSelectWorktree}
+            onClose={() => setPickerOpen(false)}
             onRefresh={() => void window.api.refreshPRsAll()}
           />
         )}
       </div>
-
-      <BottomNav
-        view={view}
-        hasActive={!!activeWorktreeId}
-        onChange={setView}
-      />
     </div>
   )
 }
 
-interface BottomNavProps {
-  view: MobileView
-  hasActive: boolean
-  onChange: (next: MobileView) => void
+function useAggregateStatuses(
+  worktrees: Worktree[],
+  panes: ReturnType<typeof usePanes>,
+  statuses: Record<string, PtyStatus>
+): Record<string, PtyStatus> {
+  return useMemo(() => {
+    const out: Record<string, PtyStatus> = {}
+    for (const wt of worktrees) {
+      let worst: PtyStatus = 'idle'
+      for (const tab of flatTabs(panes, wt.path)) {
+        const s = statuses[tab.id]
+        if (s === 'needs-approval') { worst = 'needs-approval'; break }
+        if (s === 'waiting') worst = 'waiting'
+        if (s === 'processing' && worst === 'idle') worst = 'processing'
+      }
+      out[wt.path] = worst
+    }
+    return out
+  }, [worktrees, panes, statuses])
 }
 
-function BottomNav({ view, hasActive, onChange }: BottomNavProps): JSX.Element {
-  const items: Array<{ id: MobileView; label: string; icon: JSX.Element; disabled?: boolean }> = [
-    { id: 'list', label: 'Worktrees', icon: <ListIcon className="w-5 h-5" /> },
-    { id: 'terminal', label: 'Terminal', icon: <TerminalIcon className="w-5 h-5" />, disabled: !hasActive },
-    { id: 'pr', label: 'PRs', icon: <GitPullRequest className="w-5 h-5" /> }
-  ]
+// -----------------------------------------------------------------------------
+// Header: worktree picker button (left) + horizontal flat tab strip (right).
+// -----------------------------------------------------------------------------
+
+interface HeaderProps {
+  worktree: Worktree | null
+  tabs: TerminalTab[]
+  selectedTabId: string | null
+  statuses: Record<string, PtyStatus>
+  shellActivity: Record<string, { active: boolean; processName?: string }>
+  pickerOpen: boolean
+  onTogglePicker: () => void
+  onSelectTab: (tabId: string) => void
+}
+
+function Header({ worktree, tabs, selectedTabId, statuses, shellActivity, pickerOpen, onTogglePicker, onSelectTab }: HeaderProps): JSX.Element {
+  const repoLabel = worktree ? worktree.repoRoot.split('/').pop() || worktree.repoRoot : null
   return (
-    <nav
-      className="shrink-0 grid grid-cols-3 border-t border-border bg-panel-raised"
-      style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
-    >
-      {items.map((it) => {
-        const active = view === it.id
-        return (
-          <button
-            key={it.id}
-            disabled={it.disabled}
-            onClick={() => onChange(it.id)}
-            className={
-              'flex flex-col items-center justify-center gap-0.5 py-2 text-[11px] font-medium transition-colors ' +
-              (active
-                ? 'text-fg-bright'
-                : it.disabled
-                  ? 'text-faint cursor-not-allowed'
-                  : 'text-dim hover:text-fg')
-            }
-          >
-            {it.icon}
-            <span>{it.label}</span>
-          </button>
-        )
-      })}
-    </nav>
+    <header className="shrink-0 flex items-stretch border-b border-border bg-panel h-11">
+      <button
+        onClick={onTogglePicker}
+        className={
+          'shrink-0 flex items-center gap-1.5 px-3 h-full text-left border-r border-border ' +
+          (pickerOpen ? 'bg-surface' : 'hover:bg-panel-raised')
+        }
+        style={{ maxWidth: '45%' }}
+      >
+        {worktree ? (
+          <>
+            <span className="min-w-0 flex flex-col leading-tight">
+              <span className="text-[10px] uppercase tracking-wider text-dim truncate">{repoLabel}</span>
+              <span className="text-xs font-medium text-fg-bright truncate">
+                {worktree.branch || worktree.path.split('/').pop()}
+              </span>
+            </span>
+            <ChevronDown className={'w-3.5 h-3.5 text-dim shrink-0 transition-transform ' + (pickerOpen ? 'rotate-180' : '')} />
+          </>
+        ) : (
+          <span className="inline-flex items-center gap-1 text-sm text-fg">
+            Select a worktree
+            <ChevronDown className="w-3.5 h-3.5" />
+          </span>
+        )}
+      </button>
+      <div className="flex-1 min-w-0 flex items-stretch overflow-x-auto scrollbar-hidden">
+        {tabs.map((tab) => (
+          <TabChip
+            key={tab.id}
+            tab={tab}
+            active={tab.id === selectedTabId}
+            status={statuses[tab.id] ?? 'idle'}
+            shellActivity={shellActivity[tab.id]}
+            onSelect={() => onSelectTab(tab.id)}
+          />
+        ))}
+      </div>
+    </header>
   )
 }
 
-interface WorktreeListProps {
-  groups: WorktreeGroup[]
-  statuses: Record<string, PtyStatus>
+interface TabChipProps {
+  tab: TerminalTab
+  active: boolean
+  status: PtyStatus
+  shellActivity?: { active: boolean; processName?: string }
+  onSelect: () => void
+}
+
+function TabChip({ tab, active, status, shellActivity, onSelect }: TabChipProps): JSX.Element {
+  return (
+    <button
+      onClick={onSelect}
+      className={
+        'shrink-0 flex items-center gap-1.5 px-3 h-full text-xs whitespace-nowrap border-b-2 transition-colors ' +
+        (active ? 'border-muted text-fg-bright bg-app' : 'border-transparent text-dim hover:text-fg')
+      }
+    >
+      <TabIcon tab={tab} shellActivity={shellActivity} status={status} />
+      <span className="max-w-[140px] truncate">{tab.label}</span>
+    </button>
+  )
+}
+
+function TabIcon({ tab, shellActivity, status }: { tab: TerminalTab; shellActivity?: { active: boolean; processName?: string }; status: PtyStatus }): JSX.Element {
+  if (tab.type === 'agent') {
+    return (
+      <span className="inline-flex items-center gap-1">
+        <AgentIcon kind={tab.agentKind ?? 'claude'} size={11} />
+        <span className={'w-1.5 h-1.5 rounded-full ' + STATUS_DOT[status]} />
+      </span>
+    )
+  }
+  if (tab.type === 'shell') {
+    return shellActivity?.active ? (
+      <Loader2 size={11} className="animate-spin text-fg-bright" />
+    ) : (
+      <SquareTerminal size={11} className="text-dim" />
+    )
+  }
+  if (tab.type === 'diff') return <FileDiff size={11} className="text-dim" />
+  if (tab.type === 'file') return <FileText size={11} className="text-dim" />
+  if (tab.type === 'browser') return <Globe size={11} className="text-dim" />
+  return <span />
+}
+
+// -----------------------------------------------------------------------------
+// Worktree picker sheet — full-body overlay below the header. Groups by PR
+// status using the same groupWorktrees helper the desktop sidebar uses.
+// -----------------------------------------------------------------------------
+
+interface WorktreePickerSheetProps {
+  worktrees: Worktree[]
   prStatuses: Record<string, PRStatus | null>
-  activeWorktreeId: string | null
+  mergedPaths: Record<string, boolean>
   loading: boolean
+  activeWorktreeId: string | null
+  aggregateStatuses: Record<string, PtyStatus>
   onSelect: (path: string) => void
+  onClose: () => void
   onRefresh: () => void
 }
 
-function WorktreeList({ groups, statuses, prStatuses, activeWorktreeId, loading, onSelect, onRefresh }: WorktreeListProps): JSX.Element {
+function WorktreePickerSheet({ worktrees, prStatuses, mergedPaths, loading, activeWorktreeId, aggregateStatuses, onSelect, onClose, onRefresh }: WorktreePickerSheetProps): JSX.Element {
+  const groups = useMemo<WorktreeGroup[]>(
+    () => groupWorktrees(worktrees, prStatuses, mergedPaths),
+    [worktrees, prStatuses, mergedPaths]
+  )
   return (
-    <div className="h-full flex flex-col">
-      <header className="shrink-0 flex items-center justify-between px-4 py-3 border-b border-border bg-panel">
-        <h1 className="text-base font-semibold text-fg-bright">Harness</h1>
-        <button
-          onClick={onRefresh}
-          className="inline-flex items-center justify-center w-8 h-8 rounded text-dim hover:text-fg hover:bg-surface"
-          aria-label="Refresh"
-        >
-          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-        </button>
-      </header>
+    <div className="absolute inset-0 z-30 flex flex-col bg-app">
+      <div className="shrink-0 flex items-center justify-between px-3 py-2 border-b border-border bg-panel">
+        <span className="text-xs uppercase tracking-wider text-dim font-semibold">Worktrees</span>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={onRefresh}
+            className="inline-flex items-center justify-center w-8 h-8 rounded text-dim hover:text-fg hover:bg-surface"
+            aria-label="Refresh"
+          >
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+          </button>
+          <button
+            onClick={onClose}
+            className="inline-flex items-center justify-center w-8 h-8 rounded text-dim hover:text-fg hover:bg-surface"
+            aria-label="Close"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
       <div className="flex-1 overflow-y-auto">
         {groups.length === 0 && (
           <div className="p-6 text-center text-dim text-sm">
@@ -254,7 +353,7 @@ function WorktreeList({ groups, statuses, prStatuses, activeWorktreeId, loading,
             <ul className="divide-y divide-border">
               {group.worktrees.map((wt) => {
                 const isActive = wt.path === activeWorktreeId
-                const status = statuses[wt.path] ?? 'idle'
+                const status = aggregateStatuses[wt.path] ?? 'idle'
                 const pr = prStatuses[wt.path] ?? null
                 return (
                   <li key={wt.path}>
@@ -297,137 +396,35 @@ function WorktreeList({ groups, statuses, prStatuses, activeWorktreeId, loading,
   )
 }
 
-interface TerminalScreenProps {
-  worktree: Worktree
-  tab: RunnableTab | null
-  onBack: () => void
-}
+// -----------------------------------------------------------------------------
+// Fallback body content for non-runnable tabs (diff/file/browser) — mobile
+// can't render them meaningfully, so we point the user back to desktop
+// with a deep-link affordance where it makes sense.
+// -----------------------------------------------------------------------------
 
-function TerminalScreen({ worktree, tab, onBack }: TerminalScreenProps): JSX.Element {
+function NonRunnableTabPlaceholder({ tab }: { tab: TerminalTab }): JSX.Element {
+  const label =
+    tab.type === 'diff' ? 'Diff view' :
+    tab.type === 'file' ? 'File view' :
+    tab.type === 'browser' ? 'Browser tab' : 'This tab'
   return (
-    <div className="h-full flex flex-col">
-      <header className="shrink-0 flex items-center gap-2 px-2 py-2 border-b border-border bg-panel">
-        <button
-          onClick={onBack}
-          className="inline-flex items-center justify-center w-8 h-8 rounded text-dim hover:text-fg hover:bg-surface"
-          aria-label="Back"
-        >
-          <ChevronLeft className="w-5 h-5" />
-        </button>
-        <div className="flex-1 min-w-0">
-          <div className="text-sm font-medium text-fg-bright truncate flex items-center gap-1">
-            <GitBranch className="w-3.5 h-3.5 text-dim shrink-0" />
-            {worktree.branch || worktree.path.split('/').pop()}
-          </div>
-          <div className="text-[11px] text-dim truncate">
-            {worktree.repoRoot.split('/').pop()}
-          </div>
-        </div>
-      </header>
-      <div className="flex-1 min-h-0">
-        {tab ? (
-          <MobileTerminal worktreePath={worktree.path} tab={tab} />
-        ) : (
-          <EmptyScreen message="No terminal yet for this worktree. Open it on desktop to spawn a session." />
-        )}
+    <div className="h-full flex flex-col items-center justify-center gap-3 px-6 text-center">
+      <div className="text-sm text-fg-bright">{label} — desktop only</div>
+      <div className="text-xs text-dim max-w-xs">
+        {tab.label}
       </div>
+      {tab.type === 'browser' && tab.url && (
+        <a
+          href={tab.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 text-xs text-accent underline"
+        >
+          <ExternalLink className="w-3 h-3" /> Open URL in browser
+        </a>
+      )}
     </div>
   )
-}
-
-interface PrScreenProps {
-  worktrees: Worktree[]
-  prStatuses: Record<string, PRStatus | null>
-  mergedPaths: Record<string, boolean>
-  loading: boolean
-  activeWorktreeId: string | null
-  onSelect: (path: string) => void
-  onRefresh: () => void
-}
-
-function PrScreen({ worktrees, prStatuses, loading, activeWorktreeId, onSelect, onRefresh }: PrScreenProps): JSX.Element {
-  const withPrs = useMemo(
-    () => worktrees.filter((w) => prStatuses[w.path]),
-    [worktrees, prStatuses]
-  )
-  return (
-    <div className="h-full flex flex-col">
-      <header className="shrink-0 flex items-center justify-between px-4 py-3 border-b border-border bg-panel">
-        <h1 className="text-base font-semibold text-fg-bright">Pull Requests</h1>
-        <button
-          onClick={onRefresh}
-          className="inline-flex items-center justify-center w-8 h-8 rounded text-dim hover:text-fg hover:bg-surface"
-          aria-label="Refresh"
-        >
-          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-        </button>
-      </header>
-      <div className="flex-1 overflow-y-auto">
-        {withPrs.length === 0 && (
-          <div className="p-6 text-center text-dim text-sm">
-            No open PRs across your worktrees.
-          </div>
-        )}
-        <ul className="divide-y divide-border">
-          {withPrs.map((wt) => {
-            const pr = prStatuses[wt.path]!
-            const isActive = wt.path === activeWorktreeId
-            return (
-              <li key={wt.path}>
-                <div
-                  className={
-                    'flex items-start gap-3 px-4 py-3 ' +
-                    (isActive ? 'bg-surface' : '')
-                  }
-                >
-                  <GitPullRequest className="w-4 h-4 mt-0.5 text-info shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm text-fg-bright truncate">{pr.title}</div>
-                    <div className="text-xs text-dim mt-0.5 flex items-center gap-2">
-                      <span className="truncate">{wt.repoRoot.split('/').pop()}</span>
-                      <span>#{pr.number}</span>
-                      <span>{prStateLabel(pr)}</span>
-                    </div>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1">
-                    <button
-                      onClick={() => onSelect(wt.path)}
-                      className="px-2 py-1 rounded text-[11px] text-fg bg-panel border border-border hover:bg-surface"
-                    >
-                      Open
-                    </button>
-                    <a
-                      href={pr.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center justify-center w-7 h-7 rounded text-dim hover:text-fg"
-                      aria-label="Open PR on GitHub"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
-                  </div>
-                </div>
-              </li>
-            )
-          })}
-        </ul>
-        <div className="p-4 text-[11px] text-dim text-center">
-          <ActivityIcon className="inline w-3 h-3 mr-1 align-middle" />
-          Detailed PR review and merge actions are desktop-only for now.
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function prStateLabel(pr: PRStatus): string {
-  if (pr.state === 'merged') return 'merged'
-  if (pr.state === 'closed') return 'closed'
-  if (pr.state === 'draft') return 'draft'
-  if (pr.checksOverall === 'failure') return 'checks failing'
-  if (pr.reviewDecision === 'changes_requested') return 'changes requested'
-  if (pr.reviewDecision === 'approved') return 'approved'
-  return 'open'
 }
 
 function EmptyScreen({ message }: { message: string }): JSX.Element {
