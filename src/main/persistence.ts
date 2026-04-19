@@ -134,6 +134,10 @@ export interface Config {
   // 'view' = inspect tabs + spawn/navigate, but no clicking, typing, or
   // scrolling. 'full' = everything. Default 'full' (undefined treated as 'full').
   browserToolsMode?: 'view' | 'full'
+  // Experimental: enable the JSON-streamed React chat tab type as an
+  // alternative to xterm-hosted Claude tabs. Default off; gated by the
+  // jsonModeClaudeTabs setting in the renderer.
+  jsonModeClaudeTabs?: boolean
 }
 
 export const DEFAULT_WORKTREE_BASE: 'remote' | 'local' = 'remote'

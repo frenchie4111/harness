@@ -406,7 +406,13 @@ function persistPanes(panes: Record<string, PaneNode>): void {
 function treeToPersistedNode(node: PaneNode): PersistedPaneNode | null {
   if (node.type === 'leaf') {
     const tabs = node.tabs
-      .filter((t) => t.type === 'agent' || t.type === 'shell' || t.type === 'browser')
+      .filter(
+        (t) =>
+          t.type === 'agent' ||
+          t.type === 'shell' ||
+          t.type === 'browser' ||
+          t.type === 'json-claude'
+      )
       .map((t) => {
         const stripped = stripTransientTabFields(t as TerminalTab)
         // For browser tabs, the tab's state.url field is set once at
@@ -418,7 +424,7 @@ function treeToPersistedNode(node: PaneNode): PersistedPaneNode | null {
           stripped.type === 'browser' ? browserManager.getUrl(stripped.id) : null
         return {
           id: stripped.id,
-          type: stripped.type as 'agent' | 'shell' | 'browser',
+          type: stripped.type as 'agent' | 'shell' | 'browser' | 'json-claude',
           label: stripped.label,
           agentKind: stripped.agentKind,
           sessionId: stripped.sessionId,
@@ -480,7 +486,8 @@ const panesFSM = new PanesFSM(store, {
   // only path before, and it broke the moment we had clients that
   // could disconnect without intending to kill agents). Tab-close /
   // restart / clear events are the actual lifecycle boundary.
-  killTabPty: (tabId) => ptyManager.kill(tabId)
+  killTabPty: (tabId) => ptyManager.kill(tabId),
+  killJsonClaude: (sessionId) => jsonClaudeManager.kill(sessionId)
 })
 
 const worktreesFSM = new WorktreesFSM(store, {
@@ -1786,6 +1793,20 @@ function registerIpcHandlers(): void {
   })
   transport.onRequest('jsonClaude:interrupt', (_ctx, sessionId: string) => {
     jsonClaudeManager.interrupt(sessionId)
+    return true
+  })
+
+  transport.onRequest('config:setJsonModeClaudeTabs', (_ctx, enabled: boolean) => {
+    if (enabled) {
+      config.jsonModeClaudeTabs = true
+    } else {
+      delete config.jsonModeClaudeTabs
+    }
+    saveConfig(config)
+    store.dispatch({
+      type: 'settings/jsonModeClaudeTabsChanged',
+      payload: enabled
+    })
     return true
   })
 

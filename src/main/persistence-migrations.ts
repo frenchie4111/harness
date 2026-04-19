@@ -18,7 +18,7 @@ import type { AgentKind } from '../shared/state/terminals'
 
 export interface PersistedTab {
   id: string
-  type: 'agent' | 'shell' | 'browser'
+  type: 'agent' | 'shell' | 'browser' | 'json-claude'
   label: string
   agentKind?: AgentKind
   sessionId?: string

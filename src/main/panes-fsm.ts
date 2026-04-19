@@ -31,6 +31,10 @@ interface PanesFSMOptions {
    *  important for the web client, where any client (or none) might be
    *  the one driving the close. */
   killTabPty?: (tabId: string) => void
+  /** Tear down a json-claude subprocess on tab close. Same authoritative-
+   *  on-main contract as killTabPty, but routes to JsonClaudeManager
+   *  instead of PtyManager. */
+  killJsonClaude?: (sessionId: string) => void
 }
 
 function newPaneId(): string {
@@ -219,6 +223,8 @@ export class PanesFSM {
     const closing = leaf.tabs.find((t) => t.id === tabId)
     if (closing && (closing.type === 'agent' || closing.type === 'shell')) {
       this.opts.killTabPty?.(tabId)
+    } else if (closing && closing.type === 'json-claude') {
+      this.opts.killJsonClaude?.(tabId)
     }
     const remaining = leaf.tabs.filter((t) => t.id !== tabId)
     if (remaining.length === 0) {
@@ -414,6 +420,8 @@ export class PanesFSM {
           for (const tab of leaf.tabs) {
             if (tab.type === 'agent' || tab.type === 'shell') {
               this.opts.killTabPty?.(tab.id)
+            } else if (tab.type === 'json-claude') {
+              this.opts.killJsonClaude?.(tab.id)
             }
           }
         }

@@ -74,7 +74,8 @@ export function buildInitialAppState(
       wsTransportPort: config.wsTransportPort ?? 37291,
       wsTransportHost: config.wsTransportHost ?? '127.0.0.1',
       browserToolsEnabled: config.browserToolsEnabled !== false,
-      browserToolsMode: config.browserToolsMode === 'view' ? 'view' : 'full'
+      browserToolsMode: config.browserToolsMode === 'view' ? 'view' : 'full',
+      jsonModeClaudeTabs: config.jsonModeClaudeTabs === true
     }
   }
 }

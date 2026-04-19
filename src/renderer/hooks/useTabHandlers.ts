@@ -74,9 +74,34 @@ export function useTabHandlers({
     [appendTabToPane]
   )
 
+  const handleAddJsonClaudeTab = useCallback(
+    (worktreePath: string, paneId?: string) => {
+      // JSON-mode Claude tabs use a UUID for both tab id and session id —
+      // the manager passes it to `claude --session-id` directly so the
+      // session jsonl reuses the same identifier and survives a reload.
+      const sessionId = crypto.randomUUID()
+      appendTabToPane(
+        worktreePath,
+        {
+          id: sessionId,
+          type: 'json-claude',
+          label: 'Claude (JSON)',
+          sessionId
+        },
+        paneId
+      )
+    },
+    [appendTabToPane]
+  )
+
   const handleCloseTab = useCallback(
     (worktreePath: string, tabId: string) => {
-      // Only kill PTY for terminal tabs, not diff/file/browser viewer tabs
+      // PanesFSM is the authoritative path for json-claude/agent/shell
+      // teardown — its closeTab kills the subprocess via killJsonClaude
+      // or killTabPty. The PTY-side notification here is purely an
+      // optimistic UX hint for xterm-hosted tabs (so the prompt grays out
+      // before the IPC round-trip lands), so we keep it for those and
+      // let main handle json-claude on its own.
       if (
         !tabId.startsWith('diff-') &&
         !tabId.startsWith('file-') &&
@@ -261,6 +286,7 @@ export function useTabHandlers({
     handleAddTerminalTab,
     handleAddAgentTab,
     handleAddBrowserTab,
+    handleAddJsonClaudeTab,
     handleCloseTab,
     handleRestartAgentTab,
     handleRestartAllAgentTabs,

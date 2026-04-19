@@ -14,7 +14,7 @@ export type AgentKind = 'claude' | 'codex'
 
 export interface TerminalTab {
   id: string
-  type: 'agent' | 'shell' | 'diff' | 'file' | 'browser'
+  type: 'agent' | 'shell' | 'diff' | 'file' | 'browser' | 'json-claude'
   label: string
   /** For agent tabs: which CLI agent this tab runs. */
   agentKind?: AgentKind

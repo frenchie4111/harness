@@ -231,6 +231,7 @@ export interface ElectronAPI {
   getLanAddresses(): Promise<Array<{ iface: string; address: string }>>
   setBrowserToolsEnabled(enabled: boolean): Promise<boolean>
   setBrowserToolsMode(mode: 'view' | 'full'): Promise<boolean>
+  setJsonModeClaudeTabs(enabled: boolean): Promise<boolean>
   setAutoUpdateEnabled(enabled: boolean): Promise<boolean>
   setShareClaudeSettings(enabled: boolean): Promise<boolean>
   setHarnessSystemPromptEnabled(enabled: boolean): Promise<boolean>
