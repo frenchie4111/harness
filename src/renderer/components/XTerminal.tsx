@@ -311,6 +311,12 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
         spawnPty()
         return
       }
+      // A non-empty history means main already has a live PTY for this id
+      // — the agent isn't "starting," we're attaching to a running one.
+      // Clear the loading overlay so the restored scrollback is visible
+      // without waiting for new bytes (which may never come if the agent
+      // is idle at its prompt).
+      setLoading(false)
       // Replay raw scrollback. Wait for xterm to finish parsing before
       // attaching onData, otherwise any response sequences xterm generates
       // mid-parse (e.g. focus reports from CSI ?1004h in the saved history)
