@@ -292,6 +292,16 @@ contextBridge.exposeInMainWorld('api', {
   killTerminal: (id: string) => {
     sig('pty:kill', id)
   },
+  // tmux-style session control — see src/shared/state/terminals.ts sessions map.
+  joinTerminal: (id: string) => {
+    sig('terminal:join', id)
+  },
+  leaveTerminal: (id: string) => {
+    sig('terminal:leave', id)
+  },
+  takeTerminalControl: (id: string, cols: number, rows: number) => {
+    sig('terminal:takeControl', id, cols, rows)
+  },
   onTerminalData: (callback: DataCallback) =>
     transport.onSignal('terminal:data', (id, data) => {
       callback(id as string, data as string)

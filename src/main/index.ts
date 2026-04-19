@@ -1757,24 +1757,96 @@ function registerIpcHandlers(): void {
     browserManager.hide(tabId)
   })
 
-  transport.onSignal('pty:create', (_ctx, id: string, cwd: string, cmd: string, args: string[], agentKind?: string, cols?: number, rows?: number) => {
-    const isAgent = !!agentKind
-    const extraEnv = agentKind === 'claude' ? config.claudeEnvVars
-      : agentKind === 'codex' ? config.codexEnvVars
-      : undefined
-    ptyManager.create(id, cwd, cmd, args, extraEnv, !isAgent, cols, rows)
-  })
+  // PTY signals are gated by the per-terminal controller in the sessions
+  // slice (see `src/shared/state/terminals.ts`). pty:write and pty:resize
+  // from a non-controller client are silently dropped — the renderer
+  // overlay blocks them locally, but main refuses them too so a stale
+  // client can never sneak bytes into the PTY. pty:create always sets
+  // the creator as controller; new clients joining an existing terminal
+  // come in as spectators via terminal:join.
+  transport.onSignal(
+    'pty:create',
+    (ctx, id: string, cwd: string, cmd: string, args: string[], agentKind?: string, cols?: number, rows?: number) => {
+      const isAgent = !!agentKind
+      const extraEnv = agentKind === 'claude' ? config.claudeEnvVars
+        : agentKind === 'codex' ? config.codexEnvVars
+        : undefined
+      const existed = ptyManager.hasTerminal(id)
+      ptyManager.create(id, cwd, cmd, args, extraEnv, !isAgent, cols, rows)
+      if (!existed) {
+        // Creator becomes controller immediately so their first keystroke
+        // — which is a fire-and-forget signal right behind pty:create —
+        // passes the gate. Awaitable ordering on pty:create isn't
+        // available (it's a signal, not a request); all writes in the
+        // current renderer flow arrive strictly after the signal handler
+        // returns, so the dispatch here lands first.
+        const applyCols = cols && cols > 0 ? cols : 120
+        const applyRows = rows && rows > 0 ? rows : 30
+        store.dispatch({
+          type: 'terminals/controlTaken',
+          payload: { terminalId: id, clientId: ctx.clientId, cols: applyCols, rows: applyRows }
+        })
+      } else {
+        // A second client attached to an already-running PTY. Record them
+        // as a spectator so the UI reflects the viewer count; taking
+        // control still requires an explicit click.
+        store.dispatch({
+          type: 'terminals/clientJoined',
+          payload: { terminalId: id, clientId: ctx.clientId }
+        })
+      }
+    }
+  )
 
-  transport.onSignal('pty:write', (_ctx, id: string, data: string) => {
+  transport.onSignal('pty:write', (ctx, id: string, data: string) => {
+    const session = store.getSnapshot().state.terminals.sessions[id]
+    if (!session) {
+      // No roster yet — accept (single-client boot path). The next
+      // pty:create / terminal:join will establish ownership.
+      ptyManager.write(id, data)
+      return
+    }
+    if (session.controllerClientId !== ctx.clientId) return
     ptyManager.write(id, data)
   })
 
-  transport.onSignal('pty:resize', (_ctx, id: string, cols: number, rows: number) => {
+  transport.onSignal('pty:resize', (ctx, id: string, cols: number, rows: number) => {
+    const session = store.getSnapshot().state.terminals.sessions[id]
+    if (session && session.controllerClientId !== ctx.clientId) return
     ptyManager.resize(id, cols, rows)
+    store.dispatch({
+      type: 'terminals/sizeChanged',
+      payload: { terminalId: id, cols, rows }
+    })
   })
 
   transport.onSignal('pty:kill', (_ctx, id: string) => {
     ptyManager.kill(id)
+  })
+
+  transport.onSignal('terminal:join', (ctx, id: string) => {
+    store.dispatch({
+      type: 'terminals/clientJoined',
+      payload: { terminalId: id, clientId: ctx.clientId }
+    })
+  })
+
+  transport.onSignal('terminal:leave', (ctx, id: string) => {
+    store.dispatch({
+      type: 'terminals/controlReleased',
+      payload: { terminalId: id, clientId: ctx.clientId }
+    })
+  })
+
+  transport.onSignal('terminal:takeControl', (ctx, id: string, cols: number, rows: number) => {
+    // Any client can claim control; the reducer demotes the previous
+    // controller (if any) to spectator. Physically resize the PTY so the
+    // new owner's viewport becomes authoritative.
+    store.dispatch({
+      type: 'terminals/controlTaken',
+      payload: { terminalId: id, clientId: ctx.clientId, cols, rows }
+    })
+    ptyManager.resize(id, cols, rows)
   })
 }
 
