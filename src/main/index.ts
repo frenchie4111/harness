@@ -135,7 +135,9 @@ const perfMonitor = new PerfMonitor()
 const electronTransport = new ElectronServerTransport(store, perfMonitor)
 const wsEnabled =
   config.wsTransportEnabled === true || process.env['HARNESS_WS_TRANSPORT'] === '1'
-const wsPort = config.wsTransportPort ?? 37291
+const envPort = Number.parseInt(process.env['HARNESS_WS_PORT'] ?? '', 10)
+const wsPort =
+  Number.isFinite(envPort) && envPort > 0 ? envPort : (config.wsTransportPort ?? 37291)
 const wsHost =
   process.env['HARNESS_WS_HOST'] || config.wsTransportHost || '127.0.0.1'
 
