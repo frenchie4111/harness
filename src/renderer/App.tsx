@@ -34,12 +34,30 @@ import { PerfMonitorHUD } from './components/PerfMonitorHUD'
 import { focusTerminalById } from './components/XTerminal'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { type GroupKey } from './worktree-sort'
+import { useViewport } from './hooks/useViewport'
+import { MobileApp } from './components/MobileApp'
 
 function isPendingId(id: string | null | undefined): id is string {
   return typeof id === 'string' && id.startsWith('pending:')
 }
 
+// Top-level dispatcher. The desktop tree is large and stateful — we keep
+// it isolated in `DesktopApp` so a viewport flip (mobile↔desktop) doesn't
+// change React's hook order on this outer component. Theme application
+// lives here (not inside DesktopApp) so the mobile branch honors the
+// user's theme choice too — the setting is shared state driven from
+// main, so we only need one subscriber.
 export default function App(): JSX.Element {
+  const { isMobile } = useViewport()
+  const theme = useSettings().theme
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+  }, [theme])
+  if (isMobile) return <MobileApp />
+  return <DesktopApp />
+}
+
+function DesktopApp(): JSX.Element {
   // Worktree list, repoRoots, and pending-creation FSM all live in the
   // main-process store. activeWorktreeId stays local — it's per-client view
   // focus that eventually becomes per-window.
