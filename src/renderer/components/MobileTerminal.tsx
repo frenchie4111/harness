@@ -142,6 +142,31 @@ export function MobileTerminal({ worktreePath, tab }: MobileTerminalProps): JSX.
   const handleInputFocus = useCallback(() => setKeyboardOpen(true), [])
   const handleInputBlur = useCallback(() => setKeyboardOpen(false), [])
 
+  // While the textarea has focus, pin the document height to the
+  // visualViewport so the toolbar rides above the keyboard. On blur,
+  // clear the var — MobileApp's root falls back to 100dvh and the
+  // layout fills the entire visible viewport (no void below the
+  // toolbar). We also re-read on vv resize because iOS reports the
+  // keyboard height a beat after it finishes animating in.
+  useEffect(() => {
+    if (!keyboardOpen) {
+      document.documentElement.style.removeProperty('--viewport-h')
+      return
+    }
+    const vv = window.visualViewport
+    if (!vv) return
+    const apply = (): void => {
+      document.documentElement.style.setProperty('--viewport-h', `${vv.height}px`)
+    }
+    apply()
+    vv.addEventListener('resize', apply)
+    vv.addEventListener('scroll', apply)
+    return () => {
+      vv.removeEventListener('resize', apply)
+      vv.removeEventListener('scroll', apply)
+    }
+  }, [keyboardOpen])
+
   const focusInput = useCallback(() => {
     inputRef.current?.focus({ preventScroll: true })
   }, [])

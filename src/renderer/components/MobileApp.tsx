@@ -5,7 +5,6 @@ import { groupWorktrees, type WorktreeGroup } from '../worktree-sort'
 import { getLeaves } from '../../shared/state/terminals'
 import type { PtyStatus, TerminalTab, Worktree, PRStatus } from '../types'
 import { MobileTerminal } from './MobileTerminal'
-import { useViewport } from '../hooks/useViewport'
 import { AgentIcon } from './AgentIcon'
 
 type RunnableTab = TerminalTab & { type: 'agent' | 'shell' }
@@ -41,8 +40,6 @@ export function MobileApp(): JSX.Element {
   const panes = usePanes()
   const terminals = useTerminals()
   const prs = usePrs()
-  const { viewportHeight } = useViewport()
-
   const worktrees = wtState.list
   const [activeWorktreeId, setActiveWorktreeId] = useState<string | null>(
     () => worktrees[0]?.path ?? null
@@ -52,14 +49,6 @@ export function MobileApp(): JSX.Element {
   // yank another client's split pane around.
   const [selectedTabByWorktree, setSelectedTabByWorktree] = useState<Record<string, string>>({})
   const [pickerOpen, setPickerOpen] = useState(false)
-
-  // Apply visualViewport height to the root so the layout stays above
-  // the on-screen keyboard when it opens.
-  useEffect(() => {
-    if (viewportHeight > 0) {
-      document.documentElement.style.setProperty('--viewport-h', `${viewportHeight}px`)
-    }
-  }, [viewportHeight])
 
   useEffect(() => {
     if (!activeWorktreeId) return
@@ -120,7 +109,13 @@ export function MobileApp(): JSX.Element {
     <div
       className="flex flex-col bg-app text-fg overflow-hidden"
       style={{
-        height: 'var(--viewport-h, 100vh)',
+        // 100dvh = dynamic viewport height, tracks the URL bar without
+        // JS. --viewport-h is only set by MobileTerminal while the
+        // textarea has focus (i.e. keyboard is up); it shrinks the
+        // layout to the visualViewport so the toolbar stays above the
+        // keyboard. At rest the var is absent and we get full dvh,
+        // eliminating the black void below the toolbar.
+        height: 'var(--viewport-h, 100dvh)',
         paddingTop: 'env(safe-area-inset-top, 0px)'
       }}
     >
