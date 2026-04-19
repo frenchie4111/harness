@@ -8,20 +8,19 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin({ exclude: [] })],
     build: {
       rollupOptions: {
-        // index.ts loads desktop-shell via runtime require() under
-        // `if (runtime === 'electron')` so the headless build doesn't
-        // pull electron in. The bundler can't see that require, so the
-        // shell needs an explicit entry to land in out/main next to
-        // index.js where the require can find it at runtime.
+        // Emit a second main-process entry for the permission-prompt MCP
+        // server so it lands at out/main/permission-prompt-mcp.js and can
+        // be spawned via ELECTRON_RUN_AS_NODE=1 by JsonClaudeManager.
         input: {
           index: resolve(__dirname, 'src/main/index.ts'),
-          'desktop-shell': resolve(__dirname, 'src/main/desktop-shell.ts')
+          'permission-prompt-mcp': resolve(
+            __dirname,
+            'src/main/permission-prompt-mcp/index.ts'
+          )
         },
         external: ['electron', 'node-pty'],
         output: {
           format: 'cjs',
-          // Stable output filenames so `require('./desktop-shell')`
-          // resolves the way it would after a fresh `npm run build`.
           entryFileNames: '[name].js'
         }
       }
