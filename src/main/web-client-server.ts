@@ -37,7 +37,8 @@ const MIME: Record<string, string> = {
   '.woff2': 'font/woff2',
   '.ttf': 'font/ttf',
   '.ico': 'image/x-icon',
-  '.map': 'application/json'
+  '.map': 'application/json',
+  '.webmanifest': 'application/manifest+json'
 }
 
 export interface WebClientServerOptions {
