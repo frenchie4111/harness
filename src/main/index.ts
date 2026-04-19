@@ -1053,6 +1053,35 @@ function registerIpcHandlers(): void {
     return true
   })
 
+  transport.onRequest('config:setBrowserToolsEnabled', (enabled: boolean) => {
+    if (enabled) {
+      delete config.browserToolsEnabled
+    } else {
+      config.browserToolsEnabled = false
+    }
+    saveConfig(config)
+    store.dispatch({
+      type: 'settings/browserToolsEnabledChanged',
+      payload: config.browserToolsEnabled !== false
+    })
+    return true
+  })
+
+  transport.onRequest('config:setBrowserToolsMode', (mode: 'view' | 'full') => {
+    const next = mode === 'view' ? 'view' : 'full'
+    if (next === 'full') {
+      delete config.browserToolsMode
+    } else {
+      config.browserToolsMode = next
+    }
+    saveConfig(config)
+    store.dispatch({
+      type: 'settings/browserToolsModeChanged',
+      payload: next
+    })
+    return true
+  })
+
   transport.onRequest('config:setNameClaudeSessions', (enabled: boolean) => {
     if (enabled) {
       config.nameClaudeSessions = true
@@ -1878,6 +1907,10 @@ app.whenReady().then(() => {
     getRepoRoots: () => config.repoRoots,
     getWorktreeBase: () => config.worktreeBase || DEFAULT_WORKTREE_BASE,
     resolveCallerScope,
+    getBrowserPerms: () => ({
+      enabled: config.browserToolsEnabled !== false,
+      mode: config.browserToolsMode === 'view' ? 'view' : 'full'
+    }),
     browser: {
       listTabsForWorktree: (wtPath) => {
         const ids = browserManager.listTabsForWorktree(wtPath)
@@ -1893,6 +1926,7 @@ app.whenReady().then(() => {
       getTabConsoleLogs: (tabId) => browserManager.getConsoleLogs(tabId),
       screenshotTab: (tabId) => browserManager.capturePage(tabId),
       getTabDom: (tabId) => browserManager.getDom(tabId),
+      getTabClickables: (tabId) => browserManager.getClickables(tabId),
       navigateTab: (tabId, url) => browserManager.navigate(tabId, url),
       backTab: (tabId) => browserManager.back(tabId),
       forwardTab: (tabId) => browserManager.forward(tabId),
@@ -1907,7 +1941,11 @@ app.whenReady().then(() => {
           url: finalUrl
         })
         return { id, url: finalUrl }
-      }
+      },
+      clickTab: (tabId, x, y, options) => browserManager.clickTab(tabId, x, y, options),
+      typeTab: (tabId, text, key) => browserManager.typeTab(tabId, text, key),
+      scrollTab: (tabId, dx, dy) => browserManager.scrollTab(tabId, dx, dy),
+      showCursor: (tabId, x, y) => browserManager.showCursor(tabId, x, y)
     },
     shell: {
       listShellsForWorktree: (wtPath) => {
