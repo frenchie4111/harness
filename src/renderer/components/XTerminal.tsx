@@ -3,7 +3,6 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import type { StateEvent } from '../../shared/state'
-import { isWebClient } from '../web-mode'
 
 function ClaudeLoader() {
   return (
@@ -359,27 +358,19 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
 
     return () => {
       disposed = true
-      // Scrollback is owned by main (PtyManager); nothing to flush here.
-      // Tab close routes through markTerminalClosing → terminal:forgetHistory
-      // before unmount to drop the main-side buffer + file.
+      // PTY lifetime is owned by main now: panes:closeTab,
+      // panes:restartAgentTab, and panes:clearForWorktree call
+      // ptyManager.kill on the way out. We don't kill from XTerminal
+      // unmount because unmount can fire for reasons unrelated to the
+      // user wanting the agent dead — a web client closing a browser
+      // tab, a renderer reload, etc. — and any one of those used to
+      // take Claude down for every connected client.
       terminalRegistry.delete(terminalId)
       fitRegistry.delete(terminalId)
       resizeObserver.disconnect()
       cleanupData?.()
       cleanupExit?.()
       terminal.dispose()
-      // In Electron, unmount only fires on tab close or app shutdown, so
-      // killing the PTY here is the right cleanup. In the web client,
-      // unmount also fires when the user closes the browser tab — and
-      // we don't want a casual disconnect to kill Claude for the
-      // desktop window (or any other connected client). Skip the kill
-      // and accept that closing a tab from a web client leaks the PTY
-      // until the next desktop session does explicit cleanup; that's a
-      // strictly safer trade-off than killing live agents on every
-      // browser-tab close.
-      if (!isWebClient()) {
-        window.api.killTerminal(terminalId)
-      }
     }
   }, [terminalId, cwd, type])
 

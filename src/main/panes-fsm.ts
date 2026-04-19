@@ -24,6 +24,13 @@ interface PanesFSMOptions {
   getRepoRootForWorktree: (worktreePath: string) => string | undefined
   getLatestClaudeSessionId: (worktreePath: string) => Promise<string | null>
   getDefaultAgentKind?: () => AgentKind
+  /** Tear down the PTY backing a closed tab. Called for agent + shell
+   *  tabs when they're removed from the tree (closeTab, restartAgentTab,
+   *  clearForWorktree). Authoritative on the main side so PTY lifetime
+   *  no longer depends on a renderer being mounted to issue the kill —
+   *  important for the web client, where any client (or none) might be
+   *  the one driving the close. */
+  killTabPty?: (tabId: string) => void
 }
 
 function newPaneId(): string {
@@ -209,6 +216,10 @@ export class PanesFSM {
     if (!tree) return
     const leaf = findLeafByTabId(tree, tabId)
     if (!leaf) return
+    const closing = leaf.tabs.find((t) => t.id === tabId)
+    if (closing && (closing.type === 'agent' || closing.type === 'shell')) {
+      this.opts.killTabPty?.(tabId)
+    }
     const remaining = leaf.tabs.filter((t) => t.id !== tabId)
     if (remaining.length === 0) {
       const collapsed = removeLeaf(tree, leaf.id)
@@ -236,6 +247,9 @@ export class PanesFSM {
   restartAgentTab(wtPath: string, tabId: string, newId: string): void {
     const tree = this.getTree(wtPath)
     if (!tree) return
+    // Tear down the old PTY before swapping the id — once we commit the
+    // new id, no client has a way to refer to the old PTY anymore.
+    this.opts.killTabPty?.(tabId)
     const updated = mapLeaves(tree, (leaf) => {
       if (!leaf.tabs.some((t) => t.id === tabId)) return leaf
       const tabs = leaf.tabs.map((t) =>
@@ -390,6 +404,20 @@ export class PanesFSM {
     const inSleeping = this.sleepingPanes.delete(wtPath)
     if (!inLive && !inSleeping) return
     if (inLive) {
+      // Kill PTYs for every agent + shell tab under this worktree
+      // before dispatching the clear, so any clients listening for
+      // terminal:exit get the signal in the same window as the tree
+      // update instead of leaking PTYs.
+      const tree = this.getTree(wtPath)
+      if (tree) {
+        for (const leaf of getLeaves(tree)) {
+          for (const tab of leaf.tabs) {
+            if (tab.type === 'agent' || tab.type === 'shell') {
+              this.opts.killTabPty?.(tab.id)
+            }
+          }
+        }
+      }
       this.store.dispatch({
         type: 'terminals/panesForWorktreeCleared',
         payload: wtPath

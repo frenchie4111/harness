@@ -406,7 +406,13 @@ const panesFSM = new PanesFSM(store, {
     const kind = store.getSnapshot().state.settings.defaultAgent ?? 'claude'
     return getAgent(kind).latestSessionId(wtPath)
   },
-  getDefaultAgentKind: () => toAgentKind(store.getSnapshot().state.settings.defaultAgent)
+  getDefaultAgentKind: () => toAgentKind(store.getSnapshot().state.settings.defaultAgent),
+  // Authoritative PTY teardown when tabs leave the tree. The renderer
+  // no longer kills PTYs from XTerminal unmount cleanups (that was the
+  // only path before, and it broke the moment we had clients that
+  // could disconnect without intending to kill agents). Tab-close /
+  // restart / clear events are the actual lifecycle boundary.
+  killTabPty: (tabId) => ptyManager.kill(tabId)
 })
 
 const worktreesFSM = new WorktreesFSM(store, {
