@@ -212,7 +212,13 @@ export function MobileTerminal({ worktreePath, tab }: MobileTerminalProps): JSX.
 
       <div
         className="shrink-0 border-t border-border bg-panel-raised"
-        style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+        style={{
+          // Honor the iPhone home-indicator inset when the keyboard is
+          // down, but drop it when the keyboard is up — iOS anchors the
+          // keyboard flush to the visualViewport bottom, so that inset
+          // becomes dead space between the toolbar and the keys.
+          paddingBottom: keyboardOpen ? 0 : 'env(safe-area-inset-bottom, 0px)'
+        }}
       >
         <div className="flex items-center gap-1 px-2 py-1 border-b border-border/60 overflow-x-auto scrollbar-hidden">
           {quickActions.map((q) => (
