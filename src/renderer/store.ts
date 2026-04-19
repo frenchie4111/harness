@@ -37,9 +37,24 @@ function subscribe(cb: () => void): () => void {
   }
 }
 
+// Server-assigned identity for this renderer. Hydrated once at boot so
+// synchronous reads (e.g. in useMemo selectors that compare
+// controllerClientId to "me") don't need to await an RPC. Stays constant
+// for the life of the window — if the transport reconnects under us, a
+// full reload is required and this is re-requested at the top of init.
+let clientId: string | null = null
+
+export function getClientId(): string | null {
+  return clientId
+}
+
 export async function initStore(): Promise<void> {
-  const snapshot = await window.api.getStateSnapshot()
+  const [snapshot, id] = await Promise.all([
+    window.api.getStateSnapshot(),
+    window.api.getClientId()
+  ])
   state = snapshot.state
+  clientId = id
   window.api.onStateEvent((event, _seq) => {
     state = rootReducer(state, event)
     notify()
@@ -105,6 +120,14 @@ export function useCosts() {
 
 export function useBrowser() {
   return useAppState((s) => s.browser)
+}
+
+/** Session roster (controller + spectators) for a given terminal id.
+ *  Re-renders only when that terminal's entry changes. Returns null if
+ *  the terminal hasn't been joined yet (e.g. right after pane create
+ *  but before the XTerminal mount dispatches terminal:join). */
+export function useTerminalSession(terminalId: string) {
+  return useAppState((s) => s.terminals.sessions[terminalId] ?? null)
 }
 
 export type { AppState, StateEvent }
