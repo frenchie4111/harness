@@ -11,7 +11,10 @@
     <meta name="apple-mobile-web-app-title" content="Harness" />
     <meta name="mobile-web-app-capable" content="yes" />
     <link rel="icon" type="image/png" href="./icon.png" />
-    <link rel="apple-touch-icon" href="./icon.png" />
+    <!-- iOS ignores transparency and fills it with white, so apple-touch-icon
+         needs an opaque variant. iOS applies its own rounded-square mask on
+         top of whatever we provide. -->
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
     <link rel="manifest" href="./manifest.webmanifest" />
     <title>Harness (Web)</title>
   </head>
