@@ -68,6 +68,8 @@ export function buildInitialAppState(
       harnessSystemPrompt: config.harnessSystemPrompt || DEFAULT_HARNESS_SYSTEM_PROMPT,
       harnessSystemPromptMain: config.harnessSystemPromptMain || DEFAULT_HARNESS_SYSTEM_PROMPT_MAIN,
       claudeTuiFullscreen: config.claudeTuiFullscreen !== false,
+      wsTransportEnabled: config.wsTransportEnabled === true,
+      wsTransportPort: config.wsTransportPort ?? 37291,
       browserToolsEnabled: config.browserToolsEnabled !== false,
       browserToolsMode: config.browserToolsMode === 'view' ? 'view' : 'full'
     }

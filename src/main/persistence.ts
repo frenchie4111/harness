@@ -118,6 +118,10 @@ export interface Config {
   // When false, Claude sessions spawn without CLAUDE_CODE_NO_FLICKER=1, so they
   // use the inline (non-fullscreen) TUI mode. Default is enabled (undefined/true).
   claudeTuiFullscreen?: boolean
+  // Experimental: when true, main also serves state + RPC + signals over a
+  // WebSocket bound to 127.0.0.1:<wsTransportPort>. Off by default.
+  wsTransportEnabled?: boolean
+  wsTransportPort?: number
   // When false, the harness-control browser_* MCP tools are not advertised to
   // agents and the corresponding /browser/* control endpoints reject calls.
   // Default is enabled (undefined/true).

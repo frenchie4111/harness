@@ -37,6 +37,8 @@ export interface SettingsState {
   harnessSystemPrompt: string
   harnessSystemPromptMain: string
   claudeTuiFullscreen: boolean
+  wsTransportEnabled: boolean
+  wsTransportPort: number
   browserToolsEnabled: boolean
   browserToolsMode: BrowserToolsMode
 }
@@ -68,6 +70,8 @@ export type SettingsEvent =
   | { type: 'settings/harnessSystemPromptChanged'; payload: string }
   | { type: 'settings/harnessSystemPromptMainChanged'; payload: string }
   | { type: 'settings/claudeTuiFullscreenChanged'; payload: boolean }
+  | { type: 'settings/wsTransportEnabledChanged'; payload: boolean }
+  | { type: 'settings/wsTransportPortChanged'; payload: number }
   | { type: 'settings/browserToolsEnabledChanged'; payload: boolean }
   | { type: 'settings/browserToolsModeChanged'; payload: BrowserToolsMode }
 
@@ -100,6 +104,8 @@ export const initialSettings: SettingsState = {
   harnessSystemPrompt: '',
   harnessSystemPromptMain: '',
   claudeTuiFullscreen: true,
+  wsTransportEnabled: false,
+  wsTransportPort: 37291,
   browserToolsEnabled: true,
   browserToolsMode: 'full'
 }
@@ -158,6 +164,10 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, harnessSystemPromptMain: event.payload }
     case 'settings/claudeTuiFullscreenChanged':
       return { ...state, claudeTuiFullscreen: event.payload }
+    case 'settings/wsTransportEnabledChanged':
+      return { ...state, wsTransportEnabled: event.payload }
+    case 'settings/wsTransportPortChanged':
+      return { ...state, wsTransportPort: event.payload }
     case 'settings/browserToolsEnabledChanged':
       return { ...state, browserToolsEnabled: event.payload }
     case 'settings/browserToolsModeChanged':

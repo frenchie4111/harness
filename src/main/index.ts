@@ -7,6 +7,8 @@ import { PtyManager } from './pty-manager'
 import { BrowserManager } from './browser-manager'
 import { Store } from './store'
 import { ElectronServerTransport } from './transport-electron'
+import { WebSocketServerTransport } from './transport-websocket'
+import { CompoundServerTransport } from './transport-compound'
 import { PerfMonitor } from './perf-monitor'
 import { PRPoller } from './pr-poller'
 import { WorktreesFSM } from './worktrees-fsm'
@@ -113,8 +115,36 @@ let stopWatchingStatus: (() => void) | null = null
 
 const store = new Store(buildInitialAppState(config, { hasGithubToken: hasSecret('githubToken') }))
 const perfMonitor = new PerfMonitor()
-const transport = new ElectronServerTransport(store, perfMonitor)
+
+// The compound transport lets Electron IPC and the optional WS server run
+// side-by-side off a single registration path — every `transport.onRequest`
+// / `sendSignal` call below registers on both. The WS transport subscribes
+// to the store independently of the Electron one, so each fans out only to
+// its own client set without duplication.
+//
+// Enable via wsTransportEnabled in config.json, or by setting the
+// HARNESS_WS_TRANSPORT=1 env var in dev (useful for a quick smoke test
+// without editing settings).
+const electronTransport = new ElectronServerTransport(store, perfMonitor)
+const wsEnabled =
+  config.wsTransportEnabled === true || process.env['HARNESS_WS_TRANSPORT'] === '1'
+const wsPort = config.wsTransportPort ?? 37291
+const wsTransport = wsEnabled
+  ? new WebSocketServerTransport(store, { port: wsPort }, perfMonitor)
+  : null
+const transport: CompoundServerTransport = new CompoundServerTransport(
+  wsTransport ? [electronTransport, wsTransport] : [electronTransport]
+)
 transport.start()
+if (wsTransport) {
+  // Log to stdout so the user can paste the token into a browser client
+  // without digging through the debug log. TODO(production): expose
+  // through a Settings UI screen with a copy button + regenerate action.
+  // eslint-disable-next-line no-console
+  console.log(
+    `[ws-transport] enabled on ws://127.0.0.1:${wsTransport.getPort()}?token=${wsTransport.getToken()}`
+  )
+}
 
 // Tails Claude Code session jsonl transcripts on Stop hook events,
 // sums per-model usage, and dispatches costs/usageUpdated. See
@@ -1037,6 +1067,40 @@ function registerIpcHandlers(): void {
     if (config.harnessMcpEnabled === false) return null
     if (!terminalId) return null
     return writeMcpConfigForTerminal(terminalId, resolveCallerScope(terminalId))
+  })
+
+  transport.onRequest('config:setWsTransportEnabled', (enabled: boolean) => {
+    if (enabled) {
+      config.wsTransportEnabled = true
+    } else {
+      delete config.wsTransportEnabled
+    }
+    saveConfig(config)
+    store.dispatch({ type: 'settings/wsTransportEnabledChanged', payload: enabled })
+    // The WS server itself doesn't hot-toggle — the setting takes effect on
+    // next app launch. Keeping the toggle state-only for v1 avoids having
+    // to handle port conflicts, mid-session reconnects, etc.
+    return true
+  })
+
+  transport.onRequest('config:setWsTransportPort', (port: number) => {
+    const clamped = Math.max(1024, Math.min(65535, Math.floor(port)))
+    if (clamped === 37291) {
+      delete config.wsTransportPort
+    } else {
+      config.wsTransportPort = clamped
+    }
+    saveConfig(config)
+    store.dispatch({ type: 'settings/wsTransportPortChanged', payload: clamped })
+    return clamped
+  })
+
+  transport.onRequest('config:getWsTransportInfo', () => {
+    // Exposes the live token + port for clients (or a future UI) that need
+    // to know the connect URL. Returns null when the WS transport is not
+    // running, to distinguish "off" from "on but unknown".
+    if (!wsTransport) return null
+    return { port: wsTransport.getPort(), token: wsTransport.getToken() }
   })
 
   transport.onRequest('config:setClaudeTuiFullscreen', (enabled: boolean) => {
