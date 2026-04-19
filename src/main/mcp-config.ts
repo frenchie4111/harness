@@ -1,18 +1,18 @@
-import { app } from 'electron'
 import { mkdirSync, writeFileSync, existsSync, readdirSync, unlinkSync } from 'fs'
 import { join } from 'path'
 import { getControlServerInfo } from './control-server'
 import type { CallerScope } from './control-server'
+import { isPackaged, userDataDir } from './paths'
 import { log } from './debug'
 
 function getConfigDir(): string {
-  const dir = join(app.getPath('userData'), 'mcp-configs')
+  const dir = join(userDataDir(), 'mcp-configs')
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
   return dir
 }
 
 export function getBridgeScriptPath(): string {
-  if (app.isPackaged) {
+  if (isPackaged()) {
     return join(process.resourcesPath, 'mcp-bridge.js')
   }
   return join(__dirname, '../../resources/mcp-bridge.js')
