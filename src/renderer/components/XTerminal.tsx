@@ -297,6 +297,29 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
         window.api.writeTerminal(terminalId, data)
       })
 
+      // Paint the main-side rolling tail — what this PTY has emitted since it
+      // spawned — before subscribing to live bytes. For a fresh spawn the tail
+      // is empty, so this is a no-op. For a late joiner — a second Electron
+      // window, a web client on the WS transport, an existing client after a
+      // reconnect — createTerminal no-ops on an already-running id and this
+      // call is what gives them a non-blank screen on attach. It also covers
+      // the microscopic gap between the PTY starting to emit and our
+      // onTerminalData subscribe below.
+      //
+      // Known dupe risk: tail and the serialized history written above share
+      // the same onData stream, so on reattach the tail may re-paint lines
+      // history already covered. In the "clean attach" path (no prior history
+      // / fresh PTY) this is empty and harmless. Deferring proper byte-offset
+      // dedup — a few duplicated lines on session restore beats a blank
+      // screen.
+      try {
+        const tailResp = await window.api.getTerminalTail(terminalId)
+        if (disposed) return
+        if (tailResp.bytes) terminal.write(tailResp.bytes)
+      } catch {
+        // Treat tail fetch failures as empty — live stream still works.
+      }
+
       cleanupData = window.api.onTerminalData((id, data) => {
         if (id === terminalId) {
           terminal.write(data)
