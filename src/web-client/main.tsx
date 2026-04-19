@@ -13,15 +13,17 @@
 // copying the file's structure is intentional: the contract lives in
 // channel names, not in a shared TS interface, so reading the two
 // side-by-side is the easiest way to verify completeness.
+//
+// IMPORTANT: the renderer modules (App, store, XTerminal, …) are loaded
+// via dynamic import AFTER `window.api` is assigned. XTerminal seeds a
+// module-level font cache by calling `window.api.getStateSnapshot()` at
+// module-eval time — in Electron the preload runs first and that call
+// just works, but in the browser we have to await the WS handshake +
+// install the api shim before anything else evaluates, otherwise the
+// import chain throws synchronously.
 
 import '../renderer/styles.css'
-import { Profiler, type ProfilerOnRenderCallback } from 'react'
-import { createRoot } from 'react-dom/client'
-import App from '../renderer/App'
-import { initStore } from '../renderer/store'
-import { defineHarnessTheme } from '../renderer/monaco-setup'
-import { renderMetrics } from '../renderer/render-metrics'
-import { ErrorBoundary } from '../renderer/components/ErrorBoundary'
+import type { ProfilerOnRenderCallback } from 'react'
 import { WebSocketClientTransport } from '../renderer/transport-websocket'
 import type { ElectronAPI } from '../renderer/types'
 
@@ -32,10 +34,6 @@ declare global {
      *  Electron-only affordances. */
     __HARNESS_WEB__?: boolean
   }
-}
-
-const onRender: ProfilerOnRenderCallback = (_id, _phase, actualDuration) => {
-  renderMetrics.record(actualDuration)
 }
 
 function readToken(): string | null {
@@ -422,22 +420,56 @@ async function boot(): Promise<void> {
   const wsUrl = `${wsProto}//${window.location.host}/`
 
   const transport = new WebSocketClientTransport({ url: wsUrl, token })
-  // Connect up front so the first getStateSnapshot() inside initStore()
-  // doesn't race the open handshake.
+  // Connect up front so the first getStateSnapshot() call inside the
+  // dynamically imported renderer modules doesn't race the open
+  // handshake.
   await transport.connect()
 
   window.__HARNESS_WEB__ = true
   window.api = buildApi(transport)
 
-  await initStore()
-  defineHarnessTheme()
-  createRoot(document.getElementById('root')!).render(
-    <ErrorBoundary label="app:root" showReload>
-      <Profiler id="app" onRender={onRender}>
-        <App />
-      </Profiler>
-    </ErrorBoundary>
-  )
+  // Dynamic-import everything that touches `window.api`. XTerminal seeds
+  // a module-scope font cache by calling `window.api.getStateSnapshot()`
+  // at the top level of the file, which would crash a static import
+  // before we've set the shim. The trade-off: a slightly later first
+  // paint (one extra round-trip to load the chunk), in exchange for not
+  // needing a placeholder window.api or a bespoke import order.
+  const [react, reactDom, appMod, storeMod, monacoMod, metricsMod, errorBoundaryMod] =
+    await Promise.all([
+      import('react'),
+      import('react-dom/client'),
+      import('../renderer/App'),
+      import('../renderer/store'),
+      import('../renderer/monaco-setup'),
+      import('../renderer/render-metrics'),
+      import('../renderer/components/ErrorBoundary')
+    ])
+
+  await storeMod.initStore()
+  monacoMod.defineHarnessTheme()
+
+  const onRender: ProfilerOnRenderCallback = (_id, _phase, actualDuration) => {
+    metricsMod.renderMetrics.record(actualDuration)
+  }
+
+  const App = appMod.default
+  const ErrorBoundary = errorBoundaryMod.ErrorBoundary
+
+  reactDom
+    .createRoot(document.getElementById('root')!)
+    .render(
+      <ErrorBoundary label="app:root" showReload>
+        <react.Profiler id="app" onRender={onRender}>
+          <App />
+        </react.Profiler>
+      </ErrorBoundary>
+    )
 }
 
-void boot()
+void boot().catch((err) => {
+  // eslint-disable-next-line no-console
+  console.error('[harness-web] boot failed', err)
+  document.body.innerHTML =
+    '<pre style="padding:24px;color:#fff;background:#400;font-family:monospace;">' +
+    `Harness web client failed to boot: ${String(err?.message ?? err)}</pre>`
+})
