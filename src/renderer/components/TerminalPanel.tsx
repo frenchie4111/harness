@@ -236,20 +236,19 @@ export function TerminalPanel({
           <Tooltip
             label={
               `New ${agentDisplayName(defaultAgent)} tab` +
-              (onAddJsonClaudeTab
-                ? ' · ⌥-click for Claude (JSON, experimental)'
-                : AGENT_REGISTRY.length > 1
-                  ? ` · ⌥-click for ${agentDisplayName(AGENT_REGISTRY.find((a) => a.kind !== defaultAgent)?.kind)}`
-                  : '')
+              (AGENT_REGISTRY.length > 1
+                ? ` · ⌥-click for ${agentDisplayName(AGENT_REGISTRY.find((a) => a.kind !== defaultAgent)?.kind)}`
+                : '') +
+              (onAddJsonClaudeTab ? ' · ⇧-click for Claude (JSON, experimental)' : '')
             }
           >
             <button
               onClick={(e) => {
-                // Alt-click priority: when the json-claude flag is on, alt
-                // opens a json-claude tab. Otherwise, fall back to opening
-                // the other registered agent (Codex when default is Claude
-                // and vice versa).
-                if (e.altKey && onAddJsonClaudeTab) {
+                // Modifier precedence: shift opens the experimental
+                // json-claude tab (when its feature flag is on); alt
+                // opens the *other* registered agent (Codex when default
+                // is Claude, vice versa). Plain click opens the default.
+                if (e.shiftKey && onAddJsonClaudeTab) {
                   onAddJsonClaudeTab()
                 } else if (e.altKey && AGENT_REGISTRY.length > 1) {
                   const other = AGENT_REGISTRY.find((a) => a.kind !== defaultAgent)
