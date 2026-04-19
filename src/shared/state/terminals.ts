@@ -139,6 +139,25 @@ export function removeLeaf(root: PaneNode, leafId: string): PaneNode | null {
 // State
 // ---------------------------------------------------------------------------
 
+/** Tmux-style session state for a single xterm-backed terminal: exactly
+ *  one client (if any) holds control — their viewport sizes the PTY and
+ *  their keystrokes are forwarded — while everyone else watches the same
+ *  rendered byte stream as spectators. JSON-mode agent tabs re-render
+ *  per client and don't need this; they're intentionally not tracked. */
+export interface TerminalSession {
+  /** Server-assigned clientId of the current controller, or null if the
+   *  controller disconnected and nobody has clicked "take control" yet. */
+  controllerClientId: string | null
+  /** ClientIds currently watching this terminal read-only. Order is the
+   *  order they joined; the UI uses it as a stable sort for the chip. */
+  spectatorClientIds: string[]
+  /** Last-applied grid dimensions, set whenever the current controller
+   *  issues a resize (either via pty:resize or terminal:takeControl).
+   *  Null until the first resize — new joiners see the PTY's spawn-time
+   *  dimensions until somebody takes control and sets real dims. */
+  size: { cols: number; rows: number } | null
+}
+
 export interface TerminalsState {
   /** PTY status per terminal id. */
   statuses: Record<string, PtyStatus>
@@ -153,6 +172,11 @@ export interface TerminalsState {
    * the sidebar for recency sort. Updated by the activity-deriver in main
    * whenever a contained terminal changes status. */
   lastActive: Record<string, number>
+  /** Controller + spectator roster per xterm-backed terminal id. Entries
+   *  are created lazily on the first join (or on pty:create) and deleted
+   *  when the last client leaves. See the `controlTaken` reducer cases
+   *  for the exact transitions. */
+  sessions: Record<string, TerminalSession>
 }
 
 export type TerminalsEvent =
@@ -189,13 +213,34 @@ export type TerminalsEvent =
       type: 'terminals/sessionIdDiscovered'
       payload: { terminalId: string; sessionId: string }
     }
+  | {
+      type: 'terminals/controlTaken'
+      payload: { terminalId: string; clientId: string; cols: number; rows: number }
+    }
+  | {
+      type: 'terminals/controlReleased'
+      payload: { terminalId: string; clientId: string }
+    }
+  | {
+      type: 'terminals/clientJoined'
+      payload: { terminalId: string; clientId: string }
+    }
+  | {
+      type: 'terminals/clientDisconnected'
+      payload: { clientId: string }
+    }
+  | {
+      type: 'terminals/sizeChanged'
+      payload: { terminalId: string; cols: number; rows: number }
+    }
 
 export const initialTerminals: TerminalsState = {
   statuses: {},
   pendingTools: {},
   shellActivity: {},
   panes: {},
-  lastActive: {}
+  lastActive: {},
+  sessions: {}
 }
 
 export function terminalsReducer(
@@ -229,21 +274,25 @@ export function terminalsReducer(
       if (
         !(id in state.statuses) &&
         !(id in state.pendingTools) &&
-        !(id in state.shellActivity)
+        !(id in state.shellActivity) &&
+        !(id in state.sessions)
       ) {
         return state
       }
       const { [id]: _s, ...restStatuses } = state.statuses
       const { [id]: _p, ...restPending } = state.pendingTools
       const { [id]: _a, ...restActivity } = state.shellActivity
+      const { [id]: _session, ...restSessions } = state.sessions
       void _s
       void _p
       void _a
+      void _session
       return {
         ...state,
         statuses: restStatuses,
         pendingTools: restPending,
-        shellActivity: restActivity
+        shellActivity: restActivity,
+        sessions: restSessions
       }
     }
     case 'terminals/panesReplaced': {
@@ -296,6 +345,155 @@ export function terminalsReducer(
         })
       }
       return changed ? { ...state, panes: nextPanes } : state
+    }
+    case 'terminals/controlTaken': {
+      const { terminalId, clientId, cols, rows } = event.payload
+      const existing = state.sessions[terminalId]
+      // When a new client takes control the previous controller (if any)
+      // demotes to spectator. If they were already in the spectator list
+      // we keep their position; otherwise append.
+      const prevController = existing?.controllerClientId
+      const prevSpectators = existing?.spectatorClientIds ?? []
+      const nextSpectators = prevSpectators.filter((id) => id !== clientId)
+      if (prevController && prevController !== clientId && !nextSpectators.includes(prevController)) {
+        nextSpectators.push(prevController)
+      }
+      return {
+        ...state,
+        sessions: {
+          ...state.sessions,
+          [terminalId]: {
+            controllerClientId: clientId,
+            spectatorClientIds: nextSpectators,
+            size: { cols, rows }
+          }
+        }
+      }
+    }
+    case 'terminals/controlReleased': {
+      const { terminalId, clientId } = event.payload
+      const existing = state.sessions[terminalId]
+      if (!existing) return state
+      if (existing.controllerClientId === clientId) {
+        return {
+          ...state,
+          sessions: {
+            ...state.sessions,
+            [terminalId]: { ...existing, controllerClientId: null }
+          }
+        }
+      }
+      if (!existing.spectatorClientIds.includes(clientId)) return state
+      return {
+        ...state,
+        sessions: {
+          ...state.sessions,
+          [terminalId]: {
+            ...existing,
+            spectatorClientIds: existing.spectatorClientIds.filter((id) => id !== clientId)
+          }
+        }
+      }
+    }
+    case 'terminals/clientJoined': {
+      const { terminalId, clientId } = event.payload
+      const existing = state.sessions[terminalId]
+      if (!existing) {
+        // First-ever join for this terminal: the joiner becomes controller
+        // so a lone client can type immediately without a click. Size stays
+        // null until pty:resize or takeControl lands a real dimension.
+        return {
+          ...state,
+          sessions: {
+            ...state.sessions,
+            [terminalId]: {
+              controllerClientId: clientId,
+              spectatorClientIds: [],
+              size: null
+            }
+          }
+        }
+      }
+      if (
+        existing.controllerClientId === clientId ||
+        existing.spectatorClientIds.includes(clientId)
+      ) {
+        return state
+      }
+      // Someone already has control — this client joins as a spectator. If
+      // there's no controller, they're still a spectator; taking control
+      // is an explicit click, not an implicit promotion, so Electron doesn't
+      // steal control from a web client whose tab just focused elsewhere.
+      if (existing.controllerClientId === null) {
+        return {
+          ...state,
+          sessions: {
+            ...state.sessions,
+            [terminalId]: {
+              ...existing,
+              controllerClientId: clientId
+            }
+          }
+        }
+      }
+      return {
+        ...state,
+        sessions: {
+          ...state.sessions,
+          [terminalId]: {
+            ...existing,
+            spectatorClientIds: [...existing.spectatorClientIds, clientId]
+          }
+        }
+      }
+    }
+    case 'terminals/clientDisconnected': {
+      const { clientId } = event.payload
+      let changed = false
+      const nextSessions: Record<string, TerminalSession> = {}
+      for (const [id, session] of Object.entries(state.sessions)) {
+        let next = session
+        if (session.controllerClientId === clientId) {
+          next = { ...next, controllerClientId: null }
+          changed = true
+        }
+        if (next.spectatorClientIds.includes(clientId)) {
+          next = {
+            ...next,
+            spectatorClientIds: next.spectatorClientIds.filter((s) => s !== clientId)
+          }
+          changed = true
+        }
+        nextSessions[id] = next
+      }
+      return changed ? { ...state, sessions: nextSessions } : state
+    }
+    case 'terminals/sizeChanged': {
+      const { terminalId, cols, rows } = event.payload
+      const existing = state.sessions[terminalId]
+      if (!existing) {
+        return {
+          ...state,
+          sessions: {
+            ...state.sessions,
+            [terminalId]: {
+              controllerClientId: null,
+              spectatorClientIds: [],
+              size: { cols, rows }
+            }
+          }
+        }
+      }
+      if (existing.size && existing.size.cols === cols && existing.size.rows === rows) {
+        return state
+      }
+      return {
+        ...state,
+        sessions: {
+          ...state.sessions,
+          [terminalId]: { ...existing, size: { cols, rows } }
+        }
+      }
     }
     default: {
       const _exhaustive: never = event

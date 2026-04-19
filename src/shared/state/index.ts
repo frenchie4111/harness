@@ -108,6 +108,7 @@ export type {
   PtyStatus,
   PendingTool,
   ShellActivity,
+  TerminalSession,
   TerminalTab,
   WorkspacePane,
   PaneNode,
