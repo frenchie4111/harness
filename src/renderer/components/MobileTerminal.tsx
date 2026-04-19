@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { CornerDownLeft, X, Send, Keyboard } from 'lucide-react'
-import { XTerminal } from './XTerminal'
+import { CornerDownLeft, X, Send, Keyboard, ArrowDownToLine } from 'lucide-react'
+import { XTerminal, scrollTerminalById, scrollTerminalToBottomById, getTerminalLineHeight, isTerminalAtBottom } from './XTerminal'
 import type { TerminalTab } from '../types'
 
 interface MobileTerminalProps {
@@ -42,6 +42,7 @@ export function MobileTerminal({ worktreePath, tab }: MobileTerminalProps): JSX.
   const composingRef = useRef(false)
   const [ctrlSticky, setCtrlSticky] = useState(false)
   const [keyboardOpen, setKeyboardOpen] = useState(false)
+  const [scrolledBack, setScrolledBack] = useState(false)
   const terminalId = tab.id
 
   const writeRaw = useCallback(
@@ -171,6 +172,62 @@ export function MobileTerminal({ worktreePath, tab }: MobileTerminalProps): JSX.
     inputRef.current?.focus({ preventScroll: true })
   }, [])
 
+  // Touch-scroll the xterm viewport. The transparent textarea sits on top
+  // of the terminal and eats every touch, so xterm's own scrolling never
+  // fires. We translate vertical pans into scrollLines() calls. The
+  // textarea gets `touch-action: none` (see inline style below) so we can
+  // preventDefault on move without Safari also firing native scroll/zoom.
+  useEffect(() => {
+    const el = inputRef.current
+    if (!el) return
+    let lastY: number | null = null
+    let accum = 0
+    let lineHeight = 16
+    const onStart = (e: TouchEvent): void => {
+      if (e.touches.length !== 1) { lastY = null; return }
+      lastY = e.touches[0].clientY
+      accum = 0
+      lineHeight = getTerminalLineHeight(terminalId)
+    }
+    const onMove = (e: TouchEvent): void => {
+      if (lastY === null || e.touches.length !== 1) return
+      const y = e.touches[0].clientY
+      accum += y - lastY
+      lastY = y
+      const lines = Math.trunc(accum / lineHeight)
+      if (lines !== 0) {
+        accum -= lines * lineHeight
+        scrollTerminalById(terminalId, -lines)
+        setScrolledBack(!isTerminalAtBottom(terminalId))
+        e.preventDefault()
+      } else if (Math.abs(accum) > 2) {
+        // Even small drags shouldn't let Safari steal the gesture as a
+        // long-press text-selection — keeps the UX predictable.
+        e.preventDefault()
+      }
+    }
+    const onEnd = (): void => {
+      lastY = null
+      accum = 0
+      setScrolledBack(!isTerminalAtBottom(terminalId))
+    }
+    el.addEventListener('touchstart', onStart, { passive: true })
+    el.addEventListener('touchmove', onMove, { passive: false })
+    el.addEventListener('touchend', onEnd, { passive: true })
+    el.addEventListener('touchcancel', onEnd, { passive: true })
+    return () => {
+      el.removeEventListener('touchstart', onStart)
+      el.removeEventListener('touchmove', onMove)
+      el.removeEventListener('touchend', onEnd)
+      el.removeEventListener('touchcancel', onEnd)
+    }
+  }, [terminalId])
+
+  const handleJumpToBottom = useCallback(() => {
+    scrollTerminalToBottomById(terminalId)
+    setScrolledBack(false)
+  }, [terminalId])
+
   const toolbarButtons = useMemo(
     () => [
       { label: 'esc', onPress: () => sendKey('Escape') },
@@ -239,8 +296,18 @@ export function MobileTerminal({ worktreePath, tab }: MobileTerminalProps): JSX.
           onFocus={handleInputFocus}
           onBlur={handleInputBlur}
           className="absolute inset-0 w-full h-full resize-none border-0 bg-transparent text-transparent caret-transparent outline-none"
-          style={{ opacity: 0 }}
+          style={{ opacity: 0, touchAction: 'none' }}
         />
+        {scrolledBack && (
+          <button
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={handleJumpToBottom}
+            className="absolute right-3 bottom-3 z-10 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] bg-surface/90 text-fg-bright border border-border shadow-lg"
+          >
+            <ArrowDownToLine className="w-3 h-3" />
+            Jump to bottom
+          </button>
+        )}
       </div>
 
       <div className="shrink-0 border-t border-border bg-panel-raised">

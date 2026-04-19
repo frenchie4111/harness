@@ -47,6 +47,30 @@ export function focusTerminalById(id: string): void {
   terminalRegistry.get(id)?.focus()
 }
 
+export function scrollTerminalById(id: string, lines: number): void {
+  terminalRegistry.get(id)?.scrollLines(lines)
+}
+
+export function scrollTerminalToBottomById(id: string): void {
+  terminalRegistry.get(id)?.scrollToBottom()
+}
+
+export function getTerminalLineHeight(id: string): number {
+  const term = terminalRegistry.get(id)
+  if (!term?.element) return 16
+  const viewport = term.element.querySelector('.xterm-viewport') as HTMLElement | null
+  if (!viewport) return 16
+  const rows = term.rows || 1
+  const h = viewport.clientHeight / rows
+  return h > 0 ? h : 16
+}
+
+export function isTerminalAtBottom(id: string): boolean {
+  const term = terminalRegistry.get(id)
+  if (!term) return true
+  return term.buffer.active.viewportY >= term.buffer.active.baseY
+}
+
 /** Live cache of terminal font settings. Hydrated once at module load and
  * kept in sync via main-process broadcasts so newly created terminals open
  * with the user's chosen values without any prop drilling. */
