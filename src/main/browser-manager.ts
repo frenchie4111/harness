@@ -1,7 +1,10 @@
 import { WebContentsView, BrowserWindow, session } from 'electron'
 import type { Store } from './store'
+import type { BrowserManagerLike, ConsoleLog } from './browser-manager-types'
 import { log } from './debug'
 import { resolveScreenshotTarget } from './browser-screenshot'
+
+export type { ConsoleLog }
 
 export interface BrowserInstance {
   view: WebContentsView
@@ -13,12 +16,6 @@ export interface BrowserInstance {
   /** When false, the view is detached (removed from the window) and bounds
    * updates will re-attach it. */
   visible: boolean
-}
-
-export interface ConsoleLog {
-  ts: number
-  level: 'log' | 'warn' | 'error' | 'info' | 'debug'
-  message: string
 }
 
 const CONSOLE_LOG_CAP = 200
@@ -160,7 +157,7 @@ const CLICKABLES_SCRIPT = `(() => {
  * The renderer sends bounds updates (placeholder div geometry) via IPC; we
  * reposition the underlying view over the BrowserWindow's content area.
  */
-export class BrowserManager {
+export class BrowserManager implements BrowserManagerLike {
   private instances = new Map<string, BrowserInstance>()
   private store: Store | null = null
 
@@ -340,21 +337,22 @@ export class BrowserManager {
 
   setBounds(
     tabId: string,
-    targetWindow: BrowserWindow,
+    targetWindow: unknown,
     bounds: { x: number; y: number; width: number; height: number }
   ): void {
     const inst = this.instances.get(tabId)
     if (!inst) return
+    const win = targetWindow as BrowserWindow
     const rounded = {
       x: Math.round(bounds.x),
       y: Math.round(bounds.y),
       width: Math.max(0, Math.round(bounds.width)),
       height: Math.max(0, Math.round(bounds.height))
     }
-    if (!inst.visible || inst.attachedWindow !== targetWindow) {
+    if (!inst.visible || inst.attachedWindow !== win) {
       this.detachView(inst)
-      targetWindow.contentView.addChildView(inst.view)
-      inst.attachedWindow = targetWindow
+      win.contentView.addChildView(inst.view)
+      inst.attachedWindow = win
       inst.visible = true
     }
     if (

@@ -1,18 +1,17 @@
-import { app, autoUpdater as nativeAutoUpdater, BrowserWindow, dialog, Menu, screen, shell } from 'electron'
-import { autoUpdater } from 'electron-updater'
-import { existsSync, lstatSync, readdirSync, statSync } from 'fs'
-import { homedir } from 'os'
+import { existsSync, lstatSync } from 'fs'
 import { join } from 'path'
 import { PtyManager } from './pty-manager'
-import { BrowserManager } from './browser-manager'
 import { Store } from './store'
-import { ElectronServerTransport } from './transport-electron'
 import { WebSocketServerTransport } from './transport-websocket'
 import { CompoundServerTransport } from './transport-compound'
 import { createWebClientServer } from './web-client-server'
 import { getOrCreateWsToken, rotateWsToken } from './ws-token'
 import { networkInterfaces } from 'os'
 import type { Server as HttpServer } from 'http'
+import type { ServerTransport } from '../shared/transport/transport'
+import { detectRuntime } from './paths'
+import { HeadlessBrowserManager } from './headless-browser-manager'
+import type { BrowserManagerLike } from './browser-manager-types'
 import { PerfMonitor } from './perf-monitor'
 import { PRPoller } from './pr-poller'
 import { WorktreesFSM } from './worktrees-fsm'
@@ -110,32 +109,54 @@ import { recordActivity, getActivityLog, clearAllActivity, clearActivityForWorkt
 import { log, getLogFilePath } from './debug'
 import { buildInitialAppState } from './build-initial-state'
 
-// In dev, use a separate userData dir so a running dev instance doesn't
-// fight with the installed prod app over config.json / activity.json / etc.
-if (!app.isPackaged) {
-  app.setPath('userData', join(app.getPath('appData'), 'Harness (Dev)'))
+// Runtime detection — Electron sets process.versions.electron, plain
+// Node leaves it undefined. The mode picks itself; there's no env-var
+// override to fight with.
+const runtime = detectRuntime()
+
+// Load the desktop shell ONLY in Electron mode. The (0, eval)('require')
+// dance hides the lookup from the bundler, so the headless build doesn't
+// drag electron + electron-updater + WebContentsView in via static
+// analysis. In Electron mode the file lives next to this one in the
+// build output.
+type DesktopShellModule = typeof import('./desktop-shell')
+let desktopShellMod: DesktopShellModule | null = null
+if (runtime === 'electron') {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const dynamicRequire = (0, eval)('require') as (id: string) => unknown
+  desktopShellMod = dynamicRequire('./desktop-shell') as DesktopShellModule
 }
 
 const ptyManager = new PtyManager()
-const browserManager = new BrowserManager()
 let config = loadConfig()
 let stopWatchingStatus: (() => void) | null = null
 
 const store = new Store(buildInitialAppState(config, { hasGithubToken: hasSecret('githubToken') }))
 const perfMonitor = new PerfMonitor()
 
-// The compound transport lets Electron IPC and the optional WS server run
-// side-by-side off a single registration path — every `transport.onRequest`
-// / `sendSignal` call below registers on both. The WS transport subscribes
-// to the store independently of the Electron one, so each fans out only to
-// its own client set without duplication.
+// In Electron mode createDesktopShell applies the dev-mode userData
+// override (must run before anything reads paths) and constructs the
+// BrowserManager + Electron IPC transport. In headless mode we use the
+// stub browser manager and skip the Electron transport entirely.
+const desktopEarly = desktopShellMod
+  ? desktopShellMod.createDesktopShell({ store, perfMonitor, config })
+  : null
+const browserManager: BrowserManagerLike =
+  desktopEarly?.browserManager ?? new HeadlessBrowserManager()
+
+// The compound transport lets the Electron IPC transport and the WS
+// transport run side-by-side off a single registration path — every
+// `transport.onRequest` / `sendSignal` call below registers on both.
+// In headless mode the WS transport is the only member, so it's also
+// the only consumer of every handler.
 //
-// Enable via wsTransportEnabled in config.json, or by setting the
-// HARNESS_WS_TRANSPORT=1 env var in dev (useful for a quick smoke test
-// without editing settings).
-const electronTransport = new ElectronServerTransport(store, perfMonitor)
+// Headless mode always starts the WS transport (it's the ONLY way for a
+// client to reach the server). Electron mode honors the existing toggle
+// — enable via wsTransportEnabled in config.json, or HARNESS_WS_TRANSPORT=1.
 const wsEnabled =
-  config.wsTransportEnabled === true || process.env['HARNESS_WS_TRANSPORT'] === '1'
+  runtime === 'node' ||
+  config.wsTransportEnabled === true ||
+  process.env['HARNESS_WS_TRANSPORT'] === '1'
 const envPort = Number.parseInt(process.env['HARNESS_WS_PORT'] ?? '', 10)
 const wsPort =
   Number.isFinite(envPort) && envPort > 0 ? envPort : (config.wsTransportPort ?? 37291)
@@ -148,13 +169,12 @@ const wsHost =
 // happens explicitly via Settings, not on every boot.
 const wsToken = wsEnabled ? getOrCreateWsToken() : null
 
-// HTTP server for the bundled web-client renderer. Lives on the same
-// host+port as the WS transport: clients fetch `http://host:port/` for
-// index.html, then the renderer opens `ws://host:port/?token=…` on the
-// same origin. WS upgrade events are routed through this http.Server.
-const webClientDir = app.isPackaged
-  ? join(app.getAppPath(), 'out/web-client')
-  : join(__dirname, '../web-client')
+// Electron-packaged builds resolve the web-client bundle inside the asar;
+// every other path (Electron-dev, headless) reads it from a sibling of
+// the main bundle. resolveWebClientDir() does the packaged check inside
+// the desktop shell so this file stays free of `app.getAppPath`.
+const webClientDir =
+  desktopShellMod?.resolveWebClientDir?.() ?? join(__dirname, '../web-client')
 
 const webHttpServer: HttpServer | null =
   wsEnabled && wsToken
@@ -169,9 +189,11 @@ const wsTransport =
         perfMonitor
       )
     : null
-const transport: CompoundServerTransport = new CompoundServerTransport(
-  wsTransport ? [electronTransport, wsTransport] : [electronTransport]
-)
+
+const transports: ServerTransport[] = []
+if (desktopEarly) transports.push(desktopEarly.transport)
+if (wsTransport) transports.push(wsTransport)
+const transport: CompoundServerTransport = new CompoundServerTransport(transports)
 transport.start()
 
 // Sweep any controller/spectator roster entries owned by a client when
@@ -575,70 +597,6 @@ store.subscribe((event) => {
   }
 })
 
-function createWindow(): BrowserWindow {
-  // First-launch defaults: aim for 1600x1000, but clamp to the primary
-  // display's work area so smaller screens (13" MBP = 1440x900 native)
-  // don't get a window that spills off-screen. Returning users' saved
-  // windowBounds pass through untouched.
-  const work = screen.getPrimaryDisplay().workAreaSize
-  const bounds = config.windowBounds || {
-    width: Math.min(1600, work.width - 40),
-    height: Math.min(1000, work.height - 40),
-    x: undefined!,
-    y: undefined!
-  }
-
-  const win = new BrowserWindow({
-    width: bounds.width,
-    height: bounds.height,
-    ...(bounds.x != null ? { x: bounds.x, y: bounds.y } : {}),
-    title: 'Harness',
-    icon: join(__dirname, '../../resources/icon.png'),
-    titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 12, y: 12 },
-    backgroundColor: THEME_APP_BG[config.theme || DEFAULT_THEME] || THEME_APP_BG[DEFAULT_THEME],
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true
-    }
-  })
-
-  // Route link clicks (xterm OSC 8 hyperlinks, anchor tags) to the system browser
-  // instead of letting Electron spawn an in-app popup window.
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('mailto:')) {
-      shell.openExternal(url)
-    }
-    return { action: 'deny' }
-  })
-
-  // Forward renderer console logs to debug log
-  win.webContents.on('console-message', (_event, level, message) => {
-    const levelName = ['verbose', 'info', 'warn', 'error'][level] || 'log'
-    log('renderer', `[win${win.id}] [${levelName}] ${message}`)
-  })
-
-  // Save window bounds on move/resize
-  const saveBounds = (): void => {
-    if (win.isDestroyed()) return
-    config.windowBounds = win.getBounds()
-    saveConfig(config)
-  }
-  win.on('resize', saveBounds)
-  win.on('move', saveBounds)
-
-  // Load renderer
-  if (process.env['ELECTRON_RENDERER_URL']) {
-    win.loadURL(process.env['ELECTRON_RENDERER_URL'])
-  } else {
-    win.loadFile(join(__dirname, '../renderer/index.html'))
-  }
-
-  return win
-}
-
 function registerIpcHandlers(): void {
   // Worktree handlers — every call takes an explicit repoRoot, since a single
   // window now shows worktrees from multiple repos at once.
@@ -750,41 +708,9 @@ function registerIpcHandlers(): void {
     return config.repoRoots
   })
 
-  transport.onRequest('repo:add', async (_ctx) => {
-    const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0]
-    const result = await dialog.showOpenDialog(win!, {
-      properties: ['openDirectory'],
-      title: 'Open Git Repository'
-    })
-    if (result.canceled || result.filePaths.length === 0) return null
-    const repoRoot = result.filePaths[0]
-    if (!config.repoRoots.includes(repoRoot)) {
-      config.repoRoots.push(repoRoot)
-      saveConfig(config)
-      worktreesFSM.dispatchRepos([...config.repoRoots])
-      // Hydrate the new repo's config into the store.
-      store.dispatch({
-        type: 'repoConfigs/changed',
-        payload: { repoRoot, config: loadRepoConfig(repoRoot) }
-      })
-      void worktreesFSM.refreshList()
-    }
-    return repoRoot
-  })
-
-  transport.onRequest(
-    'dialog:pickDirectory',
-    async (_ctx, opts?: { defaultPath?: string; title?: string }) => {
-      const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0]
-      const result = await dialog.showOpenDialog(win!, {
-        properties: ['openDirectory', 'createDirectory'],
-        defaultPath: opts?.defaultPath,
-        title: opts?.title ?? 'Pick a folder'
-      })
-      if (result.canceled || result.filePaths.length === 0) return null
-      return result.filePaths[0]
-    }
-  )
+  // Native repo:add (folder picker) and dialog:pickDirectory live in
+  // desktop-shell.ts. Headless mode leaves them unregistered — the web
+  // client already stubs both as `unavailable` (see web-client/main.tsx).
 
   transport.onRequest(
     'repo:createNewProject',
@@ -1137,9 +1063,9 @@ function registerIpcHandlers(): void {
       payload: config.autoUpdateEnabled !== false
     })
     if (config.autoUpdateEnabled === false) {
-      stopAutoUpdateChecks()
+      desktopHooks.stopAutoUpdateChecks()
     } else {
-      startAutoUpdateChecks()
+      desktopHooks.startAutoUpdateChecks()
     }
     return true
   })
@@ -1644,76 +1570,14 @@ function registerIpcHandlers(): void {
     return result
   })
 
-  // Updater
-  transport.onRequest('updater:getVersion', (_ctx) => {
-    return app.getVersion()
-  })
+  // updater:* (getVersion / checkForUpdates / quitAndInstall) live in
+  // desktop-shell.ts — they need electron-updater + app.removeAllListeners.
+  // Headless mode leaves them unregistered; the renderer guards on
+  // updaterStatus before showing the banner so absence is visible as
+  // "no update info" rather than a thrown error.
 
   transport.onRequest('debug:readRecentLog', (_ctx, maxLines?: number) => {
     return readRecentDebugLog(maxLines)
-  })
-
-  transport.onRequest('updater:checkForUpdates', async (_ctx) => {
-    if (!app.isPackaged) {
-      return { ok: false, error: 'Updates are only available in packaged builds' }
-    }
-    try {
-      const result = await autoUpdater.checkForUpdates()
-      if (!result) {
-        store.dispatch({
-          type: 'updater/statusChanged',
-          payload: { state: 'not-available' }
-        })
-        return { ok: true, available: false }
-      }
-      const updateInfo = result.updateInfo
-      const current = app.getVersion()
-      return {
-        ok: true,
-        available: updateInfo.version !== current,
-        version: updateInfo.version,
-        releaseDate: updateInfo.releaseDate
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      store.dispatch({
-        type: 'updater/statusChanged',
-        payload: { state: 'error', error: message }
-      })
-      return { ok: false, error: message }
-    }
-  })
-
-  transport.onRequest('updater:quitAndInstall', (_ctx) => {
-    log('updater', 'quitAndInstall requested — tearing down before handing off to Squirrel')
-    try {
-      stopWatchingStatus?.()
-      stopWatchingStatus = null
-    } catch (err) {
-      log('updater', 'stopWatchingStatus failed', err instanceof Error ? err.message : String(err))
-    }
-    try {
-      // Kill the whole PTY process group (zsh + claude + any grandchildren),
-      // not just the direct shell child. Leaving descendants alive keeps
-      // libuv handles attached on our side, which makes Electron's quit
-      // sequence hang — and Squirrel.Mac then bails with "original process
-      // did not end" before ShipIt swaps the bundle.
-      ptyManager.killAll('SIGKILL')
-    } catch (err) {
-      log('updater', 'ptyManager.killAll failed', err instanceof Error ? err.message : String(err))
-    }
-    try {
-      sealAllActive()
-      saveConfigSync(config)
-    } catch (err) {
-      log('updater', 'final persistence failed', err instanceof Error ? err.message : String(err))
-    }
-
-    // Skip our before-quit handler — we just did its work above.
-    app.removeAllListeners('before-quit')
-
-    autoUpdater.quitAndInstall(true, true)
-    return true
   })
 
   // Performance monitor
@@ -1758,14 +1622,15 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  // Shell
-  transport.onSignal('shell:openExternal', (_ctx, url: string) => {
-    shell.openExternal(url)
-  })
+  // shell:openExternal lives in desktop-shell.ts (Electron's `shell`
+  // module). Web clients open links via `window.open` directly.
 
-  // Browser tabs — WebContentsView instances owned by BrowserManager. The
-  // renderer sends bounds updates from a placeholder div's geometry and we
-  // reposition the native view over it.
+  // Browser tabs — in Electron mode, WebContentsView instances owned by
+  // BrowserManager. In headless mode, calls land on HeadlessBrowserManager
+  // which warns + no-ops; control-server endpoints + MCP tools degrade
+  // gracefully (no tabs visible to inspect/drive). The browser:setBounds
+  // signal is registered only in desktop-shell.ts since it needs the
+  // BrowserWindow to attach into.
   transport.onRequest('browser:navigate', (_ctx, tabId: string, url: string) => {
     browserManager.navigate(tabId, url)
     return true
@@ -1786,18 +1651,6 @@ function registerIpcHandlers(): void {
     browserManager.openDevTools(tabId)
     return true
   })
-  transport.onSignal(
-    'browser:setBounds',
-    (_ctx, tabId: string, bounds: { x: number; y: number; width: number; height: number } | null) => {
-      if (!bounds) {
-        browserManager.hide(tabId)
-        return
-      }
-      const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0]
-      if (!win) return
-      browserManager.setBounds(tabId, win, bounds)
-    }
-  )
   transport.onSignal('browser:hide', (_ctx, tabId: string) => {
     browserManager.hide(tabId)
   })
@@ -1905,232 +1758,20 @@ function registerIpcHandlers(): void {
   })
 }
 
-function openSettingsInFocusedWindow(): void {
-  transport.sendSignal('app:openSettings')
-}
-
-function togglePerfMonitorInFocusedWindow(): void {
-  transport.sendSignal('app:togglePerfMonitor')
-}
-
-function openKeyboardShortcutsInFocusedWindow(): void {
-  transport.sendSignal('app:openKeyboardShortcuts')
-}
-
-function openNewProjectInFocusedWindow(): void {
-  transport.sendSignal('menu:newProject')
-}
-
-function openReportIssueInFocusedWindow(): void {
-  transport.sendSignal('app:openReportIssue')
-}
-
-function crashFocusedTabInFocusedWindow(): void {
-  transport.sendSignal('app:debugCrashFocusedTab')
-}
-
-function buildMenu(): void {
-  const template: Electron.MenuItemConstructorOptions[] = [
-    {
-      label: app.name,
-      submenu: [
-        { role: 'about' },
-        { type: 'separator' },
-        {
-          label: 'Settings…',
-          accelerator: 'CmdOrCtrl+,',
-          click: openSettingsInFocusedWindow
-        },
-        { type: 'separator' },
-        { role: 'hide' },
-        { role: 'hideOthers' },
-        { role: 'unhide' },
-        { type: 'separator' },
-        { role: 'quit' }
-      ]
-    },
-    {
-      label: 'File',
-      submenu: [
-        {
-          label: 'New Project…',
-          accelerator: 'CmdOrCtrl+N',
-          click: openNewProjectInFocusedWindow
-        },
-        {
-          label: 'New Window',
-          accelerator: 'CmdOrCtrl+Shift+N',
-          click: () => createWindow()
-        },
-        { role: 'close' }
-      ]
-    },
-    {
-      label: 'Edit',
-      submenu: [
-        { role: 'undo' },
-        { role: 'redo' },
-        { type: 'separator' },
-        { role: 'cut' },
-        { role: 'copy' },
-        { role: 'paste' },
-        { role: 'selectAll' }
-      ]
-    },
-    {
-      label: 'View',
-      submenu: [
-        { role: 'reload' },
-        { role: 'forceReload' },
-        { role: 'toggleDevTools' },
-        { type: 'separator' },
-        { role: 'togglefullscreen' },
-        { type: 'separator' },
-        {
-          label: 'Performance Monitor',
-          accelerator: 'CmdOrCtrl+Shift+D',
-          click: () => togglePerfMonitorInFocusedWindow()
-        }
-      ]
-    },
-    {
-      label: 'Window',
-      submenu: [
-        { role: 'minimize' },
-        { role: 'zoom' },
-        { type: 'separator' },
-        { role: 'front' }
-      ]
-    },
-    {
-      label: 'Help',
-      submenu: [
-        {
-          label: 'Keyboard Shortcuts',
-          click: openKeyboardShortcutsInFocusedWindow
-        },
-        { type: 'separator' },
-        {
-          label: 'Report an Issue…',
-          click: openReportIssueInFocusedWindow
-        },
-        { type: 'separator' },
-        {
-          label: 'Debug: Crash Focused Tab',
-          click: crashFocusedTabInFocusedWindow
-        }
-      ]
-    }
-  ]
-  Menu.setApplicationMenu(Menu.buildFromTemplate(template))
-}
-
 function broadcastToAllWindows(channel: string, ...args: unknown[]): void {
   transport.sendSignal(channel, ...args)
 }
 
-function setupAutoUpdater(): void {
-  if (!app.isPackaged) return // No-op in dev
-
-  autoUpdater.logger = {
-    info: (msg: string) => log('updater', msg),
-    warn: (msg: string) => log('updater', `[warn] ${msg}`),
-    error: (msg: string) => log('updater', `[error] ${msg}`),
-    debug: () => {}
-  }
-
-  autoUpdater.on('checking-for-update', () => {
-    log('updater', 'checking for update')
-    store.dispatch({ type: 'updater/statusChanged', payload: { state: 'checking' } })
-  })
-  autoUpdater.on('update-available', (info) => {
-    log('updater', 'update available', info.version)
-    store.dispatch({
-      type: 'updater/statusChanged',
-      payload: { state: 'available', version: info.version }
-    })
-  })
-  autoUpdater.on('update-not-available', () => {
-    log('updater', 'no update available')
-    store.dispatch({
-      type: 'updater/statusChanged',
-      payload: { state: 'not-available' }
-    })
-  })
-  autoUpdater.on('error', (err) => {
-    log('updater', 'error', err.message)
-    store.dispatch({
-      type: 'updater/statusChanged',
-      payload: { state: 'error', error: err.message }
-    })
-  })
-  autoUpdater.on('download-progress', (p) => {
-    store.dispatch({
-      type: 'updater/statusChanged',
-      payload: { state: 'downloading', percent: p.percent }
-    })
-  })
-  autoUpdater.on('update-downloaded', (info) => {
-    log('updater', 'update downloaded', info.version)
-    store.dispatch({
-      type: 'updater/statusChanged',
-      payload: { state: 'downloaded', version: info.version }
-    })
-  })
-
-  // Also log native Squirrel.Mac errors. electron-updater wraps Squirrel via
-  // its own MacUpdater but doesn't surface errors from the native side, so
-  // things like "target app still running" or codesign mismatches would
-  // otherwise be invisible. These are the errors that would have diagnosed
-  // previous OTA loops in one glance.
-  if (process.platform === 'darwin') {
-    nativeAutoUpdater.on('error', (err) => {
-      log('updater', `[error] Squirrel.Mac: ${err.message}`)
-    })
-  }
-
-  // Background polling is gated on the autoUpdateEnabled setting so users
-  // can opt out. The manual "Check for updates" button in Settings remains
-  // available regardless.
-  startAutoUpdateChecks()
+// Hooks into the desktop shell that a few mode-agnostic IPC handlers
+// need to call. In headless mode they're no-ops; in Electron mode the
+// shell replaces them after `startDesktopShell` returns.
+const desktopHooks = {
+  startAutoUpdateChecks: (): void => {},
+  stopAutoUpdateChecks: (): void => {}
 }
 
-let autoUpdateTimer: NodeJS.Timeout | null = null
-
-function startAutoUpdateChecks(): void {
-  if (!app.isPackaged) return
-  if (config.autoUpdateEnabled === false) return
-  if (autoUpdateTimer) return
-  // Check on startup, then every 10 minutes. We use checkForUpdates (not
-  // checkForUpdatesAndNotify) so there's no native OS notification — the
-  // renderer shows an in-app banner based on the updater:status events.
-  autoUpdater.checkForUpdates().catch((err) => log('updater', 'check failed', err.message))
-  autoUpdateTimer = setInterval(() => {
-    autoUpdater.checkForUpdates().catch(() => {})
-  }, 10 * 60 * 1000)
-}
-
-function stopAutoUpdateChecks(): void {
-  if (autoUpdateTimer) {
-    clearInterval(autoUpdateTimer)
-    autoUpdateTimer = null
-  }
-}
-
-app.whenReady().then(() => {
+async function runBoot(): Promise<void> {
   log('app', `started, log file: ${getLogFilePath()}`)
-
-  // Set dock icon (macOS dev mode — packaged builds use the .icns from the app bundle)
-  if (process.platform === 'darwin' && app.dock) {
-    try {
-      app.dock.setIcon(join(__dirname, '../../resources/icon.png'))
-    } catch (err) {
-      log('app', 'failed to set dock icon', err instanceof Error ? err.message : err)
-    }
-  }
-
-  buildMenu()
-  registerIpcHandlers()
 
   // Seed the store's flat worktree list before the renderer hydrates, so
   // App.tsx's first render already has the real data. Pane init for the
@@ -2420,35 +2061,54 @@ app.whenReady().then(() => {
   // dispatches on the store, which the state transport fans out to all
   // clients.
   stopWatchingStatus = watchStatusDir(store)
+  // Opening the first window + spinning up the auto-updater is the
+  // desktop shell's job — see desktop-shell.ts. Headless mode skips
+  // both; clients connect via the WS server already listening below.
+}
 
-  // One window shows all repos. The renderer reads `config.repoRoots` via
-  // `repo:list` and opens each one on mount.
-  createWindow()
+// Now hand control to the desktop shell (Electron) or run boot directly
+// (headless). registerIpcHandlers must run BEFORE either path so the
+// shared transport's request/signal table is fully populated by the
+// time a window or WS client connects.
+registerIpcHandlers()
 
-  setupAutoUpdater()
-
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow()
+if (desktopShellMod && desktopEarly) {
+  const handle = desktopShellMod.startDesktopShell({
+    store,
+    transport,
+    ptyManager,
+    browserManager: desktopEarly.browserManager,
+    worktreesFSM,
+    config,
+    runBoot,
+    getStopWatchingStatus: () => stopWatchingStatus,
+    setStopWatchingStatus: (next) => {
+      stopWatchingStatus = next
+    },
+    onRepoAdded: () => {
+      void worktreesFSM.refreshList()
     }
   })
-})
-
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit()
+  desktopHooks.startAutoUpdateChecks = handle.startAutoUpdateChecks
+  desktopHooks.stopAutoUpdateChecks = handle.stopAutoUpdateChecks
+} else {
+  // Headless: no app.whenReady to wait for, no menus, no window. Just
+  // boot. The WS server already listens (the webHttpServer.listen call
+  // above kicks it off), so a web client can connect as soon as boot
+  // resolves.
+  void runBoot()
+  // Mirror the Electron before-quit cleanups for SIGTERM / SIGINT so a
+  // headless host can shut down cleanly. browserManager.destroyAll() is
+  // still safe to call — the headless stub no-ops it.
+  const shutdown = (): void => {
+    stopWatchingStatus?.()
+    stopWatchingStatus = null
+    ptyManager.killAll('SIGKILL')
+    browserManager.destroyAll()
+    sealAllActive()
+    saveConfigSync(config)
+    process.exit(0)
   }
-})
-
-app.on('before-quit', () => {
-  stopWatchingStatus?.()
-  stopWatchingStatus = null
-  // SIGKILL the whole PTY process group so zsh + claude + grandchildren
-  // all die immediately and release their libuv handles. Without this the
-  // main process can hang draining fds and Squirrel.Mac will abort an
-  // in-flight bundle swap with "original process did not end".
-  ptyManager.killAll('SIGKILL')
-  browserManager.destroyAll()
-  sealAllActive()
-  saveConfigSync(config)
-})
+  process.on('SIGINT', shutdown)
+  process.on('SIGTERM', shutdown)
+}
