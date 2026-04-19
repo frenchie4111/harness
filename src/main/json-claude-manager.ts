@@ -129,12 +129,22 @@ export class JsonClaudeManager {
     log('json-claude', `spawn sessionId=${sessionId} cwd=${worktreePath}`)
 
     const envVars = this.opts.getClaudeEnvVars() || {}
+    // Build env for the subprocess. We start from process.env, scrub
+    // env vars that the user-scope Harness hooks key off of so the
+    // subprocess's hook firings don't masquerade as the parent agent
+    // tab, then layer on json-claude-specific vars.
+    const childEnv: Record<string, string> = {}
+    for (const [k, v] of Object.entries(process.env)) {
+      if (typeof v === 'string') childEnv[k] = v
+    }
+    delete childEnv.CLAUDE_HARNESS_ID
+    delete childEnv.HARNESS_TERMINAL_ID
     let proc: ChildProcessWithoutNullStreams
     try {
       proc = spawn('/bin/zsh', ['-ilc', cmdLine], {
         cwd: worktreePath,
         env: {
-          ...process.env,
+          ...childEnv,
           ...envVars,
           // Memory isolation: the auto-memory subsystem writes into
           // ~/.claude/projects/<project>/memory/ by default, which
