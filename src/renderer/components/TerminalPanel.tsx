@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react'
-import { X, SquareTerminal, Sparkles, Code2, SplitSquareHorizontal, SplitSquareVertical, Loader2, PanelRightOpen, Globe } from 'lucide-react'
+import { X, SquareTerminal, Sparkles, Code2, SplitSquareHorizontal, SplitSquareVertical, Loader2, PanelRightOpen, Globe, Users } from 'lucide-react'
 import {
   SortableContext,
   horizontalListSortingStrategy,
@@ -11,6 +11,47 @@ import type { WorkspacePane, TerminalTab, PtyStatus, AgentKind } from '../types'
 import { AGENT_REGISTRY, agentDisplayName } from '../../shared/agent-registry'
 import { Tooltip } from './Tooltip'
 import { repoNameColor } from './RepoIcon'
+import { getClientId, useTerminalSession } from '../store'
+
+/** Chip shown in the tab bar when other clients are attached to the
+ *  active terminal. Click-through is intentional — taking/releasing
+ *  control lives on the terminal body, not here. */
+function SpectatorChip({ terminalId }: { terminalId: string }): JSX.Element | null {
+  const session = useTerminalSession(terminalId)
+  if (!session) return null
+  const myId = getClientId()
+  // Other viewers: everyone who isn't me, counted across controller + spectators.
+  const others = new Set<string>()
+  if (session.controllerClientId && session.controllerClientId !== myId) {
+    others.add(session.controllerClientId)
+  }
+  for (const id of session.spectatorClientIds) {
+    if (id !== myId) others.add(id)
+  }
+  if (others.size === 0) return null
+  const controllerLabel =
+    session.controllerClientId === null
+      ? 'No controller'
+      : session.controllerClientId === myId
+        ? 'You have control'
+        : `Controller: ${shortId(session.controllerClientId)}`
+  const spectatorLines = session.spectatorClientIds
+    .filter((id) => id !== myId)
+    .map((id) => `Spectator: ${shortId(id)}`)
+  const tip = [controllerLabel, ...spectatorLines].join('\n')
+  return (
+    <Tooltip label={tip}>
+      <div className="no-drag shrink-0 flex items-center gap-1 px-2 h-full text-xs text-dim">
+        <Users size={12} />
+        <span>{others.size}</span>
+      </div>
+    </Tooltip>
+  )
+}
+
+function shortId(id: string): string {
+  return id.slice(0, 6)
+}
 
 interface TerminalPanelProps {
   worktreePath: string
@@ -151,6 +192,13 @@ export function TerminalPanel({
     registerSlot(pane.id, slotHostRef.current)
   }, [pane.id, registerSlot])
 
+  const activeTab = pane.tabs.find((t) => t.id === pane.activeTabId)
+  // Spectator chip only makes sense for xterm-backed tabs. JSON-mode
+  // agent tabs (when they land) re-render per client, so the controller/
+  // spectator concept doesn't apply.
+  const showSpectatorChip =
+    !!activeTab && (activeTab.type === 'agent' || activeTab.type === 'shell')
+
   return (
     <div ref={setPaneDropRef} className="flex-1 flex flex-col min-w-0 bg-app">
       {/* Tab bar */}
@@ -228,6 +276,7 @@ export function TerminalPanel({
               <SplitSquareVertical size={12} />
             </button>
           </Tooltip>
+          {showSpectatorChip && activeTab && <SpectatorChip terminalId={activeTab.id} />}
         </div>
         <Tooltip label="Open worktree in editor" action="openInEditor" side="left">
           <button
