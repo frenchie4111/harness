@@ -109,14 +109,13 @@ export function MobileApp(): JSX.Element {
     <div
       className="flex flex-col bg-app text-fg overflow-hidden"
       style={{
-        // 100dvh = dynamic viewport height, tracks the URL bar without
-        // JS. --viewport-h is only set by MobileTerminal while the
-        // textarea has focus (i.e. keyboard is up); it shrinks the
-        // layout to the visualViewport so the toolbar stays above the
-        // keyboard. At rest the var is absent and we get full dvh,
-        // eliminating the black void below the toolbar.
-        height: 'var(--viewport-h, 100dvh)',
-        paddingTop: 'env(safe-area-inset-top, 0px)'
+        // 100dvh = the usable viewport height (without viewport-fit=cover
+        // iOS reserves the notch / home-indicator areas for us, so we
+        // don't need env(safe-area-inset-*) paddings and our layout
+        // fits flush top-to-bottom with no voids). --viewport-h is set
+        // by MobileTerminal while the textarea has focus so the
+        // toolbar rides above the soft keyboard.
+        height: 'var(--viewport-h, 100dvh)'
       }}
     >
       <Header
