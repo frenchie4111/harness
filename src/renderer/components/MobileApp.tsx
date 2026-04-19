@@ -7,6 +7,8 @@ import type { PtyStatus, TerminalTab, Worktree, PRStatus } from '../types'
 import { MobileTerminal } from './MobileTerminal'
 import { MobileRightPanel } from './MobileRightPanel'
 import { AgentIcon } from './AgentIcon'
+import { HotkeysProvider } from './Tooltip'
+import { resolveHotkeys } from '../hotkeys'
 
 type RunnableTab = TerminalTab & { type: 'agent' | 'shell' }
 
@@ -110,7 +112,12 @@ export function MobileApp(): JSX.Element {
     [activeWorktree]
   )
 
+  // HotkeysProvider here is only for its embedded Radix TooltipProvider —
+  // shared desktop panels we render on mobile (PR status, merge, etc.)
+  // use <Tooltip> which throws without a provider in scope. Bindings
+  // don't actually drive any hotkey behavior on mobile.
   return (
+    <HotkeysProvider bindings={resolveHotkeys(undefined)}>
     <div
       className="flex flex-col bg-app text-fg overflow-hidden"
       style={{
@@ -176,6 +183,7 @@ export function MobileApp(): JSX.Element {
         )}
       </div>
     </div>
+    </HotkeysProvider>
   )
 }
 
