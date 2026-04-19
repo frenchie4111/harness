@@ -408,6 +408,19 @@ function buildApi(transport: WebSocketClientTransport): ElectronAPI {
     clearActivityLog: (worktreePath) =>
       req('activity:clear', worktreePath) as Promise<boolean>,
 
+    // JSON-mode Claude tabs aren't wired for web clients yet — the
+    // subprocess + MCP bridge live on main and the feature flag gates
+    // the tab type in the Electron renderer. Expose no-op stubs so the
+    // ElectronAPI contract is satisfied.
+    resolveJsonClaudeApproval: (requestId, result) =>
+      req('jsonClaude:resolveApproval', requestId, result) as Promise<boolean>,
+    startJsonClaude: (id, cwd) =>
+      req('jsonClaude:start', id, cwd) as Promise<boolean>,
+    sendJsonClaudeMessage: (id, text) => sig('jsonClaude:send', id, text),
+    killJsonClaude: (id) => req('jsonClaude:kill', id) as Promise<boolean>,
+    interruptJsonClaude: (id) =>
+      req('jsonClaude:interrupt', id) as Promise<boolean>,
+
     getStateSnapshot: () => transport.getStateSnapshot(),
     onStateEvent: (callback) =>
       transport.onStateEvent((event, seq) => callback(event, seq)),

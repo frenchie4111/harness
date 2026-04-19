@@ -323,6 +323,24 @@ contextBridge.exposeInMainWorld('api', {
       callback(id as string, exitCode as number)
     }),
 
+  // JSON-mode Claude — approval bridge + session lifecycle.
+  resolveJsonClaudeApproval: (
+    requestId: string,
+    result: {
+      behavior: 'allow' | 'deny'
+      updatedInput?: Record<string, unknown>
+      updatedPermissions?: unknown[]
+      message?: string
+      interrupt?: boolean
+    }
+  ) => req('jsonClaude:resolveApproval', requestId, result),
+  startJsonClaude: (id: string, cwd: string) =>
+    req('jsonClaude:start', id, cwd),
+  sendJsonClaudeMessage: (id: string, text: string) =>
+    sig('jsonClaude:send', id, text),
+  killJsonClaude: (id: string) => req('jsonClaude:kill', id),
+  interruptJsonClaude: (id: string) => req('jsonClaude:interrupt', id),
+
   // State transport (snapshot + event stream). Replaces ad-hoc per-field
   // getters and onXChanged subscriptions one slice at a time.
   getStateSnapshot: () => transport.getStateSnapshot(),

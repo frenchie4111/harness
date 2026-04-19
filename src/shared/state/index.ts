@@ -71,6 +71,12 @@ import {
   type BrowserEvent,
   type BrowserState
 } from './browser'
+import {
+  initialJsonClaude,
+  jsonClaudeReducer,
+  type JsonClaudeEvent,
+  type JsonClaudeState
+} from './json-claude'
 
 export type { SettingsState, SettingsEvent }
 export type { UpdaterState, UpdaterEvent, UpdaterStatus } from './updater'
@@ -127,6 +133,15 @@ export {
 } from './terminals'
 
 export type { BrowserState, BrowserEvent, BrowserTabState } from './browser'
+export type {
+  JsonClaudeState,
+  JsonClaudeEvent,
+  JsonClaudeSession,
+  JsonClaudeSessionState,
+  JsonClaudeChatEntry,
+  JsonClaudeMessageBlock,
+  JsonClaudePendingApproval
+} from './json-claude'
 
 export interface AppState {
   settings: SettingsState
@@ -139,6 +154,7 @@ export interface AppState {
   repoConfigs: RepoConfigsState
   costs: CostsState
   browser: BrowserState
+  jsonClaude: JsonClaudeState
 }
 
 export type StateEvent =
@@ -152,6 +168,7 @@ export type StateEvent =
   | RepoConfigsEvent
   | CostsEvent
   | BrowserEvent
+  | JsonClaudeEvent
 
 export const initialState: AppState = {
   settings: initialSettings,
@@ -163,7 +180,8 @@ export const initialState: AppState = {
   updater: initialUpdater,
   repoConfigs: initialRepoConfigs,
   costs: initialCosts,
-  browser: initialBrowser
+  browser: initialBrowser,
+  jsonClaude: initialJsonClaude
 }
 
 export function rootReducer(state: AppState, event: StateEvent): AppState {
@@ -211,6 +229,12 @@ export function rootReducer(state: AppState, event: StateEvent): AppState {
   }
   if (event.type.startsWith('browser/')) {
     return { ...state, browser: browserReducer(state.browser, event as BrowserEvent) }
+  }
+  if (event.type.startsWith('jsonClaude/')) {
+    return {
+      ...state,
+      jsonClaude: jsonClaudeReducer(state.jsonClaude, event as JsonClaudeEvent)
+    }
   }
   return state
 }

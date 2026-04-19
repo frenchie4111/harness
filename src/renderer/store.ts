@@ -150,4 +150,8 @@ export function useTerminalSession(terminalId: string) {
   return useAppState((s) => s.terminals.sessions[terminalId] ?? null)
 }
 
+export function useJsonClaude() {
+  return useAppState((s) => s.jsonClaude)
+}
+
 export type { AppState, StateEvent }

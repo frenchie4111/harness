@@ -2,6 +2,7 @@ import { existsSync, lstatSync } from 'fs'
 import { createRequire } from 'module'
 import { join } from 'path'
 import { PtyManager } from './pty-manager'
+import { ApprovalBridge } from './approval-bridge'
 import { Store } from './store'
 import { WebSocketServerTransport } from './transport-websocket'
 import { CompoundServerTransport } from './transport-compound'
@@ -137,6 +138,7 @@ let config = loadConfig()
 let stopWatchingStatus: (() => void) | null = null
 
 const store = new Store(buildInitialAppState(config, { hasGithubToken: hasSecret('githubToken') }))
+const approvalBridge = new ApprovalBridge(store)
 const perfMonitor = new PerfMonitor()
 
 // In Electron mode createDesktopShell applies the dev-mode userData
@@ -1727,6 +1729,29 @@ function registerIpcHandlers(): void {
     ptyManager.kill(id)
   })
 
+  // Permission-prompt approval pipe. A json-claude tab asks Claude Code to
+  // delegate per-tool approvals to our bundled MCP server, which forwards
+  // the request over a per-session Unix socket owned by ApprovalBridge.
+  // The request surfaces in the store as jsonClaude/approvalRequested; the
+  // renderer UI calls this handler once the user clicks Allow/Deny, which
+  // writes the PermissionResult back out over the same socket.
+  transport.onRequest(
+    'jsonClaude:resolveApproval',
+    (
+      _ctx,
+      requestId: string,
+      result: {
+        behavior: 'allow' | 'deny'
+        updatedInput?: Record<string, unknown>
+        updatedPermissions?: unknown[]
+        message?: string
+        interrupt?: boolean
+      }
+    ) => {
+      return approvalBridge.resolveApproval(requestId, result)
+    }
+  )
+
   transport.onSignal('terminal:join', (ctx, id: string) => {
     store.dispatch({
       type: 'terminals/clientJoined',
@@ -2092,6 +2117,9 @@ if (desktopShellMod && desktopEarly) {
     },
     onRepoAdded: () => {
       void worktreesFSM.refreshList()
+    },
+    onBeforeQuit: () => {
+      approvalBridge.stopAll()
     }
   })
   desktopHooks.startAutoUpdateChecks = handle.startAutoUpdateChecks
@@ -2109,6 +2137,7 @@ if (desktopShellMod && desktopEarly) {
     stopWatchingStatus?.()
     stopWatchingStatus = null
     ptyManager.killAll('SIGKILL')
+    approvalBridge.stopAll()
     browserManager.destroyAll()
     sealAllActive()
     saveConfigSync(config)
