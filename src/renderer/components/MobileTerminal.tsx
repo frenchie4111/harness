@@ -135,19 +135,12 @@ export function MobileTerminal({ worktreePath, tab }: MobileTerminalProps): JSX.
     [writeRaw]
   )
 
-  // Heuristic: visualViewport noticeably shorter than layout = soft
-  // keyboard is open.
-  useEffect(() => {
-    const vv = window.visualViewport
-    if (!vv) return
-    const onResize = (): void => {
-      const layoutH = window.innerHeight
-      setKeyboardOpen(vv.height < layoutH - 100)
-    }
-    onResize()
-    vv.addEventListener('resize', onResize)
-    return () => vv.removeEventListener('resize', onResize)
-  }, [])
+  // Keyboard visibility derives from our textarea's focus state. iOS 15+
+  // shrinks both visualViewport.height AND window.innerHeight when the
+  // keyboard opens, so a viewport-size heuristic can't tell them apart;
+  // focus/blur is the reliable signal.
+  const handleInputFocus = useCallback(() => setKeyboardOpen(true), [])
+  const handleInputBlur = useCallback(() => setKeyboardOpen(false), [])
 
   const focusInput = useCallback(() => {
     inputRef.current?.focus({ preventScroll: true })
@@ -205,6 +198,8 @@ export function MobileTerminal({ worktreePath, tab }: MobileTerminalProps): JSX.
           onKeyDown={handleKeyDown}
           onCompositionStart={handleCompositionStart}
           onCompositionEnd={handleCompositionEnd}
+          onFocus={handleInputFocus}
+          onBlur={handleInputBlur}
           className="absolute inset-0 w-full h-full resize-none border-0 bg-transparent text-transparent caret-transparent outline-none"
           style={{ opacity: 0 }}
         />
