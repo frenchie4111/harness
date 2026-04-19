@@ -31,11 +31,12 @@
 // via `?token=…` on the WS upgrade. No TLS, no rate limiting, no token
 // rotation yet — these are deferred; see PR description for the list.
 
-import { randomBytes } from 'crypto'
+import { randomBytes, randomUUID } from 'crypto'
 import { WebSocketServer, type WebSocket } from 'ws'
 import type { IncomingMessage, Server as HttpServer } from 'http'
 import type { StateEvent } from '../shared/state'
 import type {
+  ConnectionContext,
   RequestHandler,
   ServerTransport,
   SignalHandler
@@ -78,8 +79,10 @@ export class WebSocketServerTransport implements ServerTransport {
   private wss: WebSocketServer | null = null
   private unsubscribeStore: (() => void) | null = null
   private readonly sockets = new Set<WebSocket>()
+  private readonly clientIdBySocket = new WeakMap<WebSocket, string>()
   private readonly requestHandlers = new Map<string, RequestHandler>()
   private readonly signalHandlers = new Map<string, SignalHandler>()
+  private readonly disconnectCallbacks: Array<(id: string) => void> = []
   private readonly token: string
 
   constructor(
@@ -88,6 +91,9 @@ export class WebSocketServerTransport implements ServerTransport {
     private readonly perfMonitor?: PerfMonitor
   ) {
     this.token = opts.token ?? randomBytes(32).toString('hex')
+    // Built-in request handler so web clients can learn their own
+    // identity without an extra roundtrip design.
+    this.requestHandlers.set('transport:getClientId', async (ctx) => ctx.clientId)
   }
 
   getToken(): string {
@@ -178,6 +184,10 @@ export class WebSocketServerTransport implements ServerTransport {
     }
   }
 
+  onClientDisconnect(callback: (clientId: string) => void): void {
+    this.disconnectCallbacks.push(callback)
+  }
+
   private verify(
     req: IncomingMessage,
     cb: (ok: boolean, code?: number, message?: string) => void
@@ -202,8 +212,10 @@ export class WebSocketServerTransport implements ServerTransport {
   }
 
   private handleConnection(ws: WebSocket): void {
+    const clientId = randomUUID()
+    this.clientIdBySocket.set(ws, clientId)
     this.sockets.add(ws)
-    log('ws-transport', `client connected (total=${this.sockets.size})`)
+    log('ws-transport', `client connected id=${clientId} (total=${this.sockets.size})`)
 
     ws.on('message', (raw) => {
       let frame: ClientFrame
@@ -218,7 +230,8 @@ export class WebSocketServerTransport implements ServerTransport {
 
     ws.on('close', () => {
       this.sockets.delete(ws)
-      log('ws-transport', `client disconnected (total=${this.sockets.size})`)
+      log('ws-transport', `client disconnected id=${clientId} (total=${this.sockets.size})`)
+      for (const cb of this.disconnectCallbacks) cb(clientId)
     })
 
     ws.on('error', (err) => {
@@ -227,6 +240,12 @@ export class WebSocketServerTransport implements ServerTransport {
   }
 
   private async handleClientFrame(ws: WebSocket, frame: ClientFrame): Promise<void> {
+    const clientId = this.clientIdBySocket.get(ws)
+    if (!clientId) {
+      log('ws-transport', 'frame arrived for unknown socket — dropping')
+      return
+    }
+    const ctx: ConnectionContext = { clientId }
     if (frame.t === 'snapreq') {
       const snapshot = this.store.getSnapshot()
       this.sendFrame(ws, { t: 'snapres', id: frame.id, ok: true, snapshot })
@@ -244,7 +263,7 @@ export class WebSocketServerTransport implements ServerTransport {
         return
       }
       try {
-        const value = await handler(...(frame.args ?? []))
+        const value = await handler(ctx, ...(frame.args ?? []))
         this.sendFrame(ws, { t: 'res', id: frame.id, ok: true, value })
       } catch (err) {
         this.sendFrame(ws, {
@@ -260,7 +279,7 @@ export class WebSocketServerTransport implements ServerTransport {
       const handler = this.signalHandlers.get(frame.name)
       if (!handler) return
       try {
-        handler(...(frame.args ?? []))
+        handler(ctx, ...(frame.args ?? []))
       } catch (err) {
         log(
           'ws-transport',

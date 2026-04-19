@@ -313,5 +313,10 @@ contextBridge.exposeInMainWorld('api', {
   // getters and onXChanged subscriptions one slice at a time.
   getStateSnapshot: () => transport.getStateSnapshot(),
   onStateEvent: (callback: (event: unknown, seq: number) => void) =>
-    transport.onStateEvent((event, seq) => callback(event, seq))
+    transport.onStateEvent((event, seq) => callback(event, seq)),
+
+  // Server-assigned identity of this client. Used by the renderer to
+  // decide whether it is the terminal's current controller or a
+  // spectator, and which "take control" affordance to render.
+  getClientId: () => transport.getClientId()
 })

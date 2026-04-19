@@ -64,7 +64,7 @@ describe('WebSocketServerTransport', () => {
 
     const signalSpy = vi.fn()
     server.onSignal('pty:write', signalSpy)
-    server.onRequest('echo', async (...args: unknown[]) => ({ args }))
+    server.onRequest('echo', async (_ctx, ...args: unknown[]) => ({ args }))
 
     const ws = new WSClient(`ws://127.0.0.1:${port}?token=secret`)
     await waitOpen(ws)
@@ -106,7 +106,11 @@ describe('WebSocketServerTransport', () => {
         JSON.stringify({ t: 'send', name: 'pty:write', args: ['term-1', 'ls\n'] })
       )
       await new Promise((r) => setTimeout(r, 25))
-      expect(signalSpy).toHaveBeenCalledWith('term-1', 'ls\n')
+      expect(signalSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ clientId: expect.any(String) }),
+        'term-1',
+        'ls\n'
+      )
 
       // Server-origin signal reaches the client
       const sigPromise = nextFrame(ws, (f) => f.t === 'sig')

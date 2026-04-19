@@ -41,4 +41,8 @@ export class CompoundServerTransport implements ServerTransport {
   sendSignal(name: string, ...args: unknown[]): void {
     for (const t of this.inner) t.sendSignal(name, ...args)
   }
+
+  onClientDisconnect(callback: (clientId: string) => void): void {
+    for (const t of this.inner) t.onClientDisconnect(callback)
+  }
 }

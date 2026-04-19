@@ -400,7 +400,9 @@ function buildApi(transport: WebSocketClientTransport): ElectronAPI {
 
     getStateSnapshot: () => transport.getStateSnapshot(),
     onStateEvent: (callback) =>
-      transport.onStateEvent((event, seq) => callback(event, seq))
+      transport.onStateEvent((event, seq) => callback(event, seq)),
+
+    getClientId: () => transport.getClientId()
   }
 
   return api

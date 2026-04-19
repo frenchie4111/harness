@@ -20,8 +20,8 @@
 
 import type { StateEvent, StateSnapshot } from '../shared/state'
 import type {
+  ClientSignalHandler,
   ClientTransport,
-  SignalHandler,
   StateEventListener
 } from '../shared/transport/transport'
 
@@ -55,7 +55,7 @@ export class WebSocketClientTransport implements ClientTransport {
   private nextRequestId = 1
   private readonly pending = new Map<string, PendingRequest>()
   private readonly eventListeners = new Set<StateEventListener>()
-  private readonly signalListeners = new Map<string, Set<SignalHandler>>()
+  private readonly signalListeners = new Map<string, Set<ClientSignalHandler>>()
   private connectPromise: Promise<void> | null = null
   private closed = false
   private backoffMs: number
@@ -115,7 +115,7 @@ export class WebSocketClientTransport implements ClientTransport {
     this.sendFrame({ t: 'send', name, args })
   }
 
-  onSignal(name: string, handler: SignalHandler): () => void {
+  onSignal(name: string, handler: ClientSignalHandler): () => void {
     let set = this.signalListeners.get(name)
     if (!set) {
       set = new Set()
@@ -125,6 +125,11 @@ export class WebSocketClientTransport implements ClientTransport {
     return () => {
       set!.delete(handler)
     }
+  }
+
+  async getClientId(): Promise<string> {
+    const id = await this.request('transport:getClientId')
+    return id as string
   }
 
   private openSocket(): Promise<void> {
