@@ -303,6 +303,16 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
           setLoading(false)
         }
       })
+
+      // Safety net: if no output has arrived by the time spawnPty
+      // returns + a short grace window, clear the overlay anyway. This
+      // covers the "attach to a running but idle Claude with no
+      // accumulated history" case, where getTerminalHistory returns ''
+      // and no new bytes will flow until the user does something — the
+      // overlay would otherwise stay forever.
+      setTimeout(() => {
+        if (!disposed) setLoading(false)
+      }, 800)
     }
 
     window.api.getTerminalHistory(terminalId).then((history) => {

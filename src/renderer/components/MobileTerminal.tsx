@@ -173,7 +173,14 @@ export function MobileTerminal({ worktreePath, tab }: MobileTerminalProps): JSX.
   return (
     <div className="relative w-full h-full flex flex-col bg-app">
       <div className="relative flex-1 min-h-0">
+        {/* key by tab.id so switching tabs (or worktrees) forces a fresh
+            XTerminal instance. Desktop renders one XTerminal per tab
+            inside portals; on mobile we reuse a single slot, so without
+            the key the init effect's `initializedRef` guard short-
+            circuits on the new id and the PTY for the new tab never
+            spawns — the user sees a black screen on cold worktrees. */}
         <XTerminal
+          key={tab.id}
           terminalId={tab.id}
           cwd={worktreePath}
           type={tab.type}
