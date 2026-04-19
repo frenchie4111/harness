@@ -3,6 +3,7 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import type { StateEvent } from '../../shared/state'
+import { isWebClient } from '../web-mode'
 
 function ClaudeLoader() {
   return (
@@ -367,7 +368,18 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
       cleanupData?.()
       cleanupExit?.()
       terminal.dispose()
-      window.api.killTerminal(terminalId)
+      // In Electron, unmount only fires on tab close or app shutdown, so
+      // killing the PTY here is the right cleanup. In the web client,
+      // unmount also fires when the user closes the browser tab — and
+      // we don't want a casual disconnect to kill Claude for the
+      // desktop window (or any other connected client). Skip the kill
+      // and accept that closing a tab from a web client leaks the PTY
+      // until the next desktop session does explicit cleanup; that's a
+      // strictly safer trade-off than killing live agents on every
+      // browser-tab close.
+      if (!isWebClient()) {
+        window.api.killTerminal(terminalId)
+      }
     }
   }, [terminalId, cwd, type])
 

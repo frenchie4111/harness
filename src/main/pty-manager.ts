@@ -124,7 +124,16 @@ export class PtyManager {
   ): void {
     log('pty', `create id=${id} cmd=${command} args=${JSON.stringify(args)} cwd=${cwd} cols=${cols} rows=${rows}`)
     if (this.ptys.has(id)) {
-      this.kill(id)
+      // A PTY for this id is already running — most likely a second
+      // client (web) just connected and its XTerminal mounted for the
+      // same tab the desktop window already has open. Don't kill +
+      // respawn; that would emit a terminal:exit to every connected
+      // client and force-restart Claude. The new client gets the live
+      // data stream via the existing terminal:data broadcast, and the
+      // history it already loaded via getTerminalHistory replays the
+      // scrollback up to the join point.
+      log('pty', `create id=${id} no-op — PTY already exists, treating as attach`)
+      return
     }
 
     const env = {
