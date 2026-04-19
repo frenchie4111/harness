@@ -171,7 +171,13 @@ export function MobileTerminal({ worktreePath, tab }: MobileTerminalProps): JSX.
   )
 
   return (
-    <div className="relative w-full h-full flex flex-col bg-app">
+    // absolute inset-0 instead of w-full h-full: on iOS Safari, h-full
+    // inside a flex-1 parent sometimes resolves to 0 / the intrinsic
+    // content size, leaving a gap between MobileTerminal's bottom and
+    // the parent's bottom that shows through as a black void under the
+    // toolbar. The parent already has `relative`, so inset-0 just fills
+    // it deterministically.
+    <div className="absolute inset-0 flex flex-col bg-app">
       <div className="relative flex-1 min-h-0">
         {/* key by tab.id so switching tabs (or worktrees) forces a fresh
             XTerminal instance. Desktop renders one XTerminal per tab
