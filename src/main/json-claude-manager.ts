@@ -17,9 +17,10 @@
 // dir so all project-dir-derived reads and writes land there instead.
 
 import { spawn, type ChildProcessWithoutNullStreams } from 'child_process'
-import { existsSync, mkdirSync, mkdtempSync } from 'fs'
-import { homedir, tmpdir } from 'os'
+import { existsSync } from 'fs'
+import { homedir } from 'os'
 import { join } from 'path'
+import { app } from 'electron'
 import type { Store } from './store'
 import type {
   JsonClaudeChatEntry,
@@ -35,8 +36,6 @@ interface JsonClaudeInstance {
   buf: string
   /** Monotonically increasing counter used to build stable chat entry ids. */
   entryCounter: number
-  /** Our per-session CLAUDE_CONFIG_DIR. Deleted on kill. */
-  configDir: string
 }
 
 export interface JsonClaudeManagerOptions {
@@ -47,15 +46,16 @@ export interface JsonClaudeManagerOptions {
 }
 
 /** Path to the bundled stdio MCP server we point Claude's
- *  --permission-prompt-tool at. The script is emitted as a second main
- *  bundle entry by electron.vite.config.ts. */
+ *  --permission-prompt-tool at. Mirrors src/main/mcp-config.ts: in dev
+ *  the file lives in resources/ at the repo root; in packaged builds
+ *  it's copied by electron-builder to process.resourcesPath. */
 function permissionPromptScriptPath(): string {
-  // The file lives next to the compiled main entry — __dirname at
-  // runtime is out/main, so out/main/permission-prompt-mcp.js is a
-  // sibling. This holds in both dev (electron-vite's dev build) and
-  // packaged builds.
-  return join(__dirname, 'permission-prompt-mcp.js')
+  if (app.isPackaged) {
+    return join(process.resourcesPath, 'permission-prompt-mcp.js')
+  }
+  return join(__dirname, '..', '..', 'resources', 'permission-prompt-mcp.js')
 }
+
 
 export class JsonClaudeManager {
   private instances = new Map<string, JsonClaudeInstance>()
@@ -77,8 +77,6 @@ export class JsonClaudeManager {
       return
     }
     const socketPath = this.opts.getApprovalSocketPath(sessionId)
-    const configDir = mkdtempSync(join(tmpdir(), 'harness-claude-cfg-'))
-    mkdirSync(configDir, { recursive: true })
 
     // MCP config points at the bundled permission-prompt server. Claude
     // resolves the tool as mcp__<server>__<tool>; the server we advertise
@@ -128,7 +126,7 @@ export class JsonClaudeManager {
     const quoted = args.map((a) => JSON.stringify(a)).join(' ')
     const cmdLine = `${claudeCommand} ${quoted}`
 
-    log('json-claude', `spawn sessionId=${sessionId} cwd=${worktreePath} cfg=${configDir}`)
+    log('json-claude', `spawn sessionId=${sessionId} cwd=${worktreePath}`)
 
     const envVars = this.opts.getClaudeEnvVars() || {}
     let proc: ChildProcessWithoutNullStreams
@@ -138,12 +136,14 @@ export class JsonClaudeManager {
         env: {
           ...process.env,
           ...envVars,
-          // Memory isolation: point Claude at a fresh config dir so its
-          // auto-memory subsystem doesn't write into the user's
-          // ~/.claude/projects/<project>/memory/ during json-claude
-          // conversations. The auth token lives in the macOS keychain,
-          // not this directory, so OAuth still works.
-          CLAUDE_CONFIG_DIR: configDir,
+          // Memory isolation: the auto-memory subsystem writes into
+          // ~/.claude/projects/<project>/memory/ by default, which
+          // means json-claude sessions would scribble into the user's
+          // personal memory dir for whatever project their worktree
+          // belongs to. This env var skips that path entirely. Session
+          // jsonls still persist (needed for --resume), they just land
+          // in projects/<project>/ without a sibling memory/ dir.
+          CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1',
           // So our bundled MCP server can identify its parent session
           // when it opens the approval socket.
           HARNESS_JSON_CLAUDE_SESSION_ID: sessionId
@@ -168,8 +168,7 @@ export class JsonClaudeManager {
       sessionId,
       worktreePath,
       buf: '',
-      entryCounter: 0,
-      configDir
+      entryCounter: 0
     }
     this.instances.set(sessionId, instance)
     this.dispatchState(sessionId, 'running')
