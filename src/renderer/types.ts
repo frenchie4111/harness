@@ -214,6 +214,8 @@ export interface ElectronAPI {
   setWsTransportEnabled(enabled: boolean): Promise<boolean>
   setWsTransportPort(port: number): Promise<number>
   getWsTransportInfo(): Promise<{ port: number; token: string } | null>
+  setBrowserToolsEnabled(enabled: boolean): Promise<boolean>
+  setBrowserToolsMode(mode: 'view' | 'full'): Promise<boolean>
   setAutoUpdateEnabled(enabled: boolean): Promise<boolean>
   setShareClaudeSettings(enabled: boolean): Promise<boolean>
   setHarnessSystemPromptEnabled(enabled: boolean): Promise<boolean>

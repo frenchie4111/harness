@@ -175,7 +175,9 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
     harnessSystemPromptEnabled,
     harnessSystemPrompt,
     harnessSystemPromptMain,
-    claudeTuiFullscreen
+    claudeTuiFullscreen,
+    browserToolsEnabled,
+    browserToolsMode
   } = settings
   const setupScript = worktreeScripts.setup
   const teardownScript = worktreeScripts.teardown
@@ -979,6 +981,33 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
                       </div>
                     </div>
                   </label>
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-border">
+                  <div className="flex items-start gap-3">
+                    <input
+                      type="checkbox"
+                      id="browser-tools-enabled"
+                      checked={browserToolsEnabled}
+                      onChange={(e) => { void window.api.setBrowserToolsEnabled(e.target.checked) }}
+                      className="mt-0.5 cursor-pointer"
+                    />
+                    <div className="flex-1">
+                      <label htmlFor="browser-tools-enabled" className="text-sm text-fg-bright cursor-pointer">Enable browser tools</label>
+                      <div className="text-xs text-dim mt-0.5 mb-2">
+                        Lets agents see and drive embedded browser tabs. Takes effect on the next agent session.
+                      </div>
+                      <select
+                        value={browserToolsMode}
+                        onChange={(e) => { void window.api.setBrowserToolsMode(e.target.value === 'view' ? 'view' : 'full') }}
+                        disabled={!browserToolsEnabled}
+                        className="bg-panel border border-border-strong rounded px-2 py-1 text-xs text-fg-bright outline-none focus:border-fg cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        <option value="view">View Only — inspect &amp; navigate, no clicks/typing/scrolling</option>
+                        <option value="full">Full Control — click, type, scroll, and move the cursor</option>
+                      </select>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="mt-4 pt-3 border-t border-border">

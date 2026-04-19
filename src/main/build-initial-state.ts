@@ -69,7 +69,9 @@ export function buildInitialAppState(
       harnessSystemPromptMain: config.harnessSystemPromptMain || DEFAULT_HARNESS_SYSTEM_PROMPT_MAIN,
       claudeTuiFullscreen: config.claudeTuiFullscreen !== false,
       wsTransportEnabled: config.wsTransportEnabled === true,
-      wsTransportPort: config.wsTransportPort ?? 37291
+      wsTransportPort: config.wsTransportPort ?? 37291,
+      browserToolsEnabled: config.browserToolsEnabled !== false,
+      browserToolsMode: config.browserToolsMode === 'view' ? 'view' : 'full'
     }
   }
 }

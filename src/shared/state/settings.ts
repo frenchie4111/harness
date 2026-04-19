@@ -8,6 +8,8 @@ export type WorktreeBase = 'remote' | 'local'
 
 export type AgentKindSetting = 'claude' | 'codex'
 
+export type BrowserToolsMode = 'view' | 'full'
+
 export interface SettingsState {
   theme: string
   hotkeys: Record<string, string> | null
@@ -37,6 +39,8 @@ export interface SettingsState {
   claudeTuiFullscreen: boolean
   wsTransportEnabled: boolean
   wsTransportPort: number
+  browserToolsEnabled: boolean
+  browserToolsMode: BrowserToolsMode
 }
 
 export type SettingsEvent =
@@ -68,6 +72,8 @@ export type SettingsEvent =
   | { type: 'settings/claudeTuiFullscreenChanged'; payload: boolean }
   | { type: 'settings/wsTransportEnabledChanged'; payload: boolean }
   | { type: 'settings/wsTransportPortChanged'; payload: number }
+  | { type: 'settings/browserToolsEnabledChanged'; payload: boolean }
+  | { type: 'settings/browserToolsModeChanged'; payload: BrowserToolsMode }
 
 // Client-side placeholder. Real values are seeded in the main-process Store
 // constructor from the on-disk config and secrets.
@@ -99,7 +105,9 @@ export const initialSettings: SettingsState = {
   harnessSystemPromptMain: '',
   claudeTuiFullscreen: true,
   wsTransportEnabled: false,
-  wsTransportPort: 37291
+  wsTransportPort: 37291,
+  browserToolsEnabled: true,
+  browserToolsMode: 'full'
 }
 
 export function settingsReducer(state: SettingsState, event: SettingsEvent): SettingsState {
@@ -160,6 +168,10 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, wsTransportEnabled: event.payload }
     case 'settings/wsTransportPortChanged':
       return { ...state, wsTransportPort: event.payload }
+    case 'settings/browserToolsEnabledChanged':
+      return { ...state, browserToolsEnabled: event.payload }
+    case 'settings/browserToolsModeChanged':
+      return { ...state, browserToolsMode: event.payload }
     default: {
       const _exhaustive: never = event
       void _exhaustive

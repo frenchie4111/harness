@@ -257,6 +257,28 @@ describe('settingsReducer', () => {
     expect(next.wsTransportPort).toBe(55555)
   })
 
+  it('browserToolsEnabledChanged toggles flag', () => {
+    expect(initialSettings.browserToolsEnabled).toBe(true)
+    const off = apply(initialSettings, {
+      type: 'settings/browserToolsEnabledChanged',
+      payload: false
+    })
+    expect(off.browserToolsEnabled).toBe(false)
+    const on = apply(off, { type: 'settings/browserToolsEnabledChanged', payload: true })
+    expect(on.browserToolsEnabled).toBe(true)
+  })
+
+  it('browserToolsModeChanged switches between view and full', () => {
+    expect(initialSettings.browserToolsMode).toBe('full')
+    const view = apply(initialSettings, {
+      type: 'settings/browserToolsModeChanged',
+      payload: 'view'
+    })
+    expect(view.browserToolsMode).toBe('view')
+    const full = apply(view, { type: 'settings/browserToolsModeChanged', payload: 'full' })
+    expect(full.browserToolsMode).toBe('full')
+  })
+
   it('returns a new object reference (no mutation)', () => {
     const next = apply(initialSettings, { type: 'settings/themeChanged', payload: 'x' })
     expect(next).not.toBe(initialSettings)
