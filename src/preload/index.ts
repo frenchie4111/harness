@@ -181,6 +181,7 @@ contextBridge.exposeInMainWorld('api', {
   panesEnsureInitialized: (wtPath: string) => req('panes:ensureInitialized', wtPath),
 
   getTerminalHistory: (id: string) => req('terminal:getHistory', id),
+  getTerminalTail: (id: string) => req('terminal:getTail', id),
   clearTerminalHistory: (id: string) => req('terminal:forgetHistory', id),
   agentSessionFileExists: (cwd: string, sessionId: string, agentKind?: string) =>
     req('agent:sessionFileExists', cwd, sessionId, agentKind),

@@ -279,6 +279,8 @@ function buildApi(transport: WebSocketClientTransport): ElectronAPI {
     panesEnsureInitialized: (wtPath) =>
       req('panes:ensureInitialized', wtPath) as Promise<boolean>,
     getTerminalHistory: (id) => req('terminal:getHistory', id) as Promise<string>,
+    getTerminalTail: (id) =>
+      req('terminal:getTail', id) as Promise<{ bytes: string }>,
     clearTerminalHistory: (id) =>
       req('terminal:forgetHistory', id) as Promise<boolean>,
     agentSessionFileExists: (cwd, sessionId, agentKind) =>
