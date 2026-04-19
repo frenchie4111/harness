@@ -122,6 +122,11 @@ export interface Config {
   // WebSocket bound to 127.0.0.1:<wsTransportPort>. Off by default.
   wsTransportEnabled?: boolean
   wsTransportPort?: number
+  // Host the WS + HTTP web-client servers bind to. Default 127.0.0.1
+  // (loopback only). Set to '0.0.0.0' to expose to other devices on the
+  // LAN (a phone, second laptop, etc.). Token auth still applies, but
+  // there is no TLS — only enable on a trusted network.
+  wsTransportHost?: string
   // When false, the harness-control browser_* MCP tools are not advertised to
   // agents and the corresponding /browser/* control endpoints reject calls.
   // Default is enabled (undefined/true).

@@ -9,6 +9,10 @@ import { Store } from './store'
 import { ElectronServerTransport } from './transport-electron'
 import { WebSocketServerTransport } from './transport-websocket'
 import { CompoundServerTransport } from './transport-compound'
+import { createWebClientServer } from './web-client-server'
+import { randomBytes } from 'crypto'
+import { networkInterfaces } from 'os'
+import type { Server as HttpServer } from 'http'
 import { PerfMonitor } from './perf-monitor'
 import { PRPoller } from './pr-poller'
 import { WorktreesFSM } from './worktrees-fsm'
@@ -132,21 +136,73 @@ const electronTransport = new ElectronServerTransport(store, perfMonitor)
 const wsEnabled =
   config.wsTransportEnabled === true || process.env['HARNESS_WS_TRANSPORT'] === '1'
 const wsPort = config.wsTransportPort ?? 37291
-const wsTransport = wsEnabled
-  ? new WebSocketServerTransport(store, { port: wsPort }, perfMonitor)
-  : null
+const wsHost =
+  process.env['HARNESS_WS_HOST'] || config.wsTransportHost || '127.0.0.1'
+
+// Pre-generate the auth token so it can be inlined into the HTML the
+// web-client server returns AND reused by the WS transport — both must
+// agree, but the token is only ever served via index.html (not via any
+// unauthenticated endpoint).
+const wsToken = wsEnabled ? randomBytes(32).toString('hex') : null
+
+// HTTP server for the bundled web-client renderer. Lives on the same
+// host+port as the WS transport: clients fetch `http://host:port/` for
+// index.html, then the renderer opens `ws://host:port/?token=…` on the
+// same origin. WS upgrade events are routed through this http.Server.
+const webClientDir = app.isPackaged
+  ? join(app.getAppPath(), 'out/web-client')
+  : join(__dirname, '../web-client')
+
+const webHttpServer: HttpServer | null =
+  wsEnabled && wsToken
+    ? createWebClientServer({ token: wsToken, rootDir: webClientDir })
+    : null
+
+const wsTransport =
+  wsEnabled && wsToken
+    ? new WebSocketServerTransport(
+        store,
+        { host: wsHost, server: webHttpServer ?? undefined, token: wsToken },
+        perfMonitor
+      )
+    : null
 const transport: CompoundServerTransport = new CompoundServerTransport(
   wsTransport ? [electronTransport, wsTransport] : [electronTransport]
 )
 transport.start()
-if (wsTransport) {
-  // Log to stdout so the user can paste the token into a browser client
-  // without digging through the debug log. TODO(production): expose
-  // through a Settings UI screen with a copy button + regenerate action.
-  // eslint-disable-next-line no-console
-  console.log(
-    `[ws-transport] enabled on ws://127.0.0.1:${wsTransport.getPort()}?token=${wsTransport.getToken()}`
-  )
+
+if (webHttpServer && wsTransport) {
+  webHttpServer.on('error', (err) => {
+    log('web-client', 'http server error', err.message)
+  })
+  webHttpServer.listen(wsPort, wsHost, () => {
+    const displayHost = wsHost === '0.0.0.0' ? getLanHost() : wsHost
+    // Log to stdout so the user can paste the URL into another browser
+    // without digging through the debug log. TODO(production): expose
+    // through a Settings UI screen with a copy button + regenerate action.
+    // eslint-disable-next-line no-console
+    console.log(
+      `[ws-transport] enabled on ws://${displayHost}:${wsPort}?token=${wsTransport.getToken()} (bind=${wsHost})`
+    )
+    // eslint-disable-next-line no-console
+    console.log(
+      `[web-client] open http://${displayHost}:${wsPort}/?token=${wsTransport.getToken()}`
+    )
+  })
+}
+
+/** Pick a non-loopback IPv4 address to display when binding to 0.0.0.0,
+ *  so the printed URL is reachable from another device on the LAN. Falls
+ *  back to '0.0.0.0' literal if no usable interface is found. */
+function getLanHost(): string {
+  const ifaces = networkInterfaces()
+  for (const list of Object.values(ifaces)) {
+    if (!list) continue
+    for (const entry of list) {
+      if (entry.family === 'IPv4' && !entry.internal) return entry.address
+    }
+  }
+  return '0.0.0.0'
 }
 
 // Tails Claude Code session jsonl transcripts on Stop hook events,
@@ -350,7 +406,13 @@ const panesFSM = new PanesFSM(store, {
     const kind = store.getSnapshot().state.settings.defaultAgent ?? 'claude'
     return getAgent(kind).latestSessionId(wtPath)
   },
-  getDefaultAgentKind: () => toAgentKind(store.getSnapshot().state.settings.defaultAgent)
+  getDefaultAgentKind: () => toAgentKind(store.getSnapshot().state.settings.defaultAgent),
+  // Authoritative PTY teardown when tabs leave the tree. The renderer
+  // no longer kills PTYs from XTerminal unmount cleanups (that was the
+  // only path before, and it broke the moment we had clients that
+  // could disconnect without intending to kill agents). Tab-close /
+  // restart / clear events are the actual lifecycle boundary.
+  killTabPty: (tabId) => ptyManager.kill(tabId)
 })
 
 const worktreesFSM = new WorktreesFSM(store, {
@@ -1137,12 +1199,31 @@ function registerIpcHandlers(): void {
     return clamped
   })
 
+  transport.onRequest('config:setWsTransportHost', (host: string) => {
+    // Only two values are meaningful for v1: '127.0.0.1' (loopback) or
+    // '0.0.0.0' (all interfaces, LAN-reachable). Anything else is treated
+    // as loopback so a typo can't accidentally expose the server.
+    const next = host === '0.0.0.0' ? '0.0.0.0' : '127.0.0.1'
+    if (next === '127.0.0.1') {
+      delete config.wsTransportHost
+    } else {
+      config.wsTransportHost = next
+    }
+    saveConfig(config)
+    store.dispatch({ type: 'settings/wsTransportHostChanged', payload: next })
+    return next
+  })
+
   transport.onRequest('config:getWsTransportInfo', () => {
     // Exposes the live token + port for clients (or a future UI) that need
     // to know the connect URL. Returns null when the WS transport is not
     // running, to distinguish "off" from "on but unknown".
     if (!wsTransport) return null
-    return { port: wsTransport.getPort(), token: wsTransport.getToken() }
+    return {
+      port: wsTransport.getPort(),
+      token: wsTransport.getToken(),
+      host: wsTransport.getHost()
+    }
   })
 
   transport.onRequest('config:setClaudeTuiFullscreen', (enabled: boolean) => {

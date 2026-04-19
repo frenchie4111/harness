@@ -257,6 +257,20 @@ describe('settingsReducer', () => {
     expect(next.wsTransportPort).toBe(55555)
   })
 
+  it('wsTransportHostChanged sets the bind host', () => {
+    expect(initialSettings.wsTransportHost).toBe('127.0.0.1')
+    const lan = apply(initialSettings, {
+      type: 'settings/wsTransportHostChanged',
+      payload: '0.0.0.0'
+    })
+    expect(lan.wsTransportHost).toBe('0.0.0.0')
+    const back = apply(lan, {
+      type: 'settings/wsTransportHostChanged',
+      payload: '127.0.0.1'
+    })
+    expect(back.wsTransportHost).toBe('127.0.0.1')
+  })
+
   it('browserToolsEnabledChanged toggles flag', () => {
     expect(initialSettings.browserToolsEnabled).toBe(true)
     const off = apply(initialSettings, {

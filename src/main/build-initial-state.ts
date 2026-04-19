@@ -70,6 +70,7 @@ export function buildInitialAppState(
       claudeTuiFullscreen: config.claudeTuiFullscreen !== false,
       wsTransportEnabled: config.wsTransportEnabled === true,
       wsTransportPort: config.wsTransportPort ?? 37291,
+      wsTransportHost: config.wsTransportHost ?? '127.0.0.1',
       browserToolsEnabled: config.browserToolsEnabled !== false,
       browserToolsMode: config.browserToolsMode === 'view' ? 'view' : 'full'
     }

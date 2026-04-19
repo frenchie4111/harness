@@ -135,6 +135,7 @@ contextBridge.exposeInMainWorld('api', {
   setClaudeTuiFullscreen: (enabled: boolean) => req('config:setClaudeTuiFullscreen', enabled),
   setWsTransportEnabled: (enabled: boolean) => req('config:setWsTransportEnabled', enabled),
   setWsTransportPort: (port: number) => req('config:setWsTransportPort', port),
+  setWsTransportHost: (host: string) => req('config:setWsTransportHost', host),
   getWsTransportInfo: () => req('config:getWsTransportInfo'),
   setBrowserToolsEnabled: (enabled: boolean) => req('config:setBrowserToolsEnabled', enabled),
   setBrowserToolsMode: (mode: 'view' | 'full') => req('config:setBrowserToolsMode', mode),

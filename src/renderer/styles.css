@@ -1,5 +1,16 @@
 @import "tailwindcss";
 
+/* Tailwind v4 auto-scans the static import graph from the entry. The
+ * web-client build's entry (src/web-client/main.tsx) only references the
+ * renderer modules via `await import(...)` — dynamic imports get split
+ * into separate chunks and aren't picked up by the class scanner. The
+ * Electron renderer build (rooted at src/renderer/) finds everything via
+ * static imports. Spelling out @source paths makes both builds emit the
+ * same utility set regardless of how the entry chooses to import. */
+@source "../renderer";
+@source "../web-client";
+@source "../shared";
+
 /* --- Theme tokens ---
  * Semantic color tokens exposed to Tailwind utilities via @theme.
  * Each token generates `bg-*`, `text-*`, `border-*` utilities that read

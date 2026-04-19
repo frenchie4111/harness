@@ -33,7 +33,7 @@
 
 import { randomBytes } from 'crypto'
 import { WebSocketServer, type WebSocket } from 'ws'
-import type { IncomingMessage } from 'http'
+import type { IncomingMessage, Server as HttpServer } from 'http'
 import type { StateEvent } from '../shared/state'
 import type {
   RequestHandler,
@@ -58,13 +58,20 @@ type ClientFrame =
   | { t: 'send'; name: string; args: unknown[] }
 
 export interface WebSocketServerTransportOptions {
-  /** Port to bind on 127.0.0.1. */
-  port: number
+  /** Port to bind. Required unless `server` is provided, in which case
+   *  the WS server piggy-backs on the existing http.Server's port. */
+  port?: number
   /** Override the auth token; default: a fresh 32-byte hex string. */
   token?: string
-  /** Host to bind. Default 127.0.0.1 — do not change without also
-   *  adding TLS + stronger auth; see top-of-file notes. */
+  /** Host to bind. Default 127.0.0.1. Set to '0.0.0.0' to expose on the
+   *  LAN — token auth still applies, but there is no TLS. Ignored when
+   *  `server` is provided (the http.Server already chose its bind). */
   host?: string
+  /** Optional existing http.Server to attach to. When set, the WS server
+   *  shares the http server's port + bind via the upgrade event. The
+   *  HTTP server (used to serve the web-client bundle) and this WS
+   *  transport share one port + same-origin auth via this path. */
+  server?: HttpServer
 }
 
 export class WebSocketServerTransport implements ServerTransport {
@@ -88,16 +95,30 @@ export class WebSocketServerTransport implements ServerTransport {
   }
 
   getPort(): number {
-    return this.opts.port
+    if (this.opts.port != null) return this.opts.port
+    const addr = this.opts.server?.address()
+    if (addr && typeof addr === 'object') return addr.port
+    return 0
+  }
+
+  getHost(): string {
+    return this.opts.host ?? '127.0.0.1'
   }
 
   start(): void {
     const host = this.opts.host ?? '127.0.0.1'
-    this.wss = new WebSocketServer({
-      host,
-      port: this.opts.port,
-      verifyClient: (info, cb) => this.verify(info.req, cb)
-    })
+    if (this.opts.server) {
+      this.wss = new WebSocketServer({
+        server: this.opts.server,
+        verifyClient: (info, cb) => this.verify(info.req, cb)
+      })
+    } else {
+      this.wss = new WebSocketServer({
+        host,
+        port: this.opts.port,
+        verifyClient: (info, cb) => this.verify(info.req, cb)
+      })
+    }
 
     this.wss.on('connection', (ws) => this.handleConnection(ws))
     this.wss.on('error', (err) => {
@@ -106,7 +127,7 @@ export class WebSocketServerTransport implements ServerTransport {
     this.wss.on('listening', () => {
       log(
         'ws-transport',
-        `listening on ws://${host}:${this.opts.port} (token=${this.token})`
+        `listening on ws://${host}:${this.getPort()} (token=${this.token})`
       )
     })
 

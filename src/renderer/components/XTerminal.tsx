@@ -358,16 +358,19 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
 
     return () => {
       disposed = true
-      // Scrollback is owned by main (PtyManager); nothing to flush here.
-      // Tab close routes through markTerminalClosing → terminal:forgetHistory
-      // before unmount to drop the main-side buffer + file.
+      // PTY lifetime is owned by main now: panes:closeTab,
+      // panes:restartAgentTab, and panes:clearForWorktree call
+      // ptyManager.kill on the way out. We don't kill from XTerminal
+      // unmount because unmount can fire for reasons unrelated to the
+      // user wanting the agent dead — a web client closing a browser
+      // tab, a renderer reload, etc. — and any one of those used to
+      // take Claude down for every connected client.
       terminalRegistry.delete(terminalId)
       fitRegistry.delete(terminalId)
       resizeObserver.disconnect()
       cleanupData?.()
       cleanupExit?.()
       terminal.dispose()
-      window.api.killTerminal(terminalId)
     }
   }, [terminalId, cwd, type])
 

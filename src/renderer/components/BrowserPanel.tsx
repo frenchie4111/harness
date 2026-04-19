@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { ArrowLeft, ArrowRight, RotateCw, Wrench, Loader2 } from 'lucide-react'
 import { useBrowser } from '../store'
 import { Tooltip } from './Tooltip'
+import { isWebClient } from '../web-mode'
 
 interface BrowserPanelProps {
   tabId: string
@@ -141,7 +142,14 @@ export function BrowserPanel({ tabId, visible, initialUrl }: BrowserPanelProps):
           </button>
         </Tooltip>
       </div>
-      <div ref={bodyRef} className="flex-1 min-h-0 bg-app" />
+      <div ref={bodyRef} className="flex-1 min-h-0 bg-app relative">
+        {isWebClient() && (
+          <div className="absolute inset-0 flex items-center justify-center text-faint text-xs px-6 text-center">
+            Browser tabs are unavailable in the web client — they require the native
+            Electron WebContentsView. Open this worktree in the desktop app to use them.
+          </div>
+        )}
+      </div>
     </div>
   )
 }
