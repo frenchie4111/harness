@@ -113,6 +113,22 @@ window.api.onStateEvent((raw) => {
   }
 })
 
+// Browsers without `font-variant-emoji: text` (iOS Safari < 17.4) happily
+// auto-emojify ambiguous codepoints via the Apple Color Emoji fallback,
+// so Claude Code's U+23FA tool-call marker renders as a red-circle
+// emoji on older phones even with our CSS rule in place. Detect support
+// once and rewrite the known offender to U+25CF (●) in the data stream
+// when the CSS can't do the job. On browsers that honor the property we
+// ship the original glyph through unchanged.
+const supportsTextEmoji =
+  typeof CSS !== 'undefined' && typeof CSS.supports === 'function'
+    ? CSS.supports('font-variant-emoji', 'text')
+    : false
+function sanitizeTerminalData(data: string): string {
+  if (supportsTextEmoji) return data
+  return data.replace(/\u23FA/g, '\u25CF')
+}
+
 /** Mark a terminal as closing: drop its main-side scrollback buffer + file so
  * a future tab with a different id doesn't inherit stale bytes. Scrollback
  * ownership lives in main (PtyManager), so this is a one-shot fire-and-forget
@@ -323,7 +339,7 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
 
       cleanupData = window.api.onTerminalData((id, data) => {
         if (id === terminalId) {
-          terminal.write(data)
+          terminal.write(sanitizeTerminalData(data))
           setLoading(false)
         }
       })
@@ -356,7 +372,7 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
       // mid-parse (e.g. focus reports from CSI ?1004h in the saved history)
       // get sent to the freshly spawned PTY — which is how a stray "O" was
       // leaking into Claude on session resume (focus-out = ESC [ O).
-      terminal.write(history, () => {
+      terminal.write(sanitizeTerminalData(history), () => {
         if (disposed) return
         // Reset any reporting modes the restored session may have left on, so
         // the fresh process starts in a clean state.
