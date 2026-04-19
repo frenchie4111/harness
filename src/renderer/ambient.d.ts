@@ -4,6 +4,11 @@
 import type { JSX as ReactJSX } from 'react'
 
 declare global {
+  interface Window {
+    /** True when the renderer is being driven by the WS-connected web
+     *  client. Set by src/web-client/main.tsx before App mount. */
+    __HARNESS_WEB__?: boolean
+  }
   namespace JSX {
     type Element = ReactJSX.Element
     type ElementType = ReactJSX.ElementType
