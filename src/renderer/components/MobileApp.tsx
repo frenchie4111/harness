@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ChevronDown, GitPullRequest, RefreshCw, Loader2, SquareTerminal, FileText, FileDiff, Globe, X, ExternalLink, PanelRightOpen } from 'lucide-react'
+import { ChevronDown, GitPullRequest, RefreshCw, Loader2, SquareTerminal, FileText, FileDiff, Globe, X, ExternalLink, PanelRightOpen, PanelRightClose } from 'lucide-react'
 import { useWorktrees, usePanes, useTerminals, usePrs } from '../store'
 import { groupWorktrees, type WorktreeGroup } from '../worktree-sort'
 import { getLeaves } from '../../shared/state/terminals'
@@ -139,7 +139,8 @@ export function MobileApp(): JSX.Element {
         pickerOpen={pickerOpen}
         onTogglePicker={() => setPickerOpen((v) => !v)}
         onSelectTab={handleSelectTab}
-        onOpenRightPanel={activeWorktree ? () => setRightPanelOpen(true) : undefined}
+        rightPanelOpen={rightPanelOpen}
+        onToggleRightPanel={activeWorktree ? () => setRightPanelOpen((v) => !v) : undefined}
       />
 
       <div className="flex-1 min-h-0 relative">
@@ -221,10 +222,11 @@ interface HeaderProps {
   pickerOpen: boolean
   onTogglePicker: () => void
   onSelectTab: (tabId: string) => void
-  onOpenRightPanel?: () => void
+  rightPanelOpen: boolean
+  onToggleRightPanel?: () => void
 }
 
-function Header({ worktree, tabs, selectedTabId, statuses, shellActivity, pickerOpen, onTogglePicker, onSelectTab, onOpenRightPanel }: HeaderProps): JSX.Element {
+function Header({ worktree, tabs, selectedTabId, statuses, shellActivity, pickerOpen, onTogglePicker, onSelectTab, rightPanelOpen, onToggleRightPanel }: HeaderProps): JSX.Element {
   const repoLabel = worktree ? worktree.repoRoot.split('/').pop() || worktree.repoRoot : null
   return (
     <header className="shrink-0 flex items-stretch border-b border-border bg-panel h-11">
@@ -265,13 +267,16 @@ function Header({ worktree, tabs, selectedTabId, statuses, shellActivity, picker
           />
         ))}
       </div>
-      {onOpenRightPanel && (
+      {onToggleRightPanel && (
         <button
-          onClick={onOpenRightPanel}
-          className="shrink-0 inline-flex items-center justify-center w-11 h-full border-l border-border text-dim hover:text-fg hover:bg-panel-raised"
-          aria-label="Worktree details"
+          onClick={onToggleRightPanel}
+          className={
+            'shrink-0 inline-flex items-center justify-center w-11 h-full border-l border-border ' +
+            (rightPanelOpen ? 'bg-surface text-fg-bright' : 'text-dim hover:text-fg hover:bg-panel-raised')
+          }
+          aria-label={rightPanelOpen ? 'Close worktree details' : 'Worktree details'}
         >
-          <PanelRightOpen className="w-4 h-4" />
+          {rightPanelOpen ? <PanelRightClose className="w-4 h-4" /> : <PanelRightOpen className="w-4 h-4" />}
         </button>
       )}
     </header>
