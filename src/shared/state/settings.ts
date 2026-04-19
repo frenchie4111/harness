@@ -39,6 +39,7 @@ export interface SettingsState {
   claudeTuiFullscreen: boolean
   wsTransportEnabled: boolean
   wsTransportPort: number
+  wsTransportHost: string
   browserToolsEnabled: boolean
   browserToolsMode: BrowserToolsMode
 }
@@ -72,6 +73,7 @@ export type SettingsEvent =
   | { type: 'settings/claudeTuiFullscreenChanged'; payload: boolean }
   | { type: 'settings/wsTransportEnabledChanged'; payload: boolean }
   | { type: 'settings/wsTransportPortChanged'; payload: number }
+  | { type: 'settings/wsTransportHostChanged'; payload: string }
   | { type: 'settings/browserToolsEnabledChanged'; payload: boolean }
   | { type: 'settings/browserToolsModeChanged'; payload: BrowserToolsMode }
 
@@ -106,6 +108,7 @@ export const initialSettings: SettingsState = {
   claudeTuiFullscreen: true,
   wsTransportEnabled: false,
   wsTransportPort: 37291,
+  wsTransportHost: '127.0.0.1',
   browserToolsEnabled: true,
   browserToolsMode: 'full'
 }
@@ -168,6 +171,8 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, wsTransportEnabled: event.payload }
     case 'settings/wsTransportPortChanged':
       return { ...state, wsTransportPort: event.payload }
+    case 'settings/wsTransportHostChanged':
+      return { ...state, wsTransportHost: event.payload }
     case 'settings/browserToolsEnabledChanged':
       return { ...state, browserToolsEnabled: event.payload }
     case 'settings/browserToolsModeChanged':

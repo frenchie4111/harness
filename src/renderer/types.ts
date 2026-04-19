@@ -220,7 +220,8 @@ export interface ElectronAPI {
   setClaudeTuiFullscreen(enabled: boolean): Promise<boolean>
   setWsTransportEnabled(enabled: boolean): Promise<boolean>
   setWsTransportPort(port: number): Promise<number>
-  getWsTransportInfo(): Promise<{ port: number; token: string } | null>
+  setWsTransportHost(host: string): Promise<string>
+  getWsTransportInfo(): Promise<{ port: number; token: string; host: string } | null>
   setBrowserToolsEnabled(enabled: boolean): Promise<boolean>
   setBrowserToolsMode(mode: 'view' | 'full'): Promise<boolean>
   setAutoUpdateEnabled(enabled: boolean): Promise<boolean>
