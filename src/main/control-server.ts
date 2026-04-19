@@ -77,6 +77,11 @@ export interface CallerScope {
   isMain: boolean
 }
 
+export interface BrowserPerms {
+  enabled: boolean
+  mode: 'view' | 'full'
+}
+
 export interface ControlServerDeps {
   getRepoRoots: () => string[]
   getWorktreeBase: () => 'remote' | 'local'
@@ -84,9 +89,19 @@ export interface ControlServerDeps {
   /** Returns the caller's current scope, or null if the terminal is not
    * associated with any known worktree (e.g. the worktree was deleted). */
   resolveCallerScope: (terminalId: string) => CallerScope | null
+  /** Current browser-tool permissions. Re-read on every request so user
+   * toggles take effect mid-session without restarting the bridge. */
+  getBrowserPerms: () => BrowserPerms
   browser: BrowserQueries
   shell: ShellQueries
 }
+
+const FULL_CONTROL_BROWSER_PATHS = new Set([
+  '/browser/click',
+  '/browser/type',
+  '/browser/scroll',
+  '/browser/cursor'
+])
 
 let serverInfo: { port: number; token: string } | null = null
 
@@ -230,6 +245,18 @@ async function handleRequest(
     if (!scope) {
       return sendJson(res, 404, {
         error: 'caller terminal is not associated with a worktree'
+      })
+    }
+    const perms = deps.getBrowserPerms()
+    if (!perms.enabled) {
+      return sendJson(res, 403, {
+        error: 'browser tools are disabled in Harness settings'
+      })
+    }
+    if (perms.mode === 'view' && FULL_CONTROL_BROWSER_PATHS.has(path)) {
+      return sendJson(res, 403, {
+        error:
+          'browser tools are set to View Only in Harness settings — click/type/scroll/cursor are unavailable'
       })
     }
     const callerWorktree = scope.worktreePath
@@ -442,13 +469,14 @@ async function handleRequest(
 
   // /scope — returns the caller's current scope. The MCP bridge calls this
   // once at startup so it can adapt tool descriptions (e.g. signalling
-  // "create_worktree defaults to this repo" for feature callers).
+  // "create_worktree defaults to this repo" for feature callers) and filter
+  // out browser tools when the user has them disabled or restricted.
   if (req.method === 'GET' && path === '/scope') {
     const { scope, terminalId } = resolveScope(req, deps)
     if (!terminalId) {
       return sendJson(res, 400, { error: 'X-Harness-Terminal-Id header required' })
     }
-    return sendJson(res, 200, { scope })
+    return sendJson(res, 200, { scope, browser: deps.getBrowserPerms() })
   }
 
   res.writeHead(404)

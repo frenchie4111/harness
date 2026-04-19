@@ -118,6 +118,13 @@ export interface Config {
   // When false, Claude sessions spawn without CLAUDE_CODE_NO_FLICKER=1, so they
   // use the inline (non-fullscreen) TUI mode. Default is enabled (undefined/true).
   claudeTuiFullscreen?: boolean
+  // When false, the harness-control browser_* MCP tools are not advertised to
+  // agents and the corresponding /browser/* control endpoints reject calls.
+  // Default is enabled (undefined/true).
+  browserToolsEnabled?: boolean
+  // 'view' = inspect tabs + spawn/navigate, but no clicking, typing, or
+  // scrolling. 'full' = everything. Default 'full' (undefined treated as 'full').
+  browserToolsMode?: 'view' | 'full'
 }
 
 export const DEFAULT_WORKTREE_BASE: 'remote' | 'local' = 'remote'

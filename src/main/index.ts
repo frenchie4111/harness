@@ -1053,6 +1053,35 @@ function registerIpcHandlers(): void {
     return true
   })
 
+  transport.onRequest('config:setBrowserToolsEnabled', (enabled: boolean) => {
+    if (enabled) {
+      delete config.browserToolsEnabled
+    } else {
+      config.browserToolsEnabled = false
+    }
+    saveConfig(config)
+    store.dispatch({
+      type: 'settings/browserToolsEnabledChanged',
+      payload: config.browserToolsEnabled !== false
+    })
+    return true
+  })
+
+  transport.onRequest('config:setBrowserToolsMode', (mode: 'view' | 'full') => {
+    const next = mode === 'view' ? 'view' : 'full'
+    if (next === 'full') {
+      delete config.browserToolsMode
+    } else {
+      config.browserToolsMode = next
+    }
+    saveConfig(config)
+    store.dispatch({
+      type: 'settings/browserToolsModeChanged',
+      payload: next
+    })
+    return true
+  })
+
   transport.onRequest('config:setNameClaudeSessions', (enabled: boolean) => {
     if (enabled) {
       config.nameClaudeSessions = true
@@ -1878,6 +1907,10 @@ app.whenReady().then(() => {
     getRepoRoots: () => config.repoRoots,
     getWorktreeBase: () => config.worktreeBase || DEFAULT_WORKTREE_BASE,
     resolveCallerScope,
+    getBrowserPerms: () => ({
+      enabled: config.browserToolsEnabled !== false,
+      mode: config.browserToolsMode === 'view' ? 'view' : 'full'
+    }),
     browser: {
       listTabsForWorktree: (wtPath) => {
         const ids = browserManager.listTabsForWorktree(wtPath)

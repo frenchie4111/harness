@@ -384,6 +384,49 @@ const TOOLS = [
   }
 ]
 
+const VIEW_BROWSER_TOOLS = new Set([
+  'list_browser_tabs',
+  'create_browser_tab',
+  'screenshot_tab',
+  'get_tab_dom',
+  'get_tab_url',
+  'get_tab_console_logs',
+  'get_tab_clickables',
+  'navigate_tab',
+  'back_tab',
+  'forward_tab',
+  'reload_tab'
+])
+const FULL_CONTROL_BROWSER_TOOLS = new Set([
+  'click_tab',
+  'type_tab',
+  'scroll_tab',
+  'show_cursor'
+])
+
+let cachedBrowserPerms = null
+async function getBrowserPerms() {
+  if (cachedBrowserPerms) return cachedBrowserPerms
+  try {
+    const r = await callControl('GET', '/scope')
+    cachedBrowserPerms = (r && r.browser) || { enabled: true, mode: 'full' }
+  } catch {
+    cachedBrowserPerms = { enabled: true, mode: 'full' }
+  }
+  return cachedBrowserPerms
+}
+
+function filterToolsByPerms(tools, perms) {
+  return tools.filter((t) => {
+    const isView = VIEW_BROWSER_TOOLS.has(t.name)
+    const isFull = FULL_CONTROL_BROWSER_TOOLS.has(t.name)
+    if (!isView && !isFull) return true
+    if (!perms.enabled) return false
+    if (isFull && perms.mode !== 'full') return false
+    return true
+  })
+}
+
 async function handleToolCall(name, args) {
   if (name === 'create_worktree') {
     if (!args || !args.branchName) throw new Error('branchName is required')
@@ -595,7 +638,8 @@ async function handle(msg) {
       return null
     }
     if (method === 'tools/list') {
-      return { jsonrpc: '2.0', id, result: { tools: TOOLS } }
+      const perms = await getBrowserPerms()
+      return { jsonrpc: '2.0', id, result: { tools: filterToolsByPerms(TOOLS, perms) } }
     }
     if (method === 'tools/call') {
       const result = await handleToolCall(

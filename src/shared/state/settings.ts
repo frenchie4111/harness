@@ -8,6 +8,8 @@ export type WorktreeBase = 'remote' | 'local'
 
 export type AgentKindSetting = 'claude' | 'codex'
 
+export type BrowserToolsMode = 'view' | 'full'
+
 export interface SettingsState {
   theme: string
   hotkeys: Record<string, string> | null
@@ -35,6 +37,8 @@ export interface SettingsState {
   harnessSystemPrompt: string
   harnessSystemPromptMain: string
   claudeTuiFullscreen: boolean
+  browserToolsEnabled: boolean
+  browserToolsMode: BrowserToolsMode
 }
 
 export type SettingsEvent =
@@ -64,6 +68,8 @@ export type SettingsEvent =
   | { type: 'settings/harnessSystemPromptChanged'; payload: string }
   | { type: 'settings/harnessSystemPromptMainChanged'; payload: string }
   | { type: 'settings/claudeTuiFullscreenChanged'; payload: boolean }
+  | { type: 'settings/browserToolsEnabledChanged'; payload: boolean }
+  | { type: 'settings/browserToolsModeChanged'; payload: BrowserToolsMode }
 
 // Client-side placeholder. Real values are seeded in the main-process Store
 // constructor from the on-disk config and secrets.
@@ -93,7 +99,9 @@ export const initialSettings: SettingsState = {
   harnessSystemPromptEnabled: true,
   harnessSystemPrompt: '',
   harnessSystemPromptMain: '',
-  claudeTuiFullscreen: true
+  claudeTuiFullscreen: true,
+  browserToolsEnabled: true,
+  browserToolsMode: 'full'
 }
 
 export function settingsReducer(state: SettingsState, event: SettingsEvent): SettingsState {
@@ -150,6 +158,10 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, harnessSystemPromptMain: event.payload }
     case 'settings/claudeTuiFullscreenChanged':
       return { ...state, claudeTuiFullscreen: event.payload }
+    case 'settings/browserToolsEnabledChanged':
+      return { ...state, browserToolsEnabled: event.payload }
+    case 'settings/browserToolsModeChanged':
+      return { ...state, browserToolsMode: event.payload }
     default: {
       const _exhaustive: never = event
       void _exhaustive

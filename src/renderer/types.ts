@@ -211,6 +211,8 @@ export interface ElectronAPI {
   getDefaultClaudeCommand(): Promise<string>
   setHarnessMcpEnabled(enabled: boolean): Promise<boolean>
   setClaudeTuiFullscreen(enabled: boolean): Promise<boolean>
+  setBrowserToolsEnabled(enabled: boolean): Promise<boolean>
+  setBrowserToolsMode(mode: 'view' | 'full'): Promise<boolean>
   setAutoUpdateEnabled(enabled: boolean): Promise<boolean>
   setShareClaudeSettings(enabled: boolean): Promise<boolean>
   setHarnessSystemPromptEnabled(enabled: boolean): Promise<boolean>
