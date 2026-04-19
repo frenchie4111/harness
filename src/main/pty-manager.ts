@@ -34,24 +34,36 @@ const SHELL_ACTIVITY_POLL_MS = 1500
 const HISTORY_CAP_BYTES = 1024 * 1024
 const HISTORY_FLUSH_INTERVAL_MS = 30_000
 
+// Cap per-terminal live tail at ~200KB. The tail is the short rolling window
+// handed to late-joining clients on attach (a second Electron window, a WS
+// client, or an existing client after a reconnect) so they don't see a blank
+// screen. 200KB × ~100 terminals ≈ 20MB — fine for desktops. Kept separate
+// from the disk-persisted `history` so tail cost is bounded independently of
+// scrollback depth. Tune here. Char length is used rather than true byte
+// length: a long run of multi-byte runes will use more RAM than the cap
+// suggests, but for ASCII-dominant terminal output the two are equivalent.
+const TAIL_CAP_BYTES = 200 * 1024
+
 // Ring-buffered raw PTY output. Appends truncate from the front when we exceed
 // the cap. Stored as strings because `terminal:data` already ships strings
 // (node-pty decodes UTF-8 for us), and we replay through xterm's string write.
-class HistoryBuffer {
+class RingBuffer {
   private chunks: string[] = []
   private size = 0
+
+  constructor(private readonly capBytes: number) {}
 
   append(data: string): void {
     this.chunks.push(data)
     this.size += data.length
-    while (this.size > HISTORY_CAP_BYTES && this.chunks.length > 1) {
+    while (this.size > this.capBytes && this.chunks.length > 1) {
       const dropped = this.chunks.shift()!
       this.size -= dropped.length
     }
-    if (this.size > HISTORY_CAP_BYTES) {
+    if (this.size > this.capBytes) {
       // Single chunk exceeds cap — trim it from the front.
       const only = this.chunks[0]
-      const overflow = this.size - HISTORY_CAP_BYTES
+      const overflow = this.size - this.capBytes
       this.chunks[0] = only.slice(overflow)
       this.size -= overflow
     }
@@ -82,9 +94,15 @@ export class PtyManager {
   // stream, and returned on getHistory(id). Persistence to
   // userData/terminal-history/<id> happens on a throttled cadence and on
   // before-quit via flushAllHistory().
-  private history = new Map<string, HistoryBuffer>()
+  private history = new Map<string, RingBuffer>()
   private historyDirty = new Set<string>()
   private historyFlushTimer: NodeJS.Timeout | null = null
+  // Per-terminal rolling tail owned by main. Fresh at create(), appended to
+  // from the PTY onData stream, dropped on PTY close. Distinct from `history`:
+  // tail is in-memory-only, not seeded from disk, and bounded by TAIL_CAP_BYTES
+  // rather than HISTORY_CAP_BYTES. Returned verbatim on getTerminalTail(id)
+  // so late-joining clients see recent output on attach.
+  private tails = new Map<string, RingBuffer>()
   private perfMonitor: PerfMonitor | null = null
 
   /** Wire the authoritative store after it's constructed. PTY status,
@@ -192,16 +210,22 @@ export class PtyManager {
     // fresh xterm instance before wiring up live data.
     let buf = this.history.get(id)
     if (!buf) {
-      buf = new HistoryBuffer()
+      buf = new RingBuffer(HISTORY_CAP_BYTES)
       const existing = loadTerminalHistory(id)
       if (existing) buf.seed(existing)
       this.history.set(id, buf)
     }
+    // Fresh tail buffer per PTY lifetime. Not seeded from disk — tail is
+    // "what this process has emitted so far", which is the right thing for
+    // a late-joining client.
+    const tailBuf = new RingBuffer(TAIL_CAP_BYTES)
+    this.tails.set(id, tailBuf)
 
     ptyProcess.onData((data: string) => {
-      // Tee into the history ring buffer before forwarding, so a reload
+      // Tee into both buffers before forwarding, so a reload or a late-join
       // right after output arrives still sees it.
       buf!.append(data)
+      tailBuf.append(data)
       this.historyDirty.add(id)
       this.ensureHistoryFlushTimer()
       this.perfMonitor?.recordTerminalBytes(id, data.length)
@@ -217,6 +241,7 @@ export class PtyManager {
       this.store?.dispatch({ type: 'terminals/removed', payload: id })
       this.sendSignal?.('terminal:exit', id, exitCode)
       this.ptys.delete(id)
+      this.tails.delete(id)
       cleanupTerminalLog(id)
     })
 
@@ -240,6 +265,15 @@ export class PtyManager {
   /** Raw PTY scrollback for `id`, or empty string if none. */
   getHistory(id: string): string {
     return this.history.get(id)?.toString() || ''
+  }
+
+  /** Rolling tail of recent output for `id`, or empty string if the terminal
+   * isn't running. Unlike getHistory, this is current-session-only and is
+   * dropped when the PTY exits — callers use it to paint a late-joining
+   * client's screen with "what's been happening in this terminal" before
+   * subscribing to the live data signal. */
+  getTerminalTail(id: string): string {
+    return this.tails.get(id)?.toString() || ''
   }
 
   /** Drop the in-memory buffer + delete the persisted file. Called on tab
@@ -357,6 +391,9 @@ export class PtyManager {
     const instance = this.ptys.get(id)
     if (!instance) return
     this.ptys.delete(id)
+    // Tail is tied to the PTY's lifetime. Dropping here covers both explicit
+    // kills and the onExit path (onExit will delete again — idempotent).
+    this.tails.delete(id)
 
     const pid = instance.pty.pid
     // node-pty calls setsid() for each spawn, so the shell is its own

@@ -1495,6 +1495,14 @@ function registerIpcHandlers(): void {
     return ptyManager.getHistory(id)
   })
 
+  // Rolling in-memory tail for late-joining clients (second Electron window,
+  // WS client, reconnect). Distinct from getHistory: tail is current-session
+  // only, not seeded from disk, bounded at TAIL_CAP_BYTES. Returns an object
+  // to leave room for metadata (truncated flag, byte count, …) later.
+  transport.onRequest('terminal:getTail', (id: string) => {
+    return { bytes: ptyManager.getTerminalTail(id) }
+  })
+
   transport.onRequest('terminal:forgetHistory', (id: string) => {
     ptyManager.forgetHistory(id)
     return true
