@@ -18,6 +18,7 @@ import { XTerminal } from './XTerminal'
 import { DiffView } from './DiffView'
 import { FileView } from './FileView'
 import { BrowserPanel } from './BrowserPanel'
+import { JsonModeChat } from './JsonModeChat'
 import { ErrorBoundary } from './ErrorBoundary'
 
 interface WorkspaceViewProps {
@@ -498,6 +499,11 @@ export function WorkspaceView({
                     tabId={tab.id}
                     visible={visible && isActiveInPane}
                     initialUrl={tab.url || 'about:blank'}
+                  />
+                ) : tab.type === 'json-claude' ? (
+                  <JsonModeChat
+                    sessionId={tab.id}
+                    worktreePath={worktreePath}
                   />
                 ) : (
                   <XTerminal
