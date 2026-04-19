@@ -173,6 +173,16 @@ const transport: CompoundServerTransport = new CompoundServerTransport(
 )
 transport.start()
 
+// Sweep any controller/spectator roster entries owned by a client when
+// they disconnect. Covers BrowserWindow close (Electron) and WS socket
+// close alike; the reducer handles idempotence.
+transport.onClientDisconnect((clientId) => {
+  store.dispatch({
+    type: 'terminals/clientDisconnected',
+    payload: { clientId }
+  })
+})
+
 if (webHttpServer && wsTransport) {
   webHttpServer.on('error', (err) => {
     log('web-client', 'http server error', err.message)
