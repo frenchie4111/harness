@@ -130,16 +130,18 @@ if (fs.existsSync('package-lock.json')) {
 "
 ok "package.json and package-lock.json updated"
 
-# ---- Update README and landing page download links ----
-step "Updating download links in README and docs/index.html"
+# ---- Update README download links ----
+# The marketing-site Install page reads version from package.json at build
+# time, so it no longer needs in-HTML regex replacement. README still
+# carries hard-coded DMG URLs that we keep in sync here.
+step "Updating download links in README"
 node -e "
 const fs = require('fs');
 const v = '${VERSION}';
-const files = ['README.md', 'docs/index.html'];
+const files = ['README.md'];
 for (const f of files) {
   if (!fs.existsSync(f)) continue;
   let content = fs.readFileSync(f, 'utf-8');
-  // Replace any X.Y.Z in Harness-X.Y.Z (filename) or download/vX.Y.Z (path)
   content = content.replace(/Harness-\d+\.\d+\.\d+/g, \`Harness-\${v}\`);
   content = content.replace(/releases\/download\/v\d+\.\d+\.\d+/g, \`releases/download/v\${v}\`);
   fs.writeFileSync(f, content);
@@ -147,7 +149,7 @@ for (const f of files) {
 "
 ok "Download links updated"
 
-# ---- Generate release notes for docs/releases.html ----
+# ---- Generate release notes for site/public/releases.html ----
 step "Generating release notes with Claude"
 PREV_TAG=$(git describe --tags --abbrev=0 HEAD 2>/dev/null || true)
 if [ -z "$PREV_TAG" ]; then
@@ -161,11 +163,11 @@ echo "$CHANGES" > "$CHANGES_FILE"
 
 RELEASE_DATE=$(date +"%B %-d, %Y")
 
-claude -p "Add a release entry for ${TAG} (released ${RELEASE_DATE}) to docs/releases.html.
+claude -p "Add a release entry for ${TAG} (released ${RELEASE_DATE}) to site/public/releases.html.
 
 The raw commit messages since the last release are in ${CHANGES_FILE} — read that file.
 
-Read docs/releases.html to understand the existing HTML structure and writing style,
+Read site/public/releases.html to understand the existing HTML structure and writing style,
 then insert the new entry at the top of the releases list (right after the <!-- Releases -->
 div opening, before the first existing release section).
 
@@ -183,14 +185,14 @@ Rules:
 
 rm -f "$CHANGES_FILE"
 
-if ! git diff --quiet docs/releases.html 2>/dev/null; then
+if ! git diff --quiet site/public/releases.html 2>/dev/null; then
   ok "Release notes page updated"
 else
-  warn "Claude did not modify docs/releases.html — continuing anyway"
+  warn "Claude did not modify site/public/releases.html — continuing anyway"
 fi
 
 # ---- Commit version bump + release notes together ----
-git add package.json package-lock.json README.md docs/index.html docs/releases.html
+git add package.json package-lock.json README.md site/public/releases.html
 git commit -m "Release v${VERSION}"
 ok "Committed version bump, download links, and release notes"
 

@@ -1,0 +1,634 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>A practical guide to git worktrees | Harness</title>
+  <meta name="description" content="What git worktrees are, the commands you'll actually use, the common gotchas, and why they're the thing that makes running Claude Code agents in parallel feasible." />
+
+  <meta property="og:title" content="A practical guide to git worktrees" />
+  <meta property="og:description" content="What worktrees are, the commands you'll actually use, the common gotchas, and why they're the thing that makes running Claude Code agents in parallel feasible." />
+  <meta name="twitter:description" content="What worktrees are, the commands you'll actually use, the common gotchas, and why they're the thing that makes running Claude Code agents in parallel feasible." />
+  <meta property="og:image" content="https://harness.mikelyons.org/guide-og-image.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:image" content="https://harness.mikelyons.org/guide-og-image.png" />
+  <meta property="og:url" content="https://harness.mikelyons.org/guide.html" />
+  <meta property="og:type" content="article" />
+
+  <link rel="icon" type="image/png" href="icon.png" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <style>
+    html, body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0a0a0a; color: #e5e5e5; }
+    code, pre { font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .gradient-text { background: linear-gradient(135deg, #f59e0b 0%, #ef4444 50%, #a855f7 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .grid-bg {
+      background-image:
+        radial-gradient(circle at 50% 0%, rgba(245, 158, 11, 0.08), transparent 50%),
+        radial-gradient(circle at 0% 100%, rgba(168, 85, 247, 0.06), transparent 50%);
+    }
+    .prose-custom p { color: #a3a3a3; line-height: 1.75; margin-bottom: 1rem; }
+    .prose-custom p strong { color: #f5f5f5; font-weight: 600; }
+    .prose-custom code { background: #1f1f1f; color: #f5f5f5; padding: 0.125rem 0.375rem; border-radius: 0.25rem; font-size: 0.875em; }
+    .prose-custom pre { background: #050505; border: 1px solid #262626; border-radius: 0.5rem; padding: 1rem 1.25rem; margin: 1.25rem 0; overflow-x: auto; font-size: 0.8125rem; line-height: 1.7; color: #e5e5e5; }
+    .prose-custom pre code { background: transparent; padding: 0; color: inherit; font-size: inherit; }
+    .prose-custom ul, .prose-custom ol { color: #a3a3a3; line-height: 1.75; margin-bottom: 1rem; padding-left: 1.5rem; }
+    .prose-custom ul { list-style: disc; }
+    .prose-custom ol { list-style: decimal; }
+    .prose-custom li { margin-bottom: 0.5rem; }
+    .prose-custom li strong { color: #f5f5f5; font-weight: 600; }
+    .section-icon {
+      width: 2.25rem;
+      height: 2.25rem;
+      border-radius: 0.625rem;
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(168, 85, 247, 0.15));
+      border: 1px solid rgba(245, 158, 11, 0.25);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: #fbbf24;
+      flex-shrink: 0;
+    }
+    .feature-card {
+      background: rgba(10, 10, 10, 0.6);
+      border: 1px solid #262626;
+      border-radius: 0.75rem;
+      padding: 1.25rem 1.5rem;
+    }
+    .feature-card h4 { color: #f5f5f5; font-weight: 600; margin-bottom: 0.25rem; font-size: 0.9375rem; }
+    .feature-card p { color: #737373; font-size: 0.875rem; line-height: 1.6; margin: 0; }
+    .feature-card code { background: #262626; color: #e5e5e5; padding: 0.0625rem 0.3125rem; border-radius: 0.25rem; font-size: 0.8125em; }
+
+    /* Diagrams */
+    .figure { margin: 1.5rem 0; background: rgba(5, 5, 5, 0.5); border: 1px solid #262626; border-radius: 0.75rem; padding: 1.5rem; }
+    .figure figcaption { margin-top: 1rem; font-size: 0.75rem; color: #737373; text-align: center; font-style: italic; }
+    .wt-node { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1rem; border-radius: 0.5rem; background: #1f1f1f; border: 1px solid #404040; }
+    .wt-node code { background: transparent; padding: 0; font-size: 0.75rem; color: #f5f5f5; }
+    .wt-leaf { padding: 0.625rem 0.625rem; border-radius: 0.5rem; background: #141414; display: flex; flex-direction: column; align-items: center; gap: 0.25rem; min-width: 0; }
+    .wt-leaf code { background: transparent; padding: 0; font-size: 10px; color: #f5f5f5; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+    .wt-leaf span { font-size: 10px; font-family: 'JetBrains Mono', monospace; }
+    .status-pulse { animation: pulse 2s ease-in-out infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    .collision-card { padding: 0.5rem 0.75rem; border-radius: 0.375rem; font-size: 10px; color: #f5f5f5; font-family: 'JetBrains Mono', monospace; }
+    .mockup-frame { border-radius: 0.5rem; background: #0a0a0a; border: 1px solid #262626; overflow: hidden; max-width: 24rem; margin: 0 auto; }
+    .mockup-titlebar { height: 1.5rem; background: #141414; border-bottom: 1px solid #262626; display: flex; align-items: center; gap: 0.375rem; padding: 0 0.5rem; }
+    .mockup-titlebar span { width: 0.5rem; height: 0.5rem; border-radius: 9999px; }
+    .mockup-row { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem; transition: background 0.15s; }
+    .mockup-row:hover { background: rgba(38, 38, 38, 0.4); }
+    .mockup-row code { background: transparent; padding: 0; font-size: 11px; color: #f5f5f5; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .timeline-row { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem; }
+    .timeline-label { font-size: 0.75rem; color: #a3a3a3; font-family: 'JetBrains Mono', monospace; width: 3.5rem; flex-shrink: 0; }
+    .timeline-bar { flex: 1; display: flex; height: 1.5rem; border-radius: 0.375rem; overflow: hidden; border: 1px solid #262626; }
+    .timeline-bar > div { border-right: 1px solid rgba(10, 10, 10, 0.4); }
+    .timeline-bar > div:last-child { border-right: none; }
+    .timeline-legend { display: flex; align-items: center; gap: 1rem; padding-top: 0.5rem; font-size: 10px; color: #737373; justify-content: center; }
+    .timeline-legend span { display: flex; align-items: center; gap: 0.375rem; }
+    .timeline-legend i { width: 0.625rem; height: 0.625rem; border-radius: 0.125rem; display: inline-block; font-style: normal; }
+  </style>
+</head>
+<body class="min-h-screen grid-bg">
+
+  <!-- Nav -->
+  <nav class="max-w-6xl mx-auto px-6 py-6 flex items-center justify-between">
+    <a href="/" class="flex items-center gap-3">
+      <img src="icon.png" alt="Harness icon" class="w-9 h-9 rounded-lg" />
+      <span class="text-xl font-bold">Harness</span>
+    </a>
+    <div class="flex items-center gap-6 text-sm text-neutral-400">
+      <a href="/#features" class="hover:text-neutral-100 transition-colors">Features</a>
+      <a href="/guide.html" class="text-neutral-100 transition-colors">Guide</a>
+      <a href="/#install" class="hover:text-neutral-100 transition-colors">Install</a>
+      <a href="https://github.com/frenchie4111/harness" class="hover:text-neutral-100 transition-colors">GitHub</a>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="max-w-3xl mx-auto px-6 pt-12 pb-12">
+    <div class="text-xs uppercase tracking-widest text-neutral-500 mb-4">The Guide</div>
+    <h1 class="text-5xl md:text-6xl font-extrabold tracking-tight mb-6 leading-tight">
+      A practical guide to<br />
+      <span class="gradient-text">git worktrees.</span>
+    </h1>
+    <p class="text-lg text-neutral-400 leading-relaxed">
+      What they are, the commands you'll actually use, the common gotchas,
+      and why they're the thing that makes running Claude Code agents in
+      parallel feasible. About five minutes.
+    </p>
+  </section>
+
+  <!-- Article -->
+  <article class="max-w-3xl mx-auto px-6 pb-24">
+
+    <!-- Intro framing -->
+    <section class="mb-16">
+      <div class="flex items-center gap-3 mb-5">
+        <div class="section-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+        </div>
+        <h2 class="text-2xl font-bold text-neutral-100">Stop doom scrolling while you wait for Claude</h2>
+      </div>
+
+      <figure class="figure">
+        <div class="timeline-row">
+          <span class="timeline-label" style="display: flex; align-items: center; gap: 0.375rem;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#737373" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+            You
+          </span>
+          <div class="timeline-bar">
+            <div style="flex: 1; background: rgba(96, 165, 250, 0.6);"></div>
+            <div style="flex: 9; background: rgba(64, 64, 64, 0.4);"></div>
+            <div style="flex: 1; background: rgba(251, 191, 36, 0.6);"></div>
+          </div>
+        </div>
+        <div class="timeline-row">
+          <span class="timeline-label">Claude</span>
+          <div class="timeline-bar">
+            <div style="flex: 11; background: rgba(34, 197, 94, 0.7);"></div>
+          </div>
+        </div>
+        <div class="timeline-legend" style="flex-wrap: wrap;">
+          <span><i style="background: rgba(96, 165, 250, 0.6);"></i>kick off</span>
+          <span><i style="background: rgba(64, 64, 64, 0.4);"></i>doom scrolling</span>
+          <span><i style="background: rgba(251, 191, 36, 0.6);"></i>review</span>
+          <span><i style="background: rgba(34, 197, 94, 0.7);"></i>Claude working</span>
+        </div>
+        <figcaption>One Claude running. You have nothing to do but scroll.</figcaption>
+      </figure>
+
+      <div class="prose-custom">
+        <p>
+          How much of this week did you spend scrolling while a single Claude
+          chewed through one task? Five minutes here, ten minutes there. It
+          adds up fast.
+        </p>
+        <p>
+          There's a lot of noise right now about
+          <em>&ldquo;agent swarms&rdquo;</em> and
+          <em>&ldquo;multi-agent orchestration.&rdquo;</em> The underlying idea is
+          pretty mundane: instead of running one Claude, run a few on different
+          problems at the same time.
+        </p>
+        <p>
+          The reason most people don't is that nothing makes it easy. One
+          terminal, one folder, one Claude. Point two Claudes at the same folder
+          and they'll stomp on each other's edits within a minute.
+        </p>
+        <p>
+          The fix is a git feature called a worktree. It predates AI agents by
+          over a decade and is useful in plenty of situations that have nothing
+          to do with them. Most of this guide covers worktrees on their own
+          terms: what they are, the four commands you'll actually use, the
+          gotchas. The last couple of sections are about running agents across
+          them, and about Harness, a tool built for that specific case.
+        </p>
+      </div>
+    </section>
+
+    <!-- Section 1 -->
+    <section class="mb-16">
+      <div class="flex items-center gap-3 mb-5">
+        <div class="section-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+        </div>
+        <h2 class="text-2xl font-bold text-neutral-100">What is a git worktree?</h2>
+      </div>
+      <div class="prose-custom">
+        <p>
+          You know branches. A repo normally has one working directory (the
+          folder you <code>cd</code> into), and switching branches rewrites the
+          files on disk. That works until you want two branches open at once.
+          Then it's stash, checkout, stash-pop, and trying to remember which
+          stash was which.
+        </p>
+        <p>
+          <code>git worktree</code> solves this. A worktree is a second working
+          copy of the same repo, checked out to a different branch, sharing the
+          same <code>.git</code> directory. You can have as many as you want.
+          Create one like this:
+        </p>
+        <pre><code>git worktree add ../myrepo-feature-x -b feature-x</code></pre>
+
+        <figure class="figure">
+          <div style="display: flex; flex-direction: column; align-items: center;">
+            <div class="wt-node">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+              <code>.git</code>
+            </div>
+            <svg width="100%" height="32" viewBox="0 0 300 32" preserveAspectRatio="none" style="max-width: 28rem;">
+              <path d="M 150 0 L 150 12 L 50 12 L 50 32" stroke="#404040" stroke-width="1" fill="none" />
+              <path d="M 150 12 L 150 32" stroke="#404040" stroke-width="1" fill="none" />
+              <path d="M 150 12 L 250 12 L 250 32" stroke="#404040" stroke-width="1" fill="none" />
+            </svg>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; width: 100%; max-width: 28rem;">
+              <div class="wt-leaf" style="border: 1px solid rgba(34, 197, 94, 0.4);">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                <code>myrepo/</code>
+                <span style="color: #22c55e;">main</span>
+              </div>
+              <div class="wt-leaf" style="border: 1px solid rgba(96, 165, 250, 0.4);">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                <code>myrepo-feature-x/</code>
+                <span style="color: #60a5fa;">feature-x</span>
+              </div>
+              <div class="wt-leaf" style="border: 1px solid rgba(251, 191, 36, 0.4);">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                <code>myrepo-bug-123/</code>
+                <span style="color: #fbbf24;">bug-123</span>
+              </div>
+            </div>
+          </div>
+          <figcaption>One shared .git directory, three independent working copies on disk.</figcaption>
+        </figure>
+
+        <p>
+          Now <code>../myrepo-feature-x</code> exists on disk on the
+          <code>feature-x</code> branch, while your main clone stays on
+          <code>main</code>. Both are real checkouts you can edit, build, and
+          test independently. Commits and fetches in one show up in the other
+          immediately because they share git objects.
+        </p>
+        <p class="text-neutral-500 text-sm">
+          The one rule is that the same branch can't be checked out in two
+          worktrees at once.
+        </p>
+      </div>
+    </section>
+
+    <!-- Section: when worktrees earn their keep -->
+    <section class="mb-16">
+      <div class="flex items-center gap-3 mb-5">
+        <div class="section-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        </div>
+        <h2 class="text-2xl font-bold text-neutral-100">When worktrees earn their keep</h2>
+      </div>
+      <div class="prose-custom">
+        <p>
+          Worktrees aren't an everyday tool. They pay off in specific
+          situations where swapping branches in place is a hassle:
+        </p>
+        <ul>
+          <li>A production hotfix lands while your feature branch is half-rebased. Open a second worktree on <code>main</code>, fix it, ship it, come back.</li>
+          <li>A slow test suite or build is running on one branch. Spin up a worktree so you can keep coding on another while it finishes.</li>
+          <li>You want to review a colleague's PR locally without blowing away your WIP. Check their branch out into its own worktree, poke around, delete it when you're done.</li>
+          <li>You're maintaining a long-running release branch alongside <code>main</code>. Keep each one checked out permanently instead of swapping back and forth.</li>
+          <li>You're running several Claude agents in parallel. Each one needs its own folder. This is the case the second half of this guide focuses on.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Section: commands -->
+    <section class="mb-16">
+      <div class="flex items-center gap-3 mb-5">
+        <div class="section-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+        </div>
+        <h2 class="text-2xl font-bold text-neutral-100">Commands you'll actually use</h2>
+      </div>
+      <div class="prose-custom">
+        <p>
+          A typical day looks like this. One worktree for a quick UI fix,
+          another for some backend work running in parallel, and cleanup at the
+          end.
+        </p>
+        <pre><code># Spin up a worktree for a UI bug
+git worktree add ../myrepo-ui-fix -b fix/login-flash
+cd ../myrepo-ui-fix
+npm install
+claude
+# ...work on the fix, commit, push, open a PR as usual...
+
+# Meanwhile, in another terminal tab, another worktree for API work
+git worktree add ../myrepo-api -b fix/api-400s
+cd ../myrepo-api
+npm install
+claude
+# ...work in parallel, commit, push...
+
+# Whenever you lose track of what's open
+git worktree list
+
+# Once the PRs are merged, clean up
+git worktree remove ../myrepo-ui-fix
+git worktree remove ../myrepo-api</code></pre>
+        <p>
+          You can also check out an existing branch instead of creating one,
+          which is handy for reviewing a teammate's PR locally:
+        </p>
+        <pre><code>git worktree add ../myrepo-review origin/their-branch</code></pre>
+        <p>
+          If you delete a worktree folder manually instead of using
+          <code>git worktree remove</code>, git holds on to a stale reference.
+          <code>git worktree prune</code> cleans those up.
+        </p>
+        <p class="text-neutral-500 text-sm">
+          <code>git help worktree</code> has the rest, including <code>lock</code>,
+          <code>move</code>, and <code>repair</code>. You'll rarely need them.
+        </p>
+      </div>
+    </section>
+
+    <!-- Section: gotchas -->
+    <section class="mb-16">
+      <div class="flex items-center gap-3 mb-5">
+        <div class="section-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        </div>
+        <h2 class="text-2xl font-bold text-neutral-100">Common gotchas</h2>
+      </div>
+      <div class="prose-custom">
+        <ul>
+          <li>The same branch can't be checked out in two worktrees at once. Git errors out clearly when you try.</li>
+          <li>Gitignored files don't follow. Every new worktree starts without <code>.env</code>, without <code>node_modules</code>, without any local-only config. Copy or symlink what you need.</li>
+          <li>Dependencies install per-worktree. Each one gets its own <code>node_modules</code> / <code>venv</code> / <code>target</code>, and the disk bill adds up fast. Delete worktrees you're done with.</li>
+          <li>Some tools assume a single working directory. Most are fine, but watch out for IDE project state, <code>docker-compose</code> volumes, and anything that caches absolute paths.</li>
+          <li>Your shell prompt probably won't tell you which worktree you're in. If you've got several, label your terminal tabs or put the directory name in your prompt.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Section 2 -->
+    <section class="mb-16">
+      <div class="flex items-center gap-3 mb-5">
+        <div class="section-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+        </div>
+        <h2 class="text-2xl font-bold text-neutral-100">Why worktrees unlock parallel agents</h2>
+      </div>
+      <div class="prose-custom">
+        <p>
+          Claude Code edits files on disk. Five Claudes sharing one working
+          directory means half-written files, conflicting edits, and broken
+          builds nobody can explain.
+        </p>
+        <p>
+          One worktree per task fixes that. Each session gets its own folder,
+          and they can't see each other's in-progress edits. You kick off task
+          A, kick off task B, walk away, come back, and review A while Claude
+          is still working on B.
+        </p>
+        <p>
+          This is the change that makes running several Claudes at once
+          actually feasible.
+        </p>
+      </div>
+
+      <figure class="figure">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+          <!-- Without worktrees -->
+          <div>
+            <div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: #ef4444; margin-bottom: 0.5rem; font-weight: 600; display: flex; align-items: center; gap: 0.25rem;">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              Without worktrees
+            </div>
+            <div style="padding: 1rem; border-radius: 0.5rem; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3);">
+              <div style="display: flex; align-items: center; gap: 0.375rem; margin-bottom: 0.75rem;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                <code style="font-size: 10px;">myrepo/</code>
+              </div>
+              <div class="collision-card" style="background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.4); margin-bottom: 0.375rem; transform: rotate(-1deg);">claude #1 ✎ src/api.ts</div>
+              <div class="collision-card" style="background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.4); margin-bottom: 0.375rem; transform: translateX(4px) rotate(0deg);">claude #2 ✎ src/api.ts</div>
+              <div class="collision-card" style="background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.4); transform: translateX(8px) rotate(1deg);">claude #3 ✎ src/api.ts</div>
+            </div>
+          </div>
+          <!-- With worktrees -->
+          <div>
+            <div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: #22c55e; margin-bottom: 0.5rem; font-weight: 600; display: flex; align-items: center; gap: 0.25rem;">
+              <span style="width: 0.5rem; height: 0.5rem; border-radius: 9999px; background: #22c55e; display: inline-block;"></span>
+              With worktrees
+            </div>
+            <div style="padding: 0.5rem 0.75rem; border-radius: 0.5rem; background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.375rem;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+              <code style="font-size: 10px; flex: 1;">myrepo-a/</code>
+              <span style="padding: 0.125rem 0.375rem; border-radius: 0.25rem; background: rgba(34, 197, 94, 0.2); font-size: 9px; color: #22c55e; font-family: 'JetBrains Mono', monospace;">claude #1</span>
+            </div>
+            <div style="padding: 0.5rem 0.75rem; border-radius: 0.5rem; background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.375rem;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+              <code style="font-size: 10px; flex: 1;">myrepo-b/</code>
+              <span style="padding: 0.125rem 0.375rem; border-radius: 0.25rem; background: rgba(34, 197, 94, 0.2); font-size: 9px; color: #22c55e; font-family: 'JetBrains Mono', monospace;">claude #2</span>
+            </div>
+            <div style="padding: 0.5rem 0.75rem; border-radius: 0.5rem; background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); display: flex; align-items: center; gap: 0.5rem;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+              <code style="font-size: 10px; flex: 1;">myrepo-c/</code>
+              <span style="padding: 0.125rem 0.375rem; border-radius: 0.25rem; background: rgba(34, 197, 94, 0.2); font-size: 9px; color: #22c55e; font-family: 'JetBrains Mono', monospace;">claude #3</span>
+            </div>
+          </div>
+        </div>
+        <figcaption>Sharing one folder causes collisions. One worktree per task keeps them separated.</figcaption>
+      </figure>
+    </section>
+
+    <!-- Section 3 -->
+    <section class="mb-16">
+      <div class="flex items-center gap-3 mb-5">
+        <div class="section-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+        </div>
+        <h2 class="text-2xl font-bold text-neutral-100">The raw flow, and where it breaks down</h2>
+      </div>
+      <div class="prose-custom">
+        <pre><code>git worktree add ../myrepo-bug-123 -b bug-123
+cd ../myrepo-bug-123
+npm install
+claude</code></pre>
+        <p>
+          Repeat in a new terminal for every task. This works up to about two
+          tasks. After that, you lose track of which terminal is running which
+          branch. You can't tell at a glance which Claudes are waiting for
+          input. Reviewing diffs means <code>git diff</code> in another pane.
+          PR status lives on github.com. Cleaning up orphan
+          <code>node_modules</code> folders eats a Sunday afternoon.
+        </p>
+        <p>
+          The primitive is right. It just needs a frontend.
+        </p>
+      </div>
+    </section>
+
+    <!-- Section 4 -->
+    <section class="mb-16">
+      <div class="flex items-center gap-3 mb-5">
+        <img src="icon.png" alt="Harness icon" class="w-9 h-9 rounded-lg flex-shrink-0" />
+        <h2 class="text-2xl font-bold text-neutral-100">Where Harness comes in</h2>
+      </div>
+      <div class="prose-custom">
+        <p>
+          Everything up to this point works with plain git and a terminal
+          multiplexer. If that's enough for you, you can stop reading. The rest
+          is a pitch for a tool I built for when it isn't.
+        </p>
+        <p>
+          Harness is a macOS app that puts every worktree and every Claude
+          session in a single window. It's opinionated around the specific
+          workflow of running several agents at once, and it handles the
+          papercuts that pile up past two or three parallel tasks.
+        </p>
+      </div>
+
+      <figure class="figure">
+        <div class="mockup-frame">
+          <div class="mockup-titlebar">
+            <span style="background: rgba(239, 68, 68, 0.7);"></span>
+            <span style="background: rgba(251, 191, 36, 0.7);"></span>
+            <span style="background: rgba(34, 197, 94, 0.7);"></span>
+          </div>
+          <div style="background: #141414; padding: 0.5rem 0;">
+            <div class="mockup-row">
+              <span style="width: 0.5rem; height: 0.5rem; border-radius: 9999px; background: #ef4444; flex-shrink: 0;"></span>
+              <code>feature/onboarding</code>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" y1="9" x2="6" y2="21"/></svg>
+              <span style="width: 0.375rem; height: 0.375rem; border-radius: 9999px; background: #22c55e;"></span>
+            </div>
+            <div class="mockup-row">
+              <span style="width: 0.5rem; height: 0.5rem; border-radius: 9999px; background: #fbbf24; flex-shrink: 0;"></span>
+              <code>bug/login-flash</code>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" y1="9" x2="6" y2="21"/></svg>
+              <span class="status-pulse" style="width: 0.375rem; height: 0.375rem; border-radius: 9999px; background: #fbbf24;"></span>
+            </div>
+            <div class="mockup-row">
+              <span class="status-pulse" style="width: 0.5rem; height: 0.5rem; border-radius: 9999px; background: #22c55e; flex-shrink: 0;"></span>
+              <code>refactor/types</code>
+            </div>
+            <div class="mockup-row">
+              <span style="width: 0.5rem; height: 0.5rem; border-radius: 9999px; background: #525252; flex-shrink: 0;"></span>
+              <code>main</code>
+            </div>
+          </div>
+        </div>
+        <figcaption>The sidebar: one row per worktree, with its current status.</figcaption>
+      </figure>
+
+      <div class="grid sm:grid-cols-2 gap-4 mt-6">
+        <div class="feature-card">
+          <h4>One-click worktrees</h4>
+          <p>Create and delete them from the sidebar. Harness runs the <code>git worktree</code> commands for you.</p>
+        </div>
+        <div class="feature-card">
+          <h4>Tabs per worktree</h4>
+          <p>Each worktree gets its own Claude terminal. Add shell tabs alongside for dev servers and tests.</p>
+        </div>
+        <div class="feature-card">
+          <h4>Reliable status dots</h4>
+          <p>Know at a glance which Claudes are working, waiting, or asking for approval. Powered by hooks, not output parsing.</p>
+        </div>
+        <div class="feature-card">
+          <h4>Inline diffs</h4>
+          <p>A changed-files panel lives next to the terminal. Click any file to open a diff tab.</p>
+        </div>
+        <div class="feature-card">
+          <h4>Live PR status</h4>
+          <p>See open PR state and CI checks for every worktree, sorted so the one that needs you floats to the top.</p>
+        </div>
+        <div class="feature-card">
+          <h4>Hotkeys for everything</h4>
+          <p><code>⌘1</code>–<code>⌘9</code> jumps worktrees. <code>⌘T</code> new shell. <code>⌘⇧G</code> opens the PR.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 5 -->
+    <section class="mb-16">
+      <div class="flex items-center gap-3 mb-5">
+        <div class="section-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+        </div>
+        <h2 class="text-2xl font-bold text-neutral-100">A workflow that works</h2>
+      </div>
+
+      <figure class="figure">
+        <div class="timeline-row">
+          <span class="timeline-label">Task A</span>
+          <div class="timeline-bar">
+            <div style="flex: 3; background: rgba(34, 197, 94, 0.7);"></div>
+            <div style="flex: 1; background: rgba(251, 191, 36, 0.7);"></div>
+            <div style="flex: 4; background: rgba(34, 197, 94, 0.7);"></div>
+            <div style="flex: 2; background: rgba(96, 165, 250, 0.5);"></div>
+          </div>
+        </div>
+        <div class="timeline-row">
+          <span class="timeline-label">Task B</span>
+          <div class="timeline-bar">
+            <div style="flex: 2; background: rgba(34, 197, 94, 0.7);"></div>
+            <div style="flex: 3; background: rgba(251, 191, 36, 0.7);"></div>
+            <div style="flex: 3; background: rgba(34, 197, 94, 0.7);"></div>
+            <div style="flex: 2; background: rgba(96, 165, 250, 0.5);"></div>
+          </div>
+        </div>
+        <div class="timeline-row">
+          <span class="timeline-label">Task C</span>
+          <div class="timeline-bar">
+            <div style="flex: 1; background: rgba(251, 191, 36, 0.7);"></div>
+            <div style="flex: 4; background: rgba(34, 197, 94, 0.7);"></div>
+            <div style="flex: 2; background: rgba(251, 191, 36, 0.7);"></div>
+            <div style="flex: 3; background: rgba(34, 197, 94, 0.7);"></div>
+          </div>
+        </div>
+        <div class="timeline-legend">
+          <span><i style="background: rgba(34, 197, 94, 0.7);"></i>working</span>
+          <span><i style="background: rgba(251, 191, 36, 0.7);"></i>waiting on you</span>
+          <span><i style="background: rgba(96, 165, 250, 0.5);"></i>merged</span>
+        </div>
+        <figcaption>Three tasks running in parallel. You jump to whichever is waiting.</figcaption>
+      </figure>
+
+      <div class="prose-custom">
+        <ol>
+          <li>One worktree per task. Keep each one scoped to a single unit of work: one bug, one feature, one refactor.</li>
+          <li>Start with two or three. Kick off a couple of Claudes with clear instructions and let them run.</li>
+          <li>Let the status dots drive you. When a dot turns yellow, that Claude needs you. Jump over, unblock it, move on.</li>
+          <li>Scan diffs in the side panel before telling Claude to push. It's easier to catch problems while the context is still in your head.</li>
+          <li>When Claude opens a PR, watch CI from the PR panel. Delete the worktree after merge so the disk doesn't fill up.</li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- Section 6 -->
+    <section class="mb-16">
+      <div class="flex items-center gap-3 mb-5">
+        <div class="section-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7V17a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2.3A7 7 0 0 0 12 2z"/></svg>
+        </div>
+        <h2 class="text-2xl font-bold text-neutral-100">Tips from running this every day</h2>
+      </div>
+      <div class="prose-custom">
+        <ul>
+          <li>Parallel works best when tasks don't overlap. If two Claudes end up editing the same files, the merge conflict will eat the time you saved.</li>
+          <li>Keep one worktree on <code>main</code>. It's useful for reviewing PRs or trying things out without disturbing the agents you've got running.</li>
+          <li>Delete worktrees when you're done with them. Each one has its own <code>node_modules</code> and build output, and they add up quickly.</li>
+          <li>Fresh worktrees are fresh folders. Dependencies install from scratch every time. A small script that detects this and runs the install is worth writing.</li>
+          <li>Let Claude run. The point is to not babysit. Give it enough context up front that you can walk away for ten minutes.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- CTA -->
+    <div class="mt-20 p-8 bg-neutral-950 border border-neutral-800 rounded-2xl text-center">
+      <h3 class="text-2xl font-bold text-neutral-100 mb-3">If you want the frontend</h3>
+      <p class="text-neutral-500 mb-6 max-w-md mx-auto">
+        Harness is free and open source. macOS only for now. You'll be
+        running a few Claudes in parallel a couple of minutes after opening it.
+      </p>
+      <a href="/#install" class="inline-block px-8 py-3 bg-white text-black rounded-lg font-semibold hover:bg-neutral-200 transition-colors">
+        Download for macOS
+      </a>
+    </div>
+  </article>
+
+  <!-- Footer -->
+  <footer class="border-t border-neutral-900 mt-20">
+    <div class="max-w-6xl mx-auto px-6 py-10 flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-neutral-600">
+      <div class="flex items-center gap-2">
+        <img src="icon.png" alt="" class="w-5 h-5 rounded" />
+        <span>Harness · Open source · MIT</span>
+      </div>
+      <div class="flex items-center gap-6">
+        <a href="/guide.html" class="hover:text-neutral-300 transition-colors">Guide</a>
+        <a href="https://github.com/frenchie4111/harness" class="hover:text-neutral-300 transition-colors">GitHub</a>
+        <a href="/releases.html" class="hover:text-neutral-300 transition-colors">Release notes</a>
+        <a href="https://github.com/frenchie4111/harness/releases" class="hover:text-neutral-300 transition-colors">Downloads</a>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

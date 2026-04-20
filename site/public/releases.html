@@ -1,0 +1,514 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Release notes — Harness</title>
+  <meta name="description" content="Every version of Harness from v1.0 to now. New features, improvements, and fixes for each release." />
+
+  <!-- Open Graph -->
+  <meta property="og:site_name" content="Harness" />
+  <meta property="og:title" content="Release notes — Harness" />
+  <meta property="og:description" content="Every version of Harness from v1.0 to now. New features, improvements, and fixes for each release." />
+  <meta property="og:image" content="https://harness.mikelyons.org/og-image.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:type" content="image/png" />
+  <meta property="og:image:alt" content="Screenshot of Harness showing the worktree sidebar, terminal tabs, and changed-files panel." />
+  <meta property="og:url" content="https://harness.mikelyons.org/releases.html" />
+  <meta property="og:type" content="website" />
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Release notes — Harness" />
+  <meta name="twitter:description" content="Every version of Harness from v1.0 to now. New features, improvements, and fixes for each release." />
+  <meta name="twitter:image" content="https://harness.mikelyons.org/og-image.png" />
+  <meta name="twitter:image:alt" content="Screenshot of Harness showing the worktree sidebar, terminal tabs, and changed-files panel." />
+
+  <link rel="icon" type="image/png" href="icon.png" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <style>
+    html, body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0a0a0a; color: #e5e5e5; }
+    code { font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .gradient-text { background: linear-gradient(135deg, #f59e0b 0%, #ef4444 50%, #a855f7 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .grid-bg {
+      background-image:
+        radial-gradient(circle at 50% 0%, rgba(245, 158, 11, 0.08), transparent 50%),
+        radial-gradient(circle at 0% 100%, rgba(168, 85, 247, 0.06), transparent 50%);
+    }
+    .release-section { border-bottom: 1px solid #1a1a1a; }
+    .release-section:last-child { border-bottom: none; }
+    .note-body ul { list-style: disc; padding-left: 1.25rem; }
+    .note-body li { color: #a3a3a3; line-height: 1.7; margin-bottom: 0.375rem; font-size: 0.9375rem; }
+    .note-body li strong { color: #f5f5f5; font-weight: 600; }
+    .note-body li code { background: #1f1f1f; color: #f5f5f5; padding: 0.0625rem 0.3125rem; border-radius: 0.25rem; font-size: 0.8125em; }
+    .note-body h4 { color: #d4d4d4; font-size: 0.8125rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem; margin-top: 1.25rem; }
+    .note-body h4:first-child { margin-top: 0; }
+  </style>
+</head>
+<body class="min-h-screen grid-bg">
+
+  <!-- Nav -->
+  <nav class="max-w-6xl mx-auto px-6 py-6 flex items-center justify-between">
+    <a href="/" class="flex items-center gap-3">
+      <img src="icon.png" alt="Harness icon" class="w-9 h-9 rounded-lg" />
+      <span class="text-xl font-bold">Harness</span>
+    </a>
+    <div class="flex items-center gap-4 sm:gap-6 text-sm text-neutral-400">
+      <a href="/#features" class="hidden sm:inline hover:text-neutral-100 transition-colors">Features</a>
+      <a href="guide.html" class="hover:text-neutral-100 transition-colors">Guide</a>
+      <a href="/#install" class="hover:text-neutral-100 transition-colors">Install</a>
+      <a href="https://github.com/frenchie4111/harness" class="hover:text-neutral-100 transition-colors">GitHub</a>
+    </div>
+  </nav>
+
+  <!-- Header -->
+  <section class="max-w-3xl mx-auto px-6 pt-12 pb-12">
+    <div class="text-xs uppercase tracking-widest text-neutral-500 mb-4">Changelog</div>
+    <h1 class="text-5xl md:text-6xl font-extrabold tracking-tight mb-6 leading-tight">
+      Release <span class="gradient-text">notes.</span>
+    </h1>
+    <p class="text-lg text-neutral-400 leading-relaxed">
+      Every version of Harness, from v1.0 to now.
+    </p>
+  </section>
+
+  <!-- Releases -->
+  <div class="max-w-3xl mx-auto px-6 pb-24">
+
+    <!-- v2.4.1 -->
+    <section class="release-section py-10">
+      <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
+        <h2 class="text-3xl font-bold tracking-tight">v2.4.1</h2>
+        <span class="text-sm text-neutral-500">April 17, 2026</span>
+      </div>
+      <a href="https://github.com/frenchie4111/harness/releases/tag/v2.4.1" class="text-sm text-amber-400/80 hover:text-amber-300 transition-colors">Download &rarr;</a>
+      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">Bug fixes and polish for vertical split panes and the right panel header.</p>
+      <div class="note-body">
+        <h4>Fixes</h4>
+        <ul>
+          <li><strong>Vertical split exit</strong> — fixed a bug where closing a vertical split pane could leave the layout in a broken state.</li>
+          <li><strong>Right panel header</strong> — cleaned up visual inconsistencies in the right panel header.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- v2.4.0 -->
+    <section class="release-section py-10">
+      <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
+        <h2 class="text-3xl font-bold tracking-tight">v2.4.0</h2>
+        <span class="text-sm text-neutral-500">April 17, 2026</span>
+      </div>
+      <a href="https://github.com/frenchie4111/harness/releases/tag/v2.4.0" class="text-sm text-amber-400/80 hover:text-amber-300 transition-colors">Download &rarr;</a>
+      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">Commit and push status in the sidebar, recent items in the command palette, a new add-worktree hotkey, and Claude settings synced across all worktrees.</p>
+      <div class="note-body">
+        <h4>New features</h4>
+        <ul>
+          <li><strong>Commit &amp; push status</strong> — the sidebar now shows whether each worktree has unpushed commits, so you always know what's waiting to land.</li>
+          <li><strong>Command palette recents</strong> — recently used worktrees and actions float to the top of the command palette for faster access.</li>
+          <li><strong>Commit view in the review panel</strong> — the PR review panel now includes a commit list alongside the diff so you can navigate changes commit by commit.</li>
+          <li><strong>Add-worktree hotkey</strong> — create a new worktree from the keyboard without reaching for the mouse.</li>
+          <li><strong>Harness system prompt</strong> — Claude sessions now start with workspace context baked in, so Claude understands your project setup from the first message.</li>
+          <li><strong>Claude settings sync</strong> — Claude Code settings are symlinked across all worktrees so configuration changes apply everywhere at once.</li>
+        </ul>
+        <h4>Improvements</h4>
+        <ul>
+          <li>Settings panels are now organized into sub-menus for easier navigation.</li>
+          <li>Split panes now support a vertical orientation in addition to the existing horizontal layout.</li>
+        </ul>
+        <h4>Fixes</h4>
+        <ul>
+          <li>Fixed several UX rough edges in the changed-files panel.</li>
+          <li>Fixed teleport incorrectly navigating to a merged branch instead of the target worktree.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- v2.3.0 -->
+    <section class="release-section py-10">
+      <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
+        <h2 class="text-3xl font-bold tracking-tight">v2.3.0</h2>
+        <span class="text-sm text-neutral-500">April 16, 2026</span>
+      </div>
+      <a href="https://github.com/frenchie4111/harness/releases/tag/v2.3.0" class="text-sm text-amber-400/80 hover:text-amber-300 transition-colors">Download &rarr;</a>
+      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">Per-agent model selection, a fuzzy file picker, a performance monitor with time-series charts, and initial Codex support.</p>
+      <div class="note-body">
+        <h4>New features</h4>
+        <ul>
+          <li><strong>Agent model selector</strong> — choose which Claude model powers each agent, so you can mix Opus, Sonnet, and Haiku across worktrees.</li>
+          <li><strong>Fuzzy file picker</strong> — jump to any file in the worktree instantly with a keyboard-driven fuzzy search.</li>
+          <li><strong>Performance monitor</strong> — track token usage and latency per agent with a live time-series chart.</li>
+          <li><strong>Hotkey cheat sheet</strong> — press <code>?</code> to bring up a full reference of every keyboard shortcut.</li>
+          <li><strong>In-app PR review screen</strong> — browse pull request diffs and check CI status without leaving Harness.</li>
+          <li><strong>Codex support</strong> — run Codex-powered agents alongside Claude sessions in the same workspace.</li>
+          <li><strong>First-repo onboarding</strong> — new users see a guided setup flow before adding their first repository.</li>
+        </ul>
+        <h4>Improvements</h4>
+        <ul>
+          <li>Hooks are now installed globally across all worktrees at once, rather than one at a time.</li>
+          <li>Last-active timestamps are more precise with improved debounce tuning.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- v2.2.0 -->
+    <section class="release-section py-10">
+      <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
+        <h2 class="text-3xl font-bold tracking-tight">v2.2.0</h2>
+        <span class="text-sm text-neutral-500">April 16, 2026</span>
+      </div>
+      <a href="https://github.com/frenchie4111/harness/releases/tag/v2.2.0" class="text-sm text-amber-400/80 hover:text-amber-300 transition-colors">Download &rarr;</a>
+      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">Security, polish, and quality-of-life improvements — from a sandboxed renderer to a better diff viewer.</p>
+      <div class="note-body">
+        <h4>New features</h4>
+        <ul>
+          <li><strong>Configurable auto-updates</strong> — choose whether to install updates automatically or review them first.</li>
+          <li><strong>Right panel toolbar</strong> and <strong>port tracking</strong> for dev servers running in worktree shells.</li>
+        </ul>
+        <h4>Improvements</h4>
+        <ul>
+          <li>Diff and file viewer overhauled for faster navigation. External links open in your default browser.</li>
+          <li>Merged worktrees are visually dimmed. MCP initial prompts now forwarded correctly.</li>
+        </ul>
+        <h4>Fixes</h4>
+        <ul>
+          <li>Fixed Monaco not recognizing <code>.tsx</code>/<code>.jsx</code>, a file-open race, and enabled Electron sandbox.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- v2.1.0 -->
+    <section class="release-section py-10">
+      <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
+        <h2 class="text-3xl font-bold tracking-tight">v2.1.0</h2>
+        <span class="text-sm text-neutral-500">April 15, 2026</span>
+      </div>
+      <a href="https://github.com/frenchie4111/harness/releases/tag/v2.1.0" class="text-sm text-amber-400/80 hover:text-amber-300 transition-colors">Download &rarr;</a>
+      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">Smoother animations, automatic GitHub auth via the <code>gh</code> CLI, and line-change counts in the sidebar.</p>
+      <div class="note-body">
+        <h4>New features</h4>
+        <ul>
+          <li><strong>Automatic GitHub auth</strong> — if you have <code>gh</code> installed and logged in, Harness picks up your token automatically. No more pasting a PAT unless you want to.</li>
+          <li><strong>Line change counts</strong> — the changed-files panel now shows how many lines were added and removed per file.</li>
+          <li><strong>Colored repo names</strong> — each repo gets a distinct accent color in the sidebar for quick visual scanning.</li>
+        </ul>
+        <h4>Improvements</h4>
+        <ul>
+          <li>Worktree deletion is now animated instead of snapping out of the list.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- v2.0.0 -->
+    <section class="release-section py-10">
+      <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
+        <h2 class="text-3xl font-bold tracking-tight">v2.0.0</h2>
+        <span class="text-sm text-neutral-500">April 14, 2026</span>
+      </div>
+      <a href="https://github.com/frenchie4111/harness/releases/tag/v2.0.0" class="text-sm text-amber-400/80 hover:text-amber-300 transition-colors">Download &rarr;</a>
+      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">Major architecture overhaul — all shared state now lives in the main process with a reducer-based store, making every feature more reliable and paving the way for multi-window sync.</p>
+      <div class="note-body">
+        <h4>New features</h4>
+        <ul>
+          <li><strong>Per-repo project settings</strong> — configure auto-approved build commands per repository.</li>
+          <li><strong>Pending tool call display</strong> — see what Claude is asking permission for before you approve.</li>
+          <li><strong>Shell tab activity indicator</strong> and <strong>per-repo panel visibility</strong> toggles.</li>
+        </ul>
+        <h4>Improvements</h4>
+        <ul>
+          <li>Hotkey badges appear app-wide and respect collapsed groups. Settings closes with <code>Esc</code>.</li>
+          <li>Changed-files panel left-truncates long paths. Hooks restart preserves your Claude session.</li>
+          <li>Terminal shows a loading indicator until the first byte arrives.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- v1.11.1 -->
+    <section class="release-section py-10">
+      <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
+        <h2 class="text-3xl font-bold tracking-tight">v1.11.1</h2>
+        <span class="text-sm text-neutral-500">April 13, 2026</span>
+      </div>
+      <a href="https://github.com/frenchie4111/harness/releases/tag/v1.11.1" class="text-sm text-amber-400/80 hover:text-amber-300 transition-colors">Download &rarr;</a>
+      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">Internal improvements and auto-updater verification.</p>
+    </section>
+
+    <!-- v1.11.0 -->
+    <section class="release-section py-10">
+      <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
+        <h2 class="text-3xl font-bold tracking-tight">v1.11.0</h2>
+        <span class="text-sm text-neutral-500">April 13, 2026</span>
+      </div>
+      <a href="https://github.com/frenchie4111/harness/releases/tag/v1.11.0" class="text-sm text-amber-400/80 hover:text-amber-300 transition-colors">Download &rarr;</a>
+      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">Split panes, a refreshed command center, and the ability to send an initial prompt when Claude spawns a worktree via MCP.</p>
+      <div class="note-body">
+        <h4>New features</h4>
+        <ul>
+          <li><strong>Split panes with <code>Cmd+D</code></strong> — divide any terminal tab into side-by-side panes.</li>
+          <li><strong>MCP initial prompt</strong> — when Claude creates a worktree through the MCP server, it can pass a starting prompt so the new Claude session begins working immediately.</li>
+        </ul>
+        <h4>Improvements</h4>
+        <ul>
+          <li>Command center got a visual refresh with better spacing and status indicators.</li>
+          <li>Worktree setup and teardown lifecycle is now more robust, handling edge cases around failed dependency installs.</li>
+        </ul>
+        <h4>Fixes</h4>
+        <ul>
+          <li>Fixed a bug where the auto-updater could hang on restart.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- v1.10.0 -->
+    <section class="release-section py-10">
+      <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
+        <h2 class="text-3xl font-bold tracking-tight">v1.10.0</h2>
+        <span class="text-sm text-neutral-500">April 12, 2026</span>
+      </div>
+      <a href="https://github.com/frenchie4111/harness/releases/tag/v1.10.0" class="text-sm text-amber-400/80 hover:text-amber-300 transition-colors">Download &rarr;</a>
+      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">The biggest feature release yet — MCP server, command palette, PR reviews, syntax highlighting, and a completely redesigned new-worktree flow.</p>
+      <div class="note-body">
+        <h4>New features</h4>
+        <ul>
+          <li><strong>Built-in MCP server</strong> — Claude can create and manage worktrees directly through tool use.</li>
+          <li><strong>Command palette (<code>Cmd+K</code>)</strong> — quick-search worktrees, repos, and actions.</li>
+          <li><strong>PR reviews</strong>, <strong>syntax highlighting</strong>, and <strong>env var settings</strong> for Claude/shell sessions.</li>
+        </ul>
+        <h4>Improvements</h4>
+        <ul>
+          <li>Faster new-worktree flow. Repo icons and branch names in tab headers. Cleanup filterable by repo.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- v1.9.0 -->
+    <section class="release-section py-10">
+      <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
+        <h2 class="text-3xl font-bold tracking-tight">v1.9.0</h2>
+        <span class="text-sm text-neutral-500">April 12, 2026</span>
+      </div>
+      <a href="https://github.com/frenchie4111/harness/releases/tag/v1.9.0" class="text-sm text-amber-400/80 hover:text-amber-300 transition-colors">Download &rarr;</a>
+      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">Multi-repo support lands — open several repositories in a single Harness window.</p>
+      <div class="note-body">
+        <h4>New features</h4>
+        <ul>
+          <li><strong>Multi-repo in one window</strong> — add multiple git repositories to the sidebar. Each repo's worktrees are grouped under its own header.</li>
+        </ul>
+        <h4>Fixes</h4>
+        <ul>
+          <li>Fixed auto-update hang caused by stuck PTY cleanup on app quit.</li>
+          <li>Fixed status dots getting stuck on red (needs-approval) after the approval was already given.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- v1.8.0 -->
+    <section class="release-section py-10">
+      <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
+        <h2 class="text-3xl font-bold tracking-tight">v1.8.0</h2>
+        <span class="text-sm text-neutral-500">April 11, 2026</span>
+      </div>
+      <a href="https://github.com/frenchie4111/harness/releases/tag/v1.8.0" class="text-sm text-amber-400/80 hover:text-amber-300 transition-colors">Download &rarr;</a>
+      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">Resizable panels, a file browser, and a refreshed layout with a draggable title bar.</p>
+      <div class="note-body">
+        <h4>New features</h4>
+        <ul>
+          <li><strong>Resizable panels</strong> — drag dividers between sidebar, terminal, and right panel.</li>
+          <li><strong>All-files browser</strong> — see every file in the worktree, not just changed files.</li>
+          <li><strong>Background update checks</strong> — periodic release checks, not just at launch.</li>
+        </ul>
+        <h4>Improvements</h4>
+        <ul>
+          <li>Standardized right panel layout. File tabs show status dots. Draggable title bar.</li>
+          <li>Left panel refreshes on window focus. New Claude loading animation.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- v1.7.0 -->
+    <section class="release-section py-10">
+      <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
+        <h2 class="text-3xl font-bold tracking-tight">v1.7.0</h2>
+        <span class="text-sm text-neutral-500">April 11, 2026</span>
+      </div>
+      <a href="https://github.com/frenchie4111/harness/releases/tag/v1.7.0" class="text-sm text-amber-400/80 hover:text-amber-300 transition-colors">Download &rarr;</a>
+      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">Command center view for a bird's-eye look at all your agents, plus the ability to send text directly into a Claude session.</p>
+      <div class="note-body">
+        <h4>New features</h4>
+        <ul>
+          <li><strong>Command center</strong> — a grid view showing every worktree at a glance with mini activity timelines.</li>
+          <li><strong>Send text to Claude</strong> — type or drag text into a running Claude terminal from elsewhere in the app.</li>
+          <li><strong>Remote teleport</strong> — jump to a running Claude session from external triggers.</li>
+        </ul>
+        <h4>Improvements</h4>
+        <ul>
+          <li>Sidebar sorting now groups by activity status so the busiest worktrees float to the top.</li>
+          <li>Activity stats are preserved for deleted worktrees so historical data isn't lost.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- v1.6.0 -->
+    <section class="release-section py-10">
+      <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
+        <h2 class="text-3xl font-bold tracking-tight">v1.6.0</h2>
+        <span class="text-sm text-neutral-500">April 11, 2026</span>
+      </div>
+      <a href="https://github.com/frenchie4111/harness/releases/tag/v1.6.0" class="text-sm text-amber-400/80 hover:text-amber-300 transition-colors">Download &rarr;</a>
+      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">Draggable tabs, split-pane layout, custom fonts, and bulk worktree cleanup.</p>
+      <div class="note-body">
+        <h4>New features</h4>
+        <ul>
+          <li><strong>Draggable tabs + split-pane layout</strong> — rearrange terminal tabs by dragging, and split the workspace into a grid.</li>
+          <li><strong>Custom fonts</strong> — pick your preferred font family and size for the terminal and editor.</li>
+          <li><strong>Mass archive</strong> — bulk-delete worktrees older than a chosen age to reclaim disk space.</li>
+          <li><strong>GitHub connect prompt</strong> — onboarding now nudges you to connect GitHub when you open a PR for the first time.</li>
+        </ul>
+        <h4>Fixes</h4>
+        <ul>
+          <li>Fixed <code>Cmd+Up</code> / <code>Cmd+Down</code> cycling through worktrees in an unexpected order.</li>
+          <li>Fixed changing a setting unexpectedly restarting the active Claude session.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- v1.5.0 -->
+    <section class="release-section py-10">
+      <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
+        <h2 class="text-3xl font-bold tracking-tight">v1.5.0</h2>
+        <span class="text-sm text-neutral-500">April 11, 2026</span>
+      </div>
+      <a href="https://github.com/frenchie4111/harness/releases/tag/v1.5.0" class="text-sm text-amber-400/80 hover:text-amber-300 transition-colors">Download &rarr;</a>
+      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">Guided onboarding, activity tracking, and a redesigned new-worktree flow that helps you write a kickoff prompt.</p>
+      <div class="note-body">
+        <h4>New features</h4>
+        <ul>
+          <li><strong>Onboarding quest</strong> — first-time users get starter prompts, a nudge to launch their first agent, and a parallelism quest to try running two Claudes at once.</li>
+          <li><strong>Activity view</strong> — see per-worktree status history over time so you can tell which agents were productive and which got stuck.</li>
+          <li><strong>Full-screen new-worktree flow</strong> — creating a worktree now walks you through branch naming and kickoff prompts in a focused view.</li>
+          <li><strong>"Continue" action</strong> — after a worktree's PR is merged, re-fork it in place to keep working on a follow-up.</li>
+          <li><strong>Local merge</strong> — merge a worktree branch locally when there's no open PR.</li>
+        </ul>
+        <h4>Improvements</h4>
+        <ul>
+          <li>New worktrees open a shell tab alongside Claude automatically.</li>
+          <li>Sidebar groups renamed from "No PR / Active PRs" to "Active / Open PRs" for clarity.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- v1.4.0 -->
+    <section class="release-section py-10">
+      <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
+        <h2 class="text-3xl font-bold tracking-tight">v1.4.0</h2>
+        <span class="text-sm text-neutral-500">April 11, 2026</span>
+      </div>
+      <a href="https://github.com/frenchie4111/harness/releases/tag/v1.4.0" class="text-sm text-amber-400/80 hover:text-amber-300 transition-colors">Download &rarr;</a>
+      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">A targeted fix for Claude sessions not surviving app restarts.</p>
+      <div class="note-body">
+        <h4>Fixes</h4>
+        <ul>
+          <li>Fixed Claude session resume across app restarts — sessions now reconnect reliably instead of spawning duplicates.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- v1.3.1 -->
+    <section class="release-section py-10">
+      <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
+        <h2 class="text-3xl font-bold tracking-tight">v1.3.1</h2>
+        <span class="text-sm text-neutral-500">April 10, 2026</span>
+      </div>
+      <a href="https://github.com/frenchie4111/harness/releases/tag/v1.3.1" class="text-sm text-amber-400/80 hover:text-amber-300 transition-colors">Download &rarr;</a>
+      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">UX polish, a worktree guide for new users, and the ability to open additional Claude tabs per worktree.</p>
+      <div class="note-body">
+        <h4>New features</h4>
+        <ul>
+          <li><strong>Multiple Claude tabs per worktree</strong> — open a second (or third) Claude session in the same worktree when one isn't enough.</li>
+          <li><strong>Built-in worktree guide</strong> — new users see a short guide explaining what worktrees are and how Harness uses them.</li>
+        </ul>
+        <h4>Fixes</h4>
+        <ul>
+          <li>Various UX tweaks and a fix for PTY sessions not resuming correctly.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- v1.2.0 -->
+    <section class="release-section py-10">
+      <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
+        <h2 class="text-3xl font-bold tracking-tight">v1.2.0</h2>
+        <span class="text-sm text-neutral-500">April 10, 2026</span>
+      </div>
+      <a href="https://github.com/frenchie4111/harness/releases/tag/v1.2.0" class="text-sm text-amber-400/80 hover:text-amber-300 transition-colors">Download &rarr;</a>
+      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">Theming support — pick from nine built-in color themes to make Harness feel like yours.</p>
+      <div class="note-body">
+        <h4>New features</h4>
+        <ul>
+          <li><strong>9 color themes</strong> — choose from dark, light, solarized, and more in Settings. The theme applies to the terminal, editor, and all UI chrome.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- v1.1.1 -->
+    <section class="release-section py-10">
+      <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
+        <h2 class="text-3xl font-bold tracking-tight">v1.1.1</h2>
+        <span class="text-sm text-neutral-500">April 10, 2026</span>
+      </div>
+      <a href="https://github.com/frenchie4111/harness/releases/tag/v1.1.1" class="text-sm text-amber-400/80 hover:text-amber-300 transition-colors">Download &rarr;</a>
+      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">Persistent terminals, a redesigned settings panel, and automatic GitHub setup prompting.</p>
+      <div class="note-body">
+        <h4>New features</h4>
+        <ul>
+          <li><strong>Persistent terminals</strong> — terminal tabs and scrollback history survive app restarts. No more losing context when you relaunch.</li>
+          <li><strong>Settings overhaul</strong> — two-column layout with sidebar navigation, hotkey rebinding UI, an updates panel, and a configurable Claude launch command.</li>
+          <li><strong>GitHub setup banner</strong> — on first launch, a banner walks you through pasting a GitHub token so PR status works immediately.</li>
+          <li><strong><code>Cmd+,</code> opens Settings</strong> — standard macOS shortcut now works.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- v1.0.0 -->
+    <section class="release-section py-10">
+      <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
+        <h2 class="text-3xl font-bold tracking-tight">v1.0.0</h2>
+        <span class="text-sm text-neutral-500">April 10, 2026</span>
+      </div>
+      <a href="https://github.com/frenchie4111/harness/releases/tag/v1.0.0" class="text-sm text-amber-400/80 hover:text-amber-300 transition-colors">Download &rarr;</a>
+      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">First public release — a native macOS app for managing multiple Claude Code instances across git worktrees.</p>
+      <div class="note-body">
+        <h4>Features</h4>
+        <ul>
+          <li><strong>Parallel worktrees</strong> — sidebar of git worktrees, each with its own terminal tabs for Claude Code and raw shells.</li>
+          <li><strong>Reliable status detection</strong> — powered by Claude Code hooks, not output parsing. See at a glance which agents are working, waiting, or asking for permission.</li>
+          <li><strong>PR status panel</strong> — live PR state and CI checks per worktree, with quick links to GitHub.</li>
+          <li><strong>Changed files + inline diffs</strong> — review what Claude changed without leaving the app.</li>
+          <li><strong>Configurable hotkeys</strong> — <code>Cmd+1</code>–<code>Cmd+9</code> to jump between worktrees, <code>Cmd+T</code> for a new tab, <code>Cmd+Shift+G</code> to open the PR.</li>
+          <li><strong>Worktree management</strong> — create and delete worktrees from the sidebar with dirty-change warnings.</li>
+          <li><strong>Auto-updater</strong> — updates delivered via GitHub Releases.</li>
+        </ul>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- Footer -->
+  <footer class="border-t border-neutral-900 mt-20">
+    <div class="max-w-6xl mx-auto px-6 py-10 flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-neutral-600">
+      <div class="flex items-center gap-2">
+        <img src="icon.png" alt="" class="w-5 h-5 rounded" />
+        <span>Harness · Open source · MIT</span>
+      </div>
+      <div class="flex items-center gap-6">
+        <a href="/guide.html" class="hover:text-neutral-300 transition-colors">Guide</a>
+        <a href="https://github.com/frenchie4111/harness" class="hover:text-neutral-300 transition-colors">GitHub</a>
+        <a href="/releases.html" class="text-neutral-300 transition-colors">Release notes</a>
+        <a href="https://github.com/frenchie4111/harness/releases" class="hover:text-neutral-300 transition-colors">Downloads</a>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>
