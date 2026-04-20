@@ -174,14 +174,22 @@ export function MobileTerminal({ worktreePath, tab }: MobileTerminalProps): JSX.
     inputRef.current?.focus({ preventScroll: true })
   }, [])
 
-  // Touch-scroll the xterm viewport. The textarea is pointer-events:none
-  // (see its style below) so touches pass through to this wrapper div.
-  // We translate vertical pans into scrollLines() calls and set a "dragged"
-  // flag so the subsequent synthesized click doesn't focus the input and
-  // pop the keyboard at the end of a scroll gesture.
+  // Touch-scroll the xterm viewport. xterm v6 ships with no touch-scroll
+  // implementation of its own (see xtermjs/xterm.js#5377, #594), but it
+  // DOES attach a document-level gesture recognizer that calls
+  // preventDefault/stopPropagation on touches it interprets — which races
+  // and wins against a wrapper-level listener, silently killing our
+  // handlers. We attach directly to the `.xterm` element in the capture
+  // phase and stopPropagation ourselves so xterm's document handlers
+  // don't see the event at all. touch-action:none also has to live on the
+  // `.xterm` element (not the wrapper) since it only affects the element
+  // it's on.
   useEffect(() => {
-    const el = wrapperRef.current
-    if (!el) return
+    const wrap = wrapperRef.current
+    if (!wrap) return
+    const xtermEl = wrap.querySelector('.xterm') as HTMLElement | null
+    if (!xtermEl) return
+    xtermEl.style.touchAction = 'none'
     let lastY: number | null = null
     let accum = 0
     let lineHeight = 16
@@ -204,11 +212,11 @@ export function MobileTerminal({ worktreePath, tab }: MobileTerminalProps): JSX.
         setScrolledBack(!isTerminalAtBottom(terminalId))
         draggedRef.current = true
         e.preventDefault()
+        e.stopPropagation()
       } else if (Math.abs(accum) > 4) {
-        // Even small drags shouldn't let Safari steal the gesture as a
-        // long-press text-selection — keeps the UX predictable.
         draggedRef.current = true
         e.preventDefault()
+        e.stopPropagation()
       }
     }
     const onEnd = (): void => {
@@ -216,15 +224,15 @@ export function MobileTerminal({ worktreePath, tab }: MobileTerminalProps): JSX.
       accum = 0
       setScrolledBack(!isTerminalAtBottom(terminalId))
     }
-    el.addEventListener('touchstart', onStart, { passive: true })
-    el.addEventListener('touchmove', onMove, { passive: false })
-    el.addEventListener('touchend', onEnd, { passive: true })
-    el.addEventListener('touchcancel', onEnd, { passive: true })
+    xtermEl.addEventListener('touchstart', onStart, { passive: true, capture: true })
+    xtermEl.addEventListener('touchmove', onMove, { passive: false, capture: true })
+    xtermEl.addEventListener('touchend', onEnd, { passive: true, capture: true })
+    xtermEl.addEventListener('touchcancel', onEnd, { passive: true, capture: true })
     return () => {
-      el.removeEventListener('touchstart', onStart)
-      el.removeEventListener('touchmove', onMove)
-      el.removeEventListener('touchend', onEnd)
-      el.removeEventListener('touchcancel', onEnd)
+      xtermEl.removeEventListener('touchstart', onStart, { capture: true })
+      xtermEl.removeEventListener('touchmove', onMove, { capture: true })
+      xtermEl.removeEventListener('touchend', onEnd, { capture: true })
+      xtermEl.removeEventListener('touchcancel', onEnd, { capture: true })
     }
   }, [terminalId])
 
@@ -280,7 +288,6 @@ export function MobileTerminal({ worktreePath, tab }: MobileTerminalProps): JSX.
         ref={wrapperRef}
         onClick={handleWrapperClick}
         className="relative flex-1 min-h-0"
-        style={{ touchAction: 'none' }}
       >
         {/* key by tab.id so switching tabs (or worktrees) forces a fresh
             XTerminal instance. Desktop renders one XTerminal per tab
