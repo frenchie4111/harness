@@ -217,6 +217,23 @@ function getLanHost(): string {
   return '0.0.0.0'
 }
 
+/** Enumerate every non-loopback IPv4 address paired with its interface
+ *  name, so the Settings UI can surface a picker when a machine has
+ *  multiple plausible LAN bindings (WiFi + ethernet + VPN tunnel). */
+function getLanAddresses(): Array<{ iface: string; address: string }> {
+  const result: Array<{ iface: string; address: string }> = []
+  const ifaces = networkInterfaces()
+  for (const [name, list] of Object.entries(ifaces)) {
+    if (!list) continue
+    for (const entry of list) {
+      if (entry.family === 'IPv4' && !entry.internal) {
+        result.push({ iface: name, address: entry.address })
+      }
+    }
+  }
+  return result
+}
+
 // Tails Claude Code session jsonl transcripts on Stop hook events,
 // sums per-model usage, and dispatches costs/usageUpdated. See
 // src/main/cost-tracker.ts and src/shared/state/costs.ts.
@@ -1237,6 +1254,8 @@ function registerIpcHandlers(): void {
       host: wsTransport.getHost()
     }
   })
+
+  transport.onRequest('net:getLanAddresses', (_ctx) => getLanAddresses())
 
   transport.onRequest('config:setClaudeTuiFullscreen', (_ctx, enabled: boolean) => {
     if (enabled) {

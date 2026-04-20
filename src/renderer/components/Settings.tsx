@@ -9,6 +9,7 @@ import { Tooltip } from './Tooltip'
 import { AGENT_REGISTRY, agentDisplayName, CLAUDE_MODELS, CODEX_MODELS } from '../../shared/agent-registry'
 import { AgentIcon } from './AgentIcon'
 import { THEME_OPTIONS } from '../themes'
+import { QRCodeSVG } from 'qrcode.react'
 
 interface SettingsProps {
   onClose: () => void
@@ -246,6 +247,12 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
   const [wsPortDraft, setWsPortDraft] = useState<string>(String(wsTransportPort))
   useEffect(() => { setWsPortDraft(String(wsTransportPort)) }, [wsTransportPort])
 
+  // LAN addresses for QR-code / scannable URL generation. A machine can
+  // have several (WiFi + ethernet + VPN), so we surface a picker when
+  // more than one is present and default to the first.
+  const [lanAddresses, setLanAddresses] = useState<Array<{ iface: string; address: string }>>([])
+  const [selectedLanAddress, setSelectedLanAddress] = useState<string | null>(null)
+
   // Constants and non-settings state load once; live settings are already
   // hydrated via useSettings() above.
   useEffect(() => {
@@ -254,6 +261,10 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
     window.api.getDefaultTerminalFontFamily().then(setDefaultTerminalFontFamily)
     window.api.getAvailableEditors().then(setAvailableEditors)
     window.api.getWsTransportInfo().then(setWsInfo)
+    window.api.getLanAddresses().then((addrs) => {
+      setLanAddresses(addrs)
+      if (addrs.length > 0) setSelectedLanAddress(addrs[0].address)
+    })
   }, [])
 
   useEffect(() => {
@@ -516,6 +527,13 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
   const effectiveWsToken = wsInfo?.token ?? ''
   const wsUrl = `http://${effectiveWsHost}:${effectiveWsPort}/?token=${effectiveWsToken}`
   const wsUrlMasked = `http://${effectiveWsHost}:${effectiveWsPort}/?token=${'•'.repeat(8)}`
+
+  // URL aimed at a phone/other device: substitutes the machine's actual
+  // LAN IP for 0.0.0.0 so scanning the QR actually resolves. Only usable
+  // once the server is running (needs the real token).
+  const scannableLanUrl = selectedLanAddress && wsInfo
+    ? `http://${selectedLanAddress}:${wsInfo.port}/?token=${wsInfo.token}`
+    : null
 
   const handleCopyWsUrl = useCallback(async () => {
     try {
@@ -2044,15 +2062,55 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
 
                     {wsTransportHost === '0.0.0.0' && (
                       <div className="mt-4 pt-3 border-t border-border">
-                        <p className="text-xs text-fg">
+                        <p className="text-xs text-fg mb-3">
                           <span className="font-medium text-warning">LAN mode:</span>{' '}
-                          connect from another device on your network by
-                          pointing its browser at this machine's LAN IP
-                          (e.g. <code className="bg-panel px-1 rounded">http://192.168.x.x:{effectiveWsPort}/?token=…</code>).
-                          The 32-byte token is the only thing gating access —
-                          only enable on networks you trust, and never over the
-                          public internet.
+                          any device on your network can connect if they have
+                          the URL below. The 32-byte token is the only thing
+                          gating access — only enable on trusted networks,
+                          never over the public internet.
                         </p>
+
+                        {scannableLanUrl ? (
+                          <div className="flex gap-4 items-start">
+                            <div className="bg-white p-2 rounded shrink-0">
+                              <QRCodeSVG value={scannableLanUrl} size={128} level="M" />
+                            </div>
+                            <div className="flex-1 min-w-0 text-xs text-dim space-y-2">
+                              <p>
+                                Scan with your phone's camera to open in
+                                Safari or your default browser.
+                              </p>
+                              {lanAddresses.length > 1 && (
+                                <div>
+                                  <label className="block text-[11px] font-medium text-fg mb-1">Interface</label>
+                                  <select
+                                    value={selectedLanAddress ?? ''}
+                                    onChange={(e) => setSelectedLanAddress(e.target.value)}
+                                    className="w-full bg-panel border border-border-strong rounded px-2 py-1 text-[11px] text-fg-bright outline-none focus:border-fg cursor-pointer font-mono"
+                                  >
+                                    {lanAddresses.map((a) => (
+                                      <option key={a.iface + a.address} value={a.address}>
+                                        {a.iface} — {a.address}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                              )}
+                              <p className="font-mono text-[10px] break-all text-fg">
+                                http://{selectedLanAddress}:{wsInfo?.port}/
+                              </p>
+                            </div>
+                          </div>
+                        ) : wsInfo ? (
+                          <p className="text-xs text-dim italic">
+                            No LAN network interface detected on this machine.
+                          </p>
+                        ) : (
+                          <p className="text-xs text-dim italic">
+                            QR code will appear here after you relaunch
+                            Harness with the server enabled.
+                          </p>
+                        )}
                       </div>
                     )}
                   </>

@@ -188,6 +188,8 @@ function buildApi(transport: WebSocketClientTransport): ElectronAPI {
       req('config:setWsTransportHost', host) as Promise<string>,
     getWsTransportInfo: () =>
       req('config:getWsTransportInfo') as ReturnType<ElectronAPI['getWsTransportInfo']>,
+    getLanAddresses: () =>
+      req('net:getLanAddresses') as ReturnType<ElectronAPI['getLanAddresses']>,
     setBrowserToolsEnabled: (enabled) =>
       req('config:setBrowserToolsEnabled', enabled) as Promise<boolean>,
     setBrowserToolsMode: (mode) =>

@@ -117,6 +117,7 @@
     "lucide-react": "^1.8.0",
     "monaco-editor": "^0.55.1",
     "node-pty": "^1.1.0",
+    "qrcode.react": "^4.2.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "ws": "^8.20.0"
