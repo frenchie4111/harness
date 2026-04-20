@@ -222,6 +222,7 @@ export interface ElectronAPI {
   setWsTransportPort(port: number): Promise<number>
   setWsTransportHost(host: string): Promise<string>
   getWsTransportInfo(): Promise<{ port: number; token: string; host: string } | null>
+  getLanAddresses(): Promise<Array<{ iface: string; address: string }>>
   setBrowserToolsEnabled(enabled: boolean): Promise<boolean>
   setBrowserToolsMode(mode: 'view' | 'full'): Promise<boolean>
   setAutoUpdateEnabled(enabled: boolean): Promise<boolean>

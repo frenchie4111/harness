@@ -137,6 +137,7 @@ contextBridge.exposeInMainWorld('api', {
   setWsTransportPort: (port: number) => req('config:setWsTransportPort', port),
   setWsTransportHost: (host: string) => req('config:setWsTransportHost', host),
   getWsTransportInfo: () => req('config:getWsTransportInfo'),
+  getLanAddresses: () => req('net:getLanAddresses'),
   setBrowserToolsEnabled: (enabled: boolean) => req('config:setBrowserToolsEnabled', enabled),
   setBrowserToolsMode: (mode: 'view' | 'full') => req('config:setBrowserToolsMode', mode),
   setAutoUpdateEnabled: (enabled: boolean) => req('config:setAutoUpdateEnabled', enabled),

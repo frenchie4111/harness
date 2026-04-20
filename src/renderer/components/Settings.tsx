@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2, LifeBuoy, Bug, Lightbulb } from 'lucide-react'
+import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2, LifeBuoy, Bug, Lightbulb, FlaskConical, Copy, ExternalLink } from 'lucide-react'
 import { openReportIssue } from './ReportIssueScreen'
-import { HARNESS_RELEASES_URL } from '../../shared/constants'
+import { HARNESS_ISSUES_URL, HARNESS_RELEASES_URL } from '../../shared/constants'
 import { useSettings, useUpdater, useRepoConfigs, useHooks } from '../store'
 import type { UpdaterStatus, MergeStrategy, RepoConfig } from '../types'
 import { DEFAULT_HOTKEYS, ACTION_LABELS, bindingToString, eventToBinding, resolveHotkeys, type Action, type HotkeyBinding } from '../hotkeys'
@@ -9,6 +9,7 @@ import { Tooltip } from './Tooltip'
 import { AGENT_REGISTRY, agentDisplayName, CLAUDE_MODELS, CODEX_MODELS } from '../../shared/agent-registry'
 import { AgentIcon } from './AgentIcon'
 import { THEME_OPTIONS } from '../themes'
+import { QRCodeSVG } from 'qrcode.react'
 
 interface SettingsProps {
   onClose: () => void
@@ -16,7 +17,7 @@ interface SettingsProps {
   initialSection?: SectionId
 }
 
-type SectionId = 'appearance' | 'agent' | 'worktrees' | 'editor' | 'github' | 'hotkeys' | 'updates' | 'support'
+type SectionId = 'appearance' | 'agent' | 'worktrees' | 'editor' | 'github' | 'hotkeys' | 'updates' | 'support' | 'experimental'
 type SubSectionId = 'agent-general' | 'agent-claude' | 'agent-codex'
 
 interface SubSection {
@@ -43,7 +44,8 @@ const SECTIONS: Section[] = [
   { id: 'github', label: 'GitHub', icon: GitPullRequest },
   { id: 'hotkeys', label: 'Hotkeys', icon: Keyboard },
   { id: 'updates', label: 'Updates', icon: DownloadCloud },
-  { id: 'support', label: 'Support', icon: LifeBuoy }
+  { id: 'support', label: 'Support', icon: LifeBuoy },
+  { id: 'experimental', label: 'Experimental', icon: FlaskConical }
 ]
 
 export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps): JSX.Element {
@@ -58,7 +60,8 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
     github: null,
     hotkeys: null,
     updates: null,
-    support: null
+    support: null,
+    experimental: null
   })
   const subSectionRefs = useRef<Record<SubSectionId, HTMLElement | null>>({
     'agent-general': null,
@@ -181,7 +184,10 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
     harnessSystemPromptMain,
     claudeTuiFullscreen,
     browserToolsEnabled,
-    browserToolsMode
+    browserToolsMode,
+    wsTransportEnabled,
+    wsTransportPort,
+    wsTransportHost
   } = settings
   const setupScript = worktreeScripts.setup
   const teardownScript = worktreeScripts.teardown
@@ -233,6 +239,20 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
   // Hooks consent — drives the copy in the "Status hooks" card below.
   const { consent: hooksConsent } = useHooks()
 
+  // WS transport: wsInfo reflects the live server (null when off or not
+  // yet started after enabling — the server only binds at app launch).
+  const [wsInfo, setWsInfo] = useState<{ port: number; token: string; host: string } | null>(null)
+  const [showWsToken, setShowWsToken] = useState(false)
+  const [wsUrlCopied, setWsUrlCopied] = useState(false)
+  const [wsPortDraft, setWsPortDraft] = useState<string>(String(wsTransportPort))
+  useEffect(() => { setWsPortDraft(String(wsTransportPort)) }, [wsTransportPort])
+
+  // LAN addresses for QR-code / scannable URL generation. A machine can
+  // have several (WiFi + ethernet + VPN), so we surface a picker when
+  // more than one is present and default to the first.
+  const [lanAddresses, setLanAddresses] = useState<Array<{ iface: string; address: string }>>([])
+  const [selectedLanAddress, setSelectedLanAddress] = useState<string | null>(null)
+
   // Constants and non-settings state load once; live settings are already
   // hydrated via useSettings() above.
   useEffect(() => {
@@ -240,7 +260,16 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
     window.api.getDefaultClaudeCommand().then(setDefaultClaudeCommand)
     window.api.getDefaultTerminalFontFamily().then(setDefaultTerminalFontFamily)
     window.api.getAvailableEditors().then(setAvailableEditors)
+    window.api.getWsTransportInfo().then(setWsInfo)
+    window.api.getLanAddresses().then((addrs) => {
+      setLanAddresses(addrs)
+      if (addrs.length > 0) setSelectedLanAddress(addrs[0].address)
+    })
   }, [])
+
+  useEffect(() => {
+    window.api.getWsTransportInfo().then(setWsInfo)
+  }, [wsTransportEnabled])
 
   // Whenever claudeEnvVars in the store changes (e.g. another window saved),
   // re-seed the local editable rows. Local edits between loads are lost —
@@ -475,6 +504,62 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
   const handleToggleAutoUpdate = useCallback(async (enabled: boolean) => {
     await window.api.setAutoUpdateEnabled(enabled)
   }, [])
+
+  const handleToggleWsTransport = useCallback(async (enabled: boolean) => {
+    await window.api.setWsTransportEnabled(enabled)
+  }, [])
+
+  const handleSaveWsPort = useCallback(async () => {
+    const parsed = Number.parseInt(wsPortDraft, 10)
+    if (!Number.isFinite(parsed)) return
+    await window.api.setWsTransportPort(parsed)
+  }, [wsPortDraft])
+
+  const handleSelectWsHost = useCallback(async (host: string) => {
+    await window.api.setWsTransportHost(host)
+  }, [])
+
+  // Build the display URL from the live server when it's running; fall back
+  // to the configured host/port (with a blank token) so the user can see
+  // roughly what the URL *will* be after restart.
+  const effectiveWsHost = wsInfo?.host ?? wsTransportHost
+  const effectiveWsPort = wsInfo?.port ?? wsTransportPort
+  const effectiveWsToken = wsInfo?.token ?? ''
+  const wsUrl = `http://${effectiveWsHost}:${effectiveWsPort}/?token=${effectiveWsToken}`
+  const wsUrlMasked = `http://${effectiveWsHost}:${effectiveWsPort}/?token=${'•'.repeat(8)}`
+
+  // URL aimed at a phone/other device: substitutes the machine's actual
+  // LAN IP for 0.0.0.0 so scanning the QR actually resolves. Only usable
+  // once the server is running (needs the real token).
+  const scannableLanUrl = selectedLanAddress && wsInfo
+    ? `http://${selectedLanAddress}:${wsInfo.port}/?token=${wsInfo.token}`
+    : null
+
+  const handleCopyWsUrl = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(wsUrl)
+      setWsUrlCopied(true)
+      setTimeout(() => setWsUrlCopied(false), 1500)
+    } catch {
+      // clipboard writes can reject when the window isn't focused
+    }
+  }, [wsUrl])
+
+  const handleOpenWsUrl = useCallback(() => {
+    window.api.openExternal(wsUrl)
+  }, [wsUrl])
+
+  // The WS server is only constructed at app launch, so any divergence
+  // between config and the live wsInfo surfaces as "relaunch required".
+  const wsNeedsRestart = ((): string | null => {
+    if (wsTransportEnabled && !wsInfo) return 'Quit and relaunch Harness to start the server.'
+    if (!wsTransportEnabled && wsInfo) return 'Server is still running — quit and relaunch Harness to stop it.'
+    if (wsInfo && wsTransportEnabled) {
+      if (wsInfo.port !== wsTransportPort) return `Quit and relaunch Harness to switch to port ${wsTransportPort}.`
+      if (wsInfo.host !== wsTransportHost) return 'Quit and relaunch Harness to rebind the server.'
+    }
+    return null
+  })()
 
   const handleSaveSystemPrompt = useCallback(async () => {
     await window.api.setHarnessSystemPrompt(systemPromptDraft)
@@ -985,33 +1070,6 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
                       </div>
                     </div>
                   </label>
-                </div>
-
-                <div className="mt-4 pt-3 border-t border-border">
-                  <div className="flex items-start gap-3">
-                    <input
-                      type="checkbox"
-                      id="browser-tools-enabled"
-                      checked={browserToolsEnabled}
-                      onChange={(e) => { void window.api.setBrowserToolsEnabled(e.target.checked) }}
-                      className="mt-0.5 cursor-pointer"
-                    />
-                    <div className="flex-1">
-                      <label htmlFor="browser-tools-enabled" className="text-sm text-fg-bright cursor-pointer">Enable browser tools</label>
-                      <div className="text-xs text-dim mt-0.5 mb-2">
-                        Lets agents see and drive embedded browser tabs. Takes effect on the next agent session.
-                      </div>
-                      <select
-                        value={browserToolsMode}
-                        onChange={(e) => { void window.api.setBrowserToolsMode(e.target.value === 'view' ? 'view' : 'full') }}
-                        disabled={!browserToolsEnabled}
-                        className="bg-panel border border-border-strong rounded px-2 py-1 text-xs text-fg-bright outline-none focus:border-fg cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                      >
-                        <option value="view">View Only — inspect &amp; navigate, no clicks/typing/scrolling</option>
-                        <option value="full">Full Control — click, type, scroll, and move the cursor</option>
-                      </select>
-                    </div>
-                  </div>
                 </div>
 
                 <div className="mt-4 pt-3 border-t border-border">
@@ -1845,6 +1903,226 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
               <p className="mt-3 text-xs text-dim">
                 Opens a prefilled GitHub issue in your browser. No data is sent from Harness directly.
               </p>
+            </section>
+
+            {/* Experimental section */}
+            <section ref={(el) => { sectionRefs.current.experimental = el }} id="experimental">
+              <h2 className="text-lg font-semibold text-fg-bright mb-1 flex items-center gap-2">
+                <FlaskConical size={18} className="text-warning" />
+                Experimental
+              </h2>
+              <p className="text-sm text-dim mb-4">
+                These features are in active development. APIs and UI may change,
+                and you should expect rough edges. Each one is opt-in below.{' '}
+                <a
+                  onClick={() => window.api.openExternal(HARNESS_ISSUES_URL)}
+                  className="text-muted hover:text-fg-bright underline cursor-pointer"
+                >
+                  File an issue
+                </a>{' '}
+                if something breaks.
+              </p>
+
+              {/* Browser control sub-card */}
+              <div className="bg-panel-raised border border-warning/30 rounded-lg p-4 mb-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <h3 className="text-sm font-semibold text-fg-bright">Browser control</h3>
+                  <span className="text-[10px] font-medium text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
+                    Experimental
+                  </span>
+                </div>
+                <p className="text-xs text-dim mb-3">
+                  Lets agents see and drive the embedded browser tabs in each
+                  worktree — screenshotting, clicking, typing, navigating.
+                  Only takes effect on the next agent session.
+                </p>
+
+                <div className="flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    id="browser-tools-enabled"
+                    checked={browserToolsEnabled}
+                    onChange={(e) => { void window.api.setBrowserToolsEnabled(e.target.checked) }}
+                    className="mt-0.5 cursor-pointer"
+                  />
+                  <div className="flex-1">
+                    <label htmlFor="browser-tools-enabled" className="text-sm text-fg-bright cursor-pointer">Enable browser tools</label>
+                    <div className="text-xs text-dim mt-0.5 mb-2">
+                      Exposes <code className="bg-panel px-1 rounded text-[10px]">harness-control</code> MCP browser_* tools to the agent.
+                    </div>
+                    <select
+                      value={browserToolsMode}
+                      onChange={(e) => { void window.api.setBrowserToolsMode(e.target.value === 'view' ? 'view' : 'full') }}
+                      disabled={!browserToolsEnabled}
+                      className="bg-panel border border-border-strong rounded px-2 py-1 text-xs text-fg-bright outline-none focus:border-fg cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      <option value="view">View Only — inspect &amp; navigate, no clicks/typing/scrolling</option>
+                      <option value="full">Full Control — click, type, scroll, and move the cursor</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Web / mobile client sub-card */}
+              <div className="bg-panel-raised border border-warning/30 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <h3 className="text-sm font-semibold text-fg-bright">Web &amp; mobile client</h3>
+                  <span className="text-[10px] font-medium text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
+                    Experimental
+                  </span>
+                </div>
+                <p className="text-xs text-dim mb-3">
+                  Runs an HTTP + WebSocket server alongside the desktop app so
+                  you can open the same workspace from a browser — useful for a
+                  second laptop or a phone on the same network. Token-gated;
+                  no TLS yet.
+                </p>
+
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={wsTransportEnabled}
+                    onChange={(e) => { void handleToggleWsTransport(e.target.checked) }}
+                    className="mt-0.5 cursor-pointer"
+                  />
+                  <div className="flex-1">
+                    <div className="text-sm text-fg-bright">Enable web / mobile client</div>
+                    <div className="text-xs text-dim mt-0.5">
+                      Changes apply on the next app launch.
+                    </div>
+                  </div>
+                </label>
+
+                {wsTransportEnabled && (
+                  <>
+                    <div className="mt-4 pt-3 border-t border-border grid grid-cols-[1fr_auto] gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-fg mb-1">Port</label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min={1024}
+                            max={65535}
+                            value={wsPortDraft}
+                            onChange={(e) => setWsPortDraft(e.target.value)}
+                            onBlur={handleSaveWsPort}
+                            className="w-28 bg-panel border border-border-strong rounded px-2 py-1 text-xs text-fg-bright outline-none focus:border-fg font-mono"
+                          />
+                          <span className="text-[11px] text-faint">default 37291</span>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-fg mb-1">Bind to</label>
+                        <select
+                          value={wsTransportHost}
+                          onChange={(e) => { void handleSelectWsHost(e.target.value) }}
+                          className="bg-panel border border-border-strong rounded px-2 py-1 text-xs text-fg-bright outline-none focus:border-fg cursor-pointer"
+                        >
+                          <option value="127.0.0.1">This machine only (loopback)</option>
+                          <option value="0.0.0.0">LAN — other devices on this network</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 pt-3 border-t border-border">
+                      <label className="block text-xs font-medium text-fg mb-1">Connection URL</label>
+                      <div className="flex items-center gap-2">
+                        <code className="flex-1 bg-panel border border-border rounded px-2 py-1.5 text-[11px] text-fg-bright font-mono truncate">
+                          {showWsToken ? wsUrl : wsUrlMasked}
+                        </code>
+                        <Tooltip label={showWsToken ? 'Hide token' : 'Show token'}>
+                          <button
+                            onClick={() => setShowWsToken((v) => !v)}
+                            disabled={!wsInfo}
+                            className="p-1.5 text-dim hover:text-fg transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            {showWsToken ? <EyeOff size={14} /> : <Eye size={14} />}
+                          </button>
+                        </Tooltip>
+                        <Tooltip label={wsUrlCopied ? 'Copied' : 'Copy URL'}>
+                          <button
+                            onClick={handleCopyWsUrl}
+                            disabled={!wsInfo}
+                            className="p-1.5 text-dim hover:text-fg transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            {wsUrlCopied ? <Check size={14} className="text-success" /> : <Copy size={14} />}
+                          </button>
+                        </Tooltip>
+                        <Tooltip label="Open in browser">
+                          <button
+                            onClick={handleOpenWsUrl}
+                            disabled={!wsInfo}
+                            className="p-1.5 text-dim hover:text-fg transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            <ExternalLink size={14} />
+                          </button>
+                        </Tooltip>
+                      </div>
+                    </div>
+
+                    {wsTransportHost === '0.0.0.0' && (
+                      <div className="mt-4 pt-3 border-t border-border">
+                        <p className="text-xs text-fg mb-3">
+                          <span className="font-medium text-warning">LAN mode:</span>{' '}
+                          any device on your network can connect if they have
+                          the URL below. The 32-byte token is the only thing
+                          gating access — only enable on trusted networks,
+                          never over the public internet.
+                        </p>
+
+                        {scannableLanUrl ? (
+                          <div className="flex gap-4 items-start">
+                            <div className="bg-white p-2 rounded shrink-0">
+                              <QRCodeSVG value={scannableLanUrl} size={128} level="M" />
+                            </div>
+                            <div className="flex-1 min-w-0 text-xs text-dim space-y-2">
+                              <p>
+                                Scan with your phone's camera to open in
+                                Safari or your default browser.
+                              </p>
+                              {lanAddresses.length > 1 && (
+                                <div>
+                                  <label className="block text-[11px] font-medium text-fg mb-1">Interface</label>
+                                  <select
+                                    value={selectedLanAddress ?? ''}
+                                    onChange={(e) => setSelectedLanAddress(e.target.value)}
+                                    className="w-full bg-panel border border-border-strong rounded px-2 py-1 text-[11px] text-fg-bright outline-none focus:border-fg cursor-pointer font-mono"
+                                  >
+                                    {lanAddresses.map((a) => (
+                                      <option key={a.iface + a.address} value={a.address}>
+                                        {a.iface} — {a.address}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                              )}
+                              <p className="font-mono text-[10px] break-all text-fg">
+                                http://{selectedLanAddress}:{wsInfo?.port}/
+                              </p>
+                            </div>
+                          </div>
+                        ) : wsInfo ? (
+                          <p className="text-xs text-dim italic">
+                            No LAN network interface detected on this machine.
+                          </p>
+                        ) : (
+                          <p className="text-xs text-dim italic">
+                            QR code will appear here after you relaunch
+                            Harness with the server enabled.
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {wsNeedsRestart && (
+                  <div className="mt-4 pt-3 border-t border-border flex items-center gap-2">
+                    <RefreshCw size={12} className="text-warning shrink-0" />
+                    <p className="text-xs text-warning">{wsNeedsRestart}</p>
+                  </div>
+                )}
+              </div>
             </section>
           </div>
         </div>
