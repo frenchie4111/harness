@@ -46,6 +46,8 @@ Grab the latest release from the [releases page](https://github.com/frenchie4111
 
 Harness makes outbound network calls to two places: `api.github.com` (for PR status, check runs, and review state on worktrees that have an open PR) and this project's own GitHub releases feed (for auto-updates via `electron-updater`). If you have the [`gh`](https://cli.github.com) CLI installed and authenticated, Harness will optionally pick up your token from it instead of requiring you to paste a PAT.
 
+The optional remote-control WebSocket transport (used by the web client) is off by default, bearer-token-authed, and bound to `127.0.0.1` when enabled; opting in to LAN access (binding to `0.0.0.0`) is a separate explicit config flag.
+
 ## Uninstallation
 
 1. **Remove the Claude Code hooks** (do this while Harness is still running). Open Settings → **Agent** → **Status hooks** and click **Remove hooks**. This strips Harness's entries from `~/.claude/settings.json` and leaves any user-authored hooks intact.
