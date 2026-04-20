@@ -1,3 +1,5 @@
+import React from 'react'
+
 export function Hero() {
   return (
     <section className="max-w-6xl mx-auto px-6 pt-12 pb-20 text-center">
@@ -43,7 +45,233 @@ export function Hero() {
           Codex
         </span>
       </div>
+
+      <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 mt-3 text-xs text-ink-500">
+        <span>Loved by engineers at</span>
+
+        <LogoTip label="Clay">
+          <LogoTipClay />
+          <Bubble kind="sent">dude check this out</Bubble>
+          <LinkCard body="you need this" />
+          <Gap />
+          <Bubble kind="rcvd">Dude</Bubble>
+          <Bubble kind="rcvd">This is so sick</Bubble>
+          <Bubble kind="rcvd">
+            Allow me to choose between using cursor agent and codex and you could sell this
+          </Bubble>
+          <Gap />
+          <Bubble kind="sent">I don't even want to sell it I just want people to use it</Bubble>
+          <Gap />
+          <ReplyCard src="/screenshot-codex.png" alt="Codex support" text="added codex" />
+        </LogoTip>
+
+        <LogoTip label="Vercel">
+          <LogoTipVercel />
+          <Bubble kind="sent">dude check this out</Bubble>
+          <LinkCard body="you need this" />
+          <Gap />
+          <Bubble kind="rcvd">Nice I'm gonna try it</Bubble>
+          <Bubble kind="rcvd">You should just toss it on HN</Bubble>
+        </LogoTip>
+
+        <LogoTip label="Apple">
+          <LogoTipApple />
+          <Bubble kind="sent">dude check this out</Bubble>
+          <LinkCard body="you need this" />
+          <Gap />
+          <Bubble kind="rcvd">This is sick</Bubble>
+          <Bubble kind="rcvd">I'll share it w my team today too</Bubble>
+        </LogoTip>
+
+        <LogoTip label="Y Combinator">
+          <LogoTipYC />
+          <Bubble kind="sent">dude check this out</Bubble>
+          <LinkCard body="you need this" />
+          <Gap />
+          <Bubble kind="rcvd" style={{ opacity: 0.5 }}>
+            ...
+          </Bubble>
+        </LogoTip>
+
+        <LogoTip label="Stanford">
+          <LogoTipStanford />
+          <Bubble kind="sent">dude check this out</Bubble>
+          <LinkCard body="you need this" />
+          <Gap />
+          <Bubble kind="rcvd">Nice, that's pretty sick</Bubble>
+          <Bubble kind="rcvd">
+            Hey! Just downloaded harness and have an immediate feature request. cmd+d to split my
+            tab
+          </Bubble>
+          <Gap />
+          <ReplyCard src="/screenshot-split-pane.png" alt="Split pane feature" text="added it" />
+        </LogoTip>
+      </div>
     </section>
+  )
+}
+
+type LogoTipChild = React.ReactNode
+
+function LogoTip({ children }: { label: string; children: LogoTipChild }) {
+  const [logo, ...rest] = React.Children.toArray(children)
+  return (
+    <div className="logo-tip">
+      {logo}
+      <div className="tip">{rest}</div>
+    </div>
+  )
+}
+
+function Bubble({
+  kind,
+  children,
+  style
+}: {
+  kind: 'sent' | 'rcvd'
+  children: React.ReactNode
+  style?: React.CSSProperties
+}) {
+  return (
+    <div className={`bubble ${kind}`} style={style}>
+      {children}
+    </div>
+  )
+}
+
+function Gap() {
+  return <div className="gap" />
+}
+
+function LinkCard({ body }: { body: string }) {
+  return (
+    <div className="link-card">
+      <div className="link-preview">
+        <div className="link-icon">H</div>
+        <div className="link-title">Harness — run a team of agents</div>
+        <div className="link-domain">harness.mikelyons.org</div>
+      </div>
+      <div className="link-body">{body}</div>
+    </div>
+  )
+}
+
+function ReplyCard({ src, alt, text }: { src: string; alt: string; text: string }) {
+  return (
+    <div className="reply-card">
+      <img src={src} alt={alt} />
+      <div className="reply-text">{text}</div>
+    </div>
+  )
+}
+
+function LogoTipClay() {
+  return <img src="/clay-logo.png" alt="Clay" height={16} className="h-4 object-contain" />
+}
+
+function LogoTipVercel() {
+  return (
+    <svg viewBox="2.5 3 92 20" width={58} height={13} fill="none">
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M9.489 15.105 20.554 3.874a.611.611 0 0 1 .862 0l3.609 3.661a.625.625 0 0 1 0 .874L14.391 19.203a.611.611 0 0 1-.863 0l-4.04-4.098Z"
+        fill="#a3a3a3"
+      />
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M2.896 8.412a.625.625 0 0 1 0-.874l3.609-3.662a.611.611 0 0 1 .863 0l5.595 5.678-4.473 4.536-5.594-5.678Z"
+        fill="#a3a3a3"
+      />
+      <path
+        d="M32.932 5.755h2.208l3.483 9.398 3.483-9.398h2.208l-4.502 12.071h-2.378l-4.502-12.071Z"
+        fill="#a3a3a3"
+      />
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M47.78 18c2.379 0 3.483-1.466 3.483-1.466l-1.102-1.397s-.85 1.052-2.293 1.052c-1.361 0-2.175-.86-2.38-1.81h6.2s.085-.431.085-.95c0-2.296-1.655-4.175-3.984-4.223-2.118-.046-4.005 1.518-4.362 3.637C42.966 15.587 45.061 18 47.78 18Zm-.17-6.899c1.104 0 1.785.69 2.04 1.639h-4.163c.254-.95.933-1.639 2.123-1.639Z"
+        fill="#a3a3a3"
+      />
+      <path
+        d="M53.353 9.377h1.954v1.208h.085s.85-1.379 2.38-1.379h.339v2.155s-.254-.087-.68-.087c-1.189 0-2.122.95-2.122 2.415v4.139h-1.954V9.377h-.002Z"
+        fill="#a3a3a3"
+      />
+      <path
+        d="M59.338 5.755h1.954v7.33l3.312-3.708h2.379l-3.143 3.534 3.312 4.915h-2.208l-2.379-3.536-1.275 1.466v2.07h-1.954V5.755h.002Z"
+        fill="#a3a3a3"
+      />
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M72.846 16.706h.083v1.118h1.954v-5.26c0-1.844-1.444-3.362-3.483-3.362-2.123 0-3.312 1.724-3.312 1.724l1.19 1.207s.798-1.034 2.04-1.034c.935 0 1.614.692 1.614 1.295l-2.804.518c-1.443.258-2.462 1.294-2.462 2.673 0 1.295 1.104 2.416 2.719 2.416 1.697 0 2.462-1.295 2.462-1.295Zm-1.87-2.416 1.954-.344h.003v.258c0 1.205-.935 2.155-2.04 2.155-.764 0-1.275-.518-1.275-1.034 0-.516.34-.847 1.358-1.035Z"
+        fill="#a3a3a3"
+      />
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M82.666 16.619h.085v1.207h1.954V5.755h-1.954v4.828h-.085s-.765-1.38-2.719-1.38c-1.954 0-3.737 1.81-3.737 4.397s1.783 4.397 3.737 4.397c1.954 0 2.719-1.379 2.719-1.379Zm-2.209-5.434c1.275 0 2.294 1.037 2.294 2.415 0 1.381-1.019 2.415-2.294 2.415s-2.293-1.036-2.293-2.415c0-1.38 1.018-2.415 2.293-2.415Z"
+        fill="#a3a3a3"
+      />
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M91.246 16.706h.083v1.118h1.954v-5.26c0-1.844-1.443-3.362-3.483-3.362-2.123 0-3.312 1.724-3.312 1.724l1.19 1.207s.8-1.034 2.04-1.034c.935 0 1.614.692 1.614 1.295l-2.804.518c-1.443.258-2.462 1.294-2.462 2.673 0 1.295 1.104 2.416 2.719 2.416 1.697 0 2.462-1.295 2.462-1.295Zm-1.87-2.416 1.954-.344h.003v.258c0 1.205-.936 2.155-2.04 2.155-.765 0-1.275-.518-1.275-1.034 0-.516.34-.847 1.358-1.035Z"
+        fill="#a3a3a3"
+      />
+    </svg>
+  )
+}
+
+function LogoTipApple() {
+  return (
+    <svg
+      viewBox="0 0 814 1000"
+      width={13}
+      height={16}
+      className="text-ink-400"
+      fill="currentColor"
+    >
+      <path d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76.5 0-103.7 40.8-165.9 40.8s-105.6-57.8-155.5-127.4c-58.1-81-105.3-207.2-105.3-327.1 0-192.8 125.3-295.2 248.3-295.2 65.3 0 119.7 42.9 160.7 42.9 39.1 0 100-45.4 174.4-45.4 28.2 0 129.6 2.6 196.5 99.2zM554.1 159.4c31.1-36.9 53.1-88.1 53.1-139.4 0-7.1-.6-14.3-1.9-20.1-50.6 1.9-110.8 33.7-147.1 75.8-28.2 32.4-55.8 83.6-55.8 135.7 0 7.8.6 15.6 1.3 18.2 2.5.6 6.4 1.3 10.2 1.3 45.4 0 103.3-30.4 140.2-71.5z" />
+    </svg>
+  )
+}
+
+function LogoTipYC() {
+  return (
+    <svg viewBox="0 0 20 20" width={18} height={18} fill="none">
+      <rect width={20} height={20} rx={2} fill="#FF6600" />
+      <text
+        x={10}
+        y={15}
+        textAnchor="middle"
+        fontFamily="system-ui, sans-serif"
+        fontWeight={700}
+        fontSize={14}
+        fill="white"
+      >
+        Y
+      </text>
+    </svg>
+  )
+}
+
+function LogoTipStanford() {
+  return (
+    <svg viewBox="0 0 100 20" width={80} height={16} fill="none">
+      <text
+        x={0}
+        y={15}
+        fontFamily="'Times New Roman', Georgia, serif"
+        fontWeight={400}
+        fontSize={16}
+        letterSpacing={1.5}
+        fill="#8C1515"
+      >
+        Stanford
+      </text>
+    </svg>
   )
 }
 
