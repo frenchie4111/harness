@@ -1,10 +1,16 @@
+import type { ReactNode } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
+  Check,
   ChevronDown,
   ChevronRight,
+  Code2,
   FolderOpen,
+  GitCommit,
   GitPullRequest,
   LayoutGrid,
+  PanelRightClose,
+  PanelRightOpen,
   Plus,
   RefreshCw,
   Sparkles,
@@ -31,6 +37,7 @@ export type HighlightedElement =
   | 'worktree-row'
   | 'new-worktree-button'
   | 'terminal'
+  | 'right-column-button'
   | null
 
 export type PanelMode = 'terminal' | 'new-worktree-flow'
@@ -43,6 +50,9 @@ export interface MockHarnessState {
   panelMode: PanelMode
   /** Optional count shown on the (always-collapsed) Merged / Closed header. */
   mergedClosedCount?: number
+  /** When true, the right column (PR / commits / files / editor) is visible
+   * to the right of the terminal. */
+  rightPanelOpen?: boolean
 }
 
 const STATUS_COLORS: Record<MockStatus, string> = {
@@ -345,52 +355,94 @@ function MockWorktreeTab({
 function MockTerminalPanel({ state }: { state: MockHarnessState }) {
   const active = state.worktrees.find((w) => w.id === state.activeWorktreeId) ?? state.worktrees[0]
   const terminalGlow = state.highlightedElement === 'terminal'
+  const rightColumnGlow = state.highlightedElement === 'right-column-button'
 
   return (
-    <motion.div
-      animate={{
-        boxShadow: terminalGlow
-          ? 'inset 0 0 0 1px rgba(245, 158, 11, 0.4)'
-          : 'inset 0 0 0 0px rgba(245, 158, 11, 0)'
-      }}
-      transition={{ type: 'spring', stiffness: 200, damping: 30 }}
-      className="flex-1 min-w-0 flex flex-col bg-app relative"
-    >
-      <div className="h-10 shrink-0 border-b border-border bg-panel flex items-center">
-        <div className="shrink-0 flex items-center gap-1.5 px-3 h-full text-xs whitespace-nowrap">
-          <span className="font-medium text-cyan-400">
-            {repoNameFromPath(active?.path ?? '')}
-          </span>
-          <span className="text-faint">/</span>
-          <span className="text-fg-bright font-medium">{active?.branch}</span>
+    <div className="flex-1 flex min-w-0">
+      <motion.div
+        animate={{
+          boxShadow: terminalGlow
+            ? 'inset 0 0 0 1px rgba(245, 158, 11, 0.4)'
+            : 'inset 0 0 0 0px rgba(245, 158, 11, 0)'
+        }}
+        transition={{ type: 'spring', stiffness: 200, damping: 30 }}
+        className="flex-1 min-w-0 flex flex-col bg-app relative"
+      >
+        <div className="h-10 shrink-0 border-b border-border bg-panel flex items-center">
+          <div className="shrink-0 flex items-center gap-1.5 px-3 h-full text-xs whitespace-nowrap">
+            <span className="font-medium text-cyan-400">
+              {repoNameFromPath(active?.path ?? '')}
+            </span>
+            <span className="text-faint">/</span>
+            <span className="text-fg-bright font-medium">{active?.branch}</span>
+          </div>
+
+          <div className="flex items-center h-full overflow-x-auto pl-2 flex-1 min-w-0">
+            <div className="shrink-0 flex items-center gap-1.5 px-3 h-full text-xs border-b-2 border-muted text-fg-bright">
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  TAB_STATUS_COLORS[active?.status ?? 'processing']
+                }`}
+              />
+              <span>Claude</span>
+            </div>
+            <div className="shrink-0 flex items-center gap-1.5 px-3 h-full text-xs border-b-2 border-transparent text-dim hover:text-fg">
+              <span className="w-1.5 h-1.5 rounded-full bg-faint" />
+              <span>shell</span>
+            </div>
+            <button className="shrink-0 px-2 h-full text-faint hover:text-fg text-sm transition-colors">
+              <Sparkles size={12} />
+            </button>
+            <button className="shrink-0 px-2 h-full text-faint hover:text-fg text-sm transition-colors">
+              <Plus size={12} />
+            </button>
+          </div>
+
+          <button
+            className="shrink-0 px-3 h-full text-faint hover:text-fg transition-colors"
+            aria-label="Open worktree in editor"
+          >
+            <Code2 size={13} />
+          </button>
+          <motion.button
+            animate={{
+              boxShadow: rightColumnGlow
+                ? '0 0 0 2px rgba(245, 158, 11, 0.6), 0 0 18px rgba(245, 158, 11, 0.35)'
+                : '0 0 0 0px rgba(245, 158, 11, 0)',
+              scale: rightColumnGlow ? 1.08 : 1
+            }}
+            transition={{ type: 'spring', stiffness: 220, damping: 22 }}
+            className="shrink-0 pr-3 pl-1 h-full text-faint hover:text-fg transition-colors rounded"
+            aria-label={state.rightPanelOpen ? 'Hide right column' : 'Show right column'}
+          >
+            {state.rightPanelOpen ? (
+              <PanelRightClose size={13} />
+            ) : (
+              <PanelRightOpen size={13} />
+            )}
+          </motion.button>
         </div>
 
-        <div className="flex items-center h-full overflow-x-auto pl-2 flex-1 min-w-0">
-          <div className="shrink-0 flex items-center gap-1.5 px-3 h-full text-xs border-b-2 border-muted text-fg-bright">
-            <span
-              className={`w-1.5 h-1.5 rounded-full ${
-                TAB_STATUS_COLORS[active?.status ?? 'processing']
-              }`}
-            />
-            <span>Claude</span>
-          </div>
-          <div className="shrink-0 flex items-center gap-1.5 px-3 h-full text-xs border-b-2 border-transparent text-dim hover:text-fg">
-            <span className="w-1.5 h-1.5 rounded-full bg-faint" />
-            <span>shell</span>
-          </div>
-          <button className="shrink-0 px-2 h-full text-faint hover:text-fg text-sm transition-colors">
-            <Sparkles size={12} />
-          </button>
-          <button className="shrink-0 px-2 h-full text-faint hover:text-fg text-sm transition-colors">
-            <Plus size={12} />
-          </button>
+        <div className="flex-1 min-h-0 relative">
+          <ClaudeTUI active={active} />
         </div>
-      </div>
+      </motion.div>
 
-      <div className="flex-1 min-h-0 relative">
-        <ClaudeTUI active={active} />
-      </div>
-    </motion.div>
+      <AnimatePresence initial={false}>
+        {state.rightPanelOpen && (
+          <motion.div
+            key="right-panel"
+            initial={{ width: 0, opacity: 0 }}
+            animate={{ width: 288, opacity: 1 }}
+            exit={{ width: 0, opacity: 0 }}
+            transition={{ type: 'spring', stiffness: 220, damping: 30 }}
+            className="shrink-0 overflow-hidden border-l border-border"
+          >
+            <MockRightPanel active={active} />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   )
 }
 
@@ -498,6 +550,173 @@ function ClaudeTUI({ active }: { active: MockWorktree }) {
         <span className="text-accent">⏵⏵</span> accept edits on{' '}
         <span className="text-faint">(shift+tab to cycle)</span>
       </div>
+    </div>
+  )
+}
+
+function MockRightPanel({ active }: { active: MockWorktree }) {
+  return (
+    <div className="w-[288px] h-full bg-panel flex flex-col">
+      <RightPanelSection title="PR Status">
+        <div className="px-3 py-2.5 flex flex-col gap-2">
+          <div className="flex items-center gap-1.5">
+            <GitPullRequest size={12} className="text-success shrink-0" />
+            <span className="text-xs text-fg-bright font-medium truncate">
+              Onboarding flow ready for review
+            </span>
+          </div>
+          <div className="text-[10px] text-dim">
+            #142 · opened 2 days ago by{' '}
+            <span className="text-fg">mike</span>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="inline-flex items-center gap-1 text-[10px] text-success">
+              <Check size={10} /> 7 checks passing
+            </span>
+            <span className="inline-flex items-center gap-1 text-[10px] text-success">
+              <Check size={10} /> mergeable
+            </span>
+          </div>
+          <button className="mt-1 px-2 py-1 text-[10px] font-semibold rounded bg-surface hover:bg-surface-hover text-fg-bright transition-colors w-fit">
+            Merge locally
+          </button>
+        </div>
+      </RightPanelSection>
+
+      <RightPanelSection title="Branch Commits">
+        <div className="px-2 py-1 flex flex-col">
+          {[
+            { sha: 'a1b2c3d', msg: 'Fix typo in welcome copy' },
+            { sha: 'b2c3d4e', msg: 'Add onboarding slide deck' },
+            { sha: 'c3d4e5f', msg: 'Wire up onboarding router' },
+            { sha: 'd4e5f6a', msg: 'Init feat/onboarding branch' }
+          ].map((c) => (
+            <div
+              key={c.sha}
+              className="flex items-center gap-1.5 px-1.5 py-1 text-[11px] text-muted hover:bg-panel-raised/40 rounded"
+            >
+              <GitCommit size={10} className="text-dim shrink-0" />
+              <span className="font-mono text-faint text-[10px] shrink-0">{c.sha}</span>
+              <span className="text-fg truncate">{c.msg}</span>
+            </div>
+          ))}
+        </div>
+      </RightPanelSection>
+
+      <RightPanelSection title="Changed Files">
+        <div className="px-2 py-1 flex flex-col">
+          {[
+            { name: 'src/welcome.tsx', kind: 'A', add: 142, del: 0, active: true },
+            { name: 'src/auth/signup.ts', kind: 'M', add: 56, del: 12 },
+            { name: 'src/auth/login.ts', kind: 'M', add: 24, del: 8 },
+            { name: 'src/router.ts', kind: 'M', add: 4, del: 2 }
+          ].map((f) => (
+            <div
+              key={f.name}
+              className={`flex items-center gap-1.5 px-1.5 py-1 text-[11px] rounded ${
+                f.active
+                  ? 'bg-surface text-fg-bright'
+                  : 'text-muted hover:bg-panel-raised/40'
+              }`}
+            >
+              <span
+                className={`font-mono text-[10px] w-3 text-center ${
+                  f.kind === 'A' ? 'text-success' : 'text-warning'
+                }`}
+              >
+                {f.kind}
+              </span>
+              <span className="flex-1 truncate">{f.name}</span>
+              <span className="text-[10px] font-mono leading-none">
+                <span className="text-success">+{f.add}</span>
+                {f.del > 0 && <span className="text-danger ml-0.5">−{f.del}</span>}
+              </span>
+            </div>
+          ))}
+        </div>
+      </RightPanelSection>
+
+      <div className="flex-1 min-h-0 flex flex-col border-t border-border">
+        <div className="h-7 shrink-0 flex items-center gap-1.5 px-3 text-[10px] font-medium uppercase tracking-wide text-muted border-b border-border">
+          <Code2 size={11} className="text-dim" />
+          <span className="truncate">src/welcome.tsx</span>
+          <span className="ml-auto text-faint normal-case tracking-normal">×</span>
+        </div>
+        <div className="flex-1 min-h-0 overflow-hidden bg-app font-mono text-[10px] leading-[1.55] py-2">
+          <CodeLine n={1}>
+            <span className="text-[#c586c0]">import</span>{' '}
+            <span className="text-fg-bright">{'{'} motion {'}'}</span>{' '}
+            <span className="text-[#c586c0]">from</span>{' '}
+            <span className="text-[#ce9178]">'framer-motion'</span>
+          </CodeLine>
+          <CodeLine n={2} />
+          <CodeLine n={3}>
+            <span className="text-[#c586c0]">export function</span>{' '}
+            <span className="text-[#dcdcaa]">Welcome</span>() {'{'}
+          </CodeLine>
+          <CodeLine n={4}>
+            {'  '}
+            <span className="text-[#c586c0]">return</span> (
+          </CodeLine>
+          <CodeLine n={5}>
+            {'    '}
+            <span className="text-[#569cd6]">{'<motion.div'}</span>{' '}
+            <span className="text-[#9cdcfe]">initial</span>=
+            <span className="text-[#ce9178]">{'{{'}</span>
+          </CodeLine>
+          <CodeLine n={6}>
+            {'      '}
+            <span className="text-[#9cdcfe]">opacity</span>:{' '}
+            <span className="text-[#b5cea8]">0</span>,{' '}
+            <span className="text-[#9cdcfe]">y</span>:{' '}
+            <span className="text-[#b5cea8]">20</span>
+          </CodeLine>
+          <CodeLine n={7}>
+            {'    '}
+            <span className="text-[#ce9178]">{'}}'}</span>
+            <span className="text-[#569cd6]">{'>'}</span>
+          </CodeLine>
+          <CodeLine n={8}>
+            {'      '}
+            <span className="text-fg">Welcome to Harness.</span>
+          </CodeLine>
+          <CodeLine n={9}>
+            {'    '}
+            <span className="text-[#569cd6]">{'</motion.div>'}</span>
+          </CodeLine>
+        </div>
+      </div>
+
+      <div className="truncate px-3 py-1 text-[10px] text-dim">{active.path}</div>
+    </div>
+  )
+}
+
+function RightPanelSection({
+  title,
+  children
+}: {
+  title: string
+  children: ReactNode
+}) {
+  return (
+    <div className="flex flex-col border-b border-border shrink-0">
+      <div className="flex items-center gap-1.5 h-9 px-3 border-b border-border">
+        <ChevronDown size={12} className="text-faint" />
+        <span className="text-[10px] font-medium text-muted uppercase tracking-wider">
+          {title}
+        </span>
+      </div>
+      {children}
+    </div>
+  )
+}
+
+function CodeLine({ n, children }: { n: number; children?: ReactNode }) {
+  return (
+    <div className="flex gap-3 px-3 hover:bg-panel-raised/30">
+      <span className="text-faint select-none w-4 text-right shrink-0">{n}</span>
+      <span className="text-fg whitespace-pre">{children}</span>
     </div>
   )
 }

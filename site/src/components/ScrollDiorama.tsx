@@ -7,7 +7,7 @@ import {
   type MockWorktree
 } from './MockHarness'
 
-type SectionIndex = 0 | 1 | 2
+type SectionIndex = 0 | 1 | 2 | 3
 type Phase = { section: SectionIndex; localProgress: number }
 
 const BASE_WORKTREES: Omit<MockWorktree, 'status'>[] = [
@@ -54,6 +54,11 @@ const SECTIONS = [
     eyebrow: 'New worktree in a click',
     title: 'Start new work instantly.',
     body: 'Spawn a fresh worktree from the sidebar. Pick a branch, pick a base, paste a prompt — Harness creates the git worktree, runs your setup script, and launches Claude, ready to go.'
+  },
+  {
+    eyebrow: 'Information at your fingertips',
+    title: 'Everything about the worktree, one keystroke away.',
+    body: 'Pull request status, branch commits, changed-file review, and any file opened in an embedded editor — all right there next to Claude. Review what shipped without leaving the terminal.'
   }
 ] as const
 
@@ -70,13 +75,13 @@ export function ScrollDiorama() {
 
   useMotionValueEvent(scrollYProgress, 'change', (p) => {
     const clamped = Math.max(0, Math.min(1, p))
-    const section = Math.min(2, Math.floor(clamped * 3)) as SectionIndex
-    const localProgress = clamped * 3 - section
+    const section = Math.min(3, Math.floor(clamped * 4)) as SectionIndex
+    const localProgress = clamped * 4 - section
     setPhase({ section, localProgress })
   })
 
   useEffect(() => {
-    if (prefersReduced) setPhase({ section: 2, localProgress: 1 })
+    if (prefersReduced) setPhase({ section: 3, localProgress: 1 })
   }, [prefersReduced])
 
   const mockState = dioramaStateFor(phase, prefersReduced ?? false)
@@ -87,7 +92,7 @@ export function ScrollDiorama() {
         id="diorama"
         ref={sectionRef}
         className="relative diorama-bg hidden md:block"
-        style={{ height: '300vh' }}
+        style={{ height: '400vh' }}
       >
         <div className="sticky top-0 h-screen flex items-center overflow-hidden">
           <div className="w-full grid grid-cols-[minmax(0,42%)_minmax(0,58%)] gap-8 max-w-[1400px] mx-auto">
@@ -124,7 +129,9 @@ function StackedDiorama() {
             ? sectionOneState(0.8)
             : sectionIdx === 1
               ? sectionTwoState(0.8)
-              : sectionThreeState(0.8)
+              : sectionIdx === 2
+                ? sectionThreeState(0.8)
+                : sectionFourState(0.8)
         return (
           <div key={i} className="mx-auto max-w-xl px-5 py-10">
             <div className="text-[11px] uppercase tracking-[0.2em] text-amber-400/80 font-semibold mb-3">
@@ -181,7 +188,7 @@ function CopyStack({ activeSection }: { activeSection: SectionIndex }) {
 function ProgressRail({ section }: { section: SectionIndex }) {
   return (
     <div className="absolute left-6 top-1/2 -translate-y-1/2 flex flex-col gap-3 hidden lg:flex">
-      {[0, 1, 2].map((i) => (
+      {[0, 1, 2, 3].map((i) => (
         <div
           key={i}
           className={`w-1.5 h-8 rounded-full transition-colors ${
@@ -200,7 +207,8 @@ function dioramaStateFor(phase: Phase, reduced: boolean): MockHarnessState {
 
   if (section === 0) return sectionOneState(localProgress)
   if (section === 1) return sectionTwoState(localProgress)
-  return sectionThreeState(localProgress)
+  if (section === 2) return sectionThreeState(localProgress)
+  return sectionFourState(localProgress)
 }
 
 function sectionOneState(progress: number): MockHarnessState {
@@ -262,16 +270,33 @@ function sectionThreeState(progress: number): MockHarnessState {
   }
 }
 
+function sectionFourState(progress: number): MockHarnessState {
+  const worktrees = BASE_WORKTREES.map((w, i) => ({
+    ...w,
+    status: sectionOneStatusFor(i, 0.8)
+  }))
+  const panelOpen = progress > 0.25
+  return {
+    activeWorktreeId: '1',
+    worktrees,
+    highlightedElement: panelOpen ? null : 'right-column-button',
+    panelMode: 'terminal',
+    mergedClosedCount: 3,
+    rightPanelOpen: panelOpen
+  }
+}
+
 function finalState(): MockHarnessState {
   const worktrees = BASE_WORKTREES.map((w, i) => ({
     ...w,
-    status: i === 1 ? ('needs-approval' as MockStatus) : ('processing' as MockStatus)
+    status: sectionOneStatusFor(i, 0.8)
   }))
   return {
     activeWorktreeId: '1',
     worktrees,
-    highlightedElement: 'new-worktree-button',
-    panelMode: 'new-worktree-flow',
-    mergedClosedCount: 3
+    highlightedElement: null,
+    panelMode: 'terminal',
+    mergedClosedCount: 3,
+    rightPanelOpen: true
   }
 }
