@@ -124,9 +124,25 @@ const supportsTextEmoji =
   typeof CSS !== 'undefined' && typeof CSS.supports === 'function'
     ? CSS.supports('font-variant-emoji', 'text')
     : false
+
+// On touch devices, xterm's alt-screen and mouse-tracking modes both
+// make TUIs (Claude Code, vim) unscrollable: alt-screen has no
+// scrollback at all, and mouse tracking forwards finger pans to the
+// PTY as mouse reports that the TUI discards. Strip the CSI private
+// modes that enable them so touch devices always stay in the primary
+// buffer with scroll wheel / touch scroll. Desktop clients keep the
+// full behavior.
+const isTouchDevice =
+  typeof window !== 'undefined' &&
+  ('ontouchstart' in window || (window.navigator?.maxTouchPoints ?? 0) > 0)
+const TUI_UNFRIENDLY_MODES =
+  /\u001b\[\?(?:47|1000|1002|1003|1005|1006|1015|1047|1049)[hl]/g
+
 function sanitizeTerminalData(data: string): string {
-  if (supportsTextEmoji) return data
-  return data.replace(/\u23FA/g, '\u25CF')
+  let out = data
+  if (!supportsTextEmoji) out = out.replace(/\u23FA/g, '\u25CF')
+  if (isTouchDevice) out = out.replace(TUI_UNFRIENDLY_MODES, '')
+  return out
 }
 
 /** Mark a terminal as closing: drop its main-side scrollback buffer + file so
