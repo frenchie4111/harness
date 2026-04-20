@@ -96,7 +96,7 @@ export function MockHarness({ state }: { state: MockHarnessState }) {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.35, ease: 'easeOut' }}
+              transition={{ duration: 0.55, ease: 'easeOut' }}
               className="flex-1 flex flex-col min-w-0 bg-app"
             >
               <MockTerminalPanel state={state} />
@@ -107,7 +107,7 @@ export function MockHarness({ state }: { state: MockHarnessState }) {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.35, ease: 'easeOut' }}
+              transition={{ duration: 0.55, ease: 'easeOut' }}
               className="flex-1 flex flex-col min-w-0"
             >
               <MockNewWorktreeScreen />
@@ -437,7 +437,7 @@ function MockTerminalPanel({ state }: { state: MockHarnessState }) {
             initial={{ width: 0, opacity: 0 }}
             animate={{ width: 288, opacity: 1 }}
             exit={{ width: 0, opacity: 0 }}
-            transition={{ type: 'spring', stiffness: 220, damping: 30 }}
+            transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
             className="shrink-0 overflow-hidden border-l border-border"
           >
             <MockRightPanel active={active} />
