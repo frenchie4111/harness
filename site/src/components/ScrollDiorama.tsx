@@ -39,7 +39,14 @@ const BASE_WORKTREES: Omit<MockWorktree, 'status'>[] = [
   }
 ]
 
-const SECTIONS = [
+interface Section {
+  eyebrow: string
+  title: string
+  body: string
+  bonus?: string
+}
+
+const SECTIONS: Section[] = [
   {
     eyebrow: 'Parallel sessions',
     title: 'All your agents in one place.',
@@ -53,14 +60,15 @@ const SECTIONS = [
   {
     eyebrow: 'New worktree in a click',
     title: 'Start new work instantly.',
-    body: 'Spawn a fresh agent from the sidebar. Harness manages the full lifecycle of the git worktree, so you never even have to learn the commands.'
+    body: 'Spawn a fresh agent from the sidebar. Harness manages the full lifecycle of the git worktree, so you never even have to learn the commands.',
+    bonus: 'Bonus: Agents can create new worktrees themselves through the Harness MCP. Just ask!'
   },
   {
     eyebrow: 'Everything in one UI',
     title: 'Everything about the worktree, one keystroke away.',
     body: 'Pull request status, branch commits, changed-file review, and any file opened in an embedded editor — all right there next to Claude. Review what shipped without leaving Harness.'
   }
-] as const
+]
 
 export function ScrollDiorama() {
   const sectionRef = useRef<HTMLElement>(null)
@@ -138,7 +146,14 @@ function StackedDiorama() {
               {s.eyebrow}
             </div>
             <h2 className="text-3xl font-bold tracking-tight mb-3 leading-[1.15]">{s.title}</h2>
-            <p className="text-base text-ink-400 leading-relaxed mb-6">{s.body}</p>
+            <p className="text-base text-ink-400 leading-relaxed mb-2">{s.body}</p>
+            {s.bonus && (
+              <p className="text-sm text-ink-500 leading-relaxed mb-6">
+                <span className="text-amber-400/80 font-semibold">Bonus:</span>{' '}
+                {s.bonus.replace(/^Bonus:\s*/, '')}
+              </p>
+            )}
+            {!s.bonus && <div className="mb-6" />}
             <div className="h-[360px] rounded-xl overflow-hidden">
               <MockHarness state={mockState} />
             </div>
@@ -177,6 +192,12 @@ function CopyStack({ activeSection }: { activeSection: SectionIndex }) {
                 {s.title}
               </h2>
               <p className="text-lg text-ink-400 leading-relaxed max-w-xl">{s.body}</p>
+              {s.bonus && (
+                <p className="text-sm text-ink-500 leading-relaxed max-w-xl mt-4">
+                  <span className="text-amber-400/80 font-semibold">Bonus:</span>{' '}
+                  {s.bonus.replace(/^Bonus:\s*/, '')}
+                </p>
+              )}
             </motion.div>
           )
         })}
