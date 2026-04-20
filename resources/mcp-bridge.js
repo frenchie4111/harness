@@ -144,11 +144,20 @@ const TOOLS = [
   {
     name: 'screenshot_tab',
     description:
-      "Take a PNG screenshot of a browser tab in this worktree. Returns base64-encoded PNG bytes. The tab id comes from list_browser_tabs.",
+      "Take a screenshot of a browser tab in this worktree at the viewport's CSS-pixel dimensions — so screenshot coords can be passed straight to click_tab. Returns a JPEG (quality 70) by default for context-efficiency; ask for PNG only when lossless matters. Screenshots are for visual verification, not for finding click targets — prefer get_tab_clickables for interaction. Tab id comes from list_browser_tabs.",
     inputSchema: {
       type: 'object',
       properties: {
-        tab_id: { type: 'string', description: 'Browser tab id from list_browser_tabs.' }
+        tab_id: { type: 'string', description: 'Browser tab id from list_browser_tabs.' },
+        format: {
+          type: 'string',
+          enum: ['jpeg', 'png'],
+          description: "Image format. Default 'jpeg' (much smaller than PNG). Use 'png' when you need lossless output."
+        },
+        quality: {
+          type: 'number',
+          description: 'JPEG quality 1-100. Default 70. Ignored when format is png.'
+        }
       },
       required: ['tab_id']
     }
@@ -467,13 +476,16 @@ async function handleToolCall(name, args) {
   }
   if (name === 'screenshot_tab') {
     if (!args || !args.tab_id) throw new Error('tab_id is required')
-    const r = await callControl(
-      'GET',
-      '/browser/screenshot?tabId=' + encodeURIComponent(args.tab_id)
-    )
-    if (!r || !r.pngBase64) throw new Error(r && r.error ? r.error : 'screenshot failed')
+    const q = new URLSearchParams({ tabId: args.tab_id })
+    if (args.format === 'png' || args.format === 'jpeg') q.set('format', args.format)
+    if (typeof args.quality === 'number') q.set('quality', String(args.quality))
+    const r = await callControl('GET', '/browser/screenshot?' + q.toString())
+    const data = r && (r.data || r.pngBase64)
+    if (!data) throw new Error(r && r.error ? r.error : 'screenshot failed')
+    const mimeType =
+      r.mimeType || (r.format === 'jpeg' ? 'image/jpeg' : 'image/png')
     return {
-      content: [{ type: 'image', data: r.pngBase64, mimeType: 'image/png' }]
+      content: [{ type: 'image', data, mimeType }]
     }
   }
   if (name === 'get_tab_dom') {

@@ -1,6 +1,7 @@
 import { WebContentsView, BrowserWindow, session } from 'electron'
 import type { Store } from './store'
 import { log } from './debug'
+import { resolveScreenshotTarget } from './browser-screenshot'
 
 export interface BrowserInstance {
   view: WebContentsView
@@ -510,12 +511,27 @@ export class BrowserManager {
     }
   }
 
-  async capturePage(tabId: string): Promise<string | null> {
+  async capturePage(
+    tabId: string,
+    opts?: { format?: 'jpeg' | 'png'; quality?: number }
+  ): Promise<{ data: string; format: 'jpeg' | 'png' } | null> {
     const inst = this.instances.get(tabId)
     if (!inst) return null
     try {
       const image = await inst.view.webContents.capturePage()
-      return image.toPNG().toString('base64')
+      const bounds = inst.view.getBounds()
+      const { outputSize } = resolveScreenshotTarget(bounds)
+      const captured = image.getSize()
+      const normalized =
+        captured.width === outputSize.width && captured.height === outputSize.height
+          ? image
+          : image.resize({ width: outputSize.width, height: outputSize.height })
+      const format = opts?.format === 'png' ? 'png' : 'jpeg'
+      if (format === 'png') {
+        return { data: normalized.toPNG().toString('base64'), format: 'png' }
+      }
+      const q = Math.max(1, Math.min(100, Math.round(opts?.quality ?? 70)))
+      return { data: normalized.toJPEG(q).toString('base64'), format: 'jpeg' }
     } catch (err) {
       log('browser', `capturePage failed tab=${tabId}`, err instanceof Error ? err.message : err)
       return null

@@ -16,7 +16,10 @@ export interface BrowserQueries {
   getTabConsoleLogs: (
     tabId: string
   ) => Array<{ ts: number; level: string; message: string }>
-  screenshotTab: (tabId: string) => Promise<string | null>
+  screenshotTab: (
+    tabId: string,
+    opts?: { format?: 'jpeg' | 'png'; quality?: number }
+  ) => Promise<{ data: string; format: 'jpeg' | 'png' } | null>
   getTabDom: (tabId: string) => Promise<string | null>
   getTabClickables: (tabId: string) => Promise<unknown | null>
   navigateTab: (tabId: string, url: string) => void
@@ -304,10 +307,18 @@ async function handleRequest(
       return sendJson(res, 200, { logs: deps.browser.getTabConsoleLogs(tabId) })
     }
     if (req.method === 'GET' && path === '/browser/screenshot') {
-      const data = await deps.browser.screenshotTab(tabId)
-      return sendJson(res, data ? 200 : 500, {
-        pngBase64: data,
-        error: data ? undefined : 'capture failed'
+      const fmtParam = url.searchParams.get('format')
+      const format: 'jpeg' | 'png' = fmtParam === 'png' ? 'png' : 'jpeg'
+      const qParam = url.searchParams.get('quality')
+      const quality = qParam ? parseInt(qParam, 10) : undefined
+      const result = await deps.browser.screenshotTab(tabId, { format, quality })
+      return sendJson(res, result ? 200 : 500, {
+        data: result?.data,
+        format: result?.format,
+        mimeType: result ? (result.format === 'png' ? 'image/png' : 'image/jpeg') : undefined,
+        // Kept for older MCP bridge versions. New bridges read `data`+`format`.
+        pngBase64: result && result.format === 'png' ? result.data : undefined,
+        error: result ? undefined : 'capture failed'
       })
     }
     if (req.method === 'GET' && path === '/browser/dom') {
