@@ -39,7 +39,9 @@ function ctrlByte(key: string): string | null {
 
 export function MobileTerminal({ worktreePath, tab }: MobileTerminalProps): JSX.Element {
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const wrapperRef = useRef<HTMLDivElement>(null)
   const composingRef = useRef(false)
+  const draggedRef = useRef(false)
   const [ctrlSticky, setCtrlSticky] = useState(false)
   const [keyboardOpen, setKeyboardOpen] = useState(false)
   const [scrolledBack, setScrolledBack] = useState(false)
@@ -172,13 +174,13 @@ export function MobileTerminal({ worktreePath, tab }: MobileTerminalProps): JSX.
     inputRef.current?.focus({ preventScroll: true })
   }, [])
 
-  // Touch-scroll the xterm viewport. The transparent textarea sits on top
-  // of the terminal and eats every touch, so xterm's own scrolling never
-  // fires. We translate vertical pans into scrollLines() calls. The
-  // textarea gets `touch-action: none` (see inline style below) so we can
-  // preventDefault on move without Safari also firing native scroll/zoom.
+  // Touch-scroll the xterm viewport. The textarea is pointer-events:none
+  // (see its style below) so touches pass through to this wrapper div.
+  // We translate vertical pans into scrollLines() calls and set a "dragged"
+  // flag so the subsequent synthesized click doesn't focus the input and
+  // pop the keyboard at the end of a scroll gesture.
   useEffect(() => {
-    const el = inputRef.current
+    const el = wrapperRef.current
     if (!el) return
     let lastY: number | null = null
     let accum = 0
@@ -187,6 +189,7 @@ export function MobileTerminal({ worktreePath, tab }: MobileTerminalProps): JSX.
       if (e.touches.length !== 1) { lastY = null; return }
       lastY = e.touches[0].clientY
       accum = 0
+      draggedRef.current = false
       lineHeight = getTerminalLineHeight(terminalId)
     }
     const onMove = (e: TouchEvent): void => {
@@ -199,10 +202,12 @@ export function MobileTerminal({ worktreePath, tab }: MobileTerminalProps): JSX.
         accum -= lines * lineHeight
         scrollTerminalById(terminalId, -lines)
         setScrolledBack(!isTerminalAtBottom(terminalId))
+        draggedRef.current = true
         e.preventDefault()
-      } else if (Math.abs(accum) > 2) {
+      } else if (Math.abs(accum) > 4) {
         // Even small drags shouldn't let Safari steal the gesture as a
         // long-press text-selection — keeps the UX predictable.
+        draggedRef.current = true
         e.preventDefault()
       }
     }
@@ -222,6 +227,17 @@ export function MobileTerminal({ worktreePath, tab }: MobileTerminalProps): JSX.
       el.removeEventListener('touchcancel', onEnd)
     }
   }, [terminalId])
+
+  const handleWrapperClick = useCallback(() => {
+    // Tap focuses the input (pops the keyboard). A drag just scrolled —
+    // skip focus so we don't surprise the user with a keyboard at the end
+    // of a pan gesture.
+    if (draggedRef.current) {
+      draggedRef.current = false
+      return
+    }
+    inputRef.current?.focus({ preventScroll: true })
+  }, [])
 
   const handleJumpToBottom = useCallback(() => {
     scrollTerminalToBottomById(terminalId)
@@ -260,7 +276,12 @@ export function MobileTerminal({ worktreePath, tab }: MobileTerminalProps): JSX.
     // toolbar. The parent already has `relative`, so inset-0 just fills
     // it deterministically.
     <div className="absolute inset-0 flex flex-col bg-app">
-      <div className="relative flex-1 min-h-0">
+      <div
+        ref={wrapperRef}
+        onClick={handleWrapperClick}
+        className="relative flex-1 min-h-0"
+        style={{ touchAction: 'none' }}
+      >
         {/* key by tab.id so switching tabs (or worktrees) forces a fresh
             XTerminal instance. Desktop renders one XTerminal per tab
             inside portals; on mobile we reuse a single slot, so without
@@ -277,10 +298,10 @@ export function MobileTerminal({ worktreePath, tab }: MobileTerminalProps): JSX.
           sessionName={tab.label}
           sessionId={tab.sessionId}
         />
-        {/* Hidden textarea, sized to fill the terminal area so iOS doesn't
-            scroll oddly when it focuses. Pointer events stay on so a tap
-            anywhere on the terminal opens the keyboard; the actual xterm
-            canvas keeps rendering the cursor underneath. */}
+        {/* Hidden textarea — pointer-events:none so touch scrolling on the
+            wrapper above isn't eaten; the wrapper's onClick focuses the
+            textarea programmatically on a tap. Keyboard input still
+            works once focused (pointer-events only blocks mouse/touch). */}
         <textarea
           ref={inputRef}
           autoCapitalize="off"
@@ -296,7 +317,7 @@ export function MobileTerminal({ worktreePath, tab }: MobileTerminalProps): JSX.
           onFocus={handleInputFocus}
           onBlur={handleInputBlur}
           className="absolute inset-0 w-full h-full resize-none border-0 bg-transparent text-transparent caret-transparent outline-none"
-          style={{ opacity: 0, touchAction: 'none' }}
+          style={{ opacity: 0, pointerEvents: 'none' }}
         />
         {scrolledBack && (
           <button
