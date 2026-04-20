@@ -1,6 +1,7 @@
 import { WebContentsView, BrowserWindow, session } from 'electron'
 import type { Store } from './store'
 import { log } from './debug'
+import { resolveScreenshotTarget } from './browser-screenshot'
 
 export interface BrowserInstance {
   view: WebContentsView
@@ -515,7 +516,14 @@ export class BrowserManager {
     if (!inst) return null
     try {
       const image = await inst.view.webContents.capturePage()
-      return image.toPNG().toString('base64')
+      const bounds = inst.view.getBounds()
+      const { outputSize } = resolveScreenshotTarget(bounds)
+      const captured = image.getSize()
+      const normalized =
+        captured.width === outputSize.width && captured.height === outputSize.height
+          ? image
+          : image.resize({ width: outputSize.width, height: outputSize.height })
+      return normalized.toPNG().toString('base64')
     } catch (err) {
       log('browser', `capturePage failed tab=${tabId}`, err instanceof Error ? err.message : err)
       return null
