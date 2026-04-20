@@ -531,6 +531,18 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
     window.api.openExternal(wsUrl)
   }, [wsUrl])
 
+  // The WS server is only constructed at app launch, so any divergence
+  // between config and the live wsInfo surfaces as "relaunch required".
+  const wsNeedsRestart = ((): string | null => {
+    if (wsTransportEnabled && !wsInfo) return 'Quit and relaunch Harness to start the server.'
+    if (!wsTransportEnabled && wsInfo) return 'Server is still running — quit and relaunch Harness to stop it.'
+    if (wsInfo && wsTransportEnabled) {
+      if (wsInfo.port !== wsTransportPort) return `Quit and relaunch Harness to switch to port ${wsTransportPort}.`
+      if (wsInfo.host !== wsTransportHost) return 'Quit and relaunch Harness to rebind the server.'
+    }
+    return null
+  })()
+
   const handleSaveSystemPrompt = useCallback(async () => {
     await window.api.setHarnessSystemPrompt(systemPromptDraft)
     await window.api.setHarnessSystemPromptMain(systemPromptMainDraft)
@@ -1958,8 +1970,7 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
                   <div className="flex-1">
                     <div className="text-sm text-fg-bright">Enable web / mobile client</div>
                     <div className="text-xs text-dim mt-0.5">
-                      Takes effect on next app launch. Quit and reopen Harness
-                      to start the server.
+                      Changes apply on the next app launch.
                     </div>
                   </div>
                 </label>
@@ -2029,16 +2040,10 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
                           </button>
                         </Tooltip>
                       </div>
-                      {!wsInfo && (
-                        <p className="mt-2 text-[11px] text-warning flex items-center gap-1.5">
-                          <RefreshCw size={11} />
-                          Server not running yet — quit and relaunch Harness.
-                        </p>
-                      )}
                     </div>
 
                     {wsTransportHost === '0.0.0.0' && (
-                      <div className="mt-4 pt-3 border-t border-border bg-warning/5 -mx-4 -mb-4 px-4 pb-4 rounded-b-lg">
+                      <div className="mt-4 pt-3 border-t border-border">
                         <p className="text-xs text-fg">
                           <span className="font-medium text-warning">LAN mode:</span>{' '}
                           connect from another device on your network by
@@ -2051,6 +2056,13 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
                       </div>
                     )}
                   </>
+                )}
+
+                {wsNeedsRestart && (
+                  <div className="mt-4 pt-3 border-t border-border flex items-center gap-2">
+                    <RefreshCw size={12} className="text-warning shrink-0" />
+                    <p className="text-xs text-warning">{wsNeedsRestart}</p>
+                  </div>
                 )}
               </div>
             </section>
