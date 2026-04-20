@@ -15,10 +15,16 @@ beforeAll(async () => {
   root = mkdtempSync(join(tmpdir(), 'web-client-test-'))
   writeFileSync(
     join(root, 'index.html'),
-    '<!doctype html><html><head><title>t</title></head><body>ok</body></html>'
+    '<!doctype html><html><head><title>t</title>' +
+      '<link rel="manifest" href="./manifest.webmanifest" />' +
+      '</head><body>ok</body></html>'
   )
   writeFileSync(join(root, 'app.js'), 'console.log("hi")')
   writeFileSync(join(root, 'favicon.ico'), 'fake-icon')
+  writeFileSync(
+    join(root, 'manifest.webmanifest'),
+    JSON.stringify({ name: 'Harness', start_url: '.', display: 'standalone' })
+  )
 
   server = createWebClientServer({ token: TOKEN, rootDir: root })
   await new Promise<void>((resolve) => {
@@ -84,5 +90,65 @@ describe('createWebClientServer', () => {
   it('returns 404 for unknown assets', async () => {
     const res = await fetch(url('/does-not-exist.js'))
     expect(res.status).toBe(404)
+  })
+
+  it('rewrites manifest link in HTML to carry the token', async () => {
+    const res = await fetch(url(`/?token=${TOKEN}`))
+    expect(res.status).toBe(200)
+    const body = await res.text()
+    expect(body).toContain(
+      `<link rel="manifest" href="./manifest.webmanifest?token=${encodeURIComponent(TOKEN)}" />`
+    )
+    expect(body).not.toContain('href="./manifest.webmanifest"')
+  })
+
+  it('URL-encodes tokens with special chars in the manifest link', async () => {
+    const specialRoot = mkdtempSync(join(tmpdir(), 'web-client-test-'))
+    writeFileSync(
+      join(specialRoot, 'index.html'),
+      '<!doctype html><html><head>' +
+        '<link rel="manifest" href="./manifest.webmanifest" />' +
+        '</head><body>ok</body></html>'
+    )
+    const specialToken = 'tok en&with/special?chars'
+    const s = createWebClientServer({ token: specialToken, rootDir: specialRoot })
+    await new Promise<void>((r) => s.listen(0, '127.0.0.1', () => r()))
+    const p = (s.address() as AddressInfo).port
+    const res = await fetch(
+      `http://127.0.0.1:${p}/?token=${encodeURIComponent(specialToken)}`
+    )
+    const body = await res.text()
+    expect(body).toContain(
+      `./manifest.webmanifest?token=${encodeURIComponent(specialToken)}`
+    )
+    expect(body).not.toContain(specialToken)
+    await new Promise<void>((r) => s.close(() => r()))
+    rmSync(specialRoot, { recursive: true, force: true })
+  })
+
+  it('serves dynamic manifest with token-bearing start_url when authorized', async () => {
+    const res = await fetch(url(`/manifest.webmanifest?token=${TOKEN}`))
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toMatch(/application\/manifest\+json/)
+    expect(res.headers.get('cache-control')).toMatch(/no-store/)
+    const body = (await res.json()) as Record<string, unknown>
+    expect(body.start_url).toBe(`./?token=${encodeURIComponent(TOKEN)}`)
+    expect(body.name).toBe('Harness')
+  })
+
+  it('accepts bearer token for dynamic manifest', async () => {
+    const res = await fetch(url('/manifest.webmanifest'), {
+      headers: { Authorization: `Bearer ${TOKEN}` }
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as Record<string, unknown>
+    expect(body.start_url).toBe(`./?token=${encodeURIComponent(TOKEN)}`)
+  })
+
+  it('serves static manifest as-is when no token is presented', async () => {
+    const res = await fetch(url('/manifest.webmanifest'))
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as Record<string, unknown>
+    expect(body.start_url).toBe('.')
   })
 })
