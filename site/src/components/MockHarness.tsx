@@ -5,6 +5,8 @@ import {
   ChevronDown,
   ChevronRight,
   Code2,
+  FileText,
+  Folder,
   FolderOpen,
   GitCommit,
   GitPullRequest,
@@ -635,9 +637,104 @@ function MockRightPanel({ active }: { active: MockWorktree }) {
         </div>
       </RightPanelSection>
 
+      <MockAllFilesPanel />
+
       <RightPanelSection title="Cost" collapsed />
 
       <div className="truncate px-3 py-1 text-[10px] text-dim shrink-0">{active.path}</div>
+    </div>
+  )
+}
+
+type TreeEntry =
+  | { kind: 'dir'; name: string; open: boolean; depth: number }
+  | { kind: 'file'; name: string; depth: number }
+
+const ALL_FILES_TREE: TreeEntry[] = [
+  { kind: 'dir', name: 'src', open: true, depth: 0 },
+  { kind: 'dir', name: 'auth', open: true, depth: 1 },
+  { kind: 'file', name: 'login.ts', depth: 2 },
+  { kind: 'file', name: 'signup.ts', depth: 2 },
+  { kind: 'dir', name: 'onboarding', open: false, depth: 1 },
+  { kind: 'file', name: 'router.ts', depth: 1 },
+  { kind: 'file', name: 'welcome.tsx', depth: 1 },
+  { kind: 'dir', name: 'tests', open: false, depth: 0 },
+  { kind: 'file', name: 'package.json', depth: 0 },
+  { kind: 'file', name: 'tsconfig.json', depth: 0 },
+  { kind: 'file', name: 'README.md', depth: 0 }
+]
+
+function MockAllFilesPanel() {
+  return (
+    <div className="flex flex-col flex-1 min-h-0 border-b border-border">
+      <div className="flex items-center gap-1.5 h-9 px-3 border-b border-border shrink-0">
+        <ChevronDown size={12} className="text-faint" />
+        <span className="text-[10px] font-medium text-muted uppercase tracking-wider">
+          All Files
+        </span>
+        <RefreshCw size={11} className="ml-auto text-faint" />
+      </div>
+
+      <div className="shrink-0 p-2 border-b border-border">
+        <div className="w-full bg-panel-raised border border-border rounded px-2 py-1 text-[11px] text-faint">
+          Filter files...
+        </div>
+      </div>
+
+      <div className="flex-1 min-h-0 overflow-y-auto text-[11px] py-1">
+        {ALL_FILES_TREE.map((entry, i) =>
+          entry.kind === 'dir' ? (
+            <MockDirRow key={i} name={entry.name} depth={entry.depth} open={entry.open} />
+          ) : (
+            <MockFileRow key={i} name={entry.name} depth={entry.depth} />
+          )
+        )}
+      </div>
+
+      <div className="px-3 py-1.5 border-t border-border text-[10px] text-faint shrink-0 flex items-center justify-between">
+        <span>48 files</span>
+        <span className="font-mono">⌘P fuzzy open</span>
+      </div>
+    </div>
+  )
+}
+
+function MockDirRow({
+  name,
+  depth,
+  open
+}: {
+  name: string
+  depth: number
+  open: boolean
+}) {
+  return (
+    <div
+      className="flex items-center gap-1 px-2 py-0.5 hover:bg-panel-raised cursor-pointer select-none"
+      style={{ paddingLeft: 8 + depth * 12 }}
+    >
+      <ChevronRight
+        size={10}
+        className={`shrink-0 text-faint transition-transform ${open ? 'rotate-90' : ''}`}
+      />
+      {open ? (
+        <FolderOpen size={11} className="shrink-0 text-info" />
+      ) : (
+        <Folder size={11} className="shrink-0 text-info" />
+      )}
+      <span className="truncate text-fg">{name}</span>
+    </div>
+  )
+}
+
+function MockFileRow({ name, depth }: { name: string; depth: number }) {
+  return (
+    <div
+      className="flex items-center gap-1 px-2 py-0.5 hover:bg-panel-raised cursor-pointer"
+      style={{ paddingLeft: 8 + depth * 12 + 10 }}
+    >
+      <FileText size={11} className="shrink-0 text-faint" />
+      <span className="truncate text-fg">{name}</span>
     </div>
   )
 }
