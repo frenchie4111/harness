@@ -66,7 +66,7 @@ const SECTIONS: Section[] = [
   {
     eyebrow: 'Everything in one UI',
     title: 'Everything about the worktree, one keystroke away.',
-    body: 'Pull request status, branch commits, changed-file review, and any file opened in an embedded editor — all right there next to Claude. Review what shipped without leaving Harness.'
+    body: 'Pull request status, branch commits, changed-file review, and any file opened in an embedded editor. All right there next to Claude. Review what shipped without leaving Harness.'
   }
 ]
 
@@ -100,7 +100,7 @@ export function ScrollDiorama() {
         id="diorama"
         ref={sectionRef}
         className="relative diorama-bg hidden md:block"
-        style={{ height: '400vh' }}
+        style={{ height: '640vh' }}
       >
         <div className="sticky top-0 h-screen flex items-center overflow-hidden">
           <div className="w-full grid grid-cols-[minmax(0,42%)_minmax(0,58%)] gap-8 max-w-[1400px] mx-auto">
@@ -178,7 +178,7 @@ function CopyStack({ activeSection }: { activeSection: SectionIndex }) {
                 opacity: active ? 1 : 0,
                 y: active ? 0 : i < activeSection ? -24 : 24
               }}
-              transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+              transition={{ duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
               className="absolute inset-0 flex flex-col pt-[6vh]"
               style={{
                 pointerEvents: active ? 'auto' : 'none',
