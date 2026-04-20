@@ -53,6 +53,14 @@ const STATUS_COLORS: Record<MockStatus, string> = {
   merged: 'bg-accent'
 }
 
+const TAB_STATUS_COLORS: Record<MockStatus, string> = {
+  idle: 'bg-faint',
+  processing: 'bg-success',
+  waiting: 'bg-warning',
+  'needs-approval': 'bg-danger',
+  merged: 'bg-accent'
+}
+
 const PR_ICON_COLOR: Record<'success' | 'failure' | 'pending' | 'none', string> = {
   success: 'text-success',
   failure: 'text-danger',
@@ -263,19 +271,25 @@ function NewWorktreeRow({ highlighted }: { highlighted: boolean }) {
     <motion.div
       animate={{
         boxShadow: highlighted
-          ? 'inset 0 0 0 1px rgba(168, 85, 247, 0.55), 0 0 24px rgba(168, 85, 247, 0.35)'
-          : 'inset 0 0 0 0px rgba(168, 85, 247, 0)'
+          ? '0 0 24px rgba(168, 85, 247, 0.30)'
+          : '0 0 0px rgba(168, 85, 247, 0)'
       }}
       transition={{ type: 'spring', stiffness: 220, damping: 24 }}
-      className="group relative w-full flex items-center gap-2 px-3 py-2 mt-1 text-dim overflow-hidden cursor-pointer"
+      className={`group relative w-full flex items-center gap-2 px-3 py-2 mt-1 text-dim hover:bg-panel-raised overflow-hidden cursor-pointer transition-colors ${
+        highlighted ? 'brand-gradient-flow-text-active bg-panel-raised' : ''
+      }`}
     >
-      <span className="absolute left-0 top-0 bottom-0 w-0.5 brand-gradient-flow-bar" />
+      <span
+        className={`absolute left-0 top-0 bottom-0 w-0.5 brand-gradient-flow-bar transition-opacity ${
+          highlighted ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+        }`}
+      />
       <Plus
         size={13}
-        className="shrink-0"
-        style={{ stroke: 'url(#harness-add-gradient)' }}
+        className="shrink-0 transition-colors"
+        style={highlighted ? { stroke: 'url(#harness-add-gradient)' } : undefined}
       />
-      <span className="text-sm font-medium brand-gradient-flow-text">Add worktree</span>
+      <span className="text-sm font-medium brand-gradient-flow-text-hover">Add worktree</span>
       <span className="ml-auto text-[10px] font-mono text-faint border border-border-strong rounded px-1 py-[1px]">
         ⌘T
       </span>
@@ -342,32 +356,35 @@ function MockTerminalPanel({ state }: { state: MockHarnessState }) {
       transition={{ type: 'spring', stiffness: 200, damping: 30 }}
       className="flex-1 min-w-0 flex flex-col bg-app relative"
     >
-      <div className="h-10 shrink-0 border-b border-border flex items-center px-4 text-xs text-dim">
-        <span className="font-mono">
-          {active?.path}
-          <span className="text-faint mx-1">·</span>
-          <span className="text-fg">{active?.branch}</span>
-        </span>
-      </div>
+      <div className="h-10 shrink-0 border-b border-border bg-panel flex items-center">
+        <div className="shrink-0 flex items-center gap-1.5 px-3 h-full text-xs whitespace-nowrap">
+          <span className="font-medium text-cyan-400">
+            {repoNameFromPath(active?.path ?? '')}
+          </span>
+          <span className="text-faint">/</span>
+          <span className="text-fg-bright font-medium">{active?.branch}</span>
+        </div>
 
-      <div className="h-8 shrink-0 border-b border-border flex items-stretch px-2 bg-panel">
-        <div className="shrink-0 flex items-center gap-1.5 px-3 h-full text-xs cursor-pointer border-b-2 border-muted text-fg-bright">
-          <span
-            className={`w-1.5 h-1.5 rounded-full ${
-              STATUS_COLORS[active?.status ?? 'processing']
-            }`}
-          />
-          <Sparkles size={10} className="text-accent" />
-          <span>Claude</span>
+        <div className="flex items-center h-full overflow-x-auto pl-2 flex-1 min-w-0">
+          <div className="shrink-0 flex items-center gap-1.5 px-3 h-full text-xs border-b-2 border-muted text-fg-bright">
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${
+                TAB_STATUS_COLORS[active?.status ?? 'processing']
+              }`}
+            />
+            <span>Claude</span>
+          </div>
+          <div className="shrink-0 flex items-center gap-1.5 px-3 h-full text-xs border-b-2 border-transparent text-dim hover:text-fg">
+            <span className="w-1.5 h-1.5 rounded-full bg-faint" />
+            <span>shell</span>
+          </div>
+          <button className="shrink-0 px-2 h-full text-faint hover:text-fg text-sm transition-colors">
+            <Sparkles size={12} />
+          </button>
+          <button className="shrink-0 px-2 h-full text-faint hover:text-fg text-sm transition-colors">
+            <Plus size={12} />
+          </button>
         </div>
-        <div className="shrink-0 flex items-center gap-1.5 px-3 h-full text-xs border-b-2 border-transparent text-dim hover:text-fg">
-          <span className="w-1.5 h-1.5 rounded-full bg-faint" />
-          <span>shell</span>
-        </div>
-        <div className="flex-1" />
-        <button className="text-dim hover:text-fg self-center p-1 rounded">
-          <Plus size={12} />
-        </button>
       </div>
 
       <div className="flex-1 min-h-0 relative">
@@ -375,6 +392,11 @@ function MockTerminalPanel({ state }: { state: MockHarnessState }) {
       </div>
     </motion.div>
   )
+}
+
+function repoNameFromPath(path: string): string {
+  const head = path.split('/')[0]
+  return head || 'harness'
 }
 
 /** Renders a screenshot of Claude Code's fullscreen TUI as seen inside a
@@ -388,7 +410,10 @@ function ClaudeTUI({ active }: { active: MockWorktree }) {
   return (
     <div className="h-full flex flex-col font-mono text-[11px] leading-[1.55] bg-app px-4 py-3 overflow-hidden">
       <div className="flex gap-3 shrink-0">
-        <pre className="text-accent leading-[1.1] text-[11px] m-0">
+        <pre
+          className="leading-[1.1] text-[11px] m-0"
+          style={{ color: '#f59e0b' }}
+        >
 {` ▐▛███▜▌
 ▝▜█████▛▘
   ▘▘ ▝▝`}

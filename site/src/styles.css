@@ -136,7 +136,8 @@
   background-size: 200% 100%;
   animation: brand-gradient-flow 2.4s linear infinite;
 }
-.brand-gradient-flow-text {
+.group:hover .brand-gradient-flow-text-hover,
+.brand-gradient-flow-text-active .brand-gradient-flow-text-hover {
   background: linear-gradient(
     90deg,
     #f59e0b 0%,

@@ -144,8 +144,8 @@ function StackedDiorama() {
 
 function CopyStack({ activeSection }: { activeSection: SectionIndex }) {
   return (
-    <div className="relative h-[68vh] flex items-center">
-      <div className="relative w-full">
+    <div className="relative h-[68vh]">
+      <div className="relative w-full h-full">
         {SECTIONS.map((s, i) => {
           const active = i === activeSection
           return (
@@ -157,19 +157,24 @@ function CopyStack({ activeSection }: { activeSection: SectionIndex }) {
                 y: active ? 0 : i < activeSection ? -24 : 24
               }}
               transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
-              className="absolute inset-0"
+              className="absolute inset-0 flex flex-col"
               style={{
                 pointerEvents: active ? 'auto' : 'none',
                 zIndex: active ? 2 : 1
               }}
             >
-              <div className="text-xs uppercase tracking-[0.2em] text-amber-400/80 font-semibold mb-5">
-                {s.eyebrow}
+              <div className="pt-[6vh]">
+                <div className="text-xs uppercase tracking-[0.2em] text-amber-400/80 font-semibold mb-5">
+                  {s.eyebrow}
+                </div>
+                <h2 className="text-4xl lg:text-5xl font-bold tracking-tight leading-[1.08]">
+                  {s.title}
+                </h2>
               </div>
-              <h2 className="text-4xl lg:text-5xl font-bold tracking-tight mb-6 leading-[1.08]">
-                {s.title}
-              </h2>
-              <p className="text-lg text-ink-400 leading-relaxed max-w-xl">{s.body}</p>
+              <div className="flex-1" />
+              <p className="text-lg text-ink-400 leading-relaxed max-w-xl pb-[8vh]">
+                {s.body}
+              </p>
             </motion.div>
           )
         })}
