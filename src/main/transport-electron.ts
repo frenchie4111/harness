@@ -53,10 +53,16 @@ export class ElectronServerTransport implements ServerTransport {
 
   broadcastStateEvent(event: StateEvent, seq: number): void {
     for (const win of BrowserWindow.getAllWindows()) {
-      if (!win.isDestroyed()) {
-        this.perfMonitor?.recordIpcMessage()
-        win.webContents.send('state:event', event, seq)
-      }
+      if (win.isDestroyed()) continue
+      // During Electron's quit sequence webContents can be destroyed
+      // before the BrowserWindow's isDestroyed flips — and a 'destroyed'
+      // event on webContents is what fires our onClientDisconnect, which
+      // dispatches terminals/clientDisconnected, which re-enters this
+      // broadcast. Guard the send so we don't throw on the way out.
+      const wc = win.webContents
+      if (wc.isDestroyed()) continue
+      this.perfMonitor?.recordIpcMessage()
+      wc.send('state:event', event, seq)
     }
   }
 
@@ -76,9 +82,10 @@ export class ElectronServerTransport implements ServerTransport {
 
   sendSignal(name: string, ...args: unknown[]): void {
     for (const win of BrowserWindow.getAllWindows()) {
-      if (!win.isDestroyed()) {
-        win.webContents.send(name, ...args)
-      }
+      if (win.isDestroyed()) continue
+      const wc = win.webContents
+      if (wc.isDestroyed()) continue
+      wc.send(name, ...args)
     }
   }
 
