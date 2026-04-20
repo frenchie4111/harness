@@ -603,21 +603,20 @@ function MockRightPanel({ active }: { active: MockWorktree }) {
         </div>
       </RightPanelSection>
 
-      <RightPanelSection title="Changed Files">
-        <div className="px-2 py-1 flex flex-col">
+      <RightPanelSection title="Changed Files" collapsed={false} grow>
+        <div className="px-2 py-1 flex flex-col overflow-y-auto">
           {[
-            { name: 'src/welcome.tsx', kind: 'A', add: 142, del: 0, active: true },
+            { name: 'src/welcome.tsx', kind: 'A', add: 142, del: 0 },
             { name: 'src/auth/signup.ts', kind: 'M', add: 56, del: 12 },
             { name: 'src/auth/login.ts', kind: 'M', add: 24, del: 8 },
-            { name: 'src/router.ts', kind: 'M', add: 4, del: 2 }
+            { name: 'src/router.ts', kind: 'M', add: 4, del: 2 },
+            { name: 'src/onboarding/steps.ts', kind: 'A', add: 88, del: 0 },
+            { name: 'src/onboarding/index.ts', kind: 'A', add: 14, del: 0 },
+            { name: 'tests/onboarding.spec.ts', kind: 'A', add: 62, del: 0 }
           ].map((f) => (
             <div
               key={f.name}
-              className={`flex items-center gap-1.5 px-1.5 py-1 text-[11px] rounded ${
-                f.active
-                  ? 'bg-surface text-fg-bright'
-                  : 'text-muted hover:bg-panel-raised/40'
-              }`}
+              className="flex items-center gap-1.5 px-1.5 py-1 text-[11px] rounded text-muted hover:bg-panel-raised/40"
             >
               <span
                 className={`font-mono text-[10px] w-3 text-center ${
@@ -636,87 +635,41 @@ function MockRightPanel({ active }: { active: MockWorktree }) {
         </div>
       </RightPanelSection>
 
-      <div className="flex-1 min-h-0 flex flex-col border-t border-border">
-        <div className="h-7 shrink-0 flex items-center gap-1.5 px-3 text-[10px] font-medium uppercase tracking-wide text-muted border-b border-border">
-          <Code2 size={11} className="text-dim" />
-          <span className="truncate">src/welcome.tsx</span>
-          <span className="ml-auto text-faint normal-case tracking-normal">×</span>
-        </div>
-        <div className="flex-1 min-h-0 overflow-hidden bg-app font-mono text-[10px] leading-[1.55] py-2">
-          <CodeLine n={1}>
-            <span className="text-[#c586c0]">import</span>{' '}
-            <span className="text-fg-bright">{'{'} motion {'}'}</span>{' '}
-            <span className="text-[#c586c0]">from</span>{' '}
-            <span className="text-[#ce9178]">'framer-motion'</span>
-          </CodeLine>
-          <CodeLine n={2} />
-          <CodeLine n={3}>
-            <span className="text-[#c586c0]">export function</span>{' '}
-            <span className="text-[#dcdcaa]">Welcome</span>() {'{'}
-          </CodeLine>
-          <CodeLine n={4}>
-            {'  '}
-            <span className="text-[#c586c0]">return</span> (
-          </CodeLine>
-          <CodeLine n={5}>
-            {'    '}
-            <span className="text-[#569cd6]">{'<motion.div'}</span>{' '}
-            <span className="text-[#9cdcfe]">initial</span>=
-            <span className="text-[#ce9178]">{'{{'}</span>
-          </CodeLine>
-          <CodeLine n={6}>
-            {'      '}
-            <span className="text-[#9cdcfe]">opacity</span>:{' '}
-            <span className="text-[#b5cea8]">0</span>,{' '}
-            <span className="text-[#9cdcfe]">y</span>:{' '}
-            <span className="text-[#b5cea8]">20</span>
-          </CodeLine>
-          <CodeLine n={7}>
-            {'    '}
-            <span className="text-[#ce9178]">{'}}'}</span>
-            <span className="text-[#569cd6]">{'>'}</span>
-          </CodeLine>
-          <CodeLine n={8}>
-            {'      '}
-            <span className="text-fg">Welcome to Harness.</span>
-          </CodeLine>
-          <CodeLine n={9}>
-            {'    '}
-            <span className="text-[#569cd6]">{'</motion.div>'}</span>
-          </CodeLine>
-        </div>
-      </div>
+      <RightPanelSection title="Cost" collapsed />
 
-      <div className="truncate px-3 py-1 text-[10px] text-dim">{active.path}</div>
+      <div className="truncate px-3 py-1 text-[10px] text-dim shrink-0">{active.path}</div>
     </div>
   )
 }
 
 function RightPanelSection({
   title,
-  children
+  children,
+  collapsed = false,
+  grow = false
 }: {
   title: string
-  children: ReactNode
+  children?: ReactNode
+  collapsed?: boolean
+  grow?: boolean
 }) {
   return (
-    <div className="flex flex-col border-b border-border shrink-0">
-      <div className="flex items-center gap-1.5 h-9 px-3 border-b border-border">
-        <ChevronDown size={12} className="text-faint" />
+    <div
+      className={`flex flex-col border-b border-border ${grow && !collapsed ? 'flex-1 min-h-0' : 'shrink-0'}`}
+    >
+      <div
+        className={`flex items-center gap-1.5 h-9 px-3 ${collapsed ? '' : 'border-b border-border'}`}
+      >
+        {collapsed ? (
+          <ChevronRight size={12} className="text-faint" />
+        ) : (
+          <ChevronDown size={12} className="text-faint" />
+        )}
         <span className="text-[10px] font-medium text-muted uppercase tracking-wider">
           {title}
         </span>
       </div>
-      {children}
-    </div>
-  )
-}
-
-function CodeLine({ n, children }: { n: number; children?: ReactNode }) {
-  return (
-    <div className="flex gap-3 px-3 hover:bg-panel-raised/30">
-      <span className="text-faint select-none w-4 text-right shrink-0">{n}</span>
-      <span className="text-fg whitespace-pre">{children}</span>
+      {!collapsed && children}
     </div>
   )
 }
