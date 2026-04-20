@@ -3,18 +3,44 @@ import { motion, useMotionValueEvent, useReducedMotion, useScroll } from 'framer
 import {
   MockHarness,
   type MockHarnessState,
-  type MockStatus
+  type MockStatus,
+  type MockWorktree
 } from './MockHarness'
 
 type SectionIndex = 0 | 1 | 2
 type Phase = { section: SectionIndex; localProgress: number }
 
-const BASE_WORKTREES: { id: string; name: string; repo: string }[] = [
-  { id: '1', name: 'feat/onboarding', repo: 'harness' },
-  { id: '2', name: 'fix/login-flash', repo: 'harness' },
-  { id: '3', name: 'refactor/auth', repo: 'harness' },
-  { id: '4', name: 'chore/deps-bump', repo: 'harness' },
-  { id: '5', name: 'docs/api-reference', repo: 'harness' }
+const BASE_WORKTREES: Omit<MockWorktree, 'status'>[] = [
+  {
+    id: '1',
+    branch: 'feat/onboarding',
+    path: 'harness/feat-onboarding',
+    pr: { checks: 'success', additions: 142, deletions: 58 }
+  },
+  {
+    id: '2',
+    branch: 'fix/login-flash',
+    path: 'harness/fix-login-flash',
+    pr: { checks: 'pending', additions: 27, deletions: 12 }
+  },
+  {
+    id: '3',
+    branch: 'refactor/auth',
+    path: 'harness/refactor-auth',
+    pr: { checks: 'success', additions: 311, deletions: 204 }
+  },
+  {
+    id: '4',
+    branch: 'chore/deps-bump',
+    path: 'harness/chore-deps-bump',
+    pr: { checks: 'failure', additions: 8, deletions: 6 }
+  },
+  {
+    id: '5',
+    branch: 'docs/api-reference',
+    path: 'harness/docs-api-reference',
+    pr: { checks: 'success', additions: 89, deletions: 4 }
+  }
 ]
 
 const SECTIONS = [
@@ -89,27 +115,33 @@ function CopyStack({ activeSection }: { activeSection: SectionIndex }) {
   return (
     <div className="relative h-[68vh] flex items-center">
       <div className="relative w-full">
-        {SECTIONS.map((s, i) => (
-          <motion.div
-            key={i}
-            animate={{
-              opacity: i === activeSection ? 1 : 0.18,
-              y: i === activeSection ? 0 : (i < activeSection ? -12 : 12),
-              filter: i === activeSection ? 'blur(0px)' : 'blur(2px)'
-            }}
-            transition={{ type: 'spring', stiffness: 140, damping: 24 }}
-            className={`${i === activeSection ? 'relative' : 'absolute inset-0 pointer-events-none'}`}
-            style={{ zIndex: i === activeSection ? 2 : 1 }}
-          >
-            <div className="text-xs uppercase tracking-[0.2em] text-amber-400/80 font-semibold mb-5">
-              {s.eyebrow}
-            </div>
-            <h2 className="text-4xl lg:text-5xl font-bold tracking-tight mb-6 leading-[1.08]">
-              {s.title}
-            </h2>
-            <p className="text-lg text-ink-400 leading-relaxed max-w-xl">{s.body}</p>
-          </motion.div>
-        ))}
+        {SECTIONS.map((s, i) => {
+          const active = i === activeSection
+          return (
+            <motion.div
+              key={i}
+              initial={false}
+              animate={{
+                opacity: active ? 1 : 0,
+                y: active ? 0 : i < activeSection ? -24 : 24
+              }}
+              transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+              className="absolute inset-0"
+              style={{
+                pointerEvents: active ? 'auto' : 'none',
+                zIndex: active ? 2 : 1
+              }}
+            >
+              <div className="text-xs uppercase tracking-[0.2em] text-amber-400/80 font-semibold mb-5">
+                {s.eyebrow}
+              </div>
+              <h2 className="text-4xl lg:text-5xl font-bold tracking-tight mb-6 leading-[1.08]">
+                {s.title}
+              </h2>
+              <p className="text-lg text-ink-400 leading-relaxed max-w-xl">{s.body}</p>
+            </motion.div>
+          )
+        })}
       </div>
     </div>
   )
@@ -156,20 +188,20 @@ function sectionOneState(progress: number): MockHarnessState {
 
 function sectionOneStatusFor(i: number, progress: number): MockStatus {
   const rotations: MockStatus[][] = [
-    ['working', 'working', 'working', 'working'],
-    ['working', 'idle', 'working', 'working'],
-    ['idle', 'working', 'working', 'idle'],
-    ['working', 'working', 'idle', 'working'],
-    ['idle', 'working', 'working', 'working']
+    ['processing', 'processing', 'processing', 'processing'],
+    ['processing', 'waiting', 'processing', 'processing'],
+    ['idle', 'processing', 'processing', 'idle'],
+    ['processing', 'processing', 'idle', 'processing'],
+    ['waiting', 'processing', 'processing', 'processing']
   ]
   const phase = Math.min(3, Math.floor(progress * 4))
-  return rotations[i]?.[phase] ?? 'working'
+  return rotations[i]?.[phase] ?? 'processing'
 }
 
 function sectionTwoState(progress: number): MockHarnessState {
   const worktrees = BASE_WORKTREES.map((w, i) => {
     let status: MockStatus = sectionOneStatusFor(i, 0.8)
-    if (i === 1) status = progress > 0.2 ? 'needs-attention' : 'working'
+    if (i === 1) status = progress > 0.2 ? 'needs-approval' : 'processing'
     return { ...w, status }
   })
   const highlightRow = progress > 0.35
@@ -185,7 +217,7 @@ function sectionTwoState(progress: number): MockHarnessState {
 function sectionThreeState(progress: number): MockHarnessState {
   const worktrees = BASE_WORKTREES.map((w, i) => ({
     ...w,
-    status: i === 1 ? ('needs-attention' as MockStatus) : sectionOneStatusFor(i, 0.8)
+    status: i === 1 ? ('needs-approval' as MockStatus) : sectionOneStatusFor(i, 0.8)
   }))
   const showForm = progress > 0.5
   return {
@@ -199,7 +231,7 @@ function sectionThreeState(progress: number): MockHarnessState {
 function finalState(): MockHarnessState {
   const worktrees = BASE_WORKTREES.map((w, i) => ({
     ...w,
-    status: i === 1 ? ('needs-attention' as MockStatus) : ('working' as MockStatus)
+    status: i === 1 ? ('needs-approval' as MockStatus) : ('processing' as MockStatus)
   }))
   return {
     activeWorktreeId: '1',
