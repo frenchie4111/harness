@@ -86,27 +86,62 @@ export function ScrollDiorama() {
   const mockState = dioramaStateFor(phase, prefersReduced ?? false)
 
   return (
-    <section
-      id="diorama"
-      ref={sectionRef}
-      className="relative diorama-bg hidden md:block"
-      style={{ height: '300vh' }}
-    >
-      <div className="sticky top-0 h-screen flex items-center overflow-hidden">
-        <div className="w-full grid grid-cols-[minmax(0,42%)_minmax(0,58%)] gap-8 max-w-[1400px] mx-auto">
-          <div className="px-8 lg:px-16">
-            <CopyStack activeSection={phase.section} />
+    <>
+      <section
+        id="diorama"
+        ref={sectionRef}
+        className="relative diorama-bg hidden md:block"
+        style={{ height: '300vh' }}
+      >
+        <div className="sticky top-0 h-screen flex items-center overflow-hidden">
+          <div className="w-full grid grid-cols-[minmax(0,42%)_minmax(0,58%)] gap-8 max-w-[1400px] mx-auto">
+            <div className="px-8 lg:px-16">
+              <CopyStack activeSection={phase.section} />
+            </div>
+
+            <div className="relative h-[68vh] translate-x-[8%]">
+              <div className="absolute inset-0">
+                <MockHarness state={mockState} />
+              </div>
+            </div>
           </div>
 
-          <div className="relative h-[68vh] translate-x-[8%]">
-            <div className="absolute inset-0">
+          <ProgressRail section={phase.section} />
+        </div>
+      </section>
+
+      <StackedDiorama />
+    </>
+  )
+}
+
+/** Mobile fallback: one block per section, each with a static snapshot of
+ * the mock above the copy. No scroll hijack, no pinning — just a readable
+ * stack that mirrors the desktop narrative. */
+function StackedDiorama() {
+  return (
+    <section className="md:hidden diorama-bg py-12">
+      {SECTIONS.map((s, i) => {
+        const sectionIdx = i as SectionIndex
+        const mockState =
+          sectionIdx === 0
+            ? sectionOneState(0.8)
+            : sectionIdx === 1
+              ? sectionTwoState(0.8)
+              : sectionThreeState(0.8)
+        return (
+          <div key={i} className="mx-auto max-w-xl px-5 py-10">
+            <div className="text-[11px] uppercase tracking-[0.2em] text-amber-400/80 font-semibold mb-3">
+              {s.eyebrow}
+            </div>
+            <h2 className="text-3xl font-bold tracking-tight mb-3 leading-[1.15]">{s.title}</h2>
+            <p className="text-base text-ink-400 leading-relaxed mb-6">{s.body}</p>
+            <div className="h-[360px] rounded-xl overflow-hidden">
               <MockHarness state={mockState} />
             </div>
           </div>
-        </div>
-
-        <ProgressRail section={phase.section} />
-      </div>
+        )
+      })}
     </section>
   )
 }
