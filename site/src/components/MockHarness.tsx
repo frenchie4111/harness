@@ -112,9 +112,9 @@ function TrafficLights() {
 function MockSidebar({ state }: { state: MockHarnessState }) {
   const sidebarGlow = state.highlightedElement === 'sidebar'
 
-  const needsAttention = state.worktrees.filter((w) => w.status === 'needs-approval')
-  const openPRs = state.worktrees.filter((w) => w.status !== 'needs-approval' && w.pr)
-  const activeNoPR = state.worktrees.filter((w) => w.status !== 'needs-approval' && !w.pr)
+  const needsAttention = state.worktrees.filter((w) => w.pr?.checks === 'failure')
+  const openPRs = state.worktrees.filter((w) => w.pr && w.pr.checks !== 'failure')
+  const activeNoPR = state.worktrees.filter((w) => !w.pr)
   const mergedCount = state.mergedClosedCount ?? 3
 
   return (
