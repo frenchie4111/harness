@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2, LifeBuoy, Bug, Lightbulb } from 'lucide-react'
+import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2, LifeBuoy, Bug, Lightbulb, FlaskConical } from 'lucide-react'
 import { openReportIssue } from './ReportIssueScreen'
-import { HARNESS_RELEASES_URL } from '../../shared/constants'
+import { HARNESS_ISSUES_URL, HARNESS_RELEASES_URL } from '../../shared/constants'
 import { useSettings, useUpdater, useRepoConfigs, useHooks } from '../store'
 import type { UpdaterStatus, MergeStrategy, RepoConfig } from '../types'
 import { DEFAULT_HOTKEYS, ACTION_LABELS, bindingToString, eventToBinding, resolveHotkeys, type Action, type HotkeyBinding } from '../hotkeys'
@@ -16,7 +16,7 @@ interface SettingsProps {
   initialSection?: SectionId
 }
 
-type SectionId = 'appearance' | 'agent' | 'worktrees' | 'editor' | 'github' | 'hotkeys' | 'updates' | 'support'
+type SectionId = 'appearance' | 'agent' | 'worktrees' | 'editor' | 'github' | 'hotkeys' | 'updates' | 'support' | 'experimental'
 type SubSectionId = 'agent-general' | 'agent-claude' | 'agent-codex'
 
 interface SubSection {
@@ -43,7 +43,8 @@ const SECTIONS: Section[] = [
   { id: 'github', label: 'GitHub', icon: GitPullRequest },
   { id: 'hotkeys', label: 'Hotkeys', icon: Keyboard },
   { id: 'updates', label: 'Updates', icon: DownloadCloud },
-  { id: 'support', label: 'Support', icon: LifeBuoy }
+  { id: 'support', label: 'Support', icon: LifeBuoy },
+  { id: 'experimental', label: 'Experimental', icon: FlaskConical }
 ]
 
 export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps): JSX.Element {
@@ -58,7 +59,8 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
     github: null,
     hotkeys: null,
     updates: null,
-    support: null
+    support: null,
+    experimental: null
   })
   const subSectionRefs = useRef<Record<SubSectionId, HTMLElement | null>>({
     'agent-general': null,
@@ -1844,6 +1846,25 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
 
               <p className="mt-3 text-xs text-dim">
                 Opens a prefilled GitHub issue in your browser. No data is sent from Harness directly.
+              </p>
+            </section>
+
+            {/* Experimental section */}
+            <section ref={(el) => { sectionRefs.current.experimental = el }} id="experimental">
+              <h2 className="text-lg font-semibold text-fg-bright mb-1 flex items-center gap-2">
+                <FlaskConical size={18} className="text-warning" />
+                Experimental
+              </h2>
+              <p className="text-sm text-dim mb-4">
+                These features are in active development. APIs and UI may change,
+                and you should expect rough edges. Each one is opt-in below.{' '}
+                <a
+                  onClick={() => window.api.openExternal(HARNESS_ISSUES_URL)}
+                  className="text-muted hover:text-fg-bright underline cursor-pointer"
+                >
+                  File an issue
+                </a>{' '}
+                if something breaks.
               </p>
             </section>
           </div>
