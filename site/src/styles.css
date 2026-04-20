@@ -1,0 +1,320 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-ink-950: #0a0a0a;
+  --color-ink-900: #141414;
+  --color-ink-850: #1a1a1a;
+  --color-ink-800: #262626;
+  --color-ink-700: #404040;
+  --color-ink-600: #525252;
+  --color-ink-500: #737373;
+  --color-ink-400: #a3a3a3;
+  --color-ink-300: #d4d4d4;
+  --color-ink-200: #e5e5e5;
+  --color-ink-100: #f5f5f5;
+
+  --color-brand-amber: #f59e0b;
+  --color-brand-red: #ef4444;
+  --color-brand-purple: #a855f7;
+
+  /* Tokens lifted verbatim from the real Harness renderer theme so copied
+   * JSX (Sidebar, WorktreeTab, Terminal header) renders with identical
+   * bg-panel / text-fg-bright / border-border-strong utilities. */
+  --color-app: #0a0a0a;
+  --color-panel: #141414;
+  --color-panel-raised: #1f1f1f;
+  --color-surface: #262626;
+  --color-surface-hover: #404040;
+  --color-border: #262626;
+  --color-border-strong: #404040;
+  --color-fg: #d4d4d4;
+  --color-fg-bright: #f5f5f5;
+  --color-muted: #a3a3a3;
+  --color-dim: #737373;
+  --color-faint: #525252;
+  --color-success: #22c55e;
+  --color-warning: #fbbf24;
+  --color-danger: #ef4444;
+  --color-info: #60a5fa;
+  --color-accent: #c084fc;
+
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+@layer base {
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+  html,
+  body {
+    background: var(--color-ink-950);
+    color: var(--color-ink-200);
+    font-family: var(--font-sans);
+    font-feature-settings: 'cv11', 'ss01', 'ss03';
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    min-height: 100vh;
+  }
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-ink-800);
+    border-radius: 4px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-ink-700);
+  }
+}
+
+.gradient-text,
+.brand-gradient-text {
+  background: linear-gradient(135deg, #f59e0b 0%, #ef4444 50%, #a855f7 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  color: transparent;
+}
+
+.brand-gradient-bg {
+  background: linear-gradient(135deg, #f59e0b 0%, #ef4444 50%, #a855f7 100%);
+}
+
+.brand-glow-amber {
+  box-shadow: 0 0 48px rgba(245, 158, 11, 0.18);
+}
+
+.brand-grid-bg {
+  background-image:
+    radial-gradient(circle at 50% 0%, rgba(245, 158, 11, 0.09), transparent 55%),
+    radial-gradient(circle at 0% 100%, rgba(168, 85, 247, 0.08), transparent 50%),
+    radial-gradient(circle at 100% 100%, rgba(239, 68, 68, 0.05), transparent 50%);
+}
+
+.glow-amber {
+  box-shadow: 0 0 60px rgba(245, 158, 11, 0.15);
+}
+
+.grid-bg {
+  background-image:
+    radial-gradient(circle at 50% 0%, rgba(245, 158, 11, 0.08), transparent 50%),
+    radial-gradient(circle at 0% 100%, rgba(168, 85, 247, 0.06), transparent 50%);
+}
+
+.diorama-bg {
+  background-image:
+    radial-gradient(circle at 85% 20%, rgba(245, 158, 11, 0.06), transparent 45%),
+    radial-gradient(circle at 15% 80%, rgba(168, 85, 247, 0.08), transparent 45%),
+    radial-gradient(circle at 80% 80%, rgba(239, 68, 68, 0.04), transparent 45%);
+}
+
+@keyframes brand-gradient-flow {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 200% 50%;
+  }
+}
+.brand-gradient-flow-bar {
+  background: linear-gradient(
+    90deg,
+    #f59e0b 0%,
+    #ef4444 25%,
+    #a855f7 50%,
+    #ef4444 75%,
+    #f59e0b 100%
+  );
+  background-size: 200% 100%;
+  animation: brand-gradient-flow 2.4s linear infinite;
+}
+.group:hover .brand-gradient-flow-text-hover,
+.brand-gradient-flow-text-active .brand-gradient-flow-text-hover {
+  background: linear-gradient(
+    90deg,
+    #f59e0b 0%,
+    #ef4444 25%,
+    #a855f7 50%,
+    #ef4444 75%,
+    #f59e0b 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: brand-gradient-flow 2.4s linear infinite;
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.12);
+  }
+}
+.pulse-dot {
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+@keyframes caret-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+.caret-blink {
+  animation: caret-blink 1s step-end infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pulse-dot,
+  .caret-blink {
+    animation: none;
+  }
+}
+
+.logo-tip {
+  position: relative;
+  cursor: pointer;
+}
+.logo-tip .tip {
+  position: absolute;
+  bottom: calc(100% + 12px);
+  left: 50%;
+  transform: translateX(-50%) translateY(4px);
+  width: 280px;
+  padding: 8px;
+  background: #000;
+  border: 1px solid #2a2a2a;
+  border-radius: 14px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: white;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+  z-index: 50;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.logo-tip .tip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: #2a2a2a;
+}
+.logo-tip:hover .tip {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(-50%) translateY(0);
+}
+.logo-tip .bubble {
+  padding: 7px 12px;
+  border-radius: 18px;
+  max-width: 220px;
+  word-wrap: break-word;
+}
+.logo-tip .sent {
+  background: #2563eb;
+  color: white;
+  align-self: flex-end;
+  border-bottom-right-radius: 4px;
+}
+.logo-tip .sent + .sent {
+  border-top-right-radius: 4px;
+}
+.logo-tip .rcvd {
+  background: #303030;
+  color: #e5e5e5;
+  align-self: flex-start;
+  border-bottom-left-radius: 4px;
+}
+.logo-tip .rcvd + .rcvd {
+  border-top-left-radius: 4px;
+}
+.logo-tip .gap {
+  height: 6px;
+}
+.logo-tip .link-card {
+  align-self: flex-end;
+  width: 200px;
+  border-radius: 14px;
+  overflow: hidden;
+  border-bottom-right-radius: 4px;
+}
+.logo-tip .link-card .link-preview {
+  background: linear-gradient(135deg, #1a1a1a 0%, #111 100%);
+  padding: 10px 12px;
+  border-bottom: 1px solid #333;
+}
+.logo-tip .link-card .link-preview .link-icon {
+  width: 32px;
+  height: 32px;
+  background: linear-gradient(135deg, #f59e0b, #ef4444, #a855f7);
+  border-radius: 8px;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 800;
+  color: white;
+}
+.logo-tip .link-card .link-preview .link-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #e5e5e5;
+}
+.logo-tip .link-card .link-preview .link-domain {
+  font-size: 10px;
+  color: #737373;
+  margin-top: 2px;
+}
+.logo-tip .link-card .link-body {
+  background: #2563eb;
+  padding: 7px 12px;
+  color: white;
+  font-size: 13px;
+}
+.logo-tip .reply-card {
+  align-self: flex-end;
+  max-width: 220px;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #2563eb;
+  border-bottom-right-radius: 4px;
+}
+.logo-tip .reply-card img {
+  width: 100%;
+  display: block;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+}
+.logo-tip .reply-card .reply-text {
+  padding: 7px 12px;
+  color: white;
+  font-size: 13px;
+}
