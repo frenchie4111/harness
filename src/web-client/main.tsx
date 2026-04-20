@@ -37,10 +37,6 @@ declare global {
 }
 
 function readToken(): string | null {
-  const meta = document.querySelector(
-    'meta[name="harness-ws-token"]'
-  ) as HTMLMetaElement | null
-  if (meta?.content) return meta.content
   const url = new URL(window.location.href)
   return url.searchParams.get('token')
 }
