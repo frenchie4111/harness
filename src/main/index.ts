@@ -10,7 +10,7 @@ import { ElectronServerTransport } from './transport-electron'
 import { WebSocketServerTransport } from './transport-websocket'
 import { CompoundServerTransport } from './transport-compound'
 import { createWebClientServer } from './web-client-server'
-import { getOrCreateWsToken } from './ws-token'
+import { getOrCreateWsToken, rotateWsToken } from './ws-token'
 import { networkInterfaces } from 'os'
 import type { Server as HttpServer } from 'http'
 import { PerfMonitor } from './perf-monitor'
@@ -1253,6 +1253,16 @@ function registerIpcHandlers(): void {
       token: wsTransport.getToken(),
       host: wsTransport.getHost()
     }
+  })
+
+  transport.onRequest('config:rotateWsToken', (_ctx) => {
+    // Writes a fresh token to the encrypted secrets store. The running
+    // HTTP + WS servers captured the old token in closures at boot, so
+    // they keep accepting it until the app restarts; the UI surfaces a
+    // "relaunch required" hint after a rotation.
+    const next = rotateWsToken()
+    log('ws-transport', 'auth token rotated — takes effect on next launch')
+    return next
   })
 
   transport.onRequest('net:getLanAddresses', (_ctx) => getLanAddresses())

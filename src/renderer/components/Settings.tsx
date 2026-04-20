@@ -244,6 +244,10 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
   const [wsInfo, setWsInfo] = useState<{ port: number; token: string; host: string } | null>(null)
   const [showWsToken, setShowWsToken] = useState(false)
   const [wsUrlCopied, setWsUrlCopied] = useState(false)
+  // True after the user rotates the token in this session. The running
+  // servers still use the old token until the app relaunches, so we
+  // surface a relaunch hint — same pattern as changing port/host.
+  const [wsTokenRotated, setWsTokenRotated] = useState(false)
   const [wsPortDraft, setWsPortDraft] = useState<string>(String(wsTransportPort))
   useEffect(() => { setWsPortDraft(String(wsTransportPort)) }, [wsTransportPort])
 
@@ -557,9 +561,19 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
     if (wsInfo && wsTransportEnabled) {
       if (wsInfo.port !== wsTransportPort) return `Quit and relaunch Harness to switch to port ${wsTransportPort}.`
       if (wsInfo.host !== wsTransportHost) return 'Quit and relaunch Harness to rebind the server.'
+      if (wsTokenRotated) return 'Token rotated — quit and relaunch Harness. Any pinned/bookmarked URLs will need to be replaced.'
     }
     return null
   })()
+
+  const handleRotateWsToken = useCallback(async () => {
+    const ok = window.confirm(
+      'Rotate the web-client auth token?\n\nAll existing URLs — bookmarks, home-screen pins, open browser tabs — will stop working after you quit and relaunch Harness. You will need to re-share the new URL with any device you want to reconnect.'
+    )
+    if (!ok) return
+    await window.api.rotateWsToken()
+    setWsTokenRotated(true)
+  }, [])
 
   const handleSaveSystemPrompt = useCallback(async () => {
     await window.api.setHarnessSystemPrompt(systemPromptDraft)
@@ -2055,6 +2069,15 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
                             className="p-1.5 text-dim hover:text-fg transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                           >
                             <ExternalLink size={14} />
+                          </button>
+                        </Tooltip>
+                        <Tooltip label="Rotate token (invalidates existing URLs)">
+                          <button
+                            onClick={() => { void handleRotateWsToken() }}
+                            disabled={!wsInfo}
+                            className="p-1.5 text-dim hover:text-warning transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            <RotateCcw size={14} />
                           </button>
                         </Tooltip>
                       </div>
