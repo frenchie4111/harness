@@ -20,26 +20,22 @@ const BASE_WORKTREES: Omit<MockWorktree, 'status'>[] = [
   {
     id: '2',
     branch: 'fix/login-flash',
-    path: 'harness/fix-login-flash',
-    pr: { checks: 'pending', additions: 27, deletions: 12 }
+    path: 'harness/fix-login-flash'
   },
   {
     id: '3',
     branch: 'refactor/auth',
-    path: 'harness/refactor-auth',
-    pr: { checks: 'success', additions: 311, deletions: 204 }
+    path: 'harness/refactor-auth'
   },
   {
     id: '4',
     branch: 'chore/deps-bump',
-    path: 'harness/chore-deps-bump',
-    pr: { checks: 'failure', additions: 8, deletions: 6 }
+    path: 'harness/chore-deps-bump'
   },
   {
     id: '5',
     branch: 'docs/api-reference',
-    path: 'harness/docs-api-reference',
-    pr: { checks: 'success', additions: 89, deletions: 4 }
+    path: 'harness/docs-api-reference'
   }
 ]
 
@@ -217,7 +213,8 @@ function sectionOneState(progress: number): MockHarnessState {
     activeWorktreeId: '1',
     worktrees,
     highlightedElement: progress > 0.15 ? 'sidebar' : null,
-    panelMode: 'terminal'
+    panelMode: 'terminal',
+    mergedClosedCount: 3
   }
 }
 
@@ -245,7 +242,8 @@ function sectionTwoState(progress: number): MockHarnessState {
     worktrees,
     highlightedElement: highlightRow ? 'worktree-row' : 'sidebar',
     highlightedWorktreeId: '2',
-    panelMode: 'terminal'
+    panelMode: 'terminal',
+    mergedClosedCount: 3
   }
 }
 
@@ -259,7 +257,8 @@ function sectionThreeState(progress: number): MockHarnessState {
     activeWorktreeId: showForm ? 'new' : '1',
     worktrees,
     highlightedElement: 'new-worktree-button',
-    panelMode: showForm ? 'new-worktree-flow' : 'terminal'
+    panelMode: showForm ? 'new-worktree-flow' : 'terminal',
+    mergedClosedCount: 3
   }
 }
 
@@ -272,6 +271,7 @@ function finalState(): MockHarnessState {
     activeWorktreeId: '1',
     worktrees,
     highlightedElement: 'new-worktree-button',
-    panelMode: 'new-worktree-flow'
+    panelMode: 'new-worktree-flow',
+    mergedClosedCount: 3
   }
 }

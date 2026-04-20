@@ -1,12 +1,12 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ChevronDown,
+  ChevronRight,
+  FolderOpen,
   GitPullRequest,
   LayoutGrid,
-  Loader2,
   Plus,
   RefreshCw,
-  Settings as SettingsIcon,
   Sparkles,
   Trash2,
   X
@@ -16,12 +16,9 @@ export type MockStatus = 'idle' | 'processing' | 'waiting' | 'needs-approval' | 
 
 export interface MockWorktree {
   id: string
-  /** Branch name shown as the primary label. */
   branch: string
-  /** Shown as the secondary repo/path line under the branch. */
   path: string
   status: MockStatus
-  /** When present, shows a GitPullRequest icon + ± stats. */
   pr?: {
     checks: 'success' | 'failure' | 'pending' | 'none'
     additions: number
@@ -42,12 +39,11 @@ export interface MockHarnessState {
   activeWorktreeId: string
   worktrees: MockWorktree[]
   highlightedElement: HighlightedElement
-  /** Which worktree row to emphasize when highlightedElement === 'worktree-row'. */
   highlightedWorktreeId?: string
   panelMode: PanelMode
+  /** Optional count shown on the (always-collapsed) Merged / Closed header. */
+  mergedClosedCount?: number
 }
-
-/* ---- Status → class maps lifted from src/renderer/components/WorktreeTab.tsx ---- */
 
 const STATUS_COLORS: Record<MockStatus, string> = {
   idle: 'bg-faint',
@@ -63,8 +59,6 @@ const PR_ICON_COLOR: Record<'success' | 'failure' | 'pending' | 'none', string> 
   pending: 'text-warning',
   none: 'text-dim'
 }
-
-/* ---- Root ---- */
 
 export function MockHarness({ state }: { state: MockHarnessState }) {
   return (
@@ -115,10 +109,13 @@ function TrafficLights() {
   )
 }
 
-/* ---- Sidebar — structurally lifted from src/renderer/components/Sidebar.tsx ---- */
-
 function MockSidebar({ state }: { state: MockHarnessState }) {
   const sidebarGlow = state.highlightedElement === 'sidebar'
+
+  const needsAttention = state.worktrees.filter((w) => w.status === 'needs-approval')
+  const openPRs = state.worktrees.filter((w) => w.status !== 'needs-approval' && w.pr)
+  const activeNoPR = state.worktrees.filter((w) => w.status !== 'needs-approval' && !w.pr)
+  const mergedCount = state.mergedClosedCount ?? 3
 
   return (
     <motion.div
@@ -131,15 +128,22 @@ function MockSidebar({ state }: { state: MockHarnessState }) {
       className="shrink-0 bg-panel flex flex-col h-full relative"
       style={{ width: 240 }}
     >
-      {/* Title bar drag region with gradient "Harness" — left-20 leaves room
-       * for macOS traffic lights, same as the real app. */}
+      <svg width="0" height="0" className="absolute" aria-hidden="true">
+        <defs>
+          <linearGradient id="harness-add-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#f59e0b" />
+            <stop offset="50%" stopColor="#ef4444" />
+            <stop offset="100%" stopColor="#a855f7" />
+          </linearGradient>
+        </defs>
+      </svg>
+
       <div className="h-10 relative shrink-0">
         <span className="gradient-text text-xs font-semibold absolute left-20 top-[11px]">
           Harness
         </span>
       </div>
 
-      {/* Command Center entry */}
       <div className="px-2 pt-1 pb-1 shrink-0">
         <button className="w-full flex items-center gap-2 px-2 py-1.5 rounded transition-colors text-muted hover:bg-panel-raised hover:text-fg">
           <LayoutGrid size={14} className="text-dim" />
@@ -147,80 +151,137 @@ function MockSidebar({ state }: { state: MockHarnessState }) {
         </button>
       </div>
 
-      {/* Worktrees header */}
       <div className="px-3 py-1.5 flex items-center gap-2 shrink-0">
         <span className="text-xs font-medium text-dim">WORKTREES</span>
       </div>
 
-      {/* Worktree list, grouped like the real app */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden py-1">
-        <GroupHeader label="Open PRs" count={state.worktrees.length} />
-        <div>
-          {state.worktrees.map((wt) => (
-            <MockWorktreeTab
-              key={wt.id}
-              worktree={wt}
-              isActive={wt.id === state.activeWorktreeId}
-              highlighted={
-                state.highlightedElement === 'worktree-row' &&
-                wt.id === state.highlightedWorktreeId
-              }
-            />
-          ))}
-        </div>
+        {needsAttention.length > 0 && (
+          <>
+            <GroupHeader label="Needs Attention" count={needsAttention.length} expanded />
+            {needsAttention.map((wt) => (
+              <MockWorktreeTab
+                key={wt.id}
+                worktree={wt}
+                isActive={wt.id === state.activeWorktreeId}
+                highlighted={
+                  state.highlightedElement === 'worktree-row' &&
+                  wt.id === state.highlightedWorktreeId
+                }
+              />
+            ))}
+          </>
+        )}
+
+        {openPRs.length > 0 && (
+          <>
+            <GroupHeader label="Open PRs" count={openPRs.length} expanded />
+            {openPRs.map((wt) => (
+              <MockWorktreeTab
+                key={wt.id}
+                worktree={wt}
+                isActive={wt.id === state.activeWorktreeId}
+                highlighted={
+                  state.highlightedElement === 'worktree-row' &&
+                  wt.id === state.highlightedWorktreeId
+                }
+              />
+            ))}
+          </>
+        )}
+
+        {activeNoPR.length > 0 && (
+          <>
+            <GroupHeader label="Active" count={activeNoPR.length} expanded />
+            {activeNoPR.map((wt) => (
+              <MockWorktreeTab
+                key={wt.id}
+                worktree={wt}
+                isActive={wt.id === state.activeWorktreeId}
+                highlighted={
+                  state.highlightedElement === 'worktree-row' &&
+                  wt.id === state.highlightedWorktreeId
+                }
+              />
+            ))}
+          </>
+        )}
+
+        <GroupHeader label="Merged / Closed" count={mergedCount} expanded={false} />
+
+        <NewWorktreeRow highlighted={state.highlightedElement === 'new-worktree-button'} />
       </div>
 
-      {/* Footer buttons — new worktree + refresh + settings */}
-      <div className="shrink-0 border-t border-border px-2 py-1.5 flex items-center gap-1">
-        <NewWorktreeButton highlighted={state.highlightedElement === 'new-worktree-button'} />
+      <div className="border-t border-border p-2 flex justify-center gap-1 shrink-0">
         <button
-          className="text-dim hover:text-fg hover:bg-panel-raised rounded p-1.5 transition-colors"
-          aria-label="Refresh"
+          className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors"
+          aria-label="Refresh worktrees"
         >
-          <RefreshCw size={13} />
+          <RefreshCw size={14} />
         </button>
-        <div className="flex-1" />
         <button
-          className="text-dim hover:text-fg hover:bg-panel-raised rounded p-1.5 transition-colors"
-          aria-label="Settings"
+          className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors"
+          aria-label="Add repository"
         >
-          <SettingsIcon size={13} />
+          <FolderOpen size={14} />
+        </button>
+        <button
+          className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors"
+          aria-label="Clean up old worktrees"
+        >
+          <Trash2 size={14} />
         </button>
       </div>
     </motion.div>
   )
 }
 
-function GroupHeader({ label, count }: { label: string; count: number }) {
+function GroupHeader({
+  label,
+  count,
+  expanded
+}: {
+  label: string
+  count: number
+  expanded: boolean
+}) {
   return (
     <div className="w-full flex items-center gap-1 px-3 py-1.5 text-xs text-dim">
-      <ChevronDown size={12} className="shrink-0" />
+      {expanded ? (
+        <ChevronDown size={12} className="shrink-0" />
+      ) : (
+        <ChevronRight size={12} className="shrink-0" />
+      )}
       <span className="font-medium">{label}</span>
       <span className="text-faint ml-auto">{count}</span>
     </div>
   )
 }
 
-function NewWorktreeButton({ highlighted }: { highlighted: boolean }) {
+function NewWorktreeRow({ highlighted }: { highlighted: boolean }) {
   return (
-    <motion.button
+    <motion.div
       animate={{
         boxShadow: highlighted
-          ? '0 0 0 2px rgba(168, 85, 247, 0.55), 0 0 24px rgba(168, 85, 247, 0.45)'
-          : '0 0 0 0px rgba(168, 85, 247, 0)',
-        scale: highlighted ? 1.04 : 1
+          ? 'inset 0 0 0 1px rgba(168, 85, 247, 0.55), 0 0 24px rgba(168, 85, 247, 0.35)'
+          : 'inset 0 0 0 0px rgba(168, 85, 247, 0)'
       }}
-      transition={{ type: 'spring', stiffness: 220, damping: 22 }}
-      className="flex items-center gap-1.5 px-2 py-1 rounded text-xs font-semibold bg-surface text-fg-bright hover:bg-surface-hover transition-colors"
-      aria-label="New worktree"
+      transition={{ type: 'spring', stiffness: 220, damping: 24 }}
+      className="group relative w-full flex items-center gap-2 px-3 py-2 mt-1 text-dim overflow-hidden cursor-pointer"
     >
-      <Plus size={13} />
-      New
-    </motion.button>
+      <span className="absolute left-0 top-0 bottom-0 w-0.5 brand-gradient-flow-bar" />
+      <Plus
+        size={13}
+        className="shrink-0"
+        style={{ stroke: 'url(#harness-add-gradient)' }}
+      />
+      <span className="text-sm font-medium brand-gradient-flow-text">Add worktree</span>
+      <span className="ml-auto text-[10px] font-mono text-faint border border-border-strong rounded px-1 py-[1px]">
+        ⌘T
+      </span>
+    </motion.div>
   )
 }
-
-/* ---- WorktreeTab — JSX lifted from src/renderer/components/WorktreeTab.tsx ---- */
 
 function MockWorktreeTab({
   worktree,
@@ -267,11 +328,8 @@ function MockWorktreeTab({
   )
 }
 
-/* ---- Terminal panel — structurally matches TerminalPanel.tsx tab bar + body ---- */
-
 function MockTerminalPanel({ state }: { state: MockHarnessState }) {
   const active = state.worktrees.find((w) => w.id === state.activeWorktreeId) ?? state.worktrees[0]
-  const showApprovalCard = active?.status === 'needs-approval'
   const terminalGlow = state.highlightedElement === 'terminal'
 
   return (
@@ -284,8 +342,6 @@ function MockTerminalPanel({ state }: { state: MockHarnessState }) {
       transition={{ type: 'spring', stiffness: 200, damping: 30 }}
       className="flex-1 min-w-0 flex flex-col bg-app relative"
     >
-      {/* Drag-region title bar (10px tall in the real app). We leave it empty
-       * — no buttons — so it reads as pure window chrome. */}
       <div className="h-10 shrink-0 border-b border-border flex items-center px-4 text-xs text-dim">
         <span className="font-mono">
           {active?.path}
@@ -294,7 +350,6 @@ function MockTerminalPanel({ state }: { state: MockHarnessState }) {
         </span>
       </div>
 
-      {/* Tab bar lifted from TerminalPanel.tsx */}
       <div className="h-8 shrink-0 border-b border-border flex items-stretch px-2 bg-panel">
         <div className="shrink-0 flex items-center gap-1.5 px-3 h-full text-xs cursor-pointer border-b-2 border-muted text-fg-bright">
           <span
@@ -315,118 +370,112 @@ function MockTerminalPanel({ state }: { state: MockHarnessState }) {
         </button>
       </div>
 
-      {/* Terminal body */}
       <div className="flex-1 min-h-0 relative">
-        <TerminalBody showApprovalCard={showApprovalCard} />
-      </div>
-
-      {/* Claude status line mimicking the real "accept edits on (shift+tab to cycle)" footer */}
-      <div className="h-6 shrink-0 border-t border-border bg-panel flex items-center px-3 text-[10px] font-mono text-dim gap-3">
-        <span className="text-accent">⏵⏵</span>
-        <span className="text-fg">accept edits on</span>
-        <span className="text-faint">(shift+tab to cycle)</span>
-        <span className="flex-1" />
-        <span className="text-dim">
-          <span className="text-accent">○</span> medium · /effort
-        </span>
+        <ClaudeTUI active={active} />
       </div>
     </motion.div>
   )
 }
 
-function TerminalBody({ showApprovalCard }: { showApprovalCard: boolean }) {
+/** Renders a screenshot of Claude Code's fullscreen TUI as seen inside a
+ * Harness terminal pane. Layout mirrors the real thing: banner at top,
+ * empty working area, effort indicator + path-terminated separators, the
+ * input prompt (or an approval prompt when the worktree is blocked), and
+ * the "accept edits on" status line. */
+function ClaudeTUI({ active }: { active: MockWorktree }) {
+  const needsApproval = active.status === 'needs-approval'
+  const repoName = 'claude-harness/' + active.path.replace(/^harness\//, '')
   return (
-    <div className="h-full font-mono text-[11px] leading-[1.55] text-fg p-4 overflow-hidden bg-app">
-      {/* Banner — mirrors the "╭─╮ ✻ Welcome back" frame Claude Code draws. */}
-      <div className="text-accent">╭──────────────────────────────────────────────╮</div>
-      <div className="text-accent flex">
-        <span>│</span>
-        <span className="flex-1 px-2">
-          <span className="gradient-text font-semibold">✻</span>
-          <span className="text-fg-bright font-semibold"> Welcome back, Mike</span>
+    <div className="h-full flex flex-col font-mono text-[11px] leading-[1.55] bg-app px-4 py-3 overflow-hidden">
+      <div className="flex gap-3 shrink-0">
+        <pre className="text-accent leading-[1.1] text-[11px] m-0">
+{` ▐▛███▜▌
+▝▜█████▛▘
+  ▘▘ ▝▝`}
+        </pre>
+        <div className="leading-[1.4] pt-[1px]">
+          <div>
+            <span className="text-fg-bright">Claude Code</span>
+            <span className="text-dim"> v2.1.114</span>
+          </div>
+          <div className="text-dim">Opus 4.7 (1M context) · Claude Max</div>
+          <div className="text-dim truncate">~/{active.path}</div>
+        </div>
+      </div>
+
+      <div className="mt-3 text-dim shrink-0 truncate">
+        <span className="text-success">/remote-control</span> is active · Code in CLI or at{' '}
+        <span className="text-info">
+          https://claude.ai/code/session_01EypUSUvzm5dfZ1KwhmWpLN
         </span>
-        <span>│</span>
-      </div>
-      <div className="text-accent flex">
-        <span>│</span>
-        <span className="flex-1 px-2 text-dim">
-          <span className="text-fg">Claude Code</span> v2.1.109 · Opus 4.7 (1M) · /private/tmp/harness
-        </span>
-        <span>│</span>
-      </div>
-      <div className="text-accent">╰──────────────────────────────────────────────╯</div>
-
-      <div className="h-3" />
-
-      <div className="flex items-start gap-1 text-fg">
-        <span className="text-accent">›</span>
-        <span>add pagination to the users query</span>
       </div>
 
-      <div className="h-2" />
+      <div className="flex-1" />
 
-      <div className="text-fg">
-        <span className="text-success">●</span>{' '}
-        <span className="text-dim">Reading</span>{' '}
-        <span className="text-fg-bright">src/api/users.ts</span>
-      </div>
-      <div className="text-fg">
-        <span className="text-success">●</span>{' '}
-        <span className="text-dim">Reading</span>{' '}
-        <span className="text-fg-bright">src/api/schema.ts</span>
-      </div>
-      <div className="text-fg">
-        <span className="text-success">●</span>{' '}
-        <span className="text-dim">Writing</span>{' '}
-        <span className="text-fg-bright">src/api/users.ts</span>
-      </div>
-
-      <div className="h-2" />
-
-      <AnimatePresence>
-        {showApprovalCard && (
+      <AnimatePresence mode="wait" initial={false}>
+        {needsApproval && (
           <motion.div
             key="approval"
-            initial={{ opacity: 0, y: 8 }}
+            initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 8 }}
+            exit={{ opacity: 0, y: 6 }}
             transition={{ duration: 0.25 }}
-            className="border border-danger/40 bg-danger/5 rounded-md px-3 py-2.5 mt-1 mb-2 max-w-md"
+            className="shrink-0 mb-3"
           >
-            <div className="flex items-center gap-2 mb-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-danger animate-pulse" />
-              <span className="text-fg-bright font-semibold text-[10px] uppercase tracking-wider">
-                Bash — approval needed
-              </span>
+            <div>
+              <span className="text-accent">⏺</span>{' '}
+              <span className="text-fg-bright">Bash</span>{' '}
+              <span className="text-dim">(npx prisma migrate deploy)</span>
             </div>
-            <div className="text-fg text-[11px] mb-2 font-mono">
-              <span className="text-dim">$</span>{' '}
-              <span className="text-warning">npx</span> prisma migrate deploy
+            <div className="text-dim">
+              <span>  ⎿  </span>Do you want to proceed?
             </div>
-            <div className="flex gap-1.5">
-              <span className="px-2 py-0.5 rounded bg-success/20 border border-success/40 text-success text-[9px] font-semibold">
-                1. Yes
-              </span>
-              <span className="px-2 py-0.5 rounded bg-surface border border-border-strong text-dim text-[9px]">
-                2. Yes, and don't ask again
-              </span>
-              <span className="px-2 py-0.5 rounded bg-surface border border-border-strong text-dim text-[9px]">
-                3. No, tell Claude what to do differently
-              </span>
+            <div className="pl-5 text-fg">
+              <div>
+                <span className="text-warning">❯</span> 1. Yes
+              </div>
+              <div className="pl-3 text-dim">
+                2. Yes, and don't ask again this session{' '}
+                <span className="text-faint">(shift+tab)</span>
+              </div>
+              <div className="pl-3 text-dim">
+                3. No, and tell Claude what to do differently{' '}
+                <span className="text-faint">(esc)</span>
+              </div>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      <div className="flex items-center gap-1 text-fg-bright mt-1">
-        <span className="text-dim">›</span>
-        <span className="inline-block w-[7px] h-[13px] bg-fg-bright caret-blink" />
+      <div className="text-right text-dim text-[10px] shrink-0">
+        <span className="text-success">◉</span> high{' '}
+        <span className="text-faint">· /effort</span>
+      </div>
+
+      <div className="flex items-center gap-2 shrink-0 mt-0.5">
+        <div className="flex-1 border-t border-border-strong" />
+        <span className="text-dim text-[10px] whitespace-nowrap">{repoName}</span>
+        <div className="w-3 border-t border-border-strong" />
+      </div>
+
+      <div className="shrink-0 py-1.5 min-h-[22px] flex items-center">
+        {!needsApproval && (
+          <>
+            <span className="text-accent">❯</span>
+            <span className="inline-block w-[6px] h-[12px] bg-fg-bright caret-blink ml-1 align-middle" />
+          </>
+        )}
+      </div>
+
+      <div className="border-t border-border-strong shrink-0" />
+
+      <div className="mt-1.5 text-dim shrink-0">
+        <span className="text-accent">⏵⏵</span> accept edits on{' '}
+        <span className="text-faint">(shift+tab to cycle)</span>
       </div>
     </div>
   )
 }
-
-/* ---- New-worktree screen — JSX lifted from NewWorktreeScreen.tsx (fresh mode) ---- */
 
 function MockNewWorktreeScreen() {
   return (
