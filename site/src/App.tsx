@@ -1,7 +1,21 @@
+import { HeaderNav } from './components/HeaderNav'
+import { Hero } from './components/Hero'
+import { DemoVideo } from './components/DemoVideo'
+import { Features } from './components/Features'
+import { OpenSource } from './components/OpenSource'
+import { Install } from './components/Install'
+import { Footer } from './components/Footer'
+
 export function App() {
   return (
-    <div className="min-h-screen flex items-center justify-center">
-      <h1 className="text-4xl font-bold gradient-text">Harness — coming soon</h1>
+    <div className="min-h-screen grid-bg">
+      <HeaderNav />
+      <Hero />
+      <DemoVideo />
+      <Features />
+      <OpenSource />
+      <Install />
+      <Footer />
     </div>
   )
 }
