@@ -42,23 +42,23 @@ const BASE_WORKTREES: Omit<MockWorktree, 'status'>[] = [
 const SECTIONS = [
   {
     eyebrow: 'Parallel sessions',
-    title: 'All your Claude sessions in one place.',
-    body: 'Every worktree is its own git branch, its own folder, its own Claude. Kick off five tasks, switch between them in a keystroke, and never worry about two agents fighting over the same file.'
+    title: 'All your agents in one place.',
+    body: 'Every agent is its own git branch, its own folder, its own Claude (or Codex!). Kick off five tasks, switch between them in a keystroke, and never worry about two agents fighting over the same file.'
   },
   {
     eyebrow: 'Reliable status',
-    title: 'See which Claude needs attention at a glance.',
-    body: 'Status dots come from Claude Code hooks — not flaky terminal scraping. The second a session is waiting on approval, the row lights up red and jumps the queue.'
+    title: 'See which agent needs attention at a glance.',
+    body: 'Glancing at the sidebar tells you which agents need your attention. The second an agent is waiting on approval, the row lights up red and jumps the queue.'
   },
   {
     eyebrow: 'New worktree in a click',
     title: 'Start new work instantly.',
-    body: 'Spawn a fresh worktree from the sidebar. Pick a branch, pick a base, paste a prompt — Harness creates the git worktree, runs your setup script, and launches Claude, ready to go.'
+    body: 'Spawn a fresh agent from the sidebar. Harness manages the full lifecycle of the git worktree, so you never even have to learn the commands.'
   },
   {
-    eyebrow: 'Information at your fingertips',
+    eyebrow: 'Everything in one UI',
     title: 'Everything about the worktree, one keystroke away.',
-    body: 'Pull request status, branch commits, changed-file review, and any file opened in an embedded editor — all right there next to Claude. Review what shipped without leaving the terminal.'
+    body: 'Pull request status, branch commits, changed-file review, and any file opened in an embedded editor — all right there next to Claude. Review what shipped without leaving Harness.'
   }
 ] as const
 
