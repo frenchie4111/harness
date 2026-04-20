@@ -1,14 +1,22 @@
 // HTTP server that serves the bundled web-client renderer to remote
 // browsers. Designed to share its port with the WS transport: clients
-// fetch `http://host:port/` to load index.html, then the renderer opens
-// `ws://host:port/?token=…` on the same origin. Same-origin avoids any
-// CORS plumbing, and the ws library's `verifyClient` still gates every
-// upgrade on the shared auth token.
+// fetch `http://host:port/?token=…` to load index.html, then the
+// renderer opens `ws://host:port/?token=…` on the same origin.
+// Same-origin avoids any CORS plumbing, and the ws library's
+// `verifyClient` still gates every upgrade on the shared auth token.
 //
-// The auth token is NOT served over any unauthenticated endpoint — it's
-// injected into index.html at request time via a <meta> tag the renderer
-// reads at boot. Anyone who can GET `/` already has the token; anyone
-// who can't won't get one.
+// Auth model:
+//   - HTML entry (`/`, `/index.html`) requires `?token=<token>` on the
+//     URL (or an `Authorization: Bearer <token>` header). Unauthenticated
+//     requests get 401 with a plaintext hint — the token is never
+//     disclosed to a caller that didn't already present it.
+//   - WS upgrade on the same port is gated by `verifyClient` against the
+//     same token.
+//   - Static assets (CSS, JS chunks, images, favicon, manifest, fonts)
+//     are intentionally ungated: they don't carry the token, browsers
+//     often fetch them without query strings (favicon/manifest), and
+//     once the HTML entry is gated an attacker with no token has no way
+//     to bootstrap a useful asset fetch in-context.
 //
 // Threat model: binding to 127.0.0.1 is effectively unauthenticated in
 // practice (local users can read the token from the running process).
@@ -16,7 +24,7 @@
 // thing between an untrusted LAN peer and the main process. No TLS yet;
 // only enable LAN bind on a trusted network.
 
-import { createServer, type Server as HttpServer } from 'http'
+import { createServer, type IncomingMessage, type Server as HttpServer } from 'http'
 import { readFile, stat } from 'fs/promises'
 import { extname, join, resolve, sep } from 'path'
 import { log } from './debug'
@@ -65,6 +73,14 @@ export function createWebClientServer(opts: WebClientServerOptions): HttpServer 
         return
       }
 
+      const isHtmlEntry = filePath === indexPath
+      if (isHtmlEntry && !hasValidToken(req, url, opts.token)) {
+        res.statusCode = 401
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8')
+        res.end('unauthorized — append ?token=<token> to the URL')
+        return
+      }
+
       let content: Buffer | null = null
       try {
         const st = await stat(filePath)
@@ -89,16 +105,6 @@ export function createWebClientServer(opts: WebClientServerOptions): HttpServer 
       const ext = extname(pathname).toLowerCase()
       const mime = MIME[ext] ?? 'application/octet-stream'
       res.setHeader('Content-Type', mime)
-      if (filePath === indexPath) {
-        const injected = content
-          .toString('utf-8')
-          .replace(
-            '</head>',
-            `    <meta name="harness-ws-token" content="${escapeAttr(opts.token)}">\n  </head>`
-          )
-        res.end(injected)
-        return
-      }
       res.end(content)
     } catch (err) {
       log('web-client', 'http error', err instanceof Error ? err.message : String(err))
@@ -108,6 +114,13 @@ export function createWebClientServer(opts: WebClientServerOptions): HttpServer 
   })
 }
 
-function escapeAttr(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
+function hasValidToken(req: IncomingMessage, url: URL, expected: string): boolean {
+  const q = url.searchParams.get('token')
+  if (q && q === expected) return true
+  const auth = req.headers['authorization']
+  if (typeof auth === 'string') {
+    const m = auth.match(/^Bearer\s+(.+)$/i)
+    if (m && m[1] === expected) return true
+  }
+  return false
 }
