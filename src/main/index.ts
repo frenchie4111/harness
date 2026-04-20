@@ -10,7 +10,7 @@ import { ElectronServerTransport } from './transport-electron'
 import { WebSocketServerTransport } from './transport-websocket'
 import { CompoundServerTransport } from './transport-compound'
 import { createWebClientServer } from './web-client-server'
-import { randomBytes } from 'crypto'
+import { getOrCreateWsToken } from './ws-token'
 import { networkInterfaces } from 'os'
 import type { Server as HttpServer } from 'http'
 import { PerfMonitor } from './perf-monitor'
@@ -141,11 +141,11 @@ const wsPort =
 const wsHost =
   process.env['HARNESS_WS_HOST'] || config.wsTransportHost || '127.0.0.1'
 
-// Pre-generate the auth token so it can be inlined into the HTML the
-// web-client server returns AND reused by the WS transport — both must
-// agree, but the token is only ever served via index.html (not via any
-// unauthenticated endpoint).
-const wsToken = wsEnabled ? randomBytes(32).toString('hex') : null
+// Load (or generate + persist) the shared auth token. Persistence lets
+// users pin the web-client URL to a phone homescreen or bookmark it
+// and have it keep working across main-process restarts. Rotation
+// happens explicitly via Settings, not on every boot.
+const wsToken = wsEnabled ? getOrCreateWsToken() : null
 
 // HTTP server for the bundled web-client renderer. Lives on the same
 // host+port as the WS transport: clients fetch `http://host:port/` for
