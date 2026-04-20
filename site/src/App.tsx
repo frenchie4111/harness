@@ -5,6 +5,7 @@ import { Features } from './components/Features'
 import { OpenSource } from './components/OpenSource'
 import { Install } from './components/Install'
 import { Footer } from './components/Footer'
+import { ScrollDiorama } from './components/ScrollDiorama'
 
 export function App() {
   return (
@@ -12,6 +13,7 @@ export function App() {
       <HeaderNav />
       <Hero />
       <DemoVideo />
+      <ScrollDiorama />
       <Features />
       <OpenSource />
       <Install />
