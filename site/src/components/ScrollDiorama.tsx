@@ -157,24 +157,19 @@ function CopyStack({ activeSection }: { activeSection: SectionIndex }) {
                 y: active ? 0 : i < activeSection ? -24 : 24
               }}
               transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
-              className="absolute inset-0 flex flex-col"
+              className="absolute inset-0 flex flex-col pt-[6vh]"
               style={{
                 pointerEvents: active ? 'auto' : 'none',
                 zIndex: active ? 2 : 1
               }}
             >
-              <div className="pt-[6vh]">
-                <div className="text-xs uppercase tracking-[0.2em] text-amber-400/80 font-semibold mb-5">
-                  {s.eyebrow}
-                </div>
-                <h2 className="text-4xl lg:text-5xl font-bold tracking-tight leading-[1.08]">
-                  {s.title}
-                </h2>
+              <div className="text-xs uppercase tracking-[0.2em] text-amber-400/80 font-semibold mb-5">
+                {s.eyebrow}
               </div>
-              <div className="flex-1" />
-              <p className="text-lg text-ink-400 leading-relaxed max-w-xl pb-[8vh]">
-                {s.body}
-              </p>
+              <h2 className="text-4xl lg:text-5xl font-bold tracking-tight leading-[1.08] mb-6">
+                {s.title}
+              </h2>
+              <p className="text-lg text-ink-400 leading-relaxed max-w-xl">{s.body}</p>
             </motion.div>
           )
         })}
