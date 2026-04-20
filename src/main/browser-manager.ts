@@ -511,7 +511,10 @@ export class BrowserManager {
     }
   }
 
-  async capturePage(tabId: string): Promise<string | null> {
+  async capturePage(
+    tabId: string,
+    opts?: { format?: 'jpeg' | 'png'; quality?: number }
+  ): Promise<{ data: string; format: 'jpeg' | 'png' } | null> {
     const inst = this.instances.get(tabId)
     if (!inst) return null
     try {
@@ -523,7 +526,12 @@ export class BrowserManager {
         captured.width === outputSize.width && captured.height === outputSize.height
           ? image
           : image.resize({ width: outputSize.width, height: outputSize.height })
-      return normalized.toPNG().toString('base64')
+      const format = opts?.format === 'png' ? 'png' : 'jpeg'
+      if (format === 'png') {
+        return { data: normalized.toPNG().toString('base64'), format: 'png' }
+      }
+      const q = Math.max(1, Math.min(100, Math.round(opts?.quality ?? 70)))
+      return { data: normalized.toJPEG(q).toString('base64'), format: 'jpeg' }
     } catch (err) {
       log('browser', `capturePage failed tab=${tabId}`, err instanceof Error ? err.message : err)
       return null
