@@ -47,6 +47,30 @@ export function focusTerminalById(id: string): void {
   terminalRegistry.get(id)?.focus()
 }
 
+export function scrollTerminalById(id: string, lines: number): void {
+  terminalRegistry.get(id)?.scrollLines(lines)
+}
+
+export function scrollTerminalToBottomById(id: string): void {
+  terminalRegistry.get(id)?.scrollToBottom()
+}
+
+export function getTerminalLineHeight(id: string): number {
+  const term = terminalRegistry.get(id)
+  if (!term?.element) return 16
+  const viewport = term.element.querySelector('.xterm-viewport') as HTMLElement | null
+  if (!viewport) return 16
+  const rows = term.rows || 1
+  const h = viewport.clientHeight / rows
+  return h > 0 ? h : 16
+}
+
+export function isTerminalAtBottom(id: string): boolean {
+  const term = terminalRegistry.get(id)
+  if (!term) return true
+  return term.buffer.active.viewportY >= term.buffer.active.baseY
+}
+
 /** Live cache of terminal font settings. Hydrated once at module load and
  * kept in sync via main-process broadcasts so newly created terminals open
  * with the user's chosen values without any prop drilling. */
@@ -88,6 +112,38 @@ window.api.onStateEvent((raw) => {
     applyFontToAll()
   }
 })
+
+// Browsers without `font-variant-emoji: text` (iOS Safari < 17.4) happily
+// auto-emojify ambiguous codepoints via the Apple Color Emoji fallback,
+// so Claude Code's U+23FA tool-call marker renders as a red-circle
+// emoji on older phones even with our CSS rule in place. Detect support
+// once and rewrite the known offender to U+25CF (●) in the data stream
+// when the CSS can't do the job. On browsers that honor the property we
+// ship the original glyph through unchanged.
+const supportsTextEmoji =
+  typeof CSS !== 'undefined' && typeof CSS.supports === 'function'
+    ? CSS.supports('font-variant-emoji', 'text')
+    : false
+
+// On touch devices, xterm's alt-screen and mouse-tracking modes both
+// make TUIs (Claude Code, vim) unscrollable: alt-screen has no
+// scrollback at all, and mouse tracking forwards finger pans to the
+// PTY as mouse reports that the TUI discards. Strip the CSI private
+// modes that enable them so touch devices always stay in the primary
+// buffer with scroll wheel / touch scroll. Desktop clients keep the
+// full behavior.
+const isTouchDevice =
+  typeof window !== 'undefined' &&
+  ('ontouchstart' in window || (window.navigator?.maxTouchPoints ?? 0) > 0)
+const TUI_UNFRIENDLY_MODES =
+  /\u001b\[\?(?:47|1000|1002|1003|1005|1006|1015|1047|1049)[hl]/g
+
+function sanitizeTerminalData(data: string): string {
+  let out = data
+  if (!supportsTextEmoji) out = out.replace(/\u23FA/g, '\u25CF')
+  if (isTouchDevice) out = out.replace(TUI_UNFRIENDLY_MODES, '')
+  return out
+}
 
 /** Mark a terminal as closing: drop its main-side scrollback buffer + file so
  * a future tab with a different id doesn't inherit stale bytes. Scrollback
@@ -299,7 +355,7 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
 
       cleanupData = window.api.onTerminalData((id, data) => {
         if (id === terminalId) {
-          terminal.write(data)
+          terminal.write(sanitizeTerminalData(data))
           setLoading(false)
         }
       })
@@ -332,7 +388,7 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
       // mid-parse (e.g. focus reports from CSI ?1004h in the saved history)
       // get sent to the freshly spawned PTY — which is how a stray "O" was
       // leaking into Claude on session resume (focus-out = ESC [ O).
-      terminal.write(history, () => {
+      terminal.write(sanitizeTerminalData(history), () => {
         if (disposed) return
         // Reset any reporting modes the restored session may have left on, so
         // the fresh process starts in a clean state.

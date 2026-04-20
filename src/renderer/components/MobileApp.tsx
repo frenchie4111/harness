@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ChevronDown, GitPullRequest, RefreshCw, Loader2, SquareTerminal, FileText, FileDiff, Globe, X, ExternalLink } from 'lucide-react'
+import { ChevronDown, GitPullRequest, RefreshCw, Loader2, SquareTerminal, FileText, FileDiff, Globe, X, ExternalLink, PanelRightOpen, PanelRightClose } from 'lucide-react'
 import { useWorktrees, usePanes, useTerminals, usePrs } from '../store'
 import { groupWorktrees, type WorktreeGroup } from '../worktree-sort'
 import { getLeaves } from '../../shared/state/terminals'
 import type { PtyStatus, TerminalTab, Worktree, PRStatus } from '../types'
 import { MobileTerminal } from './MobileTerminal'
+import { MobileRightPanel } from './MobileRightPanel'
 import { AgentIcon } from './AgentIcon'
+import { HotkeysProvider } from './Tooltip'
+import { resolveHotkeys } from '../hotkeys'
 
 type RunnableTab = TerminalTab & { type: 'agent' | 'shell' }
 
@@ -49,6 +52,10 @@ export function MobileApp(): JSX.Element {
   // yank another client's split pane around.
   const [selectedTabByWorktree, setSelectedTabByWorktree] = useState<Record<string, string>>({})
   const [pickerOpen, setPickerOpen] = useState(false)
+  // Fullscreen takeover that surfaces the desktop right panel (PR status,
+  // branch commits, cost). Per-client UI focus → renderer-local state, not
+  // a slice (see CLAUDE.md workflow #5).
+  const [rightPanelOpen, setRightPanelOpen] = useState(false)
 
   useEffect(() => {
     if (!activeWorktreeId) return
@@ -105,7 +112,12 @@ export function MobileApp(): JSX.Element {
     [activeWorktree]
   )
 
+  // HotkeysProvider here is only for its embedded Radix TooltipProvider —
+  // shared desktop panels we render on mobile (PR status, merge, etc.)
+  // use <Tooltip> which throws without a provider in scope. Bindings
+  // don't actually drive any hotkey behavior on mobile.
   return (
+    <HotkeysProvider bindings={resolveHotkeys(undefined)}>
     <div
       className="flex flex-col bg-app text-fg overflow-hidden"
       style={{
@@ -127,6 +139,8 @@ export function MobileApp(): JSX.Element {
         pickerOpen={pickerOpen}
         onTogglePicker={() => setPickerOpen((v) => !v)}
         onSelectTab={handleSelectTab}
+        rightPanelOpen={rightPanelOpen}
+        onToggleRightPanel={activeWorktree ? () => setRightPanelOpen((v) => !v) : undefined}
       />
 
       <div className="flex-1 min-h-0 relative">
@@ -159,8 +173,18 @@ export function MobileApp(): JSX.Element {
             onRefresh={() => void window.api.refreshPRsAll()}
           />
         )}
+
+        {rightPanelOpen && (
+          <MobileRightPanel
+            activeWorktree={activeWorktree}
+            prStatuses={prs.byPath}
+            prLoading={prs.loading}
+            onClose={() => setRightPanelOpen(false)}
+          />
+        )}
       </div>
     </div>
+    </HotkeysProvider>
   )
 }
 
@@ -198,9 +222,11 @@ interface HeaderProps {
   pickerOpen: boolean
   onTogglePicker: () => void
   onSelectTab: (tabId: string) => void
+  rightPanelOpen: boolean
+  onToggleRightPanel?: () => void
 }
 
-function Header({ worktree, tabs, selectedTabId, statuses, shellActivity, pickerOpen, onTogglePicker, onSelectTab }: HeaderProps): JSX.Element {
+function Header({ worktree, tabs, selectedTabId, statuses, shellActivity, pickerOpen, onTogglePicker, onSelectTab, rightPanelOpen, onToggleRightPanel }: HeaderProps): JSX.Element {
   const repoLabel = worktree ? worktree.repoRoot.split('/').pop() || worktree.repoRoot : null
   return (
     <header className="shrink-0 flex items-stretch border-b border-border bg-panel h-11">
@@ -241,6 +267,18 @@ function Header({ worktree, tabs, selectedTabId, statuses, shellActivity, picker
           />
         ))}
       </div>
+      {onToggleRightPanel && (
+        <button
+          onClick={onToggleRightPanel}
+          className={
+            'shrink-0 inline-flex items-center justify-center w-11 h-full border-l border-border ' +
+            (rightPanelOpen ? 'bg-surface text-fg-bright' : 'text-dim hover:text-fg hover:bg-panel-raised')
+          }
+          aria-label={rightPanelOpen ? 'Close worktree details' : 'Worktree details'}
+        >
+          {rightPanelOpen ? <PanelRightClose className="w-4 h-4" /> : <PanelRightOpen className="w-4 h-4" />}
+        </button>
+      )}
     </header>
   )
 }

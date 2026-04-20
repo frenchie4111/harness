@@ -464,3 +464,13 @@ button, [role="button"], a[href], [onclick] {
 .monaco-editor .comment-line-glyph:hover {
   opacity: 1;
 }
+
+/* iOS/Safari auto-promotes ambiguous codepoints like U+23FA (⏺, which
+ * Claude Code uses for tool-call markers) to color emoji via the system
+ * Apple Color Emoji fallback, which is why those markers look like emoji
+ * on the mobile web client. Force text presentation on the xterm rows so
+ * the glyph renders from the monospace stack instead. Supported in Safari
+ * 17.4+ / Chrome 110+ / Firefox 108+. */
+.xterm .xterm-rows {
+  font-variant-emoji: text;
+}

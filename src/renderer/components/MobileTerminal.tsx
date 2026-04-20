@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { CornerDownLeft, X, Send, Keyboard } from 'lucide-react'
-import { XTerminal } from './XTerminal'
+import { CornerDownLeft, X, Send, Keyboard, ArrowDownToLine } from 'lucide-react'
+import { XTerminal, scrollTerminalById, scrollTerminalToBottomById, getTerminalLineHeight, isTerminalAtBottom } from './XTerminal'
 import type { TerminalTab } from '../types'
 
 interface MobileTerminalProps {
@@ -39,9 +39,12 @@ function ctrlByte(key: string): string | null {
 
 export function MobileTerminal({ worktreePath, tab }: MobileTerminalProps): JSX.Element {
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const wrapperRef = useRef<HTMLDivElement>(null)
   const composingRef = useRef(false)
+  const draggedRef = useRef(false)
   const [ctrlSticky, setCtrlSticky] = useState(false)
   const [keyboardOpen, setKeyboardOpen] = useState(false)
+  const [scrolledBack, setScrolledBack] = useState(false)
   const terminalId = tab.id
 
   const writeRaw = useCallback(
@@ -171,6 +174,84 @@ export function MobileTerminal({ worktreePath, tab }: MobileTerminalProps): JSX.
     inputRef.current?.focus({ preventScroll: true })
   }, [])
 
+  // Touch-scroll the xterm viewport. xterm v6 ships with no touch-scroll
+  // implementation of its own (see xtermjs/xterm.js#5377, #594), but it
+  // DOES attach a document-level gesture recognizer that calls
+  // preventDefault/stopPropagation on touches it interprets — which races
+  // and wins against a wrapper-level listener, silently killing our
+  // handlers. We attach directly to the `.xterm` element in the capture
+  // phase and stopPropagation ourselves so xterm's document handlers
+  // don't see the event at all. touch-action:none also has to live on the
+  // `.xterm` element (not the wrapper) since it only affects the element
+  // it's on.
+  useEffect(() => {
+    const wrap = wrapperRef.current
+    if (!wrap) return
+    const xtermEl = wrap.querySelector('.xterm') as HTMLElement | null
+    if (!xtermEl) return
+    xtermEl.style.touchAction = 'none'
+    let lastY: number | null = null
+    let accum = 0
+    let lineHeight = 16
+    const onStart = (e: TouchEvent): void => {
+      if (e.touches.length !== 1) { lastY = null; return }
+      lastY = e.touches[0].clientY
+      accum = 0
+      draggedRef.current = false
+      lineHeight = getTerminalLineHeight(terminalId)
+    }
+    const onMove = (e: TouchEvent): void => {
+      if (lastY === null || e.touches.length !== 1) return
+      const y = e.touches[0].clientY
+      accum += y - lastY
+      lastY = y
+      const lines = Math.trunc(accum / lineHeight)
+      if (lines !== 0) {
+        accum -= lines * lineHeight
+        scrollTerminalById(terminalId, -lines)
+        setScrolledBack(!isTerminalAtBottom(terminalId))
+        draggedRef.current = true
+        e.preventDefault()
+        e.stopPropagation()
+      } else if (Math.abs(accum) > 4) {
+        draggedRef.current = true
+        e.preventDefault()
+        e.stopPropagation()
+      }
+    }
+    const onEnd = (): void => {
+      lastY = null
+      accum = 0
+      setScrolledBack(!isTerminalAtBottom(terminalId))
+    }
+    xtermEl.addEventListener('touchstart', onStart, { passive: true, capture: true })
+    xtermEl.addEventListener('touchmove', onMove, { passive: false, capture: true })
+    xtermEl.addEventListener('touchend', onEnd, { passive: true, capture: true })
+    xtermEl.addEventListener('touchcancel', onEnd, { passive: true, capture: true })
+    return () => {
+      xtermEl.removeEventListener('touchstart', onStart, { capture: true })
+      xtermEl.removeEventListener('touchmove', onMove, { capture: true })
+      xtermEl.removeEventListener('touchend', onEnd, { capture: true })
+      xtermEl.removeEventListener('touchcancel', onEnd, { capture: true })
+    }
+  }, [terminalId])
+
+  const handleWrapperClick = useCallback(() => {
+    // Tap focuses the input (pops the keyboard). A drag just scrolled —
+    // skip focus so we don't surprise the user with a keyboard at the end
+    // of a pan gesture.
+    if (draggedRef.current) {
+      draggedRef.current = false
+      return
+    }
+    inputRef.current?.focus({ preventScroll: true })
+  }, [])
+
+  const handleJumpToBottom = useCallback(() => {
+    scrollTerminalToBottomById(terminalId)
+    setScrolledBack(false)
+  }, [terminalId])
+
   const toolbarButtons = useMemo(
     () => [
       { label: 'esc', onPress: () => sendKey('Escape') },
@@ -203,7 +284,11 @@ export function MobileTerminal({ worktreePath, tab }: MobileTerminalProps): JSX.
     // toolbar. The parent already has `relative`, so inset-0 just fills
     // it deterministically.
     <div className="absolute inset-0 flex flex-col bg-app">
-      <div className="relative flex-1 min-h-0">
+      <div
+        ref={wrapperRef}
+        onClick={handleWrapperClick}
+        className="relative flex-1 min-h-0"
+      >
         {/* key by tab.id so switching tabs (or worktrees) forces a fresh
             XTerminal instance. Desktop renders one XTerminal per tab
             inside portals; on mobile we reuse a single slot, so without
@@ -220,10 +305,10 @@ export function MobileTerminal({ worktreePath, tab }: MobileTerminalProps): JSX.
           sessionName={tab.label}
           sessionId={tab.sessionId}
         />
-        {/* Hidden textarea, sized to fill the terminal area so iOS doesn't
-            scroll oddly when it focuses. Pointer events stay on so a tap
-            anywhere on the terminal opens the keyboard; the actual xterm
-            canvas keeps rendering the cursor underneath. */}
+        {/* Hidden textarea — pointer-events:none so touch scrolling on the
+            wrapper above isn't eaten; the wrapper's onClick focuses the
+            textarea programmatically on a tap. Keyboard input still
+            works once focused (pointer-events only blocks mouse/touch). */}
         <textarea
           ref={inputRef}
           autoCapitalize="off"
@@ -239,8 +324,18 @@ export function MobileTerminal({ worktreePath, tab }: MobileTerminalProps): JSX.
           onFocus={handleInputFocus}
           onBlur={handleInputBlur}
           className="absolute inset-0 w-full h-full resize-none border-0 bg-transparent text-transparent caret-transparent outline-none"
-          style={{ opacity: 0 }}
+          style={{ opacity: 0, pointerEvents: 'none' }}
         />
+        {scrolledBack && (
+          <button
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={handleJumpToBottom}
+            className="absolute right-3 bottom-3 z-10 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] bg-surface/90 text-fg-bright border border-border shadow-lg"
+          >
+            <ArrowDownToLine className="w-3 h-3" />
+            Jump to bottom
+          </button>
+        )}
       </div>
 
       <div className="shrink-0 border-t border-border bg-panel-raised">
