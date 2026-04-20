@@ -3,6 +3,8 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import type { StateEvent } from '../../shared/state'
+import { getClientId, useTerminalSession } from '../store'
+import { Eye } from 'lucide-react'
 
 function ClaudeLoader() {
   return (
@@ -183,6 +185,17 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
   const [loading, setLoading] = useState(type === 'agent')
   const visibleRef = useRef(visible)
   const initializedRef = useRef(false)
+  const session = useTerminalSession(terminalId)
+  // The controllerClientId is null in the very narrow window between
+  // mount and the first terminal:join dispatch landing back through the
+  // state stream. Treat that as "we are controller" so input works
+  // (main's gate allows writes when no session exists yet — see
+  // pty:write handler).
+  const myClientId = getClientId()
+  const isController =
+    session === null || session.controllerClientId === null || session.controllerClientId === myClientId
+  const isControllerRef = useRef(isController)
+  isControllerRef.current = isController
   // When the terminal mounts in a display:none wrapper (background tab or
   // non-active worktree), the container has zero size and FitAddon can't
   // compute dimensions. We stash the deferred spawn here so the visible
@@ -254,6 +267,12 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
     // matches Claude Code's documented line-continuation pattern and inserts
     // a newline regardless of cursor position.
     terminal.attachCustomKeyEventHandler((e) => {
+      if (!isControllerRef.current) {
+        // Spectators shouldn't inject even our Shift+Enter escape;
+        // main would drop the write too, but swallowing here keeps
+        // local copy/paste selection working while blocking input.
+        return true
+      }
       if (
         e.type === 'keydown' &&
         e.key === 'Enter' &&
@@ -350,6 +369,10 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
       window.api.createTerminal(terminalId, spawnCwd, shell, args, type === 'agent' ? agentKind : undefined, spawnCols, spawnRows)
 
       terminal.onData((data) => {
+        // Spectators silently drop input. Main also enforces this, but
+        // gating here avoids the round-trip + any suggestion the keystroke
+        // "took" (we don't echo back since xterm's local echo is off).
+        if (!isControllerRef.current) return
         window.api.writeTerminal(terminalId, data)
       })
 
@@ -408,7 +431,10 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
       spawnPty()
     })
 
-    // Handle resize — only fit when actually visible
+    // Handle resize — only fit when actually visible. Spectators still
+    // call fitAddon.fit() so the local xterm renders at the controller's
+    // dimensions, but they don't forward resize signals — the PTY size
+    // is authoritative and owned by the controller.
     const resizeObserver = new ResizeObserver((entries) => {
       const entry = entries[0]
       const w = Math.round(entry?.contentRect.width ?? 0)
@@ -420,7 +446,7 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
         if (!fitAddonRef.current) return
         fitAddonRef.current.fit()
         const dims = fitAddonRef.current.proposeDimensions()
-        if (dims) {
+        if (dims && isControllerRef.current) {
           console.log(`[xterm] ResizeObserver fit id=${terminalId} cols=${dims.cols} rows=${dims.rows}`)
           window.api.resizeTerminal(terminalId, dims.cols, dims.rows)
         }
@@ -437,6 +463,7 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
       // user wanting the agent dead — a web client closing a browser
       // tab, a renderer reload, etc. — and any one of those used to
       // take Claude down for every connected client.
+      window.api.leaveTerminal(terminalId)
       terminalRegistry.delete(terminalId)
       fitRegistry.delete(terminalId)
       resizeObserver.disconnect()
@@ -445,6 +472,14 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
       terminal.dispose()
     }
   }, [terminalId, cwd, type])
+
+  // Announce our presence on the session roster. For the spawn path
+  // this is redundant with pty:create's implicit controlTaken, but
+  // dispatching here too covers the attach case (second client mounts
+  // an XTerminal for a terminal whose PTY already exists).
+  useEffect(() => {
+    window.api.joinTerminal(terminalId)
+  }, [terminalId])
 
   // Re-fit when the terminal becomes visible
   useEffect(() => {
@@ -516,6 +551,26 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
     terminalRef.current?.focus()
   }
 
+  const handleTakeControl = (): void => {
+    if (!fitAddonRef.current) {
+      window.api.takeTerminalControl(terminalId, 120, 30)
+      return
+    }
+    try {
+      fitAddonRef.current.fit()
+      const dims = fitAddonRef.current.proposeDimensions()
+      if (dims && dims.cols > 0 && dims.rows > 0) {
+        window.api.takeTerminalControl(terminalId, dims.cols, dims.rows)
+      } else {
+        window.api.takeTerminalControl(terminalId, 120, 30)
+      }
+    } catch {
+      window.api.takeTerminalControl(terminalId, 120, 30)
+    }
+  }
+
+  const showSpectatorOverlay = session !== null && session.controllerClientId !== null && session.controllerClientId !== myClientId
+
   return (
     <div
       className="w-full h-full relative"
@@ -536,6 +591,20 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
               </span>
             </div>
           </div>
+        </div>
+      )}
+      {showSpectatorOverlay && (
+        <div className="absolute top-2 right-2 flex items-center gap-2 pointer-events-auto">
+          <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-panel/90 border border-border text-xs text-dim">
+            <Eye size={12} />
+            <span>Spectating</span>
+          </div>
+          <button
+            onClick={handleTakeControl}
+            className="px-2 py-1 rounded-md text-xs bg-panel/90 border border-border text-fg-bright hover:bg-border transition-colors"
+          >
+            Take control
+          </button>
         </div>
       )}
       {exited && type === 'agent' && onRestartAgent && (

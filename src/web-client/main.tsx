@@ -384,6 +384,15 @@ function buildApi(transport: WebSocketClientTransport): ElectronAPI {
     killTerminal: (id) => {
       sig('pty:kill', id)
     },
+    joinTerminal: (id) => {
+      sig('terminal:join', id)
+    },
+    leaveTerminal: (id) => {
+      sig('terminal:leave', id)
+    },
+    takeTerminalControl: (id, cols, rows) => {
+      sig('terminal:takeControl', id, cols, rows)
+    },
     onTerminalData: (callback) =>
       onSig('terminal:data', (id, data) =>
         callback(id as string, data as string)
@@ -400,7 +409,9 @@ function buildApi(transport: WebSocketClientTransport): ElectronAPI {
 
     getStateSnapshot: () => transport.getStateSnapshot(),
     onStateEvent: (callback) =>
-      transport.onStateEvent((event, seq) => callback(event, seq))
+      transport.onStateEvent((event, seq) => callback(event, seq)),
+
+    getClientId: () => transport.getClientId()
   }
 
   return api

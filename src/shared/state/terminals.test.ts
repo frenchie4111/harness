@@ -214,7 +214,8 @@ describe('terminalsReducer', () => {
       pendingTools: { 'term-1': { name: 'Bash', input: {} } },
       shellActivity: { 'term-1': { active: true } },
       panes: {},
-      lastActive: {}
+      lastActive: {},
+      sessions: {}
     }
     const next = apply(start, { type: 'terminals/removed', payload: 'term-1' })
     expect(next.statuses).toEqual({ 'term-2': 'idle' })
@@ -228,7 +229,8 @@ describe('terminalsReducer', () => {
       pendingTools: {},
       shellActivity: {},
       panes: {},
-      lastActive: {}
+      lastActive: {},
+      sessions: {}
     }
     const next = apply(start, { type: 'terminals/removed', payload: 'missing' })
     expect(next).toBe(start)
@@ -315,6 +317,194 @@ describe('terminalsReducer', () => {
       payload: { worktreePath: '/wt/a', ts: 1234 }
     })
     expect(next.lastActive['/wt/a']).toBe(1234)
+  })
+
+  describe('sessions (controller/spectator)', () => {
+    it('clientJoined creates a session with the joiner as controller when none exists', () => {
+      const next = apply(initialTerminals, {
+        type: 'terminals/clientJoined',
+        payload: { terminalId: 'term-1', clientId: 'client-A' }
+      })
+      expect(next.sessions['term-1']).toEqual({
+        controllerClientId: 'client-A',
+        spectatorClientIds: [],
+        size: null
+      })
+    })
+
+    it('clientJoined with existing controller adds joiner as spectator', () => {
+      const s1 = apply(initialTerminals, {
+        type: 'terminals/clientJoined',
+        payload: { terminalId: 'term-1', clientId: 'client-A' }
+      })
+      const s2 = apply(s1, {
+        type: 'terminals/clientJoined',
+        payload: { terminalId: 'term-1', clientId: 'client-B' }
+      })
+      expect(s2.sessions['term-1'].controllerClientId).toBe('client-A')
+      expect(s2.sessions['term-1'].spectatorClientIds).toEqual(['client-B'])
+    })
+
+    it('clientJoined promotes joiner to controller when controller is null', () => {
+      const s1 = apply(initialTerminals, {
+        type: 'terminals/clientJoined',
+        payload: { terminalId: 'term-1', clientId: 'client-A' }
+      })
+      const s2 = apply(s1, {
+        type: 'terminals/controlReleased',
+        payload: { terminalId: 'term-1', clientId: 'client-A' }
+      })
+      const s3 = apply(s2, {
+        type: 'terminals/clientJoined',
+        payload: { terminalId: 'term-1', clientId: 'client-B' }
+      })
+      expect(s3.sessions['term-1'].controllerClientId).toBe('client-B')
+    })
+
+    it('clientJoined is a no-op if the client already joined', () => {
+      const s1 = apply(initialTerminals, {
+        type: 'terminals/clientJoined',
+        payload: { terminalId: 'term-1', clientId: 'client-A' }
+      })
+      const s2 = apply(s1, {
+        type: 'terminals/clientJoined',
+        payload: { terminalId: 'term-1', clientId: 'client-A' }
+      })
+      expect(s2).toBe(s1)
+    })
+
+    it('controlTaken moves previous controller to spectators and sets size', () => {
+      const s1 = apply(initialTerminals, {
+        type: 'terminals/clientJoined',
+        payload: { terminalId: 'term-1', clientId: 'client-A' }
+      })
+      const s2 = apply(s1, {
+        type: 'terminals/controlTaken',
+        payload: { terminalId: 'term-1', clientId: 'client-B', cols: 100, rows: 40 }
+      })
+      expect(s2.sessions['term-1'].controllerClientId).toBe('client-B')
+      expect(s2.sessions['term-1'].spectatorClientIds).toEqual(['client-A'])
+      expect(s2.sessions['term-1'].size).toEqual({ cols: 100, rows: 40 })
+    })
+
+    it('controlTaken removes the new controller from spectators if present', () => {
+      const s1 = apply(initialTerminals, {
+        type: 'terminals/clientJoined',
+        payload: { terminalId: 'term-1', clientId: 'client-A' }
+      })
+      const s2 = apply(s1, {
+        type: 'terminals/clientJoined',
+        payload: { terminalId: 'term-1', clientId: 'client-B' }
+      })
+      const s3 = apply(s2, {
+        type: 'terminals/controlTaken',
+        payload: { terminalId: 'term-1', clientId: 'client-B', cols: 80, rows: 24 }
+      })
+      expect(s3.sessions['term-1'].controllerClientId).toBe('client-B')
+      expect(s3.sessions['term-1'].spectatorClientIds).toEqual(['client-A'])
+    })
+
+    it('controlReleased on the controller leaves controller null', () => {
+      const s1 = apply(initialTerminals, {
+        type: 'terminals/clientJoined',
+        payload: { terminalId: 'term-1', clientId: 'client-A' }
+      })
+      const s2 = apply(s1, {
+        type: 'terminals/controlReleased',
+        payload: { terminalId: 'term-1', clientId: 'client-A' }
+      })
+      expect(s2.sessions['term-1'].controllerClientId).toBeNull()
+    })
+
+    it('controlReleased on a spectator removes them from the list', () => {
+      const s1 = apply(initialTerminals, {
+        type: 'terminals/clientJoined',
+        payload: { terminalId: 'term-1', clientId: 'client-A' }
+      })
+      const s2 = apply(s1, {
+        type: 'terminals/clientJoined',
+        payload: { terminalId: 'term-1', clientId: 'client-B' }
+      })
+      const s3 = apply(s2, {
+        type: 'terminals/controlReleased',
+        payload: { terminalId: 'term-1', clientId: 'client-B' }
+      })
+      expect(s3.sessions['term-1'].spectatorClientIds).toEqual([])
+      expect(s3.sessions['term-1'].controllerClientId).toBe('client-A')
+    })
+
+    it('clientDisconnected sweeps all terminals globally', () => {
+      const s1 = apply(initialTerminals, {
+        type: 'terminals/clientJoined',
+        payload: { terminalId: 'term-1', clientId: 'client-A' }
+      })
+      const s2 = apply(s1, {
+        type: 'terminals/clientJoined',
+        payload: { terminalId: 'term-2', clientId: 'client-A' }
+      })
+      const s3 = apply(s2, {
+        type: 'terminals/clientJoined',
+        payload: { terminalId: 'term-2', clientId: 'client-B' }
+      })
+      const s4 = apply(s3, {
+        type: 'terminals/clientDisconnected',
+        payload: { clientId: 'client-A' }
+      })
+      expect(s4.sessions['term-1'].controllerClientId).toBeNull()
+      // Disconnect clears the controller to null; promotion requires an
+      // explicit takeControl so state can't silently move between clients.
+      expect(s4.sessions['term-2'].controllerClientId).toBeNull()
+      expect(s4.sessions['term-2'].spectatorClientIds).toEqual(['client-B'])
+    })
+
+    it('clientDisconnected with no matching client returns same reference', () => {
+      const s1 = apply(initialTerminals, {
+        type: 'terminals/clientJoined',
+        payload: { terminalId: 'term-1', clientId: 'client-A' }
+      })
+      const s2 = apply(s1, {
+        type: 'terminals/clientDisconnected',
+        payload: { clientId: 'client-never-joined' }
+      })
+      expect(s2).toBe(s1)
+    })
+
+    it('sizeChanged updates size on existing session', () => {
+      const s1 = apply(initialTerminals, {
+        type: 'terminals/clientJoined',
+        payload: { terminalId: 'term-1', clientId: 'client-A' }
+      })
+      const s2 = apply(s1, {
+        type: 'terminals/sizeChanged',
+        payload: { terminalId: 'term-1', cols: 100, rows: 40 }
+      })
+      expect(s2.sessions['term-1'].size).toEqual({ cols: 100, rows: 40 })
+    })
+
+    it('sizeChanged is a no-op if size is unchanged', () => {
+      const s1 = apply(initialTerminals, {
+        type: 'terminals/clientJoined',
+        payload: { terminalId: 'term-1', clientId: 'client-A' }
+      })
+      const s2 = apply(s1, {
+        type: 'terminals/sizeChanged',
+        payload: { terminalId: 'term-1', cols: 100, rows: 40 }
+      })
+      const s3 = apply(s2, {
+        type: 'terminals/sizeChanged',
+        payload: { terminalId: 'term-1', cols: 100, rows: 40 }
+      })
+      expect(s3).toBe(s2)
+    })
+
+    it('terminals/removed also clears the session entry', () => {
+      const s1 = apply(initialTerminals, {
+        type: 'terminals/clientJoined',
+        payload: { terminalId: 'term-1', clientId: 'client-A' }
+      })
+      const s2 = apply(s1, { type: 'terminals/removed', payload: 'term-1' })
+      expect(s2.sessions['term-1']).toBeUndefined()
+    })
   })
 
   it('sessionIdDiscovered backfills a session id in pane tree', () => {

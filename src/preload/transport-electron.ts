@@ -9,8 +9,8 @@
 import { ipcRenderer, type IpcRendererEvent } from 'electron'
 import type { StateEvent, StateSnapshot } from '../shared/state'
 import type {
+  ClientSignalHandler,
   ClientTransport,
-  SignalHandler,
   StateEventListener
 } from '../shared/transport/transport'
 
@@ -37,7 +37,7 @@ export class ElectronClientTransport implements ClientTransport {
     ipcRenderer.send(name, ...args)
   }
 
-  onSignal(name: string, handler: SignalHandler): () => void {
+  onSignal(name: string, handler: ClientSignalHandler): () => void {
     const wrapped = (_event: IpcRendererEvent, ...args: unknown[]): void => {
       handler(...args)
     }
@@ -45,5 +45,9 @@ export class ElectronClientTransport implements ClientTransport {
     return () => {
       ipcRenderer.removeListener(name, wrapped)
     }
+  }
+
+  getClientId(): Promise<string> {
+    return ipcRenderer.invoke('transport:getClientId') as Promise<string>
   }
 }

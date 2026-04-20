@@ -173,6 +173,16 @@ const transport: CompoundServerTransport = new CompoundServerTransport(
 )
 transport.start()
 
+// Sweep any controller/spectator roster entries owned by a client when
+// they disconnect. Covers BrowserWindow close (Electron) and WS socket
+// close alike; the reducer handles idempotence.
+transport.onClientDisconnect((clientId) => {
+  store.dispatch({
+    type: 'terminals/clientDisconnected',
+    payload: { clientId }
+  })
+})
+
 if (webHttpServer && wsTransport) {
   webHttpServer.on('error', (err) => {
     log('web-client', 'http server error', err.message)
@@ -614,7 +624,7 @@ function createWindow(): BrowserWindow {
 function registerIpcHandlers(): void {
   // Worktree handlers — every call takes an explicit repoRoot, since a single
   // window now shows worktrees from multiple repos at once.
-  transport.onRequest('worktree:list', async (repoRoot: string) => {
+  transport.onRequest('worktree:list', async (_ctx, repoRoot: string) => {
     if (!repoRoot) return []
     const trees = await listWorktrees(repoRoot)
     for (const wt of trees) {
@@ -623,7 +633,7 @@ function registerIpcHandlers(): void {
     return trees
   })
 
-  transport.onRequest('worktree:branches', async (repoRoot: string) => {
+  transport.onRequest('worktree:branches', async (_ctx, repoRoot: string) => {
     if (!repoRoot) return []
     return listBranches(repoRoot)
   })
@@ -633,7 +643,7 @@ function registerIpcHandlers(): void {
   // embedded) before the call returns. Renderer just awaits + focuses.
   transport.onRequest(
     'worktrees:runPending',
-    async (params: {
+    async (_ctx, params: {
       id: string
       repoRoot: string
       branchName: string
@@ -643,21 +653,21 @@ function registerIpcHandlers(): void {
       return worktreesFSM.runPending(params)
     }
   )
-  transport.onRequest('worktrees:retryPending', async (id: string) => {
+  transport.onRequest('worktrees:retryPending', async (_ctx, id: string) => {
     return worktreesFSM.retryPending(id)
   })
-  transport.onRequest('worktrees:dismissPending', (id: string) => {
+  transport.onRequest('worktrees:dismissPending', (_ctx, id: string) => {
     worktreesFSM.dismissPending(id)
     return true
   })
-  transport.onRequest('worktrees:refreshList', async () => {
+  transport.onRequest('worktrees:refreshList', async (_ctx) => {
     await worktreesFSM.refreshList()
     return true
   })
 
   transport.onRequest(
     'worktree:continue',
-    async (repoRoot: string, worktreePath: string, newBranchName: string, baseBranch?: string) => {
+    async (_ctx, repoRoot: string, worktreePath: string, newBranchName: string, baseBranch?: string) => {
       if (!repoRoot) throw new Error('No repo root provided')
       const mode = config.worktreeBase || DEFAULT_WORKTREE_BASE
       return continueWorktree(repoRoot, worktreePath, newBranchName, {
@@ -667,11 +677,11 @@ function registerIpcHandlers(): void {
     }
   )
 
-  transport.onRequest('worktree:isDirty', async (path: string) => {
+  transport.onRequest('worktree:isDirty', async (_ctx, path: string) => {
     return isWorktreeDirty(path)
   })
 
-  transport.onRequest('worktree:remove', async (
+  transport.onRequest('worktree:remove', async (_ctx, 
     repoRoot: string,
     path: string,
     force?: boolean,
@@ -708,21 +718,21 @@ function registerIpcHandlers(): void {
     return { queued: true }
   })
 
-  transport.onRequest('worktree:dismissPendingDeletion', (path: string) => {
+  transport.onRequest('worktree:dismissPendingDeletion', (_ctx, path: string) => {
     worktreeDeletionFSM.dismiss(path)
     return true
   })
 
-  transport.onRequest('worktree:dir', async (repoRoot: string) => {
+  transport.onRequest('worktree:dir', async (_ctx, repoRoot: string) => {
     if (!repoRoot) return ''
     return defaultWorktreeDir(repoRoot)
   })
 
-  transport.onRequest('repo:list', () => {
+  transport.onRequest('repo:list', (_ctx) => {
     return config.repoRoots
   })
 
-  transport.onRequest('repo:add', async () => {
+  transport.onRequest('repo:add', async (_ctx) => {
     const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0]
     const result = await dialog.showOpenDialog(win!, {
       properties: ['openDirectory'],
@@ -746,7 +756,7 @@ function registerIpcHandlers(): void {
 
   transport.onRequest(
     'dialog:pickDirectory',
-    async (opts?: { defaultPath?: string; title?: string }) => {
+    async (_ctx, opts?: { defaultPath?: string; title?: string }) => {
       const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0]
       const result = await dialog.showOpenDialog(win!, {
         properties: ['openDirectory', 'createDirectory'],
@@ -760,7 +770,7 @@ function registerIpcHandlers(): void {
 
   transport.onRequest(
     'repo:createNewProject',
-    async (opts: {
+    async (_ctx, opts: {
       parentDir: string
       name: string
       includeReadme: boolean
@@ -783,7 +793,7 @@ function registerIpcHandlers(): void {
     }
   )
 
-  transport.onRequest('repo:remove', (repoRoot: string) => {
+  transport.onRequest('repo:remove', (_ctx, repoRoot: string) => {
     const idx = config.repoRoots.indexOf(repoRoot)
     if (idx === -1) return false
     config.repoRoots.splice(idx, 1)
@@ -800,13 +810,13 @@ function registerIpcHandlers(): void {
   })
 
   // Changed files
-  transport.onRequest('worktree:changedFiles', async (worktreePath: string, mode?: 'working' | 'branch') => {
+  transport.onRequest('worktree:changedFiles', async (_ctx, worktreePath: string, mode?: 'working' | 'branch') => {
     return getChangedFiles(worktreePath, mode ?? 'working')
   })
 
   transport.onRequest(
     'worktree:fileDiff',
-    async (
+    async (_ctx, 
       worktreePath: string,
       filePath: string,
       staged: boolean,
@@ -816,24 +826,24 @@ function registerIpcHandlers(): void {
     }
   )
 
-  transport.onRequest('worktree:listFiles', async (worktreePath: string) => {
+  transport.onRequest('worktree:listFiles', async (_ctx, worktreePath: string) => {
     return listAllFiles(worktreePath)
   })
 
-  transport.onRequest('worktree:readFile', async (worktreePath: string, filePath: string) => {
+  transport.onRequest('worktree:readFile', async (_ctx, worktreePath: string, filePath: string) => {
     return readWorktreeFile(worktreePath, filePath)
   })
 
   transport.onRequest(
     'worktree:writeFile',
-    async (worktreePath: string, filePath: string, contents: string) => {
+    async (_ctx, worktreePath: string, filePath: string, contents: string) => {
       return writeWorktreeFile(worktreePath, filePath, contents)
     }
   )
 
   transport.onRequest(
     'worktree:fileDiffSides',
-    async (
+    async (_ctx, 
       worktreePath: string,
       filePath: string,
       staged: boolean,
@@ -843,21 +853,21 @@ function registerIpcHandlers(): void {
     }
   )
 
-  transport.onRequest('worktree:branchCommits', async (worktreePath: string) => {
+  transport.onRequest('worktree:branchCommits', async (_ctx, worktreePath: string) => {
     return getBranchCommits(worktreePath)
   })
 
-  transport.onRequest('worktree:commitDiff', async (worktreePath: string, hash: string) => {
+  transport.onRequest('worktree:commitDiff', async (_ctx, worktreePath: string, hash: string) => {
     return getCommitDiff(worktreePath, hash)
   })
 
-  transport.onRequest('worktree:commitChangedFiles', async (worktreePath: string, hash: string) => {
+  transport.onRequest('worktree:commitChangedFiles', async (_ctx, worktreePath: string, hash: string) => {
     return getCommitChangedFiles(worktreePath, hash)
   })
 
   transport.onRequest(
     'worktree:commitFileDiffSides',
-    async (worktreePath: string, hash: string, filePath: string) => {
+    async (_ctx, worktreePath: string, hash: string, filePath: string) => {
       return getCommitFileDiffSides(worktreePath, hash, filePath)
     }
   )
@@ -866,29 +876,29 @@ function registerIpcHandlers(): void {
   // subscribe via the state event stream; these methods trigger on-demand
   // refreshes (new worktree created, window focus, worktree activate,
   // terminal entered 'waiting' state).
-  transport.onRequest('prs:refreshAll', async () => {
+  transport.onRequest('prs:refreshAll', async (_ctx) => {
     await prPoller.refreshAll()
     return true
   })
-  transport.onRequest('prs:refreshAllIfStale', () => {
+  transport.onRequest('prs:refreshAllIfStale', (_ctx) => {
     prPoller.refreshAllIfStale()
     return true
   })
-  transport.onRequest('prs:refreshOne', async (worktreePath: string) => {
+  transport.onRequest('prs:refreshOne', async (_ctx, worktreePath: string) => {
     await prPoller.refreshOne(worktreePath)
     return true
   })
-  transport.onRequest('prs:refreshOneIfStale', (worktreePath: string) => {
+  transport.onRequest('prs:refreshOneIfStale', (_ctx, worktreePath: string) => {
     prPoller.refreshOneIfStale(worktreePath)
     return true
   })
 
-  transport.onRequest('worktree:mainStatus', async (repoRoot: string) => {
+  transport.onRequest('worktree:mainStatus', async (_ctx, repoRoot: string) => {
     if (!repoRoot) throw new Error('No repo root provided')
     return getMainWorktreeStatus(repoRoot)
   })
 
-  transport.onRequest('worktree:previewMerge', async (repoRoot: string, sourceBranch: string, worktreePath?: string) => {
+  transport.onRequest('worktree:previewMerge', async (_ctx, repoRoot: string, sourceBranch: string, worktreePath?: string) => {
     if (!repoRoot) throw new Error('No repo root provided')
     let branch = sourceBranch
     if (worktreePath) {
@@ -899,14 +909,14 @@ function registerIpcHandlers(): void {
     return previewMergeConflicts(repoRoot, branch, status.baseBranch)
   })
 
-  transport.onRequest('worktree:prepareMain', async (repoRoot: string) => {
+  transport.onRequest('worktree:prepareMain', async (_ctx, repoRoot: string) => {
     if (!repoRoot) throw new Error('No repo root provided')
     return prepareMainForMerge(repoRoot)
   })
 
   transport.onRequest(
     'worktree:mergeLocal',
-    async (repoRoot: string, sourceBranch: string, strategy: MergeStrategy, worktreePath?: string) => {
+    async (_ctx, repoRoot: string, sourceBranch: string, strategy: MergeStrategy, worktreePath?: string) => {
       if (!repoRoot) throw new Error('No repo root provided')
       let branch = sourceBranch
       if (worktreePath) {
@@ -931,21 +941,21 @@ function registerIpcHandlers(): void {
 
   // Config — the renderer reads via useSettings() etc.; only mutation
   // handlers and a few constant-accessors live on the IPC.
-  transport.onRequest('config:setHotkeys', (hotkeys: Record<string, string>) => {
+  transport.onRequest('config:setHotkeys', (_ctx, hotkeys: Record<string, string>) => {
     config.hotkeys = hotkeys
     saveConfig(config)
     store.dispatch({ type: 'settings/hotkeysChanged', payload: hotkeys })
     return true
   })
 
-  transport.onRequest('config:resetHotkeys', () => {
+  transport.onRequest('config:resetHotkeys', (_ctx) => {
     delete config.hotkeys
     saveConfig(config)
     store.dispatch({ type: 'settings/hotkeysChanged', payload: null })
     return true
   })
 
-  transport.onRequest('config:setClaudeCommand', (command: string) => {
+  transport.onRequest('config:setClaudeCommand', (_ctx, command: string) => {
     const trimmed = command.trim()
     if (!trimmed || trimmed === DEFAULT_CLAUDE_COMMAND) {
       delete config.claudeCommand
@@ -960,11 +970,11 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  transport.onRequest('config:getDefaultClaudeCommand', () => {
+  transport.onRequest('config:getDefaultClaudeCommand', (_ctx) => {
     return DEFAULT_CLAUDE_COMMAND
   })
 
-  transport.onRequest('config:setDefaultAgent', (agent: string) => {
+  transport.onRequest('config:setDefaultAgent', (_ctx, agent: string) => {
     const kind = agent === 'codex' ? 'codex' : 'claude'
     config.defaultAgent = kind
     saveConfig(config)
@@ -972,7 +982,7 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  transport.onRequest('config:setCodexCommand', (command: string) => {
+  transport.onRequest('config:setCodexCommand', (_ctx, command: string) => {
     const trimmed = command.trim()
     if (!trimmed || trimmed === 'codex') {
       delete config.codexCommand
@@ -987,7 +997,7 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  transport.onRequest('config:setClaudeModel', (model: string | null) => {
+  transport.onRequest('config:setClaudeModel', (_ctx, model: string | null) => {
     if (model) {
       config.claudeModel = model
     } else {
@@ -998,7 +1008,7 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  transport.onRequest('config:setCodexModel', (model: string | null) => {
+  transport.onRequest('config:setCodexModel', (_ctx, model: string | null) => {
     if (model) {
       config.codexModel = model
     } else {
@@ -1009,7 +1019,7 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  transport.onRequest('config:setCodexEnvVars', (vars: Record<string, string>) => {
+  transport.onRequest('config:setCodexEnvVars', (_ctx, vars: Record<string, string>) => {
     if (!vars || Object.keys(vars).length === 0) {
       delete config.codexEnvVars
     } else {
@@ -1020,7 +1030,7 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  transport.onRequest('repoConfig:set', (repoRoot: string, next: Record<string, unknown>) => {
+  transport.onRequest('repoConfig:set', (_ctx, repoRoot: string, next: Record<string, unknown>) => {
     if (!repoRoot) return null
     const current = loadRepoConfig(repoRoot)
     const merged: RepoConfig = { ...current }
@@ -1041,7 +1051,7 @@ function registerIpcHandlers(): void {
 
   transport.onRequest(
     'config:setWorktreeScripts',
-    (scripts: { setup?: string; teardown?: string }) => {
+    (_ctx, scripts: { setup?: string; teardown?: string }) => {
       const setup = (scripts?.setup || '').trim()
       const teardown = (scripts?.teardown || '').trim()
       if (setup) config.worktreeSetupCommand = setup
@@ -1057,7 +1067,7 @@ function registerIpcHandlers(): void {
     }
   )
 
-  transport.onRequest('config:setClaudeEnvVars', (vars: Record<string, string>) => {
+  transport.onRequest('config:setClaudeEnvVars', (_ctx, vars: Record<string, string>) => {
     const cleaned: Record<string, string> = {}
     if (vars && typeof vars === 'object') {
       for (const [rawKey, rawVal] of Object.entries(vars)) {
@@ -1078,7 +1088,7 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  transport.onRequest('config:setShareClaudeSettings', (enabled: boolean) => {
+  transport.onRequest('config:setShareClaudeSettings', (_ctx, enabled: boolean) => {
     if (enabled) {
       delete config.shareClaudeSettings
     } else {
@@ -1092,7 +1102,7 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  transport.onRequest('config:setAutoUpdateEnabled', (enabled: boolean) => {
+  transport.onRequest('config:setAutoUpdateEnabled', (_ctx, enabled: boolean) => {
     if (enabled) {
       delete config.autoUpdateEnabled
     } else {
@@ -1111,7 +1121,7 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  transport.onRequest('config:setHarnessSystemPromptEnabled', (enabled: boolean) => {
+  transport.onRequest('config:setHarnessSystemPromptEnabled', (_ctx, enabled: boolean) => {
     if (enabled) {
       delete config.harnessSystemPromptEnabled
     } else {
@@ -1125,7 +1135,7 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  transport.onRequest('config:setHarnessSystemPrompt', (prompt: string) => {
+  transport.onRequest('config:setHarnessSystemPrompt', (_ctx, prompt: string) => {
     const trimmed = prompt.trim()
     if (!trimmed || trimmed === DEFAULT_HARNESS_SYSTEM_PROMPT) {
       delete config.harnessSystemPrompt
@@ -1140,7 +1150,7 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  transport.onRequest('config:setHarnessSystemPromptMain', (prompt: string) => {
+  transport.onRequest('config:setHarnessSystemPromptMain', (_ctx, prompt: string) => {
     const trimmed = prompt.trim()
     if (!trimmed || trimmed === DEFAULT_HARNESS_SYSTEM_PROMPT_MAIN) {
       delete config.harnessSystemPromptMain
@@ -1155,7 +1165,7 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  transport.onRequest('config:setHarnessMcpEnabled', (enabled: boolean) => {
+  transport.onRequest('config:setHarnessMcpEnabled', (_ctx, enabled: boolean) => {
     if (enabled) {
       delete config.harnessMcpEnabled
     } else {
@@ -1169,13 +1179,13 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  transport.onRequest('mcp:prepareForTerminal', (terminalId: string): string | null => {
+  transport.onRequest('mcp:prepareForTerminal', (_ctx, terminalId: string): string | null => {
     if (config.harnessMcpEnabled === false) return null
     if (!terminalId) return null
     return writeMcpConfigForTerminal(terminalId, resolveCallerScope(terminalId))
   })
 
-  transport.onRequest('config:setWsTransportEnabled', (enabled: boolean) => {
+  transport.onRequest('config:setWsTransportEnabled', (_ctx, enabled: boolean) => {
     if (enabled) {
       config.wsTransportEnabled = true
     } else {
@@ -1189,7 +1199,7 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  transport.onRequest('config:setWsTransportPort', (port: number) => {
+  transport.onRequest('config:setWsTransportPort', (_ctx, port: number) => {
     const clamped = Math.max(1024, Math.min(65535, Math.floor(port)))
     if (clamped === 37291) {
       delete config.wsTransportPort
@@ -1201,7 +1211,7 @@ function registerIpcHandlers(): void {
     return clamped
   })
 
-  transport.onRequest('config:setWsTransportHost', (host: string) => {
+  transport.onRequest('config:setWsTransportHost', (_ctx, host: string) => {
     // Only two values are meaningful for v1: '127.0.0.1' (loopback) or
     // '0.0.0.0' (all interfaces, LAN-reachable). Anything else is treated
     // as loopback so a typo can't accidentally expose the server.
@@ -1216,7 +1226,7 @@ function registerIpcHandlers(): void {
     return next
   })
 
-  transport.onRequest('config:getWsTransportInfo', () => {
+  transport.onRequest('config:getWsTransportInfo', (_ctx) => {
     // Exposes the live token + port for clients (or a future UI) that need
     // to know the connect URL. Returns null when the WS transport is not
     // running, to distinguish "off" from "on but unknown".
@@ -1228,7 +1238,7 @@ function registerIpcHandlers(): void {
     }
   })
 
-  transport.onRequest('config:setClaudeTuiFullscreen', (enabled: boolean) => {
+  transport.onRequest('config:setClaudeTuiFullscreen', (_ctx, enabled: boolean) => {
     if (enabled) {
       delete config.claudeTuiFullscreen
     } else {
@@ -1242,7 +1252,7 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  transport.onRequest('config:setBrowserToolsEnabled', (enabled: boolean) => {
+  transport.onRequest('config:setBrowserToolsEnabled', (_ctx, enabled: boolean) => {
     if (enabled) {
       delete config.browserToolsEnabled
     } else {
@@ -1256,7 +1266,7 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  transport.onRequest('config:setBrowserToolsMode', (mode: 'view' | 'full') => {
+  transport.onRequest('config:setBrowserToolsMode', (_ctx, mode: 'view' | 'full') => {
     const next = mode === 'view' ? 'view' : 'full'
     if (next === 'full') {
       delete config.browserToolsMode
@@ -1271,7 +1281,7 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  transport.onRequest('config:setNameClaudeSessions', (enabled: boolean) => {
+  transport.onRequest('config:setNameClaudeSessions', (_ctx, enabled: boolean) => {
     if (enabled) {
       config.nameClaudeSessions = true
     } else {
@@ -1284,7 +1294,7 @@ function registerIpcHandlers(): void {
     })
     return true
   })
-  transport.onRequest('config:setTheme', (theme: string) => {
+  transport.onRequest('config:setTheme', (_ctx, theme: string) => {
     if (!AVAILABLE_THEMES.includes(theme as (typeof AVAILABLE_THEMES)[number])) {
       return false
     }
@@ -1298,7 +1308,7 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  transport.onRequest('config:setTerminalFontFamily', (fontFamily: string) => {
+  transport.onRequest('config:setTerminalFontFamily', (_ctx, fontFamily: string) => {
     const trimmed = (fontFamily || '').trim()
     if (!trimmed || trimmed === DEFAULT_TERMINAL_FONT_FAMILY) {
       delete config.terminalFontFamily
@@ -1313,9 +1323,9 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  transport.onRequest('config:getDefaultTerminalFontFamily', () => DEFAULT_TERMINAL_FONT_FAMILY)
+  transport.onRequest('config:getDefaultTerminalFontFamily', (_ctx) => DEFAULT_TERMINAL_FONT_FAMILY)
 
-  transport.onRequest('config:setTerminalFontSize', (fontSize: number) => {
+  transport.onRequest('config:setTerminalFontSize', (_ctx, fontSize: number) => {
     const n = Number(fontSize)
     if (!Number.isFinite(n) || n < 8 || n > 48) return false
     const rounded = Math.round(n)
@@ -1332,7 +1342,7 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  transport.onRequest('config:setEditor', (editorId: string) => {
+  transport.onRequest('config:setEditor', (_ctx, editorId: string) => {
     if (!AVAILABLE_EDITORS.some((e) => e.id === editorId)) return false
     if (editorId === DEFAULT_EDITOR_ID) {
       delete config.editor
@@ -1344,16 +1354,16 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  transport.onRequest('config:getAvailableEditors', () => {
+  transport.onRequest('config:getAvailableEditors', (_ctx) => {
     return AVAILABLE_EDITORS.map(({ id, name }) => ({ id, name }))
   })
 
-  transport.onRequest('editor:open', (worktreePath: string, filePath?: string) => {
+  transport.onRequest('editor:open', (_ctx, worktreePath: string, filePath?: string) => {
     const editorId = config.editor || DEFAULT_EDITOR_ID
     return openInEditor(editorId, worktreePath, filePath)
   })
 
-  transport.onRequest('config:setWorktreeBase', (mode: 'remote' | 'local') => {
+  transport.onRequest('config:setWorktreeBase', (_ctx, mode: 'remote' | 'local') => {
     if (mode !== 'remote' && mode !== 'local') return false
     if (mode === DEFAULT_WORKTREE_BASE) {
       delete config.worktreeBase
@@ -1367,7 +1377,7 @@ function registerIpcHandlers(): void {
 
   transport.onRequest(
     'config:setMergeStrategy',
-    (strategy: 'squash' | 'merge-commit' | 'fast-forward') => {
+    (_ctx, strategy: 'squash' | 'merge-commit' | 'fast-forward') => {
       if (
         strategy !== 'squash' &&
         strategy !== 'merge-commit' &&
@@ -1382,11 +1392,11 @@ function registerIpcHandlers(): void {
     }
   )
 
-  transport.onRequest('config:getAvailableThemes', () => {
+  transport.onRequest('config:getAvailableThemes', (_ctx) => {
     return AVAILABLE_THEMES
   })
 
-  transport.onRequest('config:setOnboardingQuest', (quest: string) => {
+  transport.onRequest('config:setOnboardingQuest', (_ctx, quest: string) => {
     const valid = ['hidden', 'spawn-second', 'switch-between', 'finale', 'done']
     if (!valid.includes(quest)) return false
     config.onboarding = { ...(config.onboarding || {}), quest: quest as QuestStep }
@@ -1403,39 +1413,39 @@ function registerIpcHandlers(): void {
   // not exposed: main calls it directly from worktree creation paths.
   transport.onRequest(
     'panes:addTab',
-    (wtPath: string, tab: TerminalTab, paneId?: string) => {
+    (_ctx, wtPath: string, tab: TerminalTab, paneId?: string) => {
       panesFSM.addTab(wtPath, tab, paneId)
       return true
     }
   )
-  transport.onRequest('panes:closeTab', (wtPath: string, tabId: string) => {
+  transport.onRequest('panes:closeTab', (_ctx, wtPath: string, tabId: string) => {
     panesFSM.closeTab(wtPath, tabId)
     return true
   })
   transport.onRequest(
     'panes:restartAgentTab',
-    (wtPath: string, tabId: string, newId: string) => {
+    (_ctx, wtPath: string, tabId: string, newId: string) => {
       panesFSM.restartAgentTab(wtPath, tabId, newId)
       return true
     }
   )
   transport.onRequest(
     'panes:selectTab',
-    (wtPath: string, paneId: string, tabId: string) => {
+    (_ctx, wtPath: string, paneId: string, tabId: string) => {
       panesFSM.selectTab(wtPath, paneId, tabId)
       return true
     }
   )
   transport.onRequest(
     'panes:reorderTabs',
-    (wtPath: string, paneId: string, fromId: string, toId: string) => {
+    (_ctx, wtPath: string, paneId: string, fromId: string, toId: string) => {
       panesFSM.reorderTabs(wtPath, paneId, fromId, toId)
       return true
     }
   )
   transport.onRequest(
     'panes:moveTabToPane',
-    (
+    (_ctx, 
       wtPath: string,
       tabId: string,
       toPaneId: string,
@@ -1447,18 +1457,18 @@ function registerIpcHandlers(): void {
   )
   transport.onRequest(
     'panes:splitPane',
-    (wtPath: string, fromPaneId: string, direction?: 'horizontal' | 'vertical') => {
+    (_ctx, wtPath: string, fromPaneId: string, direction?: 'horizontal' | 'vertical') => {
       return panesFSM.splitPane(wtPath, fromPaneId, direction || 'horizontal')
     }
   )
   transport.onRequest(
     'panes:setRatio',
-    (wtPath: string, splitId: string, ratio: number) => {
+    (_ctx, wtPath: string, splitId: string, ratio: number) => {
       panesFSM.setRatio(wtPath, splitId, ratio)
       return true
     }
   )
-  transport.onRequest('panes:clearForWorktree', (wtPath: string) => {
+  transport.onRequest('panes:clearForWorktree', (_ctx, wtPath: string) => {
     panesFSM.clearForWorktree(wtPath)
     return true
   })
@@ -1466,7 +1476,7 @@ function registerIpcHandlers(): void {
   // worktree (sidebar click, hotkey, command palette). Boot-time sleep
   // skips merged worktrees, so this is the only path that wakes them.
   // No-op for paths that already have panes.
-  transport.onRequest('panes:ensureInitialized', (wtPath: string) => {
+  transport.onRequest('panes:ensureInitialized', (_ctx, wtPath: string) => {
     panesFSM.ensureInitialized(wtPath)
     return true
   })
@@ -1475,15 +1485,15 @@ function registerIpcHandlers(): void {
   // The activity-deriver in main now calls recordActivity directly when it
   // observes status changes; this IPC stays for any direct-from-renderer
   // pings that haven't been migrated yet.
-  transport.onSignal('activity:record', (worktreePath: string, state: ActivityState) => {
+  transport.onSignal('activity:record', (_ctx, worktreePath: string, state: ActivityState) => {
     recordActivity(worktreePath, state)
   })
 
-  transport.onRequest('activity:get', () => {
+  transport.onRequest('activity:get', (_ctx) => {
     return getActivityLog()
   })
 
-  transport.onRequest('activity:clear', (worktreePath?: string) => {
+  transport.onRequest('activity:clear', (_ctx, worktreePath?: string) => {
     if (worktreePath) clearActivityForWorktree(worktreePath)
     else clearAllActivity()
     return true
@@ -1493,28 +1503,28 @@ function registerIpcHandlers(): void {
   // onData stream into a per-id ring buffer, persists it on a 30s cadence and
   // on before-quit, and hands it back here on request. Renderer replays it
   // into a fresh xterm instance before wiring up live data.
-  transport.onRequest('terminal:getHistory', (id: string) => {
+  transport.onRequest('terminal:getHistory', (_ctx, id: string) => {
     return ptyManager.getHistory(id)
   })
 
-  transport.onRequest('terminal:forgetHistory', (id: string) => {
+  transport.onRequest('terminal:forgetHistory', (_ctx, id: string) => {
     ptyManager.forgetHistory(id)
     return true
   })
 
-  transport.onRequest('agent:sessionFileExists', (cwd: string, sessionId: string, agentKind?: string): boolean => {
+  transport.onRequest('agent:sessionFileExists', (_ctx, cwd: string, sessionId: string, agentKind?: string): boolean => {
     const kind = toAgentKind(agentKind)
     return getAgent(kind).sessionFileExists(cwd, sessionId)
   })
 
-  transport.onRequest('agent:latestSessionId', (cwd: string, agentKind?: string): string | null => {
+  transport.onRequest('agent:latestSessionId', (_ctx, cwd: string, agentKind?: string): string | null => {
     const kind = toAgentKind(agentKind)
     return getAgent(kind).latestSessionId(cwd)
   })
 
   transport.onRequest(
     'agent:buildSpawnArgs',
-    (agentKind: string, opts: {
+    (_ctx, agentKind: string, opts: {
       terminalId: string; cwd: string; sessionId?: string;
       initialPrompt?: string; teleportSessionId?: string;
       sessionName?: string
@@ -1550,11 +1560,11 @@ function registerIpcHandlers(): void {
   )
 
   // Settings: GitHub token
-  transport.onRequest('settings:hasGithubToken', () => {
+  transport.onRequest('settings:hasGithubToken', (_ctx) => {
     return store.getSnapshot().state.settings.hasGithubToken
   })
 
-  transport.onRequest('settings:setGithubToken', async (token: string) => {
+  transport.onRequest('settings:setGithubToken', async (_ctx, token: string) => {
     const trimmed = token.trim()
     if (!trimmed) {
       deleteSecret('githubToken')
@@ -1577,7 +1587,7 @@ function registerIpcHandlers(): void {
     return { ok: true, username: test.username }
   })
 
-  transport.onRequest('settings:clearGithubToken', async () => {
+  transport.onRequest('settings:clearGithubToken', async (_ctx) => {
     deleteSecret('githubToken')
     store.dispatch({ type: 'settings/hasGithubTokenChanged', payload: false })
     invalidateTokenCache()
@@ -1587,7 +1597,7 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  transport.onRequest('settings:setHarnessStarred', async (starred: boolean) => {
+  transport.onRequest('settings:setHarnessStarred', async (_ctx, starred: boolean) => {
     const token = getCachedToken()
     if (!token) return { ok: false, error: 'No GitHub token' }
     const result = starred
@@ -1600,15 +1610,15 @@ function registerIpcHandlers(): void {
   })
 
   // Updater
-  transport.onRequest('updater:getVersion', () => {
+  transport.onRequest('updater:getVersion', (_ctx) => {
     return app.getVersion()
   })
 
-  transport.onRequest('debug:readRecentLog', (maxLines?: number) => {
+  transport.onRequest('debug:readRecentLog', (_ctx, maxLines?: number) => {
     return readRecentDebugLog(maxLines)
   })
 
-  transport.onRequest('updater:checkForUpdates', async () => {
+  transport.onRequest('updater:checkForUpdates', async (_ctx) => {
     if (!app.isPackaged) {
       return { ok: false, error: 'Updates are only available in packaged builds' }
     }
@@ -1639,7 +1649,7 @@ function registerIpcHandlers(): void {
     }
   })
 
-  transport.onRequest('updater:quitAndInstall', () => {
+  transport.onRequest('updater:quitAndInstall', (_ctx) => {
     log('updater', 'quitAndInstall requested — tearing down before handing off to Squirrel')
     try {
       stopWatchingStatus?.()
@@ -1672,13 +1682,13 @@ function registerIpcHandlers(): void {
   })
 
   // Performance monitor
-  transport.onRequest('perf:getMetrics', () => perfMonitor.getMetrics())
+  transport.onRequest('perf:getMetrics', (_ctx) => perfMonitor.getMetrics())
 
   // Renderer error-boundary reporting — the preload flattens Error/ErrorInfo
   // into plain strings because Error objects don't survive structured-clone.
   transport.onRequest(
     'debug:logError',
-    (label: string, name: string, message: string, stack: string, componentStack: string) => {
+    (_ctx, label: string, name: string, message: string, stack: string, componentStack: string) => {
       log(
         'renderer-error',
         `[${label}] ${name}: ${message}\nStack:\n${stack}\nComponent stack:\n${componentStack}`
@@ -1690,7 +1700,7 @@ function registerIpcHandlers(): void {
   // Hooks. Install/uninstall happen once at user scope — the hook command
   // is env-gated on $HARNESS_TERMINAL_ID so sessions spawned outside
   // Harness are unaffected.
-  transport.onRequest('hooks:accept', () => {
+  transport.onRequest('hooks:accept', (_ctx) => {
     installHooksGlobally()
     config.hooksConsent = 'accepted'
     saveConfig(config)
@@ -1698,14 +1708,14 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  transport.onRequest('hooks:decline', () => {
+  transport.onRequest('hooks:decline', (_ctx) => {
     config.hooksConsent = 'declined'
     saveConfig(config)
     store.dispatch({ type: 'hooks/consentChanged', payload: 'declined' })
     return true
   })
 
-  transport.onRequest('hooks:uninstall', () => {
+  transport.onRequest('hooks:uninstall', (_ctx) => {
     uninstallHooksGlobally()
     config.hooksConsent = 'pending'
     saveConfig(config)
@@ -1714,36 +1724,36 @@ function registerIpcHandlers(): void {
   })
 
   // Shell
-  transport.onSignal('shell:openExternal', (url: string) => {
+  transport.onSignal('shell:openExternal', (_ctx, url: string) => {
     shell.openExternal(url)
   })
 
   // Browser tabs — WebContentsView instances owned by BrowserManager. The
   // renderer sends bounds updates from a placeholder div's geometry and we
   // reposition the native view over it.
-  transport.onRequest('browser:navigate', (tabId: string, url: string) => {
+  transport.onRequest('browser:navigate', (_ctx, tabId: string, url: string) => {
     browserManager.navigate(tabId, url)
     return true
   })
-  transport.onRequest('browser:back', (tabId: string) => {
+  transport.onRequest('browser:back', (_ctx, tabId: string) => {
     browserManager.back(tabId)
     return true
   })
-  transport.onRequest('browser:forward', (tabId: string) => {
+  transport.onRequest('browser:forward', (_ctx, tabId: string) => {
     browserManager.forward(tabId)
     return true
   })
-  transport.onRequest('browser:reload', (tabId: string) => {
+  transport.onRequest('browser:reload', (_ctx, tabId: string) => {
     browserManager.reload(tabId)
     return true
   })
-  transport.onRequest('browser:openDevTools', (tabId: string) => {
+  transport.onRequest('browser:openDevTools', (_ctx, tabId: string) => {
     browserManager.openDevTools(tabId)
     return true
   })
   transport.onSignal(
     'browser:setBounds',
-    (tabId: string, bounds: { x: number; y: number; width: number; height: number } | null) => {
+    (_ctx, tabId: string, bounds: { x: number; y: number; width: number; height: number } | null) => {
       if (!bounds) {
         browserManager.hide(tabId)
         return
@@ -1753,28 +1763,100 @@ function registerIpcHandlers(): void {
       browserManager.setBounds(tabId, win, bounds)
     }
   )
-  transport.onSignal('browser:hide', (tabId: string) => {
+  transport.onSignal('browser:hide', (_ctx, tabId: string) => {
     browserManager.hide(tabId)
   })
 
-  transport.onSignal('pty:create', (id: string, cwd: string, cmd: string, args: string[], agentKind?: string, cols?: number, rows?: number) => {
-    const isAgent = !!agentKind
-    const extraEnv = agentKind === 'claude' ? config.claudeEnvVars
-      : agentKind === 'codex' ? config.codexEnvVars
-      : undefined
-    ptyManager.create(id, cwd, cmd, args, extraEnv, !isAgent, cols, rows)
-  })
+  // PTY signals are gated by the per-terminal controller in the sessions
+  // slice (see `src/shared/state/terminals.ts`). pty:write and pty:resize
+  // from a non-controller client are silently dropped — the renderer
+  // overlay blocks them locally, but main refuses them too so a stale
+  // client can never sneak bytes into the PTY. pty:create always sets
+  // the creator as controller; new clients joining an existing terminal
+  // come in as spectators via terminal:join.
+  transport.onSignal(
+    'pty:create',
+    (ctx, id: string, cwd: string, cmd: string, args: string[], agentKind?: string, cols?: number, rows?: number) => {
+      const isAgent = !!agentKind
+      const extraEnv = agentKind === 'claude' ? config.claudeEnvVars
+        : agentKind === 'codex' ? config.codexEnvVars
+        : undefined
+      const existed = ptyManager.hasTerminal(id)
+      ptyManager.create(id, cwd, cmd, args, extraEnv, !isAgent, cols, rows)
+      if (!existed) {
+        // Creator becomes controller immediately so their first keystroke
+        // — which is a fire-and-forget signal right behind pty:create —
+        // passes the gate. Awaitable ordering on pty:create isn't
+        // available (it's a signal, not a request); all writes in the
+        // current renderer flow arrive strictly after the signal handler
+        // returns, so the dispatch here lands first.
+        const applyCols = cols && cols > 0 ? cols : 120
+        const applyRows = rows && rows > 0 ? rows : 30
+        store.dispatch({
+          type: 'terminals/controlTaken',
+          payload: { terminalId: id, clientId: ctx.clientId, cols: applyCols, rows: applyRows }
+        })
+      } else {
+        // A second client attached to an already-running PTY. Record them
+        // as a spectator so the UI reflects the viewer count; taking
+        // control still requires an explicit click.
+        store.dispatch({
+          type: 'terminals/clientJoined',
+          payload: { terminalId: id, clientId: ctx.clientId }
+        })
+      }
+    }
+  )
 
-  transport.onSignal('pty:write', (id: string, data: string) => {
+  transport.onSignal('pty:write', (ctx, id: string, data: string) => {
+    const session = store.getSnapshot().state.terminals.sessions[id]
+    if (!session) {
+      // No roster yet — accept (single-client boot path). The next
+      // pty:create / terminal:join will establish ownership.
+      ptyManager.write(id, data)
+      return
+    }
+    if (session.controllerClientId !== ctx.clientId) return
     ptyManager.write(id, data)
   })
 
-  transport.onSignal('pty:resize', (id: string, cols: number, rows: number) => {
+  transport.onSignal('pty:resize', (ctx, id: string, cols: number, rows: number) => {
+    const session = store.getSnapshot().state.terminals.sessions[id]
+    if (session && session.controllerClientId !== ctx.clientId) return
     ptyManager.resize(id, cols, rows)
+    store.dispatch({
+      type: 'terminals/sizeChanged',
+      payload: { terminalId: id, cols, rows }
+    })
   })
 
-  transport.onSignal('pty:kill', (id: string) => {
+  transport.onSignal('pty:kill', (_ctx, id: string) => {
     ptyManager.kill(id)
+  })
+
+  transport.onSignal('terminal:join', (ctx, id: string) => {
+    store.dispatch({
+      type: 'terminals/clientJoined',
+      payload: { terminalId: id, clientId: ctx.clientId }
+    })
+  })
+
+  transport.onSignal('terminal:leave', (ctx, id: string) => {
+    store.dispatch({
+      type: 'terminals/controlReleased',
+      payload: { terminalId: id, clientId: ctx.clientId }
+    })
+  })
+
+  transport.onSignal('terminal:takeControl', (ctx, id: string, cols: number, rows: number) => {
+    // Any client can claim control; the reducer demotes the previous
+    // controller (if any) to spectator. Physically resize the PTY so the
+    // new owner's viewport becomes authoritative.
+    store.dispatch({
+      type: 'terminals/controlTaken',
+      payload: { terminalId: id, clientId: ctx.clientId, cols, rows }
+    })
+    ptyManager.resize(id, cols, rows)
   })
 }
 

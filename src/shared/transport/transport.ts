@@ -25,18 +25,35 @@
 //    streams (PTY bytes) and low-level fire-and-forget notifications
 //    (menu-triggered events, pty:write). No return value, no delivery
 //    guarantee beyond what the underlying transport provides.
+//
+// Server-side request/signal handlers receive a ConnectionContext as
+// their first argument. The `clientId` is a server-assigned UUID that
+// stays stable for the life of a connection (one per BrowserWindow, one
+// per WebSocket). It lets main-side handlers gate on "who's calling" —
+// e.g. only the terminal's current controller's pty:write / pty:resize
+// are honoured; other clients watch as spectators. Client-side signal
+// handlers don't receive a ctx because the server identity is implicit.
 
 import type { StateEvent, StateSnapshot } from '../state'
+
+/** Server-assigned identity of a connected client, threaded into every
+ *  request/signal handler so main can gate on who's calling. Stable for
+ *  the lifetime of a connection (a BrowserWindow or a WebSocket). */
+export interface ConnectionContext {
+  clientId: string
+}
 
 // Handler args are typed as `any[]` because the wire boundary is
 // inherently untyped — the transport doesn't know what each channel's
 // arg shape is. Individual handlers declare their own concrete types at
-// the call site (e.g. `(repoRoot: string) => …`). This mirrors how
+// the call site (e.g. `(ctx, repoRoot: string) => …`). This mirrors how
 // ipcMain.handle / ipcRenderer.invoke are typed in @types/electron.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type RequestHandler = (...args: any[]) => unknown | Promise<unknown>
+export type RequestHandler = (ctx: ConnectionContext, ...args: any[]) => unknown | Promise<unknown>
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type SignalHandler = (...args: any[]) => void
+export type SignalHandler = (ctx: ConnectionContext, ...args: any[]) => void
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type ClientSignalHandler = (...args: any[]) => void
 export type StateEventListener = (event: StateEvent, seq: number) => void
 
 export interface ServerTransport {
@@ -51,6 +68,10 @@ export interface ServerTransport {
 
   /** Push a fire-and-forget signal to all connected clients. */
   sendSignal(name: string, ...args: unknown[]): void
+
+  /** Subscribe to connection-close events so app code can sweep state
+   *  owned by the disconnecting client (e.g. clear controllers/spectators). */
+  onClientDisconnect(callback: (clientId: string) => void): void
 
   /** Lifecycle — called once during boot. */
   start(): void
@@ -73,5 +94,9 @@ export interface ClientTransport {
   send(name: string, ...args: unknown[]): void
 
   /** Subscribe to a signal channel pushed from the server. Returns an unsubscribe. */
-  onSignal(name: string, handler: SignalHandler): () => void
+  onSignal(name: string, handler: ClientSignalHandler): () => void
+
+  /** The server-assigned identity for this client. Stable for the
+   *  connection's lifetime; reassigned (new UUID) after a reconnect. */
+  getClientId(): Promise<string>
 }

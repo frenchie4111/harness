@@ -346,6 +346,9 @@ export interface ElectronAPI {
   writeTerminal(id: string, data: string): void
   resizeTerminal(id: string, cols: number, rows: number): void
   killTerminal(id: string): void
+  joinTerminal(id: string): void
+  leaveTerminal(id: string): void
+  takeTerminalControl(id: string, cols: number, rows: number): void
   onTerminalData(callback: (id: string, data: string) => void): () => void
   onTerminalExit(callback: (id: string, exitCode: number) => void): () => void
 
@@ -354,6 +357,8 @@ export interface ElectronAPI {
 
   getStateSnapshot(): Promise<StateSnapshot>
   onStateEvent(callback: (event: StateEvent, seq: number) => void): () => void
+
+  getClientId(): Promise<string>
 }
 
 export type ActivityState = 'processing' | 'waiting' | 'needs-approval' | 'idle' | 'merged'
