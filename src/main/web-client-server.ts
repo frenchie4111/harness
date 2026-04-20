@@ -23,6 +23,21 @@
 // Binding to 0.0.0.0 exposes to the LAN — the 32-byte token is the only
 // thing between an untrusted LAN peer and the main process. No TLS yet;
 // only enable LAN bind on a trusted network.
+//
+// PWA manifest injection: the static `manifest.webmanifest` on disk has
+// `start_url: "."`, which would make iOS "Add to Home Screen" shortcuts
+// open `/` with no token and hit the 401 gate. To fix this without
+// leaking the token in the on-disk file, we do two things when serving
+// an authenticated request:
+//   - rewrite the `<link rel="manifest" href="…">` tag in index.html to
+//     point at `./manifest.webmanifest?token=<token>`, so Safari fetches
+//     the manifest with the token attached.
+//   - respond to authenticated `/manifest.webmanifest` requests with a
+//     JSON body whose `start_url` is `./?token=<token>`, so the home
+//     screen shortcut inherits the token.
+// Unauthenticated manifest requests fall through to the static file
+// (start_url stays `.`), so a token is never disclosed to a caller that
+// didn't already present one.
 
 import { createServer, type IncomingMessage, type Server as HttpServer } from 'http'
 import { readFile, stat } from 'fs/promises'
@@ -74,6 +89,7 @@ export function createWebClientServer(opts: WebClientServerOptions): HttpServer 
       }
 
       const isHtmlEntry = filePath === indexPath
+      const isManifest = pathname === '/manifest.webmanifest'
       if (isHtmlEntry && !hasValidToken(req, url, opts.token)) {
         res.statusCode = 401
         res.setHeader('Content-Type', 'text/plain; charset=utf-8')
@@ -100,6 +116,32 @@ export function createWebClientServer(opts: WebClientServerOptions): HttpServer 
         res.statusCode = 404
         res.end('not found')
         return
+      }
+
+      if (isHtmlEntry) {
+        const tokenEnc = encodeURIComponent(opts.token)
+        const html = content
+          .toString('utf8')
+          .replace(
+            /<link\s+rel=["']manifest["']\s+href=["'][^"']*["']\s*\/?>/,
+            `<link rel="manifest" href="./manifest.webmanifest?token=${tokenEnc}" />`
+          )
+        res.setHeader('Content-Type', MIME['.html'])
+        res.end(html)
+        return
+      }
+
+      if (isManifest && hasValidToken(req, url, opts.token)) {
+        try {
+          const manifest = JSON.parse(content.toString('utf8')) as Record<string, unknown>
+          manifest.start_url = `./?token=${encodeURIComponent(opts.token)}`
+          res.setHeader('Content-Type', 'application/manifest+json')
+          res.setHeader('Cache-Control', 'no-store')
+          res.end(JSON.stringify(manifest))
+          return
+        } catch {
+          // fall through to serving the static manifest as-is
+        }
       }
 
       const ext = extname(pathname).toLowerCase()
