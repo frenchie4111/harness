@@ -8,9 +8,11 @@
 //   2. Copy the URL the main process logs to stdout.
 //   3. node scripts/web-smoke.mjs <host:port> <token>
 //
-// Validates: GET / returns HTML with the auth token inlined as a meta
-// tag, and a referenced asset is reachable. Doesn't exercise the WS
-// upgrade — see scripts/ws-smoke.mjs for that.
+// Validates:
+//   - GET / without a token → 401, body does not contain the token.
+//   - GET /?token=<token> → 200 HTML.
+//   - A referenced asset is reachable (ungated by design).
+// Doesn't exercise the WS upgrade — see scripts/ws-smoke.mjs for that.
 
 const target = process.argv[2]
 const token = process.argv[3]
@@ -23,38 +25,43 @@ const base = `http://${target}`
 const indexUrl = `${base}/?token=${encodeURIComponent(token)}`
 
 async function main() {
+  const unauthRes = await fetch(`${base}/`)
+  if (unauthRes.status !== 401) {
+    console.error('expected 401 for unauthenticated GET /, got', unauthRes.status)
+    process.exit(1)
+  }
+  const unauthBody = await unauthRes.text()
+  if (unauthBody.includes(token)) {
+    console.error('unauthenticated response leaked the token')
+    process.exit(1)
+  }
+  console.log('unauthenticated GET / → 401 (no token leak) OK')
+
   const indexRes = await fetch(indexUrl)
   if (!indexRes.ok) {
-    console.error('index fetch failed:', indexRes.status)
+    console.error('authed index fetch failed:', indexRes.status)
     process.exit(1)
   }
   const html = await indexRes.text()
-  const meta = html.match(
-    /<meta name="harness-ws-token" content="([^"]+)">/
-  )
-  if (!meta) {
-    console.error('index.html missing inlined token meta tag')
+  if (!/<html/i.test(html)) {
+    console.error('authed index response did not look like HTML')
     process.exit(1)
   }
-  if (meta[1] !== token) {
-    console.error('inlined token mismatch:', meta[1].slice(0, 8) + '…')
-    process.exit(1)
-  }
-  console.log('index.html OK, token meta inlined and matches')
+  console.log('authed GET /?token=… → 200 HTML OK')
 
-  // Pull the main bundle reference out of the HTML and try to GET it.
-  const script = html.match(/src="(\.\/assets\/[^"]+)"/)
+  const script = html.match(/src="(\.?\/?assets\/[^"]+)"/)
   if (!script) {
     console.warn('no asset reference found in index.html (maybe an empty bundle)')
     process.exit(0)
   }
-  const assetUrl = `${base}/${script[1].replace(/^\.\//, '')}`
+  const assetPath = script[1].replace(/^\.\//, '').replace(/^\//, '')
+  const assetUrl = `${base}/${assetPath}`
   const assetRes = await fetch(assetUrl)
   if (!assetRes.ok) {
     console.error('asset fetch failed:', assetUrl, assetRes.status)
     process.exit(1)
   }
-  console.log('asset OK:', script[1])
+  console.log('asset (ungated) OK:', assetPath)
 }
 
 main().catch((err) => {

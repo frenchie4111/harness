@@ -37,10 +37,6 @@ declare global {
 }
 
 function readToken(): string | null {
-  const meta = document.querySelector(
-    'meta[name="harness-ws-token"]'
-  ) as HTMLMetaElement | null
-  if (meta?.content) return meta.content
   const url = new URL(window.location.href)
   return url.searchParams.get('token')
 }
@@ -188,6 +184,7 @@ function buildApi(transport: WebSocketClientTransport): ElectronAPI {
       req('config:setWsTransportHost', host) as Promise<string>,
     getWsTransportInfo: () =>
       req('config:getWsTransportInfo') as ReturnType<ElectronAPI['getWsTransportInfo']>,
+    rotateWsToken: () => req('config:rotateWsToken') as Promise<string>,
     getLanAddresses: () =>
       req('net:getLanAddresses') as ReturnType<ElectronAPI['getLanAddresses']>,
     setBrowserToolsEnabled: (enabled) =>
