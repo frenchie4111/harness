@@ -142,4 +142,22 @@ describe('jsonClaudeReducer', () => {
     })
     expect(next).toBe(initialJsonClaude)
   })
+
+  it('permissionModeChanged flips the mode on an existing session', () => {
+    let state = seedSession(initialJsonClaude)
+    expect(state.sessions[SID].permissionMode).toBe('default')
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/permissionModeChanged',
+      payload: { sessionId: SID, mode: 'acceptEdits' }
+    })
+    expect(state.sessions[SID].permissionMode).toBe('acceptEdits')
+  })
+
+  it('permissionModeChanged is a no-op for unknown session', () => {
+    const next = jsonClaudeReducer(initialJsonClaude, {
+      type: 'jsonClaude/permissionModeChanged',
+      payload: { sessionId: 'missing', mode: 'acceptEdits' }
+    })
+    expect(next).toBe(initialJsonClaude)
+  })
 })

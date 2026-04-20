@@ -25,6 +25,7 @@ import type { Store } from './store'
 import type {
   JsonClaudeChatEntry,
   JsonClaudeMessageBlock,
+  JsonClaudePermissionMode,
   JsonClaudeSessionState
 } from '../shared/state/json-claude'
 import { log } from './debug'
@@ -71,7 +72,11 @@ export class JsonClaudeManager {
     return this.instances.has(sessionId)
   }
 
-  create(sessionId: string, worktreePath: string): void {
+  create(
+    sessionId: string,
+    worktreePath: string,
+    permissionMode: JsonClaudePermissionMode = 'default'
+  ): void {
     if (this.instances.has(sessionId)) {
       log('json-claude', `create no-op — already running sessionId=${sessionId}`)
       return
@@ -111,7 +116,7 @@ export class JsonClaudeManager {
       'stream-json',
       '--verbose',
       '--permission-mode',
-      'default',
+      permissionMode,
       '--permission-prompt-tool',
       'mcp__harness-permissions__approve',
       '--mcp-config',
@@ -126,7 +131,10 @@ export class JsonClaudeManager {
     const quoted = args.map((a) => JSON.stringify(a)).join(' ')
     const cmdLine = `${claudeCommand} ${quoted}`
 
-    log('json-claude', `spawn sessionId=${sessionId} cwd=${worktreePath}`)
+    log(
+      'json-claude',
+      `spawn sessionId=${sessionId} cwd=${worktreePath} mode=${permissionMode}`
+    )
 
     const envVars = this.opts.getClaudeEnvVars() || {}
     // Build env for the subprocess. We start from process.env, scrub
@@ -282,6 +290,35 @@ export class JsonClaudeManager {
 
   killAll(): void {
     for (const id of Array.from(this.instances.keys())) this.kill(id)
+  }
+
+  /** Change --permission-mode mid-session. Kills the current subprocess
+   *  and respawns with the new mode; --resume on the spawn path picks up
+   *  the existing session jsonl, so conversation state is preserved.
+   *  Noop if the session isn't currently running. */
+  setPermissionMode(sessionId: string, mode: JsonClaudePermissionMode): void {
+    const inst = this.instances.get(sessionId)
+    if (!inst) return
+    const worktreePath = inst.worktreePath
+    log(
+      'json-claude',
+      `permissionMode change sessionId=${sessionId} mode=${mode} — restarting`
+    )
+    // Kill the running subprocess synchronously so its 'exit' handler
+    // drains the instances map before we re-create.
+    this.instances.delete(sessionId)
+    try {
+      inst.proc.stdin.end()
+    } catch {
+      /* ignore */
+    }
+    try {
+      inst.proc.kill('SIGTERM')
+    } catch {
+      /* ignore */
+    }
+    this.opts.closeApprovalSession(sessionId)
+    this.create(sessionId, worktreePath, mode)
   }
 
   private handleStreamLine(instance: JsonClaudeInstance, line: string): void {

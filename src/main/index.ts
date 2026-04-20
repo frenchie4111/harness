@@ -1782,7 +1782,10 @@ function registerIpcHandlers(): void {
       type: 'jsonClaude/sessionStarted',
       payload: { sessionId, worktreePath: cwd }
     })
-    jsonClaudeManager.create(sessionId, cwd)
+    const mode =
+      store.getSnapshot().state.jsonClaude.sessions[sessionId]?.permissionMode ||
+      'default'
+    jsonClaudeManager.create(sessionId, cwd, mode)
     return true
   })
   transport.onSignal('jsonClaude:send', (_ctx, sessionId: string, text: string) => {
@@ -1796,6 +1799,19 @@ function registerIpcHandlers(): void {
     jsonClaudeManager.interrupt(sessionId)
     return true
   })
+
+  transport.onRequest(
+    'jsonClaude:setPermissionMode',
+    (_ctx, sessionId: string, mode: 'default' | 'acceptEdits' | 'plan') => {
+      if (!sessionId) return false
+      store.dispatch({
+        type: 'jsonClaude/permissionModeChanged',
+        payload: { sessionId, mode }
+      })
+      jsonClaudeManager.setPermissionMode(sessionId, mode)
+      return true
+    }
+  )
 
   transport.onRequest('config:setJsonModeClaudeTabs', (_ctx, enabled: boolean) => {
     if (enabled) {

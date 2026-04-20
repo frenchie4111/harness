@@ -11,6 +11,11 @@ export type JsonClaudeSessionState =
   | 'exited'
   | 'auth-required'
 
+/** Mirrors `claude --permission-mode` choices. Subset relevant to a
+ *  json-claude tab: we don't expose bypassPermissions (unsafe) or
+ *  dontAsk/auto (overlap with default). */
+export type JsonClaudePermissionMode = 'default' | 'acceptEdits' | 'plan'
+
 export interface JsonClaudeMessageBlock {
   type: 'text' | 'tool_use' | 'tool_result'
   // For 'text': markdown content.
@@ -46,6 +51,10 @@ export interface JsonClaudeSession {
   /** Last text of the most recent user submission; used by the renderer to
    *  pair the echo against the user-card it just rendered optimistically. */
   busy: boolean
+  /** --permission-mode flag passed to claude at spawn time. Changing
+   *  this kills + respawns with --resume so the mode change is
+   *  effectively mid-session. */
+  permissionMode: JsonClaudePermissionMode
 }
 
 export interface JsonClaudePendingApproval {
@@ -107,6 +116,10 @@ export type JsonClaudeEvent =
       type: 'jsonClaude/approvalResolved'
       payload: { requestId: string }
     }
+  | {
+      type: 'jsonClaude/permissionModeChanged'
+      payload: { sessionId: string; mode: JsonClaudePermissionMode }
+    }
 
 export const initialJsonClaude: JsonClaudeState = {
   sessions: {},
@@ -127,8 +140,9 @@ export function jsonClaudeReducer(
   switch (event.type) {
     case 'jsonClaude/sessionStarted': {
       const { sessionId, worktreePath } = event.payload
-      // Preserve entries if this session id already exists (re-attach on
-      // reload), reset exit bookkeeping.
+      // Preserve entries + permissionMode if this session id already
+      // exists (re-attach on reload or mode-change respawn), reset exit
+      // bookkeeping.
       const existing = state.sessions[sessionId]
       return {
         ...state,
@@ -141,7 +155,8 @@ export function jsonClaudeReducer(
             exitCode: null,
             exitReason: null,
             entries: existing?.entries ?? [],
-            busy: false
+            busy: false,
+            permissionMode: existing?.permissionMode ?? 'default'
           }
         }
       }
@@ -260,6 +275,20 @@ export function jsonClaudeReducer(
       const { [requestId]: _dropped, ...rest } = state.pendingApprovals
       void _dropped
       return { ...state, pendingApprovals: rest }
+    }
+    case 'jsonClaude/permissionModeChanged': {
+      const session = state.sessions[event.payload.sessionId]
+      if (!session) return state
+      return {
+        ...state,
+        sessions: {
+          ...state.sessions,
+          [session.sessionId]: {
+            ...session,
+            permissionMode: event.payload.mode
+          }
+        }
+      }
     }
     default: {
       const _exhaustive: never = event

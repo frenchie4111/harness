@@ -403,6 +403,32 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
 
   const state = session?.state ?? 'idle'
   const busy = !!session?.busy
+  const permissionMode = session?.permissionMode ?? 'default'
+
+  function cyclePermissionMode(): void {
+    // default → acceptEdits → plan → default. Matches the order Claude's
+    // TUI cycles via shift+tab.
+    const next =
+      permissionMode === 'default'
+        ? 'acceptEdits'
+        : permissionMode === 'acceptEdits'
+          ? 'plan'
+          : 'default'
+    void window.api.setJsonClaudePermissionMode(sessionId, next)
+  }
+
+  const modeBadgeStyle =
+    permissionMode === 'acceptEdits'
+      ? 'bg-success/15 text-success border-success/30'
+      : permissionMode === 'plan'
+        ? 'bg-accent/15 text-accent border-accent/30'
+        : 'bg-surface text-muted border-border'
+  const modeBadgeLabel =
+    permissionMode === 'acceptEdits'
+      ? 'accept edits'
+      : permissionMode === 'plan'
+        ? 'plan'
+        : 'ask every time'
 
   return (
     <div className="absolute inset-0 flex flex-col bg-app text-fg">
@@ -424,15 +450,24 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
           </span>
           {busy && <span className="text-[10px] text-muted italic">thinking…</span>}
         </div>
-        {busy && (
+        <div className="flex items-center gap-2">
           <button
-            onClick={interrupt}
-            className="flex items-center gap-1 text-xs text-danger hover:text-danger/80 px-2 py-0.5 rounded hover:bg-danger/10 cursor-pointer"
-            title="Interrupt the current model turn"
+            onClick={cyclePermissionMode}
+            className={`text-[10px] px-2 py-0.5 rounded border cursor-pointer hover:opacity-80 transition-opacity ${modeBadgeStyle}`}
+            title="Click to cycle permission mode. Restarts the subprocess with --resume so the conversation persists."
           >
-            <Square size={12} fill="currentColor" /> Interrupt
+            {modeBadgeLabel}
           </button>
-        )}
+          {busy && (
+            <button
+              onClick={interrupt}
+              className="flex items-center gap-1 text-xs text-danger hover:text-danger/80 px-2 py-0.5 rounded hover:bg-danger/10 cursor-pointer"
+              title="Interrupt the current model turn"
+            >
+              <Square size={12} fill="currentColor" /> Interrupt
+            </button>
+          )}
+        </div>
       </div>
       <div
         ref={scrollRef}

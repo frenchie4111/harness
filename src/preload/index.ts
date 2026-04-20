@@ -341,6 +341,10 @@ contextBridge.exposeInMainWorld('api', {
     sig('jsonClaude:send', id, text),
   killJsonClaude: (id: string) => req('jsonClaude:kill', id),
   interruptJsonClaude: (id: string) => req('jsonClaude:interrupt', id),
+  setJsonClaudePermissionMode: (
+    id: string,
+    mode: 'default' | 'acceptEdits' | 'plan'
+  ) => req('jsonClaude:setPermissionMode', id, mode),
 
   // State transport (snapshot + event stream). Replaces ad-hoc per-field
   // getters and onXChanged subscriptions one slice at a time.

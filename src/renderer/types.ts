@@ -378,6 +378,10 @@ export interface ElectronAPI {
   sendJsonClaudeMessage(id: string, text: string): void
   killJsonClaude(id: string): Promise<boolean>
   interruptJsonClaude(id: string): Promise<boolean>
+  setJsonClaudePermissionMode(
+    id: string,
+    mode: 'default' | 'acceptEdits' | 'plan'
+  ): Promise<boolean>
 
   getStateSnapshot(): Promise<StateSnapshot>
   onStateEvent(callback: (event: StateEvent, seq: number) => void): () => void
