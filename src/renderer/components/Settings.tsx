@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2, LifeBuoy, Bug, Lightbulb, FlaskConical } from 'lucide-react'
+import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2, LifeBuoy, Bug, Lightbulb, FlaskConical, Copy, ExternalLink } from 'lucide-react'
 import { openReportIssue } from './ReportIssueScreen'
 import { HARNESS_ISSUES_URL, HARNESS_RELEASES_URL } from '../../shared/constants'
 import { useSettings, useUpdater, useRepoConfigs, useHooks } from '../store'
@@ -183,7 +183,10 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
     harnessSystemPromptMain,
     claudeTuiFullscreen,
     browserToolsEnabled,
-    browserToolsMode
+    browserToolsMode,
+    wsTransportEnabled,
+    wsTransportPort,
+    wsTransportHost
   } = settings
   const setupScript = worktreeScripts.setup
   const teardownScript = worktreeScripts.teardown
@@ -235,6 +238,14 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
   // Hooks consent — drives the copy in the "Status hooks" card below.
   const { consent: hooksConsent } = useHooks()
 
+  // WS transport: wsInfo reflects the live server (null when off or not
+  // yet started after enabling — the server only binds at app launch).
+  const [wsInfo, setWsInfo] = useState<{ port: number; token: string; host: string } | null>(null)
+  const [showWsToken, setShowWsToken] = useState(false)
+  const [wsUrlCopied, setWsUrlCopied] = useState(false)
+  const [wsPortDraft, setWsPortDraft] = useState<string>(String(wsTransportPort))
+  useEffect(() => { setWsPortDraft(String(wsTransportPort)) }, [wsTransportPort])
+
   // Constants and non-settings state load once; live settings are already
   // hydrated via useSettings() above.
   useEffect(() => {
@@ -242,7 +253,12 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
     window.api.getDefaultClaudeCommand().then(setDefaultClaudeCommand)
     window.api.getDefaultTerminalFontFamily().then(setDefaultTerminalFontFamily)
     window.api.getAvailableEditors().then(setAvailableEditors)
+    window.api.getWsTransportInfo().then(setWsInfo)
   }, [])
+
+  useEffect(() => {
+    window.api.getWsTransportInfo().then(setWsInfo)
+  }, [wsTransportEnabled])
 
   // Whenever claudeEnvVars in the store changes (e.g. another window saved),
   // re-seed the local editable rows. Local edits between loads are lost —
@@ -477,6 +493,43 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
   const handleToggleAutoUpdate = useCallback(async (enabled: boolean) => {
     await window.api.setAutoUpdateEnabled(enabled)
   }, [])
+
+  const handleToggleWsTransport = useCallback(async (enabled: boolean) => {
+    await window.api.setWsTransportEnabled(enabled)
+  }, [])
+
+  const handleSaveWsPort = useCallback(async () => {
+    const parsed = Number.parseInt(wsPortDraft, 10)
+    if (!Number.isFinite(parsed)) return
+    await window.api.setWsTransportPort(parsed)
+  }, [wsPortDraft])
+
+  const handleSelectWsHost = useCallback(async (host: string) => {
+    await window.api.setWsTransportHost(host)
+  }, [])
+
+  // Build the display URL from the live server when it's running; fall back
+  // to the configured host/port (with a blank token) so the user can see
+  // roughly what the URL *will* be after restart.
+  const effectiveWsHost = wsInfo?.host ?? wsTransportHost
+  const effectiveWsPort = wsInfo?.port ?? wsTransportPort
+  const effectiveWsToken = wsInfo?.token ?? ''
+  const wsUrl = `http://${effectiveWsHost}:${effectiveWsPort}/?token=${effectiveWsToken}`
+  const wsUrlMasked = `http://${effectiveWsHost}:${effectiveWsPort}/?token=${'•'.repeat(8)}`
+
+  const handleCopyWsUrl = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(wsUrl)
+      setWsUrlCopied(true)
+      setTimeout(() => setWsUrlCopied(false), 1500)
+    } catch {
+      // clipboard writes can reject when the window isn't focused
+    }
+  }, [wsUrl])
+
+  const handleOpenWsUrl = useCallback(() => {
+    window.api.openExternal(wsUrl)
+  }, [wsUrl])
 
   const handleSaveSystemPrompt = useCallback(async () => {
     await window.api.setHarnessSystemPrompt(systemPromptDraft)
@@ -1878,6 +1931,127 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
                     </select>
                   </div>
                 </div>
+              </div>
+
+              {/* Web / mobile client sub-card */}
+              <div className="bg-panel-raised border border-warning/30 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <h3 className="text-sm font-semibold text-fg-bright">Web &amp; mobile client</h3>
+                  <span className="text-[10px] font-medium text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
+                    Experimental
+                  </span>
+                </div>
+                <p className="text-xs text-dim mb-3">
+                  Runs an HTTP + WebSocket server alongside the desktop app so
+                  you can open the same workspace from a browser — useful for a
+                  second laptop or a phone on the same network. Token-gated;
+                  no TLS yet.
+                </p>
+
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={wsTransportEnabled}
+                    onChange={(e) => { void handleToggleWsTransport(e.target.checked) }}
+                    className="mt-0.5 cursor-pointer"
+                  />
+                  <div className="flex-1">
+                    <div className="text-sm text-fg-bright">Enable web / mobile client</div>
+                    <div className="text-xs text-dim mt-0.5">
+                      Takes effect on next app launch. Quit and reopen Harness
+                      to start the server.
+                    </div>
+                  </div>
+                </label>
+
+                {wsTransportEnabled && (
+                  <>
+                    <div className="mt-4 pt-3 border-t border-border grid grid-cols-[1fr_auto] gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-fg mb-1">Port</label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min={1024}
+                            max={65535}
+                            value={wsPortDraft}
+                            onChange={(e) => setWsPortDraft(e.target.value)}
+                            onBlur={handleSaveWsPort}
+                            className="w-28 bg-panel border border-border-strong rounded px-2 py-1 text-xs text-fg-bright outline-none focus:border-fg font-mono"
+                          />
+                          <span className="text-[11px] text-faint">default 37291</span>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-fg mb-1">Bind to</label>
+                        <select
+                          value={wsTransportHost}
+                          onChange={(e) => { void handleSelectWsHost(e.target.value) }}
+                          className="bg-panel border border-border-strong rounded px-2 py-1 text-xs text-fg-bright outline-none focus:border-fg cursor-pointer"
+                        >
+                          <option value="127.0.0.1">This machine only (loopback)</option>
+                          <option value="0.0.0.0">LAN — other devices on this network</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 pt-3 border-t border-border">
+                      <label className="block text-xs font-medium text-fg mb-1">Connection URL</label>
+                      <div className="flex items-center gap-2">
+                        <code className="flex-1 bg-panel border border-border rounded px-2 py-1.5 text-[11px] text-fg-bright font-mono truncate">
+                          {showWsToken ? wsUrl : wsUrlMasked}
+                        </code>
+                        <Tooltip label={showWsToken ? 'Hide token' : 'Show token'}>
+                          <button
+                            onClick={() => setShowWsToken((v) => !v)}
+                            disabled={!wsInfo}
+                            className="p-1.5 text-dim hover:text-fg transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            {showWsToken ? <EyeOff size={14} /> : <Eye size={14} />}
+                          </button>
+                        </Tooltip>
+                        <Tooltip label={wsUrlCopied ? 'Copied' : 'Copy URL'}>
+                          <button
+                            onClick={handleCopyWsUrl}
+                            disabled={!wsInfo}
+                            className="p-1.5 text-dim hover:text-fg transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            {wsUrlCopied ? <Check size={14} className="text-success" /> : <Copy size={14} />}
+                          </button>
+                        </Tooltip>
+                        <Tooltip label="Open in browser">
+                          <button
+                            onClick={handleOpenWsUrl}
+                            disabled={!wsInfo}
+                            className="p-1.5 text-dim hover:text-fg transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            <ExternalLink size={14} />
+                          </button>
+                        </Tooltip>
+                      </div>
+                      {!wsInfo && (
+                        <p className="mt-2 text-[11px] text-warning flex items-center gap-1.5">
+                          <RefreshCw size={11} />
+                          Server not running yet — quit and relaunch Harness.
+                        </p>
+                      )}
+                    </div>
+
+                    {wsTransportHost === '0.0.0.0' && (
+                      <div className="mt-4 pt-3 border-t border-border bg-warning/5 -mx-4 -mb-4 px-4 pb-4 rounded-b-lg">
+                        <p className="text-xs text-fg">
+                          <span className="font-medium text-warning">LAN mode:</span>{' '}
+                          connect from another device on your network by
+                          pointing its browser at this machine's LAN IP
+                          (e.g. <code className="bg-panel px-1 rounded">http://192.168.x.x:{effectiveWsPort}/?token=…</code>).
+                          The 32-byte token is the only thing gating access —
+                          only enable on networks you trust, and never over the
+                          public internet.
+                        </p>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             </section>
           </div>
