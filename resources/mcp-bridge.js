@@ -382,7 +382,7 @@ const TOOLS = [
   {
     name: 'kill_shell',
     description:
-      "Terminate the process running in a shell tab in this worktree. The tab stays open so you (and the user) can still read the final output via read_shell_output.",
+      "Terminate the process in a shell tab AND close the tab. Use this as explicit cleanup when you're done with a shell. If you still need the final output, call read_shell_output first — it works up until kill_shell closes the tab. Natural exits (the process finishing on its own) leave the tab open for inspection; only explicit kill_shell closes it.",
     inputSchema: {
       type: 'object',
       properties: {
