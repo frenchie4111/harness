@@ -2366,7 +2366,12 @@ app.whenReady().then(() => {
         return { id, label: finalLabel }
       },
       killShell: (shellId) => {
-        ptyManager.kill(shellId)
+        const wtPath = findShellWorktree(shellId)
+        if (wtPath) {
+          panesFSM.closeTab(wtPath, shellId)
+        } else {
+          ptyManager.kill(shellId)
+        }
       }
     },
     broadcast: (channel, payload) => {

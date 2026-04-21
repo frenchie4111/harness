@@ -193,7 +193,7 @@ Harness also exposes shell tabs for long-running processes — anything that wou
 - create_shell: spawn a shell tab, optionally with a command to run (\`zsh -ilc <command>\`). Returns an id — keep it for later reads.
 - list_shells: enumerate existing shell tabs (id, label, command, alive). Check here before spawning — don't start a second \`npm run dev\` if one is already running.
 - read_shell_output: read a shell's output, optionally with a \`match\` regex + \`context\` lines to scan a long log for errors/warnings without pulling back megabytes.
-- kill_shell: terminate the process. The tab stays open so you (and the user) can still read the final output.
+- kill_shell: terminate the process AND close the tab. For natural exits (process finishes on its own), the tab stays open for inspection — kill_shell is explicit cleanup.
 
 Prefer these over running long-running commands via Bash — Bash either blocks until the process exits or loses the output stream when backgrounded, whereas a Harness shell tab keeps streaming, stays readable via read_shell_output after the fact, and is visible to the user in the Harness UI. Short one-shots (\`npm test\`, \`tsc --noEmit\`, \`git status\`) still belong on Bash.`
 
