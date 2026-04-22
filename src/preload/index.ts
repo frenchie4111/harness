@@ -114,6 +114,8 @@ contextBridge.exposeInMainWorld('api', {
   refreshPRsOne: (worktreePath: string) => req('prs:refreshOne', worktreePath),
   refreshPRsOneIfStale: (worktreePath: string) => req('prs:refreshOneIfStale', worktreePath),
 
+  getWeeklyStats: () => req('stats:getWeekly'),
+
   // Config — getters for store-backed settings are gone. Renderer reads
   // via useSettings() / useRepoConfigs() / useOnboarding() etc. The set*
   // methods stay because they're how the renderer asks main to mutate.

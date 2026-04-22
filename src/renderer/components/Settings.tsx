@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2, LifeBuoy, Bug, Lightbulb, FlaskConical, Copy, ExternalLink } from 'lucide-react'
+import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2, LifeBuoy, Bug, Lightbulb, FlaskConical, Copy, ExternalLink, CalendarDays } from 'lucide-react'
 import { openReportIssue } from './ReportIssueScreen'
 import { HARNESS_ISSUES_URL, HARNESS_RELEASES_URL } from '../../shared/constants'
 import { useSettings, useUpdater, useRepoConfigs, useHooks } from '../store'
@@ -14,6 +14,7 @@ import { QRCodeSVG } from 'qrcode.react'
 interface SettingsProps {
   onClose: () => void
   onOpenGuide: () => void
+  onOpenMyWeek: () => void
   initialSection?: SectionId
 }
 
@@ -48,7 +49,7 @@ const SECTIONS: Section[] = [
   { id: 'experimental', label: 'Experimental', icon: FlaskConical }
 ]
 
-export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps): JSX.Element {
+export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }: SettingsProps): JSX.Element {
   const [activeSection, setActiveSection] = useState<SectionId>(initialSection ?? 'appearance')
   const [activeSubSection, setActiveSubSection] = useState<SubSectionId | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -838,6 +839,13 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
           >
             <BookOpen size={14} className="shrink-0" />
             <span>Worktree Guide</span>
+          </button>
+          <button
+            onClick={onOpenMyWeek}
+            className="flex items-center gap-2 px-3 py-2 text-left text-sm text-muted hover:bg-panel-raised hover:text-fg-bright transition-colors cursor-pointer"
+          >
+            <CalendarDays size={14} className="shrink-0" />
+            <span>My week</span>
           </button>
         </div>
 

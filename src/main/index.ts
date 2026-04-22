@@ -19,6 +19,7 @@ import { WorktreesFSM } from './worktrees-fsm'
 import { WorktreeDeletionFSM } from './worktree-deletion-fsm'
 import { PanesFSM, stripTransientTabFields } from './panes-fsm'
 import { ActivityDeriver } from './activity-deriver'
+import { getWeeklyStats } from './weekly-stats'
 import type { TerminalTab, PaneNode, PaneLeaf } from '../shared/state/terminals'
 import { getLeaves, mapLeaves } from '../shared/state/terminals'
 import { listWorktrees, listBranches, continueWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getCommitChangedFiles, getCommitFileDiffSides, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, readWorktreeFile, writeWorktreeFile, getFileDiffSides, getCurrentBranch, symlinkClaudeSettings, type MergeStrategy } from './worktree'
@@ -908,6 +909,11 @@ function registerIpcHandlers(): void {
   transport.onRequest('prs:refreshOneIfStale', (_ctx, worktreePath: string) => {
     prPoller.refreshOneIfStale(worktreePath)
     return true
+  })
+
+  transport.onRequest('stats:getWeekly', async (_ctx) => {
+    const snap = store.getSnapshot().state
+    return getWeeklyStats(snap.prs, snap.worktrees)
   })
 
   transport.onRequest('worktree:mainStatus', async (_ctx, repoRoot: string) => {

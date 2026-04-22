@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, Flame, Clock, Zap, GitBranch, GitMerge, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Flame, Clock, Zap, GitBranch, GitMerge, RefreshCw, CalendarDays } from 'lucide-react'
 import type {
   Worktree,
   ActivityLog,
@@ -12,6 +12,7 @@ import { isPRMerged } from '../../shared/state/prs'
 
 interface ActivityProps {
   onClose: () => void
+  onOpenMyWeek: () => void
   worktrees: Worktree[]
   prStatuses?: Record<string, PRStatus | null>
   mergedPaths?: Record<string, boolean>
@@ -98,7 +99,7 @@ function isLiveMerged(
   return !!mergedPaths?.[path] || isPRMerged(prStatuses?.[path])
 }
 
-export function Activity({ onClose, worktrees, prStatuses, mergedPaths }: ActivityProps): JSX.Element {
+export function Activity({ onClose, onOpenMyWeek, worktrees, prStatuses, mergedPaths }: ActivityProps): JSX.Element {
   const [log, setLog] = useState<ActivityLog>({})
   const [range, setRange] = useState<Range>('24h')
   const [now, setNow] = useState(Date.now())
@@ -262,6 +263,14 @@ export function Activity({ onClose, worktrees, prStatuses, mergedPaths }: Activi
           Activity
         </span>
         <div className="no-drag absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
+          <button
+            onClick={onOpenMyWeek}
+            className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted hover:text-fg-bright hover:bg-surface rounded transition-colors cursor-pointer"
+            title="Weekly review"
+          >
+            <CalendarDays size={13} />
+            My week
+          </button>
           <button
             onClick={loadLog}
             className="text-muted hover:text-fg-bright transition-colors cursor-pointer p-1"

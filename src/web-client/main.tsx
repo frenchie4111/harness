@@ -122,6 +122,8 @@ function buildApi(transport: WebSocketClientTransport): ElectronAPI {
     refreshPRsOneIfStale: (worktreePath) =>
       req('prs:refreshOneIfStale', worktreePath) as Promise<boolean>,
 
+    getWeeklyStats: () => req('stats:getWeekly') as ReturnType<ElectronAPI['getWeeklyStats']>,
+
     getBranchCommits: (worktreePath) =>
       req('worktree:branchCommits', worktreePath) as ReturnType<ElectronAPI['getBranchCommits']>,
     getCommitDiff: (worktreePath, hash) =>

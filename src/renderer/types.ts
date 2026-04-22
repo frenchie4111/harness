@@ -7,6 +7,9 @@ export type { Worktree, PendingWorktree, PendingDeletion }
 import type { RepoConfig } from '../shared/state/repo-configs'
 export type { RepoConfig }
 
+import type { WeeklyStats, TopWorktree } from '../shared/weekly-stats'
+export type { WeeklyStats, TopWorktree }
+
 export interface FileReadResult {
   content: string | null
   size: number
@@ -185,6 +188,8 @@ export interface ElectronAPI {
   refreshPRsAllIfStale(): Promise<boolean>
   refreshPRsOne(worktreePath: string): Promise<boolean>
   refreshPRsOneIfStale(worktreePath: string): Promise<boolean>
+
+  getWeeklyStats(): Promise<WeeklyStats>
   getBranchCommits(worktreePath: string): Promise<BranchCommit[]>
   getCommitDiff(worktreePath: string, hash: string): Promise<CommitDiff | null>
   getCommitChangedFiles(worktreePath: string, hash: string): Promise<ChangedFile[]>

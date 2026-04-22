@@ -18,6 +18,7 @@ import { QuestCard } from './components/QuestCard'
 import { WorkspaceView } from './components/WorkspaceView'
 import { RightColumn } from './components/RightColumn'
 import { Settings } from './components/Settings'
+import { WeeklyWrappedScreen } from './components/WeeklyWrappedScreen'
 import { Guide } from './components/Guide'
 import { AGENT_REGISTRY } from '../shared/agent-registry'
 import { AgentIcon } from './components/AgentIcon'
@@ -195,6 +196,7 @@ function DesktopApp(): JSX.Element {
   const [showSettings, setShowSettings] = useState(false)
   const [settingsInitialSection, setSettingsInitialSection] = useState<'github' | undefined>(undefined)
   const [showGuide, setShowGuide] = useState(false)
+  const [showMyWeek, setShowMyWeek] = useState(false)
   const [showActivity, setShowActivity] = useState(false)
   const [showCleanup, setShowCleanup] = useState(false)
   const [showCommandCenter, setShowCommandCenter] = useState(false)
@@ -614,8 +616,19 @@ const setQuestStep = useCallback((next: QuestStep) => {
           setSettingsInitialSection(undefined)
           setShowGuide(true)
         }}
+        onOpenMyWeek={() => {
+          setShowSettings(false)
+          setSettingsInitialSection(undefined)
+          setShowMyWeek(true)
+        }}
         initialSection={settingsInitialSection}
       />
+    </div>
+  ) : null
+
+  const myWeekOverlay = showMyWeek ? (
+    <div className="fixed inset-0 z-50 flex">
+      <WeeklyWrappedScreen onClose={() => setShowMyWeek(false)} />
     </div>
   ) : null
 
@@ -925,6 +938,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
         </div>
       </div>
       {settingsOverlay}
+      {myWeekOverlay}
       </HotkeysProvider>
     )
   }
@@ -1094,6 +1108,10 @@ const setQuestStep = useCallback((next: QuestStep) => {
           <div className="flex-1 min-w-0 flex">
             <Activity
               onClose={() => setShowActivity(false)}
+              onOpenMyWeek={() => {
+                setShowActivity(false)
+                setShowMyWeek(true)
+              }}
               worktrees={worktrees}
               prStatuses={prStatuses}
               mergedPaths={mergedPaths}
@@ -1219,6 +1237,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
       </div>
     </div>
     {settingsOverlay}
+    {myWeekOverlay}
     {showPerfMonitor && <PerfMonitorHUD onClose={() => setShowPerfMonitor(false)} />}
     {showCommandPalette && (
       <CommandPalette
