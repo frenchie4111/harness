@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/icon.png" alt="Harness" width="128" height="128" />
+  <img src="site/public/icon.png" alt="Harness" width="128" height="128" />
 </p>
 
 <h1 align="center">Run a team of agents.</h1>
@@ -15,7 +15,7 @@
   <a href="https://harness.mikelyons.org/guide.html">Guide</a>
 </p>
 
-![Harness](docs/harness-demo-poster.jpg)
+![Harness](site/public/harness-demo-poster.jpg)
 
 > **→ Visit [harness.mikelyons.org](https://harness.mikelyons.org) for screenshots, feature walkthroughs, and release notes.**
 
