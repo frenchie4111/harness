@@ -71,7 +71,7 @@ export const DEFAULT_HOTKEYS: Record<Action, HotkeyBinding> = {
   splitPaneDown: { key: 'd', modifiers: { cmd: true, alt: true } },
   toggleRightColumn: { key: 'b', modifiers: { cmd: true, alt: true } },
   togglePerfMonitor: { key: 'd', modifiers: { cmd: true, shift: true } },
-  hotkeyCheatsheet: { key: '/', modifiers: { cmd: true } },
+  hotkeyCheatsheet: { key: '/', modifiers: { cmd: true, shift: true } },
   openReview: { key: 'r', modifiers: { cmd: true, alt: true } },
 }
 
