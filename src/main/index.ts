@@ -1,4 +1,5 @@
 import { existsSync, lstatSync } from 'fs'
+import { createRequire } from 'module'
 import { join } from 'path'
 import { PtyManager } from './pty-manager'
 import { Store } from './store'
@@ -114,16 +115,15 @@ import { buildInitialAppState } from './build-initial-state'
 // override to fight with.
 const runtime = detectRuntime()
 
-// Load the desktop shell ONLY in Electron mode. The (0, eval)('require')
-// dance hides the lookup from the bundler, so the headless build doesn't
-// drag electron + electron-updater + WebContentsView in via static
-// analysis. In Electron mode the file lives next to this one in the
-// build output.
+// Load the desktop shell ONLY in Electron mode. `createRequire` hides
+// the lookup from the bundler, so the headless build doesn't drag
+// electron + electron-updater + WebContentsView in via static analysis.
+// In Electron mode the file lives next to this one in the build output
+// (added as a second `input` in electron.vite.config.ts).
 type DesktopShellModule = typeof import('./desktop-shell')
 let desktopShellMod: DesktopShellModule | null = null
 if (runtime === 'electron') {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const dynamicRequire = (0, eval)('require') as (id: string) => unknown
+  const dynamicRequire = createRequire(__filename)
   desktopShellMod = dynamicRequire('./desktop-shell') as DesktopShellModule
 }
 

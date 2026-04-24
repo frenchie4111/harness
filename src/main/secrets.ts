@@ -21,6 +21,7 @@
 
 import { createCipheriv, createDecipheriv, randomBytes } from 'crypto'
 import { chmodSync, existsSync, readFileSync, writeFileSync } from 'fs'
+import { createRequire } from 'module'
 import { join } from 'path'
 import { detectRuntime, userDataDir } from './paths'
 import { log } from './debug'
@@ -224,9 +225,8 @@ let backendCache: SecretsBackend | null = null
 
 function pickBackend(): SecretsBackend {
   if (backendCache) return backendCache
+  const dynamicRequire = createRequire(__filename)
   if (detectRuntime() === 'electron') {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const dynamicRequire = (0, eval)('require') as (id: string) => unknown
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { safeStorage } = dynamicRequire('electron') as any
     backendCache = new SafeStorageBackend(safeStorage)
@@ -236,8 +236,6 @@ function pickBackend(): SecretsBackend {
   // Docker/Alpine/CI — fall through to the file backend on any load
   // error, including the binding being missing entirely.
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const dynamicRequire = (0, eval)('require') as (id: string) => unknown
     const keytar = dynamicRequire('keytar')
     backendCache = new KeytarBackend(keytar)
     log('secrets', 'using keytar backend')

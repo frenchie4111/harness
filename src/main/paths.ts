@@ -18,11 +18,15 @@
 //
 // Why dynamic-require for `electron`: the headless bundle is built
 // without Electron on the load path. A static `import { app } from
-// 'electron'` here would force the bundler to resolve it; an
-// `eval('require')` at call time hides the lookup until we already
-// know we're inside Electron.
+// 'electron'` here would force the bundler to resolve it; a
+// `createRequire` call at use-time hides the lookup until we already
+// know we're inside Electron. `createRequire` works in both the
+// electron-vite CJS output and any future ESM output — `eval('require')`
+// was the prior attempt and it broke under CJS because `require` is
+// module-local there, not global.
 
 import { existsSync, mkdirSync } from 'fs'
+import { createRequire } from 'module'
 import { homedir } from 'os'
 import { join } from 'path'
 
@@ -42,8 +46,7 @@ function ensureDir(dir: string, mode = 0o700): string {
 }
 
 function loadElectronApp(): { getPath: (name: string) => string; isPackaged: boolean } {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const dynamicRequire = (0, eval)('require') as (id: string) => unknown
+  const dynamicRequire = createRequire(__filename)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (dynamicRequire('electron') as any).app
 }
