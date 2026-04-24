@@ -55,8 +55,28 @@ export async function initStore(): Promise<void> {
   ])
   state = snapshot.state
   clientId = id
+  // eslint-disable-next-line no-console
+  console.log(`[take-control] initStore myClientId=${id}`)
   window.api.onStateEvent((event, _seq) => {
     state = rootReducer(state, event)
+    // Diagnostic for the controller/spectator flow. If the UI is ever
+    // stuck on the wrong controller, grep console for `[take-control]`
+    // — the renderer should log one of these for every roster event
+    // that lands, with the post-reducer controllerClientId.
+    if (
+      event.type === 'terminals/controlTaken' ||
+      event.type === 'terminals/controlReleased' ||
+      event.type === 'terminals/clientJoined' ||
+      event.type === 'terminals/clientDisconnected'
+    ) {
+      const payload = event.payload as { terminalId?: string }
+      const tid = payload.terminalId
+      const session = tid ? state.terminals.sessions[tid] : undefined
+      // eslint-disable-next-line no-console
+      console.log(
+        `[take-control] applied event=${event.type} payload=${JSON.stringify(event.payload)} myClientId=${clientId} postController=${session?.controllerClientId ?? 'null'}`
+      )
+    }
     notify()
   })
   notify()

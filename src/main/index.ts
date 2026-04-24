@@ -1887,10 +1887,20 @@ function registerIpcHandlers(): void {
     // Any client can claim control; the reducer demotes the previous
     // controller (if any) to spectator. Physically resize the PTY so the
     // new owner's viewport becomes authoritative.
+    const prev = store.getSnapshot().state.terminals.sessions[id]
+    log(
+      'take-control',
+      `handler id=${id} from=${ctx.clientId} dims=${cols}x${rows} prevController=${prev?.controllerClientId ?? 'null'}`
+    )
     store.dispatch({
       type: 'terminals/controlTaken',
       payload: { terminalId: id, clientId: ctx.clientId, cols, rows }
     })
+    const next = store.getSnapshot().state.terminals.sessions[id]
+    log(
+      'take-control',
+      `dispatched id=${id} newController=${next?.controllerClientId ?? 'null'} spectators=${JSON.stringify(next?.spectatorClientIds ?? [])}`
+    )
     ptyManager.resize(id, cols, rows)
   })
 }

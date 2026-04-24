@@ -8,6 +8,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { WebSocket as WSClient } from 'ws'
 import { Store } from './store'
 import { WebSocketServerTransport } from './transport-websocket'
+import { rootReducer, initialState, type AppState, type StateEvent } from '../shared/state'
 
 type AnyFrame = { t: string } & Record<string, unknown>
 
@@ -120,6 +121,108 @@ describe('WebSocketServerTransport', () => {
       expect(sig.args).toEqual(['term-1', 'hello'])
     } finally {
       ws.close()
+      server.stop()
+    }
+  })
+
+  // Regression guard for the tmux-style take-control flow. Two clients
+  // share a terminal; the second clicks "take control". Both clients'
+  // state mirrors must see the new controllerClientId so their UIs can
+  // derive the right "Spectating"/"Take control" affordance — a bug on
+  // either side left the UI stuck on the pre-click controller (#20
+  // follow-up). We wire real client sockets + rootReducer mirrors here
+  // so the whole dispatch → broadcast → reducer path is covered, not
+  // just the slice reducer in isolation.
+  it('broadcasts terminals/controlTaken to every connected client mirror', async () => {
+    const store = new Store()
+    const port = randomPort()
+    const server = new WebSocketServerTransport(store, { port, token: 'secret' })
+    server.start()
+    // Wire the same handlers main/index.ts registers for the control flow.
+    server.onSignal('terminal:join', (ctx, id: unknown) => {
+      store.dispatch({
+        type: 'terminals/clientJoined',
+        payload: { terminalId: id as string, clientId: ctx.clientId }
+      })
+    })
+    server.onSignal(
+      'terminal:takeControl',
+      (ctx, id: unknown, cols: unknown, rows: unknown) => {
+        store.dispatch({
+          type: 'terminals/controlTaken',
+          payload: {
+            terminalId: id as string,
+            clientId: ctx.clientId,
+            cols: cols as number,
+            rows: rows as number
+          }
+        })
+      }
+    )
+    await new Promise((r) => setTimeout(r, 25))
+
+    const wsA = new WSClient(`ws://127.0.0.1:${port}?token=secret`)
+    const wsB = new WSClient(`ws://127.0.0.1:${port}?token=secret`)
+    await Promise.all([waitOpen(wsA), waitOpen(wsB)])
+
+    // Each socket maintains its own mirror via the shared rootReducer —
+    // matches how the renderer applies state:event messages.
+    let mirrorA: AppState = initialState
+    let mirrorB: AppState = initialState
+    wsA.on('message', (raw) => {
+      const frame = JSON.parse(String(raw)) as AnyFrame
+      if (frame.t === 'state') {
+        mirrorA = rootReducer(mirrorA, frame.event as StateEvent)
+      }
+    })
+    wsB.on('message', (raw) => {
+      const frame = JSON.parse(String(raw)) as AnyFrame
+      if (frame.t === 'state') {
+        mirrorB = rootReducer(mirrorB, frame.event as StateEvent)
+      }
+    })
+
+    try {
+      wsA.send(JSON.stringify({ t: 'req', id: 'a', name: 'transport:getClientId', args: [] }))
+      const resA = (await nextFrame(wsA, (f) => f.t === 'res' && (f as AnyFrame).id === 'a')) as AnyFrame
+      const idA = (resA as unknown as { value: string }).value
+      wsB.send(JSON.stringify({ t: 'req', id: 'b', name: 'transport:getClientId', args: [] }))
+      const resB = (await nextFrame(wsB, (f) => f.t === 'res' && (f as AnyFrame).id === 'b')) as AnyFrame
+      const idB = (resB as unknown as { value: string }).value
+      expect(idA).not.toBe(idB)
+
+      // A joins first → controller. B joins → spectator.
+      wsA.send(JSON.stringify({ t: 'send', name: 'terminal:join', args: ['term-1'] }))
+      await nextFrame(wsA, (f) => f.t === 'state' && (f as AnyFrame & { event: { type: string } }).event.type === 'terminals/clientJoined')
+      wsB.send(JSON.stringify({ t: 'send', name: 'terminal:join', args: ['term-1'] }))
+      await nextFrame(wsB, (f) => f.t === 'state' && (f as AnyFrame & { event: { type: string } }).event.type === 'terminals/clientJoined')
+      await new Promise((r) => setTimeout(r, 25))
+
+      expect(mirrorA.terminals.sessions['term-1'].controllerClientId).toBe(idA)
+      expect(mirrorA.terminals.sessions['term-1'].spectatorClientIds).toEqual([idB])
+      expect(mirrorB.terminals.sessions['term-1'].controllerClientId).toBe(idA)
+
+      // B takes control.
+      const aSawCtrl = nextFrame(wsA, (f) => f.t === 'state' && (f as AnyFrame & { event: { type: string } }).event.type === 'terminals/controlTaken')
+      const bSawCtrl = nextFrame(wsB, (f) => f.t === 'state' && (f as AnyFrame & { event: { type: string } }).event.type === 'terminals/controlTaken')
+      wsB.send(
+        JSON.stringify({ t: 'send', name: 'terminal:takeControl', args: ['term-1', 80, 24] })
+      )
+      await Promise.all([aSawCtrl, bSawCtrl])
+      await new Promise((r) => setTimeout(r, 25))
+
+      // Authoritative store has the new controller.
+      expect(store.getSnapshot().state.terminals.sessions['term-1'].controllerClientId).toBe(idB)
+      // AND both client mirrors reflect it — this is what the UI reads.
+      expect(mirrorA.terminals.sessions['term-1'].controllerClientId).toBe(idB)
+      expect(mirrorA.terminals.sessions['term-1'].spectatorClientIds).toEqual([idA])
+      expect(mirrorB.terminals.sessions['term-1'].controllerClientId).toBe(idB)
+      expect(mirrorB.terminals.sessions['term-1'].spectatorClientIds).toEqual([idA])
+      expect(mirrorA.terminals.sessions['term-1'].size).toEqual({ cols: 80, rows: 24 })
+      expect(mirrorB.terminals.sessions['term-1'].size).toEqual({ cols: 80, rows: 24 })
+    } finally {
+      wsA.close()
+      wsB.close()
       server.stop()
     }
   })

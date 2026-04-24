@@ -552,7 +552,9 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
   }
 
   const handleTakeControl = (): void => {
+    const controller = session?.controllerClientId ?? 'null'
     if (!fitAddonRef.current) {
+      console.log(`[take-control] click id=${terminalId} myClientId=${myClientId} prevController=${controller} dims=fallback-120x30`)
       window.api.takeTerminalControl(terminalId, 120, 30)
       return
     }
@@ -560,16 +562,29 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
       fitAddonRef.current.fit()
       const dims = fitAddonRef.current.proposeDimensions()
       if (dims && dims.cols > 0 && dims.rows > 0) {
+        console.log(`[take-control] click id=${terminalId} myClientId=${myClientId} prevController=${controller} dims=${dims.cols}x${dims.rows}`)
         window.api.takeTerminalControl(terminalId, dims.cols, dims.rows)
       } else {
+        console.log(`[take-control] click id=${terminalId} myClientId=${myClientId} prevController=${controller} dims=fallback-120x30`)
         window.api.takeTerminalControl(terminalId, 120, 30)
       }
     } catch {
+      console.log(`[take-control] click id=${terminalId} myClientId=${myClientId} prevController=${controller} dims=fallback-caught`)
       window.api.takeTerminalControl(terminalId, 120, 30)
     }
   }
 
   const showSpectatorOverlay = session !== null && session.controllerClientId !== null && session.controllerClientId !== myClientId
+
+  // Diagnostic for the controller/spectator UI flow. Logs the overlay
+  // decision whenever the session roster or cached clientId changes
+  // so we can correlate with the `[take-control]` lines from
+  // renderer/store.ts and main's debug log.
+  useEffect(() => {
+    console.log(
+      `[take-control] overlay id=${terminalId} myClientId=${myClientId} controller=${session?.controllerClientId ?? 'null'} showOverlay=${showSpectatorOverlay} isController=${isController}`
+    )
+  }, [terminalId, myClientId, session?.controllerClientId, showSpectatorOverlay, isController])
 
   return (
     <div
