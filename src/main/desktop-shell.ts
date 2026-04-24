@@ -65,17 +65,23 @@ export function resolveWebClientDir(): string {
     : join(__dirname, '../web-client')
 }
 
-/** First call. Applies the dev-mode userData override before anything in
- *  main reads paths, then constructs the BrowserManager + Electron
- *  transport that index.ts wires into the compound transport. */
-export function createDesktopShell(init: DesktopShellInit): DesktopShellEarlyHandle {
-  // Dev mode uses a sibling userData dir so a running dev instance doesn't
-  // fight with the installed prod app over config.json / activity.json /
-  // etc. Must run before any module reads userDataDir(); index.ts calls
-  // this before loadConfig().
+/** Dev mode uses a sibling userData dir so a running dev instance doesn't
+ *  fight with the installed prod app over config.json / activity.json /
+ *  secrets.enc / etc. Must run before any module reads userDataDir() —
+ *  that's `loadConfig()` in index.ts — so index.ts calls this right
+ *  after requiring desktop-shell, not inside `createDesktopShell`
+ *  (which only runs later, once the store + config exist). */
+export function applyDevModeOverride(): void {
   if (!app.isPackaged) {
     app.setPath('userData', join(app.getPath('appData'), 'Harness (Dev)'))
   }
+}
+
+/** First call that needs the store. Constructs the BrowserManager +
+ *  Electron transport that index.ts wires into the compound transport.
+ *  The dev-mode userData override happens earlier via
+ *  `applyDevModeOverride()` — see that function for why. */
+export function createDesktopShell(init: DesktopShellInit): DesktopShellEarlyHandle {
   const browserManager = new BrowserManager()
   const transport = new ElectronServerTransport(init.store, init.perfMonitor)
   return { browserManager, transport }

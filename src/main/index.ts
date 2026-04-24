@@ -125,6 +125,11 @@ let desktopShellMod: DesktopShellModule | null = null
 if (runtime === 'electron') {
   const dynamicRequire = createRequire(__filename)
   desktopShellMod = dynamicRequire('./desktop-shell') as DesktopShellModule
+  // Apply dev-mode userData override BEFORE loadConfig below — the
+  // paths module caches its first resolution, so waiting until
+  // createDesktopShell() (which needs the store) would pin dev to the
+  // production config dir.
+  desktopShellMod.applyDevModeOverride()
 }
 
 const ptyManager = new PtyManager()
