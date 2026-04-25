@@ -3,7 +3,6 @@ name: Build Linux
 on:
   push:
     tags: ['v*']
-    branches: [linux-build-ci]
   workflow_dispatch:
 
 permissions:
