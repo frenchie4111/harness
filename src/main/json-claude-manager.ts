@@ -17,6 +17,7 @@
 // dir so all project-dir-derived reads and writes land there instead.
 
 import { spawn, type ChildProcessWithoutNullStreams } from 'child_process'
+import { randomUUID } from 'crypto'
 import { existsSync, readFileSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
@@ -389,20 +390,35 @@ export class JsonClaudeManager {
     }
   }
 
-  /** SIGINT the subprocess's turn. Per the plan, this leaves the session
-   *  resumable — the model's partial turn is captured in the session
-   *  jsonl transcript. */
+  /** Send a stdin control_request that aborts the current turn while
+   *  keeping the subprocess alive. SIGINT was the spike's first guess
+   *  but it tears the whole session down; the actual protocol — found
+   *  by reading the binary — is:
+   *    {type: "control_request", request_id: <uuid>,
+   *     request: {subtype: "interrupt"}}
+   *  Claude's handler hits b.abortController.abort() on receipt, which
+   *  cancels mid-turn without exiting. The partial turn is still
+   *  captured in the session jsonl, so --resume picks up cleanly. */
   interrupt(sessionId: string): void {
     const inst = this.instances.get(sessionId)
     if (!inst) return
     log('json-claude', `interrupt sessionId=${sessionId}`)
-    try {
-      inst.proc.kill('SIGINT')
-    } catch {
-      /* ignore */
+    const frame = {
+      type: 'control_request',
+      request_id: randomUUID(),
+      request: { subtype: 'interrupt' }
     }
-    // Flip busy off optimistically; the result event (if any) will also
-    // clear it via handleStreamLine.
+    try {
+      inst.proc.stdin.write(JSON.stringify(frame) + '\n')
+    } catch (err) {
+      log(
+        'json-claude',
+        `interrupt write failed sessionId=${sessionId}`,
+        err instanceof Error ? err.message : String(err)
+      )
+    }
+    // Flip busy off optimistically; the result event (when the abort
+    // resolves into a turn boundary) will also clear it.
     this.dispatchBusy(sessionId, false)
   }
 
