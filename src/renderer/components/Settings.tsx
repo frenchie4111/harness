@@ -188,7 +188,8 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     browserToolsMode,
     wsTransportEnabled,
     wsTransportPort,
-    wsTransportHost
+    wsTransportHost,
+    jsonModeClaudeTabs
   } = settings
   const setupScript = worktreeScripts.setup
   const teardownScript = worktreeScripts.teardown
@@ -1983,6 +1984,41 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     </select>
                   </div>
                 </div>
+              </div>
+
+              {/* JSON-mode Claude tabs sub-card */}
+              <div className="bg-panel-raised border border-warning/30 rounded-lg p-4 mb-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <h3 className="text-sm font-semibold text-fg-bright">JSON-mode Claude tabs</h3>
+                  <span className="text-[10px] font-medium text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
+                    Experimental
+                  </span>
+                </div>
+                <p className="text-xs text-dim mb-3">
+                  Adds a second Claude tab type that runs{' '}
+                  <code className="bg-panel px-1 rounded text-[10px]">claude -p --output-format stream-json</code>{' '}
+                  and renders the conversation in React — native textarea, real
+                  text selection, markdown, syntax highlighting, per-tool cards.
+                  When enabled, <kbd className="bg-panel px-1 rounded text-[10px]">⇧</kbd>-click the
+                  Sparkles button on a worktree's tab bar to spawn one.
+                  Many TUI features are still missing — see{' '}
+                  <code className="bg-panel px-1 rounded text-[10px]">plans/json-mode-native-chat.md</code>.
+                </p>
+
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={jsonModeClaudeTabs}
+                    onChange={(e) => { void window.api.setJsonModeClaudeTabs(e.target.checked) }}
+                    className="mt-0.5 cursor-pointer"
+                  />
+                  <div className="flex-1">
+                    <div className="text-sm text-fg-bright">Enable JSON-mode Claude tabs</div>
+                    <div className="text-xs text-dim mt-0.5">
+                      Existing xterm-based Claude tabs are unaffected.
+                    </div>
+                  </div>
+                </label>
               </div>
 
               {/* Web / mobile client sub-card */}
