@@ -479,7 +479,10 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
             }
           }}
           placeholder="Message Claude — Cmd/Ctrl+Enter to send"
-          className="flex-1 bg-panel border border-border rounded px-2 py-1.5 text-sm resize-none outline-none focus:border-accent min-h-[60px] max-h-[200px]"
+          // text-base (16px) below sm: prevents iOS Safari from zooming
+          // the viewport when the textarea takes focus. text-sm on
+          // desktop keeps the chat dense.
+          className="flex-1 bg-panel border border-border rounded px-2 py-1.5 text-base sm:text-sm resize-none outline-none focus:border-accent min-h-[60px] max-h-[200px]"
           rows={2}
           disabled={state === 'exited'}
         />
