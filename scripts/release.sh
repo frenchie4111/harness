@@ -12,6 +12,10 @@
 #   4. Tag and push
 #   5. Generate release notes from commits since last tag
 #   6. Create GitHub release with all artifacts attached
+#
+# Linux: this script does NOT build Linux. The .github/workflows/build-linux.yml
+# workflow runs on tag push, builds the AppImage on ubuntu-latest, and attaches
+# it to the same GitHub release this script creates. No action needed here.
 
 set -euo pipefail
 
