@@ -41,15 +41,14 @@ jobs:
       - name: Build Linux AppImage
         run: npm run dist:linux
 
-      - name: List release artifacts (debug)
-        run: ls -la release/
-
       - name: Upload workflow artifact (branch / dispatch)
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         uses: actions/upload-artifact@v4
         with:
           name: harness-linux-appimage
-          path: release/Harness-*.AppImage
+          path: |
+            release/Harness-*.AppImage
+            release/latest-linux.yml
           if-no-files-found: error
 
       - name: Attach to GitHub release (tag push)
@@ -58,4 +57,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
-          gh release upload "$TAG" release/Harness-*.AppImage --clobber
+          gh release upload "$TAG" \
+            release/Harness-*.AppImage \
+            release/latest-linux.yml \
+            --clobber
