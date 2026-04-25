@@ -107,7 +107,8 @@ function findShellWorktree(shellId: string): string | null {
 }
 import { CostTracker } from './cost-tracker'
 import { startControlServer } from './control-server'
-import { writeMcpConfigForTerminal, pruneMcpConfigs } from './mcp-config'
+import { writeMcpConfigForTerminal, pruneMcpConfigs, getBridgeScriptPath } from './mcp-config'
+import { getControlServerInfo } from './control-server'
 import { recordActivity, getActivityLog, clearAllActivity, clearActivityForWorktree, sealAllActive, touchActivityMeta, finalizeActivity, type ActivityState, type PRState } from './activity'
 import { log, getLogFilePath } from './debug'
 import { buildInitialAppState } from './build-initial-state'
@@ -146,7 +147,20 @@ const jsonClaudeManager = new JsonClaudeManager(store, {
   getApprovalSocketPath: (sessionId) => approvalBridge.startSession(sessionId),
   closeApprovalSession: (sessionId) => approvalBridge.stopSession(sessionId),
   getClaudeEnvVars: () =>
-    store.getSnapshot().state.settings.claudeEnvVars || {}
+    store.getSnapshot().state.settings.claudeEnvVars || {},
+  getControlServer: () => getControlServerInfo(),
+  getControlBridgeScriptPath: () => getBridgeScriptPath(),
+  isHarnessMcpEnabled: () =>
+    store.getSnapshot().state.settings.harnessMcpEnabled !== false,
+  getCallerScope: (sessionId) => {
+    const scope = resolveCallerScope(sessionId)
+    if (!scope) return null
+    return {
+      worktreePath: scope.worktreePath,
+      repoRoot: scope.repoRoot,
+      isMain: scope.isMain
+    }
+  }
 })
 const perfMonitor = new PerfMonitor()
 

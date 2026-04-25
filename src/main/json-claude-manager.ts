@@ -39,11 +39,37 @@ interface JsonClaudeInstance {
   entryCounter: number
 }
 
+export interface JsonClaudeControlServerInfo {
+  port: number
+  token: string
+}
+
+export interface JsonClaudeCallerScope {
+  worktreePath: string
+  repoRoot: string
+  isMain: boolean
+}
+
 export interface JsonClaudeManagerOptions {
   getClaudeCommand: () => string
   getApprovalSocketPath: (sessionId: string) => string
   closeApprovalSession: (sessionId: string) => void
   getClaudeEnvVars: () => Record<string, string>
+  /** Looked up from main when building the inline MCP config. Returning
+   *  null means the harness-control bridge isn't injected (settings flag
+   *  off, or control server not yet up). */
+  getControlServer: () => JsonClaudeControlServerInfo | null
+  /** Returns the bundled harness-control bridge script path. Lives in
+   *  resources/ same as permission-prompt-mcp.js — index.ts already
+   *  knows how to resolve it via getBridgeScriptPath(). */
+  getControlBridgeScriptPath: () => string
+  /** True when the user has disabled the harness-control MCP via
+   *  settings.harnessMcpEnabled. Skips the bridge entry entirely. */
+  isHarnessMcpEnabled: () => boolean
+  /** Looks up scope (worktree + repo + isMain) for a given session id.
+   *  Mirrors resolveCallerScope() in index.ts but only needs the
+   *  worktree/repo bits, not the terminalId echo. */
+  getCallerScope: (sessionId: string) => JsonClaudeCallerScope | null
 }
 
 /** Path to the bundled stdio MCP server we point Claude's
@@ -166,22 +192,55 @@ export class JsonClaudeManager {
     }
     const socketPath = this.opts.getApprovalSocketPath(sessionId)
 
-    // MCP config points at the bundled permission-prompt server. Claude
-    // resolves the tool as mcp__<server>__<tool>; the server we advertise
-    // is named 'harness-permissions' and its only tool is 'approve'.
-    const mcpConfig = {
-      mcpServers: {
-        'harness-permissions': {
-          command: process.execPath,
-          args: [permissionPromptScriptPath()],
-          env: {
-            ELECTRON_RUN_AS_NODE: '1',
-            HARNESS_APPROVAL_SOCKET: socketPath,
-            HARNESS_JSON_CLAUDE_SESSION_ID: sessionId
-          }
+    // MCP config — two stdio servers, both spawned via
+    // ELECTRON_RUN_AS_NODE=1 against the Electron binary so we don't
+    // need a separate Node install in packaged builds.
+    //   * harness-permissions: receives the per-tool approval requests
+    //     Claude raises via --permission-prompt-tool. Tool is 'approve'.
+    //   * harness-control: the same MCP bridge used by xterm-backed
+    //     Claude tabs, exposing harness-control tools (worktree mgmt,
+    //     browser tabs, shell tabs, etc.). Skipped when settings has
+    //     harnessMcpEnabled=false or the control server isn't up.
+    const mcpServers: Record<
+      string,
+      { command: string; args: string[]; env: Record<string, string> }
+    > = {
+      'harness-permissions': {
+        command: process.execPath,
+        args: [permissionPromptScriptPath()],
+        env: {
+          ELECTRON_RUN_AS_NODE: '1',
+          HARNESS_APPROVAL_SOCKET: socketPath,
+          HARNESS_JSON_CLAUDE_SESSION_ID: sessionId
         }
       }
     }
+    if (this.opts.isHarnessMcpEnabled()) {
+      const controlInfo = this.opts.getControlServer()
+      if (controlInfo) {
+        const scope = this.opts.getCallerScope(sessionId)
+        const controlEnv: Record<string, string> = {
+          ELECTRON_RUN_AS_NODE: '1',
+          HARNESS_PORT: String(controlInfo.port),
+          HARNESS_TOKEN: controlInfo.token,
+          // The bridge keys every control-server call by terminal id —
+          // for json-claude tabs the tab id IS the session id.
+          HARNESS_TERMINAL_ID: sessionId,
+          HARNESS_SESSION_ID: sessionId
+        }
+        if (scope) {
+          controlEnv.HARNESS_WORKTREE_ID = scope.worktreePath
+          controlEnv.HARNESS_REPO_ROOT = scope.repoRoot
+          if (scope.isMain) controlEnv.HARNESS_IS_MAIN = '1'
+        }
+        mcpServers['harness-control'] = {
+          command: process.execPath,
+          args: [this.opts.getControlBridgeScriptPath()],
+          env: controlEnv
+        }
+      }
+    }
+    const mcpConfig = { mcpServers }
 
     const claudeCommand = this.opts.getClaudeCommand() || 'claude'
     const existingSession = existsSync(
