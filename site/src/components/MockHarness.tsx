@@ -83,7 +83,7 @@ const PR_ICON_COLOR: Record<'success' | 'failure' | 'pending' | 'none', string> 
 export function MockHarness({ state }: { state: MockHarnessState }) {
   return (
     <div
-      className="w-full h-full rounded-xl overflow-hidden border border-border-strong shadow-2xl shadow-black/70 bg-app flex flex-col font-sans select-none"
+      className="relative w-full h-full rounded-xl overflow-hidden border border-border-strong shadow-2xl shadow-black/70 bg-app flex flex-col font-sans select-none"
       style={{ fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}
     >
       <TrafficLights />

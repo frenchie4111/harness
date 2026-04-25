@@ -17,6 +17,21 @@
 
 ![Harness](site/public/harness-demo-poster.jpg)
 
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <h3>Mobile mode</h3>
+      <img src="site/public/screenshot-mobile.svg" alt="Harness running on a phone, with sidebar of agents and a terminal pane" />
+      <p>Control your agents from your phone. Guaranteed to be better than Claude's shitty remote UI.</p>
+    </td>
+    <td width="50%" valign="top">
+      <h3>Browser control</h3>
+      <img src="site/public/screenshot-browser.png" alt="Harness with an embedded browser tab the agent is driving" />
+      <p>Give agents control of your browser. Useful for testing your code locally, or just ordering groceries.</p>
+    </td>
+  </tr>
+</table>
+
 > **→ Visit [harness.mikelyons.org](https://harness.mikelyons.org) for screenshots, feature walkthroughs, and release notes.**
 
 ## Download

@@ -1,6 +1,7 @@
 import { HeaderNav } from './components/HeaderNav'
 import { Hero } from './components/Hero'
 import { DemoVideo } from './components/DemoVideo'
+import { FeatureCallouts } from './components/FeatureCallouts'
 import { Features } from './components/Features'
 import { OpenSource } from './components/OpenSource'
 import { Install } from './components/Install'
@@ -14,6 +15,7 @@ export function App() {
       <Hero />
       <DemoVideo />
       <ScrollDiorama />
+      <FeatureCallouts />
       <Features />
       <OpenSource />
       <Install />
