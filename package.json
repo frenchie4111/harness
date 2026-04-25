@@ -1,6 +1,6 @@
 {
   "name": "harness",
-  "version": "2.4.1",
+  "version": "2.5.0",
   "main": "./out/main/index.js",
   "author": {
     "name": "Mike Lyons",
@@ -107,7 +107,9 @@
       "target": [
         {
           "target": "AppImage",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "artifactName": "Harness-${version}.${ext}"

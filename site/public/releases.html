@@ -78,6 +78,46 @@
   <!-- Releases -->
   <div class="max-w-3xl mx-auto px-6 pb-24">
 
+    <!-- v2.5.0 -->
+    <section class="release-section py-10">
+      <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
+        <h2 class="text-3xl font-bold tracking-tight">v2.5.0</h2>
+        <span class="text-sm text-neutral-500">April 25, 2026</span>
+      </div>
+      <a href="https://github.com/frenchie4111/harness/releases/tag/v2.5.0" class="text-sm text-amber-400/80 hover:text-amber-300 transition-colors">Download &rarr;</a>
+      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">Harness goes remote — drive your agents from any browser or phone over a new WebSocket transport, with Browser MCP tools so Claude can click, type, and scroll in a live browser pane alongside your terminals.</p>
+      <div class="note-body">
+        <h4>New features</h4>
+        <ul>
+          <li><strong>Web client</strong> — control Harness from any browser over a WebSocket connection. Installable as a PWA so it behaves like a native app on desktop or mobile.</li>
+          <li><strong>Mobile-optimized web client</strong> — the browser UI is fully adapted for phones and tablets, with proper terminal scroll, icon layout, and a full-screen right panel.</li>
+          <li><strong>Headless backend</strong> — the Harness backend can now run as a pure Node server with no Electron required, making server and CI deployments possible.</li>
+          <li><strong>Browser panes</strong> — open a live browser tab as a pane directly alongside your terminals, so you can see your running app without leaving the workspace.</li>
+          <li><strong>Browser MCP tools</strong> — Claude can click, type, and scroll in the browser pane with a visible cursor overlay, so you can watch it navigate your app in real time.</li>
+          <li><strong>Controller / spectator mode</strong> — terminal tabs now support a tmux-style controller/spectator split: one session drives input while others watch without interfering.</li>
+          <li><strong>Weekly activity wrap</strong> — a weekly summary of what each agent worked on, delivered automatically so you can review the week at a glance.</li>
+          <li><strong>New project flow</strong> — a guided flow for starting a brand-new project from within Harness, with branch naming and initial prompt setup.</li>
+          <li><strong>In-app issue reporting</strong> — report bugs directly from within Harness without switching to a browser.</li>
+          <li><strong>Dev server tracking</strong> — Harness detects dev servers started in worktree shells and lets you open them in a browser pane with one click.</li>
+          <li><strong>Hotkey rebinding from the cheat sheet</strong> — click any shortcut in the <code>?</code> cheat sheet to rebind it on the spot.</li>
+          <li><strong>Claude TUI defaults to fullscreen</strong> — new Claude sessions launch in fullscreen TUI mode by default for a cleaner, distraction-free view.</li>
+        </ul>
+        <h4>Improvements</h4>
+        <ul>
+          <li><strong>Experimental settings section</strong> — experimental features are now grouped under their own section in Settings so they're easier to find and harder to stumble into.</li>
+          <li><strong>harness-control tools in system prompt</strong> — Claude is told about the available MCP shell tools from the first message, so it can use them without extra prompting.</li>
+          <li><strong>MCP scope isolation</strong> — MCP tool calls are now scoped to the correct worktree context, preventing cross-worktree interference.</li>
+          <li><strong>Browser MCP accuracy</strong> — fixed HiDPI click offsets and reduced screenshot size by ~4× for faster transmission.</li>
+          <li>Added error boundaries throughout the UI so a crash in one panel no longer takes down the whole app.</li>
+        </ul>
+        <h4>Fixes</h4>
+        <ul>
+          <li>Fixed take-control state getting stuck after switching between controller and spectator modes.</li>
+          <li>Web client HTML entry is now gated behind a <code>?token=</code> query parameter, closing an unauthenticated access path.</li>
+        </ul>
+      </div>
+    </section>
+
     <!-- v2.4.1 -->
     <section class="release-section py-10">
       <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
