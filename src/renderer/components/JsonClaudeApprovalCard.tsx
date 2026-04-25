@@ -39,7 +39,11 @@ export function JsonClaudeApprovalCard({
   )
 
   function allow(): void {
-    onResolve({ behavior: 'allow' })
+    // Claude Code 2.1.114's PermissionResult validator requires
+    // updatedInput on the allow branch (it was optional in earlier
+    // versions). Echo the original input back unchanged so plain Allow
+    // is "allow with no changes".
+    onResolve({ behavior: 'allow', updatedInput: approval.input })
   }
 
   function allowWithEdits(): void {
