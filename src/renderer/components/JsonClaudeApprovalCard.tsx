@@ -37,23 +37,53 @@ function tryFormatInput(input: Record<string, unknown>): string {
   }
 }
 
-/** Best-effort default rule pattern for "always allow" — what would the
- *  user most likely want to whitelist for this specific tool call?
- *  Bash gets the first verb-ish prefix (`npm test ...` → `npm test:*`),
- *  matching how the TUI's quick-allow generates rules. Other tools fall
- *  back to a bare toolName, meaning "always allow this tool wholesale". */
-function defaultRulePattern(toolName: string, input: Record<string, unknown>): string {
-  if (toolName === 'Bash') {
-    const cmd = String(input['command'] ?? '').trim()
-    if (!cmd) return ''
-    // First two whitespace-delimited tokens, e.g. `git push` from
-    // `git push origin main`. Single-token commands (`make`) use just
-    // the one token. Suffix `:*` so subsequent args don't matter.
-    const tokens = cmd.split(/\s+/).filter(Boolean)
-    const head = tokens.slice(0, tokens[0] === 'git' ? 2 : 1).join(' ')
-    return `${head}:*`
+/** Pull the "addRules" suggestions Claude attached to this approval
+ *  request, normalised into PermissionUpdate shape. Returns [] when
+ *  Claude didn't suggest anything (we fall back to a manual entry then). */
+function extractSuggestions(raw: unknown[] | undefined): PermissionUpdate[] {
+  if (!Array.isArray(raw)) return []
+  const out: PermissionUpdate[] = []
+  for (const r of raw) {
+    if (!r || typeof r !== 'object') continue
+    const obj = r as Record<string, unknown>
+    if (obj['type'] !== 'addRules') continue
+    const rules = Array.isArray(obj['rules']) ? obj['rules'] : []
+    const cleanRules: Array<{ toolName: string; ruleContent?: string }> = []
+    for (const rule of rules) {
+      if (!rule || typeof rule !== 'object') continue
+      const rObj = rule as Record<string, unknown>
+      const toolName = typeof rObj['toolName'] === 'string' ? rObj['toolName'] : ''
+      if (!toolName) continue
+      const ruleContent =
+        typeof rObj['ruleContent'] === 'string' ? rObj['ruleContent'] : undefined
+      cleanRules.push(ruleContent ? { toolName, ruleContent } : { toolName })
+    }
+    if (cleanRules.length === 0) continue
+    const behavior =
+      obj['behavior'] === 'deny'
+        ? 'deny'
+        : obj['behavior'] === 'ask'
+          ? 'ask'
+          : 'allow'
+    const destination =
+      obj['destination'] === 'userSettings'
+        ? 'userSettings'
+        : obj['destination'] === 'projectSettings'
+          ? 'projectSettings'
+          : obj['destination'] === 'session'
+            ? 'session'
+            : 'localSettings'
+    out.push({ type: 'addRules', rules: cleanRules, behavior, destination })
   }
-  return ''
+  return out
+}
+
+/** Render a PermissionUpdate as the chip label `Tool(rule)` form the
+ *  TUI uses. Multi-rule suggestions get joined by ` + `. */
+function suggestionLabel(s: PermissionUpdate): string {
+  return s.rules
+    .map((r) => (r.ruleContent ? `${r.toolName}(${r.ruleContent})` : r.toolName))
+    .join(' + ')
 }
 
 export function JsonClaudeApprovalCard({
@@ -69,11 +99,13 @@ export function JsonClaudeApprovalCard({
   const [editError, setEditError] = useState<string | null>(null)
   const [denyMessage, setDenyMessage] = useState('user denied')
   const [interrupt, setInterrupt] = useState(false)
-  const [rulePattern, setRulePattern] = useState<string>(() =>
-    defaultRulePattern(approval.toolName, approval.input)
+  const suggestions = useMemo(
+    () => extractSuggestions(approval.permissionSuggestions),
+    [approval.permissionSuggestions]
   )
-  const [ruleDestination, setRuleDestination] =
-    useState<RuleDestination>('localSettings')
+  // Pick the first suggestion by default — matches how the TUI
+  // pre-highlights the most-likely "always allow" pattern.
+  const [selectedSuggestionIdx, setSelectedSuggestionIdx] = useState(0)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const summary = useMemo(
@@ -110,25 +142,17 @@ export function JsonClaudeApprovalCard({
   }
 
   function allowAlways(): void {
-    // Persist the rule into the destination scope alongside this allow.
-    // Empty ruleContent means "all calls to this tool" — useful for
-    // tools where pattern-matching the input doesn't make sense.
-    const trimmed = rulePattern.trim()
-    const rule = {
-      toolName: approval.toolName,
-      ...(trimmed ? { ruleContent: trimmed } : {})
-    }
+    // Submit the user's chosen suggestion (Claude generated it for this
+    // specific tool call). Always force the destination to
+    // localSettings — same behavior as Claude's TUI default. If Claude
+    // didn't send any suggestions we don't expose the picker at all —
+    // user falls back to the plain Allow / Allow with edits paths.
+    const picked = suggestions[selectedSuggestionIdx]
+    if (!picked) return
     onResolve({
       behavior: 'allow',
       updatedInput: approval.input,
-      updatedPermissions: [
-        {
-          type: 'addRules',
-          rules: [rule],
-          behavior: 'allow',
-          destination: ruleDestination
-        }
-      ]
+      updatedPermissions: [{ ...picked, destination: 'localSettings' }]
     })
   }
 
@@ -145,6 +169,11 @@ export function JsonClaudeApprovalCard({
 
       {mode === 'summary' && (
         <div className="px-3 py-2 space-y-2">
+          {approval.description && (
+            <div className="text-[11px] text-muted italic">
+              {approval.description}
+            </div>
+          )}
           <pre className="text-[11px] font-mono bg-app/40 rounded p-2 overflow-x-auto max-h-48 whitespace-pre-wrap">
             {tryFormatInput(approval.input)}
           </pre>
@@ -155,13 +184,15 @@ export function JsonClaudeApprovalCard({
             >
               Allow
             </button>
-            <button
-              onClick={() => setMode('allowAlways')}
-              className="px-2.5 py-1 text-xs rounded bg-success/10 hover:bg-success/20 text-success/80 transition-colors cursor-pointer"
-              title="Allow this tool call and persist a rule so future similar calls auto-approve"
-            >
-              Allow always…
-            </button>
+            {suggestions.length > 0 && (
+              <button
+                onClick={() => setMode('allowAlways')}
+                className="px-2.5 py-1 text-xs rounded bg-success/10 hover:bg-success/20 text-success/80 transition-colors cursor-pointer"
+                title="Allow this tool call and persist a rule so future similar calls auto-approve"
+              >
+                Allow always…
+              </button>
+            )}
             <button
               onClick={() => setMode('edit')}
               className="px-2.5 py-1 text-xs rounded bg-surface hover:bg-surface/60 text-fg transition-colors cursor-pointer"
@@ -178,38 +209,34 @@ export function JsonClaudeApprovalCard({
         </div>
       )}
 
-      {mode === 'allowAlways' && (
+      {mode === 'allowAlways' && suggestions.length > 0 && (
         <div className="px-3 py-2 space-y-2">
           <div className="text-[11px] text-muted">
-            Persist a permission rule so similar future tool calls auto-approve
-            without prompting. Same shape Claude's TUI writes to{' '}
-            <code className="text-xs">.claude/settings.local.json</code>.
+            Pick a rule to persist into{' '}
+            <code className="text-xs">.claude/settings.local.json</code>. Future
+            tool calls matching the rule will auto-approve.
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-mono text-muted">
-              {approval.toolName}(
-            </span>
-            <input
-              type="text"
-              value={rulePattern}
-              onChange={(e) => setRulePattern(e.target.value)}
-              placeholder="leave blank to match all calls"
-              className="flex-1 bg-app/40 border border-border rounded px-2 py-1 text-xs font-mono outline-none focus:border-accent"
-            />
-            <span className="text-xs font-mono text-muted">)</span>
-          </div>
-          <div className="flex items-center gap-2 text-[11px]">
-            <span className="text-muted">Destination:</span>
-            <select
-              value={ruleDestination}
-              onChange={(e) => setRuleDestination(e.target.value as RuleDestination)}
-              className="bg-app/40 border border-border rounded px-2 py-0.5 text-xs outline-none focus:border-accent"
-            >
-              <option value="localSettings">.claude/settings.local.json</option>
-              <option value="projectSettings">.claude/settings.json</option>
-              <option value="userSettings">~/.claude/settings.json</option>
-              <option value="session">this session only</option>
-            </select>
+          <div className="flex flex-col gap-1">
+            {suggestions.map((s, i) => (
+              <label
+                key={i}
+                className={`flex items-center gap-2 px-2 py-1.5 rounded border cursor-pointer text-xs ${
+                  selectedSuggestionIdx === i
+                    ? 'border-success bg-success/10'
+                    : 'border-border hover:bg-surface'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="suggestion"
+                  checked={selectedSuggestionIdx === i}
+                  onChange={() => setSelectedSuggestionIdx(i)}
+                />
+                <code className="font-mono text-fg-bright truncate">
+                  {suggestionLabel(s)}
+                </code>
+              </label>
+            ))}
           </div>
           <div className="flex items-center gap-1.5">
             <button

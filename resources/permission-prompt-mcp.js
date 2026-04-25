@@ -79,6 +79,11 @@ function requestApproval(args) {
           tool_name: args.tool_name,
           input: args.input,
           tool_use_id: args.tool_use_id,
+          // Forward Claude's own rule suggestions so the renderer can
+          // surface them as "always allow" presets — same shape the
+          // TUI uses for its quick-allow chips.
+          permission_suggestions: args.permission_suggestions,
+          description: args.description,
           timestamp: Date.now()
         }) + '\n')
       } catch (err) {
@@ -173,8 +178,21 @@ rl.on('line', (line) => {
       ? args.input
       : {}
     const toolUseId = typeof args.tool_use_id === 'string' ? args.tool_use_id : undefined
+    // Pass Claude's own permission rule suggestions through (used by
+    // the UI to populate the "always allow" picker with the same
+    // patterns the TUI surfaces) plus the human-readable description.
+    const permissionSuggestions = Array.isArray(args.permission_suggestions)
+      ? args.permission_suggestions
+      : undefined
+    const description = typeof args.description === 'string' ? args.description : undefined
 
-    requestApproval({ tool_name: toolName, input, tool_use_id: toolUseId })
+    requestApproval({
+      tool_name: toolName,
+      input,
+      tool_use_id: toolUseId,
+      permission_suggestions: permissionSuggestions,
+      description
+    })
       .then((result) => {
         reply(id, {
           content: [{ type: 'text', text: JSON.stringify(result) }]

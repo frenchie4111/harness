@@ -64,6 +64,13 @@ export interface JsonClaudePendingApproval {
   input: Record<string, unknown>
   toolUseId?: string
   timestamp: number
+  /** Claude's own proposed PermissionUpdate suggestions for this tool
+   *  call. The renderer surfaces them as the "Allow always" picker —
+   *  same patterns the TUI shows for its quick-allow chips. */
+  permissionSuggestions?: unknown[]
+  /** Optional human-readable description Claude includes for some
+   *  tool calls (e.g. Bash gives a one-line summary). */
+  description?: string
 }
 
 export interface JsonClaudeState {
