@@ -6,11 +6,12 @@ import { getLeaves } from '../../shared/state/terminals'
 import type { PtyStatus, TerminalTab, Worktree, PRStatus } from '../types'
 import { MobileTerminal } from './MobileTerminal'
 import { MobileRightPanel } from './MobileRightPanel'
+import { JsonModeChat } from './JsonModeChat'
 import { AgentIcon } from './AgentIcon'
 import { HotkeysProvider } from './Tooltip'
 import { resolveHotkeys } from '../hotkeys'
 
-type RunnableTab = TerminalTab & { type: 'agent' | 'shell' }
+type RunnableTab = TerminalTab & { type: 'agent' | 'shell' | 'json-claude' }
 
 const STATUS_DOT: Record<PtyStatus, string> = {
   idle: 'bg-faint',
@@ -26,7 +27,7 @@ function flatTabs(panes: ReturnType<typeof usePanes>, wtPath: string): TerminalT
 }
 
 function isRunnable(tab: TerminalTab): tab is RunnableTab {
-  return tab.type === 'agent' || tab.type === 'shell'
+  return tab.type === 'agent' || tab.type === 'shell' || tab.type === 'json-claude'
 }
 
 function pickInitialTab(tabs: TerminalTab[]): string | null {
@@ -145,7 +146,17 @@ export function MobileApp(): JSX.Element {
 
       <div className="flex-1 min-h-0 relative">
         {activeWorktree && selectedTab && isRunnable(selectedTab) && (
-          <MobileTerminal worktreePath={activeWorktree.path} tab={selectedTab} />
+          selectedTab.type === 'json-claude' ? (
+            <JsonModeChat
+              sessionId={selectedTab.id}
+              worktreePath={activeWorktree.path}
+            />
+          ) : (
+            <MobileTerminal
+              worktreePath={activeWorktree.path}
+              tab={selectedTab as TerminalTab & { type: 'agent' | 'shell' }}
+            />
+          )
         )}
         {activeWorktree && selectedTab && !isRunnable(selectedTab) && (
           <NonRunnableTabPlaceholder tab={selectedTab} />
@@ -320,6 +331,14 @@ function TabIcon({ tab, shellActivity, status }: { tab: TerminalTab; shellActivi
       <Loader2 size={11} className="animate-spin text-fg-bright" />
     ) : (
       <SquareTerminal size={11} className="text-dim" />
+    )
+  }
+  if (tab.type === 'json-claude') {
+    return (
+      <span className="inline-flex items-center gap-1">
+        <AgentIcon kind="claude" size={11} />
+        <span className="w-1.5 h-1.5 rounded-full bg-accent" />
+      </span>
     )
   }
   if (tab.type === 'diff') return <FileDiff size={11} className="text-dim" />
