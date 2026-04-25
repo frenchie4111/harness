@@ -38,8 +38,19 @@ function send(msg) {
   process.stdout.write(JSON.stringify(msg) + '\n')
 }
 
+// Claude swallows MCP-server stderr unless --mcp-debug is on, so also
+// append to a fixed log file we can tail to verify the protocol.
+//   $ tail -f /tmp/harness-permission-mcp.log
+const fs = require('node:fs')
+const LOG_PATH = process.env.HARNESS_PERMISSION_MCP_LOG || '/tmp/harness-permission-mcp.log'
 function logErr(...parts) {
-  process.stderr.write('[harness-approval-mcp] ' + parts.join(' ') + '\n')
+  const line = '[harness-approval-mcp] ' + parts.join(' ') + '\n'
+  process.stderr.write(line)
+  try {
+    fs.appendFileSync(LOG_PATH, new Date().toISOString() + ' ' + line)
+  } catch {
+    /* ignore */
+  }
 }
 
 const APPROVE_TOOL = {
@@ -50,9 +61,17 @@ const APPROVE_TOOL = {
     properties: {
       tool_name: { type: 'string' },
       input: { type: 'object' },
-      tool_use_id: { type: 'string' }
+      tool_use_id: { type: 'string' },
+      // Extra fields Claude attaches to the call; we forward them to the
+      // bridge so the renderer can show description text and surface
+      // Claude's own per-call rule suggestions in the "Allow always"
+      // picker. Declared explicitly so strict-schema validators don't
+      // strip them before our handler runs.
+      description: { type: 'string' },
+      permission_suggestions: { type: 'array' }
     },
-    required: ['tool_name', 'input']
+    required: ['tool_name', 'input'],
+    additionalProperties: true
   }
 }
 
@@ -173,6 +192,17 @@ rl.on('line', (line) => {
       replyError(id, -32601, `unknown tool: ${name}`)
       return
     }
+    // Surface what Claude actually sent so we can confirm
+    // permission_suggestions / description make it past the validator.
+    // Logged to /tmp/harness-permission-mcp.log (tail to verify).
+    logErr(
+      'approve args keys=[' + Object.keys(args).join(',') + ']' +
+        ' suggestions=' +
+        (Array.isArray(args.permission_suggestions)
+          ? JSON.stringify(args.permission_suggestions).slice(0, 500)
+          : 'absent') +
+        ' description=' + (args.description ? JSON.stringify(args.description).slice(0, 200) : 'absent')
+    )
     const toolName = typeof args.tool_name === 'string' ? args.tool_name : ''
     const input = args.input && typeof args.input === 'object' && !Array.isArray(args.input)
       ? args.input
