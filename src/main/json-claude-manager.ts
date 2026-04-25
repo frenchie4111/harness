@@ -20,7 +20,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'child_process'
 import { existsSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
-import { app } from 'electron'
+import { isPackaged } from './paths'
 import type { Store } from './store'
 import type {
   JsonClaudeChatEntry,
@@ -49,9 +49,11 @@ export interface JsonClaudeManagerOptions {
 /** Path to the bundled stdio MCP server we point Claude's
  *  --permission-prompt-tool at. Mirrors src/main/mcp-config.ts: in dev
  *  the file lives in resources/ at the repo root; in packaged builds
- *  it's copied by electron-builder to process.resourcesPath. */
+ *  it's copied by electron-builder to process.resourcesPath. paths.ts's
+ *  `isPackaged()` returns false outside Electron so the dev fallback
+ *  path is what the headless build hits. */
 function permissionPromptScriptPath(): string {
-  if (app.isPackaged) {
+  if (isPackaged()) {
     return join(process.resourcesPath, 'permission-prompt-mcp.js')
   }
   return join(__dirname, '..', '..', 'resources', 'permission-prompt-mcp.js')
