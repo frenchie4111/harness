@@ -39,13 +39,6 @@ interface RequestFrame {
   tool_name?: string
   input?: Record<string, unknown>
   tool_use_id?: string
-  /** Array of PermissionUpdate suggestions Claude proposes for this
-   *  tool call. Surfaced verbatim in the renderer's "Allow always"
-   *  picker — same shape the TUI uses for its quick-allow chips. */
-  permission_suggestions?: unknown[]
-  /** Human-readable description Claude includes for some tool calls
-   *  (e.g. Bash gives a one-line summary of what the command does). */
-  description?: string
   timestamp?: number
 }
 
@@ -204,11 +197,7 @@ export class ApprovalBridge {
       toolName: frame.tool_name,
       input: frame.input || {},
       toolUseId: frame.tool_use_id,
-      timestamp: frame.timestamp || Date.now(),
-      permissionSuggestions: Array.isArray(frame.permission_suggestions)
-        ? frame.permission_suggestions
-        : undefined,
-      description: typeof frame.description === 'string' ? frame.description : undefined
+      timestamp: frame.timestamp || Date.now()
     }
     this.pendingResponses.set(frame.id, { socket, sessionId: payload.sessionId })
     this.store.dispatch({ type: 'jsonClaude/approvalRequested', payload })

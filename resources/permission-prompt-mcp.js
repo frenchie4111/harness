@@ -61,14 +61,7 @@ const APPROVE_TOOL = {
     properties: {
       tool_name: { type: 'string' },
       input: { type: 'object' },
-      tool_use_id: { type: 'string' },
-      // Extra fields Claude attaches to the call; we forward them to the
-      // bridge so the renderer can show description text and surface
-      // Claude's own per-call rule suggestions in the "Allow always"
-      // picker. Declared explicitly so strict-schema validators don't
-      // strip them before our handler runs.
-      description: { type: 'string' },
-      permission_suggestions: { type: 'array' }
+      tool_use_id: { type: 'string' }
     },
     required: ['tool_name', 'input'],
     additionalProperties: true
@@ -98,11 +91,6 @@ function requestApproval(args) {
           tool_name: args.tool_name,
           input: args.input,
           tool_use_id: args.tool_use_id,
-          // Forward Claude's own rule suggestions so the renderer can
-          // surface them as "always allow" presets — same shape the
-          // TUI uses for its quick-allow chips.
-          permission_suggestions: args.permission_suggestions,
-          description: args.description,
           timestamp: Date.now()
         }) + '\n')
       } catch (err) {
@@ -192,37 +180,17 @@ rl.on('line', (line) => {
       replyError(id, -32601, `unknown tool: ${name}`)
       return
     }
-    // Surface what Claude actually sent so we can confirm
-    // permission_suggestions / description make it past the validator.
-    // Logged to /tmp/harness-permission-mcp.log (tail to verify).
-    logErr(
-      'approve args keys=[' + Object.keys(args).join(',') + ']' +
-        ' suggestions=' +
-        (Array.isArray(args.permission_suggestions)
-          ? JSON.stringify(args.permission_suggestions).slice(0, 500)
-          : 'absent') +
-        ' description=' + (args.description ? JSON.stringify(args.description).slice(0, 200) : 'absent')
-    )
+    // Surface the args keys so we can confirm what Claude is actually
+    // sending across the MCP boundary. Logged to
+    // /tmp/harness-permission-mcp.log (tail to verify).
+    logErr('approve args keys=[' + Object.keys(args).join(',') + ']')
     const toolName = typeof args.tool_name === 'string' ? args.tool_name : ''
     const input = args.input && typeof args.input === 'object' && !Array.isArray(args.input)
       ? args.input
       : {}
     const toolUseId = typeof args.tool_use_id === 'string' ? args.tool_use_id : undefined
-    // Pass Claude's own permission rule suggestions through (used by
-    // the UI to populate the "always allow" picker with the same
-    // patterns the TUI surfaces) plus the human-readable description.
-    const permissionSuggestions = Array.isArray(args.permission_suggestions)
-      ? args.permission_suggestions
-      : undefined
-    const description = typeof args.description === 'string' ? args.description : undefined
 
-    requestApproval({
-      tool_name: toolName,
-      input,
-      tool_use_id: toolUseId,
-      permission_suggestions: permissionSuggestions,
-      description
-    })
+    requestApproval({ tool_name: toolName, input, tool_use_id: toolUseId })
       .then((result) => {
         reply(id, {
           content: [{ type: 'text', text: JSON.stringify(result) }]
