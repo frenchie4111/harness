@@ -1,0 +1,62 @@
+name: Build Linux
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # electron-builder needs these for AppImage assembly + native module
+      # rebuilds on the runner. libnss3/libgbm1 keep Electron's sandbox
+      # happy if anything tries to launch it during the build.
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libnss3 \
+            libgbm1 \
+            libasound2t64 \
+            fakeroot \
+            rpm
+
+      # electron-vite@5's peer range rejects vite@7/8 under strict resolver;
+      # --legacy-peer-deps mirrors the local dev install.
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Build Linux AppImage
+        run: npm run dist:linux
+
+      - name: Upload workflow artifact (branch / dispatch)
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: harness-linux-appimage
+          path: |
+            release/Harness-*.AppImage
+            release/latest-linux.yml
+          if-no-files-found: error
+
+      - name: Attach to GitHub release (tag push)
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          gh release upload "$TAG" \
+            release/Harness-*.AppImage \
+            release/latest-linux.yml \
+            --clobber

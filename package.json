@@ -29,6 +29,8 @@
     "postdist": "npm run rebuild:dev",
     "dist:mac": "npm run build && dotenv -e .env -- electron-builder --mac",
     "postdist:mac": "npm run rebuild:dev",
+    "dist:linux": "npm run build && electron-builder --linux --publish=never",
+    "postdist:linux": "npm run rebuild:dev",
     "release": "./scripts/release.sh",
     "dev:site": "vite --config site/vite.config.ts",
     "build:site": "vite build --config site/vite.config.ts",
@@ -97,6 +99,18 @@
           "path": "/Applications"
         }
       ]
+    },
+    "linux": {
+      "category": "Development",
+      "icon": "resources/icon.png",
+      "maintainer": "Mike Lyons <mike@mikelyons.org>",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": ["x64"]
+        }
+      ],
+      "artifactName": "Harness-${version}.${ext}"
     },
     "publish": {
       "provider": "github",
