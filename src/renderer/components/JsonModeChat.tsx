@@ -430,45 +430,17 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
         ? 'plan'
         : 'ask every time'
 
+  const stateDot =
+    state === 'running'
+      ? 'bg-success'
+      : state === 'connecting'
+        ? 'bg-warning animate-pulse'
+        : state === 'exited'
+          ? 'bg-danger'
+          : 'bg-faint'
+
   return (
     <div className="absolute inset-0 flex flex-col bg-app text-fg">
-      <div className="shrink-0 px-4 h-9 flex items-center justify-between border-b border-border bg-panel/40">
-        <div className="flex items-center gap-2 text-xs">
-          <span className="text-faint">Claude (JSON)</span>
-          <span
-            className={`text-[10px] px-1.5 py-0.5 rounded ${
-              state === 'running'
-                ? 'bg-success/20 text-success'
-                : state === 'connecting'
-                  ? 'bg-warning/20 text-warning'
-                  : state === 'exited'
-                    ? 'bg-danger/20 text-danger'
-                    : 'bg-surface text-muted'
-            }`}
-          >
-            {state}
-          </span>
-          {busy && <span className="text-[10px] text-muted italic">thinking…</span>}
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={cyclePermissionMode}
-            className={`text-[10px] px-2 py-0.5 rounded border cursor-pointer hover:opacity-80 transition-opacity ${modeBadgeStyle}`}
-            title="Click to cycle permission mode. Restarts the subprocess with --resume so the conversation persists."
-          >
-            {modeBadgeLabel}
-          </button>
-          {busy && (
-            <button
-              onClick={interrupt}
-              className="flex items-center gap-1 text-xs text-danger hover:text-danger/80 px-2 py-0.5 rounded hover:bg-danger/10 cursor-pointer"
-              title="Interrupt the current model turn"
-            >
-              <Square size={12} fill="currentColor" /> Interrupt
-            </button>
-          )}
-        </div>
-      </div>
       <div
         ref={scrollRef}
         onScroll={onScroll}
@@ -517,6 +489,30 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
           className="px-3 py-1.5 bg-accent text-white rounded text-sm disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
         >
           Send
+        </button>
+      </div>
+      <div className="shrink-0 border-t border-border bg-panel/40 px-3 h-6 flex items-center gap-3 text-[10px] text-muted">
+        <div className="flex items-center gap-1.5" title={`session ${state}`}>
+          <span className={`w-1.5 h-1.5 rounded-full ${stateDot}`} />
+          <span>{state}</span>
+          {busy && <span className="italic">· thinking…</span>}
+        </div>
+        <div className="flex-1" />
+        {busy && (
+          <button
+            onClick={interrupt}
+            className="flex items-center gap-1 text-danger hover:text-danger/80 cursor-pointer"
+            title="Interrupt the current model turn"
+          >
+            <Square size={9} fill="currentColor" /> interrupt
+          </button>
+        )}
+        <button
+          onClick={cyclePermissionMode}
+          className={`px-1.5 py-0.5 rounded border cursor-pointer hover:opacity-80 transition-opacity ${modeBadgeStyle}`}
+          title="Click to cycle permission mode. Restarts the subprocess with --resume so the conversation persists."
+        >
+          {modeBadgeLabel}
         </button>
       </div>
     </div>

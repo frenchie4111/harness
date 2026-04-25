@@ -1782,6 +1782,11 @@ function registerIpcHandlers(): void {
       type: 'jsonClaude/sessionStarted',
       payload: { sessionId, worktreePath: cwd }
     })
+    // Replay the on-disk transcript into the slice so the chat UI shows
+    // prior turns after a full app restart. No-op if the slice already
+    // has entries (renderer reload — main's slice survived) or if no
+    // jsonl exists yet (first turn).
+    jsonClaudeManager.seedFromTranscript(sessionId, cwd)
     const mode =
       store.getSnapshot().state.jsonClaude.sessions[sessionId]?.permissionMode ||
       'default'

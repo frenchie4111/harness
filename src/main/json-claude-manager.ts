@@ -17,7 +17,7 @@
 // dir so all project-dir-derived reads and writes land there instead.
 
 import { spawn, type ChildProcessWithoutNullStreams } from 'child_process'
-import { existsSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 import { isPackaged } from './paths'
@@ -72,6 +72,87 @@ export class JsonClaudeManager {
 
   hasSession(sessionId: string): boolean {
     return this.instances.has(sessionId)
+  }
+
+  /** Replay the on-disk session jsonl into the slice as chat entries.
+   *  Called from the jsonClaude:start IPC handler before spawning the
+   *  subprocess. Without this, --resume restores Claude's context but
+   *  the renderer's chat scrollback is empty after a full app restart.
+   *  No-op if the jsonl doesn't exist yet (first turn) or the session
+   *  already has entries (renderer reload — main's slice survived). */
+  seedFromTranscript(sessionId: string, worktreePath: string): void {
+    const session =
+      this.store.getSnapshot().state.jsonClaude.sessions[sessionId]
+    if (session && session.entries.length > 0) return
+
+    const transcriptPath = join(
+      homedir(),
+      '.claude',
+      'projects',
+      worktreePath.replace(/[^a-zA-Z0-9]/g, '-'),
+      `${sessionId}.jsonl`
+    )
+    if (!existsSync(transcriptPath)) return
+
+    let counter = 0
+    let raw: string
+    try {
+      raw = readFileSync(transcriptPath, 'utf8')
+    } catch (err) {
+      log(
+        'json-claude',
+        `seed read failed sessionId=${sessionId}`,
+        err instanceof Error ? err.message : String(err)
+      )
+      return
+    }
+    for (const line of raw.split('\n')) {
+      const trimmed = line.trim()
+      if (!trimmed) continue
+      let parsed: Record<string, unknown>
+      try {
+        parsed = JSON.parse(trimmed)
+      } catch {
+        continue
+      }
+      const type = parsed['type']
+      // The session jsonl contains the same user/assistant message
+      // shapes the live stream emits, plus internal bookkeeping types
+      // (queue-operation, attachment, ai-title, last-prompt) we ignore.
+      if (type === 'user') {
+        const message = parsed['message'] as { content?: unknown } | undefined
+        const content = message?.content
+        if (typeof content === 'string') {
+          this.appendStoreEntry(sessionId, {
+            kind: 'user',
+            text: content,
+            timestamp: Date.now(),
+            entryId: `${sessionId}-seed-u-${counter++}`
+          })
+        } else if (Array.isArray(content)) {
+          for (const r of extractToolResultsFromArray(content)) {
+            this.store.dispatch({
+              type: 'jsonClaude/toolResultAttached',
+              payload: {
+                sessionId,
+                toolUseId: r.toolUseId,
+                content: r.content,
+                isError: r.isError
+              }
+            })
+          }
+        }
+      } else if (type === 'assistant') {
+        const blocks = extractAssistantBlocks(parsed)
+        if (blocks.length === 0) continue
+        this.appendStoreEntry(sessionId, {
+          kind: 'assistant',
+          blocks,
+          timestamp: Date.now(),
+          entryId: `${sessionId}-seed-a-${counter++}`
+        })
+      }
+    }
   }
 
   create(
@@ -379,9 +460,13 @@ export class JsonClaudeManager {
     instance: JsonClaudeInstance,
     entry: JsonClaudeChatEntry
   ): void {
+    this.appendStoreEntry(instance.sessionId, entry)
+  }
+
+  private appendStoreEntry(sessionId: string, entry: JsonClaudeChatEntry): void {
     this.store.dispatch({
       type: 'jsonClaude/entryAppended',
-      payload: { sessionId: instance.sessionId, entry }
+      payload: { sessionId, entry }
     })
   }
 
@@ -436,6 +521,12 @@ function extractToolResults(
   const message = ev['message'] as { content?: unknown } | undefined
   const content = message?.content
   if (!Array.isArray(content)) return []
+  return extractToolResultsFromArray(content)
+}
+
+function extractToolResultsFromArray(
+  content: unknown[]
+): Array<{ toolUseId: string; content: string; isError: boolean }> {
   const out: Array<{ toolUseId: string; content: string; isError: boolean }> = []
   for (const raw of content) {
     if (!raw || typeof raw !== 'object') continue
