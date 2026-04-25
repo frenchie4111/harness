@@ -22,7 +22,7 @@ import { WorktreeDeletionFSM } from './worktree-deletion-fsm'
 import { PanesFSM, stripTransientTabFields } from './panes-fsm'
 import { ActivityDeriver } from './activity-deriver'
 import { getWeeklyStats } from './weekly-stats'
-import type { TerminalTab, PaneNode, PaneLeaf } from '../shared/state/terminals'
+import type { TerminalTab, PaneNode, PaneLeaf, PtyStatus, PendingTool } from '../shared/state/terminals'
 import { getLeaves, mapLeaves } from '../shared/state/terminals'
 import { listWorktrees, listBranches, continueWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getCommitChangedFiles, getCommitFileDiffSides, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, readWorktreeFile, writeWorktreeFile, getFileDiffSides, getCurrentBranch, symlinkClaudeSettings, type MergeStrategy } from './worktree'
 import { getPRStatus, testToken, starRepo, unstarRepo, isRepoStarred } from './github'
@@ -307,6 +307,46 @@ store.subscribe((event) => {
 store.subscribe((event) => {
   if (event.type === 'terminals/sessionIdDiscovered') {
     persistPanes(store.getSnapshot().state.terminals.panes)
+  }
+})
+
+// Mirror json-claude session state into terminals/statusChanged so the
+// sidebar + tab-bar dots light up the same way they do for xterm-backed
+// agent tabs. We can't piggyback on the user-scope status hooks (we
+// scrub HARNESS_TERMINAL_ID from the json-claude subprocess env so they
+// don't fire), so derive the status here from busy + pendingApprovals +
+// session.state on every jsonClaude/* event.
+store.subscribe((event) => {
+  if (!event.type.startsWith('jsonClaude/')) return
+  const jc = store.getSnapshot().state.jsonClaude
+  // Re-derive every json-claude session's status. There are usually
+  // only a handful, so the linear walk is cheap; scoping to a single
+  // session would require threading sessionId through every event
+  // payload (approvalResolved doesn't carry it).
+  for (const sessionId of Object.keys(jc.sessions)) {
+    const session = jc.sessions[sessionId]
+    if (!session) continue
+    if (session.state === 'exited') {
+      store.dispatch({ type: 'terminals/removed', payload: sessionId })
+      continue
+    }
+    let status: PtyStatus
+    let pendingTool: PendingTool | null = null
+    const approval = Object.values(jc.pendingApprovals).find(
+      (a) => a.sessionId === sessionId
+    )
+    if (approval) {
+      status = 'needs-approval'
+      pendingTool = { name: approval.toolName, input: approval.input }
+    } else if (session.busy) {
+      status = 'processing'
+    } else {
+      status = 'waiting'
+    }
+    store.dispatch({
+      type: 'terminals/statusChanged',
+      payload: { id: sessionId, status, pendingTool }
+    })
   }
 })
 
