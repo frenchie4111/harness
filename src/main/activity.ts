@@ -1,6 +1,6 @@
-import { app } from 'electron'
 import { readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
+import { userDataDir } from './paths'
 import { log } from './debug'
 
 export type ActivityState = 'processing' | 'waiting' | 'needs-approval' | 'idle' | 'merged'
@@ -43,7 +43,7 @@ let cache: ActivityLog | null = null
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 
 function getPath(): string {
-  return join(app.getPath('userData'), 'activity.json')
+  return join(userDataDir(), 'activity.json')
 }
 
 /** Migrate legacy `Record<path, ActivityEvent[]>` into the new record shape. */

@@ -1,6 +1,6 @@
-import { app } from 'electron'
 import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync, readdirSync } from 'fs'
 import { join } from 'path'
+import { userDataDir } from './paths'
 import {
   runMigrations,
   SCHEMA_VERSION,
@@ -210,7 +210,7 @@ const DEFAULT_CONFIG: Config = {
 }
 
 function getConfigPath(): string {
-  return join(app.getPath('userData'), 'config.json')
+  return join(userDataDir(), 'config.json')
 }
 
 export function loadConfig(): Config {
@@ -250,7 +250,7 @@ export function saveConfigSync(config: Config): void {
 // hash-free sanitized version of the terminal id.
 
 function getHistoryDir(): string {
-  const dir = join(app.getPath('userData'), 'terminal-history')
+  const dir = join(userDataDir(), 'terminal-history')
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
   return dir
 }

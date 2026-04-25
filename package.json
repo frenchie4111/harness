@@ -15,6 +15,8 @@
     "log:clear": "rm -f ~/Library/Application\\ Support/harness/debug.log",
     "build": "electron-vite build && vite build --config vite.web.config.ts",
     "build:web": "vite build --config vite.web.config.ts",
+    "build:headless": "vite build --config vite.headless.config.ts && vite build --config vite.headless-web.config.ts",
+    "dev:headless": "npm run build:headless && HARNESS_DATA_DIR=./.headless-data HARNESS_WS_HOST=${HARNESS_WS_HOST:-127.0.0.1} node dist-headless/main/index.js",
     "preview": "electron-vite preview",
     "typecheck": "tsc -b --force",
     "test": "vitest run",

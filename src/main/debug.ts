@@ -1,12 +1,12 @@
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
-import { app } from 'electron'
+import { userDataDir } from './paths'
 
 let logPath: string | null = null
 
 function getLogPath(): string {
   if (!logPath) {
-    logPath = join(app.getPath('userData'), 'debug.log')
+    logPath = join(userDataDir(), 'debug.log')
     // Clear on startup
     writeFileSync(logPath, `=== Claude Harness debug log started at ${new Date().toISOString()} ===\n`)
   }
