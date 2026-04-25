@@ -3,6 +3,7 @@ name: Build Linux
 on:
   push:
     tags: ['v*']
+    branches: [linux-build-ci]
   workflow_dispatch:
 
 permissions:
@@ -39,6 +40,9 @@ jobs:
 
       - name: Build Linux AppImage
         run: npm run dist:linux
+
+      - name: List release artifacts (debug)
+        run: ls -la release/
 
       - name: Upload workflow artifact (branch / dispatch)
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
