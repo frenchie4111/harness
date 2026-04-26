@@ -40,6 +40,13 @@ interface PanesFSMOptions {
    *  on-main contract as killTabPty, but routes to JsonClaudeManager
    *  instead of PtyManager. */
   killJsonClaude?: (sessionId: string) => void
+  /** Drop the slice entry for a json-claude session. Used by
+   *  convertTabType when swapping AWAY from json — without this, the
+   *  stale 'exited' session entry survives and JsonModeChat's mount
+   *  useEffect short-circuits if the user later swaps back to the same
+   *  sessionId. The on-disk jsonl is untouched, so a re-mount replays
+   *  history via seedFromTranscript. */
+  clearJsonClaudeSession?: (sessionId: string) => void
   /** Spawn a json-claude session and (optionally) send a one-shot
    *  initial prompt as the first user message. Called from
    *  ensureInitialized when a default json-claude tab is created so
@@ -330,6 +337,10 @@ export class PanesFSM {
       this.opts.killTabPty?.(tabId)
     } else {
       this.opts.killJsonClaude?.(tabId)
+      // Drop the slice entry too, otherwise a subsequent swap back to
+      // json-claude with the same sessionId would find a stale 'exited'
+      // entry and JsonModeChat's mount useEffect would skip the start.
+      this.opts.clearJsonClaudeSession?.(tabId)
     }
     const newId =
       newType === 'json-claude'

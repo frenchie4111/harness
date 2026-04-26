@@ -229,9 +229,26 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
           />
         ))}
         {state === 'exited' && (
-          <div className="text-xs text-danger italic">
-            session exited
-            {session?.exitReason ? ` — ${session.exitReason}` : ''}
+          <div className="flex items-center gap-3 text-xs text-danger italic">
+            <span>
+              session exited
+              {session?.exitReason ? ` — ${session.exitReason}` : ''}
+            </span>
+            <button
+              className="not-italic px-2 py-0.5 bg-panel-raised border border-border-strong rounded text-fg-bright hover:bg-panel cursor-pointer"
+              onClick={() => {
+                // Kill (no-op if no instance) + start: re-spawns the
+                // subprocess and re-uses the same sessionId so --resume
+                // picks up the on-disk jsonl. Same kill-then-start the
+                // permission-mode toggle does.
+                void (async () => {
+                  await window.api.killJsonClaude(sessionId)
+                  await window.api.startJsonClaude(sessionId, worktreePath)
+                })()
+              }}
+            >
+              Reconnect
+            </button>
           </div>
         )}
       </div>

@@ -516,6 +516,8 @@ const panesFSM = new PanesFSM(store, {
   // restart / clear events are the actual lifecycle boundary.
   killTabPty: (tabId) => ptyManager.kill(tabId),
   killJsonClaude: (sessionId) => jsonClaudeManager.kill(sessionId),
+  clearJsonClaudeSession: (sessionId) =>
+    store.dispatch({ type: 'jsonClaude/sessionCleared', payload: { sessionId } }),
   startJsonClaudeWithPrompt: (sessionId, worktreePath, initialPrompt) => {
     // Mirror the dispatch + create dance the jsonClaude:start IPC
     // handler does, then queue the initial prompt as the first stdin
