@@ -59,14 +59,20 @@ function renderEntries(
     }
     if (entry.kind === 'assistant' && entry.blocks) {
       for (const block of entry.blocks) {
-        if (block.type === 'text' && block.text) {
+        if (block.type === 'text' && (block.text || entry.isPartial)) {
           rows.push({
             key: `${entry.entryId}-t`,
             node: (
               <div className="markdown text-sm leading-relaxed">
                 <ReactMarkdown rehypePlugins={[rehypeHighlight]}>
-                  {block.text}
+                  {block.text || ''}
                 </ReactMarkdown>
+                {entry.isPartial && (
+                  <span
+                    className="json-claude-cursor"
+                    aria-label="streaming"
+                  />
+                )}
               </div>
             )
           })
