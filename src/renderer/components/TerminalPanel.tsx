@@ -130,7 +130,12 @@ function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.4 : 1
+    opacity: isDragging ? 0.4 : 1,
+    // Suppress iOS Safari's text-selection + callout on long-press so
+    // our 500ms-hold gesture isn't intercepted before our timer fires.
+    WebkitUserSelect: 'none' as const,
+    userSelect: 'none' as const,
+    WebkitTouchCallout: 'none' as const
   }
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   useEffect(() => {
