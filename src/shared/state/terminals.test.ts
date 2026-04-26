@@ -507,6 +507,92 @@ describe('terminalsReducer', () => {
     })
   })
 
+  it('tabTypeChanged flips agent → json-claude in place', () => {
+    const tree: PaneNode = {
+      type: 'leaf',
+      id: 'p1',
+      tabs: [
+        { id: 'agent-1', type: 'agent', label: 'Claude', agentKind: 'claude', sessionId: 'sess-1' },
+        { id: 'shell-1', type: 'shell', label: 'Shell' }
+      ],
+      activeTabId: 'agent-1'
+    }
+    const start: TerminalsState = { ...initialTerminals, panes: { '/wt/a': tree } }
+    const next = apply(start, {
+      type: 'terminals/tabTypeChanged',
+      payload: {
+        worktreePath: '/wt/a',
+        tabId: 'agent-1',
+        newId: 'sess-1',
+        newType: 'json-claude',
+        newLabel: 'Claude (JSON)'
+      }
+    })
+    const leaves = getLeaves(next.panes['/wt/a'])
+    const tab = leaves[0].tabs[0]
+    expect(tab.type).toBe('json-claude')
+    expect(tab.id).toBe('sess-1')
+    expect(tab.sessionId).toBe('sess-1')
+    expect(tab.label).toBe('Claude (JSON)')
+    expect(leaves[0].activeTabId).toBe('sess-1')
+    // Other tabs untouched.
+    expect(leaves[0].tabs[1].id).toBe('shell-1')
+  })
+
+  it('tabTypeChanged flips json-claude → agent in place', () => {
+    const tree: PaneNode = {
+      type: 'leaf',
+      id: 'p1',
+      tabs: [{ id: 'sess-1', type: 'json-claude', label: 'Claude (JSON)', sessionId: 'sess-1' }],
+      activeTabId: 'sess-1'
+    }
+    const start: TerminalsState = { ...initialTerminals, panes: { '/wt/a': tree } }
+    const next = apply(start, {
+      type: 'terminals/tabTypeChanged',
+      payload: {
+        worktreePath: '/wt/a',
+        tabId: 'sess-1',
+        newId: 'agent-new',
+        newType: 'agent',
+        newLabel: 'Claude'
+      }
+    })
+    const leaves = getLeaves(next.panes['/wt/a'])
+    const tab = leaves[0].tabs[0]
+    expect(tab.type).toBe('agent')
+    expect(tab.id).toBe('agent-new')
+    expect(tab.agentKind).toBe('claude')
+    // sessionId carried over so --resume picks up the same on-disk jsonl.
+    expect(tab.sessionId).toBe('sess-1')
+    expect(leaves[0].activeTabId).toBe('agent-new')
+  })
+
+  it('tabTypeChanged is a no-op when the worktree or tab is missing', () => {
+    const start: TerminalsState = { ...initialTerminals, panes: { '/wt/a': leaf('p1', ['t1']) } }
+    const noWt = apply(start, {
+      type: 'terminals/tabTypeChanged',
+      payload: {
+        worktreePath: '/wt/missing',
+        tabId: 't1',
+        newId: 't1-new',
+        newType: 'agent',
+        newLabel: 'Claude'
+      }
+    })
+    expect(noWt).toBe(start)
+    const noTab = apply(start, {
+      type: 'terminals/tabTypeChanged',
+      payload: {
+        worktreePath: '/wt/a',
+        tabId: 't-missing',
+        newId: 't-new',
+        newType: 'agent',
+        newLabel: 'Claude'
+      }
+    })
+    expect(noTab).toBe(start)
+  })
+
   it('sessionIdDiscovered backfills a session id in pane tree', () => {
     const tree: PaneNode = {
       type: 'split',
