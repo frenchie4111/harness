@@ -23,17 +23,36 @@ export function trunc(s: string, n: number): string {
   return s.length > n ? s.slice(0, n) + '…' : s
 }
 
+const HARNESS_CONTROL_PREFIX = 'mcp__harness-control__'
+
+export function isHarnessControl(name: string | undefined): boolean {
+  return !!name && name.startsWith(HARNESS_CONTROL_PREFIX)
+}
+
+/** Strip the `mcp__harness-control__` prefix so `create_worktree` shows
+ *  instead of the full mangled name. The brand gradient already conveys
+ *  "this is a harness tool", so the prefix is redundant in the chrome. */
+export function prettyToolName(name: string | undefined): string {
+  if (!name) return 'Tool'
+  if (name.startsWith(HARNESS_CONTROL_PREFIX)) {
+    return name.slice(HARNESS_CONTROL_PREFIX.length)
+  }
+  return name
+}
+
 export function ToolCardChrome({
   name,
   subtitle,
   variant,
   isError,
+  brand,
   children
 }: {
   name: string
   subtitle: string
   variant: 'info' | 'warn'
   isError?: boolean
+  brand?: boolean
   children: ReactNode
 }): JSX.Element {
   // Collapsed by default; errors auto-expand on first render and again
@@ -46,23 +65,33 @@ export function ToolCardChrome({
 
   const ring = isError
     ? 'border-danger/50'
-    : variant === 'warn'
-      ? 'border-warning/30'
-      : 'border-border'
+    : brand
+      ? 'border-warning/40'
+      : variant === 'warn'
+        ? 'border-warning/30'
+        : 'border-border'
   const headerBg = isError ? 'bg-danger/10' : 'bg-app/40'
   const headerHover = isError ? 'hover:bg-danger/15' : 'hover:bg-app/60'
+  // `group` enables the .group:hover .brand-gradient-flow-text-hover rule
+  // (same trick the Add worktree button uses) — animated flow on hover,
+  // static gradient otherwise.
+  const groupClass = brand ? 'group' : ''
+  const nameClass = brand
+    ? 'brand-gradient-text brand-gradient-flow-text-hover'
+    : 'text-accent'
 
   return (
     <div className={`my-2 rounded-md border ${ring} bg-panel overflow-hidden`}>
+      {brand && <div className="brand-gradient-bg h-0.5" />}
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
-        className={`w-full px-2 py-1 text-[11px] flex items-center gap-2 ${expanded ? 'border-b border-border' : ''} ${headerBg} ${headerHover} cursor-pointer transition-colors text-left`}
+        className={`${groupClass} w-full px-2 py-1 text-[11px] flex items-center gap-2 ${expanded ? 'border-b border-border' : ''} ${headerBg} ${headerHover} cursor-pointer transition-colors text-left`}
       >
         <span className="text-muted text-[9px] w-2 shrink-0 select-none">
           {expanded ? '▾' : '▸'}
         </span>
-        <span className="font-mono font-semibold text-accent shrink-0">
+        <span className={`font-mono font-semibold shrink-0 ${nameClass}`}>
           {name}
         </span>
         <span className="opacity-70 truncate flex-1 min-w-0">{subtitle}</span>
