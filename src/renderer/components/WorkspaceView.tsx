@@ -18,6 +18,7 @@ import { XTerminal } from './XTerminal'
 import { DiffView } from './DiffView'
 import { FileView } from './FileView'
 import { BrowserPanel } from './BrowserPanel'
+import { JsonModeChat } from './JsonModeChat'
 import { ErrorBoundary } from './ErrorBoundary'
 
 interface WorkspaceViewProps {
@@ -35,6 +36,8 @@ interface WorkspaceViewProps {
   defaultAgent: AgentKind
   onAddAgentTab: (worktreePath: string, agentKind?: AgentKind, paneId?: string) => void
   onAddBrowserTab: (worktreePath: string, paneId?: string) => void
+  /** Only defined when the jsonModeClaudeTabs feature flag is on. */
+  onAddJsonClaudeTab?: (worktreePath: string, paneId?: string) => void
   onCloseTab: (worktreePath: string, tabId: string) => void
   onRestartAgentTab: (worktreePath: string, tabId: string) => void
   onReorderTabs: (worktreePath: string, paneId: string, fromId: string, toId: string) => void
@@ -130,6 +133,7 @@ function SplitRenderer({
   defaultAgent,
   onAddAgentTab,
   onAddBrowserTab,
+  onAddJsonClaudeTab,
   onCloseTab,
   onSplitRight,
   onSplitDown,
@@ -154,6 +158,7 @@ function SplitRenderer({
   defaultAgent: AgentKind
   onAddAgentTab: (kind: AgentKind | undefined, paneId: string) => void
   onAddBrowserTab: (paneId: string) => void
+  onAddJsonClaudeTab?: (paneId: string) => void
   onCloseTab: (tabId: string) => void
   onSplitRight: (paneId: string) => void
   onSplitDown: (paneId: string) => void
@@ -181,6 +186,9 @@ function SplitRenderer({
           defaultAgent={defaultAgent}
           onAddAgentTab={(kind) => onAddAgentTab(kind, node.id)}
           onAddBrowserTab={() => onAddBrowserTab(node.id)}
+          onAddJsonClaudeTab={
+            onAddJsonClaudeTab ? () => onAddJsonClaudeTab(node.id) : undefined
+          }
           onCloseTab={onCloseTab}
           onSplitRight={() => onSplitRight(node.id)}
           onSplitDown={() => onSplitDown(node.id)}
@@ -225,6 +233,7 @@ function SplitRenderer({
           defaultAgent={defaultAgent}
           onAddAgentTab={onAddAgentTab}
           onAddBrowserTab={onAddBrowserTab}
+          onAddJsonClaudeTab={onAddJsonClaudeTab}
           onCloseTab={onCloseTab}
           onSplitRight={onSplitRight}
           onSplitDown={onSplitDown}
@@ -261,6 +270,7 @@ function SplitRenderer({
           defaultAgent={defaultAgent}
           onAddAgentTab={onAddAgentTab}
           onAddBrowserTab={onAddBrowserTab}
+          onAddJsonClaudeTab={onAddJsonClaudeTab}
           onCloseTab={onCloseTab}
           onSplitRight={onSplitRight}
           onSplitDown={onSplitDown}
@@ -284,6 +294,7 @@ export function WorkspaceView({
   defaultAgent,
   onAddAgentTab,
   onAddBrowserTab,
+  onAddJsonClaudeTab,
   onCloseTab,
   onRestartAgentTab,
   onReorderTabs,
@@ -436,6 +447,11 @@ export function WorkspaceView({
           defaultAgent={defaultAgent}
           onAddAgentTab={(kind, paneId) => onAddAgentTab(worktreePath, kind, paneId)}
           onAddBrowserTab={(paneId) => onAddBrowserTab(worktreePath, paneId)}
+          onAddJsonClaudeTab={
+            onAddJsonClaudeTab
+              ? (paneId) => onAddJsonClaudeTab(worktreePath, paneId)
+              : undefined
+          }
           onCloseTab={(tabId) => onCloseTab(worktreePath, tabId)}
           onSplitRight={(paneId) => onSplitPane(worktreePath, paneId, 'horizontal')}
           onSplitDown={(paneId) => onSplitPane(worktreePath, paneId, 'vertical')}
@@ -483,6 +499,11 @@ export function WorkspaceView({
                     tabId={tab.id}
                     visible={visible && isActiveInPane}
                     initialUrl={tab.url || 'about:blank'}
+                  />
+                ) : tab.type === 'json-claude' ? (
+                  <JsonModeChat
+                    sessionId={tab.id}
+                    worktreePath={worktreePath}
                   />
                 ) : (
                   <XTerminal

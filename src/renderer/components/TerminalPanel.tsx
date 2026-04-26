@@ -67,6 +67,9 @@ interface TerminalPanelProps {
   onAddTab: () => void
   onAddAgentTab: (agentKind?: AgentKind) => void
   onAddBrowserTab: () => void
+  /** Optional: when defined, alt-clicking the Sparkles button opens a
+   *  json-claude tab (experimental, gated by settings.jsonModeClaudeTabs). */
+  onAddJsonClaudeTab?: () => void
   defaultAgent: AgentKind
   onCloseTab: (tabId: string) => void
   onSplitRight: () => void
@@ -172,6 +175,7 @@ export function TerminalPanel({
   onAddTab,
   onAddAgentTab,
   onAddBrowserTab,
+  onAddJsonClaudeTab,
   defaultAgent,
   onCloseTab,
   onSplitRight,
@@ -229,10 +233,24 @@ export function TerminalPanel({
               />
             ))}
           </SortableContext>
-          <Tooltip label={`New ${agentDisplayName(defaultAgent)} tab` + (AGENT_REGISTRY.length > 1 ? ` · ⌥-click for ${agentDisplayName(AGENT_REGISTRY.find((a) => a.kind !== defaultAgent)?.kind)}` : '')}>
+          <Tooltip
+            label={
+              `New ${agentDisplayName(defaultAgent)} tab` +
+              (AGENT_REGISTRY.length > 1
+                ? ` · ⌥-click for ${agentDisplayName(AGENT_REGISTRY.find((a) => a.kind !== defaultAgent)?.kind)}`
+                : '') +
+              (onAddJsonClaudeTab ? ' · ⇧-click for Claude (JSON, experimental)' : '')
+            }
+          >
             <button
               onClick={(e) => {
-                if (e.altKey && AGENT_REGISTRY.length > 1) {
+                // Modifier precedence: shift opens the experimental
+                // json-claude tab (when its feature flag is on); alt
+                // opens the *other* registered agent (Codex when default
+                // is Claude, vice versa). Plain click opens the default.
+                if (e.shiftKey && onAddJsonClaudeTab) {
+                  onAddJsonClaudeTab()
+                } else if (e.altKey && AGENT_REGISTRY.length > 1) {
                   const other = AGENT_REGISTRY.find((a) => a.kind !== defaultAgent)
                   onAddAgentTab(other?.kind)
                 } else {

@@ -105,6 +105,11 @@ export interface DesktopShellStartDeps {
   /** index.ts owns the loaded RepoConfig dispatch path; we need to fire
    *  it for any folder added via the native picker. */
   onRepoAdded: (repoRoot: string) => void
+  /** Extra teardown work to run inside before-quit, between killing
+   *  PTYs and tearing down the BrowserManager. Owned by index.ts so
+   *  feature managers (e.g. approval-bridge) that live there can clean
+   *  up without desktop-shell needing to know about them. */
+  onBeforeQuit?: () => void
 }
 
 export interface DesktopShellStartHandle {
@@ -126,7 +131,8 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
     runBoot,
     getStopWatchingStatus,
     setStopWatchingStatus,
-    onRepoAdded
+    onRepoAdded,
+    onBeforeQuit
   } = deps
 
   registerDesktopHandlers()
@@ -510,6 +516,7 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
     getStopWatchingStatus()?.()
     setStopWatchingStatus(null)
     ptyManager.killAll('SIGKILL')
+    onBeforeQuit?.()
     browserManager.destroyAll()
     sealAllActive()
     saveConfigSync(config)

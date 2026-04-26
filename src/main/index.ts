@@ -2,6 +2,9 @@ import { existsSync, lstatSync } from 'fs'
 import { createRequire } from 'module'
 import { join } from 'path'
 import { PtyManager } from './pty-manager'
+import { ApprovalBridge } from './approval-bridge'
+import { JsonClaudeManager } from './json-claude-manager'
+import { JsonClaudeStatusDeriver } from './json-claude-status-deriver'
 import { Store } from './store'
 import { WebSocketServerTransport } from './transport-websocket'
 import { CompoundServerTransport } from './transport-compound'
@@ -105,7 +108,8 @@ function findShellWorktree(shellId: string): string | null {
 }
 import { CostTracker } from './cost-tracker'
 import { startControlServer } from './control-server'
-import { writeMcpConfigForTerminal, pruneMcpConfigs } from './mcp-config'
+import { writeMcpConfigForTerminal, pruneMcpConfigs, getBridgeScriptPath } from './mcp-config'
+import { getControlServerInfo } from './control-server'
 import { recordActivity, getActivityLog, clearAllActivity, clearActivityForWorktree, sealAllActive, touchActivityMeta, finalizeActivity, type ActivityState, type PRState } from './activity'
 import { log, getLogFilePath } from './debug'
 import { buildInitialAppState } from './build-initial-state'
@@ -137,6 +141,28 @@ let config = loadConfig()
 let stopWatchingStatus: (() => void) | null = null
 
 const store = new Store(buildInitialAppState(config, { hasGithubToken: hasSecret('githubToken') }))
+const approvalBridge = new ApprovalBridge(store)
+const jsonClaudeManager = new JsonClaudeManager(store, {
+  getClaudeCommand: () =>
+    store.getSnapshot().state.settings.claudeCommand || DEFAULT_CLAUDE_COMMAND,
+  getApprovalSocketPath: (sessionId) => approvalBridge.startSession(sessionId),
+  closeApprovalSession: (sessionId) => approvalBridge.stopSession(sessionId),
+  getClaudeEnvVars: () =>
+    store.getSnapshot().state.settings.claudeEnvVars || {},
+  getControlServer: () => getControlServerInfo(),
+  getControlBridgeScriptPath: () => getBridgeScriptPath(),
+  isHarnessMcpEnabled: () =>
+    store.getSnapshot().state.settings.harnessMcpEnabled !== false,
+  getCallerScope: (sessionId) => {
+    const scope = resolveCallerScope(sessionId)
+    if (!scope) return null
+    return {
+      worktreePath: scope.worktreePath,
+      repoRoot: scope.repoRoot,
+      isMain: scope.isMain
+    }
+  }
+})
 const perfMonitor = new PerfMonitor()
 
 // In Electron mode createDesktopShell applies the dev-mode userData
@@ -285,6 +311,12 @@ store.subscribe((event) => {
   }
 })
 
+// Mirror json-claude session state into terminals/statusChanged so the
+// sidebar + tab-bar dots light up the same way they do for xterm tabs.
+// Lives in its own module — see src/main/json-claude-status-deriver.ts.
+const jsonClaudeStatusDeriver = new JsonClaudeStatusDeriver(store)
+jsonClaudeStatusDeriver.start()
+
 /** Query the harness star state, dispatch it to the slice, and auto-star
  *  exactly once per user (sticky so manual unstars survive reboots). Safe
  *  to call after any token resolution — boot, PAT save, etc. */
@@ -395,7 +427,13 @@ function persistPanes(panes: Record<string, PaneNode>): void {
 function treeToPersistedNode(node: PaneNode): PersistedPaneNode | null {
   if (node.type === 'leaf') {
     const tabs = node.tabs
-      .filter((t) => t.type === 'agent' || t.type === 'shell' || t.type === 'browser')
+      .filter(
+        (t) =>
+          t.type === 'agent' ||
+          t.type === 'shell' ||
+          t.type === 'browser' ||
+          t.type === 'json-claude'
+      )
       .map((t) => {
         const stripped = stripTransientTabFields(t as TerminalTab)
         // For browser tabs, the tab's state.url field is set once at
@@ -407,7 +445,7 @@ function treeToPersistedNode(node: PaneNode): PersistedPaneNode | null {
           stripped.type === 'browser' ? browserManager.getUrl(stripped.id) : null
         return {
           id: stripped.id,
-          type: stripped.type as 'agent' | 'shell' | 'browser',
+          type: stripped.type as 'agent' | 'shell' | 'browser' | 'json-claude',
           label: stripped.label,
           agentKind: stripped.agentKind,
           sessionId: stripped.sessionId,
@@ -469,7 +507,8 @@ const panesFSM = new PanesFSM(store, {
   // only path before, and it broke the moment we had clients that
   // could disconnect without intending to kill agents). Tab-close /
   // restart / clear events are the actual lifecycle boundary.
-  killTabPty: (tabId) => ptyManager.kill(tabId)
+  killTabPty: (tabId) => ptyManager.kill(tabId),
+  killJsonClaude: (sessionId) => jsonClaudeManager.kill(sessionId)
 })
 
 const worktreesFSM = new WorktreesFSM(store, {
@@ -1727,6 +1766,93 @@ function registerIpcHandlers(): void {
     ptyManager.kill(id)
   })
 
+  // Permission-prompt approval pipe. A json-claude tab asks Claude Code to
+  // delegate per-tool approvals to our bundled MCP server, which forwards
+  // the request over a per-session Unix socket owned by ApprovalBridge.
+  // The request surfaces in the store as jsonClaude/approvalRequested; the
+  // renderer UI calls this handler once the user clicks Allow/Deny, which
+  // writes the PermissionResult back out over the same socket.
+  transport.onRequest(
+    'jsonClaude:resolveApproval',
+    (
+      _ctx,
+      requestId: string,
+      result: {
+        behavior: 'allow' | 'deny'
+        updatedInput?: Record<string, unknown>
+        updatedPermissions?: unknown[]
+        message?: string
+        interrupt?: boolean
+      }
+    ) => {
+      return approvalBridge.resolveApproval(requestId, result)
+    }
+  )
+
+  // JSON-mode Claude subprocess lifecycle. start == spawn claude -p with
+  // stream-json IO + the bundled permission-prompt MCP server. The
+  // sessionId doubles as the tab id and is used by panesFSM to persist
+  // the tab across reload; spawn picks --resume vs. --session-id based
+  // on whether the jsonl already exists on disk.
+  transport.onRequest('jsonClaude:start', (_ctx, sessionId: string, cwd: string) => {
+    if (!sessionId || !cwd) return false
+    // inside create() lands on a session that exists in the store. If
+    // the order is reversed, 'running' is a no-op (unknown session) and
+    // 'connecting' from sessionStarted wins, leaving the UI stuck.
+    store.dispatch({
+      type: 'jsonClaude/sessionStarted',
+      payload: { sessionId, worktreePath: cwd }
+    })
+    // Replay the on-disk transcript into the slice so the chat UI shows
+    // prior turns after a full app restart. No-op if the slice already
+    // has entries (renderer reload — main's slice survived) or if no
+    // jsonl exists yet (first turn).
+    jsonClaudeManager.seedFromTranscript(sessionId, cwd)
+    const mode =
+      store.getSnapshot().state.jsonClaude.sessions[sessionId]?.permissionMode ||
+      'default'
+    jsonClaudeManager.create(sessionId, cwd, mode)
+    return true
+  })
+  transport.onSignal('jsonClaude:send', (_ctx, sessionId: string, text: string) => {
+    jsonClaudeManager.send(sessionId, text)
+  })
+  transport.onRequest('jsonClaude:kill', (_ctx, sessionId: string) => {
+    jsonClaudeManager.kill(sessionId)
+    return true
+  })
+  transport.onRequest('jsonClaude:interrupt', (_ctx, sessionId: string) => {
+    jsonClaudeManager.interrupt(sessionId)
+    return true
+  })
+
+  transport.onRequest(
+    'jsonClaude:setPermissionMode',
+    (_ctx, sessionId: string, mode: 'default' | 'acceptEdits' | 'plan') => {
+      if (!sessionId) return false
+      store.dispatch({
+        type: 'jsonClaude/permissionModeChanged',
+        payload: { sessionId, mode }
+      })
+      jsonClaudeManager.setPermissionMode(sessionId, mode)
+      return true
+    }
+  )
+
+  transport.onRequest('config:setJsonModeClaudeTabs', (_ctx, enabled: boolean) => {
+    if (enabled) {
+      config.jsonModeClaudeTabs = true
+    } else {
+      delete config.jsonModeClaudeTabs
+    }
+    saveConfig(config)
+    store.dispatch({
+      type: 'settings/jsonModeClaudeTabsChanged',
+      payload: enabled
+    })
+    return true
+  })
+
   transport.onSignal('terminal:join', (ctx, id: string) => {
     store.dispatch({
       type: 'terminals/clientJoined',
@@ -2092,6 +2218,10 @@ if (desktopShellMod && desktopEarly) {
     },
     onRepoAdded: () => {
       void worktreesFSM.refreshList()
+    },
+    onBeforeQuit: () => {
+      jsonClaudeManager.killAll()
+      approvalBridge.stopAll()
     }
   })
   desktopHooks.startAutoUpdateChecks = handle.startAutoUpdateChecks
@@ -2109,6 +2239,8 @@ if (desktopShellMod && desktopEarly) {
     stopWatchingStatus?.()
     stopWatchingStatus = null
     ptyManager.killAll('SIGKILL')
+    jsonClaudeManager.killAll()
+    approvalBridge.stopAll()
     browserManager.destroyAll()
     sealAllActive()
     saveConfigSync(config)

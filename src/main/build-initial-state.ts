@@ -8,6 +8,7 @@ import { initialUpdater } from '../shared/state/updater'
 import { initialRepoConfigs } from '../shared/state/repo-configs'
 import { initialCosts, type CostsState } from '../shared/state/costs'
 import { initialBrowser } from '../shared/state/browser'
+import { initialJsonClaude } from '../shared/state/json-claude'
 import { initialSettings } from '../shared/state/settings'
 import {
   DEFAULT_CLAUDE_COMMAND,
@@ -39,6 +40,7 @@ export function buildInitialAppState(
     repoConfigs: initialRepoConfigs,
     costs: config.costs ? { ...initialCosts, ...config.costs } : initialCosts,
     browser: initialBrowser,
+    jsonClaude: initialJsonClaude,
     settings: {
       ...initialSettings,
       theme: config.theme || DEFAULT_THEME,
@@ -72,7 +74,8 @@ export function buildInitialAppState(
       wsTransportPort: config.wsTransportPort ?? 37291,
       wsTransportHost: config.wsTransportHost ?? '127.0.0.1',
       browserToolsEnabled: config.browserToolsEnabled !== false,
-      browserToolsMode: config.browserToolsMode === 'view' ? 'view' : 'full'
+      browserToolsMode: config.browserToolsMode === 'view' ? 'view' : 'full',
+      jsonModeClaudeTabs: config.jsonModeClaudeTabs === true
     }
   }
 }

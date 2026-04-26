@@ -231,6 +231,7 @@ export interface ElectronAPI {
   getLanAddresses(): Promise<Array<{ iface: string; address: string }>>
   setBrowserToolsEnabled(enabled: boolean): Promise<boolean>
   setBrowserToolsMode(mode: 'view' | 'full'): Promise<boolean>
+  setJsonModeClaudeTabs(enabled: boolean): Promise<boolean>
   setAutoUpdateEnabled(enabled: boolean): Promise<boolean>
   setShareClaudeSettings(enabled: boolean): Promise<boolean>
   setHarnessSystemPromptEnabled(enabled: boolean): Promise<boolean>
@@ -361,6 +362,26 @@ export interface ElectronAPI {
 
   getActivityLog(): Promise<ActivityLog>
   clearActivityLog(worktreePath?: string): Promise<boolean>
+
+  // JSON-mode Claude — approval bridge + session lifecycle.
+  resolveJsonClaudeApproval(
+    requestId: string,
+    result: {
+      behavior: 'allow' | 'deny'
+      updatedInput?: Record<string, unknown>
+      updatedPermissions?: unknown[]
+      message?: string
+      interrupt?: boolean
+    }
+  ): Promise<boolean>
+  startJsonClaude(id: string, cwd: string): Promise<boolean>
+  sendJsonClaudeMessage(id: string, text: string): void
+  killJsonClaude(id: string): Promise<boolean>
+  interruptJsonClaude(id: string): Promise<boolean>
+  setJsonClaudePermissionMode(
+    id: string,
+    mode: 'default' | 'acceptEdits' | 'plan'
+  ): Promise<boolean>
 
   getStateSnapshot(): Promise<StateSnapshot>
   onStateEvent(callback: (event: StateEvent, seq: number) => void): () => void

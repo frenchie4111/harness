@@ -293,6 +293,20 @@ describe('settingsReducer', () => {
     expect(full.browserToolsMode).toBe('full')
   })
 
+  it('jsonModeClaudeTabsChanged toggles the experimental tab type', () => {
+    expect(initialSettings.jsonModeClaudeTabs).toBe(false)
+    const on = apply(initialSettings, {
+      type: 'settings/jsonModeClaudeTabsChanged',
+      payload: true
+    })
+    expect(on.jsonModeClaudeTabs).toBe(true)
+    const off = apply(on, {
+      type: 'settings/jsonModeClaudeTabsChanged',
+      payload: false
+    })
+    expect(off.jsonModeClaudeTabs).toBe(false)
+  })
+
   it('returns a new object reference (no mutation)', () => {
     const next = apply(initialSettings, { type: 'settings/themeChanged', payload: 'x' })
     expect(next).not.toBe(initialSettings)

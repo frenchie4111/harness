@@ -143,6 +143,7 @@ contextBridge.exposeInMainWorld('api', {
   getLanAddresses: () => req('net:getLanAddresses'),
   setBrowserToolsEnabled: (enabled: boolean) => req('config:setBrowserToolsEnabled', enabled),
   setBrowserToolsMode: (mode: 'view' | 'full') => req('config:setBrowserToolsMode', mode),
+  setJsonModeClaudeTabs: (enabled: boolean) => req('config:setJsonModeClaudeTabs', enabled),
   setAutoUpdateEnabled: (enabled: boolean) => req('config:setAutoUpdateEnabled', enabled),
   setShareClaudeSettings: (enabled: boolean) => req('config:setShareClaudeSettings', enabled),
   setHarnessSystemPromptEnabled: (enabled: boolean) => req('config:setHarnessSystemPromptEnabled', enabled),
@@ -322,6 +323,28 @@ contextBridge.exposeInMainWorld('api', {
     transport.onSignal('terminal:exit', (id, exitCode) => {
       callback(id as string, exitCode as number)
     }),
+
+  // JSON-mode Claude — approval bridge + session lifecycle.
+  resolveJsonClaudeApproval: (
+    requestId: string,
+    result: {
+      behavior: 'allow' | 'deny'
+      updatedInput?: Record<string, unknown>
+      updatedPermissions?: unknown[]
+      message?: string
+      interrupt?: boolean
+    }
+  ) => req('jsonClaude:resolveApproval', requestId, result),
+  startJsonClaude: (id: string, cwd: string) =>
+    req('jsonClaude:start', id, cwd),
+  sendJsonClaudeMessage: (id: string, text: string) =>
+    sig('jsonClaude:send', id, text),
+  killJsonClaude: (id: string) => req('jsonClaude:kill', id),
+  interruptJsonClaude: (id: string) => req('jsonClaude:interrupt', id),
+  setJsonClaudePermissionMode: (
+    id: string,
+    mode: 'default' | 'acceptEdits' | 'plan'
+  ) => req('jsonClaude:setPermissionMode', id, mode),
 
   // State transport (snapshot + event stream). Replaces ad-hoc per-field
   // getters and onXChanged subscriptions one slice at a time.
