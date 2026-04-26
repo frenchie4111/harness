@@ -244,14 +244,13 @@ export class PanesFSM {
   }
 
   addTab(wtPath: string, tab: TerminalTab, paneId?: string): void {
-    const effective = this.applyDefaultClaudeTabType(tab)
     const tree = this.getTree(wtPath)
     if (!tree) {
       const pane: PaneLeaf = {
         type: 'leaf',
         id: newPaneId(),
-        tabs: [effective],
-        activeTabId: effective.id
+        tabs: [tab],
+        activeTabId: tab.id
       }
       this.commit(wtPath, pane)
       return
@@ -260,31 +259,9 @@ export class PanesFSM {
     const targetId = paneId || leaves[0].id
     const updated = mapLeaves(tree, (leaf) => {
       if (leaf.id !== targetId) return leaf
-      return { ...leaf, tabs: [...leaf.tabs, effective], activeTabId: effective.id }
+      return { ...leaf, tabs: [...leaf.tabs, tab], activeTabId: tab.id }
     })
     this.commit(wtPath, updated)
-  }
-
-  /** Honor settings.defaultClaudeTabType when the renderer asked for an
-   *  xterm Claude agent tab but the user wants json-mode by default.
-   *  Promoted to a method so ensureInitialized + addTab share the rule. */
-  private applyDefaultClaudeTabType(tab: TerminalTab): TerminalTab {
-    if (
-      tab.type !== 'agent' ||
-      tab.agentKind !== 'claude' ||
-      tab.initialPrompt ||
-      tab.teleportSessionId
-    ) {
-      return tab
-    }
-    if (this.opts.getDefaultClaudeTabType?.() !== 'json') return tab
-    const sessionId = tab.sessionId ?? crypto.randomUUID()
-    return {
-      id: sessionId,
-      type: 'json-claude',
-      label: 'Claude (JSON)',
-      sessionId
-    }
   }
 
   closeTab(wtPath: string, tabId: string): void {

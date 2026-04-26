@@ -70,6 +70,12 @@ interface TerminalPanelProps {
   /** Optional: when defined, alt-clicking the Sparkles button opens a
    *  json-claude tab (experimental, gated by settings.jsonModeClaudeTabs). */
   onAddJsonClaudeTab?: () => void
+  /** When the JSON-mode flag is on, controls which tab type is the
+   *  *default* (plain click) vs. the *modifier* (shift-click). Lets a
+   *  user who lives in JSON mode flip the button so plain click spawns
+   *  json-claude and shift forces the xterm TUI. Undefined when
+   *  `onAddJsonClaudeTab` is undefined (json-mode flag off). */
+  defaultClaudeTabType?: 'xterm' | 'json'
   /** Optional: convert a tab between xterm Claude and JSON-mode Claude
    *  in place. Only relevant when the json-mode feature flag is on; the
    *  parent omits it otherwise so the per-tab right-click menu hides. */
@@ -131,12 +137,52 @@ function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect
     if (!menu) return
     const close = (): void => setMenu(null)
     window.addEventListener('mousedown', close)
+    // touchstart so a tap-elsewhere closes on mobile too — mousedown
+    // doesn't fire on touch devices.
+    window.addEventListener('touchstart', close)
     window.addEventListener('blur', close)
     return () => {
       window.removeEventListener('mousedown', close)
+      window.removeEventListener('touchstart', close)
       window.removeEventListener('blur', close)
     }
   }, [menu])
+  // Long-press → convert menu, mobile equivalent of right-click. Cancels
+  // on movement (so it doesn't fight tab drag-to-reorder) and on lift.
+  const longPressRef = useRef<{
+    timer: number | null
+    startX: number
+    startY: number
+  } | null>(null)
+  const handleTouchStart = useCallback(
+    (e: React.TouchEvent) => {
+      if (!onConvertTabType) return
+      const t = e.touches[0]
+      if (!t) return
+      const x = t.clientX
+      const y = t.clientY
+      const timer = window.setTimeout(() => {
+        setMenu({ x, y })
+      }, 500)
+      longPressRef.current = { timer, startX: x, startY: y }
+    },
+    [onConvertTabType]
+  )
+  const cancelLongPress = useCallback(() => {
+    if (longPressRef.current?.timer != null) {
+      window.clearTimeout(longPressRef.current.timer)
+    }
+    longPressRef.current = null
+  }, [])
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    const lp = longPressRef.current
+    if (!lp) return
+    const t = e.touches[0]
+    if (!t) return
+    const dx = t.clientX - lp.startX
+    const dy = t.clientY - lp.startY
+    if (dx * dx + dy * dy > 100) cancelLongPress()
+  }, [cancelLongPress])
   return (
     <div
       ref={setRefs}
@@ -157,6 +203,10 @@ function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect
             }
           : undefined
       }
+      onTouchStart={onConvertTabType ? handleTouchStart : undefined}
+      onTouchMove={onConvertTabType ? handleTouchMove : undefined}
+      onTouchEnd={onConvertTabType ? cancelLongPress : undefined}
+      onTouchCancel={onConvertTabType ? cancelLongPress : undefined}
     >
       {tab.type === 'shell' ? (
         shellActivity?.active ? (
@@ -235,6 +285,7 @@ export function TerminalPanel({
   onAddAgentTab,
   onAddBrowserTab,
   onAddJsonClaudeTab,
+  defaultClaudeTabType,
   onConvertTabType,
   defaultAgent,
   onCloseTab,
@@ -304,28 +355,45 @@ export function TerminalPanel({
             })}
           </SortableContext>
           <Tooltip
-            label={
-              `New ${agentDisplayName(defaultAgent)} tab` +
-              (AGENT_REGISTRY.length > 1
-                ? ` · ⌥-click for ${agentDisplayName(AGENT_REGISTRY.find((a) => a.kind !== defaultAgent)?.kind)}`
-                : '') +
-              (onAddJsonClaudeTab ? ' · ⇧-click for Claude (JSON, experimental)' : '')
-            }
+            label={(() => {
+              const jsonIsDefault = !!onAddJsonClaudeTab && defaultClaudeTabType === 'json'
+              const plain = jsonIsDefault
+                ? 'New Claude (JSON) tab'
+                : `New ${agentDisplayName(defaultAgent)} tab`
+              const altPart =
+                AGENT_REGISTRY.length > 1
+                  ? ` · ⌥-click for ${agentDisplayName(AGENT_REGISTRY.find((a) => a.kind !== defaultAgent)?.kind)}`
+                  : ''
+              const shiftPart = onAddJsonClaudeTab
+                ? jsonIsDefault
+                  ? ` · ⇧-click for ${agentDisplayName('claude')} (xterm)`
+                  : ' · ⇧-click for Claude (JSON, experimental)'
+                : ''
+              return plain + altPart + shiftPart
+            })()}
           >
             <button
               onClick={(e) => {
-                // Modifier precedence: shift opens the experimental
-                // json-claude tab (when its feature flag is on); alt
-                // opens the *other* registered agent (Codex when default
-                // is Claude, vice versa). Plain click opens the default.
-                if (e.shiftKey && onAddJsonClaudeTab) {
-                  onAddJsonClaudeTab()
-                } else if (e.altKey && AGENT_REGISTRY.length > 1) {
+                // Modifier precedence:
+                //   alt → other registered agent (Codex when default is
+                //         Claude, vice versa) — independent of json/xterm.
+                //   shift → "the other Claude tab type" relative to the
+                //         user's defaultClaudeTabType setting.
+                //   plain → the default Claude tab type.
+                const jsonIsDefault =
+                  !!onAddJsonClaudeTab && defaultClaudeTabType === 'json'
+                if (e.altKey && AGENT_REGISTRY.length > 1) {
                   const other = AGENT_REGISTRY.find((a) => a.kind !== defaultAgent)
                   onAddAgentTab(other?.kind)
-                } else {
-                  onAddAgentTab(defaultAgent)
+                  return
                 }
+                if (e.shiftKey && onAddJsonClaudeTab) {
+                  if (jsonIsDefault) onAddAgentTab('claude')
+                  else onAddJsonClaudeTab()
+                  return
+                }
+                if (jsonIsDefault) onAddJsonClaudeTab!()
+                else onAddAgentTab(defaultAgent)
               }}
               className="no-drag shrink-0 px-2 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"
             >

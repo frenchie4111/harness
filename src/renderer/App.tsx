@@ -1082,6 +1082,9 @@ const setQuestStep = useCallback((next: QuestStep) => {
                   onConvertTabType={
                     settings.jsonModeClaudeTabs ? handleConvertTabType : undefined
                   }
+                  defaultClaudeTabType={
+                    settings.jsonModeClaudeTabs ? settings.defaultClaudeTabType : undefined
+                  }
                   onCloseTab={handleCloseTab}
                   onRestartAgentTab={handleRestartAgentTab}
                   onReorderTabs={handleReorderTabs}
