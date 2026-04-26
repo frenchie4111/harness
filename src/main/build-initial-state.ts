@@ -75,7 +75,8 @@ export function buildInitialAppState(
       wsTransportHost: config.wsTransportHost ?? '127.0.0.1',
       browserToolsEnabled: config.browserToolsEnabled !== false,
       browserToolsMode: config.browserToolsMode === 'view' ? 'view' : 'full',
-      jsonModeClaudeTabs: config.jsonModeClaudeTabs === true
+      jsonModeClaudeTabs: config.jsonModeClaudeTabs === true,
+      defaultClaudeTabType: config.defaultClaudeTabType === 'json' ? 'json' : 'xterm'
     }
   }
 }

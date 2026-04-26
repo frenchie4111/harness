@@ -502,6 +502,13 @@ const panesFSM = new PanesFSM(store, {
     return getAgent(kind).latestSessionId(wtPath)
   },
   getDefaultAgentKind: () => toAgentKind(store.getSnapshot().state.settings.defaultAgent),
+  getDefaultClaudeTabType: () => {
+    const s = store.getSnapshot().state.settings
+    // The json-mode flag gates everything — when it's off, behave as if
+    // the default is xterm regardless of the per-type setting.
+    if (!s.jsonModeClaudeTabs) return 'xterm'
+    return s.defaultClaudeTabType === 'json' ? 'json' : 'xterm'
+  },
   // Authoritative PTY teardown when tabs leave the tree. The renderer
   // no longer kills PTYs from XTerminal unmount cleanups (that was the
   // only path before, and it broke the moment we had clients that
@@ -1852,6 +1859,24 @@ function registerIpcHandlers(): void {
     })
     return true
   })
+
+  transport.onRequest(
+    'config:setDefaultClaudeTabType',
+    (_ctx, value: 'xterm' | 'json') => {
+      const next: 'xterm' | 'json' = value === 'json' ? 'json' : 'xterm'
+      if (next === 'xterm') {
+        delete config.defaultClaudeTabType
+      } else {
+        config.defaultClaudeTabType = 'json'
+      }
+      saveConfig(config)
+      store.dispatch({
+        type: 'settings/defaultClaudeTabTypeChanged',
+        payload: next
+      })
+      return true
+    }
+  )
 
   transport.onSignal('terminal:join', (ctx, id: string) => {
     store.dispatch({

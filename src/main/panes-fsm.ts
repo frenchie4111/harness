@@ -24,6 +24,11 @@ interface PanesFSMOptions {
   getRepoRootForWorktree: (worktreePath: string) => string | undefined
   getLatestClaudeSessionId: (worktreePath: string) => Promise<string | null>
   getDefaultAgentKind?: () => AgentKind
+  /** Read the JSON-mode Claude feature flag + default-tab-type setting.
+   *  When the flag is on AND default is 'json', a default Claude agent
+   *  tab gets spawned as a json-claude tab instead. Always returns
+   *  'xterm' (or undefined) when the feature flag is off. */
+  getDefaultClaudeTabType?: () => 'xterm' | 'json'
   /** Tear down the PTY backing a closed tab. Called for agent + shell
    *  tabs when they're removed from the tree (closeTab, restartAgentTab,
    *  clearForWorktree). Authoritative on the main side so PTY lifetime
@@ -170,10 +175,29 @@ export class PanesFSM {
 
     const agentKind = this.opts.getDefaultAgentKind?.() ?? 'claude'
     const agentInfo = getAgentInfo(agentKind)
-    const agentTabId = `agent-${wtPath.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}`
     const shellTabId = `shell-${wtPath}-${Date.now()}`
-    const tabs: TerminalTab[] = [
-      {
+    // Branch to a json-claude default tab only when the user has opted
+    // in, the kind is Claude, AND the launch isn't carrying xterm-only
+    // state (initialPrompt / teleportSessionId — neither has a
+    // json-claude path today, so falling back to xterm preserves the
+    // user's intent rather than silently dropping it).
+    const wantsJson =
+      agentKind === 'claude' &&
+      this.opts.getDefaultClaudeTabType?.() === 'json' &&
+      !opts?.initialPrompt &&
+      !opts?.teleportSessionId
+    let agentTab: TerminalTab
+    if (wantsJson) {
+      const sessionId = crypto.randomUUID()
+      agentTab = {
+        id: sessionId,
+        type: 'json-claude',
+        label: 'Claude (JSON)',
+        sessionId
+      }
+    } else {
+      const agentTabId = `agent-${wtPath.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}`
+      agentTab = {
         id: agentTabId,
         type: 'agent',
         agentKind,
@@ -181,27 +205,28 @@ export class PanesFSM {
         sessionId: agentInfo.assignsSessionId ? crypto.randomUUID() : undefined,
         initialPrompt: opts?.teleportSessionId ? undefined : opts?.initialPrompt,
         teleportSessionId: opts?.teleportSessionId
-      },
-      { id: shellTabId, type: 'shell', label: 'Shell' }
-    ]
+      }
+    }
+    const tabs: TerminalTab[] = [agentTab, { id: shellTabId, type: 'shell', label: 'Shell' }]
     const pane: PaneLeaf = {
       type: 'leaf',
       id: newPaneId(),
       tabs,
-      activeTabId: agentTabId
+      activeTabId: agentTab.id
     }
     this.commit(wtPath, pane)
     return pane
   }
 
   addTab(wtPath: string, tab: TerminalTab, paneId?: string): void {
+    const effective = this.applyDefaultClaudeTabType(tab)
     const tree = this.getTree(wtPath)
     if (!tree) {
       const pane: PaneLeaf = {
         type: 'leaf',
         id: newPaneId(),
-        tabs: [tab],
-        activeTabId: tab.id
+        tabs: [effective],
+        activeTabId: effective.id
       }
       this.commit(wtPath, pane)
       return
@@ -210,9 +235,31 @@ export class PanesFSM {
     const targetId = paneId || leaves[0].id
     const updated = mapLeaves(tree, (leaf) => {
       if (leaf.id !== targetId) return leaf
-      return { ...leaf, tabs: [...leaf.tabs, tab], activeTabId: tab.id }
+      return { ...leaf, tabs: [...leaf.tabs, effective], activeTabId: effective.id }
     })
     this.commit(wtPath, updated)
+  }
+
+  /** Honor settings.defaultClaudeTabType when the renderer asked for an
+   *  xterm Claude agent tab but the user wants json-mode by default.
+   *  Promoted to a method so ensureInitialized + addTab share the rule. */
+  private applyDefaultClaudeTabType(tab: TerminalTab): TerminalTab {
+    if (
+      tab.type !== 'agent' ||
+      tab.agentKind !== 'claude' ||
+      tab.initialPrompt ||
+      tab.teleportSessionId
+    ) {
+      return tab
+    }
+    if (this.opts.getDefaultClaudeTabType?.() !== 'json') return tab
+    const sessionId = tab.sessionId ?? crypto.randomUUID()
+    return {
+      id: sessionId,
+      type: 'json-claude',
+      label: 'Claude (JSON)',
+      sessionId
+    }
   }
 
   closeTab(wtPath: string, tabId: string): void {
