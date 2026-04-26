@@ -7,7 +7,7 @@
 // Lives in a sibling directory so the main JsonModeChat component
 // stays focused on layout + scroll + input + statusbar.
 
-import { useEffect, useState, type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import type { JsonClaudeMessageBlock } from '../../../shared/state/json-claude'
 
 export interface ToolCardProps {
@@ -55,13 +55,10 @@ export function ToolCardChrome({
   brand?: boolean
   children: ReactNode
 }): JSX.Element {
-  // Collapsed by default; errors auto-expand on first render and again
-  // if isError flips true after the result arrives. User can still
-  // collapse an errored card if they want.
-  const [expanded, setExpanded] = useState<boolean>(!!isError)
-  useEffect(() => {
-    if (isError) setExpanded(true)
-  }, [isError])
+  // Collapsed by default. Errors get a visible "error" badge in the
+  // header so they're discoverable, but we don't force-expand — the
+  // user can choose to drill in.
+  const [expanded, setExpanded] = useState<boolean>(false)
 
   const ring = isError
     ? 'border-danger/50'

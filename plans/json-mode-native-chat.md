@@ -36,12 +36,13 @@ own worktree.
 - Tool calls collapsed by default, expandable on click. Compact one-line
   headers (tool name + first arg, e.g. `Read foo/bar.ts`, `Bash: npm
   test`, `Edit foo.ts (+12 −3)`) so the scrollback emphasises text
-  content. Errored tool calls auto-expand and stay visible.
+  content. Errored tool calls show an "error" badge in the header so
+  they're discoverable without forcing an expand.
 - Consecutive tool calls grouped into a single collapsible block
   between assistant text turns. Group header shows count + tool name
-  list; auto-expands when any tool inside has an error or pending
-  approval. Inside the group, individual tool cards still toggle
-  independently.
+  list; auto-expands when any tool inside has a pending approval (the
+  user needs to act). Inside the group, individual tool cards still
+  toggle independently.
 - harness-control MCP tool calls (`mcp__harness-control__*`) get the
   brand amber→red→purple gradient treatment — thin top bar, gradient
   tool name, and animated flow on hover — matching the Add worktree

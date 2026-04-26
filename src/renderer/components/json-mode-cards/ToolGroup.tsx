@@ -13,10 +13,12 @@ export function ToolGroup({ rows }: { rows: ToolGroupRow[] }): JSX.Element {
   const hasError = rows.some((r) => r.hasError)
   const hasPending = rows.some((r) => r.hasPendingApproval)
   const anyBrand = rows.some((r) => isHarnessControl(r.toolName))
-  const [expanded, setExpanded] = useState<boolean>(hasError || hasPending)
+  // Auto-expand only for pending approvals — those need user action.
+  // Errors get a header badge but stay collapsed; user can drill in.
+  const [expanded, setExpanded] = useState<boolean>(hasPending)
   useEffect(() => {
-    if (hasError || hasPending) setExpanded(true)
-  }, [hasError, hasPending])
+    if (hasPending) setExpanded(true)
+  }, [hasPending])
 
   const names = rows.map((r) => prettyToolName(r.toolName))
   const visible = names.slice(0, 6).join(' · ')
