@@ -5,7 +5,7 @@ import { Square } from 'lucide-react'
 import { useJsonClaude } from '../store'
 import { useJsonClaudeApprovals } from '../hooks/useJsonClaudeApprovals'
 import { JsonClaudeApprovalCard } from './JsonClaudeApprovalCard'
-import { dispatchToolCard } from './json-mode-cards'
+import { dispatchToolCard, ToolCardChrome } from './json-mode-cards'
 import 'highlight.js/styles/github-dark.css'
 import type { JsonClaudeChatEntry } from '../../shared/state/json-claude'
 
@@ -59,24 +59,53 @@ function renderEntries(
     }
     if (entry.kind === 'assistant' && entry.blocks) {
       for (const block of entry.blocks) {
-        if (block.type === 'text' && block.text) {
+        if (block.type === 'text' && (block.text || entry.isPartial)) {
           rows.push({
             key: `${entry.entryId}-t`,
             node: (
               <div className="markdown text-sm leading-relaxed">
                 <ReactMarkdown rehypePlugins={[rehypeHighlight]}>
-                  {block.text}
+                  {block.text || ''}
                 </ReactMarkdown>
+                {entry.isPartial && (
+                  <span
+                    className="json-claude-cursor"
+                    aria-label="streaming"
+                  />
+                )}
               </div>
             )
           })
         } else if (block.type === 'tool_use') {
           const result = block.id ? resultsByToolUseId.get(block.id) : undefined
+          // While the assistant message is still streaming, the
+          // tool_use block has its name + id from content_block_start
+          // but no input (input_json_delta isn't accumulated yet — see
+          // backlog). Render a placeholder card so the user sees that
+          // a tool is being called instead of an apparently-frozen UI.
+          // The consolidated assistant event replaces this with the
+          // real per-tool card via assistantEntryFinalized.
+          const inputIsEmpty =
+            !block.input || Object.keys(block.input).length === 0
+          const showPlaceholder = entry.isPartial && inputIsEmpty
           rows.push({
             key: `${entry.entryId}-${block.id || 'tu'}`,
             node: (
               <>
-                {dispatchToolCard({ block, result })}
+                {showPlaceholder ? (
+                  <ToolCardChrome
+                    name={block.name || 'tool'}
+                    subtitle="preparing call…"
+                    variant="info"
+                  >
+                    <div className="px-2 py-1.5 text-[11px] text-muted italic flex items-center gap-2">
+                      <span className="json-claude-cursor" />
+                      <span>waiting for input</span>
+                    </div>
+                  </ToolCardChrome>
+                ) : (
+                  dispatchToolCard({ block, result })
+                )}
                 {approvalCard(block.id)}
               </>
             )
