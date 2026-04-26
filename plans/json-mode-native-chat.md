@@ -31,6 +31,13 @@ own worktree.
 - Markdown rendering via `react-markdown` + `rehype-highlight`, scoped
   `.markdown` CSS so the global preflight reset doesn't strip
   bullets / heading sizes / code-block padding.
+- Partial-message streaming via `--include-partial-messages`. Assistant
+  text appears progressively; deltas are coalesced (~30ms) in
+  `JsonClaudeManager` before dispatching to avoid per-token re-renders.
+  Tool calls render a "preparing call…" placeholder card the moment
+  `content_block_start` arrives so the UI doesn't look frozen while the
+  input streams. The consolidated `assistant` event reconciles the
+  entry by replacing its blocks via `assistantEntryFinalized`.
 - Per-tool cards (Read / Edit / Write / Bash / Grep / Glob / TodoWrite)
   with a generic fallback for everything else.
 - Tool calls collapsed by default, expandable on click. Compact one-line
@@ -125,13 +132,6 @@ Type `@` in the textarea to pop a fuzzy-search picker over worktree
 files. On select, insert the path (or a markdown link). Drag-in file
 attachments belong in the same flow.
 
-#### Partial-message streaming
-`--include-partial-messages` enables token-level streaming of assistant
-text. UI today shows turns all-at-once; with partials, text would
-appear progressively. Mostly a UX polish; some buffer-management work
-needed in the slice (assistant entries become append-only character
-streams instead of one-shot blocks).
-
 ### Medium value
 
 #### `result.usage` rate-limit warnings
@@ -177,6 +177,16 @@ Take an existing `agent` tab with a `sessionId` and swap it to
 `json-claude` (or vice versa) without losing the session. The session
 jsonl on disk works for both modes — it's a tab-type swap with the
 same `sessionId`.
+
+### Backlog follow-ups from partial-message streaming
+
+- `input_json_delta` for `tool_use` blocks. The partial-streaming PR
+  shows a "preparing call…" placeholder card on `content_block_start`
+  so the UI doesn't look frozen, but the actual tool input still pops
+  in all-at-once when the consolidated `assistant` event arrives.
+  Picking this up means accumulating the json fragments per tool_use
+  block and progressively populating the per-tool cards as fields come
+  in (e.g. `file_path` appears, then `offset`/`limit`).
 
 ### Smaller / polish
 
