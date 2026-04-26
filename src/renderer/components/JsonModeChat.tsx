@@ -6,6 +6,7 @@ import { useJsonClaude } from '../store'
 import { useJsonClaudeApprovals } from '../hooks/useJsonClaudeApprovals'
 import { JsonClaudeApprovalCard } from './JsonClaudeApprovalCard'
 import { dispatchToolCard } from './json-mode-cards'
+import { ToolGroup } from './json-mode-cards/ToolGroup'
 import 'highlight.js/styles/github-dark.css'
 import type { JsonClaudeChatEntry } from '../../shared/state/json-claude'
 
@@ -21,11 +22,16 @@ interface JsonModeChatProps {
 interface RenderedRow {
   key: string
   node: ReactNode
+  type: 'text' | 'tool'
+  toolName?: string
+  hasError?: boolean
+  hasPendingApproval?: boolean
 }
 
 function renderEntries(
   entries: JsonClaudeChatEntry[],
-  approvalCard: (toolUseId: string | undefined) => ReactNode
+  approvalCard: (toolUseId: string | undefined) => ReactNode,
+  pendingToolUseIds: Set<string>
 ): RenderedRow[] {
   // Build a tool_use_id → tool_result lookup pass first so each tool card
   // can render its result inline.
@@ -47,6 +53,7 @@ function renderEntries(
     if (entry.kind === 'user') {
       rows.push({
         key: entry.entryId,
+        type: 'text',
         node: (
           <div className="flex justify-end">
             <div className="max-w-[80%] bg-accent/15 border border-accent/30 rounded-md px-3 py-2 whitespace-pre-wrap text-sm">
@@ -62,6 +69,7 @@ function renderEntries(
         if (block.type === 'text' && block.text) {
           rows.push({
             key: `${entry.entryId}-t`,
+            type: 'text',
             node: (
               <div className="markdown text-sm leading-relaxed">
                 <ReactMarkdown rehypePlugins={[rehypeHighlight]}>
@@ -74,6 +82,10 @@ function renderEntries(
           const result = block.id ? resultsByToolUseId.get(block.id) : undefined
           rows.push({
             key: `${entry.entryId}-${block.id || 'tu'}`,
+            type: 'tool',
+            toolName: block.name,
+            hasError: !!result?.isError,
+            hasPendingApproval: !!block.id && pendingToolUseIds.has(block.id),
             node: (
               <>
                 {dispatchToolCard({ block, result })}
@@ -88,6 +100,40 @@ function renderEntries(
     // tool_result entries are folded into their tool_use cards above.
   }
   return rows
+}
+
+interface GroupedItem {
+  kind: 'single' | 'group'
+  key: string
+  rows: RenderedRow[]
+}
+
+function groupConsecutiveToolRows(rows: RenderedRow[]): GroupedItem[] {
+  const out: GroupedItem[] = []
+  let toolBuf: RenderedRow[] = []
+  function flush(): void {
+    if (toolBuf.length === 0) return
+    if (toolBuf.length === 1) {
+      out.push({ kind: 'single', key: toolBuf[0].key, rows: toolBuf })
+    } else {
+      out.push({
+        kind: 'group',
+        key: `group-${toolBuf[0].key}`,
+        rows: toolBuf
+      })
+    }
+    toolBuf = []
+  }
+  for (const r of rows) {
+    if (r.type === 'tool') {
+      toolBuf.push(r)
+    } else {
+      flush()
+      out.push({ kind: 'single', key: r.key, rows: [r] })
+    }
+  }
+  flush()
+  return out
 }
 
 export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JSX.Element {
@@ -143,12 +189,30 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
     )
   }
 
-  const rows = useMemo(
-    () => renderEntries(session?.entries ?? [], renderApprovalForToolUseId),
-    // approvalByToolUseId already depends on pending.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [session?.entries, approvalByToolUseId]
+  const pendingToolUseIds = useMemo(
+    () =>
+      new Set(
+        pending
+          .map((a) => a.toolUseId)
+          .filter((x): x is string => typeof x === 'string')
+      ),
+    [pending]
   )
+
+  const rows = useMemo(
+    () =>
+      renderEntries(
+        session?.entries ?? [],
+        renderApprovalForToolUseId,
+        pendingToolUseIds
+      ),
+    // approvalByToolUseId already depends on pending; pendingToolUseIds
+    // also derives from pending.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [session?.entries, approvalByToolUseId, pendingToolUseIds]
+  )
+
+  const groupedItems = useMemo(() => groupConsecutiveToolRows(rows), [rows])
 
   // Approvals that arrived without a matching tool_use block (rare —
   // happens when the assistant message hasn't streamed yet). Render them
@@ -218,9 +282,13 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
         onScroll={onScroll}
         className="flex-1 overflow-y-auto px-4 py-3 space-y-3"
       >
-        {rows.map((r) => (
-          <div key={r.key}>{r.node}</div>
-        ))}
+        {groupedItems.map((g) =>
+          g.kind === 'single' ? (
+            <div key={g.key}>{g.rows[0].node}</div>
+          ) : (
+            <ToolGroup key={g.key} rows={g.rows} />
+          )
+        )}
         {orphanApprovals.map((a) => (
           <JsonClaudeApprovalCard
             key={a.requestId}
