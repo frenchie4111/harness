@@ -191,6 +191,7 @@ export class JsonClaudeManager {
       log('json-claude', `create no-op — already running sessionId=${sessionId}`)
       return
     }
+    log('json-claude', `create begin sessionId=${sessionId} mode=${permissionMode}`)
     const socketPath = this.opts.getApprovalSocketPath(sessionId)
 
     // MCP config — two stdio servers, both spawned via
@@ -332,6 +333,7 @@ export class JsonClaudeManager {
       entryCounter: 0
     }
     this.instances.set(sessionId, instance)
+    log('json-claude', `create spawned sessionId=${sessionId} pid=${proc.pid ?? '?'} → running`)
     this.dispatchState(sessionId, 'running')
 
     proc.stdout.on('data', (chunk: Buffer) => {
@@ -353,14 +355,17 @@ export class JsonClaudeManager {
     proc.on('exit', (code, signal) => {
       log(
         'json-claude',
-        `exit sessionId=${sessionId} code=${code} signal=${signal}`
+        `exit sessionId=${sessionId} code=${code} signal=${signal} pid=${proc.pid ?? '?'}`
       )
       // Stale-exit guard: SIGTERM is async, so a kill() + create() cycle
       // on the same sessionId (permission-mode toggle, tab-type swap)
       // can register a fresh instance before the old process's exit
       // event lands. Without this check, the late exit would mark the
       // freshly-started session 'exited' and close its approval socket.
-      if (this.instances.get(sessionId) !== instance) return
+      if (this.instances.get(sessionId) !== instance) {
+        log('json-claude', `exit guard bailed — stale instance sessionId=${sessionId}`)
+        return
+      }
       this.dispatchState(sessionId, 'exited', {
         exitCode: code,
         exitReason: signal ? `signal ${signal}` : code === 0 ? 'clean' : `exit ${code}`

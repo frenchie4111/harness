@@ -1830,6 +1830,7 @@ function registerIpcHandlers(): void {
   // on whether the jsonl already exists on disk.
   transport.onRequest('jsonClaude:start', (_ctx, sessionId: string, cwd: string) => {
     if (!sessionId || !cwd) return false
+    log('json-claude', `IPC start sessionId=${sessionId}`)
     // inside create() lands on a session that exists in the store. If
     // the order is reversed, 'running' is a no-op (unknown session) and
     // 'connecting' from sessionStarted wins, leaving the UI stuck.
