@@ -40,6 +40,17 @@ interface PanesFSMOptions {
    *  on-main contract as killTabPty, but routes to JsonClaudeManager
    *  instead of PtyManager. */
   killJsonClaude?: (sessionId: string) => void
+  /** Spawn a json-claude session and (optionally) send a one-shot
+   *  initial prompt as the first user message. Called from
+   *  ensureInitialized when a default json-claude tab is created so
+   *  the subprocess + initial prompt land on the same path the xterm
+   *  side gets via --prompt. The renderer's JsonModeChat useEffect
+   *  notices the session already exists and skips its own start. */
+  startJsonClaudeWithPrompt?: (
+    sessionId: string,
+    worktreePath: string,
+    initialPrompt?: string
+  ) => void
 }
 
 function newPaneId(): string {
@@ -176,17 +187,18 @@ export class PanesFSM {
     const agentKind = this.opts.getDefaultAgentKind?.() ?? 'claude'
     const agentInfo = getAgentInfo(agentKind)
     const shellTabId = `shell-${wtPath}-${Date.now()}`
-    // Branch to a json-claude default tab only when the user has opted
-    // in, the kind is Claude, AND the launch isn't carrying xterm-only
-    // state (initialPrompt / teleportSessionId — neither has a
-    // json-claude path today, so falling back to xterm preserves the
-    // user's intent rather than silently dropping it).
+    // Branch to a json-claude default tab when the user has opted in
+    // and the kind is Claude. teleport sessions stay on xterm (json-
+    // claude has no `--resume <id>` analog for an arbitrary external
+    // session today). initialPrompt is honored for both — for the
+    // json-claude side we pre-spawn the subprocess and send it as the
+    // first message via startJsonClaudeWithPrompt below.
     const wantsJson =
       agentKind === 'claude' &&
       this.opts.getDefaultClaudeTabType?.() === 'json' &&
-      !opts?.initialPrompt &&
       !opts?.teleportSessionId
     let agentTab: TerminalTab
+    let jsonClaudeKickoff: { sessionId: string; initialPrompt?: string } | null = null
     if (wantsJson) {
       const sessionId = crypto.randomUUID()
       agentTab = {
@@ -195,6 +207,7 @@ export class PanesFSM {
         label: 'Claude (JSON)',
         sessionId
       }
+      jsonClaudeKickoff = { sessionId, initialPrompt: opts?.initialPrompt }
     } else {
       const agentTabId = `agent-${wtPath.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}`
       agentTab = {
@@ -215,6 +228,18 @@ export class PanesFSM {
       activeTabId: agentTab.id
     }
     this.commit(wtPath, pane)
+    // Only kick off main-side spawn when an initialPrompt needs to land
+    // as the first message. For prompt-less json-claude tabs, the
+    // renderer's JsonModeChat useEffect handles the start — and for
+    // sleeping panes / tab-type swaps we never reach this branch at
+    // all, so resume flows are unaffected.
+    if (jsonClaudeKickoff?.initialPrompt) {
+      this.opts.startJsonClaudeWithPrompt?.(
+        jsonClaudeKickoff.sessionId,
+        wtPath,
+        jsonClaudeKickoff.initialPrompt
+      )
+    }
     return pane
   }
 

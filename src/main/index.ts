@@ -515,7 +515,23 @@ const panesFSM = new PanesFSM(store, {
   // could disconnect without intending to kill agents). Tab-close /
   // restart / clear events are the actual lifecycle boundary.
   killTabPty: (tabId) => ptyManager.kill(tabId),
-  killJsonClaude: (sessionId) => jsonClaudeManager.kill(sessionId)
+  killJsonClaude: (sessionId) => jsonClaudeManager.kill(sessionId),
+  startJsonClaudeWithPrompt: (sessionId, worktreePath, initialPrompt) => {
+    // Mirror the dispatch + create dance the jsonClaude:start IPC
+    // handler does, then queue the initial prompt as the first stdin
+    // frame. Used when ensureInitialized creates a default json-claude
+    // tab from a worktree-creation path that carried an initialPrompt.
+    store.dispatch({
+      type: 'jsonClaude/sessionStarted',
+      payload: { sessionId, worktreePath }
+    })
+    jsonClaudeManager.seedFromTranscript(sessionId, worktreePath)
+    const mode =
+      store.getSnapshot().state.jsonClaude.sessions[sessionId]?.permissionMode ||
+      'default'
+    jsonClaudeManager.create(sessionId, worktreePath, mode)
+    if (initialPrompt) jsonClaudeManager.send(sessionId, initialPrompt)
+  }
 })
 
 const worktreesFSM = new WorktreesFSM(store, {
