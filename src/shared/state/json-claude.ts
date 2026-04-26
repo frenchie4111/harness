@@ -37,6 +37,12 @@ export interface JsonClaudeChatEntry {
   blocks?: JsonClaudeMessageBlock[]
   text?: string
   timestamp: number
+  /** True while this assistant entry is still being streamed via
+   *  --include-partial-messages. Cleared when the consolidated
+   *  assistant event arrives and the manager dispatches
+   *  assistantEntryFinalized. The renderer uses this to draw a
+   *  blinking cursor at the end of the text. */
+  isPartial?: boolean
 }
 
 export interface JsonClaudeSession {
@@ -90,6 +96,18 @@ export type JsonClaudeEvent =
   | {
       type: 'jsonClaude/entryAppended'
       payload: { sessionId: string; entry: JsonClaudeChatEntry }
+    }
+  | {
+      type: 'jsonClaude/assistantTextDelta'
+      payload: { sessionId: string; entryId: string; textDelta: string }
+    }
+  | {
+      type: 'jsonClaude/assistantEntryFinalized'
+      payload: {
+        sessionId: string
+        entryId: string
+        blocks: JsonClaudeMessageBlock[]
+      }
     }
   | {
       type: 'jsonClaude/toolResultAttached'
@@ -189,6 +207,60 @@ export function jsonClaudeReducer(
             ...session,
             entries: appendBlocksToEntry(session.entries, event.payload.entry)
           }
+        }
+      }
+    }
+    case 'jsonClaude/assistantTextDelta': {
+      const session = state.sessions[event.payload.sessionId]
+      if (!session) return state
+      const { entryId, textDelta } = event.payload
+      let changed = false
+      const nextEntries = session.entries.map((entry) => {
+        if (entry.entryId !== entryId) return entry
+        const blocks = entry.blocks ?? []
+        let blockChanged = false
+        const nextBlocks = blocks.map((b) => {
+          if (b.type !== 'text' || blockChanged) return b
+          blockChanged = true
+          return { ...b, text: (b.text || '') + textDelta }
+        })
+        if (!blockChanged) {
+          changed = true
+          return {
+            ...entry,
+            blocks: [...blocks, { type: 'text' as const, text: textDelta }]
+          }
+        }
+        changed = true
+        return { ...entry, blocks: nextBlocks }
+      })
+      if (!changed) return state
+      return {
+        ...state,
+        sessions: {
+          ...state.sessions,
+          [session.sessionId]: { ...session, entries: nextEntries }
+        }
+      }
+    }
+    case 'jsonClaude/assistantEntryFinalized': {
+      const session = state.sessions[event.payload.sessionId]
+      if (!session) return state
+      const { entryId, blocks } = event.payload
+      let found = false
+      const nextEntries = session.entries.map((entry) => {
+        if (entry.entryId !== entryId) return entry
+        found = true
+        const { isPartial: _drop, ...rest } = entry
+        void _drop
+        return { ...rest, blocks }
+      })
+      if (!found) return state
+      return {
+        ...state,
+        sessions: {
+          ...state.sessions,
+          [session.sessionId]: { ...session, entries: nextEntries }
         }
       }
     }
