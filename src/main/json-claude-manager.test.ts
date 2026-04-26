@@ -109,6 +109,43 @@ describe('JsonClaudeManager', () => {
     expect(store.getSnapshot().state.jsonClaude.sessions[sessionId]?.state).toBe('running')
   })
 
+  it("multi-client safety: re-entering sessionStarted after running doesn't get stuck on 'connecting'", () => {
+    // Repro of the two-viewer bug: when desktop + mobile both watch the
+    // same json-claude tab during a tab-type swap, both renderers fire
+    // startJsonClaude. The IPC handler used to dispatch sessionStarted
+    // unconditionally on every call, and sessionStarted resets state to
+    // 'connecting' — leaving the slice stuck because create() would
+    // short-circuit (instance already running) and never re-emit
+    // 'running'.
+    //
+    // The fix gates the start path on hasSession() in the IPC handler.
+    // This test models a caller that respects the guard.
+    const store = new Store()
+    const mgr = makeManager(store)
+    const sessionId = 'sess-C'
+    const cwd = '/tmp/wt'
+
+    function startIfFresh(): void {
+      if (mgr.hasSession(sessionId)) return
+      store.dispatch({
+        type: 'jsonClaude/sessionStarted',
+        payload: { sessionId, worktreePath: cwd }
+      })
+      mgr.create(sessionId, cwd)
+    }
+
+    startIfFresh()
+    expect(store.getSnapshot().state.jsonClaude.sessions[sessionId]?.state).toBe('running')
+
+    // Second client mounts and races into the start path.
+    startIfFresh()
+
+    // Without the guard, state would be reset to 'connecting' here.
+    expect(store.getSnapshot().state.jsonClaude.sessions[sessionId]?.state).toBe('running')
+    // Only one proc was actually spawned — guard short-circuited the second call.
+    expect(spawnedProcs.length).toBe(1)
+  })
+
   it("new proc's own exit event still updates state (guard doesn't block legitimate exits)", () => {
     const store = new Store()
     const mgr = makeManager(store)

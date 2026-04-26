@@ -1831,6 +1831,18 @@ function registerIpcHandlers(): void {
   transport.onRequest('jsonClaude:start', (_ctx, sessionId: string, cwd: string) => {
     if (!sessionId || !cwd) return false
     log('json-claude', `IPC start sessionId=${sessionId}`)
+    // Multi-client idempotency: when two viewers (e.g. desktop + mobile)
+    // are looking at the same json-claude tab during a tab-type swap,
+    // both JsonModeChats mount and both fire startJsonClaude. Without
+    // this guard, the second call would re-dispatch sessionStarted —
+    // whose reducer unconditionally resets state to 'connecting' — and
+    // create() would short-circuit on instances.has(sessionId), so
+    // 'running' would never re-fire. Result: the slice gets stuck at
+    // 'connecting' even though the subprocess is happily running.
+    if (jsonClaudeManager.hasSession(sessionId)) {
+      log('json-claude', `IPC start no-op — already running sessionId=${sessionId}`)
+      return true
+    }
     // inside create() lands on a session that exists in the store. If
     // the order is reversed, 'running' is a no-op (unknown session) and
     // 'connecting' from sessionStarted wins, leaving the UI stuck.
