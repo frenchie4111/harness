@@ -137,11 +137,9 @@ function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect
     if (!menu) return
     const close = (): void => setMenu(null)
     window.addEventListener('mousedown', close)
-    window.addEventListener('touchstart', close)
     window.addEventListener('blur', close)
     return () => {
       window.removeEventListener('mousedown', close)
-      window.removeEventListener('touchstart', close)
       window.removeEventListener('blur', close)
     }
   }, [menu])
@@ -156,16 +154,7 @@ function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect
           ? 'border-muted text-fg-bright'
           : 'border-transparent text-dim hover:text-fg'
       }`}
-      onClick={(e) => {
-        // Click on the active tab → open the convert menu (mobile-
-        // friendly equivalent of the desktop right-click). Click on a
-        // background tab → just select it.
-        if (isActive && onConvertTabType) {
-          setMenu({ x: e.clientX, y: e.clientY })
-          return
-        }
-        onSelect()
-      }}
+      onClick={onSelect}
       onContextMenu={
         onConvertTabType
           ? (e) => {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ChevronDown, GitPullRequest, RefreshCw, Loader2, SquareTerminal, FileText, FileDiff, Globe, X, ExternalLink, PanelRightOpen, PanelRightClose } from 'lucide-react'
-import { useWorktrees, usePanes, useTerminals, usePrs } from '../store'
+import { useWorktrees, usePanes, useTerminals, usePrs, useSettings } from '../store'
 import { groupWorktrees, type WorktreeGroup } from '../worktree-sort'
 import { getLeaves } from '../../shared/state/terminals'
 import type { PtyStatus, TerminalTab, Worktree, PRStatus } from '../types'
@@ -44,6 +44,7 @@ export function MobileApp(): JSX.Element {
   const panes = usePanes()
   const terminals = useTerminals()
   const prs = usePrs()
+  const settings = useSettings()
   const worktrees = wtState.list
   const [activeWorktreeId, setActiveWorktreeId] = useState<string | null>(
     () => worktrees[0]?.path ?? null
@@ -113,6 +114,14 @@ export function MobileApp(): JSX.Element {
     [activeWorktree]
   )
 
+  const handleConvertTabType = useCallback(
+    (tabId: string, newType: 'agent' | 'json-claude') => {
+      if (!activeWorktree) return
+      void window.api.panesConvertTabType(activeWorktree.path, tabId, newType)
+    },
+    [activeWorktree]
+  )
+
   // HotkeysProvider here is only for its embedded Radix TooltipProvider —
   // shared desktop panels we render on mobile (PR status, merge, etc.)
   // use <Tooltip> which throws without a provider in scope. Bindings
@@ -140,6 +149,7 @@ export function MobileApp(): JSX.Element {
         pickerOpen={pickerOpen}
         onTogglePicker={() => setPickerOpen((v) => !v)}
         onSelectTab={handleSelectTab}
+        onConvertTabType={settings.jsonModeClaudeTabs ? handleConvertTabType : undefined}
         rightPanelOpen={rightPanelOpen}
         onToggleRightPanel={activeWorktree ? () => setRightPanelOpen((v) => !v) : undefined}
       />
@@ -233,11 +243,14 @@ interface HeaderProps {
   pickerOpen: boolean
   onTogglePicker: () => void
   onSelectTab: (tabId: string) => void
+  /** Optional convert callback. Defined only when JSON-mode is on; if
+   *  set, tapping the *active* tab opens a swap menu. */
+  onConvertTabType?: (tabId: string, newType: 'agent' | 'json-claude') => void
   rightPanelOpen: boolean
   onToggleRightPanel?: () => void
 }
 
-function Header({ worktree, tabs, selectedTabId, statuses, shellActivity, pickerOpen, onTogglePicker, onSelectTab, rightPanelOpen, onToggleRightPanel }: HeaderProps): JSX.Element {
+function Header({ worktree, tabs, selectedTabId, statuses, shellActivity, pickerOpen, onTogglePicker, onSelectTab, onConvertTabType, rightPanelOpen, onToggleRightPanel }: HeaderProps): JSX.Element {
   const repoLabel = worktree ? worktree.repoRoot.split('/').pop() || worktree.repoRoot : null
   return (
     <header className="shrink-0 flex items-stretch border-b border-border bg-panel h-11">
@@ -267,16 +280,26 @@ function Header({ worktree, tabs, selectedTabId, statuses, shellActivity, picker
         )}
       </button>
       <div className="flex-1 min-w-0 flex items-stretch overflow-x-auto scrollbar-hidden">
-        {tabs.map((tab) => (
-          <TabChip
-            key={tab.id}
-            tab={tab}
-            active={tab.id === selectedTabId}
-            status={statuses[tab.id] ?? 'idle'}
-            shellActivity={shellActivity[tab.id]}
-            onSelect={() => onSelectTab(tab.id)}
-          />
-        ))}
+        {tabs.map((tab) => {
+          const convertible =
+            !!onConvertTabType &&
+            ((tab.type === 'agent' && tab.agentKind === 'claude') || tab.type === 'json-claude')
+          return (
+            <TabChip
+              key={tab.id}
+              tab={tab}
+              active={tab.id === selectedTabId}
+              status={statuses[tab.id] ?? 'idle'}
+              shellActivity={shellActivity[tab.id]}
+              onSelect={() => onSelectTab(tab.id)}
+              onConvertTabType={
+                convertible
+                  ? (newType) => onConvertTabType!(tab.id, newType)
+                  : undefined
+              }
+            />
+          )
+        })}
       </div>
       {onToggleRightPanel && (
         <button
@@ -300,20 +323,81 @@ interface TabChipProps {
   status: PtyStatus
   shellActivity?: { active: boolean; processName?: string }
   onSelect: () => void
+  /** Optional: when defined, tapping the active tab opens a swap menu
+   *  to convert between xterm Claude and JSON-mode Claude. */
+  onConvertTabType?: (newType: 'agent' | 'json-claude') => void
 }
 
-function TabChip({ tab, active, status, shellActivity, onSelect }: TabChipProps): JSX.Element {
+function TabChip({ tab, active, status, shellActivity, onSelect, onConvertTabType }: TabChipProps): JSX.Element {
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
+  useEffect(() => {
+    if (!menu) return
+    const close = (): void => setMenu(null)
+    window.addEventListener('mousedown', close)
+    window.addEventListener('touchstart', close)
+    window.addEventListener('blur', close)
+    return () => {
+      window.removeEventListener('mousedown', close)
+      window.removeEventListener('touchstart', close)
+      window.removeEventListener('blur', close)
+    }
+  }, [menu])
   return (
-    <button
-      onClick={onSelect}
-      className={
-        'shrink-0 flex items-center gap-1.5 px-3 h-full text-xs whitespace-nowrap border-b-2 transition-colors ' +
-        (active ? 'border-muted text-fg-bright bg-app' : 'border-transparent text-dim hover:text-fg')
-      }
-    >
-      <TabIcon tab={tab} shellActivity={shellActivity} status={status} />
-      <span className="max-w-[140px] truncate">{tab.label}</span>
-    </button>
+    <>
+      <button
+        onClick={(e) => {
+          // Tap on the active tab → open the convert menu (mobile
+          // equivalent of the desktop right-click). Tap on a
+          // background tab just selects it.
+          if (active && onConvertTabType) {
+            e.stopPropagation()
+            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+            setMenu({ x: rect.left, y: rect.bottom })
+            return
+          }
+          onSelect()
+        }}
+        className={
+          'shrink-0 flex items-center gap-1.5 px-3 h-full text-xs whitespace-nowrap border-b-2 transition-colors ' +
+          (active ? 'border-muted text-fg-bright bg-app' : 'border-transparent text-dim hover:text-fg')
+        }
+      >
+        <TabIcon tab={tab} shellActivity={shellActivity} status={status} />
+        <span className="max-w-[140px] truncate">{tab.label}</span>
+      </button>
+      {menu && onConvertTabType && (
+        <div
+          className="fixed z-50 bg-panel-raised border border-border-strong rounded shadow-lg text-xs py-1 min-w-[14rem]"
+          style={{ left: menu.x, top: menu.y }}
+          onMouseDown={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+        >
+          {tab.type === 'agent' ? (
+            <button
+              className="block w-full text-left px-3 py-2 hover:bg-panel text-fg-bright"
+              onClick={(e) => {
+                e.stopPropagation()
+                setMenu(null)
+                onConvertTabType('json-claude')
+              }}
+            >
+              Convert to JSON-mode chat
+            </button>
+          ) : (
+            <button
+              className="block w-full text-left px-3 py-2 hover:bg-panel text-fg-bright"
+              onClick={(e) => {
+                e.stopPropagation()
+                setMenu(null)
+                onConvertTabType('agent')
+              }}
+            >
+              Convert to terminal mode
+            </button>
+          )}
+        </div>
+      )}
+    </>
   )
 }
 
