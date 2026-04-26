@@ -6,7 +6,12 @@ export function ReadCard({ block, result }: ToolCardProps): JSX.Element {
   const limit = Number(block.input?.limit) || 0
   const range = offset || limit ? ` (${offset || 1}–${(offset || 1) + limit})` : ''
   return (
-    <ToolCardChrome name="Read" subtitle={`${basename(fp)}${range}`} variant="info">
+    <ToolCardChrome
+      name="Read"
+      subtitle={`${basename(fp)}${range}`}
+      variant="info"
+      isError={result?.isError}
+    >
       {fp && <div className="px-2 py-1 text-[10px] text-muted truncate font-mono">{fp}</div>}
       {result && (
         <pre
