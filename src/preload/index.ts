@@ -174,6 +174,11 @@ contextBridge.exposeInMainWorld('api', {
   panesCloseTab: (wtPath: string, tabId: string) => req('panes:closeTab', wtPath, tabId),
   panesRestartAgentTab: (wtPath: string, tabId: string, newId: string) =>
     req('panes:restartAgentTab', wtPath, tabId, newId),
+  panesConvertTabType: (
+    wtPath: string,
+    tabId: string,
+    newType: 'agent' | 'json-claude'
+  ) => req('panes:convertTabType', wtPath, tabId, newType),
   panesSelectTab: (wtPath: string, paneId: string, tabId: string) =>
     req('panes:selectTab', wtPath, paneId, tabId),
   panesReorderTabs: (wtPath: string, paneId: string, fromId: string, toId: string) =>

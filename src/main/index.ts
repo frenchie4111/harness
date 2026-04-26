@@ -1442,6 +1442,15 @@ function registerIpcHandlers(): void {
     }
   )
   transport.onRequest(
+    'panes:convertTabType',
+    (_ctx, wtPath: string, tabId: string, newType: 'agent' | 'json-claude') => {
+      const valid = newType === 'agent' || newType === 'json-claude'
+      if (!valid) return false
+      panesFSM.convertTabType(wtPath, tabId, newType)
+      return true
+    }
+  )
+  transport.onRequest(
     'panes:selectTab',
     (_ctx, wtPath: string, paneId: string, tabId: string) => {
       panesFSM.selectTab(wtPath, paneId, tabId)

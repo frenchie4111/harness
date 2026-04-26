@@ -266,6 +266,11 @@ export interface ElectronAPI {
   panesAddTab(wtPath: string, tab: TerminalTab, paneId?: string): Promise<boolean>
   panesCloseTab(wtPath: string, tabId: string): Promise<boolean>
   panesRestartAgentTab(wtPath: string, tabId: string, newId: string): Promise<boolean>
+  panesConvertTabType(
+    wtPath: string,
+    tabId: string,
+    newType: 'agent' | 'json-claude'
+  ): Promise<boolean>
   panesSelectTab(wtPath: string, paneId: string, tabId: string): Promise<boolean>
   panesReorderTabs(
     wtPath: string,

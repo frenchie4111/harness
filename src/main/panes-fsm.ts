@@ -297,6 +297,50 @@ export class PanesFSM {
     this.commit(wtPath, updated)
   }
 
+  /** Swap an agent tab to a json-claude tab (or vice versa) without
+   *  losing the on-disk session. The sessionId on the source tab maps
+   *  to the same `~/.claude/projects/.../`<sessionId>`.jsonl` regardless
+   *  of which renderer is driving it, so killing the current backend
+   *  and dispatching the type flip is enough — the destination
+   *  component (XTerminal or JsonModeChat) self-spawns the matching
+   *  process on mount via --resume. */
+  convertTabType(
+    wtPath: string,
+    tabId: string,
+    newType: 'agent' | 'json-claude'
+  ): void {
+    const tree = this.getTree(wtPath)
+    if (!tree) return
+    const leaf = findLeafByTabId(tree, tabId)
+    if (!leaf) return
+    const tab = leaf.tabs.find((t) => t.id === tabId)
+    if (!tab) return
+    if (tab.type === newType) return
+    if (tab.type !== 'agent' && tab.type !== 'json-claude') return
+    if (tab.type === 'agent' && tab.agentKind && tab.agentKind !== 'claude') {
+      // Only Claude agent tabs have a json-claude counterpart; refuse
+      // to swap a Codex tab.
+      log('panes-fsm', `convertTabType refused for non-claude agent kind=${tab.agentKind}`)
+      return
+    }
+    const sessionId = tab.sessionId ?? crypto.randomUUID()
+    if (tab.type === 'agent') {
+      this.opts.killTabPty?.(tabId)
+    } else {
+      this.opts.killJsonClaude?.(tabId)
+    }
+    const newId =
+      newType === 'json-claude'
+        ? sessionId
+        : `agent-${wtPath.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}`
+    const newLabel = newType === 'json-claude' ? 'Claude (JSON)' : agentDisplayName('claude')
+    this.store.dispatch({
+      type: 'terminals/tabTypeChanged',
+      payload: { worktreePath: wtPath, tabId, newId, newType, newLabel }
+    })
+    this.opts.persist(this.buildPersistPayload())
+  }
+
   restartAgentTab(wtPath: string, tabId: string, newId: string): void {
     const tree = this.getTree(wtPath)
     if (!tree) return

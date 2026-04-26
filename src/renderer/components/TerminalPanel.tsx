@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback, useState } from 'react'
 import { X, SquareTerminal, Sparkles, Code2, SplitSquareHorizontal, SplitSquareVertical, Loader2, PanelRightOpen, Globe, Users } from 'lucide-react'
 import {
   SortableContext,
@@ -70,6 +70,10 @@ interface TerminalPanelProps {
   /** Optional: when defined, alt-clicking the Sparkles button opens a
    *  json-claude tab (experimental, gated by settings.jsonModeClaudeTabs). */
   onAddJsonClaudeTab?: () => void
+  /** Optional: convert a tab between xterm Claude and JSON-mode Claude
+   *  in place. Only relevant when the json-mode feature flag is on; the
+   *  parent omits it otherwise so the per-tab right-click menu hides. */
+  onConvertTabType?: (tabId: string, newType: 'agent' | 'json-claude') => void
   defaultAgent: AgentKind
   onCloseTab: (tabId: string) => void
   onSplitRight: () => void
@@ -93,9 +97,14 @@ interface SortableTabProps {
   showClose: boolean
   onSelect: () => void
   onClose: () => void
+  /** Optional: when provided, right-clicking the tab opens a small menu
+   *  to convert between xterm Claude and JSON-mode Claude. Only passed
+   *  in when the source tab is convertible (Claude agent or json-claude)
+   *  and the JSON-mode feature flag is on. */
+  onConvertTabType?: (newType: 'agent' | 'json-claude') => void
 }
 
-function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect, onClose }: SortableTabProps): JSX.Element {
+function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect, onClose, onConvertTabType }: SortableTabProps): JSX.Element {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: tab.id
   })
@@ -117,6 +126,17 @@ function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect
     transition,
     opacity: isDragging ? 0.4 : 1
   }
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
+  useEffect(() => {
+    if (!menu) return
+    const close = (): void => setMenu(null)
+    window.addEventListener('mousedown', close)
+    window.addEventListener('blur', close)
+    return () => {
+      window.removeEventListener('mousedown', close)
+      window.removeEventListener('blur', close)
+    }
+  }, [menu])
   return (
     <div
       ref={setRefs}
@@ -129,6 +149,14 @@ function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect
           : 'border-transparent text-dim hover:text-fg'
       }`}
       onClick={onSelect}
+      onContextMenu={
+        onConvertTabType
+          ? (e) => {
+              e.preventDefault()
+              setMenu({ x: e.clientX, y: e.clientY })
+            }
+          : undefined
+      }
     >
       {tab.type === 'shell' ? (
         shellActivity?.active ? (
@@ -158,6 +186,37 @@ function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect
           </button>
         </Tooltip>
       )}
+      {menu && onConvertTabType && (
+        <div
+          className="fixed z-50 bg-panel-raised border border-border-strong rounded shadow-lg text-xs py-1 min-w-[12rem]"
+          style={{ left: menu.x, top: menu.y }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          {tab.type === 'agent' ? (
+            <button
+              className="block w-full text-left px-3 py-1.5 hover:bg-panel text-fg-bright cursor-pointer"
+              onClick={(e) => {
+                e.stopPropagation()
+                setMenu(null)
+                onConvertTabType('json-claude')
+              }}
+            >
+              Convert to JSON-mode chat
+            </button>
+          ) : (
+            <button
+              className="block w-full text-left px-3 py-1.5 hover:bg-panel text-fg-bright cursor-pointer"
+              onClick={(e) => {
+                e.stopPropagation()
+                setMenu(null)
+                onConvertTabType('agent')
+              }}
+            >
+              Convert to terminal mode
+            </button>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -176,6 +235,7 @@ export function TerminalPanel({
   onAddAgentTab,
   onAddBrowserTab,
   onAddJsonClaudeTab,
+  onConvertTabType,
   defaultAgent,
   onCloseTab,
   onSplitRight,
@@ -220,18 +280,28 @@ export function TerminalPanel({
         )}
         <div className="flex items-center h-full overflow-x-auto scrollbar-hidden pl-2 flex-1 min-w-0">
           <SortableContext items={pane.tabs.map((t) => t.id)} strategy={horizontalListSortingStrategy}>
-            {pane.tabs.map((tab) => (
-              <SortableTab
-                key={tab.id}
-                tab={tab}
-                isActive={tab.id === pane.activeTabId}
-                status={statuses[tab.id] || 'idle'}
-                shellActivity={shellActivity[tab.id]}
-                showClose={pane.tabs.length > 1 || paneCount > 1}
-                onSelect={() => onSelectTab(tab.id)}
-                onClose={() => onCloseTab(tab.id)}
-              />
-            ))}
+            {pane.tabs.map((tab) => {
+              const isClaudeAgent = tab.type === 'agent' && tab.agentKind === 'claude'
+              const isJsonClaude = tab.type === 'json-claude'
+              const convertible = !!onConvertTabType && (isClaudeAgent || isJsonClaude)
+              return (
+                <SortableTab
+                  key={tab.id}
+                  tab={tab}
+                  isActive={tab.id === pane.activeTabId}
+                  status={statuses[tab.id] || 'idle'}
+                  shellActivity={shellActivity[tab.id]}
+                  showClose={pane.tabs.length > 1 || paneCount > 1}
+                  onSelect={() => onSelectTab(tab.id)}
+                  onClose={() => onCloseTab(tab.id)}
+                  onConvertTabType={
+                    convertible
+                      ? (newType) => onConvertTabType!(tab.id, newType)
+                      : undefined
+                  }
+                />
+              )
+            })}
           </SortableContext>
           <Tooltip
             label={
