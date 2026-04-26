@@ -38,7 +38,24 @@ interface JsonClaudeInstance {
   buf: string
   /** Monotonically increasing counter used to build stable chat entry ids. */
   entryCounter: number
+  /** In-flight assistant message tracked for --include-partial-messages.
+   *  Cleared when the consolidated `assistant` event arrives (or the
+   *  proc exits). One assistant turn at a time — claude doesn't
+   *  multiplex turns through stream-json. */
+  partial: PartialMessageState | null
 }
+
+interface PartialMessageState {
+  messageId: string
+  entryId: string
+  pendingText: string
+  flushTimer: NodeJS.Timeout | null
+  placeholderCreated: boolean
+}
+
+/** ms to coalesce text deltas before dispatching. Below ~16ms re-renders
+ *  start to dominate; much higher feels laggy. */
+const PARTIAL_TEXT_FLUSH_MS = 30
 
 export interface JsonClaudeControlServerInfo {
   port: number
@@ -257,6 +274,7 @@ export class JsonClaudeManager {
       'stream-json',
       '--output-format',
       'stream-json',
+      '--include-partial-messages',
       '--verbose',
       '--permission-mode',
       permissionMode,
@@ -329,7 +347,8 @@ export class JsonClaudeManager {
       sessionId,
       worktreePath,
       buf: '',
-      entryCounter: 0
+      entryCounter: 0,
+      partial: null
     }
     this.instances.set(sessionId, instance)
     this.dispatchState(sessionId, 'running')
@@ -355,6 +374,7 @@ export class JsonClaudeManager {
         'json-claude',
         `exit sessionId=${sessionId} code=${code} signal=${signal}`
       )
+      this.clearPartial(instance)
       this.dispatchState(sessionId, 'exited', {
         exitCode: code,
         exitReason: signal ? `signal ${signal}` : code === 0 ? 'clean' : `exit ${code}`
@@ -426,6 +446,7 @@ export class JsonClaudeManager {
     const inst = this.instances.get(sessionId)
     if (!inst) return
     log('json-claude', `kill sessionId=${sessionId}`)
+    this.clearPartial(inst)
     this.instances.delete(sessionId)
     try {
       inst.proc.stdin.end()
@@ -464,6 +485,7 @@ export class JsonClaudeManager {
     )
     // Kill the running subprocess synchronously so its 'exit' handler
     // drains the instances map before we re-create.
+    this.clearPartial(inst)
     this.instances.delete(sessionId)
     try {
       inst.proc.stdin.end()
@@ -497,9 +519,48 @@ export class JsonClaudeManager {
       // Session id already known (we pinned it). Nothing to dispatch.
       return
     }
+    if (type === 'stream_event') {
+      this.handleStreamEvent(instance, parsed)
+      return
+    }
     if (type === 'assistant') {
       const blocks = extractAssistantBlocks(parsed)
-      if (blocks.length === 0) return
+      if (blocks.length === 0) {
+        // No content (e.g. stop-only turn). Still clear any in-flight
+        // partial so the cursor disappears.
+        this.clearPartial(instance)
+        return
+      }
+      // Drain any pending coalesced text before reconciling.
+      this.flushPartialText(instance)
+      const message = parsed['message'] as { id?: string } | undefined
+      const messageId = message?.id
+      if (
+        instance.partial &&
+        messageId &&
+        instance.partial.messageId === messageId
+      ) {
+        const entryId = instance.partial.entryId
+        const placeholderCreated = instance.partial.placeholderCreated
+        this.clearPartial(instance)
+        if (placeholderCreated) {
+          this.store.dispatch({
+            type: 'jsonClaude/assistantEntryFinalized',
+            payload: { sessionId: instance.sessionId, entryId, blocks }
+          })
+        } else {
+          // No placeholder ever materialized (e.g. message was tool_use
+          // only, no text deltas). Append normally with the message-
+          // derived id so future deltas for the same id reconcile.
+          this.appendEntry(instance, {
+            kind: 'assistant',
+            blocks,
+            timestamp: Date.now(),
+            entryId
+          })
+        }
+        return
+      }
       this.appendEntry(instance, {
         kind: 'assistant',
         blocks,
@@ -529,6 +590,116 @@ export class JsonClaudeManager {
     }
     // Ignore rate_limit_event and unknown types for now — they become
     // Phase 3 UX.
+  }
+
+  /** Stream-event handler for the SDK delta events claude emits when
+   *  --include-partial-messages is on. Mirrors the Anthropic Messages
+   *  SDK shapes: message_start declares the message id, content_block_*
+   *  brackets each block, content_block_delta carries text_delta or
+   *  input_json_delta. We only render text deltas progressively today;
+   *  input_json_delta is on the backlog (see plans/json-mode-native-chat.md).
+   *  Text deltas are coalesced (~30ms) before dispatch so a fast model
+   *  doesn't trigger a re-render per token. */
+  private handleStreamEvent(
+    instance: JsonClaudeInstance,
+    parsed: Record<string, unknown>
+  ): void {
+    const event = parsed['event'] as Record<string, unknown> | undefined
+    if (!event) return
+    const eventType = event['type']
+    if (eventType === 'message_start') {
+      const message = event['message'] as { id?: string } | undefined
+      const messageId = message?.id
+      if (!messageId) return
+      // Drop any prior in-flight partial defensively (shouldn't happen
+      // unless the consolidated event was missed).
+      this.clearPartial(instance)
+      instance.partial = {
+        messageId,
+        entryId: `${instance.sessionId}-a-${messageId}`,
+        pendingText: '',
+        flushTimer: null,
+        placeholderCreated: false
+      }
+      return
+    }
+    if (!instance.partial) return
+    if (eventType === 'content_block_start') {
+      const block = event['content_block'] as { type?: string } | undefined
+      if (block?.type === 'text') {
+        this.ensurePlaceholderEntry(instance)
+      }
+      return
+    }
+    if (eventType === 'content_block_delta') {
+      const delta = event['delta'] as
+        | { type?: string; text?: string }
+        | undefined
+      if (delta?.type === 'text_delta' && typeof delta.text === 'string') {
+        instance.partial.pendingText += delta.text
+        this.scheduleDeltaFlush(instance)
+      }
+      // input_json_delta is intentionally dropped — see backlog.
+      return
+    }
+    if (eventType === 'content_block_stop' || eventType === 'message_stop') {
+      this.flushPartialText(instance)
+      return
+    }
+    // message_delta carries stop_reason + usage; we don't render either
+    // here. Cost meter / rate-limit work can pick those up later.
+  }
+
+  private ensurePlaceholderEntry(instance: JsonClaudeInstance): void {
+    if (!instance.partial || instance.partial.placeholderCreated) return
+    this.appendStoreEntry(instance.sessionId, {
+      kind: 'assistant',
+      blocks: [{ type: 'text', text: '' }],
+      timestamp: Date.now(),
+      entryId: instance.partial.entryId,
+      isPartial: true
+    })
+    instance.partial.placeholderCreated = true
+  }
+
+  private scheduleDeltaFlush(instance: JsonClaudeInstance): void {
+    if (!instance.partial || instance.partial.flushTimer) return
+    instance.partial.flushTimer = setTimeout(() => {
+      // Re-fetch instance state under timer — the instance object may
+      // have been torn down between schedule and fire.
+      const live = this.instances.get(instance.sessionId)
+      if (!live) return
+      this.flushPartialText(live)
+    }, PARTIAL_TEXT_FLUSH_MS)
+  }
+
+  private flushPartialText(instance: JsonClaudeInstance): void {
+    if (!instance.partial) return
+    if (instance.partial.flushTimer) {
+      clearTimeout(instance.partial.flushTimer)
+      instance.partial.flushTimer = null
+    }
+    if (!instance.partial.pendingText) return
+    const text = instance.partial.pendingText
+    instance.partial.pendingText = ''
+    this.ensurePlaceholderEntry(instance)
+    this.store.dispatch({
+      type: 'jsonClaude/assistantTextDelta',
+      payload: {
+        sessionId: instance.sessionId,
+        entryId: instance.partial.entryId,
+        textDelta: text
+      }
+    })
+  }
+
+  private clearPartial(instance: JsonClaudeInstance): void {
+    if (!instance.partial) return
+    if (instance.partial.flushTimer) {
+      clearTimeout(instance.partial.flushTimer)
+      instance.partial.flushTimer = null
+    }
+    instance.partial = null
   }
 
   private appendEntry(
