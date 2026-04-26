@@ -94,6 +94,76 @@ describe('jsonClaudeReducer', () => {
     expect(state.sessions[SID].entries[0].isPartial).toBe(true)
   })
 
+  it('assistantTextDelta targets the LAST text block when multiple exist', () => {
+    let state = seedSession(initialJsonClaude)
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/entryAppended',
+      payload: {
+        sessionId: SID,
+        entry: {
+          entryId: 'a1',
+          kind: 'assistant',
+          blocks: [
+            { type: 'text', text: 'first ' },
+            { type: 'tool_use', id: 't1', name: 'Read' },
+            { type: 'text', text: 'second ' }
+          ],
+          timestamp: 1,
+          isPartial: true
+        }
+      }
+    })
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/assistantTextDelta',
+      payload: { sessionId: SID, entryId: 'a1', textDelta: 'tail' }
+    })
+    const blocks = state.sessions[SID].entries[0].blocks!
+    expect(blocks[0].text).toBe('first ')
+    expect(blocks[2].text).toBe('second tail')
+  })
+
+  it('assistantBlockAppended pushes a block onto the entry', () => {
+    let state = seedSession(initialJsonClaude)
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/entryAppended',
+      payload: {
+        sessionId: SID,
+        entry: {
+          entryId: 'a1',
+          kind: 'assistant',
+          blocks: [{ type: 'text', text: 'hi' }],
+          timestamp: 1,
+          isPartial: true
+        }
+      }
+    })
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/assistantBlockAppended',
+      payload: {
+        sessionId: SID,
+        entryId: 'a1',
+        block: { type: 'tool_use', id: 't1', name: 'Read' }
+      }
+    })
+    const blocks = state.sessions[SID].entries[0].blocks!
+    expect(blocks).toHaveLength(2)
+    expect(blocks[1].type).toBe('tool_use')
+    expect(blocks[1].name).toBe('Read')
+  })
+
+  it('assistantBlockAppended is a no-op for an unknown entry', () => {
+    const state = seedSession(initialJsonClaude)
+    const next = jsonClaudeReducer(state, {
+      type: 'jsonClaude/assistantBlockAppended',
+      payload: {
+        sessionId: SID,
+        entryId: 'missing',
+        block: { type: 'tool_use', id: 't1', name: 'Read' }
+      }
+    })
+    expect(next).toBe(state)
+  })
+
   it('assistantTextDelta is a no-op for an unknown entry', () => {
     const state = seedSession(initialJsonClaude)
     const next = jsonClaudeReducer(state, {

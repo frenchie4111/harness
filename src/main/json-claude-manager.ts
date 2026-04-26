@@ -625,9 +625,30 @@ export class JsonClaudeManager {
     }
     if (!instance.partial) return
     if (eventType === 'content_block_start') {
-      const block = event['content_block'] as { type?: string } | undefined
-      if (block?.type === 'text') {
-        this.ensurePlaceholderEntry(instance)
+      const rawBlock = event['content_block'] as Record<string, unknown> | undefined
+      const newBlock = streamEventBlockToMessageBlock(rawBlock)
+      if (!newBlock) return
+      // Make sure any pending text deltas land in the previous text
+      // block before we introduce a new block.
+      this.flushPartialText(instance)
+      if (!instance.partial.placeholderCreated) {
+        this.appendStoreEntry(instance.sessionId, {
+          kind: 'assistant',
+          blocks: [newBlock],
+          timestamp: Date.now(),
+          entryId: instance.partial.entryId,
+          isPartial: true
+        })
+        instance.partial.placeholderCreated = true
+      } else {
+        this.store.dispatch({
+          type: 'jsonClaude/assistantBlockAppended',
+          payload: {
+            sessionId: instance.sessionId,
+            entryId: instance.partial.entryId,
+            block: newBlock
+          }
+        })
       }
       return
     }
@@ -733,6 +754,34 @@ export class JsonClaudeManager {
       payload: { sessionId, busy }
     })
   }
+}
+
+function streamEventBlockToMessageBlock(
+  block: Record<string, unknown> | undefined
+): JsonClaudeMessageBlock | null {
+  if (!block) return null
+  const t = block['type']
+  if (t === 'text') {
+    return {
+      type: 'text',
+      text: typeof block['text'] === 'string' ? (block['text'] as string) : ''
+    }
+  }
+  if (t === 'tool_use') {
+    return {
+      type: 'tool_use',
+      id: typeof block['id'] === 'string' ? (block['id'] as string) : undefined,
+      name:
+        typeof block['name'] === 'string' ? (block['name'] as string) : undefined,
+      // Input arrives via input_json_delta — we don't accumulate those
+      // today, so the placeholder card renders the tool name only until
+      // the consolidated assistant event reconciles with the full
+      // input. See "Backlog follow-ups from partial-message streaming"
+      // in plans/json-mode-native-chat.md.
+      input: {}
+    }
+  }
+  return null
 }
 
 function extractAssistantBlocks(ev: Record<string, unknown>): JsonClaudeMessageBlock[] {

@@ -102,6 +102,14 @@ export type JsonClaudeEvent =
       payload: { sessionId: string; entryId: string; textDelta: string }
     }
   | {
+      type: 'jsonClaude/assistantBlockAppended'
+      payload: {
+        sessionId: string
+        entryId: string
+        block: JsonClaudeMessageBlock
+      }
+    }
+  | {
       type: 'jsonClaude/assistantEntryFinalized'
       payload: {
         sessionId: string
@@ -218,21 +226,48 @@ export function jsonClaudeReducer(
       const nextEntries = session.entries.map((entry) => {
         if (entry.entryId !== entryId) return entry
         const blocks = entry.blocks ?? []
-        let blockChanged = false
-        const nextBlocks = blocks.map((b) => {
-          if (b.type !== 'text' || blockChanged) return b
-          blockChanged = true
-          return { ...b, text: (b.text || '') + textDelta }
-        })
-        if (!blockChanged) {
+        // Target the *last* text block. Messages can have
+        // text→tool_use→text shape, and deltas always belong to the
+        // most recently opened content block. Falling back to "first
+        // text block" interleaves text 2's deltas into text 0.
+        let lastTextIdx = -1
+        for (let i = blocks.length - 1; i >= 0; i--) {
+          if (blocks[i].type === 'text') {
+            lastTextIdx = i
+            break
+          }
+        }
+        if (lastTextIdx === -1) {
           changed = true
           return {
             ...entry,
             blocks: [...blocks, { type: 'text' as const, text: textDelta }]
           }
         }
+        const nextBlocks = blocks.map((b, i) =>
+          i === lastTextIdx ? { ...b, text: (b.text || '') + textDelta } : b
+        )
         changed = true
         return { ...entry, blocks: nextBlocks }
+      })
+      if (!changed) return state
+      return {
+        ...state,
+        sessions: {
+          ...state.sessions,
+          [session.sessionId]: { ...session, entries: nextEntries }
+        }
+      }
+    }
+    case 'jsonClaude/assistantBlockAppended': {
+      const session = state.sessions[event.payload.sessionId]
+      if (!session) return state
+      const { entryId, block } = event.payload
+      let changed = false
+      const nextEntries = session.entries.map((entry) => {
+        if (entry.entryId !== entryId) return entry
+        changed = true
+        return { ...entry, blocks: [...(entry.blocks ?? []), block] }
       })
       if (!changed) return state
       return {
