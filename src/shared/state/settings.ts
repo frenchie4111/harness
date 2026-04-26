@@ -46,6 +46,10 @@ export interface SettingsState {
    *  chat (json-claude tab type) instead of an xterm-hosted TUI. Off by
    *  default. See plans/json-mode-native-chat.md. */
   jsonModeClaudeTabs: boolean
+  /** When `jsonModeClaudeTabs` is on, controls whether the Claude tab
+   *  spawned by default is the xterm-hosted TUI or the JSON-mode React
+   *  chat. Ignored when `jsonModeClaudeTabs` is off (always xterm). */
+  defaultClaudeTabType: 'xterm' | 'json'
 }
 
 export type SettingsEvent =
@@ -81,6 +85,7 @@ export type SettingsEvent =
   | { type: 'settings/browserToolsEnabledChanged'; payload: boolean }
   | { type: 'settings/browserToolsModeChanged'; payload: BrowserToolsMode }
   | { type: 'settings/jsonModeClaudeTabsChanged'; payload: boolean }
+  | { type: 'settings/defaultClaudeTabTypeChanged'; payload: 'xterm' | 'json' }
 
 // Client-side placeholder. Real values are seeded in the main-process Store
 // constructor from the on-disk config and secrets.
@@ -116,7 +121,8 @@ export const initialSettings: SettingsState = {
   wsTransportHost: '127.0.0.1',
   browserToolsEnabled: true,
   browserToolsMode: 'full',
-  jsonModeClaudeTabs: false
+  jsonModeClaudeTabs: false,
+  defaultClaudeTabType: 'xterm'
 }
 
 export function settingsReducer(state: SettingsState, event: SettingsEvent): SettingsState {
@@ -185,6 +191,8 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, browserToolsMode: event.payload }
     case 'settings/jsonModeClaudeTabsChanged':
       return { ...state, jsonModeClaudeTabs: event.payload }
+    case 'settings/defaultClaudeTabTypeChanged':
+      return { ...state, defaultClaudeTabType: event.payload }
     default: {
       const _exhaustive: never = event
       void _exhaustive
