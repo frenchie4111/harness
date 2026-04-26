@@ -34,8 +34,10 @@ own worktree.
 - Partial-message streaming via `--include-partial-messages`. Assistant
   text appears progressively; deltas are coalesced (~30ms) in
   `JsonClaudeManager` before dispatching to avoid per-token re-renders.
-  The consolidated `assistant` event reconciles the entry by replacing
-  its blocks via `assistantEntryFinalized`.
+  Tool calls render a "preparing call…" placeholder card the moment
+  `content_block_start` arrives so the UI doesn't look frozen while the
+  input streams. The consolidated `assistant` event reconciles the
+  entry by replacing its blocks via `assistantEntryFinalized`.
 - Per-tool cards (Read / Edit / Write / Bash / Grep / Glob / TodoWrite)
   with a generic fallback for everything else.
 - Bottom statusline (Claude TUI style): connection state + thinking
@@ -158,12 +160,12 @@ same `sessionId`.
 ### Backlog follow-ups from partial-message streaming
 
 - `input_json_delta` for `tool_use` blocks. The partial-streaming PR
-  drops these; the manager only renders text deltas progressively.
-  Tool-use cards still pop in fully formed when the consolidated
-  `assistant` event arrives. Picking this up means accumulating the
-  json fragments per tool_use block and either rendering a "building
-  call…" placeholder card or progressively populating the existing
-  tool cards as fields come in.
+  shows a "preparing call…" placeholder card on `content_block_start`
+  so the UI doesn't look frozen, but the actual tool input still pops
+  in all-at-once when the consolidated `assistant` event arrives.
+  Picking this up means accumulating the json fragments per tool_use
+  block and progressively populating the per-tool cards as fields come
+  in (e.g. `file_path` appears, then `offset`/`limit`).
 
 ### Smaller / polish
 
