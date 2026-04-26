@@ -355,6 +355,12 @@ export class JsonClaudeManager {
         'json-claude',
         `exit sessionId=${sessionId} code=${code} signal=${signal}`
       )
+      // Stale-exit guard: SIGTERM is async, so a kill() + create() cycle
+      // on the same sessionId (permission-mode toggle, tab-type swap)
+      // can register a fresh instance before the old process's exit
+      // event lands. Without this check, the late exit would mark the
+      // freshly-started session 'exited' and close its approval socket.
+      if (this.instances.get(sessionId) !== instance) return
       this.dispatchState(sessionId, 'exited', {
         exitCode: code,
         exitReason: signal ? `signal ${signal}` : code === 0 ? 'clean' : `exit ${code}`
