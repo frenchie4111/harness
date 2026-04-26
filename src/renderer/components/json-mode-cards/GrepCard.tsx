@@ -8,6 +8,7 @@ export function GrepCard({ block, result }: ToolCardProps): JSX.Element {
       name="Grep"
       subtitle={`/${pattern}/${path ? ` in ${basename(path)}` : ''}`}
       variant="info"
+      isError={result?.isError}
     >
       {result && (
         <pre className="px-2 py-1 text-[11px] font-mono whitespace-pre-wrap max-h-60 overflow-auto opacity-80">
