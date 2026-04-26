@@ -130,20 +130,13 @@ function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.4 : 1,
-    // Suppress iOS Safari's text-selection + callout on long-press so
-    // our 500ms-hold gesture isn't intercepted before our timer fires.
-    WebkitUserSelect: 'none' as const,
-    userSelect: 'none' as const,
-    WebkitTouchCallout: 'none' as const
+    opacity: isDragging ? 0.4 : 1
   }
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   useEffect(() => {
     if (!menu) return
     const close = (): void => setMenu(null)
     window.addEventListener('mousedown', close)
-    // touchstart so a tap-elsewhere closes on mobile too — mousedown
-    // doesn't fire on touch devices.
     window.addEventListener('touchstart', close)
     window.addEventListener('blur', close)
     return () => {
@@ -152,42 +145,6 @@ function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect
       window.removeEventListener('blur', close)
     }
   }, [menu])
-  // Long-press → convert menu, mobile equivalent of right-click. Cancels
-  // on movement (so it doesn't fight tab drag-to-reorder) and on lift.
-  const longPressRef = useRef<{
-    timer: number | null
-    startX: number
-    startY: number
-  } | null>(null)
-  const handleTouchStart = useCallback(
-    (e: React.TouchEvent) => {
-      if (!onConvertTabType) return
-      const t = e.touches[0]
-      if (!t) return
-      const x = t.clientX
-      const y = t.clientY
-      const timer = window.setTimeout(() => {
-        setMenu({ x, y })
-      }, 500)
-      longPressRef.current = { timer, startX: x, startY: y }
-    },
-    [onConvertTabType]
-  )
-  const cancelLongPress = useCallback(() => {
-    if (longPressRef.current?.timer != null) {
-      window.clearTimeout(longPressRef.current.timer)
-    }
-    longPressRef.current = null
-  }, [])
-  const handleTouchMove = useCallback((e: React.TouchEvent) => {
-    const lp = longPressRef.current
-    if (!lp) return
-    const t = e.touches[0]
-    if (!t) return
-    const dx = t.clientX - lp.startX
-    const dy = t.clientY - lp.startY
-    if (dx * dx + dy * dy > 100) cancelLongPress()
-  }, [cancelLongPress])
   return (
     <div
       ref={setRefs}
@@ -199,7 +156,16 @@ function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect
           ? 'border-muted text-fg-bright'
           : 'border-transparent text-dim hover:text-fg'
       }`}
-      onClick={onSelect}
+      onClick={(e) => {
+        // Click on the active tab → open the convert menu (mobile-
+        // friendly equivalent of the desktop right-click). Click on a
+        // background tab → just select it.
+        if (isActive && onConvertTabType) {
+          setMenu({ x: e.clientX, y: e.clientY })
+          return
+        }
+        onSelect()
+      }}
       onContextMenu={
         onConvertTabType
           ? (e) => {
@@ -208,10 +174,6 @@ function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect
             }
           : undefined
       }
-      onTouchStart={onConvertTabType ? handleTouchStart : undefined}
-      onTouchMove={onConvertTabType ? handleTouchMove : undefined}
-      onTouchEnd={onConvertTabType ? cancelLongPress : undefined}
-      onTouchCancel={onConvertTabType ? cancelLongPress : undefined}
     >
       {tab.type === 'shell' ? (
         shellActivity?.active ? (
