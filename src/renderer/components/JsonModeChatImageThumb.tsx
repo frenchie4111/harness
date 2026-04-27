@@ -38,6 +38,7 @@ export function JsonModeChatImageThumb({ path, mediaType }: Props): JSX.Element 
     CACHE.has(path) ? CACHE.get(path)! : null
   )
   const [pending, setPending] = useState(!CACHE.has(path))
+  const [showFull, setShowFull] = useState(false)
 
   useEffect(() => {
     if (CACHE.has(path)) {
@@ -56,6 +57,15 @@ export function JsonModeChatImageThumb({ path, mediaType }: Props): JSX.Element 
       cancelled = true
     }
   }, [path, mediaType])
+
+  useEffect(() => {
+    if (!showFull) return
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setShowFull(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [showFull])
 
   const name = path.split('/').pop() || path
 
@@ -78,18 +88,31 @@ export function JsonModeChatImageThumb({ path, mediaType }: Props): JSX.Element 
     )
   }
   return (
-    <a
-      href={dataUrl}
-      target="_blank"
-      rel="noreferrer"
-      className="block"
-      title={path}
-    >
-      <img
-        src={dataUrl}
-        alt={name}
-        className="h-16 w-16 object-cover rounded border border-border hover:border-accent transition-colors"
-      />
-    </a>
+    <>
+      <button
+        type="button"
+        onClick={() => setShowFull(true)}
+        className="block cursor-zoom-in"
+        title={path}
+      >
+        <img
+          src={dataUrl}
+          alt={name}
+          className="h-16 w-16 object-cover rounded border border-border hover:border-accent transition-colors"
+        />
+      </button>
+      {showFull && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-8 cursor-zoom-out"
+          onClick={() => setShowFull(false)}
+        >
+          <img
+            src={dataUrl}
+            alt={name}
+            className="max-w-full max-h-full object-contain"
+          />
+        </div>
+      )}
+    </>
   )
 }
