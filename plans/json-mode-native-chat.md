@@ -61,6 +61,11 @@ own worktree.
   avoid iOS auto-zoom).
 - Integration test that spawns real `claude -p` and exercises the
   approval round-trip.
+- Default tab type setting (`settings.defaultClaudeTabType`) — when
+  JSON mode is enabled, choose whether new agent tabs default to xterm
+  or JSON-mode Claude.
+- In-place swap between xterm and JSON-mode Claude tabs (right-click
+  the tab), preserving the on-disk session via `--session-id`/`--resume`.
 
 ## Backlog — pick one per worktree
 
@@ -167,16 +172,11 @@ Today `jsonModeClaudeTabs` is `config.json`-only. Add it to the
 existing Experimental settings section so users can toggle without
 hand-editing.
 
-#### Per-worktree default tab type
-When `panes-fsm.ensureInitialized` creates the default agent tab,
-respect a per-worktree (or per-repo) preference for `agent` vs
-`json-claude`. Default to xterm for backward compat.
-
-#### Migration: convert tab type in place
-Take an existing `agent` tab with a `sessionId` and swap it to
-`json-claude` (or vice versa) without losing the session. The session
-jsonl on disk works for both modes — it's a tab-type swap with the
-same `sessionId`.
+#### Per-worktree / per-repo override of the global `defaultClaudeTabType`
+The global setting (`settings.defaultClaudeTabType`) is wired today
+but a per-worktree or per-repo override would let a user opt one
+specific repo into JSON mode without flipping it for everything.
+Likely lives alongside the existing per-repo `.harness.json`.
 
 ### Backlog follow-ups from partial-message streaming
 

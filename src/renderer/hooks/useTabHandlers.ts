@@ -167,6 +167,17 @@ export function useTabHandlers({
     }
   }, [panes, handleRestartAgentTab])
 
+  const handleConvertTabType = useCallback(
+    (worktreePath: string, tabId: string, newType: 'agent' | 'json-claude') => {
+      // Tear down + flip happens in main (panes-fsm.convertTabType).
+      // The renderer just routes the user's intent — XTerminal /
+      // JsonModeChat will mount on the new tab type and self-spawn the
+      // matching backend with the carried sessionId.
+      void window.api.panesConvertTabType(worktreePath, tabId, newType)
+    },
+    []
+  )
+
   const handleSelectTab = useCallback(
     (worktreePath: string, paneId: string, tabId: string) => {
       void window.api.panesSelectTab(worktreePath, paneId, tabId)
@@ -326,6 +337,7 @@ export function useTabHandlers({
     handleAddAgentTab,
     handleAddBrowserTab,
     handleAddJsonClaudeTab,
+    handleConvertTabType,
     handleCloseTab,
     handleRestartAgentTab,
     handleRestartAllAgentTabs,

@@ -144,6 +144,8 @@ contextBridge.exposeInMainWorld('api', {
   setBrowserToolsEnabled: (enabled: boolean) => req('config:setBrowserToolsEnabled', enabled),
   setBrowserToolsMode: (mode: 'view' | 'full') => req('config:setBrowserToolsMode', mode),
   setJsonModeClaudeTabs: (enabled: boolean) => req('config:setJsonModeClaudeTabs', enabled),
+  setDefaultClaudeTabType: (value: 'xterm' | 'json') =>
+    req('config:setDefaultClaudeTabType', value),
   setAutoUpdateEnabled: (enabled: boolean) => req('config:setAutoUpdateEnabled', enabled),
   setShareClaudeSettings: (enabled: boolean) => req('config:setShareClaudeSettings', enabled),
   setHarnessSystemPromptEnabled: (enabled: boolean) => req('config:setHarnessSystemPromptEnabled', enabled),
@@ -172,6 +174,11 @@ contextBridge.exposeInMainWorld('api', {
   panesCloseTab: (wtPath: string, tabId: string) => req('panes:closeTab', wtPath, tabId),
   panesRestartAgentTab: (wtPath: string, tabId: string, newId: string) =>
     req('panes:restartAgentTab', wtPath, tabId, newId),
+  panesConvertTabType: (
+    wtPath: string,
+    tabId: string,
+    newType: 'agent' | 'json-claude'
+  ) => req('panes:convertTabType', wtPath, tabId, newType),
   panesSelectTab: (wtPath: string, paneId: string, tabId: string) =>
     req('panes:selectTab', wtPath, paneId, tabId),
   panesReorderTabs: (wtPath: string, paneId: string, fromId: string, toId: string) =>

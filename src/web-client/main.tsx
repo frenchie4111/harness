@@ -263,6 +263,8 @@ function buildApi(transport: WebSocketClientTransport): ElectronAPI {
       req('panes:closeTab', wtPath, tabId) as Promise<boolean>,
     panesRestartAgentTab: (wtPath, tabId, newId) =>
       req('panes:restartAgentTab', wtPath, tabId, newId) as Promise<boolean>,
+    panesConvertTabType: (wtPath, tabId, newType) =>
+      req('panes:convertTabType', wtPath, tabId, newType) as Promise<boolean>,
     panesSelectTab: (wtPath, paneId, tabId) =>
       req('panes:selectTab', wtPath, paneId, tabId) as Promise<boolean>,
     panesReorderTabs: (wtPath, paneId, fromId, toId) =>
@@ -410,6 +412,9 @@ function buildApi(transport: WebSocketClientTransport): ElectronAPI {
 
     setJsonModeClaudeTabs: (enabled) =>
       req('config:setJsonModeClaudeTabs', enabled) as Promise<boolean>,
+
+    setDefaultClaudeTabType: (value) =>
+      req('config:setDefaultClaudeTabType', value) as Promise<boolean>,
 
     // JSON-mode Claude tabs aren't wired for web clients yet — the
     // subprocess + MCP bridge live on main and the feature flag gates

@@ -307,6 +307,20 @@ describe('settingsReducer', () => {
     expect(off.jsonModeClaudeTabs).toBe(false)
   })
 
+  it('defaultClaudeTabTypeChanged switches between xterm and json', () => {
+    expect(initialSettings.defaultClaudeTabType).toBe('xterm')
+    const json = apply(initialSettings, {
+      type: 'settings/defaultClaudeTabTypeChanged',
+      payload: 'json'
+    })
+    expect(json.defaultClaudeTabType).toBe('json')
+    const xterm = apply(json, {
+      type: 'settings/defaultClaudeTabTypeChanged',
+      payload: 'xterm'
+    })
+    expect(xterm.defaultClaudeTabType).toBe('xterm')
+  })
+
   it('returns a new object reference (no mutation)', () => {
     const next = apply(initialSettings, { type: 'settings/themeChanged', payload: 'x' })
     expect(next).not.toBe(initialSettings)

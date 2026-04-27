@@ -501,6 +501,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
     handleAddAgentTab,
     handleAddBrowserTab,
     handleAddJsonClaudeTab,
+    handleConvertTabType,
     handleCloseTab,
     handleRestartAgentTab,
     handleSelectTab,
@@ -1077,6 +1078,12 @@ const setQuestStep = useCallback((next: QuestStep) => {
                   onAddBrowserTab={handleAddBrowserTab}
                   onAddJsonClaudeTab={
                     settings.jsonModeClaudeTabs ? handleAddJsonClaudeTab : undefined
+                  }
+                  onConvertTabType={
+                    settings.jsonModeClaudeTabs ? handleConvertTabType : undefined
+                  }
+                  defaultClaudeTabType={
+                    settings.jsonModeClaudeTabs ? settings.defaultClaudeTabType : undefined
                   }
                   onCloseTab={handleCloseTab}
                   onRestartAgentTab={handleRestartAgentTab}

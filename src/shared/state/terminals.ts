@@ -233,6 +233,16 @@ export type TerminalsEvent =
       type: 'terminals/sizeChanged'
       payload: { terminalId: string; cols: number; rows: number }
     }
+  | {
+      type: 'terminals/tabTypeChanged'
+      payload: {
+        worktreePath: string
+        tabId: string
+        newId: string
+        newType: 'agent' | 'json-claude'
+        newLabel: string
+      }
+    }
 
 export const initialTerminals: TerminalsState = {
   statuses: {},
@@ -467,6 +477,43 @@ export function terminalsReducer(
         nextSessions[id] = next
       }
       return changed ? { ...state, sessions: nextSessions } : state
+    }
+    case 'terminals/tabTypeChanged': {
+      const { worktreePath, tabId, newId, newType, newLabel } = event.payload
+      const tree = state.panes[worktreePath]
+      if (!tree) return state
+      let changed = false
+      const updated = mapLeaves(tree, (leaf) => {
+        if (!leaf.tabs.some((t) => t.id === tabId)) return leaf
+        const tabs = leaf.tabs.map((t) => {
+          if (t.id !== tabId) return t
+          // For json-claude, the convention is tab.id == tab.sessionId.
+          // For agent, sessionId stays bound to the on-disk jsonl so
+          // --resume picks it up after the swap. Carry it across either
+          // way, generating one if the source tab somehow lacked it.
+          const sessionId = t.sessionId ?? newId
+          changed = true
+          if (newType === 'json-claude') {
+            return {
+              id: newId,
+              type: 'json-claude' as const,
+              label: newLabel,
+              sessionId
+            }
+          }
+          return {
+            id: newId,
+            type: 'agent' as const,
+            agentKind: 'claude' as const,
+            label: newLabel,
+            sessionId
+          }
+        })
+        const activeTabId = leaf.activeTabId === tabId ? newId : leaf.activeTabId
+        return { ...leaf, tabs, activeTabId }
+      })
+      if (!changed) return state
+      return { ...state, panes: { ...state.panes, [worktreePath]: updated } }
     }
     case 'terminals/sizeChanged': {
       const { terminalId, cols, rows } = event.payload

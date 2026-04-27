@@ -24,6 +24,11 @@ interface PanesFSMOptions {
   getRepoRootForWorktree: (worktreePath: string) => string | undefined
   getLatestClaudeSessionId: (worktreePath: string) => Promise<string | null>
   getDefaultAgentKind?: () => AgentKind
+  /** Read the JSON-mode Claude feature flag + default-tab-type setting.
+   *  When the flag is on AND default is 'json', a default Claude agent
+   *  tab gets spawned as a json-claude tab instead. Always returns
+   *  'xterm' (or undefined) when the feature flag is off. */
+  getDefaultClaudeTabType?: () => 'xterm' | 'json'
   /** Tear down the PTY backing a closed tab. Called for agent + shell
    *  tabs when they're removed from the tree (closeTab, restartAgentTab,
    *  clearForWorktree). Authoritative on the main side so PTY lifetime
@@ -35,6 +40,24 @@ interface PanesFSMOptions {
    *  on-main contract as killTabPty, but routes to JsonClaudeManager
    *  instead of PtyManager. */
   killJsonClaude?: (sessionId: string) => void
+  /** Drop the slice entry for a json-claude session. Used by
+   *  convertTabType when swapping AWAY from json — without this, the
+   *  stale 'exited' session entry survives and JsonModeChat's mount
+   *  useEffect short-circuits if the user later swaps back to the same
+   *  sessionId. The on-disk jsonl is untouched, so a re-mount replays
+   *  history via seedFromTranscript. */
+  clearJsonClaudeSession?: (sessionId: string) => void
+  /** Spawn a json-claude session and (optionally) send a one-shot
+   *  initial prompt as the first user message. Called from
+   *  ensureInitialized when a default json-claude tab is created so
+   *  the subprocess + initial prompt land on the same path the xterm
+   *  side gets via --prompt. The renderer's JsonModeChat useEffect
+   *  notices the session already exists and skips its own start. */
+  startJsonClaudeWithPrompt?: (
+    sessionId: string,
+    worktreePath: string,
+    initialPrompt?: string
+  ) => void
 }
 
 function newPaneId(): string {
@@ -170,10 +193,31 @@ export class PanesFSM {
 
     const agentKind = this.opts.getDefaultAgentKind?.() ?? 'claude'
     const agentInfo = getAgentInfo(agentKind)
-    const agentTabId = `agent-${wtPath.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}`
     const shellTabId = `shell-${wtPath}-${Date.now()}`
-    const tabs: TerminalTab[] = [
-      {
+    // Branch to a json-claude default tab when the user has opted in
+    // and the kind is Claude. teleport sessions stay on xterm (json-
+    // claude has no `--resume <id>` analog for an arbitrary external
+    // session today). initialPrompt is honored for both — for the
+    // json-claude side we pre-spawn the subprocess and send it as the
+    // first message via startJsonClaudeWithPrompt below.
+    const wantsJson =
+      agentKind === 'claude' &&
+      this.opts.getDefaultClaudeTabType?.() === 'json' &&
+      !opts?.teleportSessionId
+    let agentTab: TerminalTab
+    let jsonClaudeKickoff: { sessionId: string; initialPrompt?: string } | null = null
+    if (wantsJson) {
+      const sessionId = crypto.randomUUID()
+      agentTab = {
+        id: sessionId,
+        type: 'json-claude',
+        label: 'Claude (JSON)',
+        sessionId
+      }
+      jsonClaudeKickoff = { sessionId, initialPrompt: opts?.initialPrompt }
+    } else {
+      const agentTabId = `agent-${wtPath.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}`
+      agentTab = {
         id: agentTabId,
         type: 'agent',
         agentKind,
@@ -181,16 +225,28 @@ export class PanesFSM {
         sessionId: agentInfo.assignsSessionId ? crypto.randomUUID() : undefined,
         initialPrompt: opts?.teleportSessionId ? undefined : opts?.initialPrompt,
         teleportSessionId: opts?.teleportSessionId
-      },
-      { id: shellTabId, type: 'shell', label: 'Shell' }
-    ]
+      }
+    }
+    const tabs: TerminalTab[] = [agentTab, { id: shellTabId, type: 'shell', label: 'Shell' }]
     const pane: PaneLeaf = {
       type: 'leaf',
       id: newPaneId(),
       tabs,
-      activeTabId: agentTabId
+      activeTabId: agentTab.id
     }
     this.commit(wtPath, pane)
+    // Only kick off main-side spawn when an initialPrompt needs to land
+    // as the first message. For prompt-less json-claude tabs, the
+    // renderer's JsonModeChat useEffect handles the start — and for
+    // sleeping panes / tab-type swaps we never reach this branch at
+    // all, so resume flows are unaffected.
+    if (jsonClaudeKickoff?.initialPrompt) {
+      this.opts.startJsonClaudeWithPrompt?.(
+        jsonClaudeKickoff.sessionId,
+        wtPath,
+        jsonClaudeKickoff.initialPrompt
+      )
+    }
     return pane
   }
 
@@ -248,6 +304,54 @@ export class PanesFSM {
       activeTabId: newActive
     })
     this.commit(wtPath, updated)
+  }
+
+  /** Swap an agent tab to a json-claude tab (or vice versa) without
+   *  losing the on-disk session. The sessionId on the source tab maps
+   *  to the same `~/.claude/projects/.../`<sessionId>`.jsonl` regardless
+   *  of which renderer is driving it, so killing the current backend
+   *  and dispatching the type flip is enough — the destination
+   *  component (XTerminal or JsonModeChat) self-spawns the matching
+   *  process on mount via --resume. */
+  convertTabType(
+    wtPath: string,
+    tabId: string,
+    newType: 'agent' | 'json-claude'
+  ): void {
+    const tree = this.getTree(wtPath)
+    if (!tree) return
+    const leaf = findLeafByTabId(tree, tabId)
+    if (!leaf) return
+    const tab = leaf.tabs.find((t) => t.id === tabId)
+    if (!tab) return
+    if (tab.type === newType) return
+    if (tab.type !== 'agent' && tab.type !== 'json-claude') return
+    if (tab.type === 'agent' && tab.agentKind && tab.agentKind !== 'claude') {
+      // Only Claude agent tabs have a json-claude counterpart; refuse
+      // to swap a Codex tab.
+      log('panes-fsm', `convertTabType refused for non-claude agent kind=${tab.agentKind}`)
+      return
+    }
+    const sessionId = tab.sessionId ?? crypto.randomUUID()
+    if (tab.type === 'agent') {
+      this.opts.killTabPty?.(tabId)
+    } else {
+      this.opts.killJsonClaude?.(tabId)
+      // Drop the slice entry too, otherwise a subsequent swap back to
+      // json-claude with the same sessionId would find a stale 'exited'
+      // entry and JsonModeChat's mount useEffect would skip the start.
+      this.opts.clearJsonClaudeSession?.(tabId)
+    }
+    const newId =
+      newType === 'json-claude'
+        ? sessionId
+        : `agent-${wtPath.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}`
+    const newLabel = newType === 'json-claude' ? 'Claude (JSON)' : agentDisplayName('claude')
+    this.store.dispatch({
+      type: 'terminals/tabTypeChanged',
+      payload: { worktreePath: wtPath, tabId, newId, newType, newLabel }
+    })
+    this.opts.persist(this.buildPersistPayload())
   }
 
   restartAgentTab(wtPath: string, tabId: string, newId: string): void {

@@ -138,6 +138,10 @@ export interface Config {
   // alternative to xterm-hosted Claude tabs. Default off; gated by the
   // jsonModeClaudeTabs setting in the renderer.
   jsonModeClaudeTabs?: boolean
+  // When jsonModeClaudeTabs is on, controls whether the default Claude
+  // tab spawned by panes-fsm is the xterm TUI or the JSON-mode chat.
+  // Ignored when jsonModeClaudeTabs is off.
+  defaultClaudeTabType?: 'xterm' | 'json'
 }
 
 export const DEFAULT_WORKTREE_BASE: 'remote' | 'local' = 'remote'

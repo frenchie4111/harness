@@ -189,7 +189,8 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     wsTransportEnabled,
     wsTransportPort,
     wsTransportHost,
-    jsonModeClaudeTabs
+    jsonModeClaudeTabs,
+    defaultClaudeTabType
   } = settings
   const setupScript = worktreeScripts.setup
   const teardownScript = worktreeScripts.teardown
@@ -2019,6 +2020,29 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     </div>
                   </div>
                 </label>
+
+                <div className="mt-4 pt-3 border-t border-border">
+                  <label className="block text-xs font-medium text-fg mb-1">
+                    Default Claude tab type
+                  </label>
+                  <div className="text-xs text-dim mb-2">
+                    Which mode new Claude tabs spawn in. Per-tab swap is
+                    available from the tab's right-click menu.
+                  </div>
+                  <select
+                    value={defaultClaudeTabType}
+                    onChange={(e) => {
+                      void window.api.setDefaultClaudeTabType(
+                        e.target.value === 'json' ? 'json' : 'xterm'
+                      )
+                    }}
+                    disabled={!jsonModeClaudeTabs}
+                    className="bg-panel border border-border-strong rounded px-2 py-1 text-xs text-fg-bright outline-none focus:border-fg cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <option value="xterm">xterm (Claude TUI)</option>
+                    <option value="json">JSON-mode (React chat)</option>
+                  </select>
+                </div>
               </div>
 
               {/* Web / mobile client sub-card */}

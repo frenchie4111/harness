@@ -502,13 +502,38 @@ const panesFSM = new PanesFSM(store, {
     return getAgent(kind).latestSessionId(wtPath)
   },
   getDefaultAgentKind: () => toAgentKind(store.getSnapshot().state.settings.defaultAgent),
+  getDefaultClaudeTabType: () => {
+    const s = store.getSnapshot().state.settings
+    // The json-mode flag gates everything — when it's off, behave as if
+    // the default is xterm regardless of the per-type setting.
+    if (!s.jsonModeClaudeTabs) return 'xterm'
+    return s.defaultClaudeTabType === 'json' ? 'json' : 'xterm'
+  },
   // Authoritative PTY teardown when tabs leave the tree. The renderer
   // no longer kills PTYs from XTerminal unmount cleanups (that was the
   // only path before, and it broke the moment we had clients that
   // could disconnect without intending to kill agents). Tab-close /
   // restart / clear events are the actual lifecycle boundary.
   killTabPty: (tabId) => ptyManager.kill(tabId),
-  killJsonClaude: (sessionId) => jsonClaudeManager.kill(sessionId)
+  killJsonClaude: (sessionId) => jsonClaudeManager.kill(sessionId),
+  clearJsonClaudeSession: (sessionId) =>
+    store.dispatch({ type: 'jsonClaude/sessionCleared', payload: { sessionId } }),
+  startJsonClaudeWithPrompt: (sessionId, worktreePath, initialPrompt) => {
+    // Mirror the dispatch + create dance the jsonClaude:start IPC
+    // handler does, then queue the initial prompt as the first stdin
+    // frame. Used when ensureInitialized creates a default json-claude
+    // tab from a worktree-creation path that carried an initialPrompt.
+    store.dispatch({
+      type: 'jsonClaude/sessionStarted',
+      payload: { sessionId, worktreePath }
+    })
+    jsonClaudeManager.seedFromTranscript(sessionId, worktreePath)
+    const mode =
+      store.getSnapshot().state.jsonClaude.sessions[sessionId]?.permissionMode ||
+      'default'
+    jsonClaudeManager.create(sessionId, worktreePath, mode)
+    if (initialPrompt) jsonClaudeManager.send(sessionId, initialPrompt)
+  }
 })
 
 const worktreesFSM = new WorktreesFSM(store, {
@@ -1435,6 +1460,15 @@ function registerIpcHandlers(): void {
     }
   )
   transport.onRequest(
+    'panes:convertTabType',
+    (_ctx, wtPath: string, tabId: string, newType: 'agent' | 'json-claude') => {
+      const valid = newType === 'agent' || newType === 'json-claude'
+      if (!valid) return false
+      panesFSM.convertTabType(wtPath, tabId, newType)
+      return true
+    }
+  )
+  transport.onRequest(
     'panes:selectTab',
     (_ctx, wtPath: string, paneId: string, tabId: string) => {
       panesFSM.selectTab(wtPath, paneId, tabId)
@@ -1796,6 +1830,19 @@ function registerIpcHandlers(): void {
   // on whether the jsonl already exists on disk.
   transport.onRequest('jsonClaude:start', (_ctx, sessionId: string, cwd: string) => {
     if (!sessionId || !cwd) return false
+    log('json-claude', `IPC start sessionId=${sessionId}`)
+    // Multi-client idempotency: when two viewers (e.g. desktop + mobile)
+    // are looking at the same json-claude tab during a tab-type swap,
+    // both JsonModeChats mount and both fire startJsonClaude. Without
+    // this guard, the second call would re-dispatch sessionStarted —
+    // whose reducer unconditionally resets state to 'connecting' — and
+    // create() would short-circuit on instances.has(sessionId), so
+    // 'running' would never re-fire. Result: the slice gets stuck at
+    // 'connecting' even though the subprocess is happily running.
+    if (jsonClaudeManager.hasSession(sessionId)) {
+      log('json-claude', `IPC start no-op — already running sessionId=${sessionId}`)
+      return true
+    }
     // inside create() lands on a session that exists in the store. If
     // the order is reversed, 'running' is a no-op (unknown session) and
     // 'connecting' from sessionStarted wins, leaving the UI stuck.
@@ -1852,6 +1899,24 @@ function registerIpcHandlers(): void {
     })
     return true
   })
+
+  transport.onRequest(
+    'config:setDefaultClaudeTabType',
+    (_ctx, value: 'xterm' | 'json') => {
+      const next: 'xterm' | 'json' = value === 'json' ? 'json' : 'xterm'
+      if (next === 'xterm') {
+        delete config.defaultClaudeTabType
+      } else {
+        config.defaultClaudeTabType = 'json'
+      }
+      saveConfig(config)
+      store.dispatch({
+        type: 'settings/defaultClaudeTabTypeChanged',
+        payload: next
+      })
+      return true
+    }
+  )
 
   transport.onSignal('terminal:join', (ctx, id: string) => {
     store.dispatch({
