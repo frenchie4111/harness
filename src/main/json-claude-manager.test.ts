@@ -20,9 +20,11 @@ function makeFakeProc() {
 }
 
 const spawnedProcs: ReturnType<typeof makeFakeProc>[] = []
+const spawnCalls: Array<{ command: string; args: string[] }> = []
 
 vi.mock('child_process', () => ({
-  spawn: vi.fn(() => {
+  spawn: vi.fn((command: string, args: string[]) => {
+    spawnCalls.push({ command, args })
     const proc = makeFakeProc()
     spawnedProcs.push(proc)
     return proc
@@ -44,17 +46,22 @@ vi.mock('fs', async () => {
 
 import { Store } from './store'
 import { JsonClaudeManager } from './json-claude-manager'
+import type { ClaudeLaunchSettings } from './claude-launch'
 
 describe('JsonClaudeManager', () => {
   beforeEach(() => {
     spawnedProcs.length = 0
+    spawnCalls.length = 0
   })
 
   afterEach(() => {
     vi.clearAllMocks()
   })
 
-  function makeManager(store: Store): JsonClaudeManager {
+  function makeManager(
+    store: Store,
+    launchSettings: ClaudeLaunchSettings = { tuiFullscreen: true }
+  ): JsonClaudeManager {
     return new JsonClaudeManager(store, {
       getClaudeCommand: () => 'claude',
       getApprovalSocketPath: (sid) => `/tmp/sock-${sid}`,
@@ -63,8 +70,18 @@ describe('JsonClaudeManager', () => {
       getControlServer: () => null,
       getControlBridgeScriptPath: () => '/tmp/bridge.js',
       isHarnessMcpEnabled: () => false,
-      getCallerScope: () => null
+      getCallerScope: () => null,
+      getLaunchSettings: () => launchSettings
     })
+  }
+
+  /** The manager spawns `/bin/zsh -ilc <cmdLine>` — return cmdLine. */
+  function lastSpawnCmdLine(): string {
+    const call = spawnCalls[spawnCalls.length - 1]
+    expect(call).toBeDefined()
+    expect(call.command).toBe('/bin/zsh')
+    expect(call.args[0]).toBe('-ilc')
+    return call.args[1]
   }
 
   it("kill+create cycle: late exit from killed proc doesn't clobber the new instance", () => {
@@ -144,6 +161,36 @@ describe('JsonClaudeManager', () => {
     expect(store.getSnapshot().state.jsonClaude.sessions[sessionId]?.state).toBe('running')
     // Only one proc was actually spawned — guard short-circuited the second call.
     expect(spawnedProcs.length).toBe(1)
+  })
+
+  it('passes --append-system-prompt, --model, --name when launch settings are set', () => {
+    const store = new Store()
+    const mgr = makeManager(store, {
+      systemPrompt: 'BASE\n\nMAIN',
+      model: 'opus',
+      sessionName: 'myrepo/feat-x',
+      tuiFullscreen: true
+    })
+    store.dispatch({ type: 'jsonClaude/sessionStarted', payload: { sessionId: 'sess-flags', worktreePath: '/tmp/wt' } })
+    mgr.create('sess-flags', '/tmp/wt')
+    const cmd = lastSpawnCmdLine()
+    expect(cmd).toContain('--append-system-prompt')
+    expect(cmd).toContain(JSON.stringify('BASE\n\nMAIN'))
+    expect(cmd).toContain('--model')
+    expect(cmd).toContain('"opus"')
+    expect(cmd).toContain('--name')
+    expect(cmd).toContain('"myrepo/feat-x"')
+  })
+
+  it('omits --append-system-prompt, --model, --name when launch settings are unset', () => {
+    const store = new Store()
+    const mgr = makeManager(store, { tuiFullscreen: true })
+    store.dispatch({ type: 'jsonClaude/sessionStarted', payload: { sessionId: 'sess-empty', worktreePath: '/tmp/wt' } })
+    mgr.create('sess-empty', '/tmp/wt')
+    const cmd = lastSpawnCmdLine()
+    expect(cmd).not.toContain('--append-system-prompt')
+    expect(cmd).not.toContain('--model')
+    expect(cmd).not.toContain('--name')
   })
 
   it("new proc's own exit event still updates state (guard doesn't block legitimate exits)", () => {

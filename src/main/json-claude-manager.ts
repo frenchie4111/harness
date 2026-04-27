@@ -29,6 +29,7 @@ import type {
   JsonClaudePermissionMode,
   JsonClaudeSessionState
 } from '../shared/state/json-claude'
+import type { ClaudeLaunchSettings } from './claude-launch'
 import { log } from './debug'
 
 interface JsonClaudeInstance {
@@ -88,6 +89,11 @@ export interface JsonClaudeManagerOptions {
    *  Mirrors resolveCallerScope() in index.ts but only needs the
    *  worktree/repo bits, not the terminalId echo. */
   getCallerScope: (sessionId: string) => JsonClaudeCallerScope | null
+  /** Resolves the Claude launch flags (--append-system-prompt, --model,
+   *  --name) at spawn time from the live config + worktree list. Same
+   *  source of truth as the xterm spawn path; see buildClaudeLaunchSettings
+   *  in claude-launch.ts. */
+  getLaunchSettings: (worktreePath: string) => ClaudeLaunchSettings
 }
 
 /** Path to the bundled stdio MCP server we point Claude's
@@ -269,6 +275,7 @@ export class JsonClaudeManager {
       ? ['--resume', sessionId]
       : ['--session-id', sessionId]
 
+    const launchSettings = this.opts.getLaunchSettings(worktreePath)
     const args = [
       '-p',
       '--input-format',
@@ -285,6 +292,15 @@ export class JsonClaudeManager {
       JSON.stringify(mcpConfig),
       ...resumeOrSet
     ]
+    if (launchSettings.systemPrompt) {
+      args.push('--append-system-prompt', launchSettings.systemPrompt)
+    }
+    if (launchSettings.model && !claudeCommand.includes('--model')) {
+      args.push('--model', launchSettings.model)
+    }
+    if (launchSettings.sessionName) {
+      args.push('--name', launchSettings.sessionName)
+    }
 
     // Build the command line via login shell so the user's full PATH
     // (Homebrew, nvm, etc.) is available — same pattern PtyManager uses
