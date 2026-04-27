@@ -57,6 +57,7 @@ import { createNewProject, type GitignorePreset } from './repo-create'
 import { isWorktreeMerged } from '../shared/state/prs'
 import { watchStatusDir } from './hooks'
 import { getAgent, type AgentKind } from './agents'
+import { buildClaudeLaunchSettings } from './claude-launch'
 import { HARNESS_REPO_OWNER, HARNESS_REPO_NAME } from '../shared/constants'
 import { readRecentDebugLog } from './debug'
 
@@ -165,7 +166,13 @@ const jsonClaudeManager = new JsonClaudeManager(store, {
       repoRoot: scope.repoRoot,
       isMain: scope.isMain
     }
-  }
+  },
+  getLaunchSettings: (worktreePath) =>
+    buildClaudeLaunchSettings({
+      cwd: worktreePath,
+      worktrees: store.getSnapshot().state.worktrees.list,
+      config
+    })
 })
 const perfMonitor = new PerfMonitor()
 
@@ -1577,27 +1584,27 @@ function registerIpcHandlers(): void {
       const command = kind === 'claude'
         ? (config.claudeCommand || agent.defaultCommand)
         : (config.codexCommand || agent.defaultCommand)
-      const model = kind === 'claude' ? (config.claudeModel || null) : (config.codexModel || null)
       const mcpConfigPath = writeMcpConfigForTerminal(
         opts.terminalId,
         resolveCallerScope(opts.terminalId)
       )
 
       let systemPrompt: string | undefined
-      if (kind === 'claude' && config.harnessSystemPromptEnabled !== false) {
-        const base = config.harnessSystemPrompt || DEFAULT_HARNESS_SYSTEM_PROMPT
-        const wt = store.getSnapshot().state.worktrees.list.find(w => w.path === opts.cwd)
-        const isMain = wt?.isMain ?? false
-        if (isMain) {
-          const mainAddition = config.harnessSystemPromptMain || DEFAULT_HARNESS_SYSTEM_PROMPT_MAIN
-          systemPrompt = `${base}\n\n${mainAddition}`
-        } else {
-          systemPrompt = base
-        }
-        if (!systemPrompt.trim()) systemPrompt = undefined
+      let tuiFullscreen: boolean | undefined
+      let model: string | null
+      if (kind === 'claude') {
+        const launch = buildClaudeLaunchSettings({
+          cwd: opts.cwd,
+          worktrees: store.getSnapshot().state.worktrees.list,
+          config
+        })
+        systemPrompt = launch.systemPrompt
+        tuiFullscreen = launch.tuiFullscreen
+        model = launch.model ?? null
+      } else {
+        model = config.codexModel || null
       }
 
-      const tuiFullscreen = kind === 'claude' ? config.claudeTuiFullscreen !== false : undefined
       return agent.buildSpawnArgs({ ...opts, command, mcpConfigPath, model, systemPrompt, tuiFullscreen })
     }
   )

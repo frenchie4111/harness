@@ -21,9 +21,11 @@ function makeFakeProc() {
 }
 
 const spawnedProcs: ReturnType<typeof makeFakeProc>[] = []
+const spawnCalls: Array<{ command: string; args: string[] }> = []
 
 vi.mock('child_process', () => ({
-  spawn: vi.fn((_cmd: string, args: string[]) => {
+  spawn: vi.fn((command: string, args: string[]) => {
+    spawnCalls.push({ command, args })
     const proc = makeFakeProc()
     proc.spawnArgs = args
     spawnedProcs.push(proc)
@@ -56,17 +58,22 @@ vi.mock('fs', async () => {
 
 import { Store } from './store'
 import { JsonClaudeManager } from './json-claude-manager'
+import type { ClaudeLaunchSettings } from './claude-launch'
 
 describe('JsonClaudeManager', () => {
   beforeEach(() => {
     spawnedProcs.length = 0
+    spawnCalls.length = 0
   })
 
   afterEach(() => {
     vi.clearAllMocks()
   })
 
-  function makeManager(store: Store): JsonClaudeManager {
+  function makeManager(
+    store: Store,
+    launchSettings: ClaudeLaunchSettings = { tuiFullscreen: true }
+  ): JsonClaudeManager {
     return new JsonClaudeManager(store, {
       getClaudeCommand: () => 'claude',
       getApprovalSocketPath: (sid) => `/tmp/sock-${sid}`,
@@ -75,8 +82,23 @@ describe('JsonClaudeManager', () => {
       getControlServer: () => null,
       getControlBridgeScriptPath: () => '/tmp/bridge.js',
       isHarnessMcpEnabled: () => false,
-      getCallerScope: () => null
+      getCallerScope: () => null,
+      getLaunchSettings: () => launchSettings
     })
+  }
+
+  /** The manager spawns `/bin/zsh -ilc <cmdLine>` — return the last
+   *  session cmdLine, skipping the slash-command probe spawn (which
+   *  doesn't pass --permission-prompt-tool). */
+  function lastSpawnCmdLine(): string {
+    const sessionCalls = spawnCalls.filter((c) =>
+      c.args.some((a) => a.includes('--permission-prompt-tool'))
+    )
+    const call = sessionCalls[sessionCalls.length - 1]
+    expect(call).toBeDefined()
+    expect(call.command).toBe('/bin/zsh')
+    expect(call.args[0]).toBe('-ilc')
+    return call.args[1]
   }
 
   it("kill+create cycle: late exit from killed proc doesn't clobber the new instance", () => {
@@ -157,6 +179,55 @@ describe('JsonClaudeManager', () => {
     // Only one session proc was actually spawned — guard short-circuited
     // the second call. (Probes are per-cwd, also one.)
     expect(sessionProcs().length).toBe(1)
+  })
+
+  it('passes --append-system-prompt, --model, --name when launch settings are set', () => {
+    const store = new Store()
+    const mgr = makeManager(store, {
+      systemPrompt: 'BASE\n\nMAIN',
+      model: 'opus',
+      sessionName: 'myrepo/feat-x',
+      tuiFullscreen: true
+    })
+    store.dispatch({ type: 'jsonClaude/sessionStarted', payload: { sessionId: 'sess-flags', worktreePath: '/tmp/wt' } })
+    mgr.create('sess-flags', '/tmp/wt')
+    const cmd = lastSpawnCmdLine()
+    expect(cmd).toContain('--append-system-prompt')
+    expect(cmd).toContain("'BASE\n\nMAIN'")
+    expect(cmd).toContain('--model')
+    expect(cmd).toContain("'opus'")
+    expect(cmd).toContain('--name')
+    expect(cmd).toContain("'myrepo/feat-x'")
+  })
+
+  // Regression: the system prompt contains literal backticks (e.g.
+  // `key`, `zsh -ilc <command>`). When args were JSON.stringified into
+  // double quotes, zsh -ilc would still command-substitute the
+  // backticks (→ "command not found: key", exit 127) and parse-error
+  // on the redirection token inside the substitution. Single-quoted
+  // form makes everything inert.
+  it('single-quotes args so backticks in the system prompt are not command-substituted', () => {
+    const store = new Store()
+    const mgr = makeManager(store, {
+      systemPrompt: 'a `key` b',
+      tuiFullscreen: true
+    })
+    store.dispatch({ type: 'jsonClaude/sessionStarted', payload: { sessionId: 'sess-bt', worktreePath: '/tmp/wt' } })
+    mgr.create('sess-bt', '/tmp/wt')
+    const cmd = lastSpawnCmdLine()
+    expect(cmd).toContain("'a `key` b'")
+    expect(cmd).not.toContain('"a `key` b"')
+  })
+
+  it('omits --append-system-prompt, --model, --name when launch settings are unset', () => {
+    const store = new Store()
+    const mgr = makeManager(store, { tuiFullscreen: true })
+    store.dispatch({ type: 'jsonClaude/sessionStarted', payload: { sessionId: 'sess-empty', worktreePath: '/tmp/wt' } })
+    mgr.create('sess-empty', '/tmp/wt')
+    const cmd = lastSpawnCmdLine()
+    expect(cmd).not.toContain('--append-system-prompt')
+    expect(cmd).not.toContain('--model')
+    expect(cmd).not.toContain('--name')
   })
 
   it("new proc's own exit event still updates state (guard doesn't block legitimate exits)", () => {
