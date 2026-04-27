@@ -29,12 +29,6 @@ const BUILTIN_DESCRIPTIONS: Record<string, string> = {
   context: 'Show context window usage'
 }
 
-// Fallback list shown when the session's slash_commands hasn't landed
-// yet — first-render before init, or pre-existing subprocesses where
-// init was emitted before the capture code was added. The init event
-// will overwrite this with the authoritative full list once it fires.
-const FALLBACK_SLASH_COMMANDS = ['clear', 'compact', 'context']
-
 interface JsonModeChatProps {
   sessionId: string
   worktreePath: string
@@ -380,8 +374,7 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
     if (mentionDismissed === draft) return []
     if (slashTrigger !== null) {
       const q = slashTrigger.query.toLowerCase()
-      const fromInit = session?.slashCommands ?? []
-      const all = fromInit.length > 0 ? fromInit : FALLBACK_SLASH_COMMANDS
+      const all = session?.slashCommands ?? []
       const ranked =
         q.length === 0
           ? all.map((name) => ({ name, indices: undefined as number[] | undefined }))
