@@ -3,11 +3,8 @@ import { join } from 'path'
 import { homedir } from 'os'
 import { log } from '../debug'
 import { makeHookCommand } from '../hooks'
+import { shellQuote } from '../shell-quote'
 import type { AgentSpawnOpts } from './index'
-
-function shellQuote(s: string): string {
-  return "'" + s.replace(/'/g, "'\\''") + "'"
-}
 
 const HARNESS_HOOK_MARKER = '__claude_harness__'
 const HARNESS_HOOK_VERSION = 8

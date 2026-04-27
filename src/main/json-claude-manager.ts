@@ -31,6 +31,7 @@ import type {
 } from '../shared/state/json-claude'
 import type { ClaudeLaunchSettings } from './claude-launch'
 import { log } from './debug'
+import { shellQuote } from './shell-quote'
 
 interface JsonClaudeInstance {
   proc: ChildProcessWithoutNullStreams
@@ -304,9 +305,11 @@ export class JsonClaudeManager {
 
     // Build the command line via login shell so the user's full PATH
     // (Homebrew, nvm, etc.) is available — same pattern PtyManager uses
-    // for classic Claude tabs. Using zsh -ilc also gives us a single
-    // string we can shellQuote-free because zsh handles its own quoting.
-    const quoted = args.map((a) => JSON.stringify(a)).join(' ')
+    // for classic Claude tabs. We use POSIX single-quote escaping
+    // because the system prompt contains backticks (e.g. `key`,
+    // `zsh -ilc <command>`) which would be command-substituted inside
+    // JSON.stringify's double quotes.
+    const quoted = args.map(shellQuote).join(' ')
     const cmdLine = `${claudeCommand} ${quoted}`
 
     log(

@@ -175,11 +175,30 @@ describe('JsonClaudeManager', () => {
     mgr.create('sess-flags', '/tmp/wt')
     const cmd = lastSpawnCmdLine()
     expect(cmd).toContain('--append-system-prompt')
-    expect(cmd).toContain(JSON.stringify('BASE\n\nMAIN'))
+    expect(cmd).toContain("'BASE\n\nMAIN'")
     expect(cmd).toContain('--model')
-    expect(cmd).toContain('"opus"')
+    expect(cmd).toContain("'opus'")
     expect(cmd).toContain('--name')
-    expect(cmd).toContain('"myrepo/feat-x"')
+    expect(cmd).toContain("'myrepo/feat-x'")
+  })
+
+  // Regression: the system prompt contains literal backticks (e.g.
+  // `key`, `zsh -ilc <command>`). When args were JSON.stringified into
+  // double quotes, zsh -ilc would still command-substitute the
+  // backticks (→ "command not found: key", exit 127) and parse-error
+  // on the redirection token inside the substitution. Single-quoted
+  // form makes everything inert.
+  it('single-quotes args so backticks in the system prompt are not command-substituted', () => {
+    const store = new Store()
+    const mgr = makeManager(store, {
+      systemPrompt: 'a `key` b',
+      tuiFullscreen: true
+    })
+    store.dispatch({ type: 'jsonClaude/sessionStarted', payload: { sessionId: 'sess-bt', worktreePath: '/tmp/wt' } })
+    mgr.create('sess-bt', '/tmp/wt')
+    const cmd = lastSpawnCmdLine()
+    expect(cmd).toContain("'a `key` b'")
+    expect(cmd).not.toContain('"a `key` b"')
   })
 
   it('omits --append-system-prompt, --model, --name when launch settings are unset', () => {
