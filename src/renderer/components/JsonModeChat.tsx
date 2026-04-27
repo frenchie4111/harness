@@ -94,9 +94,17 @@ function ThinkingCard({
       </button>
       {expanded && (
         <div className="px-3 py-2 border-t border-border/30 markdown italic text-muted text-xs leading-relaxed">
-          <ReactMarkdown rehypePlugins={[rehypeHighlight]}>
-            {text || ''}
-          </ReactMarkdown>
+          {text ? (
+            <ReactMarkdown rehypePlugins={[rehypeHighlight]}>
+              {text}
+            </ReactMarkdown>
+          ) : !isPartial ? (
+            // Claude Code can return signed-but-empty thinking blocks
+            // (the API tier elides plaintext but keeps a signature so
+            // the model can verify its prior reasoning on the next
+            // turn). Surface that explicitly instead of an empty card.
+            <span className="opacity-70">(hidden)</span>
+          ) : null}
           {isPartial && (
             <span className="json-claude-cursor" aria-label="streaming" />
           )}
