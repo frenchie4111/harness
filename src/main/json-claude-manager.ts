@@ -108,6 +108,14 @@ export class JsonClaudeManager {
   private instances = new Map<string, JsonClaudeInstance>()
   private store: Store
   private opts: JsonClaudeManagerOptions
+  /** Per-cwd slash command list, sourced from a one-shot probe (see
+   *  probeSlashCommands). Cached because the list is stable across
+   *  sessions in the same worktree — it depends on the user's installed
+   *  Skills + plugin commands + project-local `.claude/commands/*.md`,
+   *  none of which change during normal use. */
+  private slashCommandsByCwd = new Map<string, string[]>()
+  /** Inflight probes per cwd so concurrent create() calls share one. */
+  private probeInflightByCwd = new Map<string, Promise<string[]>>()
 
   constructor(store: Store, opts: JsonClaudeManagerOptions) {
     this.store = store
@@ -355,6 +363,21 @@ export class JsonClaudeManager {
     log('json-claude', `create spawned sessionId=${sessionId} pid=${proc.pid ?? '?'} → running`)
     this.dispatchState(sessionId, 'running')
 
+    // Kick a slash-command probe in the background. Result populates the
+    // slice so the autocomplete popover can render before the user sends
+    // their first turn (the real session's init won't fire until then).
+    void this.ensureSlashCommandsForCwd(worktreePath).then((list) => {
+      if (list.length === 0) return
+      // Guard: the session may have been killed between probe start and
+      // probe finish.
+      const live = this.store.getSnapshot().state.jsonClaude.sessions[sessionId]
+      if (!live) return
+      this.store.dispatch({
+        type: 'jsonClaude/slashCommandsChanged',
+        payload: { sessionId, slashCommands: list }
+      })
+    })
+
     proc.stdout.on('data', (chunk: Buffer) => {
       instance.buf += chunk.toString('utf8')
       let idx: number
@@ -537,6 +560,151 @@ export class JsonClaudeManager {
     this.create(sessionId, worktreePath, mode)
   }
 
+  /** Spawn a one-shot `claude -p` probe to harvest the system/init event's
+   *  slash_commands list. We need this because claude in stream-json input
+   *  mode never emits init until a real user message arrives — so the
+   *  popover would be empty for the user's first turn. The probe sends a
+   *  trivial user message immediately followed by an interrupt, which
+   *  fires init then aborts before any model tokens are spent ($0 cost,
+   *  verified by spike). Result is cached per-cwd so subsequent sessions
+   *  in the same worktree get it instantly. */
+  private probeSlashCommands(cwd: string): Promise<string[]> {
+    return new Promise((resolve) => {
+      const claudeCommand = this.opts.getClaudeCommand() || 'claude'
+      const args = [
+        '-p',
+        '--input-format',
+        'stream-json',
+        '--output-format',
+        'stream-json',
+        '--verbose'
+      ]
+      const quoted = args.map((a) => JSON.stringify(a)).join(' ')
+      const cmdLine = `${claudeCommand} ${quoted}`
+      const envVars = this.opts.getClaudeEnvVars() || {}
+      const childEnv: Record<string, string> = {}
+      for (const [k, v] of Object.entries(process.env)) {
+        if (typeof v === 'string') childEnv[k] = v
+      }
+      delete childEnv.CLAUDE_HARNESS_ID
+      delete childEnv.HARNESS_TERMINAL_ID
+      log('json-claude', `probe spawn cwd=${cwd}`)
+      let proc: ChildProcessWithoutNullStreams
+      try {
+        proc = spawn('/bin/zsh', ['-ilc', cmdLine], {
+          cwd,
+          env: {
+            ...childEnv,
+            ...envVars,
+            CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1'
+          },
+          stdio: ['pipe', 'pipe', 'pipe']
+        })
+      } catch (err) {
+        log(
+          'json-claude',
+          `probe spawn failed cwd=${cwd}`,
+          err instanceof Error ? err.message : String(err)
+        )
+        resolve([])
+        return
+      }
+      let buf = ''
+      let resolved = false
+      const timeout = setTimeout(() => {
+        if (!resolved) {
+          resolved = true
+          log('json-claude', `probe timeout cwd=${cwd}`)
+          try {
+            proc.kill('SIGTERM')
+          } catch {
+            /* ignore */
+          }
+          resolve([])
+        }
+      }, 15_000)
+      proc.stdout.on('data', (chunk: Buffer) => {
+        buf += chunk.toString('utf8')
+        let idx: number
+        while ((idx = buf.indexOf('\n')) >= 0) {
+          const line = buf.slice(0, idx).trim()
+          buf = buf.slice(idx + 1)
+          if (!line || resolved) continue
+          let parsed: Record<string, unknown>
+          try {
+            parsed = JSON.parse(line)
+          } catch {
+            continue
+          }
+          if (parsed['type'] === 'system' && parsed['subtype'] === 'init') {
+            const slashCommands = parsed['slash_commands']
+            const filtered = Array.isArray(slashCommands)
+              ? slashCommands.filter((s): s is string => typeof s === 'string')
+              : []
+            log(
+              'json-claude',
+              `probe init received cwd=${cwd} count=${filtered.length}`
+            )
+            resolved = true
+            clearTimeout(timeout)
+            try {
+              proc.kill('SIGTERM')
+            } catch {
+              /* ignore */
+            }
+            resolve(filtered)
+            return
+          }
+        }
+      })
+      proc.on('exit', () => {
+        if (!resolved) {
+          resolved = true
+          clearTimeout(timeout)
+          log('json-claude', `probe exited before init cwd=${cwd}`)
+          resolve([])
+        }
+      })
+      // Pump the message + interrupt. Send-then-interrupt makes claude emit
+      // init (which is what we want) then abort the turn at $0 cost.
+      try {
+        proc.stdin.write(
+          JSON.stringify({
+            type: 'user',
+            message: { role: 'user', content: '.' }
+          }) + '\n'
+        )
+        proc.stdin.write(
+          JSON.stringify({
+            type: 'control_request',
+            request_id: randomUUID(),
+            request: { subtype: 'interrupt' }
+          }) + '\n'
+        )
+      } catch (err) {
+        log(
+          'json-claude',
+          `probe stdin write failed cwd=${cwd}`,
+          err instanceof Error ? err.message : String(err)
+        )
+      }
+    })
+  }
+
+  private ensureSlashCommandsForCwd(cwd: string): Promise<string[]> {
+    const cached = this.slashCommandsByCwd.get(cwd)
+    if (cached) return Promise.resolve(cached)
+    const inflight = this.probeInflightByCwd.get(cwd)
+    if (inflight) return inflight
+    const p = this.probeSlashCommands(cwd).then((list) => {
+      if (list.length > 0) this.slashCommandsByCwd.set(cwd, list)
+      this.probeInflightByCwd.delete(cwd)
+      return list
+    })
+    this.probeInflightByCwd.set(cwd, p)
+    return p
+  }
+
   private handleStreamLine(instance: JsonClaudeInstance, line: string): void {
     let parsed: Record<string, unknown>
     try {
@@ -553,16 +721,16 @@ export class JsonClaudeManager {
     const subtype = parsed['subtype']
     if (type === 'system' && subtype === 'init') {
       // Session id is already known (we pinned it via --session-id), but
-      // the init payload includes the canonical slash_commands list for
-      // this session — that's the union of built-ins, enabled Skills,
-      // installed plugin commands, and the project-local
-      // .claude/commands/*.md. Pipe it into the slice so the autocomplete
-      // popover can render the same set the TUI would.
+      // the init payload includes the canonical slash_commands list — keep
+      // it as a freshness signal in case anything's been installed since
+      // the per-cwd probe ran. (Init only fires once a real user message
+      // arrives — see probeSlashCommands for why we also probe up-front.)
       const slashCommands = parsed['slash_commands']
       if (Array.isArray(slashCommands)) {
         const filtered = slashCommands.filter(
           (s): s is string => typeof s === 'string'
         )
+        this.slashCommandsByCwd.set(instance.worktreePath, filtered)
         this.store.dispatch({
           type: 'jsonClaude/slashCommandsChanged',
           payload: { sessionId: instance.sessionId, slashCommands: filtered }
