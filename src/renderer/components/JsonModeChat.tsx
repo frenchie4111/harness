@@ -1,14 +1,36 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import rehypeHighlight from 'rehype-highlight'
-import { Square } from 'lucide-react'
+import { Square, Terminal } from 'lucide-react'
 import { useJsonClaude } from '../store'
 import { useJsonClaudeApprovals } from '../hooks/useJsonClaudeApprovals'
 import { JsonClaudeApprovalCard } from './JsonClaudeApprovalCard'
 import { dispatchToolCard, ToolCardChrome } from './json-mode-cards'
 import { ToolGroup } from './json-mode-cards/ToolGroup'
+import { JsonModeMentionPopover, type MentionPopoverItem } from './JsonModeMentionPopover'
 import 'highlight.js/styles/github-dark.css'
 import type { JsonClaudeChatEntry } from '../../shared/state/json-claude'
+
+// Built-in slash commands that actually do something via -p stream-json
+// stdin. The TUI commands (/help, /model, /agents, /mcp, /memory,
+// /permissions, /resume, /status) all return "isn't available in this
+// environment" — they're filtered out of the menu so we don't surface
+// broken affordances. /cost is included even though its current output
+// is sparse ("subscription") because it's documented as the right way
+// to ask Claude about cost; richer cost UI lives on the backlog.
+interface SlashCommandSpec {
+  name: string
+  description: string
+  /** False if the command leaves the input alone after picking (rare).
+   *  Defaults to true: pick → fill textarea + send immediately. */
+  sendOnPick?: boolean
+}
+
+const BUILTIN_SLASH_COMMANDS: SlashCommandSpec[] = [
+  { name: '/clear', description: 'Reset the conversation context' },
+  { name: '/compact', description: 'Summarize and compact prior messages' },
+  { name: '/cost', description: 'Show subscription / API cost summary' }
+]
 
 interface JsonModeChatProps {
   sessionId: string
@@ -170,6 +192,11 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
   const session = jsonClaude.sessions[sessionId]
   const { pending, resolve } = useJsonClaudeApprovals(sessionId)
   const [draft, setDraft] = useState('')
+  // Mention/popover state. `dismissed` carries the draft text at which
+  // the user pressed Escape — comparing against the live draft is how we
+  // re-open as soon as they type a different character.
+  const [mentionSelectedIdx, setMentionSelectedIdx] = useState(0)
+  const [mentionDismissed, setMentionDismissed] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   // Pause auto-scroll when the user has scrolled up. Re-enables when the
   // user scrolls back to the bottom — standard chat behavior.
@@ -254,11 +281,67 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
     [pending, rows]
   )
 
-  function send(): void {
-    const text = draft.trim()
+  // Slash-command popover trigger. Active when the draft is just a
+  // leading-slash token (`/`, `/c`, `/com`…) with no whitespace and no
+  // following args yet. As soon as the user types a space, the popover
+  // closes and the input behaves normally.
+  const slashTrigger = useMemo<string | null>(() => {
+    if (session?.state === 'exited') return null
+    const m = /^\/[a-zA-Z][a-zA-Z-]*$|^\/$/.exec(draft)
+    return m ? m[0] : null
+  }, [draft, session?.state])
+
+  const mentionItems = useMemo<MentionPopoverItem[]>(() => {
+    if (mentionDismissed === draft) return []
+    if (slashTrigger !== null) {
+      const q = slashTrigger.toLowerCase()
+      const matches =
+        q === '/'
+          ? BUILTIN_SLASH_COMMANDS
+          : BUILTIN_SLASH_COMMANDS.filter((c) =>
+              c.name.toLowerCase().startsWith(q)
+            )
+      return matches.map((c) => ({
+        key: c.name,
+        label: c.name,
+        description: c.description,
+        icon: <Terminal size={12} />
+      }))
+    }
+    return []
+  }, [slashTrigger, draft, mentionDismissed])
+
+  // Clamp the selection index when the item list shrinks (e.g. the user
+  // typed another character and the matches narrowed).
+  useEffect(() => {
+    setMentionSelectedIdx((i) =>
+      mentionItems.length === 0 ? 0 : Math.min(i, mentionItems.length - 1)
+    )
+  }, [mentionItems.length])
+
+  function pickMention(
+    item: MentionPopoverItem,
+    opts: { sendOverride?: boolean } = {}
+  ): void {
+    if (slashTrigger !== null) {
+      const cmd = BUILTIN_SLASH_COMMANDS.find((c) => c.name === item.label)
+      if (!cmd) return
+      const shouldSend = opts.sendOverride ?? (cmd.sendOnPick ?? true)
+      if (shouldSend) {
+        send(cmd.name)
+      } else {
+        setDraft(cmd.name)
+        setMentionDismissed(cmd.name)
+      }
+    }
+  }
+
+  function send(textOverride?: string): void {
+    const text = (textOverride ?? draft).trim()
     if (!text || !session || session.busy) return
     window.api.sendJsonClaudeMessage(sessionId, text)
     setDraft('')
+    setMentionDismissed(null)
     stickyBottom.current = true
   }
 
@@ -350,30 +433,80 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
         )}
       </div>
       <div className="shrink-0 border-t border-border p-2 flex gap-2 items-end">
-        <textarea
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          // Cmd/Ctrl+Enter submits, plain Enter inserts a newline. This is
-          // the inverse of the spike's choice but matches how real chat
-          // apps (Slack, Linear) work — accidental sends from a stray
-          // Enter while typing a multi-line prompt are bad UX. No
-          // preference for now; revisit if users push back.
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-              e.preventDefault()
-              send()
-            }
-          }}
-          placeholder="Message Claude — Cmd/Ctrl+Enter to send"
-          // text-base (16px) below sm: prevents iOS Safari from zooming
-          // the viewport when the textarea takes focus. text-sm on
-          // desktop keeps the chat dense.
-          className="flex-1 bg-panel border border-border rounded px-2 py-1.5 text-base sm:text-sm resize-none outline-none focus:border-accent min-h-[60px] max-h-[200px]"
-          rows={2}
-          disabled={state === 'exited'}
-        />
+        <div className="flex-1 relative">
+          {mentionItems.length > 0 && (
+            <JsonModeMentionPopover
+              items={mentionItems}
+              selectedIdx={mentionSelectedIdx}
+              onHover={setMentionSelectedIdx}
+              onPick={(item) => pickMention(item)}
+            />
+          )}
+          <textarea
+            value={draft}
+            onChange={(e) => {
+              setDraft(e.target.value)
+              // Any text change re-arms a previously dismissed popover.
+              setMentionDismissed(null)
+            }}
+            // Cmd/Ctrl+Enter submits, plain Enter inserts a newline. This is
+            // the inverse of the spike's choice but matches how real chat
+            // apps (Slack, Linear) work — accidental sends from a stray
+            // Enter while typing a multi-line prompt are bad UX. No
+            // preference for now; revisit if users push back.
+            onKeyDown={(e) => {
+              if (mentionItems.length > 0) {
+                if (e.key === 'ArrowDown') {
+                  e.preventDefault()
+                  setMentionSelectedIdx((i) =>
+                    Math.min(i + 1, mentionItems.length - 1)
+                  )
+                  return
+                }
+                if (e.key === 'ArrowUp') {
+                  e.preventDefault()
+                  setMentionSelectedIdx((i) => Math.max(i - 1, 0))
+                  return
+                }
+                if (
+                  e.key === 'Enter' &&
+                  !e.metaKey &&
+                  !e.ctrlKey &&
+                  !e.shiftKey
+                ) {
+                  e.preventDefault()
+                  const picked = mentionItems[mentionSelectedIdx]
+                  if (picked) pickMention(picked)
+                  return
+                }
+                if (e.key === 'Tab') {
+                  e.preventDefault()
+                  const picked = mentionItems[mentionSelectedIdx]
+                  if (picked) pickMention(picked, { sendOverride: false })
+                  return
+                }
+                if (e.key === 'Escape') {
+                  e.preventDefault()
+                  setMentionDismissed(draft)
+                  return
+                }
+              }
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault()
+                send()
+              }
+            }}
+            placeholder="Message Claude — Cmd/Ctrl+Enter to send"
+            // text-base (16px) below sm: prevents iOS Safari from zooming
+            // the viewport when the textarea takes focus. text-sm on
+            // desktop keeps the chat dense.
+            className="w-full bg-panel border border-border rounded px-2 py-1.5 text-base sm:text-sm resize-none outline-none focus:border-accent min-h-[60px] max-h-[200px]"
+            rows={2}
+            disabled={state === 'exited'}
+          />
+        </div>
         <button
-          onClick={send}
+          onClick={() => send()}
           disabled={busy || !draft.trim() || state === 'exited'}
           className="px-3 py-1.5 bg-accent text-white rounded text-sm disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
         >
