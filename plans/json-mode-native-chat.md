@@ -31,8 +31,30 @@ own worktree.
 - Markdown rendering via `react-markdown` + `rehype-highlight`, scoped
   `.markdown` CSS so the global preflight reset doesn't strip
   bullets / heading sizes / code-block padding.
+- Partial-message streaming via `--include-partial-messages`. Assistant
+  text appears progressively; deltas are coalesced (~30ms) in
+  `JsonClaudeManager` before dispatching to avoid per-token re-renders.
+  Tool calls render a "preparing call…" placeholder card the moment
+  `content_block_start` arrives so the UI doesn't look frozen while the
+  input streams. The consolidated `assistant` event reconciles the
+  entry by replacing its blocks via `assistantEntryFinalized`.
 - Per-tool cards (Read / Edit / Write / Bash / Grep / Glob / TodoWrite)
   with a generic fallback for everything else.
+- Tool calls collapsed by default, expandable on click. Compact one-line
+  headers (tool name + first arg, e.g. `Read foo/bar.ts`, `Bash: npm
+  test`, `Edit foo.ts (+12 −3)`) so the scrollback emphasises text
+  content. Errored tool calls show an "error" badge in the header so
+  they're discoverable without forcing an expand.
+- Consecutive tool calls grouped into a single collapsible block
+  between assistant text turns. Group header shows count + tool name
+  list; auto-expands when any tool inside has a pending approval (the
+  user needs to act). Inside the group, individual tool cards still
+  toggle independently.
+- harness-control MCP tool calls (`mcp__harness-control__*`) get the
+  brand amber→red→purple gradient treatment — thin top bar, gradient
+  tool name, and animated flow on hover — matching the Add worktree
+  button. The mangled `mcp__harness-control__` prefix is stripped from
+  the displayed name.
 - Bottom statusline (Claude TUI style): connection state + thinking
   indicator on the left, interrupt + permission-mode chip on the right.
 - Mobile/web client renders json-claude tabs (textarea uses 16px to
@@ -115,13 +137,6 @@ Type `@` in the textarea to pop a fuzzy-search picker over worktree
 files. On select, insert the path (or a markdown link). Drag-in file
 attachments belong in the same flow.
 
-#### Partial-message streaming
-`--include-partial-messages` enables token-level streaming of assistant
-text. UI today shows turns all-at-once; with partials, text would
-appear progressively. Mostly a UX polish; some buffer-management work
-needed in the slice (assistant entries become append-only character
-streams instead of one-shot blocks).
-
 ### Medium value
 
 #### `result.usage` rate-limit warnings
@@ -133,7 +148,13 @@ that report `needs-auth` (with a re-auth CTA where relevant).
 #### Sub-agent nesting
 `assistant` events carry `parent_tool_use_id` when nested. Build a
 tree-view that nests sub-agent activity under the parent Task tool
-call instead of flattening them.
+call instead of flattening them. The renderer side is ready to consume
+this — only the manager/slice plumbing for `parent_tool_use_id` is
+still required: persist the field on `JsonClaudeChatEntry` (or on each
+assistant entry) in `src/shared/state/json-claude.ts`, populate it in
+`src/main/json-claude-manager.ts` from the stream-json `parent_tool_use_id`
+field, and the JsonModeChat grouping pass can then bucket child entries
+under the parent Task card.
 
 #### Mid-session model switch
 Already have permission-mode cycling that kills + respawns with
@@ -156,6 +177,16 @@ The global setting (`settings.defaultClaudeTabType`) is wired today
 but a per-worktree or per-repo override would let a user opt one
 specific repo into JSON mode without flipping it for everything.
 Likely lives alongside the existing per-repo `.harness.json`.
+
+### Backlog follow-ups from partial-message streaming
+
+- `input_json_delta` for `tool_use` blocks. The partial-streaming PR
+  shows a "preparing call…" placeholder card on `content_block_start`
+  so the UI doesn't look frozen, but the actual tool input still pops
+  in all-at-once when the consolidated `assistant` event arrives.
+  Picking this up means accumulating the json fragments per tool_use
+  block and progressively populating the per-tool cards as fields come
+  in (e.g. `file_path` appears, then `offset`/`limit`).
 
 ### Smaller / polish
 
