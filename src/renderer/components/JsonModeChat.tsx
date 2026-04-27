@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import rehypeHighlight from 'rehype-highlight'
-import { Square, Terminal, FileText } from 'lucide-react'
+import { Square, Terminal, FileText, X } from 'lucide-react'
 import { useJsonClaude } from '../store'
 import { useJsonClaudeApprovals } from '../hooks/useJsonClaudeApprovals'
 import { JsonClaudeApprovalCard } from './JsonClaudeApprovalCard'
@@ -88,6 +88,12 @@ function renderEntries(
           <div className="flex justify-end">
             <div className="max-w-[80%] bg-accent/15 border border-accent/30 rounded-md px-3 py-2 whitespace-pre-wrap text-sm">
               {entry.text}
+              {entry.imageCount && entry.imageCount > 0 ? (
+                <div className="mt-1 flex items-center gap-1 text-[11px] text-accent/80">
+                  <FileText size={11} />
+                  {entry.imageCount} image{entry.imageCount === 1 ? '' : 's'}
+                </div>
+              ) : null}
             </div>
           </div>
         )
@@ -208,6 +214,15 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
   const [cursorPos, setCursorPos] = useState(0)
   const [files, setFiles] = useState<string[]>([])
   const [isDragOver, setIsDragOver] = useState(false)
+  const [attachments, setAttachments] = useState<
+    Array<{
+      id: string
+      mediaType: string
+      data: string
+      dataUrl: string
+      name: string
+    }>
+  >([])
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   // Pause auto-scroll when the user has scrolled up. Re-enables when the
@@ -456,11 +471,14 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
     if (dropped.length === 0) return
     const tokens: string[] = []
     for (const f of dropped) {
+      // Image files become inline base64 attachments; non-image files
+      // become @-mention tokens for Claude to read off disk.
+      if (f.type.startsWith('image/')) {
+        await attachImageFile(f)
+        continue
+      }
       const abs = window.api.getFilePath(f)
       if (!abs) continue
-      // If the file lives under the worktree, use the relative path —
-      // matches the @-mention convention. Otherwise fall back to the
-      // absolute path so external attachments still work.
       const rel = abs.startsWith(worktreePath + '/')
         ? abs.slice(worktreePath.length + 1)
         : abs
@@ -469,13 +487,63 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
     if (tokens.length > 0) insertAtCursor(tokens.join(' ') + ' ')
   }
 
+  async function handlePaste(
+    e: React.ClipboardEvent<HTMLTextAreaElement>
+  ): Promise<void> {
+    const items = Array.from(e.clipboardData?.items ?? [])
+    const imageItems = items.filter(
+      (it) => it.kind === 'file' && it.type.startsWith('image/')
+    )
+    if (imageItems.length === 0) return
+    e.preventDefault()
+    for (const it of imageItems) {
+      const f = it.getAsFile()
+      if (f) await attachImageFile(f)
+    }
+  }
+
   function send(textOverride?: string): void {
     const text = (textOverride ?? draft).trim()
-    if (!text || !session || session.busy) return
-    window.api.sendJsonClaudeMessage(sessionId, text)
+    const images = attachments.map((a) => ({
+      mediaType: a.mediaType,
+      data: a.data
+    }))
+    if (!session || session.busy) return
+    if (!text && images.length === 0) return
+    window.api.sendJsonClaudeMessage(
+      sessionId,
+      text,
+      images.length > 0 ? images : undefined
+    )
     setDraft('')
+    setAttachments([])
     setMentionDismissed(null)
     stickyBottom.current = true
+  }
+
+  async function attachImageFile(file: File): Promise<void> {
+    if (!file.type.startsWith('image/')) return
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result))
+      reader.onerror = () => reject(reader.error)
+      reader.readAsDataURL(file)
+    }).catch(() => '')
+    if (!dataUrl) return
+    // data:image/png;base64,XXXX → split off the prefix.
+    const commaIdx = dataUrl.indexOf(',')
+    if (commaIdx === -1) return
+    const data = dataUrl.slice(commaIdx + 1)
+    setAttachments((prev) => [
+      ...prev,
+      {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        mediaType: file.type,
+        data,
+        dataUrl,
+        name: file.name || 'pasted-image'
+      }
+    ])
   }
 
   function interrupt(): void {
@@ -589,6 +657,32 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
               onPick={(item) => pickMention(item)}
             />
           )}
+          {attachments.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-1.5">
+              {attachments.map((a) => (
+                <div
+                  key={a.id}
+                  className="relative inline-flex items-center bg-panel border border-border rounded overflow-hidden"
+                  title={a.name}
+                >
+                  <img
+                    src={a.dataUrl}
+                    alt={a.name}
+                    className="h-12 w-12 object-cover"
+                  />
+                  <button
+                    onClick={() =>
+                      setAttachments((prev) => prev.filter((p) => p.id !== a.id))
+                    }
+                    className="absolute top-0.5 right-0.5 bg-app/80 hover:bg-app text-fg-bright rounded-full p-0.5 cursor-pointer"
+                    aria-label={`Remove ${a.name}`}
+                  >
+                    <X size={10} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
           <textarea
             ref={textareaRef}
             value={draft}
@@ -601,6 +695,7 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
             onSelect={(e) => {
               setCursorPos(e.currentTarget.selectionStart ?? 0)
             }}
+            onPaste={(e) => void handlePaste(e)}
             // Cmd/Ctrl+Enter submits, plain Enter inserts a newline. This is
             // the inverse of the spike's choice but matches how real chat
             // apps (Slack, Linear) work — accidental sends from a stray
@@ -659,7 +754,11 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
         </div>
         <button
           onClick={() => send()}
-          disabled={busy || !draft.trim() || state === 'exited'}
+          disabled={
+            busy ||
+            (!draft.trim() && attachments.length === 0) ||
+            state === 'exited'
+          }
           className="px-3 py-1.5 bg-accent text-white rounded text-sm disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
         >
           Send

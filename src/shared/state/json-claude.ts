@@ -43,6 +43,10 @@ export interface JsonClaudeChatEntry {
    *  assistantEntryFinalized. The renderer uses this to draw a
    *  blinking cursor at the end of the text. */
   isPartial?: boolean
+  /** Number of image attachments sent with this user message. We don't
+   *  persist the image bytes themselves in the slice (size + IPC cost);
+   *  the renderer just shows a small "📎 N image(s)" indicator. */
+  imageCount?: number
 }
 
 export interface JsonClaudeSession {

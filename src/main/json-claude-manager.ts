@@ -396,19 +396,44 @@ export class JsonClaudeManager {
     })
   }
 
-  send(sessionId: string, text: string): void {
+  send(
+    sessionId: string,
+    text: string,
+    images?: Array<{ mediaType: string; data: string }>
+  ): void {
     const inst = this.instances.get(sessionId)
     if (!inst) return
+    const hasImages = !!images && images.length > 0
     this.appendEntry(inst, {
       kind: 'user',
       text,
       timestamp: Date.now(),
-      entryId: `${sessionId}-u-${inst.entryCounter++}`
+      entryId: `${sessionId}-u-${inst.entryCounter++}`,
+      ...(hasImages ? { imageCount: images!.length } : {})
     })
     this.dispatchBusy(sessionId, true)
+    // Build content array when images are attached. The Anthropic
+    // Messages API (which claude -p stream-json proxies) expects:
+    //   [{type:'text', text}, {type:'image', source:{type:'base64',
+    //     media_type, data}}]
+    // String content stays the wire shape when there are no images so
+    // we don't change the format for the most common path.
+    const content: unknown = hasImages
+      ? [
+          ...(text ? [{ type: 'text', text }] : []),
+          ...images!.map((img) => ({
+            type: 'image',
+            source: {
+              type: 'base64',
+              media_type: img.mediaType,
+              data: img.data
+            }
+          }))
+        ]
+      : text
     const payload = {
       type: 'user',
-      message: { role: 'user', content: text }
+      message: { role: 'user', content }
     }
     try {
       inst.proc.stdin.write(JSON.stringify(payload) + '\n')

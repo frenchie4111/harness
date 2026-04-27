@@ -1861,9 +1861,17 @@ function registerIpcHandlers(): void {
     jsonClaudeManager.create(sessionId, cwd, mode)
     return true
   })
-  transport.onSignal('jsonClaude:send', (_ctx, sessionId: string, text: string) => {
-    jsonClaudeManager.send(sessionId, text)
-  })
+  transport.onSignal(
+    'jsonClaude:send',
+    (
+      _ctx,
+      sessionId: string,
+      text: string,
+      images?: Array<{ mediaType: string; data: string }>
+    ) => {
+      jsonClaudeManager.send(sessionId, text, images)
+    }
+  )
   transport.onRequest('jsonClaude:kill', (_ctx, sessionId: string) => {
     jsonClaudeManager.kill(sessionId)
     return true
