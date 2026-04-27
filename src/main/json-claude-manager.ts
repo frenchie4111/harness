@@ -552,7 +552,22 @@ export class JsonClaudeManager {
     const type = parsed['type']
     const subtype = parsed['subtype']
     if (type === 'system' && subtype === 'init') {
-      // Session id already known (we pinned it). Nothing to dispatch.
+      // Session id is already known (we pinned it via --session-id), but
+      // the init payload includes the canonical slash_commands list for
+      // this session — that's the union of built-ins, enabled Skills,
+      // installed plugin commands, and the project-local
+      // .claude/commands/*.md. Pipe it into the slice so the autocomplete
+      // popover can render the same set the TUI would.
+      const slashCommands = parsed['slash_commands']
+      if (Array.isArray(slashCommands)) {
+        const filtered = slashCommands.filter(
+          (s): s is string => typeof s === 'string'
+        )
+        this.store.dispatch({
+          type: 'jsonClaude/slashCommandsChanged',
+          payload: { sessionId: instance.sessionId, slashCommands: filtered }
+        })
+      }
       return
     }
     if (type === 'stream_event') {

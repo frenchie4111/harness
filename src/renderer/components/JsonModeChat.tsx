@@ -19,26 +19,15 @@ const FILE_CACHE = new Map<string, { files: string[]; ts: number }>()
 const FILE_CACHE_TTL_MS = 10_000
 const MAX_MENTION_RESULTS = 50
 
-// Built-in slash commands that actually do something via -p stream-json
-// stdin. The TUI commands (/help, /model, /agents, /mcp, /memory,
-// /permissions, /resume, /status) all return "isn't available in this
-// environment" — they're filtered out of the menu so we don't surface
-// broken affordances. /cost is included even though its current output
-// is sparse ("subscription") because it's documented as the right way
-// to ask Claude about cost; richer cost UI lives on the backlog.
-interface SlashCommandSpec {
-  name: string
-  description: string
-  /** False if the command leaves the input alone after picking (rare).
-   *  Defaults to true: pick → fill textarea + send immediately. */
-  sendOnPick?: boolean
+// Pre-baked descriptions for built-in slash commands. Skills + plugin
+// commands appear in the menu via session.slashCommands (sourced from
+// claude's system/init event) but don't have a description until we
+// parse their .md frontmatter — out of scope for now.
+const BUILTIN_DESCRIPTIONS: Record<string, string> = {
+  clear: 'Reset the conversation context',
+  compact: 'Summarize and compact prior messages',
+  context: 'Show context window usage'
 }
-
-const BUILTIN_SLASH_COMMANDS: SlashCommandSpec[] = [
-  { name: '/clear', description: 'Reset the conversation context' },
-  { name: '/compact', description: 'Summarize and compact prior messages' },
-  { name: '/cost', description: 'Show subscription / API cost summary' }
-]
 
 interface JsonModeChatProps {
   sessionId: string
@@ -329,30 +318,26 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
     }
   }, [worktreePath])
 
-  // Slash-command popover trigger. Active when the draft is just a
-  // leading-slash token (`/`, `/c`, `/com`…) with no whitespace and no
-  // following args yet. As soon as the user types a space, the popover
-  // closes and the input behaves normally.
-  const slashTrigger = useMemo<string | null>(() => {
-    if (session?.state === 'exited') return null
-    const m = /^\/[a-zA-Z][a-zA-Z-]*$|^\/$/.exec(draft)
-    return m ? m[0] : null
-  }, [draft, session?.state])
-
-  // @-mention trigger. Scans backward from the cursor for the most
-  // recent `@`. Bails if it hits whitespace before the `@`, or if the
-  // char before the `@` isn't whitespace/start-of-input (avoids
-  // triggering on emails like foo@bar.com).
-  const mentionTrigger = useMemo<{ start: number; query: string } | null>(() => {
-    if (session?.state === 'exited') return null
-    if (cursorPos === 0) return null
-    let i = cursorPos - 1
+  // Find the most recent trigger char (`/` or `@`) before the cursor.
+  // The token between trigger+1 and cursor is the query. Returns null if
+  // the cursor isn't currently inside a trigger token. Both:
+  //   - bail if any whitespace appears between trigger and cursor
+  //   - require whitespace or start-of-input before the trigger char
+  // The whitespace-before constraint stops false positives on paths
+  // like `src/foo` and emails like `foo@bar.com`.
+  function findTrigger(
+    text: string,
+    cursor: number,
+    char: '/' | '@'
+  ): { start: number; query: string } | null {
+    if (cursor === 0) return null
+    let i = cursor - 1
     while (i >= 0) {
-      const ch = draft[i]
-      if (ch === '@') {
-        const before = i === 0 ? '' : draft[i - 1]
+      const ch = text[i]
+      if (ch === char) {
+        const before = i === 0 ? '' : text[i - 1]
         if (before === '' || /\s/.test(before)) {
-          return { start: i, query: draft.slice(i + 1, cursorPos) }
+          return { start: i, query: text.slice(i + 1, cursor) }
         }
         return null
       }
@@ -360,22 +345,39 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
       i--
     }
     return null
+  }
+
+  const slashTrigger = useMemo(() => {
+    if (session?.state === 'exited') return null
+    const trig = findTrigger(draft, cursorPos, '/')
+    if (!trig) return null
+    // Only allow ascii letters / digits / `-` / `:` (the namespace
+    // separator for plugin commands, e.g. `frontend-design:frontend-design`)
+    // in the query. Any other char closes the popover so users can type
+    // literal slashes followed by punctuation without it lingering.
+    if (!/^[a-zA-Z0-9:-]*$/.test(trig.query)) return null
+    return trig
+  }, [draft, cursorPos, session?.state])
+
+  const mentionTrigger = useMemo<{ start: number; query: string } | null>(() => {
+    if (session?.state === 'exited') return null
+    return findTrigger(draft, cursorPos, '@')
   }, [draft, cursorPos, session?.state])
 
   const mentionItems = useMemo<MentionPopoverItem[]>(() => {
     if (mentionDismissed === draft) return []
     if (slashTrigger !== null) {
-      const q = slashTrigger.toLowerCase()
-      const matches =
-        q === '/'
-          ? BUILTIN_SLASH_COMMANDS
-          : BUILTIN_SLASH_COMMANDS.filter((c) =>
-              c.name.toLowerCase().startsWith(q)
-            )
-      return matches.map((c) => ({
-        key: c.name,
-        label: c.name,
-        description: c.description,
+      const q = slashTrigger.query.toLowerCase()
+      const all = session?.slashCommands ?? []
+      const ranked =
+        q.length === 0
+          ? all.map((name) => ({ name, indices: undefined as number[] | undefined }))
+          : fuzzyMatch(q, all).map((r) => ({ name: r.item, indices: r.indices }))
+      return ranked.slice(0, 50).map((r) => ({
+        key: r.name,
+        label: `/${r.name}`,
+        labelMatchIndices: r.indices?.map((i) => i + 1), // shift past leading '/'
+        description: BUILTIN_DESCRIPTIONS[r.name],
         icon: <Terminal size={12} />
       }))
     }
@@ -397,7 +399,7 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
       }))
     }
     return []
-  }, [slashTrigger, mentionTrigger, files, draft, mentionDismissed])
+  }, [slashTrigger, mentionTrigger, files, draft, mentionDismissed, session?.slashCommands])
 
   // Clamp the selection index when the item list shrinks (e.g. the user
   // typed another character and the matches narrowed).
@@ -407,19 +409,47 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
     )
   }, [mentionItems.length])
 
+  function replaceTriggerToken(
+    triggerStart: number,
+    insertion: string
+  ): void {
+    const before = draft.slice(0, triggerStart)
+    const after = draft.slice(cursorPos)
+    const next = before + insertion + after
+    const nextCursor = before.length + insertion.length
+    setDraft(next)
+    setMentionDismissed(null)
+    // Defer cursor placement until after React has re-rendered the
+    // controlled textarea — without rAF the browser uses the stale
+    // selection from before the value change.
+    requestAnimationFrame(() => {
+      const ta = textareaRef.current
+      if (!ta) return
+      ta.focus()
+      ta.setSelectionRange(nextCursor, nextCursor)
+      setCursorPos(nextCursor)
+    })
+  }
+
   function pickMention(
     item: MentionPopoverItem,
     opts: { sendOverride?: boolean } = {}
   ): void {
     if (slashTrigger !== null) {
-      const cmd = BUILTIN_SLASH_COMMANDS.find((c) => c.name === item.label)
-      if (!cmd) return
-      const shouldSend = opts.sendOverride ?? (cmd.sendOnPick ?? true)
+      // The slash command name is the label without its leading `/`.
+      const name = item.label.startsWith('/') ? item.label.slice(1) : item.label
+      const fullCmd = `/${name}`
+      // If the trigger spans the entire draft (i.e. user typed `/foo`
+      // and nothing else), Enter sends immediately. Otherwise we're
+      // inserting mid-message: replace the token, leave a trailing
+      // space, and let the user keep typing before sending themselves.
+      const isWholeDraft =
+        slashTrigger.start === 0 && cursorPos === draft.length
+      const shouldSend = opts.sendOverride ?? isWholeDraft
       if (shouldSend) {
-        send(cmd.name)
+        send(fullCmd)
       } else {
-        setDraft(cmd.name)
-        setMentionDismissed(cmd.name)
+        replaceTriggerToken(slashTrigger.start, `${fullCmd} `)
       }
       return
     }
@@ -427,23 +457,7 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
       // Replace `@<query>` with `@<filepath> ` so the user can keep
       // typing. The trailing space also closes the popover (whitespace
       // breaks the trigger).
-      const before = draft.slice(0, mentionTrigger.start)
-      const after = draft.slice(cursorPos)
-      const insertion = `@${item.label} `
-      const next = before + insertion + after
-      const nextCursor = before.length + insertion.length
-      setDraft(next)
-      setMentionDismissed(null)
-      // Defer cursor placement until after React has re-rendered the
-      // controlled textarea — without rAF the browser uses the stale
-      // selection from before the value change.
-      requestAnimationFrame(() => {
-        const ta = textareaRef.current
-        if (!ta) return
-        ta.focus()
-        ta.setSelectionRange(nextCursor, nextCursor)
-        setCursorPos(nextCursor)
-      })
+      replaceTriggerToken(mentionTrigger.start, `@${item.label} `)
     }
   }
 

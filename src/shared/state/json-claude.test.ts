@@ -310,4 +310,39 @@ describe('jsonClaudeReducer', () => {
     })
     expect(next).toBe(initialJsonClaude)
   })
+
+  it('slashCommandsChanged populates the per-session list', () => {
+    let state = seedSession(initialJsonClaude)
+    expect(state.sessions[SID].slashCommands).toEqual([])
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/slashCommandsChanged',
+      payload: { sessionId: SID, slashCommands: ['clear', 'compact', 'review'] }
+    })
+    expect(state.sessions[SID].slashCommands).toEqual([
+      'clear',
+      'compact',
+      'review'
+    ])
+  })
+
+  it('slashCommandsChanged is a no-op for unknown session', () => {
+    const next = jsonClaudeReducer(initialJsonClaude, {
+      type: 'jsonClaude/slashCommandsChanged',
+      payload: { sessionId: 'missing', slashCommands: ['clear'] }
+    })
+    expect(next).toBe(initialJsonClaude)
+  })
+
+  it('sessionStarted preserves slashCommands across re-attach', () => {
+    let state = seedSession(initialJsonClaude)
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/slashCommandsChanged',
+      payload: { sessionId: SID, slashCommands: ['clear', 'review'] }
+    })
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/sessionStarted',
+      payload: { sessionId: SID, worktreePath: WT }
+    })
+    expect(state.sessions[SID].slashCommands).toEqual(['clear', 'review'])
+  })
 })

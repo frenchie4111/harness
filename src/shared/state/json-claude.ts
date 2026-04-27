@@ -65,6 +65,11 @@ export interface JsonClaudeSession {
    *  this kills + respawns with --resume so the mode change is
    *  effectively mid-session. */
   permissionMode: JsonClaudePermissionMode
+  /** Slash command names (no leading `/`) advertised by Claude in the
+   *  system/init message. Includes built-ins like 'clear'/'compact', the
+   *  user's enabled Skills, plugin commands, and project-local
+   *  `.claude/commands/*.md`. Empty until init lands. */
+  slashCommands: string[]
 }
 
 export interface JsonClaudePendingApproval {
@@ -150,6 +155,10 @@ export type JsonClaudeEvent =
       type: 'jsonClaude/permissionModeChanged'
       payload: { sessionId: string; mode: JsonClaudePermissionMode }
     }
+  | {
+      type: 'jsonClaude/slashCommandsChanged'
+      payload: { sessionId: string; slashCommands: string[] }
+    }
 
 export const initialJsonClaude: JsonClaudeState = {
   sessions: {},
@@ -170,9 +179,9 @@ export function jsonClaudeReducer(
   switch (event.type) {
     case 'jsonClaude/sessionStarted': {
       const { sessionId, worktreePath } = event.payload
-      // Preserve entries + permissionMode if this session id already
-      // exists (re-attach on reload or mode-change respawn), reset exit
-      // bookkeeping.
+      // Preserve entries + permissionMode + slashCommands if this
+      // session id already exists (re-attach on reload or mode-change
+      // respawn), reset exit bookkeeping.
       const existing = state.sessions[sessionId]
       return {
         ...state,
@@ -186,7 +195,8 @@ export function jsonClaudeReducer(
             exitReason: null,
             entries: existing?.entries ?? [],
             busy: false,
-            permissionMode: existing?.permissionMode ?? 'default'
+            permissionMode: existing?.permissionMode ?? 'default',
+            slashCommands: existing?.slashCommands ?? []
           }
         }
       }
@@ -397,6 +407,20 @@ export function jsonClaudeReducer(
           [session.sessionId]: {
             ...session,
             permissionMode: event.payload.mode
+          }
+        }
+      }
+    }
+    case 'jsonClaude/slashCommandsChanged': {
+      const session = state.sessions[event.payload.sessionId]
+      if (!session) return state
+      return {
+        ...state,
+        sessions: {
+          ...state.sessions,
+          [session.sessionId]: {
+            ...session,
+            slashCommands: event.payload.slashCommands
           }
         }
       }
