@@ -43,10 +43,14 @@ export interface JsonClaudeChatEntry {
    *  assistantEntryFinalized. The renderer uses this to draw a
    *  blinking cursor at the end of the text. */
   isPartial?: boolean
-  /** Number of image attachments sent with this user message. We don't
-   *  persist the image bytes themselves in the slice (size + IPC cost);
-   *  the renderer just shows a small "📎 N image(s)" indicator. */
-  imageCount?: number
+  /** Image attachments sent with this user message. Only the on-disk
+   *  path + media type live in the slice — bytes would balloon the
+   *  state event payload. The renderer lazy-fetches each path via the
+   *  jsonClaude:readAttachmentImage IPC to render thumbnails in the
+   *  chat history. The path is also embedded in the user message that
+   *  Claude sees ("(image attached at <path>)") so the model can
+   *  Read/Bash/Write the file. */
+  images?: Array<{ path: string; mediaType: string }>
 }
 
 export interface JsonClaudeSession {

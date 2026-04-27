@@ -432,7 +432,15 @@ export class JsonClaudeManager {
       text,
       timestamp: Date.now(),
       entryId: `${sessionId}-u-${inst.entryCounter++}`,
-      ...(hasImages ? { imageCount: images!.length } : {})
+      // Path-only image refs (no bytes) so the renderer can fetch each
+      // for thumbnail rendering without bloating the state event.
+      ...(hasImages
+        ? {
+            images: images!
+              .filter((img) => img.path.length > 0)
+              .map((img) => ({ path: img.path, mediaType: img.mediaType }))
+          }
+        : {})
     })
     this.dispatchBusy(sessionId, true)
     // Build content array when images are attached. The Anthropic

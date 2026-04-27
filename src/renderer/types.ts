@@ -390,6 +390,7 @@ export interface ElectronAPI {
     base64: string,
     mediaType: string
   ): Promise<string | null>
+  readJsonClaudeAttachmentImage(path: string): Promise<string | null>
   killJsonClaude(id: string): Promise<boolean>
   interruptJsonClaude(id: string): Promise<boolean>
   setJsonClaudePermissionMode(

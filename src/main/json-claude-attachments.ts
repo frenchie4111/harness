@@ -10,7 +10,7 @@
 // transient chat attachments. Filename embeds a uuid so concurrent
 // pastes don't collide.
 
-import { writeFileSync, mkdirSync, existsSync } from 'fs'
+import { writeFileSync, mkdirSync, existsSync, readFileSync, statSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
@@ -25,6 +25,23 @@ const EXT_BY_MEDIA_TYPE: Record<string, string> = {
   'image/webp': 'webp',
   'image/bmp': 'bmp',
   'image/svg+xml': 'svg'
+}
+
+/** Read an image attachment back from disk as base64, for the renderer
+ *  to render thumbnails in chat history. Returns null if the file is
+ *  missing (e.g. /tmp was cleared) or oversized (we cap at ~10MB to
+ *  keep IPC payloads reasonable; chat thumbnails don't need more). */
+const MAX_IMAGE_READ_BYTES = 10 * 1024 * 1024
+
+export function readAttachmentImage(path: string): string | null {
+  try {
+    if (!existsSync(path)) return null
+    const stat = statSync(path)
+    if (stat.size > MAX_IMAGE_READ_BYTES) return null
+    return readFileSync(path).toString('base64')
+  } catch {
+    return null
+  }
 }
 
 /** Write a base64-encoded image to a fresh path under

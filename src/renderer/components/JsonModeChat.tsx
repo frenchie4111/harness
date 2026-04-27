@@ -8,6 +8,7 @@ import { JsonClaudeApprovalCard } from './JsonClaudeApprovalCard'
 import { dispatchToolCard, ToolCardChrome } from './json-mode-cards'
 import { ToolGroup } from './json-mode-cards/ToolGroup'
 import { JsonModeMentionPopover, type MentionPopoverItem } from './JsonModeMentionPopover'
+import { JsonModeChatImageThumb } from './JsonModeChatImageThumb'
 import { fuzzyMatch } from '../fuzzy'
 import 'highlight.js/styles/github-dark.css'
 import type { JsonClaudeChatEntry } from '../../shared/state/json-claude'
@@ -77,12 +78,17 @@ function renderEntries(
           <div className="flex justify-end">
             <div className="max-w-[80%] bg-accent/15 border border-accent/30 rounded-md px-3 py-2 whitespace-pre-wrap text-sm">
               {entry.text}
-              {entry.imageCount && entry.imageCount > 0 ? (
-                <div className="mt-1 flex items-center gap-1 text-[11px] text-accent/80">
-                  <FileText size={11} />
-                  {entry.imageCount} image{entry.imageCount === 1 ? '' : 's'}
+              {entry.images && entry.images.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {entry.images.map((img) => (
+                    <JsonModeChatImageThumb
+                      key={img.path}
+                      path={img.path}
+                      mediaType={img.mediaType}
+                    />
+                  ))}
                 </div>
-              ) : null}
+              )}
             </div>
           </div>
         )

@@ -430,6 +430,8 @@ function buildApi(transport: WebSocketClientTransport): ElectronAPI {
       req('jsonClaude:writeAttachmentImage', base64, mediaType) as Promise<
         string | null
       >,
+    readJsonClaudeAttachmentImage: (path) =>
+      req('jsonClaude:readAttachmentImage', path) as Promise<string | null>,
     killJsonClaude: (id) => req('jsonClaude:kill', id) as Promise<boolean>,
     interruptJsonClaude: (id) =>
       req('jsonClaude:interrupt', id) as Promise<boolean>,

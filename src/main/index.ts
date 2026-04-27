@@ -4,7 +4,10 @@ import { join } from 'path'
 import { PtyManager } from './pty-manager'
 import { ApprovalBridge } from './approval-bridge'
 import { JsonClaudeManager } from './json-claude-manager'
-import { writeAttachmentImage } from './json-claude-attachments'
+import {
+  readAttachmentImage,
+  writeAttachmentImage
+} from './json-claude-attachments'
 import { JsonClaudeStatusDeriver } from './json-claude-status-deriver'
 import { Store } from './store'
 import { WebSocketServerTransport } from './transport-websocket'
@@ -1896,6 +1899,11 @@ function registerIpcHandlers(): void {
         return null
       }
     }
+  )
+
+  transport.onRequest(
+    'jsonClaude:readAttachmentImage',
+    (_ctx, path: string) => readAttachmentImage(path)
   )
 
   transport.onRequest(
