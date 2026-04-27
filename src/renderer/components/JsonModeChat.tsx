@@ -226,6 +226,11 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
   >([])
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  // dragenter fires for every child element entered, dragleave for every
+  // child exited — so a naive boolean flickers as the cursor moves over
+  // nested nodes. Counter pattern: increment on enter, decrement on
+  // leave, only flip the flag at the 0/1 boundary.
+  const dragEnterCount = useRef(0)
   // Pause auto-scroll when the user has scrolled up. Re-enables when the
   // user scrolls back to the bottom — standard chat behavior.
   const stickyBottom = useRef(true)
@@ -492,6 +497,7 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
 
   async function handleDrop(e: React.DragEvent<HTMLDivElement>): Promise<void> {
     e.preventDefault()
+    dragEnterCount.current = 0
     setIsDragOver(false)
     const dropped = Array.from(e.dataTransfer?.files ?? [])
     if (dropped.length === 0) return
@@ -634,7 +640,35 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
           : 'bg-faint'
 
   return (
-    <div className="absolute inset-0 flex flex-col bg-app text-fg">
+    <div
+      className="absolute inset-0 flex flex-col bg-app text-fg"
+      onDragEnter={(e) => {
+        if (!Array.from(e.dataTransfer.types).includes('Files')) return
+        dragEnterCount.current += 1
+        if (dragEnterCount.current === 1) setIsDragOver(true)
+      }}
+      onDragOver={(e) => {
+        // preventDefault is required for the subsequent drop event to
+        // fire. Only opt in for file drags so text selection drags inside
+        // the textarea behave normally.
+        if (Array.from(e.dataTransfer.types).includes('Files')) {
+          e.preventDefault()
+        }
+      }}
+      onDragLeave={(e) => {
+        if (!Array.from(e.dataTransfer.types).includes('Files')) return
+        dragEnterCount.current = Math.max(0, dragEnterCount.current - 1)
+        if (dragEnterCount.current === 0) setIsDragOver(false)
+      }}
+      onDrop={(e) => void handleDrop(e)}
+    >
+      {isDragOver && (
+        <div className="absolute inset-0 z-40 bg-accent/10 border-2 border-dashed border-accent rounded flex items-center justify-center pointer-events-none">
+          <div className="bg-panel-raised border border-border-strong rounded px-4 py-2 text-fg-bright shadow-lg">
+            Drop image to attach
+          </div>
+        </div>
+      )}
       <div
         ref={scrollRef}
         onScroll={onScroll}
@@ -679,21 +713,7 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
         )}
       </div>
       <div className="shrink-0 border-t border-border p-2 flex gap-2 items-end">
-        <div
-          className={`flex-1 relative rounded ${
-            isDragOver ? 'ring-2 ring-accent ring-offset-1 ring-offset-app' : ''
-          }`}
-          onDragOver={(e) => {
-            // Only react when files are being dragged (not text from inside
-            // the textarea itself).
-            if (Array.from(e.dataTransfer.types).includes('Files')) {
-              e.preventDefault()
-              setIsDragOver(true)
-            }
-          }}
-          onDragLeave={() => setIsDragOver(false)}
-          onDrop={(e) => void handleDrop(e)}
-        >
+        <div className="flex-1 relative rounded">
           {mentionItems.length > 0 && (
             <JsonModeMentionPopover
               items={mentionItems}
