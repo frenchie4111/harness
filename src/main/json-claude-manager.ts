@@ -422,7 +422,7 @@ export class JsonClaudeManager {
   send(
     sessionId: string,
     text: string,
-    images?: Array<{ mediaType: string; data: string }>
+    images?: Array<{ mediaType: string; data: string; path: string }>
   ): void {
     const inst = this.instances.get(sessionId)
     if (!inst) return
@@ -441,9 +441,26 @@ export class JsonClaudeManager {
     //     media_type, data}}]
     // String content stays the wire shape when there are no images so
     // we don't change the format for the most common path.
+    //
+    // We also annotate the text block with a "(image attached at <path>)"
+    // line per image so Claude has both the inline pixels (for instant
+    // recognition) and an on-disk path (for Read/Bash/Write tool calls
+    // — moving, transforming, copying). Pasted images are written by
+    // the renderer via writeJsonClaudeAttachmentImage; dropped images
+    // reuse the original disk path.
+    const annotatedText = hasImages
+      ? [
+          text,
+          ...images!
+            .filter((img) => img.path.length > 0)
+            .map((img) => `(image attached at ${img.path})`)
+        ]
+          .filter((s) => s.length > 0)
+          .join('\n')
+      : text
     const content: unknown = hasImages
       ? [
-          ...(text ? [{ type: 'text', text }] : []),
+          ...(annotatedText ? [{ type: 'text', text: annotatedText }] : []),
           ...images!.map((img) => ({
             type: 'image',
             source: {

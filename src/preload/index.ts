@@ -347,8 +347,15 @@ contextBridge.exposeInMainWorld('api', {
   sendJsonClaudeMessage: (
     id: string,
     text: string,
-    images?: Array<{ mediaType: string; data: string }>
+    images?: Array<{ mediaType: string; data: string; path: string }>
   ) => sig('jsonClaude:send', id, text, images),
+  writeJsonClaudeAttachmentImage: (
+    base64: string,
+    mediaType: string
+  ): Promise<string | null> =>
+    req('jsonClaude:writeAttachmentImage', base64, mediaType) as Promise<
+      string | null
+    >,
   killJsonClaude: (id: string) => req('jsonClaude:kill', id),
   interruptJsonClaude: (id: string) => req('jsonClaude:interrupt', id),
   setJsonClaudePermissionMode: (

@@ -384,8 +384,12 @@ export interface ElectronAPI {
   sendJsonClaudeMessage(
     id: string,
     text: string,
-    images?: Array<{ mediaType: string; data: string }>
+    images?: Array<{ mediaType: string; data: string; path: string }>
   ): void
+  writeJsonClaudeAttachmentImage(
+    base64: string,
+    mediaType: string
+  ): Promise<string | null>
   killJsonClaude(id: string): Promise<boolean>
   interruptJsonClaude(id: string): Promise<boolean>
   setJsonClaudePermissionMode(

@@ -216,6 +216,12 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
       data: string
       dataUrl: string
       name: string
+      /** Absolute on-disk path so Claude can Read/Bash/Write the file
+       *  for moves, transforms, etc. Pasted images get a temp path
+       *  written via writeJsonClaudeAttachmentImage; dropped images
+       *  reuse webUtils.getPathForFile. Null only if the temp write
+       *  failed for a paste — we still send the inline bytes. */
+      path: string | null
     }>
   >([])
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
@@ -493,12 +499,13 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
     const tokens: string[] = []
     for (const f of dropped) {
       // Image files become inline base64 attachments; non-image files
-      // become @-mention tokens for Claude to read off disk.
+      // become @-mention tokens for Claude to read off disk. Either way
+      // we pass the source path so Claude can manipulate the file.
+      const abs = window.api.getFilePath(f) || null
       if (f.type.startsWith('image/')) {
-        await attachImageFile(f)
+        await attachImageFile(f, abs)
         continue
       }
-      const abs = window.api.getFilePath(f)
       if (!abs) continue
       const rel = abs.startsWith(worktreePath + '/')
         ? abs.slice(worktreePath.length + 1)
@@ -519,7 +526,7 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
     e.preventDefault()
     for (const it of imageItems) {
       const f = it.getAsFile()
-      if (f) await attachImageFile(f)
+      if (f) await attachImageFile(f, null)
     }
   }
 
@@ -527,7 +534,10 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
     const text = (textOverride ?? draft).trim()
     const images = attachments.map((a) => ({
       mediaType: a.mediaType,
-      data: a.data
+      data: a.data,
+      // Empty string when the temp write failed — manager treats it as
+      // "no path known", just sends bytes with no path annotation.
+      path: a.path ?? ''
     }))
     if (!session || session.busy) return
     if (!text && images.length === 0) return
@@ -542,7 +552,10 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
     stickyBottom.current = true
   }
 
-  async function attachImageFile(file: File): Promise<void> {
+  async function attachImageFile(
+    file: File,
+    sourcePath: string | null
+  ): Promise<void> {
     if (!file.type.startsWith('image/')) return
     const dataUrl = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader()
@@ -555,6 +568,17 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
     const commaIdx = dataUrl.indexOf(',')
     if (commaIdx === -1) return
     const data = dataUrl.slice(commaIdx + 1)
+    // Pasted images don't have an on-disk source — write to a temp path
+    // so Claude can Read/Bash/Write the file. Dropped images already
+    // have their original path.
+    let path: string | null = sourcePath
+    if (!path) {
+      try {
+        path = await window.api.writeJsonClaudeAttachmentImage(data, file.type)
+      } catch {
+        path = null
+      }
+    }
     setAttachments((prev) => [
       ...prev,
       {
@@ -562,7 +586,8 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
         mediaType: file.type,
         data,
         dataUrl,
-        name: file.name || 'pasted-image'
+        name: file.name || 'pasted-image',
+        path
       }
     ])
   }
@@ -680,28 +705,40 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
           )}
           {attachments.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mb-1.5">
-              {attachments.map((a) => (
-                <div
-                  key={a.id}
-                  className="relative inline-flex items-center bg-panel border border-border rounded overflow-hidden"
-                  title={a.name}
-                >
-                  <img
-                    src={a.dataUrl}
-                    alt={a.name}
-                    className="h-12 w-12 object-cover"
-                  />
-                  <button
-                    onClick={() =>
-                      setAttachments((prev) => prev.filter((p) => p.id !== a.id))
-                    }
-                    className="absolute top-0.5 right-0.5 bg-app/80 hover:bg-app text-fg-bright rounded-full p-0.5 cursor-pointer"
-                    aria-label={`Remove ${a.name}`}
+              {attachments.map((a) => {
+                const shortPath = a.path
+                  ? a.path.startsWith(worktreePath + '/')
+                    ? a.path.slice(worktreePath.length + 1)
+                    : a.path.split('/').slice(-2).join('/')
+                  : null
+                return (
+                  <div
+                    key={a.id}
+                    className="relative inline-flex items-center gap-2 bg-panel border border-border rounded overflow-hidden pr-2"
+                    title={a.path || a.name}
                   >
-                    <X size={10} />
-                  </button>
-                </div>
-              ))}
+                    <img
+                      src={a.dataUrl}
+                      alt={a.name}
+                      className="h-12 w-12 object-cover shrink-0"
+                    />
+                    {shortPath && (
+                      <span className="text-[10px] text-faint font-mono max-w-[180px] truncate">
+                        {shortPath}
+                      </span>
+                    )}
+                    <button
+                      onClick={() =>
+                        setAttachments((prev) => prev.filter((p) => p.id !== a.id))
+                      }
+                      className="absolute top-0.5 right-0.5 bg-app/80 hover:bg-app text-fg-bright rounded-full p-0.5 cursor-pointer"
+                      aria-label={`Remove ${a.name}`}
+                    >
+                      <X size={10} />
+                    </button>
+                  </div>
+                )
+              })}
             </div>
           )}
           <textarea
