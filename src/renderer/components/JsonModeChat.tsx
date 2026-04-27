@@ -1,15 +1,23 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import rehypeHighlight from 'rehype-highlight'
-import { Square, Terminal } from 'lucide-react'
+import { Square, Terminal, FileText } from 'lucide-react'
 import { useJsonClaude } from '../store'
 import { useJsonClaudeApprovals } from '../hooks/useJsonClaudeApprovals'
 import { JsonClaudeApprovalCard } from './JsonClaudeApprovalCard'
 import { dispatchToolCard, ToolCardChrome } from './json-mode-cards'
 import { ToolGroup } from './json-mode-cards/ToolGroup'
 import { JsonModeMentionPopover, type MentionPopoverItem } from './JsonModeMentionPopover'
+import { fuzzyMatch } from '../fuzzy'
 import 'highlight.js/styles/github-dark.css'
 import type { JsonClaudeChatEntry } from '../../shared/state/json-claude'
+
+// Worktree file list cache. Same TTL/shape as CommandPalette uses — the
+// list rarely changes during a typing session, and listAllFiles shells
+// out to git ls-files which is cheap but not free on big repos.
+const FILE_CACHE = new Map<string, { files: string[]; ts: number }>()
+const FILE_CACHE_TTL_MS = 10_000
+const MAX_MENTION_RESULTS = 50
 
 // Built-in slash commands that actually do something via -p stream-json
 // stdin. The TUI commands (/help, /model, /agents, /mcp, /memory,
@@ -197,6 +205,10 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
   // re-open as soon as they type a different character.
   const [mentionSelectedIdx, setMentionSelectedIdx] = useState(0)
   const [mentionDismissed, setMentionDismissed] = useState<string | null>(null)
+  const [cursorPos, setCursorPos] = useState(0)
+  const [files, setFiles] = useState<string[]>([])
+  const [isDragOver, setIsDragOver] = useState(false)
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   // Pause auto-scroll when the user has scrolled up. Re-enables when the
   // user scrolls back to the bottom — standard chat behavior.
@@ -281,6 +293,27 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
     [pending, rows]
   )
 
+  // Lazy-load the worktree file list for the @-mention picker. Cached at
+  // module scope so reopening the popover (or clicking through several
+  // json-claude tabs in the same worktree) doesn't re-shell every time.
+  useEffect(() => {
+    const cached = FILE_CACHE.get(worktreePath)
+    const now = Date.now()
+    if (cached && now - cached.ts < FILE_CACHE_TTL_MS) {
+      setFiles(cached.files)
+      return
+    }
+    let cancelled = false
+    void window.api.listAllFiles(worktreePath).then((result) => {
+      if (cancelled) return
+      FILE_CACHE.set(worktreePath, { files: result, ts: Date.now() })
+      setFiles(result)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [worktreePath])
+
   // Slash-command popover trigger. Active when the draft is just a
   // leading-slash token (`/`, `/c`, `/com`…) with no whitespace and no
   // following args yet. As soon as the user types a space, the popover
@@ -290,6 +323,29 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
     const m = /^\/[a-zA-Z][a-zA-Z-]*$|^\/$/.exec(draft)
     return m ? m[0] : null
   }, [draft, session?.state])
+
+  // @-mention trigger. Scans backward from the cursor for the most
+  // recent `@`. Bails if it hits whitespace before the `@`, or if the
+  // char before the `@` isn't whitespace/start-of-input (avoids
+  // triggering on emails like foo@bar.com).
+  const mentionTrigger = useMemo<{ start: number; query: string } | null>(() => {
+    if (session?.state === 'exited') return null
+    if (cursorPos === 0) return null
+    let i = cursorPos - 1
+    while (i >= 0) {
+      const ch = draft[i]
+      if (ch === '@') {
+        const before = i === 0 ? '' : draft[i - 1]
+        if (before === '' || /\s/.test(before)) {
+          return { start: i, query: draft.slice(i + 1, cursorPos) }
+        }
+        return null
+      }
+      if (/\s/.test(ch)) return null
+      i--
+    }
+    return null
+  }, [draft, cursorPos, session?.state])
 
   const mentionItems = useMemo<MentionPopoverItem[]>(() => {
     if (mentionDismissed === draft) return []
@@ -308,8 +364,25 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
         icon: <Terminal size={12} />
       }))
     }
+    if (mentionTrigger !== null && files.length > 0) {
+      const q = mentionTrigger.query
+      let ranked: { item: string; indices?: number[] }[]
+      if (q.length === 0) {
+        ranked = files.slice(0, MAX_MENTION_RESULTS).map((f) => ({ item: f }))
+      } else {
+        ranked = fuzzyMatch(q, files)
+          .slice(0, MAX_MENTION_RESULTS)
+          .map((r) => ({ item: r.item, indices: r.indices }))
+      }
+      return ranked.map((r) => ({
+        key: r.item,
+        label: r.item,
+        labelMatchIndices: r.indices,
+        icon: <FileText size={12} />
+      }))
+    }
     return []
-  }, [slashTrigger, draft, mentionDismissed])
+  }, [slashTrigger, mentionTrigger, files, draft, mentionDismissed])
 
   // Clamp the selection index when the item list shrinks (e.g. the user
   // typed another character and the matches narrowed).
@@ -333,7 +406,67 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
         setDraft(cmd.name)
         setMentionDismissed(cmd.name)
       }
+      return
     }
+    if (mentionTrigger !== null) {
+      // Replace `@<query>` with `@<filepath> ` so the user can keep
+      // typing. The trailing space also closes the popover (whitespace
+      // breaks the trigger).
+      const before = draft.slice(0, mentionTrigger.start)
+      const after = draft.slice(cursorPos)
+      const insertion = `@${item.label} `
+      const next = before + insertion + after
+      const nextCursor = before.length + insertion.length
+      setDraft(next)
+      setMentionDismissed(null)
+      // Defer cursor placement until after React has re-rendered the
+      // controlled textarea — without rAF the browser uses the stale
+      // selection from before the value change.
+      requestAnimationFrame(() => {
+        const ta = textareaRef.current
+        if (!ta) return
+        ta.focus()
+        ta.setSelectionRange(nextCursor, nextCursor)
+        setCursorPos(nextCursor)
+      })
+    }
+  }
+
+  function insertAtCursor(text: string): void {
+    const ta = textareaRef.current
+    const start = ta?.selectionStart ?? cursorPos
+    const end = ta?.selectionEnd ?? cursorPos
+    const next = draft.slice(0, start) + text + draft.slice(end)
+    const nextCursor = start + text.length
+    setDraft(next)
+    setMentionDismissed(null)
+    requestAnimationFrame(() => {
+      const ref = textareaRef.current
+      if (!ref) return
+      ref.focus()
+      ref.setSelectionRange(nextCursor, nextCursor)
+      setCursorPos(nextCursor)
+    })
+  }
+
+  async function handleDrop(e: React.DragEvent<HTMLDivElement>): Promise<void> {
+    e.preventDefault()
+    setIsDragOver(false)
+    const dropped = Array.from(e.dataTransfer?.files ?? [])
+    if (dropped.length === 0) return
+    const tokens: string[] = []
+    for (const f of dropped) {
+      const abs = window.api.getFilePath(f)
+      if (!abs) continue
+      // If the file lives under the worktree, use the relative path —
+      // matches the @-mention convention. Otherwise fall back to the
+      // absolute path so external attachments still work.
+      const rel = abs.startsWith(worktreePath + '/')
+        ? abs.slice(worktreePath.length + 1)
+        : abs
+      tokens.push(`@${rel}`)
+    }
+    if (tokens.length > 0) insertAtCursor(tokens.join(' ') + ' ')
   }
 
   function send(textOverride?: string): void {
@@ -433,7 +566,21 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
         )}
       </div>
       <div className="shrink-0 border-t border-border p-2 flex gap-2 items-end">
-        <div className="flex-1 relative">
+        <div
+          className={`flex-1 relative rounded ${
+            isDragOver ? 'ring-2 ring-accent ring-offset-1 ring-offset-app' : ''
+          }`}
+          onDragOver={(e) => {
+            // Only react when files are being dragged (not text from inside
+            // the textarea itself).
+            if (Array.from(e.dataTransfer.types).includes('Files')) {
+              e.preventDefault()
+              setIsDragOver(true)
+            }
+          }}
+          onDragLeave={() => setIsDragOver(false)}
+          onDrop={(e) => void handleDrop(e)}
+        >
           {mentionItems.length > 0 && (
             <JsonModeMentionPopover
               items={mentionItems}
@@ -443,11 +590,16 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
             />
           )}
           <textarea
+            ref={textareaRef}
             value={draft}
             onChange={(e) => {
               setDraft(e.target.value)
+              setCursorPos(e.target.selectionStart ?? e.target.value.length)
               // Any text change re-arms a previously dismissed popover.
               setMentionDismissed(null)
+            }}
+            onSelect={(e) => {
+              setCursorPos(e.currentTarget.selectionStart ?? 0)
             }}
             // Cmd/Ctrl+Enter submits, plain Enter inserts a newline. This is
             // the inverse of the spike's choice but matches how real chat
