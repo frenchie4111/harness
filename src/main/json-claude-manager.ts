@@ -882,35 +882,28 @@ export class JsonClaudeManager {
     const type = parsed['type']
     const subtype = parsed['subtype']
     if (type === 'system' && subtype === 'compact_boundary') {
-      // Wire format (same shape as the on-disk session jsonl):
-      //   { type: 'system', subtype: 'compact_boundary',
-      //     content: 'Conversation compacted',
-      //     compactMetadata: {
-      //       trigger: 'auto' | 'manual',
-      //       preTokens: number,
-      //       postTokens?: number,        // present once compaction finishes
-      //       durationMs?: number,
-      //       preCompactDiscoveredTools?: string[]
-      //     },
-      //     uuid, timestamp, ... }
-      // Don't toggle busy — compaction happens transparently mid- or
-      // between-turns; the surrounding `result` boundaries are what flip
-      // the spinner.
-      const meta = parsed['compactMetadata'] as
-        | {
-            trigger?: unknown
-            preTokens?: unknown
-            postTokens?: unknown
-          }
-        | undefined
+      // Wire format note: the live stream and the on-disk session jsonl
+      // disagree on case. Live emits snake_case
+      //   { compact_metadata: { trigger, pre_tokens, post_tokens,
+      //                          duration_ms } }
+      // while the on-disk record (which seedFromTranscript replays) is
+      // camelCase
+      //   { compactMetadata:  { trigger, preTokens, postTokens,
+      //                          durationMs, preCompactDiscoveredTools } }
+      // Read both — we go through the same dispatch either way.
+      // Don't toggle busy: compaction happens transparently between
+      // turns; surrounding `result` boundaries are what flip the spinner.
+      const metaRaw =
+        (parsed['compact_metadata'] as Record<string, unknown> | undefined) ??
+        (parsed['compactMetadata'] as Record<string, unknown> | undefined)
       const trigger =
-        meta?.trigger === 'auto' || meta?.trigger === 'manual'
-          ? meta.trigger
+        metaRaw?.['trigger'] === 'auto' || metaRaw?.['trigger'] === 'manual'
+          ? (metaRaw['trigger'] as 'auto' | 'manual')
           : undefined
-      const preTokens =
-        typeof meta?.preTokens === 'number' ? meta.preTokens : undefined
-      const postTokens =
-        typeof meta?.postTokens === 'number' ? meta.postTokens : undefined
+      const preRaw = metaRaw?.['pre_tokens'] ?? metaRaw?.['preTokens']
+      const postRaw = metaRaw?.['post_tokens'] ?? metaRaw?.['postTokens']
+      const preTokens = typeof preRaw === 'number' ? preRaw : undefined
+      const postTokens = typeof postRaw === 'number' ? postRaw : undefined
       const uuid = typeof parsed['uuid'] === 'string' ? parsed['uuid'] : null
       this.store.dispatch({
         type: 'jsonClaude/compactBoundaryReceived',
