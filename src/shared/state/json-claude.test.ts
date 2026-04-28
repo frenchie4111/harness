@@ -69,6 +69,32 @@ describe('jsonClaudeReducer', () => {
     expect(state.sessions[SID].entries).toEqual([entry])
   })
 
+  it('entriesSeeded replaces the session entries array in one shot', () => {
+    let state = seedSession(initialJsonClaude)
+    const entries: JsonClaudeChatEntry[] = [
+      { entryId: 'e1', kind: 'user', text: 'hi', timestamp: 1 },
+      {
+        entryId: 'e2',
+        kind: 'assistant',
+        blocks: [{ type: 'text', text: 'hello' }],
+        timestamp: 2
+      }
+    ]
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/entriesSeeded',
+      payload: { sessionId: SID, entries }
+    })
+    expect(state.sessions[SID].entries).toEqual(entries)
+  })
+
+  it('entriesSeeded is a no-op for unknown session', () => {
+    const next = jsonClaudeReducer(initialJsonClaude, {
+      type: 'jsonClaude/entriesSeeded',
+      payload: { sessionId: 'missing', entries: [] }
+    })
+    expect(next).toBe(initialJsonClaude)
+  })
+
   it('assistantTextDelta appends to the matching entry text block', () => {
     let state = seedSession(initialJsonClaude)
     const entry: JsonClaudeChatEntry = {

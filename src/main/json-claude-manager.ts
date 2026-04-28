@@ -166,6 +166,7 @@ export class JsonClaudeManager {
       )
       return
     }
+    const seededEntries: JsonClaudeChatEntry[] = []
     for (const line of raw.split('\n')) {
       const trimmed = line.trim()
       if (!trimmed) continue
@@ -183,7 +184,7 @@ export class JsonClaudeManager {
         const message = parsed['message'] as { content?: unknown } | undefined
         const content = message?.content
         if (typeof content === 'string') {
-          this.appendStoreEntry(sessionId, {
+          seededEntries.push({
             kind: 'user',
             text: content,
             timestamp: Date.now(),
@@ -191,21 +192,25 @@ export class JsonClaudeManager {
           })
         } else if (Array.isArray(content)) {
           for (const r of extractToolResultsFromArray(content)) {
-            this.store.dispatch({
-              type: 'jsonClaude/toolResultAttached',
-              payload: {
-                sessionId,
-                toolUseId: r.toolUseId,
-                content: r.content,
-                isError: r.isError
-              }
+            seededEntries.push({
+              entryId: `${sessionId}-tr-${r.toolUseId}-${seededEntries.length}`,
+              kind: 'tool_result',
+              timestamp: Date.now(),
+              blocks: [
+                {
+                  type: 'tool_result',
+                  toolUseId: r.toolUseId,
+                  content: r.content,
+                  isError: r.isError
+                }
+              ]
             })
           }
         }
       } else if (type === 'assistant') {
         const blocks = extractAssistantBlocks(parsed)
         if (blocks.length === 0) continue
-        this.appendStoreEntry(sessionId, {
+        seededEntries.push({
           kind: 'assistant',
           blocks,
           timestamp: Date.now(),
@@ -213,6 +218,11 @@ export class JsonClaudeManager {
         })
       }
     }
+    if (seededEntries.length === 0) return
+    this.store.dispatch({
+      type: 'jsonClaude/entriesSeeded',
+      payload: { sessionId, entries: seededEntries }
+    })
   }
 
   create(

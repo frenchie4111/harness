@@ -113,6 +113,10 @@ export type JsonClaudeEvent =
       payload: { sessionId: string; entry: JsonClaudeChatEntry }
     }
   | {
+      type: 'jsonClaude/entriesSeeded'
+      payload: { sessionId: string; entries: JsonClaudeChatEntry[] }
+    }
+  | {
       type: 'jsonClaude/assistantTextDelta'
       payload: { sessionId: string; entryId: string; textDelta: string }
     }
@@ -239,6 +243,17 @@ export function jsonClaudeReducer(
             ...session,
             entries: appendBlocksToEntry(session.entries, event.payload.entry)
           }
+        }
+      }
+    }
+    case 'jsonClaude/entriesSeeded': {
+      const session = state.sessions[event.payload.sessionId]
+      if (!session) return state
+      return {
+        ...state,
+        sessions: {
+          ...state.sessions,
+          [session.sessionId]: { ...session, entries: event.payload.entries }
         }
       }
     }
