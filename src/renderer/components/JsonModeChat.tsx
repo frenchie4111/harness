@@ -130,7 +130,8 @@ function renderEntries(
   autoApprovedDecisions: Record<
     string,
     { model: string; reason: string; timestamp: number }
-  >
+  >,
+  onCancelQueued: (entryId: string) => void
 ): RenderedRow[] {
   // Build a tool_use_id → tool_result lookup pass first so each tool card
   // can render its result inline.
@@ -150,10 +151,32 @@ function renderEntries(
   const rows: RenderedRow[] = []
   for (const entry of entries) {
     if (entry.kind === 'user') {
+      const queued = !!entry.isQueued
       rows.push({
         key: entry.entryId,
         type: 'text',
-        node: (
+        node: queued ? (
+          <div className="flex justify-end">
+            <div className="max-w-[80%] bg-accent/10 border border-dashed border-accent/40 rounded-md pl-3 pr-1 py-2 opacity-70 flex items-start gap-2">
+              <div className="flex-1 min-w-0 whitespace-pre-wrap text-sm">
+                {entry.text}
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <span className="text-[10px] uppercase tracking-wide text-muted bg-panel/60 border border-border px-1.5 py-0.5 rounded">
+                  queued
+                </span>
+                <button
+                  onClick={() => onCancelQueued(entry.entryId)}
+                  className="p-1 rounded hover:bg-panel text-muted hover:text-fg cursor-pointer"
+                  title="Cancel queued message"
+                  aria-label="Cancel queued message"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
           <div className="flex justify-end">
             <div className="max-w-[80%] bg-accent/15 border border-accent/30 rounded-md px-3 py-2 whitespace-pre-wrap text-sm">
               {entry.text}
@@ -392,12 +415,20 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
         session?.entries ?? [],
         renderApprovalForToolUseId,
         pendingToolUseIds,
-        autoApprovedDecisions
+        autoApprovedDecisions,
+        (entryId) =>
+          window.api.cancelQueuedJsonClaudeMessage(sessionId, entryId)
       ),
     // approvalByToolUseId already depends on pending; pendingToolUseIds
     // also derives from pending.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [session?.entries, approvalByToolUseId, pendingToolUseIds, autoApprovedDecisions]
+    [
+      session?.entries,
+      approvalByToolUseId,
+      pendingToolUseIds,
+      autoApprovedDecisions,
+      sessionId
+    ]
   )
 
   const groupedItems = useMemo(() => groupConsecutiveToolRows(rows), [rows])
@@ -643,7 +674,7 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
       // "no path known", just sends bytes with no path annotation.
       path: a.path ?? ''
     }))
-    if (!session || session.busy) return
+    if (!session || state === 'exited') return
     if (!text && images.length === 0) return
     window.api.sendJsonClaudeMessage(
       sessionId,
@@ -950,7 +981,6 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
         <button
           onClick={() => send()}
           disabled={
-            busy ||
             (!draft.trim() && attachments.length === 0) ||
             state === 'exited'
           }
