@@ -401,6 +401,83 @@ describe('jsonClaudeReducer', () => {
     expect(next).toBe(initialJsonClaude)
   })
 
+  it('userEntriesUnqueued clears isQueued from all user entries', () => {
+    let state = seedSession(initialJsonClaude)
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/entryAppended',
+      payload: {
+        sessionId: SID,
+        entry: {
+          entryId: 'u1',
+          kind: 'user',
+          text: 'queued one',
+          timestamp: 1,
+          isQueued: true
+        }
+      }
+    })
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/entryAppended',
+      payload: {
+        sessionId: SID,
+        entry: {
+          entryId: 'u2',
+          kind: 'user',
+          text: 'queued two',
+          timestamp: 2,
+          isQueued: true
+        }
+      }
+    })
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/userEntriesUnqueued',
+      payload: { sessionId: SID }
+    })
+    expect(state.sessions[SID].entries[0].isQueued).toBeUndefined()
+    expect(state.sessions[SID].entries[1].isQueued).toBeUndefined()
+  })
+
+  it('userEntriesUnqueued is a no-op when no entries are queued', () => {
+    const state = seedSession(initialJsonClaude)
+    const next = jsonClaudeReducer(state, {
+      type: 'jsonClaude/userEntriesUnqueued',
+      payload: { sessionId: SID }
+    })
+    expect(next).toBe(state)
+  })
+
+  it('entryRemoved drops the matching entry by id', () => {
+    let state = seedSession(initialJsonClaude)
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/entryAppended',
+      payload: {
+        sessionId: SID,
+        entry: { entryId: 'u1', kind: 'user', text: 'a', timestamp: 1 }
+      }
+    })
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/entryAppended',
+      payload: {
+        sessionId: SID,
+        entry: { entryId: 'u2', kind: 'user', text: 'b', timestamp: 2 }
+      }
+    })
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/entryRemoved',
+      payload: { sessionId: SID, entryId: 'u1' }
+    })
+    expect(state.sessions[SID].entries.map((e) => e.entryId)).toEqual(['u2'])
+  })
+
+  it('entryRemoved is a no-op when the id is absent', () => {
+    const state = seedSession(initialJsonClaude)
+    const next = jsonClaudeReducer(state, {
+      type: 'jsonClaude/entryRemoved',
+      payload: { sessionId: SID, entryId: 'missing' }
+    })
+    expect(next).toBe(state)
+  })
+
   it('slashCommandsChanged populates the per-session list', () => {
     let state = seedSession(initialJsonClaude)
     expect(state.sessions[SID].slashCommands).toEqual([])

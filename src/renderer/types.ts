@@ -386,6 +386,7 @@ export interface ElectronAPI {
     text: string,
     images?: Array<{ mediaType: string; data: string; path: string }>
   ): void
+  cancelQueuedJsonClaudeMessage(id: string, messageId: string): void
   writeJsonClaudeAttachmentImage(
     base64: string,
     mediaType: string

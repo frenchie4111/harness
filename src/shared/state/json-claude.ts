@@ -45,6 +45,12 @@ export interface JsonClaudeChatEntry {
    *  assistantEntryFinalized. The renderer uses this to draw a
    *  blinking cursor at the end of the text. */
   isPartial?: boolean
+  /** True for a user entry that was typed while busy=true and has
+   *  been written to stdin but not yet resolved by claude (i.e.,
+   *  no `result` boundary has fired since it was queued). The
+   *  renderer styles these as dashed/muted "queued" bubbles with
+   *  a cancel affordance. Cleared on the next `result`. */
+  isQueued?: boolean
   /** Image attachments sent with this user message. Only the on-disk
    *  path + media type live in the slice — bytes would balloon the
    *  state event payload. The renderer lazy-fetches each path via the
@@ -164,6 +170,14 @@ export type JsonClaudeEvent =
   | {
       type: 'jsonClaude/permissionModeChanged'
       payload: { sessionId: string; mode: JsonClaudePermissionMode }
+    }
+  | {
+      type: 'jsonClaude/userEntriesUnqueued'
+      payload: { sessionId: string }
+    }
+  | {
+      type: 'jsonClaude/entryRemoved'
+      payload: { sessionId: string; entryId: string }
     }
   | {
       type: 'jsonClaude/slashCommandsChanged'
@@ -461,6 +475,41 @@ export function jsonClaudeReducer(
             ...session,
             permissionMode: event.payload.mode
           }
+        }
+      }
+    }
+    case 'jsonClaude/userEntriesUnqueued': {
+      const session = state.sessions[event.payload.sessionId]
+      if (!session) return state
+      let changed = false
+      const nextEntries = session.entries.map((entry) => {
+        if (!entry.isQueued) return entry
+        changed = true
+        const { isQueued: _drop, ...rest } = entry
+        void _drop
+        return rest
+      })
+      if (!changed) return state
+      return {
+        ...state,
+        sessions: {
+          ...state.sessions,
+          [session.sessionId]: { ...session, entries: nextEntries }
+        }
+      }
+    }
+    case 'jsonClaude/entryRemoved': {
+      const session = state.sessions[event.payload.sessionId]
+      if (!session) return state
+      const next = session.entries.filter(
+        (e) => e.entryId !== event.payload.entryId
+      )
+      if (next.length === session.entries.length) return state
+      return {
+        ...state,
+        sessions: {
+          ...state.sessions,
+          [session.sessionId]: { ...session, entries: next }
         }
       }
     }

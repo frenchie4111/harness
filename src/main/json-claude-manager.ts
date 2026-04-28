@@ -446,14 +446,62 @@ export class JsonClaudeManager {
   ): void {
     const inst = this.instances.get(sessionId)
     if (!inst) return
+    // Mid-turn injection: if a turn is already in flight, append the
+    // user entry inline (so it lands in conversation order between
+    // whatever assistant content was streaming and whatever comes
+    // next) tagged isQueued, and write to stdin immediately. Claude's
+    // stream-json input buffers between agent-loop steps, so the
+    // message gets injected at the next safe boundary (typically
+    // post-tool_result) within the current turn — matching the TUI's
+    // interject-while-busy behavior. On `result` we clear the
+    // isQueued flag so the bubble loses its dashed/queued styling.
+    const session =
+      this.store.getSnapshot().state.jsonClaude.sessions[sessionId]
+    if (session?.busy) {
+      this.appendUserEntry(inst, text, images, {
+        entryId: `${sessionId}-uq-${inst.entryCounter++}`,
+        isQueued: true
+      })
+      this.writeUserStdin(inst, text, images)
+      return
+    }
+    this.writeUserTurn(inst, text, images)
+  }
+
+  /** Internal: push a fresh user turn to the subprocess + slice. The
+   *  busy/queue gate above this is the only place that should decide
+   *  whether a message goes through here vs. the mid-turn injection
+   *  path. */
+  private writeUserTurn(
+    inst: JsonClaudeInstance,
+    text: string,
+    images?: Array<{ mediaType: string; data: string; path: string }>
+  ): void {
+    this.appendUserEntry(inst, text, images, {
+      entryId: `${inst.sessionId}-u-${inst.entryCounter++}`
+    })
+    this.dispatchBusy(inst.sessionId, true)
+    this.writeUserStdin(inst, text, images)
+  }
+
+  /** Append a user entry to the slice. Path-only image refs (no bytes)
+   *  so the renderer can fetch each for thumbnail rendering without
+   *  bloating the state event. */
+  private appendUserEntry(
+    inst: JsonClaudeInstance,
+    text: string,
+    images:
+      | Array<{ mediaType: string; data: string; path: string }>
+      | undefined,
+    extra: { entryId: string; isQueued?: boolean }
+  ): void {
     const hasImages = !!images && images.length > 0
     this.appendEntry(inst, {
       kind: 'user',
       text,
       timestamp: Date.now(),
-      entryId: `${sessionId}-u-${inst.entryCounter++}`,
-      // Path-only image refs (no bytes) so the renderer can fetch each
-      // for thumbnail rendering without bloating the state event.
+      entryId: extra.entryId,
+      ...(extra.isQueued ? { isQueued: true } : {}),
       ...(hasImages
         ? {
             images: images!
@@ -462,20 +510,26 @@ export class JsonClaudeManager {
           }
         : {})
     })
-    this.dispatchBusy(sessionId, true)
-    // Build content array when images are attached. The Anthropic
-    // Messages API (which claude -p stream-json proxies) expects:
-    //   [{type:'text', text}, {type:'image', source:{type:'base64',
-    //     media_type, data}}]
-    // String content stays the wire shape when there are no images so
-    // we don't change the format for the most common path.
-    //
-    // We also annotate the text block with a "(image attached at <path>)"
-    // line per image so Claude has both the inline pixels (for instant
-    // recognition) and an on-disk path (for Read/Bash/Write tool calls
-    // — moving, transforming, copying). Pasted images are written by
-    // the renderer via writeJsonClaudeAttachmentImage; dropped images
-    // reuse the original disk path.
+  }
+
+  /** Write a `{type:'user', message:{role,content}}` frame to claude's
+   *  stdin, building a multi-block content array when images are
+   *  attached. The Anthropic Messages API (which claude -p stream-json
+   *  proxies) expects:
+   *    [{type:'text', text}, {type:'image', source:{type:'base64',
+   *      media_type, data}}]
+   *  String content stays the wire shape when there are no images so
+   *  we don't change the format for the most common path. We also
+   *  annotate the text block with a "(image attached at <path>)" line
+   *  per image so Claude has both the inline pixels (for instant
+   *  recognition) and an on-disk path (for Read/Bash/Write tool calls
+   *  — moving, transforming, copying). */
+  private writeUserStdin(
+    inst: JsonClaudeInstance,
+    text: string,
+    images?: Array<{ mediaType: string; data: string; path: string }>
+  ): void {
+    const hasImages = !!images && images.length > 0
     const annotatedText = hasImages
       ? [
           text,
@@ -508,10 +562,24 @@ export class JsonClaudeManager {
     } catch (err) {
       log(
         'json-claude',
-        `stdin write failed sessionId=${sessionId}`,
+        `stdin write failed sessionId=${inst.sessionId}`,
         err instanceof Error ? err.message : String(err)
       )
     }
+  }
+
+  /** Remove a queued user entry from the renderer view. NOTE: the
+   *  message text is already in claude's stdin buffer by the time the
+   *  user clicks cancel, so this is UI-only — claude will still
+   *  process the message on the next agent-loop step. The promoted
+   *  entry never gets re-added because we only clear isQueued (we
+   *  don't re-create an entry). On reload, however, claude's
+   *  session.jsonl will reseed the message. */
+  cancelQueued(sessionId: string, entryId: string): void {
+    this.store.dispatch({
+      type: 'jsonClaude/entryRemoved',
+      payload: { sessionId, entryId }
+    })
   }
 
   /** Send a stdin control_request that aborts the current turn while
@@ -541,6 +609,16 @@ export class JsonClaudeManager {
         err instanceof Error ? err.message : String(err)
       )
     }
+    // Drop the dashed/queued styling on any in-flight queued entries —
+    // the user is bailing on the current turn. NOTE: those messages are
+    // already in claude's stdin buffer; we don't have a flush mechanism,
+    // so claude will still process them on the next agent-loop pass
+    // unless the interrupt itself drains the buffer (TBD — observe
+    // behavior in test).
+    this.store.dispatch({
+      type: 'jsonClaude/userEntriesUnqueued',
+      payload: { sessionId }
+    })
     // Flip busy off optimistically; the result event (when the abort
     // resolves into a turn boundary) will also clear it.
     this.dispatchBusy(sessionId, false)
@@ -850,6 +928,10 @@ export class JsonClaudeManager {
     }
     if (type === 'result') {
       this.dispatchBusy(instance.sessionId, false)
+      this.store.dispatch({
+        type: 'jsonClaude/userEntriesUnqueued',
+        payload: { sessionId: instance.sessionId }
+      })
       return
     }
     // Ignore rate_limit_event and unknown types for now — they become
@@ -1054,6 +1136,7 @@ export class JsonClaudeManager {
       payload: { sessionId, busy }
     })
   }
+
 }
 
 function streamEventBlockToMessageBlock(
