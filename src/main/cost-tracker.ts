@@ -10,6 +10,14 @@
 // assistant turn), so the simpler full-reparse beats incremental
 // tailing + state juggling.
 //
+// JSON-mode tabs don't fire Claude's Stop hook (we scrub the
+// HARNESS_TERMINAL_ID env var so user-scope hooks stay inert under
+// `claude -p`). Instead, we subscribe to the store and trigger the same
+// reparse on `jsonClaude/busyChanged` transitions to false (the boundary
+// JsonClaudeManager dispatches when claude emits a `result` event), and
+// on `jsonClaude/sessionStarted` so reopened tabs rehydrate from the
+// on-disk JSONL even if the costs slice doesn't persist their entry.
+//
 // Per-block token counts aren't in the Anthropic usage field, so we
 // estimate the $ split by char-length proportion within each turn:
 // the turn's known output-rate cost is divided across this message's
@@ -21,7 +29,10 @@
 // outputs keep costing money as long as they sit in the context.
 
 import { readFileSync } from 'fs'
+import { homedir } from 'os'
+import { join } from 'path'
 import type { Store } from './store'
+import type { StateEvent } from '../shared/state'
 import { onStopEvent, type StopEvent } from './hooks'
 import {
   emptyTally,
@@ -49,17 +60,23 @@ interface ParseResult {
 }
 
 export class CostTracker {
-  private unsubscribe: (() => void) | null = null
+  private unsubscribeHook: (() => void) | null = null
+  private unsubscribeStore: (() => void) | null = null
 
   constructor(private store: Store) {}
 
   start(): void {
-    this.unsubscribe = onStopEvent((ev) => this.handleStop(ev))
+    this.unsubscribeHook = onStopEvent((ev) => this.handleStop(ev))
+    this.unsubscribeStore = this.store.subscribe((event) =>
+      this.handleStoreEvent(event)
+    )
   }
 
   stop(): void {
-    this.unsubscribe?.()
-    this.unsubscribe = null
+    this.unsubscribeHook?.()
+    this.unsubscribeHook = null
+    this.unsubscribeStore?.()
+    this.unsubscribeStore = null
   }
 
   private handleStop(ev: StopEvent): void {
@@ -84,6 +101,65 @@ export class CostTracker {
       )
     }
   }
+
+  private handleStoreEvent(event: StateEvent): void {
+    if (
+      event.type === 'jsonClaude/busyChanged' &&
+      event.payload.busy === false
+    ) {
+      this.recordJsonModeTurnComplete(event.payload.sessionId)
+      return
+    }
+    if (event.type === 'jsonClaude/sessionStarted') {
+      this.recordJsonModeTurnComplete(event.payload.sessionId)
+    }
+  }
+
+  /** Reparse the JSON-mode session's on-disk JSONL and dispatch fresh
+   *  cost totals. Skips the dispatch when parsing yields no model data
+   *  so an early reparse (resume from disk before claude has flushed)
+   *  doesn't wipe an existing hydrated entry. The next reparse picks
+   *  things up. */
+  private recordJsonModeTurnComplete(sessionId: string): void {
+    const session =
+      this.store.getSnapshot().state.jsonClaude.sessions[sessionId]
+    if (!session) return
+    const transcriptPath = jsonClaudeTranscriptPath(
+      session.worktreePath,
+      sessionId
+    )
+    try {
+      const parsed = parseTranscript(transcriptPath)
+      if (Object.keys(parsed.byModel).length === 0) return
+      const usage: SessionUsage = {
+        sessionId,
+        transcriptPath,
+        byModel: parsed.byModel,
+        breakdown: parsed.breakdown,
+        currentModel: parsed.currentModel,
+        updatedAt: Date.now()
+      }
+      this.store.dispatch({
+        type: 'costs/usageUpdated',
+        payload: { terminalId: sessionId, usage }
+      })
+    } catch (err) {
+      log(
+        'cost-tracker',
+        `failed to ingest json-claude ${transcriptPath}: ${err instanceof Error ? err.message : err}`
+      )
+    }
+  }
+}
+
+function jsonClaudeTranscriptPath(worktreePath: string, sessionId: string): string {
+  return join(
+    homedir(),
+    '.claude',
+    'projects',
+    worktreePath.replace(/[^a-zA-Z0-9]/g, '-'),
+    `${sessionId}.jsonl`
+  )
 }
 
 function parseTranscript(path: string): ParseResult {
