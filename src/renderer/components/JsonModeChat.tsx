@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import rehypeHighlight from 'rehype-highlight'
-import { Square, Terminal, FileText, X } from 'lucide-react'
+import { Brain, Square, Terminal, FileText, X } from 'lucide-react'
 import { useJsonClaude } from '../store'
 import { useJsonClaudeApprovals } from '../hooks/useJsonClaudeApprovals'
 import { JsonClaudeApprovalCard } from './JsonClaudeApprovalCard'
@@ -46,6 +46,81 @@ interface RenderedRow {
   toolName?: string
   hasError?: boolean
   hasPendingApproval?: boolean
+  /** Marks this row as a thinking card. Lives in the 'tool' bucket so
+   *  it groups with adjacent tool_use rows (thinking + tools are both
+   *  agent work between user-facing replies), but ToolGroup counts it
+   *  separately in the header. */
+  isThinking?: boolean
+}
+
+function ThinkingCard({
+  text,
+  isPartial
+}: {
+  text: string
+  isPartial: boolean
+}): JSX.Element {
+  // Default expanded while streaming so the user can see thoughts land in
+  // real time; auto-collapse once the model moves on so finalized
+  // transcripts don't drown the surrounding chat in raw thought-text.
+  // Init from isPartial so cards that mount already-finalized (e.g.
+  // seed-from-transcript on reload) start collapsed too — without this,
+  // the partial→not transition effect below never fires and they'd stay
+  // open forever.
+  const [expanded, setExpanded] = useState<boolean>(isPartial)
+  const wasPartial = useRef<boolean>(isPartial)
+  useEffect(() => {
+    if (wasPartial.current && !isPartial) setExpanded(false)
+    wasPartial.current = isPartial
+  }, [isPartial])
+
+  const charCount = text.length
+  return (
+    <div className="my-1 rounded border border-border/40 bg-app/30 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="w-full px-2 py-1 text-[11px] flex items-center gap-2 hover:bg-app/50 cursor-pointer text-left transition-colors"
+      >
+        <span className="text-muted text-[9px] w-2 shrink-0 select-none">
+          {expanded ? '▾' : '▸'}
+        </span>
+        <Brain size={11} className="text-muted shrink-0" />
+        <span className="font-mono text-muted shrink-0">
+          {isPartial ? 'Thinking' : 'Thought'}
+        </span>
+        {isPartial && (
+          <span
+            className="json-claude-spinner shrink-0"
+            aria-label="thinking"
+          />
+        )}
+        {charCount > 0 && (
+          <span className="text-muted/60 text-[10px] shrink-0">
+            · {charCount} chars
+          </span>
+        )}
+      </button>
+      {expanded && (
+        <div className="px-3 py-2 border-t border-border/30 markdown italic text-muted text-xs leading-relaxed">
+          {text ? (
+            <ReactMarkdown rehypePlugins={[rehypeHighlight]}>
+              {text}
+            </ReactMarkdown>
+          ) : !isPartial ? (
+            // Claude Code can return signed-but-empty thinking blocks
+            // (the API tier elides plaintext but keeps a signature so
+            // the model can verify its prior reasoning on the next
+            // turn). Surface that explicitly instead of an empty card.
+            <span className="opacity-70">(hidden)</span>
+          ) : null}
+          {isPartial && (
+            <span className="json-claude-cursor" aria-label="streaming" />
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
 function renderEntries(
@@ -96,8 +171,22 @@ function renderEntries(
       continue
     }
     if (entry.kind === 'assistant' && entry.blocks) {
+      let thinkingIdx = 0
       for (const block of entry.blocks) {
-        if (block.type === 'text' && (block.text || entry.isPartial)) {
+        if (block.type === 'thinking') {
+          const idx = thinkingIdx++
+          rows.push({
+            key: `${entry.entryId}-th-${idx}`,
+            type: 'tool',
+            isThinking: true,
+            node: (
+              <ThinkingCard
+                text={block.text || ''}
+                isPartial={!!entry.isPartial}
+              />
+            )
+          })
+        } else if (block.type === 'text' && (block.text || entry.isPartial)) {
           rows.push({
             key: `${entry.entryId}-t`,
             type: 'text',
@@ -688,6 +777,25 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
             onResolve={(result) => resolve(a.requestId, result)}
           />
         ))}
+        {(() => {
+          // In-chat "waiting on next assistant turn" indicator. Covers
+          // the dead time between user-send and message_start, and the
+          // gap between a tool_result and the next assistant message
+          // start. Skipped while an assistant entry is actively
+          // streaming — the partial entry's own cursor signals progress
+          // there.
+          if (!busy) return null
+          const last = session?.entries[session.entries.length - 1]
+          const waiting =
+            !last || last.kind === 'user' || last.kind === 'tool_result'
+          if (!waiting) return null
+          return (
+            <div className="flex items-center gap-2 px-2 py-1 text-[11px] text-muted italic">
+              <span className="json-claude-spinner" aria-label="thinking" />
+              <span>thinking…</span>
+            </div>
+          )
+        })()}
         {state === 'exited' && (
           <div className="flex items-center gap-3 text-xs text-danger italic">
             <span>
@@ -845,7 +953,6 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
         <div className="flex items-center gap-1.5" title={`session ${state}`}>
           <span className={`w-1.5 h-1.5 rounded-full ${stateDot}`} />
           <span>{state}</span>
-          {busy && <span className="italic">· thinking…</span>}
         </div>
         <div className="flex-1" />
         {busy && (

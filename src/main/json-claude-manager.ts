@@ -51,6 +51,7 @@ interface PartialMessageState {
   messageId: string
   entryId: string
   pendingText: string
+  pendingThinking: string
   flushTimer: NodeJS.Timeout | null
   placeholderCreated: boolean
 }
@@ -794,8 +795,8 @@ export class JsonClaudeManager {
         this.clearPartial(instance)
         return
       }
-      // Drain any pending coalesced text before reconciling.
-      this.flushPartialText(instance)
+      // Drain any pending coalesced deltas before reconciling.
+      this.flushPartialDeltas(instance)
       const message = parsed['message'] as { id?: string } | undefined
       const messageId = message?.id
       if (
@@ -881,6 +882,7 @@ export class JsonClaudeManager {
         messageId,
         entryId: `${instance.sessionId}-a-${messageId}`,
         pendingText: '',
+        pendingThinking: '',
         flushTimer: null,
         placeholderCreated: false
       }
@@ -891,9 +893,9 @@ export class JsonClaudeManager {
       const rawBlock = event['content_block'] as Record<string, unknown> | undefined
       const newBlock = streamEventBlockToMessageBlock(rawBlock)
       if (!newBlock) return
-      // Make sure any pending text deltas land in the previous text
-      // block before we introduce a new block.
-      this.flushPartialText(instance)
+      // Make sure any pending deltas land in the previous block before
+      // we introduce a new block.
+      this.flushPartialDeltas(instance)
       if (!instance.partial.placeholderCreated) {
         this.appendStoreEntry(instance.sessionId, {
           kind: 'assistant',
@@ -917,17 +919,25 @@ export class JsonClaudeManager {
     }
     if (eventType === 'content_block_delta') {
       const delta = event['delta'] as
-        | { type?: string; text?: string }
+        | { type?: string; text?: string; thinking?: string }
         | undefined
       if (delta?.type === 'text_delta' && typeof delta.text === 'string') {
         instance.partial.pendingText += delta.text
         this.scheduleDeltaFlush(instance)
+      } else if (
+        delta?.type === 'thinking_delta' &&
+        typeof delta.thinking === 'string'
+      ) {
+        instance.partial.pendingThinking += delta.thinking
+        this.scheduleDeltaFlush(instance)
       }
       // input_json_delta is intentionally dropped — see backlog.
+      // signature_delta carries the cryptographic signature for a
+      // thinking block; nothing to render in the UI.
       return
     }
     if (eventType === 'content_block_stop' || eventType === 'message_stop') {
-      this.flushPartialText(instance)
+      this.flushPartialDeltas(instance)
       return
     }
     // message_delta carries stop_reason + usage; we don't render either
@@ -953,16 +963,25 @@ export class JsonClaudeManager {
       // have been torn down between schedule and fire.
       const live = this.instances.get(instance.sessionId)
       if (!live) return
-      this.flushPartialText(live)
+      this.flushPartialDeltas(live)
     }, PARTIAL_TEXT_FLUSH_MS)
   }
 
-  private flushPartialText(instance: JsonClaudeInstance): void {
+  /** Drain whichever delta buffers have content. Both share a single
+   *  flush timer because there's only ever one block actively receiving
+   *  deltas at a time. */
+  private flushPartialDeltas(instance: JsonClaudeInstance): void {
     if (!instance.partial) return
     if (instance.partial.flushTimer) {
       clearTimeout(instance.partial.flushTimer)
       instance.partial.flushTimer = null
     }
+    this.flushPartialText(instance)
+    this.flushPartialThinking(instance)
+  }
+
+  private flushPartialText(instance: JsonClaudeInstance): void {
+    if (!instance.partial) return
     if (!instance.partial.pendingText) return
     const text = instance.partial.pendingText
     instance.partial.pendingText = ''
@@ -977,12 +996,30 @@ export class JsonClaudeManager {
     })
   }
 
+  private flushPartialThinking(instance: JsonClaudeInstance): void {
+    if (!instance.partial) return
+    if (!instance.partial.pendingThinking) return
+    const text = instance.partial.pendingThinking
+    instance.partial.pendingThinking = ''
+    this.ensurePlaceholderEntry(instance)
+    this.store.dispatch({
+      type: 'jsonClaude/assistantThinkingDelta',
+      payload: {
+        sessionId: instance.sessionId,
+        entryId: instance.partial.entryId,
+        textDelta: text
+      }
+    })
+  }
+
   private clearPartial(instance: JsonClaudeInstance): void {
     if (!instance.partial) return
     if (instance.partial.flushTimer) {
       clearTimeout(instance.partial.flushTimer)
       instance.partial.flushTimer = null
     }
+    instance.partial.pendingText = ''
+    instance.partial.pendingThinking = ''
     instance.partial = null
   }
 
@@ -1030,6 +1067,15 @@ function streamEventBlockToMessageBlock(
       text: typeof block['text'] === 'string' ? (block['text'] as string) : ''
     }
   }
+  if (t === 'thinking') {
+    return {
+      type: 'thinking',
+      text:
+        typeof block['thinking'] === 'string'
+          ? (block['thinking'] as string)
+          : ''
+    }
+  }
   if (t === 'tool_use') {
     return {
       type: 'tool_use',
@@ -1058,6 +1104,14 @@ function extractAssistantBlocks(ev: Record<string, unknown>): JsonClaudeMessageB
     const t = block['type']
     if (t === 'text' && typeof block['text'] === 'string') {
       out.push({ type: 'text', text: block['text'] as string })
+    } else if (t === 'thinking') {
+      out.push({
+        type: 'thinking',
+        text:
+          typeof block['thinking'] === 'string'
+            ? (block['thinking'] as string)
+            : ''
+      })
     } else if (t === 'tool_use') {
       out.push({
         type: 'tool_use',

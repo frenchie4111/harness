@@ -17,8 +17,10 @@ export type JsonClaudeSessionState =
 export type JsonClaudePermissionMode = 'default' | 'acceptEdits' | 'plan'
 
 export interface JsonClaudeMessageBlock {
-  type: 'text' | 'tool_use' | 'tool_result'
-  // For 'text': markdown content.
+  type: 'text' | 'thinking' | 'tool_use' | 'tool_result'
+  // For 'text' and 'thinking': markdown content. The wire-format
+  // `thinking` field on extended-thinking blocks maps onto this same
+  // field so the delta-append code stays uniform.
   text?: string
   // For 'tool_use': content block fields.
   id?: string
@@ -112,6 +114,10 @@ export type JsonClaudeEvent =
     }
   | {
       type: 'jsonClaude/assistantTextDelta'
+      payload: { sessionId: string; entryId: string; textDelta: string }
+    }
+  | {
+      type: 'jsonClaude/assistantThinkingDelta'
       payload: { sessionId: string; entryId: string; textDelta: string }
     }
   | {
@@ -264,6 +270,49 @@ export function jsonClaudeReducer(
         }
         const nextBlocks = blocks.map((b, i) =>
           i === lastTextIdx ? { ...b, text: (b.text || '') + textDelta } : b
+        )
+        changed = true
+        return { ...entry, blocks: nextBlocks }
+      })
+      if (!changed) return state
+      return {
+        ...state,
+        sessions: {
+          ...state.sessions,
+          [session.sessionId]: { ...session, entries: nextEntries }
+        }
+      }
+    }
+    case 'jsonClaude/assistantThinkingDelta': {
+      const session = state.sessions[event.payload.sessionId]
+      if (!session) return state
+      const { entryId, textDelta } = event.payload
+      let changed = false
+      const nextEntries = session.entries.map((entry) => {
+        if (entry.entryId !== entryId) return entry
+        const blocks = entry.blocks ?? []
+        // Target the *last* thinking block — same rationale as
+        // assistantTextDelta: deltas always belong to the most recently
+        // opened content block of that type.
+        let lastThinkingIdx = -1
+        for (let i = blocks.length - 1; i >= 0; i--) {
+          if (blocks[i].type === 'thinking') {
+            lastThinkingIdx = i
+            break
+          }
+        }
+        if (lastThinkingIdx === -1) {
+          // Defensive: content_block_start should have created a
+          // thinking placeholder before any deltas land. If it didn't,
+          // append one so the delta isn't dropped on the floor.
+          changed = true
+          return {
+            ...entry,
+            blocks: [...blocks, { type: 'thinking' as const, text: textDelta }]
+          }
+        }
+        const nextBlocks = blocks.map((b, i) =>
+          i === lastThinkingIdx ? { ...b, text: (b.text || '') + textDelta } : b
         )
         changed = true
         return { ...entry, blocks: nextBlocks }
