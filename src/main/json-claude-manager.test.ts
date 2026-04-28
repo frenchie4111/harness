@@ -14,8 +14,9 @@ function makeFakeProc() {
     stderr: typeof stderr
     stdin: typeof stdin
     kill: ReturnType<typeof vi.fn>
+    spawnArgs: string[]
   }
-  Object.assign(proc, { stdout, stderr, stdin, kill: vi.fn() })
+  Object.assign(proc, { stdout, stderr, stdin, kill: vi.fn(), spawnArgs: [] })
   return proc
 }
 
@@ -26,10 +27,21 @@ vi.mock('child_process', () => ({
   spawn: vi.fn((command: string, args: string[]) => {
     spawnCalls.push({ command, args })
     const proc = makeFakeProc()
+    proc.spawnArgs = args
     spawnedProcs.push(proc)
     return proc
   })
 }))
+
+/** Filter to the real json-claude session spawns, excluding the
+ *  slash-command probe that JsonClaudeManager fires alongside each
+ *  create(). The session command line passes --permission-prompt-tool;
+ *  the probe doesn't. */
+function sessionProcs(): typeof spawnedProcs {
+  return spawnedProcs.filter((p) =>
+    p.spawnArgs.some((a) => a.includes('--permission-prompt-tool'))
+  )
+}
 
 vi.mock('electron', () => ({
   app: { getPath: () => '/tmp', setPath: () => {}, isPackaged: false }
@@ -75,9 +87,14 @@ describe('JsonClaudeManager', () => {
     })
   }
 
-  /** The manager spawns `/bin/zsh -ilc <cmdLine>` — return cmdLine. */
+  /** The manager spawns `/bin/zsh -ilc <cmdLine>` — return the last
+   *  session cmdLine, skipping the slash-command probe spawn (which
+   *  doesn't pass --permission-prompt-tool). */
   function lastSpawnCmdLine(): string {
-    const call = spawnCalls[spawnCalls.length - 1]
+    const sessionCalls = spawnCalls.filter((c) =>
+      c.args.some((a) => a.includes('--permission-prompt-tool'))
+    )
+    const call = sessionCalls[sessionCalls.length - 1]
     expect(call).toBeDefined()
     expect(call.command).toBe('/bin/zsh')
     expect(call.args[0]).toBe('-ilc')
@@ -93,7 +110,7 @@ describe('JsonClaudeManager', () => {
     // Initial spawn — instance A.
     store.dispatch({ type: 'jsonClaude/sessionStarted', payload: { sessionId, worktreePath: cwd } })
     mgr.create(sessionId, cwd)
-    const procA = spawnedProcs[0]
+    const procA = sessionProcs()[0]
     expect(procA).toBeDefined()
     expect(store.getSnapshot().state.jsonClaude.sessions[sessionId]?.state).toBe('running')
 
@@ -111,7 +128,7 @@ describe('JsonClaudeManager', () => {
     // Re-create — instance B. Same sessionId, fresh proc.
     store.dispatch({ type: 'jsonClaude/sessionStarted', payload: { sessionId, worktreePath: cwd } })
     mgr.create(sessionId, cwd)
-    const procB = spawnedProcs[1]
+    const procB = sessionProcs()[1]
     expect(procB).toBeDefined()
     expect(procB).not.toBe(procA)
     expect(store.getSnapshot().state.jsonClaude.sessions[sessionId]?.state).toBe('running')
@@ -159,8 +176,9 @@ describe('JsonClaudeManager', () => {
 
     // Without the guard, state would be reset to 'connecting' here.
     expect(store.getSnapshot().state.jsonClaude.sessions[sessionId]?.state).toBe('running')
-    // Only one proc was actually spawned — guard short-circuited the second call.
-    expect(spawnedProcs.length).toBe(1)
+    // Only one session proc was actually spawned — guard short-circuited
+    // the second call. (Probes are per-cwd, also one.)
+    expect(sessionProcs().length).toBe(1)
   })
 
   it('passes --append-system-prompt, --model, --name when launch settings are set', () => {
@@ -220,7 +238,7 @@ describe('JsonClaudeManager', () => {
 
     store.dispatch({ type: 'jsonClaude/sessionStarted', payload: { sessionId, worktreePath: cwd } })
     mgr.create(sessionId, cwd)
-    const proc = spawnedProcs[0]
+    const proc = sessionProcs()[0]
     expect(store.getSnapshot().state.jsonClaude.sessions[sessionId]?.state).toBe('running')
 
     // Subprocess exits on its own — guard should NOT bail because this is

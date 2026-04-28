@@ -17,8 +17,10 @@ export type JsonClaudeSessionState =
 export type JsonClaudePermissionMode = 'default' | 'acceptEdits' | 'plan'
 
 export interface JsonClaudeMessageBlock {
-  type: 'text' | 'tool_use' | 'tool_result'
-  // For 'text': markdown content.
+  type: 'text' | 'thinking' | 'tool_use' | 'tool_result'
+  // For 'text' and 'thinking': markdown content. The wire-format
+  // `thinking` field on extended-thinking blocks maps onto this same
+  // field so the delta-append code stays uniform.
   text?: string
   // For 'tool_use': content block fields.
   id?: string
@@ -49,6 +51,14 @@ export interface JsonClaudeChatEntry {
    *  renderer styles these as dashed/muted "queued" bubbles with
    *  a cancel affordance. Cleared on the next `result`. */
   isQueued?: boolean
+  /** Image attachments sent with this user message. Only the on-disk
+   *  path + media type live in the slice — bytes would balloon the
+   *  state event payload. The renderer lazy-fetches each path via the
+   *  jsonClaude:readAttachmentImage IPC to render thumbnails in the
+   *  chat history. The path is also embedded in the user message that
+   *  Claude sees ("(image attached at <path>)") so the model can
+   *  Read/Bash/Write the file. */
+  images?: Array<{ path: string; mediaType: string }>
 }
 
 export interface JsonClaudeSession {
@@ -67,6 +77,11 @@ export interface JsonClaudeSession {
    *  this kills + respawns with --resume so the mode change is
    *  effectively mid-session. */
   permissionMode: JsonClaudePermissionMode
+  /** Slash command names (no leading `/`) advertised by Claude in the
+   *  system/init message. Includes built-ins like 'clear'/'compact', the
+   *  user's enabled Skills, plugin commands, and project-local
+   *  `.claude/commands/*.md`. Empty until init lands. */
+  slashCommands: string[]
 }
 
 export interface JsonClaudePendingApproval {
@@ -105,6 +120,10 @@ export type JsonClaudeEvent =
     }
   | {
       type: 'jsonClaude/assistantTextDelta'
+      payload: { sessionId: string; entryId: string; textDelta: string }
+    }
+  | {
+      type: 'jsonClaude/assistantThinkingDelta'
       payload: { sessionId: string; entryId: string; textDelta: string }
     }
   | {
@@ -160,6 +179,10 @@ export type JsonClaudeEvent =
       type: 'jsonClaude/entryRemoved'
       payload: { sessionId: string; entryId: string }
     }
+  | {
+      type: 'jsonClaude/slashCommandsChanged'
+      payload: { sessionId: string; slashCommands: string[] }
+    }
 
 export const initialJsonClaude: JsonClaudeState = {
   sessions: {},
@@ -180,9 +203,9 @@ export function jsonClaudeReducer(
   switch (event.type) {
     case 'jsonClaude/sessionStarted': {
       const { sessionId, worktreePath } = event.payload
-      // Preserve entries + permissionMode if this session id already
-      // exists (re-attach on reload or mode-change respawn), reset exit
-      // bookkeeping.
+      // Preserve entries + permissionMode + slashCommands if this
+      // session id already exists (re-attach on reload or mode-change
+      // respawn), reset exit bookkeeping.
       const existing = state.sessions[sessionId]
       return {
         ...state,
@@ -196,7 +219,8 @@ export function jsonClaudeReducer(
             exitReason: null,
             entries: existing?.entries ?? [],
             busy: false,
-            permissionMode: existing?.permissionMode ?? 'default'
+            permissionMode: existing?.permissionMode ?? 'default',
+            slashCommands: existing?.slashCommands ?? []
           }
         }
       }
@@ -260,6 +284,49 @@ export function jsonClaudeReducer(
         }
         const nextBlocks = blocks.map((b, i) =>
           i === lastTextIdx ? { ...b, text: (b.text || '') + textDelta } : b
+        )
+        changed = true
+        return { ...entry, blocks: nextBlocks }
+      })
+      if (!changed) return state
+      return {
+        ...state,
+        sessions: {
+          ...state.sessions,
+          [session.sessionId]: { ...session, entries: nextEntries }
+        }
+      }
+    }
+    case 'jsonClaude/assistantThinkingDelta': {
+      const session = state.sessions[event.payload.sessionId]
+      if (!session) return state
+      const { entryId, textDelta } = event.payload
+      let changed = false
+      const nextEntries = session.entries.map((entry) => {
+        if (entry.entryId !== entryId) return entry
+        const blocks = entry.blocks ?? []
+        // Target the *last* thinking block — same rationale as
+        // assistantTextDelta: deltas always belong to the most recently
+        // opened content block of that type.
+        let lastThinkingIdx = -1
+        for (let i = blocks.length - 1; i >= 0; i--) {
+          if (blocks[i].type === 'thinking') {
+            lastThinkingIdx = i
+            break
+          }
+        }
+        if (lastThinkingIdx === -1) {
+          // Defensive: content_block_start should have created a
+          // thinking placeholder before any deltas land. If it didn't,
+          // append one so the delta isn't dropped on the floor.
+          changed = true
+          return {
+            ...entry,
+            blocks: [...blocks, { type: 'thinking' as const, text: textDelta }]
+          }
+        }
+        const nextBlocks = blocks.map((b, i) =>
+          i === lastThinkingIdx ? { ...b, text: (b.text || '') + textDelta } : b
         )
         changed = true
         return { ...entry, blocks: nextBlocks }
@@ -443,6 +510,20 @@ export function jsonClaudeReducer(
         sessions: {
           ...state.sessions,
           [session.sessionId]: { ...session, entries: next }
+        }
+      }
+    }
+    case 'jsonClaude/slashCommandsChanged': {
+      const session = state.sessions[event.payload.sessionId]
+      if (!session) return state
+      return {
+        ...state,
+        sessions: {
+          ...state.sessions,
+          [session.sessionId]: {
+            ...session,
+            slashCommands: event.payload.slashCommands
+          }
         }
       }
     }

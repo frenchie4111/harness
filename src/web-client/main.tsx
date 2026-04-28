@@ -424,9 +424,16 @@ function buildApi(transport: WebSocketClientTransport): ElectronAPI {
       req('jsonClaude:resolveApproval', requestId, result) as Promise<boolean>,
     startJsonClaude: (id, cwd) =>
       req('jsonClaude:start', id, cwd) as Promise<boolean>,
-    sendJsonClaudeMessage: (id, text) => sig('jsonClaude:send', id, text),
+    sendJsonClaudeMessage: (id, text, images) =>
+      sig('jsonClaude:send', id, text, images),
     cancelQueuedJsonClaudeMessage: (id, messageId) =>
       sig('jsonClaude:cancelQueued', id, messageId),
+    writeJsonClaudeAttachmentImage: (base64, mediaType) =>
+      req('jsonClaude:writeAttachmentImage', base64, mediaType) as Promise<
+        string | null
+      >,
+    readJsonClaudeAttachmentImage: (path) =>
+      req('jsonClaude:readAttachmentImage', path) as Promise<string | null>,
     killJsonClaude: (id) => req('jsonClaude:kill', id) as Promise<boolean>,
     interruptJsonClaude: (id) =>
       req('jsonClaude:interrupt', id) as Promise<boolean>,

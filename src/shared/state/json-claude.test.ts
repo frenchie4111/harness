@@ -122,6 +122,96 @@ describe('jsonClaudeReducer', () => {
     expect(blocks[2].text).toBe('second tail')
   })
 
+  it('assistantThinkingDelta appends to the last thinking block', () => {
+    let state = seedSession(initialJsonClaude)
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/entryAppended',
+      payload: {
+        sessionId: SID,
+        entry: {
+          entryId: 'a1',
+          kind: 'assistant',
+          blocks: [{ type: 'thinking', text: '' }],
+          timestamp: 1,
+          isPartial: true
+        }
+      }
+    })
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/assistantThinkingDelta',
+      payload: { sessionId: SID, entryId: 'a1', textDelta: 'Let me ' }
+    })
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/assistantThinkingDelta',
+      payload: { sessionId: SID, entryId: 'a1', textDelta: 'think.' }
+    })
+    expect(state.sessions[SID].entries[0].blocks?.[0].type).toBe('thinking')
+    expect(state.sessions[SID].entries[0].blocks?.[0].text).toBe(
+      'Let me think.'
+    )
+  })
+
+  it('assistantThinkingDelta targets thinking, not text, when both exist', () => {
+    let state = seedSession(initialJsonClaude)
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/entryAppended',
+      payload: {
+        sessionId: SID,
+        entry: {
+          entryId: 'a1',
+          kind: 'assistant',
+          blocks: [
+            { type: 'thinking', text: 'thought ' },
+            { type: 'text', text: 'said ' }
+          ],
+          timestamp: 1,
+          isPartial: true
+        }
+      }
+    })
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/assistantThinkingDelta',
+      payload: { sessionId: SID, entryId: 'a1', textDelta: 'more' }
+    })
+    const blocks = state.sessions[SID].entries[0].blocks!
+    expect(blocks[0].text).toBe('thought more')
+    expect(blocks[1].text).toBe('said ')
+  })
+
+  it('assistantThinkingDelta appends a thinking block when none exists', () => {
+    let state = seedSession(initialJsonClaude)
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/entryAppended',
+      payload: {
+        sessionId: SID,
+        entry: {
+          entryId: 'a1',
+          kind: 'assistant',
+          blocks: [{ type: 'text', text: 'hi' }],
+          timestamp: 1,
+          isPartial: true
+        }
+      }
+    })
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/assistantThinkingDelta',
+      payload: { sessionId: SID, entryId: 'a1', textDelta: 'hmm' }
+    })
+    const blocks = state.sessions[SID].entries[0].blocks!
+    expect(blocks).toHaveLength(2)
+    expect(blocks[1].type).toBe('thinking')
+    expect(blocks[1].text).toBe('hmm')
+  })
+
+  it('assistantThinkingDelta is a no-op for an unknown entry', () => {
+    const state = seedSession(initialJsonClaude)
+    const next = jsonClaudeReducer(state, {
+      type: 'jsonClaude/assistantThinkingDelta',
+      payload: { sessionId: SID, entryId: 'missing', textDelta: 'x' }
+    })
+    expect(next).toBe(state)
+  })
+
   it('assistantBlockAppended pushes a block onto the entry', () => {
     let state = seedSession(initialJsonClaude)
     state = jsonClaudeReducer(state, {
@@ -386,5 +476,40 @@ describe('jsonClaudeReducer', () => {
       payload: { sessionId: SID, entryId: 'missing' }
     })
     expect(next).toBe(state)
+  })
+
+  it('slashCommandsChanged populates the per-session list', () => {
+    let state = seedSession(initialJsonClaude)
+    expect(state.sessions[SID].slashCommands).toEqual([])
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/slashCommandsChanged',
+      payload: { sessionId: SID, slashCommands: ['clear', 'compact', 'review'] }
+    })
+    expect(state.sessions[SID].slashCommands).toEqual([
+      'clear',
+      'compact',
+      'review'
+    ])
+  })
+
+  it('slashCommandsChanged is a no-op for unknown session', () => {
+    const next = jsonClaudeReducer(initialJsonClaude, {
+      type: 'jsonClaude/slashCommandsChanged',
+      payload: { sessionId: 'missing', slashCommands: ['clear'] }
+    })
+    expect(next).toBe(initialJsonClaude)
+  })
+
+  it('sessionStarted preserves slashCommands across re-attach', () => {
+    let state = seedSession(initialJsonClaude)
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/slashCommandsChanged',
+      payload: { sessionId: SID, slashCommands: ['clear', 'review'] }
+    })
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/sessionStarted',
+      payload: { sessionId: SID, worktreePath: WT }
+    })
+    expect(state.sessions[SID].slashCommands).toEqual(['clear', 'review'])
   })
 })
