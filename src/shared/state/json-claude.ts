@@ -73,9 +73,10 @@ export interface JsonClaudeSession {
   /** Last text of the most recent user submission; used by the renderer to
    *  pair the echo against the user-card it just rendered optimistically. */
   busy: boolean
-  /** --permission-mode flag passed to claude at spawn time. Changing
-   *  this kills + respawns with --resume so the mode change is
-   *  effectively mid-session. */
+  /** --permission-mode flag passed to claude at spawn time. Mid-session
+   *  changes are applied via a stdin control_request (subtype
+   *  'set_permission_mode') so the in-flight turn is not aborted; the
+   *  spawn-time flag is still consulted on the next respawn. */
   permissionMode: JsonClaudePermissionMode
   /** Slash command names (no leading `/`) advertised by Claude in the
    *  system/init message. Includes built-ins like 'clear'/'compact', the
