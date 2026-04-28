@@ -181,9 +181,27 @@ export class JsonClaudeManager {
       // shapes the live stream emits, plus internal bookkeeping types
       // (queue-operation, attachment, ai-title, last-prompt) we ignore.
       if (type === 'user') {
+        // Skip SDK-synthetic user records that surround compactions and
+        // slash-command invocations. Without this filter the seeded
+        // scrollback shows the entire continuation summary as a giant
+        // user bubble plus stray '<local-command-stdout>Compacted'
+        // and '<command-name>/compact' echo lines.
+        //   isCompactSummary  — the post-compaction continuation summary
+        //   isMeta            — the '<local-command-caveat>' wrapper
+        // Plus content-prefix matches for the local-command echo pair
+        // ('<command-name>' / '<local-command-stdout>') which arrive
+        // without isMeta but are equally not user-typed input.
+        if (parsed['isCompactSummary'] === true) continue
+        if (parsed['isMeta'] === true) continue
         const message = parsed['message'] as { content?: unknown } | undefined
         const content = message?.content
         if (typeof content === 'string') {
+          if (
+            content.startsWith('<command-name>') ||
+            content.startsWith('<local-command-stdout>')
+          ) {
+            continue
+          }
           seededEntries.push({
             kind: 'user',
             text: content,
