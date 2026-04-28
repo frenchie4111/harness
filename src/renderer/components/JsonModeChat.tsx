@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import rehypeHighlight from 'rehype-highlight'
-import { Brain, Square, Terminal, FileText, X } from 'lucide-react'
+import { Brain, Square, Terminal, FileText, X, Layers } from 'lucide-react'
 import { useJsonClaude } from '../store'
 import { useJsonClaudeApprovals } from '../hooks/useJsonClaudeApprovals'
 import { JsonClaudeApprovalCard } from './JsonClaudeApprovalCard'
@@ -28,6 +28,11 @@ const BUILTIN_DESCRIPTIONS: Record<string, string> = {
   clear: 'Reset the conversation context',
   compact: 'Summarize and compact prior messages',
   context: 'Show context window usage'
+}
+
+function formatTokenCount(n: number): string {
+  if (n >= 1000) return `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k`
+  return String(n)
 }
 
 interface JsonModeChatProps {
@@ -123,6 +128,72 @@ function ThinkingCard({
   )
 }
 
+function CompactCard({
+  trigger,
+  preTokens,
+  postTokens
+}: {
+  trigger?: 'auto' | 'manual'
+  preTokens?: number
+  postTokens?: number
+}): JSX.Element {
+  const [expanded, setExpanded] = useState(false)
+  const subtitle =
+    typeof preTokens === 'number' && typeof postTokens === 'number'
+      ? `${formatTokenCount(preTokens)} → ${formatTokenCount(postTokens)} tokens`
+      : typeof preTokens === 'number'
+        ? `${formatTokenCount(preTokens)} tokens summarized`
+        : 'conversation summarized'
+  const triggerLabel =
+    trigger === 'manual' ? 'via /compact' : trigger === 'auto' ? 'auto' : null
+  return (
+    <div className="my-2 rounded-md border border-info/40 bg-info/5 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className={`w-full px-2 py-1 text-[11px] flex items-center gap-2 ${
+          expanded ? 'border-b border-info/30' : ''
+        } bg-info/10 hover:bg-info/15 cursor-pointer transition-colors text-left`}
+      >
+        <span className="text-info/70 text-[9px] w-2 shrink-0 select-none">
+          {expanded ? '▾' : '▸'}
+        </span>
+        <Layers size={11} className="text-info shrink-0" />
+        <span className="font-mono font-semibold shrink-0 text-info">
+          Compact
+        </span>
+        <span className="opacity-70 truncate flex-1 min-w-0">{subtitle}</span>
+        {triggerLabel && (
+          <span className="text-[9px] uppercase tracking-wide text-info/80 bg-info/10 border border-info/30 rounded px-1 py-0.5 shrink-0">
+            {triggerLabel}
+          </span>
+        )}
+      </button>
+      {expanded && (
+        <div className="px-3 py-2 text-[11px] text-muted space-y-1">
+          <div>
+            Earlier conversation history was summarized to free up context.
+            New messages continue from the summary.
+          </div>
+          {(typeof preTokens === 'number' ||
+            typeof postTokens === 'number') && (
+            <div className="font-mono text-[10px] text-faint">
+              {typeof preTokens === 'number' && (
+                <span>before: {preTokens.toLocaleString()} tokens</span>
+              )}
+              {typeof preTokens === 'number' &&
+                typeof postTokens === 'number' && <span> · </span>}
+              {typeof postTokens === 'number' && (
+                <span>after: {postTokens.toLocaleString()} tokens</span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function renderEntries(
   entries: JsonClaudeChatEntry[],
   approvalCard: (toolUseId: string | undefined) => ReactNode,
@@ -197,6 +268,20 @@ function renderEntries(
               )}
             </div>
           </div>
+        )
+      })
+      continue
+    }
+    if (entry.kind === 'compact') {
+      rows.push({
+        key: entry.entryId,
+        type: 'tool',
+        node: (
+          <CompactCard
+            trigger={entry.compactTrigger}
+            preTokens={entry.compactPreTokens}
+            postTokens={entry.compactPostTokens}
+          />
         )
       })
       continue

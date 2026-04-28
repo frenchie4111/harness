@@ -181,9 +181,27 @@ export class JsonClaudeManager {
       // shapes the live stream emits, plus internal bookkeeping types
       // (queue-operation, attachment, ai-title, last-prompt) we ignore.
       if (type === 'user') {
+        // Skip SDK-synthetic user records that surround compactions and
+        // slash-command invocations. Without this filter the seeded
+        // scrollback shows the entire continuation summary as a giant
+        // user bubble plus stray '<local-command-stdout>Compacted'
+        // and '<command-name>/compact' echo lines.
+        //   isCompactSummary  — the post-compaction continuation summary
+        //   isMeta            — the '<local-command-caveat>' wrapper
+        // Plus content-prefix matches for the local-command echo pair
+        // ('<command-name>' / '<local-command-stdout>') which arrive
+        // without isMeta but are equally not user-typed input.
+        if (parsed['isCompactSummary'] === true) continue
+        if (parsed['isMeta'] === true) continue
         const message = parsed['message'] as { content?: unknown } | undefined
         const content = message?.content
         if (typeof content === 'string') {
+          if (
+            content.startsWith('<command-name>') ||
+            content.startsWith('<local-command-stdout>')
+          ) {
+            continue
+          }
           seededEntries.push({
             kind: 'user',
             text: content,
@@ -216,9 +234,38 @@ export class JsonClaudeManager {
           timestamp: Date.now(),
           entryId: `${sessionId}-seed-a-${counter++}`
         })
+      } else if (type === 'system' && parsed['subtype'] === 'compact_boundary') {
+        const meta = parsed['compactMetadata'] as
+          | { trigger?: unknown; preTokens?: unknown; postTokens?: unknown }
+          | undefined
+        const trigger =
+          meta?.trigger === 'auto' || meta?.trigger === 'manual'
+            ? meta.trigger
+            : undefined
+        const preTokens =
+          typeof meta?.preTokens === 'number' ? meta.preTokens : undefined
+        const postTokens =
+          typeof meta?.postTokens === 'number' ? meta.postTokens : undefined
+        seededEntries.push({
+          kind: 'compact',
+          timestamp: Date.now(),
+          entryId: `${sessionId}-seed-c-${counter++}`,
+          ...(trigger ? { compactTrigger: trigger } : {}),
+          ...(typeof preTokens === 'number'
+            ? { compactPreTokens: preTokens }
+            : {}),
+          ...(typeof postTokens === 'number'
+            ? { compactPostTokens: postTokens }
+            : {})
+        })
       }
     }
     if (seededEntries.length === 0) return
+    const compactCount = seededEntries.filter((e) => e.kind === 'compact').length
+    log(
+      'json-claude',
+      `seed dispatch sessionId=${sessionId} total=${seededEntries.length} compact=${compactCount}`
+    )
     this.store.dispatch({
       type: 'jsonClaude/entriesSeeded',
       payload: { sessionId, entries: seededEntries }
@@ -855,6 +902,45 @@ export class JsonClaudeManager {
     }
     const type = parsed['type']
     const subtype = parsed['subtype']
+    if (type === 'system' && subtype === 'compact_boundary') {
+      // Wire format note: the live stream and the on-disk session jsonl
+      // disagree on case. Live emits snake_case
+      //   { compact_metadata: { trigger, pre_tokens, post_tokens,
+      //                          duration_ms } }
+      // while the on-disk record (which seedFromTranscript replays) is
+      // camelCase
+      //   { compactMetadata:  { trigger, preTokens, postTokens,
+      //                          durationMs, preCompactDiscoveredTools } }
+      // Read both — we go through the same dispatch either way.
+      // Don't toggle busy: compaction happens transparently between
+      // turns; surrounding `result` boundaries are what flip the spinner.
+      const metaRaw =
+        (parsed['compact_metadata'] as Record<string, unknown> | undefined) ??
+        (parsed['compactMetadata'] as Record<string, unknown> | undefined)
+      const trigger =
+        metaRaw?.['trigger'] === 'auto' || metaRaw?.['trigger'] === 'manual'
+          ? (metaRaw['trigger'] as 'auto' | 'manual')
+          : undefined
+      const preRaw = metaRaw?.['pre_tokens'] ?? metaRaw?.['preTokens']
+      const postRaw = metaRaw?.['post_tokens'] ?? metaRaw?.['postTokens']
+      const preTokens = typeof preRaw === 'number' ? preRaw : undefined
+      const postTokens = typeof postRaw === 'number' ? postRaw : undefined
+      const uuid = typeof parsed['uuid'] === 'string' ? parsed['uuid'] : null
+      this.store.dispatch({
+        type: 'jsonClaude/compactBoundaryReceived',
+        payload: {
+          sessionId: instance.sessionId,
+          entryId: uuid
+            ? `${instance.sessionId}-c-${uuid}`
+            : `${instance.sessionId}-c-${instance.entryCounter++}`,
+          trigger,
+          preTokens,
+          postTokens,
+          timestamp: Date.now()
+        }
+      })
+      return
+    }
     if (type === 'system' && subtype === 'init') {
       // Session id is already known (we pinned it via --session-id), but
       // the init payload includes the canonical slash_commands list — keep

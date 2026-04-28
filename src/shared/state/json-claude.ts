@@ -47,10 +47,22 @@ export interface JsonClaudeMessageBlock {
 export interface JsonClaudeChatEntry {
   /** Monotonic per-session id so React can key rows stably. */
   entryId: string
-  kind: 'user' | 'assistant' | 'system' | 'error' | 'tool_result'
+  kind: 'user' | 'assistant' | 'system' | 'error' | 'tool_result' | 'compact'
   blocks?: JsonClaudeMessageBlock[]
   text?: string
   timestamp: number
+  /** For kind === 'compact'. Whether the user invoked /compact ('manual')
+   *  or claude autocompacted near the context limit ('auto'). Sourced
+   *  from the system/compact_boundary record's compactMetadata.trigger. */
+  compactTrigger?: 'auto' | 'manual'
+  /** For kind === 'compact'. Token count just before compaction —
+   *  rendered in the banner so the user can see roughly how much was
+   *  rolled up. From compactMetadata.preTokens. */
+  compactPreTokens?: number
+  /** For kind === 'compact'. Token count immediately after compaction.
+   *  From compactMetadata.postTokens — only present once compaction
+   *  finishes (live stream may emit before the post count is known). */
+  compactPostTokens?: number
   /** True while this assistant entry is still being streamed via
    *  --include-partial-messages. Cleared when the consolidated
    *  assistant event arrives and the manager dispatches
@@ -255,6 +267,17 @@ export type JsonClaudeEvent =
   | {
       type: 'jsonClaude/slashCommandsChanged'
       payload: { sessionId: string; slashCommands: string[] }
+    }
+  | {
+      type: 'jsonClaude/compactBoundaryReceived'
+      payload: {
+        sessionId: string
+        entryId: string
+        trigger?: 'auto' | 'manual'
+        preTokens?: number
+        postTokens?: number
+        timestamp: number
+      }
     }
   | {
       type: 'jsonClaude/sessionToolApprovalsGranted'
@@ -663,6 +686,32 @@ export function jsonClaudeReducer(
           [session.sessionId]: {
             ...session,
             slashCommands: event.payload.slashCommands
+          }
+        }
+      }
+    }
+    case 'jsonClaude/compactBoundaryReceived': {
+      const session = state.sessions[event.payload.sessionId]
+      if (!session) return state
+      const { entryId, trigger, preTokens, postTokens, timestamp } =
+        event.payload
+      const entry: JsonClaudeChatEntry = {
+        entryId,
+        kind: 'compact',
+        timestamp,
+        ...(trigger ? { compactTrigger: trigger } : {}),
+        ...(typeof preTokens === 'number' ? { compactPreTokens: preTokens } : {}),
+        ...(typeof postTokens === 'number'
+          ? { compactPostTokens: postTokens }
+          : {})
+      }
+      return {
+        ...state,
+        sessions: {
+          ...state.sessions,
+          [session.sessionId]: {
+            ...session,
+            entries: [...session.entries, entry]
           }
         }
       }

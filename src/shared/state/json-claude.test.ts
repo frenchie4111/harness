@@ -626,6 +626,52 @@ describe('jsonClaudeReducer', () => {
     expect(state.sessions[SID].slashCommands).toEqual(['clear', 'review'])
   })
 
+  it('compactBoundaryReceived appends a compact entry with metadata', () => {
+    let state = seedSession(initialJsonClaude)
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/compactBoundaryReceived',
+      payload: {
+        sessionId: SID,
+        entryId: 'c1',
+        trigger: 'manual',
+        preTokens: 119466,
+        postTokens: 7263,
+        timestamp: 5
+      }
+    })
+    expect(state.sessions[SID].entries).toEqual([
+      {
+        entryId: 'c1',
+        kind: 'compact',
+        timestamp: 5,
+        compactTrigger: 'manual',
+        compactPreTokens: 119466,
+        compactPostTokens: 7263
+      }
+    ])
+  })
+
+  it('compactBoundaryReceived omits absent metadata fields', () => {
+    let state = seedSession(initialJsonClaude)
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/compactBoundaryReceived',
+      payload: { sessionId: SID, entryId: 'c1', timestamp: 5 }
+    })
+    const entry = state.sessions[SID].entries[0]
+    expect(entry.kind).toBe('compact')
+    expect(entry.compactTrigger).toBeUndefined()
+    expect(entry.compactPreTokens).toBeUndefined()
+    expect(entry.compactPostTokens).toBeUndefined()
+  })
+
+  it('compactBoundaryReceived is a no-op for unknown session', () => {
+    const next = jsonClaudeReducer(initialJsonClaude, {
+      type: 'jsonClaude/compactBoundaryReceived',
+      payload: { sessionId: 'missing', entryId: 'c1', timestamp: 1 }
+    })
+    expect(next).toBe(initialJsonClaude)
+  })
+
   it('sessionStarted seeds empty sessionToolApprovals + sessionAllowedDecisions', () => {
     const state = seedSession(initialJsonClaude)
     expect(state.sessions[SID].sessionToolApprovals).toEqual([])
