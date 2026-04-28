@@ -671,4 +671,140 @@ describe('jsonClaudeReducer', () => {
     })
     expect(next).toBe(initialJsonClaude)
   })
+
+  it('sessionStarted seeds empty sessionToolApprovals + sessionAllowedDecisions', () => {
+    const state = seedSession(initialJsonClaude)
+    expect(state.sessions[SID].sessionToolApprovals).toEqual([])
+    expect(state.sessions[SID].sessionAllowedDecisions).toEqual({})
+  })
+
+  it('sessionToolApprovalsGranted adds tool names dedup-merged', () => {
+    let state = seedSession(initialJsonClaude)
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/sessionToolApprovalsGranted',
+      payload: { sessionId: SID, toolNames: ['Edit', 'Write'] }
+    })
+    expect(state.sessions[SID].sessionToolApprovals).toEqual(['Edit', 'Write'])
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/sessionToolApprovalsGranted',
+      payload: { sessionId: SID, toolNames: ['Write', 'MultiEdit'] }
+    })
+    expect(state.sessions[SID].sessionToolApprovals).toEqual([
+      'Edit',
+      'Write',
+      'MultiEdit'
+    ])
+  })
+
+  it('sessionToolApprovalsGranted is a no-op when nothing new', () => {
+    let state = seedSession(initialJsonClaude)
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/sessionToolApprovalsGranted',
+      payload: { sessionId: SID, toolNames: ['Edit'] }
+    })
+    const next = jsonClaudeReducer(state, {
+      type: 'jsonClaude/sessionToolApprovalsGranted',
+      payload: { sessionId: SID, toolNames: ['Edit'] }
+    })
+    expect(next).toBe(state)
+  })
+
+  it('sessionToolApprovalsGranted is a no-op for unknown session', () => {
+    const next = jsonClaudeReducer(initialJsonClaude, {
+      type: 'jsonClaude/sessionToolApprovalsGranted',
+      payload: { sessionId: 'missing', toolNames: ['Edit'] }
+    })
+    expect(next).toBe(initialJsonClaude)
+  })
+
+  it('sessionToolApprovalsCleared without toolNames clears the whole set', () => {
+    let state = seedSession(initialJsonClaude)
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/sessionToolApprovalsGranted',
+      payload: { sessionId: SID, toolNames: ['Edit', 'Write'] }
+    })
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/sessionToolApprovalsCleared',
+      payload: { sessionId: SID }
+    })
+    expect(state.sessions[SID].sessionToolApprovals).toEqual([])
+  })
+
+  it('sessionToolApprovalsCleared with toolNames removes only those', () => {
+    let state = seedSession(initialJsonClaude)
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/sessionToolApprovalsGranted',
+      payload: { sessionId: SID, toolNames: ['Edit', 'Write', 'Bash'] }
+    })
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/sessionToolApprovalsCleared',
+      payload: { sessionId: SID, toolNames: ['Write'] }
+    })
+    expect(state.sessions[SID].sessionToolApprovals).toEqual(['Edit', 'Bash'])
+  })
+
+  it('sessionToolApprovalsCleared is a no-op when set is already empty', () => {
+    const state = seedSession(initialJsonClaude)
+    const next = jsonClaudeReducer(state, {
+      type: 'jsonClaude/sessionToolApprovalsCleared',
+      payload: { sessionId: SID }
+    })
+    expect(next).toBe(state)
+  })
+
+  it('approvalSessionAllowed records an audit entry keyed by toolUseId', () => {
+    let state = seedSession(initialJsonClaude)
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/approvalSessionAllowed',
+      payload: {
+        sessionId: SID,
+        toolUseId: 'toolu_42',
+        toolName: 'Edit',
+        timestamp: 999
+      }
+    })
+    expect(state.sessions[SID].sessionAllowedDecisions['toolu_42']).toEqual({
+      toolName: 'Edit',
+      timestamp: 999
+    })
+  })
+
+  it('approvalSessionAllowed is a no-op for unknown session', () => {
+    const next = jsonClaudeReducer(initialJsonClaude, {
+      type: 'jsonClaude/approvalSessionAllowed',
+      payload: {
+        sessionId: 'missing',
+        toolUseId: 'toolu_x',
+        toolName: 'Edit',
+        timestamp: 1
+      }
+    })
+    expect(next).toBe(initialJsonClaude)
+  })
+
+  it('sessionStarted preserves sessionToolApprovals + decisions across re-attach', () => {
+    let state = seedSession(initialJsonClaude)
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/sessionToolApprovalsGranted',
+      payload: { sessionId: SID, toolNames: ['Edit', 'Write'] }
+    })
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/approvalSessionAllowed',
+      payload: {
+        sessionId: SID,
+        toolUseId: 'toolu_1',
+        toolName: 'Edit',
+        timestamp: 1
+      }
+    })
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/sessionStarted',
+      payload: { sessionId: SID, worktreePath: WT }
+    })
+    expect(state.sessions[SID].sessionToolApprovals).toEqual(['Edit', 'Write'])
+    expect(state.sessions[SID].sessionAllowedDecisions['toolu_1']).toEqual({
+      toolName: 'Edit',
+      timestamp: 1
+    })
+  })
 })

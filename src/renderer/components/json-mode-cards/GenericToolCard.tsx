@@ -6,7 +6,7 @@ import {
   type ToolCardProps
 } from './index'
 
-export function GenericToolCard({ block, result, autoApproved }: ToolCardProps): JSX.Element {
+export function GenericToolCard({ block, result, autoApproved, sessionAllowed }: ToolCardProps): JSX.Element {
   const summary = block.input ? trunc(JSON.stringify(block.input), 100) : ''
   const brand = isHarnessControl(block.name)
   return (
@@ -17,6 +17,7 @@ export function GenericToolCard({ block, result, autoApproved }: ToolCardProps):
       isError={result?.isError}
       brand={brand}
       autoApproved={autoApproved}
+      sessionAllowed={sessionAllowed}
     >
       {block.input && (
         <pre className="px-2 py-1 text-[11px] font-mono bg-app/40 whitespace-pre-wrap max-h-40 overflow-auto">

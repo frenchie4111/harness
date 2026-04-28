@@ -1966,11 +1966,43 @@ function registerIpcHandlers(): void {
     'jsonClaude:setPermissionMode',
     (_ctx, sessionId: string, mode: 'default' | 'acceptEdits' | 'plan') => {
       if (!sessionId) return false
+      // Optimistically reflect in the slice so the badge updates
+      // immediately. The manager writes a stdin control_request that
+      // the subprocess applies mid-turn (same protocol the TUI's
+      // shift+tab uses). The persisted slice mode also flows into
+      // --permission-mode on the next spawn, so a subsequent kill or
+      // reconnect picks it up.
       store.dispatch({
         type: 'jsonClaude/permissionModeChanged',
         payload: { sessionId, mode }
       })
       jsonClaudeManager.setPermissionMode(sessionId, mode)
+      return true
+    }
+  )
+
+  transport.onRequest(
+    'jsonClaude:grantSessionToolApprovals',
+    (_ctx, sessionId: string, toolNames: string[]) => {
+      if (!sessionId || !Array.isArray(toolNames) || toolNames.length === 0) {
+        return false
+      }
+      store.dispatch({
+        type: 'jsonClaude/sessionToolApprovalsGranted',
+        payload: { sessionId, toolNames }
+      })
+      return true
+    }
+  )
+
+  transport.onRequest(
+    'jsonClaude:clearSessionToolApprovals',
+    (_ctx, sessionId: string, toolNames?: string[]) => {
+      if (!sessionId) return false
+      store.dispatch({
+        type: 'jsonClaude/sessionToolApprovalsCleared',
+        payload: { sessionId, toolNames }
+      })
       return true
     }
   )

@@ -1,6 +1,6 @@
 import { ToolCardChrome, basename, trunc, type ToolCardProps } from './index'
 
-export function EditCard({ block, result, autoApproved }: ToolCardProps): JSX.Element {
+export function EditCard({ block, result, autoApproved, sessionAllowed }: ToolCardProps): JSX.Element {
   const fp = String(block.input?.file_path ?? '')
   const oldStr = String(block.input?.old_string ?? '')
   const newStr = String(block.input?.new_string ?? '')
@@ -14,6 +14,7 @@ export function EditCard({ block, result, autoApproved }: ToolCardProps): JSX.El
       variant="warn"
       isError={result?.isError}
       autoApproved={autoApproved}
+      sessionAllowed={sessionAllowed}
     >
       {fp && <div className="px-2 py-1 text-[10px] text-muted truncate font-mono">{fp}</div>}
       <div className="px-2 py-1 text-[11px] font-mono">

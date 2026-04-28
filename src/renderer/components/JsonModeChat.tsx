@@ -202,6 +202,10 @@ function renderEntries(
     string,
     { model: string; reason: string; timestamp: number }
   >,
+  sessionAllowedDecisions: Record<
+    string,
+    { toolName: string; timestamp: number }
+  >,
   onCancelQueued: (entryId: string) => void
 ): RenderedRow[] {
   // Build a tool_use_id → tool_result lookup pass first so each tool card
@@ -351,7 +355,8 @@ function renderEntries(
                   dispatchToolCard({
                     block,
                     result,
-                    autoApproved: block.id ? autoApprovedDecisions[block.id] : undefined
+                    autoApproved: block.id ? autoApprovedDecisions[block.id] : undefined,
+                    sessionAllowed: block.id ? sessionAllowedDecisions[block.id] : undefined
                   })
                 )}
                 {approvalCard(block.id)}
@@ -494,6 +499,7 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
   )
 
   const autoApprovedDecisions = session?.autoApprovedDecisions ?? {}
+  const sessionAllowedDecisions = session?.sessionAllowedDecisions ?? {}
   const rows = useMemo(
     () =>
       renderEntries(
@@ -501,6 +507,7 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
         renderApprovalForToolUseId,
         pendingToolUseIds,
         autoApprovedDecisions,
+        sessionAllowedDecisions,
         (entryId) =>
           window.api.cancelQueuedJsonClaudeMessage(sessionId, entryId)
       ),
@@ -512,6 +519,7 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
       approvalByToolUseId,
       pendingToolUseIds,
       autoApprovedDecisions,
+      sessionAllowedDecisions,
       sessionId
     ]
   )
@@ -933,8 +941,7 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
               onClick={() => {
                 // Kill (no-op if no instance) + start: re-spawns the
                 // subprocess and re-uses the same sessionId so --resume
-                // picks up the on-disk jsonl. Same kill-then-start the
-                // permission-mode toggle does.
+                // picks up the on-disk jsonl.
                 void (async () => {
                   await window.api.killJsonClaude(sessionId)
                   await window.api.startJsonClaude(sessionId, worktreePath)
@@ -946,6 +953,24 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
           </div>
         )}
       </div>
+      {session && session.sessionToolApprovals.length > 0 && (
+        <div className="shrink-0 border-t border-border bg-panel/40 px-3 py-1 flex items-center gap-2 text-[10px] text-muted">
+          <span className="opacity-70">auto-allowing:</span>
+          <span className="font-mono truncate">
+            {session.sessionToolApprovals.join(', ')}
+          </span>
+          <button
+            onClick={() => {
+              void window.api.clearJsonClaudeSessionToolApprovals(sessionId)
+            }}
+            className="ml-auto p-0.5 rounded hover:bg-app/60 text-muted hover:text-fg cursor-pointer shrink-0"
+            title="Clear session auto-allow set"
+            aria-label="Clear session auto-allow set"
+          >
+            <X size={10} />
+          </button>
+        </div>
+      )}
       <div className="shrink-0 border-t border-border p-2 flex gap-2 items-end">
         <div className="flex-1 relative rounded">
           {mentionItems.length > 0 && (
@@ -1092,7 +1117,7 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
         <button
           onClick={cyclePermissionMode}
           className={`px-1.5 py-0.5 rounded border cursor-pointer hover:opacity-80 transition-opacity ${modeBadgeStyle}`}
-          title="Click to cycle permission mode. Restarts the subprocess with --resume so the conversation persists."
+          title="Click to cycle permission mode. Applies mid-turn — no restart."
         >
           {modeBadgeLabel}
         </button>

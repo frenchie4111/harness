@@ -1,6 +1,6 @@
 import { ToolCardChrome, basename, trunc, type ToolCardProps } from './index'
 
-export function WriteCard({ block, result, autoApproved }: ToolCardProps): JSX.Element {
+export function WriteCard({ block, result, autoApproved, sessionAllowed }: ToolCardProps): JSX.Element {
   const fp = String(block.input?.file_path ?? '')
   const content = String(block.input?.content ?? '')
   return (
@@ -10,6 +10,7 @@ export function WriteCard({ block, result, autoApproved }: ToolCardProps): JSX.E
       variant="warn"
       isError={result?.isError}
       autoApproved={autoApproved}
+      sessionAllowed={sessionAllowed}
     >
       {fp && <div className="px-2 py-1 text-[10px] text-muted truncate font-mono">{fp}</div>}
       <pre className="px-2 py-1 text-[11px] font-mono whitespace-pre-wrap max-h-60 overflow-auto bg-app/40">

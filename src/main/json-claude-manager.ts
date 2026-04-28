@@ -477,7 +477,7 @@ export class JsonClaudeManager {
         `exit sessionId=${sessionId} code=${code} signal=${signal} pid=${proc.pid ?? '?'}`
       )
       // Stale-exit guard: SIGTERM is async, so a kill() + create() cycle
-      // on the same sessionId (permission-mode toggle, tab-type swap)
+      // on the same sessionId (e.g. tab-type swap, Reconnect button)
       // can register a fresh instance before the old process's exit
       // event lands. Without this check, the late exit would mark the
       // freshly-started session 'exited' and close its approval socket.
@@ -710,34 +710,37 @@ export class JsonClaudeManager {
     for (const id of Array.from(this.instances.keys())) this.kill(id)
   }
 
-  /** Change --permission-mode mid-session. Kills the current subprocess
-   *  and respawns with the new mode; --resume on the spawn path picks up
-   *  the existing session jsonl, so conversation state is preserved.
-   *  Noop if the session isn't currently running. */
+  /** Change --permission-mode mid-session via the SDK control_request
+   *  protocol (subtype: 'set_permission_mode'). Same plumbing the TUI
+   *  uses for shift+tab; works mid-turn so an in-flight tool chain
+   *  keeps running with the new mode applied. No kill, no respawn.
+   *  Subprocess emits a control_response with subtype 'success' (with
+   *  the applied mode echoed back) or 'error' — we log either way in
+   *  handleStreamLine but optimistically reflect the change in the
+   *  slice up front. Noop if the session isn't currently running;
+   *  the persisted slice mode still gets passed to --permission-mode
+   *  on the next spawn. */
   setPermissionMode(sessionId: string, mode: JsonClaudePermissionMode): void {
     const inst = this.instances.get(sessionId)
     if (!inst) return
-    const worktreePath = inst.worktreePath
     log(
       'json-claude',
-      `permissionMode change sessionId=${sessionId} mode=${mode} — restarting`
+      `permissionMode change sessionId=${sessionId} mode=${mode} — control_request`
     )
-    // Kill the running subprocess synchronously so its 'exit' handler
-    // drains the instances map before we re-create.
-    this.clearPartial(inst)
-    this.instances.delete(sessionId)
-    try {
-      inst.proc.stdin.end()
-    } catch {
-      /* ignore */
+    const frame = {
+      type: 'control_request',
+      request_id: `set-mode-${randomUUID()}`,
+      request: { subtype: 'set_permission_mode', mode }
     }
     try {
-      inst.proc.kill('SIGTERM')
-    } catch {
-      /* ignore */
+      inst.proc.stdin.write(JSON.stringify(frame) + '\n')
+    } catch (err) {
+      log(
+        'json-claude',
+        `set_permission_mode write failed sessionId=${sessionId}`,
+        err instanceof Error ? err.message : String(err)
+      )
     }
-    this.opts.closeApprovalSession(sessionId)
-    this.create(sessionId, worktreePath, mode)
   }
 
   /** Spawn a one-shot `claude -p` probe to harvest the system/init event's
@@ -1028,6 +1031,21 @@ export class JsonClaudeManager {
         type: 'jsonClaude/userEntriesUnqueued',
         payload: { sessionId: instance.sessionId }
       })
+      return
+    }
+    if (type === 'control_response') {
+      // Replies to control_requests we send (interrupt, set_permission_mode).
+      // We dispatch slice updates optimistically so success is silent;
+      // an error response means the subprocess rejected the request
+      // (e.g. callback not registered for this context) — surface it
+      // to the debug log so we don't silently lose mode changes.
+      const response = parsed['response'] as Record<string, unknown> | undefined
+      if (response && response['subtype'] === 'error') {
+        log(
+          'json-claude',
+          `control_response error sessionId=${instance.sessionId} request_id=${String(response['request_id'])} error=${String(response['error'])}`
+        )
+      }
       return
     }
     // Ignore rate_limit_event and unknown types for now — they become

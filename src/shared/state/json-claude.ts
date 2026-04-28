@@ -16,6 +16,18 @@ export type JsonClaudeSessionState =
  *  dontAsk/auto (overlap with default). */
 export type JsonClaudePermissionMode = 'default' | 'acceptEdits' | 'plan'
 
+/** Tool names that the approval card groups under "Allow edits this
+ *  session". Granting any of these grants all of them — every tool that
+ *  can write to the file system. Kept as a single grant because the user
+ *  intent ("I trust this agent to edit") doesn't decompose meaningfully
+ *  across these four. */
+export const EDIT_TOOL_NAMES = [
+  'Edit',
+  'Write',
+  'MultiEdit',
+  'NotebookEdit'
+] as const
+
 export interface JsonClaudeMessageBlock {
   type: 'text' | 'thinking' | 'tool_use' | 'tool_result'
   // For 'text' and 'thinking': markdown content. The wire-format
@@ -85,9 +97,10 @@ export interface JsonClaudeSession {
   /** Last text of the most recent user submission; used by the renderer to
    *  pair the echo against the user-card it just rendered optimistically. */
   busy: boolean
-  /** --permission-mode flag passed to claude at spawn time. Changing
-   *  this kills + respawns with --resume so the mode change is
-   *  effectively mid-session. */
+  /** --permission-mode flag passed to claude at spawn time. Mid-session
+   *  changes are applied via a stdin control_request (subtype
+   *  'set_permission_mode') so the in-flight turn is not aborted; the
+   *  spawn-time flag is still consulted on the next respawn. */
   permissionMode: JsonClaudePermissionMode
   /** Slash command names (no leading `/`) advertised by Claude in the
    *  system/init message. Includes built-ins like 'clear'/'compact', the
@@ -101,6 +114,19 @@ export interface JsonClaudeSession {
   autoApprovedDecisions: Record<
     string,
     { model: string; reason: string; timestamp: number }
+  >
+  /** Tool names the user has granted "allow this session" for. The bridge
+   *  consults this set before surfacing an approval card and resolves
+   *  matching requests directly. Survives kill+respawn (permission-mode
+   *  toggles) but is intentionally not persisted across app restarts. */
+  sessionToolApprovals: string[]
+  /** Audit map of tool calls auto-resolved because their tool name was in
+   *  sessionToolApprovals. Keyed by toolUseId, parallel to
+   *  autoApprovedDecisions, so the per-tool card can render a small
+   *  "allowed by session policy" badge. */
+  sessionAllowedDecisions: Record<
+    string,
+    { toolName: string; timestamp: number }
   >
 }
 
@@ -253,6 +279,23 @@ export type JsonClaudeEvent =
         timestamp: number
       }
     }
+  | {
+      type: 'jsonClaude/sessionToolApprovalsGranted'
+      payload: { sessionId: string; toolNames: string[] }
+    }
+  | {
+      type: 'jsonClaude/sessionToolApprovalsCleared'
+      payload: { sessionId: string; toolNames?: string[] }
+    }
+  | {
+      type: 'jsonClaude/approvalSessionAllowed'
+      payload: {
+        sessionId: string
+        toolUseId: string
+        toolName: string
+        timestamp: number
+      }
+    }
 
 export const initialJsonClaude: JsonClaudeState = {
   sessions: {},
@@ -273,9 +316,12 @@ export function jsonClaudeReducer(
   switch (event.type) {
     case 'jsonClaude/sessionStarted': {
       const { sessionId, worktreePath } = event.payload
-      // Preserve entries + permissionMode + slashCommands if this
-      // session id already exists (re-attach on reload or mode-change
-      // respawn), reset exit bookkeeping.
+      // Preserve entries + permissionMode + slashCommands +
+      // sessionToolApprovals + sessionAllowedDecisions if this session
+      // id already exists (re-attach on reload or mode-change respawn).
+      // The session-allow set is a user grant that should outlive a
+      // kill+respawn the same way permissionMode does. Reset exit
+      // bookkeeping.
       const existing = state.sessions[sessionId]
       return {
         ...state,
@@ -291,7 +337,9 @@ export function jsonClaudeReducer(
             busy: false,
             permissionMode: existing?.permissionMode ?? 'default',
             slashCommands: existing?.slashCommands ?? [],
-            autoApprovedDecisions: existing?.autoApprovedDecisions ?? {}
+            autoApprovedDecisions: existing?.autoApprovedDecisions ?? {},
+            sessionToolApprovals: existing?.sessionToolApprovals ?? [],
+            sessionAllowedDecisions: existing?.sessionAllowedDecisions ?? {}
           }
         }
       }
@@ -664,6 +712,72 @@ export function jsonClaudeReducer(
           [session.sessionId]: {
             ...session,
             entries: [...session.entries, entry]
+          }
+        }
+      }
+    }
+    case 'jsonClaude/sessionToolApprovalsGranted': {
+      const session = state.sessions[event.payload.sessionId]
+      if (!session) return state
+      const existing = new Set(session.sessionToolApprovals)
+      let added = false
+      for (const name of event.payload.toolNames) {
+        if (!existing.has(name)) {
+          existing.add(name)
+          added = true
+        }
+      }
+      if (!added) return state
+      return {
+        ...state,
+        sessions: {
+          ...state.sessions,
+          [session.sessionId]: {
+            ...session,
+            sessionToolApprovals: Array.from(existing)
+          }
+        }
+      }
+    }
+    case 'jsonClaude/sessionToolApprovalsCleared': {
+      const session = state.sessions[event.payload.sessionId]
+      if (!session) return state
+      const { toolNames } = event.payload
+      if (!toolNames) {
+        if (session.sessionToolApprovals.length === 0) return state
+        return {
+          ...state,
+          sessions: {
+            ...state.sessions,
+            [session.sessionId]: { ...session, sessionToolApprovals: [] }
+          }
+        }
+      }
+      const drop = new Set(toolNames)
+      const next = session.sessionToolApprovals.filter((n) => !drop.has(n))
+      if (next.length === session.sessionToolApprovals.length) return state
+      return {
+        ...state,
+        sessions: {
+          ...state.sessions,
+          [session.sessionId]: { ...session, sessionToolApprovals: next }
+        }
+      }
+    }
+    case 'jsonClaude/approvalSessionAllowed': {
+      const session = state.sessions[event.payload.sessionId]
+      if (!session) return state
+      const { toolUseId, toolName, timestamp } = event.payload
+      return {
+        ...state,
+        sessions: {
+          ...state.sessions,
+          [session.sessionId]: {
+            ...session,
+            sessionAllowedDecisions: {
+              ...session.sessionAllowedDecisions,
+              [toolUseId]: { toolName, timestamp }
+            }
           }
         }
       }

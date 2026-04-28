@@ -327,6 +327,8 @@ export interface ElectronAPI {
   ): Promise<boolean>
 
   openExternal(url: string): void
+  openDebugLog(): Promise<{ ok: true } | { ok: false; message: string }>
+  showDebugLogInFolder(): Promise<boolean>
   getFilePath(file: File): string
   onOpenSettings(callback: () => void): () => void
   onTogglePerfMonitor(callback: () => void): () => void
@@ -400,6 +402,14 @@ export interface ElectronAPI {
   setJsonClaudePermissionMode(
     id: string,
     mode: 'default' | 'acceptEdits' | 'plan'
+  ): Promise<boolean>
+  grantJsonClaudeSessionToolApprovals(
+    id: string,
+    toolNames: string[]
+  ): Promise<boolean>
+  clearJsonClaudeSessionToolApprovals(
+    id: string,
+    toolNames?: string[]
   ): Promise<boolean>
 
   getStateSnapshot(): Promise<StateSnapshot>

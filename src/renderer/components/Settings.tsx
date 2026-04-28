@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2, LifeBuoy, Bug, Lightbulb, FlaskConical, Copy, ExternalLink, CalendarDays } from 'lucide-react'
+import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2, LifeBuoy, Bug, Lightbulb, FlaskConical, Copy, ExternalLink, CalendarDays, FileText, FolderOpen } from 'lucide-react'
 import { openReportIssue } from './ReportIssueScreen'
 import { HARNESS_ISSUES_URL, HARNESS_RELEASES_URL } from '../../shared/constants'
 import { useSettings, useUpdater, useRepoConfigs, useHooks } from '../store'
@@ -214,6 +214,18 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
   const [envSaveResult, setEnvSaveResult] = useState<{ ok: boolean; message: string } | null>(null)
   const [revealedEnvRows, setRevealedEnvRows] = useState<Set<number>>(new Set())
 
+  // Custom Claude endpoint helper — drafts for ANTHROPIC_BASE_URL/_AUTH_TOKEN.
+  // Saves by patching claudeEnvRows + persisting via setClaudeEnvVars, so the
+  // env-vars editor below shares one source of truth with this helper.
+  const [litellmBaseUrl, setLitellmBaseUrl] = useState<string>(
+    () => claudeEnvVars['ANTHROPIC_BASE_URL'] ?? ''
+  )
+  const [litellmAuthToken, setLitellmAuthToken] = useState<string>(
+    () => claudeEnvVars['ANTHROPIC_AUTH_TOKEN'] ?? ''
+  )
+  const [litellmAuthRevealed, setLitellmAuthRevealed] = useState(false)
+  const [litellmSaveResult, setLitellmSaveResult] = useState<{ ok: boolean; message: string } | null>(null)
+
   const [codexCommandDraft, setCodexCommandDraft] = useState<string>(codexCommand)
   useEffect(() => { setCodexCommandDraft(codexCommand) }, [codexCommand])
   const [codexSaveResult, setCodexSaveResult] = useState<{ ok: boolean; message: string } | null>(null)
@@ -262,6 +274,8 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
   const [lanAddresses, setLanAddresses] = useState<Array<{ iface: string; address: string }>>([])
   const [selectedLanAddress, setSelectedLanAddress] = useState<string | null>(null)
 
+  const [debugLogError, setDebugLogError] = useState<string | null>(null)
+
   // Constants and non-settings state load once; live settings are already
   // hydrated via useSettings() above.
   useEffect(() => {
@@ -285,6 +299,8 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
   // same as before the migration, where Settings only read on mount.
   useEffect(() => {
     setClaudeEnvRows(Object.entries(claudeEnvVars).map(([key, value]) => ({ key, value })))
+    setLitellmBaseUrl(claudeEnvVars['ANTHROPIC_BASE_URL'] ?? '')
+    setLitellmAuthToken(claudeEnvVars['ANTHROPIC_AUTH_TOKEN'] ?? '')
   }, [claudeEnvVars])
 
   const updateRepoConfig = useCallback(
@@ -680,6 +696,57 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     }
     await window.api.setClaudeEnvVars(vars)
     setEnvSaveResult({ ok: true, message: 'Saved · new Claude tabs will see these' })
+  }, [claudeEnvRows])
+
+  const handleSaveLitellm = useCallback(async () => {
+    const url = litellmBaseUrl.trim()
+    const token = litellmAuthToken.trim()
+    if (!url) {
+      setLitellmSaveResult({ ok: false, message: 'Base URL is required' })
+      return
+    }
+    const filtered = claudeEnvRows.filter(({ key }) => {
+      const k = key.trim()
+      return k !== 'ANTHROPIC_BASE_URL' && k !== 'ANTHROPIC_AUTH_TOKEN'
+    })
+    const newRows: { key: string; value: string }[] = [
+      ...filtered,
+      { key: 'ANTHROPIC_BASE_URL', value: url }
+    ]
+    if (token) newRows.push({ key: 'ANTHROPIC_AUTH_TOKEN', value: token })
+    setClaudeEnvRows(newRows)
+    const vars: Record<string, string> = {}
+    const seen = new Set<string>()
+    for (const { key, value } of newRows) {
+      const k = key.trim()
+      if (!k || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(k) || seen.has(k)) continue
+      seen.add(k)
+      vars[k] = value
+    }
+    await window.api.setClaudeEnvVars(vars)
+    setLitellmSaveResult({ ok: true, message: 'Saved · new Claude tabs will use this endpoint' })
+    setEnvSaveResult(null)
+  }, [litellmBaseUrl, litellmAuthToken, claudeEnvRows])
+
+  const handleClearLitellm = useCallback(async () => {
+    setLitellmBaseUrl('')
+    setLitellmAuthToken('')
+    const newRows = claudeEnvRows.filter(({ key }) => {
+      const k = key.trim()
+      return k !== 'ANTHROPIC_BASE_URL' && k !== 'ANTHROPIC_AUTH_TOKEN'
+    })
+    setClaudeEnvRows(newRows)
+    const vars: Record<string, string> = {}
+    const seen = new Set<string>()
+    for (const { key, value } of newRows) {
+      const k = key.trim()
+      if (!k || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(k) || seen.has(k)) continue
+      seen.add(k)
+      vars[k] = value
+    }
+    await window.api.setClaudeEnvVars(vars)
+    setLitellmSaveResult({ ok: true, message: 'Cleared' })
+    setEnvSaveResult(null)
   }, [claudeEnvRows])
 
   const handleSaveCodexCommand = useCallback(async () => {
@@ -1137,6 +1204,55 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     </div>
                   </label>
                 </div>
+              </div>
+
+              <div className="mt-4 bg-panel-raised border border-border rounded-lg p-4">
+                <label className="block text-sm font-medium text-fg mb-1">Custom Claude API endpoint</label>
+                <p className="text-xs text-dim mb-3">
+                  Point Claude at a LiteLLM proxy, AWS Bedrock proxy, or another OpenAI/Anthropic-compatible gateway. Sets the <code className="bg-panel px-1 rounded">ANTHROPIC_BASE_URL</code> and <code className="bg-panel px-1 rounded">ANTHROPIC_AUTH_TOKEN</code> env vars under the hood — leave blank to talk to Anthropic directly.
+                </p>
+                <div className="space-y-2">
+                  <div>
+                    <label className="block text-[11px] font-medium text-dim mb-1">Base URL</label>
+                    <input
+                      type="text"
+                      value={litellmBaseUrl}
+                      onChange={(e) => { setLitellmBaseUrl(e.target.value); setLitellmSaveResult(null) }}
+                      placeholder="http://localhost:4000"
+                      spellCheck={false}
+                      className="w-full bg-panel border border-border-strong rounded px-2 py-1.5 text-xs text-fg-bright placeholder-faint outline-none focus:border-fg font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium text-dim mb-1">Auth token <span className="text-faint">(optional)</span></label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type={litellmAuthRevealed ? 'text' : 'password'}
+                        value={litellmAuthToken}
+                        onChange={(e) => { setLitellmAuthToken(e.target.value); setLitellmSaveResult(null) }}
+                        placeholder="sk-..."
+                        spellCheck={false}
+                        className="flex-1 bg-panel border border-border-strong rounded px-2 py-1.5 text-xs text-fg-bright placeholder-faint outline-none focus:border-fg font-mono"
+                      />
+                      <Tooltip label={litellmAuthRevealed ? 'Hide token' : 'Reveal token'}>
+                        <button onClick={() => setLitellmAuthRevealed((v) => !v)} className="p-1.5 text-dim hover:text-fg transition-colors cursor-pointer">
+                          {litellmAuthRevealed ? <EyeOff size={14} /> : <Eye size={14} />}
+                        </button>
+                      </Tooltip>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 mt-3">
+                  <button onClick={handleSaveLitellm} disabled={!litellmBaseUrl.trim()} className="px-3 py-1.5 bg-surface hover:bg-surface-hover disabled:opacity-40 rounded text-sm text-fg-bright transition-colors cursor-pointer">Save endpoint</button>
+                  {(claudeEnvVars['ANTHROPIC_BASE_URL'] || claudeEnvVars['ANTHROPIC_AUTH_TOKEN']) && (
+                    <button onClick={handleClearLitellm} className="px-3 py-1.5 text-sm text-dim hover:text-fg transition-colors cursor-pointer">Clear</button>
+                  )}
+                </div>
+                {litellmSaveResult && (
+                  <div className={`mt-3 text-xs flex items-center gap-1.5 ${litellmSaveResult.ok ? 'text-success' : 'text-danger'}`}>
+                    {litellmSaveResult.ok ? <Check size={12} /> : <X size={12} />}{litellmSaveResult.message}
+                  </div>
+                )}
               </div>
 
               <div className="mt-4 bg-panel-raised border border-border rounded-lg p-4">
@@ -1947,6 +2063,42 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               <p className="mt-3 text-xs text-dim">
                 Opens a prefilled GitHub issue in your browser. No data is sent from Harness directly.
               </p>
+
+              <div className="mt-6 bg-panel-raised border border-border rounded-lg p-4">
+                <label className="block text-sm font-medium text-fg mb-1">Diagnostics</label>
+                <p className="text-xs text-dim mb-3">
+                  Open the Harness debug log in your default editor. Useful when reporting issues or
+                  diagnosing flaky behavior.
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setDebugLogError(null)
+                      const result = await window.api.openDebugLog()
+                      if (!result.ok) setDebugLogError(result.message)
+                    }}
+                    className="flex items-center gap-2 px-3 py-2 bg-panel border border-border rounded-lg text-sm text-fg-bright hover:bg-surface transition-colors cursor-pointer"
+                  >
+                    <FileText size={14} />
+                    Open debug log
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDebugLogError(null)
+                      void window.api.showDebugLogInFolder()
+                    }}
+                    className="flex items-center gap-2 px-3 py-2 bg-panel border border-border rounded-lg text-sm text-fg-bright hover:bg-surface transition-colors cursor-pointer"
+                  >
+                    <FolderOpen size={14} />
+                    Show in Finder
+                  </button>
+                </div>
+                {debugLogError && (
+                  <p className="mt-2 text-xs text-danger">{debugLogError}</p>
+                )}
+              </div>
             </section>
 
             {/* Experimental section */}
