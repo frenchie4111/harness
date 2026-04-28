@@ -309,6 +309,59 @@ function appendBlocksToEntry(
   return [...entries, entry]
 }
 
+function findLastBlockIdx(
+  blocks: JsonClaudeMessageBlock[],
+  type: JsonClaudeMessageBlock['type']
+): number {
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    if (blocks[i].type === type) return i
+  }
+  return -1
+}
+
+// Targeted delta update. The naive .map(entry => ...) over session.entries
+// allocates an O(N) array AND fires a JS callback per entry on every
+// 30ms-coalesced delta — at hundreds of deltas per turn with extended
+// thinking on, that pins CPU. Instead: locate the entry by index, slice +
+// patch only that one. The .slice() is still O(N) but it's a flat memcpy
+// of pointers, an order of magnitude cheaper than .map(callback).
+function applyBlockTextDelta(
+  state: JsonClaudeState,
+  sessionId: string,
+  entryId: string,
+  textDelta: string,
+  blockType: 'text' | 'thinking'
+): JsonClaudeState {
+  if (textDelta === '') return state
+  const session = state.sessions[sessionId]
+  if (!session) return state
+  const entryIdx = session.entries.findIndex((e) => e.entryId === entryId)
+  if (entryIdx === -1) return state
+  const entry = session.entries[entryIdx]
+  const blocks = entry.blocks ?? []
+  const lastIdx = findLastBlockIdx(blocks, blockType)
+  let nextBlocks: JsonClaudeMessageBlock[]
+  if (lastIdx === -1) {
+    // Defensive: content_block_start should have created a placeholder
+    // before any deltas land. If it didn't, append one so the delta isn't
+    // dropped on the floor.
+    nextBlocks = [...blocks, { type: blockType, text: textDelta }]
+  } else {
+    nextBlocks = blocks.slice()
+    const b = nextBlocks[lastIdx]
+    nextBlocks[lastIdx] = { ...b, text: (b.text ?? '') + textDelta }
+  }
+  const nextEntries = session.entries.slice()
+  nextEntries[entryIdx] = { ...entry, blocks: nextBlocks }
+  return {
+    ...state,
+    sessions: {
+      ...state.sessions,
+      [session.sessionId]: { ...session, entries: nextEntries }
+    }
+  }
+}
+
 export function jsonClaudeReducer(
   state: JsonClaudeState,
   event: JsonClaudeEvent
@@ -387,88 +440,25 @@ export function jsonClaudeReducer(
       }
     }
     case 'jsonClaude/assistantTextDelta': {
-      const session = state.sessions[event.payload.sessionId]
-      if (!session) return state
-      const { entryId, textDelta } = event.payload
-      let changed = false
-      const nextEntries = session.entries.map((entry) => {
-        if (entry.entryId !== entryId) return entry
-        const blocks = entry.blocks ?? []
-        // Target the *last* text block. Messages can have
-        // text→tool_use→text shape, and deltas always belong to the
-        // most recently opened content block. Falling back to "first
-        // text block" interleaves text 2's deltas into text 0.
-        let lastTextIdx = -1
-        for (let i = blocks.length - 1; i >= 0; i--) {
-          if (blocks[i].type === 'text') {
-            lastTextIdx = i
-            break
-          }
-        }
-        if (lastTextIdx === -1) {
-          changed = true
-          return {
-            ...entry,
-            blocks: [...blocks, { type: 'text' as const, text: textDelta }]
-          }
-        }
-        const nextBlocks = blocks.map((b, i) =>
-          i === lastTextIdx ? { ...b, text: (b.text || '') + textDelta } : b
-        )
-        changed = true
-        return { ...entry, blocks: nextBlocks }
-      })
-      if (!changed) return state
-      return {
-        ...state,
-        sessions: {
-          ...state.sessions,
-          [session.sessionId]: { ...session, entries: nextEntries }
-        }
-      }
+      // Target the *last* text block. Messages can have
+      // text→tool_use→text shape, and deltas always belong to the
+      // most recently opened content block.
+      return applyBlockTextDelta(
+        state,
+        event.payload.sessionId,
+        event.payload.entryId,
+        event.payload.textDelta,
+        'text'
+      )
     }
     case 'jsonClaude/assistantThinkingDelta': {
-      const session = state.sessions[event.payload.sessionId]
-      if (!session) return state
-      const { entryId, textDelta } = event.payload
-      let changed = false
-      const nextEntries = session.entries.map((entry) => {
-        if (entry.entryId !== entryId) return entry
-        const blocks = entry.blocks ?? []
-        // Target the *last* thinking block — same rationale as
-        // assistantTextDelta: deltas always belong to the most recently
-        // opened content block of that type.
-        let lastThinkingIdx = -1
-        for (let i = blocks.length - 1; i >= 0; i--) {
-          if (blocks[i].type === 'thinking') {
-            lastThinkingIdx = i
-            break
-          }
-        }
-        if (lastThinkingIdx === -1) {
-          // Defensive: content_block_start should have created a
-          // thinking placeholder before any deltas land. If it didn't,
-          // append one so the delta isn't dropped on the floor.
-          changed = true
-          return {
-            ...entry,
-            blocks: [...blocks, { type: 'thinking' as const, text: textDelta }]
-          }
-        }
-        const nextBlocks = blocks.map((b, i) =>
-          i === lastThinkingIdx ? { ...b, text: (b.text || '') + textDelta } : b
-        )
-        changed = true
-        return { ...entry, blocks: nextBlocks }
-      })
-      if (!changed) return state
-      return {
-        ...state,
-        sessions: {
-          ...state.sessions,
-          [session.sessionId]: { ...session, entries: nextEntries }
-        }
-      }
+      return applyBlockTextDelta(
+        state,
+        event.payload.sessionId,
+        event.payload.entryId,
+        event.payload.textDelta,
+        'thinking'
+      )
     }
     case 'jsonClaude/assistantBlockAppended': {
       const session = state.sessions[event.payload.sessionId]

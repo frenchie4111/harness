@@ -52,13 +52,20 @@ interface PartialMessageState {
   entryId: string
   pendingText: string
   pendingThinking: string
-  flushTimer: NodeJS.Timeout | null
+  textFlushTimer: NodeJS.Timeout | null
+  thinkingFlushTimer: NodeJS.Timeout | null
   placeholderCreated: boolean
 }
 
 /** ms to coalesce text deltas before dispatching. Below ~16ms re-renders
- *  start to dominate; much higher feels laggy. */
+ *  start to dominate; much higher feels laggy for actively-read text. */
 const PARTIAL_TEXT_FLUSH_MS = 30
+/** Thinking deltas land in a card that auto-collapses once the model
+ *  moves on, so the user isn't actively reading every token; with some
+ *  models thinking is summarized or hidden entirely. Throttle hard so
+ *  long thinking turns don't pin CPU re-rendering text the user can't
+ *  see. 4Hz still feels live if the card is expanded. */
+const PARTIAL_THINKING_FLUSH_MS = 250
 
 export interface JsonClaudeControlServerInfo {
   port: number
@@ -1079,7 +1086,8 @@ export class JsonClaudeManager {
         entryId: `${instance.sessionId}-a-${messageId}`,
         pendingText: '',
         pendingThinking: '',
-        flushTimer: null,
+        textFlushTimer: null,
+        thinkingFlushTimer: null,
         placeholderCreated: false
       }
       return
@@ -1118,14 +1126,16 @@ export class JsonClaudeManager {
         | { type?: string; text?: string; thinking?: string }
         | undefined
       if (delta?.type === 'text_delta' && typeof delta.text === 'string') {
+        if (delta.text.length === 0) return
         instance.partial.pendingText += delta.text
-        this.scheduleDeltaFlush(instance)
+        this.scheduleTextFlush(instance)
       } else if (
         delta?.type === 'thinking_delta' &&
         typeof delta.thinking === 'string'
       ) {
+        if (delta.thinking.length === 0) return
         instance.partial.pendingThinking += delta.thinking
-        this.scheduleDeltaFlush(instance)
+        this.scheduleThinkingFlush(instance)
       }
       // input_json_delta is intentionally dropped — see backlog.
       // signature_delta carries the cryptographic signature for a
@@ -1152,25 +1162,40 @@ export class JsonClaudeManager {
     instance.partial.placeholderCreated = true
   }
 
-  private scheduleDeltaFlush(instance: JsonClaudeInstance): void {
-    if (!instance.partial || instance.partial.flushTimer) return
-    instance.partial.flushTimer = setTimeout(() => {
+  private scheduleTextFlush(instance: JsonClaudeInstance): void {
+    if (!instance.partial || instance.partial.textFlushTimer) return
+    instance.partial.textFlushTimer = setTimeout(() => {
       // Re-fetch instance state under timer — the instance object may
       // have been torn down between schedule and fire.
       const live = this.instances.get(instance.sessionId)
-      if (!live) return
-      this.flushPartialDeltas(live)
+      if (!live || !live.partial) return
+      live.partial.textFlushTimer = null
+      this.flushPartialText(live)
     }, PARTIAL_TEXT_FLUSH_MS)
   }
 
-  /** Drain whichever delta buffers have content. Both share a single
-   *  flush timer because there's only ever one block actively receiving
-   *  deltas at a time. */
+  private scheduleThinkingFlush(instance: JsonClaudeInstance): void {
+    if (!instance.partial || instance.partial.thinkingFlushTimer) return
+    instance.partial.thinkingFlushTimer = setTimeout(() => {
+      const live = this.instances.get(instance.sessionId)
+      if (!live || !live.partial) return
+      live.partial.thinkingFlushTimer = null
+      this.flushPartialThinking(live)
+    }, PARTIAL_THINKING_FLUSH_MS)
+  }
+
+  /** Drain both delta buffers immediately. Called at boundaries
+   *  (content_block_stop, message_stop, consolidated assistant event)
+   *  where we want pending content to land before the next dispatch. */
   private flushPartialDeltas(instance: JsonClaudeInstance): void {
     if (!instance.partial) return
-    if (instance.partial.flushTimer) {
-      clearTimeout(instance.partial.flushTimer)
-      instance.partial.flushTimer = null
+    if (instance.partial.textFlushTimer) {
+      clearTimeout(instance.partial.textFlushTimer)
+      instance.partial.textFlushTimer = null
+    }
+    if (instance.partial.thinkingFlushTimer) {
+      clearTimeout(instance.partial.thinkingFlushTimer)
+      instance.partial.thinkingFlushTimer = null
     }
     this.flushPartialText(instance)
     this.flushPartialThinking(instance)
@@ -1210,9 +1235,13 @@ export class JsonClaudeManager {
 
   private clearPartial(instance: JsonClaudeInstance): void {
     if (!instance.partial) return
-    if (instance.partial.flushTimer) {
-      clearTimeout(instance.partial.flushTimer)
-      instance.partial.flushTimer = null
+    if (instance.partial.textFlushTimer) {
+      clearTimeout(instance.partial.textFlushTimer)
+      instance.partial.textFlushTimer = null
+    }
+    if (instance.partial.thinkingFlushTimer) {
+      clearTimeout(instance.partial.thinkingFlushTimer)
+      instance.partial.thinkingFlushTimer = null
     }
     instance.partial.pendingText = ''
     instance.partial.pendingThinking = ''
