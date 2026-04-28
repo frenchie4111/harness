@@ -4,7 +4,7 @@ import {
   type JsonClaudePendingApproval
 } from '../../shared/state/json-claude'
 import { formatPendingTool } from '../pending-tool'
-import { useJsonClaude, useSettings } from '../store'
+import { useJsonClaudeSession, useSettings } from '../store'
 
 interface JsonClaudeApprovalCardProps {
   approval: JsonClaudePendingApproval
@@ -55,8 +55,7 @@ export function JsonClaudeApprovalCard({
     [approval.toolName, approval.input]
   )
 
-  const jsonClaude = useJsonClaude()
-  const session = jsonClaude.sessions[approval.sessionId]
+  const session = useJsonClaudeSession(approval.sessionId)
   const isEditTool = (EDIT_TOOL_NAMES as readonly string[]).includes(
     approval.toolName
   )

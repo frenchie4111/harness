@@ -9,7 +9,7 @@ import {
 import ReactMarkdown from 'react-markdown'
 import rehypeHighlight from 'rehype-highlight'
 import { Brain, Square, Terminal, FileText, X, Layers } from 'lucide-react'
-import { useJsonClaude } from '../store'
+import { useJsonClaudeSession } from '../store'
 import { useJsonClaudeApprovals } from '../hooks/useJsonClaudeApprovals'
 import { JsonClaudeApprovalCard } from './JsonClaudeApprovalCard'
 import { dispatchToolCard, ToolCardChrome } from './json-mode-cards'
@@ -414,8 +414,7 @@ function groupConsecutiveToolRows(rows: RenderedRow[]): GroupedItem[] {
 }
 
 export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JSX.Element {
-  const jsonClaude = useJsonClaude()
-  const session = jsonClaude.sessions[sessionId]
+  const session = useJsonClaudeSession(sessionId)
   const { pending, resolve } = useJsonClaudeApprovals(sessionId)
   const [draft, setDraft] = useState('')
   // Mention/popover state. `dismissed` carries the draft text at which
