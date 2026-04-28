@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { JsonClaudePendingApproval } from '../../shared/state/json-claude'
+import {
+  EDIT_TOOL_NAMES,
+  type JsonClaudePendingApproval
+} from '../../shared/state/json-claude'
 import { formatPendingTool } from '../pending-tool'
-import { useSettings } from '../store'
+import { useJsonClaude, useSettings } from '../store'
 
 interface JsonClaudeApprovalCardProps {
   approval: JsonClaudePendingApproval
@@ -52,11 +55,39 @@ export function JsonClaudeApprovalCard({
     [approval.toolName, approval.input]
   )
 
+  const jsonClaude = useJsonClaude()
+  const session = jsonClaude.sessions[approval.sessionId]
+  const isEditTool = (EDIT_TOOL_NAMES as readonly string[]).includes(
+    approval.toolName
+  )
+  const sessionGrantTools = isEditTool
+    ? (EDIT_TOOL_NAMES as readonly string[])
+    : [approval.toolName]
+  const sessionGrantLabel = isEditTool
+    ? 'Allow edits this session'
+    : `Allow ${approval.toolName} this session`
+  // Defensive: the bridge would have auto-resolved before we rendered
+  // if the tool was already in the set, but keep the UI honest just in
+  // case timing surprises us.
+  const alreadyGranted =
+    !!session &&
+    sessionGrantTools.every((name) =>
+      session.sessionToolApprovals.includes(name)
+    )
+
   function allow(): void {
     // Claude Code 2.1.114's PermissionResult validator requires
     // updatedInput on the allow branch (it was optional in earlier
     // versions). Echo the original input back unchanged so plain Allow
     // is "allow with no changes".
+    onResolve({ behavior: 'allow', updatedInput: approval.input })
+  }
+
+  async function allowThisSession(): Promise<void> {
+    await window.api.grantJsonClaudeSessionToolApprovals(
+      approval.sessionId,
+      Array.from(sessionGrantTools)
+    )
     onResolve({ behavior: 'allow', updatedInput: approval.input })
   }
 
@@ -203,8 +234,19 @@ export function JsonClaudeApprovalCard({
               onClick={allow}
               className="px-2.5 py-1 text-xs rounded bg-success/20 hover:bg-success/30 text-success transition-colors cursor-pointer"
             >
-              Allow
+              Allow once
             </button>
+            {!alreadyGranted && (
+              <button
+                onClick={() => {
+                  void allowThisSession()
+                }}
+                title="Allow this tool for the rest of the session — future calls of this tool skip the prompt. Cleared when the app quits."
+                className="px-3 py-1 text-xs font-semibold rounded bg-success/30 hover:bg-success/40 text-success border border-success/50 transition-colors cursor-pointer"
+              >
+                {sessionGrantLabel}
+              </button>
+            )}
             <button
               onClick={() => setMode('edit')}
               className="px-2.5 py-1 text-xs rounded bg-surface hover:bg-surface/60 text-fg transition-colors cursor-pointer"
