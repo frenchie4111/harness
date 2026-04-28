@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Brain } from 'lucide-react'
 import { isHarnessControl, prettyToolName } from './index'
 
@@ -25,10 +25,17 @@ export function ToolGroup({ rows }: { rows: ToolGroupRow[] }): JSX.Element {
   )
   // Auto-expand only for pending approvals — those need user action.
   // Errors get a header badge but stay collapsed; user can drill in.
+  const wasAutoExpandedRef = useRef(hasPending)
   const [expanded, setExpanded] = useState<boolean>(hasPending)
   useEffect(() => {
-    if (hasPending) setExpanded(true)
-  }, [hasPending])
+    if (hasPending && !expanded) {
+      wasAutoExpandedRef.current = true
+      setExpanded(true)
+    } else if (!hasPending && wasAutoExpandedRef.current && expanded) {
+      wasAutoExpandedRef.current = false
+      setExpanded(false)
+    }
+  }, [hasPending, expanded])
 
   const toolRows = rows.filter((r) => !r.isThinking)
   const thinkingCount = rows.length - toolRows.length
@@ -57,7 +64,10 @@ export function ToolGroup({ rows }: { rows: ToolGroupRow[] }): JSX.Element {
       {anyBrand && <div className="brand-gradient-bg h-0.5" />}
       <button
         type="button"
-        onClick={() => setExpanded((v) => !v)}
+        onClick={() => {
+          wasAutoExpandedRef.current = false
+          setExpanded((v) => !v)
+        }}
         className={`${anyBrand ? 'group' : ''} w-full px-2 py-1 text-[11px] flex items-center gap-2 cursor-pointer hover:bg-app/60 transition-colors text-left`}
       >
         <span className="text-muted text-[9px] w-2 shrink-0 select-none">
