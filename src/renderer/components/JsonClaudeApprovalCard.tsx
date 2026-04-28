@@ -60,20 +60,16 @@ export function JsonClaudeApprovalCard({
   const isEditTool = (EDIT_TOOL_NAMES as readonly string[]).includes(
     approval.toolName
   )
-  const sessionGrantTools = isEditTool
-    ? (EDIT_TOOL_NAMES as readonly string[])
-    : [approval.toolName]
   const sessionGrantLabel = isEditTool
     ? 'Allow edits this session'
     : `Allow ${approval.toolName} this session`
-  // Defensive: the bridge would have auto-resolved before we rendered
-  // if the tool was already in the set, but keep the UI honest just in
-  // case timing surprises us.
-  const alreadyGranted =
-    !!session &&
-    sessionGrantTools.every((name) =>
-      session.sessionToolApprovals.includes(name)
-    )
+  // For edit-class tools the button flips permissionMode instead of
+  // adding to the per-tool allow set — claude is killed+respawned with
+  // --permission-mode acceptEdits and edits stop hitting the bridge
+  // entirely. For everything else we still use the session allow set.
+  const alreadyGranted = isEditTool
+    ? session?.permissionMode === 'acceptEdits'
+    : !!session && session.sessionToolApprovals.includes(approval.toolName)
 
   function allow(): void {
     // Claude Code 2.1.114's PermissionResult validator requires
@@ -84,11 +80,23 @@ export function JsonClaudeApprovalCard({
   }
 
   async function allowThisSession(): Promise<void> {
-    await window.api.grantJsonClaudeSessionToolApprovals(
-      approval.sessionId,
-      Array.from(sessionGrantTools)
-    )
-    onResolve({ behavior: 'allow', updatedInput: approval.input })
+    // Resolve first so the bridge writes the allow response before the
+    // kill+respawn that setPermissionMode triggers — otherwise the
+    // bridge's stopSession would deny-cancel this in-flight approval.
+    await window.api.resolveJsonClaudeApproval(approval.requestId, {
+      behavior: 'allow',
+      updatedInput: approval.input
+    })
+    if (isEditTool) {
+      await window.api.setJsonClaudePermissionMode(
+        approval.sessionId,
+        'acceptEdits'
+      )
+    } else {
+      await window.api.grantJsonClaudeSessionToolApprovals(approval.sessionId, [
+        approval.toolName
+      ])
+    }
   }
 
   async function saveGuidance(): Promise<void> {
