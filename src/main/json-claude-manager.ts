@@ -243,6 +243,11 @@ export class JsonClaudeManager {
       }
     }
     if (seededEntries.length === 0) return
+    const compactCount = seededEntries.filter((e) => e.kind === 'compact').length
+    log(
+      'json-claude',
+      `seed dispatch sessionId=${sessionId} total=${seededEntries.length} compact=${compactCount}`
+    )
     this.store.dispatch({
       type: 'jsonClaude/entriesSeeded',
       payload: { sessionId, entries: seededEntries }
