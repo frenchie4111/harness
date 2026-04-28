@@ -82,6 +82,29 @@ export interface JsonClaudeSession {
    *  user's enabled Skills, plugin commands, and project-local
    *  `.claude/commands/*.md`. Empty until init lands. */
   slashCommands: string[]
+  /** Audit map of tool calls that were auto-approved by the LLM-based
+   *  reviewer (instead of going through the user UI). Keyed by toolUseId
+   *  so the per-tool card can render a small "auto-approved" badge.
+   *  Only populated when settings.autoApprovePermissions is on. */
+  autoApprovedDecisions: Record<
+    string,
+    { model: string; reason: string; timestamp: number }
+  >
+}
+
+/** Status of the LLM-based auto-reviewer for a single pending approval.
+ *  Set on the pending entry only when settings.autoApprovePermissions is
+ *  on. The renderer reads this to draw a small "asking auto-approver"
+ *  spinner while pending and a muted "auto-approver: <reason>" line
+ *  once the reviewer has decided to ask. We never see a finished
+ *  'approve' here in practice — that path resolves the approval and
+ *  drops the entry from pendingApprovals before the renderer can
+ *  observe it. */
+export interface AutoReviewStatus {
+  state: 'pending' | 'finished'
+  decision?: 'approve' | 'ask'
+  reason?: string
+  model?: string
 }
 
 export interface JsonClaudePendingApproval {
@@ -91,6 +114,7 @@ export interface JsonClaudePendingApproval {
   input: Record<string, unknown>
   toolUseId?: string
   timestamp: number
+  autoReview?: AutoReviewStatus
 }
 
 export interface JsonClaudeState {
@@ -172,6 +196,25 @@ export type JsonClaudeEvent =
       payload: { requestId: string }
     }
   | {
+      type: 'jsonClaude/approvalAutoApproved'
+      payload: {
+        sessionId: string
+        toolUseId: string
+        model: string
+        reason: string
+        timestamp: number
+      }
+    }
+  | {
+      type: 'jsonClaude/approvalAutoReviewFinished'
+      payload: {
+        requestId: string
+        decision: 'approve' | 'ask'
+        reason: string
+        model?: string
+      }
+    }
+  | {
       type: 'jsonClaude/permissionModeChanged'
       payload: { sessionId: string; mode: JsonClaudePermissionMode }
     }
@@ -224,7 +267,8 @@ export function jsonClaudeReducer(
             entries: existing?.entries ?? [],
             busy: false,
             permissionMode: existing?.permissionMode ?? 'default',
-            slashCommands: existing?.slashCommands ?? []
+            slashCommands: existing?.slashCommands ?? [],
+            autoApprovedDecisions: existing?.autoApprovedDecisions ?? {}
           }
         }
       }
@@ -478,6 +522,39 @@ export function jsonClaudeReducer(
       const { [requestId]: _dropped, ...rest } = state.pendingApprovals
       void _dropped
       return { ...state, pendingApprovals: rest }
+    }
+    case 'jsonClaude/approvalAutoApproved': {
+      const { sessionId, toolUseId, model, reason, timestamp } = event.payload
+      const session = state.sessions[sessionId]
+      if (!session) return state
+      return {
+        ...state,
+        sessions: {
+          ...state.sessions,
+          [sessionId]: {
+            ...session,
+            autoApprovedDecisions: {
+              ...session.autoApprovedDecisions,
+              [toolUseId]: { model, reason, timestamp }
+            }
+          }
+        }
+      }
+    }
+    case 'jsonClaude/approvalAutoReviewFinished': {
+      const { requestId, decision, reason, model } = event.payload
+      const existing = state.pendingApprovals[requestId]
+      if (!existing) return state
+      return {
+        ...state,
+        pendingApprovals: {
+          ...state.pendingApprovals,
+          [requestId]: {
+            ...existing,
+            autoReview: { state: 'finished', decision, reason, model }
+          }
+        }
+      }
     }
     case 'jsonClaude/permissionModeChanged': {
       const session = state.sessions[event.payload.sessionId]

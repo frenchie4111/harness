@@ -23,6 +23,8 @@ import { mkdtempSync, existsSync, unlinkSync } from 'node:fs'
 import type { Store } from './store'
 import type { JsonClaudePendingApproval } from '../shared/state/json-claude'
 import { log } from './debug'
+import { autoReview, checkDenyList } from './auto-approver'
+import type { AutoReviewStatus } from '../shared/state/json-claude'
 
 interface ApprovalResult {
   behavior: 'allow' | 'deny'
@@ -45,6 +47,10 @@ interface RequestFrame {
 interface PendingSocket {
   socket: Socket
   sessionId: string
+  /** Full request payload stashed so a re-review (triggered from the
+   *  approval card after the user edits steering guidance) can rebuild
+   *  the prompt without crossing slice boundaries. */
+  payload: JsonClaudePendingApproval
 }
 
 interface SessionEntry {
@@ -52,13 +58,29 @@ interface SessionEntry {
   socketPath: string
 }
 
+export interface ApprovalBridgeDeps {
+  /** Reads the current claudeCommand setting on demand so toggling it in
+   *  Settings takes effect for the next auto-review without a restart. */
+  getClaudeCommand: () => string
+  /** Reads the current autoApprovePermissions setting on demand. When
+   *  false the bridge skips auto-review entirely and dispatches the
+   *  approvalRequested event directly. */
+  isAutoApproveEnabled: () => boolean
+  /** Reads the current autoApproveSteerInstructions setting on demand.
+   *  Appended to the reviewer's policy prompt as project-specific
+   *  guidance. Empty string when unset. */
+  getAutoApproveSteerInstructions: () => string
+}
+
 export class ApprovalBridge {
   private store: Store
   private sessions = new Map<string, SessionEntry>()
   private pendingResponses = new Map<string, PendingSocket>()
+  private deps: ApprovalBridgeDeps | null
 
-  constructor(store: Store) {
+  constructor(store: Store, deps?: ApprovalBridgeDeps) {
     this.store = store
+    this.deps = deps ?? null
   }
 
   /** Open a Unix domain socket dedicated to `sessionId`. Returns the path
@@ -144,6 +166,37 @@ export class ApprovalBridge {
     return true
   }
 
+  /** Triggered from the approval card when the user edits the steering
+   *  guidance and clicks "Save & re-review". Resets the pending entry's
+   *  autoReview state back to 'pending' (so the spinner reappears) and
+   *  spawns a fresh Haiku oneshot. The freshly-saved guidance is read
+   *  on every call inside runAutoReviewer via the deps closure, so this
+   *  picks up the new text automatically. */
+  rerunAutoApprovalReview(requestId: string): boolean {
+    const pending = this.pendingResponses.get(requestId)
+    if (!pending) return false
+    if (!this.deps?.isAutoApproveEnabled()) return false
+
+    const refreshedPayload: JsonClaudePendingApproval = {
+      ...pending.payload,
+      autoReview: { state: 'pending' }
+    }
+    this.pendingResponses.set(requestId, {
+      ...pending,
+      payload: refreshedPayload
+    })
+    this.store.dispatch({
+      type: 'jsonClaude/approvalRequested',
+      payload: refreshedPayload
+    })
+    log(
+      'approval-bridge',
+      `re-running auto-review session=${pending.sessionId} id=${requestId} tool=${refreshedPayload.toolName}`
+    )
+    void this.runAutoReviewer(refreshedPayload, pending.socket)
+    return true
+  }
+
   private handleConnection(sessionId: string, socket: Socket): void {
     let buf = ''
     socket.setEncoding('utf8')
@@ -191,7 +244,8 @@ export class ApprovalBridge {
       log('approval-bridge', `ignoring frame session=${sessionId} type=${frame.type}`)
       return
     }
-    const payload: JsonClaudePendingApproval = {
+
+    const basePayload = {
       requestId: frame.id,
       sessionId: frame.sessionId || sessionId,
       toolName: frame.tool_name,
@@ -199,11 +253,119 @@ export class ApprovalBridge {
       toolUseId: frame.tool_use_id,
       timestamp: frame.timestamp || Date.now()
     }
-    this.pendingResponses.set(frame.id, { socket, sessionId: payload.sessionId })
+
+    // Decide the initial autoReview status synchronously so the prompt
+    // opens with the right chrome on first paint:
+    //   - feature off            → no autoReview field, plain prompt.
+    //   - deny-list match        → finished/ask, with the deny reason.
+    //   - otherwise              → pending (spinner) + Haiku spawned below.
+    const enabled = this.deps?.isAutoApproveEnabled() ?? false
+    let autoReview: AutoReviewStatus | undefined
+    let denyReason: string | null = null
+    if (enabled) {
+      denyReason = checkDenyList(basePayload.toolName, basePayload.input)
+      autoReview = denyReason
+        ? { state: 'finished', decision: 'ask', reason: denyReason }
+        : { state: 'pending' }
+    }
+
+    const payload: JsonClaudePendingApproval = { ...basePayload, autoReview }
+    this.pendingResponses.set(frame.id, {
+      socket,
+      sessionId: payload.sessionId,
+      payload
+    })
     this.store.dispatch({ type: 'jsonClaude/approvalRequested', payload })
     log(
       'approval-bridge',
-      `approvalRequested session=${payload.sessionId} id=${frame.id} tool=${frame.tool_name}`
+      `approvalRequested session=${payload.sessionId} id=${frame.id} tool=${frame.tool_name}` +
+        (autoReview ? ` autoReview=${autoReview.state}` : '')
+    )
+
+    if (enabled && !denyReason) {
+      void this.runAutoReviewer(payload, socket)
+    }
+  }
+
+  /** Background Haiku call. Runs in parallel with the user-facing
+   *  prompt. If the user clicks Allow/Deny first, resolveApproval()
+   *  removes the request from pendingResponses and writes the socket;
+   *  this function then sees the entry is gone and silently bails.
+   *  Otherwise it either resolves the request itself (approve) or
+   *  surfaces the reviewer's reason (ask) so the prompt becomes
+   *  static text instead of a spinner. */
+  private async runAutoReviewer(
+    payload: JsonClaudePendingApproval,
+    socket: Socket
+  ): Promise<void> {
+    const claudeCommand = this.deps?.getClaudeCommand() ?? 'claude'
+    const steerInstructions =
+      this.deps?.getAutoApproveSteerInstructions() ?? ''
+    let decision
+    try {
+      decision = await autoReview(payload.toolName, payload.input, {
+        claudeCommand,
+        steerInstructions
+      })
+    } catch (err) {
+      log(
+        'approval-bridge',
+        `auto-review threw session=${payload.sessionId} id=${payload.requestId}`,
+        err instanceof Error ? err.message : String(err)
+      )
+      decision = { kind: 'ask' as const, reason: 'auto-review failed' }
+    }
+
+    // Race check: did the user resolve manually while we were waiting?
+    const stillPending = this.pendingResponses.get(payload.requestId)
+    if (!stillPending || stillPending.socket !== socket) {
+      log(
+        'approval-bridge',
+        `auto-review superseded session=${payload.sessionId} id=${payload.requestId} decision=${decision.kind}`
+      )
+      return
+    }
+
+    if (decision.kind === 'approve') {
+      this.pendingResponses.delete(payload.requestId)
+      this.writeResponse(socket, payload.requestId, {
+        behavior: 'allow',
+        updatedInput: payload.input
+      })
+      this.store.dispatch({
+        type: 'jsonClaude/approvalResolved',
+        payload: { requestId: payload.requestId }
+      })
+      if (payload.toolUseId) {
+        this.store.dispatch({
+          type: 'jsonClaude/approvalAutoApproved',
+          payload: {
+            sessionId: payload.sessionId,
+            toolUseId: payload.toolUseId,
+            model: decision.model,
+            reason: decision.reason,
+            timestamp: Date.now()
+          }
+        })
+      }
+      log(
+        'approval-bridge',
+        `auto-approved session=${payload.sessionId} id=${payload.requestId} tool=${payload.toolName} reason="${decision.reason}"`
+      )
+      return
+    }
+
+    this.store.dispatch({
+      type: 'jsonClaude/approvalAutoReviewFinished',
+      payload: {
+        requestId: payload.requestId,
+        decision: 'ask',
+        reason: decision.reason
+      }
+    })
+    log(
+      'approval-bridge',
+      `auto-review ask session=${payload.sessionId} id=${payload.requestId} tool=${payload.toolName} reason="${decision.reason}"`
     )
   }
 

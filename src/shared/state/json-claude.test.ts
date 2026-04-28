@@ -409,6 +409,93 @@ describe('jsonClaudeReducer', () => {
     expect(next).toBe(initialJsonClaude)
   })
 
+  it('approvalAutoApproved records the decision keyed by toolUseId', () => {
+    let state = seedSession(initialJsonClaude)
+    expect(state.sessions[SID].autoApprovedDecisions).toEqual({})
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/approvalAutoApproved',
+      payload: {
+        sessionId: SID,
+        toolUseId: 'toolu_99',
+        model: 'claude-haiku-4-5',
+        reason: 'plain Read inside worktree',
+        timestamp: 12345
+      }
+    })
+    expect(state.sessions[SID].autoApprovedDecisions['toolu_99']).toEqual({
+      model: 'claude-haiku-4-5',
+      reason: 'plain Read inside worktree',
+      timestamp: 12345
+    })
+  })
+
+  it('approvalAutoApproved is a no-op for unknown session', () => {
+    const next = jsonClaudeReducer(initialJsonClaude, {
+      type: 'jsonClaude/approvalAutoApproved',
+      payload: {
+        sessionId: 'missing',
+        toolUseId: 'toolu_x',
+        model: 'm',
+        reason: 'r',
+        timestamp: 1
+      }
+    })
+    expect(next).toBe(initialJsonClaude)
+  })
+
+  it('approvalRequested carries an autoReview status when present', () => {
+    const state = jsonClaudeReducer(initialJsonClaude, {
+      type: 'jsonClaude/approvalRequested',
+      payload: {
+        requestId: 'r1',
+        sessionId: SID,
+        toolName: 'Bash',
+        input: { command: 'ls' },
+        toolUseId: 'tu1',
+        timestamp: 1,
+        autoReview: { state: 'pending' }
+      }
+    })
+    expect(state.pendingApprovals.r1.autoReview).toEqual({ state: 'pending' })
+  })
+
+  it('approvalAutoReviewFinished updates the autoReview field on the matching request', () => {
+    let state = jsonClaudeReducer(initialJsonClaude, {
+      type: 'jsonClaude/approvalRequested',
+      payload: {
+        requestId: 'r1',
+        sessionId: SID,
+        toolName: 'Bash',
+        input: { command: 'ls' },
+        toolUseId: 'tu1',
+        timestamp: 1,
+        autoReview: { state: 'pending' }
+      }
+    })
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/approvalAutoReviewFinished',
+      payload: {
+        requestId: 'r1',
+        decision: 'ask',
+        reason: 'reviewer wants a human'
+      }
+    })
+    expect(state.pendingApprovals.r1.autoReview).toEqual({
+      state: 'finished',
+      decision: 'ask',
+      reason: 'reviewer wants a human',
+      model: undefined
+    })
+  })
+
+  it('approvalAutoReviewFinished is a no-op for an unknown request', () => {
+    const next = jsonClaudeReducer(initialJsonClaude, {
+      type: 'jsonClaude/approvalAutoReviewFinished',
+      payload: { requestId: 'missing', decision: 'ask', reason: 'x' }
+    })
+    expect(next).toBe(initialJsonClaude)
+  })
+
   it('permissionModeChanged flips the mode on an existing session', () => {
     let state = seedSession(initialJsonClaude)
     expect(state.sessions[SID].permissionMode).toBe('default')

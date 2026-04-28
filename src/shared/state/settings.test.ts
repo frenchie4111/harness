@@ -321,6 +321,36 @@ describe('settingsReducer', () => {
     expect(xterm.defaultClaudeTabType).toBe('xterm')
   })
 
+  it('autoApprovePermissionsChanged toggles the flag', () => {
+    expect(initialSettings.autoApprovePermissions).toBe(false)
+    const on = apply(initialSettings, {
+      type: 'settings/autoApprovePermissionsChanged',
+      payload: true
+    })
+    expect(on.autoApprovePermissions).toBe(true)
+    const off = apply(on, {
+      type: 'settings/autoApprovePermissionsChanged',
+      payload: false
+    })
+    expect(off.autoApprovePermissions).toBe(false)
+  })
+
+  it('autoApproveSteerInstructionsChanged sets the steer text', () => {
+    expect(initialSettings.autoApproveSteerInstructions).toBe('')
+    const next = apply(initialSettings, {
+      type: 'settings/autoApproveSteerInstructionsChanged',
+      payload: 'approve npm install for this project'
+    })
+    expect(next.autoApproveSteerInstructions).toBe(
+      'approve npm install for this project'
+    )
+    const cleared = apply(next, {
+      type: 'settings/autoApproveSteerInstructionsChanged',
+      payload: ''
+    })
+    expect(cleared.autoApproveSteerInstructions).toBe('')
+  })
+
   it('returns a new object reference (no mutation)', () => {
     const next = apply(initialSettings, { type: 'settings/themeChanged', payload: 'x' })
     expect(next).not.toBe(initialSettings)

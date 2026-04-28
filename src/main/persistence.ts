@@ -142,6 +142,15 @@ export interface Config {
   // tab spawned by panes-fsm is the xterm TUI or the JSON-mode chat.
   // Ignored when jsonModeClaudeTabs is off.
   defaultClaudeTabType?: 'xterm' | 'json'
+  // When true, JSON-mode tabs delegate per-tool approval decisions to a
+  // Haiku oneshot for obviously-safe tool calls. Productivity feature
+  // only — not a security boundary. Default off (undefined treated as
+  // false).
+  autoApprovePermissions?: boolean
+  // Optional project-specific guidance appended to the auto-approver's
+  // policy prompt. Empty by default. Has no effect unless
+  // autoApprovePermissions is on.
+  autoApproveSteerInstructions?: string
 }
 
 export const DEFAULT_WORKTREE_BASE: 'remote' | 'local' = 'remote'

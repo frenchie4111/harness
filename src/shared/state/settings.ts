@@ -50,6 +50,20 @@ export interface SettingsState {
    *  spawned by default is the xterm-hosted TUI or the JSON-mode React
    *  chat. Ignored when `jsonModeClaudeTabs` is off (always xterm). */
   defaultClaudeTabType: 'xterm' | 'json'
+  /** When true, JSON-mode tabs run a Haiku oneshot to auto-approve
+   *  obviously-safe tool calls instead of prompting the user. Productivity
+   *  feature only — an LLM judging another LLM is not a security boundary.
+   *  A hardcoded deny-list catches the high-blast-radius cases (rm -rf,
+   *  git push, web fetch, etc.) before Haiku is ever consulted. Default
+   *  off. */
+  autoApprovePermissions: boolean
+  /** Optional project-specific guidance appended to the auto-approver's
+   *  policy prompt (after the hardcoded safety preamble). Useful for
+   *  per-project carve-outs like "approve `npm install` on this repo"
+   *  or "be especially strict about Bash that writes outside src/".
+   *  Empty by default — the base policy is what runs. Has no effect
+   *  unless autoApprovePermissions is on. */
+  autoApproveSteerInstructions: string
 }
 
 export type SettingsEvent =
@@ -86,6 +100,8 @@ export type SettingsEvent =
   | { type: 'settings/browserToolsModeChanged'; payload: BrowserToolsMode }
   | { type: 'settings/jsonModeClaudeTabsChanged'; payload: boolean }
   | { type: 'settings/defaultClaudeTabTypeChanged'; payload: 'xterm' | 'json' }
+  | { type: 'settings/autoApprovePermissionsChanged'; payload: boolean }
+  | { type: 'settings/autoApproveSteerInstructionsChanged'; payload: string }
 
 // Client-side placeholder. Real values are seeded in the main-process Store
 // constructor from the on-disk config and secrets.
@@ -122,7 +138,9 @@ export const initialSettings: SettingsState = {
   browserToolsEnabled: true,
   browserToolsMode: 'full',
   jsonModeClaudeTabs: false,
-  defaultClaudeTabType: 'xterm'
+  defaultClaudeTabType: 'xterm',
+  autoApprovePermissions: false,
+  autoApproveSteerInstructions: ''
 }
 
 export function settingsReducer(state: SettingsState, event: SettingsEvent): SettingsState {
@@ -193,6 +211,10 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, jsonModeClaudeTabs: event.payload }
     case 'settings/defaultClaudeTabTypeChanged':
       return { ...state, defaultClaudeTabType: event.payload }
+    case 'settings/autoApprovePermissionsChanged':
+      return { ...state, autoApprovePermissions: event.payload }
+    case 'settings/autoApproveSteerInstructionsChanged':
+      return { ...state, autoApproveSteerInstructions: event.payload }
     default: {
       const _exhaustive: never = event
       void _exhaustive

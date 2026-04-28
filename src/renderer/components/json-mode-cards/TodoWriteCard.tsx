@@ -6,13 +6,14 @@ interface TodoItem {
   activeForm?: string
 }
 
-export function TodoWriteCard({ block }: ToolCardProps): JSX.Element {
+export function TodoWriteCard({ block, autoApproved }: ToolCardProps): JSX.Element {
   const todos = (block.input?.todos as TodoItem[] | undefined) ?? []
   return (
     <ToolCardChrome
       name="TodoWrite"
       subtitle={`${todos.length} item${todos.length === 1 ? '' : 's'}`}
       variant="info"
+      autoApproved={autoApproved}
     >
       <ul className="px-3 py-2 text-xs space-y-1">
         {todos.map((t, i) => (

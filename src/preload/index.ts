@@ -134,6 +134,10 @@ contextBridge.exposeInMainWorld('api', {
   setCodexModel: (model: string | null) => req('config:setCodexModel', model),
   setCodexEnvVars: (vars: Record<string, string>) => req('config:setCodexEnvVars', vars),
   setHarnessMcpEnabled: (enabled: boolean) => req('config:setHarnessMcpEnabled', enabled),
+  setAutoApprovePermissions: (enabled: boolean) =>
+    req('config:setAutoApprovePermissions', enabled),
+  setAutoApproveSteerInstructions: (text: string) =>
+    req('config:setAutoApproveSteerInstructions', text),
   setClaudeTuiFullscreen: (enabled: boolean) => req('config:setClaudeTuiFullscreen', enabled),
   setWsTransportEnabled: (enabled: boolean) => req('config:setWsTransportEnabled', enabled),
   setWsTransportPort: (port: number) => req('config:setWsTransportPort', port),
@@ -342,6 +346,8 @@ contextBridge.exposeInMainWorld('api', {
       interrupt?: boolean
     }
   ) => req('jsonClaude:resolveApproval', requestId, result),
+  rerunJsonClaudeAutoApprovalReview: (requestId: string) =>
+    req('jsonClaude:rerunAutoApprovalReview', requestId),
   startJsonClaude: (id: string, cwd: string) =>
     req('jsonClaude:start', id, cwd),
   sendJsonClaudeMessage: (

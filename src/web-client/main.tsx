@@ -176,6 +176,10 @@ function buildApi(transport: WebSocketClientTransport): ElectronAPI {
       req('config:getDefaultClaudeCommand') as Promise<string>,
     setHarnessMcpEnabled: (enabled) =>
       req('config:setHarnessMcpEnabled', enabled) as Promise<boolean>,
+    setAutoApprovePermissions: (enabled) =>
+      req('config:setAutoApprovePermissions', enabled) as Promise<boolean>,
+    setAutoApproveSteerInstructions: (text) =>
+      req('config:setAutoApproveSteerInstructions', text) as Promise<boolean>,
     setClaudeTuiFullscreen: (enabled) =>
       req('config:setClaudeTuiFullscreen', enabled) as Promise<boolean>,
     setWsTransportEnabled: (enabled) =>
@@ -422,6 +426,8 @@ function buildApi(transport: WebSocketClientTransport): ElectronAPI {
     // ElectronAPI contract is satisfied.
     resolveJsonClaudeApproval: (requestId, result) =>
       req('jsonClaude:resolveApproval', requestId, result) as Promise<boolean>,
+    rerunJsonClaudeAutoApprovalReview: (requestId) =>
+      req('jsonClaude:rerunAutoApprovalReview', requestId) as Promise<boolean>,
     startJsonClaude: (id, cwd) =>
       req('jsonClaude:start', id, cwd) as Promise<boolean>,
     sendJsonClaudeMessage: (id, text, images) =>

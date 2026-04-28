@@ -13,6 +13,7 @@ import type { JsonClaudeMessageBlock } from '../../../shared/state/json-claude'
 export interface ToolCardProps {
   block: JsonClaudeMessageBlock
   result?: { content: string; isError: boolean }
+  autoApproved?: { model: string; reason: string; timestamp: number }
 }
 
 export function basename(p: string): string {
@@ -46,6 +47,7 @@ export function ToolCardChrome({
   variant,
   isError,
   brand,
+  autoApproved,
   children
 }: {
   name: string
@@ -53,6 +55,7 @@ export function ToolCardChrome({
   variant: 'info' | 'warn'
   isError?: boolean
   brand?: boolean
+  autoApproved?: { model: string; reason: string; timestamp: number }
   children: ReactNode
 }): JSX.Element {
   // Collapsed by default. Errors get a visible "error" badge in the
@@ -92,6 +95,14 @@ export function ToolCardChrome({
           {name}
         </span>
         <span className="opacity-70 truncate flex-1 min-w-0">{subtitle}</span>
+        {autoApproved && (
+          <span
+            title={`auto-approved by ${autoApproved.model} · ${autoApproved.reason}`}
+            className="text-[9px] uppercase tracking-wide text-muted bg-app/60 border border-border/50 rounded px-1 py-0.5 shrink-0"
+          >
+            auto · haiku
+          </span>
+        )}
         {isError && (
           <span className="text-[10px] uppercase tracking-wide text-danger shrink-0">
             error
