@@ -58,7 +58,11 @@ function ThinkingCard({
   // Default expanded while streaming so the user can see thoughts land in
   // real time; auto-collapse once the model moves on so finalized
   // transcripts don't drown the surrounding chat in raw thought-text.
-  const [expanded, setExpanded] = useState<boolean>(true)
+  // Init from isPartial so cards that mount already-finalized (e.g.
+  // seed-from-transcript on reload) start collapsed too — without this,
+  // the partial→not transition effect below never fires and they'd stay
+  // open forever.
+  const [expanded, setExpanded] = useState<boolean>(isPartial)
   const wasPartial = useRef<boolean>(isPartial)
   useEffect(() => {
     if (wasPartial.current && !isPartial) setExpanded(false)
