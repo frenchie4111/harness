@@ -848,8 +848,7 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
               onClick={() => {
                 // Kill (no-op if no instance) + start: re-spawns the
                 // subprocess and re-uses the same sessionId so --resume
-                // picks up the on-disk jsonl. Same kill-then-start the
-                // permission-mode toggle does.
+                // picks up the on-disk jsonl.
                 void (async () => {
                   await window.api.killJsonClaude(sessionId)
                   await window.api.startJsonClaude(sessionId, worktreePath)
@@ -1007,7 +1006,7 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
         <button
           onClick={cyclePermissionMode}
           className={`px-1.5 py-0.5 rounded border cursor-pointer hover:opacity-80 transition-opacity ${modeBadgeStyle}`}
-          title="Click to cycle permission mode. Restarts the subprocess with --resume so the conversation persists."
+          title="Click to cycle permission mode. Applies mid-turn — no restart."
         >
           {modeBadgeLabel}
         </button>
