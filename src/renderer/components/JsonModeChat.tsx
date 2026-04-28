@@ -1,14 +1,34 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import rehypeHighlight from 'rehype-highlight'
-import { Square } from 'lucide-react'
+import { Square, Terminal, FileText, X } from 'lucide-react'
 import { useJsonClaude } from '../store'
 import { useJsonClaudeApprovals } from '../hooks/useJsonClaudeApprovals'
 import { JsonClaudeApprovalCard } from './JsonClaudeApprovalCard'
 import { dispatchToolCard, ToolCardChrome } from './json-mode-cards'
 import { ToolGroup } from './json-mode-cards/ToolGroup'
+import { JsonModeMentionPopover, type MentionPopoverItem } from './JsonModeMentionPopover'
+import { JsonModeChatImageThumb } from './JsonModeChatImageThumb'
+import { fuzzyMatch } from '../fuzzy'
 import 'highlight.js/styles/github-dark.css'
 import type { JsonClaudeChatEntry } from '../../shared/state/json-claude'
+
+// Worktree file list cache. Same TTL/shape as CommandPalette uses — the
+// list rarely changes during a typing session, and listAllFiles shells
+// out to git ls-files which is cheap but not free on big repos.
+const FILE_CACHE = new Map<string, { files: string[]; ts: number }>()
+const FILE_CACHE_TTL_MS = 10_000
+const MAX_MENTION_RESULTS = 50
+
+// Pre-baked descriptions for built-in slash commands. Skills + plugin
+// commands appear in the menu via session.slashCommands (sourced from
+// claude's system/init event) but don't have a description until we
+// parse their .md frontmatter — out of scope for now.
+const BUILTIN_DESCRIPTIONS: Record<string, string> = {
+  clear: 'Reset the conversation context',
+  compact: 'Summarize and compact prior messages',
+  context: 'Show context window usage'
+}
 
 interface JsonModeChatProps {
   sessionId: string
@@ -58,6 +78,17 @@ function renderEntries(
           <div className="flex justify-end">
             <div className="max-w-[80%] bg-accent/15 border border-accent/30 rounded-md px-3 py-2 whitespace-pre-wrap text-sm">
               {entry.text}
+              {entry.images && entry.images.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {entry.images.map((img) => (
+                    <JsonModeChatImageThumb
+                      key={img.path}
+                      path={img.path}
+                      mediaType={img.mediaType}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )
@@ -170,7 +201,36 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
   const session = jsonClaude.sessions[sessionId]
   const { pending, resolve } = useJsonClaudeApprovals(sessionId)
   const [draft, setDraft] = useState('')
+  // Mention/popover state. `dismissed` carries the draft text at which
+  // the user pressed Escape — comparing against the live draft is how we
+  // re-open as soon as they type a different character.
+  const [mentionSelectedIdx, setMentionSelectedIdx] = useState(0)
+  const [mentionDismissed, setMentionDismissed] = useState<string | null>(null)
+  const [cursorPos, setCursorPos] = useState(0)
+  const [files, setFiles] = useState<string[]>([])
+  const [isDragOver, setIsDragOver] = useState(false)
+  const [attachments, setAttachments] = useState<
+    Array<{
+      id: string
+      mediaType: string
+      data: string
+      dataUrl: string
+      name: string
+      /** Absolute on-disk path so Claude can Read/Bash/Write the file
+       *  for moves, transforms, etc. Pasted images get a temp path
+       *  written via writeJsonClaudeAttachmentImage; dropped images
+       *  reuse webUtils.getPathForFile. Null only if the temp write
+       *  failed for a paste — we still send the inline bytes. */
+      path: string | null
+    }>
+  >([])
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  // dragenter fires for every child element entered, dragleave for every
+  // child exited — so a naive boolean flickers as the cursor moves over
+  // nested nodes. Counter pattern: increment on enter, decrement on
+  // leave, only flip the flag at the 0/1 boundary.
+  const dragEnterCount = useRef(0)
   // Pause auto-scroll when the user has scrolled up. Re-enables when the
   // user scrolls back to the bottom — standard chat behavior.
   const stickyBottom = useRef(true)
@@ -254,12 +314,287 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
     [pending, rows]
   )
 
-  function send(): void {
-    const text = draft.trim()
-    if (!text || !session || session.busy) return
-    window.api.sendJsonClaudeMessage(sessionId, text)
+  // Lazy-load the worktree file list for the @-mention picker. Cached at
+  // module scope so reopening the popover (or clicking through several
+  // json-claude tabs in the same worktree) doesn't re-shell every time.
+  useEffect(() => {
+    const cached = FILE_CACHE.get(worktreePath)
+    const now = Date.now()
+    if (cached && now - cached.ts < FILE_CACHE_TTL_MS) {
+      setFiles(cached.files)
+      return
+    }
+    let cancelled = false
+    void window.api.listAllFiles(worktreePath).then((result) => {
+      if (cancelled) return
+      FILE_CACHE.set(worktreePath, { files: result, ts: Date.now() })
+      setFiles(result)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [worktreePath])
+
+  // Find the most recent trigger char (`/` or `@`) before the cursor.
+  // The token between trigger+1 and cursor is the query. Returns null if
+  // the cursor isn't currently inside a trigger token. Both:
+  //   - bail if any whitespace appears between trigger and cursor
+  //   - require whitespace or start-of-input before the trigger char
+  // The whitespace-before constraint stops false positives on paths
+  // like `src/foo` and emails like `foo@bar.com`.
+  function findTrigger(
+    text: string,
+    cursor: number,
+    char: '/' | '@'
+  ): { start: number; query: string } | null {
+    if (cursor === 0) return null
+    let i = cursor - 1
+    while (i >= 0) {
+      const ch = text[i]
+      if (ch === char) {
+        const before = i === 0 ? '' : text[i - 1]
+        if (before === '' || /\s/.test(before)) {
+          return { start: i, query: text.slice(i + 1, cursor) }
+        }
+        return null
+      }
+      if (/\s/.test(ch)) return null
+      i--
+    }
+    return null
+  }
+
+  const slashTrigger = useMemo(() => {
+    if (session?.state === 'exited') return null
+    const trig = findTrigger(draft, cursorPos, '/')
+    if (!trig) return null
+    // Only allow ascii letters / digits / `-` / `:` (the namespace
+    // separator for plugin commands, e.g. `frontend-design:frontend-design`)
+    // in the query. Any other char closes the popover so users can type
+    // literal slashes followed by punctuation without it lingering.
+    if (!/^[a-zA-Z0-9:-]*$/.test(trig.query)) return null
+    return trig
+  }, [draft, cursorPos, session?.state])
+
+  const mentionTrigger = useMemo<{ start: number; query: string } | null>(() => {
+    if (session?.state === 'exited') return null
+    return findTrigger(draft, cursorPos, '@')
+  }, [draft, cursorPos, session?.state])
+
+  const mentionItems = useMemo<MentionPopoverItem[]>(() => {
+    if (mentionDismissed === draft) return []
+    if (slashTrigger !== null) {
+      const q = slashTrigger.query.toLowerCase()
+      const all = session?.slashCommands ?? []
+      const ranked =
+        q.length === 0
+          ? all.map((name) => ({ name, indices: undefined as number[] | undefined }))
+          : fuzzyMatch(q, all).map((r) => ({ name: r.item, indices: r.indices }))
+      return ranked.slice(0, 50).map((r) => ({
+        key: r.name,
+        label: `/${r.name}`,
+        labelMatchIndices: r.indices?.map((i) => i + 1), // shift past leading '/'
+        description: BUILTIN_DESCRIPTIONS[r.name],
+        icon: <Terminal size={12} />
+      }))
+    }
+    if (mentionTrigger !== null && files.length > 0) {
+      const q = mentionTrigger.query
+      let ranked: { item: string; indices?: number[] }[]
+      if (q.length === 0) {
+        ranked = files.slice(0, MAX_MENTION_RESULTS).map((f) => ({ item: f }))
+      } else {
+        ranked = fuzzyMatch(q, files)
+          .slice(0, MAX_MENTION_RESULTS)
+          .map((r) => ({ item: r.item, indices: r.indices }))
+      }
+      return ranked.map((r) => ({
+        key: r.item,
+        label: r.item,
+        labelMatchIndices: r.indices,
+        icon: <FileText size={12} />
+      }))
+    }
+    return []
+  }, [slashTrigger, mentionTrigger, files, draft, mentionDismissed, session?.slashCommands])
+
+  // Clamp the selection index when the item list shrinks (e.g. the user
+  // typed another character and the matches narrowed).
+  useEffect(() => {
+    setMentionSelectedIdx((i) =>
+      mentionItems.length === 0 ? 0 : Math.min(i, mentionItems.length - 1)
+    )
+  }, [mentionItems.length])
+
+  function replaceTriggerToken(
+    triggerStart: number,
+    insertion: string
+  ): void {
+    const before = draft.slice(0, triggerStart)
+    const after = draft.slice(cursorPos)
+    const next = before + insertion + after
+    const nextCursor = before.length + insertion.length
+    setDraft(next)
+    setMentionDismissed(null)
+    // Defer cursor placement until after React has re-rendered the
+    // controlled textarea — without rAF the browser uses the stale
+    // selection from before the value change.
+    requestAnimationFrame(() => {
+      const ta = textareaRef.current
+      if (!ta) return
+      ta.focus()
+      ta.setSelectionRange(nextCursor, nextCursor)
+      setCursorPos(nextCursor)
+    })
+  }
+
+  function pickMention(
+    item: MentionPopoverItem,
+    opts: { sendOverride?: boolean } = {}
+  ): void {
+    if (slashTrigger !== null) {
+      // The slash command name is the label without its leading `/`.
+      const name = item.label.startsWith('/') ? item.label.slice(1) : item.label
+      const fullCmd = `/${name}`
+      // If the trigger spans the entire draft (i.e. user typed `/foo`
+      // and nothing else), Enter sends immediately. Otherwise we're
+      // inserting mid-message: replace the token, leave a trailing
+      // space, and let the user keep typing before sending themselves.
+      const isWholeDraft =
+        slashTrigger.start === 0 && cursorPos === draft.length
+      const shouldSend = opts.sendOverride ?? isWholeDraft
+      if (shouldSend) {
+        send(fullCmd)
+      } else {
+        replaceTriggerToken(slashTrigger.start, `${fullCmd} `)
+      }
+      return
+    }
+    if (mentionTrigger !== null) {
+      // Replace `@<query>` with `@<filepath> ` so the user can keep
+      // typing. The trailing space also closes the popover (whitespace
+      // breaks the trigger).
+      replaceTriggerToken(mentionTrigger.start, `@${item.label} `)
+    }
+  }
+
+  function insertAtCursor(text: string): void {
+    const ta = textareaRef.current
+    const start = ta?.selectionStart ?? cursorPos
+    const end = ta?.selectionEnd ?? cursorPos
+    const next = draft.slice(0, start) + text + draft.slice(end)
+    const nextCursor = start + text.length
+    setDraft(next)
+    setMentionDismissed(null)
+    requestAnimationFrame(() => {
+      const ref = textareaRef.current
+      if (!ref) return
+      ref.focus()
+      ref.setSelectionRange(nextCursor, nextCursor)
+      setCursorPos(nextCursor)
+    })
+  }
+
+  async function handleDrop(e: React.DragEvent<HTMLDivElement>): Promise<void> {
+    e.preventDefault()
+    dragEnterCount.current = 0
+    setIsDragOver(false)
+    const dropped = Array.from(e.dataTransfer?.files ?? [])
+    if (dropped.length === 0) return
+    const tokens: string[] = []
+    for (const f of dropped) {
+      // Image files become inline base64 attachments; non-image files
+      // become @-mention tokens for Claude to read off disk. Either way
+      // we pass the source path so Claude can manipulate the file.
+      const abs = window.api.getFilePath(f) || null
+      if (f.type.startsWith('image/')) {
+        await attachImageFile(f, abs)
+        continue
+      }
+      if (!abs) continue
+      const rel = abs.startsWith(worktreePath + '/')
+        ? abs.slice(worktreePath.length + 1)
+        : abs
+      tokens.push(`@${rel}`)
+    }
+    if (tokens.length > 0) insertAtCursor(tokens.join(' ') + ' ')
+  }
+
+  async function handlePaste(
+    e: React.ClipboardEvent<HTMLTextAreaElement>
+  ): Promise<void> {
+    const items = Array.from(e.clipboardData?.items ?? [])
+    const imageItems = items.filter(
+      (it) => it.kind === 'file' && it.type.startsWith('image/')
+    )
+    if (imageItems.length === 0) return
+    e.preventDefault()
+    for (const it of imageItems) {
+      const f = it.getAsFile()
+      if (f) await attachImageFile(f, null)
+    }
+  }
+
+  function send(textOverride?: string): void {
+    const text = (textOverride ?? draft).trim()
+    const images = attachments.map((a) => ({
+      mediaType: a.mediaType,
+      data: a.data,
+      // Empty string when the temp write failed — manager treats it as
+      // "no path known", just sends bytes with no path annotation.
+      path: a.path ?? ''
+    }))
+    if (!session || session.busy) return
+    if (!text && images.length === 0) return
+    window.api.sendJsonClaudeMessage(
+      sessionId,
+      text,
+      images.length > 0 ? images : undefined
+    )
     setDraft('')
+    setAttachments([])
+    setMentionDismissed(null)
     stickyBottom.current = true
+  }
+
+  async function attachImageFile(
+    file: File,
+    sourcePath: string | null
+  ): Promise<void> {
+    if (!file.type.startsWith('image/')) return
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result))
+      reader.onerror = () => reject(reader.error)
+      reader.readAsDataURL(file)
+    }).catch(() => '')
+    if (!dataUrl) return
+    // data:image/png;base64,XXXX → split off the prefix.
+    const commaIdx = dataUrl.indexOf(',')
+    if (commaIdx === -1) return
+    const data = dataUrl.slice(commaIdx + 1)
+    // Pasted images don't have an on-disk source — write to a temp path
+    // so Claude can Read/Bash/Write the file. Dropped images already
+    // have their original path.
+    let path: string | null = sourcePath
+    if (!path) {
+      try {
+        path = await window.api.writeJsonClaudeAttachmentImage(data, file.type)
+      } catch {
+        path = null
+      }
+    }
+    setAttachments((prev) => [
+      ...prev,
+      {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        mediaType: file.type,
+        data,
+        dataUrl,
+        name: file.name || 'pasted-image',
+        path
+      }
+    ])
   }
 
   function interrupt(): void {
@@ -305,7 +640,35 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
           : 'bg-faint'
 
   return (
-    <div className="absolute inset-0 flex flex-col bg-app text-fg">
+    <div
+      className="absolute inset-0 flex flex-col bg-app text-fg"
+      onDragEnter={(e) => {
+        if (!Array.from(e.dataTransfer.types).includes('Files')) return
+        dragEnterCount.current += 1
+        if (dragEnterCount.current === 1) setIsDragOver(true)
+      }}
+      onDragOver={(e) => {
+        // preventDefault is required for the subsequent drop event to
+        // fire. Only opt in for file drags so text selection drags inside
+        // the textarea behave normally.
+        if (Array.from(e.dataTransfer.types).includes('Files')) {
+          e.preventDefault()
+        }
+      }}
+      onDragLeave={(e) => {
+        if (!Array.from(e.dataTransfer.types).includes('Files')) return
+        dragEnterCount.current = Math.max(0, dragEnterCount.current - 1)
+        if (dragEnterCount.current === 0) setIsDragOver(false)
+      }}
+      onDrop={(e) => void handleDrop(e)}
+    >
+      {isDragOver && (
+        <div className="absolute inset-0 z-40 bg-accent/10 border-2 border-dashed border-accent rounded flex items-center justify-center pointer-events-none">
+          <div className="bg-panel-raised border border-border-strong rounded px-4 py-2 text-fg-bright shadow-lg">
+            Drop image to attach
+          </div>
+        </div>
+      )}
       <div
         ref={scrollRef}
         onScroll={onScroll}
@@ -350,31 +713,129 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
         )}
       </div>
       <div className="shrink-0 border-t border-border p-2 flex gap-2 items-end">
-        <textarea
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          // Cmd/Ctrl+Enter submits, plain Enter inserts a newline. This is
-          // the inverse of the spike's choice but matches how real chat
-          // apps (Slack, Linear) work — accidental sends from a stray
-          // Enter while typing a multi-line prompt are bad UX. No
-          // preference for now; revisit if users push back.
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-              e.preventDefault()
-              send()
-            }
-          }}
-          placeholder="Message Claude — Cmd/Ctrl+Enter to send"
-          // text-base (16px) below sm: prevents iOS Safari from zooming
-          // the viewport when the textarea takes focus. text-sm on
-          // desktop keeps the chat dense.
-          className="flex-1 bg-panel border border-border rounded px-2 py-1.5 text-base sm:text-sm resize-none outline-none focus:border-accent min-h-[60px] max-h-[200px]"
-          rows={2}
-          disabled={state === 'exited'}
-        />
+        <div className="flex-1 relative rounded">
+          {mentionItems.length > 0 && (
+            <JsonModeMentionPopover
+              items={mentionItems}
+              selectedIdx={mentionSelectedIdx}
+              onHover={setMentionSelectedIdx}
+              onPick={(item) => pickMention(item)}
+            />
+          )}
+          {attachments.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-1.5">
+              {attachments.map((a) => {
+                const shortPath = a.path
+                  ? a.path.startsWith(worktreePath + '/')
+                    ? a.path.slice(worktreePath.length + 1)
+                    : a.path.split('/').slice(-2).join('/')
+                  : null
+                return (
+                  <div
+                    key={a.id}
+                    className="relative inline-flex items-center gap-2 bg-panel border border-border rounded overflow-hidden pr-2"
+                    title={a.path || a.name}
+                  >
+                    <img
+                      src={a.dataUrl}
+                      alt={a.name}
+                      className="h-12 w-12 object-cover shrink-0"
+                    />
+                    {shortPath && (
+                      <span className="text-[10px] text-faint font-mono max-w-[180px] truncate">
+                        {shortPath}
+                      </span>
+                    )}
+                    <button
+                      onClick={() =>
+                        setAttachments((prev) => prev.filter((p) => p.id !== a.id))
+                      }
+                      className="absolute top-0.5 right-0.5 bg-app/80 hover:bg-app text-fg-bright rounded-full p-0.5 cursor-pointer"
+                      aria-label={`Remove ${a.name}`}
+                    >
+                      <X size={10} />
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+          <textarea
+            ref={textareaRef}
+            value={draft}
+            onChange={(e) => {
+              setDraft(e.target.value)
+              setCursorPos(e.target.selectionStart ?? e.target.value.length)
+              // Any text change re-arms a previously dismissed popover.
+              setMentionDismissed(null)
+            }}
+            onSelect={(e) => {
+              setCursorPos(e.currentTarget.selectionStart ?? 0)
+            }}
+            onPaste={(e) => void handlePaste(e)}
+            // Cmd/Ctrl+Enter submits, plain Enter inserts a newline. This is
+            // the inverse of the spike's choice but matches how real chat
+            // apps (Slack, Linear) work — accidental sends from a stray
+            // Enter while typing a multi-line prompt are bad UX. No
+            // preference for now; revisit if users push back.
+            onKeyDown={(e) => {
+              if (mentionItems.length > 0) {
+                if (e.key === 'ArrowDown') {
+                  e.preventDefault()
+                  setMentionSelectedIdx((i) =>
+                    Math.min(i + 1, mentionItems.length - 1)
+                  )
+                  return
+                }
+                if (e.key === 'ArrowUp') {
+                  e.preventDefault()
+                  setMentionSelectedIdx((i) => Math.max(i - 1, 0))
+                  return
+                }
+                if (
+                  e.key === 'Enter' &&
+                  !e.metaKey &&
+                  !e.ctrlKey &&
+                  !e.shiftKey
+                ) {
+                  e.preventDefault()
+                  const picked = mentionItems[mentionSelectedIdx]
+                  if (picked) pickMention(picked)
+                  return
+                }
+                if (e.key === 'Tab') {
+                  e.preventDefault()
+                  const picked = mentionItems[mentionSelectedIdx]
+                  if (picked) pickMention(picked, { sendOverride: false })
+                  return
+                }
+                if (e.key === 'Escape') {
+                  e.preventDefault()
+                  setMentionDismissed(draft)
+                  return
+                }
+              }
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault()
+                send()
+              }
+            }}
+            placeholder="Message Claude — Cmd/Ctrl+Enter to send"
+            // text-base (16px) below sm: prevents iOS Safari from zooming
+            // the viewport when the textarea takes focus. text-sm on
+            // desktop keeps the chat dense.
+            className="w-full bg-panel border border-border rounded px-2 py-1.5 text-base sm:text-sm resize-none outline-none focus:border-accent min-h-[60px] max-h-[200px]"
+            rows={2}
+            disabled={state === 'exited'}
+          />
+        </div>
         <button
-          onClick={send}
-          disabled={busy || !draft.trim() || state === 'exited'}
+          onClick={() => send()}
+          disabled={
+            busy ||
+            (!draft.trim() && attachments.length === 0) ||
+            state === 'exited'
+          }
           className="px-3 py-1.5 bg-accent text-white rounded text-sm disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
         >
           Send

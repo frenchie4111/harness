@@ -4,6 +4,10 @@ import { join } from 'path'
 import { PtyManager } from './pty-manager'
 import { ApprovalBridge } from './approval-bridge'
 import { JsonClaudeManager } from './json-claude-manager'
+import {
+  readAttachmentImage,
+  writeAttachmentImage
+} from './json-claude-attachments'
 import { JsonClaudeStatusDeriver } from './json-claude-status-deriver'
 import { Store } from './store'
 import { WebSocketServerTransport } from './transport-websocket'
@@ -1868,9 +1872,17 @@ function registerIpcHandlers(): void {
     jsonClaudeManager.create(sessionId, cwd, mode)
     return true
   })
-  transport.onSignal('jsonClaude:send', (_ctx, sessionId: string, text: string) => {
-    jsonClaudeManager.send(sessionId, text)
-  })
+  transport.onSignal(
+    'jsonClaude:send',
+    (
+      _ctx,
+      sessionId: string,
+      text: string,
+      images?: Array<{ mediaType: string; data: string; path: string }>
+    ) => {
+      jsonClaudeManager.send(sessionId, text, images)
+    }
+  )
   transport.onRequest('jsonClaude:kill', (_ctx, sessionId: string) => {
     jsonClaudeManager.kill(sessionId)
     return true
@@ -1879,6 +1891,27 @@ function registerIpcHandlers(): void {
     jsonClaudeManager.interrupt(sessionId)
     return true
   })
+
+  transport.onRequest(
+    'jsonClaude:writeAttachmentImage',
+    (_ctx, base64: string, mediaType: string) => {
+      try {
+        return writeAttachmentImage(base64, mediaType)
+      } catch (err) {
+        log(
+          'json-claude',
+          `writeAttachmentImage failed mediaType=${mediaType}`,
+          err instanceof Error ? err.message : String(err)
+        )
+        return null
+      }
+    }
+  )
+
+  transport.onRequest(
+    'jsonClaude:readAttachmentImage',
+    (_ctx, path: string) => readAttachmentImage(path)
+  )
 
   transport.onRequest(
     'jsonClaude:setPermissionMode',
