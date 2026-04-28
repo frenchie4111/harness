@@ -254,6 +254,36 @@ export class ApprovalBridge {
       timestamp: frame.timestamp || Date.now()
     }
 
+    // Session-scoped auto-allow set: the user clicked "Allow {tool} this
+    // session" on a previous approval, so the bridge resolves matching
+    // tools directly without surfacing a card. Checked before the LLM
+    // auto-reviewer because an explicit user grant is cheaper and more
+    // authoritative than a Haiku call.
+    const slice = this.store.getSnapshot().state.jsonClaude
+    const session = slice.sessions[basePayload.sessionId]
+    if (session?.sessionToolApprovals.includes(basePayload.toolName)) {
+      this.writeResponse(socket, frame.id, {
+        behavior: 'allow',
+        updatedInput: basePayload.input
+      })
+      if (basePayload.toolUseId) {
+        this.store.dispatch({
+          type: 'jsonClaude/approvalSessionAllowed',
+          payload: {
+            sessionId: basePayload.sessionId,
+            toolUseId: basePayload.toolUseId,
+            toolName: basePayload.toolName,
+            timestamp: Date.now()
+          }
+        })
+      }
+      log(
+        'approval-bridge',
+        `session-allowed session=${basePayload.sessionId} id=${frame.id} tool=${basePayload.toolName}`
+      )
+      return
+    }
+
     // Decide the initial autoReview status synchronously so the prompt
     // opens with the right chrome on first paint:
     //   - feature off            → no autoReview field, plain prompt.
