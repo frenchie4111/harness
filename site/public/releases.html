@@ -78,6 +78,38 @@
   <!-- Releases -->
   <div class="max-w-3xl mx-auto px-6 pb-24">
 
+    <!-- v2.6.0 -->
+    <section class="release-section py-10">
+      <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
+        <h2 class="text-3xl font-bold tracking-tight">v2.6.0</h2>
+        <span class="text-sm text-neutral-500">April 28, 2026</span>
+      </div>
+      <a href="https://github.com/frenchie4111/harness/releases/tag/v2.6.0" class="text-sm text-amber-400/80 hover:text-amber-300 transition-colors">Download &rarr;</a>
+      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">Native Claude chat UI lands — interact with Claude through a purpose-built message interface with streaming responses, inline tool call display, and auto-approve controls, alongside all the improvements that make it production-ready.</p>
+      <div class="note-body">
+        <h4>New features</h4>
+        <ul>
+          <li><strong>Native Claude chat</strong> — a built-in chat interface for Claude sessions with a compose bar, streaming responses, and inline tool call display. Switch any worktree to chat mode for a cleaner, more structured experience alongside the traditional terminal.</li>
+          <li><strong>Allow this session</strong> — a new option on permission approval cards lets you grant a one-off permission for the current session without permanently changing your settings.</li>
+          <li><strong>LiteLLM proxy support</strong> — configure a LiteLLM proxy endpoint in Settings to route Claude API calls through your own backend.</li>
+          <li><strong>Open debug log button</strong> — open Harness's debug log file directly from the UI for faster troubleshooting.</li>
+          <li><strong>Default tab type &amp; swap</strong> — set your preferred default tab type (chat or terminal) per worktree, and swap an existing tab between modes at any time.</li>
+        </ul>
+        <h4>Improvements</h4>
+        <ul>
+          <li><strong>Partial message streaming</strong> — chat responses stream word-by-word as Claude generates them, so you see output the moment it arrives.</li>
+          <li><strong>Tool group auto-collapse</strong> — completed tool call groups fold up automatically, keeping the conversation readable as Claude works through multi-step tasks.</li>
+          <li><strong>Chat mode parity</strong> — auto-approve rules, permission-mode queuing, and all Claude launch flags now apply equally in chat mode and terminal mode.</li>
+          <li>Chat compose bar received editing and layout improvements for a more polished feel.</li>
+          <li>Mobile browser client now shows contextual callouts for features that work best on desktop.</li>
+        </ul>
+        <h4>Fixes</h4>
+        <ul>
+          <li>Fixed shell-quoting for arguments passed to Claude in chat mode, preventing command parse errors on launch.</li>
+        </ul>
+      </div>
+    </section>
+
     <!-- v2.5.0 -->
     <section class="release-section py-10">
       <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
