@@ -418,17 +418,38 @@ export class JsonClaudeManager {
   send(sessionId: string, text: string): void {
     const inst = this.instances.get(sessionId)
     if (!inst) return
-    // Mid-turn queueing: if a turn is already in flight, hold the
-    // message in the slice and let drainQueue() send it once `result`
-    // flips busy back to false. Mirrors the TUI's interject-while-busy
-    // affordance.
+    // Mid-turn injection: if a turn is already in flight, append the
+    // user entry inline (so it lands in conversation order between
+    // whatever assistant content was streaming and whatever comes
+    // next) tagged isQueued, and write to stdin immediately. Claude's
+    // stream-json input buffers between agent-loop steps, so the
+    // message gets injected at the next safe boundary (typically
+    // post-tool_result) within the current turn — matching the TUI's
+    // interject-while-busy behavior. On `result` we clear the
+    // isQueued flag so the bubble loses its dashed/queued styling.
     const session =
       this.store.getSnapshot().state.jsonClaude.sessions[sessionId]
     if (session?.busy) {
-      this.store.dispatch({
-        type: 'jsonClaude/messageQueued',
-        payload: { sessionId, message: { id: randomUUID(), text } }
+      this.appendEntry(inst, {
+        kind: 'user',
+        text,
+        timestamp: Date.now(),
+        entryId: `${sessionId}-uq-${inst.entryCounter++}`,
+        isQueued: true
       })
+      const payload = {
+        type: 'user',
+        message: { role: 'user', content: text }
+      }
+      try {
+        inst.proc.stdin.write(JSON.stringify(payload) + '\n')
+      } catch (err) {
+        log(
+          'json-claude',
+          `stdin write failed sessionId=${sessionId}`,
+          err instanceof Error ? err.message : String(err)
+        )
+      }
       return
     }
     this.writeUserTurn(inst, text)
@@ -460,12 +481,17 @@ export class JsonClaudeManager {
     }
   }
 
-  /** Cancel a single queued message before it fires. The IPC handler
-   *  fans through here so the dispatch path is the same as drain's. */
-  cancelQueued(sessionId: string, messageId: string): void {
+  /** Remove a queued user entry from the renderer view. NOTE: the
+   *  message text is already in claude's stdin buffer by the time the
+   *  user clicks cancel, so this is UI-only — claude will still
+   *  process the message on the next agent-loop step. The promoted
+   *  entry never gets re-added because we only clear isQueued (we
+   *  don't re-create an entry). On reload, however, claude's
+   *  session.jsonl will reseed the message. */
+  cancelQueued(sessionId: string, entryId: string): void {
     this.store.dispatch({
-      type: 'jsonClaude/messageDequeued',
-      payload: { sessionId, messageId }
+      type: 'jsonClaude/entryRemoved',
+      payload: { sessionId, entryId }
     })
   }
 
@@ -496,10 +522,14 @@ export class JsonClaudeManager {
         err instanceof Error ? err.message : String(err)
       )
     }
-    // Drop any queued mid-turn messages — the user is bailing on the
-    // current turn, they don't want their backlog to keep firing.
+    // Drop the dashed/queued styling on any in-flight queued entries —
+    // the user is bailing on the current turn. NOTE: those messages are
+    // already in claude's stdin buffer; we don't have a flush mechanism,
+    // so claude will still process them on the next agent-loop pass
+    // unless the interrupt itself drains the buffer (TBD — observe
+    // behavior in test).
     this.store.dispatch({
-      type: 'jsonClaude/messageQueueCleared',
+      type: 'jsonClaude/userEntriesUnqueued',
       payload: { sessionId }
     })
     // Flip busy off optimistically; the result event (when the abort
@@ -651,7 +681,10 @@ export class JsonClaudeManager {
     }
     if (type === 'result') {
       this.dispatchBusy(instance.sessionId, false)
-      this.drainQueue(instance.sessionId)
+      this.store.dispatch({
+        type: 'jsonClaude/userEntriesUnqueued',
+        payload: { sessionId: instance.sessionId }
+      })
       return
     }
     // Ignore rate_limit_event and unknown types for now — they become
@@ -821,23 +854,6 @@ export class JsonClaudeManager {
     })
   }
 
-  /** After a turn ends, fire the head of the queue as its own user turn.
-   *  Each message becomes a discrete turn (no concatenation) — matches
-   *  the TUI's interject behavior. The next turn's `result` will
-   *  re-enter this method, so the cascade is natural. */
-  private drainQueue(sessionId: string): void {
-    const session =
-      this.store.getSnapshot().state.jsonClaude.sessions[sessionId]
-    if (!session || session.pendingMessages.length === 0) return
-    const next = session.pendingMessages[0]
-    this.store.dispatch({
-      type: 'jsonClaude/messageDequeued',
-      payload: { sessionId, messageId: next.id }
-    })
-    const inst = this.instances.get(sessionId)
-    if (!inst) return
-    this.writeUserTurn(inst, next.text)
-  }
 }
 
 function streamEventBlockToMessageBlock(

@@ -31,7 +31,8 @@ interface RenderedRow {
 function renderEntries(
   entries: JsonClaudeChatEntry[],
   approvalCard: (toolUseId: string | undefined) => ReactNode,
-  pendingToolUseIds: Set<string>
+  pendingToolUseIds: Set<string>,
+  onCancelQueued: (entryId: string) => void
 ): RenderedRow[] {
   // Build a tool_use_id → tool_result lookup pass first so each tool card
   // can render its result inline.
@@ -51,10 +52,32 @@ function renderEntries(
   const rows: RenderedRow[] = []
   for (const entry of entries) {
     if (entry.kind === 'user') {
+      const queued = !!entry.isQueued
       rows.push({
         key: entry.entryId,
         type: 'text',
-        node: (
+        node: queued ? (
+          <div className="flex justify-end">
+            <div className="max-w-[80%] bg-accent/10 border border-dashed border-accent/40 rounded-md pl-3 pr-1 py-2 opacity-70 flex items-start gap-2">
+              <div className="flex-1 min-w-0 whitespace-pre-wrap text-sm">
+                {entry.text}
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <span className="text-[10px] uppercase tracking-wide text-muted bg-panel/60 border border-border px-1.5 py-0.5 rounded">
+                  queued
+                </span>
+                <button
+                  onClick={() => onCancelQueued(entry.entryId)}
+                  className="p-1 rounded hover:bg-panel text-muted hover:text-fg cursor-pointer"
+                  title="Cancel queued message"
+                  aria-label="Cancel queued message"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
           <div className="flex justify-end">
             <div className="max-w-[80%] bg-accent/15 border border-accent/30 rounded-md px-3 py-2 whitespace-pre-wrap text-sm">
               {entry.text}
@@ -189,12 +212,7 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
     const el = scrollRef.current
     if (!el) return
     el.scrollTop = el.scrollHeight
-  }, [
-    session?.entries.length,
-    session,
-    pending.length,
-    session?.pendingMessages.length
-  ])
+  }, [session?.entries.length, session, pending.length])
 
   const onScroll = (): void => {
     const el = scrollRef.current
@@ -238,12 +256,14 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
       renderEntries(
         session?.entries ?? [],
         renderApprovalForToolUseId,
-        pendingToolUseIds
+        pendingToolUseIds,
+        (entryId) =>
+          window.api.cancelQueuedJsonClaudeMessage(sessionId, entryId)
       ),
     // approvalByToolUseId already depends on pending; pendingToolUseIds
     // also derives from pending.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [session?.entries, approvalByToolUseId, pendingToolUseIds]
+    [session?.entries, approvalByToolUseId, pendingToolUseIds, sessionId]
   )
 
   const groupedItems = useMemo(() => groupConsecutiveToolRows(rows), [rows])
@@ -329,30 +349,6 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
             approval={a}
             onResolve={(result) => resolve(a.requestId, result)}
           />
-        ))}
-        {session?.pendingMessages.map((m) => (
-          <div key={m.id} className="flex justify-end">
-            <div className="max-w-[80%] bg-accent/10 border border-dashed border-accent/40 rounded-md pl-3 pr-1 py-2 opacity-70 flex items-start gap-2">
-              <div className="flex-1 min-w-0 whitespace-pre-wrap text-sm">
-                {m.text}
-              </div>
-              <div className="flex items-center gap-1 shrink-0">
-                <span className="text-[10px] uppercase tracking-wide text-muted bg-panel/60 border border-border px-1.5 py-0.5 rounded">
-                  queued
-                </span>
-                <button
-                  onClick={() =>
-                    window.api.cancelQueuedJsonClaudeMessage(sessionId, m.id)
-                  }
-                  className="p-1 rounded hover:bg-panel text-muted hover:text-fg cursor-pointer"
-                  title="Cancel queued message"
-                  aria-label="Cancel queued message"
-                >
-                  <X size={12} />
-                </button>
-              </div>
-            </div>
-          </div>
         ))}
         {state === 'exited' && (
           <div className="flex items-center gap-3 text-xs text-danger italic">

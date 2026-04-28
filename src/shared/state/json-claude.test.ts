@@ -311,93 +311,80 @@ describe('jsonClaudeReducer', () => {
     expect(next).toBe(initialJsonClaude)
   })
 
-  it('sessionStarted seeds an empty pendingMessages queue', () => {
-    const next = seedSession(initialJsonClaude)
-    expect(next.sessions[SID].pendingMessages).toEqual([])
-  })
-
-  it('messageQueued appends to pendingMessages', () => {
+  it('userEntriesUnqueued clears isQueued from all user entries', () => {
     let state = seedSession(initialJsonClaude)
     state = jsonClaudeReducer(state, {
-      type: 'jsonClaude/messageQueued',
-      payload: { sessionId: SID, message: { id: 'm1', text: 'first' } }
+      type: 'jsonClaude/entryAppended',
+      payload: {
+        sessionId: SID,
+        entry: {
+          entryId: 'u1',
+          kind: 'user',
+          text: 'queued one',
+          timestamp: 1,
+          isQueued: true
+        }
+      }
     })
     state = jsonClaudeReducer(state, {
-      type: 'jsonClaude/messageQueued',
-      payload: { sessionId: SID, message: { id: 'm2', text: 'second' } }
-    })
-    expect(state.sessions[SID].pendingMessages).toEqual([
-      { id: 'm1', text: 'first' },
-      { id: 'm2', text: 'second' }
-    ])
-  })
-
-  it('messageDequeued removes the matching entry by id', () => {
-    let state = seedSession(initialJsonClaude)
-    state = jsonClaudeReducer(state, {
-      type: 'jsonClaude/messageQueued',
-      payload: { sessionId: SID, message: { id: 'm1', text: 'first' } }
+      type: 'jsonClaude/entryAppended',
+      payload: {
+        sessionId: SID,
+        entry: {
+          entryId: 'u2',
+          kind: 'user',
+          text: 'queued two',
+          timestamp: 2,
+          isQueued: true
+        }
+      }
     })
     state = jsonClaudeReducer(state, {
-      type: 'jsonClaude/messageQueued',
-      payload: { sessionId: SID, message: { id: 'm2', text: 'second' } }
-    })
-    state = jsonClaudeReducer(state, {
-      type: 'jsonClaude/messageDequeued',
-      payload: { sessionId: SID, messageId: 'm1' }
-    })
-    expect(state.sessions[SID].pendingMessages).toEqual([
-      { id: 'm2', text: 'second' }
-    ])
-  })
-
-  it('messageDequeued is a no-op when the id is absent', () => {
-    const state = seedSession(initialJsonClaude)
-    const next = jsonClaudeReducer(state, {
-      type: 'jsonClaude/messageDequeued',
-      payload: { sessionId: SID, messageId: 'missing' }
-    })
-    expect(next).toBe(state)
-  })
-
-  it('messageQueueCleared empties the queue', () => {
-    let state = seedSession(initialJsonClaude)
-    state = jsonClaudeReducer(state, {
-      type: 'jsonClaude/messageQueued',
-      payload: { sessionId: SID, message: { id: 'm1', text: 'first' } }
-    })
-    state = jsonClaudeReducer(state, {
-      type: 'jsonClaude/messageQueued',
-      payload: { sessionId: SID, message: { id: 'm2', text: 'second' } }
-    })
-    state = jsonClaudeReducer(state, {
-      type: 'jsonClaude/messageQueueCleared',
+      type: 'jsonClaude/userEntriesUnqueued',
       payload: { sessionId: SID }
     })
-    expect(state.sessions[SID].pendingMessages).toEqual([])
+    expect(state.sessions[SID].entries[0].isQueued).toBeUndefined()
+    expect(state.sessions[SID].entries[1].isQueued).toBeUndefined()
   })
 
-  it('messageQueueCleared is a no-op when queue is already empty', () => {
+  it('userEntriesUnqueued is a no-op when no entries are queued', () => {
     const state = seedSession(initialJsonClaude)
     const next = jsonClaudeReducer(state, {
-      type: 'jsonClaude/messageQueueCleared',
+      type: 'jsonClaude/userEntriesUnqueued',
       payload: { sessionId: SID }
     })
     expect(next).toBe(state)
   })
 
-  it('sessionStarted preserves pendingMessages across re-spawn', () => {
+  it('entryRemoved drops the matching entry by id', () => {
     let state = seedSession(initialJsonClaude)
     state = jsonClaudeReducer(state, {
-      type: 'jsonClaude/messageQueued',
-      payload: { sessionId: SID, message: { id: 'm1', text: 'queued' } }
+      type: 'jsonClaude/entryAppended',
+      payload: {
+        sessionId: SID,
+        entry: { entryId: 'u1', kind: 'user', text: 'a', timestamp: 1 }
+      }
     })
     state = jsonClaudeReducer(state, {
-      type: 'jsonClaude/sessionStarted',
-      payload: { sessionId: SID, worktreePath: WT }
+      type: 'jsonClaude/entryAppended',
+      payload: {
+        sessionId: SID,
+        entry: { entryId: 'u2', kind: 'user', text: 'b', timestamp: 2 }
+      }
     })
-    expect(state.sessions[SID].pendingMessages).toEqual([
-      { id: 'm1', text: 'queued' }
-    ])
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/entryRemoved',
+      payload: { sessionId: SID, entryId: 'u1' }
+    })
+    expect(state.sessions[SID].entries.map((e) => e.entryId)).toEqual(['u2'])
+  })
+
+  it('entryRemoved is a no-op when the id is absent', () => {
+    const state = seedSession(initialJsonClaude)
+    const next = jsonClaudeReducer(state, {
+      type: 'jsonClaude/entryRemoved',
+      payload: { sessionId: SID, entryId: 'missing' }
+    })
+    expect(next).toBe(state)
   })
 })
