@@ -46,6 +46,11 @@ interface RenderedRow {
   toolName?: string
   hasError?: boolean
   hasPendingApproval?: boolean
+  /** Marks this row as a thinking card. Lives in the 'tool' bucket so
+   *  it groups with adjacent tool_use rows (thinking + tools are both
+   *  agent work between user-facing replies), but ToolGroup counts it
+   *  separately in the header. */
+  isThinking?: boolean
 }
 
 function ThinkingCard({
@@ -172,7 +177,8 @@ function renderEntries(
           const idx = thinkingIdx++
           rows.push({
             key: `${entry.entryId}-th-${idx}`,
-            type: 'text',
+            type: 'tool',
+            isThinking: true,
             node: (
               <ThinkingCard
                 text={block.text || ''}
