@@ -1,6 +1,6 @@
 import { ToolCardChrome, basename, trunc, type ToolCardProps } from './index'
 
-export function ReadCard({ block, result, autoApproved }: ToolCardProps): JSX.Element {
+export function ReadCard({ block, result, autoApproved, sessionAllowed }: ToolCardProps): JSX.Element {
   const fp = String(block.input?.file_path ?? '')
   const offset = Number(block.input?.offset) || 0
   const limit = Number(block.input?.limit) || 0
@@ -12,6 +12,7 @@ export function ReadCard({ block, result, autoApproved }: ToolCardProps): JSX.El
       variant="info"
       isError={result?.isError}
       autoApproved={autoApproved}
+      sessionAllowed={sessionAllowed}
     >
       {fp && <div className="px-2 py-1 text-[10px] text-muted truncate font-mono">{fp}</div>}
       {result && (
