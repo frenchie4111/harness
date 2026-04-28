@@ -1,0 +1,201 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
+<style>
+  html, body { margin: 0; padding: 0; }
+  body {
+    width: 1200px;
+    height: 630px;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: #0a0a0a;
+    color: #e5e5e5;
+    overflow: hidden;
+    background-image:
+      radial-gradient(circle at 15% 0%, rgba(245, 158, 11, 0.22), transparent 55%),
+      radial-gradient(circle at 100% 100%, rgba(168, 85, 247, 0.18), transparent 55%),
+      radial-gradient(circle at 0% 100%, rgba(239, 68, 68, 0.10), transparent 55%);
+  }
+  .wrap {
+    position: relative;
+    width: 1200px;
+    height: 630px;
+    display: grid;
+    grid-template-columns: 1fr 520px;
+  }
+  .left {
+    padding: 56px 32px 56px 64px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 36px;
+  }
+  .brand img {
+    width: 52px;
+    height: 52px;
+    border-radius: 13px;
+    box-shadow: 0 0 40px rgba(245, 158, 11, 0.35);
+  }
+  .brand-name {
+    font-size: 26px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    background: linear-gradient(135deg, #f59e0b 0%, #ef4444 60%, #a855f7 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .eyebrow {
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #f59e0b;
+    margin-bottom: 20px;
+  }
+  .title {
+    font-size: 58px;
+    font-weight: 900;
+    letter-spacing: -0.035em;
+    line-height: 1;
+    color: #fafafa;
+    margin-bottom: 20px;
+  }
+  .title .accent {
+    background: linear-gradient(135deg, #f59e0b 0%, #ef4444 60%, #a855f7 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .sub {
+    font-size: 22px;
+    font-weight: 400;
+    color: #a3a3a3;
+    letter-spacing: -0.005em;
+    line-height: 1.35;
+    max-width: 560px;
+  }
+  .right {
+    position: relative;
+    padding: 64px 64px 64px 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .figure-card {
+    width: 460px;
+    background: rgba(5, 5, 5, 0.5);
+    border: 1px solid #262626;
+    border-radius: 18px;
+    padding: 40px 32px 32px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .wt-node {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 22px;
+    border-radius: 12px;
+    background: #1f1f1f;
+    border: 1px solid #404040;
+  }
+  .wt-node code {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 18px;
+    color: #f5f5f5;
+  }
+  .leaves {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    width: 100%;
+  }
+  .wt-leaf {
+    padding: 14px 10px;
+    border-radius: 12px;
+    background: #141414;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+  .wt-leaf svg { flex-shrink: 0; }
+  .wt-leaf code {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 13px;
+    color: #f5f5f5;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+  }
+  .wt-leaf span {
+    font-size: 13px;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-weight: 600;
+  }
+  .caption {
+    margin-top: 22px;
+    font-size: 13px;
+    color: #737373;
+    font-style: italic;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="left">
+      <div class="brand">
+        <img src="ICON_DATA_URI" />
+        <div class="brand-name">Harness</div>
+      </div>
+      <div>
+        <div class="eyebrow">The Guide</div>
+        <div class="title">How to stop<br/><span class="accent">doom scrolling</span><br/>while you wait<br/>for Claude</div>
+        <div class="sub">Run many Claudes in parallel across git worktrees. Ship more, faster.</div>
+      </div>
+    </div>
+    <div class="right">
+      <div class="figure-card">
+        <div class="wt-node">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+          <code>.git</code>
+        </div>
+        <svg width="100%" height="44" viewBox="0 0 300 44" preserveAspectRatio="none" style="max-width: 100%;">
+          <path d="M 150 0 L 150 16 L 50 16 L 50 44" stroke="#404040" stroke-width="1.5" fill="none" />
+          <path d="M 150 16 L 150 44" stroke="#404040" stroke-width="1.5" fill="none" />
+          <path d="M 150 16 L 250 16 L 250 44" stroke="#404040" stroke-width="1.5" fill="none" />
+        </svg>
+        <div class="leaves">
+          <div class="wt-leaf" style="border: 1px solid rgba(34, 197, 94, 0.4);">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            <code>myrepo/</code>
+            <span style="color: #22c55e;">main</span>
+          </div>
+          <div class="wt-leaf" style="border: 1px solid rgba(96, 165, 250, 0.4);">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            <code>myrepo-feature-x/</code>
+            <span style="color: #60a5fa;">feature-x</span>
+          </div>
+          <div class="wt-leaf" style="border: 1px solid rgba(251, 191, 36, 0.4);">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            <code>myrepo-bug-123/</code>
+            <span style="color: #fbbf24;">bug-123</span>
+          </div>
+        </div>
+        <div class="caption">One shared .git, three worktrees on disk.</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
