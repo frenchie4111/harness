@@ -374,6 +374,10 @@ contextBridge.exposeInMainWorld('api', {
     id: string,
     mode: 'default' | 'acceptEdits' | 'plan'
   ) => req('jsonClaude:setPermissionMode', id, mode),
+  grantJsonClaudeSessionToolApprovals: (id: string, toolNames: string[]) =>
+    req('jsonClaude:grantSessionToolApprovals', id, toolNames),
+  clearJsonClaudeSessionToolApprovals: (id: string, toolNames?: string[]) =>
+    req('jsonClaude:clearSessionToolApprovals', id, toolNames),
 
   // State transport (snapshot + event stream). Replaces ad-hoc per-field
   // getters and onXChanged subscriptions one slice at a time.

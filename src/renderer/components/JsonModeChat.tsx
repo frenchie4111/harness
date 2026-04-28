@@ -131,6 +131,10 @@ function renderEntries(
     string,
     { model: string; reason: string; timestamp: number }
   >,
+  sessionAllowedDecisions: Record<
+    string,
+    { toolName: string; timestamp: number }
+  >,
   onCancelQueued: (entryId: string) => void
 ): RenderedRow[] {
   // Build a tool_use_id → tool_result lookup pass first so each tool card
@@ -266,7 +270,8 @@ function renderEntries(
                   dispatchToolCard({
                     block,
                     result,
-                    autoApproved: block.id ? autoApprovedDecisions[block.id] : undefined
+                    autoApproved: block.id ? autoApprovedDecisions[block.id] : undefined,
+                    sessionAllowed: block.id ? sessionAllowedDecisions[block.id] : undefined
                   })
                 )}
                 {approvalCard(block.id)}
@@ -409,6 +414,7 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
   )
 
   const autoApprovedDecisions = session?.autoApprovedDecisions ?? {}
+  const sessionAllowedDecisions = session?.sessionAllowedDecisions ?? {}
   const rows = useMemo(
     () =>
       renderEntries(
@@ -416,6 +422,7 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
         renderApprovalForToolUseId,
         pendingToolUseIds,
         autoApprovedDecisions,
+        sessionAllowedDecisions,
         (entryId) =>
           window.api.cancelQueuedJsonClaudeMessage(sessionId, entryId)
       ),
@@ -427,6 +434,7 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
       approvalByToolUseId,
       pendingToolUseIds,
       autoApprovedDecisions,
+      sessionAllowedDecisions,
       sessionId
     ]
   )
@@ -860,6 +868,24 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
           </div>
         )}
       </div>
+      {session && session.sessionToolApprovals.length > 0 && (
+        <div className="shrink-0 border-t border-border bg-panel/40 px-3 py-1 flex items-center gap-2 text-[10px] text-muted">
+          <span className="opacity-70">auto-allowing:</span>
+          <span className="font-mono truncate">
+            {session.sessionToolApprovals.join(', ')}
+          </span>
+          <button
+            onClick={() => {
+              void window.api.clearJsonClaudeSessionToolApprovals(sessionId)
+            }}
+            className="ml-auto p-0.5 rounded hover:bg-app/60 text-muted hover:text-fg cursor-pointer shrink-0"
+            title="Clear session auto-allow set"
+            aria-label="Clear session auto-allow set"
+          >
+            <X size={10} />
+          </button>
+        </div>
+      )}
       <div className="shrink-0 border-t border-border p-2 flex gap-2 items-end">
         <div className="flex-1 relative rounded">
           {mentionItems.length > 0 && (

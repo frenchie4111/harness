@@ -6,7 +6,7 @@ interface TodoItem {
   activeForm?: string
 }
 
-export function TodoWriteCard({ block, autoApproved }: ToolCardProps): JSX.Element {
+export function TodoWriteCard({ block, autoApproved, sessionAllowed }: ToolCardProps): JSX.Element {
   const todos = (block.input?.todos as TodoItem[] | undefined) ?? []
   return (
     <ToolCardChrome
@@ -14,6 +14,7 @@ export function TodoWriteCard({ block, autoApproved }: ToolCardProps): JSX.Eleme
       subtitle={`${todos.length} item${todos.length === 1 ? '' : 's'}`}
       variant="info"
       autoApproved={autoApproved}
+      sessionAllowed={sessionAllowed}
     >
       <ul className="px-3 py-2 text-xs space-y-1">
         {todos.map((t, i) => (

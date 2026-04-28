@@ -1981,6 +1981,32 @@ function registerIpcHandlers(): void {
     }
   )
 
+  transport.onRequest(
+    'jsonClaude:grantSessionToolApprovals',
+    (_ctx, sessionId: string, toolNames: string[]) => {
+      if (!sessionId || !Array.isArray(toolNames) || toolNames.length === 0) {
+        return false
+      }
+      store.dispatch({
+        type: 'jsonClaude/sessionToolApprovalsGranted',
+        payload: { sessionId, toolNames }
+      })
+      return true
+    }
+  )
+
+  transport.onRequest(
+    'jsonClaude:clearSessionToolApprovals',
+    (_ctx, sessionId: string, toolNames?: string[]) => {
+      if (!sessionId) return false
+      store.dispatch({
+        type: 'jsonClaude/sessionToolApprovalsCleared',
+        payload: { sessionId, toolNames }
+      })
+      return true
+    }
+  )
+
   transport.onRequest('config:setJsonModeClaudeTabs', (_ctx, enabled: boolean) => {
     if (enabled) {
       config.jsonModeClaudeTabs = true
