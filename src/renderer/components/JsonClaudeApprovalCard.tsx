@@ -1,6 +1,7 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { JsonClaudePendingApproval } from '../../shared/state/json-claude'
 import { formatPendingTool } from '../pending-tool'
+import { useSettings } from '../store'
 
 interface JsonClaudeApprovalCardProps {
   approval: JsonClaudePendingApproval
@@ -24,7 +25,11 @@ export function JsonClaudeApprovalCard({
   approval,
   onResolve
 }: JsonClaudeApprovalCardProps): JSX.Element {
-  const [mode, setMode] = useState<'summary' | 'edit' | 'deny'>('summary')
+  const settings = useSettings()
+  const savedGuidance = settings.autoApproveSteerInstructions
+  const [mode, setMode] = useState<'summary' | 'edit' | 'deny' | 'edit-guidance'>(
+    'summary'
+  )
   const [editedInput, setEditedInput] = useState<string>(() =>
     tryFormatInput(approval.input)
   )
@@ -32,6 +37,15 @@ export function JsonClaudeApprovalCard({
   const [denyMessage, setDenyMessage] = useState('user denied')
   const [interrupt, setInterrupt] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const [guidanceDraft, setGuidanceDraft] = useState<string>(savedGuidance)
+  // When the saved guidance changes externally (e.g. the user saved it in
+  // Settings while this card was open), refresh the draft so the textarea
+  // doesn't show stale text. We only re-sync when not actively editing
+  // (mode !== 'edit-guidance') to avoid clobbering the user's typing.
+  useEffect(() => {
+    if (mode !== 'edit-guidance') setGuidanceDraft(savedGuidance)
+  }, [savedGuidance, mode])
+  const [guidanceSavedAt, setGuidanceSavedAt] = useState<number | null>(null)
 
   const summary = useMemo(
     () => formatPendingTool({ name: approval.toolName, input: approval.input }),
@@ -44,6 +58,23 @@ export function JsonClaudeApprovalCard({
     // versions). Echo the original input back unchanged so plain Allow
     // is "allow with no changes".
     onResolve({ behavior: 'allow', updatedInput: approval.input })
+  }
+
+  async function saveGuidance(): Promise<void> {
+    await window.api.setAutoApproveSteerInstructions(guidanceDraft)
+    setGuidanceSavedAt(Date.now())
+  }
+
+  async function saveGuidanceAndRerun(): Promise<void> {
+    await window.api.setAutoApproveSteerInstructions(guidanceDraft)
+    // Setting the saved timestamp before the IPC means the "Saved"
+    // hint is briefly visible if re-review happens to be slow on the
+    // first call. The card immediately re-renders with autoReview.state
+    // back to 'pending' once main dispatches, replacing the static
+    // "Auto-approver: …" row with the spinner.
+    setGuidanceSavedAt(Date.now())
+    await window.api.rerunJsonClaudeAutoApprovalReview(approval.requestId)
+    setMode('summary')
   }
 
   function allowWithEdits(): void {
@@ -66,6 +97,8 @@ export function JsonClaudeApprovalCard({
     })
   }
 
+  const autoReview = approval.autoReview
+
   return (
     <div className="rounded-md border border-danger/40 bg-danger/5 my-2 overflow-hidden">
       <div className="flex items-center justify-between px-3 py-2 border-b border-danger/30 bg-danger/10">
@@ -76,6 +109,89 @@ export function JsonClaudeApprovalCard({
           <span className="text-xs font-mono text-fg-bright truncate">{summary}</span>
         </div>
       </div>
+
+      {autoReview?.state === 'pending' && (
+        <div
+          className="flex items-center gap-2 px-3 py-1.5 border-b border-danger/20 bg-app/30 text-[11px] text-muted"
+          title="An LLM reviewer is checking this tool call. You can still Allow or Deny manually — whichever happens first wins."
+        >
+          <span
+            className="json-claude-spinner shrink-0"
+            aria-label="auto-reviewing"
+          />
+          <span>Asking auto-approver…</span>
+        </div>
+      )}
+      {autoReview?.state === 'finished' && autoReview.decision === 'ask' && (
+        <div className="px-3 py-1.5 border-b border-danger/20 bg-app/30 text-[11px] text-muted flex items-center gap-2">
+          <div
+            className="flex-1 min-w-0"
+            title={`The auto-approver deferred to a human: ${autoReview.reason ?? ''}`}
+          >
+            <span className="font-semibold mr-1">Auto-approver:</span>
+            <span className="opacity-80">{autoReview.reason || 'deferred'}</span>
+          </div>
+          {mode !== 'edit-guidance' && (
+            <button
+              type="button"
+              onClick={() => {
+                setGuidanceDraft(savedGuidance)
+                setGuidanceSavedAt(null)
+                setMode('edit-guidance')
+              }}
+              className="text-[11px] px-2 py-0.5 rounded border border-border/60 bg-panel hover:bg-app/60 transition-colors shrink-0 cursor-pointer"
+              title="Edit the steering guidance and optionally re-run the auto-approver on this request"
+            >
+              Edit guidance
+            </button>
+          )}
+        </div>
+      )}
+
+      {mode === 'edit-guidance' && (
+        <div className="px-3 py-2 space-y-2 bg-app/20 border-b border-danger/20">
+          <div className="text-[11px] text-muted">
+            Project-specific guidance appended to the auto-approver's policy.
+            Save to persist for future requests; "Save & re-review" also re-runs
+            the reviewer on this request right now.
+          </div>
+          <textarea
+            value={guidanceDraft}
+            onChange={(e) => setGuidanceDraft(e.target.value)}
+            placeholder="e.g. Approve npm install. Deny any Bash that touches /etc."
+            spellCheck={false}
+            className="w-full bg-panel border border-border rounded p-2 text-[11px] font-mono outline-none focus:border-accent min-h-[80px] resize-y"
+          />
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <button
+              onClick={() => {
+                void saveGuidanceAndRerun()
+              }}
+              className="px-2.5 py-1 text-xs rounded bg-success/20 hover:bg-success/30 text-success transition-colors cursor-pointer"
+            >
+              Save &amp; re-review
+            </button>
+            <button
+              onClick={() => {
+                void saveGuidance()
+              }}
+              disabled={guidanceDraft === savedGuidance}
+              className="px-2.5 py-1 text-xs rounded bg-surface hover:bg-surface/60 text-fg transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Save only
+            </button>
+            <button
+              onClick={() => setMode('summary')}
+              className="px-2.5 py-1 text-xs rounded bg-surface hover:bg-surface/60 text-fg transition-colors cursor-pointer"
+            >
+              Cancel
+            </button>
+            {guidanceSavedAt !== null && (
+              <span className="text-[11px] text-success">Saved</span>
+            )}
+          </div>
+        </div>
+      )}
 
       {mode === 'summary' && (
         <div className="px-3 py-2 space-y-2">

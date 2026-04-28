@@ -76,7 +76,9 @@ export function buildInitialAppState(
       browserToolsEnabled: config.browserToolsEnabled !== false,
       browserToolsMode: config.browserToolsMode === 'view' ? 'view' : 'full',
       jsonModeClaudeTabs: config.jsonModeClaudeTabs === true,
-      defaultClaudeTabType: config.defaultClaudeTabType === 'json' ? 'json' : 'xterm'
+      defaultClaudeTabType: config.defaultClaudeTabType === 'json' ? 'json' : 'xterm',
+      autoApprovePermissions: config.autoApprovePermissions === true,
+      autoApproveSteerInstructions: config.autoApproveSteerInstructions || ''
     }
   }
 }

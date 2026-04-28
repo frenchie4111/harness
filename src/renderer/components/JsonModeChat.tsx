@@ -126,7 +126,11 @@ function ThinkingCard({
 function renderEntries(
   entries: JsonClaudeChatEntry[],
   approvalCard: (toolUseId: string | undefined) => ReactNode,
-  pendingToolUseIds: Set<string>
+  pendingToolUseIds: Set<string>,
+  autoApprovedDecisions: Record<
+    string,
+    { model: string; reason: string; timestamp: number }
+  >
 ): RenderedRow[] {
   // Build a tool_use_id → tool_result lookup pass first so each tool card
   // can render its result inline.
@@ -236,7 +240,11 @@ function renderEntries(
                     </div>
                   </ToolCardChrome>
                 ) : (
-                  dispatchToolCard({ block, result })
+                  dispatchToolCard({
+                    block,
+                    result,
+                    autoApproved: block.id ? autoApprovedDecisions[block.id] : undefined
+                  })
                 )}
                 {approvalCard(block.id)}
               </>
@@ -377,17 +385,19 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
     [pending]
   )
 
+  const autoApprovedDecisions = session?.autoApprovedDecisions ?? {}
   const rows = useMemo(
     () =>
       renderEntries(
         session?.entries ?? [],
         renderApprovalForToolUseId,
-        pendingToolUseIds
+        pendingToolUseIds,
+        autoApprovedDecisions
       ),
     // approvalByToolUseId already depends on pending; pendingToolUseIds
     // also derives from pending.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [session?.entries, approvalByToolUseId, pendingToolUseIds]
+    [session?.entries, approvalByToolUseId, pendingToolUseIds, autoApprovedDecisions]
   )
 
   const groupedItems = useMemo(() => groupConsecutiveToolRows(rows), [rows])

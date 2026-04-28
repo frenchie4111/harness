@@ -146,7 +146,14 @@ let config = loadConfig()
 let stopWatchingStatus: (() => void) | null = null
 
 const store = new Store(buildInitialAppState(config, { hasGithubToken: hasSecret('githubToken') }))
-const approvalBridge = new ApprovalBridge(store)
+const approvalBridge = new ApprovalBridge(store, {
+  getClaudeCommand: () =>
+    store.getSnapshot().state.settings.claudeCommand || DEFAULT_CLAUDE_COMMAND,
+  isAutoApproveEnabled: () =>
+    store.getSnapshot().state.settings.autoApprovePermissions === true,
+  getAutoApproveSteerInstructions: () =>
+    store.getSnapshot().state.settings.autoApproveSteerInstructions || ''
+})
 const jsonClaudeManager = new JsonClaudeManager(store, {
   getClaudeCommand: () =>
     store.getSnapshot().state.settings.claudeCommand || DEFAULT_CLAUDE_COMMAND,
@@ -1208,6 +1215,35 @@ function registerIpcHandlers(): void {
     return true
   })
 
+  transport.onRequest('config:setAutoApprovePermissions', (_ctx, enabled: boolean) => {
+    if (enabled) {
+      config.autoApprovePermissions = true
+    } else {
+      delete config.autoApprovePermissions
+    }
+    saveConfig(config)
+    store.dispatch({
+      type: 'settings/autoApprovePermissionsChanged',
+      payload: config.autoApprovePermissions === true
+    })
+    return true
+  })
+
+  transport.onRequest('config:setAutoApproveSteerInstructions', (_ctx, text: string) => {
+    const trimmed = (text || '').trim()
+    if (!trimmed) {
+      delete config.autoApproveSteerInstructions
+    } else {
+      config.autoApproveSteerInstructions = text
+    }
+    saveConfig(config)
+    store.dispatch({
+      type: 'settings/autoApproveSteerInstructionsChanged',
+      payload: config.autoApproveSteerInstructions || ''
+    })
+    return true
+  })
+
   transport.onRequest('mcp:prepareForTerminal', (_ctx, terminalId: string): string | null => {
     if (config.harnessMcpEnabled === false) return null
     if (!terminalId) return null
@@ -1831,6 +1867,13 @@ function registerIpcHandlers(): void {
       }
     ) => {
       return approvalBridge.resolveApproval(requestId, result)
+    }
+  )
+
+  transport.onRequest(
+    'jsonClaude:rerunAutoApprovalReview',
+    (_ctx, requestId: string) => {
+      return approvalBridge.rerunAutoApprovalReview(requestId)
     }
   )
 
