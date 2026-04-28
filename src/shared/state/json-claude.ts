@@ -45,6 +45,11 @@ export interface JsonClaudeChatEntry {
   isPartial?: boolean
 }
 
+export interface JsonClaudeQueuedMessage {
+  id: string
+  text: string
+}
+
 export interface JsonClaudeSession {
   sessionId: string
   worktreePath: string
@@ -61,6 +66,10 @@ export interface JsonClaudeSession {
    *  this kills + respawns with --resume so the mode change is
    *  effectively mid-session. */
   permissionMode: JsonClaudePermissionMode
+  /** Mid-turn interjections queued while busy=true. Drained one-per-turn
+   *  on the result event so each fires as its own user turn. Cleared on
+   *  interrupt. */
+  pendingMessages: JsonClaudeQueuedMessage[]
 }
 
 export interface JsonClaudePendingApproval {
@@ -146,6 +155,18 @@ export type JsonClaudeEvent =
       type: 'jsonClaude/permissionModeChanged'
       payload: { sessionId: string; mode: JsonClaudePermissionMode }
     }
+  | {
+      type: 'jsonClaude/messageQueued'
+      payload: { sessionId: string; message: JsonClaudeQueuedMessage }
+    }
+  | {
+      type: 'jsonClaude/messageDequeued'
+      payload: { sessionId: string; messageId: string }
+    }
+  | {
+      type: 'jsonClaude/messageQueueCleared'
+      payload: { sessionId: string }
+    }
 
 export const initialJsonClaude: JsonClaudeState = {
   sessions: {},
@@ -182,7 +203,8 @@ export function jsonClaudeReducer(
             exitReason: null,
             entries: existing?.entries ?? [],
             busy: false,
-            permissionMode: existing?.permissionMode ?? 'default'
+            permissionMode: existing?.permissionMode ?? 'default',
+            pendingMessages: existing?.pendingMessages ?? []
           }
         }
       }
@@ -394,6 +416,47 @@ export function jsonClaudeReducer(
             ...session,
             permissionMode: event.payload.mode
           }
+        }
+      }
+    }
+    case 'jsonClaude/messageQueued': {
+      const session = state.sessions[event.payload.sessionId]
+      if (!session) return state
+      return {
+        ...state,
+        sessions: {
+          ...state.sessions,
+          [session.sessionId]: {
+            ...session,
+            pendingMessages: [...session.pendingMessages, event.payload.message]
+          }
+        }
+      }
+    }
+    case 'jsonClaude/messageDequeued': {
+      const session = state.sessions[event.payload.sessionId]
+      if (!session) return state
+      const next = session.pendingMessages.filter(
+        (m) => m.id !== event.payload.messageId
+      )
+      if (next.length === session.pendingMessages.length) return state
+      return {
+        ...state,
+        sessions: {
+          ...state.sessions,
+          [session.sessionId]: { ...session, pendingMessages: next }
+        }
+      }
+    }
+    case 'jsonClaude/messageQueueCleared': {
+      const session = state.sessions[event.payload.sessionId]
+      if (!session) return state
+      if (session.pendingMessages.length === 0) return state
+      return {
+        ...state,
+        sessions: {
+          ...state.sessions,
+          [session.sessionId]: { ...session, pendingMessages: [] }
         }
       }
     }

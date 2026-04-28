@@ -418,13 +418,33 @@ export class JsonClaudeManager {
   send(sessionId: string, text: string): void {
     const inst = this.instances.get(sessionId)
     if (!inst) return
+    // Mid-turn queueing: if a turn is already in flight, hold the
+    // message in the slice and let drainQueue() send it once `result`
+    // flips busy back to false. Mirrors the TUI's interject-while-busy
+    // affordance.
+    const session =
+      this.store.getSnapshot().state.jsonClaude.sessions[sessionId]
+    if (session?.busy) {
+      this.store.dispatch({
+        type: 'jsonClaude/messageQueued',
+        payload: { sessionId, message: { id: randomUUID(), text } }
+      })
+      return
+    }
+    this.writeUserTurn(inst, text)
+  }
+
+  /** Internal: actually push a user turn to the subprocess + slice. The
+   *  busy/queue gate above this is the only place that should decide
+   *  whether a message goes to stdin or to the queue. */
+  private writeUserTurn(inst: JsonClaudeInstance, text: string): void {
     this.appendEntry(inst, {
       kind: 'user',
       text,
       timestamp: Date.now(),
-      entryId: `${sessionId}-u-${inst.entryCounter++}`
+      entryId: `${inst.sessionId}-u-${inst.entryCounter++}`
     })
-    this.dispatchBusy(sessionId, true)
+    this.dispatchBusy(inst.sessionId, true)
     const payload = {
       type: 'user',
       message: { role: 'user', content: text }
@@ -434,10 +454,19 @@ export class JsonClaudeManager {
     } catch (err) {
       log(
         'json-claude',
-        `stdin write failed sessionId=${sessionId}`,
+        `stdin write failed sessionId=${inst.sessionId}`,
         err instanceof Error ? err.message : String(err)
       )
     }
+  }
+
+  /** Cancel a single queued message before it fires. The IPC handler
+   *  fans through here so the dispatch path is the same as drain's. */
+  cancelQueued(sessionId: string, messageId: string): void {
+    this.store.dispatch({
+      type: 'jsonClaude/messageDequeued',
+      payload: { sessionId, messageId }
+    })
   }
 
   /** Send a stdin control_request that aborts the current turn while
@@ -467,6 +496,12 @@ export class JsonClaudeManager {
         err instanceof Error ? err.message : String(err)
       )
     }
+    // Drop any queued mid-turn messages — the user is bailing on the
+    // current turn, they don't want their backlog to keep firing.
+    this.store.dispatch({
+      type: 'jsonClaude/messageQueueCleared',
+      payload: { sessionId }
+    })
     // Flip busy off optimistically; the result event (when the abort
     // resolves into a turn boundary) will also clear it.
     this.dispatchBusy(sessionId, false)
@@ -616,6 +651,7 @@ export class JsonClaudeManager {
     }
     if (type === 'result') {
       this.dispatchBusy(instance.sessionId, false)
+      this.drainQueue(instance.sessionId)
       return
     }
     // Ignore rate_limit_event and unknown types for now — they become
@@ -783,6 +819,24 @@ export class JsonClaudeManager {
       type: 'jsonClaude/busyChanged',
       payload: { sessionId, busy }
     })
+  }
+
+  /** After a turn ends, fire the head of the queue as its own user turn.
+   *  Each message becomes a discrete turn (no concatenation) — matches
+   *  the TUI's interject behavior. The next turn's `result` will
+   *  re-enter this method, so the cascade is natural. */
+  private drainQueue(sessionId: string): void {
+    const session =
+      this.store.getSnapshot().state.jsonClaude.sessions[sessionId]
+    if (!session || session.pendingMessages.length === 0) return
+    const next = session.pendingMessages[0]
+    this.store.dispatch({
+      type: 'jsonClaude/messageDequeued',
+      payload: { sessionId, messageId: next.id }
+    })
+    const inst = this.instances.get(sessionId)
+    if (!inst) return
+    this.writeUserTurn(inst, next.text)
   }
 }
 

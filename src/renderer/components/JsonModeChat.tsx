@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import rehypeHighlight from 'rehype-highlight'
-import { Square } from 'lucide-react'
+import { Square, X } from 'lucide-react'
 import { useJsonClaude } from '../store'
 import { useJsonClaudeApprovals } from '../hooks/useJsonClaudeApprovals'
 import { JsonClaudeApprovalCard } from './JsonClaudeApprovalCard'
@@ -189,7 +189,12 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
     const el = scrollRef.current
     if (!el) return
     el.scrollTop = el.scrollHeight
-  }, [session?.entries.length, session, pending.length])
+  }, [
+    session?.entries.length,
+    session,
+    pending.length,
+    session?.pendingMessages.length
+  ])
 
   const onScroll = (): void => {
     const el = scrollRef.current
@@ -256,7 +261,7 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
 
   function send(): void {
     const text = draft.trim()
-    if (!text || !session || session.busy) return
+    if (!text || !session || state === 'exited') return
     window.api.sendJsonClaudeMessage(sessionId, text)
     setDraft('')
     stickyBottom.current = true
@@ -325,6 +330,30 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
             onResolve={(result) => resolve(a.requestId, result)}
           />
         ))}
+        {session?.pendingMessages.map((m) => (
+          <div key={m.id} className="flex justify-end">
+            <div className="max-w-[80%] bg-accent/10 border border-dashed border-accent/40 rounded-md pl-3 pr-1 py-2 opacity-70 flex items-start gap-2">
+              <div className="flex-1 min-w-0 whitespace-pre-wrap text-sm">
+                {m.text}
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <span className="text-[10px] uppercase tracking-wide text-muted bg-panel/60 border border-border px-1.5 py-0.5 rounded">
+                  queued
+                </span>
+                <button
+                  onClick={() =>
+                    window.api.cancelQueuedJsonClaudeMessage(sessionId, m.id)
+                  }
+                  className="p-1 rounded hover:bg-panel text-muted hover:text-fg cursor-pointer"
+                  title="Cancel queued message"
+                  aria-label="Cancel queued message"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
         {state === 'exited' && (
           <div className="flex items-center gap-3 text-xs text-danger italic">
             <span>
@@ -374,7 +403,7 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
         />
         <button
           onClick={send}
-          disabled={busy || !draft.trim() || state === 'exited'}
+          disabled={!draft.trim() || state === 'exited'}
           className="px-3 py-1.5 bg-accent text-white rounded text-sm disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
         >
           Send

@@ -346,6 +346,8 @@ contextBridge.exposeInMainWorld('api', {
     req('jsonClaude:start', id, cwd),
   sendJsonClaudeMessage: (id: string, text: string) =>
     sig('jsonClaude:send', id, text),
+  cancelQueuedJsonClaudeMessage: (id: string, messageId: string) =>
+    sig('jsonClaude:cancelQueued', id, messageId),
   killJsonClaude: (id: string) => req('jsonClaude:kill', id),
   interruptJsonClaude: (id: string) => req('jsonClaude:interrupt', id),
   setJsonClaudePermissionMode: (

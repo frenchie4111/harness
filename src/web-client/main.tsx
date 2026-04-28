@@ -425,6 +425,8 @@ function buildApi(transport: WebSocketClientTransport): ElectronAPI {
     startJsonClaude: (id, cwd) =>
       req('jsonClaude:start', id, cwd) as Promise<boolean>,
     sendJsonClaudeMessage: (id, text) => sig('jsonClaude:send', id, text),
+    cancelQueuedJsonClaudeMessage: (id, messageId) =>
+      sig('jsonClaude:cancelQueued', id, messageId),
     killJsonClaude: (id) => req('jsonClaude:kill', id) as Promise<boolean>,
     interruptJsonClaude: (id) =>
       req('jsonClaude:interrupt', id) as Promise<boolean>,
