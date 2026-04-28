@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from 'react'
-import { useJsonClaude } from '../store'
+import { useJsonClaudePendingApprovals } from '../store'
 import type { JsonClaudePendingApproval } from '../../shared/state/json-claude'
 
 interface ApprovalResult {
@@ -17,14 +17,14 @@ interface UseApprovals {
 }
 
 export function useJsonClaudeApprovals(sessionId: string): UseApprovals {
-  const state = useJsonClaude()
+  const pendingApprovals = useJsonClaudePendingApprovals()
   const pending = useMemo(() => {
-    const list = Object.values(state.pendingApprovals).filter(
+    const list = Object.values(pendingApprovals).filter(
       (a) => a.sessionId === sessionId
     )
     list.sort((a, b) => a.timestamp - b.timestamp)
     return list
-  }, [state.pendingApprovals, sessionId])
+  }, [pendingApprovals, sessionId])
 
   const resolve = useCallback((requestId: string, result: ApprovalResult) => {
     void window.api.resolveJsonClaudeApproval(requestId, result)

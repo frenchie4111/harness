@@ -214,7 +214,10 @@ function DesktopApp(): JSX.Element {
   // explicit confirmation separately for the onboarding step checkmarks.
   const [themeChosen, setThemeChosen] = useState(false)
   const [agentChosen, setAgentChosen] = useState(false)
-  const tailLines = useTailLineBuffer()
+  // Only subscribe to the PTY stream when CommandCenter is open. Without
+  // this gate, a chatty PTY pegs the renderer with re-renders for output
+  // nobody is currently looking at.
+  const tailLines = useTailLineBuffer(showCommandCenter)
   const settings = useSettings()
   const { hasGithubToken: hasGithubPat, githubAuthSource, nameClaudeSessions, defaultAgent, theme: activeTheme } = settings
   const nameAgentSessions = nameClaudeSessions

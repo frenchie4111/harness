@@ -8,13 +8,20 @@ import { useEffect, useRef, useState } from 'react'
  * Returns the latest tail-line map keyed by terminal id. Strips ANSI
  * escape sequences and box-drawing characters, drops lines that are
  * mostly whitespace, and keeps the last 4 meaningful lines per terminal
- * truncated to 240 characters each. */
-export function useTailLineBuffer(): Record<string, string> {
+ * truncated to 240 characters each.
+ *
+ * Pass `enabled=false` (the default at App scope when CommandCenter is
+ * closed) to skip the subscription AND the flush entirely \u2014 without the
+ * gate, a chatty PTY (e.g. `npm run dev`) keeps the buffer permanently
+ * dirty, fires a setState every 500ms, and re-renders the App tree
+ * forever for output nobody is looking at. */
+export function useTailLineBuffer(enabled = true): Record<string, string> {
   const [tailLines, setTailLines] = useState<Record<string, string>>({})
   const tailBuffersRef = useRef<Record<string, string>>({})
   const tailDirtyRef = useRef(false)
 
   useEffect(() => {
+    if (!enabled) return
     const stripAnsi = (s: string): string =>
       // eslint-disable-next-line no-control-regex
       s.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '').replace(/\x1b\][^\x07\x1b]*(\x07|\x1b\\)/g, '')
@@ -51,7 +58,7 @@ export function useTailLineBuffer(): Record<string, string> {
       cleanup()
       clearInterval(flush)
     }
-  }, [])
+  }, [enabled])
 
   return tailLines
 }

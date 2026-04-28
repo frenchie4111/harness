@@ -1,8 +1,15 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import {
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode
+} from 'react'
 import ReactMarkdown from 'react-markdown'
 import rehypeHighlight from 'rehype-highlight'
 import { Brain, Square, Terminal, FileText, X, Layers } from 'lucide-react'
-import { useJsonClaude } from '../store'
+import { useJsonClaudeSession } from '../store'
 import { useJsonClaudeApprovals } from '../hooks/useJsonClaudeApprovals'
 import { JsonClaudeApprovalCard } from './JsonClaudeApprovalCard'
 import { dispatchToolCard, ToolCardChrome } from './json-mode-cards'
@@ -407,8 +414,7 @@ function groupConsecutiveToolRows(rows: RenderedRow[]): GroupedItem[] {
 }
 
 export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JSX.Element {
-  const jsonClaude = useJsonClaude()
-  const session = jsonClaude.sessions[sessionId]
+  const session = useJsonClaudeSession(sessionId)
   const { pending, resolve } = useJsonClaudeApprovals(sessionId)
   const [draft, setDraft] = useState('')
   // Mention/popover state. `dismissed` carries the draft text at which
@@ -500,10 +506,16 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
 
   const autoApprovedDecisions = session?.autoApprovedDecisions ?? {}
   const sessionAllowedDecisions = session?.sessionAllowedDecisions ?? {}
+  // Defer the entries used for heavy row rendering. React keeps input +
+  // sidebar interactions responsive even while the chat re-renders mid-
+  // delta — the visible cost is that streaming text lags the actual data
+  // by a frame or two, which is invisible to the user.
+  const entries = session?.entries ?? []
+  const deferredEntries = useDeferredValue(entries)
   const rows = useMemo(
     () =>
       renderEntries(
-        session?.entries ?? [],
+        deferredEntries,
         renderApprovalForToolUseId,
         pendingToolUseIds,
         autoApprovedDecisions,
@@ -515,7 +527,7 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
     // also derives from pending.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
-      session?.entries,
+      deferredEntries,
       approvalByToolUseId,
       pendingToolUseIds,
       autoApprovedDecisions,
@@ -526,15 +538,29 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
 
   const groupedItems = useMemo(() => groupConsecutiveToolRows(rows), [rows])
 
+  // tool_use ids present in chat history. Cheap one-pass scan over
+  // entries, used to detect orphaned approvals without depending on the
+  // (heavy) `rows` memo. Critical: rows invalidates on every coalesced
+  // delta, so the previous `rows.some(r => r.key.includes(id))` check
+  // ran O(pending × rows) per delta — a smoking gun for CPU pinning
+  // with long chats + thinking turns.
+  const allToolUseIds = useMemo(() => {
+    const s = new Set<string>()
+    for (const entry of entries) {
+      if (!entry.blocks) continue
+      for (const b of entry.blocks) {
+        if (b.type === 'tool_use' && b.id) s.add(b.id)
+      }
+    }
+    return s
+  }, [entries])
+
   // Approvals that arrived without a matching tool_use block (rare —
   // happens when the assistant message hasn't streamed yet). Render them
   // standalone at the bottom so the user can still resolve.
   const orphanApprovals = useMemo(
-    () =>
-      pending.filter(
-        (a) => !a.toolUseId || !rows.some((r) => r.key.includes(a.toolUseId!))
-      ),
-    [pending, rows]
+    () => pending.filter((a) => !a.toolUseId || !allToolUseIds.has(a.toolUseId)),
+    [pending, allToolUseIds]
   )
 
   // Lazy-load the worktree file list for the @-mention picker. Cached at

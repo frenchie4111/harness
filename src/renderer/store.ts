@@ -154,4 +154,20 @@ export function useJsonClaude() {
   return useAppState((s) => s.jsonClaude)
 }
 
+/** Per-session selector. Narrow over `useJsonClaude()` so a streaming
+ *  delta from session A doesn't re-render every JsonModeChat mounted
+ *  for sessions B/C/D — the reducer keeps the per-key reference stable
+ *  for sessions it didn't touch, so this selector returns the same
+ *  object and useSyncExternalStore skips the render. */
+export function useJsonClaudeSession(sessionId: string) {
+  return useAppState((s) => s.jsonClaude.sessions[sessionId] ?? null)
+}
+
+/** Approvals map alone. Narrow over `useJsonClaude()` for the same
+ *  reason — delta events on any session don't touch pendingApprovals,
+ *  so subscribers here skip the streaming hot path entirely. */
+export function useJsonClaudePendingApprovals() {
+  return useAppState((s) => s.jsonClaude.pendingApprovals)
+}
+
 export type { AppState, StateEvent }
