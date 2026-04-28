@@ -334,6 +334,14 @@ function buildApi(transport: WebSocketClientTransport): ElectronAPI {
         unavailable('openExternal', undefined)
       }
     },
+    openDebugLog: () =>
+      Promise.resolve(
+        unavailable('openDebugLog', {
+          ok: false as const,
+          message: 'Opening the debug log is only available in the desktop app.'
+        })
+      ),
+    showDebugLogInFolder: () => Promise.resolve(unavailable('showDebugLogInFolder', false)),
     // TODO(web): file drag-drop in a browser exposes File objects that
     // don't have a real on-disk path. A future iteration could upload
     // the dropped contents to main; for v1 callers see an empty string

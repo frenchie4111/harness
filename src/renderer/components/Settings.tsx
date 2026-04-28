@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2, LifeBuoy, Bug, Lightbulb, FlaskConical, Copy, ExternalLink, CalendarDays } from 'lucide-react'
+import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2, LifeBuoy, Bug, Lightbulb, FlaskConical, Copy, ExternalLink, CalendarDays, FileText, FolderOpen } from 'lucide-react'
 import { openReportIssue } from './ReportIssueScreen'
 import { HARNESS_ISSUES_URL, HARNESS_RELEASES_URL } from '../../shared/constants'
 import { useSettings, useUpdater, useRepoConfigs, useHooks } from '../store'
@@ -261,6 +261,8 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
   // more than one is present and default to the first.
   const [lanAddresses, setLanAddresses] = useState<Array<{ iface: string; address: string }>>([])
   const [selectedLanAddress, setSelectedLanAddress] = useState<string | null>(null)
+
+  const [debugLogError, setDebugLogError] = useState<string | null>(null)
 
   // Constants and non-settings state load once; live settings are already
   // hydrated via useSettings() above.
@@ -1947,6 +1949,42 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               <p className="mt-3 text-xs text-dim">
                 Opens a prefilled GitHub issue in your browser. No data is sent from Harness directly.
               </p>
+
+              <div className="mt-6 bg-panel-raised border border-border rounded-lg p-4">
+                <label className="block text-sm font-medium text-fg mb-1">Diagnostics</label>
+                <p className="text-xs text-dim mb-3">
+                  Open the Harness debug log in your default editor. Useful when reporting issues or
+                  diagnosing flaky behavior.
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setDebugLogError(null)
+                      const result = await window.api.openDebugLog()
+                      if (!result.ok) setDebugLogError(result.message)
+                    }}
+                    className="flex items-center gap-2 px-3 py-2 bg-panel border border-border rounded-lg text-sm text-fg-bright hover:bg-surface transition-colors cursor-pointer"
+                  >
+                    <FileText size={14} />
+                    Open debug log
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDebugLogError(null)
+                      void window.api.showDebugLogInFolder()
+                    }}
+                    className="flex items-center gap-2 px-3 py-2 bg-panel border border-border rounded-lg text-sm text-fg-bright hover:bg-surface transition-colors cursor-pointer"
+                  >
+                    <FolderOpen size={14} />
+                    Show in Finder
+                  </button>
+                </div>
+                {debugLogError && (
+                  <p className="mt-2 text-xs text-danger">{debugLogError}</p>
+                )}
+              </div>
             </section>
 
             {/* Experimental section */}
