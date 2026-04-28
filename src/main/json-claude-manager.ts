@@ -216,6 +216,30 @@ export class JsonClaudeManager {
           timestamp: Date.now(),
           entryId: `${sessionId}-seed-a-${counter++}`
         })
+      } else if (type === 'system' && parsed['subtype'] === 'compact_boundary') {
+        const meta = parsed['compactMetadata'] as
+          | { trigger?: unknown; preTokens?: unknown; postTokens?: unknown }
+          | undefined
+        const trigger =
+          meta?.trigger === 'auto' || meta?.trigger === 'manual'
+            ? meta.trigger
+            : undefined
+        const preTokens =
+          typeof meta?.preTokens === 'number' ? meta.preTokens : undefined
+        const postTokens =
+          typeof meta?.postTokens === 'number' ? meta.postTokens : undefined
+        seededEntries.push({
+          kind: 'compact',
+          timestamp: Date.now(),
+          entryId: `${sessionId}-seed-c-${counter++}`,
+          ...(trigger ? { compactTrigger: trigger } : {}),
+          ...(typeof preTokens === 'number'
+            ? { compactPreTokens: preTokens }
+            : {}),
+          ...(typeof postTokens === 'number'
+            ? { compactPostTokens: postTokens }
+            : {})
+        })
       }
     }
     if (seededEntries.length === 0) return
@@ -852,6 +876,52 @@ export class JsonClaudeManager {
     }
     const type = parsed['type']
     const subtype = parsed['subtype']
+    if (type === 'system' && subtype === 'compact_boundary') {
+      // Wire format (same shape as the on-disk session jsonl):
+      //   { type: 'system', subtype: 'compact_boundary',
+      //     content: 'Conversation compacted',
+      //     compactMetadata: {
+      //       trigger: 'auto' | 'manual',
+      //       preTokens: number,
+      //       postTokens?: number,        // present once compaction finishes
+      //       durationMs?: number,
+      //       preCompactDiscoveredTools?: string[]
+      //     },
+      //     uuid, timestamp, ... }
+      // Don't toggle busy — compaction happens transparently mid- or
+      // between-turns; the surrounding `result` boundaries are what flip
+      // the spinner.
+      const meta = parsed['compactMetadata'] as
+        | {
+            trigger?: unknown
+            preTokens?: unknown
+            postTokens?: unknown
+          }
+        | undefined
+      const trigger =
+        meta?.trigger === 'auto' || meta?.trigger === 'manual'
+          ? meta.trigger
+          : undefined
+      const preTokens =
+        typeof meta?.preTokens === 'number' ? meta.preTokens : undefined
+      const postTokens =
+        typeof meta?.postTokens === 'number' ? meta.postTokens : undefined
+      const uuid = typeof parsed['uuid'] === 'string' ? parsed['uuid'] : null
+      this.store.dispatch({
+        type: 'jsonClaude/compactBoundaryReceived',
+        payload: {
+          sessionId: instance.sessionId,
+          entryId: uuid
+            ? `${instance.sessionId}-c-${uuid}`
+            : `${instance.sessionId}-c-${instance.entryCounter++}`,
+          trigger,
+          preTokens,
+          postTokens,
+          timestamp: Date.now()
+        }
+      })
+      return
+    }
     if (type === 'system' && subtype === 'init') {
       // Session id is already known (we pinned it via --session-id), but
       // the init payload includes the canonical slash_commands list — keep
