@@ -327,6 +327,8 @@ export interface ElectronAPI {
   ): Promise<boolean>
 
   openExternal(url: string): void
+  openDebugLog(): Promise<{ ok: true } | { ok: false; message: string }>
+  showDebugLogInFolder(): Promise<boolean>
   getFilePath(file: File): string
   onOpenSettings(callback: () => void): () => void
   onTogglePerfMonitor(callback: () => void): () => void

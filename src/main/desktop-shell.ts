@@ -41,7 +41,7 @@ import type { Config } from './persistence'
 import { saveConfig, saveConfigSync, DEFAULT_THEME, THEME_APP_BG } from './persistence'
 import { loadRepoConfig } from './repo-config'
 import { sealAllActive } from './activity'
-import { log } from './debug'
+import { log, getLogFilePath } from './debug'
 
 export interface DesktopShellInit {
   store: Store
@@ -363,6 +363,12 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
           },
           { type: 'separator' },
           {
+            label: 'Debug: Open Debug Log',
+            click: () => {
+              void shell.openPath(getLogFilePath())
+            }
+          },
+          {
             label: 'Debug: Crash Focused Tab',
             click: () => transport.sendSignal('app:debugCrashFocusedTab')
           }
@@ -470,6 +476,18 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
 
     transport.onSignal('shell:openExternal', (_ctx, url: string) => {
       shell.openExternal(url)
+    })
+
+    transport.onRequest('debug:openLog', async (_ctx) => {
+      const path = getLogFilePath()
+      const error = await shell.openPath(path)
+      if (error) return { ok: false as const, message: error }
+      return { ok: true as const }
+    })
+
+    transport.onRequest('debug:showLogInFolder', (_ctx) => {
+      shell.showItemInFolder(getLogFilePath())
+      return true
     })
 
     transport.onSignal(
