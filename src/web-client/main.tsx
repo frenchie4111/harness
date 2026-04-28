@@ -445,6 +445,18 @@ function buildApi(transport: WebSocketClientTransport): ElectronAPI {
       req('jsonClaude:interrupt', id) as Promise<boolean>,
     setJsonClaudePermissionMode: (id, mode) =>
       req('jsonClaude:setPermissionMode', id, mode) as Promise<boolean>,
+    grantJsonClaudeSessionToolApprovals: (id, toolNames) =>
+      req(
+        'jsonClaude:grantSessionToolApprovals',
+        id,
+        toolNames
+      ) as Promise<boolean>,
+    clearJsonClaudeSessionToolApprovals: (id, toolNames) =>
+      req(
+        'jsonClaude:clearSessionToolApprovals',
+        id,
+        toolNames
+      ) as Promise<boolean>,
 
     getStateSnapshot: () => transport.getStateSnapshot(),
     onStateEvent: (callback) =>

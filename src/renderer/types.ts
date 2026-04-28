@@ -401,6 +401,14 @@ export interface ElectronAPI {
     id: string,
     mode: 'default' | 'acceptEdits' | 'plan'
   ): Promise<boolean>
+  grantJsonClaudeSessionToolApprovals(
+    id: string,
+    toolNames: string[]
+  ): Promise<boolean>
+  clearJsonClaudeSessionToolApprovals(
+    id: string,
+    toolNames?: string[]
+  ): Promise<boolean>
 
   getStateSnapshot(): Promise<StateSnapshot>
   onStateEvent(callback: (event: StateEvent, seq: number) => void): () => void
