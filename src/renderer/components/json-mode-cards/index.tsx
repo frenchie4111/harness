@@ -127,6 +127,7 @@ export function ToolCardChrome({
 
 import { ReadCard } from './ReadCard'
 import { EditCard } from './EditCard'
+import { MultiEditCard } from './MultiEditCard'
 import { WriteCard } from './WriteCard'
 import { BashCard } from './BashCard'
 import { GrepCard } from './GrepCard'
@@ -139,8 +140,9 @@ export function dispatchToolCard(props: ToolCardProps): JSX.Element {
     case 'Read':
       return <ReadCard {...props} />
     case 'Edit':
-    case 'MultiEdit':
       return <EditCard {...props} />
+    case 'MultiEdit':
+      return <MultiEditCard {...props} />
     case 'Write':
       return <WriteCard {...props} />
     case 'Bash':
