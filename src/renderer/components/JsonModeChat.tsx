@@ -8,6 +8,7 @@ import {
 } from 'react'
 import ReactMarkdown from 'react-markdown'
 import rehypeHighlight from 'rehype-highlight'
+import remarkGfm from 'remark-gfm'
 import { Brain, Square, Terminal, FileText, X, Layers } from 'lucide-react'
 import { useJsonClaudeSession } from '../store'
 import { useJsonClaudeApprovals } from '../hooks/useJsonClaudeApprovals'
@@ -19,6 +20,9 @@ import { JsonModeChatImageThumb } from './JsonModeChatImageThumb'
 import { fuzzyMatch } from '../fuzzy'
 import 'highlight.js/styles/github-dark.css'
 import type { JsonClaudeChatEntry } from '../../shared/state/json-claude'
+
+const REMARK_PLUGINS = [remarkGfm]
+const REHYPE_PLUGINS = [rehypeHighlight]
 
 // Worktree file list cache. Same TTL/shape as CommandPalette uses — the
 // list rarely changes during a typing session, and listAllFiles shells
@@ -116,7 +120,10 @@ function ThinkingCard({
       {expanded && (
         <div className="px-3 py-2 border-t border-border/30 markdown italic text-muted text-xs leading-relaxed">
           {text ? (
-            <ReactMarkdown rehypePlugins={[rehypeHighlight]}>
+            <ReactMarkdown
+              remarkPlugins={REMARK_PLUGINS}
+              rehypePlugins={REHYPE_PLUGINS}
+            >
               {text}
             </ReactMarkdown>
           ) : !isPartial ? (
@@ -315,7 +322,10 @@ function renderEntries(
             type: 'text',
             node: (
               <div className="markdown text-sm leading-relaxed">
-                <ReactMarkdown rehypePlugins={[rehypeHighlight]}>
+                <ReactMarkdown
+                  remarkPlugins={REMARK_PLUGINS}
+                  rehypePlugins={REHYPE_PLUGINS}
+                >
                   {block.text || ''}
                 </ReactMarkdown>
                 {entry.isPartial && (
