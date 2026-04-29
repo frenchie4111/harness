@@ -1,4 +1,5 @@
 import { ToolCardChrome, basename, trunc, type ToolCardProps } from './index'
+import { UnifiedDiff } from './UnifiedDiff'
 
 export function EditCard({ block, result, autoApproved, sessionAllowed }: ToolCardProps): JSX.Element {
   const fp = String(block.input?.file_path ?? '')
@@ -17,14 +18,7 @@ export function EditCard({ block, result, autoApproved, sessionAllowed }: ToolCa
       sessionAllowed={sessionAllowed}
     >
       {fp && <div className="px-2 py-1 text-[10px] text-muted truncate font-mono">{fp}</div>}
-      <div className="px-2 py-1 text-[11px] font-mono">
-        <pre className="bg-danger/10 text-danger/80 rounded p-2 whitespace-pre-wrap max-h-40 overflow-auto">
-          {trunc(oldStr, 1500)}
-        </pre>
-        <pre className="bg-success/10 text-success/80 rounded p-2 whitespace-pre-wrap max-h-40 overflow-auto mt-1">
-          {trunc(newStr, 1500)}
-        </pre>
-      </div>
+      <UnifiedDiff oldStr={oldStr} newStr={newStr} filePath={fp} />
       {result && result.isError && (
         <pre className="px-2 py-1 text-[11px] font-mono text-danger whitespace-pre-wrap">
           {trunc(result.content, 1000)}

@@ -1,3 +1,7 @@
+// `highlight.js/lib/common` ships only the ~30 most popular languages
+// (smaller bundle than the full `highlight.js` entry) but has no `.d.ts`
+// of its own — the local module declaration in `highlight-common.d.ts`
+// fills that in.
 import hljs from 'highlight.js/lib/common'
 
 const EXT_TO_LANG: Record<string, string> = {
