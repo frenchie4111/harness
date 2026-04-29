@@ -1,6 +1,7 @@
 import {
   useDeferredValue,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -9,7 +10,15 @@ import {
 import ReactMarkdown from 'react-markdown'
 import rehypeHighlight from 'rehype-highlight'
 import remarkGfm from 'remark-gfm'
-import { Brain, Square, Terminal, FileText, X, Layers } from 'lucide-react'
+import {
+  Brain,
+  ChevronDown,
+  Square,
+  Terminal,
+  FileText,
+  X,
+  Layers
+} from 'lucide-react'
 import { useJsonClaudeSession } from '../store'
 import { useJsonClaudeApprovals } from '../hooks/useJsonClaudeApprovals'
 import { JsonClaudeApprovalCard } from './JsonClaudeApprovalCard'
@@ -460,6 +469,12 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
   // Pause auto-scroll when the user has scrolled up. Re-enables when the
   // user scrolls back to the bottom — standard chat behavior.
   const stickyBottom = useRef(true)
+  // Suppress sticky-toggle while we're driving scroll programmatically
+  // (auto-snap on content growth, jump-to-bottom click). Otherwise the
+  // synthetic scroll event from setting scrollTop would re-enter onScroll
+  // and could flip stickyBottom mid-update.
+  const isProgrammaticScroll = useRef(false)
+  const [showJumpToBottom, setShowJumpToBottom] = useState(false)
 
   // Spin the subprocess up the first time this session is rendered. We
   // don't tear it down on unmount — closing the tab is the lifecycle
@@ -469,19 +484,48 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
     void window.api.startJsonClaude(sessionId, worktreePath)
   }, [sessionId, worktreePath, session])
 
-  useEffect(() => {
-    if (!session) return
-    if (!stickyBottom.current) return
+  // ResizeObserver catches streaming text deltas and content reflows;
+  // entries.length doesn't change while the model streams text into an
+  // existing assistant entry, so a deps-based effect would miss them.
+  useLayoutEffect(() => {
     const el = scrollRef.current
     if (!el) return
     el.scrollTop = el.scrollHeight
-  }, [session?.entries.length, session, pending.length])
+    const ro = new ResizeObserver(() => {
+      if (!stickyBottom.current) return
+      isProgrammaticScroll.current = true
+      el.scrollTop = el.scrollHeight
+      requestAnimationFrame(() => {
+        isProgrammaticScroll.current = false
+      })
+    })
+    const content = el.firstElementChild
+    if (content) ro.observe(content)
+    return () => ro.disconnect()
+  }, [])
 
   const onScroll = (): void => {
+    if (isProgrammaticScroll.current) return
     const el = scrollRef.current
     if (!el) return
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
-    stickyBottom.current = distanceFromBottom < 16
+    const nextSticky = distanceFromBottom < 32
+    stickyBottom.current = nextSticky
+    setShowJumpToBottom(!nextSticky)
+  }
+
+  const jumpToBottom = (): void => {
+    const el = scrollRef.current
+    if (!el) return
+    isProgrammaticScroll.current = true
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+    stickyBottom.current = true
+    setShowJumpToBottom(false)
+    // Smooth scroll fires several scroll events over ~300ms; clear the
+    // guard well after the animation has landed at the bottom.
+    setTimeout(() => {
+      isProgrammaticScroll.current = false
+    }, 500)
   }
 
   const approvalByToolUseId = useMemo(() => {
@@ -814,6 +858,7 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
     setAttachments([])
     setMentionDismissed(null)
     stickyBottom.current = true
+    setShowJumpToBottom(false)
   }
 
   async function attachImageFile(
@@ -928,65 +973,79 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
           </div>
         </div>
       )}
-      <div
-        ref={scrollRef}
-        onScroll={onScroll}
-        className="flex-1 overflow-y-auto px-4 py-3 space-y-3"
-      >
-        {groupedItems.map((g) =>
-          g.kind === 'single' ? (
-            <div key={g.key}>{g.rows[0].node}</div>
-          ) : (
-            <ToolGroup key={g.key} rows={g.rows} />
-          )
-        )}
-        {orphanApprovals.map((a) => (
-          <JsonClaudeApprovalCard
-            key={a.requestId}
-            approval={a}
-            onResolve={(result) => resolve(a.requestId, result)}
-          />
-        ))}
-        {(() => {
-          // In-chat "waiting on next assistant turn" indicator. Covers
-          // the dead time between user-send and message_start, and the
-          // gap between a tool_result and the next assistant message
-          // start. Skipped while an assistant entry is actively
-          // streaming — the partial entry's own cursor signals progress
-          // there.
-          if (!busy) return null
-          const last = session?.entries[session.entries.length - 1]
-          const waiting =
-            !last || last.kind === 'user' || last.kind === 'tool_result'
-          if (!waiting) return null
-          return (
-            <div className="flex items-center gap-2 px-2 py-1 text-[11px] text-muted italic">
-              <span className="json-claude-spinner" aria-label="thinking" />
-              <span>thinking…</span>
-            </div>
-          )
-        })()}
-        {state === 'exited' && (
-          <div className="flex items-center gap-3 text-xs text-danger italic">
-            <span>
-              session exited
-              {session?.exitReason ? ` — ${session.exitReason}` : ''}
-            </span>
-            <button
-              className="not-italic px-2 py-0.5 bg-panel-raised border border-border-strong rounded text-fg-bright hover:bg-panel cursor-pointer"
-              onClick={() => {
-                // Kill (no-op if no instance) + start: re-spawns the
-                // subprocess and re-uses the same sessionId so --resume
-                // picks up the on-disk jsonl.
-                void (async () => {
-                  await window.api.killJsonClaude(sessionId)
-                  await window.api.startJsonClaude(sessionId, worktreePath)
-                })()
-              }}
-            >
-              Reconnect
-            </button>
+      <div className="relative flex-1 min-h-0 flex flex-col">
+        <div
+          ref={scrollRef}
+          onScroll={onScroll}
+          className="flex-1 overflow-y-auto"
+        >
+          <div className="px-4 py-3 space-y-3">
+            {groupedItems.map((g) =>
+              g.kind === 'single' ? (
+                <div key={g.key}>{g.rows[0].node}</div>
+              ) : (
+                <ToolGroup key={g.key} rows={g.rows} />
+              )
+            )}
+            {orphanApprovals.map((a) => (
+              <JsonClaudeApprovalCard
+                key={a.requestId}
+                approval={a}
+                onResolve={(result) => resolve(a.requestId, result)}
+              />
+            ))}
+            {(() => {
+              // In-chat "waiting on next assistant turn" indicator. Covers
+              // the dead time between user-send and message_start, and the
+              // gap between a tool_result and the next assistant message
+              // start. Skipped while an assistant entry is actively
+              // streaming — the partial entry's own cursor signals progress
+              // there.
+              if (!busy) return null
+              const last = session?.entries[session.entries.length - 1]
+              const waiting =
+                !last || last.kind === 'user' || last.kind === 'tool_result'
+              if (!waiting) return null
+              return (
+                <div className="flex items-center gap-2 px-2 py-1 text-[11px] text-muted italic">
+                  <span className="json-claude-spinner" aria-label="thinking" />
+                  <span>thinking…</span>
+                </div>
+              )
+            })()}
+            {state === 'exited' && (
+              <div className="flex items-center gap-3 text-xs text-danger italic">
+                <span>
+                  session exited
+                  {session?.exitReason ? ` — ${session.exitReason}` : ''}
+                </span>
+                <button
+                  className="not-italic px-2 py-0.5 bg-panel-raised border border-border-strong rounded text-fg-bright hover:bg-panel cursor-pointer"
+                  onClick={() => {
+                    // Kill (no-op if no instance) + start: re-spawns the
+                    // subprocess and re-uses the same sessionId so --resume
+                    // picks up the on-disk jsonl.
+                    void (async () => {
+                      await window.api.killJsonClaude(sessionId)
+                      await window.api.startJsonClaude(sessionId, worktreePath)
+                    })()
+                  }}
+                >
+                  Reconnect
+                </button>
+              </div>
+            )}
           </div>
+        </div>
+        {showJumpToBottom && (
+          <button
+            onClick={jumpToBottom}
+            className="absolute right-4 bottom-4 z-10 px-3 py-1.5 rounded-full bg-accent text-white text-xs shadow-lg hover:bg-accent/90 cursor-pointer flex items-center gap-1.5"
+            title="Jump to bottom"
+          >
+            <ChevronDown size={12} />
+            <span>Jump to bottom</span>
+          </button>
         )}
       </div>
       {session && session.sessionToolApprovals.length > 0 && (
