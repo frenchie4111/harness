@@ -332,6 +332,7 @@
   border: 1px solid var(--color-border-strong);
   padding: 0.3em 0.6em;
   text-align: left;
+  overflow-wrap: normal;
 }
 .markdown th {
   background: rgba(255, 255, 255, 0.05);
