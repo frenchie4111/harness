@@ -256,7 +256,7 @@ function renderEntries(
         node: queued ? (
           <div className="flex justify-end">
             <div className="max-w-[80%] bg-accent/10 border border-dashed border-accent/40 rounded-md pl-3 pr-1 py-2 opacity-70 flex items-start gap-2">
-              <div className="flex-1 min-w-0 whitespace-pre-wrap text-sm">
+              <div className="flex-1 min-w-0 whitespace-pre-wrap break-words text-sm">
                 {entry.text}
               </div>
               <div className="flex items-center gap-1 shrink-0">
@@ -276,7 +276,7 @@ function renderEntries(
           </div>
         ) : (
           <div className="flex justify-end">
-            <div className="max-w-[80%] bg-accent/15 border border-accent/30 rounded-md px-3 py-2 whitespace-pre-wrap text-sm">
+            <div className="max-w-[80%] bg-accent/15 border border-accent/30 rounded-md px-3 py-2 whitespace-pre-wrap break-words text-sm">
               {entry.text}
               {entry.images && entry.images.length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1.5">
@@ -977,7 +977,7 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
         <div
           ref={scrollRef}
           onScroll={onScroll}
-          className="flex-1 overflow-y-auto"
+          className="flex-1 overflow-y-auto overflow-x-hidden"
         >
           <div className="px-4 py-3 space-y-3">
             {groupedItems.map((g) =>
