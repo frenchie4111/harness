@@ -101,7 +101,9 @@ export function CostPanel({ worktreePath }: CostPanelProps): JSX.Element | null 
       if (tree) {
         for (const leaf of getLeaves(tree)) {
           for (const tab of leaf.tabs) {
-            if (tab.type === 'agent') terminalIds.add(tab.id)
+            if (tab.type === 'agent' || tab.type === 'json-claude') {
+              terminalIds.add(tab.id)
+            }
           }
         }
       }
