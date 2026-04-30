@@ -1,6 +1,12 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { Store } from './store'
 import { initialState, type StateEvent } from '../shared/state'
+import { perfLog } from './perf-log'
+
+vi.mock('./perf-log', () => ({
+  perfLog: vi.fn(),
+  getPerfLogFilePath: vi.fn(() => '/tmp/perf.log')
+}))
 
 describe('Store', () => {
   it('returns the initial snapshot with seq=0', () => {
@@ -72,5 +78,76 @@ describe('Store', () => {
     })
     expect(store.getSnapshot().state.settings.theme).toBe('preseeded')
     expect(store.getSnapshot().seq).toBe(0)
+  })
+})
+
+describe('Store cascade detection', () => {
+  beforeEach(() => {
+    vi.mocked(perfLog).mockClear()
+  })
+
+  function cascadeCalls(): unknown[][] {
+    return vi.mocked(perfLog).mock.calls.filter((c) => c[0] === 'cascade')
+  }
+
+  it('does not log a cascade for a plain dispatch with no nested dispatches', () => {
+    const store = new Store()
+    store.dispatch({ type: 'settings/themeChanged', payload: 'a' })
+    expect(cascadeCalls()).toHaveLength(0)
+  })
+
+  it('logs a cascade when a subscriber fires more than the threshold of nested dispatches', () => {
+    const store = new Store()
+    let fired = false
+    store.subscribe((event) => {
+      if (event.type === 'settings/themeChanged' && !fired) {
+        fired = true
+        for (let i = 0; i < 6; i++) {
+          store.dispatch({ type: 'settings/nameClaudeSessionsChanged', payload: i % 2 === 0 })
+        }
+      }
+    })
+    store.dispatch({ type: 'settings/themeChanged', payload: 'root' })
+    const calls = cascadeCalls()
+    expect(calls).toHaveLength(1)
+    expect(calls[0][1]).toContain('settings/themeChanged')
+    expect(calls[0][1]).toContain('6 nested dispatches')
+    expect(calls[0][2]).toEqual({ rootEvent: 'settings/themeChanged', childCount: 6 })
+  })
+
+  it('does not log when nested dispatches stay at or below the threshold', () => {
+    const store = new Store()
+    let fired = false
+    store.subscribe((event) => {
+      if (event.type === 'settings/themeChanged' && !fired) {
+        fired = true
+        for (let i = 0; i < 3; i++) {
+          store.dispatch({ type: 'settings/nameClaudeSessionsChanged', payload: true })
+        }
+      }
+    })
+    store.dispatch({ type: 'settings/themeChanged', payload: 'root' })
+    expect(cascadeCalls()).toHaveLength(0)
+  })
+
+  it('treats sequential top-level dispatches independently', () => {
+    const store = new Store()
+    let cascadeOnNext = false
+    let fired = false
+    store.subscribe((event) => {
+      if (cascadeOnNext && event.type === 'settings/themeChanged' && !fired) {
+        fired = true
+        for (let i = 0; i < 6; i++) {
+          store.dispatch({ type: 'settings/nameClaudeSessionsChanged', payload: true })
+        }
+      }
+    })
+    store.dispatch({ type: 'settings/themeChanged', payload: 'first' })
+    expect(cascadeCalls()).toHaveLength(0)
+    cascadeOnNext = true
+    store.dispatch({ type: 'settings/themeChanged', payload: 'second' })
+    const calls = cascadeCalls()
+    expect(calls).toHaveLength(1)
+    expect(calls[0][2]).toEqual({ rootEvent: 'settings/themeChanged', childCount: 6 })
   })
 })

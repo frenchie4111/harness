@@ -20,6 +20,12 @@
 // Dispatches that take longer than SLOW_DISPATCH_MS (reducer + listener
 // fan-out combined) are written to perf.log so production lag can be
 // debugged after the fact. See src/main/perf-log.ts.
+//
+// The dispatch is also instrumented for cascades: when a single root
+// dispatch causes more than CASCADE_THRESHOLD nested dispatches in its
+// listener fan-out, we log a `[cascade]` line. This is the diagnostic
+// for subscribers that iterate-and-dispatch per entity instead of
+// scoping to the affected one.
 
 import {
   initialState,
@@ -33,11 +39,18 @@ import { perfLog } from './perf-log'
 type Listener = (event: StateEvent, seq: number) => void
 
 const SLOW_DISPATCH_MS = 5
+// More than 5 nested dispatches from one root event almost always means
+// a subscriber is iterating-and-dispatching per entity rather than
+// scoping to the affected one.
+const CASCADE_THRESHOLD = 5
 
 export class Store {
   private state: AppState
   private seq = 0
   private listeners = new Set<Listener>()
+  private dispatchDepth = 0
+  private cascadeRootEventType: string | null = null
+  private cascadeChildCount = 0
 
   constructor(initial: AppState = initialState) {
     this.state = initial
@@ -48,27 +61,51 @@ export class Store {
   }
 
   dispatch(event: StateEvent): void {
-    const t0 = performance.now()
-    this.state = rootReducer(this.state, event)
-    const t1 = performance.now()
-    this.seq += 1
-    for (const listener of this.listeners) {
-      listener(event, this.seq)
+    this.dispatchDepth++
+    if (this.dispatchDepth === 1) {
+      this.cascadeRootEventType = event.type
+      this.cascadeChildCount = 0
+    } else {
+      this.cascadeChildCount++
     }
-    const t2 = performance.now()
-    const totalMs = t2 - t0
-    if (totalMs >= SLOW_DISPATCH_MS) {
-      const reducerMs = t1 - t0
-      perfLog(
-        'store-slow',
-        `${event.type} reducer=${reducerMs.toFixed(1)}ms total=${totalMs.toFixed(1)}ms`,
-        {
-          type: event.type,
-          reducerMs: +reducerMs.toFixed(2),
-          listenerMs: +(totalMs - reducerMs).toFixed(2),
-          totalMs: +totalMs.toFixed(2)
+    const t0 = performance.now()
+    try {
+      this.state = rootReducer(this.state, event)
+      const t1 = performance.now()
+      this.seq += 1
+      for (const listener of this.listeners) {
+        listener(event, this.seq)
+      }
+      const t2 = performance.now()
+      const totalMs = t2 - t0
+      if (totalMs >= SLOW_DISPATCH_MS) {
+        const reducerMs = t1 - t0
+        perfLog(
+          'store-slow',
+          `${event.type} reducer=${reducerMs.toFixed(1)}ms total=${totalMs.toFixed(1)}ms`,
+          {
+            type: event.type,
+            reducerMs: +reducerMs.toFixed(2),
+            listenerMs: +(totalMs - reducerMs).toFixed(2),
+            totalMs: +totalMs.toFixed(2)
+          }
+        )
+      }
+    } finally {
+      this.dispatchDepth--
+      if (this.dispatchDepth === 0) {
+        const rootType = this.cascadeRootEventType
+        const childCount = this.cascadeChildCount
+        this.cascadeRootEventType = null
+        this.cascadeChildCount = 0
+        if (childCount > CASCADE_THRESHOLD && rootType !== null) {
+          perfLog(
+            'cascade',
+            `${rootType} caused ${childCount} nested dispatches`,
+            { rootEvent: rootType, childCount }
+          )
         }
-      )
+      }
     }
   }
 
