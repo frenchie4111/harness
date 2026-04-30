@@ -15,11 +15,18 @@
 
 import type { Store } from './store'
 import type { StateEvent } from '../shared/state'
+import type { JsonClaudeState } from '../shared/state/json-claude'
 import type { PtyStatus, PendingTool } from '../shared/state/terminals'
+import { log } from './debug'
 
 export class JsonClaudeStatusDeriver {
   private store: Store
   private unsubscribe: (() => void) | null = null
+  // Stable fingerprint of (status, pendingTool) per session so we only
+  // dispatch terminals/statusChanged when the derived value actually
+  // changes. At ~30Hz streaming deltas with N open chats, the previous
+  // fan-out-to-everyone behavior was O(N) IPC sends per token.
+  private lastStatus = new Map<string, string>()
 
   constructor(store: Store) {
     this.store = store
@@ -40,34 +47,74 @@ export class JsonClaudeStatusDeriver {
   private onEvent(event: StateEvent): void {
     if (!event.type.startsWith('jsonClaude/')) return
     const jc = this.store.getSnapshot().state.jsonClaude
-    // Re-derive every json-claude session's status. There are usually
-    // only a handful, so the linear walk is cheap; scoping to a single
-    // session would require threading sessionId through every event
-    // payload (approvalResolved doesn't carry it).
-    for (const sessionId of Object.keys(jc.sessions)) {
-      const session = jc.sessions[sessionId]
-      if (!session) continue
-      if (session.state === 'exited') {
-        this.store.dispatch({ type: 'terminals/removed', payload: sessionId })
-        continue
-      }
-      let status: PtyStatus
-      let pendingTool: PendingTool | null = null
-      const approval = Object.values(jc.pendingApprovals).find(
-        (a) => a.sessionId === sessionId
-      )
-      if (approval) {
-        status = 'needs-approval'
-        pendingTool = { name: approval.toolName, input: approval.input }
-      } else if (session.busy) {
-        status = 'processing'
-      } else {
-        status = 'waiting'
-      }
-      this.store.dispatch({
-        type: 'terminals/statusChanged',
-        payload: { id: sessionId, status, pendingTool }
-      })
+    // Re-derive only the session(s) the event touched, then dedup against
+    // the cached fingerprint so an unchanged status is a no-op. The only
+    // event we can't scope is approvalResolved (carries requestId, not
+    // sessionId, and the approval is already gone from state by now); for
+    // that one we sweep, and the cache makes the sweep cheap.
+    for (const sessionId of this.sessionsToReDerive(event, jc)) {
+      this.deriveSession(sessionId, jc)
     }
+  }
+
+  private sessionsToReDerive(
+    event: StateEvent,
+    jc: JsonClaudeState
+  ): string[] {
+    if (event.type === 'jsonClaude/approvalResolved') {
+      return Object.keys(jc.sessions)
+    }
+    const payload = event.payload as { sessionId?: unknown } | undefined
+    if (payload && typeof payload.sessionId === 'string') {
+      return [payload.sessionId]
+    }
+    log('json-claude-status-deriver', `event without sessionId: ${event.type}`)
+    return Object.keys(jc.sessions)
+  }
+
+  private deriveSession(sessionId: string, jc: JsonClaudeState): void {
+    const session = jc.sessions[sessionId]
+    if (!session) {
+      // Session disappeared (e.g. sessionCleared). Fire one terminals/removed
+      // if we previously published a non-exited status — skip if we already
+      // fired one via the exited path so we don't double-emit.
+      const cached = this.lastStatus.get(sessionId)
+      if (cached !== undefined) {
+        if (cached !== 'exited') {
+          this.store.dispatch({ type: 'terminals/removed', payload: sessionId })
+        }
+        this.lastStatus.delete(sessionId)
+      }
+      return
+    }
+    if (session.state === 'exited') {
+      if (this.lastStatus.get(sessionId) === 'exited') return
+      this.store.dispatch({ type: 'terminals/removed', payload: sessionId })
+      this.lastStatus.set(sessionId, 'exited')
+      return
+    }
+    let status: PtyStatus
+    let pendingTool: PendingTool | null = null
+    let fingerprint: string
+    const approval = Object.values(jc.pendingApprovals).find(
+      (a) => a.sessionId === sessionId
+    )
+    if (approval) {
+      status = 'needs-approval'
+      pendingTool = { name: approval.toolName, input: approval.input }
+      fingerprint = `needs-approval:${approval.requestId}`
+    } else if (session.busy) {
+      status = 'processing'
+      fingerprint = 'processing'
+    } else {
+      status = 'waiting'
+      fingerprint = 'waiting'
+    }
+    if (this.lastStatus.get(sessionId) === fingerprint) return
+    this.lastStatus.set(sessionId, fingerprint)
+    this.store.dispatch({
+      type: 'terminals/statusChanged',
+      payload: { id: sessionId, status, pendingTool }
+    })
   }
 }
