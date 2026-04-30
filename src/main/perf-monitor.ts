@@ -1,10 +1,19 @@
 import type { Store } from './store'
 import type { PerfMetrics, PerfSample } from '../shared/perf-types'
+import { perfLog } from './perf-log'
 
 export type { PerfMetrics, PerfSample }
 
 const HISTORY_SIZE = 120
 const LAG_CHECK_INTERVAL_MS = 500
+const LAG_SPIKE_THRESHOLD_MS = 100
+const SNAPSHOT_INTERVAL_MS = 30000
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n}B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)}KB`
+  return `${(n / 1024 / 1024).toFixed(1)}MB`
+}
 
 export class PerfMonitor {
   private storeEventCount = 0
@@ -22,6 +31,7 @@ export class PerfMonitor {
   private lagExpected = 0
   private lagTimer: NodeJS.Timeout | null = null
   private rateTimer: NodeJS.Timeout | null = null
+  private snapshotTimer: NodeJS.Timeout | null = null
   private startTime = Date.now()
 
   // Ring buffer: fixed capacity HISTORY_SIZE, oldest at head / newest at tail.
@@ -83,7 +93,41 @@ export class PerfMonitor {
       const now = Date.now()
       this.eventLoopLagMs = Math.max(0, now - this.lagExpected)
       this.lagExpected = now + LAG_CHECK_INTERVAL_MS
+      if (this.eventLoopLagMs >= LAG_SPIKE_THRESHOLD_MS) {
+        perfLog('eventloop-spike', `${this.eventLoopLagMs}ms`, {
+          lagMs: this.eventLoopLagMs,
+          intervalMs: LAG_CHECK_INTERVAL_MS
+        })
+      }
     }, LAG_CHECK_INTERVAL_MS)
+
+    // Periodic snapshot — cheap continuous trace (1 line / 30s) so we
+    // can answer "what was the system doing at <timestamp>" after the fact.
+    this.snapshotTimer = setInterval(() => this.writeSnapshot(), SNAPSHOT_INTERVAL_MS)
+  }
+
+  private writeSnapshot(): void {
+    const mem = process.memoryUsage()
+    const rssMB = Math.round(mem.rss / 1024 / 1024)
+    const heapMB = Math.round(mem.heapUsed / 1024 / 1024)
+    const ptys = this.activePtyCountFn?.() ?? 0
+    const top: Array<[string, number]> = Object.entries(this.eventTypeCountsCurrent)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+    perfLog(
+      'snapshot',
+      `store=${this.storeEventsPerSec}/s ipc=${this.ipcMessagesPerSec}/s term=${formatBytes(this.totalTerminalBytesPerSec)}/s lag=${this.eventLoopLagMs}ms rss=${rssMB}MB ptys=${ptys}`,
+      {
+        storeEventsPerSec: this.storeEventsPerSec,
+        ipcMessagesPerSec: this.ipcMessagesPerSec,
+        totalTerminalBytesPerSec: this.totalTerminalBytesPerSec,
+        eventLoopLagMs: this.eventLoopLagMs,
+        memoryRssMB: rssMB,
+        memoryHeapUsedMB: heapMB,
+        activePtyCount: ptys,
+        topEventTypes: Object.fromEntries(top)
+      }
+    )
   }
 
   recordIpcMessage(): void {
@@ -125,6 +169,7 @@ export class PerfMonitor {
   stop(): void {
     if (this.rateTimer) clearInterval(this.rateTimer)
     if (this.lagTimer) clearInterval(this.lagTimer)
+    if (this.snapshotTimer) clearInterval(this.snapshotTimer)
     this.unsubscribe?.()
   }
 

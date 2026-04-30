@@ -13,6 +13,7 @@ import {
 } from 'fs'
 import { readFile, writeFile } from 'fs/promises'
 import { log } from './debug'
+import { perfLog } from './perf-log'
 import type { Worktree } from '../shared/state/worktrees'
 
 const execFileAsync = promisify(execFile)
@@ -413,6 +414,21 @@ export async function getChangedFiles(
   worktreePath: string,
   mode: ChangedFilesMode = 'working'
 ): Promise<ChangedFile[]> {
+  const t0 = performance.now()
+  const result = await getChangedFilesImpl(worktreePath, mode)
+  const ms = performance.now() - t0
+  perfLog(
+    'changed-files',
+    `mode=${mode} path=${basename(worktreePath)} took=${ms.toFixed(0)}ms files=${result.length}`,
+    { worktreePath, mode, ms: +ms.toFixed(1), fileCount: result.length }
+  )
+  return result
+}
+
+async function getChangedFilesImpl(
+  worktreePath: string,
+  mode: ChangedFilesMode
+): Promise<ChangedFile[]> {
   if (mode === 'branch') {
     const base = await getDefaultBaseRef(worktreePath)
     if (base === 'HEAD') return []
@@ -533,6 +549,21 @@ export async function getCommitDiff(
 }
 
 export async function getCommitChangedFiles(
+  worktreePath: string,
+  hash: string
+): Promise<ChangedFile[]> {
+  const t0 = performance.now()
+  const result = await getCommitChangedFilesImpl(worktreePath, hash)
+  const ms = performance.now() - t0
+  perfLog(
+    'changed-files',
+    `mode=commit path=${basename(worktreePath)} took=${ms.toFixed(0)}ms files=${result.length}`,
+    { worktreePath, mode: 'commit', hash, ms: +ms.toFixed(1), fileCount: result.length }
+  )
+  return result
+}
+
+async function getCommitChangedFilesImpl(
   worktreePath: string,
   hash: string
 ): Promise<ChangedFile[]> {
