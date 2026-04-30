@@ -243,6 +243,8 @@ contextBridge.exposeInMainWorld('api', {
 
   // Performance monitor
   getPerfMetrics: () => req('perf:getMetrics'),
+  perfLogSlowRender: (id: string, ms: number, phase: string) =>
+    sig('perf:logSlowRender', id, ms, phase),
 
   // Renderer error-boundary reporting. Error + ErrorInfo don't cross
   // structured-clone cleanly, so we flatten to strings here.

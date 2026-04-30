@@ -16,6 +16,9 @@ import type {
 } from '../shared/transport/transport'
 import type { Store } from './store'
 import type { PerfMonitor } from './perf-monitor'
+import { perfLog } from './perf-log'
+
+const SLOW_IPC_MS = 50
 
 export class ElectronServerTransport implements ServerTransport {
   private unsubscribeStore: (() => void) | null = null
@@ -69,14 +72,39 @@ export class ElectronServerTransport implements ServerTransport {
   onRequest(name: string, handler: RequestHandler): void {
     ipcMain.handle(name, async (event, ...args) => {
       const ctx = this.ctxFor(event.sender)
-      return handler(ctx, ...args)
+      const t0 = performance.now()
+      try {
+        return await handler(ctx, ...args)
+      } finally {
+        const ms = performance.now() - t0
+        if (ms >= SLOW_IPC_MS) {
+          perfLog('ipc-slow', `${name} ${ms.toFixed(0)}ms`, {
+            name,
+            ms: +ms.toFixed(1),
+            argCount: args.length
+          })
+        }
+      }
     })
   }
 
   onSignal(name: string, handler: SignalHandler): void {
     ipcMain.on(name, (event, ...args) => {
       const ctx = this.ctxFor(event.sender)
-      handler(ctx, ...args)
+      const t0 = performance.now()
+      try {
+        handler(ctx, ...args)
+      } finally {
+        const ms = performance.now() - t0
+        if (ms >= SLOW_IPC_MS) {
+          perfLog('ipc-slow', `${name} ${ms.toFixed(0)}ms (signal)`, {
+            name,
+            ms: +ms.toFixed(1),
+            argCount: args.length,
+            signal: true
+          })
+        }
+      }
     })
   }
 

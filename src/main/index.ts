@@ -117,6 +117,7 @@ import { writeMcpConfigForTerminal, pruneMcpConfigs, getBridgeScriptPath } from 
 import { getControlServerInfo } from './control-server'
 import { recordActivity, getActivityLog, clearAllActivity, clearActivityForWorktree, sealAllActive, touchActivityMeta, finalizeActivity, type ActivityState, type PRState } from './activity'
 import { log, getLogFilePath } from './debug'
+import { perfLog } from './perf-log'
 import { buildInitialAppState } from './build-initial-state'
 
 // Runtime detection — Electron sets process.versions.electron, plain
@@ -1707,6 +1708,16 @@ function registerIpcHandlers(): void {
 
   // Performance monitor
   transport.onRequest('perf:getMetrics', (_ctx) => perfMonitor.getMetrics())
+  transport.onSignal('perf:logSlowRender', (_ctx, ...args: unknown[]) => {
+    const id = String(args[0] ?? '')
+    const ms = typeof args[1] === 'number' ? args[1] : 0
+    const phase = String(args[2] ?? '')
+    perfLog('render-slow', `${id} ${ms.toFixed(1)}ms ${phase}`, {
+      id,
+      ms: +ms.toFixed(2),
+      phase
+    })
+  })
 
   // Renderer error-boundary reporting — the preload flattens Error/ErrorInfo
   // into plain strings because Error objects don't survive structured-clone.

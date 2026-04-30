@@ -319,6 +319,7 @@ export interface ElectronAPI {
   quitAndInstall(): Promise<boolean>
 
   getPerfMetrics(): Promise<PerfMetrics>
+  perfLogSlowRender(id: string, ms: number, phase: string): void
 
   logError(
     label: string,

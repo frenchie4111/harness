@@ -313,6 +313,7 @@ function buildApi(transport: WebSocketClientTransport): ElectronAPI {
 
     getPerfMetrics: () =>
       req('perf:getMetrics') as ReturnType<ElectronAPI['getPerfMetrics']>,
+    perfLogSlowRender: (id, ms, phase) => sig('perf:logSlowRender', id, ms, phase),
 
     logError: (label, error, info) =>
       req(

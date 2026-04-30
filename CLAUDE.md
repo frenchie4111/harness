@@ -247,6 +247,48 @@ The reliable status (processing / waiting / needs-approval) comes from
 directory via `fs.watch`. The hook script uses `$CLAUDE_HARNESS_ID` env var
 which the PtyManager sets when spawning each terminal.
 
+## How performance debugging works
+
+Two log files in `userData`:
+
+- **`debug.log`** — categorical events. Cleared on startup. Tail with
+  `npm run log`.
+- **`perf.log`** — perf trace. **Append-only across sessions** so lag
+  that happened earlier (possibly before the most recent restart) is
+  still inspectable. Tail with `npm run log:perf`. Clear before a fresh
+  repro with `npm run log:perf:clear`.
+
+What gets written to `perf.log` (and where the threshold lives):
+
+- `[store-slow]` — any `store.dispatch` whose reducer + listener fan-out
+  totals ≥ `SLOW_DISPATCH_MS` (5 ms; `src/main/store.ts`).
+- `[ipc-slow]` — any IPC request or fire-and-forget signal handler that
+  takes ≥ `SLOW_IPC_MS` (50 ms; `src/main/transport-electron.ts` and
+  `src/main/transport-websocket.ts` — both transports are wrapped so
+  headless gets the same trace).
+- `[eventloop-spike]` — main-process event-loop lag (timer drift on a
+  500 ms interval) ≥ `LAG_SPIKE_THRESHOLD_MS` (100 ms;
+  `src/main/perf-monitor.ts`).
+- `[snapshot]` — one summary line every `SNAPSHOT_INTERVAL_MS` (30 s)
+  with current rates, lag, RSS, active PTYs, and top event types. Cheap
+  continuous trace for "what was happening at <timestamp>".
+- `[render-slow]` — React commits ≥ `SLOW_COMMIT_MS` (16 ms = one frame
+  at 60 fps; `src/renderer/main.tsx`). Forwarded from the renderer over
+  the `perf:logSlowRender` fire-and-forget signal — telemetry must not
+  block the render.
+- `[changed-files]` — every `getChangedFiles` / `getCommitChangedFiles`
+  call (these are infrequent and a complete trace is invaluable).
+
+The HUD at **Cmd+Shift+D** shows live aggregates (rates, history sparkline,
+React commits per second, top event types). `perf.log` captures the
+per-event detail the HUD can't display. They're complementary —
+`PerfMonitor` aggregates for the HUD, `perfLog` writes discrete
+slow-event lines.
+
+For AI agents debugging perf: ask the user to `npm run log:perf:clear`,
+reproduce, then tail `perf.log` and look for the slow-* lines around the
+reported timestamp.
+
 ## How GitHub integration works
 
 The user pastes a GitHub personal access token into Settings. It's encrypted
@@ -345,6 +387,8 @@ build/sign/notarize, tag/push, release notes from `git log`, and
 | `npm run dev` | Launch in dev mode (electron-vite) |
 | `npm run log` | Tail the debug log file |
 | `npm run log:clear` | Clear the debug log |
+| `npm run log:perf` | Tail the perf trace log (append-only across sessions) |
+| `npm run log:perf:clear` | Clear the perf trace log (use before a fresh repro) |
 | `npm run build` | Build all three (main, preload, renderer) to `out/` |
 | `npm run pack` | Build + package without distribution (no signing) |
 | `npm run dist:mac` | Full signed + notarized macOS build |

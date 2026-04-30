@@ -44,6 +44,9 @@ import type {
 import type { Store } from './store'
 import type { PerfMonitor } from './perf-monitor'
 import { log } from './debug'
+import { perfLog } from './perf-log'
+
+const SLOW_IPC_MS = 50
 
 type ServerFrame =
   | { t: 'state'; event: StateEvent; seq: number }
@@ -262,8 +265,10 @@ export class WebSocketServerTransport implements ServerTransport {
         })
         return
       }
+      const args = frame.args ?? []
+      const t0 = performance.now()
       try {
-        const value = await handler(ctx, ...(frame.args ?? []))
+        const value = await handler(ctx, ...args)
         this.sendFrame(ws, { t: 'res', id: frame.id, ok: true, value })
       } catch (err) {
         this.sendFrame(ws, {
@@ -272,20 +277,41 @@ export class WebSocketServerTransport implements ServerTransport {
           ok: false,
           error: err instanceof Error ? err.message : String(err)
         })
+      } finally {
+        const ms = performance.now() - t0
+        if (ms >= SLOW_IPC_MS) {
+          perfLog('ipc-slow', `${frame.name} ${ms.toFixed(0)}ms`, {
+            name: frame.name,
+            ms: +ms.toFixed(1),
+            argCount: args.length
+          })
+        }
       }
       return
     }
     if (frame.t === 'send') {
       const handler = this.signalHandlers.get(frame.name)
       if (!handler) return
+      const args = frame.args ?? []
+      const t0 = performance.now()
       try {
-        handler(ctx, ...(frame.args ?? []))
+        handler(ctx, ...args)
       } catch (err) {
         log(
           'ws-transport',
           `signal handler '${frame.name}' threw`,
           err instanceof Error ? err.message : String(err)
         )
+      } finally {
+        const ms = performance.now() - t0
+        if (ms >= SLOW_IPC_MS) {
+          perfLog('ipc-slow', `${frame.name} ${ms.toFixed(0)}ms (signal)`, {
+            name: frame.name,
+            ms: +ms.toFixed(1),
+            argCount: args.length,
+            signal: true
+          })
+        }
       }
       return
     }
