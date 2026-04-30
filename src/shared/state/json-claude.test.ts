@@ -280,6 +280,48 @@ describe('jsonClaudeReducer', () => {
     expect(next).toBe(state)
   })
 
+  it('assistantBlockAppended preserves reference identity for untouched entries', () => {
+    let state = seedSession(initialJsonClaude)
+    const e1: JsonClaudeChatEntry = {
+      entryId: 'u1',
+      kind: 'user',
+      text: 'hi',
+      timestamp: 1
+    }
+    const e2: JsonClaudeChatEntry = {
+      entryId: 'a1',
+      kind: 'assistant',
+      blocks: [{ type: 'text', text: 'hello' }],
+      timestamp: 2,
+      isPartial: true
+    }
+    const e3: JsonClaudeChatEntry = {
+      entryId: 'u2',
+      kind: 'user',
+      text: 'follow',
+      timestamp: 3
+    }
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/entriesSeeded',
+      payload: { sessionId: SID, entries: [e1, e2, e3] }
+    })
+    const before = state.sessions[SID].entries
+    const next = jsonClaudeReducer(state, {
+      type: 'jsonClaude/assistantBlockAppended',
+      payload: {
+        sessionId: SID,
+        entryId: 'a1',
+        block: { type: 'tool_use', id: 't1', name: 'Read' }
+      }
+    })
+    const after = next.sessions[SID].entries
+    expect(after).not.toBe(before)
+    expect(after[0]).toBe(before[0])
+    expect(after[2]).toBe(before[2])
+    expect(after[1]).not.toBe(before[1])
+    expect(after[1].blocks).toHaveLength(2)
+  })
+
   it('assistantTextDelta is a no-op for an unknown entry', () => {
     const state = seedSession(initialJsonClaude)
     const next = jsonClaudeReducer(state, {
@@ -333,6 +375,48 @@ describe('jsonClaudeReducer', () => {
       }
     })
     expect(next).toBe(state)
+  })
+
+  it('assistantEntryFinalized preserves reference identity for untouched entries', () => {
+    let state = seedSession(initialJsonClaude)
+    const e1: JsonClaudeChatEntry = {
+      entryId: 'u1',
+      kind: 'user',
+      text: 'hi',
+      timestamp: 1
+    }
+    const e2: JsonClaudeChatEntry = {
+      entryId: 'a1',
+      kind: 'assistant',
+      blocks: [{ type: 'text', text: 'hello' }],
+      timestamp: 2,
+      isPartial: true
+    }
+    const e3: JsonClaudeChatEntry = {
+      entryId: 'u2',
+      kind: 'user',
+      text: 'follow',
+      timestamp: 3
+    }
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/entriesSeeded',
+      payload: { sessionId: SID, entries: [e1, e2, e3] }
+    })
+    const before = state.sessions[SID].entries
+    const next = jsonClaudeReducer(state, {
+      type: 'jsonClaude/assistantEntryFinalized',
+      payload: {
+        sessionId: SID,
+        entryId: 'a1',
+        blocks: [{ type: 'text', text: 'hello world' }]
+      }
+    })
+    const after = next.sessions[SID].entries
+    expect(after).not.toBe(before)
+    expect(after[0]).toBe(before[0])
+    expect(after[2]).toBe(before[2])
+    expect(after[1]).not.toBe(before[1])
+    expect(after[1].isPartial).toBeUndefined()
   })
 
   it('toolResultAttached appends a tool_result entry', () => {
@@ -557,6 +641,55 @@ describe('jsonClaudeReducer', () => {
       payload: { sessionId: SID }
     })
     expect(next).toBe(state)
+  })
+
+  it('userEntriesUnqueued is a no-op when entries exist but none are queued', () => {
+    let state = seedSession(initialJsonClaude)
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/entriesSeeded',
+      payload: {
+        sessionId: SID,
+        entries: [
+          { entryId: 'u1', kind: 'user', text: 'a', timestamp: 1 },
+          { entryId: 'u2', kind: 'user', text: 'b', timestamp: 2 }
+        ]
+      }
+    })
+    const next = jsonClaudeReducer(state, {
+      type: 'jsonClaude/userEntriesUnqueued',
+      payload: { sessionId: SID }
+    })
+    expect(next).toBe(state)
+  })
+
+  it('userEntriesUnqueued preserves reference identity for non-queued entries', () => {
+    let state = seedSession(initialJsonClaude)
+    const plain: JsonClaudeChatEntry = {
+      entryId: 'u1',
+      kind: 'user',
+      text: 'plain',
+      timestamp: 1
+    }
+    const queued: JsonClaudeChatEntry = {
+      entryId: 'u2',
+      kind: 'user',
+      text: 'queued',
+      timestamp: 2,
+      isQueued: true
+    }
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/entriesSeeded',
+      payload: { sessionId: SID, entries: [plain, queued] }
+    })
+    const before = state.sessions[SID].entries
+    const next = jsonClaudeReducer(state, {
+      type: 'jsonClaude/userEntriesUnqueued',
+      payload: { sessionId: SID }
+    })
+    const after = next.sessions[SID].entries
+    expect(after[0]).toBe(before[0])
+    expect(after[1]).not.toBe(before[1])
+    expect(after[1].isQueued).toBeUndefined()
   })
 
   it('entryRemoved drops the matching entry by id', () => {

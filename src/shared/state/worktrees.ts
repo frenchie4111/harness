@@ -99,13 +99,19 @@ export function worktreesReducer(
       return { ...state, repoRoots: event.payload }
     case 'worktrees/pendingAdded':
       return { ...state, pending: [...state.pending, event.payload] }
-    case 'worktrees/pendingUpdated':
+    case 'worktrees/pendingUpdated': {
+      const i = state.pending.findIndex((p) => p.id === event.payload.id)
+      if (i === -1) return state
+      const patched = { ...state.pending[i], ...event.payload.patch }
       return {
         ...state,
-        pending: state.pending.map((p) =>
-          p.id === event.payload.id ? { ...p, ...event.payload.patch } : p
-        )
+        pending: [
+          ...state.pending.slice(0, i),
+          patched,
+          ...state.pending.slice(i + 1)
+        ]
       }
+    }
     case 'worktrees/pendingRemoved':
       return { ...state, pending: state.pending.filter((p) => p.id !== event.payload) }
     case 'worktrees/pendingDeletionStarted':
@@ -116,13 +122,21 @@ export function worktreesReducer(
           event.payload
         ]
       }
-    case 'worktrees/pendingDeletionUpdated':
+    case 'worktrees/pendingDeletionUpdated': {
+      const i = state.pendingDeletions.findIndex(
+        (d) => d.path === event.payload.path
+      )
+      if (i === -1) return state
+      const patched = { ...state.pendingDeletions[i], ...event.payload.patch }
       return {
         ...state,
-        pendingDeletions: state.pendingDeletions.map((d) =>
-          d.path === event.payload.path ? { ...d, ...event.payload.patch } : d
-        )
+        pendingDeletions: [
+          ...state.pendingDeletions.slice(0, i),
+          patched,
+          ...state.pendingDeletions.slice(i + 1)
+        ]
       }
+    }
     case 'worktrees/pendingDeletionRemoved':
       return {
         ...state,
