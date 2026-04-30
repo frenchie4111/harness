@@ -202,6 +202,9 @@ export interface ElectronAPI {
     contents: string
   ): Promise<FileWriteResult>
   getChangedFiles(worktreePath: string, mode?: 'working' | 'branch'): Promise<ChangedFile[]>
+  watchChangedFiles(worktreePath: string): void
+  unwatchChangedFiles(worktreePath: string): void
+  onChangedFilesInvalidated(callback: (worktreePath: string) => void): () => void
   getFileDiff(
     worktreePath: string,
     filePath: string,

@@ -26,6 +26,7 @@ import { WorktreesFSM } from './worktrees-fsm'
 import { WorktreeDeletionFSM } from './worktree-deletion-fsm'
 import { PanesFSM, stripTransientTabFields } from './panes-fsm'
 import { ActivityDeriver } from './activity-deriver'
+import { WorktreeWatcher } from './worktree-watcher'
 import { getWeeklyStats } from './weekly-stats'
 import type { TerminalTab, PaneNode, PaneLeaf } from '../shared/state/terminals'
 import { getLeaves, mapLeaves } from '../shared/state/terminals'
@@ -377,6 +378,22 @@ ptyManager.setStore(store)
 ptyManager.setSendSignal((channel, ...args) => transport.sendSignal(channel, ...args))
 ptyManager.setPerfMonitor(perfMonitor)
 perfMonitor.start(store, () => ptyManager.getActivePtyCount())
+
+// Watches each subscribed worktree's .git/ for index/HEAD/MERGE_HEAD changes
+// so the renderer's Changed Files panel can refresh on real events instead
+// of polling every 3s. Reference-counted: one fs.watch handle per worktree
+// regardless of how many clients are subscribed.
+const worktreeWatcher = new WorktreeWatcher()
+const worktreeWatchSubs = new Map<string, Map<string, () => void>>()
+
+function unsubscribeAllForClient(clientId: string): void {
+  const subs = worktreeWatchSubs.get(clientId)
+  if (!subs) return
+  for (const off of subs.values()) off()
+  worktreeWatchSubs.delete(clientId)
+}
+
+transport.onClientDisconnect((clientId) => unsubscribeAllForClient(clientId))
 
 browserManager.setStore(store)
 
@@ -844,6 +861,29 @@ function registerIpcHandlers(): void {
   // Changed files
   transport.onRequest('worktree:changedFiles', async (_ctx, worktreePath: string, mode?: 'working' | 'branch') => {
     return getChangedFiles(worktreePath, mode ?? 'working')
+  })
+
+  transport.onSignal('worktree:watchChangedFiles', (ctx, worktreePath: string) => {
+    if (!worktreePath) return
+    let subs = worktreeWatchSubs.get(ctx.clientId)
+    if (!subs) {
+      subs = new Map()
+      worktreeWatchSubs.set(ctx.clientId, subs)
+    }
+    if (subs.has(worktreePath)) return
+    const off = worktreeWatcher.subscribe(worktreePath, () => {
+      transport.sendSignal('worktree:changedFilesInvalidated', worktreePath)
+    })
+    subs.set(worktreePath, off)
+  })
+
+  transport.onSignal('worktree:unwatchChangedFiles', (ctx, worktreePath: string) => {
+    const subs = worktreeWatchSubs.get(ctx.clientId)
+    const off = subs?.get(worktreePath)
+    if (!off) return
+    off()
+    subs!.delete(worktreePath)
+    if (subs!.size === 0) worktreeWatchSubs.delete(ctx.clientId)
   })
 
   transport.onRequest(
