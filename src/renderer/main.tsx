@@ -7,8 +7,13 @@ import { defineHarnessTheme } from './monaco-setup'
 import { renderMetrics } from './render-metrics'
 import { ErrorBoundary } from './components/ErrorBoundary'
 
-const onRender: ProfilerOnRenderCallback = (_id, _phase, actualDuration) => {
+const SLOW_COMMIT_MS = 16
+
+const onRender: ProfilerOnRenderCallback = (id, phase, actualDuration) => {
   renderMetrics.record(actualDuration)
+  if (actualDuration >= SLOW_COMMIT_MS) {
+    window.api.perfLogSlowRender(id, actualDuration, phase)
+  }
 }
 
 initStore().then(() => {
