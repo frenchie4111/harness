@@ -150,6 +150,14 @@ function buildApi(transport: WebSocketClientTransport): ElectronAPI {
       req('worktree:changedFiles', worktreePath, mode) as ReturnType<
         ElectronAPI['getChangedFiles']
       >,
+    watchChangedFiles: (worktreePath) =>
+      sig('worktree:watchChangedFiles', worktreePath),
+    unwatchChangedFiles: (worktreePath) =>
+      sig('worktree:unwatchChangedFiles', worktreePath),
+    onChangedFilesInvalidated: (callback) =>
+      onSig('worktree:changedFilesInvalidated', (path) => {
+        callback(path as string)
+      }),
     getFileDiff: (worktreePath, filePath, staged, mode) =>
       req(
         'worktree:fileDiff',

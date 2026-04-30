@@ -76,6 +76,14 @@ contextBridge.exposeInMainWorld('api', {
   // Changed files
   getChangedFiles: (worktreePath: string, mode?: 'working' | 'branch') =>
     req('worktree:changedFiles', worktreePath, mode),
+  watchChangedFiles: (worktreePath: string) =>
+    sig('worktree:watchChangedFiles', worktreePath),
+  unwatchChangedFiles: (worktreePath: string) =>
+    sig('worktree:unwatchChangedFiles', worktreePath),
+  onChangedFilesInvalidated: (callback: (worktreePath: string) => void) =>
+    transport.onSignal('worktree:changedFilesInvalidated', (path) => {
+      callback(path as string)
+    }),
   getFileDiff: (
     worktreePath: string,
     filePath: string,

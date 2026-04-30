@@ -65,10 +65,19 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToAgent, onO
   }, [worktreePath])
 
   useEffect(() => {
+    if (!worktreePath) return
     refresh()
-    const interval = setInterval(refresh, 3000)
-    return () => clearInterval(interval)
-  }, [refresh])
+    window.api.watchChangedFiles(worktreePath)
+    const offInvalidated = window.api.onChangedFilesInvalidated((path) => {
+      if (path === worktreePath) refresh()
+    })
+    const interval = setInterval(refresh, 30000)
+    return () => {
+      clearInterval(interval)
+      offInvalidated()
+      window.api.unwatchChangedFiles(worktreePath)
+    }
+  }, [refresh, worktreePath])
 
   const stagedFiles = workingFiles.filter((f) => f.staged)
   const unstagedFiles = workingFiles.filter((f) => !f.staged)
