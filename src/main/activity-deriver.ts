@@ -106,24 +106,33 @@ export class ActivityDeriver {
       if (wtPath) this.deriveAndRecord(wtPath)
       return
     }
-    if (
-      event.type === 'terminals/panesReplaced' ||
-      event.type === 'terminals/panesForWorktreeChanged' ||
-      event.type === 'terminals/panesForWorktreeCleared'
-    ) {
-      // Pane membership changed — re-derive everything affected.
+    if (event.type === 'terminals/panesForWorktreeChanged') {
+      this.deriveAndRecord(event.payload.worktreePath)
+      return
+    }
+    if (event.type === 'terminals/panesForWorktreeCleared') {
+      this.deriveAndRecord(event.payload)
+      return
+    }
+    if (event.type === 'terminals/panesReplaced') {
+      // Whole pane tree replaced wholesale — every worktree may have changed.
       for (const wtPath of Object.keys(state.terminals.panes)) {
         this.deriveAndRecord(wtPath)
       }
       return
     }
-    if (
-      event.type === 'prs/statusChanged' ||
-      event.type === 'prs/bulkStatusChanged' ||
-      event.type === 'prs/mergedChanged'
-    ) {
-      // PR state can flip a worktree to 'merged'; re-derive everything.
-      for (const wtPath of Object.keys(state.terminals.panes)) {
+    if (event.type === 'prs/statusChanged') {
+      this.deriveAndRecord(event.payload.path)
+      return
+    }
+    if (event.type === 'prs/bulkStatusChanged') {
+      for (const wtPath of Object.keys(event.payload)) {
+        this.deriveAndRecord(wtPath)
+      }
+      return
+    }
+    if (event.type === 'prs/mergedChanged') {
+      for (const wtPath of Object.keys(event.payload)) {
         this.deriveAndRecord(wtPath)
       }
       return
