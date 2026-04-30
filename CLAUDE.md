@@ -203,6 +203,52 @@ Construction order in `main/index.ts` matters: `PanesFSM` is constructed
 **before** `WorktreesFSM` because the latter's `onWorktreeCreated`
 callback closes over `panesFSM`. Don't reorder without thinking.
 
+### Anti-patterns to avoid in slices and derivers
+
+The store-and-slice architecture is sharp. Four common mistakes turn it
+into a quadratic CPU sink. All four are caught either at code review or
+by the cascade detector in `src/main/store.ts`, which logs a `[cascade]`
+line to `perf.log` whenever one root event triggers more than 5 nested
+dispatches.
+
+**1. Subscribers that sweep all entities on every event.** A
+`store.subscribe(...)` listener that loops over every session / worktree
+/ PR on each event is the most common form of this bug. Streaming
+events fire 30+ times per second; with N entities, that's `N × token_rate`
+dispatches per stream. Always pull the affected entity id out of the
+event payload and re-derive only that one. If the event genuinely
+affects everything (e.g. the whole tree was replaced), say so in a
+comment so the sweep is self-documenting.
+
+**2. Derivers that dispatch identity events.** Even when scoped to a
+single entity, a deriver should cache its last-derived value per entity
+and skip the dispatch when nothing changed. Most "status" derivations
+don't change between adjacent streaming tokens — the dedup is the
+difference between "once per turn" and "once per token."
+
+**3. Reducers that lose reference identity on single-item patches.**
+`collection.map((x) => x.id === target ? patch(x) : x)` always allocates
+a new array, even when nothing matched. Downstream `useSyncExternalStore`
+selectors that hold a reference to the array see "changed" and
+re-evaluate. Use `findIndex + slice` instead: `return state` when no
+match, otherwise build the new array as
+`[...arr.slice(0, i), patched, ...arr.slice(i + 1)]`. Untouched entries
+keep their reference; downstream selectors don't fire.
+
+**4. Renderer hooks that read whole maps then filter in JS.** A hook
+like `useJsonClaude()` that returns the entire slice causes every
+consumer to re-evaluate on any change to any entity. Add a per-id
+selector (`useJsonClaudeSession(id)`) and use that in components that
+care about one entity. The whole-slice hook is only correct in the few
+places that genuinely need the full map (sidebar grouping, etc.).
+
+**Diagnosing in production.** The HUD at Cmd+Shift+D shows live event
+rates and a stacked bar of which event types are firing most. The
+`perf.log` file (see "How performance debugging works" below) captures
+per-event detail including `[cascade]` lines when these anti-patterns
+fire. If you see a `[cascade]` line for a streaming event type, suspect
+anti-pattern #1 first.
+
 ### How the renderer reads + mutates state
 
 ```tsx
