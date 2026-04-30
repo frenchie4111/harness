@@ -235,6 +235,9 @@
 /* Markdown rendering for json-claude assistant text. The global preflight
    reset zeros out lists/headings/paragraphs; restore them inside .markdown
    so react-markdown output looks the way users expect. */
+.markdown {
+  overflow-wrap: anywhere;
+}
 .markdown > * + * {
   margin-top: 0.6em;
 }
@@ -329,6 +332,8 @@
   border: 1px solid var(--color-border-strong);
   padding: 0.3em 0.6em;
   text-align: left;
+  overflow-wrap: normal;
+  min-width: 8em;
 }
 .markdown th {
   background: rgba(255, 255, 255, 0.05);
