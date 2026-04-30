@@ -94,8 +94,26 @@ describe('worktreesReducer', () => {
       type: 'worktrees/pendingUpdated',
       payload: { id: 'pending:missing', patch: { status: 'error', error: 'nope' } }
     })
-    expect(next.pending).toHaveLength(1)
-    expect(next.pending[0].status).toBe('creating')
+    expect(next).toBe(start)
+  })
+
+  it('pendingUpdated preserves reference identity for untouched siblings', () => {
+    const a = stubPending({ id: 'pending:a' })
+    const b = stubPending({ id: 'pending:b' })
+    const c = stubPending({ id: 'pending:c' })
+    const start: WorktreesState = {
+      ...initialWorktrees,
+      pending: [a, b, c]
+    }
+    const next = apply(start, {
+      type: 'worktrees/pendingUpdated',
+      payload: { id: 'pending:b', patch: { status: 'setup' } }
+    })
+    expect(next.pending).not.toBe(start.pending)
+    expect(next.pending[0]).toBe(a)
+    expect(next.pending[2]).toBe(c)
+    expect(next.pending[1]).not.toBe(b)
+    expect(next.pending[1].status).toBe('setup')
   })
 
   it('pendingRemoved drops the matching entry', () => {
@@ -147,6 +165,44 @@ describe('worktreesReducer', () => {
     })
     expect(next.pendingDeletions[0].phase).toBe('removing-worktree')
     expect(next.pendingDeletions[0].teardownLog).toBe('hi')
+  })
+
+  it('pendingDeletionUpdated on an unknown path is a no-op', () => {
+    const start: WorktreesState = {
+      ...initialWorktrees,
+      pendingDeletions: [
+        { path: '/tmp/wt/a', repoRoot: '/tmp/repo', branch: 'a', phase: 'running-teardown' }
+      ]
+    }
+    const next = apply(start, {
+      type: 'worktrees/pendingDeletionUpdated',
+      payload: { path: '/tmp/wt/missing', patch: { phase: 'failed' } }
+    })
+    expect(next).toBe(start)
+  })
+
+  it('pendingDeletionUpdated preserves reference identity for untouched siblings', () => {
+    const a: PendingDeletion = {
+      path: '/tmp/wt/a',
+      repoRoot: '/tmp/repo',
+      branch: 'a',
+      phase: 'running-teardown'
+    }
+    const b: PendingDeletion = { ...a, path: '/tmp/wt/b' }
+    const c: PendingDeletion = { ...a, path: '/tmp/wt/c' }
+    const start: WorktreesState = {
+      ...initialWorktrees,
+      pendingDeletions: [a, b, c]
+    }
+    const next = apply(start, {
+      type: 'worktrees/pendingDeletionUpdated',
+      payload: { path: '/tmp/wt/b', patch: { phase: 'removing-worktree' } }
+    })
+    expect(next.pendingDeletions).not.toBe(start.pendingDeletions)
+    expect(next.pendingDeletions[0]).toBe(a)
+    expect(next.pendingDeletions[2]).toBe(c)
+    expect(next.pendingDeletions[1]).not.toBe(b)
+    expect(next.pendingDeletions[1].phase).toBe('removing-worktree')
   })
 
   it('pendingDeletionRemoved drops the matching entry', () => {

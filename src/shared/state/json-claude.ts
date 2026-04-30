@@ -464,13 +464,15 @@ export function jsonClaudeReducer(
       const session = state.sessions[event.payload.sessionId]
       if (!session) return state
       const { entryId, block } = event.payload
-      let changed = false
-      const nextEntries = session.entries.map((entry) => {
-        if (entry.entryId !== entryId) return entry
-        changed = true
-        return { ...entry, blocks: [...(entry.blocks ?? []), block] }
-      })
-      if (!changed) return state
+      const i = session.entries.findIndex((e) => e.entryId === entryId)
+      if (i === -1) return state
+      const entry = session.entries[i]
+      const patched = { ...entry, blocks: [...(entry.blocks ?? []), block] }
+      const nextEntries = [
+        ...session.entries.slice(0, i),
+        patched,
+        ...session.entries.slice(i + 1)
+      ]
       return {
         ...state,
         sessions: {
@@ -483,15 +485,16 @@ export function jsonClaudeReducer(
       const session = state.sessions[event.payload.sessionId]
       if (!session) return state
       const { entryId, blocks } = event.payload
-      let found = false
-      const nextEntries = session.entries.map((entry) => {
-        if (entry.entryId !== entryId) return entry
-        found = true
-        const { isPartial: _drop, ...rest } = entry
-        void _drop
-        return { ...rest, blocks }
-      })
-      if (!found) return state
+      const i = session.entries.findIndex((e) => e.entryId === entryId)
+      if (i === -1) return state
+      const { isPartial: _drop, ...rest } = session.entries[i]
+      void _drop
+      const patched = { ...rest, blocks }
+      const nextEntries = [
+        ...session.entries.slice(0, i),
+        patched,
+        ...session.entries.slice(i + 1)
+      ]
       return {
         ...state,
         sessions: {
@@ -634,15 +637,13 @@ export function jsonClaudeReducer(
     case 'jsonClaude/userEntriesUnqueued': {
       const session = state.sessions[event.payload.sessionId]
       if (!session) return state
-      let changed = false
+      if (!session.entries.some((e) => e.isQueued)) return state
       const nextEntries = session.entries.map((entry) => {
         if (!entry.isQueued) return entry
-        changed = true
         const { isQueued: _drop, ...rest } = entry
         void _drop
         return rest
       })
-      if (!changed) return state
       return {
         ...state,
         sessions: {
