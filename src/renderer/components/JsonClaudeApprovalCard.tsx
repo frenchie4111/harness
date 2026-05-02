@@ -70,9 +70,13 @@ export function JsonClaudeApprovalCard({
     () => suggestPermissionPatterns(approval.toolName, approval.input),
     [approval.toolName, approval.input]
   )
-  const [selectedRule, setSelectedRule] = useState<string>(
-    () => suggestions[0]?.rule ?? approval.toolName
+  // Identify suggestions by their display label since the rule shape is an
+  // object — labels are unique within a single tool's suggestion list.
+  const [selectedLabel, setSelectedLabel] = useState<string>(
+    () => suggestions[0]?.label ?? approval.toolName
   )
+  const selectedSuggestion =
+    suggestions.find((s) => s.label === selectedLabel) ?? suggestions[0]
 
   const session = useJsonClaudeSession(approval.sessionId)
   const isEditTool = (EDIT_TOOL_NAMES as readonly string[]).includes(
@@ -155,14 +159,25 @@ export function JsonClaudeApprovalCard({
   }
 
   function alwaysAllow(): void {
-    if (!selectedRule) return
+    if (!selectedSuggestion) return
+    // Wire shape from the bundled claude-code binary's discriminated union:
+    //   { type:'addRules',
+    //     rules:[{toolName, ruleContent?}],
+    //     behavior:'allow',
+    //     destination:'localSettings' }
+    // A bare {toolName} (no ruleContent) means "any invocation"; a
+    // ruleContent like 'git status:*' or '/repo/src/**' or 'domain:host'
+    // matches a subset. Sending plain string rules or omitting `behavior`
+    // makes claude log "Malformed updatedPermissions … ignored" and skip
+    // persistence silently.
     onResolve({
       behavior: 'allow',
       updatedInput: approval.input,
       updatedPermissions: [
         {
           type: 'addRules',
-          rules: [selectedRule],
+          rules: [selectedSuggestion.rule],
+          behavior: 'allow',
           destination: 'localSettings'
         }
       ]
@@ -321,14 +336,14 @@ export function JsonClaudeApprovalCard({
           <div className="space-y-1">
             {suggestions.map((s) => (
               <label
-                key={s.rule}
+                key={s.label}
                 className="flex items-center gap-2 px-2 py-1 rounded hover:bg-app/40 cursor-pointer text-[11px]"
               >
                 <input
                   type="radio"
                   name={`always-allow-${approval.requestId}`}
-                  checked={selectedRule === s.rule}
-                  onChange={() => setSelectedRule(s.rule)}
+                  checked={selectedLabel === s.label}
+                  onChange={() => setSelectedLabel(s.label)}
                   className="cursor-pointer"
                 />
                 <span className="font-mono text-fg-bright flex-1 min-w-0 truncate">
@@ -345,7 +360,7 @@ export function JsonClaudeApprovalCard({
           <div className="flex items-center gap-1.5">
             <button
               onClick={alwaysAllow}
-              disabled={!selectedRule}
+              disabled={!selectedSuggestion}
               className="px-2.5 py-1 text-xs rounded bg-success/20 hover:bg-success/30 text-success transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Always allow this pattern

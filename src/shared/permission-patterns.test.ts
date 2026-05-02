@@ -4,53 +4,75 @@ import { suggestPermissionPatterns } from './permission-patterns'
 describe('suggestPermissionPatterns', () => {
   it('Bash with multi-word command yields narrow + medium + broad', () => {
     const out = suggestPermissionPatterns('Bash', { command: 'git status' })
-    expect(out.map((s) => s.rule)).toEqual([
-      'Bash(git status:*)',
-      'Bash(git:*)',
-      'Bash(*)'
+    expect(out).toEqual([
+      {
+        rule: { toolName: 'Bash', ruleContent: 'git status:*' },
+        label: 'Bash(git status:*)',
+        scope: 'narrow'
+      },
+      {
+        rule: { toolName: 'Bash', ruleContent: 'git:*' },
+        label: 'Bash(git:*)',
+        scope: 'medium'
+      },
+      { rule: { toolName: 'Bash' }, label: 'Bash', scope: 'broad' }
     ])
-    expect(out.map((s) => s.scope)).toEqual(['narrow', 'medium', 'broad'])
   })
 
   it('Bash with one-word command collapses narrow into medium', () => {
     const out = suggestPermissionPatterns('Bash', { command: 'ls' })
-    expect(out.map((s) => s.rule)).toEqual(['Bash(ls:*)', 'Bash(*)'])
-    expect(out.map((s) => s.scope)).toEqual(['medium', 'broad'])
+    expect(out).toEqual([
+      {
+        rule: { toolName: 'Bash', ruleContent: 'ls:*' },
+        label: 'Bash(ls:*)',
+        scope: 'medium'
+      },
+      { rule: { toolName: 'Bash' }, label: 'Bash', scope: 'broad' }
+    ])
   })
 
   it('Bash with extra whitespace tokenizes correctly', () => {
-    const out = suggestPermissionPatterns('Bash', { command: '  npm   test  ' })
+    const out = suggestPermissionPatterns('Bash', {
+      command: '  npm   test  '
+    })
     expect(out.map((s) => s.rule)).toEqual([
-      'Bash(npm test:*)',
-      'Bash(npm:*)',
-      'Bash(*)'
+      { toolName: 'Bash', ruleContent: 'npm test:*' },
+      { toolName: 'Bash', ruleContent: 'npm:*' },
+      { toolName: 'Bash' }
     ])
   })
 
   it('Bash with no command falls back to broad-only', () => {
     const out = suggestPermissionPatterns('Bash', {})
-    expect(out).toEqual([{ rule: 'Bash(*)', label: 'Bash(*)', scope: 'broad' }])
+    expect(out).toEqual([
+      { rule: { toolName: 'Bash' }, label: 'Bash', scope: 'broad' }
+    ])
   })
 
-  it('Read with absolute path yields exact + parent glob + any', () => {
+  it('Read with absolute path yields exact + parent glob + bare', () => {
     const out = suggestPermissionPatterns('Read', {
       file_path: '/abs/path/foo.ts'
     })
-    expect(out.map((s) => s.rule)).toEqual([
-      'Read(/abs/path/foo.ts)',
-      'Read(/abs/path/**)',
-      'Read(*)'
+    expect(out).toEqual([
+      {
+        rule: { toolName: 'Read', ruleContent: '/abs/path/foo.ts' },
+        label: 'Read(/abs/path/foo.ts)',
+        scope: 'narrow'
+      },
+      {
+        rule: { toolName: 'Read', ruleContent: '/abs/path/**' },
+        label: 'Read(/abs/path/**)',
+        scope: 'medium'
+      },
+      { rule: { toolName: 'Read' }, label: 'Read', scope: 'broad' }
     ])
-    expect(out.map((s) => s.scope)).toEqual(['narrow', 'medium', 'broad'])
   })
 
-  it('Write with shallow path still yields the parent-dir glob', () => {
+  it('Write with shallow path drops the parent-dir glob', () => {
     const out = suggestPermissionPatterns('Write', { file_path: '/foo.txt' })
-    // parentDir returns null for "/foo.txt" (single leading slash, no
-    // intermediate dir worth globbing) so the medium suggestion is dropped.
     expect(out.map((s) => s.rule)).toEqual([
-      'Write(/foo.txt)',
-      'Write(*)'
+      { toolName: 'Write', ruleContent: '/foo.txt' },
+      { toolName: 'Write' }
     ])
   })
 
@@ -58,35 +80,48 @@ describe('suggestPermissionPatterns', () => {
     const edit = suggestPermissionPatterns('Edit', {
       file_path: '/repo/src/foo.ts'
     })
-    expect(edit[0].rule).toBe('Edit(/repo/src/foo.ts)')
-    expect(edit[1].rule).toBe('Edit(/repo/src/**)')
-    expect(edit[2].rule).toBe('Edit(*)')
+    expect(edit.map((s) => s.rule)).toEqual([
+      { toolName: 'Edit', ruleContent: '/repo/src/foo.ts' },
+      { toolName: 'Edit', ruleContent: '/repo/src/**' },
+      { toolName: 'Edit' }
+    ])
 
     const multi = suggestPermissionPatterns('MultiEdit', {
       file_path: '/repo/src/foo.ts'
     })
-    expect(multi[0].rule).toBe('MultiEdit(/repo/src/foo.ts)')
+    expect(multi[0].rule).toEqual({
+      toolName: 'MultiEdit',
+      ruleContent: '/repo/src/foo.ts'
+    })
   })
 
-  it('Read with no file_path falls back to bare tool name + broad', () => {
+  it('Read with no file_path falls back to broad-only', () => {
     const out = suggestPermissionPatterns('Read', {})
-    expect(out.map((s) => s.rule)).toEqual(['Read', 'Read(*)'])
+    expect(out).toEqual([
+      { rule: { toolName: 'Read' }, label: 'Read', scope: 'broad' }
+    ])
   })
 
-  it('Grep / Glob produce pattern + broad', () => {
+  it('Grep / Glob produce pattern + bare', () => {
     expect(
       suggestPermissionPatterns('Grep', { pattern: 'TODO' }).map((s) => s.rule)
-    ).toEqual(['Grep(TODO)', 'Grep(*)'])
+    ).toEqual([
+      { toolName: 'Grep', ruleContent: 'TODO' },
+      { toolName: 'Grep' }
+    ])
     expect(
       suggestPermissionPatterns('Glob', { pattern: '**/*.ts' }).map(
         (s) => s.rule
       )
-    ).toEqual(['Glob(**/*.ts)', 'Glob(*)'])
+    ).toEqual([
+      { toolName: 'Glob', ruleContent: '**/*.ts' },
+      { toolName: 'Glob' }
+    ])
   })
 
   it('Grep with no pattern collapses to broad-only', () => {
     expect(suggestPermissionPatterns('Grep', {}).map((s) => s.rule)).toEqual([
-      'Grep(*)'
+      { toolName: 'Grep' }
     ])
   })
 
@@ -95,9 +130,9 @@ describe('suggestPermissionPatterns', () => {
       url: 'https://example.com/path?query=1'
     })
     expect(out.map((s) => s.rule)).toEqual([
-      'WebFetch(https://example.com/path?query=1)',
-      'WebFetch(domain:example.com)',
-      'WebFetch(*)'
+      { toolName: 'WebFetch', ruleContent: 'https://example.com/path?query=1' },
+      { toolName: 'WebFetch', ruleContent: 'domain:example.com' },
+      { toolName: 'WebFetch' }
     ])
   })
 
@@ -105,13 +140,16 @@ describe('suggestPermissionPatterns', () => {
     const out = suggestPermissionPatterns('WebFetch', {
       url: 'http://localhost:3000/foo'
     })
-    expect(out[1].rule).toBe('WebFetch(domain:localhost:3000)')
+    expect(out[1].rule).toEqual({
+      toolName: 'WebFetch',
+      ruleContent: 'domain:localhost:3000'
+    })
   })
 
   it('WebFetch with no url collapses to broad-only', () => {
     expect(
       suggestPermissionPatterns('WebFetch', {}).map((s) => s.rule)
-    ).toEqual(['WebFetch(*)'])
+    ).toEqual([{ toolName: 'WebFetch' }])
   })
 
   it('MCP tool yields a single bare-name suggestion', () => {
@@ -121,7 +159,7 @@ describe('suggestPermissionPatterns', () => {
     )
     expect(out).toEqual([
       {
-        rule: 'mcp__harness-control__create_worktree',
+        rule: { toolName: 'mcp__harness-control__create_worktree' },
         label: 'mcp__harness-control__create_worktree',
         scope: 'narrow'
       }
@@ -131,12 +169,14 @@ describe('suggestPermissionPatterns', () => {
   it('Unknown tool name produces just the bare name', () => {
     const out = suggestPermissionPatterns('TodoWrite', undefined)
     expect(out).toEqual([
-      { rule: 'TodoWrite', label: 'TodoWrite', scope: 'narrow' }
+      { rule: { toolName: 'TodoWrite' }, label: 'TodoWrite', scope: 'narrow' }
     ])
   })
 
   it('Empty tool name returns a defensive any-tool suggestion', () => {
     const out = suggestPermissionPatterns('', undefined)
-    expect(out).toEqual([{ rule: '*', label: '* (any tool)', scope: 'broad' }])
+    expect(out).toEqual([
+      { rule: { toolName: '*' }, label: '* (any tool)', scope: 'broad' }
+    ])
   })
 })

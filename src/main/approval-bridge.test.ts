@@ -287,7 +287,8 @@ describe('approval bridge — updatedPermissions plumbing', () => {
       updatedPermissions: [
         {
           type: 'addRules',
-          rules: ['Bash(git status:*)'],
+          rules: [{ toolName: 'Bash', ruleContent: 'git status:*' }],
+          behavior: 'allow',
           destination: 'localSettings'
         }
       ]
@@ -302,7 +303,8 @@ describe('approval bridge — updatedPermissions plumbing', () => {
       updatedPermissions: [
         {
           type: 'addRules',
-          rules: ['Bash(git status:*)'],
+          rules: [{ toolName: 'Bash', ruleContent: 'git status:*' }],
+          behavior: 'allow',
           destination: 'localSettings'
         }
       ]

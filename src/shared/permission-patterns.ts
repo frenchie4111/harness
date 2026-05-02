@@ -5,16 +5,28 @@
 // is responsible for letting the user choose; this module is just the
 // table of options.
 //
+// Each suggestion carries the structured rule shape Claude expects
+// (toolName + optional ruleContent) plus a pre-rendered display label.
+// Ruleshape mirrors what's inside the bundled claude-code binary's
+// addRules entries — a bare {toolName} with no ruleContent means "any
+// invocation of this tool"; ruleContent like "git status:*" or
+// "/repo/src/**" or "domain:example.com" matches a subset.
+//
 // Heuristics (narrow → broad):
-//   Bash      → Bash(<head> <arg1>:*) / Bash(<head>:*) / Bash(*)
-//   Read,Write,Edit,MultiEdit → <Tool>(<file>) / <Tool>(<dir>/**) / <Tool>(*)
-//   Grep,Glob → <Tool>(<pattern>) / <Tool>(*)
-//   WebFetch  → WebFetch(<url>) / WebFetch(domain:<host>) / WebFetch(*)
-//   mcp__*    → bare tool name (input shapes vary too much to glob)
-//   default   → bare tool name
+//   Bash      → ruleContent "<head> <arg1>:*" / "<head>:*" / bare
+//   Read,Write,Edit,MultiEdit → exact path / "<dir>/**" / bare
+//   Grep,Glob → pattern / bare
+//   WebFetch  → url / "domain:<host>" / bare
+//   mcp__*    → bare toolName (input shapes vary too much to glob)
+//   default   → bare toolName
+
+export interface PermissionRule {
+  toolName: string
+  ruleContent?: string
+}
 
 export interface PermissionPatternSuggestion {
-  rule: string
+  rule: PermissionRule
   label: string
   scope: 'narrow' | 'medium' | 'broad'
 }
@@ -41,32 +53,34 @@ function extractHost(url: string): string | null {
   }
 }
 
+function formatLabel(rule: PermissionRule): string {
+  return rule.ruleContent
+    ? `${rule.toolName}(${rule.ruleContent})`
+    : rule.toolName
+}
+
 function bashSuggestions(
   input: Record<string, unknown> | undefined
 ): PermissionPatternSuggestion[] {
   const command = strField(input, 'command')
   if (!command) {
-    return [{ rule: 'Bash(*)', label: 'Bash(*)', scope: 'broad' }]
+    return [
+      { rule: { toolName: 'Bash' }, label: 'Bash', scope: 'broad' }
+    ]
   }
   const tokens = command.trim().split(/\s+/).filter(Boolean)
   const head = tokens[0]
   const arg1 = tokens[1]
   const out: PermissionPatternSuggestion[] = []
   if (head && arg1) {
-    out.push({
-      rule: `Bash(${head} ${arg1}:*)`,
-      label: `Bash(${head} ${arg1}:*)`,
-      scope: 'narrow'
-    })
+    const rule: PermissionRule = { toolName: 'Bash', ruleContent: `${head} ${arg1}:*` }
+    out.push({ rule, label: formatLabel(rule), scope: 'narrow' })
   }
   if (head) {
-    out.push({
-      rule: `Bash(${head}:*)`,
-      label: `Bash(${head}:*)`,
-      scope: 'medium'
-    })
+    const rule: PermissionRule = { toolName: 'Bash', ruleContent: `${head}:*` }
+    out.push({ rule, label: formatLabel(rule), scope: 'medium' })
   }
-  out.push({ rule: 'Bash(*)', label: 'Bash(*)', scope: 'broad' })
+  out.push({ rule: { toolName: 'Bash' }, label: 'Bash', scope: 'broad' })
   return out
 }
 
@@ -77,30 +91,18 @@ function fileToolSuggestions(
   const filePath = strField(input, 'file_path')
   if (!filePath) {
     return [
-      { rule: toolName, label: toolName, scope: 'narrow' },
-      { rule: `${toolName}(*)`, label: `${toolName}(*)`, scope: 'broad' }
+      { rule: { toolName }, label: toolName, scope: 'broad' }
     ]
   }
-  const out: PermissionPatternSuggestion[] = [
-    {
-      rule: `${toolName}(${filePath})`,
-      label: `${toolName}(${filePath})`,
-      scope: 'narrow'
-    }
-  ]
+  const out: PermissionPatternSuggestion[] = []
+  const exact: PermissionRule = { toolName, ruleContent: filePath }
+  out.push({ rule: exact, label: formatLabel(exact), scope: 'narrow' })
   const dir = parentDir(filePath)
   if (dir) {
-    out.push({
-      rule: `${toolName}(${dir}/**)`,
-      label: `${toolName}(${dir}/**)`,
-      scope: 'medium'
-    })
+    const glob: PermissionRule = { toolName, ruleContent: `${dir}/**` }
+    out.push({ rule: glob, label: formatLabel(glob), scope: 'medium' })
   }
-  out.push({
-    rule: `${toolName}(*)`,
-    label: `${toolName}(*)`,
-    scope: 'broad'
-  })
+  out.push({ rule: { toolName }, label: toolName, scope: 'broad' })
   return out
 }
 
@@ -111,17 +113,10 @@ function searchToolSuggestions(
   const pattern = strField(input, 'pattern')
   const out: PermissionPatternSuggestion[] = []
   if (pattern) {
-    out.push({
-      rule: `${toolName}(${pattern})`,
-      label: `${toolName}(${pattern})`,
-      scope: 'narrow'
-    })
+    const exact: PermissionRule = { toolName, ruleContent: pattern }
+    out.push({ rule: exact, label: formatLabel(exact), scope: 'narrow' })
   }
-  out.push({
-    rule: `${toolName}(*)`,
-    label: `${toolName}(*)`,
-    scope: 'broad'
-  })
+  out.push({ rule: { toolName }, label: toolName, scope: 'broad' })
   return out
 }
 
@@ -130,24 +125,24 @@ function webFetchSuggestions(
 ): PermissionPatternSuggestion[] {
   const url = strField(input, 'url')
   if (!url) {
-    return [{ rule: 'WebFetch(*)', label: 'WebFetch(*)', scope: 'broad' }]
+    return [{ rule: { toolName: 'WebFetch' }, label: 'WebFetch', scope: 'broad' }]
   }
-  const out: PermissionPatternSuggestion[] = [
-    {
-      rule: `WebFetch(${url})`,
-      label: `WebFetch(${url})`,
-      scope: 'narrow'
-    }
-  ]
+  const out: PermissionPatternSuggestion[] = []
+  const exact: PermissionRule = { toolName: 'WebFetch', ruleContent: url }
+  out.push({ rule: exact, label: formatLabel(exact), scope: 'narrow' })
   const host = extractHost(url)
   if (host) {
-    out.push({
-      rule: `WebFetch(domain:${host})`,
-      label: `WebFetch(domain:${host})`,
-      scope: 'medium'
-    })
+    const domain: PermissionRule = {
+      toolName: 'WebFetch',
+      ruleContent: `domain:${host}`
+    }
+    out.push({ rule: domain, label: formatLabel(domain), scope: 'medium' })
   }
-  out.push({ rule: 'WebFetch(*)', label: 'WebFetch(*)', scope: 'broad' })
+  out.push({
+    rule: { toolName: 'WebFetch' },
+    label: 'WebFetch',
+    scope: 'broad'
+  })
   return out
 }
 
@@ -159,14 +154,12 @@ export function suggestPermissionPatterns(
   input: Record<string, unknown> | undefined
 ): PermissionPatternSuggestion[] {
   if (!toolName) {
-    return [{ rule: '*', label: '* (any tool)', scope: 'broad' }]
+    return [{ rule: { toolName: '*' }, label: '* (any tool)', scope: 'broad' }]
   }
   if (toolName === 'Bash') return bashSuggestions(input)
   if (FILE_TOOLS.has(toolName)) return fileToolSuggestions(toolName, input)
   if (SEARCH_TOOLS.has(toolName)) return searchToolSuggestions(toolName, input)
   if (toolName === 'WebFetch') return webFetchSuggestions(input)
-  if (toolName.startsWith('mcp__')) {
-    return [{ rule: toolName, label: toolName, scope: 'narrow' }]
-  }
-  return [{ rule: toolName, label: toolName, scope: 'narrow' }]
+  // MCP tools and unknown tools: input shape varies, just allow the tool.
+  return [{ rule: { toolName }, label: toolName, scope: 'narrow' }]
 }
