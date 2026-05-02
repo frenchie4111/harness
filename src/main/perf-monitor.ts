@@ -8,6 +8,8 @@ const HISTORY_SIZE = 120
 const LAG_CHECK_INTERVAL_MS = 500
 const LAG_SPIKE_THRESHOLD_MS = 100
 const SNAPSHOT_INTERVAL_MS = 30000
+const MICROTASK_PROBE_INTERVAL_MS = 50
+const MICROTASK_DRIFT_THRESHOLD_MS = 50
 
 function formatBytes(n: number): string {
   if (n < 1024) return `${n}B`
@@ -32,6 +34,8 @@ export class PerfMonitor {
   private lagTimer: NodeJS.Timeout | null = null
   private rateTimer: NodeJS.Timeout | null = null
   private snapshotTimer: NodeJS.Timeout | null = null
+  private microtaskTimer: NodeJS.Timeout | null = null
+  private microtaskLastTick = 0
   private startTime = Date.now()
 
   // Ring buffer: fixed capacity HISTORY_SIZE, oldest at head / newest at tail.
@@ -104,6 +108,19 @@ export class PerfMonitor {
     // Periodic snapshot — cheap continuous trace (1 line / 30s) so we
     // can answer "what was the system doing at <timestamp>" after the fact.
     this.snapshotTimer = setInterval(() => this.writeSnapshot(), SNAPSHOT_INTERVAL_MS)
+
+    // Higher-resolution main-thread block detector. Drift is the time
+    // beyond the expected interval that elapsed before this timer fired —
+    // i.e. how long the event loop was blocked on synchronous work.
+    this.microtaskLastTick = performance.now()
+    this.microtaskTimer = setInterval(() => {
+      const now = performance.now()
+      const drift = now - this.microtaskLastTick - MICROTASK_PROBE_INTERVAL_MS
+      if (drift > MICROTASK_DRIFT_THRESHOLD_MS) {
+        perfLog('microtask-drift', `${drift.toFixed(0)}ms`, { driftMs: +drift.toFixed(1) })
+      }
+      this.microtaskLastTick = now
+    }, MICROTASK_PROBE_INTERVAL_MS)
   }
 
   private writeSnapshot(): void {
@@ -170,6 +187,7 @@ export class PerfMonitor {
     if (this.rateTimer) clearInterval(this.rateTimer)
     if (this.lagTimer) clearInterval(this.lagTimer)
     if (this.snapshotTimer) clearInterval(this.snapshotTimer)
+    if (this.microtaskTimer) clearInterval(this.microtaskTimer)
     this.unsubscribe?.()
   }
 
