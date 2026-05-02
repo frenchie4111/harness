@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ChevronDown, GitPullRequest, RefreshCw, Loader2, SquareTerminal, FileText, FileDiff, Globe, X, ExternalLink, PanelRightOpen, PanelRightClose } from 'lucide-react'
-import { useWorktrees, usePanes, useTerminals, usePrs, useSettings } from '../store'
+import { useWorktrees, usePanes, useTerminals, usePrs, useSettings, useSnooze } from '../store'
 import { useBackend } from '../backend'
 import { groupWorktrees, type WorktreeGroup } from '../worktree-sort'
 import { getLeaves } from '../../shared/state/terminals'
@@ -47,6 +47,12 @@ export function MobileApp(): JSX.Element {
   const terminals = useTerminals()
   const prs = usePrs()
   const settings = useSettings()
+  const snoozeState = useSnooze()
+  const snoozedPaths = useMemo(() => {
+    const m: Record<string, true> = {}
+    for (const p of Object.keys(snoozeState.byPath)) m[p] = true
+    return m
+  }, [snoozeState.byPath])
   const worktrees = wtState.list
   const [activeWorktreeId, setActiveWorktreeId] = useState<string | null>(
     () => worktrees[0]?.path ?? null
@@ -189,6 +195,7 @@ export function MobileApp(): JSX.Element {
             worktrees={worktrees}
             prStatuses={prs.byPath}
             mergedPaths={prs.mergedByPath}
+            snoozedPaths={snoozedPaths}
             loading={prs.loading}
             activeWorktreeId={activeWorktreeId}
             aggregateStatuses={aggregateStatuses}
@@ -443,6 +450,7 @@ interface WorktreePickerSheetProps {
   worktrees: Worktree[]
   prStatuses: Record<string, PRStatus | null>
   mergedPaths: Record<string, boolean>
+  snoozedPaths: Record<string, true>
   loading: boolean
   activeWorktreeId: string | null
   aggregateStatuses: Record<string, PtyStatus>
@@ -451,11 +459,11 @@ interface WorktreePickerSheetProps {
   onRefresh: () => void
 }
 
-function WorktreePickerSheet({ worktrees, prStatuses, mergedPaths, loading, activeWorktreeId, aggregateStatuses, onSelect, onClose, onRefresh }: WorktreePickerSheetProps): JSX.Element {
+function WorktreePickerSheet({ worktrees, prStatuses, mergedPaths, snoozedPaths, loading, activeWorktreeId, aggregateStatuses, onSelect, onClose, onRefresh }: WorktreePickerSheetProps): JSX.Element {
   const viewerLogin = useSettings().viewerLogin
   const groups = useMemo<WorktreeGroup[]>(
-    () => groupWorktrees(worktrees, prStatuses, mergedPaths, viewerLogin),
-    [worktrees, prStatuses, mergedPaths, viewerLogin]
+    () => groupWorktrees(worktrees, prStatuses, mergedPaths, snoozedPaths, viewerLogin),
+    [worktrees, prStatuses, mergedPaths, snoozedPaths, viewerLogin]
   )
   return (
     <div className="absolute inset-0 z-30 flex flex-col bg-app">
