@@ -5,6 +5,7 @@ import type { JsonClaudePendingApproval } from '../../shared/state/json-claude'
 interface ApprovalResult {
   behavior: 'allow' | 'deny'
   updatedInput?: Record<string, unknown>
+  updatedPermissions?: unknown[]
   message?: string
   interrupt?: boolean
 }

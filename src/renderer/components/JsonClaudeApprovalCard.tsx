@@ -5,15 +5,27 @@ import {
 } from '../../shared/state/json-claude'
 import { formatPendingTool } from '../pending-tool'
 import { useJsonClaudeSession, useSettings } from '../store'
+import {
+  suggestPermissionPatterns,
+  isFileToolCrossCwd,
+  type PermissionPatternSuggestion
+} from '../../shared/permission-patterns'
 
 interface JsonClaudeApprovalCardProps {
   approval: JsonClaudePendingApproval
   onResolve: (result: {
     behavior: 'allow' | 'deny'
     updatedInput?: Record<string, unknown>
+    updatedPermissions?: unknown[]
     message?: string
     interrupt?: boolean
   }) => void
+}
+
+function scopeChipClasses(scope: PermissionPatternSuggestion['scope']): string {
+  if (scope === 'narrow') return 'bg-success/20 text-success border-success/40'
+  if (scope === 'medium') return 'bg-amber-500/20 text-amber-400 border-amber-500/40'
+  return 'bg-danger/20 text-danger border-danger/40'
 }
 
 function tryFormatInput(input: Record<string, unknown>): string {
@@ -30,9 +42,9 @@ export function JsonClaudeApprovalCard({
 }: JsonClaudeApprovalCardProps): JSX.Element {
   const settings = useSettings()
   const savedGuidance = settings.autoApproveSteerInstructions
-  const [mode, setMode] = useState<'summary' | 'edit' | 'deny' | 'edit-guidance'>(
-    'summary'
-  )
+  const [mode, setMode] = useState<
+    'summary' | 'edit' | 'deny' | 'edit-guidance' | 'always'
+  >('summary')
   const [editedInput, setEditedInput] = useState<string>(() =>
     tryFormatInput(approval.input)
   )
@@ -56,6 +68,21 @@ export function JsonClaudeApprovalCard({
   )
 
   const session = useJsonClaudeSession(approval.sessionId)
+  const cwd = session?.worktreePath
+
+  const suggestions = useMemo(
+    () => suggestPermissionPatterns(approval.toolName, approval.input, cwd),
+    [approval.toolName, approval.input, cwd]
+  )
+  const crossCwd = isFileToolCrossCwd(approval.toolName, approval.input, cwd)
+  // Identify suggestions by their display label since the rule shape is an
+  // object — labels are unique within a single tool's suggestion list.
+  const [selectedLabel, setSelectedLabel] = useState<string>(
+    () => suggestions[0]?.label ?? approval.toolName
+  )
+  const selectedSuggestion =
+    suggestions.find((s) => s.label === selectedLabel) ?? suggestions[0]
+
   const isEditTool = (EDIT_TOOL_NAMES as readonly string[]).includes(
     approval.toolName
   )
@@ -132,6 +159,32 @@ export function JsonClaudeApprovalCard({
       behavior: 'deny',
       message: denyMessage.trim() || 'user denied',
       interrupt
+    })
+  }
+
+  function alwaysAllow(): void {
+    if (!selectedSuggestion) return
+    // Wire shape from the bundled claude-code binary's discriminated union:
+    //   { type:'addRules',
+    //     rules:[{toolName, ruleContent?}],
+    //     behavior:'allow',
+    //     destination:'localSettings' }
+    // A bare {toolName} (no ruleContent) means "any invocation"; a
+    // ruleContent like 'git status:*' or '/repo/src/**' or 'domain:host'
+    // matches a subset. Sending plain string rules or omitting `behavior`
+    // makes claude log "Malformed updatedPermissions … ignored" and skip
+    // persistence silently.
+    onResolve({
+      behavior: 'allow',
+      updatedInput: approval.input,
+      updatedPermissions: [
+        {
+          type: 'addRules',
+          rules: [selectedSuggestion.rule],
+          behavior: 'allow',
+          destination: 'localSettings'
+        }
+      ]
     })
   }
 
@@ -261,10 +314,76 @@ export function JsonClaudeApprovalCard({
               Allow with edits
             </button>
             <button
+              onClick={() => setMode('always')}
+              title="Persist a rule to .claude/settings.local.json so future matching tool calls in this worktree skip the prompt — across sessions and app restarts."
+              className="px-2.5 py-1 text-xs rounded bg-surface hover:bg-surface/60 text-fg transition-colors cursor-pointer"
+            >
+              Always allow…
+            </button>
+            <button
               onClick={() => setMode('deny')}
               className="px-2.5 py-1 text-xs rounded bg-danger/20 hover:bg-danger/30 text-danger transition-colors cursor-pointer"
             >
               Deny
+            </button>
+          </div>
+        </div>
+      )}
+
+      {mode === 'always' && (
+        <div className="px-3 py-2 space-y-2">
+          <div className="text-[11px] text-muted">
+            Pick how broadly to allow future matching calls. The rule is
+            written to <span className="font-mono">.claude/settings.local.json</span>{' '}
+            and applies across sessions in this worktree.
+          </div>
+          {crossCwd && (
+            <div className="text-[11px] text-amber-400/90 bg-amber-500/10 border border-amber-500/30 rounded px-2 py-1.5">
+              This file is outside the worktree. Claude only persists
+              path-specific rules relative to the project root, so the
+              only option that will actually fire is allowing every{' '}
+              <span className="font-mono">{approval.toolName}</span> call
+              regardless of path. Use "Allow once" instead if you want
+              this single write only.
+            </div>
+          )}
+          <div className="space-y-1">
+            {suggestions.map((s) => (
+              <label
+                key={s.label}
+                className="flex items-center gap-2 px-2 py-1 rounded hover:bg-app/40 cursor-pointer text-[11px]"
+              >
+                <input
+                  type="radio"
+                  name={`always-allow-${approval.requestId}`}
+                  checked={selectedLabel === s.label}
+                  onChange={() => setSelectedLabel(s.label)}
+                  className="cursor-pointer"
+                />
+                <span className="font-mono text-fg-bright flex-1 min-w-0 truncate">
+                  {s.label}
+                </span>
+                <span
+                  className={`shrink-0 text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border ${scopeChipClasses(s.scope)}`}
+                >
+                  {s.scope}
+                </span>
+              </label>
+            ))}
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={alwaysAllow}
+              disabled={!selectedSuggestion}
+              className="px-2.5 py-1 text-xs rounded bg-success/20 hover:bg-success/30 text-success transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Always allow this pattern
+            </button>
+            <button
+              onClick={() => setMode('summary')}
+              className="px-2.5 py-1 text-xs rounded bg-surface hover:bg-surface/60 text-fg transition-colors cursor-pointer"
+            >
+              Cancel
             </button>
           </div>
         </div>
