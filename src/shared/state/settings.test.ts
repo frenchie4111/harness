@@ -351,6 +351,20 @@ describe('settingsReducer', () => {
     expect(cleared.autoApproveSteerInstructions).toBe('')
   })
 
+  it('useSystemClaudeForJsonModeChanged toggles the diagnostic flag', () => {
+    expect(initialSettings.useSystemClaudeForJsonMode).toBe(false)
+    const on = apply(initialSettings, {
+      type: 'settings/useSystemClaudeForJsonModeChanged',
+      payload: true
+    })
+    expect(on.useSystemClaudeForJsonMode).toBe(true)
+    const off = apply(on, {
+      type: 'settings/useSystemClaudeForJsonModeChanged',
+      payload: false
+    })
+    expect(off.useSystemClaudeForJsonMode).toBe(false)
+  })
+
   it('returns a new object reference (no mutation)', () => {
     const next = apply(initialSettings, { type: 'settings/themeChanged', payload: 'x' })
     expect(next).not.toBe(initialSettings)

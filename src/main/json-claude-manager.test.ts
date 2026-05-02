@@ -72,10 +72,12 @@ describe('JsonClaudeManager', () => {
 
   function makeManager(
     store: Store,
-    launchSettings: ClaudeLaunchSettings = { tuiFullscreen: true }
+    launchSettings: ClaudeLaunchSettings = { tuiFullscreen: true },
+    useSystemClaude = false
   ): JsonClaudeManager {
     return new JsonClaudeManager(store, {
       getClaudeCommand: () => 'claude',
+      getUseSystemClaude: () => useSystemClaude,
       getApprovalSocketPath: (sid) => `/tmp/sock-${sid}`,
       closeApprovalSession: vi.fn(),
       getClaudeEnvVars: () => ({}),
@@ -87,18 +89,21 @@ describe('JsonClaudeManager', () => {
     })
   }
 
-  /** The manager spawns `/bin/zsh -ilc <cmdLine>` — return the last
-   *  session cmdLine, skipping the slash-command probe spawn (which
-   *  doesn't pass --permission-prompt-tool). */
+  /** Return the last session spawn's CLI args joined as a string. For the
+   *  bundled path this is the args array; for the system-claude path
+   *  (`/bin/zsh -ilc <cmdLine>`) it's the cmdLine inside -ilc. Skips the
+   *  slash-command probe spawn (which doesn't pass --permission-prompt-tool). */
   function lastSpawnCmdLine(): string {
     const sessionCalls = spawnCalls.filter((c) =>
       c.args.some((a) => a.includes('--permission-prompt-tool'))
     )
     const call = sessionCalls[sessionCalls.length - 1]
     expect(call).toBeDefined()
-    expect(call.command).toBe('/bin/zsh')
-    expect(call.args[0]).toBe('-ilc')
-    return call.args[1]
+    if (call.command === '/bin/zsh') {
+      expect(call.args[0]).toBe('-ilc')
+      return call.args[1]
+    }
+    return call.args.join(' ')
   }
 
   it("kill+create cycle: late exit from killed proc doesn't clobber the new instance", () => {
@@ -181,14 +186,18 @@ describe('JsonClaudeManager', () => {
     expect(sessionProcs().length).toBe(1)
   })
 
-  it('passes --append-system-prompt, --model, --name when launch settings are set', () => {
+  it('passes --append-system-prompt, --model, --name when launch settings are set (system claude path)', () => {
     const store = new Store()
-    const mgr = makeManager(store, {
-      systemPrompt: 'BASE\n\nMAIN',
-      model: 'opus',
-      sessionName: 'myrepo/feat-x',
-      tuiFullscreen: true
-    })
+    const mgr = makeManager(
+      store,
+      {
+        systemPrompt: 'BASE\n\nMAIN',
+        model: 'opus',
+        sessionName: 'myrepo/feat-x',
+        tuiFullscreen: true
+      },
+      true
+    )
     store.dispatch({ type: 'jsonClaude/sessionStarted', payload: { sessionId: 'sess-flags', worktreePath: '/tmp/wt' } })
     mgr.create('sess-flags', '/tmp/wt')
     const cmd = lastSpawnCmdLine()
@@ -205,18 +214,51 @@ describe('JsonClaudeManager', () => {
   // double quotes, zsh -ilc would still command-substitute the
   // backticks (→ "command not found: key", exit 127) and parse-error
   // on the redirection token inside the substitution. Single-quoted
-  // form makes everything inert.
-  it('single-quotes args so backticks in the system prompt are not command-substituted', () => {
+  // form makes everything inert. Specific to the system-claude path —
+  // bundled spawn passes args as an array, no shell parses them.
+  it('single-quotes args so backticks in the system prompt are not command-substituted (system claude path)', () => {
     const store = new Store()
-    const mgr = makeManager(store, {
-      systemPrompt: 'a `key` b',
-      tuiFullscreen: true
-    })
+    const mgr = makeManager(
+      store,
+      {
+        systemPrompt: 'a `key` b',
+        tuiFullscreen: true
+      },
+      true
+    )
     store.dispatch({ type: 'jsonClaude/sessionStarted', payload: { sessionId: 'sess-bt', worktreePath: '/tmp/wt' } })
     mgr.create('sess-bt', '/tmp/wt')
     const cmd = lastSpawnCmdLine()
     expect(cmd).toContain("'a `key` b'")
     expect(cmd).not.toContain('"a `key` b"')
+  })
+
+  it('bundled path: spawns the resolved binary directly with args as an array (no shell wrapping)', () => {
+    const store = new Store()
+    const mgr = makeManager(store, {
+      systemPrompt: 'BASE',
+      model: 'opus',
+      sessionName: 'r/b',
+      tuiFullscreen: true
+    })
+    store.dispatch({ type: 'jsonClaude/sessionStarted', payload: { sessionId: 'sess-bundled', worktreePath: '/tmp/wt' } })
+    mgr.create('sess-bundled', '/tmp/wt')
+    const sessionCalls = spawnCalls.filter((c) =>
+      c.args.some((a) => a.includes('--permission-prompt-tool'))
+    )
+    const call = sessionCalls[sessionCalls.length - 1]
+    expect(call).toBeDefined()
+    expect(call.command).not.toBe('/bin/zsh')
+    // Resolves to the platform-matching native binary inside the bundled
+    // optional subpackage. Filename is `claude` on POSIX, `claude.exe` on
+    // Windows; either is fine here.
+    expect(call.command).toMatch(/[/\\]claude(\.exe)?$/)
+    expect(call.args).toContain('--append-system-prompt')
+    expect(call.args).toContain('BASE')
+    expect(call.args).toContain('--model')
+    expect(call.args).toContain('opus')
+    expect(call.args).toContain('--name')
+    expect(call.args).toContain('r/b')
   })
 
   it('omits --append-system-prompt, --model, --name when launch settings are unset', () => {

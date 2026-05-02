@@ -19,8 +19,9 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'child_process'
 import { randomUUID } from 'crypto'
 import { existsSync, readFileSync } from 'fs'
+import { createRequire } from 'module'
 import { homedir } from 'os'
-import { join } from 'path'
+import { dirname, join } from 'path'
 import { isPackaged } from './paths'
 import type { Store } from './store'
 import type {
@@ -80,6 +81,11 @@ export interface JsonClaudeCallerScope {
 
 export interface JsonClaudeManagerOptions {
   getClaudeCommand: () => string
+  /** When true, json-mode tabs spawn the user's PATH `claude` (the
+   *  pre-bundling behavior) instead of the bundled native binary.
+   *  Diagnostic toggle wired to settings.useSystemClaudeForJsonMode —
+   *  no UI, defaults false. */
+  getUseSystemClaude: () => boolean
   getApprovalSocketPath: (sessionId: string) => string
   closeApprovalSession: (sessionId: string) => void
   getClaudeEnvVars: () => Record<string, string>
@@ -116,6 +122,56 @@ function permissionPromptScriptPath(): string {
     return join(process.resourcesPath, 'permission-prompt-mcp.js')
   }
   return join(__dirname, '..', '..', 'resources', 'permission-prompt-mcp.js')
+}
+
+/** Resolves the bundled @anthropic-ai/claude-code native binary by going
+ *  through the platform-specific subpackage. The wrapper package's
+ *  postinstall hardlinks the platform binary into bin/claude.exe, but
+ *  electron-builder dedups hardlinks during asar packing — only one
+ *  copy survives. Resolving via the platform subpackage's own file
+ *  works identically in dev and packaged. Mirrors the platform
+ *  detection in install.cjs / cli-wrapper.cjs. The dynamic-require
+ *  pattern matches paths.ts's electron lookup: keeps the bundler from
+ *  resolving the module statically. */
+const PLATFORM_PACKAGES: Record<string, { pkg: string; bin: string }> = {
+  'darwin-arm64': { pkg: '@anthropic-ai/claude-code-darwin-arm64', bin: 'claude' },
+  'darwin-x64': { pkg: '@anthropic-ai/claude-code-darwin-x64', bin: 'claude' },
+  'linux-x64': { pkg: '@anthropic-ai/claude-code-linux-x64', bin: 'claude' },
+  'linux-arm64': { pkg: '@anthropic-ai/claude-code-linux-arm64', bin: 'claude' },
+  'linux-x64-musl': { pkg: '@anthropic-ai/claude-code-linux-x64-musl', bin: 'claude' },
+  'linux-arm64-musl': { pkg: '@anthropic-ai/claude-code-linux-arm64-musl', bin: 'claude' },
+  'win32-x64': { pkg: '@anthropic-ai/claude-code-win32-x64', bin: 'claude.exe' },
+  'win32-arm64': { pkg: '@anthropic-ai/claude-code-win32-arm64', bin: 'claude.exe' }
+}
+
+function detectMusl(): boolean {
+  if (process.platform !== 'linux') return false
+  const report =
+    typeof process.report?.getReport === 'function' ? process.report.getReport() : null
+  // glibc reports a runtime version; musl doesn't. Same heuristic install.cjs uses.
+  return report != null && (report as { header?: { glibcVersionRuntime?: string } }).header?.glibcVersionRuntime === undefined
+}
+
+function platformKey(): string {
+  if (process.platform === 'linux') {
+    return `linux-${process.arch}${detectMusl() ? '-musl' : ''}`
+  }
+  return `${process.platform}-${process.arch}`
+}
+
+let cachedBundledClaudeBinPath: string | null = null
+function bundledClaudeBinPath(): string {
+  if (cachedBundledClaudeBinPath) return cachedBundledClaudeBinPath
+  const info = PLATFORM_PACKAGES[platformKey()]
+  if (!info) {
+    throw new Error(
+      `bundled claude-code: unsupported platform ${platformKey()}; supported: ${Object.keys(PLATFORM_PACKAGES).join(', ')}`
+    )
+  }
+  const dynamicRequire = createRequire(__filename)
+  const pkgPath = dynamicRequire.resolve(`${info.pkg}/package.json`)
+  cachedBundledClaudeBinPath = join(dirname(pkgPath), info.bin)
+  return cachedBundledClaudeBinPath
 }
 
 
@@ -341,6 +397,7 @@ export class JsonClaudeManager {
     }
     const mcpConfig = { mcpServers }
 
+    const useSystemClaude = this.opts.getUseSystemClaude()
     const claudeCommand = this.opts.getClaudeCommand() || 'claude'
     const existingSession = existsSync(
       join(homedir(), '.claude', 'projects', worktreePath.replace(/[^a-zA-Z0-9]/g, '-'), `${sessionId}.jsonl`)
@@ -369,25 +426,23 @@ export class JsonClaudeManager {
     if (launchSettings.systemPrompt) {
       args.push('--append-system-prompt', launchSettings.systemPrompt)
     }
-    if (launchSettings.model && !claudeCommand.includes('--model')) {
+    // The bundled binary doesn't see the user's claudeCommand string, so
+    // their --model override there can't apply. Honor launchSettings.model
+    // unconditionally in that path. For the system path we keep the prior
+    // behavior of yielding to a --model in the user's claudeCommand.
+    if (
+      launchSettings.model &&
+      (useSystemClaude ? !claudeCommand.includes('--model') : true)
+    ) {
       args.push('--model', launchSettings.model)
     }
     if (launchSettings.sessionName) {
       args.push('--name', launchSettings.sessionName)
     }
 
-    // Build the command line via login shell so the user's full PATH
-    // (Homebrew, nvm, etc.) is available — same pattern PtyManager uses
-    // for classic Claude tabs. We use POSIX single-quote escaping
-    // because the system prompt contains backticks (e.g. `key`,
-    // `zsh -ilc <command>`) which would be command-substituted inside
-    // JSON.stringify's double quotes.
-    const quoted = args.map(shellQuote).join(' ')
-    const cmdLine = `${claudeCommand} ${quoted}`
-
     log(
       'json-claude',
-      `spawn sessionId=${sessionId} cwd=${worktreePath} mode=${permissionMode}`
+      `spawn sessionId=${sessionId} cwd=${worktreePath} mode=${permissionMode} bundled=${!useSystemClaude}`
     )
 
     const envVars = this.opts.getClaudeEnvVars() || {}
@@ -401,27 +456,43 @@ export class JsonClaudeManager {
     }
     delete childEnv.CLAUDE_HARNESS_ID
     delete childEnv.HARNESS_TERMINAL_ID
+    const spawnEnv = {
+      ...childEnv,
+      ...envVars,
+      // Memory isolation: the auto-memory subsystem writes into
+      // ~/.claude/projects/<project>/memory/ by default, which
+      // means json-claude sessions would scribble into the user's
+      // personal memory dir for whatever project their worktree
+      // belongs to. This env var skips that path entirely. Session
+      // jsonls still persist (needed for --resume), they just land
+      // in projects/<project>/ without a sibling memory/ dir.
+      CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1',
+      // So our bundled MCP server can identify its parent session
+      // when it opens the approval socket.
+      HARNESS_JSON_CLAUDE_SESSION_ID: sessionId
+    }
     let proc: ChildProcessWithoutNullStreams
     try {
-      proc = spawn('/bin/zsh', ['-ilc', cmdLine], {
-        cwd: worktreePath,
-        env: {
-          ...childEnv,
-          ...envVars,
-          // Memory isolation: the auto-memory subsystem writes into
-          // ~/.claude/projects/<project>/memory/ by default, which
-          // means json-claude sessions would scribble into the user's
-          // personal memory dir for whatever project their worktree
-          // belongs to. This env var skips that path entirely. Session
-          // jsonls still persist (needed for --resume), they just land
-          // in projects/<project>/ without a sibling memory/ dir.
-          CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1',
-          // So our bundled MCP server can identify its parent session
-          // when it opens the approval socket.
-          HARNESS_JSON_CLAUDE_SESSION_ID: sessionId
-        },
-        stdio: ['pipe', 'pipe', 'pipe']
-      })
+      if (useSystemClaude) {
+        // Diagnostic path: same login-shell wrapping PtyManager uses for
+        // classic Claude tabs so the user's PATH (Homebrew, nvm, etc.) is
+        // available. POSIX single-quote escaping because the system
+        // prompt contains backticks that would be command-substituted
+        // inside JSON.stringify's double quotes.
+        const quoted = args.map(shellQuote).join(' ')
+        const cmdLine = `${claudeCommand} ${quoted}`
+        proc = spawn('/bin/zsh', ['-ilc', cmdLine], {
+          cwd: worktreePath,
+          env: spawnEnv,
+          stdio: ['pipe', 'pipe', 'pipe']
+        })
+      } else {
+        proc = spawn(bundledClaudeBinPath(), args, {
+          cwd: worktreePath,
+          env: spawnEnv,
+          stdio: ['pipe', 'pipe', 'pipe']
+        })
+      }
     } catch (err) {
       log(
         'json-claude',
@@ -760,6 +831,7 @@ export class JsonClaudeManager {
    *  in the same worktree get it instantly. */
   private probeSlashCommands(cwd: string): Promise<string[]> {
     return new Promise((resolve) => {
+      const useSystemClaude = this.opts.getUseSystemClaude()
       const claudeCommand = this.opts.getClaudeCommand() || 'claude'
       const args = [
         '-p',
@@ -769,8 +841,6 @@ export class JsonClaudeManager {
         'stream-json',
         '--verbose'
       ]
-      const quoted = args.map((a) => JSON.stringify(a)).join(' ')
-      const cmdLine = `${claudeCommand} ${quoted}`
       const envVars = this.opts.getClaudeEnvVars() || {}
       const childEnv: Record<string, string> = {}
       for (const [k, v] of Object.entries(process.env)) {
@@ -778,18 +848,29 @@ export class JsonClaudeManager {
       }
       delete childEnv.CLAUDE_HARNESS_ID
       delete childEnv.HARNESS_TERMINAL_ID
-      log('json-claude', `probe spawn cwd=${cwd}`)
+      const spawnEnv = {
+        ...childEnv,
+        ...envVars,
+        CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1'
+      }
+      log('json-claude', `probe spawn cwd=${cwd} bundled=${!useSystemClaude}`)
       let proc: ChildProcessWithoutNullStreams
       try {
-        proc = spawn('/bin/zsh', ['-ilc', cmdLine], {
-          cwd,
-          env: {
-            ...childEnv,
-            ...envVars,
-            CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1'
-          },
-          stdio: ['pipe', 'pipe', 'pipe']
-        })
+        if (useSystemClaude) {
+          const quoted = args.map((a) => JSON.stringify(a)).join(' ')
+          const cmdLine = `${claudeCommand} ${quoted}`
+          proc = spawn('/bin/zsh', ['-ilc', cmdLine], {
+            cwd,
+            env: spawnEnv,
+            stdio: ['pipe', 'pipe', 'pipe']
+          })
+        } else {
+          proc = spawn(bundledClaudeBinPath(), args, {
+            cwd,
+            env: spawnEnv,
+            stdio: ['pipe', 'pipe', 'pipe']
+          })
+        }
       } catch (err) {
         log(
           'json-claude',

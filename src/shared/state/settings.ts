@@ -64,6 +64,9 @@ export interface SettingsState {
    *  Empty by default — the base policy is what runs. Has no effect
    *  unless autoApprovePermissions is on. */
   autoApproveSteerInstructions: string
+  /** Diagnostic toggle (no UI): when true, json-mode tabs spawn the user's
+   *  PATH `claude` instead of the bundled one. Default off. */
+  useSystemClaudeForJsonMode: boolean
 }
 
 export type SettingsEvent =
@@ -102,6 +105,7 @@ export type SettingsEvent =
   | { type: 'settings/defaultClaudeTabTypeChanged'; payload: 'xterm' | 'json' }
   | { type: 'settings/autoApprovePermissionsChanged'; payload: boolean }
   | { type: 'settings/autoApproveSteerInstructionsChanged'; payload: string }
+  | { type: 'settings/useSystemClaudeForJsonModeChanged'; payload: boolean }
 
 // Client-side placeholder. Real values are seeded in the main-process Store
 // constructor from the on-disk config and secrets.
@@ -140,7 +144,8 @@ export const initialSettings: SettingsState = {
   jsonModeClaudeTabs: false,
   defaultClaudeTabType: 'xterm',
   autoApprovePermissions: false,
-  autoApproveSteerInstructions: ''
+  autoApproveSteerInstructions: '',
+  useSystemClaudeForJsonMode: false
 }
 
 export function settingsReducer(state: SettingsState, event: SettingsEvent): SettingsState {
@@ -215,6 +220,8 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, autoApprovePermissions: event.payload }
     case 'settings/autoApproveSteerInstructionsChanged':
       return { ...state, autoApproveSteerInstructions: event.payload }
+    case 'settings/useSystemClaudeForJsonModeChanged':
+      return { ...state, useSystemClaudeForJsonMode: event.payload }
     default: {
       const _exhaustive: never = event
       void _exhaustive
