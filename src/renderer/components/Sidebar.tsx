@@ -150,6 +150,22 @@ export function Sidebar({
     }
   }, [continueTarget, continueBranchName, onContinueWorktree, cancelContinue])
 
+  const onSnoozeRow = useCallback(
+    (path: string, e: React.MouseEvent) => {
+      if (e.shiftKey) {
+        // Calendar popover wiring lives in Sidebar (step 9). For plain
+        // shift-click without a popover yet, fall back to default duration.
+      }
+      const days = Math.max(1, Math.floor(snoozeDefaultDays ?? 7))
+      window.api.snooze(path, Date.now() + days * 86400000)
+    },
+    [snoozeDefaultDays]
+  )
+
+  const onUnsnoozeRow = useCallback((path: string) => {
+    window.api.unsnooze(path)
+  }, [])
+
   const handleContinueKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.key === 'Enter') submitContinue()
@@ -317,12 +333,15 @@ export function Sidebar({
                   shellActive={!!shellActivity[wt.path]}
                   prStatus={prStatuses[wt.path]}
                   isMerged={group.key === 'merged'}
+                  isSnoozed={!!snoozedPaths?.[wt.path]}
                   repoLabel={showRepoLabelsOnTabs ? repoLabelFor(wt.repoRoot) : undefined}
                   cmdOrdinal={cmdOrdinals.get(wt.path)}
                   deleting={deletingPaths.has(wt.path)}
                   onClick={() => onSelectWorktree(wt.path)}
                   onDelete={wt.isMain || deletingPaths.has(wt.path) ? undefined : () => onDeleteWorktree(wt.path)}
                   onContinue={wt.isMain || deletingPaths.has(wt.path) ? undefined : () => beginContinue(wt.path, wt.branch)}
+                  onSnooze={wt.isMain || deletingPaths.has(wt.path) ? undefined : (e) => onSnoozeRow(wt.path, e)}
+                  onUnsnooze={wt.isMain || deletingPaths.has(wt.path) ? undefined : () => onUnsnoozeRow(wt.path)}
                 />
                 {continueTarget?.path === wt.path && (
                   <div className="border-y-2 border-accent bg-panel-raised p-2.5 shadow-inner">

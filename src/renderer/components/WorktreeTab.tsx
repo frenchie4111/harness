@@ -1,4 +1,4 @@
-import { GitPullRequest, RotateCw, Trash2, Loader2 } from 'lucide-react'
+import { GitPullRequest, RotateCw, Trash2, Loader2, Moon } from 'lucide-react'
 import type { Worktree, PtyStatus, PendingTool, PRStatus } from '../types'
 import { isPRMerged } from '../../shared/state/prs'
 import { Tooltip } from './Tooltip'
@@ -25,9 +25,15 @@ interface WorktreeTabProps {
   /** When true, the worktree is in the middle of being deleted — show an
    * inert spinner + dim the row, hide action buttons. */
   deleting?: boolean
+  isSnoozed?: boolean
   onClick: () => void
   onDelete?: () => void
   onContinue?: () => void
+  /** Plain click → snooze for default duration. Shift-click → open calendar
+   *  popover at the row. The handler receives the original event so the
+   *  caller can decide based on shiftKey. */
+  onSnooze?: (e: React.MouseEvent) => void
+  onUnsnooze?: () => void
 }
 
 const STATUS_COLORS: Record<PtyStatus | 'merged', string> = {
@@ -60,7 +66,7 @@ const PR_STATE_COLOR: Record<string, string> = {
   closed: 'text-danger'
 }
 
-export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActive, prStatus, isMerged, repoLabel, cmdOrdinal, deleting, onClick, onDelete, onContinue }: WorktreeTabProps): JSX.Element {
+export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActive, prStatus, isMerged, repoLabel, cmdOrdinal, deleting, isSnoozed, onClick, onDelete, onContinue, onSnooze, onUnsnooze }: WorktreeTabProps): JSX.Element {
   const metaHeld = useMetaHeld()
   const displayStatus: PtyStatus | 'merged' = isMerged ? 'merged' : status
   const showPendingTool = displayStatus === 'needs-approval' && pendingTool
@@ -167,6 +173,23 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
           <span className="text-success">+{prStatus.additions}</span>
           <span className="text-danger ml-0.5">−{prStatus.deletions}</span>
         </span>
+      )}
+      {(onSnooze || onUnsnooze) && !worktree.isMain && (
+        <Tooltip label={isSnoozed ? 'Wake up' : 'Snooze'} side="left">
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              if (isSnoozed) {
+                onUnsnooze?.()
+              } else {
+                onSnooze?.(e)
+              }
+            }}
+            className="hidden group-hover:flex text-faint hover:text-accent transition-colors shrink-0 cursor-pointer"
+          >
+            <Moon size={12} />
+          </button>
+        </Tooltip>
       )}
       {onDelete && (
         <Tooltip label="Remove worktree" side="left">
