@@ -34,10 +34,22 @@ export function BranchCommitsPanel({ worktreePath, onOpenCommitReview }: BranchC
   }, [worktreePath])
 
   useEffect(() => {
+    if (!worktreePath) return
     refresh()
-    const interval = setInterval(refresh, 5000)
-    return () => clearInterval(interval)
-  }, [refresh])
+    // The watcher signal covers any git state change (index, HEAD,
+    // MERGE_HEAD), not just diff changes — branch-commits invalidations
+    // share the same trigger.
+    window.api.watchChangedFiles(worktreePath)
+    const offInvalidated = window.api.onChangedFilesInvalidated((path) => {
+      if (path === worktreePath) refresh()
+    })
+    const interval = setInterval(refresh, 60000)
+    return () => {
+      clearInterval(interval)
+      offInvalidated()
+      window.api.unwatchChangedFiles(worktreePath)
+    }
+  }, [refresh, worktreePath])
 
   if (!worktreePath) return null
 
