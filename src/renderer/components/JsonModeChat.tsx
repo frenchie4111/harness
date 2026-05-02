@@ -1061,20 +1061,30 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
               />
             ))}
             {(() => {
-              // In-chat "waiting on next assistant turn" indicator. Covers
-              // the dead time between user-send and message_start, and the
-              // gap between a tool_result and the next assistant message
-              // start. Skipped while an assistant entry is actively
-              // streaming — the partial entry's own cursor signals progress
-              // there.
+              // In-chat "agent is working" indicator. Visible whenever the
+              // turn is in flight and no other UI element already signals
+              // progress. Suppressed while a text block is streaming (the
+              // partial entry's cursor is at the end of the text) or a
+              // tool_use block is on screen (its placeholder card signals
+              // the call is being prepared). The remaining gap cases — empty
+              // partial entry just after message_start, partial entry whose
+              // last block is a finalized thinking card waiting for the
+              // next content_block_start (e.g. the agent is about to emit
+              // a big tool call) — are exactly when nothing else moves on
+              // screen, so the spinner reassures the user the agent didn't
+              // freeze.
               if (!busy) return null
               const last = session?.entries[session.entries.length - 1]
-              const waiting =
-                !last || last.kind === 'user' || last.kind === 'tool_result'
-              if (!waiting) return null
+              const lastBlock = last?.kind === 'assistant' && last.blocks?.length
+                ? last.blocks[last.blocks.length - 1]
+                : null
+              const showWhileStreaming =
+                last?.kind === 'assistant' && last.isPartial &&
+                (lastBlock?.type === 'text' || lastBlock?.type === 'tool_use')
+              if (showWhileStreaming) return null
               return (
                 <div className="flex items-center gap-2 px-2 py-1 text-[11px] text-muted italic">
-                  <span className="json-claude-spinner" aria-label="thinking" />
+                  <span className="json-claude-spinner" aria-label="working" />
                   <span>thinking…</span>
                 </div>
               )
