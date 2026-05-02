@@ -200,6 +200,20 @@ git add package.json package-lock.json README.md site/public/releases.html
 git commit -m "Release v${VERSION}"
 ok "Committed version bump, download links, and release notes"
 
+# ---- Cross-arch claude binary ----
+# Bundled @anthropic-ai/claude-code ships per-arch native binaries via
+# optionalDependencies. npm install only pulls the host-arch one, so the
+# x64 dmg would otherwise ship without a claude binary on this arm64 host.
+# Force-install the missing arch (no save → package-lock untouched, next
+# plain `npm install` prunes it). electron-builder doesn't filter by the
+# subpackage's os/cpu, so both binaries land in both dmgs — accepted as
+# bloat for now (each dmg gets both binaries; switch to per-arch builder
+# passes if dmg size becomes a concern).
+step "Installing x64 mac claude binary for cross-arch dmg"
+CLAUDE_VERSION=$(node -e "console.log(require('./package.json').dependencies['@anthropic-ai/claude-code'])")
+npm install --no-save --ignore-scripts --legacy-peer-deps --force "@anthropic-ai/claude-code-darwin-x64@${CLAUDE_VERSION}" --silent
+ok "Installed @anthropic-ai/claude-code-darwin-x64@${CLAUDE_VERSION}"
+
 # ---- Build / sign / notarize ----
 step "Building, signing, and notarizing (this takes several minutes)"
 rm -rf release
