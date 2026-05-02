@@ -180,3 +180,83 @@ describe('ActivityDeriver scoping', () => {
     deriver.stop()
   })
 })
+
+describe('ActivityDeriver auto-unsnooze', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  function snoozedState(): AppState {
+    const base = makeState()
+    return {
+      ...base,
+      snooze: {
+        byPath: {
+          [A]: { path: A, snoozedAt: 0, wakeAt: 9_999_999_999_999 }
+        }
+      }
+    }
+  }
+
+  function clearedPaths(store: Store): string[] {
+    const seen: string[] = []
+    store.subscribe((event: StateEvent) => {
+      if (event.type === 'snooze/clear') seen.push(event.payload)
+    })
+    return seen
+  }
+
+  it('clears the snooze when transitioning to processing', () => {
+    const store = new Store(snoozedState())
+    const deriver = new ActivityDeriver(store)
+    deriver.start()
+    const cleared = clearedPaths(store)
+
+    store.dispatch({
+      type: 'terminals/statusChanged',
+      payload: { id: 'ta1', status: 'processing', pendingTool: null }
+    })
+
+    expect(cleared).toEqual([A])
+    deriver.stop()
+  })
+
+  it('does not clear on idle / waiting transitions', () => {
+    const store = new Store(snoozedState())
+    const deriver = new ActivityDeriver(store)
+    deriver.start()
+    const cleared = clearedPaths(store)
+
+    store.dispatch({
+      type: 'terminals/statusChanged',
+      payload: { id: 'ta1', status: 'waiting', pendingTool: null }
+    })
+    store.dispatch({
+      type: 'terminals/statusChanged',
+      payload: { id: 'ta1', status: 'idle', pendingTool: null }
+    })
+
+    expect(cleared).toEqual([])
+    deriver.stop()
+  })
+
+  it('does not clear when the path is not snoozed', () => {
+    const store = new Store(makeState())
+    const deriver = new ActivityDeriver(store)
+    deriver.start()
+    const cleared = clearedPaths(store)
+
+    store.dispatch({
+      type: 'terminals/statusChanged',
+      payload: { id: 'ta1', status: 'processing', pendingTool: null }
+    })
+
+    expect(cleared).toEqual([])
+    deriver.stop()
+  })
+})

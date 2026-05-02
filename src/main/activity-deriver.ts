@@ -155,6 +155,15 @@ export class ActivityDeriver {
     const state = this.store.getSnapshot().state
     const next = effectiveActivityState(state, wtPath)
 
+    // Auto-unsnooze when the user submits a prompt in a snoozed worktree.
+    // 'processing' is the only input-driven trigger — viewing output, raw
+    // keystrokes, or non-snooze status transitions don't qualify. Run
+    // before the dedup gate so we still clear the snooze entry on the
+    // very first 'processing' tick.
+    if (next === 'processing' && state.snooze.byPath[wtPath]) {
+      this.store.dispatch({ type: 'snooze/clear', payload: wtPath })
+    }
+
     // Dedup against the last derived state for this worktree. If nothing
     // changed, do nothing — that includes NOT refreshing lastActive.
     // Background polling (PR poller fires every 5min for every worktree
