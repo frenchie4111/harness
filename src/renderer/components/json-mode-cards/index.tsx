@@ -15,6 +15,12 @@ export interface ToolCardProps {
   result?: { content: string; isError: boolean }
   autoApproved?: { model: string; reason: string; timestamp: number }
   sessionAllowed?: { toolName: string; timestamp: number }
+  /** Sub-agent fields. Only set by the Task case; other cards ignore
+   *  them. Threaded through dispatchToolCard so the renderer keeps the
+   *  same call shape for every tool. */
+  subAgentBody?: ReactNode
+  subAgentChildCount?: number
+  subAgentDescendantHasPendingApproval?: boolean
 }
 
 export function basename(p: string): string {
@@ -133,6 +139,7 @@ import { BashCard } from './BashCard'
 import { GrepCard } from './GrepCard'
 import { GlobCard } from './GlobCard'
 import { TodoWriteCard } from './TodoWriteCard'
+import { TaskCard } from './TaskCard'
 import { GenericToolCard } from './GenericToolCard'
 
 export function dispatchToolCard(props: ToolCardProps): JSX.Element {
@@ -153,6 +160,17 @@ export function dispatchToolCard(props: ToolCardProps): JSX.Element {
       return <GlobCard {...props} />
     case 'TodoWrite':
       return <TodoWriteCard {...props} />
+    case 'Task':
+      return (
+        <TaskCard
+          {...props}
+          subAgentBody={props.subAgentBody ?? null}
+          subAgentChildCount={props.subAgentChildCount ?? 0}
+          subAgentDescendantHasPendingApproval={
+            props.subAgentDescendantHasPendingApproval ?? false
+          }
+        />
+      )
     default:
       return <GenericToolCard {...props} />
   }

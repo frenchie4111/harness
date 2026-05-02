@@ -24,6 +24,8 @@ import { useJsonClaudeApprovals } from '../hooks/useJsonClaudeApprovals'
 import { JsonClaudeApprovalCard } from './JsonClaudeApprovalCard'
 import { dispatchToolCard, ToolCardChrome } from './json-mode-cards'
 import { ToolGroup } from './json-mode-cards/ToolGroup'
+import { TaskCard } from './json-mode-cards/TaskCard'
+import { buildChildrenMap } from './json-mode-cards/grouping'
 import { JsonModeMentionPopover, type MentionPopoverItem } from './JsonModeMentionPopover'
 import { JsonModeChatImageThumb } from './JsonModeChatImageThumb'
 import { fuzzyMatch } from '../fuzzy'
@@ -217,35 +219,26 @@ function CompactCard({
   )
 }
 
-function renderEntries(
-  entries: JsonClaudeChatEntry[],
-  approvalCard: (toolUseId: string | undefined) => ReactNode,
-  pendingToolUseIds: Set<string>,
+interface RenderContext {
+  resultsByToolUseId: Map<string, { content: string; isError: boolean }>
+  childrenByParentToolUseId: Map<string, JsonClaudeChatEntry[]>
+  approvalCard: (toolUseId: string | undefined) => ReactNode
+  pendingToolUseIds: Set<string>
   autoApprovedDecisions: Record<
     string,
     { model: string; reason: string; timestamp: number }
-  >,
+  >
   sessionAllowedDecisions: Record<
     string,
     { toolName: string; timestamp: number }
-  >,
+  >
   onCancelQueued: (entryId: string) => void
-): RenderedRow[] {
-  // Build a tool_use_id → tool_result lookup pass first so each tool card
-  // can render its result inline.
-  const resultsByToolUseId = new Map<string, { content: string; isError: boolean }>()
-  for (const entry of entries) {
-    if (entry.kind !== 'tool_result' || !entry.blocks) continue
-    for (const b of entry.blocks) {
-      if (b.type === 'tool_result' && b.toolUseId) {
-        resultsByToolUseId.set(b.toolUseId, {
-          content: b.content || '',
-          isError: !!b.isError
-        })
-      }
-    }
-  }
+}
 
+function renderEntries(
+  entries: JsonClaudeChatEntry[],
+  ctx: RenderContext
+): RenderedRow[] {
   const rows: RenderedRow[] = []
   for (const entry of entries) {
     if (entry.kind === 'user') {
@@ -264,7 +257,7 @@ function renderEntries(
                   queued
                 </span>
                 <button
-                  onClick={() => onCancelQueued(entry.entryId)}
+                  onClick={() => ctx.onCancelQueued(entry.entryId)}
                   className="p-1 rounded hover:bg-panel text-muted hover:text-fg cursor-pointer"
                   title="Cancel queued message"
                   aria-label="Cancel queued message"
@@ -347,7 +340,9 @@ function renderEntries(
             )
           })
         } else if (block.type === 'tool_use') {
-          const result = block.id ? resultsByToolUseId.get(block.id) : undefined
+          const result = block.id
+            ? ctx.resultsByToolUseId.get(block.id)
+            : undefined
           // While the assistant message is still streaming, the
           // tool_use block has its name + id from content_block_start
           // but no input (input_json_delta isn't accumulated yet — see
@@ -358,12 +353,36 @@ function renderEntries(
           const inputIsEmpty =
             !block.input || Object.keys(block.input).length === 0
           const showPlaceholder = entry.isPartial && inputIsEmpty
+          // Sub-agent nesting: when the tool is Task, recursively render
+          // the children attributed to this tool_use id. The recursion
+          // produces another rows array that we group + render inline
+          // inside the TaskCard, so deeper Task→Task nesting works the
+          // same way at every level.
+          let subAgentBody: ReactNode = null
+          let subAgentChildCount = 0
+          let subAgentDescendantHasPendingApproval = false
+          if (block.name === 'Task' && block.id) {
+            const childEntries =
+              ctx.childrenByParentToolUseId.get(block.id) ?? []
+            subAgentChildCount = childEntries.length
+            if (childEntries.length > 0) {
+              const childRows = renderEntries(childEntries, ctx)
+              subAgentDescendantHasPendingApproval = childRows.some(
+                (r) => r.hasPendingApproval
+              )
+              subAgentBody = renderGroupedItems(
+                groupConsecutiveToolRows(childRows)
+              )
+            }
+          }
           rows.push({
             key: `${entry.entryId}-${block.id || 'tu'}`,
             type: 'tool',
             toolName: block.name,
             hasError: !!result?.isError,
-            hasPendingApproval: !!block.id && pendingToolUseIds.has(block.id),
+            hasPendingApproval:
+              (!!block.id && ctx.pendingToolUseIds.has(block.id)) ||
+              subAgentDescendantHasPendingApproval,
             node: (
               <>
                 {showPlaceholder ? (
@@ -381,11 +400,18 @@ function renderEntries(
                   dispatchToolCard({
                     block,
                     result,
-                    autoApproved: block.id ? autoApprovedDecisions[block.id] : undefined,
-                    sessionAllowed: block.id ? sessionAllowedDecisions[block.id] : undefined
+                    autoApproved: block.id
+                      ? ctx.autoApprovedDecisions[block.id]
+                      : undefined,
+                    sessionAllowed: block.id
+                      ? ctx.sessionAllowedDecisions[block.id]
+                      : undefined,
+                    subAgentBody,
+                    subAgentChildCount,
+                    subAgentDescendantHasPendingApproval
                   })
                 )}
-                {approvalCard(block.id)}
+                {ctx.approvalCard(block.id)}
               </>
             )
           })
@@ -430,6 +456,24 @@ function groupConsecutiveToolRows(rows: RenderedRow[]): GroupedItem[] {
   }
   flush()
   return out
+}
+
+/** Renders a grouped-items list as a ReactNode. Used both at the top
+ *  level of the transcript and inside TaskCard to render the sub-agent's
+ *  chronological activity — keeps the visual treatment of nested rows
+ *  identical to top-level rows. */
+function renderGroupedItems(items: GroupedItem[]): ReactNode {
+  return (
+    <>
+      {items.map((g) =>
+        g.kind === 'single' ? (
+          <div key={g.key}>{g.rows[0].node}</div>
+        ) : (
+          <ToolGroup key={g.key} rows={g.rows} />
+        )
+      )}
+    </>
+  )
 }
 
 export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JSX.Element {
@@ -566,29 +610,51 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
   // by a frame or two, which is invisible to the user.
   const entries = session?.entries ?? []
   const deferredEntries = useDeferredValue(entries)
-  const rows = useMemo(
-    () =>
-      renderEntries(
-        deferredEntries,
-        renderApprovalForToolUseId,
-        pendingToolUseIds,
-        autoApprovedDecisions,
-        sessionAllowedDecisions,
-        (entryId) =>
-          window.api.cancelQueuedJsonClaudeMessage(sessionId, entryId)
-      ),
-    // approvalByToolUseId already depends on pending; pendingToolUseIds
-    // also derives from pending.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [
-      deferredEntries,
-      approvalByToolUseId,
+  const rows = useMemo(() => {
+    // Sub-agent nesting pre-pass: split the flat entries array into a
+    // top-level transcript and a children-by-parent map so the Task
+    // case in renderEntries can recursively render nested activity.
+    const { topLevelEntries, childrenByParentToolUseId } =
+      buildChildrenMap(deferredEntries)
+    // tool_use_id → tool_result lookup built once over the full
+    // entries array (results live in top-level tool_result entries
+    // even when their corresponding tool_use was a sub-agent's call).
+    const resultsByToolUseId = new Map<
+      string,
+      { content: string; isError: boolean }
+    >()
+    for (const entry of deferredEntries) {
+      if (entry.kind !== 'tool_result' || !entry.blocks) continue
+      for (const b of entry.blocks) {
+        if (b.type === 'tool_result' && b.toolUseId) {
+          resultsByToolUseId.set(b.toolUseId, {
+            content: b.content || '',
+            isError: !!b.isError
+          })
+        }
+      }
+    }
+    return renderEntries(topLevelEntries, {
+      resultsByToolUseId,
+      childrenByParentToolUseId,
+      approvalCard: renderApprovalForToolUseId,
       pendingToolUseIds,
       autoApprovedDecisions,
       sessionAllowedDecisions,
-      sessionId
-    ]
-  )
+      onCancelQueued: (entryId) =>
+        window.api.cancelQueuedJsonClaudeMessage(sessionId, entryId)
+    })
+    // approvalByToolUseId already depends on pending; pendingToolUseIds
+    // also derives from pending.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    deferredEntries,
+    approvalByToolUseId,
+    pendingToolUseIds,
+    autoApprovedDecisions,
+    sessionAllowedDecisions,
+    sessionId
+  ])
 
   const groupedItems = useMemo(() => groupConsecutiveToolRows(rows), [rows])
 
