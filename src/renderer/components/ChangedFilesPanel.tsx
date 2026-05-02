@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useCallback } from 'react'
 import { RefreshCw, Code2, AtSign, ClipboardCheck } from 'lucide-react'
 import type { ChangedFile } from '../types'
 import { Tooltip } from './Tooltip'
 import { RightPanel } from './RightPanel'
+import { useWatchedQuery } from '../hooks/useWatchedQuery'
 
 type Mode = 'working' | 'branch'
 
@@ -29,55 +30,29 @@ const STATUS_COLOR: Record<ChangedFile['status'], string> = {
   untracked: 'text-dim'
 }
 
-export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToAgent, onOpenReview }: ChangedFilesPanelProps): JSX.Element {
-  const [workingFiles, setWorkingFiles] = useState<ChangedFile[]>([])
-  const [branchFiles, setBranchFiles] = useState<ChangedFile[]>([])
-  const [hasLoaded, setHasLoaded] = useState(false)
-  const mountedRef = useRef(true)
+interface ChangedFilesData {
+  working: ChangedFile[]
+  branch: ChangedFile[]
+}
 
-  useEffect(() => {
-    mountedRef.current = true
-    return () => { mountedRef.current = false }
+export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToAgent, onOpenReview }: ChangedFilesPanelProps): JSX.Element {
+  const fetcher = useCallback(async (path: string): Promise<ChangedFilesData> => {
+    const [working, branch] = await Promise.all([
+      window.api.getChangedFiles(path, 'working'),
+      window.api.getChangedFiles(path, 'branch'),
+    ])
+    return { working, branch }
   }, [])
 
-  const refresh = useCallback(async () => {
-    if (!worktreePath) return
-    try {
-      const [working, branch] = await Promise.all([
-        window.api.getChangedFiles(worktreePath, 'working'),
-        window.api.getChangedFiles(worktreePath, 'branch'),
-      ])
-      if (!mountedRef.current) return
-      setWorkingFiles(working)
-      setBranchFiles(branch)
-    } catch (err) {
-      console.error('Failed to get changed files:', err)
-      if (!mountedRef.current) return
-      setWorkingFiles([])
-      setBranchFiles([])
-    } finally {
-      if (mountedRef.current) setHasLoaded(true)
-    }
-  }, [worktreePath])
+  const { data, loading, refresh } = useWatchedQuery<ChangedFilesData>({
+    worktreePath,
+    cacheKey: 'changedFiles',
+    fetcher,
+  })
 
-  useEffect(() => {
-    setHasLoaded(false)
-  }, [worktreePath])
-
-  useEffect(() => {
-    if (!worktreePath) return
-    refresh()
-    window.api.watchChangedFiles(worktreePath)
-    const offInvalidated = window.api.onChangedFilesInvalidated((path) => {
-      if (path === worktreePath) refresh()
-    })
-    const interval = setInterval(refresh, 30000)
-    return () => {
-      clearInterval(interval)
-      offInvalidated()
-      window.api.unwatchChangedFiles(worktreePath)
-    }
-  }, [refresh, worktreePath])
+  const workingFiles = data?.working ?? []
+  const branchFiles = data?.branch ?? []
+  const hasLoaded = !loading
 
   const stagedFiles = workingFiles.filter((f) => f.staged)
   const unstagedFiles = workingFiles.filter((f) => !f.staged)
