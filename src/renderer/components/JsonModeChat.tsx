@@ -144,9 +144,6 @@ function ThinkingCard({
             // turn). Surface that explicitly instead of an empty card.
             <span className="opacity-70">(hidden)</span>
           ) : null}
-          {isPartial && (
-            <span className="json-claude-cursor" aria-label="streaming" />
-          )}
         </div>
       )}
     </div>
