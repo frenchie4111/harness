@@ -105,7 +105,7 @@ describe('repoConfigsReducer', () => {
     expect(result[0]).toBe('cost')
     expect(result[1]).toBe('pr')
     // Remaining keys in canonical order
-    expect(result.slice(2)).toEqual(['merge', 'todos', 'commits', 'changedFiles', 'allFiles'])
+    expect(result.slice(2)).toEqual(['merge', 'commits', 'changedFiles', 'allFiles', 'todos'])
     expect(result).toHaveLength(7)
   })
 

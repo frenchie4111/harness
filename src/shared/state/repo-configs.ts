@@ -3,10 +3,10 @@ export type RightPanelKey = 'merge' | 'pr' | 'todos' | 'commits' | 'changedFiles
 export const DEFAULT_RIGHT_PANEL_ORDER: RightPanelKey[] = [
   'merge',
   'pr',
-  'todos',
   'commits',
   'changedFiles',
   'allFiles',
+  'todos',
   'cost'
 ]
 
