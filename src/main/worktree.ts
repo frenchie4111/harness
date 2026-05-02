@@ -1289,6 +1289,61 @@ export async function readWorktreeFile(
   }
 }
 
+// Larger ceiling for binary viewers (images / PDFs) than the editor read
+// path, which is meant for text editing.
+const MAX_FILE_BINARY_READ_BYTES = 50 * 1024 * 1024
+
+const EXT_TO_MIME: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  svg: 'image/svg+xml',
+  bmp: 'image/bmp',
+  ico: 'image/x-icon',
+  avif: 'image/avif',
+  pdf: 'application/pdf'
+}
+
+export type FileBinaryReadResult =
+  | { ok: true; base64: string; mime: string; size: number }
+  | { ok: false; error: string }
+
+// base64 keeps the bytes intact across both Electron IPC structured-clone
+// and the JSON-only WebSocket transport, at ~33% size overhead.
+export async function readWorktreeFileBinary(
+  worktreePath: string,
+  filePath: string
+): Promise<FileBinaryReadResult> {
+  const base = resolve(worktreePath)
+  const target = isAbsolute(filePath) ? resolve(filePath) : resolve(base, filePath)
+  const rel = relative(base, target)
+  if (rel.startsWith('..') || isAbsolute(rel)) {
+    return { ok: false, error: 'Path escapes worktree' }
+  }
+  try {
+    const st = statSync(target)
+    if (!st.isFile()) {
+      return { ok: false, error: 'Not a regular file' }
+    }
+    if (st.size > MAX_FILE_BINARY_READ_BYTES) {
+      return { ok: false, error: `File too large (${st.size} bytes, max ${MAX_FILE_BINARY_READ_BYTES})` }
+    }
+    const buf = await readFile(target)
+    const ext = (filePath.split('.').pop() || '').toLowerCase()
+    const mime = EXT_TO_MIME[ext] ?? 'application/octet-stream'
+    return {
+      ok: true,
+      base64: buf.toString('base64'),
+      mime,
+      size: st.size
+    }
+  } catch (err) {
+    return { ok: false, error: (err as Error).message }
+  }
+}
+
 export interface FileWriteResult {
   ok: boolean
   error?: string
