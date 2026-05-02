@@ -39,10 +39,12 @@ import { perfLog } from './perf-log'
 type Listener = (event: StateEvent, seq: number) => void
 
 const SLOW_DISPATCH_MS = 5
-// More than 5 nested dispatches from one root event almost always means
-// a subscriber is iterating-and-dispatching per entity rather than
-// scoping to the affected one.
-const CASCADE_THRESHOLD = 5
+// Threshold for logging a cascade. Most legitimate bulk operations
+// (PR poller discovering N merged worktrees, panes FSM initializing N
+// worktrees) fan out one dispatch per affected entity, which can
+// reasonably reach 10–15 in normal use. Above 15 starts to suggest
+// an unscoped subscriber sweeping a large collection.
+const CASCADE_THRESHOLD = 15
 
 export class Store {
   private state: AppState

@@ -102,7 +102,7 @@ describe('Store cascade detection', () => {
     store.subscribe((event) => {
       if (event.type === 'settings/themeChanged' && !fired) {
         fired = true
-        for (let i = 0; i < 6; i++) {
+        for (let i = 0; i < 16; i++) {
           store.dispatch({ type: 'settings/nameClaudeSessionsChanged', payload: i % 2 === 0 })
         }
       }
@@ -111,8 +111,8 @@ describe('Store cascade detection', () => {
     const calls = cascadeCalls()
     expect(calls).toHaveLength(1)
     expect(calls[0][1]).toContain('settings/themeChanged')
-    expect(calls[0][1]).toContain('6 nested dispatches')
-    expect(calls[0][2]).toEqual({ rootEvent: 'settings/themeChanged', childCount: 6 })
+    expect(calls[0][1]).toContain('16 nested dispatches')
+    expect(calls[0][2]).toEqual({ rootEvent: 'settings/themeChanged', childCount: 16 })
   })
 
   it('does not log when nested dispatches stay at or below the threshold', () => {
@@ -121,7 +121,7 @@ describe('Store cascade detection', () => {
     store.subscribe((event) => {
       if (event.type === 'settings/themeChanged' && !fired) {
         fired = true
-        for (let i = 0; i < 3; i++) {
+        for (let i = 0; i < 10; i++) {
           store.dispatch({ type: 'settings/nameClaudeSessionsChanged', payload: true })
         }
       }
@@ -137,7 +137,7 @@ describe('Store cascade detection', () => {
     store.subscribe((event) => {
       if (cascadeOnNext && event.type === 'settings/themeChanged' && !fired) {
         fired = true
-        for (let i = 0; i < 6; i++) {
+        for (let i = 0; i < 16; i++) {
           store.dispatch({ type: 'settings/nameClaudeSessionsChanged', payload: true })
         }
       }
@@ -148,6 +148,6 @@ describe('Store cascade detection', () => {
     store.dispatch({ type: 'settings/themeChanged', payload: 'second' })
     const calls = cascadeCalls()
     expect(calls).toHaveLength(1)
-    expect(calls[0][2]).toEqual({ rootEvent: 'settings/themeChanged', childCount: 6 })
+    expect(calls[0][2]).toEqual({ rootEvent: 'settings/themeChanged', childCount: 16 })
   })
 })
