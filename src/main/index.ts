@@ -32,6 +32,7 @@ import { PanesFSM, stripTransientTabFields } from './panes-fsm'
 import { ActivityDeriver } from './activity-deriver'
 import { AutoSleepMonitor } from './auto-sleep-monitor'
 import { WorktreeWatcher } from './worktree-watcher'
+import { SnoozeTimer } from './snooze-timer'
 import { getWeeklyStats } from './weekly-stats'
 import type { TerminalTab, PaneNode, PaneLeaf } from '../shared/state/terminals'
 import { getLeaves, mapLeaves } from '../shared/state/terminals'
@@ -906,6 +907,21 @@ store.subscribe((event) => {
   }
 })
 
+// Drop snooze entries for worktrees that no longer exist so the map
+// can't leak across worktree removals.
+store.subscribe((event) => {
+  if (event.type !== 'worktrees/listChanged') return
+  const live = new Set(store.getSnapshot().state.worktrees.list.map((w) => w.path))
+  const byPath = store.getSnapshot().state.snooze.byPath
+  for (const path of Object.keys(byPath)) {
+    if (!live.has(path)) {
+      store.dispatch({ type: 'snooze/clear', payload: path })
+    }
+  }
+})
+
+const snoozeTimer = new SnoozeTimer(store)
+snoozeTimer.start()
 
 function registerIpcHandlers(): void {
   // Worktree handlers — every call takes an explicit repoRoot, since a single
