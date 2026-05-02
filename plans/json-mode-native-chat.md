@@ -55,6 +55,17 @@ own worktree.
   (`sessionToolApprovals`); the bridge resolves matching requests
   directly without the UI round-trip. Set survives kill+respawn but
   not app restarts.
+- "Always allow…" button on the approval card opens an inline picker
+  of self-generated rule suggestions (narrow → medium → broad scoped)
+  derived from the tool name + input by `src/shared/permission-patterns.ts`
+  — Bash gets `<head> <arg1>:*` / `<head>:*` / `*`, file tools get
+  exact path / parent-dir glob / any, WebFetch gets URL / domain / any,
+  MCP and other tools get the bare name. Selecting a rule resolves the
+  approval with `updatedPermissions: [{type:'addRules', rules: [<rule>],
+  destination:'localSettings'}]`, which Claude Code persists into the
+  worktree's `.claude/settings.local.json`. Future matching tool calls
+  in any session in that worktree are pre-approved before they reach
+  the MCP bridge, across app restarts.
 - Optional LLM-based auto-reviewer (`settings.autoApprovePermissions`,
   Experimental section). Routes each pending approval through a Haiku
   oneshot first; auto-resolves when Haiku returns approve, falls
@@ -162,28 +173,6 @@ descending user-visible value.
 
 ### High value
 
-#### "Allow always" with our own suggestions
-The per-session "Allow {tool} this session" lands matching tool calls
-without an approval prompt for the rest of the session — but isn't
-persisted. The persisted "always allow" affordance is still missing.
-We rolled the original spike back when we found the MCP
-`--permission-prompt-tool` path doesn't carry Claude's
-`permission_suggestions` (only the hook + WebSocket paths do). Two
-options:
-  1. Generate per-tool patterns ourselves (Bash → `<head>:*`,
-     Write/Read/Edit → exact `file_path`, Grep/Glob → pattern,
-     WebFetch → URL host, MCP tools → bare tool name). Render as a
-     radio picker over those patterns. Always write to
-     `localSettings`.
-  2. File a bug with Anthropic asking that suggestions be attached on
-     the MCP path too, then rebuild the picker against
-     `permission_suggestions` when it lands.
-The plumbing for `updatedPermissions` on the response side is fine —
-returning an `addRules` entry already works end-to-end. Only the
-*input* side (suggestions to display) is missing.
-
-### High value (continued)
-
 #### Sub-agent nesting
 `assistant` events carry `parent_tool_use_id` when nested. Today
 sub-agent activity flattens into the parent transcript and looks
@@ -290,12 +279,6 @@ to `'json-claude'` for new users without immediate rollback.
   `--permission-prompt-tool` is `.hideHelp()` and could rename without
   notice. Default users would break first. Run a smoke test on every
   Claude Code dependency bump.
-- **Persisted "Allow always".** Per-session "Allow this session"
-  works, but new users coming from xterm expect global allow rules to
-  stick across restarts. See "Allow always with our own suggestions"
-  in the High-value backlog — pick the self-generated patterns option
-  unless Anthropic ships `permission_suggestions` on the MCP path.
-
 ### P1 — strong wants (not strict blockers, but noticeable gaps)
 
 - **Sub-agent nesting.** Already in High-value backlog. Without it,

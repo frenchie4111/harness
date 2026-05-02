@@ -22,6 +22,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { createConnection } from 'node:net'
 import { ApprovalBridge } from './approval-bridge'
 import type { Store } from './store'
 import { initialState, rootReducer, type StateEvent } from '../shared/state'
@@ -215,4 +216,98 @@ describe('approval bridge — claude integration', () => {
       }
     }
   }, 180_000)
+})
+
+describe('approval bridge — updatedPermissions plumbing', () => {
+  it('passes updatedPermissions through to the socket response verbatim', async () => {
+    const store = new TestStore()
+    const bridge = new ApprovalBridge(store as unknown as Store)
+    const sessionId = randomUUID()
+    const socketPath = bridge.startSession(sessionId)
+
+    const requestId = randomUUID()
+    const requestFrame = {
+      type: 'request',
+      id: requestId,
+      sessionId,
+      tool_name: 'Bash',
+      input: { command: 'git status' },
+      tool_use_id: 'tu_test',
+      timestamp: Date.now()
+    }
+
+    const responsePromise = new Promise<{ id: string; result: unknown }>(
+      (resolveResponse, rejectResponse) => {
+        const sock = createConnection(socketPath)
+        let buf = ''
+        sock.setEncoding('utf8')
+        sock.on('connect', () => {
+          sock.write(JSON.stringify(requestFrame) + '\n')
+        })
+        sock.on('data', (chunk: string) => {
+          buf += chunk
+          const idx = buf.indexOf('\n')
+          if (idx < 0) return
+          const line = buf.slice(0, idx).trim()
+          try {
+            const parsed = JSON.parse(line) as {
+              type?: string
+              id?: string
+              result?: unknown
+            }
+            if (parsed.type === 'response' && parsed.id && parsed.result) {
+              resolveResponse({ id: parsed.id, result: parsed.result })
+              try { sock.end() } catch { /* ignore */ }
+            }
+          } catch (err) {
+            rejectResponse(err instanceof Error ? err : new Error(String(err)))
+          }
+        })
+        sock.on('error', rejectResponse)
+      }
+    )
+
+    // Wait for the bridge to dispatch the request to the store, then resolve
+    // it with an updatedPermissions payload.
+    await new Promise<void>((resolveDispatched) => {
+      const unsub = store.subscribe((event) => {
+        if (
+          event.type === 'jsonClaude/approvalRequested' &&
+          event.payload.requestId === requestId
+        ) {
+          unsub()
+          resolveDispatched()
+        }
+      })
+    })
+
+    const ok = bridge.resolveApproval(requestId, {
+      behavior: 'allow',
+      updatedInput: { command: 'git status' },
+      updatedPermissions: [
+        {
+          type: 'addRules',
+          rules: ['Bash(git status:*)'],
+          destination: 'localSettings'
+        }
+      ]
+    })
+    expect(ok).toBe(true)
+
+    const response = await responsePromise
+    expect(response.id).toBe(requestId)
+    expect(response.result).toEqual({
+      behavior: 'allow',
+      updatedInput: { command: 'git status' },
+      updatedPermissions: [
+        {
+          type: 'addRules',
+          rules: ['Bash(git status:*)'],
+          destination: 'localSettings'
+        }
+      ]
+    })
+
+    bridge.stopSession(sessionId)
+  }, 5_000)
 })
