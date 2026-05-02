@@ -410,6 +410,15 @@ describe('settingsReducer', () => {
     expect(off.autoSleepMinutes).toBe(0)
   })
 
+  it('snoozeDefaultDaysChanged sets the default duration', () => {
+    expect(initialSettings.snoozeDefaultDays).toBe(7)
+    const next = apply(initialSettings, {
+      type: 'settings/snoozeDefaultDaysChanged',
+      payload: 3
+    })
+    expect(next.snoozeDefaultDays).toBe(3)
+  })
+
   it('returns a new object reference (no mutation)', () => {
     const next = apply(initialSettings, { type: 'settings/themeChanged', payload: 'x' })
     expect(next).not.toBe(initialSettings)
