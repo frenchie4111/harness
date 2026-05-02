@@ -63,6 +63,7 @@ import {
 import { loadRepoConfig, saveRepoConfig, type RepoConfig } from './repo-config'
 import { createNewProject, type GitignorePreset } from './repo-create'
 import { isWorktreeMerged } from '../shared/state/prs'
+import { MAX_WAKE } from '../shared/state/snooze'
 import { watchStatusDir } from './hooks'
 import { getAgent, type AgentKind } from './agents'
 import { buildClaudeLaunchSettings } from './claude-launch'
@@ -2663,6 +2664,41 @@ function registerIpcHandlers(): void {
       `dispatched id=${id} newController=${next?.controllerClientId ?? 'null'} spectators=${JSON.stringify(next?.spectatorClientIds ?? [])}`
     )
     ptyManager.resize(id, cols, rows)
+  })
+
+  transport.onRequest('snooze:snooze', (_ctx, path: string, wakeAt: number) => {
+    if (typeof path !== 'string' || !path) return false
+    const wake = Number(wakeAt)
+    if (!Number.isFinite(wake)) return false
+    const now = Date.now()
+    // Allow MAX_WAKE ("Never") or any wakeAt at least 1 day out (with 1min slack
+    // for clock truncation when the picker rounds to midnight).
+    if (wake !== MAX_WAKE && wake < now + 86400000 - 60000) return false
+    store.dispatch({
+      type: 'snooze/set',
+      payload: { path, snoozedAt: now, wakeAt: wake }
+    })
+    return true
+  })
+
+  transport.onRequest('snooze:unsnooze', (_ctx, path: string) => {
+    if (typeof path !== 'string' || !path) return false
+    store.dispatch({ type: 'snooze/clear', payload: path })
+    return true
+  })
+
+  transport.onRequest('config:setSnoozeDefaultDays', (_ctx, days: number) => {
+    const n = Number(days)
+    if (!Number.isFinite(n)) return false
+    const clamped = Math.max(1, Math.floor(n))
+    if (clamped === 7) {
+      delete config.snoozeDefaultDays
+    } else {
+      config.snoozeDefaultDays = clamped
+    }
+    saveConfig(config)
+    store.dispatch({ type: 'settings/snoozeDefaultDaysChanged', payload: clamped })
+    return true
   })
 }
 
