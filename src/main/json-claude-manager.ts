@@ -240,12 +240,11 @@ export class JsonClaudeManager {
       } else if (type === 'assistant') {
         const blocks = extractAssistantBlocks(parsed)
         if (blocks.length === 0) continue
-        const message = parsed['message'] as
-          | { parent_tool_use_id?: unknown }
-          | undefined
+        // Same envelope shape as the live stream — parent_tool_use_id
+        // is at the top level of the record, not on the inner message.
         const parentToolUseId =
-          typeof message?.parent_tool_use_id === 'string'
-            ? message.parent_tool_use_id
+          typeof parsed['parent_tool_use_id'] === 'string'
+            ? (parsed['parent_tool_use_id'] as string)
             : undefined
         seededEntries.push({
           kind: 'assistant',
@@ -994,13 +993,13 @@ export class JsonClaudeManager {
       }
       // Drain any pending coalesced deltas before reconciling.
       this.flushPartialDeltas(instance)
-      const message = parsed['message'] as
-        | { id?: string; parent_tool_use_id?: unknown }
-        | undefined
+      const message = parsed['message'] as { id?: string } | undefined
       const messageId = message?.id
+      // parent_tool_use_id is on the assistant event envelope, not on
+      // the inner message. See note in handleStreamEvent above.
       const parentToolUseId =
-        typeof message?.parent_tool_use_id === 'string'
-          ? message.parent_tool_use_id
+        typeof parsed['parent_tool_use_id'] === 'string'
+          ? (parsed['parent_tool_use_id'] as string)
           : undefined
       if (
         instance.partial &&
@@ -1099,17 +1098,19 @@ export class JsonClaudeManager {
     if (!event) return
     const eventType = event['type']
     if (eventType === 'message_start') {
-      const message = event['message'] as
-        | { id?: string; parent_tool_use_id?: unknown }
-        | undefined
+      const message = event['message'] as { id?: string } | undefined
       const messageId = message?.id
       if (!messageId) return
       // Drop any prior in-flight partial defensively (shouldn't happen
       // unless the consolidated event was missed).
       this.clearPartial(instance)
+      // parent_tool_use_id is on the stream_event envelope (top level
+      // of `parsed`), not nested inside `message`. Verified against
+      // Claude Code 2.1.126 — schema is
+      //   { type: 'stream_event', event: ..., parent_tool_use_id: ... }
       const parentToolUseId =
-        typeof message?.parent_tool_use_id === 'string'
-          ? message.parent_tool_use_id
+        typeof parsed['parent_tool_use_id'] === 'string'
+          ? (parsed['parent_tool_use_id'] as string)
           : undefined
       instance.partial = {
         messageId,

@@ -25,7 +25,7 @@ import { JsonClaudeApprovalCard } from './JsonClaudeApprovalCard'
 import { dispatchToolCard, ToolCardChrome } from './json-mode-cards'
 import { ToolGroup } from './json-mode-cards/ToolGroup'
 import { TaskCard } from './json-mode-cards/TaskCard'
-import { buildChildrenMap } from './json-mode-cards/grouping'
+import { buildChildrenMap, isSubAgentToolName } from './json-mode-cards/grouping'
 import { JsonModeMentionPopover, type MentionPopoverItem } from './JsonModeMentionPopover'
 import { JsonModeChatImageThumb } from './JsonModeChatImageThumb'
 import { fuzzyMatch } from '../fuzzy'
@@ -361,7 +361,7 @@ function renderEntries(
           let subAgentBody: ReactNode = null
           let subAgentChildCount = 0
           let subAgentDescendantHasPendingApproval = false
-          if (block.name === 'Task' && block.id) {
+          if (isSubAgentToolName(block.name) && block.id) {
             const childEntries =
               ctx.childrenByParentToolUseId.get(block.id) ?? []
             subAgentChildCount = childEntries.length

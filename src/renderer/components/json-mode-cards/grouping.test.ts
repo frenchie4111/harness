@@ -22,14 +22,15 @@ function assistantText(
 function assistantWithTask(
   id: string,
   taskId: string,
-  parentToolUseId?: string
+  parentToolUseId?: string,
+  toolName: 'Task' | 'Agent' = 'Task'
 ): JsonClaudeChatEntry {
   return {
     entryId: id,
     kind: 'assistant',
     blocks: [
       { type: 'text', text: 'spawning task' },
-      { type: 'tool_use', id: taskId, name: 'Task', input: {} }
+      { type: 'tool_use', id: taskId, name: toolName, input: {} }
     ],
     timestamp: 0,
     ...(parentToolUseId ? { parentToolUseId } : {})
@@ -84,6 +85,17 @@ describe('buildChildrenMap', () => {
     ])
     expect(topLevelEntries).toEqual([orphan, other])
     expect(childrenByParentToolUseId.get('T-missing')).toEqual([orphan])
+  })
+
+  it('treats Agent (Claude Code 2.1.126+ alias) the same as Task', () => {
+    const parent = assistantWithTask('a1', 'A1', undefined, 'Agent')
+    const child = assistantText('a2-sub', 'A1')
+    const { topLevelEntries, childrenByParentToolUseId } = buildChildrenMap([
+      parent,
+      child
+    ])
+    expect(topLevelEntries).toEqual([parent])
+    expect(childrenByParentToolUseId.get('A1')).toEqual([child])
   })
 
   it('preserves child insertion order under a parent', () => {

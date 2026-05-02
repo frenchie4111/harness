@@ -160,7 +160,10 @@ export function dispatchToolCard(props: ToolCardProps): JSX.Element {
       return <GlobCard {...props} />
     case 'TodoWrite':
       return <TodoWriteCard {...props} />
+    // 'Task' (older Claude Code) and 'Agent' (2.1.126+) both route to
+    // the subagent runner — render either as TaskCard.
     case 'Task':
+    case 'Agent':
       return (
         <TaskCard
           {...props}
