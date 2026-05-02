@@ -163,6 +163,13 @@ export const migrations: Migration[] = [
     }
     c.panes = migrated
     delete c.paneSplitDirections
+  },
+
+  // v5 → v6: introduce `snooze` and `snoozeDefaultDays`. No reshape needed —
+  // both fields default to absent / 7 at read time. This migration just bumps
+  // the version so future shape changes can rely on a stable starting point.
+  (_c) => {
+    // no-op
   }
 ]
 

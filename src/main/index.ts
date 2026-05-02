@@ -475,6 +475,19 @@ store.subscribe((event) => {
   }
 })
 
+// Persist snooze entries through to disk so wakeAt survives restart.
+store.subscribe((event) => {
+  if (event.type.startsWith('snooze/')) {
+    const byPath = store.getSnapshot().state.snooze.byPath
+    if (Object.keys(byPath).length === 0) {
+      delete config.snooze
+    } else {
+      config.snooze = byPath
+    }
+    saveConfig(config)
+  }
+})
+
 // When a session ID is discovered from a hook event (e.g. Codex assigns
 // its own session ID), persist panes immediately so the ID survives a quit.
 store.subscribe((event) => {

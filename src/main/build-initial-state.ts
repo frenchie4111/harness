@@ -42,7 +42,7 @@ export function buildInitialAppState(
     costs: config.costs ? { ...initialCosts, ...config.costs } : initialCosts,
     browser: initialBrowser,
     jsonClaude: initialJsonClaude,
-    snooze: initialSnooze,
+    snooze: config.snooze ? { byPath: { ...config.snooze } } : initialSnooze,
     settings: {
       ...initialSettings,
       theme: config.theme || DEFAULT_THEME,
@@ -93,7 +93,8 @@ export function buildInitialAppState(
         Number.isFinite(config.autoSleepMinutes) &&
         config.autoSleepMinutes >= 0
           ? Math.floor(config.autoSleepMinutes)
-          : 30
+          : 30,
+      snoozeDefaultDays: Math.max(1, Math.floor(config.snoozeDefaultDays ?? 7))
     }
   }
 }

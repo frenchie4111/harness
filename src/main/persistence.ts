@@ -10,6 +10,7 @@ import {
   type PersistedTab
 } from './persistence-migrations'
 import type { CostsState } from '../shared/state/costs'
+import type { SnoozeEntry } from '../shared/state/snooze'
 
 export type { PersistedPane, PersistedPaneNode, PersistedTab }
 
@@ -194,6 +195,11 @@ export interface Config {
   // Last-active backend id; restored on next launch so the user sees the
   // backend they were last looking at. Falls back to LOCAL_BACKEND_ID.
   activeBackendId?: string
+  // Snoozed worktrees keyed by absolute path. Wakes when wakeAt is reached
+  // or when the worktree's effective state transitions to 'processing'.
+  snooze?: Record<string, SnoozeEntry>
+  // Default duration (days) for plain-click snooze. Min 1, default 7.
+  snoozeDefaultDays?: number
 }
 
 export const DEFAULT_WORKTREE_BASE: 'remote' | 'local' = 'remote'
