@@ -80,11 +80,22 @@ own worktree.
   paths are recognized via the `compact_boundary` content-block type
   in the live stream and the synthetic `system` records in the JSONL
   on seed.
-- Per-tool cards (Read / Edit / Write / Bash / Grep / Glob / TodoWrite)
-  with a generic fallback for everything else. Tool calls collapsed by
-  default, expandable on click. Compact one-line headers
+- Per-tool cards (Read / Edit / MultiEdit / Write / Bash / Grep / Glob /
+  TodoWrite) with a generic fallback for everything else. Tool calls
+  collapsed by default, expandable on click. Compact one-line headers
   (`Read foo/bar.ts`, `Bash: npm test`, `Edit foo.ts (+12 −3)`).
   Errored tool calls show an "error" badge.
+- Edit / MultiEdit cards render a real unified diff with syntax
+  highlighting (same `highlight.js` instance used for fenced code).
+  Read cards render the file with syntax highlighting + line-number
+  gutter, dimming non-`offset`/`limit` lines when a range was requested.
+- Auto-stick scroll: chat pins to the bottom when streaming and the
+  user is near the bottom; releases the pin the moment the user
+  scrolls up so backreading isn't fought by new tokens.
+- Mobile/narrow-viewport word-wrap fix: `.markdown` uses
+  `overflow-wrap: anywhere`, user bubbles use `break-words`, the chat
+  scroll container is `overflow-x-hidden`. Long unbroken tokens
+  (URLs, hashes) no longer push the page wider than the viewport.
 - Consecutive tool calls grouped into a collapsible block between
   assistant text turns. Group header shows count + tool name list.
   Auto-expands when any tool inside has a pending approval; auto-
@@ -111,9 +122,16 @@ own worktree.
   the file. Thumbnails render in the chat history via a lazy
   `jsonClaude:readAttachmentImage` IPC.
 
+### Cost & usage
+- Per-session token + dollar usage rolled up from `result.usage`
+  events in the stream into the existing `costs` slice. Surfaces in
+  the same per-tab + per-worktree cost panel the xterm path uses.
+
 ### Other
 - Sidebar/tab status dots derived from the `jsonClaude` slice
-  (processing / waiting / needs-approval).
+  (processing / waiting / needs-approval). The deriver scopes per-event
+  and dedups against last-derived status, so streaming tokens don't
+  fan out into N status dispatches across N open chats.
 - Mobile/web client renders json-claude tabs (textarea uses 16px to
   avoid iOS auto-zoom).
 - Integration test that spawns real `claude -p` and exercises the
@@ -125,25 +143,6 @@ Each entry is sized for an independent branch + PR. Listed roughly in
 descending user-visible value.
 
 ### High value
-
-#### Cost meter
-The xterm path tails the session jsonl on `Stop` hooks via `CostTracker`
-and rolls usage into the `costs` slice. We don't fire those hooks for
-json-claude. Either tap `result.usage` from the stream and dispatch into
-`costs/` directly, or have `CostTracker` poll the json-claude jsonl too.
-Then surface the per-tab + per-worktree totals in the existing cost
-panel.
-
-#### Inline diff card for Edit / MultiEdit
-Today: before/after `<pre>` blocks side-by-side. Want: a real unified
-or split diff using the same diff renderer the existing DiffView uses.
-Same for MultiEdit (multiple before/after pairs).
-
-#### Read card with syntax highlighting
-Today: plain `<pre>` of the file content. Want: highlight by extension
-using the same `rehype-highlight` we already use for markdown code
-blocks. Bonus: line numbers + line-range highlighting when `offset` /
-`limit` were passed.
 
 #### "Allow always" with our own suggestions
 The per-session "Allow {tool} this session" lands matching tool calls
@@ -165,6 +164,20 @@ The plumbing for `updatedPermissions` on the response side is fine —
 returning an `addRules` entry already works end-to-end. Only the
 *input* side (suggestions to display) is missing.
 
+### High value (continued)
+
+#### Sub-agent nesting
+`assistant` events carry `parent_tool_use_id` when nested. Today
+sub-agent activity flattens into the parent transcript and looks
+chaotic. Want: nest child entries under the parent Task tool card.
+Renderer-side grouping is ready to consume this — only the manager/
+slice plumbing for `parent_tool_use_id` is still missing: persist the
+field on `JsonClaudeChatEntry` (or on each assistant entry) in
+`src/shared/state/json-claude.ts`, populate it in
+`src/main/json-claude-manager.ts` from the stream-json
+`parent_tool_use_id` field, and the JsonModeChat grouping pass can
+bucket child entries under the parent Task card.
+
 ### Medium value
 
 #### `result.usage` rate-limit warnings + MCP auth-needed surface
@@ -172,17 +185,6 @@ We drop `rate_limit_event` silently and only partially consume
 `system/init`. Surface rate-limit warnings inline in the chat, and an
 MCP-server-status row for `system/init.mcp_servers[]` entries that
 report `needs-auth` (with a re-auth CTA where relevant).
-
-#### Sub-agent nesting
-`assistant` events carry `parent_tool_use_id` when nested. Build a
-tree-view that nests sub-agent activity under the parent Task tool
-call instead of flattening them. The renderer side is ready to consume
-this — only the manager/slice plumbing for `parent_tool_use_id` is
-still required: persist the field on `JsonClaudeChatEntry` (or on each
-assistant entry) in `src/shared/state/json-claude.ts`, populate it in
-`src/main/json-claude-manager.ts` from the stream-json `parent_tool_use_id`
-field, and the JsonModeChat grouping pass can then bucket child entries
-under the parent Task card.
 
 #### Mid-session model switch
 Permission-mode cycling now uses a stdin `control_request` to flip
@@ -250,6 +252,64 @@ solving:
   - Stability guarantees on the stream-json protocol and the
     `--permission-prompt-tool` flag, which Anthropic still hasn't
     given.
+
+## Ship as default — blockers and wants
+
+What's required to flip `settings.defaultClaudeTabType` from `'xterm'`
+to `'json-claude'` for new users without immediate rollback.
+
+### P0 — must-have before flipping the default
+
+- **Subprocess-crash recovery UI.** Today a crashed json-claude
+  subprocess just leaves the tab showing `exited`. New users will hit
+  this and not know what to do. Want a clear "session ended; click to
+  restart" affordance, with the kill+respawn already wired
+  (`restartJsonClaude` exists).
+- **Rate-limit error display.** Surface `rate_limit_event` and
+  `result` errors with retry guidance instead of dropping silently.
+  Right now the chat just appears stuck.
+- **`/login` / OAuth re-auth path** — or, at minimum, a clear "switch
+  this tab to xterm to re-auth" CTA when auth fails. TUI-only `/login`
+  means default users have no recovery path on token expiry today.
+- **Pinned-Claude-version smoke test in CI.**
+  `--permission-prompt-tool` is `.hideHelp()` and could rename without
+  notice. Default users would break first. Run a smoke test on every
+  Claude Code dependency bump.
+- **Persisted "Allow always".** Per-session "Allow this session"
+  works, but new users coming from xterm expect global allow rules to
+  stick across restarts. See "Allow always with our own suggestions"
+  in the High-value backlog — pick the self-generated patterns option
+  unless Anthropic ships `permission_suggestions` on the MCP path.
+
+### P1 — strong wants (not strict blockers, but noticeable gaps)
+
+- **Sub-agent nesting.** Already in High-value backlog. Without it,
+  Task-using turns look chaotic — sub-agent reads/edits flatten into
+  the parent transcript. Definitely visible to a user trying json mode
+  for the first time.
+- **Mid-session model switch.** Picker in the statusline. Listed in
+  Medium value below.
+- **`input_json_delta` for tool_use blocks.** Tool input progressively
+  pops in instead of one big jump. UX polish, but visible.
+
+### P2 — polish that won't block the default flip
+
+Code-block copy button, Cmd+F search, Jump-to-bottom, terminal
+font-family/size, mobile/tab-bar create-json-claude-tab,
+multi-tool cards (WebFetch/WebSearch/NotebookEdit/BashOutput/Task),
+hook-event observability, per-worktree override of the default tab
+type.
+
+### Already in good shape
+
+Performance is no longer a concern — the recent perf pass cut event-
+loop spikes ~10x and brought streaming-chat re-render cost to O(1) per
+token regardless of how many json-mode chats are open (see
+`json-status-deriver-dedup-and-scope`, `cascade-detection-and-architecture-docs`,
+`changed-files-watcher-not-poll`, `branch-commits-watcher-and-cascade-tuning`,
+`watched-query-cache-for-panels`). Baseline polish (cost meter, real
+diff cards, syntax-highlighted Read, scroll-stick, mobile word-wrap)
+is shipped.
 
 ## Standing risks
 
