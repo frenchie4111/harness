@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { suggestPermissionPatterns } from './permission-patterns'
+import {
+  suggestPermissionPatterns,
+  isFileToolCrossCwd
+} from './permission-patterns'
 
 describe('suggestPermissionPatterns', () => {
   it('Bash with multi-word command yields narrow + medium + broad', () => {
@@ -178,5 +181,122 @@ describe('suggestPermissionPatterns', () => {
     expect(out).toEqual([
       { rule: { toolName: '*' }, label: '* (any tool)', scope: 'broad' }
     ])
+  })
+
+  describe('cross-cwd file paths', () => {
+    const cwd = '/Users/me/proj'
+
+    it('inside cwd: still emits narrow + medium + broad', () => {
+      const out = suggestPermissionPatterns(
+        'Write',
+        { file_path: '/Users/me/proj/src/foo.ts' },
+        cwd
+      )
+      expect(out.map((s) => s.rule)).toEqual([
+        { toolName: 'Write', ruleContent: '/Users/me/proj/src/foo.ts' },
+        { toolName: 'Write', ruleContent: '/Users/me/proj/src/**' },
+        { toolName: 'Write' }
+      ])
+    })
+
+    it('outside cwd: only emits the bare-tool grant', () => {
+      const out = suggestPermissionPatterns(
+        'Write',
+        { file_path: '/tmp/foo.txt' },
+        cwd
+      )
+      expect(out).toEqual([
+        { rule: { toolName: 'Write' }, label: 'Write', scope: 'broad' }
+      ])
+    })
+
+    it('cwd unsupplied: behaves as before (narrow + medium + broad)', () => {
+      const out = suggestPermissionPatterns(
+        'Write',
+        { file_path: '/tmp/foo.txt' }
+      )
+      expect(out.map((s) => s.scope)).toEqual(['narrow', 'medium', 'broad'])
+    })
+
+    it('relative file_path is treated as inside cwd', () => {
+      const out = suggestPermissionPatterns(
+        'Read',
+        { file_path: 'src/foo.ts' },
+        cwd
+      )
+      expect(out.map((s) => s.scope)).toEqual(['narrow', 'medium', 'broad'])
+    })
+
+    it('exact cwd match counts as inside', () => {
+      const out = suggestPermissionPatterns(
+        'Read',
+        { file_path: '/Users/me/proj' },
+        cwd
+      )
+      expect(out.length).toBeGreaterThan(1)
+    })
+
+    it('cwd with trailing slash works', () => {
+      const out = suggestPermissionPatterns(
+        'Write',
+        { file_path: '/Users/me/proj/foo.ts' },
+        '/Users/me/proj/'
+      )
+      expect(out.map((s) => s.scope)).toEqual(['narrow', 'medium', 'broad'])
+    })
+
+    it('similarly-prefixed dir is NOT considered inside (no false-positive)', () => {
+      // /Users/me/proj-other should not be treated as inside /Users/me/proj
+      const out = suggestPermissionPatterns(
+        'Write',
+        { file_path: '/Users/me/proj-other/foo.ts' },
+        cwd
+      )
+      expect(out).toEqual([
+        { rule: { toolName: 'Write' }, label: 'Write', scope: 'broad' }
+      ])
+    })
+  })
+
+  describe('isFileToolCrossCwd', () => {
+    const cwd = '/Users/me/proj'
+
+    it('true for file tool with absolute path outside cwd', () => {
+      expect(
+        isFileToolCrossCwd('Write', { file_path: '/tmp/foo.txt' }, cwd)
+      ).toBe(true)
+    })
+
+    it('false for file tool inside cwd', () => {
+      expect(
+        isFileToolCrossCwd(
+          'Write',
+          { file_path: '/Users/me/proj/foo.ts' },
+          cwd
+        )
+      ).toBe(false)
+    })
+
+    it('false when no cwd is provided', () => {
+      expect(
+        isFileToolCrossCwd('Write', { file_path: '/tmp/foo.txt' }, undefined)
+      ).toBe(false)
+    })
+
+    it('false for non-file tools', () => {
+      expect(
+        isFileToolCrossCwd('Bash', { command: 'ls /tmp' }, cwd)
+      ).toBe(false)
+    })
+
+    it('false when no file_path is present', () => {
+      expect(isFileToolCrossCwd('Write', {}, cwd)).toBe(false)
+    })
+
+    it('false for relative paths', () => {
+      expect(
+        isFileToolCrossCwd('Read', { file_path: 'src/foo.ts' }, cwd)
+      ).toBe(false)
+    })
   })
 })

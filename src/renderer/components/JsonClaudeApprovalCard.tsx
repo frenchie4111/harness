@@ -7,6 +7,7 @@ import { formatPendingTool } from '../pending-tool'
 import { useJsonClaudeSession, useSettings } from '../store'
 import {
   suggestPermissionPatterns,
+  isFileToolCrossCwd,
   type PermissionPatternSuggestion
 } from '../../shared/permission-patterns'
 
@@ -66,10 +67,14 @@ export function JsonClaudeApprovalCard({
     [approval.toolName, approval.input]
   )
 
+  const session = useJsonClaudeSession(approval.sessionId)
+  const cwd = session?.worktreePath
+
   const suggestions = useMemo(
-    () => suggestPermissionPatterns(approval.toolName, approval.input),
-    [approval.toolName, approval.input]
+    () => suggestPermissionPatterns(approval.toolName, approval.input, cwd),
+    [approval.toolName, approval.input, cwd]
   )
+  const crossCwd = isFileToolCrossCwd(approval.toolName, approval.input, cwd)
   // Identify suggestions by their display label since the rule shape is an
   // object — labels are unique within a single tool's suggestion list.
   const [selectedLabel, setSelectedLabel] = useState<string>(
@@ -78,7 +83,6 @@ export function JsonClaudeApprovalCard({
   const selectedSuggestion =
     suggestions.find((s) => s.label === selectedLabel) ?? suggestions[0]
 
-  const session = useJsonClaudeSession(approval.sessionId)
   const isEditTool = (EDIT_TOOL_NAMES as readonly string[]).includes(
     approval.toolName
   )
@@ -333,6 +337,16 @@ export function JsonClaudeApprovalCard({
             written to <span className="font-mono">.claude/settings.local.json</span>{' '}
             and applies across sessions in this worktree.
           </div>
+          {crossCwd && (
+            <div className="text-[11px] text-amber-400/90 bg-amber-500/10 border border-amber-500/30 rounded px-2 py-1.5">
+              This file is outside the worktree. Claude only persists
+              path-specific rules relative to the project root, so the
+              only option that will actually fire is allowing every{' '}
+              <span className="font-mono">{approval.toolName}</span> call
+              regardless of path. Use "Allow once" instead if you want
+              this single write only.
+            </div>
+          )}
           <div className="space-y-1">
             {suggestions.map((s) => (
               <label
