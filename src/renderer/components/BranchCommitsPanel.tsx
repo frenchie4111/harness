@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useCallback } from 'react'
 import { RefreshCw, ArrowUp } from 'lucide-react'
 import type { BranchCommit } from '../types'
 import { Tooltip } from './Tooltip'
 import { RightPanel } from './RightPanel'
+import { useWatchedQuery } from '../hooks/useWatchedQuery'
 
 interface BranchCommitsPanelProps {
   worktreePath: string | null
@@ -10,46 +11,16 @@ interface BranchCommitsPanelProps {
 }
 
 export function BranchCommitsPanel({ worktreePath, onOpenCommitReview }: BranchCommitsPanelProps): JSX.Element | null {
-  const [commits, setCommits] = useState<BranchCommit[]>([])
-  const [hasLoaded, setHasLoaded] = useState(false)
+  const fetcher = useCallback((path: string) => window.api.getBranchCommits(path), [])
 
-  const refresh = useCallback(async () => {
-    if (!worktreePath) {
-      setCommits([])
-      return
-    }
-    try {
-      const result = await window.api.getBranchCommits(worktreePath)
-      setCommits(result)
-    } catch (err) {
-      console.error('Failed to get branch commits:', err)
-      setCommits([])
-    } finally {
-      setHasLoaded(true)
-    }
-  }, [worktreePath])
+  const { data, loading, refresh } = useWatchedQuery<BranchCommit[]>({
+    worktreePath,
+    cacheKey: 'branchCommits',
+    fetcher,
+  })
 
-  useEffect(() => {
-    setHasLoaded(false)
-  }, [worktreePath])
-
-  useEffect(() => {
-    if (!worktreePath) return
-    refresh()
-    // The watcher signal covers any git state change (index, HEAD,
-    // MERGE_HEAD), not just diff changes — branch-commits invalidations
-    // share the same trigger.
-    window.api.watchChangedFiles(worktreePath)
-    const offInvalidated = window.api.onChangedFilesInvalidated((path) => {
-      if (path === worktreePath) refresh()
-    })
-    const interval = setInterval(refresh, 60000)
-    return () => {
-      clearInterval(interval)
-      offInvalidated()
-      window.api.unwatchChangedFiles(worktreePath)
-    }
-  }, [refresh, worktreePath])
+  const commits = data ?? []
+  const hasLoaded = !loading
 
   if (!worktreePath) return null
 
