@@ -21,7 +21,7 @@ import { randomUUID } from 'crypto'
 import { existsSync, readFileSync } from 'fs'
 import { createRequire } from 'module'
 import { homedir } from 'os'
-import { dirname, join } from 'path'
+import { dirname, join, sep } from 'path'
 import { isPackaged } from './paths'
 import type { Store } from './store'
 import type {
@@ -175,7 +175,14 @@ function bundledClaudeBinPath(): string {
   }
   const dynamicRequire = createRequire(__filename)
   const pkgPath = dynamicRequire.resolve(`${info.pkg}/package.json`)
-  cachedBundledClaudeBinPath = join(dirname(pkgPath), info.bin)
+  // In packaged builds the resolved path lives inside app.asar (where the
+  // package.json is readable via Electron's asar shim), but spawn() goes
+  // through the OS and asar isn't a real directory — ENOTDIR. The actual
+  // binary is extracted to app.asar.unpacked/ via the asarUnpack config.
+  cachedBundledClaudeBinPath = join(dirname(pkgPath), info.bin).replace(
+    `${sep}app.asar${sep}`,
+    `${sep}app.asar.unpacked${sep}`
+  )
   return cachedBundledClaudeBinPath
 }
 
