@@ -70,6 +70,8 @@ contextBridge.exposeInMainWorld('api', {
   listAllFiles: (worktreePath: string) => req('worktree:listFiles', worktreePath),
   readWorktreeFile: (worktreePath: string, filePath: string) =>
     req('worktree:readFile', worktreePath, filePath),
+  readWorktreeFileBinary: (worktreePath: string, filePath: string) =>
+    req('worktree:readFileBinary', worktreePath, filePath),
   writeWorktreeFile: (worktreePath: string, filePath: string, contents: string) =>
     req('worktree:writeFile', worktreePath, filePath, contents),
 

@@ -18,6 +18,10 @@ export interface FileReadResult {
   error?: string
 }
 
+export type FileBinaryReadResult =
+  | { ok: true; bytes: Uint8Array; mime: string; size: number }
+  | { ok: false; error: string }
+
 export interface FileWriteResult {
   ok: boolean
   error?: string
@@ -196,6 +200,10 @@ export interface ElectronAPI {
   getCommitFileDiffSides(worktreePath: string, hash: string, filePath: string): Promise<FileDiffSides>
   listAllFiles(worktreePath: string): Promise<string[]>
   readWorktreeFile(worktreePath: string, filePath: string): Promise<FileReadResult>
+  readWorktreeFileBinary(
+    worktreePath: string,
+    filePath: string
+  ): Promise<FileBinaryReadResult>
   writeWorktreeFile(
     worktreePath: string,
     filePath: string,

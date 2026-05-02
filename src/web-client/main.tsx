@@ -142,6 +142,10 @@ function buildApi(transport: WebSocketClientTransport): ElectronAPI {
       req('worktree:readFile', worktreePath, filePath) as ReturnType<
         ElectronAPI['readWorktreeFile']
       >,
+    readWorktreeFileBinary: (worktreePath, filePath) =>
+      req('worktree:readFileBinary', worktreePath, filePath) as ReturnType<
+        ElectronAPI['readWorktreeFileBinary']
+      >,
     writeWorktreeFile: (worktreePath, filePath, contents) =>
       req('worktree:writeFile', worktreePath, filePath, contents) as ReturnType<
         ElectronAPI['writeWorktreeFile']
