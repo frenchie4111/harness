@@ -97,6 +97,16 @@ own worktree.
   the displayed name.
 - Bottom statusline (Claude TUI style): connection state + thinking
   indicator on the left, interrupt + permission-mode chip on the right.
+- Sub-agent nesting. `parent_tool_use_id` on assistant entries is
+  persisted through the slice, so when Claude spawns a Task agent the
+  sub-agent's chronological work (text, thinking, tool calls, results)
+  renders inside an expandable `TaskCard` rather than flattening into
+  the parent transcript. Recursive — a sub-agent that itself calls
+  Task gets a nested TaskCard for its grandchildren. Same chevron +
+  chrome treatment as ToolGroup so it reads as another level of the
+  same nesting design. Auto-expands while the Task is in flight or any
+  descendant has a pending approval; auto-collapses once everything
+  resolves unless the user manually toggled.
 
 ### Composer
 - Slash-command autocomplete: typing `/` pops a ranked picker over the
@@ -173,17 +183,6 @@ We drop `rate_limit_event` silently and only partially consume
 MCP-server-status row for `system/init.mcp_servers[]` entries that
 report `needs-auth` (with a re-auth CTA where relevant).
 
-#### Sub-agent nesting
-`assistant` events carry `parent_tool_use_id` when nested. Build a
-tree-view that nests sub-agent activity under the parent Task tool
-call instead of flattening them. The renderer side is ready to consume
-this — only the manager/slice plumbing for `parent_tool_use_id` is
-still required: persist the field on `JsonClaudeChatEntry` (or on each
-assistant entry) in `src/shared/state/json-claude.ts`, populate it in
-`src/main/json-claude-manager.ts` from the stream-json `parent_tool_use_id`
-field, and the JsonModeChat grouping pass can then bucket child entries
-under the parent Task card.
-
 #### Mid-session model switch
 Permission-mode cycling now uses a stdin `control_request` to flip
 mid-turn without a respawn. Models don't have an equivalent control
@@ -216,8 +215,7 @@ Likely lives alongside the existing per-repo `.harness.json`.
 ### Smaller / polish
 
 - Multi-tool cards still missing: WebFetch (URL preview),
-  WebSearch (hit list), NotebookEdit, BashOutput (background polling),
-  Task (sub-agent nesting display).
+  WebSearch (hit list), NotebookEdit, BashOutput (background polling).
 - Code-block "copy" button on assistant text.
 - `Cmd+F` search over chat scrollback.
 - "Jump to bottom" affordance when paused on scroll-up.
