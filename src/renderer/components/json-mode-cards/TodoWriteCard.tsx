@@ -1,13 +1,8 @@
 import { ToolCardChrome, type ToolCardProps } from './index'
-
-interface TodoItem {
-  content: string
-  status: string
-  activeForm?: string
-}
+import { extractTodos } from '../../../shared/state/json-claude-todos'
 
 export function TodoWriteCard({ block, autoApproved, sessionAllowed }: ToolCardProps): JSX.Element {
-  const todos = (block.input?.todos as TodoItem[] | undefined) ?? []
+  const todos = extractTodos(block.input)
   return (
     <ToolCardChrome
       name="TodoWrite"

@@ -6,6 +6,7 @@ import type { HiddenRightPanels, RightPanelKey } from '../../shared/state/repo-c
 const LABELS: Record<RightPanelKey, string> = {
   merge: 'Merge Locally',
   pr: 'PR Status',
+  todos: 'Todos',
   commits: 'Branch Commits',
   changedFiles: 'Changed Files',
   allFiles: 'All Files',

@@ -10,6 +10,7 @@ import { BranchCommitsPanel } from './BranchCommitsPanel'
 import { ChangedFilesPanel } from './ChangedFilesPanel'
 import { AllFilesPanel } from './AllFilesPanel'
 import { CostPanel } from './CostPanel'
+import { JsonClaudeTodosPanel } from './JsonClaudeTodosPanel'
 import { RightColumnToolbar } from './RightColumnToolbar'
 
 type ChangedFilesPanelProps = React.ComponentProps<typeof ChangedFilesPanel>
@@ -19,6 +20,10 @@ interface RightColumnProps {
   width: number
   activeWorktreeId: string | null
   activeRepoRoot: string | null
+  /** Id of the currently focused tab in the active worktree's focused
+   *  pane. Used by the Todos panel to look up the focused json-claude
+   *  session; null when no worktree is active. */
+  focusedTabId: string | null
   worktrees: Worktree[]
   prStatuses: Record<string, PRStatus | null>
   prLoading: boolean
@@ -40,6 +45,7 @@ export function RightColumn({
   width,
   activeWorktreeId,
   activeRepoRoot,
+  focusedTabId,
   worktrees,
   prStatuses,
   prLoading,
@@ -102,6 +108,8 @@ export function RightColumn({
             onConnectGithub={onOpenGithubSettings}
           />
         )
+      case 'todos':
+        return <JsonClaudeTodosPanel key="todos" focusedTabId={focusedTabId} />
       case 'commits':
         return (
           <BranchCommitsPanel
