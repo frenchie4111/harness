@@ -1104,9 +1104,11 @@ const EXT_TO_MIME: Record<string, string> = {
 }
 
 export type FileBinaryReadResult =
-  | { ok: true; bytes: Uint8Array; mime: string; size: number }
+  | { ok: true; base64: string; mime: string; size: number }
   | { ok: false; error: string }
 
+// base64 keeps the bytes intact across both Electron IPC structured-clone
+// and the JSON-only WebSocket transport, at ~33% size overhead.
 export async function readWorktreeFileBinary(
   worktreePath: string,
   filePath: string
@@ -1130,7 +1132,7 @@ export async function readWorktreeFileBinary(
     const mime = EXT_TO_MIME[ext] ?? 'application/octet-stream'
     return {
       ok: true,
-      bytes: new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength),
+      base64: buf.toString('base64'),
       mime,
       size: st.size
     }

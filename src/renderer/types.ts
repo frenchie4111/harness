@@ -19,7 +19,7 @@ export interface FileReadResult {
 }
 
 export type FileBinaryReadResult =
-  | { ok: true; bytes: Uint8Array; mime: string; size: number }
+  | { ok: true; base64: string; mime: string; size: number }
   | { ok: false; error: string }
 
 export interface FileWriteResult {
