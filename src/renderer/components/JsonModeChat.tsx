@@ -535,17 +535,32 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
     const el = scrollRef.current
     if (!el) return
     el.scrollTop = el.scrollHeight
+    let clearTimer: ReturnType<typeof setTimeout> | null = null
     const ro = new ResizeObserver(() => {
       if (!stickyBottom.current) return
       isProgrammaticScroll.current = true
       el.scrollTop = el.scrollHeight
+      // Single-frame jumps (thinking card body appearing, cursor span
+      // landing) grow content by ~30px in one shot — re-snap on the
+      // next frame in case more layout settled after our first commit.
       requestAnimationFrame(() => {
-        isProgrammaticScroll.current = false
+        if (stickyBottom.current) el.scrollTop = el.scrollHeight
       })
+      // Hold the suppression window past back-to-back scroll events
+      // from rapid resize bursts. RAF alone clears the flag too fast
+      // and the second scroll event slips through, flipping sticky.
+      if (clearTimer) clearTimeout(clearTimer)
+      clearTimer = setTimeout(() => {
+        isProgrammaticScroll.current = false
+        clearTimer = null
+      }, 150)
     })
     const content = el.firstElementChild
     if (content) ro.observe(content)
-    return () => ro.disconnect()
+    return () => {
+      ro.disconnect()
+      if (clearTimer) clearTimeout(clearTimer)
+    }
   }, [])
 
   const onScroll = (): void => {
@@ -553,7 +568,10 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
     const el = scrollRef.current
     if (!el) return
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
-    const nextSticky = distanceFromBottom < 32
+    // 64px tolerates single-frame layout jumps (thinking card body opening,
+    // cursor span appearing — both ~30px) without misreading them as user
+    // intent. Real scroll-up gestures move past this immediately.
+    const nextSticky = distanceFromBottom < 64
     stickyBottom.current = nextSticky
     setShowJumpToBottom(!nextSticky)
   }
