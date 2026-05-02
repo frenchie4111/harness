@@ -78,7 +78,8 @@ export function buildInitialAppState(
       jsonModeClaudeTabs: config.jsonModeClaudeTabs === true,
       defaultClaudeTabType: config.defaultClaudeTabType === 'json' ? 'json' : 'xterm',
       autoApprovePermissions: config.autoApprovePermissions === true,
-      autoApproveSteerInstructions: config.autoApproveSteerInstructions || ''
+      autoApproveSteerInstructions: config.autoApproveSteerInstructions || '',
+      useSystemClaudeForJsonMode: config.useSystemClaudeForJsonMode === true
     }
   }
 }

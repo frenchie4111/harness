@@ -12,6 +12,14 @@ own worktree.
   --include-partial-messages` per json-claude tab, behind
   `settings.jsonModeClaudeTabs` (toggleable from the Experimental
   Settings section).
+- The json-mode subprocess is the bundled `@anthropic-ai/claude-code`
+  native binary (pinned in `package.json`), spawned directly via
+  `createRequire`-resolved path through the platform-specific
+  `@anthropic-ai/claude-code-<platform>-<arch>` subpackage. xterm tabs
+  still use the user's PATH `claude`. `settings.useSystemClaudeForJsonMode`
+  (no UI; edit `config.json`) flips json-mode back to PATH for
+  diagnostics. The bundled binary is unpacked from asar (216MB native
+  Mach-O / ELF / PE per platform) so it can be exec'd at runtime.
 - Session persistence via `--resume <sessionId>` on restart, plus
   on-disk transcript replay so the chat scrollback rehydrates after a
   full app restart. Replay dispatches a single `entriesSeeded` event
@@ -245,8 +253,6 @@ Likely lives alongside the existing per-repo `.harness.json`.
 - Plain Allow path coverage in the integration test (regressed once;
   add a permanent guard).
 - Deny-path coverage (only allow-with-edits is covered today).
-- Pinned-Claude-version smoke test in CI: `--permission-prompt-tool`
-  is `.hideHelp()` and could rename without notice.
 - Auth-required / subprocess-crash recovery UI ("session ended; click
   to restart" instead of just `exited` text).
 - Rate-limit error display with retry guidance.
@@ -322,10 +328,14 @@ is shipped.
 
 ## Standing risks
 
-- **`--permission-prompt-tool` is `.hideHelp()`.** Pinned to Claude
-  Code 2.1.114 today. An Anthropic release could rename or remove the
-  flag with zero deprecation. Mitigations: feature-flagged off by
-  default; add a CI smoke test on every Claude Code bump.
+- **`--permission-prompt-tool` is `.hideHelp()`.** json-mode runs
+  against the bundled `@anthropic-ai/claude-code` (currently 2.1.126,
+  pinned in `package.json`) so a global `npm i -g` of a breaking version
+  can't surprise users. The integration test in
+  `src/main/approval-bridge.test.ts` exercises the round trip on every
+  vitest run; a future CI workflow can run that against the pinned dep
+  to gate dep bumps. xterm tabs still hit the user's PATH `claude` and
+  carry the same risk for that surface.
 - **Stream-json schema drift.** `PermissionResult.updatedInput` was
   optional through 2.1.109, became required in 2.1.114 — we got bit
   once (the "plain Allow" regression). Same kind of drift could land

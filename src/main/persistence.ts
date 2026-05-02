@@ -151,6 +151,9 @@ export interface Config {
   // policy prompt. Empty by default. Has no effect unless
   // autoApprovePermissions is on.
   autoApproveSteerInstructions?: string
+  // Diagnostic toggle (no UI): when true, json-mode tabs spawn the user's
+  // PATH `claude` instead of the bundled one. Default off.
+  useSystemClaudeForJsonMode?: boolean
 }
 
 export const DEFAULT_WORKTREE_BASE: 'remote' | 'local' = 'remote'
