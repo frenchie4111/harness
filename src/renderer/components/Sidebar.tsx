@@ -9,6 +9,7 @@ import type { SnoozeEntry } from '../../shared/state'
 import type { GroupKey } from '../worktree-sort'
 import { groupWorktrees } from '../worktree-sort'
 import { WorktreeTab } from './WorktreeTab'
+import { SnoozeCalendar } from './SnoozeCalendar'
 import { repoNameColor } from './RepoIcon'
 import { BackendChipStrip } from './BackendChipStrip'
 
@@ -150,11 +151,26 @@ export function Sidebar({
     }
   }, [continueTarget, continueBranchName, onContinueWorktree, cancelContinue])
 
+  const [calendarFor, setCalendarFor] = useState<{
+    path: string
+    anchor: { top: number; left: number; width: number; height: number }
+  } | null>(null)
+
   const onSnoozeRow = useCallback(
     (path: string, e: React.MouseEvent) => {
       if (e.shiftKey) {
-        // Calendar popover wiring lives in Sidebar (step 9). For plain
-        // shift-click without a popover yet, fall back to default duration.
+        const target = e.currentTarget as HTMLElement
+        const rect = target.getBoundingClientRect()
+        setCalendarFor({
+          path,
+          anchor: {
+            top: rect.top,
+            left: rect.left,
+            width: rect.width,
+            height: rect.height
+          }
+        })
+        return
       }
       const days = Math.max(1, Math.floor(snoozeDefaultDays ?? 7))
       window.api.snooze(path, Date.now() + days * 86400000)
@@ -165,6 +181,15 @@ export function Sidebar({
   const onUnsnoozeRow = useCallback((path: string) => {
     window.api.unsnooze(path)
   }, [])
+
+  const handleCalendarPick = useCallback(
+    (wakeAt: number) => {
+      if (!calendarFor) return
+      window.api.snooze(calendarFor.path, wakeAt)
+      setCalendarFor(null)
+    },
+    [calendarFor]
+  )
 
   const handleContinueKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -517,6 +542,14 @@ export function Sidebar({
           </button>
         </Tooltip>
       </div>
+      {calendarFor && (
+        <SnoozeCalendar
+          anchor={calendarFor.anchor}
+          defaultDays={Math.max(1, Math.floor(snoozeDefaultDays ?? 7))}
+          onPick={handleCalendarPick}
+          onDismiss={() => setCalendarFor(null)}
+        />
+      )}
     </div>
   )
 }
