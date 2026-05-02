@@ -108,6 +108,16 @@ own worktree.
   the displayed name.
 - Bottom statusline (Claude TUI style): connection state + thinking
   indicator on the left, interrupt + permission-mode chip on the right.
+- Sub-agent nesting. `parent_tool_use_id` on assistant entries is
+  persisted through the slice, so when Claude spawns a Task agent the
+  sub-agent's chronological work (text, thinking, tool calls, results)
+  renders inside an expandable `TaskCard` rather than flattening into
+  the parent transcript. Recursive — a sub-agent that itself calls
+  Task gets a nested TaskCard for its grandchildren. Same chevron +
+  chrome treatment as ToolGroup so it reads as another level of the
+  same nesting design. Auto-expands while the Task is in flight or any
+  descendant has a pending approval; auto-collapses once everything
+  resolves unless the user manually toggled.
 
 ### Composer
 - Slash-command autocomplete: typing `/` pops a ranked picker over the
@@ -218,8 +228,7 @@ Likely lives alongside the existing per-repo `.harness.json`.
 ### Smaller / polish
 
 - Multi-tool cards still missing: WebFetch (URL preview),
-  WebSearch (hit list), NotebookEdit, BashOutput (background polling),
-  Task (sub-agent nesting display).
+  WebSearch (hit list), NotebookEdit, BashOutput (background polling).
 - Code-block "copy" button on assistant text.
 - `Cmd+F` search over chat scrollback.
 - "Jump to bottom" affordance when paused on scroll-up.

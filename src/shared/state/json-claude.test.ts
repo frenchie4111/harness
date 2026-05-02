@@ -915,6 +915,109 @@ describe('jsonClaudeReducer', () => {
     expect(next).toBe(initialJsonClaude)
   })
 
+  it('entryAppended persists parentToolUseId on a sub-agent assistant entry', () => {
+    let state = seedSession(initialJsonClaude)
+    const entry: JsonClaudeChatEntry = {
+      entryId: 'a-sub-1',
+      kind: 'assistant',
+      blocks: [{ type: 'text', text: 'sub-agent work' }],
+      timestamp: 1,
+      parentToolUseId: 'toolu_parent_task'
+    }
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/entryAppended',
+      payload: { sessionId: SID, entry }
+    })
+    expect(state.sessions[SID].entries[0].parentToolUseId).toBe(
+      'toolu_parent_task'
+    )
+  })
+
+  it('assistantTextDelta preserves parentToolUseId on the entry', () => {
+    let state = seedSession(initialJsonClaude)
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/entryAppended',
+      payload: {
+        sessionId: SID,
+        entry: {
+          entryId: 'a-sub-1',
+          kind: 'assistant',
+          blocks: [{ type: 'text', text: '' }],
+          timestamp: 1,
+          isPartial: true,
+          parentToolUseId: 'toolu_parent_task'
+        }
+      }
+    })
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/assistantTextDelta',
+      payload: { sessionId: SID, entryId: 'a-sub-1', textDelta: 'hi' }
+    })
+    expect(state.sessions[SID].entries[0].parentToolUseId).toBe(
+      'toolu_parent_task'
+    )
+    expect(state.sessions[SID].entries[0].blocks?.[0].text).toBe('hi')
+  })
+
+  it('assistantBlockAppended preserves parentToolUseId on the entry', () => {
+    let state = seedSession(initialJsonClaude)
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/entryAppended',
+      payload: {
+        sessionId: SID,
+        entry: {
+          entryId: 'a-sub-1',
+          kind: 'assistant',
+          blocks: [{ type: 'text', text: 'hi' }],
+          timestamp: 1,
+          isPartial: true,
+          parentToolUseId: 'toolu_parent_task'
+        }
+      }
+    })
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/assistantBlockAppended',
+      payload: {
+        sessionId: SID,
+        entryId: 'a-sub-1',
+        block: { type: 'tool_use', id: 't1', name: 'Read' }
+      }
+    })
+    expect(state.sessions[SID].entries[0].parentToolUseId).toBe(
+      'toolu_parent_task'
+    )
+  })
+
+  it('assistantEntryFinalized preserves parentToolUseId on the entry', () => {
+    let state = seedSession(initialJsonClaude)
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/entryAppended',
+      payload: {
+        sessionId: SID,
+        entry: {
+          entryId: 'a-sub-1',
+          kind: 'assistant',
+          blocks: [{ type: 'text', text: 'partial' }],
+          timestamp: 1,
+          isPartial: true,
+          parentToolUseId: 'toolu_parent_task'
+        }
+      }
+    })
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/assistantEntryFinalized',
+      payload: {
+        sessionId: SID,
+        entryId: 'a-sub-1',
+        blocks: [{ type: 'text', text: 'final' }]
+      }
+    })
+    const finalized = state.sessions[SID].entries[0]
+    expect(finalized.parentToolUseId).toBe('toolu_parent_task')
+    expect(finalized.isPartial).toBeUndefined()
+    expect(finalized.blocks?.[0].text).toBe('final')
+  })
+
   it('sessionStarted preserves sessionToolApprovals + decisions across re-attach', () => {
     let state = seedSession(initialJsonClaude)
     state = jsonClaudeReducer(state, {
