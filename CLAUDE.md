@@ -20,6 +20,7 @@ navigation.
 - **lucide-react** v1.x for icons (note: brand icons like `Github` are NOT exported in this version — use `GitPullRequest` etc.)
 - **electron-builder** for packaging, signed with the user's personal Developer ID, notarized
 - **electron-updater** for OTA updates from GitHub releases
+- **`@anthropic-ai/claude-code`** is bundled as a dep (pinned native binary) and used by json-mode tabs only. xterm Claude tabs continue to spawn the user's PATH `claude` so power users on bleeding-edge / beta builds keep that experience. Both share `~/.claude/` for auth + MCP config.
 
 ## Architecture (read this before touching state)
 
@@ -324,6 +325,24 @@ hard dependency on `gh`.
   (homebrew binaries, nvm, etc.).
 - **Auto-updater is dev-mode no-op** — `setupAutoUpdater()` returns early
   unless `app.isPackaged`.
+- **Dual-claude model** — Harness ships two Claude Code binaries. **xterm
+  Claude tabs** spawn `/bin/zsh -ilc claude` so the user's PATH `claude`
+  is what runs (lets bleeding-edge / beta testers stay on their own
+  build). **json-mode tabs** spawn the bundled
+  `@anthropic-ai/claude-code` native binary directly — pinned per Harness
+  release so the `--permission-prompt-tool` round trip and stream-json
+  schema can't drift between npm publishes. Both share `~/.claude/` for
+  auth + MCP config, so the dual binaries are invisible at the user
+  level. The bundled binary is the platform-specific one from
+  `@anthropic-ai/claude-code-<platform>-<arch>` (~216MB on disk per
+  platform); resolved at runtime via `createRequire` so the bundler
+  doesn't try to inline it. electron-builder hardlink-dedups, so the
+  resolver targets the platform subpackage's `claude` directly rather
+  than the wrapper's `bin/claude.exe`. Both packages live in
+  `asarUnpack` (native binaries can't exec from inside asar). The
+  undocumented `useSystemClaudeForJsonMode: true` setting in
+  `config.json` flips json-mode back to PATH `claude` for diagnostics
+  / version comparison — no UI, edit the JSON directly.
 
 ## Workflow conventions
 
