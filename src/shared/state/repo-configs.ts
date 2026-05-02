@@ -1,8 +1,9 @@
-export type RightPanelKey = 'merge' | 'pr' | 'commits' | 'changedFiles' | 'allFiles' | 'cost'
+export type RightPanelKey = 'merge' | 'pr' | 'todos' | 'commits' | 'changedFiles' | 'allFiles' | 'cost'
 
 export const DEFAULT_RIGHT_PANEL_ORDER: RightPanelKey[] = [
   'merge',
   'pr',
+  'todos',
   'commits',
   'changedFiles',
   'allFiles',

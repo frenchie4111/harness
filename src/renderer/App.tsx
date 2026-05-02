@@ -1220,6 +1220,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
             width={rightPanelWidth}
             activeWorktreeId={activeWorktreeId}
             activeRepoRoot={activeRepoRoot}
+            focusedTabId={activeWorktreeId ? activeTabId[activeWorktreeId] ?? null : null}
             worktrees={worktrees}
             prStatuses={prStatuses}
             prLoading={prLoading}
