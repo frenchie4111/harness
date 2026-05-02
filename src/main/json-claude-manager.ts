@@ -55,6 +55,11 @@ interface PartialMessageState {
   textFlushTimer: NodeJS.Timeout | null
   thinkingFlushTimer: NodeJS.Timeout | null
   placeholderCreated: boolean
+  /** When this assistant message was emitted by a sub-agent spawned via
+   *  the Task tool, the tool_use id of the parent Task call. Captured at
+   *  message_start so the placeholder entry created on the first
+   *  content_block_start carries the field through the reducer. */
+  parentToolUseId?: string
 }
 
 /** ms to coalesce text deltas before dispatching. Below ~16ms re-renders
@@ -235,11 +240,19 @@ export class JsonClaudeManager {
       } else if (type === 'assistant') {
         const blocks = extractAssistantBlocks(parsed)
         if (blocks.length === 0) continue
+        const message = parsed['message'] as
+          | { parent_tool_use_id?: unknown }
+          | undefined
+        const parentToolUseId =
+          typeof message?.parent_tool_use_id === 'string'
+            ? message.parent_tool_use_id
+            : undefined
         seededEntries.push({
           kind: 'assistant',
           blocks,
           timestamp: Date.now(),
-          entryId: `${sessionId}-seed-a-${counter++}`
+          entryId: `${sessionId}-seed-a-${counter++}`,
+          ...(parentToolUseId ? { parentToolUseId } : {})
         })
       } else if (type === 'system' && parsed['subtype'] === 'compact_boundary') {
         const meta = parsed['compactMetadata'] as
@@ -981,8 +994,14 @@ export class JsonClaudeManager {
       }
       // Drain any pending coalesced deltas before reconciling.
       this.flushPartialDeltas(instance)
-      const message = parsed['message'] as { id?: string } | undefined
+      const message = parsed['message'] as
+        | { id?: string; parent_tool_use_id?: unknown }
+        | undefined
       const messageId = message?.id
+      const parentToolUseId =
+        typeof message?.parent_tool_use_id === 'string'
+          ? message.parent_tool_use_id
+          : undefined
       if (
         instance.partial &&
         messageId &&
@@ -992,6 +1011,9 @@ export class JsonClaudeManager {
         const placeholderCreated = instance.partial.placeholderCreated
         this.clearPartial(instance)
         if (placeholderCreated) {
+          // The placeholder entry already carries parentToolUseId from
+          // message_start; the reducer's spread preserves it across the
+          // finalize replacement.
           this.store.dispatch({
             type: 'jsonClaude/assistantEntryFinalized',
             payload: { sessionId: instance.sessionId, entryId, blocks }
@@ -1004,7 +1026,8 @@ export class JsonClaudeManager {
             kind: 'assistant',
             blocks,
             timestamp: Date.now(),
-            entryId
+            entryId,
+            ...(parentToolUseId ? { parentToolUseId } : {})
           })
         }
         return
@@ -1013,7 +1036,8 @@ export class JsonClaudeManager {
         kind: 'assistant',
         blocks,
         timestamp: Date.now(),
-        entryId: `${instance.sessionId}-a-${instance.entryCounter++}`
+        entryId: `${instance.sessionId}-a-${instance.entryCounter++}`,
+        ...(parentToolUseId ? { parentToolUseId } : {})
       })
       return
     }
@@ -1075,12 +1099,18 @@ export class JsonClaudeManager {
     if (!event) return
     const eventType = event['type']
     if (eventType === 'message_start') {
-      const message = event['message'] as { id?: string } | undefined
+      const message = event['message'] as
+        | { id?: string; parent_tool_use_id?: unknown }
+        | undefined
       const messageId = message?.id
       if (!messageId) return
       // Drop any prior in-flight partial defensively (shouldn't happen
       // unless the consolidated event was missed).
       this.clearPartial(instance)
+      const parentToolUseId =
+        typeof message?.parent_tool_use_id === 'string'
+          ? message.parent_tool_use_id
+          : undefined
       instance.partial = {
         messageId,
         entryId: `${instance.sessionId}-a-${messageId}`,
@@ -1088,7 +1118,8 @@ export class JsonClaudeManager {
         pendingThinking: '',
         textFlushTimer: null,
         thinkingFlushTimer: null,
-        placeholderCreated: false
+        placeholderCreated: false,
+        ...(parentToolUseId ? { parentToolUseId } : {})
       }
       return
     }
@@ -1106,7 +1137,10 @@ export class JsonClaudeManager {
           blocks: [newBlock],
           timestamp: Date.now(),
           entryId: instance.partial.entryId,
-          isPartial: true
+          isPartial: true,
+          ...(instance.partial.parentToolUseId
+            ? { parentToolUseId: instance.partial.parentToolUseId }
+            : {})
         })
         instance.partial.placeholderCreated = true
       } else {
@@ -1157,7 +1191,10 @@ export class JsonClaudeManager {
       blocks: [{ type: 'text', text: '' }],
       timestamp: Date.now(),
       entryId: instance.partial.entryId,
-      isPartial: true
+      isPartial: true,
+      ...(instance.partial.parentToolUseId
+        ? { parentToolUseId: instance.partial.parentToolUseId }
+        : {})
     })
     instance.partial.placeholderCreated = true
   }

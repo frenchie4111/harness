@@ -83,6 +83,12 @@ export interface JsonClaudeChatEntry {
    *  Claude sees ("(image attached at <path>)") so the model can
    *  Read/Bash/Write the file. */
   images?: Array<{ path: string; mediaType: string }>
+  /** For kind === 'assistant'. When this assistant message was emitted
+   *  by a sub-agent spawned via the Task tool, this is the tool_use id
+   *  of the parent Task call. The renderer's grouping pre-pass uses it
+   *  to nest sub-agent activity inside the parent Task card instead of
+   *  flattening it chronologically into the top-level transcript. */
+  parentToolUseId?: string
 }
 
 export interface JsonClaudeSession {
