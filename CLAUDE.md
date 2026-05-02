@@ -278,6 +278,8 @@ What gets written to `perf.log` (and where the threshold lives):
   block the render.
 - `[changed-files]` — every `getChangedFiles` / `getCommitChangedFiles`
   call (these are infrequent and a complete trace is invaluable).
+- `[git-op]` — per-call timing breakdown for slow git functions, capturing exec/post/bytes split.
+- `[microtask-drift]` — main-thread blocks ≥50ms (higher resolution than the 500ms event-loop sampler).
 
 The HUD at **Cmd+Shift+D** shows live aggregates (rates, history sparkline,
 React commits per second, top event types). `perf.log` captures the

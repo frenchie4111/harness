@@ -18,6 +18,19 @@ import type { Worktree } from '../shared/state/worktrees'
 
 const execFileAsync = promisify(execFile)
 
+type ExecOpts = NonNullable<Parameters<typeof execFileAsync>[2]>
+
+async function tracedExec(
+  args: string[],
+  opts: ExecOpts
+): Promise<{ stdout: string; execMs: number; outputBytes: number }> {
+  const t0 = performance.now()
+  const { stdout } = await execFileAsync('git', args, opts)
+  const execMs = performance.now() - t0
+  const text = typeof stdout === 'string' ? stdout : stdout.toString()
+  return { stdout: text, execMs, outputBytes: text.length }
+}
+
 // Alias so existing imports of WorktreeInfo keep working; the canonical
 // shape now lives in src/shared/state/worktrees.ts.
 export type WorktreeInfo = Worktree
@@ -310,37 +323,62 @@ async function getUnpushedHashes(worktreePath: string): Promise<Set<string> | nu
 
 /** Get commits unique to this branch (i.e. base..HEAD). */
 export async function getBranchCommits(worktreePath: string): Promise<BranchCommit[]> {
+  const t0 = performance.now()
+  let walledExec = 0
+  let cumExec = 0
+  let outputBytes = 0
+  const execParts: number[] = []
+  let result: BranchCommit[] = []
+
+  const tBase = performance.now()
   const base = await getDefaultBaseRef(worktreePath)
-  if (base === 'HEAD') return []
-  try {
-    const sep = '\x1f'
-    const [{ stdout }, unpushed] = await Promise.all([
-      execFileAsync(
-        'git',
-        ['log', `${base}..HEAD`, `--pretty=format:%H${sep}%h${sep}%s${sep}%an${sep}%ar${sep}%at`, '--max-count=200'],
-        { cwd: worktreePath }
-      ),
-      getUnpushedHashes(worktreePath)
-    ])
-    const out: BranchCommit[] = []
-    for (const line of stdout.split('\n')) {
-      if (!line) continue
-      const [hash, shortHash, subject, author, relativeDate, ts] = line.split(sep)
-      const pushed = unpushed === null ? false : !unpushed.has(hash)
-      out.push({
-        hash,
-        shortHash,
-        subject,
-        author,
-        relativeDate,
-        timestamp: Number(ts) || 0,
-        pushed
-      })
+  const baseMs = performance.now() - tBase
+  walledExec += baseMs
+  cumExec += baseMs
+  execParts.push(baseMs)
+
+  if (base !== 'HEAD') {
+    try {
+      const sep = '\x1f'
+      const tA = performance.now()
+      const [logRes, unpushed] = await Promise.all([
+        tracedExec(
+          [
+            'log',
+            `${base}..HEAD`,
+            `--pretty=format:%H${sep}%h${sep}%s${sep}%an${sep}%ar${sep}%at`,
+            '--max-count=200'
+          ],
+          { cwd: worktreePath }
+        ),
+        getUnpushedHashes(worktreePath)
+      ])
+      walledExec += performance.now() - tA
+      cumExec += logRes.execMs
+      execParts.push(logRes.execMs)
+      outputBytes += logRes.outputBytes
+
+      for (const line of logRes.stdout.split('\n')) {
+        if (!line) continue
+        const [hash, shortHash, subject, author, relativeDate, ts] = line.split(sep)
+        const pushed = unpushed === null ? false : !unpushed.has(hash)
+        result.push({
+          hash,
+          shortHash,
+          subject,
+          author,
+          relativeDate,
+          timestamp: Number(ts) || 0,
+          pushed
+        })
+      }
+    } catch {
+      result = []
     }
-    return out
-  } catch {
-    return []
   }
+
+  logGitOp('getBranchCommits', {}, t0, walledExec, cumExec, outputBytes, execParts)
+  return result
 }
 
 function mapNameStatus(code: string): ChangedFile['status'] {
@@ -384,16 +422,43 @@ function parseNumstatZ(stdout: string): Map<string, NumstatCounts> {
   return map
 }
 
-async function numstatMap(worktreePath: string, args: string[]): Promise<Map<string, NumstatCounts>> {
+async function numstatExec(
+  worktreePath: string,
+  args: string[]
+): Promise<{ stdout: string; execMs: number; outputBytes: number }> {
   try {
-    const { stdout } = await execFileAsync('git', ['diff', '--numstat', '-z', ...args], {
+    return await tracedExec(['diff', '--numstat', '-z', ...args], {
       cwd: worktreePath,
       maxBuffer: 16 * 1024 * 1024
     })
-    return parseNumstatZ(stdout)
   } catch {
-    return new Map()
+    return { stdout: '', execMs: 0, outputBytes: 0 }
   }
+}
+
+function logGitOp(
+  name: string,
+  ctx: Record<string, unknown>,
+  t0: number,
+  walledExec: number,
+  cumExec: number,
+  outputBytes: number,
+  execParts: number[]
+): void {
+  const total = performance.now() - t0
+  const postMs = Math.max(0, total - walledExec)
+  perfLog(
+    'git-op',
+    `${name} exec=${cumExec.toFixed(0)}ms post=${postMs.toFixed(0)}ms bytes=${outputBytes}`,
+    {
+      name,
+      ...ctx,
+      execMs: +cumExec.toFixed(1),
+      postMs: +postMs.toFixed(1),
+      outputBytes,
+      execParts: execParts.map((n) => +n.toFixed(1))
+    }
+  )
 }
 
 /** Renamed entries from `git status --porcelain` are stored as
@@ -429,76 +494,99 @@ async function getChangedFilesImpl(
   worktreePath: string,
   mode: ChangedFilesMode
 ): Promise<ChangedFile[]> {
+  const t0 = performance.now()
+  let walledExec = 0
+  let cumExec = 0
+  let outputBytes = 0
+  const execParts: number[] = []
+  let result: ChangedFile[] = []
+
   if (mode === 'branch') {
+    const tBase = performance.now()
     const base = await getDefaultBaseRef(worktreePath)
-    if (base === 'HEAD') return []
+    const baseMs = performance.now() - tBase
+    walledExec += baseMs
+    cumExec += baseMs
+    execParts.push(baseMs)
+
+    if (base !== 'HEAD') {
+      try {
+        const tA = performance.now()
+        const [diff, ns] = await Promise.all([
+          tracedExec(['diff', '--name-status', `${base}...HEAD`], { cwd: worktreePath }),
+          numstatExec(worktreePath, [`${base}...HEAD`])
+        ])
+        walledExec += performance.now() - tA
+        cumExec += diff.execMs + ns.execMs
+        execParts.push(diff.execMs, ns.execMs)
+        outputBytes += diff.outputBytes + ns.outputBytes
+
+        const counts = parseNumstatZ(ns.stdout)
+        for (const line of diff.stdout.split('\n')) {
+          if (!line) continue
+          const parts = line.split('\t')
+          const code = parts[0]
+          const filePath = parts[parts.length - 1]
+          const file: ChangedFile = { path: filePath, status: mapNameStatus(code), staged: false }
+          applyCounts(file, counts.get(filePath))
+          result.push(file)
+        }
+      } catch {
+        result = []
+      }
+    }
+  } else {
     try {
-      const [{ stdout }, counts] = await Promise.all([
-        execFileAsync('git', ['diff', '--name-status', `${base}...HEAD`], { cwd: worktreePath }),
-        numstatMap(worktreePath, [`${base}...HEAD`])
+      const tA = performance.now()
+      const [status, stagedNs, unstagedNs] = await Promise.all([
+        tracedExec(['status', '--porcelain', '-uall'], { cwd: worktreePath }),
+        numstatExec(worktreePath, ['--cached']),
+        numstatExec(worktreePath, [])
       ])
-      const out: ChangedFile[] = []
-      for (const line of stdout.split('\n')) {
+      walledExec += performance.now() - tA
+      cumExec += status.execMs + stagedNs.execMs + unstagedNs.execMs
+      execParts.push(status.execMs, stagedNs.execMs, unstagedNs.execMs)
+      outputBytes += status.outputBytes + stagedNs.outputBytes + unstagedNs.outputBytes
+
+      const stagedCounts = parseNumstatZ(stagedNs.stdout)
+      const unstagedCounts = parseNumstatZ(unstagedNs.stdout)
+      const seen = new Set<string>()
+      for (const line of status.stdout.split('\n')) {
         if (!line) continue
-        const parts = line.split('\t')
-        const code = parts[0]
-        // Renamed/copied entries have form "R100\told\tnew"
-        const filePath = parts[parts.length - 1]
-        const file: ChangedFile = { path: filePath, status: mapNameStatus(code), staged: false }
-        applyCounts(file, counts.get(filePath))
-        out.push(file)
+        const x = line[0]
+        const y = line[1]
+        const filePath = line.slice(3)
+
+        if (x !== ' ' && x !== '?') {
+          const fStatus =
+            x === 'A' ? 'added' : x === 'D' ? 'deleted' : x === 'R' ? 'renamed' : 'modified'
+          const file: ChangedFile = { path: filePath, status: fStatus, staged: true }
+          applyCounts(file, stagedCounts.get(destOf(filePath)))
+          result.push(file)
+          seen.add(filePath)
+        }
+
+        if (y !== ' ' && y !== '?') {
+          const fStatus = y === 'D' ? 'deleted' : 'modified'
+          if (!seen.has(filePath)) {
+            const file: ChangedFile = { path: filePath, status: fStatus, staged: false }
+            applyCounts(file, unstagedCounts.get(destOf(filePath)))
+            result.push(file)
+            seen.add(filePath)
+          }
+        }
+
+        if (x === '?' && y === '?') {
+          result.push({ path: filePath, status: 'untracked', staged: false })
+        }
       }
-      return out
     } catch {
-      return []
+      // status failure: fall through with empty result
     }
   }
 
-  const files: ChangedFile[] = []
-  const seen = new Set<string>()
-
-  // Staged + unstaged changes via git status --porcelain, plus numstat for
-  // both halves so we can attach +/- counts. Untracked files have no diff
-  // baseline so they get no counts.
-  const [{ stdout }, stagedCounts, unstagedCounts] = await Promise.all([
-    execFileAsync('git', ['status', '--porcelain', '-uall'], { cwd: worktreePath }),
-    numstatMap(worktreePath, ['--cached']),
-    numstatMap(worktreePath, [])
-  ])
-
-  for (const line of stdout.split('\n')) {
-    if (!line) continue
-    const x = line[0] // staged status
-    const y = line[1] // unstaged status
-    const filePath = line.slice(3)
-
-    // Staged change
-    if (x !== ' ' && x !== '?') {
-      const status = x === 'A' ? 'added' : x === 'D' ? 'deleted' : x === 'R' ? 'renamed' : 'modified'
-      const file: ChangedFile = { path: filePath, status, staged: true }
-      applyCounts(file, stagedCounts.get(destOf(filePath)))
-      files.push(file)
-      seen.add(filePath)
-    }
-
-    // Unstaged change
-    if (y !== ' ' && y !== '?') {
-      const status = y === 'D' ? 'deleted' : 'modified'
-      if (!seen.has(filePath)) {
-        const file: ChangedFile = { path: filePath, status, staged: false }
-        applyCounts(file, unstagedCounts.get(destOf(filePath)))
-        files.push(file)
-        seen.add(filePath)
-      }
-    }
-
-    // Untracked
-    if (x === '?' && y === '?') {
-      files.push({ path: filePath, status: 'untracked', staged: false })
-    }
-  }
-
-  return files
+  logGitOp('getChangedFiles', { mode }, t0, walledExec, cumExec, outputBytes, execParts)
+  return result
 }
 
 export interface CommitDiff {
@@ -568,27 +656,42 @@ async function getCommitChangedFilesImpl(
   hash: string
 ): Promise<ChangedFile[]> {
   if (!/^[0-9a-fA-F]{4,64}$/.test(hash)) return []
+  const t0 = performance.now()
+  let walledExec = 0
+  let cumExec = 0
+  let outputBytes = 0
+  const execParts: number[] = []
+  let result: ChangedFile[] = []
+
   try {
-    const [{ stdout: nameStatus }, counts] = await Promise.all([
-      execFileAsync('git', ['diff-tree', '--no-commit-id', '-r', '--name-status', hash], {
+    const tA = performance.now()
+    const [nameStatus, ns] = await Promise.all([
+      tracedExec(['diff-tree', '--no-commit-id', '-r', '--name-status', hash], {
         cwd: worktreePath
       }),
-      numstatMap(worktreePath, [`${hash}^`, hash])
+      numstatExec(worktreePath, [`${hash}^`, hash])
     ])
-    const out: ChangedFile[] = []
-    for (const line of nameStatus.split('\n')) {
+    walledExec += performance.now() - tA
+    cumExec += nameStatus.execMs + ns.execMs
+    execParts.push(nameStatus.execMs, ns.execMs)
+    outputBytes += nameStatus.outputBytes + ns.outputBytes
+
+    const counts = parseNumstatZ(ns.stdout)
+    for (const line of nameStatus.stdout.split('\n')) {
       if (!line) continue
       const parts = line.split('\t')
       const code = parts[0]
       const filePath = parts[parts.length - 1]
       const file: ChangedFile = { path: filePath, status: mapNameStatus(code), staged: false }
       applyCounts(file, counts.get(filePath))
-      out.push(file)
+      result.push(file)
     }
-    return out
   } catch {
-    return []
+    result = []
   }
+
+  logGitOp('getCommitChangedFiles', { hash }, t0, walledExec, cumExec, outputBytes, execParts)
+  return result
 }
 
 export async function getCommitFileDiffSides(
@@ -617,19 +720,40 @@ export async function getFileDiff(
   staged: boolean,
   mode: ChangedFilesMode = 'working'
 ): Promise<string> {
+  const t0 = performance.now()
+  let walledExec = 0
+  let cumExec = 0
+  let outputBytes = 0
+  const execParts: number[] = []
+  let result = ''
+
+  const finish = (): string => {
+    logGitOp('getFileDiff', { mode, staged }, t0, walledExec, cumExec, outputBytes, execParts)
+    return result
+  }
+
   if (mode === 'branch') {
+    const tBase = performance.now()
     const base = await getDefaultBaseRef(worktreePath)
-    if (base === 'HEAD') return ''
+    const baseMs = performance.now() - tBase
+    walledExec += baseMs; cumExec += baseMs; execParts.push(baseMs)
+
+    if (base === 'HEAD') return finish()
     try {
-      const { stdout } = await execFileAsync(
-        'git',
+      const tA = performance.now()
+      const r = await tracedExec(
         ['diff', '--no-color', `${base}...HEAD`, '--', filePath],
         { cwd: worktreePath }
       )
-      return stdout
+      walledExec += performance.now() - tA
+      cumExec += r.execMs
+      execParts.push(r.execMs)
+      outputBytes += r.outputBytes
+      result = r.stdout
     } catch {
-      return ''
+      // ignore
     }
+    return finish()
   }
 
   const args = ['diff', '--no-color']
@@ -637,25 +761,41 @@ export async function getFileDiff(
   args.push('--', filePath)
 
   try {
-    const { stdout } = await execFileAsync('git', args, { cwd: worktreePath })
-    if (stdout) return stdout
+    const tA = performance.now()
+    const r = await tracedExec(args, { cwd: worktreePath })
+    walledExec += performance.now() - tA
+    cumExec += r.execMs
+    execParts.push(r.execMs)
+    outputBytes += r.outputBytes
+    if (r.stdout) {
+      result = r.stdout
+      return finish()
+    }
   } catch {
     // diff may exit non-zero for some edge cases, fall through
   }
 
   // For untracked files, show the full file content as an "add" diff
   try {
-    const { stdout } = await execFileAsync('git', ['diff', '--no-color', '--no-index', '/dev/null', filePath], {
-      cwd: worktreePath
-    })
-    return stdout
+    const tA = performance.now()
+    const r = await tracedExec(
+      ['diff', '--no-color', '--no-index', '/dev/null', filePath],
+      { cwd: worktreePath }
+    )
+    walledExec += performance.now() - tA
+    cumExec += r.execMs
+    execParts.push(r.execMs)
+    outputBytes += r.outputBytes
+    result = r.stdout
   } catch (err) {
     // git diff --no-index exits with 1 when there are differences (which is always the case here)
     if (err instanceof Error && 'stdout' in err) {
-      return (err as Error & { stdout: string }).stdout || ''
+      const out = (err as Error & { stdout: string }).stdout || ''
+      outputBytes += out.length
+      result = out
     }
-    return ''
   }
+  return finish()
 }
 
 export interface FileDiffSides {
@@ -703,56 +843,82 @@ export async function getFileDiffSides(
   staged: boolean,
   mode: ChangedFilesMode = 'working'
 ): Promise<FileDiffSides> {
+  const t0 = performance.now()
+  let walledExec = 0
+  let cumExec = 0
+  let outputBytes = 0
+  const execParts: number[] = []
+
+  const timed = async <T>(fn: () => Promise<T>): Promise<T> => {
+    const tA = performance.now()
+    const r = await fn()
+    const ms = performance.now() - tA
+    walledExec += ms
+    cumExec += ms
+    execParts.push(ms)
+    return r
+  }
+
+  const finish = (sides: FileDiffSides): FileDiffSides => {
+    logGitOp('getFileDiffSides', { mode, staged }, t0, walledExec, cumExec, outputBytes, execParts)
+    return sides
+  }
+
   if (mode === 'branch') {
-    const baseRef = await getDefaultBaseRef(worktreePath)
+    const baseRef = await timed(() => getDefaultBaseRef(worktreePath))
     if (baseRef === 'HEAD') {
-      return { original: '', modified: '', originalExists: false, modifiedExists: false, modifiedBinary: false }
+      return finish({ original: '', modified: '', originalExists: false, modifiedExists: false, modifiedBinary: false })
     }
-    const mb = await getMergeBase(worktreePath, baseRef)
-    const original = mb ? await getFileAtRef(worktreePath, mb, filePath) : null
-    const modified = await getFileAtRef(worktreePath, 'HEAD', filePath)
-    return {
+    const mb = await timed(() => getMergeBase(worktreePath, baseRef))
+    const original = mb ? await timed(() => getFileAtRef(worktreePath, mb, filePath)) : null
+    if (original) outputBytes += original.length
+    const modified = await timed(() => getFileAtRef(worktreePath, 'HEAD', filePath))
+    if (modified) outputBytes += modified.length
+    return finish({
       original: original ?? '',
       modified: modified ?? '',
       originalExists: original != null,
       modifiedExists: modified != null,
       modifiedBinary: false
-    }
+    })
   }
 
   if (staged) {
-    const original = await getFileAtRef(worktreePath, 'HEAD', filePath)
-    const modified = await getFileAtRef(worktreePath, ':0', filePath)
-    return {
+    const original = await timed(() => getFileAtRef(worktreePath, 'HEAD', filePath))
+    if (original) outputBytes += original.length
+    const modified = await timed(() => getFileAtRef(worktreePath, ':0', filePath))
+    if (modified) outputBytes += modified.length
+    return finish({
       original: original ?? '',
       modified: modified ?? '',
       originalExists: original != null,
       modifiedExists: modified != null,
       modifiedBinary: false
-    }
+    })
   }
 
-  // Unstaged working-tree diff: compare index (fallback HEAD) to working file.
-  let original = await getFileAtRef(worktreePath, ':0', filePath)
-  if (original == null) original = await getFileAtRef(worktreePath, 'HEAD', filePath)
-  const read = await readWorktreeFile(worktreePath, filePath)
+  let original = await timed(() => getFileAtRef(worktreePath, ':0', filePath))
+  if (original == null) original = await timed(() => getFileAtRef(worktreePath, 'HEAD', filePath))
+  if (original) outputBytes += original.length
+  const read = await timed(() => readWorktreeFile(worktreePath, filePath))
+  if (read.content) outputBytes += read.content.length
   if (read.binary) {
-    return {
+    return finish({
       original: original ?? '',
       modified: '',
       originalExists: original != null,
       modifiedExists: true,
       modifiedBinary: true
-    }
+    })
   }
-  return {
+  return finish({
     original: original ?? '',
     modified: read.content ?? '',
     originalExists: original != null,
     modifiedExists: read.content != null,
     modifiedBinary: false,
     error: read.error
-  }
+  })
 }
 
 export type MergeStrategy = 'squash' | 'merge-commit' | 'fast-forward'
@@ -789,13 +955,36 @@ export async function getCurrentBranch(worktreePath: string): Promise<string> {
 
 /** Report status of the main worktree for a local merge. */
 export async function getMainWorktreeStatus(repoRoot: string): Promise<MainWorktreeStatus> {
+  const t0 = performance.now()
+  let walledExec = 0
+  let cumExec = 0
+  const execParts: number[] = []
+
+  const t1 = performance.now()
   const trees = await listWorktrees(repoRoot)
+  const ms1 = performance.now() - t1
+  walledExec += ms1; cumExec += ms1; execParts.push(ms1)
+
   const main = trees.find((t) => t.isMain) || trees[0]
   const mainPath = main?.path || repoRoot
+
+  const t2 = performance.now()
   const baseBranch = await getLocalBaseBranch(repoRoot)
+  const ms2 = performance.now() - t2
+  walledExec += ms2; cumExec += ms2; execParts.push(ms2)
+
+  const t3 = performance.now()
   const currentBranch = await getCurrentBranch(mainPath)
+  const ms3 = performance.now() - t3
+  walledExec += ms3; cumExec += ms3; execParts.push(ms3)
+
+  const t4 = performance.now()
   const isDirty = await isWorktreeDirty(mainPath)
+  const ms4 = performance.now() - t4
+  walledExec += ms4; cumExec += ms4; execParts.push(ms4)
+
   const isOnBase = currentBranch === baseBranch
+  logGitOp('getMainWorktreeStatus', {}, t0, walledExec, cumExec, 0, execParts)
   return {
     path: mainPath,
     currentBranch,
@@ -1018,19 +1207,33 @@ export async function getBranchDiffStats(
 
 /** List every tracked-or-untracked-but-not-ignored file in the worktree, as repo-relative paths. */
 export async function listAllFiles(worktreePath: string): Promise<string[]> {
+  const t0 = performance.now()
+  let walledExec = 0
+  let cumExec = 0
+  let outputBytes = 0
+  const execParts: number[] = []
+  let result: string[] = []
+
   try {
-    const { stdout } = await execFileAsync(
-      'git',
+    const tA = performance.now()
+    const r = await tracedExec(
       ['ls-files', '--cached', '--others', '--exclude-standard'],
       { cwd: worktreePath, maxBuffer: 32 * 1024 * 1024 }
     )
-    const files = stdout.split('\n').filter((l) => l.length > 0)
+    walledExec += performance.now() - tA
+    cumExec += r.execMs
+    execParts.push(r.execMs)
+    outputBytes += r.outputBytes
+
+    const files = r.stdout.split('\n').filter((l) => l.length > 0)
     files.sort((a, b) => a.localeCompare(b))
-    return files
+    result = files
   } catch (err) {
     log('worktree', `listAllFiles failed: ${(err as Error).message}`)
-    return []
   }
+
+  logGitOp('listAllFiles', {}, t0, walledExec, cumExec, outputBytes, execParts)
+  return result
 }
 
 const MAX_FILE_READ_BYTES = 2 * 1024 * 1024
