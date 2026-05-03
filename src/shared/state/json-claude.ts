@@ -89,6 +89,15 @@ export interface JsonClaudeChatEntry {
    *  to nest sub-agent activity inside the parent Task card instead of
    *  flattening it chronologically into the top-level transcript. */
   parentToolUseId?: string
+  /** For kind === 'error'. Categorizes the error so the renderer can pick
+   *  the right card variant (Restart, Re-auth, Retry). */
+  errorKind?: 'subprocess-exit' | 'rate-limit' | 'auth-failure'
+  /** For kind === 'error'. Human-readable detail (exitReason, rate-limit
+   *  retry-at timestamp, etc.). */
+  errorMessage?: string
+  /** For kind === 'error' with errorKind === 'subprocess-exit'. Whether the
+   *  exit was clean (user closed the tab) or unexpected (crash). */
+  exitWasClean?: boolean
 }
 
 export interface JsonClaudeSession {
