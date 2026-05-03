@@ -1,6 +1,7 @@
 import { spawn } from 'child_process'
 import { join, isAbsolute } from 'path'
 import { log } from './debug'
+import { resolveUserShell, loginShellCommandArgs } from './user-shell'
 
 export interface EditorDef {
   id: string
@@ -34,7 +35,7 @@ function findEditor(id: string): EditorDef | null {
   return AVAILABLE_EDITORS.find((e) => e.id === id) || null
 }
 
-/** Shell-escape a single argument for use inside zsh -ilc. */
+/** Shell-escape a single argument for use inside the login shell's -ilc. */
 function shellEscape(s: string): string {
   return `'${s.replace(/'/g, `'\\''`)}'`
 }
@@ -59,7 +60,7 @@ export function openInEditor(
   log('editor', `launching ${editor.id}: ${shellCmd}`)
 
   try {
-    const child = spawn('/bin/zsh', ['-ilc', shellCmd], {
+    const child = spawn(resolveUserShell(), loginShellCommandArgs(shellCmd), {
       detached: true,
       stdio: 'ignore'
     })
