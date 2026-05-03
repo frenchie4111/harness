@@ -154,6 +154,10 @@ export interface Config {
   // Diagnostic toggle (no UI): when true, json-mode tabs spawn the user's
   // PATH `claude` instead of the bundled one. Default off.
   useSystemClaudeForJsonMode?: boolean
+  // Permission mode applied when a brand-new json-mode session spawns.
+  // Existing sessions keep whatever mode they were last in. Default
+  // 'acceptEdits' (auto-allow Edit/Write, still ask for Bash etc.).
+  jsonModeDefaultPermissionMode?: 'default' | 'acceptEdits' | 'plan'
 }
 
 export const DEFAULT_WORKTREE_BASE: 'remote' | 'local' = 'remote'

@@ -351,6 +351,27 @@ describe('settingsReducer', () => {
     expect(cleared.autoApproveSteerInstructions).toBe('')
   })
 
+  it('jsonModeDefaultPermissionModeChanged sets the default and preserves other settings', () => {
+    expect(initialSettings.jsonModeDefaultPermissionMode).toBe('acceptEdits')
+    const start: SettingsState = {
+      ...initialSettings,
+      claudeCommand: 'pre-existing',
+      jsonModeClaudeTabs: true
+    }
+    const planned = apply(start, {
+      type: 'settings/jsonModeDefaultPermissionModeChanged',
+      payload: 'plan'
+    })
+    expect(planned.jsonModeDefaultPermissionMode).toBe('plan')
+    expect(planned.claudeCommand).toBe('pre-existing')
+    expect(planned.jsonModeClaudeTabs).toBe(true)
+    const back = apply(planned, {
+      type: 'settings/jsonModeDefaultPermissionModeChanged',
+      payload: 'default'
+    })
+    expect(back.jsonModeDefaultPermissionMode).toBe('default')
+  })
+
   it('useSystemClaudeForJsonModeChanged toggles the diagnostic flag', () => {
     expect(initialSettings.useSystemClaudeForJsonMode).toBe(false)
     const on = apply(initialSettings, {
