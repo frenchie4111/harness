@@ -78,6 +78,34 @@
   <!-- Releases -->
   <div class="max-w-3xl mx-auto px-6 pb-24">
 
+    <!-- v2.7.1 -->
+    <section class="release-section py-10">
+      <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
+        <h2 class="text-3xl font-bold tracking-tight">v2.7.1</h2>
+        <span class="text-sm text-neutral-500">May 3, 2026</span>
+      </div>
+      <a href="https://github.com/frenchie4111/harness/releases/tag/v2.7.1" class="text-sm text-amber-400/80 hover:text-amber-300 transition-colors">Download &rarr;</a>
+      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">Electron remote mode lets the desktop app connect to a headless Harness server, Linux gains a native <code>.deb</code> package, and the headless server picks up CLI flags and a version endpoint — plus fixes for shell detection and the headless web client path.</p>
+      <div class="note-body">
+        <h4>New features</h4>
+        <ul>
+          <li><strong>Electron remote mode</strong> — the desktop app can now connect to a remote headless Harness server, giving you a native window backed by a backend running on another machine or in the cloud.</li>
+          <li><strong>Linux <code>.deb</code> package</strong> — Harness is now distributed as a <code>.deb</code> for Debian and Ubuntu, alongside the existing AppImage.</li>
+          <li><strong>Headless server CLI flags</strong> — the headless server now accepts command-line flags so you can configure port, data directory, and other options at startup without editing config files.</li>
+        </ul>
+        <h4>Improvements</h4>
+        <ul>
+          <li><strong>Update banner for <code>.deb</code> installs</strong> — Linux users who installed via <code>.deb</code> now see an in-app banner when a new version is available, since <code>.deb</code> packages don't auto-update.</li>
+          <li><strong>Headless version endpoint</strong> — the headless server now exposes a version endpoint so clients can verify they're talking to a compatible server before connecting.</li>
+        </ul>
+        <h4>Fixes</h4>
+        <ul>
+          <li>Fixed terminal sessions hardcoding <code>zsh</code> instead of using your configured login shell.</li>
+          <li>Fixed the web client failing to load in headless server tarballs due to an incorrect asset path.</li>
+        </ul>
+      </div>
+    </section>
+
     <!-- v2.7.0 -->
     <section class="release-section py-10">
       <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
