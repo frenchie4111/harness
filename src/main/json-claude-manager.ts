@@ -166,7 +166,7 @@ function platformKey(): string {
 }
 
 let cachedBundledClaudeBinPath: string | null = null
-function bundledClaudeBinPath(): string {
+export function bundledClaudeBinPath(): string {
   if (cachedBundledClaudeBinPath) return cachedBundledClaudeBinPath
   const info = PLATFORM_PACKAGES[platformKey()]
   if (!info) {

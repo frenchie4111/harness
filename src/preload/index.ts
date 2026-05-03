@@ -442,6 +442,8 @@ contextBridge.exposeInMainWorld('api', {
     req('jsonClaude:getEntries', sessionId),
   killJsonClaude: (id: string) => req('jsonClaude:kill', id),
   interruptJsonClaude: (id: string) => req('jsonClaude:interrupt', id),
+  openJsonClaudeAuthLoginTab: (worktreePath: string) =>
+    req('jsonClaude:openAuthLoginTab', worktreePath),
   setJsonClaudePermissionMode: (
     id: string,
     mode: 'default' | 'acceptEdits' | 'plan'

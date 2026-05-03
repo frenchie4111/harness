@@ -447,6 +447,9 @@ export interface ElectronAPI {
   getJsonClaudeEntries(sessionId: string): Promise<JsonClaudeChatEntry[]>
   killJsonClaude(id: string): Promise<boolean>
   interruptJsonClaude(id: string): Promise<boolean>
+  openJsonClaudeAuthLoginTab(
+    worktreePath: string
+  ): Promise<{ ok: true; tabId: string } | { ok: false; error: string }>
   setJsonClaudePermissionMode(
     id: string,
     mode: 'default' | 'acceptEdits' | 'plan'

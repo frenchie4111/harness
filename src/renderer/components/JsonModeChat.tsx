@@ -316,11 +316,11 @@ function SubprocessExitCard({
 
 function AuthFailureCard({
   message,
-  onOpenXtermClaude,
+  onOpenLoginTab,
   onRetry
 }: {
   message?: string
-  onOpenXtermClaude: () => void
+  onOpenLoginTab: () => void
   onRetry: () => void
 }): JSX.Element {
   return (
@@ -351,20 +351,23 @@ function AuthFailureCard({
           </pre>
         )}
         <div>
-          Open an xterm Claude tab in this worktree and run{' '}
-          <code className="font-mono text-fg-bright">/login</code> to re-authenticate,
-          then click Retry below.
+          Click{' '}
+          <span className="font-semibold text-fg-bright">Sign in</span> to open{' '}
+          <code className="font-mono text-fg-bright">claude auth login</code> in
+          a new shell tab. Complete the OAuth handshake there, then click{' '}
+          <span className="font-semibold text-fg-bright">Retry</span> to resume
+          this session.
         </div>
         <div className="flex gap-2 pt-1">
           <button
-            onClick={onOpenXtermClaude}
-            className="px-2 py-1 bg-panel-raised border border-border-strong rounded text-fg-bright hover:bg-panel cursor-pointer"
+            onClick={onOpenLoginTab}
+            className="px-2 py-1 bg-accent text-white rounded hover:bg-accent/90 cursor-pointer"
           >
-            Open xterm Claude tab
+            Sign in
           </button>
           <button
             onClick={onRetry}
-            className="px-2 py-1 bg-accent text-white rounded hover:bg-accent/90 cursor-pointer"
+            className="px-2 py-1 bg-panel-raised border border-border-strong rounded text-fg-bright hover:bg-panel cursor-pointer"
           >
             Retry
           </button>
@@ -390,7 +393,7 @@ interface RenderContext {
   sessionId: string
   worktreePath: string
   isExited: boolean
-  onOpenXtermClaude: () => void
+  onOpenLoginTab: () => void
   onRetryAuth: () => void
 }
 
@@ -502,7 +505,7 @@ function renderEntries(
         node: (
           <AuthFailureCard
             message={entry.errorMessage}
-            onOpenXtermClaude={ctx.onOpenXtermClaude}
+            onOpenLoginTab={ctx.onOpenLoginTab}
             onRetry={ctx.onRetryAuth}
           />
         )
@@ -986,19 +989,14 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
       sessionId,
       worktreePath,
       isExited: session?.state === 'exited',
-      onOpenXtermClaude: () => {
-        // No paneId — PanesFSM picks the active leaf in this worktree
-        // and appends the new agent tab there. Mirrors handleAddAgentTab
-        // in useTabHandlers but reachable from the inline card without
-        // plumbing a callback prop through WorkspaceView/MobileApp.
-        const id = `agent-auth-${Date.now()}`
-        void window.api.panesAddTab(worktreePath, {
-          id,
-          type: 'agent',
-          agentKind: 'claude',
-          label: 'Claude Code',
-          sessionId: crypto.randomUUID()
-        })
+      onOpenLoginTab: () => {
+        // One-click sign-in: main spawns the bundled claude binary's
+        // `auth login` subcommand in a fresh shell tab. The tab runs
+        // the OAuth handshake to completion and exits cleanly. Both
+        // the bundled binary and the json-mode subprocess share
+        // ~/.claude/, so credentials written by the login tab are
+        // visible on the next Retry.
+        void window.api.openJsonClaudeAuthLoginTab(worktreePath)
       },
       onRetryAuth: () => {
         // Same restart sequence as the "Reconnect" button on the exited-
