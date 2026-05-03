@@ -3,6 +3,7 @@ import { ArrowLeft, ArrowRight, RotateCw, Wrench, Loader2 } from 'lucide-react'
 import { useBrowser } from '../store'
 import { Tooltip } from './Tooltip'
 import { isWebClient } from '../web-mode'
+import { RemoteBrowserView } from './RemoteBrowserView'
 
 interface BrowserPanelProps {
   tabId: string
@@ -33,6 +34,8 @@ export function BrowserPanel({ tabId, visible, initialUrl }: BrowserPanelProps):
     if (!editing) setDraftUrl(currentUrl)
   }, [currentUrl, editing])
 
+  const webMode = isWebClient()
+
   const pushBounds = useCallback(() => {
     const el = bodyRef.current
     if (!el) return
@@ -54,6 +57,7 @@ export function BrowserPanel({ tabId, visible, initialUrl }: BrowserPanelProps):
   }, [tabId, visible])
 
   useEffect(() => {
+    if (webMode) return
     pushBounds()
     if (!visible) return
     const el = bodyRef.current
@@ -70,13 +74,14 @@ export function BrowserPanel({ tabId, visible, initialUrl }: BrowserPanelProps):
       window.removeEventListener('resize', onWinResize)
       clearInterval(interval)
     }
-  }, [pushBounds, visible])
+  }, [pushBounds, visible, webMode])
 
   useEffect(() => {
+    if (webMode) return
     return () => {
       window.api.browserHide(tabId)
     }
-  }, [tabId])
+  }, [tabId, webMode])
 
   const submitNav = (): void => {
     setEditing(false)
@@ -143,12 +148,7 @@ export function BrowserPanel({ tabId, visible, initialUrl }: BrowserPanelProps):
         </Tooltip>
       </div>
       <div ref={bodyRef} className="flex-1 min-h-0 bg-app relative">
-        {isWebClient() && (
-          <div className="absolute inset-0 flex items-center justify-center text-faint text-xs px-6 text-center">
-            Browser tabs are unavailable in the web client — they require the native
-            Electron WebContentsView. Open this worktree in the desktop app to use them.
-          </div>
-        )}
+        {webMode && <RemoteBrowserView tabId={tabId} visible={visible} />}
       </div>
     </div>
   )

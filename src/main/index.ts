@@ -1845,6 +1845,47 @@ function registerIpcHandlers(): void {
   transport.onSignal('browser:hide', (_ctx, tabId: string) => {
     browserManager.hide(tabId)
   })
+  // Headless / web-client renderers can't host a WebContentsView overlay
+  // and instead poll a screenshot + drive the page through these RPCs.
+  // Same handlers serve Electron clients too — useful for the eventual
+  // "remote view of a local desktop tab" case.
+  transport.onRequest(
+    'browser:screenshot',
+    async (
+      _ctx,
+      tabId: string,
+      opts?: { format?: 'jpeg' | 'png'; quality?: number }
+    ) => {
+      return browserManager.capturePage(tabId, opts)
+    }
+  )
+  transport.onRequest(
+    'browser:click',
+    (
+      _ctx,
+      tabId: string,
+      x: number,
+      y: number,
+      opts?: { button?: 'left' | 'right' | 'middle'; clickCount?: number }
+    ) => {
+      browserManager.clickTab(tabId, x, y, opts)
+      return true
+    }
+  )
+  transport.onRequest(
+    'browser:type',
+    (_ctx, tabId: string, text: string, key?: string) => {
+      browserManager.typeTab(tabId, text, key)
+      return true
+    }
+  )
+  transport.onRequest(
+    'browser:scroll',
+    async (_ctx, tabId: string, dx: number, dy: number) => {
+      await browserManager.scrollTab(tabId, dx, dy)
+      return true
+    }
+  )
 
   // PTY signals are gated by the per-terminal controller in the sessions
   // slice (see `src/shared/state/terminals.ts`). pty:write and pty:resize
