@@ -249,11 +249,13 @@ function CompactCard({
 function SubprocessExitCard({
   message,
   sessionId,
-  worktreePath
+  worktreePath,
+  isExited
 }: {
   message: string
   sessionId: string
   worktreePath: string
+  isExited: boolean
 }): JSX.Element {
   const detail = message || 'Session ended unexpectedly'
   return (
@@ -282,19 +284,25 @@ function SubprocessExitCard({
         <pre className="text-[11px] text-muted font-mono whitespace-pre-wrap break-words m-0">
           {detail}
         </pre>
-        <button
-          type="button"
-          className="px-3 py-1 bg-danger/15 hover:bg-danger/25 border border-danger/40 rounded text-danger text-xs cursor-pointer flex items-center gap-1.5"
-          onClick={() => {
-            void (async () => {
-              await window.api.killJsonClaude(sessionId)
-              await window.api.startJsonClaude(sessionId, worktreePath)
-            })()
-          }}
-        >
-          <RotateCcw size={12} />
-          <span>Restart session</span>
-        </button>
+        {isExited ? (
+          <button
+            type="button"
+            className="px-3 py-1 bg-danger/15 hover:bg-danger/25 border border-danger/40 rounded text-danger text-xs cursor-pointer flex items-center gap-1.5"
+            onClick={() => {
+              void (async () => {
+                await window.api.killJsonClaude(sessionId)
+                await window.api.startJsonClaude(sessionId, worktreePath)
+              })()
+            }}
+          >
+            <RotateCcw size={12} />
+            <span>Restart session</span>
+          </button>
+        ) : (
+          <span className="text-[11px] text-muted italic">
+            session restarted
+          </span>
+        )}
       </div>
     </div>
   )
@@ -316,6 +324,7 @@ interface RenderContext {
   onCancelQueued: (entryId: string) => void
   sessionId: string
   worktreePath: string
+  isExited: boolean
 }
 
 function renderEntries(
@@ -413,6 +422,7 @@ function renderEntries(
             message={entry.errorMessage ?? 'Session ended unexpectedly'}
             sessionId={ctx.sessionId}
             worktreePath={ctx.worktreePath}
+            isExited={ctx.isExited}
           />
         )
       })
@@ -877,7 +887,8 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
       onCancelQueued: (entryId) =>
         window.api.cancelQueuedJsonClaudeMessage(sessionId, entryId),
       sessionId,
-      worktreePath
+      worktreePath,
+      isExited: session?.state === 'exited'
     })
     // approvalByToolUseId already depends on pending; pendingToolUseIds
     // also derives from pending.
@@ -889,7 +900,8 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
     autoApprovedDecisions,
     sessionAllowedDecisions,
     sessionId,
-    worktreePath
+    worktreePath,
+    session?.state
   ])
 
   const groupedItems = useMemo(() => groupConsecutiveToolRows(rows), [rows])
