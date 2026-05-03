@@ -25,9 +25,15 @@ interface PtyInstance {
   activityActive: boolean
   activityProcess?: string
   hasBeenIdle: boolean
+  spawnedAt: number
 }
 
 const SHELL_ACTIVITY_POLL_MS = 1500
+// Force-arm the activity detector after this long even if we never caught
+// the shell idle. Otherwise a user who types a command before .zshrc finishes
+// keeps the shell perpetually "non-idle" and never gets a spinner — until the
+// command exits, at which point arming finally happens but it's too late.
+const SHELL_ARM_TIMEOUT_MS = 3000
 // Cap per-terminal raw scrollback at ~1MB. The renderer replays this into a
 // fresh xterm.js instance on reload; 1MB of ANSI-wrapped output is enough to
 // cover a long Claude session without ballooning disk usage.
@@ -184,7 +190,8 @@ export class PtyManager {
       isShell,
       isCommandShell,
       activityActive: isCommandShell,
-      hasBeenIdle: isCommandShell
+      hasBeenIdle: isCommandShell,
+      spawnedAt: Date.now()
     }
 
     // Seed the history buffer from disk if a file exists. Renderer calls
@@ -314,12 +321,16 @@ export class PtyManager {
         const directChildren = childrenByPpid.get(shellPid) || []
         const rawActive = directChildren.length > 0
 
-        // Arm detection only after we've seen the shell quiescent at least
-        // once. This skips login-shell init (nvm, starship, git subprocs)
-        // without needing a hardcoded timer.
+        // Arm detection on first quiescence so login-shell init (nvm,
+        // starship, git subprocs) doesn't false-positive. Fall back to
+        // arming on a hard timeout — without it, a user who types a
+        // command before init settled keeps the shell non-idle forever
+        // and never gets a spinner until that command exits.
         if (!instance.hasBeenIdle) {
-          if (!rawActive) instance.hasBeenIdle = true
-          continue
+          if (!rawActive || Date.now() - instance.spawnedAt >= SHELL_ARM_TIMEOUT_MS) {
+            instance.hasBeenIdle = true
+          }
+          if (!instance.hasBeenIdle) continue
         }
 
         const active = rawActive
