@@ -18,7 +18,7 @@ import { networkInterfaces } from 'os'
 import type { Server as HttpServer } from 'http'
 import type { ServerTransport } from '../shared/transport/transport'
 import { detectRuntime } from './paths'
-import { HeadlessBrowserManager } from './headless-browser-manager'
+import { PlaywrightBrowserManager } from './browser-manager-playwright'
 import type { BrowserManagerLike } from './browser-manager-types'
 import { PerfMonitor } from './perf-monitor'
 import { PRPoller } from './pr-poller'
@@ -189,13 +189,14 @@ const perfMonitor = new PerfMonitor()
 
 // In Electron mode createDesktopShell applies the dev-mode userData
 // override (must run before anything reads paths) and constructs the
-// BrowserManager + Electron IPC transport. In headless mode we use the
-// stub browser manager and skip the Electron transport entirely.
+// WebContentsView-backed BrowserManager + Electron IPC transport. In
+// headless mode we instantiate PlaywrightBrowserManager, which spins
+// up Chromium via playwright-core on the first browser-tab create.
 const desktopEarly = desktopShellMod
   ? desktopShellMod.createDesktopShell({ store, perfMonitor, config })
   : null
 const browserManager: BrowserManagerLike =
-  desktopEarly?.browserManager ?? new HeadlessBrowserManager()
+  desktopEarly?.browserManager ?? new PlaywrightBrowserManager()
 
 // The compound transport lets the Electron IPC transport and the WS
 // transport run side-by-side off a single registration path — every
@@ -1816,9 +1817,9 @@ function registerIpcHandlers(): void {
   // module). Web clients open links via `window.open` directly.
 
   // Browser tabs — in Electron mode, WebContentsView instances owned by
-  // BrowserManager. In headless mode, calls land on HeadlessBrowserManager
-  // which warns + no-ops; control-server endpoints + MCP tools degrade
-  // gracefully (no tabs visible to inspect/drive). The browser:setBounds
+  // BrowserManager. In headless mode, Playwright pages owned by
+  // PlaywrightBrowserManager. Both implement BrowserManagerLike so the
+  // handler bodies don't branch on runtime. The browser:setBounds
   // signal is registered only in desktop-shell.ts since it needs the
   // BrowserWindow to attach into.
   transport.onRequest('browser:navigate', (_ctx, tabId: string, url: string) => {

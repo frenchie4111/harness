@@ -45,7 +45,11 @@ export default defineConfig({
         // resolves in headless runtime.
         './desktop-shell',
         // keytar is loaded dynamically in secrets.ts; absence is fine.
-        'keytar'
+        'keytar',
+        // Loaded via createRequire in browser-manager-playwright.ts so
+        // we don't bloat the bundle with Chromium client glue. Resolved
+        // from node_modules at runtime alongside the headless dist.
+        'playwright-core'
       ],
       output: {
         format: 'cjs',
