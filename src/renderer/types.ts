@@ -379,6 +379,18 @@ export interface ElectronAPI {
     bounds: { x: number; y: number; width: number; height: number } | null
   ): void
   browserHide(tabId: string): void
+  browserScreenshot(
+    tabId: string,
+    opts?: { format?: 'jpeg' | 'png'; quality?: number }
+  ): Promise<{ data: string; format: 'jpeg' | 'png' } | null>
+  browserClick(
+    tabId: string,
+    x: number,
+    y: number,
+    opts?: { button?: 'left' | 'right' | 'middle'; clickCount?: number }
+  ): Promise<boolean>
+  browserType(tabId: string, text: string, key?: string): Promise<boolean>
+  browserScroll(tabId: string, dx: number, dy: number): Promise<boolean>
 
   createTerminal(
     id: string,
