@@ -373,6 +373,18 @@ hard dependency on `gh`.
   (homebrew binaries, nvm, etc.).
 - **Auto-updater is dev-mode no-op** — `setupAutoUpdater()` returns early
   unless `app.isPackaged`.
+- **Dual browser-controller** — Browser tabs are backed by Electron's
+  `WebContentsView` in desktop mode and by `playwright-core` in headless
+  mode. Both implement the `BrowserManagerLike` contract so MCP tools,
+  the control server, and the pane reconciler call the same surface.
+  `playwright-core` is a runtime dep but **doesn't bundle Chromium** —
+  the user provides one. Resolution: `HARNESS_PLAYWRIGHT_BROWSER`
+  env var first (path to a Chromium executable), else Playwright's
+  `channel: 'chrome'` (system Chrome on macOS/Win/Linux). If neither
+  resolves, the first `create_browser_tab` MCP call throws a clear
+  message. The headless renderer (web client) renders a polled JPEG
+  via `RemoteBrowserView` instead of a native overlay — live screencast
+  is a follow-up.
 - **Dual-claude model** — Harness ships two Claude Code binaries. **xterm
   Claude tabs** spawn `/bin/zsh -ilc claude` so the user's PATH `claude`
   is what runs (lets bleeding-edge / beta testers stay on their own
