@@ -12,6 +12,8 @@ import ReactMarkdown from 'react-markdown'
 import rehypeHighlight from 'rehype-highlight'
 import remarkGfm from 'remark-gfm'
 import {
+  AlertOctagon,
+  AlertTriangle,
   Brain,
   ChevronDown,
   Square,
@@ -376,6 +378,139 @@ function AuthFailureCard({
     </div>
   )
 }
+
+function formatResetTime(resetAt: number): string {
+  const d = new Date(resetAt)
+  if (isNaN(d.getTime())) return ''
+  const sameDay = new Date().toDateString() === d.toDateString()
+  return sameDay
+    ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : d.toLocaleString([], {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      })
+}
+
+function formatTier(tier: string | undefined): string | null {
+  if (!tier) return null
+  // SDK enum: 'five_hour' | 'seven_day' | 'unified'. Pretty-print without
+  // hard-coding the full set so future tiers fall through readably.
+  return tier.replace(/_/g, ' ')
+}
+
+function RateLimitWarningCard({
+  message,
+  detail
+}: {
+  message: string
+  detail?: JsonClaudeChatEntry['rateLimitDetail']
+}): JSX.Element {
+  const utilPct =
+    typeof detail?.utilization === 'number'
+      ? Math.round(detail.utilization * 100)
+      : null
+  const tier = formatTier(detail?.tier)
+  const resetText = detail?.resetAt ? formatResetTime(detail.resetAt) : null
+  return (
+    <div
+      className="my-2 border border-warning/40 bg-warning/5 overflow-hidden"
+      style={{ borderRadius: 'var(--chat-bubble-radius)' }}
+    >
+      <div
+        className="flex items-center gap-2 bg-warning/10"
+        style={{
+          paddingInline: 'var(--chat-chrome-px)',
+          paddingBlock: 'var(--chat-chrome-py)',
+          fontSize: 'var(--chat-chrome-text)'
+        }}
+      >
+        <AlertTriangle size={11} className="text-warning shrink-0" />
+        <span
+          className="font-semibold shrink-0 text-warning"
+          style={{ fontFamily: 'var(--chat-tool-name-family)' }}
+        >
+          {message}
+        </span>
+        {utilPct !== null && (
+          <span
+            className="opacity-70 shrink-0"
+            style={{ fontSize: 'var(--chat-meta-text)' }}
+          >
+            {utilPct}% used
+          </span>
+        )}
+        {tier && (
+          <span
+            className="uppercase tracking-wide text-warning/80 bg-warning/10 border border-warning/30 rounded px-1 py-0.5 shrink-0"
+            style={{ fontSize: 'var(--chat-meta-text)' }}
+          >
+            {tier}
+          </span>
+        )}
+        <span className="flex-1" />
+        {resetText && (
+          <span
+            className="opacity-70 shrink-0"
+            style={{ fontSize: 'var(--chat-meta-text)' }}
+          >
+            resets {resetText}
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function RateLimitErrorCard({
+  message,
+  detail
+}: {
+  message: string
+  detail?: JsonClaudeChatEntry['rateLimitDetail']
+}): JSX.Element {
+  const resetAt = detail?.resetAt
+  const resetInFuture = typeof resetAt === 'number' && resetAt > Date.now()
+  const resetText = resetInFuture && resetAt ? formatResetTime(resetAt) : null
+  return (
+    <div
+      className="my-2 border border-danger/40 bg-danger/5 overflow-hidden"
+      style={{ borderRadius: 'var(--chat-bubble-radius)' }}
+    >
+      <div
+        className="flex items-center gap-2 bg-danger/10 border-b border-danger/20"
+        style={{
+          paddingInline: 'var(--chat-chrome-px)',
+          paddingBlock: 'var(--chat-chrome-py)',
+          fontSize: 'var(--chat-chrome-text)'
+        }}
+      >
+        <AlertOctagon size={11} className="text-danger shrink-0" />
+        <span
+          className="font-semibold shrink-0 text-danger"
+          style={{ fontFamily: 'var(--chat-tool-name-family)' }}
+        >
+          Rate limit reached
+        </span>
+      </div>
+      <div className="px-3 py-2 text-[11px] text-muted space-y-1">
+        <div className="text-fg/80">{message}</div>
+        {resetText && (
+          <div className="text-faint">
+            Retry available at <span className="font-mono">{resetText}</span>
+          </div>
+        )}
+        {!resetText && (
+          <div className="text-faint italic">
+            Send a new message once the limit resets.
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 interface RenderContext {
   resultsByToolUseId: Map<string, { content: string; isError: boolean }>
   childrenByParentToolUseId: Map<string, JsonClaudeChatEntry[]>
@@ -507,6 +642,32 @@ function renderEntries(
             message={entry.errorMessage}
             onOpenLoginTab={ctx.onOpenLoginTab}
             onRetry={ctx.onRetryAuth}
+          />
+        )
+      })
+      continue
+    }
+    if (entry.kind === 'system' && entry.errorKind === 'rate-limit-warning') {
+      rows.push({
+        key: entry.entryId,
+        type: 'tool',
+        node: (
+          <RateLimitWarningCard
+            message={entry.errorMessage ?? 'Approaching rate limit'}
+            detail={entry.rateLimitDetail}
+          />
+        )
+      })
+      continue
+    }
+    if (entry.kind === 'error' && entry.errorKind === 'rate-limit-error') {
+      rows.push({
+        key: entry.entryId,
+        type: 'tool',
+        node: (
+          <RateLimitErrorCard
+            message={entry.errorMessage ?? 'Rate limit reached'}
+            detail={entry.rateLimitDetail}
           />
         )
       })
