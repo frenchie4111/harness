@@ -20,6 +20,7 @@ import type { ClientTransport } from '../shared/transport/transport'
 // when initStore() rejects.
 
 const remoteUrlRaw = findRemoteUrl(process.argv)
+const isRemote = !!remoteUrlRaw
 let transport: ClientTransport
 if (remoteUrlRaw) {
   const split = splitRemoteUrl(remoteUrlRaw)
@@ -37,7 +38,7 @@ if (remoteUrlRaw) {
 // browser web-client. The flag name predates remote-Electron mode but
 // the meaning is the same: "no local Electron backend reachable, route
 // everything through the transport."
-contextBridge.exposeInMainWorld('__HARNESS_WEB__', !!remoteUrlRaw)
+contextBridge.exposeInMainWorld('__HARNESS_WEB__', isRemote)
 
 type DataCallback = (id: string, data: string) => void
 type ExitCallback = (id: string, exitCode: number) => void
@@ -283,8 +284,17 @@ contextBridge.exposeInMainWorld('api', {
   checkForUpdates: () => req('updater:checkForUpdates'),
   quitAndInstall: () => req('updater:quitAndInstall'),
 
-  // Shell
-  openExternal: (url: string) => sig('shell:openExternal', url),
+  // Shell — in remote mode, route through window.open so the URL opens on
+  // the viewing client's machine (intercepted by setWindowOpenHandler in
+  // desktop-shell-remote.ts, or handled natively by the browser in the
+  // web client). In native mode, signal main to call shell.openExternal.
+  openExternal: (url: string) => {
+    if (isRemote) {
+      window.open(url, '_blank', 'noopener,noreferrer')
+    } else {
+      sig('shell:openExternal', url)
+    }
+  },
   openDebugLog: () => req('debug:openLog'),
   showDebugLogInFolder: () => req('debug:showLogInFolder'),
 
