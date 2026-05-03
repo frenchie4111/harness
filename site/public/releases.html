@@ -78,6 +78,46 @@
   <!-- Releases -->
   <div class="max-w-3xl mx-auto px-6 pb-24">
 
+    <!-- v2.7.0 -->
+    <section class="release-section py-10">
+      <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
+        <h2 class="text-3xl font-bold tracking-tight">v2.7.0</h2>
+        <span class="text-sm text-neutral-500">May 3, 2026</span>
+      </div>
+      <a href="https://github.com/frenchie4111/harness/releases/tag/v2.7.0" class="text-sm text-amber-400/80 hover:text-amber-300 transition-colors">Download &rarr;</a>
+      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">Chat mode grows up — a tasks panel, sub-agent nesting, rich file viewers, and a bundled Claude binary make the native chat UI production-ready, alongside headless server tarballs for Linux deployments and a wave of scroll, spacing, and performance improvements.</p>
+      <div class="note-body">
+        <h4>New features</h4>
+        <ul>
+          <li><strong>Tasks panel in chat mode</strong> — Claude's active to-do list is now visible as a side panel during chat sessions, so you can follow what it's working through without reading every message.</li>
+          <li><strong>Sub-agent nesting in chat mode</strong> — when Claude spawns sub-agents, their tool calls appear as collapsible nested groups in the chat UI, making multi-agent flows much easier to follow.</li>
+          <li><strong>Rich file viewers in chat mode</strong> — images, PDFs, and other files surfaced during a chat session now render inline rather than showing a raw path.</li>
+          <li><strong>Bundled Claude for chat mode</strong> — chat (json-mode) tabs now ship with a pinned Claude Code binary so the chat interface stays stable regardless of what version is on your PATH.</li>
+          <li><strong>Headless server tarballs</strong> — the Harness backend is now distributed as self-contained tarballs for Linux and macOS servers, so you can install it without npm or Electron.</li>
+          <li><strong>Browser control in headless mode</strong> — browser panes and Browser MCP tools now work in headless / server deployments, not just the desktop app.</li>
+          <li><strong>Remote file picker for opening repos</strong> — headless and web sessions now include a file-system picker for opening a repository, so you no longer need to type the full path manually.</li>
+        </ul>
+        <h4>Improvements</h4>
+        <ul>
+          <li><strong>Bash approval prompts show command + description</strong> — permission cards for shell commands now display the command and a plain-English description separately, making it easier to decide whether to approve.</li>
+          <li><strong>Auto-accept file edits in chat mode</strong> — chat sessions now accept file edits automatically by default, cutting down on approval clicks for routine coding tasks.</li>
+          <li><strong>Auto-growing compose bar</strong> — the chat compose bar now expands as you type (up to 8 lines), making longer prompts easier to write and review before sending.</li>
+          <li><strong>Scroll reliability in chat mode</strong> — scroll-stick behavior has been reworked so the view reliably follows the latest message during streaming and stays put when you scroll up to read earlier content.</li>
+          <li><strong>More comfortable chat density</strong> — spacing and layout in the chat UI have been tuned for a less cramped reading experience.</li>
+          <li><strong>Changed-files panel uses file watching</strong> — the panel now reacts to changes instantly via file-system events instead of polling, reducing CPU usage and making updates feel immediate.</li>
+          <li>Multiple internal performance improvements reduce CPU usage and UI jank during active streaming sessions.</li>
+        </ul>
+        <h4>Fixes</h4>
+        <ul>
+          <li>Fixed chat mode tabs not appearing in the activity timeline status aggregation.</li>
+          <li>Fixed the chat view jumping away from the bottom when a thinking card expanded or collapsed mid-stream.</li>
+          <li>Fixed the "thinking…" spinner disappearing briefly between multi-part streamed responses.</li>
+          <li>Fixed shell activity detection not firing when a command timed out rather than completing normally.</li>
+          <li>Fixed an unwanted horizontal scrollbar appearing in chat mode on narrow windows.</li>
+        </ul>
+      </div>
+    </section>
+
     <!-- v2.6.1 -->
     <section class="release-section py-10">
       <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
