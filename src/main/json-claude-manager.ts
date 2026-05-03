@@ -24,6 +24,7 @@ import { homedir } from 'os'
 import { dirname, join, sep } from 'path'
 import { isPackaged } from './paths'
 import type { Store } from './store'
+import { tolerantJsonParse } from './tolerant-json-parse'
 import type {
   JsonClaudeChatEntry,
   JsonClaudeMessageBlock,
@@ -61,6 +62,12 @@ interface PartialMessageState {
    *  message_start so the placeholder entry created on the first
    *  content_block_start carries the field through the reducer. */
   parentToolUseId?: string
+  // tool_use input streams as a sequence of partial_json fragments keyed
+  // by content_block index. We accumulate per index, look up the
+  // matching tool_use id captured at content_block_start, run a tolerant
+  // parse on each delta, and dispatch progressive input updates.
+  toolUseIdByBlockIndex: Map<number, string>
+  inFlightToolInputs: Map<string, string>
 }
 
 /** ms to coalesce text deltas before dispatching. Below ~16ms re-renders
@@ -1173,11 +1180,14 @@ export class JsonClaudeManager {
   /** Stream-event handler for the SDK delta events claude emits when
    *  --include-partial-messages is on. Mirrors the Anthropic Messages
    *  SDK shapes: message_start declares the message id, content_block_*
-   *  brackets each block, content_block_delta carries text_delta or
-   *  input_json_delta. We only render text deltas progressively today;
-   *  input_json_delta is on the backlog (see plans/json-mode-native-chat.md).
-   *  Text deltas are coalesced (~30ms) before dispatch so a fast model
-   *  doesn't trigger a re-render per token. */
+   *  brackets each block, content_block_delta carries text_delta,
+   *  thinking_delta, or input_json_delta. Text + thinking deltas are
+   *  coalesced (~30ms / 250ms) before dispatch so a fast model doesn't
+   *  trigger a re-render per token. input_json_delta fragments accumulate
+   *  per content_block index, get tolerant-parsed each delta, and dispatch
+   *  jsonClaude/toolInputProgressed so per-tool cards populate
+   *  field-by-field instead of popping in all at once on the consolidated
+   *  assistant event. */
   private handleStreamEvent(
     instance: JsonClaudeInstance,
     parsed: Record<string, unknown>
@@ -1208,6 +1218,8 @@ export class JsonClaudeManager {
         textFlushTimer: null,
         thinkingFlushTimer: null,
         placeholderCreated: false,
+        toolUseIdByBlockIndex: new Map(),
+        inFlightToolInputs: new Map(),
         ...(parentToolUseId ? { parentToolUseId } : {})
       }
       return
@@ -1217,6 +1229,16 @@ export class JsonClaudeManager {
       const rawBlock = event['content_block'] as Record<string, unknown> | undefined
       const newBlock = streamEventBlockToMessageBlock(rawBlock)
       if (!newBlock) return
+      const blockIndex =
+        typeof event['index'] === 'number' ? (event['index'] as number) : null
+      if (
+        newBlock.type === 'tool_use' &&
+        newBlock.id &&
+        blockIndex !== null
+      ) {
+        instance.partial.toolUseIdByBlockIndex.set(blockIndex, newBlock.id)
+        instance.partial.inFlightToolInputs.set(newBlock.id, '')
+      }
       // Make sure any pending deltas land in the previous block before
       // we introduce a new block.
       this.flushPartialDeltas(instance)
@@ -1246,7 +1268,12 @@ export class JsonClaudeManager {
     }
     if (eventType === 'content_block_delta') {
       const delta = event['delta'] as
-        | { type?: string; text?: string; thinking?: string }
+        | {
+            type?: string
+            text?: string
+            thinking?: string
+            partial_json?: string
+          }
         | undefined
       if (delta?.type === 'text_delta' && typeof delta.text === 'string') {
         if (delta.text.length === 0) return
@@ -1259,13 +1286,52 @@ export class JsonClaudeManager {
         if (delta.thinking.length === 0) return
         instance.partial.pendingThinking += delta.thinking
         this.scheduleThinkingFlush(instance)
+      } else if (
+        delta?.type === 'input_json_delta' &&
+        typeof delta.partial_json === 'string'
+      ) {
+        const blockIndex =
+          typeof event['index'] === 'number' ? (event['index'] as number) : null
+        if (blockIndex === null) return
+        const toolUseId =
+          instance.partial.toolUseIdByBlockIndex.get(blockIndex)
+        if (!toolUseId) return
+        const prior =
+          instance.partial.inFlightToolInputs.get(toolUseId) ?? ''
+        const next = prior + delta.partial_json
+        instance.partial.inFlightToolInputs.set(toolUseId, next)
+        const parsed = tolerantJsonParse(next)
+        if (parsed) {
+          this.store.dispatch({
+            type: 'jsonClaude/toolInputProgressed',
+            payload: {
+              sessionId: instance.sessionId,
+              entryId: instance.partial.entryId,
+              toolUseId,
+              input: parsed
+            }
+          })
+        }
       }
-      // input_json_delta is intentionally dropped — see backlog.
       // signature_delta carries the cryptographic signature for a
       // thinking block; nothing to render in the UI.
       return
     }
-    if (eventType === 'content_block_stop' || eventType === 'message_stop') {
+    if (eventType === 'content_block_stop') {
+      this.flushPartialDeltas(instance)
+      const blockIndex =
+        typeof event['index'] === 'number' ? (event['index'] as number) : null
+      if (blockIndex !== null) {
+        const toolUseId =
+          instance.partial.toolUseIdByBlockIndex.get(blockIndex)
+        if (toolUseId) {
+          instance.partial.inFlightToolInputs.delete(toolUseId)
+          instance.partial.toolUseIdByBlockIndex.delete(blockIndex)
+        }
+      }
+      return
+    }
+    if (eventType === 'message_stop') {
       this.flushPartialDeltas(instance)
       return
     }
@@ -1434,11 +1500,6 @@ function streamEventBlockToMessageBlock(
       id: typeof block['id'] === 'string' ? (block['id'] as string) : undefined,
       name:
         typeof block['name'] === 'string' ? (block['name'] as string) : undefined,
-      // Input arrives via input_json_delta — we don't accumulate those
-      // today, so the placeholder card renders the tool name only until
-      // the consolidated assistant event reconciles with the full
-      // input. See "Backlog follow-ups from partial-message streaming"
-      // in plans/json-mode-native-chat.md.
       input: {}
     }
   }
