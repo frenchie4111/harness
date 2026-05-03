@@ -1,6 +1,12 @@
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { Worktree, PendingWorktree, PRStatus, TerminalTab } from '../types'
 import { markTerminalClosing } from '../components/XTerminal'
+
+declare global {
+  interface Window {
+    __HARNESS_WEB__?: boolean
+  }
+}
 
 interface UseWorktreeHandlersArgs {
   worktrees: Worktree[]
@@ -33,17 +39,44 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
     setShowNewWorktree
   } = args
 
-  const handleAddRepo = useCallback(async () => {
-    const root = await window.api.addRepo()
-    // Main dispatches worktrees/reposChanged + listChanged; we just route
-    // focus to the new repo's main worktree once it lands in the store.
-    if (root) {
+  const [repoPickerOpen, setRepoPickerOpen] = useState(false)
+
+  const focusNewRepo = useCallback(
+    (root: string) => {
       const added =
         worktrees.find((w) => w.repoRoot === root && w.isMain) ||
         worktrees.find((w) => w.repoRoot === root)
       if (added) setActiveWorktreeId(added.path)
+    },
+    [worktrees, setActiveWorktreeId]
+  )
+
+  const handleAddRepo = useCallback(async () => {
+    // Web/headless mode: native dialog runs on the user's laptop, but the
+    // repos live on the remote box. Open the in-app RemoteFilePicker
+    // instead and let it call repo:addAtPath when the user selects.
+    if (window.__HARNESS_WEB__) {
+      setRepoPickerOpen(true)
+      return
     }
-  }, [worktrees, setActiveWorktreeId])
+    const root = await window.api.addRepo()
+    // Main dispatches worktrees/reposChanged + listChanged; we just route
+    // focus to the new repo's main worktree once it lands in the store.
+    if (root) focusNewRepo(root)
+  }, [focusNewRepo])
+
+  const handleRepoPickerSelect = useCallback(
+    async (path: string) => {
+      const root = await window.api.addRepoAtPath(path)
+      setRepoPickerOpen(false)
+      if (root) focusNewRepo(root)
+    },
+    [focusNewRepo]
+  )
+
+  const handleRepoPickerCancel = useCallback(() => {
+    setRepoPickerOpen(false)
+  }, [])
 
   // External worktree creation (from the harness-control MCP). Main
   // refreshes the store list AND seeds default panes (with the prompt
@@ -284,6 +317,9 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
     handleContinuePendingWorktree,
     handleContinueWorktree,
     handleDeleteWorktree,
-    handleBulkDeleteWorktrees
+    handleBulkDeleteWorktrees,
+    repoPickerOpen,
+    handleRepoPickerSelect,
+    handleRepoPickerCancel
   }
 }
