@@ -414,9 +414,10 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
       }
     )
 
-    transport.onRequest('updater:getVersion', (_ctx) => {
-      return app.getVersion()
-    })
+    // updater:getVersion is registered in src/main/index.ts so it works
+    // for both Electron windows and headless WS clients. The remaining
+    // updater:* handlers stay here because they need electron-updater
+    // and the before-quit teardown.
 
     transport.onRequest('updater:checkForUpdates', async (_ctx) => {
       if (!app.isPackaged) {

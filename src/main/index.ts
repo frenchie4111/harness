@@ -149,6 +149,42 @@ function findShellWorktree(shellId: string): string | null {
   }
   return null
 }
+// Resolves the harness version from disk so it works in every runtime
+// (Electron dev/packaged, headless dev, headless tarball). Electron's
+// `app.getVersion()` would do the job in two of those four, but the
+// headless server has no `app`, so we read package.json (or the
+// pack-headless VERSION sidecar) directly. Cached after first hit —
+// the file layout doesn't change while the process is alive.
+let cachedHarnessVersion: string | null = null
+function getHarnessVersion(): string {
+  if (cachedHarnessVersion) return cachedHarnessVersion
+  const candidates: Array<{ path: string; parse: (text: string) => string | null }> = [
+    {
+      path: join(__dirname, '..', '..', 'package.json'),
+      parse: (text) => {
+        const v = (JSON.parse(text) as { version?: unknown }).version
+        return typeof v === 'string' ? v : null
+      }
+    },
+    {
+      path: join(__dirname, '..', 'VERSION'),
+      parse: (text) => text.trim() || null
+    }
+  ]
+  for (const { path, parse } of candidates) {
+    try {
+      const v = parse(readFileSync(path, 'utf8'))
+      if (v) {
+        cachedHarnessVersion = v
+        return v
+      }
+    } catch {
+      // try next candidate
+    }
+  }
+  cachedHarnessVersion = 'unknown'
+  return cachedHarnessVersion
+}
 
 // Headless-only CLI flags (--host / --port / --help / --version). Parse
 // before any heavy init so --help / --version exit instantly without
@@ -1851,11 +1887,29 @@ function registerIpcHandlers(): void {
     return result
   })
 
-  // updater:* (getVersion / checkForUpdates / quitAndInstall) live in
-  // desktop-shell.ts — they need electron-updater + app.removeAllListeners.
-  // Headless mode leaves them unregistered; the renderer guards on
-  // updaterStatus before showing the banner so absence is visible as
-  // "no update info" rather than a thrown error.
+  // updater:getVersion is mode-agnostic — both Electron windows and WS
+  // clients (web client, HARNESS_REMOTE_URL Electron) ask for it. Reads
+  // from package.json / VERSION rather than Electron's app.getVersion()
+  // so the headless server can answer without an `app`.
+  transport.onRequest('updater:getVersion', (_ctx) => getHarnessVersion())
+
+  // updater:checkForUpdates / updater:quitAndInstall: the real
+  // implementations live in desktop-shell.ts (they drive electron-updater
+  // and tear down PTYs before handing off to Squirrel). Register no-op
+  // fallbacks here only in headless mode — updating the server binary is
+  // the user's job (install script / package manager), not something
+  // electron-updater can drive remotely. In Electron mode we skip the
+  // fallback so the desktop-shell registration wins (ipcMain.handle
+  // throws on duplicates; the WS transport's Map.set silently overwrites
+  // — the gate keeps both transports consistent).
+  if (runtime === 'node') {
+    const headlessUpdaterError = {
+      ok: false as const,
+      error: 'Updates are managed by the local app, not the server'
+    }
+    transport.onRequest('updater:checkForUpdates', (_ctx) => headlessUpdaterError)
+    transport.onRequest('updater:quitAndInstall', (_ctx) => headlessUpdaterError)
+  }
 
   transport.onRequest('debug:readRecentLog', (_ctx, maxLines?: number) => {
     return readRecentDebugLog(maxLines)
