@@ -281,7 +281,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
   // Constants and non-settings state load once; live settings are already
   // hydrated via useSettings() above.
   useEffect(() => {
-    window.api.getVersion().then(setVersion)
+    void window.api.getVersion().then(setVersion).catch(() => setVersion(''))
     window.api.getDefaultClaudeCommand().then(setDefaultClaudeCommand)
     window.api.getDefaultTerminalFontFamily().then(setDefaultTerminalFontFamily)
     window.api.getAvailableEditors().then(setAvailableEditors)
