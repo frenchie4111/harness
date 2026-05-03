@@ -18,6 +18,7 @@ import { networkInterfaces } from 'os'
 import type { Server as HttpServer } from 'http'
 import type { ServerTransport } from '../shared/transport/transport'
 import { detectRuntime } from './paths'
+import { parseCliFlags, USAGE, type CliFlags } from './cli-args'
 import { PlaywrightBrowserManager } from './browser-manager-playwright'
 import type { BrowserManagerLike } from './browser-manager-types'
 import { PerfMonitor } from './perf-monitor'
@@ -61,17 +62,53 @@ import { getAgent, type AgentKind } from './agents'
 import { buildClaudeLaunchSettings } from './claude-launch'
 import { HARNESS_REPO_OWNER, HARNESS_REPO_NAME } from '../shared/constants'
 import { readRecentDebugLog } from './debug'
+import { CostTracker } from './cost-tracker'
+import { listDir as fsListDir, isGitRepo as fsIsGitRepo, resolveHome as fsResolveHome } from './fs-listing'
+import { startControlServer } from './control-server'
+import { writeMcpConfigForTerminal, pruneMcpConfigs, getBridgeScriptPath } from './mcp-config'
+import { getControlServerInfo } from './control-server'
+import { recordActivity, getActivityLog, clearAllActivity, clearActivityForWorktree, sealAllActive, touchActivityMeta, finalizeActivity, type ActivityState, type PRState } from './activity'
+import { log, getLogFilePath } from './debug'
+import { perfLog } from './perf-log'
+import { buildInitialAppState } from './build-initial-state'
 
 function toAgentKind(value: string | undefined): AgentKind {
   return value === 'codex' ? 'codex' : 'claude'
 }
 
+// Runtime detection — Electron sets process.versions.electron, plain
+// Node leaves it undefined. The mode picks itself; there's no env-var
+// override to fight with.
+const runtime = detectRuntime()
+
+// Remote-mode short-circuit: when launched with HARNESS_REMOTE_URL, the
+// renderer talks to a remote harness-server over WebSocket and we skip
+// every local backend service (store, PtyManager, transports, IPC
+// handlers, FSMs, pollers, …). Hand off to the remote shell module via
+// dynamic require — the bundler can't see this path so the headless
+// build never drags Electron in. Once bootRemote() returns we're done;
+// it owns app.whenReady, the menu, the window, and the auto-updater.
+if (runtime === 'electron' && process.env['HARNESS_REMOTE_URL']) {
+  const remoteUrl = process.env['HARNESS_REMOTE_URL']
+  const dynamicRequire = createRequire(__filename)
+  const remoteShellMod = dynamicRequire('./desktop-shell-remote') as typeof import('./desktop-shell-remote')
+  remoteShellMod.bootRemote(remoteUrl)
+} else {
+  bootLocal()
+}
+
+// Wrap the entire local-mode boot in a function so the remote-mode
+// branch above can early-exit cleanly. Function declarations are
+// hoisted, so the call site above sees this definition. Everything
+// inside used to live at module top-level; the only change is the
+// extra `function bootLocal(): void {` wrapper + matching brace at
+// EOF — the body is otherwise identical.
+function bootLocal(): void {
+
 // Resolves the caller's MCP scope from their terminal id. Used by both
 // the control HTTP server (on every tool call, authoritative) and
 // writeMcpConfigForTerminal (to seed best-effort HARNESS_* env vars in
-// the spawned bridge). Lives at module scope so IPC handlers registered
-// inside registerIpcHandlers can close over it — the store reference is
-// hoisted the same way.
+// the spawned bridge). Closes over the local `store` constructed below.
 function resolveCallerScope(terminalId: string) {
   if (!terminalId) return null
   const panes = store.getSnapshot().state.terminals.panes
@@ -149,20 +186,49 @@ function getHarnessVersion(): string {
   return cachedHarnessVersion
 }
 
-import { CostTracker } from './cost-tracker'
-import { listDir as fsListDir, isGitRepo as fsIsGitRepo, resolveHome as fsResolveHome } from './fs-listing'
-import { startControlServer } from './control-server'
-import { writeMcpConfigForTerminal, pruneMcpConfigs, getBridgeScriptPath } from './mcp-config'
-import { getControlServerInfo } from './control-server'
-import { recordActivity, getActivityLog, clearAllActivity, clearActivityForWorktree, sealAllActive, touchActivityMeta, finalizeActivity, type ActivityState, type PRState } from './activity'
-import { log, getLogFilePath } from './debug'
-import { perfLog } from './perf-log'
-import { buildInitialAppState } from './build-initial-state'
+// Headless-only CLI flags (--host / --port / --help / --version). Parse
+// before any heavy init so --help / --version exit instantly without
+// loading config or constructing managers. Electron's argv carries
+// chromium switches that aren't ours to validate, so we skip parsing
+// in Electron entirely — these flags are a headless ergonomics feature.
+const cliFlags: CliFlags = (() => {
+  if (runtime !== 'node') {
+    return { showHelp: false, showVersion: false }
+  }
+  const result = parseCliFlags(process.argv.slice(2))
+  if (result.kind === 'error') {
+    process.stderr.write(`harness-server: ${result.message}\n\n`)
+    process.stderr.write(USAGE)
+    process.exit(2)
+  }
+  if (result.flags.showHelp) {
+    process.stdout.write(USAGE)
+    process.exit(0)
+  }
+  if (result.flags.showVersion) {
+    process.stdout.write(`${resolveServerVersion()}\n`)
+    process.exit(0)
+  }
+  return result.flags
+})()
 
-// Runtime detection — Electron sets process.versions.electron, plain
-// Node leaves it undefined. The mode picks itself; there's no env-var
-// override to fight with.
-const runtime = detectRuntime()
+function resolveServerVersion(): string {
+  const fromEnv = process.env['npm_package_version']
+  if (fromEnv) return fromEnv
+  const candidates = [
+    join(__dirname, '../../package.json'),
+    join(__dirname, '../package.json')
+  ]
+  for (const path of candidates) {
+    try {
+      const pkg = JSON.parse(readFileSync(path, 'utf8'))
+      if (typeof pkg.version === 'string') return pkg.version
+    } catch {
+      // try next
+    }
+  }
+  return 'unknown'
+}
 
 // Load the desktop shell ONLY in Electron mode. `createRequire` hides
 // the lookup from the bundler, so the headless build doesn't drag
@@ -249,33 +315,21 @@ const wsEnabled =
   runtime === 'node' ||
   config.wsTransportEnabled === true ||
   process.env['HARNESS_WS_TRANSPORT'] === '1'
-// --port N or --port=N from argv beats the env var so the headless
-// shim can pass the user's flag through verbatim. --port 0 picks an
-// ephemeral port (the existing wsTransport.listen path handles it).
-function parseCliPort(argv: string[]): number | null {
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i]
-    if (a === '--port' && i + 1 < argv.length) {
-      const n = Number.parseInt(argv[i + 1] ?? '', 10)
-      return Number.isFinite(n) ? n : null
-    }
-    if (a && a.startsWith('--port=')) {
-      const n = Number.parseInt(a.slice('--port='.length), 10)
-      return Number.isFinite(n) ? n : null
-    }
-  }
-  return null
-}
-const cliPort = parseCliPort(process.argv.slice(2))
+// CLI flag > env var > config > default. --port 0 picks an ephemeral
+// port (the existing wsTransport.listen path handles it). cliFlags is
+// already populated above (gated on headless runtime).
 const envPort = Number.parseInt(process.env['HARNESS_WS_PORT'] ?? '', 10)
 const wsPort =
-  cliPort != null && cliPort >= 0
-    ? cliPort
+  cliFlags.port != null && cliFlags.port >= 0
+    ? cliFlags.port
     : Number.isFinite(envPort) && envPort > 0
       ? envPort
       : (config.wsTransportPort ?? 37291)
 const wsHost =
-  process.env['HARNESS_WS_HOST'] || config.wsTransportHost || '127.0.0.1'
+  cliFlags.host ||
+  process.env['HARNESS_WS_HOST'] ||
+  config.wsTransportHost ||
+  '127.0.0.1'
 
 // Load (or generate + persist) the shared auth token. Persistence lets
 // users pin the web-client URL to a phone homescreen or bookmark it
@@ -2684,3 +2738,6 @@ if (desktopShellMod && desktopEarly) {
   process.on('SIGINT', shutdown)
   process.on('SIGTERM', shutdown)
 }
+
+} // end bootLocal()
+

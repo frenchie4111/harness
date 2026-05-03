@@ -18,6 +18,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'child_process'
 import { homedir } from 'os'
 import { log } from './debug'
 import { shellQuote } from './shell-quote'
+import { resolveUserShell, loginShellCommandArgs } from './user-shell'
 
 export type AutoApproveDecision =
   | { kind: 'approve'; model: string; reason: string }
@@ -299,7 +300,7 @@ export async function autoReview(
   return await new Promise<AutoApproveDecision>((resolve) => {
     let proc: ChildProcessWithoutNullStreams
     try {
-      proc = spawn('/bin/zsh', ['-ilc', cmdLine], {
+      proc = spawn(resolveUserShell(), loginShellCommandArgs(cmdLine), {
         stdio: ['pipe', 'pipe', 'pipe'],
         env: { ...process.env, CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1' }
       })

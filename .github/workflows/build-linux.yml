@@ -37,16 +37,17 @@ jobs:
       - name: Install dependencies
         run: npm install --legacy-peer-deps
 
-      - name: Build Linux AppImage
+      - name: Build Linux packages
         run: npm run dist:linux
 
       - name: Upload workflow artifact (branch / dispatch)
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         uses: actions/upload-artifact@v4
         with:
-          name: harness-linux-appimage
+          name: harness-linux
           path: |
             release/Harness-*.AppImage
+            release/Harness-*.deb
             release/latest-linux.yml
           if-no-files-found: error
 
@@ -58,5 +59,6 @@ jobs:
           TAG="${GITHUB_REF#refs/tags/}"
           gh release upload "$TAG" \
             release/Harness-*.AppImage \
+            release/Harness-*.deb \
             release/latest-linux.yml \
             --clobber

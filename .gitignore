@@ -10,3 +10,4 @@ release/
 .env.local
 .DS_Store
 .claude/settings.local.json
+.claude/scheduled_tasks.lock

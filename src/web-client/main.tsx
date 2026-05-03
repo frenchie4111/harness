@@ -24,7 +24,7 @@
 
 import '../renderer/styles.css'
 import type { ProfilerOnRenderCallback } from 'react'
-import { WebSocketClientTransport } from '../renderer/transport-websocket'
+import { WebSocketClientTransport } from '../shared/transport/transport-websocket'
 import type { ElectronAPI } from '../renderer/types'
 
 declare global {

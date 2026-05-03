@@ -2,6 +2,7 @@ import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { log } from './debug'
 import { getSecret } from './secrets'
+import { resolveUserShell } from './user-shell'
 
 const execFileAsync = promisify(execFile)
 
@@ -54,10 +55,11 @@ function warnIfScopesShort(source: TokenSource, scopes: string[]): void {
 /** Try reading a token from `gh auth token`. Returns null if gh is absent or not logged in. */
 async function readGhCliToken(): Promise<string | null> {
   // Login shell so Homebrew's gh is on PATH (matching PtyManager). Login-only
-  // (no -i) avoids .zshrc side effects that can break non-TTY invocations —
-  // PATH from Homebrew lives in .zprofile/.zlogin which login mode sources.
+  // (no -i) avoids rc-file side effects that can break non-TTY invocations —
+  // PATH from Homebrew lives in .zprofile/.zlogin (zsh) and .bash_profile
+  // (bash), both sourced by login mode.
   try {
-    const { stdout } = await execFileAsync('/bin/zsh', ['-lc', 'gh auth token'], {
+    const { stdout } = await execFileAsync(resolveUserShell(), ['-lc', 'gh auth token'], {
       timeout: 3000
     })
     // gh auth token can include trailing newline + nothing else on stderr.

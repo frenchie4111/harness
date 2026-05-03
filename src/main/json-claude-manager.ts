@@ -33,6 +33,7 @@ import type {
 import type { ClaudeLaunchSettings } from './claude-launch'
 import { log } from './debug'
 import { shellQuote } from './shell-quote'
+import { resolveUserShell, loginShellCommandArgs } from './user-shell'
 
 interface JsonClaudeInstance {
   proc: ChildProcessWithoutNullStreams
@@ -500,7 +501,7 @@ export class JsonClaudeManager {
         // inside JSON.stringify's double quotes.
         const quoted = args.map(shellQuote).join(' ')
         const cmdLine = `${claudeCommand} ${quoted}`
-        proc = spawn('/bin/zsh', ['-ilc', cmdLine], {
+        proc = spawn(resolveUserShell(), loginShellCommandArgs(cmdLine), {
           cwd: worktreePath,
           env: spawnEnv,
           stdio: ['pipe', 'pipe', 'pipe']
@@ -878,7 +879,7 @@ export class JsonClaudeManager {
         if (useSystemClaude) {
           const quoted = args.map((a) => JSON.stringify(a)).join(' ')
           const cmdLine = `${claudeCommand} ${quoted}`
-          proc = spawn('/bin/zsh', ['-ilc', cmdLine], {
+          proc = spawn(resolveUserShell(), loginShellCommandArgs(cmdLine), {
             cwd,
             env: spawnEnv,
             stdio: ['pipe', 'pipe', 'pipe']

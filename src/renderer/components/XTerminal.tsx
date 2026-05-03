@@ -168,8 +168,8 @@ interface XTerminalProps {
   sessionId?: string
   initialPrompt?: string
   teleportSessionId?: string
-  /** Shell tabs only: when set, spawn `/bin/zsh -ilc <command>` instead of an
-   * interactive login shell. Used for agent-spawned shells. */
+  /** Shell tabs only: when set, spawn `<user-shell> -ilc <command>` instead
+   * of an interactive login shell. Used for agent-spawned shells. */
   shellCommand?: string
   /** Shell tabs only: directory to spawn in. Relative paths resolve against
    * `cwd` (the worktree root); absolute paths are used as-is. */
@@ -338,7 +338,9 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
       }
       pendingSpawnRef.current = null
 
-      const shell = '/bin/zsh'
+      // Empty string falls through to env.SHELL in pty-manager — picks up the
+      // user's actual shell instead of hardcoding zsh on bash-only systems.
+      const shell = ''
       const agentArg = type === 'agent' ? await buildAgentArg() : ''
       if (disposed) return
       const args =
