@@ -56,6 +56,7 @@ contextBridge.exposeInMainWorld('api', {
   // Repos (multi-repo session state)
   listRepos: () => req('repo:list'),
   addRepo: () => req('repo:add'),
+  addRepoAtPath: (repoRoot: string) => req('repo:addAtPath', repoRoot),
   removeRepo: (repoRoot: string) => req('repo:remove', repoRoot),
   createNewProject: (opts: {
     parentDir: string
@@ -65,6 +66,12 @@ contextBridge.exposeInMainWorld('api', {
   }) => req('repo:createNewProject', opts),
   pickDirectory: (opts?: { defaultPath?: string; title?: string }) =>
     req('dialog:pickDirectory', opts),
+
+  // Cross-runtime filesystem browsing (used by RemoteFilePicker over WS).
+  listDir: (path: string, opts?: { showHidden?: boolean }) =>
+    req('fs:listDir', path, opts),
+  resolveHome: () => req('fs:resolveHome'),
+  isGitRepo: (path: string) => req('fs:isGitRepo', path),
 
   // All files (tracked + untracked, respecting .gitignore)
   listAllFiles: (worktreePath: string) => req('worktree:listFiles', worktreePath),

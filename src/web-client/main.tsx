@@ -88,16 +88,22 @@ function buildApi(transport: WebSocketClientTransport): ElectronAPI {
     getWorktreeDir: (repoRoot) => req('worktree:dir', repoRoot) as Promise<string>,
 
     listRepos: () => req('repo:list') as Promise<string[]>,
-    // TODO(web): Electron's native folder picker is unreachable from a
-    // browser. Long-term: serve a directory-listing API from main and
-    // build an in-app picker UI; for v1 the user sets repo roots from
-    // the desktop window before connecting from a browser.
+    // Electron's native folder picker is unreachable from a browser. The
+    // renderer-side RemoteFilePicker uses the cross-runtime fs:* + repo:
+    // addAtPath handlers below; addRepo is left as a no-op so anything
+    // calling it directly in web mode (instead of branching on
+    // __HARNESS_WEB__) doesn't crash.
     addRepo: () => Promise.resolve(unavailable('addRepo', null)),
+    addRepoAtPath: (repoRoot) => req('repo:addAtPath', repoRoot) as Promise<string | null>,
     removeRepo: (repoRoot) => req('repo:remove', repoRoot) as Promise<boolean>,
     createNewProject: (opts) =>
       req('repo:createNewProject', opts) as ReturnType<ElectronAPI['createNewProject']>,
     // TODO(web): same as addRepo — needs a custom in-browser folder picker.
     pickDirectory: () => Promise.resolve(unavailable('pickDirectory', null)),
+    listDir: (path, opts) =>
+      req('fs:listDir', path, opts) as ReturnType<ElectronAPI['listDir']>,
+    resolveHome: () => req('fs:resolveHome') as Promise<string>,
+    isGitRepo: (path) => req('fs:isGitRepo', path) as Promise<boolean>,
 
     getMainWorktreeStatus: (repoRoot) =>
       req('worktree:mainStatus', repoRoot) as ReturnType<ElectronAPI['getMainWorktreeStatus']>,

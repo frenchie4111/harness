@@ -29,6 +29,7 @@ import { ReviewScreen } from './components/ReviewScreen'
 import { CommandPalette } from './components/CommandPalette'
 import { HotkeyCheatsheet } from './components/HotkeyCheatsheet'
 import { NewProjectScreen } from './components/NewProjectScreen'
+import { RemoteFilePicker } from './components/RemoteFilePicker'
 import { ReportIssueScreen, onOpenReportIssue, type OpenReportIssueDetail } from './components/ReportIssueScreen'
 import iconUrl from '../../resources/icon.png'
 import { PerfMonitorHUD } from './components/PerfMonitorHUD'
@@ -480,7 +481,10 @@ const setQuestStep = useCallback((next: QuestStep) => {
     handleContinueWorktree,
     handleDeleteWorktree,
     handleBulkDeleteWorktrees,
-    handleDismissPendingDeletion
+    handleDismissPendingDeletion,
+    repoPickerOpen,
+    handleRepoPickerSelect,
+    handleRepoPickerCancel
   } = useWorktreeHandlers({
     worktrees,
     pendingWorktrees,
@@ -636,6 +640,22 @@ const setQuestStep = useCallback((next: QuestStep) => {
       <WeeklyWrappedScreen onClose={() => setShowMyWeek(false)} />
     </div>
   ) : null
+
+  const repoPickerOverlay = (
+    <RemoteFilePicker
+      isOpen={repoPickerOpen}
+      title="Open Git Repository"
+      selectLabel="Open"
+      selectGuard={async (path) => {
+        const ok = await window.api.isGitRepo(path)
+        return ok || 'Not a git repository — pick a folder containing a .git directory'
+      }}
+      onSelect={(path) => {
+        void handleRepoPickerSelect(path)
+      }}
+      onCancel={handleRepoPickerCancel}
+    />
+  )
 
 
   if (repoRoots.length === 0) {
@@ -944,6 +964,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
       </div>
       {settingsOverlay}
       {myWeekOverlay}
+      {repoPickerOverlay}
       </HotkeysProvider>
     )
   }
@@ -1253,6 +1274,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
     </div>
     {settingsOverlay}
     {myWeekOverlay}
+    {repoPickerOverlay}
     {showPerfMonitor && <PerfMonitorHUD onClose={() => setShowPerfMonitor(false)} />}
     {showCommandPalette && (
       <CommandPalette
