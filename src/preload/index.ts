@@ -1,5 +1,8 @@
 import { contextBridge, webUtils } from 'electron'
 import { ElectronClientTransport } from './transport-electron'
+import { WebSocketClientTransport } from '../shared/transport/transport-websocket'
+import { findRemoteUrl, splitRemoteUrl } from './find-remote-url'
+import type { ClientTransport } from '../shared/transport/transport'
 
 // Every window.api method is a thin wrapper over the client transport.
 // The transport owns all ipcRenderer interaction; this file just
@@ -7,8 +10,34 @@ import { ElectronClientTransport } from './transport-electron'
 // renderer/main contract. Swapping transports (WebSocket, SSH stdio)
 // means constructing a different ClientTransport here — no other change
 // is needed above this layer.
+//
+// Remote mode: if the BrowserWindow was launched with
+// `--harness-remote-url=<ws-url>` (set by desktop-shell-remote.ts when
+// HARNESS_REMOTE_URL is in the environment), swap in the WebSocket
+// transport so the renderer drives a remote harness-server instead of a
+// local main process. The api surface above the transport stays
+// identical; the connection failure UI is handled in renderer/main.tsx
+// when initStore() rejects.
 
-const transport = new ElectronClientTransport()
+const remoteUrlRaw = findRemoteUrl(process.argv)
+let transport: ClientTransport
+if (remoteUrlRaw) {
+  const split = splitRemoteUrl(remoteUrlRaw)
+  if (!split) {
+    throw new Error(`HARNESS_REMOTE_URL is not a valid URL: ${remoteUrlRaw}`)
+  }
+  transport = new WebSocketClientTransport({ url: split.url, token: split.token })
+} else {
+  transport = new ElectronClientTransport()
+}
+
+// Mark the renderer as running against a remote backend so existing
+// `window.__HARNESS_WEB__` branches (RemoteFilePicker, playwright
+// browser screenshot view, etc.) light up the same way they do in the
+// browser web-client. The flag name predates remote-Electron mode but
+// the meaning is the same: "no local Electron backend reachable, route
+// everything through the transport."
+contextBridge.exposeInMainWorld('__HARNESS_WEB__', !!remoteUrlRaw)
 
 type DataCallback = (id: string, data: string) => void
 type ExitCallback = (id: string, exitCode: number) => void
