@@ -633,7 +633,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
   const modelPart = claudeModel && !effectiveClaudeCommand.includes('--model') ? ` --model ${claudeModel}` : ''
   const mcpPart = harnessMcpEnabled ? ' --mcp-config <per-session>' : ''
   const previewInner = `${effectiveClaudeCommand}${modelPart}${mcpPart} --session-id <uuid>`
-  const commandPreview = `/bin/zsh -ilc "${previewInner}"`
+  const commandPreview = `<shell> -ilc "${previewInner}"`
 
   const handleResetClaudeCommand = useCallback(async () => {
     setClaudeCommandDraft(defaultClaudeCommand)
@@ -1170,6 +1170,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 <div className="mt-4 pt-3 border-t border-border">
                   <label className="block text-xs font-medium text-fg mb-1">Full command preview</label>
                   <div className="bg-panel border border-border rounded px-3 py-2 text-[11px] text-fg-bright font-mono break-all">{commandPreview}</div>
+                  <p className="text-[10px] text-dim mt-1">where <code className="bg-panel px-1 rounded">{`<shell>`}</code> is your <code className="bg-panel px-1 rounded">$SHELL</code> (typically <code className="bg-panel px-1 rounded">/bin/bash</code> or <code className="bg-panel px-1 rounded">/bin/zsh</code>).</p>
                 </div>
 
                 <div className="mt-4 pt-3 border-t border-border">
@@ -1353,7 +1354,8 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   return (
                     <div className="mt-4 pt-3 border-t border-border">
                       <label className="block text-xs font-medium text-fg mb-1">Full command preview</label>
-                      <div className="bg-panel border border-border rounded px-3 py-2 text-[11px] text-fg-bright font-mono break-all">{`/bin/zsh -ilc "${codexPreviewInner}"`}</div>
+                      <div className="bg-panel border border-border rounded px-3 py-2 text-[11px] text-fg-bright font-mono break-all">{`<shell> -ilc "${codexPreviewInner}"`}</div>
+                      <p className="text-[10px] text-dim mt-1">where <code className="bg-panel px-1 rounded">{`<shell>`}</code> is your <code className="bg-panel px-1 rounded">$SHELL</code> (typically <code className="bg-panel px-1 rounded">/bin/bash</code> or <code className="bg-panel px-1 rounded">/bin/zsh</code>).</p>
                     </div>
                   )
                 })()}
