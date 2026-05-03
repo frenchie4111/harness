@@ -90,24 +90,36 @@ export function ToolCardChrome({
     : 'text-accent'
 
   return (
-    <div className={`my-2 rounded-md border ${ring} bg-panel overflow-hidden`}>
+    <div
+      className={`my-2 border ${ring} bg-panel overflow-hidden`}
+      style={{ borderRadius: 'var(--chat-bubble-radius)' }}
+    >
       {brand && <div className="brand-gradient-bg h-0.5" />}
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
-        className={`${groupClass} w-full px-2 py-1 text-[11px] flex items-center gap-2 ${expanded ? 'border-b border-border' : ''} ${headerBg} ${headerHover} cursor-pointer transition-colors text-left`}
+        className={`${groupClass} w-full flex items-center gap-2 ${expanded ? 'border-b border-border' : ''} ${headerBg} ${headerHover} cursor-pointer transition-colors text-left`}
+        style={{
+          paddingInline: 'var(--chat-chrome-px)',
+          paddingBlock: 'var(--chat-chrome-py)',
+          fontSize: 'var(--chat-chrome-text)'
+        }}
       >
         <span className="text-muted text-[9px] w-2 shrink-0 select-none">
           {expanded ? '▾' : '▸'}
         </span>
-        <span className={`font-mono font-semibold shrink-0 ${nameClass}`}>
+        <span
+          className={`font-semibold shrink-0 ${nameClass}`}
+          style={{ fontFamily: 'var(--chat-tool-name-family)' }}
+        >
           {name}
         </span>
         <span className="opacity-70 truncate flex-1 min-w-0">{subtitle}</span>
         {autoApproved && (
           <span
             title={`auto-approved by ${autoApproved.model} · ${autoApproved.reason}`}
-            className="text-[9px] uppercase tracking-wide text-muted bg-app/60 border border-border/50 rounded px-1 py-0.5 shrink-0"
+            className="uppercase tracking-wide text-muted bg-app/60 border border-border/50 rounded px-1 py-0.5 shrink-0"
+            style={{ fontSize: 'var(--chat-meta-text)' }}
           >
             auto · haiku
           </span>
@@ -115,13 +127,17 @@ export function ToolCardChrome({
         {sessionAllowed && (
           <span
             title={`allowed by session policy · ${sessionAllowed.toolName}`}
-            className="text-[9px] uppercase tracking-wide text-muted bg-app/60 border border-border/50 rounded px-1 py-0.5 shrink-0"
+            className="uppercase tracking-wide text-muted bg-app/60 border border-border/50 rounded px-1 py-0.5 shrink-0"
+            style={{ fontSize: 'var(--chat-meta-text)' }}
           >
             session
           </span>
         )}
         {isError && (
-          <span className="text-[10px] uppercase tracking-wide text-danger shrink-0">
+          <span
+            className="uppercase tracking-wide text-danger shrink-0"
+            style={{ fontSize: 'var(--chat-meta-text)' }}
+          >
             error
           </span>
         )}

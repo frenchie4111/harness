@@ -351,6 +351,20 @@ describe('settingsReducer', () => {
     expect(cleared.autoApproveSteerInstructions).toBe('')
   })
 
+  it('jsonModeChatDensityChanged switches between compact and comfy', () => {
+    expect(initialSettings.jsonModeChatDensity).toBe('compact')
+    const comfy = apply(initialSettings, {
+      type: 'settings/jsonModeChatDensityChanged',
+      payload: 'comfy'
+    })
+    expect(comfy.jsonModeChatDensity).toBe('comfy')
+    const compact = apply(comfy, {
+      type: 'settings/jsonModeChatDensityChanged',
+      payload: 'compact'
+    })
+    expect(compact.jsonModeChatDensity).toBe('compact')
+  })
+
   it('jsonModeDefaultPermissionModeChanged sets the default and preserves other settings', () => {
     expect(initialSettings.jsonModeDefaultPermissionMode).toBe('acceptEdits')
     const start: SettingsState = {

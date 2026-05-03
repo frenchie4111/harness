@@ -154,6 +154,10 @@ export interface Config {
   // Diagnostic toggle (no UI): when true, json-mode tabs spawn the user's
   // PATH `claude` instead of the bundled one. Default off.
   useSystemClaudeForJsonMode?: boolean
+  // Visual density of the JSON-mode chat. Undefined = compact (the
+  // historical look). 'comfy' bumps font sizes, padding, and corner
+  // radius for newcomers / screen-sharing.
+  jsonModeChatDensity?: 'compact' | 'comfy'
   // Permission mode applied when a brand-new json-mode session spawns.
   // Existing sessions keep whatever mode they were last in. Default
   // 'acceptEdits' (auto-allow Edit/Write, still ask for Bash etc.).

@@ -20,7 +20,7 @@ import {
   X,
   Layers
 } from 'lucide-react'
-import { useJsonClaudeSession } from '../store'
+import { useJsonClaudeSession, useSettings } from '../store'
 import { useJsonClaudeApprovals } from '../hooks/useJsonClaudeApprovals'
 import { JsonClaudeApprovalCard } from './JsonClaudeApprovalCard'
 import { dispatchToolCard, ToolCardChrome } from './json-mode-cards'
@@ -104,17 +104,28 @@ function ThinkingCard({
 
   const charCount = text.length
   return (
-    <div className="my-1 rounded border border-border/40 bg-app/30 overflow-hidden">
+    <div
+      className="my-1 border border-border/40 bg-app/30 overflow-hidden"
+      style={{ borderRadius: 'var(--chat-bubble-radius)' }}
+    >
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
-        className="w-full px-2 py-1 text-[11px] flex items-center gap-2 hover:bg-app/50 cursor-pointer text-left transition-colors"
+        className="w-full flex items-center gap-2 hover:bg-app/50 cursor-pointer text-left transition-colors"
+        style={{
+          paddingInline: 'var(--chat-chrome-px)',
+          paddingBlock: 'var(--chat-chrome-py)',
+          fontSize: 'var(--chat-chrome-text)'
+        }}
       >
         <span className="text-muted text-[9px] w-2 shrink-0 select-none">
           {expanded ? '▾' : '▸'}
         </span>
         <Brain size={11} className="text-muted shrink-0" />
-        <span className="font-mono text-muted shrink-0">
+        <span
+          className="text-muted shrink-0"
+          style={{ fontFamily: 'var(--chat-tool-name-family)' }}
+        >
           {isPartial ? 'Thinking' : 'Thought'}
         </span>
         {isPartial && (
@@ -124,7 +135,10 @@ function ThinkingCard({
           />
         )}
         {charCount > 0 && (
-          <span className="text-muted/60 text-[10px] shrink-0">
+          <span
+            className="text-muted/60 shrink-0"
+            style={{ fontSize: 'var(--chat-meta-text)' }}
+          >
             · {charCount} chars
           </span>
         )}
@@ -170,24 +184,38 @@ function CompactCard({
   const triggerLabel =
     trigger === 'manual' ? 'via /compact' : trigger === 'auto' ? 'auto' : null
   return (
-    <div className="my-2 rounded-md border border-info/40 bg-info/5 overflow-hidden">
+    <div
+      className="my-2 border border-info/40 bg-info/5 overflow-hidden"
+      style={{ borderRadius: 'var(--chat-bubble-radius)' }}
+    >
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
-        className={`w-full px-2 py-1 text-[11px] flex items-center gap-2 ${
+        className={`w-full flex items-center gap-2 ${
           expanded ? 'border-b border-info/30' : ''
         } bg-info/10 hover:bg-info/15 cursor-pointer transition-colors text-left`}
+        style={{
+          paddingInline: 'var(--chat-chrome-px)',
+          paddingBlock: 'var(--chat-chrome-py)',
+          fontSize: 'var(--chat-chrome-text)'
+        }}
       >
         <span className="text-info/70 text-[9px] w-2 shrink-0 select-none">
           {expanded ? '▾' : '▸'}
         </span>
         <Layers size={11} className="text-info shrink-0" />
-        <span className="font-mono font-semibold shrink-0 text-info">
+        <span
+          className="font-semibold shrink-0 text-info"
+          style={{ fontFamily: 'var(--chat-tool-name-family)' }}
+        >
           Compact
         </span>
         <span className="opacity-70 truncate flex-1 min-w-0">{subtitle}</span>
         {triggerLabel && (
-          <span className="text-[9px] uppercase tracking-wide text-info/80 bg-info/10 border border-info/30 rounded px-1 py-0.5 shrink-0">
+          <span
+            className="uppercase tracking-wide text-info/80 bg-info/10 border border-info/30 rounded px-1 py-0.5 shrink-0"
+            style={{ fontSize: 'var(--chat-meta-text)' }}
+          >
             {triggerLabel}
           </span>
         )}
@@ -246,12 +274,24 @@ function renderEntries(
         type: 'text',
         node: queued ? (
           <div className="flex justify-end">
-            <div className="max-w-[80%] bg-accent/10 border border-dashed border-accent/40 rounded-md pl-3 pr-1 py-2 opacity-70 flex items-start gap-2">
-              <div className="flex-1 min-w-0 whitespace-pre-wrap break-words text-sm">
+            <div
+              className="bg-accent/10 border border-dashed border-accent/40 pl-3 pr-1 py-2 opacity-70 flex items-start gap-2"
+              style={{
+                maxWidth: 'var(--chat-bubble-max)',
+                borderRadius: 'var(--chat-bubble-radius)'
+              }}
+            >
+              <div
+                className="flex-1 min-w-0 whitespace-pre-wrap break-words"
+                style={{ fontSize: 'var(--chat-body-text)' }}
+              >
                 {entry.text}
               </div>
               <div className="flex items-center gap-1 shrink-0">
-                <span className="text-[10px] uppercase tracking-wide text-muted bg-panel/60 border border-border px-1.5 py-0.5 rounded">
+                <span
+                  className="uppercase tracking-wide text-muted bg-panel/60 border border-border px-1.5 py-0.5 rounded"
+                  style={{ fontSize: 'var(--chat-meta-text)' }}
+                >
                   queued
                 </span>
                 <button
@@ -267,7 +307,14 @@ function renderEntries(
           </div>
         ) : (
           <div className="flex justify-end">
-            <div className="max-w-[80%] bg-accent/15 border border-accent/30 rounded-md px-3 py-2 whitespace-pre-wrap break-words text-sm">
+            <div
+              className="bg-accent/15 border border-accent/30 px-3 py-2 whitespace-pre-wrap break-words"
+              style={{
+                maxWidth: 'var(--chat-bubble-max)',
+                borderRadius: 'var(--chat-bubble-radius)',
+                fontSize: 'var(--chat-body-text)'
+              }}
+            >
               {entry.text}
               {entry.images && entry.images.length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1.5">
@@ -321,7 +368,10 @@ function renderEntries(
             key: `${entry.entryId}-t`,
             type: 'text',
             node: (
-              <div className="markdown text-sm leading-relaxed">
+              <div
+                className="markdown leading-relaxed"
+                style={{ fontSize: 'var(--chat-body-text)' }}
+              >
                 <ReactMarkdown
                   remarkPlugins={REMARK_PLUGINS}
                   rehypePlugins={REHYPE_PLUGINS}
@@ -477,6 +527,7 @@ function renderGroupedItems(items: GroupedItem[]): ReactNode {
 export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JSX.Element {
   const session = useJsonClaudeSession(sessionId)
   const { pending, resolve } = useJsonClaudeApprovals(sessionId)
+  const density = useSettings().jsonModeChatDensity
   const [draft, setDraft] = useState('')
   // Mention/popover state. `dismissed` carries the draft text at which
   // the user pressed Escape — comparing against the live draft is how we
@@ -1122,6 +1173,7 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
   return (
     <div
       className="absolute inset-0 flex flex-col bg-app text-fg"
+      data-chat-density={density}
       onDragEnter={(e) => {
         if (!Array.from(e.dataTransfer.types).includes('Files')) return
         dragEnterCount.current += 1

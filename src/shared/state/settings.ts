@@ -12,6 +12,8 @@ export type AgentKindSetting = 'claude' | 'codex'
 
 export type BrowserToolsMode = 'view' | 'full'
 
+export type JsonModeChatDensity = 'compact' | 'comfy'
+
 export interface SettingsState {
   theme: string
   hotkeys: Record<string, string> | null
@@ -69,6 +71,11 @@ export interface SettingsState {
   /** Diagnostic toggle (no UI): when true, json-mode tabs spawn the user's
    *  PATH `claude` instead of the bundled one. Default off. */
   useSystemClaudeForJsonMode: boolean
+  /** Visual density of the JSON-mode chat. 'compact' (default) keeps the
+   *  power-user defaults; 'comfy' bumps font sizes, padding, and corner
+   *  radius for newcomers / screen-sharing. Wired via CSS variables on
+   *  the chat root, so it's a pure styling switch. */
+  jsonModeChatDensity: JsonModeChatDensity
   /** Permission mode applied to a freshly-spawned json-mode session.
    *  Existing sessions keep whatever mode they were in (set via the
    *  statusline picker). Default 'acceptEdits' so first-time users
@@ -114,6 +121,7 @@ export type SettingsEvent =
   | { type: 'settings/autoApprovePermissionsChanged'; payload: boolean }
   | { type: 'settings/autoApproveSteerInstructionsChanged'; payload: string }
   | { type: 'settings/useSystemClaudeForJsonModeChanged'; payload: boolean }
+  | { type: 'settings/jsonModeChatDensityChanged'; payload: JsonModeChatDensity }
   | {
       type: 'settings/jsonModeDefaultPermissionModeChanged'
       payload: JsonClaudePermissionMode
@@ -158,6 +166,7 @@ export const initialSettings: SettingsState = {
   autoApprovePermissions: false,
   autoApproveSteerInstructions: '',
   useSystemClaudeForJsonMode: false,
+  jsonModeChatDensity: 'compact',
   jsonModeDefaultPermissionMode: 'acceptEdits'
 }
 
@@ -235,6 +244,8 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, autoApproveSteerInstructions: event.payload }
     case 'settings/useSystemClaudeForJsonModeChanged':
       return { ...state, useSystemClaudeForJsonMode: event.payload }
+    case 'settings/jsonModeChatDensityChanged':
+      return { ...state, jsonModeChatDensity: event.payload }
     case 'settings/jsonModeDefaultPermissionModeChanged':
       return { ...state, jsonModeDefaultPermissionMode: event.payload }
     default: {

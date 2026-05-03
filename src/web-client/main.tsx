@@ -441,6 +441,9 @@ function buildApi(transport: WebSocketClientTransport): ElectronAPI {
     setDefaultClaudeTabType: (value) =>
       req('config:setDefaultClaudeTabType', value) as Promise<boolean>,
 
+    setJsonModeChatDensity: (value) =>
+      req('config:setJsonModeChatDensity', value) as Promise<boolean>,
+
     setJsonModeDefaultPermissionMode: (value) =>
       req('config:setJsonModeDefaultPermissionMode', value) as Promise<boolean>,
 
