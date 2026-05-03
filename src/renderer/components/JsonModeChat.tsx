@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useDeferredValue,
   useEffect,
   useLayoutEffect,
@@ -507,15 +508,33 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
   // nested nodes. Counter pattern: increment on enter, decrement on
   // leave, only flip the flag at the 0/1 boundary.
   const dragEnterCount = useRef(0)
-  // Pause auto-scroll when the user has scrolled up. Re-enables when the
-  // user scrolls back to the bottom — standard chat behavior.
-  const stickyBottom = useRef(true)
-  // Suppress sticky-toggle while we're driving scroll programmatically
-  // (auto-snap on content growth, jump-to-bottom click). Otherwise the
-  // synthetic scroll event from setting scrollTop would re-enter onScroll
-  // and could flip stickyBottom mid-update.
+  // Auto-scroll intent is tracked from input events, not from scroll
+  // position deltas. Position-derived heuristics break whenever a single
+  // frame inserts large content (approval cards, expanded thinking blocks,
+  // big tool cards) — the scrollTop-vs-scrollHeight gap looks like a user
+  // scroll-up before the snap-to-bottom can run. Wheel/touch/keydown +
+  // scrollTop-decreased deltas are the only authoritative signals.
+  const userScrolledUp = useRef(false)
+  const lastScrollTop = useRef(0)
+  // Suppress the scrollbar-drag fallback while we're driving scroll
+  // programmatically (auto-snap on content growth, jump-to-bottom click).
   const isProgrammaticScroll = useRef(false)
   const [showJumpToBottom, setShowJumpToBottom] = useState(false)
+
+  const setUserScrolledUp = useCallback((v: boolean): void => {
+    if (userScrolledUp.current === v) return
+    userScrolledUp.current = v
+    setShowJumpToBottom(v)
+  }, [])
+
+  const reevaluateAfterGesture = useCallback((): void => {
+    requestAnimationFrame(() => {
+      const el = scrollRef.current
+      if (!el) return
+      const distance = el.scrollHeight - el.scrollTop - el.clientHeight
+      if (distance < 32) setUserScrolledUp(false)
+    })
+  }, [setUserScrolledUp])
 
   // Spin the subprocess up the first time this session is rendered. We
   // don't tear it down on unmount — closing the tab is the lifecycle
@@ -525,6 +544,57 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
     void window.api.startJsonClaude(sessionId, worktreePath)
   }, [sessionId, worktreePath, session])
 
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+
+    const onWheel = (e: WheelEvent): void => {
+      if (e.deltaY < 0) setUserScrolledUp(true)
+      else if (e.deltaY > 0) reevaluateAfterGesture()
+    }
+
+    let touchStartY = 0
+    const onTouchStart = (e: TouchEvent): void => {
+      touchStartY = e.touches[0]?.clientY ?? 0
+    }
+    const onTouchMove = (e: TouchEvent): void => {
+      const y = e.touches[0]?.clientY ?? 0
+      // Finger sliding down the screen scrolls content up.
+      if (y - touchStartY > 0) setUserScrolledUp(true)
+      touchStartY = y
+    }
+    const onTouchEnd = (): void => reevaluateAfterGesture()
+
+    const SCROLL_KEYS = new Set([
+      'PageUp',
+      'Home',
+      'ArrowUp',
+      'PageDown',
+      'End',
+      'ArrowDown'
+    ])
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if (!SCROLL_KEYS.has(e.key)) return
+      if (e.key === 'PageUp' || e.key === 'Home' || e.key === 'ArrowUp') {
+        setUserScrolledUp(true)
+      }
+      reevaluateAfterGesture()
+    }
+
+    el.addEventListener('wheel', onWheel, { passive: true })
+    el.addEventListener('touchstart', onTouchStart, { passive: true })
+    el.addEventListener('touchmove', onTouchMove, { passive: true })
+    el.addEventListener('touchend', onTouchEnd, { passive: true })
+    el.addEventListener('keydown', onKeyDown)
+    return () => {
+      el.removeEventListener('wheel', onWheel)
+      el.removeEventListener('touchstart', onTouchStart)
+      el.removeEventListener('touchmove', onTouchMove)
+      el.removeEventListener('touchend', onTouchEnd)
+      el.removeEventListener('keydown', onKeyDown)
+    }
+  }, [setUserScrolledUp, reevaluateAfterGesture])
+
   // ResizeObserver catches streaming text deltas and content reflows;
   // entries.length doesn't change while the model streams text into an
   // existing assistant entry, so a deps-based effect would miss them.
@@ -532,20 +602,22 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
     const el = scrollRef.current
     if (!el) return
     el.scrollTop = el.scrollHeight
+    lastScrollTop.current = el.scrollTop
     let clearTimer: ReturnType<typeof setTimeout> | null = null
     const ro = new ResizeObserver(() => {
-      if (!stickyBottom.current) return
+      if (userScrolledUp.current) return
       isProgrammaticScroll.current = true
       el.scrollTop = el.scrollHeight
       // Single-frame jumps (thinking card body appearing, cursor span
       // landing) grow content by ~30px in one shot — re-snap on the
       // next frame in case more layout settled after our first commit.
       requestAnimationFrame(() => {
-        if (stickyBottom.current) el.scrollTop = el.scrollHeight
+        if (!userScrolledUp.current) el.scrollTop = el.scrollHeight
+        lastScrollTop.current = el.scrollTop
       })
       // Hold the suppression window past back-to-back scroll events
-      // from rapid resize bursts. RAF alone clears the flag too fast
-      // and the second scroll event slips through, flipping sticky.
+      // from rapid resize bursts so the scrollbar-drag fallback below
+      // doesn't misread our own snap as a user scroll-up.
       if (clearTimer) clearTimeout(clearTimer)
       clearTimer = setTimeout(() => {
         isProgrammaticScroll.current = false
@@ -560,17 +632,22 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
     }
   }, [])
 
+  // Scrollbar-drag fallback: macOS pinned scrollbars don't emit wheel
+  // events, so a drag is invisible to the input listeners above. Watch
+  // for scrollTop deltas in either direction here, gated on the
+  // programmatic-scroll flag so our own snaps don't trip it.
   const onScroll = (): void => {
-    if (isProgrammaticScroll.current) return
     const el = scrollRef.current
     if (!el) return
-    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
-    // 64px tolerates single-frame layout jumps (thinking card body opening,
-    // cursor span appearing — both ~30px) without misreading them as user
-    // intent. Real scroll-up gestures move past this immediately.
-    const nextSticky = distanceFromBottom < 64
-    stickyBottom.current = nextSticky
-    setShowJumpToBottom(!nextSticky)
+    const prev = lastScrollTop.current
+    lastScrollTop.current = el.scrollTop
+    if (isProgrammaticScroll.current) return
+    if (el.scrollTop < prev) {
+      setUserScrolledUp(true)
+    } else if (el.scrollTop > prev) {
+      const distance = el.scrollHeight - el.scrollTop - el.clientHeight
+      if (distance < 32) setUserScrolledUp(false)
+    }
   }
 
   const jumpToBottom = (): void => {
@@ -578,8 +655,8 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
     if (!el) return
     isProgrammaticScroll.current = true
     el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
-    stickyBottom.current = true
-    setShowJumpToBottom(false)
+    lastScrollTop.current = el.scrollHeight
+    setUserScrolledUp(false)
     // Smooth scroll fires several scroll events over ~300ms; clear the
     // guard well after the animation has landed at the bottom.
     setTimeout(() => {
@@ -938,8 +1015,7 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
     setDraft('')
     setAttachments([])
     setMentionDismissed(null)
-    stickyBottom.current = true
-    setShowJumpToBottom(false)
+    setUserScrolledUp(false)
   }
 
   async function attachImageFile(
@@ -1058,7 +1134,9 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
         <div
           ref={scrollRef}
           onScroll={onScroll}
-          className="flex-1 overflow-y-auto overflow-x-hidden"
+          tabIndex={0}
+          className="flex-1 overflow-y-auto overflow-x-hidden outline-none"
+          style={{ overflowAnchor: 'none' }}
         >
           <div className="px-4 py-3 space-y-3">
             {groupedItems.map((g) =>
