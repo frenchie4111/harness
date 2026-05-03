@@ -19,7 +19,8 @@ import {
   FileText,
   X,
   Layers,
-  RotateCcw
+  RotateCcw,
+  ShieldAlert
 } from 'lucide-react'
 import { useJsonClaudeSession, useSettings } from '../store'
 import { useJsonClaudeApprovals } from '../hooks/useJsonClaudeApprovals'
@@ -313,6 +314,65 @@ function SubprocessExitCard({
   )
 }
 
+function AuthFailureCard({
+  message,
+  onOpenXtermClaude,
+  onRetry
+}: {
+  message?: string
+  onOpenXtermClaude: () => void
+  onRetry: () => void
+}): JSX.Element {
+  return (
+    <div
+      className="my-2 border border-danger/40 bg-danger/5 overflow-hidden"
+      style={{ borderRadius: 'var(--chat-bubble-radius)' }}
+    >
+      <div
+        className="flex items-center gap-2 bg-danger/10 border-b border-danger/30"
+        style={{
+          paddingInline: 'var(--chat-chrome-px)',
+          paddingBlock: 'var(--chat-chrome-py)',
+          fontSize: 'var(--chat-chrome-text)'
+        }}
+      >
+        <ShieldAlert size={11} className="text-danger shrink-0" />
+        <span
+          className="font-semibold shrink-0 text-danger"
+          style={{ fontFamily: 'var(--chat-tool-name-family)' }}
+        >
+          Authentication failed
+        </span>
+      </div>
+      <div className="px-3 py-2 text-[11px] text-fg space-y-2">
+        {message && (
+          <pre className="whitespace-pre-wrap break-words font-mono text-[10px] text-muted bg-app/40 border border-border/40 rounded px-2 py-1 max-h-32 overflow-auto">
+            {message}
+          </pre>
+        )}
+        <div>
+          Open an xterm Claude tab in this worktree and run{' '}
+          <code className="font-mono text-fg-bright">/login</code> to re-authenticate,
+          then click Retry below.
+        </div>
+        <div className="flex gap-2 pt-1">
+          <button
+            onClick={onOpenXtermClaude}
+            className="px-2 py-1 bg-panel-raised border border-border-strong rounded text-fg-bright hover:bg-panel cursor-pointer"
+          >
+            Open xterm Claude tab
+          </button>
+          <button
+            onClick={onRetry}
+            className="px-2 py-1 bg-accent text-white rounded hover:bg-accent/90 cursor-pointer"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 interface RenderContext {
   resultsByToolUseId: Map<string, { content: string; isError: boolean }>
   childrenByParentToolUseId: Map<string, JsonClaudeChatEntry[]>
@@ -330,6 +390,8 @@ interface RenderContext {
   sessionId: string
   worktreePath: string
   isExited: boolean
+  onOpenXtermClaude: () => void
+  onRetryAuth: () => void
 }
 
 function renderEntries(
@@ -428,6 +490,20 @@ function renderEntries(
             sessionId={ctx.sessionId}
             worktreePath={ctx.worktreePath}
             isExited={ctx.isExited}
+          />
+        )
+      })
+      continue
+    }
+    if (entry.kind === 'error' && entry.errorKind === 'auth-failure') {
+      rows.push({
+        key: entry.entryId,
+        type: 'tool',
+        node: (
+          <AuthFailureCard
+            message={entry.errorMessage}
+            onOpenXtermClaude={ctx.onOpenXtermClaude}
+            onRetry={ctx.onRetryAuth}
           />
         )
       })
@@ -909,7 +985,30 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
         window.api.cancelQueuedJsonClaudeMessage(sessionId, entryId),
       sessionId,
       worktreePath,
-      isExited: session?.state === 'exited'
+      isExited: session?.state === 'exited',
+      onOpenXtermClaude: () => {
+        // No paneId — PanesFSM picks the active leaf in this worktree
+        // and appends the new agent tab there. Mirrors handleAddAgentTab
+        // in useTabHandlers but reachable from the inline card without
+        // plumbing a callback prop through WorkspaceView/MobileApp.
+        const id = `agent-auth-${Date.now()}`
+        void window.api.panesAddTab(worktreePath, {
+          id,
+          type: 'agent',
+          agentKind: 'claude',
+          label: 'Claude Code',
+          sessionId: crypto.randomUUID()
+        })
+      },
+      onRetryAuth: () => {
+        // Same restart sequence as the "Reconnect" button on the exited-
+        // session banner: kill (no-op if already gone) then start, which
+        // re-attaches with whatever auth state is now in ~/.claude/.
+        void (async () => {
+          await window.api.killJsonClaude(sessionId)
+          await window.api.startJsonClaude(sessionId, worktreePath)
+        })()
+      }
     })
     // approvalByToolUseId already depends on pending; pendingToolUseIds
     // also derives from pending.
