@@ -18,7 +18,8 @@ import {
   Terminal,
   FileText,
   X,
-  Layers
+  Layers,
+  RotateCcw
 } from 'lucide-react'
 import { useJsonClaudeSession, useSettings } from '../store'
 import { useJsonClaudeApprovals } from '../hooks/useJsonClaudeApprovals'
@@ -245,6 +246,60 @@ function CompactCard({
   )
 }
 
+function SubprocessExitCard({
+  message,
+  sessionId,
+  worktreePath
+}: {
+  message: string
+  sessionId: string
+  worktreePath: string
+}): JSX.Element {
+  const detail = message || 'Session ended unexpectedly'
+  return (
+    <div
+      className="my-2 border border-danger/40 bg-danger/5 overflow-hidden"
+      style={{ borderRadius: 'var(--chat-bubble-radius)' }}
+    >
+      <div
+        className="flex items-center gap-2 bg-danger/10 border-b border-danger/30"
+        style={{
+          paddingInline: 'var(--chat-chrome-px)',
+          paddingBlock: 'var(--chat-chrome-py)',
+          fontSize: 'var(--chat-chrome-text)'
+        }}
+      >
+        <RotateCcw size={11} className="text-danger shrink-0" />
+        <span
+          className="font-semibold shrink-0 text-danger"
+          style={{ fontFamily: 'var(--chat-tool-name-family)' }}
+        >
+          Session ended
+        </span>
+        <span className="opacity-70 truncate flex-1 min-w-0">{detail}</span>
+      </div>
+      <div className="px-3 py-2 space-y-2">
+        <pre className="text-[11px] text-muted font-mono whitespace-pre-wrap break-words m-0">
+          {detail}
+        </pre>
+        <button
+          type="button"
+          className="px-3 py-1 bg-danger/15 hover:bg-danger/25 border border-danger/40 rounded text-danger text-xs cursor-pointer flex items-center gap-1.5"
+          onClick={() => {
+            void (async () => {
+              await window.api.killJsonClaude(sessionId)
+              await window.api.startJsonClaude(sessionId, worktreePath)
+            })()
+          }}
+        >
+          <RotateCcw size={12} />
+          <span>Restart session</span>
+        </button>
+      </div>
+    </div>
+  )
+}
+
 interface RenderContext {
   resultsByToolUseId: Map<string, { content: string; isError: boolean }>
   childrenByParentToolUseId: Map<string, JsonClaudeChatEntry[]>
@@ -259,6 +314,8 @@ interface RenderContext {
     { toolName: string; timestamp: number }
   >
   onCancelQueued: (entryId: string) => void
+  sessionId: string
+  worktreePath: string
 }
 
 function renderEntries(
@@ -342,6 +399,20 @@ function renderEntries(
             trigger={entry.compactTrigger}
             preTokens={entry.compactPreTokens}
             postTokens={entry.compactPostTokens}
+          />
+        )
+      })
+      continue
+    }
+    if (entry.kind === 'error' && entry.errorKind === 'subprocess-exit') {
+      rows.push({
+        key: entry.entryId,
+        type: 'text',
+        node: (
+          <SubprocessExitCard
+            message={entry.errorMessage ?? 'Session ended unexpectedly'}
+            sessionId={ctx.sessionId}
+            worktreePath={ctx.worktreePath}
           />
         )
       })
@@ -804,7 +875,9 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
       autoApprovedDecisions,
       sessionAllowedDecisions,
       onCancelQueued: (entryId) =>
-        window.api.cancelQueuedJsonClaudeMessage(sessionId, entryId)
+        window.api.cancelQueuedJsonClaudeMessage(sessionId, entryId),
+      sessionId,
+      worktreePath
     })
     // approvalByToolUseId already depends on pending; pendingToolUseIds
     // also derives from pending.
@@ -815,7 +888,8 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
     pendingToolUseIds,
     autoApprovedDecisions,
     sessionAllowedDecisions,
-    sessionId
+    sessionId,
+    worktreePath
   ])
 
   const groupedItems = useMemo(() => groupConsecutiveToolRows(rows), [rows])
@@ -1253,28 +1327,6 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
                 </div>
               )
             })()}
-            {state === 'exited' && (
-              <div className="flex items-center gap-3 text-xs text-danger italic">
-                <span>
-                  session exited
-                  {session?.exitReason ? ` — ${session.exitReason}` : ''}
-                </span>
-                <button
-                  className="not-italic px-2 py-0.5 bg-panel-raised border border-border-strong rounded text-fg-bright hover:bg-panel cursor-pointer"
-                  onClick={() => {
-                    // Kill (no-op if no instance) + start: re-spawns the
-                    // subprocess and re-uses the same sessionId so --resume
-                    // picks up the on-disk jsonl.
-                    void (async () => {
-                      await window.api.killJsonClaude(sessionId)
-                      await window.api.startJsonClaude(sessionId, worktreePath)
-                    })()
-                  }}
-                >
-                  Reconnect
-                </button>
-              </div>
-            )}
           </div>
         </div>
         {showJumpToBottom && (
