@@ -502,6 +502,16 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
     }>
   >([])
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  // Auto-grow composer with content. CSS max-h caps the rendered height
+  // (~8 lines at text-sm + py-1.5); beyond that the textarea scrolls
+  // internally. Setting height='auto' first lets the browser recompute
+  // scrollHeight when the user deletes text so the box shrinks back.
+  useLayoutEffect(() => {
+    const ta = textareaRef.current
+    if (!ta) return
+    ta.style.height = 'auto'
+    ta.style.height = `${ta.scrollHeight}px`
+  }, [draft])
   const scrollRef = useRef<HTMLDivElement | null>(null)
   // dragenter fires for every child element entered, dragleave for every
   // child exited — so a naive boolean flickers as the cursor moves over
