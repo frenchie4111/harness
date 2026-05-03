@@ -314,12 +314,9 @@ export class PlaywrightBrowserManager implements BrowserManagerLike {
     const initialUrl = url && url.trim() ? url : 'about:blank'
     this.dispatchState(tabId, { url: initialUrl, loading: true })
     void this.createAsync(tabId, worktreePath, initialUrl).catch((err) => {
-      log(
-        'browser-playwright',
-        `create failed tab=${tabId}`,
-        err instanceof Error ? err.message : err
-      )
-      this.dispatchState(tabId, { loading: false })
+      const message = err instanceof Error ? err.message : String(err)
+      log('browser-playwright', `create failed tab=${tabId}`, message)
+      this.dispatchState(tabId, { loading: false, error: message })
     })
   }
 
@@ -422,6 +419,7 @@ export class PlaywrightBrowserManager implements BrowserManagerLike {
       canGoBack: boolean
       canGoForward: boolean
       loading: boolean
+      error: string | undefined
     }>
   ): void {
     this.store?.dispatch({

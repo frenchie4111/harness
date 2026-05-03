@@ -4,6 +4,11 @@ export interface BrowserTabState {
   canGoBack: boolean
   canGoForward: boolean
   loading: boolean
+  /** Set when the controller couldn't bring the tab up — most commonly
+   *  the headless Playwright path failing to launch a browser. The
+   *  RemoteBrowserView surfaces this so the user sees the actual reason
+   *  instead of a permanent "loading" spinner. */
+  error?: string
 }
 
 export interface BrowserState {

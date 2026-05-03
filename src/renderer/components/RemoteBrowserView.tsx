@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useBrowser } from '../store'
 
 interface RemoteBrowserViewProps {
   tabId: string
@@ -27,6 +28,8 @@ interface Shot {
  * this gets the agent loop usable in headless mode without it.
  */
 export function RemoteBrowserView({ tabId, visible }: RemoteBrowserViewProps): JSX.Element {
+  const browser = useBrowser()
+  const tabError = browser.byTab[tabId]?.error
   const [shot, setShot] = useState<Shot | null>(null)
   const [error, setError] = useState<string | null>(null)
   const imgRef = useRef<HTMLImageElement | null>(null)
@@ -35,6 +38,7 @@ export function RemoteBrowserView({ tabId, visible }: RemoteBrowserViewProps): J
 
   useEffect(() => {
     if (!visible) return
+    if (tabError) return
     let cancelled = false
     let timer: number | null = null
 
@@ -78,7 +82,7 @@ export function RemoteBrowserView({ tabId, visible }: RemoteBrowserViewProps): J
       cancelled = true
       if (timer != null) window.clearInterval(timer)
     }
-  }, [tabId, visible])
+  }, [tabId, visible, tabError])
 
   const handleClick = (e: React.MouseEvent<HTMLImageElement>): void => {
     if (!shot) return
@@ -108,7 +112,12 @@ export function RemoteBrowserView({ tabId, visible }: RemoteBrowserViewProps): J
   return (
     <div className="absolute inset-0 flex flex-col bg-app">
       <div className="flex-1 min-h-0 relative overflow-hidden flex items-center justify-center">
-        {shot ? (
+        {tabError ? (
+          <div className="max-w-lg px-6 text-center text-xs text-fg space-y-2">
+            <div className="font-medium text-red-500">Remote browser unavailable</div>
+            <div className="text-faint whitespace-pre-wrap break-words">{tabError}</div>
+          </div>
+        ) : shot ? (
           <img
             ref={imgRef}
             src={`data:${shot.format === 'png' ? 'image/png' : 'image/jpeg'};base64,${shot.data}`}
