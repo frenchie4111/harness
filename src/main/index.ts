@@ -61,17 +61,53 @@ import { getAgent, type AgentKind } from './agents'
 import { buildClaudeLaunchSettings } from './claude-launch'
 import { HARNESS_REPO_OWNER, HARNESS_REPO_NAME } from '../shared/constants'
 import { readRecentDebugLog } from './debug'
+import { CostTracker } from './cost-tracker'
+import { listDir as fsListDir, isGitRepo as fsIsGitRepo, resolveHome as fsResolveHome } from './fs-listing'
+import { startControlServer } from './control-server'
+import { writeMcpConfigForTerminal, pruneMcpConfigs, getBridgeScriptPath } from './mcp-config'
+import { getControlServerInfo } from './control-server'
+import { recordActivity, getActivityLog, clearAllActivity, clearActivityForWorktree, sealAllActive, touchActivityMeta, finalizeActivity, type ActivityState, type PRState } from './activity'
+import { log, getLogFilePath } from './debug'
+import { perfLog } from './perf-log'
+import { buildInitialAppState } from './build-initial-state'
 
 function toAgentKind(value: string | undefined): AgentKind {
   return value === 'codex' ? 'codex' : 'claude'
 }
 
+// Runtime detection — Electron sets process.versions.electron, plain
+// Node leaves it undefined. The mode picks itself; there's no env-var
+// override to fight with.
+const runtime = detectRuntime()
+
+// Remote-mode short-circuit: when launched with HARNESS_REMOTE_URL, the
+// renderer talks to a remote harness-server over WebSocket and we skip
+// every local backend service (store, PtyManager, transports, IPC
+// handlers, FSMs, pollers, …). Hand off to the remote shell module via
+// dynamic require — the bundler can't see this path so the headless
+// build never drags Electron in. Once bootRemote() returns we're done;
+// it owns app.whenReady, the menu, the window, and the auto-updater.
+if (runtime === 'electron' && process.env['HARNESS_REMOTE_URL']) {
+  const remoteUrl = process.env['HARNESS_REMOTE_URL']
+  const dynamicRequire = createRequire(__filename)
+  const remoteShellMod = dynamicRequire('./desktop-shell-remote') as typeof import('./desktop-shell-remote')
+  remoteShellMod.bootRemote(remoteUrl)
+} else {
+  bootLocal()
+}
+
+// Wrap the entire local-mode boot in a function so the remote-mode
+// branch above can early-exit cleanly. Function declarations are
+// hoisted, so the call site above sees this definition. Everything
+// inside used to live at module top-level; the only change is the
+// extra `function bootLocal(): void {` wrapper + matching brace at
+// EOF — the body is otherwise identical.
+function bootLocal(): void {
+
 // Resolves the caller's MCP scope from their terminal id. Used by both
 // the control HTTP server (on every tool call, authoritative) and
 // writeMcpConfigForTerminal (to seed best-effort HARNESS_* env vars in
-// the spawned bridge). Lives at module scope so IPC handlers registered
-// inside registerIpcHandlers can close over it — the store reference is
-// hoisted the same way.
+// the spawned bridge). Closes over the local `store` constructed below.
 function resolveCallerScope(terminalId: string) {
   if (!terminalId) return null
   const panes = store.getSnapshot().state.terminals.panes
@@ -112,20 +148,6 @@ function findShellWorktree(shellId: string): string | null {
   }
   return null
 }
-import { CostTracker } from './cost-tracker'
-import { listDir as fsListDir, isGitRepo as fsIsGitRepo, resolveHome as fsResolveHome } from './fs-listing'
-import { startControlServer } from './control-server'
-import { writeMcpConfigForTerminal, pruneMcpConfigs, getBridgeScriptPath } from './mcp-config'
-import { getControlServerInfo } from './control-server'
-import { recordActivity, getActivityLog, clearAllActivity, clearActivityForWorktree, sealAllActive, touchActivityMeta, finalizeActivity, type ActivityState, type PRState } from './activity'
-import { log, getLogFilePath } from './debug'
-import { perfLog } from './perf-log'
-import { buildInitialAppState } from './build-initial-state'
-
-// Runtime detection — Electron sets process.versions.electron, plain
-// Node leaves it undefined. The mode picks itself; there's no env-var
-// override to fight with.
-const runtime = detectRuntime()
 
 // Load the desktop shell ONLY in Electron mode. `createRequire` hides
 // the lookup from the bundler, so the headless build doesn't drag
@@ -2629,3 +2651,6 @@ if (desktopShellMod && desktopEarly) {
   process.on('SIGINT', shutdown)
   process.on('SIGTERM', shutdown)
 }
+
+} // end bootLocal()
+
