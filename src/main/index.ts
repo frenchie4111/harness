@@ -212,9 +212,31 @@ const wsEnabled =
   runtime === 'node' ||
   config.wsTransportEnabled === true ||
   process.env['HARNESS_WS_TRANSPORT'] === '1'
+// --port N or --port=N from argv beats the env var so the headless
+// shim can pass the user's flag through verbatim. --port 0 picks an
+// ephemeral port (the existing wsTransport.listen path handles it).
+function parseCliPort(argv: string[]): number | null {
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]
+    if (a === '--port' && i + 1 < argv.length) {
+      const n = Number.parseInt(argv[i + 1] ?? '', 10)
+      return Number.isFinite(n) ? n : null
+    }
+    if (a && a.startsWith('--port=')) {
+      const n = Number.parseInt(a.slice('--port='.length), 10)
+      return Number.isFinite(n) ? n : null
+    }
+  }
+  return null
+}
+const cliPort = parseCliPort(process.argv.slice(2))
 const envPort = Number.parseInt(process.env['HARNESS_WS_PORT'] ?? '', 10)
 const wsPort =
-  Number.isFinite(envPort) && envPort > 0 ? envPort : (config.wsTransportPort ?? 37291)
+  cliPort != null && cliPort >= 0
+    ? cliPort
+    : Number.isFinite(envPort) && envPort > 0
+      ? envPort
+      : (config.wsTransportPort ?? 37291)
 const wsHost =
   process.env['HARNESS_WS_HOST'] || config.wsTransportHost || '127.0.0.1'
 

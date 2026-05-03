@@ -1,0 +1,76 @@
+name: Headless Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  pack:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runs-on: macos-14
+            platform: darwin-arm64
+          - runs-on: ubuntu-22.04
+            platform: linux-x64
+          - runs-on: ubuntu-22.04-arm
+            platform: linux-arm64
+          # darwin-x64 (Intel Mac) is intentionally omitted — the
+          # macos-13 runner queue is so backed up that jobs sit
+          # unassigned for an hour. Add it back when GitHub's runner
+          # supply recovers, or move to macos-13-large.
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # The Node version here MUST match NODE_VERSION in
+      # scripts/pack-headless.mjs — the embedded Node binary in the
+      # tarball is downloaded for that version, and node-pty's pty.node
+      # is rebuilt against its ABI. Bumping one without the other gives
+      # a broken tarball at runtime.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.12.0'
+
+      # npm has a long-running bug (#4828) where optional native deps
+      # (rolldown's per-platform .node binding here) aren't always
+      # installed off a cross-platform package-lock.json with
+      # --legacy-peer-deps. Wiping both forces clean re-resolution per
+      # runner. We can't use the npm cache for the same reason, so
+      # setup-node above intentionally has no `cache: 'npm'`.
+      - name: Install dependencies
+        run: |
+          rm -rf node_modules package-lock.json
+          npm install --legacy-peer-deps
+
+      - name: Build headless bundle
+        run: npm run build:headless
+
+      - name: Pack tarball
+        run: npm run pack:headless
+
+      - name: Upload workflow artifact (branch / dispatch)
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: harness-server-${{ matrix.platform }}
+          path: |
+            release/headless/harness-server-*-${{ matrix.platform }}.tar.gz
+            release/headless/harness-server-*-${{ matrix.platform }}.tar.gz.sha256
+          if-no-files-found: error
+
+      - name: Attach to GitHub release (tag push)
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          gh release upload "$TAG" \
+            release/headless/harness-server-*-${{ matrix.platform }}.tar.gz \
+            release/headless/harness-server-*-${{ matrix.platform }}.tar.gz.sha256 \
+            --clobber

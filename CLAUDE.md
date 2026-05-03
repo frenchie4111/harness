@@ -459,6 +459,20 @@ build/sign/notarize, tag/push, release notes from `git log`, and
 `gh release create` with all artifacts attached. Notarization needs
 `.env` with `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`.
 
+### Headless tarballs
+
+The `Headless Release` workflow (`.github/workflows/headless-release.yml`)
+fires on the same tag push and runs a three-platform matrix
+(`darwin-arm64`, `linux-x64`, `linux-arm64` — Intel Mac is omitted
+because the macos-13 runner queue is too unreliable). Each runner
+calls `npm run pack:headless`, which downloads a pinned Node binary
+(`NODE_VERSION` in `scripts/pack-headless.mjs`), rebuilds `node-pty`
+against that ABI, and assembles a self-contained tarball at
+`release/headless/harness-server-<version>-<platform>.tar.gz` plus
+`.sha256`. The job uploads both as release assets — no extra step in
+`scripts/release.sh` is needed. Bumping `NODE_VERSION` requires
+matching the `actions/setup-node` step in the workflow.
+
 ## Common commands
 
 | Command | What it does |
