@@ -136,6 +136,7 @@ function DesktopApp(): JSX.Element {
   const { consent: hooksConsent } = useHooks()
   const updaterStatus = useUpdater().status
   const [updateBannerDismissed, setUpdateBannerDismissed] = useState(false)
+  const [manualUpdateBannerDismissed, setManualUpdateBannerDismissed] = useState(false)
   const [sidebarVisible, setSidebarVisible] = useState(true)
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
     const saved = Number(localStorage.getItem('harness:sidebarWidth'))
@@ -462,6 +463,16 @@ const setQuestStep = useCallback((next: QuestStep) => {
   useEffect(() => {
     if (updaterStatus?.state === 'downloaded') setUpdateBannerDismissed(false)
   }, [updaterStatus?.state])
+
+  // Re-show the manual-install banner whenever a newer "available" version
+  // lands — keyed on version so dismissing v2.8.0 doesn't suppress v2.9.0.
+  const manualAvailableVersion =
+    updaterStatus?.state === 'available' && updaterStatus.manualInstallRequired
+      ? updaterStatus.version
+      : null
+  useEffect(() => {
+    if (manualAvailableVersion) setManualUpdateBannerDismissed(false)
+  }, [manualAvailableVersion])
 
   const handleUpdateRestart = useCallback(() => {
     void window.api.quitAndInstall()
@@ -992,6 +1003,33 @@ const setQuestStep = useCallback((next: QuestStep) => {
           </button>
         </div>
       )}
+
+      {/* Manual-install banner — packaging types where electron-updater can't
+          auto-install (.deb, flatpak, snap) point users at the release page. */}
+      {updaterStatus?.state === 'available' &&
+        updaterStatus.manualInstallRequired &&
+        !manualUpdateBannerDismissed && (
+          <div className="bg-info/15 border-b border-info/30 pl-20 pr-4 py-2.5 drag-region flex items-center gap-3 shrink-0">
+            <span className="text-info text-sm flex-1">
+              Harness {updaterStatus.version} is available. Download the new package from
+              GitHub Releases to update.
+            </span>
+            <button
+              onClick={() => {
+                if (updaterStatus.releaseUrl) window.api.openExternal(updaterStatus.releaseUrl)
+              }}
+              className="px-3 py-1 bg-info/30 hover:bg-info/40 rounded text-sm text-info transition-colors shrink-0 cursor-pointer no-drag"
+            >
+              Open release page
+            </button>
+            <button
+              onClick={() => setManualUpdateBannerDismissed(true)}
+              className="px-3 py-1 text-info/80 hover:text-info text-sm transition-colors shrink-0 cursor-pointer no-drag"
+            >
+              Later
+            </button>
+          </div>
+        )}
 
       {/* Hooks consent banner — one-time prompt at first launch. Harness
           installs agent status hooks at ~/.claude/settings.json (+ Codex
