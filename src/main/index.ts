@@ -2099,6 +2099,24 @@ function registerIpcHandlers(): void {
     }
   )
 
+  transport.onRequest(
+    'config:setJsonModeChatDensity',
+    (_ctx, value: 'compact' | 'comfy') => {
+      const next: 'compact' | 'comfy' = value === 'comfy' ? 'comfy' : 'compact'
+      if (next === 'compact') {
+        delete config.jsonModeChatDensity
+      } else {
+        config.jsonModeChatDensity = 'comfy'
+      }
+      saveConfig(config)
+      store.dispatch({
+        type: 'settings/jsonModeChatDensityChanged',
+        payload: next
+      })
+      return true
+    }
+  )
+
   transport.onSignal('terminal:join', (ctx, id: string) => {
     store.dispatch({
       type: 'terminals/clientJoined',

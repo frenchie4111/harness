@@ -351,6 +351,20 @@ describe('settingsReducer', () => {
     expect(cleared.autoApproveSteerInstructions).toBe('')
   })
 
+  it('jsonModeChatDensityChanged switches between compact and comfy', () => {
+    expect(initialSettings.jsonModeChatDensity).toBe('compact')
+    const comfy = apply(initialSettings, {
+      type: 'settings/jsonModeChatDensityChanged',
+      payload: 'comfy'
+    })
+    expect(comfy.jsonModeChatDensity).toBe('comfy')
+    const compact = apply(comfy, {
+      type: 'settings/jsonModeChatDensityChanged',
+      payload: 'compact'
+    })
+    expect(compact.jsonModeChatDensity).toBe('compact')
+  })
+
   it('useSystemClaudeForJsonModeChanged toggles the diagnostic flag', () => {
     expect(initialSettings.useSystemClaudeForJsonMode).toBe(false)
     const on = apply(initialSettings, {

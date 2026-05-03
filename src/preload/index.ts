@@ -160,6 +160,8 @@ contextBridge.exposeInMainWorld('api', {
   setJsonModeClaudeTabs: (enabled: boolean) => req('config:setJsonModeClaudeTabs', enabled),
   setDefaultClaudeTabType: (value: 'xterm' | 'json') =>
     req('config:setDefaultClaudeTabType', value),
+  setJsonModeChatDensity: (value: 'compact' | 'comfy') =>
+    req('config:setJsonModeChatDensity', value),
   setAutoUpdateEnabled: (enabled: boolean) => req('config:setAutoUpdateEnabled', enabled),
   setShareClaudeSettings: (enabled: boolean) => req('config:setShareClaudeSettings', enabled),
   setHarnessSystemPromptEnabled: (enabled: boolean) => req('config:setHarnessSystemPromptEnabled', enabled),

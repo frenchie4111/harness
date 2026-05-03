@@ -10,6 +10,8 @@ export type AgentKindSetting = 'claude' | 'codex'
 
 export type BrowserToolsMode = 'view' | 'full'
 
+export type JsonModeChatDensity = 'compact' | 'comfy'
+
 export interface SettingsState {
   theme: string
   hotkeys: Record<string, string> | null
@@ -67,6 +69,11 @@ export interface SettingsState {
   /** Diagnostic toggle (no UI): when true, json-mode tabs spawn the user's
    *  PATH `claude` instead of the bundled one. Default off. */
   useSystemClaudeForJsonMode: boolean
+  /** Visual density of the JSON-mode chat. 'compact' (default) keeps the
+   *  power-user defaults; 'comfy' bumps font sizes, padding, and corner
+   *  radius for newcomers / screen-sharing. Wired via CSS variables on
+   *  the chat root, so it's a pure styling switch. */
+  jsonModeChatDensity: JsonModeChatDensity
 }
 
 export type SettingsEvent =
@@ -106,6 +113,7 @@ export type SettingsEvent =
   | { type: 'settings/autoApprovePermissionsChanged'; payload: boolean }
   | { type: 'settings/autoApproveSteerInstructionsChanged'; payload: string }
   | { type: 'settings/useSystemClaudeForJsonModeChanged'; payload: boolean }
+  | { type: 'settings/jsonModeChatDensityChanged'; payload: JsonModeChatDensity }
 
 // Client-side placeholder. Real values are seeded in the main-process Store
 // constructor from the on-disk config and secrets.
@@ -145,7 +153,8 @@ export const initialSettings: SettingsState = {
   defaultClaudeTabType: 'xterm',
   autoApprovePermissions: false,
   autoApproveSteerInstructions: '',
-  useSystemClaudeForJsonMode: false
+  useSystemClaudeForJsonMode: false,
+  jsonModeChatDensity: 'compact'
 }
 
 export function settingsReducer(state: SettingsState, event: SettingsEvent): SettingsState {
@@ -222,6 +231,8 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, autoApproveSteerInstructions: event.payload }
     case 'settings/useSystemClaudeForJsonModeChanged':
       return { ...state, useSystemClaudeForJsonMode: event.payload }
+    case 'settings/jsonModeChatDensityChanged':
+      return { ...state, jsonModeChatDensity: event.payload }
     default: {
       const _exhaustive: never = event
       void _exhaustive

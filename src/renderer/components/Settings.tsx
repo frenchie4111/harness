@@ -191,6 +191,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     wsTransportHost,
     jsonModeClaudeTabs,
     defaultClaudeTabType,
+    jsonModeChatDensity,
     autoApprovePermissions,
     autoApproveSteerInstructions
   } = settings
@@ -2214,6 +2215,47 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     <option value="xterm">xterm (Claude TUI)</option>
                     <option value="json">JSON-mode (React chat)</option>
                   </select>
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-border">
+                  <label className="block text-xs font-medium text-fg mb-1">
+                    Chat density
+                  </label>
+                  <div
+                    className="text-xs text-dim mb-2"
+                    title="Larger text and padding, intended for new users or screen-sharing."
+                  >
+                    Larger text and padding for new users or screen-sharing. Has
+                    no effect on xterm Claude tabs.
+                  </div>
+                  <div className="inline-flex rounded border border-border-strong overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void window.api.setJsonModeChatDensity('compact')
+                      }}
+                      className={`px-3 py-1 text-xs cursor-pointer transition-colors ${
+                        jsonModeChatDensity === 'compact'
+                          ? 'bg-accent/20 text-fg-bright'
+                          : 'bg-panel text-muted hover:bg-panel-raised'
+                      }`}
+                    >
+                      Compact
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void window.api.setJsonModeChatDensity('comfy')
+                      }}
+                      className={`px-3 py-1 text-xs cursor-pointer transition-colors border-l border-border-strong ${
+                        jsonModeChatDensity === 'comfy'
+                          ? 'bg-accent/20 text-fg-bright'
+                          : 'bg-panel text-muted hover:bg-panel-raised'
+                      }`}
+                    >
+                      Comfy
+                    </button>
+                  </div>
                 </div>
               </div>
 

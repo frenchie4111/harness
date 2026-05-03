@@ -246,6 +246,7 @@ export interface ElectronAPI {
   setBrowserToolsMode(mode: 'view' | 'full'): Promise<boolean>
   setJsonModeClaudeTabs(enabled: boolean): Promise<boolean>
   setDefaultClaudeTabType(value: 'xterm' | 'json'): Promise<boolean>
+  setJsonModeChatDensity(value: 'compact' | 'comfy'): Promise<boolean>
   setAutoUpdateEnabled(enabled: boolean): Promise<boolean>
   setShareClaudeSettings(enabled: boolean): Promise<boolean>
   setHarnessSystemPromptEnabled(enabled: boolean): Promise<boolean>
