@@ -1,12 +1,8 @@
 name: Headless Release
 
-# NOTE: while this PR is in review the branch trigger below builds every
-# push so we can watch the matrix runs without cutting a release. Strip
-# `branches:` before merging — production should only fire on tag push.
 on:
   push:
     tags: ['v*.*.*']
-    branches: ['headless-server-tarball-packaging']
   workflow_dispatch:
 
 permissions:
