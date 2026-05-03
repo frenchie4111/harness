@@ -286,9 +286,24 @@ export function JsonClaudeApprovalCard({
 
       {mode === 'summary' && (
         <div className="px-3 py-2 space-y-2">
-          <pre className="text-[11px] font-mono bg-app/40 rounded p-2 overflow-x-auto max-h-48 whitespace-pre-wrap">
-            {tryFormatInput(approval.input)}
-          </pre>
+          {approval.toolName === 'Bash' &&
+          typeof approval.input?.command === 'string' ? (
+            <>
+              <pre className="text-[11px] font-mono bg-app/40 rounded p-2 overflow-x-auto max-h-48 whitespace-pre-wrap">
+                {String(approval.input.command)}
+              </pre>
+              {typeof approval.input?.description === 'string' &&
+                approval.input.description.trim() && (
+                  <div className="text-[11px] text-muted italic">
+                    {String(approval.input.description)}
+                  </div>
+                )}
+            </>
+          ) : (
+            <pre className="text-[11px] font-mono bg-app/40 rounded p-2 overflow-x-auto max-h-48 whitespace-pre-wrap">
+              {tryFormatInput(approval.input)}
+            </pre>
+          )}
           <div className="flex items-center gap-1.5 flex-wrap">
             <button
               onClick={allow}
