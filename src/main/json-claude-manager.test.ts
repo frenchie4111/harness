@@ -271,6 +271,110 @@ describe('JsonClaudeManager', () => {
     expect(cmd).not.toContain('--name')
   })
 
+  it('rate_limit_event over threshold emits one warning card; back-to-back duplicates dedup', () => {
+    const store = new Store()
+    const mgr = makeManager(store)
+    const sessionId = 'sess-rl-warn'
+    const cwd = '/tmp/wt'
+    store.dispatch({
+      type: 'jsonClaude/sessionStarted',
+      payload: { sessionId, worktreePath: cwd }
+    })
+    mgr.create(sessionId, cwd)
+    const proc = sessionProcs()[0]
+    const event = {
+      type: 'rate_limit_event',
+      rate_limit_info: {
+        status: 'warning',
+        utilization: 0.9,
+        resetsAt: 1_700_000_000,
+        rateLimitType: 'five_hour'
+      }
+    }
+    const line = JSON.stringify(event) + '\n'
+    proc.stdout.emit('data', Buffer.from(line))
+    proc.stdout.emit('data', Buffer.from(line))
+    const entries =
+      store.getSnapshot().state.jsonClaude.sessions[sessionId]?.entries ?? []
+    const warnings = entries.filter(
+      (e) => e.errorKind === 'rate-limit-warning'
+    )
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0].kind).toBe('system')
+    expect(warnings[0].rateLimitDetail?.utilization).toBe(0.9)
+    expect(warnings[0].rateLimitDetail?.tier).toBe('five_hour')
+    // resetsAt was seconds (< 1e12) → coerced to ms.
+    expect(warnings[0].rateLimitDetail?.resetAt).toBe(1_700_000_000_000)
+  })
+
+  it('rate_limit_event below threshold does not emit a card and clears dedup', () => {
+    const store = new Store()
+    const mgr = makeManager(store)
+    const sessionId = 'sess-rl-low'
+    const cwd = '/tmp/wt'
+    store.dispatch({
+      type: 'jsonClaude/sessionStarted',
+      payload: { sessionId, worktreePath: cwd }
+    })
+    mgr.create(sessionId, cwd)
+    const proc = sessionProcs()[0]
+    proc.stdout.emit(
+      'data',
+      Buffer.from(
+        JSON.stringify({
+          type: 'rate_limit_event',
+          rate_limit_info: { status: 'allowed', utilization: 0.4 }
+        }) + '\n'
+      )
+    )
+    proc.stdout.emit(
+      'data',
+      Buffer.from(
+        JSON.stringify({
+          type: 'rate_limit_event',
+          rate_limit_info: { status: 'warning', utilization: 0.85 }
+        }) + '\n'
+      )
+    )
+    const entries =
+      store.getSnapshot().state.jsonClaude.sessions[sessionId]?.entries ?? []
+    const warnings = entries.filter(
+      (e) => e.errorKind === 'rate-limit-warning'
+    )
+    // Only the over-threshold event surfaced.
+    expect(warnings).toHaveLength(1)
+  })
+
+  it('result subtype error_during_execution with rate-limit terminal_reason emits an error card', () => {
+    const store = new Store()
+    const mgr = makeManager(store)
+    const sessionId = 'sess-rl-err'
+    const cwd = '/tmp/wt'
+    store.dispatch({
+      type: 'jsonClaude/sessionStarted',
+      payload: { sessionId, worktreePath: cwd }
+    })
+    mgr.create(sessionId, cwd)
+    const proc = sessionProcs()[0]
+    proc.stdout.emit(
+      'data',
+      Buffer.from(
+        JSON.stringify({
+          type: 'result',
+          subtype: 'error_during_execution',
+          terminal_reason: 'blocking_limit',
+          errors: ['429 rate_limit: usage limit reached']
+        }) + '\n'
+      )
+    )
+    const entries =
+      store.getSnapshot().state.jsonClaude.sessions[sessionId]?.entries ?? []
+    const errs = entries.filter((e) => e.errorKind === 'rate-limit-error')
+    expect(errs).toHaveLength(1)
+    expect(errs[0].kind).toBe('error')
+    expect(errs[0].errorMessage).toContain('429')
+  })
+
   it("new proc's own exit event still updates state (guard doesn't block legitimate exits)", () => {
     const store = new Store()
     const mgr = makeManager(store)
