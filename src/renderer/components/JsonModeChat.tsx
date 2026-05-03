@@ -636,17 +636,26 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
   // events, so a drag is invisible to the input listeners above. Watch
   // for scrollTop deltas in either direction here, gated on the
   // programmatic-scroll flag so our own snaps don't trip it.
+  //
+  // Distance gate on the scrollTop-decrease branch matters: when content
+  // shrinks (thinking card auto-collapse, approval card resolves) the
+  // browser clamps scrollTop down and fires a scroll event before the
+  // ResizeObserver callback runs (per WHATWG: scroll steps before resize
+  // observer steps). Without the gate, that clamp would look like a user
+  // scroll-up, flag userScrolledUp, and the RO callback would then skip
+  // the snap. Auto-clamps land right at the bottom edge (distance ≈ 0),
+  // so requiring distance > 32 ignores them.
   const onScroll = (): void => {
     const el = scrollRef.current
     if (!el) return
     const prev = lastScrollTop.current
     lastScrollTop.current = el.scrollTop
     if (isProgrammaticScroll.current) return
-    if (el.scrollTop < prev) {
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight
+    if (el.scrollTop < prev && distance > 32) {
       setUserScrolledUp(true)
-    } else if (el.scrollTop > prev) {
-      const distance = el.scrollHeight - el.scrollTop - el.clientHeight
-      if (distance < 32) setUserScrolledUp(false)
+    } else if (el.scrollTop > prev && distance < 32) {
+      setUserScrolledUp(false)
     }
   }
 
