@@ -93,6 +93,18 @@ HARNESS_SERVER_VERSION=2.6.1 sh -c 'curl -fsSL https://raw.githubusercontent.com
 
 Re-running the install script bumps the version. There's no in-place self-update yet.
 
+### Connecting the Electron app to a remote server
+
+Once `harness-server` is running on a remote machine, you can drive it from a local Electron Harness instead of (or in addition to) the browser web client. Set `HARNESS_REMOTE_URL` to the WebSocket URL the server printed and launch Harness:
+
+```sh
+HARNESS_REMOTE_URL='ws://100.x.x.x:37291?token=<token>' open -na Harness
+```
+
+Or set it persistently in your shell init for whichever remote you use most often. When the env var is present the Electron app skips its local backend entirely (no PTY manager, no PR poller, no IPC handlers) and the renderer connects to the remote over the same WebSocket transport the web client uses. Worktrees, terminals, browser tabs, and json-mode Claude all run on the remote machine — the Electron window is just the UI.
+
+If the connection fails (server down, wrong token, network blocked), the app shows a static error screen with the URL. There's no reconnect-on-disconnect logic in v1 — restart the app to retry. There's also no in-app remote picker yet; switch remotes by changing the env var and relaunching.
+
 ## Uninstallation
 
 1. **Remove the Claude Code hooks** (do this while Harness is still running). Open Settings → **Agent** → **Status hooks** and click **Remove hooks**. This strips Harness's entries from `~/.claude/settings.json` and leaves any user-authored hooks intact.
