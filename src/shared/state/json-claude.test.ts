@@ -331,6 +331,132 @@ describe('jsonClaudeReducer', () => {
     expect(next).toBe(state)
   })
 
+  it('toolInputProgressed updates the matching tool_use block input', () => {
+    let state = seedSession(initialJsonClaude)
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/entryAppended',
+      payload: {
+        sessionId: SID,
+        entry: {
+          entryId: 'a1',
+          kind: 'assistant',
+          blocks: [
+            { type: 'text', text: 'going to edit' },
+            { type: 'tool_use', id: 'tu1', name: 'Edit', input: {} }
+          ],
+          timestamp: 1,
+          isPartial: true
+        }
+      }
+    })
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/toolInputProgressed',
+      payload: {
+        sessionId: SID,
+        entryId: 'a1',
+        toolUseId: 'tu1',
+        input: { file_path: '/tmp/x.ts' }
+      }
+    })
+    const blocks = state.sessions[SID].entries[0].blocks!
+    expect(blocks[1].input).toEqual({ file_path: '/tmp/x.ts' })
+    expect(blocks[0].text).toBe('going to edit')
+  })
+
+  it('toolInputProgressed is a no-op for unknown entry', () => {
+    const state = seedSession(initialJsonClaude)
+    const next = jsonClaudeReducer(state, {
+      type: 'jsonClaude/toolInputProgressed',
+      payload: {
+        sessionId: SID,
+        entryId: 'missing',
+        toolUseId: 'tu1',
+        input: { file_path: '/tmp/x.ts' }
+      }
+    })
+    expect(next).toBe(state)
+  })
+
+  it('toolInputProgressed is a no-op for unknown tool_use id', () => {
+    let state = seedSession(initialJsonClaude)
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/entryAppended',
+      payload: {
+        sessionId: SID,
+        entry: {
+          entryId: 'a1',
+          kind: 'assistant',
+          blocks: [{ type: 'tool_use', id: 'tu1', name: 'Edit', input: {} }],
+          timestamp: 1,
+          isPartial: true
+        }
+      }
+    })
+    const before = state
+    const next = jsonClaudeReducer(state, {
+      type: 'jsonClaude/toolInputProgressed',
+      payload: {
+        sessionId: SID,
+        entryId: 'a1',
+        toolUseId: 'tu-missing',
+        input: { file_path: '/tmp/x.ts' }
+      }
+    })
+    expect(next).toBe(before)
+  })
+
+  it('toolInputProgressed preserves reference identity for sibling entries and blocks', () => {
+    let state = seedSession(initialJsonClaude)
+    const e1: JsonClaudeChatEntry = {
+      entryId: 'u1',
+      kind: 'user',
+      text: 'edit something',
+      timestamp: 1
+    }
+    const textBlock = { type: 'text' as const, text: 'going to edit' }
+    const toolBlock = {
+      type: 'tool_use' as const,
+      id: 'tu1',
+      name: 'Edit',
+      input: {}
+    }
+    const e2: JsonClaudeChatEntry = {
+      entryId: 'a1',
+      kind: 'assistant',
+      blocks: [textBlock, toolBlock],
+      timestamp: 2,
+      isPartial: true
+    }
+    const e3: JsonClaudeChatEntry = {
+      entryId: 'u2',
+      kind: 'user',
+      text: 'follow',
+      timestamp: 3
+    }
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/entriesSeeded',
+      payload: { sessionId: SID, entries: [e1, e2, e3] }
+    })
+    const before = state.sessions[SID].entries
+    const next = jsonClaudeReducer(state, {
+      type: 'jsonClaude/toolInputProgressed',
+      payload: {
+        sessionId: SID,
+        entryId: 'a1',
+        toolUseId: 'tu1',
+        input: { file_path: '/tmp/x.ts' }
+      }
+    })
+    const after = next.sessions[SID].entries
+    expect(after).not.toBe(before)
+    expect(after[0]).toBe(before[0])
+    expect(after[2]).toBe(before[2])
+    expect(after[1]).not.toBe(before[1])
+    expect(after[1].blocks?.[0]).toBe(before[1].blocks?.[0])
+    expect(after[1].blocks?.[1]).not.toBe(before[1].blocks?.[1])
+    expect(after[1].blocks?.[1].input).toEqual({ file_path: '/tmp/x.ts' })
+  })
+
   it('assistantEntryFinalized replaces blocks and clears isPartial', () => {
     let state = seedSession(initialJsonClaude)
     state = jsonClaudeReducer(state, {

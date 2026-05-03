@@ -215,6 +215,15 @@ export type JsonClaudeEvent =
       }
     }
   | {
+      type: 'jsonClaude/toolInputProgressed'
+      payload: {
+        sessionId: string
+        entryId: string
+        toolUseId: string
+        input: Record<string, unknown>
+      }
+    }
+  | {
       type: 'jsonClaude/assistantEntryFinalized'
       payload: {
         sessionId: string
@@ -489,6 +498,37 @@ export function jsonClaudeReducer(
         ...session.entries.slice(0, i),
         patched,
         ...session.entries.slice(i + 1)
+      ]
+      return {
+        ...state,
+        sessions: {
+          ...state.sessions,
+          [session.sessionId]: { ...session, entries: nextEntries }
+        }
+      }
+    }
+    case 'jsonClaude/toolInputProgressed': {
+      const session = state.sessions[event.payload.sessionId]
+      if (!session) return state
+      const { entryId, toolUseId, input } = event.payload
+      const entryIdx = session.entries.findIndex((e) => e.entryId === entryId)
+      if (entryIdx === -1) return state
+      const entry = session.entries[entryIdx]
+      const blocks = entry.blocks
+      if (!blocks) return state
+      const blockIdx = blocks.findIndex(
+        (b) => b.type === 'tool_use' && b.id === toolUseId
+      )
+      if (blockIdx === -1) return state
+      const nextBlocks = [
+        ...blocks.slice(0, blockIdx),
+        { ...blocks[blockIdx], input },
+        ...blocks.slice(blockIdx + 1)
+      ]
+      const nextEntries = [
+        ...session.entries.slice(0, entryIdx),
+        { ...entry, blocks: nextBlocks },
+        ...session.entries.slice(entryIdx + 1)
       ]
       return {
         ...state,
