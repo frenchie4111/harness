@@ -2,14 +2,15 @@
 // directly, connects the WebSocketClientTransport to it, and verifies
 // the happy path: snapshot, state event, request, send, signal.
 //
-// Stays in renderer/ so the import of `transport-websocket` doesn't
-// reach across tsconfig projects.
+// Test stays in renderer/ (the renderer's tsconfig has the DOM lib
+// types it needs); the implementation moved to shared/transport/ so
+// the preload can also import it for HARNESS_REMOTE_URL mode.
 
 import { describe, it, expect, vi } from 'vitest'
 import { WebSocketServer, WebSocket as WSClient, type WebSocket as WSType } from 'ws'
 import type { StateSnapshot } from '../shared/state'
 import { initialState } from '../shared/state'
-import { WebSocketClientTransport } from './transport-websocket'
+import { WebSocketClientTransport } from '../shared/transport/transport-websocket'
 
 interface StubFrameHandler {
   onReq?: (id: string, name: string, args: unknown[], ws: WSType) => void
