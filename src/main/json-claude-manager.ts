@@ -46,6 +46,12 @@ interface JsonClaudeInstance {
    *  proc exits). One assistant turn at a time — claude doesn't
    *  multiplex turns through stream-json. */
   partial: PartialMessageState | null
+  /** Dedup state for rate_limit_event warnings. Stream emits these on
+   *  every usage update; we only surface a card when we cross the
+   *  threshold from below or when the reset window changes. Tracks
+   *  whether the last emitted warning was over-threshold and the
+   *  resetAt that was on the most recent dispatched warning. */
+  lastRateLimitWarning: { overThreshold: boolean; resetAt?: number }
 }
 
 interface PartialMessageState {
@@ -531,7 +537,8 @@ export class JsonClaudeManager {
       worktreePath,
       buf: '',
       entryCounter: 0,
-      partial: null
+      partial: null,
+      lastRateLimitWarning: { overThreshold: false }
     }
     this.instances.set(sessionId, instance)
     log('json-claude', `create spawned sessionId=${sessionId} pid=${proc.pid ?? '?'} → running`)
@@ -1149,6 +1156,7 @@ export class JsonClaudeManager {
         type: 'jsonClaude/userEntriesUnqueued',
         payload: { sessionId: instance.sessionId }
       })
+      this.maybeDispatchRateLimitError(instance, parsed)
       return
     }
     if (type === 'control_response') {
@@ -1166,8 +1174,111 @@ export class JsonClaudeManager {
       }
       return
     }
-    // Ignore rate_limit_event and unknown types for now — they become
-    // Phase 3 UX.
+    if (type === 'rate_limit_event') {
+      this.maybeDispatchRateLimitWarning(instance, parsed)
+      return
+    }
+    // Unknown types fall through silently — the SDK adds new envelope
+    // shapes occasionally and we don't want to spam logs.
+  }
+
+  /** Threshold (0–1) above which rate_limit_event utilization triggers a
+   *  warning card. Mirrors the SDK's own ~80% surfacing heuristic; we
+   *  also honor the SDK's `surpassedThreshold` boolean when present so
+   *  per-tier server thresholds win over our local guess. */
+  private static readonly RATE_LIMIT_WARN_UTILIZATION = 0.8
+
+  private maybeDispatchRateLimitWarning(
+    instance: JsonClaudeInstance,
+    parsed: Record<string, unknown>
+  ): void {
+    const info = parsed['rate_limit_info'] as
+      | Record<string, unknown>
+      | undefined
+    if (!info) return
+    const detail = parseRateLimitInfo(info)
+    const utilization = detail.utilization
+    const surpassed = info['surpassedThreshold']
+    const overThreshold =
+      surpassed === true ||
+      (typeof utilization === 'number' &&
+        utilization >= JsonClaudeManager.RATE_LIMIT_WARN_UTILIZATION)
+    if (!overThreshold) {
+      // Drop back below the threshold — clear dedup so the next breach
+      // emits a fresh card instead of being suppressed.
+      instance.lastRateLimitWarning = { overThreshold: false }
+      return
+    }
+    const wasOver = instance.lastRateLimitWarning.overThreshold
+    const lastReset = instance.lastRateLimitWarning.resetAt
+    // Suppress when we're already showing a warning for the same reset
+    // window — the underlying state hasn't materially changed. Emit a
+    // fresh card on first breach OR when the reset window slides forward.
+    if (wasOver && lastReset === detail.resetAt) return
+    instance.lastRateLimitWarning = {
+      overThreshold: true,
+      ...(detail.resetAt !== undefined ? { resetAt: detail.resetAt } : {})
+    }
+    const ts = Date.now()
+    this.store.dispatch({
+      type: 'jsonClaude/entryAppended',
+      payload: {
+        sessionId: instance.sessionId,
+        entry: {
+          entryId: `${instance.sessionId}-ratelimit-warn-${ts}`,
+          kind: 'system',
+          timestamp: ts,
+          errorKind: 'rate-limit-warning',
+          errorMessage: 'Approaching rate limit',
+          ...(Object.keys(detail).length > 0
+            ? { rateLimitDetail: detail }
+            : {})
+        }
+      }
+    })
+  }
+
+  private maybeDispatchRateLimitError(
+    instance: JsonClaudeInstance,
+    parsed: Record<string, unknown>
+  ): void {
+    const terminalReason = parsed['terminal_reason']
+    const errorsRaw = parsed['errors']
+    const errorsArr = Array.isArray(errorsRaw)
+      ? errorsRaw.filter((s): s is string => typeof s === 'string')
+      : []
+    const apiErrorStatus = parsed['api_error_status']
+    // Three independent signals — any one is enough to call this a
+    // rate-limit boundary. terminal_reason is the SDK's own
+    // categorization (cleanest, only present on error_during_execution
+    // results), errors[] catches generic 429 messages on
+    // error_during_execution, and api_error_status===429 covers the
+    // success-result-with-trailing-429 case.
+    const isRateLimitTerminal =
+      terminalReason === 'blocking_limit' ||
+      terminalReason === 'rapid_refill_breaker'
+    const errorsLooksRateLimit = errorsArr.some(looksLikeRateLimit)
+    const apiStatusIs429 = apiErrorStatus === 429
+    if (!isRateLimitTerminal && !errorsLooksRateLimit && !apiStatusIs429) return
+    const human =
+      errorsArr.find(looksLikeRateLimit) ??
+      (terminalReason === 'rapid_refill_breaker'
+        ? 'Server is temporarily limiting requests'
+        : 'Rate limit reached')
+    const ts = Date.now()
+    this.store.dispatch({
+      type: 'jsonClaude/entryAppended',
+      payload: {
+        sessionId: instance.sessionId,
+        entry: {
+          entryId: `${instance.sessionId}-ratelimit-error-${ts}`,
+          kind: 'error',
+          timestamp: ts,
+          errorKind: 'rate-limit-error',
+          errorMessage: human
+        }
+      }
+    })
   }
 
   /** Stream-event handler for the SDK delta events claude emits when
@@ -1406,6 +1517,54 @@ export class JsonClaudeManager {
     })
   }
 
+}
+
+const RATE_LIMIT_TEXT_RE =
+  /(\b429\b|rate[\s_-]?limit|usage limit|too many requests)/i
+
+function looksLikeRateLimit(s: string): boolean {
+  return RATE_LIMIT_TEXT_RE.test(s)
+}
+
+/** Extract the displayable subset of the SDK's `rate_limit_info` object
+ *  into the slice's `rateLimitDetail` shape. Wire schema (verified
+ *  against @anthropic-ai/claude-code-darwin-arm64 binary):
+ *    { status, resetsAt?, rateLimitType?, utilization?,
+ *      overageStatus?, overageResetsAt?, overageDisabledReason?,
+ *      isUsingOverage?, surpassedThreshold? }
+ *  resetsAt may be a number (unix ms) or an ISO string depending on
+ *  tier — coerce to ms either way for the renderer. */
+function parseRateLimitInfo(info: Record<string, unknown>): {
+  utilization?: number
+  resetAt?: number
+  tier?: string
+  isUsingOverage?: boolean
+} {
+  const out: {
+    utilization?: number
+    resetAt?: number
+    tier?: string
+    isUsingOverage?: boolean
+  } = {}
+  const utilization = info['utilization']
+  if (typeof utilization === 'number' && isFinite(utilization)) {
+    out.utilization = utilization
+  }
+  const resetsAt = info['resetsAt']
+  if (typeof resetsAt === 'number' && isFinite(resetsAt)) {
+    // SDK numbers are unix seconds in some tiers and ms in others.
+    // Heuristic: anything below year 2100 in seconds is < 4.1e9, so
+    // anything < 1e12 is seconds, otherwise ms.
+    out.resetAt = resetsAt < 1e12 ? resetsAt * 1000 : resetsAt
+  } else if (typeof resetsAt === 'string') {
+    const t = Date.parse(resetsAt)
+    if (!isNaN(t)) out.resetAt = t
+  }
+  const tier = info['rateLimitType']
+  if (typeof tier === 'string') out.tier = tier
+  const isUsingOverage = info['isUsingOverage']
+  if (typeof isUsingOverage === 'boolean') out.isUsingOverage = isUsingOverage
+  return out
 }
 
 function streamEventBlockToMessageBlock(

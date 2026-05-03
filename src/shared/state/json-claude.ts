@@ -89,6 +89,30 @@ export interface JsonClaudeChatEntry {
    *  to nest sub-agent activity inside the parent Task card instead of
    *  flattening it chronologically into the top-level transcript. */
   parentToolUseId?: string
+  /** For inline system/error cards. Discriminator that tells the
+   *  renderer which dedicated card component to dispatch on. The union
+   *  is intentionally extensible — sibling worktrees add other kinds
+   *  (subprocess-exit, auth-failure) to the same field, so merging is
+   *  trivial. */
+  errorKind?: 'rate-limit-warning' | 'rate-limit-error'
+  /** Short human-readable summary surfaced on inline system/error
+   *  cards. Free-form text — the card layout owns the chrome. */
+  errorMessage?: string
+  /** Structured rate-limit detail for the warning + error cards.
+   *  Sourced from the SDK's `rate_limit_info` payload. All fields
+   *  optional because the wire shape is sparse — different tiers and
+   *  events fill in different subsets. */
+  rateLimitDetail?: {
+    /** 0–1 fraction of the current window's budget that's been used.
+     *  Renderer formats as a percentage. */
+    utilization?: number
+    /** Unix ms timestamp at which the limiting window resets. */
+    resetAt?: number
+    /** Tier identifier, e.g. 'five_hour' / 'seven_day' / 'unified'. */
+    tier?: string
+    /** True when overage credits are currently being consumed. */
+    isUsingOverage?: boolean
+  }
 }
 
 export interface JsonClaudeSession {

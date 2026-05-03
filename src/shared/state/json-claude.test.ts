@@ -1043,4 +1043,52 @@ describe('jsonClaudeReducer', () => {
       timestamp: 1
     })
   })
+
+  it('entryAppended carries the rate-limit-warning errorKind + detail through', () => {
+    let state = seedSession(initialJsonClaude)
+    const entry: JsonClaudeChatEntry = {
+      entryId: 'rl-warn-1',
+      kind: 'system',
+      timestamp: 5,
+      errorKind: 'rate-limit-warning',
+      errorMessage: 'Approaching rate limit',
+      rateLimitDetail: {
+        utilization: 0.85,
+        resetAt: 1_700_000_000_000,
+        tier: 'five_hour'
+      }
+    }
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/entryAppended',
+      payload: { sessionId: SID, entry }
+    })
+    const stored = state.sessions[SID].entries[0]
+    expect(stored.kind).toBe('system')
+    expect(stored.errorKind).toBe('rate-limit-warning')
+    expect(stored.errorMessage).toBe('Approaching rate limit')
+    expect(stored.rateLimitDetail).toEqual({
+      utilization: 0.85,
+      resetAt: 1_700_000_000_000,
+      tier: 'five_hour'
+    })
+  })
+
+  it('entryAppended carries the rate-limit-error errorKind through', () => {
+    let state = seedSession(initialJsonClaude)
+    const entry: JsonClaudeChatEntry = {
+      entryId: 'rl-err-1',
+      kind: 'error',
+      timestamp: 6,
+      errorKind: 'rate-limit-error',
+      errorMessage: 'Rate limit reached'
+    }
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/entryAppended',
+      payload: { sessionId: SID, entry }
+    })
+    const stored = state.sessions[SID].entries[0]
+    expect(stored.kind).toBe('error')
+    expect(stored.errorKind).toBe('rate-limit-error')
+    expect(stored.errorMessage).toBe('Rate limit reached')
+  })
 })
