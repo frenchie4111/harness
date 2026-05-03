@@ -563,7 +563,12 @@ const panesFSM = new PanesFSM(store, {
     // tab from a worktree-creation path that carried an initialPrompt.
     store.dispatch({
       type: 'jsonClaude/sessionStarted',
-      payload: { sessionId, worktreePath }
+      payload: {
+        sessionId,
+        worktreePath,
+        defaultPermissionMode:
+          store.getSnapshot().state.settings.jsonModeDefaultPermissionMode
+      }
     })
     jsonClaudeManager.seedFromTranscript(sessionId, worktreePath)
     const mode =
@@ -1962,7 +1967,12 @@ function registerIpcHandlers(): void {
     // 'connecting' from sessionStarted wins, leaving the UI stuck.
     store.dispatch({
       type: 'jsonClaude/sessionStarted',
-      payload: { sessionId, worktreePath: cwd }
+      payload: {
+        sessionId,
+        worktreePath: cwd,
+        defaultPermissionMode:
+          store.getSnapshot().state.settings.jsonModeDefaultPermissionMode
+      }
     })
     // Replay the on-disk transcript into the slice so the chat UI shows
     // prior turns after a full app restart. No-op if the slice already
@@ -2093,6 +2103,25 @@ function registerIpcHandlers(): void {
       saveConfig(config)
       store.dispatch({
         type: 'settings/defaultClaudeTabTypeChanged',
+        payload: next
+      })
+      return true
+    }
+  )
+
+  transport.onRequest(
+    'config:setJsonModeDefaultPermissionMode',
+    (_ctx, value: 'default' | 'acceptEdits' | 'plan') => {
+      const next: 'default' | 'acceptEdits' | 'plan' =
+        value === 'default' || value === 'plan' ? value : 'acceptEdits'
+      if (next === 'acceptEdits') {
+        delete config.jsonModeDefaultPermissionMode
+      } else {
+        config.jsonModeDefaultPermissionMode = next
+      }
+      saveConfig(config)
+      store.dispatch({
+        type: 'settings/jsonModeDefaultPermissionModeChanged',
         payload: next
       })
       return true
