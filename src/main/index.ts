@@ -113,6 +113,7 @@ function findShellWorktree(shellId: string): string | null {
   return null
 }
 import { CostTracker } from './cost-tracker'
+import { listDir as fsListDir, isGitRepo as fsIsGitRepo, resolveHome as fsResolveHome } from './fs-listing'
 import { startControlServer } from './control-server'
 import { writeMcpConfigForTerminal, pruneMcpConfigs, getBridgeScriptPath } from './mcp-config'
 import { getControlServerInfo } from './control-server'
@@ -821,8 +822,30 @@ function registerIpcHandlers(): void {
   })
 
   // Native repo:add (folder picker) and dialog:pickDirectory live in
-  // desktop-shell.ts. Headless mode leaves them unregistered — the web
-  // client already stubs both as `unavailable` (see web-client/main.tsx).
+  // desktop-shell.ts. The web client uses repo:addAtPath below combined
+  // with the renderer-side RemoteFilePicker.
+  transport.onRequest('repo:addAtPath', (_ctx, repoRoot: string) => {
+    if (!repoRoot || typeof repoRoot !== 'string') return null
+    if (!config.repoRoots.includes(repoRoot)) {
+      config.repoRoots.push(repoRoot)
+      saveConfig(config)
+      worktreesFSM.dispatchRepos([...config.repoRoots])
+      store.dispatch({
+        type: 'repoConfigs/changed',
+        payload: { repoRoot, config: loadRepoConfig(repoRoot) }
+      })
+      void worktreesFSM.refreshList()
+    }
+    return repoRoot
+  })
+
+  transport.onRequest(
+    'fs:listDir',
+    (_ctx, dirPath: string, opts?: { showHidden?: boolean }) =>
+      fsListDir(dirPath, opts ?? {})
+  )
+  transport.onRequest('fs:resolveHome', () => fsResolveHome())
+  transport.onRequest('fs:isGitRepo', (_ctx, dirPath: string) => fsIsGitRepo(dirPath))
 
   transport.onRequest(
     'repo:createNewProject',

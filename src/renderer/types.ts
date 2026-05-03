@@ -10,6 +10,14 @@ export type { RepoConfig }
 import type { WeeklyStats, TopWorktree } from '../shared/weekly-stats'
 export type { WeeklyStats, TopWorktree }
 
+export interface FsEntry {
+  name: string
+  isDir: boolean
+  isGitRepo: boolean
+  isSymlink: boolean
+  truncated?: true
+}
+
 export interface FileReadResult {
   content: string | null
   size: number
@@ -169,6 +177,7 @@ export interface ElectronAPI {
   getWorktreeDir(repoRoot: string): Promise<string>
   listRepos(): Promise<string[]>
   addRepo(): Promise<string | null>
+  addRepoAtPath(repoRoot: string): Promise<string | null>
   removeRepo(repoRoot: string): Promise<boolean>
   createNewProject(opts: {
     parentDir: string
@@ -177,6 +186,9 @@ export interface ElectronAPI {
     gitignorePreset: 'none' | 'node' | 'python' | 'macos'
   }): Promise<{ path: string } | { error: string }>
   pickDirectory(opts?: { defaultPath?: string; title?: string }): Promise<string | null>
+  listDir(path: string, opts?: { showHidden?: boolean }): Promise<FsEntry[]>
+  resolveHome(): Promise<string>
+  isGitRepo(path: string): Promise<boolean>
 
   getMainWorktreeStatus(repoRoot: string): Promise<MainWorktreeStatus>
   prepareMainForMerge(repoRoot: string): Promise<MainWorktreeStatus>
