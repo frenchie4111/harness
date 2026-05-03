@@ -53,4 +53,22 @@ describe('updaterReducer', () => {
     })
     expect(next).not.toBe(initialUpdater)
   })
+
+  it('available carries optional releaseUrl + manualInstallRequired', () => {
+    const next = updaterReducer(initialUpdater, {
+      type: 'updater/statusChanged',
+      payload: {
+        state: 'available',
+        version: '2.8.0',
+        releaseUrl: 'https://github.com/example/harness/releases/tag/v2.8.0',
+        manualInstallRequired: true
+      }
+    })
+    expect(next.status).toEqual({
+      state: 'available',
+      version: '2.8.0',
+      releaseUrl: 'https://github.com/example/harness/releases/tag/v2.8.0',
+      manualInstallRequired: true
+    })
+  })
 })

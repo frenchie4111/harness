@@ -42,6 +42,8 @@ import { saveConfig, saveConfigSync, DEFAULT_THEME, THEME_APP_BG } from './persi
 import { loadRepoConfig } from './repo-config'
 import { sealAllActive } from './activity'
 import { log, getLogFilePath } from './debug'
+import { isManualUpdateInstallType } from './manual-update'
+import { HARNESS_REPO_URL } from '../shared/constants'
 
 export interface DesktopShellInit {
   store: Store
@@ -162,6 +164,14 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
   function setupAutoUpdater(): void {
     if (!app.isPackaged) return // No-op in dev
 
+    const manualInstallRequired = isManualUpdateInstallType()
+    if (manualInstallRequired) {
+      // electron-updater would silently no-op the download/install on
+      // packaging types that need root (dpkg, flatpak, snap). Skip the
+      // round-trip and let the renderer show the manual-download banner.
+      autoUpdater.autoDownload = false
+    }
+
     autoUpdater.logger = {
       info: (msg: string) => log('updater', msg),
       warn: (msg: string) => log('updater', `[warn] ${msg}`),
@@ -174,10 +184,15 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
       store.dispatch({ type: 'updater/statusChanged', payload: { state: 'checking' } })
     })
     autoUpdater.on('update-available', (info) => {
-      log('updater', 'update available', info.version)
+      log('updater', `update available ${info.version}${manualInstallRequired ? ' (manual install)' : ''}`)
       store.dispatch({
         type: 'updater/statusChanged',
-        payload: { state: 'available', version: info.version }
+        payload: {
+          state: 'available',
+          version: info.version,
+          releaseUrl: `${HARNESS_REPO_URL}/releases/tag/v${info.version}`,
+          manualInstallRequired
+        }
       })
     })
     autoUpdater.on('update-not-available', () => {
