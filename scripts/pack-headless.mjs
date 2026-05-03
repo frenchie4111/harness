@@ -31,15 +31,15 @@ function detectPlatform() {
   const p = process.platform
   const a = process.arch
   if (p === 'darwin' && a === 'arm64') return { platform: 'darwin-arm64', nodeDist: 'darwin-arm64' }
-  if (p === 'darwin' && a === 'x64') return { platform: 'darwin-x64', nodeDist: 'darwin-x64' }
   if (p === 'linux' && a === 'x64') return { platform: 'linux-x64', nodeDist: 'linux-x64' }
   if (p === 'linux' && a === 'arm64') return { platform: 'linux-arm64', nodeDist: 'linux-arm64' }
-  throw new Error(`Unsupported host platform: ${p}-${a}. Run on darwin-arm64, darwin-x64, linux-x64, or linux-arm64.`)
+  // darwin-x64 is intentionally not packed — see the matrix comment in
+  // .github/workflows/headless-release.yml.
+  throw new Error(`Unsupported host platform: ${p}-${a}. Run on darwin-arm64, linux-x64, or linux-arm64.`)
 }
 
 const CLAUDE_PLATFORM_PKG = {
   'darwin-arm64': '@anthropic-ai/claude-code-darwin-arm64',
-  'darwin-x64': '@anthropic-ai/claude-code-darwin-x64',
   'linux-x64': '@anthropic-ai/claude-code-linux-x64',
   'linux-arm64': '@anthropic-ai/claude-code-linux-arm64'
 }

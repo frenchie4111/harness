@@ -73,7 +73,7 @@ Install with one command:
 curl -fsSL https://raw.githubusercontent.com/frenchie4111/harness/main/scripts/install-headless.sh | sh
 ```
 
-This downloads the right tarball for your platform (`darwin-arm64`, `darwin-x64`, `linux-x64`, or `linux-arm64`), verifies its sha256, and extracts to `~/.harness-server/`. If `/usr/local/bin/` is writable a `harness-server` symlink is dropped there; otherwise you add `~/.harness-server/bin` to your `PATH`.
+This downloads the right tarball for your platform (`darwin-arm64`, `linux-x64`, or `linux-arm64`), verifies its sha256, and extracts to `~/.harness-server/`. Intel Macs are not currently shipped — GitHub's macos-13 runner queue is too unreliable to keep in CI. If `/usr/local/bin/` is writable a `harness-server` symlink is dropped there; otherwise you add `~/.harness-server/bin` to your `PATH`.
 
 Run it:
 

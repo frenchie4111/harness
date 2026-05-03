@@ -38,6 +38,12 @@ esac
 
 PLATFORM="$os-$arch"
 
+# Intel Macs are not currently shipped — GitHub's macos-13 runner
+# queue is too unreliable. Apple Silicon is the only macOS target.
+if [ "$PLATFORM" = "darwin-x64" ]; then
+  err "darwin-x64 (Intel Mac) tarballs are not currently shipped. Run on Apple Silicon, or build from source."
+fi
+
 # --- version resolution ---
 VERSION="${HARNESS_SERVER_VERSION:-latest}"
 if [ "$VERSION" = "latest" ]; then

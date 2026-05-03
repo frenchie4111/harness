@@ -450,8 +450,9 @@ build/sign/notarize, tag/push, release notes from `git log`, and
 ### Headless tarballs
 
 The `Headless Release` workflow (`.github/workflows/headless-release.yml`)
-fires on the same tag push and runs a four-platform matrix
-(`darwin-arm64`, `darwin-x64`, `linux-x64`, `linux-arm64`). Each runner
+fires on the same tag push and runs a three-platform matrix
+(`darwin-arm64`, `linux-x64`, `linux-arm64` — Intel Mac is omitted
+because the macos-13 runner queue is too unreliable). Each runner
 calls `npm run pack:headless`, which downloads a pinned Node binary
 (`NODE_VERSION` in `scripts/pack-headless.mjs`), rebuilds `node-pty`
 against that ABI, and assembles a self-contained tarball at
