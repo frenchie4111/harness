@@ -120,6 +120,12 @@
           "arch": [
             "x64"
           ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "artifactName": "Harness-${version}.${ext}"

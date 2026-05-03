@@ -43,6 +43,8 @@ Grab the latest release from the [releases page](https://github.com/frenchie4111
 
 ## Installation
 
+### macOS
+
 1. Download the `.dmg` for your Mac architecture from the links above.
 2. Open the `.dmg` and drag **Harness** into your Applications folder.
 3. Launch Harness from Applications. The app is signed and notarized, so it should open without any Gatekeeper warnings.
@@ -51,9 +53,35 @@ Grab the latest release from the [releases page](https://github.com/frenchie4111
    - Click the ⚙ gear icon in the sidebar and paste a [GitHub personal access token](https://github.com/settings/tokens?type=beta) (fine-grained or classic, with `repo` scope). This is optional but required for the PR status panel and checks.
    - When the hooks consent banner appears, click **Enable** so Harness can install status-tracking hooks globally at `~/.claude/settings.json`. One install covers every worktree and is what makes the sidebar status dots reliable. Curious what the hook actually runs? See [`src/main/hooks.ts`](src/main/hooks.ts) (the bash command built by `makeHookCommand` — it appends one line of JSON per event to `/tmp/harness-status/<id>.ndjson`) and [`src/main/agents/claude.ts`](src/main/agents/claude.ts) (where the install/uninstall logic lives).
 
+### Linux
+
+Grab `Harness-<version>.deb` or `Harness-<version>.AppImage` from the [releases page](https://github.com/frenchie4111/harness/releases/latest).
+
+**Ubuntu / Debian (.deb)** — the recommended option:
+
+```sh
+sudo apt install ./Harness-<version>.deb
+```
+
+The postinstall script handles the `chrome-sandbox` SUID bit automatically, so this works on Ubuntu 24.04+ out of the box.
+
+**AppImage** — for distros without `dpkg`:
+
+```sh
+chmod +x Harness-<version>.AppImage
+./Harness-<version>.AppImage
+```
+
+If you hit `The SUID sandbox helper binary was found, but is not configured correctly` on Ubuntu 24.04+, either install the `.deb` instead or relax the AppArmor unprivileged-userns restriction:
+
+```sh
+echo "kernel.apparmor_restrict_unprivileged_userns=0" | sudo tee /etc/sysctl.d/60-apparmor-namespace.conf
+sudo sysctl --system
+```
+
 ### Requirements
 
-- macOS (Apple Silicon or Intel)
+- macOS (Apple Silicon or Intel) or x64 Linux (Ubuntu/Debian for the `.deb`; any glibc distro for the AppImage)
 - [`claude`](https://code.claude.com) CLI installed and on your login shell's `PATH`
 - `git` installed (preinstalled on macOS via Xcode Command Line Tools)
 
