@@ -1,6 +1,6 @@
 {
   "name": "harness",
-  "version": "2.6.1",
+  "version": "2.7.1",
   "main": "./out/main/index.js",
   "author": {
     "name": "Mike Lyons",
@@ -117,6 +117,12 @@
       "target": [
         {
           "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
           "arch": [
             "x64"
           ]

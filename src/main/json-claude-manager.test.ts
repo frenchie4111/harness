@@ -91,7 +91,7 @@ describe('JsonClaudeManager', () => {
 
   /** Return the last session spawn's CLI args joined as a string. For the
    *  bundled path this is the args array; for the system-claude path
-   *  (`/bin/zsh -ilc <cmdLine>`) it's the cmdLine inside -ilc. Skips the
+   *  (`<user-shell> -ilc <cmdLine>`) it's the cmdLine inside -ilc. Skips the
    *  slash-command probe spawn (which doesn't pass --permission-prompt-tool). */
   function lastSpawnCmdLine(): string {
     const sessionCalls = spawnCalls.filter((c) =>
@@ -99,8 +99,7 @@ describe('JsonClaudeManager', () => {
     )
     const call = sessionCalls[sessionCalls.length - 1]
     expect(call).toBeDefined()
-    if (call.command === '/bin/zsh') {
-      expect(call.args[0]).toBe('-ilc')
+    if (call.args[0] === '-ilc') {
       return call.args[1]
     }
     return call.args.join(' ')
@@ -248,7 +247,7 @@ describe('JsonClaudeManager', () => {
     )
     const call = sessionCalls[sessionCalls.length - 1]
     expect(call).toBeDefined()
-    expect(call.command).not.toBe('/bin/zsh')
+    expect(call.args[0]).not.toBe('-ilc')
     // Resolves to the platform-matching native binary inside the bundled
     // optional subpackage. Filename is `claude` on POSIX, `claude.exe` on
     // Windows; either is fine here.

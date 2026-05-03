@@ -1,10 +1,13 @@
-// Renderer-side WebSocket implementation of ClientTransport.
+// Browser-side WebSocket implementation of ClientTransport.
 //
-// Lives in `renderer/` (not `preload/`) because the whole point of WS is
-// bypassing the preload/contextBridge plumbing — a remote browser client
-// without Electron still needs to drive the app, and everything above
-// the transport is already transport-agnostic (see the comment block
-// atop `src/preload/transport-electron.ts`).
+// Lives in `shared/transport/` so it's importable from both the
+// renderer (web client + Electron renderer) and the preload (when
+// HARNESS_REMOTE_URL is set, the Electron preload swaps this in for
+// ElectronClientTransport so the same window.api surface drives a
+// remote backend). The whole point of WS is bypassing the
+// preload/contextBridge plumbing — everything above the transport is
+// already transport-agnostic (see the comment block atop
+// `src/preload/transport-electron.ts`).
 //
 // Responsibilities:
 //   - Own the socket lifecycle + reconnect-with-backoff.
@@ -18,12 +21,12 @@
 // Wire protocol is the same as the server's. See transport-websocket.ts
 // on the main side for the frame shapes.
 
-import type { StateEvent, StateSnapshot } from '../shared/state'
+import type { StateEvent, StateSnapshot } from '../state'
 import type {
   ClientSignalHandler,
   ClientTransport,
   StateEventListener
-} from '../shared/transport/transport'
+} from './transport'
 
 interface PendingRequest {
   resolve: (value: unknown) => void

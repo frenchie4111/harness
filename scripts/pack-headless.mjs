@@ -171,6 +171,7 @@ async function main() {
 
   await rm(stageDir, { recursive: true, force: true })
   await mkdir(join(stageDir, 'bin'), { recursive: true })
+  await mkdir(join(stageDir, 'lib', 'main'), { recursive: true })
   await mkdir(join(stageDir, 'lib', 'mcp'), { recursive: true })
 
   const nodeBin = await downloadNodeBinary(platform, nodeDist)
@@ -180,7 +181,7 @@ async function main() {
   rebuildNodePtyForTargetNode()
 
   const libDir = join(stageDir, 'lib')
-  await cp(join(repoRoot, 'dist-headless', 'main', 'index.js'), join(libDir, 'main.js'))
+  await cp(join(repoRoot, 'dist-headless', 'main', 'index.js'), join(libDir, 'main', 'index.js'))
   await cp(join(repoRoot, 'dist-headless', 'web-client'), join(libDir, 'web-client'), {
     recursive: true
   })
@@ -206,7 +207,7 @@ case "$1" in
     ;;
 esac
 
-exec "$DIR/lib/node" "$DIR/lib/main.js" "$@"
+exec "$DIR/lib/node" "$DIR/lib/main/index.js" "$@"
 `
   const shimPath = join(stageDir, 'bin', 'harness-server')
   await writeFile(shimPath, shim, 'utf8')

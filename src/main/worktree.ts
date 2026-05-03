@@ -14,6 +14,7 @@ import {
 import { readFile, writeFile } from 'fs/promises'
 import { log } from './debug'
 import { perfLog } from './perf-log'
+import { resolveUserShell, loginShellCommandArgs } from './user-shell'
 import type { Worktree } from '../shared/state/worktrees'
 
 const execFileAsync = promisify(execFile)
@@ -1398,8 +1399,8 @@ export interface WorktreeScriptResult {
   error?: string
 }
 
-/** Run a user-configured setup/teardown command via a login zsh shell so
- * homebrew/nvm paths resolve, with cwd set to the worktree and HARNESS_*
+/** Run a user-configured setup/teardown command via the user's login shell
+ * so homebrew/nvm paths resolve, with cwd set to the worktree and HARNESS_*
  * env vars exposing the worktree context. */
 export async function runWorktreeScript(
   kind: 'setup' | 'teardown',
@@ -1414,7 +1415,7 @@ export async function runWorktreeScript(
   log('worktree', `running ${kind} script for ${ctx.worktreePath}`)
   return new Promise((resolve) => {
     try {
-      const child = spawn('/bin/zsh', ['-ilc', trimmed], {
+      const child = spawn(resolveUserShell(), loginShellCommandArgs(trimmed), {
         cwd: ctx.worktreePath,
         env: {
           ...process.env,

@@ -1,4 +1,4 @@
-import { existsSync, lstatSync } from 'fs'
+import { existsSync, lstatSync, readFileSync } from 'fs'
 import { createRequire } from 'module'
 import { join } from 'path'
 import { PtyManager } from './pty-manager'
@@ -18,6 +18,7 @@ import { networkInterfaces } from 'os'
 import type { Server as HttpServer } from 'http'
 import type { ServerTransport } from '../shared/transport/transport'
 import { detectRuntime } from './paths'
+import { parseCliFlags, USAGE, type CliFlags } from './cli-args'
 import { PlaywrightBrowserManager } from './browser-manager-playwright'
 import type { BrowserManagerLike } from './browser-manager-types'
 import { PerfMonitor } from './perf-monitor'
@@ -61,17 +62,53 @@ import { getAgent, type AgentKind } from './agents'
 import { buildClaudeLaunchSettings } from './claude-launch'
 import { HARNESS_REPO_OWNER, HARNESS_REPO_NAME } from '../shared/constants'
 import { readRecentDebugLog } from './debug'
+import { CostTracker } from './cost-tracker'
+import { listDir as fsListDir, isGitRepo as fsIsGitRepo, resolveHome as fsResolveHome } from './fs-listing'
+import { startControlServer } from './control-server'
+import { writeMcpConfigForTerminal, pruneMcpConfigs, getBridgeScriptPath } from './mcp-config'
+import { getControlServerInfo } from './control-server'
+import { recordActivity, getActivityLog, clearAllActivity, clearActivityForWorktree, sealAllActive, touchActivityMeta, finalizeActivity, type ActivityState, type PRState } from './activity'
+import { log, getLogFilePath } from './debug'
+import { perfLog } from './perf-log'
+import { buildInitialAppState } from './build-initial-state'
 
 function toAgentKind(value: string | undefined): AgentKind {
   return value === 'codex' ? 'codex' : 'claude'
 }
 
+// Runtime detection — Electron sets process.versions.electron, plain
+// Node leaves it undefined. The mode picks itself; there's no env-var
+// override to fight with.
+const runtime = detectRuntime()
+
+// Remote-mode short-circuit: when launched with HARNESS_REMOTE_URL, the
+// renderer talks to a remote harness-server over WebSocket and we skip
+// every local backend service (store, PtyManager, transports, IPC
+// handlers, FSMs, pollers, …). Hand off to the remote shell module via
+// dynamic require — the bundler can't see this path so the headless
+// build never drags Electron in. Once bootRemote() returns we're done;
+// it owns app.whenReady, the menu, the window, and the auto-updater.
+if (runtime === 'electron' && process.env['HARNESS_REMOTE_URL']) {
+  const remoteUrl = process.env['HARNESS_REMOTE_URL']
+  const dynamicRequire = createRequire(__filename)
+  const remoteShellMod = dynamicRequire('./desktop-shell-remote') as typeof import('./desktop-shell-remote')
+  remoteShellMod.bootRemote(remoteUrl)
+} else {
+  bootLocal()
+}
+
+// Wrap the entire local-mode boot in a function so the remote-mode
+// branch above can early-exit cleanly. Function declarations are
+// hoisted, so the call site above sees this definition. Everything
+// inside used to live at module top-level; the only change is the
+// extra `function bootLocal(): void {` wrapper + matching brace at
+// EOF — the body is otherwise identical.
+function bootLocal(): void {
+
 // Resolves the caller's MCP scope from their terminal id. Used by both
 // the control HTTP server (on every tool call, authoritative) and
 // writeMcpConfigForTerminal (to seed best-effort HARNESS_* env vars in
-// the spawned bridge). Lives at module scope so IPC handlers registered
-// inside registerIpcHandlers can close over it — the store reference is
-// hoisted the same way.
+// the spawned bridge). Closes over the local `store` constructed below.
 function resolveCallerScope(terminalId: string) {
   if (!terminalId) return null
   const panes = store.getSnapshot().state.terminals.panes
@@ -112,20 +149,86 @@ function findShellWorktree(shellId: string): string | null {
   }
   return null
 }
-import { CostTracker } from './cost-tracker'
-import { listDir as fsListDir, isGitRepo as fsIsGitRepo, resolveHome as fsResolveHome } from './fs-listing'
-import { startControlServer } from './control-server'
-import { writeMcpConfigForTerminal, pruneMcpConfigs, getBridgeScriptPath } from './mcp-config'
-import { getControlServerInfo } from './control-server'
-import { recordActivity, getActivityLog, clearAllActivity, clearActivityForWorktree, sealAllActive, touchActivityMeta, finalizeActivity, type ActivityState, type PRState } from './activity'
-import { log, getLogFilePath } from './debug'
-import { perfLog } from './perf-log'
-import { buildInitialAppState } from './build-initial-state'
+// Resolves the harness version from disk so it works in every runtime
+// (Electron dev/packaged, headless dev, headless tarball). Electron's
+// `app.getVersion()` would do the job in two of those four, but the
+// headless server has no `app`, so we read package.json (or the
+// pack-headless VERSION sidecar) directly. Cached after first hit —
+// the file layout doesn't change while the process is alive.
+let cachedHarnessVersion: string | null = null
+function getHarnessVersion(): string {
+  if (cachedHarnessVersion) return cachedHarnessVersion
+  const candidates: Array<{ path: string; parse: (text: string) => string | null }> = [
+    {
+      path: join(__dirname, '..', '..', 'package.json'),
+      parse: (text) => {
+        const v = (JSON.parse(text) as { version?: unknown }).version
+        return typeof v === 'string' ? v : null
+      }
+    },
+    {
+      path: join(__dirname, '..', 'VERSION'),
+      parse: (text) => text.trim() || null
+    }
+  ]
+  for (const { path, parse } of candidates) {
+    try {
+      const v = parse(readFileSync(path, 'utf8'))
+      if (v) {
+        cachedHarnessVersion = v
+        return v
+      }
+    } catch {
+      // try next candidate
+    }
+  }
+  cachedHarnessVersion = 'unknown'
+  return cachedHarnessVersion
+}
 
-// Runtime detection — Electron sets process.versions.electron, plain
-// Node leaves it undefined. The mode picks itself; there's no env-var
-// override to fight with.
-const runtime = detectRuntime()
+// Headless-only CLI flags (--host / --port / --help / --version). Parse
+// before any heavy init so --help / --version exit instantly without
+// loading config or constructing managers. Electron's argv carries
+// chromium switches that aren't ours to validate, so we skip parsing
+// in Electron entirely — these flags are a headless ergonomics feature.
+const cliFlags: CliFlags = (() => {
+  if (runtime !== 'node') {
+    return { showHelp: false, showVersion: false }
+  }
+  const result = parseCliFlags(process.argv.slice(2))
+  if (result.kind === 'error') {
+    process.stderr.write(`harness-server: ${result.message}\n\n`)
+    process.stderr.write(USAGE)
+    process.exit(2)
+  }
+  if (result.flags.showHelp) {
+    process.stdout.write(USAGE)
+    process.exit(0)
+  }
+  if (result.flags.showVersion) {
+    process.stdout.write(`${resolveServerVersion()}\n`)
+    process.exit(0)
+  }
+  return result.flags
+})()
+
+function resolveServerVersion(): string {
+  const fromEnv = process.env['npm_package_version']
+  if (fromEnv) return fromEnv
+  const candidates = [
+    join(__dirname, '../../package.json'),
+    join(__dirname, '../package.json')
+  ]
+  for (const path of candidates) {
+    try {
+      const pkg = JSON.parse(readFileSync(path, 'utf8'))
+      if (typeof pkg.version === 'string') return pkg.version
+    } catch {
+      // try next
+    }
+  }
+  return 'unknown'
+}
 
 // Load the desktop shell ONLY in Electron mode. `createRequire` hides
 // the lookup from the bundler, so the headless build doesn't drag
@@ -212,33 +315,21 @@ const wsEnabled =
   runtime === 'node' ||
   config.wsTransportEnabled === true ||
   process.env['HARNESS_WS_TRANSPORT'] === '1'
-// --port N or --port=N from argv beats the env var so the headless
-// shim can pass the user's flag through verbatim. --port 0 picks an
-// ephemeral port (the existing wsTransport.listen path handles it).
-function parseCliPort(argv: string[]): number | null {
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i]
-    if (a === '--port' && i + 1 < argv.length) {
-      const n = Number.parseInt(argv[i + 1] ?? '', 10)
-      return Number.isFinite(n) ? n : null
-    }
-    if (a && a.startsWith('--port=')) {
-      const n = Number.parseInt(a.slice('--port='.length), 10)
-      return Number.isFinite(n) ? n : null
-    }
-  }
-  return null
-}
-const cliPort = parseCliPort(process.argv.slice(2))
+// CLI flag > env var > config > default. --port 0 picks an ephemeral
+// port (the existing wsTransport.listen path handles it). cliFlags is
+// already populated above (gated on headless runtime).
 const envPort = Number.parseInt(process.env['HARNESS_WS_PORT'] ?? '', 10)
 const wsPort =
-  cliPort != null && cliPort >= 0
-    ? cliPort
+  cliFlags.port != null && cliFlags.port >= 0
+    ? cliFlags.port
     : Number.isFinite(envPort) && envPort > 0
       ? envPort
       : (config.wsTransportPort ?? 37291)
 const wsHost =
-  process.env['HARNESS_WS_HOST'] || config.wsTransportHost || '127.0.0.1'
+  cliFlags.host ||
+  process.env['HARNESS_WS_HOST'] ||
+  config.wsTransportHost ||
+  '127.0.0.1'
 
 // Load (or generate + persist) the shared auth token. Persistence lets
 // users pin the web-client URL to a phone homescreen or bookmark it
@@ -1796,11 +1887,29 @@ function registerIpcHandlers(): void {
     return result
   })
 
-  // updater:* (getVersion / checkForUpdates / quitAndInstall) live in
-  // desktop-shell.ts — they need electron-updater + app.removeAllListeners.
-  // Headless mode leaves them unregistered; the renderer guards on
-  // updaterStatus before showing the banner so absence is visible as
-  // "no update info" rather than a thrown error.
+  // updater:getVersion is mode-agnostic — both Electron windows and WS
+  // clients (web client, HARNESS_REMOTE_URL Electron) ask for it. Reads
+  // from package.json / VERSION rather than Electron's app.getVersion()
+  // so the headless server can answer without an `app`.
+  transport.onRequest('updater:getVersion', (_ctx) => getHarnessVersion())
+
+  // updater:checkForUpdates / updater:quitAndInstall: the real
+  // implementations live in desktop-shell.ts (they drive electron-updater
+  // and tear down PTYs before handing off to Squirrel). Register no-op
+  // fallbacks here only in headless mode — updating the server binary is
+  // the user's job (install script / package manager), not something
+  // electron-updater can drive remotely. In Electron mode we skip the
+  // fallback so the desktop-shell registration wins (ipcMain.handle
+  // throws on duplicates; the WS transport's Map.set silently overwrites
+  // — the gate keeps both transports consistent).
+  if (runtime === 'node') {
+    const headlessUpdaterError = {
+      ok: false as const,
+      error: 'Updates are managed by the local app, not the server'
+    }
+    transport.onRequest('updater:checkForUpdates', (_ctx) => headlessUpdaterError)
+    transport.onRequest('updater:quitAndInstall', (_ctx) => headlessUpdaterError)
+  }
 
   transport.onRequest('debug:readRecentLog', (_ctx, maxLines?: number) => {
     return readRecentDebugLog(maxLines)
@@ -2629,3 +2738,6 @@ if (desktopShellMod && desktopEarly) {
   process.on('SIGINT', shutdown)
   process.on('SIGTERM', shutdown)
 }
+
+} // end bootLocal()
+
