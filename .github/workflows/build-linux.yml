@@ -3,7 +3,6 @@ name: Build Linux
 on:
   push:
     tags: ['v*']
-    branches: ['linux-deb-build-target']
   workflow_dispatch:
 
 permissions:
