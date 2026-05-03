@@ -524,22 +524,6 @@ export function jsonClaudeReducer(
       const session = state.sessions[event.payload.sessionId]
       if (!session) return state
       const { toolUseId, content, isError } = event.payload
-      // Attach to the most recent entry that carries the matching tool_use
-      // block — keeps correlation tight in the UI without a separate map.
-      let changed = false
-      const nextEntries = session.entries.map((entry) => {
-        if (!entry.blocks) return entry
-        const nextBlocks = entry.blocks.map((b) => {
-          if (b.type !== 'tool_use' || b.id !== toolUseId) return b
-          changed = true
-          return { ...b }
-        })
-        return nextBlocks === entry.blocks ? entry : { ...entry, blocks: nextBlocks }
-      })
-      void nextEntries
-      void changed
-      // Also append a tool_result entry so the renderer can show the body
-      // independently of the tool_use card when useful.
       return {
         ...state,
         sessions: {
