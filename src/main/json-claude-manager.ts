@@ -1152,6 +1152,16 @@ export class JsonClaudeManager {
         type: 'jsonClaude/userEntriesUnqueued',
         payload: { sessionId: instance.sessionId }
       })
+      const authMessage = detectAuthFailureFromResult(parsed)
+      if (authMessage !== null) {
+        this.appendEntry(instance, {
+          entryId: `${instance.sessionId}-auth-${Date.now()}`,
+          kind: 'error',
+          errorKind: 'auth-failure',
+          errorMessage: authMessage,
+          timestamp: Date.now()
+        })
+      }
       return
     }
     if (type === 'control_response') {
@@ -1547,3 +1557,35 @@ function extractToolResultsFromArray(
   return out
 }
 
+/** Heuristic detector for auth failures surfaced via stream-json `result`
+ *  events. Claude Code is generous about what it labels — sometimes
+ *  subtype=`error_auth`, sometimes a generic error message containing
+ *  401 / 'unauthorized' / 'credentials' / 'expired token'. False
+ *  positives just show an extra "looks like auth" card the user can
+ *  ignore, so the matcher is intentionally broad. Returns the original
+ *  error string for display, or null when nothing auth-shaped landed. */
+const AUTH_PATTERN = /\b(auth|unauthor|credential|401|expired token|please run \/login|invalid api key)\b/i
+function detectAuthFailureFromResult(parsed: Record<string, unknown>): string | null {
+  const subtype = parsed['subtype']
+  if (subtype === 'error_auth') {
+    const err = pickErrorString(parsed)
+    return err ?? 'Authentication failed.'
+  }
+  const err = pickErrorString(parsed)
+  if (err && AUTH_PATTERN.test(err)) return err
+  return null
+}
+
+function pickErrorString(parsed: Record<string, unknown>): string | null {
+  const direct = parsed['error']
+  if (typeof direct === 'string' && direct.trim()) return direct
+  if (direct && typeof direct === 'object') {
+    const m = (direct as Record<string, unknown>)['message']
+    if (typeof m === 'string' && m.trim()) return m
+  }
+  const result = parsed['result']
+  if (typeof result === 'string' && result.trim()) return result
+  const message = parsed['message']
+  if (typeof message === 'string' && message.trim()) return message
+  return null
+}

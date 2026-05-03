@@ -93,7 +93,7 @@ export interface JsonClaudeChatEntry {
    *  the right card variant (Restart, Re-auth, Retry). */
   errorKind?: 'subprocess-exit' | 'rate-limit' | 'auth-failure'
   /** For kind === 'error'. Human-readable detail (exitReason, rate-limit
-   *  retry-at timestamp, etc.). */
+   *  retry-at timestamp, original auth error string, etc.). */
   errorMessage?: string
   /** For kind === 'error' with errorKind === 'subprocess-exit'. Whether the
    *  exit was clean (user closed the tab) or unexpected (crash). */
