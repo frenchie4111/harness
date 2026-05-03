@@ -78,6 +78,72 @@ describe('CostTracker — JSON-mode wiring', () => {
     expect(usage.sessionId).toBe(sessionId)
   })
 
+  it('incremental parse across two turns matches a single-shot reparse of the final file', () => {
+    const sessionId = 'sess-cost-incr'
+    const turn1 =
+      JSON.stringify({
+        type: 'assistant',
+        message: {
+          model: 'claude-sonnet-4-5',
+          usage: { input_tokens: 100, output_tokens: 50 },
+          content: [{ type: 'text', text: 'first turn output' }]
+        }
+      }) + '\n'
+    const turn2 =
+      JSON.stringify({
+        type: 'user',
+        message: { content: 'follow up' }
+      }) +
+      '\n' +
+      JSON.stringify({
+        type: 'assistant',
+        message: {
+          model: 'claude-sonnet-4-5',
+          usage: { input_tokens: 200, output_tokens: 80 },
+          content: [{ type: 'text', text: 'second turn output is longer' }]
+        }
+      }) +
+      '\n'
+    const fullTranscript = turn1 + turn2
+
+    // Path A: incremental — first parse sees turn1, second parse sees the full file.
+    const storeA = new Store()
+    const trackerA = new CostTracker(storeA)
+    trackerA.start()
+    storeA.dispatch({
+      type: 'jsonClaude/sessionStarted',
+      payload: { sessionId, worktreePath: '/tmp/wt' }
+    })
+    readFileSyncMock.mockReturnValue(turn1)
+    storeA.dispatch({
+      type: 'jsonClaude/busyChanged',
+      payload: { sessionId, busy: false }
+    })
+    readFileSyncMock.mockReturnValue(fullTranscript)
+    storeA.dispatch({
+      type: 'jsonClaude/busyChanged',
+      payload: { sessionId, busy: false }
+    })
+    trackerA.stop()
+    const incremental = storeA.getSnapshot().state.costs.byTerminal[sessionId]
+
+    // Path B: single-shot reparse of the final file via a fresh tracker.
+    const storeB = new Store()
+    const trackerB = new CostTracker(storeB)
+    trackerB.start()
+    readFileSyncMock.mockReturnValue(fullTranscript)
+    storeB.dispatch({
+      type: 'jsonClaude/sessionStarted',
+      payload: { sessionId, worktreePath: '/tmp/wt' }
+    })
+    trackerB.stop()
+    const singleShot = storeB.getSnapshot().state.costs.byTerminal[sessionId]
+
+    expect(incremental.byModel).toEqual(singleShot.byModel)
+    expect(incremental.breakdown).toEqual(singleShot.breakdown)
+    expect(incremental.currentModel).toBe(singleShot.currentModel)
+  })
+
   it('skips the dispatch when the transcript has no parseable assistant turn', () => {
     // Resume-from-disk before claude has flushed: parseTranscript
     // returns empty data. Dispatching it would wipe whatever the slice
