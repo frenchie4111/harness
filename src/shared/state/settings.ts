@@ -1,3 +1,5 @@
+import type { JsonClaudePermissionMode } from './json-claude'
+
 export interface WorktreeScripts {
   setup: string
   teardown: string
@@ -74,6 +76,12 @@ export interface SettingsState {
    *  radius for newcomers / screen-sharing. Wired via CSS variables on
    *  the chat root, so it's a pure styling switch. */
   jsonModeChatDensity: JsonModeChatDensity
+  /** Permission mode applied to a freshly-spawned json-mode session.
+   *  Existing sessions keep whatever mode they were in (set via the
+   *  statusline picker). Default 'acceptEdits' so first-time users
+   *  don't get a wall of approval cards for routine edits; Bash and
+   *  other risky tools still surface approvals. */
+  jsonModeDefaultPermissionMode: JsonClaudePermissionMode
 }
 
 export type SettingsEvent =
@@ -114,6 +122,10 @@ export type SettingsEvent =
   | { type: 'settings/autoApproveSteerInstructionsChanged'; payload: string }
   | { type: 'settings/useSystemClaudeForJsonModeChanged'; payload: boolean }
   | { type: 'settings/jsonModeChatDensityChanged'; payload: JsonModeChatDensity }
+  | {
+      type: 'settings/jsonModeDefaultPermissionModeChanged'
+      payload: JsonClaudePermissionMode
+    }
 
 // Client-side placeholder. Real values are seeded in the main-process Store
 // constructor from the on-disk config and secrets.
@@ -154,7 +166,8 @@ export const initialSettings: SettingsState = {
   autoApprovePermissions: false,
   autoApproveSteerInstructions: '',
   useSystemClaudeForJsonMode: false,
-  jsonModeChatDensity: 'compact'
+  jsonModeChatDensity: 'compact',
+  jsonModeDefaultPermissionMode: 'acceptEdits'
 }
 
 export function settingsReducer(state: SettingsState, event: SettingsEvent): SettingsState {
@@ -233,6 +246,8 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, useSystemClaudeForJsonMode: event.payload }
     case 'settings/jsonModeChatDensityChanged':
       return { ...state, jsonModeChatDensity: event.payload }
+    case 'settings/jsonModeDefaultPermissionModeChanged':
+      return { ...state, jsonModeDefaultPermissionMode: event.payload }
     default: {
       const _exhaustive: never = event
       void _exhaustive

@@ -158,6 +158,10 @@ export interface Config {
   // historical look). 'comfy' bumps font sizes, padding, and corner
   // radius for newcomers / screen-sharing.
   jsonModeChatDensity?: 'compact' | 'comfy'
+  // Permission mode applied when a brand-new json-mode session spawns.
+  // Existing sessions keep whatever mode they were last in. Default
+  // 'acceptEdits' (auto-allow Edit/Write, still ask for Bash etc.).
+  jsonModeDefaultPermissionMode?: 'default' | 'acceptEdits' | 'plan'
 }
 
 export const DEFAULT_WORKTREE_BASE: 'remote' | 'local' = 'remote'

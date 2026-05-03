@@ -192,6 +192,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     jsonModeClaudeTabs,
     defaultClaudeTabType,
     jsonModeChatDensity,
+    jsonModeDefaultPermissionMode,
     autoApprovePermissions,
     autoApproveSteerInstructions
   } = settings
@@ -2214,6 +2215,37 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   >
                     <option value="xterm">xterm (Claude TUI)</option>
                     <option value="json">JSON-mode (React chat)</option>
+                  </select>
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-border">
+                  <label className="block text-xs font-medium text-fg mb-1">
+                    Default permission mode for new chats
+                  </label>
+                  <div className="text-xs text-dim mb-2">
+                    New json-mode chats start in this mode. Change per-chat
+                    anytime via the statusline picker.
+                  </div>
+                  <select
+                    value={jsonModeDefaultPermissionMode}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      void window.api.setJsonModeDefaultPermissionMode(
+                        v === 'default' || v === 'plan' ? v : 'acceptEdits'
+                      )
+                    }}
+                    disabled={!jsonModeClaudeTabs}
+                    className="bg-panel border border-border-strong rounded px-2 py-1 text-xs text-fg-bright outline-none focus:border-fg cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <option value="acceptEdits">
+                      Accept edits — auto-allow Edit/Write, ask for Bash and other tools
+                    </option>
+                    <option value="default">
+                      Ask every time — surface every tool call for approval
+                    </option>
+                    <option value="plan">
+                      Plan mode — read-only, the agent proposes but doesn't act
+                    </option>
                   </select>
                 </div>
 

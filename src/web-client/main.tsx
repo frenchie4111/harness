@@ -444,6 +444,9 @@ function buildApi(transport: WebSocketClientTransport): ElectronAPI {
     setJsonModeChatDensity: (value) =>
       req('config:setJsonModeChatDensity', value) as Promise<boolean>,
 
+    setJsonModeDefaultPermissionMode: (value) =>
+      req('config:setJsonModeDefaultPermissionMode', value) as Promise<boolean>,
+
     // JSON-mode Claude tabs aren't wired for web clients yet — the
     // subprocess + MCP bridge live on main and the feature flag gates
     // the tab type in the Electron renderer. Expose no-op stubs so the

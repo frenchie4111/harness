@@ -80,7 +80,12 @@ export function buildInitialAppState(
       autoApprovePermissions: config.autoApprovePermissions === true,
       autoApproveSteerInstructions: config.autoApproveSteerInstructions || '',
       useSystemClaudeForJsonMode: config.useSystemClaudeForJsonMode === true,
-      jsonModeChatDensity: config.jsonModeChatDensity === 'comfy' ? 'comfy' : 'compact'
+      jsonModeChatDensity: config.jsonModeChatDensity === 'comfy' ? 'comfy' : 'compact',
+      jsonModeDefaultPermissionMode:
+        config.jsonModeDefaultPermissionMode === 'default' ||
+        config.jsonModeDefaultPermissionMode === 'plan'
+          ? config.jsonModeDefaultPermissionMode
+          : 'acceptEdits'
     }
   }
 }

@@ -171,7 +171,15 @@ export interface JsonClaudeState {
 export type JsonClaudeEvent =
   | {
       type: 'jsonClaude/sessionStarted'
-      payload: { sessionId: string; worktreePath: string }
+      payload: {
+        sessionId: string
+        worktreePath: string
+        /** Permission mode applied only when this session id has no
+         *  prior slice entry (fresh tab). When the session already
+         *  exists (resume / re-attach / mode-change respawn), the
+         *  reducer preserves the existing mode and ignores this. */
+        defaultPermissionMode?: JsonClaudePermissionMode
+      }
     }
   | {
       type: 'jsonClaude/sessionStateChanged'
@@ -394,7 +402,10 @@ export function jsonClaudeReducer(
             exitReason: null,
             entries: existing?.entries ?? [],
             busy: false,
-            permissionMode: existing?.permissionMode ?? 'default',
+            permissionMode:
+              existing?.permissionMode ??
+              event.payload.defaultPermissionMode ??
+              'default',
             slashCommands: existing?.slashCommands ?? [],
             autoApprovedDecisions: existing?.autoApprovedDecisions ?? {},
             sessionToolApprovals: existing?.sessionToolApprovals ?? [],
