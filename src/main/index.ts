@@ -18,7 +18,7 @@ import { networkInterfaces } from 'os'
 import type { Server as HttpServer } from 'http'
 import type { ServerTransport } from '../shared/transport/transport'
 import { detectRuntime } from './paths'
-import { HeadlessBrowserManager } from './headless-browser-manager'
+import { PlaywrightBrowserManager } from './browser-manager-playwright'
 import type { BrowserManagerLike } from './browser-manager-types'
 import { PerfMonitor } from './perf-monitor'
 import { PRPoller } from './pr-poller'
@@ -190,13 +190,14 @@ const perfMonitor = new PerfMonitor()
 
 // In Electron mode createDesktopShell applies the dev-mode userData
 // override (must run before anything reads paths) and constructs the
-// BrowserManager + Electron IPC transport. In headless mode we use the
-// stub browser manager and skip the Electron transport entirely.
+// WebContentsView-backed BrowserManager + Electron IPC transport. In
+// headless mode we instantiate PlaywrightBrowserManager, which spins
+// up Chromium via playwright-core on the first browser-tab create.
 const desktopEarly = desktopShellMod
   ? desktopShellMod.createDesktopShell({ store, perfMonitor, config })
   : null
 const browserManager: BrowserManagerLike =
-  desktopEarly?.browserManager ?? new HeadlessBrowserManager()
+  desktopEarly?.browserManager ?? new PlaywrightBrowserManager()
 
 // The compound transport lets the Electron IPC transport and the WS
 // transport run side-by-side off a single registration path — every
@@ -1839,9 +1840,9 @@ function registerIpcHandlers(): void {
   // module). Web clients open links via `window.open` directly.
 
   // Browser tabs — in Electron mode, WebContentsView instances owned by
-  // BrowserManager. In headless mode, calls land on HeadlessBrowserManager
-  // which warns + no-ops; control-server endpoints + MCP tools degrade
-  // gracefully (no tabs visible to inspect/drive). The browser:setBounds
+  // BrowserManager. In headless mode, Playwright pages owned by
+  // PlaywrightBrowserManager. Both implement BrowserManagerLike so the
+  // handler bodies don't branch on runtime. The browser:setBounds
   // signal is registered only in desktop-shell.ts since it needs the
   // BrowserWindow to attach into.
   transport.onRequest('browser:navigate', (_ctx, tabId: string, url: string) => {
@@ -1867,6 +1868,47 @@ function registerIpcHandlers(): void {
   transport.onSignal('browser:hide', (_ctx, tabId: string) => {
     browserManager.hide(tabId)
   })
+  // Headless / web-client renderers can't host a WebContentsView overlay
+  // and instead poll a screenshot + drive the page through these RPCs.
+  // Same handlers serve Electron clients too — useful for the eventual
+  // "remote view of a local desktop tab" case.
+  transport.onRequest(
+    'browser:screenshot',
+    async (
+      _ctx,
+      tabId: string,
+      opts?: { format?: 'jpeg' | 'png'; quality?: number }
+    ) => {
+      return browserManager.capturePage(tabId, opts)
+    }
+  )
+  transport.onRequest(
+    'browser:click',
+    (
+      _ctx,
+      tabId: string,
+      x: number,
+      y: number,
+      opts?: { button?: 'left' | 'right' | 'middle'; clickCount?: number }
+    ) => {
+      browserManager.clickTab(tabId, x, y, opts)
+      return true
+    }
+  )
+  transport.onRequest(
+    'browser:type',
+    (_ctx, tabId: string, text: string, key?: string) => {
+      browserManager.typeTab(tabId, text, key)
+      return true
+    }
+  )
+  transport.onRequest(
+    'browser:scroll',
+    async (_ctx, tabId: string, dx: number, dy: number) => {
+      await browserManager.scrollTab(tabId, dx, dy)
+      return true
+    }
+  )
 
   // PTY signals are gated by the per-terminal controller in the sessions
   // slice (see `src/shared/state/terminals.ts`). pty:write and pty:resize

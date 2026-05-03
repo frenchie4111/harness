@@ -311,6 +311,20 @@ contextBridge.exposeInMainWorld('api', {
   browserHide: (tabId: string) => {
     sig('browser:hide', tabId)
   },
+  browserScreenshot: (
+    tabId: string,
+    opts?: { format?: 'jpeg' | 'png'; quality?: number }
+  ) => req('browser:screenshot', tabId, opts),
+  browserClick: (
+    tabId: string,
+    x: number,
+    y: number,
+    opts?: { button?: 'left' | 'right' | 'middle'; clickCount?: number }
+  ) => req('browser:click', tabId, x, y, opts),
+  browserType: (tabId: string, text: string, key?: string) =>
+    req('browser:type', tabId, text, key),
+  browserScroll: (tabId: string, dx: number, dy: number) =>
+    req('browser:scroll', tabId, dx, dy),
 
   // PTY
   createTerminal: (

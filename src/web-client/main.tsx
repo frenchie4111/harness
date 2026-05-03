@@ -386,12 +386,12 @@ function buildApi(transport: WebSocketClientTransport): ElectronAPI {
     declineHooks: () => req('hooks:decline') as Promise<boolean>,
     uninstallHooks: () => req('hooks:uninstall') as Promise<boolean>,
 
-    // TODO(web): Browser tabs are backed by Electron WebContentsView and
-    // have no equivalent in a browser. A future iteration could swap in
-    // an iframe-based substitute for non-X-Frame-Options pages, but it's
-    // a separate worktree. For now: navigate is forwarded so the URL
-    // gets persisted on the desktop side, but bounds/hide/devtools are
-    // no-ops and the BrowserPanel will render empty in the web client.
+    // Browser tabs work differently in the web client: there's no
+    // WebContentsView overlay to position, so RemoteBrowserView polls
+    // browserScreenshot + drives the page via the click/type/scroll
+    // RPCs. setBounds + hide + devtools stay as no-ops because the
+    // backing browser (Playwright in headless mode, WebContentsView in
+    // a remote-Electron host) doesn't render visibly to the viewer.
     browserNavigate: (tabId, url) =>
       req('browser:navigate', tabId, url) as Promise<boolean>,
     browserBack: (tabId) => req('browser:back', tabId) as Promise<boolean>,
@@ -405,6 +405,16 @@ function buildApi(transport: WebSocketClientTransport): ElectronAPI {
     browserHide: (_tabId) => {
       // No-op in web mode.
     },
+    browserScreenshot: (tabId, opts) =>
+      req('browser:screenshot', tabId, opts) as ReturnType<
+        ElectronAPI['browserScreenshot']
+      >,
+    browserClick: (tabId, x, y, opts) =>
+      req('browser:click', tabId, x, y, opts) as Promise<boolean>,
+    browserType: (tabId, text, key) =>
+      req('browser:type', tabId, text, key) as Promise<boolean>,
+    browserScroll: (tabId, dx, dy) =>
+      req('browser:scroll', tabId, dx, dy) as Promise<boolean>,
 
     createTerminal: (id, cwd, cmd, args, agentKind, cols, rows) => {
       sig('pty:create', id, cwd, cmd, args, agentKind, cols, rows)
