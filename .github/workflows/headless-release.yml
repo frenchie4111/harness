@@ -1,0 +1,71 @@
+name: Headless Release
+
+# NOTE: while this PR is in review the branch trigger below builds every
+# push so we can watch the matrix runs without cutting a release. Strip
+# `branches:` before merging — production should only fire on tag push.
+on:
+  push:
+    tags: ['v*.*.*']
+    branches: ['headless-server-tarball-packaging']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  pack:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runs-on: macos-14
+            platform: darwin-arm64
+          - runs-on: macos-13
+            platform: darwin-x64
+          - runs-on: ubuntu-22.04
+            platform: linux-x64
+          - runs-on: ubuntu-22.04-arm
+            platform: linux-arm64
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # The Node version here MUST match NODE_VERSION in
+      # scripts/pack-headless.mjs — the embedded Node binary in the
+      # tarball is downloaded for that version, and node-pty's pty.node
+      # is rebuilt against its ABI. Bumping one without the other gives
+      # a broken tarball at runtime.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.18.1'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Build headless bundle
+        run: npm run build:headless
+
+      - name: Pack tarball
+        run: npm run pack:headless
+
+      - name: Upload workflow artifact (branch / dispatch)
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: harness-server-${{ matrix.platform }}
+          path: |
+            release/headless/harness-server-*-${{ matrix.platform }}.tar.gz
+            release/headless/harness-server-*-${{ matrix.platform }}.tar.gz.sha256
+          if-no-files-found: error
+
+      - name: Attach to GitHub release (tag push)
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          gh release upload "$TAG" \
+            release/headless/harness-server-*-${{ matrix.platform }}.tar.gz \
+            release/headless/harness-server-*-${{ matrix.platform }}.tar.gz.sha256 \
+            --clobber
