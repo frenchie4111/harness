@@ -1,4 +1,4 @@
-import { existsSync, lstatSync } from 'fs'
+import { existsSync, lstatSync, readFileSync } from 'fs'
 import { createRequire } from 'module'
 import { join } from 'path'
 import { PtyManager } from './pty-manager'
@@ -18,6 +18,7 @@ import { networkInterfaces } from 'os'
 import type { Server as HttpServer } from 'http'
 import type { ServerTransport } from '../shared/transport/transport'
 import { detectRuntime } from './paths'
+import { parseCliFlags, USAGE, type CliFlags } from './cli-args'
 import { PlaywrightBrowserManager } from './browser-manager-playwright'
 import type { BrowserManagerLike } from './browser-manager-types'
 import { PerfMonitor } from './perf-monitor'
@@ -127,6 +128,50 @@ import { buildInitialAppState } from './build-initial-state'
 // override to fight with.
 const runtime = detectRuntime()
 
+// Headless-only CLI flags (--host / --port / --help / --version). Parse
+// before any heavy init so --help / --version exit instantly without
+// loading config or constructing managers. Electron's argv carries
+// chromium switches that aren't ours to validate, so we skip parsing
+// in Electron entirely — these flags are a headless ergonomics feature.
+const cliFlags: CliFlags = (() => {
+  if (runtime !== 'node') {
+    return { showHelp: false, showVersion: false }
+  }
+  const result = parseCliFlags(process.argv.slice(2))
+  if (result.kind === 'error') {
+    process.stderr.write(`harness-server: ${result.message}\n\n`)
+    process.stderr.write(USAGE)
+    process.exit(2)
+  }
+  if (result.flags.showHelp) {
+    process.stdout.write(USAGE)
+    process.exit(0)
+  }
+  if (result.flags.showVersion) {
+    process.stdout.write(`${resolveServerVersion()}\n`)
+    process.exit(0)
+  }
+  return result.flags
+})()
+
+function resolveServerVersion(): string {
+  const fromEnv = process.env['npm_package_version']
+  if (fromEnv) return fromEnv
+  const candidates = [
+    join(__dirname, '../../package.json'),
+    join(__dirname, '../package.json')
+  ]
+  for (const path of candidates) {
+    try {
+      const pkg = JSON.parse(readFileSync(path, 'utf8'))
+      if (typeof pkg.version === 'string') return pkg.version
+    } catch {
+      // try next
+    }
+  }
+  return 'unknown'
+}
+
 // Load the desktop shell ONLY in Electron mode. `createRequire` hides
 // the lookup from the bundler, so the headless build doesn't drag
 // electron + electron-updater + WebContentsView in via static analysis.
@@ -212,33 +257,21 @@ const wsEnabled =
   runtime === 'node' ||
   config.wsTransportEnabled === true ||
   process.env['HARNESS_WS_TRANSPORT'] === '1'
-// --port N or --port=N from argv beats the env var so the headless
-// shim can pass the user's flag through verbatim. --port 0 picks an
-// ephemeral port (the existing wsTransport.listen path handles it).
-function parseCliPort(argv: string[]): number | null {
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i]
-    if (a === '--port' && i + 1 < argv.length) {
-      const n = Number.parseInt(argv[i + 1] ?? '', 10)
-      return Number.isFinite(n) ? n : null
-    }
-    if (a && a.startsWith('--port=')) {
-      const n = Number.parseInt(a.slice('--port='.length), 10)
-      return Number.isFinite(n) ? n : null
-    }
-  }
-  return null
-}
-const cliPort = parseCliPort(process.argv.slice(2))
+// CLI flag > env var > config > default. --port 0 picks an ephemeral
+// port (the existing wsTransport.listen path handles it). cliFlags is
+// already populated above (gated on headless runtime).
 const envPort = Number.parseInt(process.env['HARNESS_WS_PORT'] ?? '', 10)
 const wsPort =
-  cliPort != null && cliPort >= 0
-    ? cliPort
+  cliFlags.port != null && cliFlags.port >= 0
+    ? cliFlags.port
     : Number.isFinite(envPort) && envPort > 0
       ? envPort
       : (config.wsTransportPort ?? 37291)
 const wsHost =
-  process.env['HARNESS_WS_HOST'] || config.wsTransportHost || '127.0.0.1'
+  cliFlags.host ||
+  process.env['HARNESS_WS_HOST'] ||
+  config.wsTransportHost ||
+  '127.0.0.1'
 
 // Load (or generate + persist) the shared auth token. Persistence lets
 // users pin the web-client URL to a phone homescreen or bookmark it
