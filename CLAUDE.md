@@ -459,6 +459,10 @@ build/sign/notarize, tag/push, release notes from `git log`, and
 `gh release create` with all artifacts attached. Notarization needs
 `.env` with `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`.
 
+Linux release builds now produce both `.deb` (Ubuntu/Debian) and
+`.AppImage` (every distro) — both attached to the GitHub release
+automatically by `.github/workflows/build-linux.yml` on tag push.
+
 ### Headless tarballs
 
 The `Headless Release` workflow (`.github/workflows/headless-release.yml`)
