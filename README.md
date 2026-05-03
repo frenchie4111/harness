@@ -65,6 +65,8 @@ sudo apt install ./Harness-<version>.deb
 
 The postinstall script handles the `chrome-sandbox` SUID bit automatically, so this works on Ubuntu 24.04+ out of the box.
 
+`.deb` users get an in-app banner when a new version is available, but updates are manual — re-download the new `.deb` from [GitHub Releases](https://github.com/frenchie4111/harness/releases/latest) and `sudo apt install ./Harness-<version>.deb`. (AppImage / macOS users get auto-updates.)
+
 **AppImage** — for distros without `dpkg`:
 
 ```sh
