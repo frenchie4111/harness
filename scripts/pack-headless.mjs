@@ -18,7 +18,10 @@ import { pipeline } from 'node:stream/promises'
 import { Readable } from 'node:stream'
 import * as tar from 'tar'
 
-const NODE_VERSION = '20.18.1'
+// Vite 8 / rolldown require Node ≥ 22.12 (or 20.19+, but 22.x is the
+// active LTS line). Bumping this means the .github workflow's
+// setup-node version + node-pty's rebuilt ABI both move with it.
+const NODE_VERSION = '22.12.0'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)

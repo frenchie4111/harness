@@ -37,11 +37,18 @@ jobs:
       # a broken tarball at runtime.
       - uses: actions/setup-node@v4
         with:
-          node-version: '20.18.1'
-          cache: 'npm'
+          node-version: '22.12.0'
 
+      # npm has a long-running bug (#4828) where optional native deps
+      # (rolldown's per-platform .node binding here) aren't always
+      # installed off a cross-platform package-lock.json with
+      # --legacy-peer-deps. Wiping both forces clean re-resolution per
+      # runner. We can't use the npm cache for the same reason, so
+      # setup-node above intentionally has no `cache: 'npm'`.
       - name: Install dependencies
-        run: npm install --legacy-peer-deps
+        run: |
+          rm -rf node_modules package-lock.json
+          npm install --legacy-peer-deps
 
       - name: Build headless bundle
         run: npm run build:headless
