@@ -65,7 +65,8 @@ export function TaskCard({
 
   return (
     <div
-      className={`my-2 rounded-md border ${isError ? 'border-danger/50' : 'border-border/60'} bg-app/30 overflow-hidden`}
+      className={`my-2 border ${isError ? 'border-danger/50' : 'border-border/60'} bg-app/30 overflow-hidden`}
+      style={{ borderRadius: 'var(--chat-bubble-radius)' }}
     >
       <button
         type="button"
@@ -73,21 +74,40 @@ export function TaskCard({
           wasAutoExpandedRef.current = false
           setExpanded((v) => !v)
         }}
-        className="w-full px-2 py-1 text-[11px] flex items-center gap-2 cursor-pointer hover:bg-app/60 transition-colors text-left"
+        className="w-full flex items-center gap-2 cursor-pointer hover:bg-app/60 transition-colors text-left"
+        style={{
+          paddingInline: 'var(--chat-chrome-px)',
+          paddingBlock: 'var(--chat-chrome-py)',
+          fontSize: 'var(--chat-chrome-text)'
+        }}
       >
         <span className="text-muted text-[9px] w-2 shrink-0 select-none">
           {expanded ? '▾' : '▸'}
         </span>
         <Sparkles size={11} className="text-muted shrink-0" />
-        <span className="font-mono text-muted shrink-0">Task</span>
-        <span className="opacity-60 truncate flex-1 min-w-0 font-mono">
+        <span
+          className="text-muted shrink-0"
+          style={{ fontFamily: 'var(--chat-tool-name-family)' }}
+        >
+          Task
+        </span>
+        <span
+          className="opacity-60 truncate flex-1 min-w-0"
+          style={{ fontFamily: 'var(--chat-tool-name-family)' }}
+        >
           {trunc(description, 120)}
         </span>
-        <span className="text-muted/70 text-[10px] shrink-0">{countLabel}</span>
+        <span
+          className="text-muted/70 shrink-0"
+          style={{ fontSize: 'var(--chat-meta-text)' }}
+        >
+          {countLabel}
+        </span>
         {autoApproved && (
           <span
             title={`auto-approved by ${autoApproved.model} · ${autoApproved.reason}`}
-            className="text-[9px] uppercase tracking-wide text-muted bg-app/60 border border-border/50 rounded px-1 py-0.5 shrink-0"
+            className="uppercase tracking-wide text-muted bg-app/60 border border-border/50 rounded px-1 py-0.5 shrink-0"
+            style={{ fontSize: 'var(--chat-meta-text)' }}
           >
             auto · haiku
           </span>
@@ -95,13 +115,17 @@ export function TaskCard({
         {sessionAllowed && (
           <span
             title={`allowed by session policy · ${sessionAllowed.toolName}`}
-            className="text-[9px] uppercase tracking-wide text-muted bg-app/60 border border-border/50 rounded px-1 py-0.5 shrink-0"
+            className="uppercase tracking-wide text-muted bg-app/60 border border-border/50 rounded px-1 py-0.5 shrink-0"
+            style={{ fontSize: 'var(--chat-meta-text)' }}
           >
             session
           </span>
         )}
         {subAgentDescendantHasPendingApproval && (
-          <span className="text-warning text-[10px] uppercase tracking-wide shrink-0">
+          <span
+            className="text-warning uppercase tracking-wide shrink-0"
+            style={{ fontSize: 'var(--chat-meta-text)' }}
+          >
             needs approval
           </span>
         )}
@@ -112,7 +136,10 @@ export function TaskCard({
           />
         )}
         {isError && (
-          <span className="text-[10px] uppercase tracking-wide text-danger shrink-0">
+          <span
+            className="uppercase tracking-wide text-danger shrink-0"
+            style={{ fontSize: 'var(--chat-meta-text)' }}
+          >
             error
           </span>
         )}
