@@ -77,6 +77,9 @@ function rebuildNodePtyForTargetNode() {
   // electron-builder's postinstall rebuilt node-pty against Electron's
   // ABI; we need plain-Node ABI for the headless tarball. Pointing
   // node-gyp at NODE_VERSION's headers gets us the right pty.node.
+  // CXXFLAGS forces C++17 because node-pty 1.1.0's binding.gyp doesn't
+  // set a standard, and macOS clang defaults to C++03 — too old for
+  // node-addon-api 7's `std::initializer_list` and other C++11+ uses.
   const env = {
     ...process.env,
     npm_config_target: NODE_VERSION,
@@ -84,7 +87,9 @@ function rebuildNodePtyForTargetNode() {
     npm_config_disturl: 'https://nodejs.org/dist',
     npm_config_arch: process.arch,
     npm_config_target_arch: process.arch,
-    npm_config_build_from_source: 'true'
+    npm_config_build_from_source: 'true',
+    CXXFLAGS: `${process.env.CXXFLAGS ?? ''} -std=gnu++17`.trim(),
+    CFLAGS: `${process.env.CFLAGS ?? ''} -std=gnu99`.trim()
   }
   console.log(`[pack-headless] rebuilding node-pty against Node ${NODE_VERSION}`)
   const result = spawnSync('npm', ['rebuild', 'node-pty', '--build-from-source'], {
