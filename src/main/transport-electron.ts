@@ -7,7 +7,7 @@
 
 import { BrowserWindow, ipcMain, type WebContents } from 'electron'
 import { randomUUID } from 'crypto'
-import type { StateEvent } from '../shared/state'
+import { stripSnapshotForWire, type StateEvent } from '../shared/state'
 import type {
   ConnectionContext,
   RequestHandler,
@@ -38,7 +38,9 @@ export class ElectronServerTransport implements ServerTransport {
   ) {}
 
   start(): void {
-    ipcMain.handle('state:getSnapshot', () => this.store.getSnapshot())
+    ipcMain.handle('state:getSnapshot', () =>
+      stripSnapshotForWire(this.store.getSnapshot())
+    )
     ipcMain.handle('transport:getClientId', (event) => {
       return this.ctxFor(event.sender).clientId
     })

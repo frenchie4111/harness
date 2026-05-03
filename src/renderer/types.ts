@@ -114,6 +114,9 @@ export type { CheckStatus, PRReview, PRStatus }
 import type { BrowserState, BrowserTabState } from '../shared/state/browser'
 export type { BrowserState, BrowserTabState }
 
+import type { JsonClaudeChatEntry } from '../shared/state/json-claude'
+export type { JsonClaudeChatEntry }
+
 export type MergeStrategy = 'squash' | 'merge-commit' | 'fast-forward'
 
 export interface MainWorktreeStatus {
@@ -441,6 +444,7 @@ export interface ElectronAPI {
     mediaType: string
   ): Promise<string | null>
   readJsonClaudeAttachmentImage(path: string): Promise<string | null>
+  getJsonClaudeEntries(sessionId: string): Promise<JsonClaudeChatEntry[]>
   killJsonClaude(id: string): Promise<boolean>
   interruptJsonClaude(id: string): Promise<boolean>
   setJsonClaudePermissionMode(
