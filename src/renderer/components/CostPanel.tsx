@@ -149,7 +149,14 @@ export function CostPanel({ worktreePath }: CostPanelProps): JSX.Element | null 
   ]
 
   return (
-    <RightPanel id="cost" title="Cost" defaultCollapsed>
+    <RightPanel
+      id="cost"
+      title="Cost"
+      defaultCollapsed
+      onCollapsedChange={(c) => {
+        window.api.setCostsInterest(!c)
+      }}
+    >
       <div className="px-3 py-2 flex flex-col gap-3">
         {!hasData ? (
           <div className="text-xs text-faint italic">

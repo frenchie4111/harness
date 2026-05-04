@@ -248,6 +248,8 @@ function buildApi(transport: WebSocketClientTransport): ElectronAPI {
     setNameClaudeSessions: (enabled) =>
       req('config:setNameClaudeSessions', enabled) as Promise<boolean>,
     setTheme: (theme) => req('config:setTheme', theme) as Promise<boolean>,
+    setCostsInterest: (expanded) =>
+      req('costs:setInterest', expanded) as Promise<boolean>,
     getAvailableThemes: () =>
       req('config:getAvailableThemes') as Promise<readonly string[]>,
     setTerminalFontFamily: (fontFamily) =>

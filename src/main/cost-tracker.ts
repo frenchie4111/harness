@@ -4,11 +4,13 @@
 //   - a ContentBreakdown attributing the session's $ total across
 //     content categories (see src/shared/state/costs.ts).
 //
-// Strategy: on each Stop, re-parse the whole transcript from scratch
-// and dispatch the fresh totals via costs/usageUpdated. Transcripts are
-// small (MBs at most) and Stop events are infrequent (once per
-// assistant turn), so the simpler full-reparse beats incremental
-// tailing + state juggling.
+// Strategy: maintain a per-session cache of partially-parsed state and
+// fold only the bytes appended since last parse into it. Transcripts grow
+// without bound across a session, so the original full-reparse approach
+// scaled with transcript size and showed up as the worst [store-slow]
+// listener in perf.log. The accumulators fold linearly from beginning to
+// end, so incremental parsing produces totals identical to a single-shot
+// reparse — that's the property the regression test pins down.
 //
 // JSON-mode tabs don't fire Claude's Stop hook (we scrub the
 // HARNESS_TERMINAL_ID env var so user-scope hooks stay inert under
@@ -53,15 +55,51 @@ interface CtxChars {
   toolResults: Record<string, number>
 }
 
-interface ParseResult {
+interface CacheEntry {
+  charOffset: number
+  format: 'claude' | 'codex' | null
   byModel: Record<string, ModelTally>
   breakdown: ContentBreakdown
+  ctx: CtxChars
+  toolNameById: Record<string, string>
   currentModel: string | null
+}
+
+function newCacheEntry(): CacheEntry {
+  return {
+    charOffset: 0,
+    format: null,
+    byModel: {},
+    breakdown: cloneBreakdown(emptyBreakdown),
+    ctx: { userPrompt: 0, assistantEcho: 0, toolResults: {} },
+    toolNameById: {},
+    currentModel: null
+  }
+}
+
+function resetCacheEntry(entry: CacheEntry): void {
+  entry.charOffset = 0
+  entry.format = null
+  entry.byModel = {}
+  entry.breakdown = cloneBreakdown(emptyBreakdown)
+  entry.ctx = { userPrompt: 0, assistantEcho: 0, toolResults: {} }
+  entry.toolNameById = {}
+  entry.currentModel = null
 }
 
 export class CostTracker {
   private unsubscribeHook: (() => void) | null = null
   private unsubscribeStore: (() => void) | null = null
+  private cache = new Map<string, CacheEntry>()
+  // The CostPanel is collapsed by default and most users never open it.
+  // Parsing + dispatching on every turn boundary for a panel nobody is
+  // looking at burns CPU and inflates the costs slice. Clients (one per
+  // BrowserWindow / WS peer) signal interest via costs:setInterest; while
+  // the set is empty, handleStop / recordJsonModeTurnComplete short-circuit.
+  // The last StopEvent per terminal is retained so we can backfill on the
+  // next 0→positive transition without waiting for another turn.
+  private interestedClients = new Set<string>()
+  private lastStops = new Map<string, StopEvent>()
 
   constructor(private store: Store) {}
 
@@ -79,15 +117,33 @@ export class CostTracker {
     this.unsubscribeStore = null
   }
 
+  setClientInterested(clientId: string, expanded: boolean): void {
+    const wasZero = this.interestedClients.size === 0
+    if (expanded) this.interestedClients.add(clientId)
+    else this.interestedClients.delete(clientId)
+    if (wasZero && this.interestedClients.size > 0) this.backfillAll()
+  }
+
+  removeClient(clientId: string): void {
+    this.interestedClients.delete(clientId)
+  }
+
   private handleStop(ev: StopEvent): void {
+    this.lastStops.set(ev.terminalId, ev)
+    if (this.interestedClients.size === 0) return
+    this.parseAndDispatchStop(ev)
+  }
+
+  private parseAndDispatchStop(ev: StopEvent): void {
     try {
-      const parsed = parseTranscript(ev.transcriptPath)
+      const entry = this.parseIncremental(ev.sessionId, ev.transcriptPath)
+      if (!entry) return
       const usage: SessionUsage = {
         sessionId: ev.sessionId,
         transcriptPath: ev.transcriptPath,
-        byModel: parsed.byModel,
-        breakdown: parsed.breakdown,
-        currentModel: parsed.currentModel,
+        byModel: entry.byModel,
+        breakdown: entry.breakdown,
+        currentModel: entry.currentModel,
         updatedAt: ev.ts * 1000
       }
       this.store.dispatch({
@@ -115,12 +171,17 @@ export class CostTracker {
     }
   }
 
+  private recordJsonModeTurnComplete(sessionId: string): void {
+    if (this.interestedClients.size === 0) return
+    this.parseAndDispatchJsonMode(sessionId)
+  }
+
   /** Reparse the JSON-mode session's on-disk JSONL and dispatch fresh
    *  cost totals. Skips the dispatch when parsing yields no model data
    *  so an early reparse (resume from disk before claude has flushed)
    *  doesn't wipe an existing hydrated entry. The next reparse picks
    *  things up. */
-  private recordJsonModeTurnComplete(sessionId: string): void {
+  private parseAndDispatchJsonMode(sessionId: string): void {
     const session =
       this.store.getSnapshot().state.jsonClaude.sessions[sessionId]
     if (!session) return
@@ -129,14 +190,14 @@ export class CostTracker {
       sessionId
     )
     try {
-      const parsed = parseTranscript(transcriptPath)
-      if (Object.keys(parsed.byModel).length === 0) return
+      const entry = this.parseIncremental(sessionId, transcriptPath)
+      if (!entry || Object.keys(entry.byModel).length === 0) return
       const usage: SessionUsage = {
         sessionId,
         transcriptPath,
-        byModel: parsed.byModel,
-        breakdown: parsed.breakdown,
-        currentModel: parsed.currentModel,
+        byModel: entry.byModel,
+        breakdown: entry.breakdown,
+        currentModel: entry.currentModel,
         updatedAt: Date.now()
       }
       this.store.dispatch({
@@ -150,6 +211,58 @@ export class CostTracker {
       )
     }
   }
+
+  private backfillAll(): void {
+    for (const ev of this.lastStops.values()) this.parseAndDispatchStop(ev)
+    const sessions = this.store.getSnapshot().state.jsonClaude.sessions
+    for (const sessionId of Object.keys(sessions)) {
+      this.parseAndDispatchJsonMode(sessionId)
+    }
+  }
+
+  private parseIncremental(sessionId: string, path: string): CacheEntry | null {
+    let entry = this.cache.get(sessionId)
+    if (!entry) {
+      entry = newCacheEntry()
+      this.cache.set(sessionId, entry)
+    }
+
+    let text: string
+    try {
+      text = readFileSync(path, 'utf-8')
+    } catch {
+      return entry
+    }
+
+    if (text.length < entry.charOffset) {
+      // Transcript was truncated or replaced — reset accumulators in place.
+      resetCacheEntry(entry)
+    }
+
+    if (text.length === entry.charOffset) return entry
+
+    const newChars = text.slice(entry.charOffset)
+    // The new chunk may end mid-line; only fold complete lines and let
+    // the next call re-read the trailing partial from disk.
+    const lastNewline = newChars.lastIndexOf('\n')
+    if (lastNewline === -1) return entry
+
+    const completeChars = newChars.slice(0, lastNewline)
+
+    if (entry.format === null) {
+      const firstLine = completeChars.split('\n').find((l) => l.trim())
+      if (firstLine) entry.format = detectFormat(firstLine)
+    }
+
+    if (entry.format === 'codex') {
+      foldCodexLines(completeChars, entry)
+    } else if (entry.format === 'claude') {
+      foldClaudeLines(completeChars, entry)
+    }
+
+    entry.charOffset += lastNewline + 1
+    return entry
+  }
 }
 
 function jsonClaudeTranscriptPath(worktreePath: string, sessionId: string): string {
@@ -162,34 +275,51 @@ function jsonClaudeTranscriptPath(worktreePath: string, sessionId: string): stri
   )
 }
 
-function parseTranscript(path: string): ParseResult {
-  let text: string
+function detectFormat(firstLine: string): 'claude' | 'codex' {
   try {
-    text = readFileSync(path, 'utf-8')
+    const first = JSON.parse(firstLine) as Record<string, unknown>
+    if (
+      first.type === 'session_meta' ||
+      first.type === 'event_msg' ||
+      first.type === 'response_item' ||
+      first.type === 'turn_context'
+    ) {
+      return 'codex'
+    }
   } catch {
-    return { byModel: {}, breakdown: cloneBreakdown(emptyBreakdown), currentModel: null }
+    /* fall through to claude */
   }
-
-  // Detect Codex session format: first non-empty line has type=session_meta
-  // or type=event_msg or type=response_item (OpenAI Codex JSONL format).
-  const firstLine = text.split('\n').find((l) => l.trim())
-  if (firstLine) {
-    try {
-      const first = JSON.parse(firstLine) as Record<string, unknown>
-      if (first.type === 'session_meta' || first.type === 'event_msg' || first.type === 'response_item' || first.type === 'turn_context') {
-        return parseCodexTranscript(text)
-      }
-    } catch { /* fall through to Claude parser */ }
-  }
-
-  return parseClaudeTranscript(text)
+  return 'claude'
 }
 
-function parseCodexTranscript(text: string): ParseResult {
-  const byModel: Record<string, ModelTally> = {}
-  const breakdown: ContentBreakdown = cloneBreakdown(emptyBreakdown)
-  let currentModel: string | null = null
+function foldClaudeLines(text: string, entry: CacheEntry): void {
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue
+    let obj: Record<string, unknown>
+    try {
+      obj = JSON.parse(line) as Record<string, unknown>
+    } catch {
+      continue
+    }
+    const type = obj.type
+    if (type === 'user') {
+      handleUserMessage(obj, entry.ctx, entry.toolNameById)
+      continue
+    }
+    if (type === 'assistant') {
+      const model = handleAssistantMessage(
+        obj,
+        entry.ctx,
+        entry.toolNameById,
+        entry.byModel,
+        entry.breakdown
+      )
+      if (model) entry.currentModel = model
+    }
+  }
+}
 
+function foldCodexLines(text: string, entry: CacheEntry): void {
   for (const line of text.split('\n')) {
     if (!line.trim()) continue
     let obj: Record<string, unknown>
@@ -199,21 +329,19 @@ function parseCodexTranscript(text: string): ParseResult {
       continue
     }
 
-    // Extract model from turn_context events
     if (obj.type === 'turn_context') {
       const payload = obj.payload as Record<string, unknown> | undefined
       if (payload && typeof payload.model === 'string') {
-        currentModel = payload.model
+        entry.currentModel = payload.model
       }
     }
 
-    // Extract token usage from event_msg with type=token_count
     if (obj.type === 'event_msg') {
       const payload = obj.payload as Record<string, unknown> | undefined
       if (payload?.type !== 'token_count') continue
       const info = payload.info as Record<string, unknown> | undefined
       const lastUsage = info?.last_token_usage as Record<string, unknown> | undefined
-      if (!lastUsage || !currentModel) continue
+      if (!lastUsage || !entry.currentModel) continue
 
       const inputTokens = (lastUsage.input_tokens as number) ?? 0
       const cachedInputTokens = (lastUsage.cached_input_tokens as number) ?? 0
@@ -226,51 +354,18 @@ function parseCodexTranscript(text: string): ParseResult {
         cached_input_tokens: cachedInputTokens,
         reasoning_output_tokens: reasoningTokens
       }
-      const cost = priceFor(currentModel, usage)
+      const cost = priceFor(entry.currentModel, usage)
 
-      const tally = (byModel[currentModel] ??= { ...emptyTally })
+      const tally = (entry.byModel[entry.currentModel] ??= { ...emptyTally })
       tally.messages += 1
       tally.input += inputTokens
       tally.output += outputTokens
       tally.cacheRead += cachedInputTokens
       tally.cost += cost
 
-      // Attribute entire cost to text output for simplicity (Codex
-      // transcripts don't have per-block character counts like Claude's)
-      breakdown.text += cost
+      entry.breakdown.text += cost
     }
   }
-
-  return { byModel, breakdown, currentModel }
-}
-
-function parseClaudeTranscript(text: string): ParseResult {
-  const byModel: Record<string, ModelTally> = {}
-  const breakdown: ContentBreakdown = cloneBreakdown(emptyBreakdown)
-  const ctx: CtxChars = { userPrompt: 0, assistantEcho: 0, toolResults: {} }
-  const toolNameById: Record<string, string> = {}
-  let currentModel: string | null = null
-
-  for (const line of text.split('\n')) {
-    if (!line.trim()) continue
-    let obj: Record<string, unknown>
-    try {
-      obj = JSON.parse(line) as Record<string, unknown>
-    } catch {
-      continue
-    }
-    const type = obj.type
-    if (type === 'user') {
-      handleUserMessage(obj, ctx, toolNameById)
-      continue
-    }
-    if (type === 'assistant') {
-      const model = handleAssistantMessage(obj, ctx, toolNameById, byModel, breakdown)
-      if (model) currentModel = model
-    }
-  }
-
-  return { byModel, breakdown, currentModel }
 }
 
 function handleUserMessage(

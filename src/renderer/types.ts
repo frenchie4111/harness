@@ -279,6 +279,7 @@ export interface ElectronAPI {
   setCodexEnvVars(vars: Record<string, string>): Promise<boolean>
   setNameClaudeSessions(enabled: boolean): Promise<boolean>
   setTheme(theme: string): Promise<boolean>
+  setCostsInterest(expanded: boolean): Promise<boolean>
   getAvailableThemes(): Promise<readonly string[]>
   setTerminalFontFamily(fontFamily: string): Promise<boolean>
   getDefaultTerminalFontFamily(): Promise<string>
