@@ -312,6 +312,19 @@ export class PanesFSM {
       type: 'terminals/tabSlept',
       payload: { worktreePath: wtPath, tabId }
     })
+    // If the slept tab was the active tab in its leaf, switch focus to
+    // a sibling. Otherwise the worktree's wake-on-visible effect would
+    // see this tab as still-active-in-leaf and immediately wake it back
+    // up, defeating the sleep. Picking the previous tab matches the
+    // close-tab UX so the user lands somewhere predictable.
+    if (leaf.activeTabId === tabId) {
+      const idx = leaf.tabs.findIndex((t) => t.id === tabId)
+      const sibling =
+        leaf.tabs[idx - 1] ??
+        leaf.tabs.find((t, i) => i !== idx) ??
+        null
+      if (sibling) this.selectTab(wtPath, leaf.id, sibling.id)
+    }
     this.opts.persist(this.buildPersistPayload())
   }
 
