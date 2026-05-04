@@ -85,7 +85,13 @@ export function buildInitialAppState(
         config.jsonModeDefaultPermissionMode === 'default' ||
         config.jsonModeDefaultPermissionMode === 'plan'
           ? config.jsonModeDefaultPermissionMode
-          : 'acceptEdits'
+          : 'acceptEdits',
+      autoSleepMinutes:
+        typeof config.autoSleepMinutes === 'number' &&
+        Number.isFinite(config.autoSleepMinutes) &&
+        config.autoSleepMinutes >= 0
+          ? Math.floor(config.autoSleepMinutes)
+          : 30
     }
   }
 }

@@ -200,6 +200,7 @@ contextBridge.exposeInMainWorld('api', {
     req('config:setJsonModeChatDensity', value),
   setJsonModeDefaultPermissionMode: (value: 'default' | 'acceptEdits' | 'plan') =>
     req('config:setJsonModeDefaultPermissionMode', value),
+  setAutoSleepMinutes: (value: number) => req('config:setAutoSleepMinutes', value),
   setAutoUpdateEnabled: (enabled: boolean) => req('config:setAutoUpdateEnabled', enabled),
   setShareClaudeSettings: (enabled: boolean) => req('config:setShareClaudeSettings', enabled),
   setHarnessSystemPromptEnabled: (enabled: boolean) => req('config:setHarnessSystemPromptEnabled', enabled),

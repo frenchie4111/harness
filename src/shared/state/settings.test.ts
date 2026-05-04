@@ -400,6 +400,16 @@ describe('settingsReducer', () => {
     expect(off.useSystemClaudeForJsonMode).toBe(false)
   })
 
+  it('autoSleepMinutesChanged sets the threshold', () => {
+    const next = apply(initialSettings, {
+      type: 'settings/autoSleepMinutesChanged',
+      payload: 15
+    })
+    expect(next.autoSleepMinutes).toBe(15)
+    const off = apply(next, { type: 'settings/autoSleepMinutesChanged', payload: 0 })
+    expect(off.autoSleepMinutes).toBe(0)
+  })
+
   it('returns a new object reference (no mutation)', () => {
     const next = apply(initialSettings, { type: 'settings/themeChanged', payload: 'x' })
     expect(next).not.toBe(initialSettings)

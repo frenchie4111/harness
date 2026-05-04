@@ -193,6 +193,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     defaultClaudeTabType,
     jsonModeChatDensity,
     jsonModeDefaultPermissionMode,
+    autoSleepMinutes,
     autoApprovePermissions,
     autoApproveSteerInstructions
   } = settings
@@ -347,6 +348,26 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     const clamped = Math.max(8, Math.min(48, Math.round(value)))
     void window.api.setTerminalFontSize(clamped)
   }, [])
+
+  const [autoSleepDraft, setAutoSleepDraft] = useState<string>(
+    String(autoSleepMinutes)
+  )
+  useEffect(() => {
+    setAutoSleepDraft(String(autoSleepMinutes))
+  }, [autoSleepMinutes])
+  const commitAutoSleepMinutes = useCallback(() => {
+    const n = Number(autoSleepDraft)
+    if (!Number.isFinite(n) || n < 0) {
+      setAutoSleepDraft(String(autoSleepMinutes))
+      return
+    }
+    const clamped = Math.max(0, Math.min(24 * 60, Math.floor(n)))
+    if (clamped !== autoSleepMinutes) {
+      void window.api.setAutoSleepMinutes(clamped)
+    } else {
+      setAutoSleepDraft(String(clamped))
+    }
+  }, [autoSleepDraft, autoSleepMinutes])
 
   const handleSelectEditor = useCallback(async (id: string) => {
     await window.api.setEditor(id)
@@ -2249,6 +2270,36 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                       Plan mode — read-only, the agent proposes but doesn't act
                     </option>
                   </select>
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-border">
+                  <label className="block text-xs font-medium text-fg mb-1">
+                    Auto-sleep idle chats after
+                  </label>
+                  <div className="text-xs text-dim mb-2">
+                    A json-mode tab waiting for your reply for this long (yellow
+                    dot) gets its subprocess torn down to free RAM. Click the tab
+                    to wake — history is intact. Set to 0 to disable.
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={0}
+                      max={24 * 60}
+                      step={1}
+                      value={autoSleepDraft}
+                      onChange={(e) => setAutoSleepDraft(e.target.value)}
+                      onBlur={commitAutoSleepMinutes}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.currentTarget.blur()
+                        }
+                      }}
+                      disabled={!jsonModeClaudeTabs}
+                      className="bg-panel border border-border-strong rounded px-2 py-1 text-xs text-fg-bright outline-none focus:border-fg w-24 disabled:opacity-40 disabled:cursor-not-allowed"
+                    />
+                    <span className="text-xs text-dim">minutes</span>
+                  </div>
                 </div>
 
                 <div className="mt-4 pt-3 border-t border-border">

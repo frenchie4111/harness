@@ -27,6 +27,7 @@ import { WorktreesFSM } from './worktrees-fsm'
 import { WorktreeDeletionFSM } from './worktree-deletion-fsm'
 import { PanesFSM, stripTransientTabFields } from './panes-fsm'
 import { ActivityDeriver } from './activity-deriver'
+import { AutoSleepMonitor } from './auto-sleep-monitor'
 import { WorktreeWatcher } from './worktree-watcher'
 import { getWeeklyStats } from './weekly-stats'
 import type { TerminalTab, PaneNode, PaneLeaf } from '../shared/state/terminals'
@@ -731,6 +732,11 @@ const worktreeDeletionFSM = new WorktreeDeletionFSM(store, {
 })
 
 const activityDeriver = new ActivityDeriver(store)
+
+// Tears down idle json-mode subprocesses (yellow-dot tabs older than
+// settings.autoSleepMinutes). Constructed after panesFSM since it
+// drives panesFSM.sleepJsonClaudeTab.
+const autoSleepMonitor = new AutoSleepMonitor(store, panesFSM)
 
 /** Install agent status hooks at the user-scope settings file for both
  *  supported agents. Called once when consent flips to 'accepted'. The
@@ -2341,6 +2347,23 @@ function registerIpcHandlers(): void {
     }
   )
 
+  transport.onRequest('config:setAutoSleepMinutes', (_ctx, value: number) => {
+    const n = Number(value)
+    if (!Number.isFinite(n) || n < 0 || n > 24 * 60) return false
+    const rounded = Math.floor(n)
+    if (rounded === 30) {
+      delete config.autoSleepMinutes
+    } else {
+      config.autoSleepMinutes = rounded
+    }
+    saveConfig(config)
+    store.dispatch({
+      type: 'settings/autoSleepMinutesChanged',
+      payload: rounded
+    })
+    return true
+  })
+
   transport.onSignal('terminal:join', (ctx, id: string) => {
     store.dispatch({
       type: 'terminals/clientJoined',
@@ -2414,6 +2437,8 @@ async function runBoot(): Promise<void> {
   // Start the activity deriver — it observes terminals/prs/panes events
   // and writes recordActivity + lastActive without renderer involvement.
   activityDeriver.start()
+
+  autoSleepMonitor.start()
 
   // Resolve the GitHub token (PAT → gh CLI → none) before the PR poller
   // makes its first call. The poller's initial refreshAll waits on this.
