@@ -325,6 +325,21 @@ export const initialJsonClaude: JsonClaudeState = {
   pendingApprovals: {}
 }
 
+/** Returns a shallow copy of `state` with every session's `entries` array
+ *  replaced by `[]`. Used by transports to elide chat history from the
+ *  initial snapshot — the wire payload is otherwise unbounded in proportion
+ *  to how many sessions × turns × deltas the user has accumulated. The
+ *  renderer fetches entries per session on first mount via
+ *  `jsonClaude:getEntries`, which dispatches `entriesSeeded` to fill them
+ *  back in. */
+export function stripJsonClaudeEntries(state: JsonClaudeState): JsonClaudeState {
+  const sessions: Record<string, JsonClaudeSession> = {}
+  for (const [id, session] of Object.entries(state.sessions)) {
+    sessions[id] = session.entries.length === 0 ? session : { ...session, entries: [] }
+  }
+  return { ...state, sessions }
+}
+
 function appendBlocksToEntry(
   entries: JsonClaudeChatEntry[],
   entry: JsonClaudeChatEntry
@@ -363,17 +378,15 @@ function applyBlockTextDelta(
   const entry = session.entries[entryIdx]
   const blocks = entry.blocks ?? []
   const lastIdx = findLastBlockIdx(blocks, blockType)
-  let nextBlocks: JsonClaudeMessageBlock[]
-  if (lastIdx === -1) {
-    // Defensive: content_block_start should have created a placeholder
-    // before any deltas land. If it didn't, append one so the delta isn't
-    // dropped on the floor.
-    nextBlocks = [...blocks, { type: blockType, text: textDelta }]
-  } else {
-    nextBlocks = blocks.slice()
-    const b = nextBlocks[lastIdx]
-    nextBlocks[lastIdx] = { ...b, text: (b.text ?? '') + textDelta }
-  }
+  // No matching block-of-this-type — happens when entries haven't been
+  // lazy-loaded yet on a renderer. content_block_start dispatches
+  // assistantBlockAppended which creates the placeholder; if that never
+  // landed for this entry on this client, the delta is correctly dropped
+  // and re-materialized via getEntries when the user opens the tab.
+  if (lastIdx === -1) return state
+  const nextBlocks = blocks.slice()
+  const b = nextBlocks[lastIdx]
+  nextBlocks[lastIdx] = { ...b, text: (b.text ?? '') + textDelta }
   const nextEntries = session.entries.slice()
   nextEntries[entryIdx] = { ...entry, blocks: nextBlocks }
   return {

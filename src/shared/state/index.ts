@@ -74,6 +74,7 @@ import {
 import {
   initialJsonClaude,
   jsonClaudeReducer,
+  stripJsonClaudeEntries,
   type JsonClaudeEvent,
   type JsonClaudeState
 } from './json-claude'
@@ -242,4 +243,19 @@ export function rootReducer(state: AppState, event: StateEvent): AppState {
 export interface StateSnapshot {
   state: AppState
   seq: number
+}
+
+/** Returns a snapshot with `jsonClaude.sessions[*].entries` elided.
+ *  Transports call this before serializing the initial-snapshot frame to
+ *  keep the wire payload bounded by the rest of the state — entries grow
+ *  unboundedly with chat history. Renderers fill them in lazily on first
+ *  JsonModeChat mount via `jsonClaude:getEntries`. */
+export function stripSnapshotForWire(snapshot: StateSnapshot): StateSnapshot {
+  return {
+    ...snapshot,
+    state: {
+      ...snapshot.state,
+      jsonClaude: stripJsonClaudeEntries(snapshot.state.jsonClaude)
+    }
+  }
 }

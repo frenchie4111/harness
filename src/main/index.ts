@@ -2233,6 +2233,26 @@ function registerIpcHandlers(): void {
     (_ctx, path: string) => readAttachmentImage(path)
   )
 
+  // Lazy-load chat history. Entries are elided from the initial snapshot
+  // (transport.stripSnapshotForWire); this handler returns the authoritative
+  // entries for one session and dispatches `entriesSeeded` so every
+  // connected client's slice picks them up too.
+  transport.onRequest(
+    'jsonClaude:getEntries',
+    (_ctx, sessionId: string) => {
+      if (!sessionId) return []
+      const session = store.getSnapshot().state.jsonClaude.sessions[sessionId]
+      const entries = session?.entries ?? []
+      if (session && entries.length > 0) {
+        store.dispatch({
+          type: 'jsonClaude/entriesSeeded',
+          payload: { sessionId, entries }
+        })
+      }
+      return entries
+    }
+  )
+
   transport.onRequest(
     'jsonClaude:setPermissionMode',
     (_ctx, sessionId: string, mode: 'default' | 'acceptEdits' | 'plan') => {

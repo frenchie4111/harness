@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   initialJsonClaude,
   jsonClaudeReducer,
+  stripJsonClaudeEntries,
   type JsonClaudeState,
   type JsonClaudeChatEntry
 } from './json-claude'
@@ -226,7 +227,12 @@ describe('jsonClaudeReducer', () => {
     expect(blocks[1].text).toBe('said ')
   })
 
-  it('assistantThinkingDelta appends a thinking block when none exists', () => {
+  it('assistantThinkingDelta is a no-op when the entry has no thinking block to append to', () => {
+    // Real wire flow always opens the thinking block via
+    // content_block_start (assistantBlockAppended) before deltas land. A
+    // delta arriving without a matching block is correct to drop — that
+    // path also covers the lazy-load case where a renderer hasn't fetched
+    // entries yet, so the block-of-this-type doesn't exist on this client.
     let state = seedSession(initialJsonClaude)
     state = jsonClaudeReducer(state, {
       type: 'jsonClaude/entryAppended',
@@ -241,14 +247,12 @@ describe('jsonClaudeReducer', () => {
         }
       }
     })
-    state = jsonClaudeReducer(state, {
+    const before = state
+    const next = jsonClaudeReducer(state, {
       type: 'jsonClaude/assistantThinkingDelta',
       payload: { sessionId: SID, entryId: 'a1', textDelta: 'hmm' }
     })
-    const blocks = state.sessions[SID].entries[0].blocks!
-    expect(blocks).toHaveLength(2)
-    expect(blocks[1].type).toBe('thinking')
-    expect(blocks[1].text).toBe('hmm')
+    expect(next).toBe(before)
   })
 
   it('assistantThinkingDelta is a no-op for an unknown entry', () => {
@@ -1064,5 +1068,115 @@ describe('jsonClaudeReducer', () => {
       toolName: 'Edit',
       timestamp: 1
     })
+  })
+
+  it('assistantTextDelta is a no-op when the entry has no text block to append to', () => {
+    // Mirrors the lazy-load case: a delta event arrives at a client whose
+    // session was hydrated from the (entries-stripped) wire snapshot, so
+    // the matching entry doesn't exist locally yet.
+    let state = seedSession(initialJsonClaude)
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/entryAppended',
+      payload: {
+        sessionId: SID,
+        entry: {
+          entryId: 'a1',
+          kind: 'assistant',
+          blocks: [{ type: 'thinking', text: 'hmm' }],
+          timestamp: 1,
+          isPartial: true
+        }
+      }
+    })
+    const before = state
+    const next = jsonClaudeReducer(state, {
+      type: 'jsonClaude/assistantTextDelta',
+      payload: { sessionId: SID, entryId: 'a1', textDelta: 'x' }
+    })
+    expect(next).toBe(before)
+  })
+
+  it('assistantTextDelta is a no-op for an unknown session', () => {
+    const next = jsonClaudeReducer(initialJsonClaude, {
+      type: 'jsonClaude/assistantTextDelta',
+      payload: { sessionId: 'missing', entryId: 'whatever', textDelta: 'x' }
+    })
+    expect(next).toBe(initialJsonClaude)
+  })
+})
+
+describe('stripJsonClaudeEntries', () => {
+  it('replaces every session.entries with an empty array', () => {
+    let state = seedSession(initialJsonClaude)
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/entriesSeeded',
+      payload: {
+        sessionId: SID,
+        entries: [
+          { entryId: 'e1', kind: 'user', text: 'hi', timestamp: 1 },
+          {
+            entryId: 'e2',
+            kind: 'assistant',
+            blocks: [{ type: 'text', text: 'hello' }],
+            timestamp: 2
+          }
+        ]
+      }
+    })
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/sessionStarted',
+      payload: { sessionId: 'session-2', worktreePath: '/tmp/wt2' }
+    })
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/entryAppended',
+      payload: {
+        sessionId: 'session-2',
+        entry: { entryId: 'u1', kind: 'user', text: 'second', timestamp: 3 }
+      }
+    })
+    const stripped = stripJsonClaudeEntries(state)
+    expect(stripped.sessions[SID].entries).toEqual([])
+    expect(stripped.sessions['session-2'].entries).toEqual([])
+  })
+
+  it('preserves non-entries fields on each session', () => {
+    let state = seedSession(initialJsonClaude)
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/sessionToolApprovalsGranted',
+      payload: { sessionId: SID, toolNames: ['Edit'] }
+    })
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/entriesSeeded',
+      payload: {
+        sessionId: SID,
+        entries: [{ entryId: 'e1', kind: 'user', text: 'hi', timestamp: 1 }]
+      }
+    })
+    const stripped = stripJsonClaudeEntries(state)
+    expect(stripped.sessions[SID].sessionToolApprovals).toEqual(['Edit'])
+    expect(stripped.sessions[SID].permissionMode).toBe('default')
+    expect(stripped.sessions[SID].worktreePath).toBe(WT)
+  })
+
+  it('preserves pendingApprovals untouched', () => {
+    let state = seedSession(initialJsonClaude)
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/approvalRequested',
+      payload: {
+        requestId: 'r1',
+        sessionId: SID,
+        toolName: 'Edit',
+        input: {},
+        timestamp: 1
+      }
+    })
+    const stripped = stripJsonClaudeEntries(state)
+    expect(stripped.pendingApprovals).toBe(state.pendingApprovals)
+  })
+
+  it('returns the same session reference when entries are already empty', () => {
+    const state = seedSession(initialJsonClaude)
+    const stripped = stripJsonClaudeEntries(state)
+    expect(stripped.sessions[SID]).toBe(state.sessions[SID])
   })
 })

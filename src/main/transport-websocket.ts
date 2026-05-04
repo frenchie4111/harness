@@ -34,7 +34,7 @@
 import { randomBytes, randomUUID } from 'crypto'
 import { WebSocketServer, type WebSocket } from 'ws'
 import type { IncomingMessage, Server as HttpServer } from 'http'
-import type { StateEvent } from '../shared/state'
+import { stripSnapshotForWire, type StateEvent } from '../shared/state'
 import type {
   ConnectionContext,
   RequestHandler,
@@ -250,7 +250,7 @@ export class WebSocketServerTransport implements ServerTransport {
     }
     const ctx: ConnectionContext = { clientId }
     if (frame.t === 'snapreq') {
-      const snapshot = this.store.getSnapshot()
+      const snapshot = stripSnapshotForWire(this.store.getSnapshot())
       this.sendFrame(ws, { t: 'snapres', id: frame.id, ok: true, snapshot })
       return
     }

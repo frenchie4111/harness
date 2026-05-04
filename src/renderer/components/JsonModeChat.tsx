@@ -694,6 +694,19 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
     void window.api.startJsonClaude(sessionId, worktreePath)
   }, [sessionId, worktreePath, session, mode])
 
+  // Lazy-load the chat history. The wire snapshot ships sessions with
+  // entries=[] to keep initial-load latency bounded; we fetch once per
+  // sessionId here and trust the slice-side `entriesSeeded` dispatch to
+  // populate. Empty result is normal (truly empty session) and the ref
+  // prevents a refetch loop in that case.
+  const fetchedEntriesForSession = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    if (!session) return
+    if (fetchedEntriesForSession.current.has(sessionId)) return
+    fetchedEntriesForSession.current.add(sessionId)
+    void window.api.getJsonClaudeEntries(sessionId)
+  }, [sessionId, session])
+
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
