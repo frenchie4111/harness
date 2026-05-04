@@ -45,6 +45,7 @@ interface WorkspaceViewProps {
    *  or json-claude (and which one the shift modifier flips to).
    *  Only meaningful when `onAddJsonClaudeTab` is defined. */
   defaultClaudeTabType?: 'xterm' | 'json'
+  onSleepTab: (worktreePath: string, tabId: string) => void
   onCloseTab: (worktreePath: string, tabId: string) => void
   onRestartAgentTab: (worktreePath: string, tabId: string) => void
   onReorderTabs: (worktreePath: string, paneId: string, fromId: string, toId: string) => void
@@ -143,6 +144,7 @@ function SplitRenderer({
   onAddJsonClaudeTab,
   defaultClaudeTabType,
   onConvertTabType,
+  onSleepTab,
   onCloseTab,
   onSplitRight,
   onSplitDown,
@@ -170,6 +172,7 @@ function SplitRenderer({
   onAddJsonClaudeTab?: (paneId: string) => void
   defaultClaudeTabType?: 'xterm' | 'json'
   onConvertTabType?: (tabId: string, newType: 'agent' | 'json-claude') => void
+  onSleepTab: (tabId: string) => void
   onCloseTab: (tabId: string) => void
   onSplitRight: (paneId: string) => void
   onSplitDown: (paneId: string) => void
@@ -202,6 +205,7 @@ function SplitRenderer({
           }
           defaultClaudeTabType={defaultClaudeTabType}
           onConvertTabType={onConvertTabType}
+          onSleepTab={onSleepTab}
           onCloseTab={onCloseTab}
           onSplitRight={() => onSplitRight(node.id)}
           onSplitDown={() => onSplitDown(node.id)}
@@ -249,6 +253,7 @@ function SplitRenderer({
           onAddJsonClaudeTab={onAddJsonClaudeTab}
           defaultClaudeTabType={defaultClaudeTabType}
           onConvertTabType={onConvertTabType}
+          onSleepTab={onSleepTab}
           onCloseTab={onCloseTab}
           onSplitRight={onSplitRight}
           onSplitDown={onSplitDown}
@@ -288,6 +293,7 @@ function SplitRenderer({
           onAddJsonClaudeTab={onAddJsonClaudeTab}
           defaultClaudeTabType={defaultClaudeTabType}
           onConvertTabType={onConvertTabType}
+          onSleepTab={onSleepTab}
           onCloseTab={onCloseTab}
           onSplitRight={onSplitRight}
           onSplitDown={onSplitDown}
@@ -314,6 +320,7 @@ export function WorkspaceView({
   onAddJsonClaudeTab,
   onConvertTabType,
   defaultClaudeTabType,
+  onSleepTab,
   onCloseTab,
   onRestartAgentTab,
   onReorderTabs,
@@ -477,6 +484,7 @@ export function WorkspaceView({
               : undefined
           }
           defaultClaudeTabType={defaultClaudeTabType}
+          onSleepTab={(tabId) => onSleepTab(worktreePath, tabId)}
           onCloseTab={(tabId) => onCloseTab(worktreePath, tabId)}
           onSplitRight={(paneId) => onSplitPane(worktreePath, paneId, 'horizontal')}
           onSplitDown={(paneId) => onSplitPane(worktreePath, paneId, 'vertical')}
@@ -529,6 +537,7 @@ export function WorkspaceView({
                   <JsonModeChat
                     sessionId={tab.id}
                     worktreePath={worktreePath}
+                    mode={tab.mode ?? 'awake'}
                   />
                 ) : (
                   <XTerminal

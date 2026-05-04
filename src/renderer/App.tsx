@@ -523,6 +523,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
     handleCloseTab,
     handleRestartAgentTab,
     handleSelectTab,
+    handleSleepTab,
     handleReorderTabs,
     handleMoveTabToPane,
     handleSplitPane,
@@ -1147,6 +1148,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
                   defaultClaudeTabType={
                     settings.jsonModeClaudeTabs ? settings.defaultClaudeTabType : undefined
                   }
+                  onSleepTab={handleSleepTab}
                   onCloseTab={handleCloseTab}
                   onRestartAgentTab={handleRestartAgentTab}
                   onReorderTabs={handleReorderTabs}

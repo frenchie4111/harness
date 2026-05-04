@@ -303,6 +303,10 @@ function buildApi(transport: WebSocketClientTransport): ElectronAPI {
       req('panes:clearForWorktree', wtPath) as Promise<boolean>,
     panesEnsureInitialized: (wtPath) =>
       req('panes:ensureInitialized', wtPath) as Promise<boolean>,
+    panesSleepTab: (wtPath, tabId) =>
+      req('panes:sleepTab', wtPath, tabId) as Promise<boolean>,
+    panesWakeTab: (wtPath, tabId) =>
+      req('panes:wakeTab', wtPath, tabId) as Promise<boolean>,
     getTerminalHistory: (id) => req('terminal:getHistory', id) as Promise<string>,
     clearTerminalHistory: (id) =>
       req('terminal:forgetHistory', id) as Promise<boolean>,

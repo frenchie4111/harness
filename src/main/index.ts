@@ -672,27 +672,37 @@ const panesFSM = new PanesFSM(store, {
   clearJsonClaudeSession: (sessionId) =>
     store.dispatch({ type: 'jsonClaude/sessionCleared', payload: { sessionId } }),
   startJsonClaudeWithPrompt: (sessionId, worktreePath, initialPrompt) => {
-    // Mirror the dispatch + create dance the jsonClaude:start IPC
-    // handler does, then queue the initial prompt as the first stdin
-    // frame. Used when ensureInitialized creates a default json-claude
-    // tab from a worktree-creation path that carried an initialPrompt.
-    store.dispatch({
-      type: 'jsonClaude/sessionStarted',
-      payload: {
-        sessionId,
-        worktreePath,
-        defaultPermissionMode:
-          store.getSnapshot().state.settings.jsonModeDefaultPermissionMode
-      }
-    })
-    jsonClaudeManager.seedFromTranscript(sessionId, worktreePath)
-    const mode =
-      store.getSnapshot().state.jsonClaude.sessions[sessionId]?.permissionMode ||
-      'default'
-    jsonClaudeManager.create(sessionId, worktreePath, mode)
+    startJsonClaudeSession(sessionId, worktreePath)
     if (initialPrompt) jsonClaudeManager.send(sessionId, initialPrompt)
+  },
+  startJsonClaude: (sessionId, worktreePath) => {
+    startJsonClaudeSession(sessionId, worktreePath)
   }
 })
+
+/** Single source of truth for "spin up the json-claude subprocess for
+ *  this sessionId". Used by the jsonClaude:start IPC handler, the
+ *  panesFSM's startJsonClaudeWithPrompt + startJsonClaude options
+ *  (kickoff + wake), so all paths produce the same dispatch + seed +
+ *  create order. Idempotent — JsonClaudeManager.create() short-circuits
+ *  if the instance is already running. */
+function startJsonClaudeSession(sessionId: string, worktreePath: string): void {
+  if (jsonClaudeManager.hasSession(sessionId)) return
+  store.dispatch({
+    type: 'jsonClaude/sessionStarted',
+    payload: {
+      sessionId,
+      worktreePath,
+      defaultPermissionMode:
+        store.getSnapshot().state.settings.jsonModeDefaultPermissionMode
+    }
+  })
+  jsonClaudeManager.seedFromTranscript(sessionId, worktreePath)
+  const permMode =
+    store.getSnapshot().state.jsonClaude.sessions[sessionId]?.permissionMode ||
+    'default'
+  jsonClaudeManager.create(sessionId, worktreePath, permMode)
+}
 
 const worktreesFSM = new WorktreesFSM(store, {
   getRepoRoots: () => config.repoRoots || [],
@@ -1750,6 +1760,14 @@ function registerIpcHandlers(): void {
     panesFSM.clearForWorktree(wtPath)
     return true
   })
+  transport.onRequest('panes:sleepTab', (_ctx, wtPath: string, tabId: string) => {
+    panesFSM.sleepJsonClaudeTab(wtPath, tabId)
+    return true
+  })
+  transport.onRequest('panes:wakeTab', (_ctx, wtPath: string, tabId: string) => {
+    panesFSM.wakeJsonClaudeTab(wtPath, tabId)
+    return true
+  })
   // Wake-on-activation. Renderer fires this whenever the user focuses a
   // worktree (sidebar click, hotkey, command palette). Boot-time sleep
   // skips merged worktrees, so this is the only path that wakes them.
@@ -2148,37 +2166,10 @@ function registerIpcHandlers(): void {
     log('json-claude', `IPC start sessionId=${sessionId}`)
     // Multi-client idempotency: when two viewers (e.g. desktop + mobile)
     // are looking at the same json-claude tab during a tab-type swap,
-    // both JsonModeChats mount and both fire startJsonClaude. Without
-    // this guard, the second call would re-dispatch sessionStarted —
-    // whose reducer unconditionally resets state to 'connecting' — and
-    // create() would short-circuit on instances.has(sessionId), so
-    // 'running' would never re-fire. Result: the slice gets stuck at
-    // 'connecting' even though the subprocess is happily running.
-    if (jsonClaudeManager.hasSession(sessionId)) {
-      log('json-claude', `IPC start no-op — already running sessionId=${sessionId}`)
-      return true
-    }
-    // inside create() lands on a session that exists in the store. If
-    // the order is reversed, 'running' is a no-op (unknown session) and
-    // 'connecting' from sessionStarted wins, leaving the UI stuck.
-    store.dispatch({
-      type: 'jsonClaude/sessionStarted',
-      payload: {
-        sessionId,
-        worktreePath: cwd,
-        defaultPermissionMode:
-          store.getSnapshot().state.settings.jsonModeDefaultPermissionMode
-      }
-    })
-    // Replay the on-disk transcript into the slice so the chat UI shows
-    // prior turns after a full app restart. No-op if the slice already
-    // has entries (renderer reload — main's slice survived) or if no
-    // jsonl exists yet (first turn).
-    jsonClaudeManager.seedFromTranscript(sessionId, cwd)
-    const mode =
-      store.getSnapshot().state.jsonClaude.sessions[sessionId]?.permissionMode ||
-      'default'
-    jsonClaudeManager.create(sessionId, cwd, mode)
+    // both JsonModeChats mount and both fire startJsonClaude.
+    // startJsonClaudeSession's hasSession() short-circuit covers that —
+    // no double-dispatch of sessionStarted, no double-spawn.
+    startJsonClaudeSession(sessionId, cwd)
     return true
   })
   transport.onSignal(

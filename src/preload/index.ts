@@ -245,6 +245,8 @@ contextBridge.exposeInMainWorld('api', {
     req('panes:setRatio', wtPath, splitId, ratio),
   panesClearForWorktree: (wtPath: string) => req('panes:clearForWorktree', wtPath),
   panesEnsureInitialized: (wtPath: string) => req('panes:ensureInitialized', wtPath),
+  panesSleepTab: (wtPath: string, tabId: string) => req('panes:sleepTab', wtPath, tabId),
+  panesWakeTab: (wtPath: string, tabId: string) => req('panes:wakeTab', wtPath, tabId),
 
   getTerminalHistory: (id: string) => req('terminal:getHistory', id),
   clearTerminalHistory: (id: string) => req('terminal:forgetHistory', id),

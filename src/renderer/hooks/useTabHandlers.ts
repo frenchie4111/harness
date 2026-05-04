@@ -182,8 +182,26 @@ export function useTabHandlers({
     (worktreePath: string, paneId: string, tabId: string) => {
       void window.api.panesSelectTab(worktreePath, paneId, tabId)
       setActivePaneId((prev) => ({ ...prev, [worktreePath]: paneId }))
+      // Wake-on-focus: a slept json-claude tab wakes the moment the
+      // user selects it. Scoped to the clicked tabId — does not iterate
+      // panes, so this is cheap regardless of worktree count.
+      const tree = panes[worktreePath]
+      if (tree) {
+        const leaf = findLeafByTabId(tree, tabId)
+        const tab = leaf?.tabs.find((t) => t.id === tabId)
+        if (tab && tab.type === 'json-claude' && tab.mode === 'asleep') {
+          void window.api.panesWakeTab(worktreePath, tabId)
+        }
+      }
     },
-    [setActivePaneId]
+    [panes, setActivePaneId]
+  )
+
+  const handleSleepTab = useCallback(
+    (worktreePath: string, tabId: string) => {
+      void window.api.panesSleepTab(worktreePath, tabId)
+    },
+    []
   )
 
   const handleOpenCommit = useCallback(
@@ -342,6 +360,7 @@ export function useTabHandlers({
     handleRestartAgentTab,
     handleRestartAllAgentTabs,
     handleSelectTab,
+    handleSleepTab,
     handleOpenCommit,
     handleReorderTabs,
     handleMoveTabToPane,
