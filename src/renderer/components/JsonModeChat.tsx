@@ -62,6 +62,11 @@ function formatTokenCount(n: number): string {
 interface JsonModeChatProps {
   sessionId: string
   worktreePath: string
+  /** When 'asleep', the component renders chat history (if any in
+   *  slice) but does not auto-spawn the subprocess. The user wakes
+   *  the tab explicitly via panes:wakeTab (right-click menu or first
+   *  selection). Defaults to 'awake' for back-compat callers. */
+  mode?: 'awake' | 'asleep'
 }
 
 // All per-tool card components live in src/renderer/components/json-mode-cards/
@@ -605,7 +610,7 @@ function renderGroupedItems(items: GroupedItem[]): ReactNode {
   )
 }
 
-export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JSX.Element {
+export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonModeChatProps): JSX.Element {
   const session = useJsonClaudeSession(sessionId)
   const { pending, resolve } = useJsonClaudeApprovals(sessionId)
   const density = useSettings().jsonModeChatDensity
@@ -678,13 +683,16 @@ export function JsonModeChat({ sessionId, worktreePath }: JsonModeChatProps): JS
     })
   }, [setUserScrolledUp])
 
-  // Spin the subprocess up the first time this session is rendered. We
-  // don't tear it down on unmount — closing the tab is the lifecycle
-  // boundary, owned by PanesFSM.
+  // Spin the subprocess up the first time this session is rendered.
+  // Slept tabs (mode='asleep') skip this — they wait for an explicit
+  // wake (sidebar select, right-click → wake) which goes through the
+  // panes:wakeTab IPC. We don't tear down on unmount — closing the tab
+  // is the lifecycle boundary, owned by PanesFSM.
   useEffect(() => {
+    if (mode !== 'awake') return
     if (session) return
     void window.api.startJsonClaude(sessionId, worktreePath)
-  }, [sessionId, worktreePath, session])
+  }, [sessionId, worktreePath, session, mode])
 
   useEffect(() => {
     const el = scrollRef.current

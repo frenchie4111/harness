@@ -58,6 +58,11 @@ interface PanesFSMOptions {
     worktreePath: string,
     initialPrompt?: string
   ) => void
+  /** Spawn (or resume) a json-claude session without an initial
+   *  prompt. Used by wakeJsonClaudeTab to re-attach a slept tab to a
+   *  fresh subprocess. Idempotent: a no-op if the session is already
+   *  running. */
+  startJsonClaude?: (sessionId: string, worktreePath: string) => void
 }
 
 function newPaneId(): string {
@@ -162,6 +167,12 @@ export class PanesFSM {
         command: t.command,
         cwd: t.cwd
       }
+      // Persisted json-claude tabs hydrate as 'asleep' so app launch
+      // doesn't spawn one subprocess per tab. The renderer wakes them
+      // on first focus via panes:wakeTab.
+      if (base.type === 'json-claude') {
+        return { ...base, mode: 'asleep' }
+      }
       if (base.type !== 'agent' || base.sessionId) return base
       if (latest && !claimedLatest) {
         claimedLatest = true
@@ -212,7 +223,8 @@ export class PanesFSM {
         id: sessionId,
         type: 'json-claude',
         label: 'Claude (JSON)',
-        sessionId
+        sessionId,
+        mode: 'awake'
       }
       jsonClaudeKickoff = { sessionId, initialPrompt: opts?.initialPrompt }
     } else {
@@ -251,13 +263,21 @@ export class PanesFSM {
   }
 
   addTab(wtPath: string, tab: TerminalTab, paneId?: string): void {
+    // Brand-new json-claude tabs default to 'awake' — the user just
+    // clicked to create one, so the renderer's auto-spawn path should
+    // proceed. Slept-by-default only applies to tabs hydrated from
+    // disk in restoreFromConfig.
+    const normalizedTab: TerminalTab =
+      tab.type === 'json-claude' && tab.mode === undefined
+        ? { ...tab, mode: 'awake' }
+        : tab
     const tree = this.getTree(wtPath)
     if (!tree) {
       const pane: PaneLeaf = {
         type: 'leaf',
         id: newPaneId(),
-        tabs: [tab],
-        activeTabId: tab.id
+        tabs: [normalizedTab],
+        activeTabId: normalizedTab.id
       }
       this.commit(wtPath, pane)
       return
@@ -266,9 +286,52 @@ export class PanesFSM {
     const targetId = paneId || leaves[0].id
     const updated = mapLeaves(tree, (leaf) => {
       if (leaf.id !== targetId) return leaf
-      return { ...leaf, tabs: [...leaf.tabs, tab], activeTabId: tab.id }
+      return {
+        ...leaf,
+        tabs: [...leaf.tabs, normalizedTab],
+        activeTabId: normalizedTab.id
+      }
     })
     this.commit(wtPath, updated)
+  }
+
+  /** Tear down a json-claude tab's subprocess while leaving its tab
+   *  record (and the on-disk session jsonl) intact. The tab stays in
+   *  the tree with mode='asleep' so the user can wake it later. No-op
+   *  for non-json-claude tabs or tabs already asleep. */
+  sleepJsonClaudeTab(wtPath: string, tabId: string): void {
+    const tree = this.getTree(wtPath)
+    if (!tree) return
+    const leaf = findLeafByTabId(tree, tabId)
+    if (!leaf) return
+    const tab = leaf.tabs.find((t) => t.id === tabId)
+    if (!tab || tab.type !== 'json-claude') return
+    if ((tab.mode ?? 'awake') === 'asleep') return
+    this.opts.killJsonClaude?.(tabId)
+    this.store.dispatch({
+      type: 'terminals/tabSlept',
+      payload: { worktreePath: wtPath, tabId }
+    })
+    this.opts.persist(this.buildPersistPayload())
+  }
+
+  /** Re-spawn a slept json-claude tab. Marks the tab awake and kicks
+   *  off the same start path as a fresh tab. No-op for non-json-claude
+   *  tabs or tabs already awake. */
+  wakeJsonClaudeTab(wtPath: string, tabId: string): void {
+    const tree = this.getTree(wtPath)
+    if (!tree) return
+    const leaf = findLeafByTabId(tree, tabId)
+    if (!leaf) return
+    const tab = leaf.tabs.find((t) => t.id === tabId)
+    if (!tab || tab.type !== 'json-claude') return
+    if ((tab.mode ?? 'awake') === 'awake') return
+    this.store.dispatch({
+      type: 'terminals/tabWoken',
+      payload: { worktreePath: wtPath, tabId }
+    })
+    this.opts.startJsonClaude?.(tabId, wtPath)
+    this.opts.persist(this.buildPersistPayload())
   }
 
   closeTab(wtPath: string, tabId: string): void {

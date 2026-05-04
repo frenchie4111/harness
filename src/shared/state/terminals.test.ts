@@ -567,6 +567,121 @@ describe('terminalsReducer', () => {
     expect(leaves[0].activeTabId).toBe('agent-new')
   })
 
+  it('tabTypeChanged to json-claude initializes mode awake', () => {
+    const tree: PaneNode = {
+      type: 'leaf',
+      id: 'p1',
+      tabs: [{ id: 'agent-1', type: 'agent', label: 'Claude', agentKind: 'claude', sessionId: 'sess-1' }],
+      activeTabId: 'agent-1'
+    }
+    const start: TerminalsState = { ...initialTerminals, panes: { '/wt/a': tree } }
+    const next = apply(start, {
+      type: 'terminals/tabTypeChanged',
+      payload: {
+        worktreePath: '/wt/a',
+        tabId: 'agent-1',
+        newId: 'sess-1',
+        newType: 'json-claude',
+        newLabel: 'Claude (JSON)'
+      }
+    })
+    const tab = getLeaves(next.panes['/wt/a'])[0].tabs[0]
+    expect(tab.type).toBe('json-claude')
+    expect(tab.mode).toBe('awake')
+  })
+
+  it('tabSlept flips a json-claude tab to mode asleep', () => {
+    const tree: PaneNode = {
+      type: 'leaf',
+      id: 'p1',
+      tabs: [
+        { id: 'sess-1', type: 'json-claude', label: 'Claude (JSON)', sessionId: 'sess-1', mode: 'awake' },
+        { id: 'sess-2', type: 'json-claude', label: 'Claude (JSON)', sessionId: 'sess-2', mode: 'awake' }
+      ],
+      activeTabId: 'sess-1'
+    }
+    const start: TerminalsState = { ...initialTerminals, panes: { '/wt/a': tree } }
+    const next = apply(start, {
+      type: 'terminals/tabSlept',
+      payload: { worktreePath: '/wt/a', tabId: 'sess-1' }
+    })
+    const tabs = getLeaves(next.panes['/wt/a'])[0].tabs
+    expect(tabs[0].mode).toBe('asleep')
+    // Untouched tab keeps its reference.
+    const startTabs = getLeaves(start.panes['/wt/a'])[0].tabs
+    expect(tabs[1]).toBe(startTabs[1])
+  })
+
+  it('tabSlept is a no-op when tab is missing or already asleep', () => {
+    const tree: PaneNode = {
+      type: 'leaf',
+      id: 'p1',
+      tabs: [{ id: 'sess-1', type: 'json-claude', label: 'Claude (JSON)', sessionId: 'sess-1', mode: 'asleep' }],
+      activeTabId: 'sess-1'
+    }
+    const start: TerminalsState = { ...initialTerminals, panes: { '/wt/a': tree } }
+    const noWt = apply(start, {
+      type: 'terminals/tabSlept',
+      payload: { worktreePath: '/wt/missing', tabId: 'sess-1' }
+    })
+    expect(noWt).toBe(start)
+    const noTab = apply(start, {
+      type: 'terminals/tabSlept',
+      payload: { worktreePath: '/wt/a', tabId: 'missing' }
+    })
+    expect(noTab).toBe(start)
+    const alreadyAsleep = apply(start, {
+      type: 'terminals/tabSlept',
+      payload: { worktreePath: '/wt/a', tabId: 'sess-1' }
+    })
+    expect(alreadyAsleep).toBe(start)
+  })
+
+  it('tabSlept refuses non-json-claude tabs', () => {
+    const tree: PaneNode = {
+      type: 'leaf',
+      id: 'p1',
+      tabs: [{ id: 'agent-1', type: 'agent', label: 'Claude', agentKind: 'claude' }],
+      activeTabId: 'agent-1'
+    }
+    const start: TerminalsState = { ...initialTerminals, panes: { '/wt/a': tree } }
+    const next = apply(start, {
+      type: 'terminals/tabSlept',
+      payload: { worktreePath: '/wt/a', tabId: 'agent-1' }
+    })
+    expect(next).toBe(start)
+  })
+
+  it('tabWoken flips a json-claude tab to mode awake', () => {
+    const tree: PaneNode = {
+      type: 'leaf',
+      id: 'p1',
+      tabs: [{ id: 'sess-1', type: 'json-claude', label: 'Claude (JSON)', sessionId: 'sess-1', mode: 'asleep' }],
+      activeTabId: 'sess-1'
+    }
+    const start: TerminalsState = { ...initialTerminals, panes: { '/wt/a': tree } }
+    const next = apply(start, {
+      type: 'terminals/tabWoken',
+      payload: { worktreePath: '/wt/a', tabId: 'sess-1' }
+    })
+    expect(getLeaves(next.panes['/wt/a'])[0].tabs[0].mode).toBe('awake')
+  })
+
+  it('tabWoken is a no-op when tab is already awake', () => {
+    const tree: PaneNode = {
+      type: 'leaf',
+      id: 'p1',
+      tabs: [{ id: 'sess-1', type: 'json-claude', label: 'Claude (JSON)', sessionId: 'sess-1', mode: 'awake' }],
+      activeTabId: 'sess-1'
+    }
+    const start: TerminalsState = { ...initialTerminals, panes: { '/wt/a': tree } }
+    const next = apply(start, {
+      type: 'terminals/tabWoken',
+      payload: { worktreePath: '/wt/a', tabId: 'sess-1' }
+    })
+    expect(next).toBe(start)
+  })
+
   it('tabTypeChanged is a no-op when the worktree or tab is missing', () => {
     const start: TerminalsState = { ...initialTerminals, panes: { '/wt/a': leaf('p1', ['t1']) } }
     const noWt = apply(start, {

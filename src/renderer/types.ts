@@ -326,6 +326,8 @@ export interface ElectronAPI {
   ): Promise<boolean>
   panesClearForWorktree(wtPath: string): Promise<boolean>
   panesEnsureInitialized(wtPath: string): Promise<boolean>
+  panesSleepTab(wtPath: string, tabId: string): Promise<boolean>
+  panesWakeTab(wtPath: string, tabId: string): Promise<boolean>
   getTerminalHistory(id: string): Promise<string>
   clearTerminalHistory(id: string): Promise<boolean>
   agentSessionFileExists(cwd: string, sessionId: string, agentKind?: AgentKind): Promise<boolean>

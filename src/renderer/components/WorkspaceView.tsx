@@ -45,6 +45,7 @@ interface WorkspaceViewProps {
    *  or json-claude (and which one the shift modifier flips to).
    *  Only meaningful when `onAddJsonClaudeTab` is defined. */
   defaultClaudeTabType?: 'xterm' | 'json'
+  onSleepTab: (worktreePath: string, tabId: string) => void
   onCloseTab: (worktreePath: string, tabId: string) => void
   onRestartAgentTab: (worktreePath: string, tabId: string) => void
   onReorderTabs: (worktreePath: string, paneId: string, fromId: string, toId: string) => void
@@ -143,6 +144,7 @@ function SplitRenderer({
   onAddJsonClaudeTab,
   defaultClaudeTabType,
   onConvertTabType,
+  onSleepTab,
   onCloseTab,
   onSplitRight,
   onSplitDown,
@@ -170,6 +172,7 @@ function SplitRenderer({
   onAddJsonClaudeTab?: (paneId: string) => void
   defaultClaudeTabType?: 'xterm' | 'json'
   onConvertTabType?: (tabId: string, newType: 'agent' | 'json-claude') => void
+  onSleepTab: (tabId: string) => void
   onCloseTab: (tabId: string) => void
   onSplitRight: (paneId: string) => void
   onSplitDown: (paneId: string) => void
@@ -202,6 +205,7 @@ function SplitRenderer({
           }
           defaultClaudeTabType={defaultClaudeTabType}
           onConvertTabType={onConvertTabType}
+          onSleepTab={onSleepTab}
           onCloseTab={onCloseTab}
           onSplitRight={() => onSplitRight(node.id)}
           onSplitDown={() => onSplitDown(node.id)}
@@ -249,6 +253,7 @@ function SplitRenderer({
           onAddJsonClaudeTab={onAddJsonClaudeTab}
           defaultClaudeTabType={defaultClaudeTabType}
           onConvertTabType={onConvertTabType}
+          onSleepTab={onSleepTab}
           onCloseTab={onCloseTab}
           onSplitRight={onSplitRight}
           onSplitDown={onSplitDown}
@@ -288,6 +293,7 @@ function SplitRenderer({
           onAddJsonClaudeTab={onAddJsonClaudeTab}
           defaultClaudeTabType={defaultClaudeTabType}
           onConvertTabType={onConvertTabType}
+          onSleepTab={onSleepTab}
           onCloseTab={onCloseTab}
           onSplitRight={onSplitRight}
           onSplitDown={onSplitDown}
@@ -314,6 +320,7 @@ export function WorkspaceView({
   onAddJsonClaudeTab,
   onConvertTabType,
   defaultClaudeTabType,
+  onSleepTab,
   onCloseTab,
   onRestartAgentTab,
   onReorderTabs,
@@ -353,6 +360,36 @@ export function WorkspaceView({
     },
     [ensureSlot]
   )
+
+  // Rising-edge wake: only fire panesWakeTab when a tab *just became*
+  // the active tab in its leaf, never on a steady-state asleep tab.
+  // That means right-click → Sleep stays slept (the tab's still active
+  // in its leaf, but it didn't just become active), while a worktree
+  // switch (visible flips false → true → empty prev set → every
+  // current activeTab counts as just-activated) and an in-worktree
+  // tab click (activeTabId changes) both wake.
+  const prevActiveTabsRef = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    if (!visible) {
+      prevActiveTabsRef.current = new Set()
+      return
+    }
+    const next = new Set<string>()
+    for (const leaf of getLeaves(paneTree)) {
+      if (!leaf.activeTabId) continue
+      next.add(leaf.activeTabId)
+      if (prevActiveTabsRef.current.has(leaf.activeTabId)) continue
+      const active = leaf.tabs.find((t) => t.id === leaf.activeTabId)
+      if (
+        active &&
+        active.type === 'json-claude' &&
+        (active.mode ?? 'awake') === 'asleep'
+      ) {
+        void window.api.panesWakeTab(worktreePath, active.id)
+      }
+    }
+    prevActiveTabsRef.current = next
+  }, [visible, paneTree, worktreePath])
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } })
@@ -477,6 +514,7 @@ export function WorkspaceView({
               : undefined
           }
           defaultClaudeTabType={defaultClaudeTabType}
+          onSleepTab={(tabId) => onSleepTab(worktreePath, tabId)}
           onCloseTab={(tabId) => onCloseTab(worktreePath, tabId)}
           onSplitRight={(paneId) => onSplitPane(worktreePath, paneId, 'horizontal')}
           onSplitDown={(paneId) => onSplitPane(worktreePath, paneId, 'vertical')}
@@ -529,6 +567,7 @@ export function WorkspaceView({
                   <JsonModeChat
                     sessionId={tab.id}
                     worktreePath={worktreePath}
+                    mode={tab.mode ?? 'awake'}
                   />
                 ) : (
                   <XTerminal

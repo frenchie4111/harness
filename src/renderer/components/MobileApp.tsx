@@ -160,6 +160,7 @@ export function MobileApp(): JSX.Element {
             <JsonModeChat
               sessionId={selectedTab.id}
               worktreePath={activeWorktree.path}
+              mode={selectedTab.mode ?? 'awake'}
             />
           ) : (
             <MobileTerminal

@@ -81,6 +81,7 @@ interface TerminalPanelProps {
    *  parent omits it otherwise so the per-tab right-click menu hides. */
   onConvertTabType?: (tabId: string, newType: 'agent' | 'json-claude') => void
   defaultAgent: AgentKind
+  onSleepTab: (tabId: string) => void
   onCloseTab: (tabId: string) => void
   onSplitRight: () => void
   onSplitDown: () => void
@@ -108,9 +109,13 @@ interface SortableTabProps {
    *  in when the source tab is convertible (Claude agent or json-claude)
    *  and the JSON-mode feature flag is on. */
   onConvertTabType?: (newType: 'agent' | 'json-claude') => void
+  /** Optional: when provided AND the tab is an awake json-claude tab,
+   *  the right-click menu shows a "Sleep" item. Sleeping tears down
+   *  the subprocess but leaves the tab record intact. */
+  onSleepTab?: () => void
 }
 
-function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect, onClose, onConvertTabType }: SortableTabProps): JSX.Element {
+function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect, onClose, onConvertTabType, onSleepTab }: SortableTabProps): JSX.Element {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: tab.id
   })
@@ -156,7 +161,7 @@ function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect
       }`}
       onClick={onSelect}
       onContextMenu={
-        onConvertTabType
+        onConvertTabType || onSleepTab
           ? (e) => {
               e.preventDefault()
               setMenu({ x: e.clientX, y: e.clientY })
@@ -192,13 +197,25 @@ function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect
           </button>
         </Tooltip>
       )}
-      {menu && onConvertTabType && (
+      {menu && (onConvertTabType || onSleepTab) && (
         <div
           className="fixed z-50 bg-panel-raised border border-border-strong rounded shadow-lg text-xs py-1 min-w-[12rem]"
           style={{ left: menu.x, top: menu.y }}
           onMouseDown={(e) => e.stopPropagation()}
         >
-          {tab.type === 'agent' ? (
+          {onSleepTab && tab.type === 'json-claude' && (tab.mode ?? 'awake') === 'awake' && (
+            <button
+              className="block w-full text-left px-3 py-1.5 hover:bg-panel text-fg-bright cursor-pointer"
+              onClick={(e) => {
+                e.stopPropagation()
+                setMenu(null)
+                onSleepTab()
+              }}
+            >
+              Sleep
+            </button>
+          )}
+          {onConvertTabType && tab.type === 'agent' && (
             <button
               className="block w-full text-left px-3 py-1.5 hover:bg-panel text-fg-bright cursor-pointer"
               onClick={(e) => {
@@ -209,7 +226,8 @@ function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect
             >
               Convert to JSON-mode chat
             </button>
-          ) : (
+          )}
+          {onConvertTabType && tab.type === 'json-claude' && (
             <button
               className="block w-full text-left px-3 py-1.5 hover:bg-panel text-fg-bright cursor-pointer"
               onClick={(e) => {
@@ -244,6 +262,7 @@ export function TerminalPanel({
   defaultClaudeTabType,
   onConvertTabType,
   defaultAgent,
+  onSleepTab,
   onCloseTab,
   onSplitRight,
   onSplitDown,
@@ -305,6 +324,9 @@ export function TerminalPanel({
                     convertible
                       ? (newType) => onConvertTabType!(tab.id, newType)
                       : undefined
+                  }
+                  onSleepTab={
+                    isJsonClaude ? () => onSleepTab(tab.id) : undefined
                   }
                 />
               )

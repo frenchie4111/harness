@@ -182,8 +182,19 @@ export function useTabHandlers({
     (worktreePath: string, paneId: string, tabId: string) => {
       void window.api.panesSelectTab(worktreePath, paneId, tabId)
       setActivePaneId((prev) => ({ ...prev, [worktreePath]: paneId }))
+      // Wake-on-focus is handled in WorkspaceView via a rising-edge
+      // effect on leaf.activeTabId, so we don't fire panesWakeTab from
+      // here. That keeps a single source of truth and means right-click
+      // → Sleep doesn't get re-woken when the slept tab stays focused.
     },
     [setActivePaneId]
+  )
+
+  const handleSleepTab = useCallback(
+    (worktreePath: string, tabId: string) => {
+      void window.api.panesSleepTab(worktreePath, tabId)
+    },
+    []
   )
 
   const handleOpenCommit = useCallback(
@@ -342,6 +353,7 @@ export function useTabHandlers({
     handleRestartAgentTab,
     handleRestartAllAgentTabs,
     handleSelectTab,
+    handleSleepTab,
     handleOpenCommit,
     handleReorderTabs,
     handleMoveTabToPane,

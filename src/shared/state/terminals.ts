@@ -16,6 +16,12 @@ export interface TerminalTab {
   id: string
   type: 'agent' | 'shell' | 'diff' | 'file' | 'browser' | 'json-claude'
   label: string
+  /** Only meaningful for json-claude tabs. 'asleep' means no live
+   *  subprocess; the tab still exists in the tree and its session
+   *  history (in the jsonClaude slice + on-disk jsonl) is intact.
+   *  Persisted json-claude tabs hydrate as 'asleep' so app launch
+   *  doesn't spawn one subprocess per tab; they wake on first focus. */
+  mode?: 'awake' | 'asleep'
   /** For agent tabs: which CLI agent this tab runs. */
   agentKind?: AgentKind
   /** For diff/file tabs: the file path */
@@ -242,6 +248,14 @@ export type TerminalsEvent =
         newType: 'agent' | 'json-claude'
         newLabel: string
       }
+    }
+  | {
+      type: 'terminals/tabSlept'
+      payload: { worktreePath: string; tabId: string }
+    }
+  | {
+      type: 'terminals/tabWoken'
+      payload: { worktreePath: string; tabId: string }
     }
 
 export const initialTerminals: TerminalsState = {
@@ -498,7 +512,8 @@ export function terminalsReducer(
               id: newId,
               type: 'json-claude' as const,
               label: newLabel,
-              sessionId
+              sessionId,
+              mode: 'awake' as const
             }
           }
           return {
@@ -513,6 +528,32 @@ export function terminalsReducer(
         return { ...leaf, tabs, activeTabId }
       })
       if (!changed) return state
+      return { ...state, panes: { ...state.panes, [worktreePath]: updated } }
+    }
+    case 'terminals/tabSlept':
+    case 'terminals/tabWoken': {
+      const { worktreePath, tabId } = event.payload
+      const target: 'awake' | 'asleep' =
+        event.type === 'terminals/tabSlept' ? 'asleep' : 'awake'
+      const tree = state.panes[worktreePath]
+      if (!tree) return state
+      let mutated = false
+      const updated = mapLeaves(tree, (leaf) => {
+        const i = leaf.tabs.findIndex((t) => t.id === tabId)
+        if (i === -1) return leaf
+        const tab = leaf.tabs[i]
+        if (tab.type !== 'json-claude') return leaf
+        if ((tab.mode ?? 'awake') === target) return leaf
+        const patched: TerminalTab = { ...tab, mode: target }
+        const nextTabs = [
+          ...leaf.tabs.slice(0, i),
+          patched,
+          ...leaf.tabs.slice(i + 1)
+        ]
+        mutated = true
+        return { ...leaf, tabs: nextTabs }
+      })
+      if (!mutated) return state
       return { ...state, panes: { ...state.panes, [worktreePath]: updated } }
     }
     case 'terminals/sizeChanged': {
