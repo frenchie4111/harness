@@ -82,6 +82,11 @@ export interface SettingsState {
    *  don't get a wall of approval cards for routine edits; Bash and
    *  other risky tools still surface approvals. */
   jsonModeDefaultPermissionMode: JsonClaudePermissionMode
+  /** Minutes a json-mode tab can sit at the yellow "waiting" dot before
+   *  the auto-sleep monitor tears its subprocess down. The slept tab
+   *  stays in the tree (history intact) and re-spawns on click. 0
+   *  disables auto-sleep entirely. */
+  autoSleepMinutes: number
 }
 
 export type SettingsEvent =
@@ -126,6 +131,7 @@ export type SettingsEvent =
       type: 'settings/jsonModeDefaultPermissionModeChanged'
       payload: JsonClaudePermissionMode
     }
+  | { type: 'settings/autoSleepMinutesChanged'; payload: number }
 
 // Client-side placeholder. Real values are seeded in the main-process Store
 // constructor from the on-disk config and secrets.
@@ -167,7 +173,8 @@ export const initialSettings: SettingsState = {
   autoApproveSteerInstructions: '',
   useSystemClaudeForJsonMode: false,
   jsonModeChatDensity: 'compact',
-  jsonModeDefaultPermissionMode: 'acceptEdits'
+  jsonModeDefaultPermissionMode: 'acceptEdits',
+  autoSleepMinutes: 30
 }
 
 export function settingsReducer(state: SettingsState, event: SettingsEvent): SettingsState {
@@ -248,6 +255,8 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, jsonModeChatDensity: event.payload }
     case 'settings/jsonModeDefaultPermissionModeChanged':
       return { ...state, jsonModeDefaultPermissionMode: event.payload }
+    case 'settings/autoSleepMinutesChanged':
+      return { ...state, autoSleepMinutes: event.payload }
     default: {
       const _exhaustive: never = event
       void _exhaustive

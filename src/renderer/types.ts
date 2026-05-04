@@ -262,6 +262,7 @@ export interface ElectronAPI {
   setJsonModeDefaultPermissionMode(
     value: 'default' | 'acceptEdits' | 'plan'
   ): Promise<boolean>
+  setAutoSleepMinutes(value: number): Promise<boolean>
   setAutoUpdateEnabled(enabled: boolean): Promise<boolean>
   setShareClaudeSettings(enabled: boolean): Promise<boolean>
   setHarnessSystemPromptEnabled(enabled: boolean): Promise<boolean>
