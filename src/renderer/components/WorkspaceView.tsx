@@ -361,6 +361,25 @@ export function WorkspaceView({
     [ensureSlot]
   )
 
+  // Wake-on-focus: when this worktree becomes visible (sidebar selection
+  // or initial activeWorktreeId), wake any slept json-claude tab that's
+  // currently the active tab in its leaf. Idempotent — wakeJsonClaudeTab
+  // in main no-ops on already-awake tabs, so re-running on paneTree
+  // changes (split, tab move) doesn't re-spawn anything.
+  useEffect(() => {
+    if (!visible) return
+    for (const leaf of getLeaves(paneTree)) {
+      const active = leaf.tabs.find((t) => t.id === leaf.activeTabId)
+      if (
+        active &&
+        active.type === 'json-claude' &&
+        (active.mode ?? 'awake') === 'asleep'
+      ) {
+        void window.api.panesWakeTab(worktreePath, active.id)
+      }
+    }
+  }, [visible, paneTree, worktreePath])
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } })
   )
