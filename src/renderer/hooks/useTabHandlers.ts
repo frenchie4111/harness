@@ -182,19 +182,12 @@ export function useTabHandlers({
     (worktreePath: string, paneId: string, tabId: string) => {
       void window.api.panesSelectTab(worktreePath, paneId, tabId)
       setActivePaneId((prev) => ({ ...prev, [worktreePath]: paneId }))
-      // Wake-on-focus: a slept json-claude tab wakes the moment the
-      // user selects it. Scoped to the clicked tabId — does not iterate
-      // panes, so this is cheap regardless of worktree count.
-      const tree = panes[worktreePath]
-      if (tree) {
-        const leaf = findLeafByTabId(tree, tabId)
-        const tab = leaf?.tabs.find((t) => t.id === tabId)
-        if (tab && tab.type === 'json-claude' && tab.mode === 'asleep') {
-          void window.api.panesWakeTab(worktreePath, tabId)
-        }
-      }
+      // Wake-on-focus is handled in WorkspaceView via a rising-edge
+      // effect on leaf.activeTabId, so we don't fire panesWakeTab from
+      // here. That keeps a single source of truth and means right-click
+      // → Sleep doesn't get re-woken when the slept tab stays focused.
     },
-    [panes, setActivePaneId]
+    [setActivePaneId]
   )
 
   const handleSleepTab = useCallback(

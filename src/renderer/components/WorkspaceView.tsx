@@ -361,14 +361,24 @@ export function WorkspaceView({
     [ensureSlot]
   )
 
-  // Wake-on-focus: when this worktree becomes visible (sidebar selection
-  // or initial activeWorktreeId), wake any slept json-claude tab that's
-  // currently the active tab in its leaf. Idempotent — wakeJsonClaudeTab
-  // in main no-ops on already-awake tabs, so re-running on paneTree
-  // changes (split, tab move) doesn't re-spawn anything.
+  // Rising-edge wake: only fire panesWakeTab when a tab *just became*
+  // the active tab in its leaf, never on a steady-state asleep tab.
+  // That means right-click → Sleep stays slept (the tab's still active
+  // in its leaf, but it didn't just become active), while a worktree
+  // switch (visible flips false → true → empty prev set → every
+  // current activeTab counts as just-activated) and an in-worktree
+  // tab click (activeTabId changes) both wake.
+  const prevActiveTabsRef = useRef<Set<string>>(new Set())
   useEffect(() => {
-    if (!visible) return
+    if (!visible) {
+      prevActiveTabsRef.current = new Set()
+      return
+    }
+    const next = new Set<string>()
     for (const leaf of getLeaves(paneTree)) {
+      if (!leaf.activeTabId) continue
+      next.add(leaf.activeTabId)
+      if (prevActiveTabsRef.current.has(leaf.activeTabId)) continue
       const active = leaf.tabs.find((t) => t.id === leaf.activeTabId)
       if (
         active &&
@@ -378,6 +388,7 @@ export function WorkspaceView({
         void window.api.panesWakeTab(worktreePath, active.id)
       }
     }
+    prevActiveTabsRef.current = next
   }, [visible, paneTree, worktreePath])
 
   const sensors = useSensors(
