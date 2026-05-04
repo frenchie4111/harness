@@ -91,6 +91,15 @@ export class CostTracker {
   private unsubscribeHook: (() => void) | null = null
   private unsubscribeStore: (() => void) | null = null
   private cache = new Map<string, CacheEntry>()
+  // The CostPanel is collapsed by default and most users never open it.
+  // Parsing + dispatching on every turn boundary for a panel nobody is
+  // looking at burns CPU and inflates the costs slice. Clients (one per
+  // BrowserWindow / WS peer) signal interest via costs:setInterest; while
+  // the set is empty, handleStop / recordJsonModeTurnComplete short-circuit.
+  // The last StopEvent per terminal is retained so we can backfill on the
+  // next 0→positive transition without waiting for another turn.
+  private interestedClients = new Set<string>()
+  private lastStops = new Map<string, StopEvent>()
 
   constructor(private store: Store) {}
 
@@ -108,7 +117,24 @@ export class CostTracker {
     this.unsubscribeStore = null
   }
 
+  setClientInterested(clientId: string, expanded: boolean): void {
+    const wasZero = this.interestedClients.size === 0
+    if (expanded) this.interestedClients.add(clientId)
+    else this.interestedClients.delete(clientId)
+    if (wasZero && this.interestedClients.size > 0) this.backfillAll()
+  }
+
+  removeClient(clientId: string): void {
+    this.interestedClients.delete(clientId)
+  }
+
   private handleStop(ev: StopEvent): void {
+    this.lastStops.set(ev.terminalId, ev)
+    if (this.interestedClients.size === 0) return
+    this.parseAndDispatchStop(ev)
+  }
+
+  private parseAndDispatchStop(ev: StopEvent): void {
     try {
       const entry = this.parseIncremental(ev.sessionId, ev.transcriptPath)
       if (!entry) return
@@ -145,12 +171,17 @@ export class CostTracker {
     }
   }
 
+  private recordJsonModeTurnComplete(sessionId: string): void {
+    if (this.interestedClients.size === 0) return
+    this.parseAndDispatchJsonMode(sessionId)
+  }
+
   /** Reparse the JSON-mode session's on-disk JSONL and dispatch fresh
    *  cost totals. Skips the dispatch when parsing yields no model data
    *  so an early reparse (resume from disk before claude has flushed)
    *  doesn't wipe an existing hydrated entry. The next reparse picks
    *  things up. */
-  private recordJsonModeTurnComplete(sessionId: string): void {
+  private parseAndDispatchJsonMode(sessionId: string): void {
     const session =
       this.store.getSnapshot().state.jsonClaude.sessions[sessionId]
     if (!session) return
@@ -178,6 +209,14 @@ export class CostTracker {
         'cost-tracker',
         `failed to ingest json-claude ${transcriptPath}: ${err instanceof Error ? err.message : err}`
       )
+    }
+  }
+
+  private backfillAll(): void {
+    for (const ev of this.lastStops.values()) this.parseAndDispatchStop(ev)
+    const sessions = this.store.getSnapshot().state.jsonClaude.sessions
+    for (const sessionId of Object.keys(sessions)) {
+      this.parseAndDispatchJsonMode(sessionId)
     }
   }
 

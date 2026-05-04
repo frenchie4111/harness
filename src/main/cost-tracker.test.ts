@@ -35,6 +35,7 @@ describe('CostTracker — JSON-mode wiring', () => {
     const store = new Store()
     const tracker = new CostTracker(store)
     tracker.start()
+    tracker.setClientInterested('client-A', true)
 
     const sessionId = 'sess-cost-1'
 
@@ -110,6 +111,7 @@ describe('CostTracker — JSON-mode wiring', () => {
     const storeA = new Store()
     const trackerA = new CostTracker(storeA)
     trackerA.start()
+    trackerA.setClientInterested('client-A', true)
     storeA.dispatch({
       type: 'jsonClaude/sessionStarted',
       payload: { sessionId, worktreePath: '/tmp/wt' }
@@ -131,6 +133,7 @@ describe('CostTracker — JSON-mode wiring', () => {
     const storeB = new Store()
     const trackerB = new CostTracker(storeB)
     trackerB.start()
+    trackerB.setClientInterested('client-B', true)
     readFileSyncMock.mockReturnValue(fullTranscript)
     storeB.dispatch({
       type: 'jsonClaude/sessionStarted',
@@ -153,6 +156,7 @@ describe('CostTracker — JSON-mode wiring', () => {
     const store = new Store()
     const tracker = new CostTracker(store)
     tracker.start()
+    tracker.setClientInterested('client-A', true)
 
     const sessionId = 'sess-cost-2'
     store.dispatch({
@@ -165,5 +169,47 @@ describe('CostTracker — JSON-mode wiring', () => {
     tracker.stop()
 
     expect(store.getSnapshot().state.costs.byTerminal[sessionId]).toBeUndefined()
+  })
+
+  it('skips parsing while no client is interested, then backfills on first interest', () => {
+    const store = new Store()
+    const tracker = new CostTracker(store)
+    tracker.start()
+    // No client interest yet — this matches the default state when
+    // every renderer has the (default-collapsed) CostPanel collapsed.
+
+    const sessionId = 'sess-cost-gated'
+    const transcript =
+      JSON.stringify({
+        type: 'assistant',
+        message: {
+          model: 'claude-sonnet-4-5',
+          usage: { input_tokens: 100, output_tokens: 50 },
+          content: [{ type: 'text', text: 'hi' }]
+        }
+      }) + '\n'
+    readFileSyncMock.mockReturnValue(transcript)
+
+    store.dispatch({
+      type: 'jsonClaude/sessionStarted',
+      payload: { sessionId, worktreePath: '/tmp/wt' }
+    })
+    store.dispatch({
+      type: 'jsonClaude/busyChanged',
+      payload: { sessionId, busy: false }
+    })
+
+    // Nothing dispatched while no client cared.
+    expect(store.getSnapshot().state.costs.byTerminal[sessionId]).toBeUndefined()
+    expect(readFileSyncMock).not.toHaveBeenCalled()
+
+    // First client expands the panel — backfill kicks in for known
+    // json-mode sessions and produces the totals.
+    tracker.setClientInterested('client-A', true)
+    const usage = store.getSnapshot().state.costs.byTerminal[sessionId]
+    expect(usage).toBeDefined()
+    expect(usage.byModel['claude-sonnet-4-5']?.input).toBe(100)
+
+    tracker.stop()
   })
 })

@@ -372,6 +372,7 @@ transport.onClientDisconnect((clientId) => {
     type: 'terminals/clientDisconnected',
     payload: { clientId }
   })
+  costTracker.removeClient(clientId)
 })
 
 if (webHttpServer && wsTransport) {
@@ -430,6 +431,13 @@ function getLanAddresses(): Array<{ iface: string; address: string }> {
 // src/main/cost-tracker.ts and src/shared/state/costs.ts.
 const costTracker = new CostTracker(store)
 costTracker.start()
+
+// CostPanel is collapsed-by-default. Renderer signals its expand state
+// per client; tracker short-circuits parsing while the set is empty.
+transport.onRequest('costs:setInterest', (ctx, expanded: boolean) => {
+  costTracker.setClientInterested(ctx.clientId, expanded)
+  return true
+})
 
 // Auto-persist the costs slice to config.json on each change. Debounced
 // inside saveConfig; cheap to fire on every dispatch.

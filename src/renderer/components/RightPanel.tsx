@@ -1,4 +1,4 @@
-import { useState, useEffect, ReactNode } from 'react'
+import { useState, useEffect, useRef, ReactNode } from 'react'
 import { ChevronRight } from 'lucide-react'
 
 interface RightPanelProps {
@@ -15,6 +15,8 @@ interface RightPanelProps {
   defaultCollapsed?: boolean
   headerClassName?: string
   containerClassName?: string
+  /** Fires on mount with the resolved initial state and on every toggle. */
+  onCollapsedChange?: (collapsed: boolean) => void
 }
 
 const STORAGE_PREFIX = 'right-panel-collapsed:'
@@ -28,7 +30,8 @@ export function RightPanel({
   maxHeight,
   defaultCollapsed = false,
   headerClassName = '',
-  containerClassName = ''
+  containerClassName = '',
+  onCollapsedChange
 }: RightPanelProps): JSX.Element {
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     try {
@@ -40,13 +43,30 @@ export function RightPanel({
     return defaultCollapsed
   })
 
+  // Held in a ref so callers don't have to memoize the callback —
+  // re-firing on every parent re-render would be wrong.
+  const onCollapsedChangeRef = useRef(onCollapsedChange)
+  useEffect(() => {
+    onCollapsedChangeRef.current = onCollapsedChange
+  })
+
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_PREFIX + id, collapsed ? '1' : '0')
     } catch {
       /* ignore */
     }
+    onCollapsedChangeRef.current?.(collapsed)
   }, [id, collapsed])
+
+  // On unmount, signal collapsed so consumers (e.g. CostPanel's interest
+  // gate) treat the panel as no longer visible — otherwise tearing the
+  // panel down via parent reconciliation would leak interest.
+  useEffect(() => {
+    return () => {
+      onCollapsedChangeRef.current?.(true)
+    }
+  }, [])
 
   const outerSize = grow && !collapsed ? 'flex-1 min-h-0' : 'shrink-0'
   const bodyClasses = collapsed
