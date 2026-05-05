@@ -78,6 +78,35 @@
   <!-- Releases -->
   <div class="max-w-3xl mx-auto px-6 pb-24">
 
+    <!-- v2.8.0 -->
+    <section class="release-section py-10">
+      <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
+        <h2 class="text-3xl font-bold tracking-tight">v2.8.0</h2>
+        <span class="text-sm text-neutral-500">May 5, 2026</span>
+      </div>
+      <a href="https://github.com/frenchie4111/harness/releases/tag/v2.8.0" class="text-sm text-amber-400/80 hover:text-amber-300 transition-colors">Download &rarr;</a>
+      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">Chat mode gets more resilient and resource-efficient — idle tabs sleep automatically, rate limits surface clearly in the UI, and crashed subprocesses restart without any manual intervention.</p>
+      <div class="note-body">
+        <h4>New features</h4>
+        <ul>
+          <li><strong>Auto-sleep for idle chat tabs</strong> — chat tabs that have been inactive automatically suspend their Claude subprocess, reducing background resource usage. They resume instantly when you switch back.</li>
+          <li><strong>Rate limit display in chat mode</strong> — when Claude hits an API rate limit, the chat tab now shows the limit status and how long until it clears, instead of silently stalling.</li>
+          <li><strong>OAuth re-authentication in chat mode</strong> — if your Claude session expires mid-conversation, chat mode now prompts you to re-authenticate inline rather than requiring a manual restart.</li>
+        </ul>
+        <h4>Improvements</h4>
+        <ul>
+          <li><strong>Chat history loads on demand</strong> — opening a tab with a long conversation history is now fast; earlier messages load incrementally as you scroll up.</li>
+          <li><strong>Cost tracking streams incrementally</strong> — per-message cost estimates now update token-by-token during streaming rather than jumping at the end of a response.</li>
+          <li><strong>External links route to the viewing client</strong> — links that previously opened in your default browser now open in Harness's built-in viewer when one is available.</li>
+        </ul>
+        <h4>Fixes</h4>
+        <ul>
+          <li>Chat mode now recovers automatically if the underlying Claude subprocess crashes, restarting it without requiring you to close and reopen the tab.</li>
+          <li>Removed file tabs on Linux where they caused display issues.</li>
+        </ul>
+      </div>
+    </section>
+
     <!-- v2.7.1 -->
     <section class="release-section py-10">
       <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
