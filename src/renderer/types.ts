@@ -358,6 +358,9 @@ export interface ElectronAPI {
   openDebugLog(): Promise<{ ok: true } | { ok: false; message: string }>
   showDebugLogInFolder(): Promise<boolean>
   getFilePath(file: File): string
+  windowMinimize(): void
+  windowToggleMaximize(): void
+  windowClose(): void
   onOpenSettings(callback: () => void): () => void
   onTogglePerfMonitor(callback: () => void): () => void
   onOpenKeyboardShortcuts(callback: () => void): () => void

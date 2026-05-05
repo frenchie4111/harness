@@ -23,6 +23,7 @@ import { app, autoUpdater as nativeAutoUpdater, BrowserWindow, Menu, screen, she
 import { autoUpdater } from 'electron-updater'
 import { join } from 'path'
 import { applyDevModeOverride } from './desktop-shell'
+import { registerWindowControlHandlers } from './window-controls'
 import { log, getLogFilePath } from './debug'
 
 export function bootRemote(remoteUrl: string): void {
@@ -40,8 +41,9 @@ export function bootRemote(remoteUrl: string): void {
       height: Math.min(1000, work.height - 40),
       title: 'Harness',
       icon: join(__dirname, '../../resources/icon.png'),
-      titleBarStyle: 'hiddenInset',
-      trafficLightPosition: { x: 12, y: 12 },
+      ...(process.platform === 'linux'
+        ? { frame: false }
+        : { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 12, y: 12 } }),
       backgroundColor: '#0a0a0a',
       webPreferences: {
         preload: join(__dirname, '../preload/index.js'),
@@ -187,6 +189,7 @@ export function bootRemote(remoteUrl: string): void {
         log('app', 'failed to set dock icon', err instanceof Error ? err.message : err)
       }
     }
+    registerWindowControlHandlers()
     buildRemoteMenu()
     createRemoteWindow()
     setupAutoUpdater()

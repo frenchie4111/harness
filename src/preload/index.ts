@@ -1,4 +1,4 @@
-import { contextBridge, webUtils } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { ElectronClientTransport } from './transport-electron'
 import { WebSocketClientTransport } from '../shared/transport/transport-websocket'
 import { findRemoteUrl, splitRemoteUrl } from './find-remote-url'
@@ -38,6 +38,12 @@ if (remoteUrlRaw) {
 // the meaning is the same: "no local Electron backend reachable, route
 // everything through the transport."
 contextBridge.exposeInMainWorld('__HARNESS_WEB__', !!remoteUrlRaw)
+
+// Local platform of the Electron host (always the machine running the
+// BrowserWindow, even in remote-Electron mode where the transport routes
+// to a remote server). Used by the renderer to render Linux-only window
+// controls in the top-left when the OS frame is hidden.
+contextBridge.exposeInMainWorld('__HARNESS_PLATFORM__', process.platform)
 
 type DataCallback = (id: string, data: string) => void
 type ExitCallback = (id: string, exitCode: number) => void
@@ -311,6 +317,14 @@ contextBridge.exposeInMainWorld('api', {
       error?.stack ?? '',
       info?.componentStack ?? ''
     ),
+
+  // Window controls — bypass the transport because in remote-Electron
+  // mode the transport routes to the remote harness-server, but the
+  // BrowserWindow being controlled is local. Always reaches local main
+  // via ipcRenderer.
+  windowMinimize: () => ipcRenderer.send('window:minimize'),
+  windowToggleMaximize: () => ipcRenderer.send('window:toggleMaximize'),
+  windowClose: () => ipcRenderer.send('window:close'),
 
   // App-level events from menu
   onOpenSettings: (callback: () => void) => transport.onSignal('app:openSettings', () => callback()),

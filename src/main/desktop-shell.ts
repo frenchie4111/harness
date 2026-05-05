@@ -39,6 +39,7 @@ import type { PtyManager } from './pty-manager'
 import type { WorktreesFSM } from './worktrees-fsm'
 import type { Config } from './persistence'
 import { saveConfig, saveConfigSync, DEFAULT_THEME, THEME_APP_BG } from './persistence'
+import { registerWindowControlHandlers } from './window-controls'
 import { loadRepoConfig } from './repo-config'
 import { sealAllActive } from './activity'
 import { log, getLogFilePath } from './debug'
@@ -251,8 +252,12 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
       ...(bounds.x != null ? { x: bounds.x, y: bounds.y } : {}),
       title: 'Harness',
       icon: join(__dirname, '../../resources/icon.png'),
-      titleBarStyle: 'hiddenInset',
-      trafficLightPosition: { x: 12, y: 12 },
+      // Linux has no inset-titlebar concept; drop the OS frame entirely so
+      // we get the same edge-to-edge canvas the macOS hiddenInset gives us.
+      // The renderer's .drag-region zones handle window dragging.
+      ...(process.platform === 'linux'
+        ? { frame: false }
+        : { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 12, y: 12 } }),
       backgroundColor: THEME_APP_BG[config.theme || DEFAULT_THEME] || THEME_APP_BG[DEFAULT_THEME],
       webPreferences: {
         preload: join(__dirname, '../preload/index.js'),
@@ -394,6 +399,8 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
   }
 
   function registerDesktopHandlers(): void {
+    registerWindowControlHandlers()
+
     transport.onRequest('repo:add', async (_ctx) => {
       const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0]
       const result = await dialog.showOpenDialog(win!, {
