@@ -90,18 +90,26 @@ export interface JsonClaudeChatEntry {
    *  flattening it chronologically into the top-level transcript. */
   parentToolUseId?: string
   /** For inline system/error cards. Discriminator that tells the
-   *  renderer which dedicated card component to dispatch on. The union
-   *  is intentionally extensible — sibling worktrees add other kinds
-   *  (subprocess-exit, auth-failure) to the same field, so merging is
-   *  trivial. */
-  errorKind?: 'rate-limit-warning' | 'rate-limit-error'
+   *  renderer which dedicated card component to dispatch on. Each
+   *  worktree owns its own subset of variants and they coexist —
+   *  subprocess-exit / auth-failure from crash recovery,
+   *  rate-limit-warning / rate-limit-error from this branch. */
+  errorKind?:
+    | 'subprocess-exit'
+    | 'rate-limit-warning'
+    | 'rate-limit-error'
+    | 'auth-failure'
   /** Short human-readable summary surfaced on inline system/error
-   *  cards. Free-form text — the card layout owns the chrome. */
+   *  cards (exitReason, rate-limit retry-at, auth detail, etc.). The
+   *  card layout owns the chrome. */
   errorMessage?: string
-  /** Structured rate-limit detail for the warning + error cards.
-   *  Sourced from the SDK's `rate_limit_info` payload. All fields
-   *  optional because the wire shape is sparse — different tiers and
-   *  events fill in different subsets. */
+  /** For errorKind === 'subprocess-exit'. Whether the exit was clean
+   *  (user closed the tab) or unexpected (crash). */
+  exitWasClean?: boolean
+  /** For errorKind === 'rate-limit-warning' | 'rate-limit-error'.
+   *  Structured detail sourced from the SDK's `rate_limit_info`
+   *  payload. All fields optional because the wire shape is sparse —
+   *  different tiers and events fill in different subsets. */
   rateLimitDetail?: {
     /** 0–1 fraction of the current window's budget that's been used.
      *  Renderer formats as a percentage. */

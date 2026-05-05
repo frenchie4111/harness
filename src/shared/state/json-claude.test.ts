@@ -69,6 +69,28 @@ describe('jsonClaudeReducer', () => {
     expect(state.sessions[SID].entries).toEqual([entry])
   })
 
+  it('entryAppended carries subprocess-exit error fields verbatim', () => {
+    let state = seedSession(initialJsonClaude)
+    const entry: JsonClaudeChatEntry = {
+      entryId: 'e1',
+      kind: 'error',
+      timestamp: 42,
+      errorKind: 'subprocess-exit',
+      errorMessage: 'spawn ENOTDIR',
+      exitWasClean: false
+    }
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/entryAppended',
+      payload: { sessionId: SID, entry }
+    })
+    expect(state.sessions[SID].entries).toEqual([entry])
+    const stored = state.sessions[SID].entries[0]
+    expect(stored.kind).toBe('error')
+    expect(stored.errorKind).toBe('subprocess-exit')
+    expect(stored.errorMessage).toBe('spawn ENOTDIR')
+    expect(stored.exitWasClean).toBe(false)
+  })
+
   it('entriesSeeded replaces the session entries array in one shot', () => {
     let state = seedSession(initialJsonClaude)
     const entries: JsonClaudeChatEntry[] = [

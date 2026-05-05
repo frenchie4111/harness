@@ -520,14 +520,10 @@ export class JsonClaudeManager {
         })
       }
     } catch (err) {
-      log(
-        'json-claude',
-        `spawn failed sessionId=${sessionId}`,
-        err instanceof Error ? err.message : String(err)
-      )
-      this.dispatchState(sessionId, 'exited', {
-        exitReason: err instanceof Error ? err.message : String(err)
-      })
+      const reason = err instanceof Error ? err.message : String(err)
+      log('json-claude', `spawn failed sessionId=${sessionId}`, reason)
+      this.dispatchState(sessionId, 'exited', { exitReason: reason })
+      this.dispatchSubprocessExitEntry(sessionId, reason)
       this.opts.closeApprovalSession(sessionId)
       return
     }
@@ -591,10 +587,16 @@ export class JsonClaudeManager {
         return
       }
       this.clearPartial(instance)
+      const exitReason = signal
+        ? `signal ${signal}`
+        : code === 0
+          ? 'clean'
+          : `exit ${code}`
       this.dispatchState(sessionId, 'exited', {
         exitCode: code,
-        exitReason: signal ? `signal ${signal}` : code === 0 ? 'clean' : `exit ${code}`
+        exitReason
       })
+      this.dispatchSubprocessExitEntry(sessionId, exitReason)
       this.dispatchBusy(sessionId, false)
       this.instances.delete(sessionId)
       this.opts.closeApprovalSession(sessionId)
@@ -1518,6 +1520,29 @@ export class JsonClaudeManager {
     })
   }
 
+  // Only fires on unexpected exits — user-initiated kill() clears the
+  // instance map before SIGTERM lands, so the stale-instance guard in
+  // proc.on('exit') bails before reaching this. Spawn failures count as
+  // unexpected too.
+  private dispatchSubprocessExitEntry(
+    sessionId: string,
+    exitReason: string
+  ): void {
+    this.store.dispatch({
+      type: 'jsonClaude/entryAppended',
+      payload: {
+        sessionId,
+        entry: {
+          entryId: `${sessionId}-error-${Date.now()}`,
+          kind: 'error',
+          timestamp: Date.now(),
+          errorKind: 'subprocess-exit',
+          errorMessage: exitReason || 'Session ended unexpectedly',
+          exitWasClean: false
+        }
+      }
+    })
+  }
 }
 
 const RATE_LIMIT_TEXT_RE =
