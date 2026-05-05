@@ -89,15 +89,38 @@ export interface JsonClaudeChatEntry {
    *  to nest sub-agent activity inside the parent Task card instead of
    *  flattening it chronologically into the top-level transcript. */
   parentToolUseId?: string
-  /** For kind === 'error'. Categorizes the error so the renderer can pick
-   *  the right card variant (Restart, Re-auth, Retry). */
-  errorKind?: 'subprocess-exit' | 'rate-limit' | 'auth-failure'
+  /** For inline system/error cards. Discriminator that tells the
+   *  renderer which dedicated card component to dispatch on. Each
+   *  worktree owns its own subset of variants and they coexist —
+   *  subprocess-exit / auth-failure from crash recovery + reauth,
+   *  rate-limit-warning / rate-limit-error from rate-limit display. */
+  errorKind?:
+    | 'subprocess-exit'
+    | 'rate-limit'
+    | 'rate-limit-warning'
+    | 'rate-limit-error'
+    | 'auth-failure'
   /** For kind === 'error'. Human-readable detail (exitReason, rate-limit
    *  retry-at timestamp, original auth error string, etc.). */
   errorMessage?: string
   /** For kind === 'error' with errorKind === 'subprocess-exit'. Whether the
    *  exit was clean (user closed the tab) or unexpected (crash). */
   exitWasClean?: boolean
+  /** For errorKind === 'rate-limit-warning' | 'rate-limit-error'.
+   *  Structured detail sourced from the SDK's `rate_limit_info`
+   *  payload. All fields optional because the wire shape is sparse —
+   *  different tiers and events fill in different subsets. */
+  rateLimitDetail?: {
+    /** 0–1 fraction of the current window's budget that's been used.
+     *  Renderer formats as a percentage. */
+    utilization?: number
+    /** Unix ms timestamp at which the limiting window resets. */
+    resetAt?: number
+    /** Tier identifier, e.g. 'five_hour' / 'seven_day' / 'unified'. */
+    tier?: string
+    /** True when overage credits are currently being consumed. */
+    isUsingOverage?: boolean
+  }
 }
 
 export interface JsonClaudeSession {
