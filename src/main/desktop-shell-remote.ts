@@ -19,10 +19,11 @@
 // Reconnection on disconnect and saved-remote management are out of
 // scope for v1 — restart the app to pick a new URL.
 
-import { app, autoUpdater as nativeAutoUpdater, BrowserWindow, Menu, screen, shell } from 'electron'
+import { app, autoUpdater as nativeAutoUpdater, BrowserWindow, Menu, nativeImage, screen, shell } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import { join } from 'path'
 import { applyDevModeOverride } from './desktop-shell'
+import { registerWindowControlHandlers } from './window-controls'
 import { log, getLogFilePath } from './debug'
 
 export function bootRemote(remoteUrl: string): void {
@@ -39,9 +40,10 @@ export function bootRemote(remoteUrl: string): void {
       width: Math.min(1600, work.width - 40),
       height: Math.min(1000, work.height - 40),
       title: 'Harness',
-      icon: join(__dirname, '../../resources/icon.png'),
-      titleBarStyle: 'hiddenInset',
-      trafficLightPosition: { x: 12, y: 12 },
+      icon: nativeImage.createFromPath(join(__dirname, '../../resources/icon.png')),
+      ...(process.platform === 'linux'
+        ? { frame: false }
+        : { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 12, y: 12 } }),
       backgroundColor: '#0a0a0a',
       webPreferences: {
         preload: join(__dirname, '../preload/index.js'),
@@ -187,6 +189,7 @@ export function bootRemote(remoteUrl: string): void {
         log('app', 'failed to set dock icon', err instanceof Error ? err.message : err)
       }
     }
+    registerWindowControlHandlers()
     buildRemoteMenu()
     createRemoteWindow()
     setupAutoUpdater()

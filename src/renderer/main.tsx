@@ -6,6 +6,7 @@ import { initStore } from './store'
 import { defineHarnessTheme } from './monaco-setup'
 import { renderMetrics } from './render-metrics'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import { LinuxWindowControls } from './components/LinuxWindowControls'
 
 const SLOW_COMMIT_MS = 16
 
@@ -24,6 +25,7 @@ initStore()
         <Profiler id="app" onRender={onRender}>
           <App />
         </Profiler>
+        <LinuxWindowControls />
       </ErrorBoundary>
     )
   })
