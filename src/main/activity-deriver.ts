@@ -155,17 +155,20 @@ export class ActivityDeriver {
     const state = this.store.getSnapshot().state
     const next = effectiveActivityState(state, wtPath)
 
-    // Dedup recordActivity — only call when the effective state actually
-    // changes for this worktree.
-    if (this.lastRecorded.get(wtPath) !== next) {
-      this.lastRecorded.set(wtPath, next)
-      recordActivity(wtPath, next)
-    }
+    // Dedup against the last derived state for this worktree. If nothing
+    // changed, do nothing — that includes NOT refreshing lastActive.
+    // Background polling (PR poller fires every 5min for every worktree
+    // even when no PR changed) was previously bumping lastActive on every
+    // tick, which kept the auto-sleep monitor from ever crossing its
+    // threshold for chats sitting at 'waiting'.
+    if (this.lastRecorded.get(wtPath) === next) return
+    this.lastRecorded.set(wtPath, next)
+    recordActivity(wtPath, next)
 
     // Debounce lastActive updates per worktree (30s window). Consumers
-    // (CommandCenter relative-time label, Cleanup sort) only need
-    // minute-level precision, so a relaxed window keeps this event off
-    // the hot path.
+    // (CommandCenter relative-time label, Cleanup sort, AutoSleepMonitor)
+    // only need minute-level precision, so a relaxed window keeps this
+    // event off the hot path.
     if (this.debounceTimers.has(wtPath)) return
     const timer = setTimeout(() => {
       this.debounceTimers.delete(wtPath)
