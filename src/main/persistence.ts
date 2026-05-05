@@ -15,6 +15,27 @@ export type { PersistedPane, PersistedPaneNode, PersistedTab }
 
 export type QuestStep = 'hidden' | 'spawn-second' | 'switch-between' | 'finale' | 'done'
 
+/** A configured backend (multi-backend UX, Tier 1).
+ *  - `kind: 'local'` is the in-process Electron backend; exactly one exists,
+ *    its id is the constant `LOCAL_BACKEND_ID`, and the renderer routes its
+ *    transport through ElectronClientTransport instead of WebSocket.
+ *  - `kind: 'remote'` is a `harness-server` reachable over WS. `url` is the
+ *    schemeless authority + path (e.g. `build-box.local:37291/`); the token
+ *    lives in `secrets.enc` keyed `backend-token:<id>` so this object is safe
+ *    to ship over IPC. */
+export interface BackendConnection {
+  id: string
+  label: string
+  url: string
+  kind: 'local' | 'remote'
+  addedAt: number
+  lastConnectedAt?: number
+  color?: string
+  initials?: string
+}
+
+export const LOCAL_BACKEND_ID = 'local'
+
 export interface Config {
   /** Schema version of the on-disk config. Bumped whenever the shape changes;
    *  see `migrations` below. Always written; absent on pre-versioned configs. */
@@ -165,6 +186,14 @@ export interface Config {
   // Minutes a json-mode tab can sit at 'waiting' before the auto-sleep
   // monitor tears its subprocess down. 0 disables auto-sleep. Default 30.
   autoSleepMinutes?: number
+  // Configured backends (multi-backend UX, Tier 1). Auto-seeded on first
+  // load with a single Local entry; the renderer's chip strip renders this
+  // list and routes per-backend transports off `kind`. Tokens for remotes
+  // live in secrets.enc keyed `backend-token:<id>`, never in this list.
+  connections?: BackendConnection[]
+  // Last-active backend id; restored on next launch so the user sees the
+  // backend they were last looking at. Falls back to LOCAL_BACKEND_ID.
+  activeBackendId?: string
 }
 
 export const DEFAULT_WORKTREE_BASE: 'remote' | 'local' = 'remote'
@@ -245,14 +274,42 @@ function getConfigPath(): string {
 }
 
 export function loadConfig(): Config {
+  let config: Config
   try {
     const data = readFileSync(getConfigPath(), 'utf-8')
     const parsed = JSON.parse(data) as AnyConfig
     runMigrations(parsed)
-    return { ...DEFAULT_CONFIG, ...(parsed as Partial<Config>), schemaVersion: SCHEMA_VERSION }
+    config = { ...DEFAULT_CONFIG, ...(parsed as Partial<Config>), schemaVersion: SCHEMA_VERSION }
   } catch {
-    return { ...DEFAULT_CONFIG, schemaVersion: SCHEMA_VERSION }
+    config = { ...DEFAULT_CONFIG, schemaVersion: SCHEMA_VERSION }
   }
+  return applyConnectionDefaults(config)
+}
+
+/** Auto-seed the Local backend if `connections` is missing or empty, and
+ *  default `activeBackendId` to LOCAL_BACKEND_ID. Lives outside the
+ *  migration chain because it's not a structural schema change — just a
+ *  runtime default — and needs to converge on every boot (e.g. after a
+ *  user accidentally clears `connections` from disk).
+ *
+ *  Pure for testability; `loadConfig` calls it on the loaded config. */
+export function applyConnectionDefaults(config: Config, now: number = Date.now()): Config {
+  const next: Config = { ...config }
+  if (!next.connections || next.connections.length === 0) {
+    next.connections = [
+      {
+        id: LOCAL_BACKEND_ID,
+        label: 'Local',
+        url: '',
+        kind: 'local',
+        addedAt: now
+      }
+    ]
+  }
+  if (!next.activeBackendId) {
+    next.activeBackendId = LOCAL_BACKEND_ID
+  }
+  return next
 }
 
 let saveTimeout: ReturnType<typeof setTimeout> | null = null
