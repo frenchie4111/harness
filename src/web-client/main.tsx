@@ -499,6 +499,10 @@ function buildApi(transport: WebSocketClientTransport): ElectronAPI {
     killJsonClaude: (id) => req('jsonClaude:kill', id) as Promise<boolean>,
     interruptJsonClaude: (id) =>
       req('jsonClaude:interrupt', id) as Promise<boolean>,
+    openJsonClaudeAuthLoginTab: (worktreePath) =>
+      req('jsonClaude:openAuthLoginTab', worktreePath) as Promise<
+        { ok: true; tabId: string } | { ok: false; error: string }
+      >,
     setJsonClaudePermissionMode: (id, mode) =>
       req('jsonClaude:setPermissionMode', id, mode) as Promise<boolean>,
     grantJsonClaudeSessionToolApprovals: (id, toolNames) =>

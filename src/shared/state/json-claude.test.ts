@@ -1103,6 +1103,26 @@ describe('jsonClaudeReducer', () => {
     })
     expect(next).toBe(initialJsonClaude)
   })
+
+  it('entryAppended preserves errorKind=auth-failure + errorMessage on an error entry', () => {
+    let state = seedSession(initialJsonClaude)
+    const entry: JsonClaudeChatEntry = {
+      entryId: `${SID}-auth-1`,
+      kind: 'error',
+      errorKind: 'auth-failure',
+      errorMessage: 'Invalid API key · Please run /login',
+      timestamp: 42
+    }
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/entryAppended',
+      payload: { sessionId: SID, entry }
+    })
+    expect(state.sessions[SID].entries).toEqual([entry])
+    const stored = state.sessions[SID].entries[0]
+    expect(stored.kind).toBe('error')
+    expect(stored.errorKind).toBe('auth-failure')
+    expect(stored.errorMessage).toBe('Invalid API key · Please run /login')
+  })
 })
 
 describe('stripJsonClaudeEntries', () => {

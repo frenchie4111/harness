@@ -3,7 +3,8 @@ import { createRequire } from 'module'
 import { join } from 'path'
 import { PtyManager } from './pty-manager'
 import { ApprovalBridge } from './approval-bridge'
-import { JsonClaudeManager } from './json-claude-manager'
+import { JsonClaudeManager, bundledClaudeBinPath } from './json-claude-manager'
+import { shellQuote } from './shell-quote'
 import {
   readAttachmentImage,
   writeAttachmentImage
@@ -2211,6 +2212,33 @@ function registerIpcHandlers(): void {
     jsonClaudeManager.interrupt(sessionId)
     return true
   })
+  transport.onRequest(
+    'jsonClaude:openAuthLoginTab',
+    (_ctx, worktreePath: string): { ok: true; tabId: string } | { ok: false; error: string } => {
+      // One-click /login flow. Spawns the bundled claude binary's
+      // `auth login` subcommand in a regular shell tab so the user
+      // gets the OAuth handshake without leaving Harness. Both binaries
+      // share ~/.claude/, so credentials written here are picked up by
+      // the json-mode subprocess on its next start. Falls back to PATH
+      // `claude` if the bundled binary can't be resolved (unsupported
+      // platform).
+      let bin: string
+      try {
+        bin = bundledClaudeBinPath()
+      } catch {
+        bin = 'claude'
+      }
+      const command = `${shellQuote(bin)} auth login`
+      const id = `shell-auth-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      panesFSM.addTab(worktreePath, {
+        id,
+        type: 'shell',
+        label: 'claude auth login',
+        command
+      })
+      return { ok: true, tabId: id }
+    }
+  )
 
   transport.onRequest(
     'jsonClaude:writeAttachmentImage',

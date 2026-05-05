@@ -19,7 +19,8 @@ import {
   FileText,
   X,
   Layers,
-  RotateCcw
+  RotateCcw,
+  ShieldAlert
 } from 'lucide-react'
 import { useJsonClaudeSession, useSettings } from '../store'
 import { useJsonClaudeApprovals } from '../hooks/useJsonClaudeApprovals'
@@ -313,6 +314,68 @@ function SubprocessExitCard({
   )
 }
 
+function AuthFailureCard({
+  message,
+  onOpenLoginTab,
+  onRetry
+}: {
+  message?: string
+  onOpenLoginTab: () => void
+  onRetry: () => void
+}): JSX.Element {
+  return (
+    <div
+      className="my-2 border border-danger/40 bg-danger/5 overflow-hidden"
+      style={{ borderRadius: 'var(--chat-bubble-radius)' }}
+    >
+      <div
+        className="flex items-center gap-2 bg-danger/10 border-b border-danger/30"
+        style={{
+          paddingInline: 'var(--chat-chrome-px)',
+          paddingBlock: 'var(--chat-chrome-py)',
+          fontSize: 'var(--chat-chrome-text)'
+        }}
+      >
+        <ShieldAlert size={11} className="text-danger shrink-0" />
+        <span
+          className="font-semibold shrink-0 text-danger"
+          style={{ fontFamily: 'var(--chat-tool-name-family)' }}
+        >
+          Authentication failed
+        </span>
+      </div>
+      <div className="px-3 py-2 text-[11px] text-fg space-y-2">
+        {message && (
+          <pre className="whitespace-pre-wrap break-words font-mono text-[10px] text-muted bg-app/40 border border-border/40 rounded px-2 py-1 max-h-32 overflow-auto">
+            {message}
+          </pre>
+        )}
+        <div>
+          Click{' '}
+          <span className="font-semibold text-fg-bright">Sign in</span> to open{' '}
+          <code className="font-mono text-fg-bright">claude auth login</code> in
+          a new shell tab. Complete the OAuth handshake there, then click{' '}
+          <span className="font-semibold text-fg-bright">Retry</span> to resume
+          this session.
+        </div>
+        <div className="flex gap-2 pt-1">
+          <button
+            onClick={onOpenLoginTab}
+            className="px-2 py-1 bg-accent text-white rounded hover:bg-accent/90 cursor-pointer"
+          >
+            Sign in
+          </button>
+          <button
+            onClick={onRetry}
+            className="px-2 py-1 bg-panel-raised border border-border-strong rounded text-fg-bright hover:bg-panel cursor-pointer"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 interface RenderContext {
   resultsByToolUseId: Map<string, { content: string; isError: boolean }>
   childrenByParentToolUseId: Map<string, JsonClaudeChatEntry[]>
@@ -330,6 +393,8 @@ interface RenderContext {
   sessionId: string
   worktreePath: string
   isExited: boolean
+  onOpenLoginTab: () => void
+  onRetryAuth: () => void
 }
 
 function renderEntries(
@@ -428,6 +493,20 @@ function renderEntries(
             sessionId={ctx.sessionId}
             worktreePath={ctx.worktreePath}
             isExited={ctx.isExited}
+          />
+        )
+      })
+      continue
+    }
+    if (entry.kind === 'error' && entry.errorKind === 'auth-failure') {
+      rows.push({
+        key: entry.entryId,
+        type: 'tool',
+        node: (
+          <AuthFailureCard
+            message={entry.errorMessage}
+            onOpenLoginTab={ctx.onOpenLoginTab}
+            onRetry={ctx.onRetryAuth}
           />
         )
       })
@@ -909,7 +988,25 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
         window.api.cancelQueuedJsonClaudeMessage(sessionId, entryId),
       sessionId,
       worktreePath,
-      isExited: session?.state === 'exited'
+      isExited: session?.state === 'exited',
+      onOpenLoginTab: () => {
+        // One-click sign-in: main spawns the bundled claude binary's
+        // `auth login` subcommand in a fresh shell tab. The tab runs
+        // the OAuth handshake to completion and exits cleanly. Both
+        // the bundled binary and the json-mode subprocess share
+        // ~/.claude/, so credentials written by the login tab are
+        // visible on the next Retry.
+        void window.api.openJsonClaudeAuthLoginTab(worktreePath)
+      },
+      onRetryAuth: () => {
+        // Same restart sequence as the "Reconnect" button on the exited-
+        // session banner: kill (no-op if already gone) then start, which
+        // re-attaches with whatever auth state is now in ~/.claude/.
+        void (async () => {
+          await window.api.killJsonClaude(sessionId)
+          await window.api.startJsonClaude(sessionId, worktreePath)
+        })()
+      }
     })
     // approvalByToolUseId already depends on pending; pendingToolUseIds
     // also derives from pending.
