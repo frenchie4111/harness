@@ -19,7 +19,7 @@
 // Reconnection on disconnect and saved-remote management are out of
 // scope for v1 — restart the app to pick a new URL.
 
-import { app, autoUpdater as nativeAutoUpdater, BrowserWindow, Menu, screen, shell } from 'electron'
+import { app, autoUpdater as nativeAutoUpdater, BrowserWindow, Menu, nativeImage, screen, shell } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import { join } from 'path'
 import { applyDevModeOverride } from './desktop-shell'
@@ -40,7 +40,7 @@ export function bootRemote(remoteUrl: string): void {
       width: Math.min(1600, work.width - 40),
       height: Math.min(1000, work.height - 40),
       title: 'Harness',
-      icon: join(__dirname, '../../resources/icon.png'),
+      icon: nativeImage.createFromPath(join(__dirname, '../../resources/icon.png')),
       ...(process.platform === 'linux'
         ? { frame: false }
         : { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 12, y: 12 } }),
