@@ -31,7 +31,7 @@ import {
   type AppState,
   type StateEvent
 } from '../shared/state'
-import type { LocalTransportHandle } from './types'
+import type { LocalTransportHandle, BackendConnection } from './types'
 
 /** Stable id for the in-process Electron backend. Mirrors the value in
  *  src/main/persistence.ts; duplicated here because main isn't
@@ -86,45 +86,82 @@ class ClientStore {
  *  plans/tier-1-multi-backend-ux.md §C). For Tier 1 v1 the registry
  *  starts with only the local backend; remote backends are added in
  *  later steps when the chip strip / add-backend modal lands. */
+interface BackendEntry {
+  connection: BackendConnection
+  transport: LocalTransportHandle
+  store: ClientStore
+}
+
 class BackendsRegistry {
-  private stores = new Map<string, ClientStore>()
-  private transports = new Map<string, LocalTransportHandle>()
+  private entries = new Map<string, BackendEntry>()
   private activeId: string = LOCAL_BACKEND_ID
   private activeIdListeners = new Set<() => void>()
+  private listListeners = new Set<() => void>()
 
-  add(id: string, transport: LocalTransportHandle): ClientStore {
-    if (this.stores.has(id)) {
-      throw new Error(`backend already registered: ${id}`)
+  add(connection: BackendConnection, transport: LocalTransportHandle): ClientStore {
+    if (this.entries.has(connection.id)) {
+      throw new Error(`backend already registered: ${connection.id}`)
     }
     const store = new ClientStore()
-    this.stores.set(id, store)
-    this.transports.set(id, transport)
+    this.entries.set(connection.id, { connection, transport, store })
     transport.onStateEvent((event, _seq) => store.applyEvent(event as StateEvent))
+    for (const l of this.listListeners) l()
     return store
   }
 
+  remove(id: string): void {
+    if (id === LOCAL_BACKEND_ID) {
+      throw new Error('cannot remove local backend')
+    }
+    if (!this.entries.has(id)) return
+    this.entries.delete(id)
+    if (this.activeId === id) this.setActive(LOCAL_BACKEND_ID)
+    for (const l of this.listListeners) l()
+  }
+
+  updateConnection(id: string, patch: Partial<BackendConnection>): void {
+    const entry = this.entries.get(id)
+    if (!entry) return
+    entry.connection = { ...entry.connection, ...patch }
+    for (const l of this.listListeners) l()
+  }
+
   has(id: string): boolean {
-    return this.stores.has(id)
+    return this.entries.has(id)
   }
 
   getStore(id: string): ClientStore | undefined {
-    return this.stores.get(id)
+    return this.entries.get(id)?.store
   }
 
   getTransport(id: string): LocalTransportHandle | undefined {
-    return this.transports.get(id)
+    return this.entries.get(id)?.transport
+  }
+
+  getConnection(id: string): BackendConnection | undefined {
+    return this.entries.get(id)?.connection
+  }
+
+  listConnections(): BackendConnection[] {
+    return Array.from(this.entries.values()).map((e) => e.connection)
   }
 
   getActiveStore(): ClientStore {
-    const s = this.stores.get(this.activeId)
-    if (!s) throw new Error(`no store for active backend ${this.activeId}`)
-    return s
+    const e = this.entries.get(this.activeId)
+    if (!e) throw new Error(`no store for active backend ${this.activeId}`)
+    return e.store
   }
 
   getActiveTransport(): LocalTransportHandle {
-    const t = this.transports.get(this.activeId)
-    if (!t) throw new Error(`no transport for active backend ${this.activeId}`)
-    return t
+    const e = this.entries.get(this.activeId)
+    if (!e) throw new Error(`no transport for active backend ${this.activeId}`)
+    return e.transport
+  }
+
+  getActiveConnection(): BackendConnection {
+    const e = this.entries.get(this.activeId)
+    if (!e) throw new Error(`no connection for active backend ${this.activeId}`)
+    return e.connection
   }
 
   getActiveId(): string {
@@ -132,12 +169,12 @@ class BackendsRegistry {
   }
 
   getAllIds(): string[] {
-    return Array.from(this.stores.keys())
+    return Array.from(this.entries.keys())
   }
 
   setActive(id: string): void {
     if (this.activeId === id) return
-    if (!this.stores.has(id)) throw new Error(`unknown backend ${id}`)
+    if (!this.entries.has(id)) throw new Error(`unknown backend ${id}`)
     this.activeId = id
     // Push the new active transport into the preload's router so
     // window.api.X(...) calls go to the right backend. The function is
@@ -147,7 +184,7 @@ class BackendsRegistry {
     const setter = (window as unknown as {
       __harness_setActiveTransport?: (impl: LocalTransportHandle) => void
     }).__harness_setActiveTransport
-    const transport = this.transports.get(id)
+    const transport = this.entries.get(id)?.transport
     if (setter && transport) setter(transport)
     for (const l of this.activeIdListeners) l()
   }
@@ -156,6 +193,13 @@ class BackendsRegistry {
     this.activeIdListeners.add(cb)
     return () => {
       this.activeIdListeners.delete(cb)
+    }
+  }
+
+  subscribeList(cb: () => void): () => void {
+    this.listListeners.add(cb)
+    return () => {
+      this.listListeners.delete(cb)
     }
   }
 }
@@ -200,7 +244,21 @@ export async function initStore(): Promise<void> {
   // Wire the local backend first; for v1 it's the only one in the
   // registry. Remote backends from `connections[]` get added by the
   // chip-strip controller in a later commit.
-  const localStore = registry.add(LOCAL_BACKEND_ID, localTransport)
+  //
+  // The connection's `kind` follows the runtime: in the browser web
+  // client, `__HARNESS_WEB__` is true and the underlying transport is
+  // a WebSocketClientTransport — semantically remote, even though the
+  // registry id is still `local` (it's the always-present default the
+  // user can't remove). UI gating reads `kind`, not the id.
+  const isWeb = typeof window !== 'undefined' && window.__HARNESS_WEB__ === true
+  const localConnection: BackendConnection = {
+    id: LOCAL_BACKEND_ID,
+    label: 'Local',
+    url: '',
+    kind: isWeb ? 'remote' : 'local',
+    addedAt: 0
+  }
+  const localStore = registry.add(localConnection, localTransport)
 
   const [snapshot, id] = await Promise.all([
     localTransport.getStateSnapshot(),
@@ -324,6 +382,42 @@ export function useJsonClaudeSession(sessionId: string) {
  *  so subscribers here skip the streaming hot path entirely. */
 export function useJsonClaudePendingApprovals() {
   return useAppState((s) => s.jsonClaude.pendingApprovals)
+}
+
+/** Returns the list of registered backends (local + any added remotes).
+ *  Re-renders on backend add/remove/rename. The chip strip uses this to
+ *  render avatars; UI gating uses `useActiveBackend()` instead. */
+export function useConnections(): readonly BackendConnection[] {
+  return useSyncExternalStore(
+    (cb) => registry.subscribeList(cb),
+    () => registry.listConnections(),
+    () => []
+  )
+}
+
+/** Returns the currently-active backend's connection metadata. Re-renders
+ *  on either the active id changing OR the active backend's metadata
+ *  being patched (e.g. rename). The most-used field is `kind` — gating
+ *  things like RemoteFilePicker vs native dialog (per design §L). */
+export function useActiveBackend(): BackendConnection {
+  return useSyncExternalStore(
+    (cb) => {
+      const offList = registry.subscribeList(cb)
+      const offId = registry.subscribeActiveId(cb)
+      return () => {
+        offList()
+        offId()
+      }
+    },
+    () => registry.getActiveConnection(),
+    () => ({
+      id: LOCAL_BACKEND_ID,
+      label: 'Local',
+      url: '',
+      kind: 'local' as const,
+      addedAt: 0
+    })
+  )
 }
 
 /** Test-only / advanced: get a handle to the registry. Lets the chip

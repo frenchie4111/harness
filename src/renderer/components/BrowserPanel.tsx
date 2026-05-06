@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { ArrowLeft, ArrowRight, RotateCw, Wrench, Loader2 } from 'lucide-react'
 import { useBrowser } from '../store'
 import { Tooltip } from './Tooltip'
-import { isWebClient } from '../web-mode'
+import { useActiveBackend } from '../store'
 import { RemoteBrowserView } from './RemoteBrowserView'
 
 interface BrowserPanelProps {
@@ -34,7 +34,13 @@ export function BrowserPanel({ tabId, visible, initialUrl }: BrowserPanelProps):
     if (!editing) setDraftUrl(currentUrl)
   }, [currentUrl, editing])
 
-  const webMode = isWebClient()
+  // When the active backend is remote (or we're in the browser web
+  // client, where the active backend's underlying transport is WS so
+  // its `kind` is also 'remote'), the WebContentsView overlay is
+  // unavailable — the BrowserPanel falls back to the polled-screenshot
+  // view. Per design §L: replace the old __HARNESS_WEB__ process flag
+  // with a per-backend kind check.
+  const webMode = useActiveBackend().kind === 'remote'
 
   const pushBounds = useCallback(() => {
     const el = bodyRef.current

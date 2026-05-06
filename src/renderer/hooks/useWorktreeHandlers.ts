@@ -1,12 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { Worktree, PendingWorktree, PRStatus, TerminalTab } from '../types'
 import { markTerminalClosing } from '../components/XTerminal'
-
-declare global {
-  interface Window {
-    __HARNESS_WEB__?: boolean
-  }
-}
+import { useActiveBackend } from '../store'
 
 interface UseWorktreeHandlersArgs {
   worktrees: Worktree[]
@@ -40,6 +35,7 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
   } = args
 
   const [repoPickerOpen, setRepoPickerOpen] = useState(false)
+  const activeBackend = useActiveBackend()
 
   const focusNewRepo = useCallback(
     (root: string) => {
@@ -52,10 +48,13 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
   )
 
   const handleAddRepo = useCallback(async () => {
-    // Web/headless mode: native dialog runs on the user's laptop, but the
-    // repos live on the remote box. Open the in-app RemoteFilePicker
-    // instead and let it call repo:addAtPath when the user selects.
-    if (window.__HARNESS_WEB__) {
+    // Active backend is remote: the native dialog runs on the user's
+    // laptop, but the repos live on the remote box (or in the web
+    // client where there's no native dialog at all). Open the in-app
+    // RemoteFilePicker instead and let it call repo:addAtPath when the
+    // user selects. Per design §L: gate on per-backend kind, not the
+    // legacy process-wide __HARNESS_WEB__ flag.
+    if (activeBackend.kind === 'remote') {
       setRepoPickerOpen(true)
       return
     }
@@ -63,7 +62,7 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
     // Main dispatches worktrees/reposChanged + listChanged; we just route
     // focus to the new repo's main worktree once it lands in the store.
     if (root) focusNewRepo(root)
-  }, [focusNewRepo])
+  }, [activeBackend.kind, focusNewRepo])
 
   const handleRepoPickerSelect = useCallback(
     async (path: string) => {
