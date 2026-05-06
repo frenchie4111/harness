@@ -63,9 +63,22 @@ export function AddBackendModal({ isOpen, onClose }: AddBackendModalProps): JSX.
     setBusy(true)
     let ws: WebSocketClientTransport | null = null
     try {
+      const registry = getBackendsRegistry()
+      // The onConnectionChange callback closes over a mutable savedId
+      // that gets populated AFTER connections:add returns. Until then
+      // it's a no-op — events from the test handshake don't update
+      // status because there's nothing to set status on yet.
+      let savedId: string | null = null
       ws = new WebSocketClientTransport({
         url: parseResult.parsed.wsUrl,
-        token: parseResult.parsed.token
+        token: parseResult.parsed.token,
+        onConnectionChange: (connected, reason) => {
+          if (!savedId) return
+          registry.setStatus(savedId, {
+            state: connected ? 'connected' : 'disconnected',
+            reason
+          })
+        }
       })
       await ws.connect()
       // A successful getStateSnapshot proves auth + protocol parity —
@@ -94,8 +107,8 @@ export function AddBackendModal({ isOpen, onClose }: AddBackendModalProps): JSX.
       // Hand the already-connected transport to the registry — no need
       // to re-handshake. Then make the new backend active so the chip
       // strip lights up and subsequent window.api.X calls route here.
-      const registry = getBackendsRegistry()
       registry.add(saved, ws)
+      savedId = saved.id  // unblocks the onConnectionChange callback
       registry.setActive(saved.id)
       void window.api.connectionsSetActive(saved.id)
       void window.api.connectionsSetLastConnected(saved.id)

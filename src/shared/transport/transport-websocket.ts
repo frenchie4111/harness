@@ -51,6 +51,12 @@ export interface WebSocketClientTransportOptions {
   maxBackoffMs?: number
   /** Inject a custom WebSocket constructor (tests / non-browser runtimes). */
   WebSocketCtor?: typeof WebSocket
+  /** Fires whenever the underlying socket transitions between
+   *  open and closed. Used by the multi-backend chip strip to grey
+   *  disconnected chips without changing what the slice hooks read.
+   *  Tier 1 only distinguishes connected vs disconnected per design
+   *  §I; the optional `reason` is surfaced in the chip's tooltip. */
+  onConnectionChange?: (connected: boolean, reason?: string) => void
 }
 
 export class WebSocketClientTransport implements ClientTransport {
@@ -147,6 +153,7 @@ export class WebSocketClientTransport implements ClientTransport {
       ws.addEventListener('open', () => {
         opened = true
         this.backoffMs = this.initialBackoffMs
+        this.opts.onConnectionChange?.(true)
         // Fire-and-forget: the snapshot request lets the store mirror
         // reconcile after a reconnect gap. First connect also uses this
         // path, so `getStateSnapshot()` called by the bootstrapper
@@ -175,13 +182,20 @@ export class WebSocketClientTransport implements ClientTransport {
         // 'error' fires before 'close'; just log-and-forward.
       })
 
-      ws.addEventListener('close', () => {
+      ws.addEventListener('close', (evt) => {
         this.ws = null
         this.connectPromise = null
         for (const p of this.pending.values()) {
           p.reject(new Error('socket closed before response'))
         }
         this.pending.clear()
+        // CloseEvent.reason is empty for transport-level failures; in
+        // that case fall back to the code so users see something
+        // actionable in the chip tooltip.
+        const closeEvt = evt as CloseEvent | undefined
+        const reason = closeEvt?.reason || (closeEvt?.code ? `close code ${closeEvt.code}` : 'connection lost')
+        if (opened) this.opts.onConnectionChange?.(false, reason)
+        else this.opts.onConnectionChange?.(false, 'failed to connect')
         if (!opened) reject(new Error('websocket failed to open'))
         if (!this.closed) this.scheduleReconnect()
       })

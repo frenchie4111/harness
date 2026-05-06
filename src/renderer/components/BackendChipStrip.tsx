@@ -3,6 +3,7 @@ import { Laptop, Server, Plus } from 'lucide-react'
 import {
   useConnections,
   useActiveBackend,
+  useBackendStatus,
   getBackendsRegistry
 } from '../store'
 import { Tooltip } from './Tooltip'
@@ -70,19 +71,26 @@ interface BackendChipProps {
 
 function BackendChip({ connection, isActive, onSelect }: BackendChipProps): JSX.Element {
   const Icon = connection.kind === 'local' ? Laptop : Server
+  const status = useBackendStatus(connection.id)
+  const disconnected = status.state === 'disconnected'
+  const tooltip = disconnected
+    ? `${connection.label} — disconnected${status.reason ? ': ' + status.reason : ''}`
+    : connection.label
   return (
-    <Tooltip label={connection.label} side="top">
+    <Tooltip label={tooltip} side="top">
       <button
         onClick={() => onSelect(connection.id)}
         className={`shrink-0 flex items-center gap-2 px-2 py-1.5 rounded-lg border transition-colors cursor-pointer min-w-0 ${
-          isActive
-            ? 'bg-surface text-fg-bright border-fg'
-            : 'bg-panel border-border text-dim hover:text-fg hover:border-border-strong'
+          disconnected
+            ? 'bg-panel/40 border-border text-faint hover:text-dim'
+            : isActive
+              ? 'bg-surface text-fg-bright border-fg'
+              : 'bg-panel border-border text-dim hover:text-fg hover:border-border-strong'
         }`}
-        style={{ maxWidth: 120 }}
+        style={{ maxWidth: 120, opacity: disconnected ? 0.55 : 1 }}
       >
         <span
-          className={`shrink-0 w-7 h-7 rounded flex items-center justify-center ${
+          className={`shrink-0 w-7 h-7 rounded flex items-center justify-center relative ${
             isActive ? 'bg-app/40' : 'bg-app/30'
           }`}
           style={connection.color ? { backgroundColor: connection.color } : undefined}
@@ -93,6 +101,12 @@ function BackendChip({ connection, isActive, onSelect }: BackendChipProps): JSX.
             </span>
           ) : (
             <Icon size={14} />
+          )}
+          {disconnected && (
+            <span
+              className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-danger ring-2 ring-panel"
+              aria-hidden="true"
+            />
           )}
         </span>
         <span className="text-xs font-medium truncate min-w-0">{connection.label}</span>

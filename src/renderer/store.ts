@@ -87,10 +87,19 @@ class ClientStore {
  *  plans/tier-1-multi-backend-ux.md §C). For Tier 1 v1 the registry
  *  starts with only the local backend; remote backends are added in
  *  later steps when the chip strip / add-backend modal lands. */
+/** Per-backend connection status (Tier 1 §I). KISS: two states only.
+ *  The local backend is hardcoded to 'connected' since it has no
+ *  socket to drop. Reasons populate the chip tooltip on disconnect. */
+export interface BackendStatus {
+  state: 'connected' | 'disconnected'
+  reason?: string
+}
+
 interface BackendEntry {
   connection: BackendConnection
   transport: LocalTransportHandle
   store: ClientStore
+  status: BackendStatus
 }
 
 class BackendsRegistry {
@@ -98,16 +107,45 @@ class BackendsRegistry {
   private activeId: string = LOCAL_BACKEND_ID
   private activeIdListeners = new Set<() => void>()
   private listListeners = new Set<() => void>()
+  private statusListeners = new Set<() => void>()
 
-  add(connection: BackendConnection, transport: LocalTransportHandle): ClientStore {
+  add(
+    connection: BackendConnection,
+    transport: LocalTransportHandle,
+    initialStatus: BackendStatus = { state: 'connected' }
+  ): ClientStore {
     if (this.entries.has(connection.id)) {
       throw new Error(`backend already registered: ${connection.id}`)
     }
     const store = new ClientStore()
-    this.entries.set(connection.id, { connection, transport, store })
+    this.entries.set(connection.id, {
+      connection,
+      transport,
+      store,
+      status: initialStatus
+    })
     transport.onStateEvent((event, _seq) => store.applyEvent(event as StateEvent))
     for (const l of this.listListeners) l()
     return store
+  }
+
+  setStatus(id: string, status: BackendStatus): void {
+    const entry = this.entries.get(id)
+    if (!entry) return
+    if (entry.status.state === status.state && entry.status.reason === status.reason) return
+    entry.status = status
+    for (const l of this.statusListeners) l()
+  }
+
+  getStatus(id: string): BackendStatus | undefined {
+    return this.entries.get(id)?.status
+  }
+
+  subscribeStatus(cb: () => void): () => void {
+    this.statusListeners.add(cb)
+    return () => {
+      this.statusListeners.delete(cb)
+    }
   }
 
   remove(id: string): void {
@@ -331,8 +369,19 @@ async function hydrateRemoteBackend(conn: BackendConnection): Promise<void> {
     }
     // BackendConnection.url is the wire URL with ws://-or-wss:// prefix
     // (parseConnectionUrl preserves the TLS choice from what the user
-    // pasted). The token is held separately in secrets.enc.
-    const ws = new WebSocketClientTransport({ url: conn.url, token })
+    // pasted). The token is held separately in secrets.enc. The
+    // onConnectionChange callback feeds into the registry's per-backend
+    // status, which the chip strip reads to grey disconnected entries.
+    const ws = new WebSocketClientTransport({
+      url: conn.url,
+      token,
+      onConnectionChange: (connected, reason) => {
+        registry.setStatus(conn.id, {
+          state: connected ? 'connected' : 'disconnected',
+          reason
+        })
+      }
+    })
     await ws.connect()
     if (registry.has(conn.id)) return
     registry.add(conn, ws)
@@ -442,6 +491,17 @@ export function useConnections(): readonly BackendConnection[] {
     (cb) => registry.subscribeList(cb),
     () => registry.listConnections(),
     () => []
+  )
+}
+
+/** Per-backend connection status. Re-renders only on transitions for
+ *  the specific id. Local always returns 'connected' since the
+ *  in-process transport has no socket to drop. */
+export function useBackendStatus(id: string): BackendStatus {
+  return useSyncExternalStore(
+    (cb) => registry.subscribeStatus(cb),
+    () => registry.getStatus(id) ?? { state: 'connected' },
+    () => ({ state: 'connected' })
   )
 }
 
