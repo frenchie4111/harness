@@ -53,6 +53,23 @@ const localTransportHandle: LocalTransportHandle = {
 }
 contextBridge.exposeInMainWorld('__harness_local_transport', localTransportHandle)
 
+// Active routing target for window.api (Tier 1 multi-backend UX).
+// Starts as the local transport; the renderer's BackendsRegistry calls
+// __harness_setActiveTransport() when the user switches backends so that
+// every window.api.X(...) call goes to the right backend without
+// callers needing to know.
+//
+// Caveat: existing onStateEvent / onSignal subscriptions captured the
+// transport handle at registration time, so they keep firing for the
+// PREVIOUS active transport after a swap. With only the local backend
+// in the registry today this never fires; rebind/fan-out logic for
+// multi-backend signals lands with the chip strip + add-backend wiring
+// (step 7). See plans/tier-1-multi-backend-ux.md §L.
+let currentImpl: LocalTransportHandle = localTransportHandle
+contextBridge.exposeInMainWorld('__harness_setActiveTransport', (impl: LocalTransportHandle) => {
+  currentImpl = impl
+})
+
 // Mark the renderer as running against a remote backend so existing
 // `window.__HARNESS_WEB__` branches (RemoteFilePicker, playwright
 // browser screenshot view, etc.) light up the same way they do in the
@@ -71,8 +88,13 @@ type DataCallback = (id: string, data: string) => void
 type ExitCallback = (id: string, exitCode: number) => void
 
 const req = (name: string, ...args: unknown[]): Promise<unknown> =>
-  transport.request(name, ...args)
-const sig = (name: string, ...args: unknown[]): void => transport.send(name, ...args)
+  currentImpl.request(name, ...args)
+const sig = (name: string, ...args: unknown[]): void => currentImpl.send(name, ...args)
+// Always-local path for renderer-shell concerns (the connections list).
+// Bypasses currentImpl so flipping the active backend never changes
+// where these go — see plans/tier-1-multi-backend-ux.md §C/§G.
+const reqLocal = (name: string, ...args: unknown[]): Promise<unknown> =>
+  localTransportHandle.request(name, ...args)
 
 contextBridge.exposeInMainWorld('api', {
   // Worktrees — list/branches stay as one-shot queries; the flat list lives
@@ -147,7 +169,7 @@ contextBridge.exposeInMainWorld('api', {
   unwatchChangedFiles: (worktreePath: string) =>
     sig('worktree:unwatchChangedFiles', worktreePath),
   onChangedFilesInvalidated: (callback: (worktreePath: string) => void) =>
-    transport.onSignal('worktree:changedFilesInvalidated', (path) => {
+    currentImpl.onSignal('worktree:changedFilesInvalidated', (path) => {
       callback(path as string)
     }),
   getFileDiff: (
@@ -239,7 +261,7 @@ contextBridge.exposeInMainWorld('api', {
   onWorktreesExternalCreate: (
     callback: (payload: { repoRoot: string; worktree: unknown; initialPrompt?: string }) => void
   ) =>
-    transport.onSignal('worktrees:externalCreate', (payload) => {
+    currentImpl.onSignal('worktrees:externalCreate', (payload) => {
       callback(payload as { repoRoot: string; worktree: unknown; initialPrompt?: string })
     }),
   setNameClaudeSessions: (enabled: boolean) => req('config:setNameClaudeSessions', enabled),
@@ -361,13 +383,22 @@ contextBridge.exposeInMainWorld('api', {
   windowToggleMaximize: () => ipcRenderer.send('window:toggleMaximize'),
   windowClose: () => ipcRenderer.send('window:close'),
 
-  // App-level events from menu
-  onOpenSettings: (callback: () => void) => transport.onSignal('app:openSettings', () => callback()),
-  onTogglePerfMonitor: (callback: () => void) => transport.onSignal('app:togglePerfMonitor', () => callback()),
-  onOpenKeyboardShortcuts: (callback: () => void) => transport.onSignal('app:openKeyboardShortcuts', () => callback()),
-  onOpenNewProject: (callback: () => void) => transport.onSignal('menu:newProject', () => callback()),
-  onOpenReportIssue: (callback: () => void) => transport.onSignal('app:openReportIssue', () => callback()),
-  onDebugCrashFocusedTab: (callback: () => void) => transport.onSignal('app:debugCrashFocusedTab', () => callback()),
+  // App-level events from menu — always-local: only the local Electron's
+  // Menu fires these (a remote `harness-server` has no menu). Bind to
+  // localTransportHandle directly so they keep working regardless of
+  // which backend is active.
+  onOpenSettings: (callback: () => void) =>
+    localTransportHandle.onSignal('app:openSettings', () => callback()),
+  onTogglePerfMonitor: (callback: () => void) =>
+    localTransportHandle.onSignal('app:togglePerfMonitor', () => callback()),
+  onOpenKeyboardShortcuts: (callback: () => void) =>
+    localTransportHandle.onSignal('app:openKeyboardShortcuts', () => callback()),
+  onOpenNewProject: (callback: () => void) =>
+    localTransportHandle.onSignal('menu:newProject', () => callback()),
+  onOpenReportIssue: (callback: () => void) =>
+    localTransportHandle.onSignal('app:openReportIssue', () => callback()),
+  onDebugCrashFocusedTab: (callback: () => void) =>
+    localTransportHandle.onSignal('app:debugCrashFocusedTab', () => callback()),
 
   // Hooks
   acceptHooks: () => req('hooks:accept'),
@@ -436,7 +467,7 @@ contextBridge.exposeInMainWorld('api', {
     sig('terminal:takeControl', id, cols, rows)
   },
   onTerminalData: (callback: DataCallback) =>
-    transport.onSignal('terminal:data', (id, data) => {
+    currentImpl.onSignal('terminal:data', (id, data) => {
       callback(id as string, data as string)
     }),
   // Terminal status + shell activity live in the main-process store now;
@@ -448,7 +479,7 @@ contextBridge.exposeInMainWorld('api', {
   clearActivityLog: (worktreePath?: string) => req('activity:clear', worktreePath),
 
   onTerminalExit: (callback: ExitCallback) =>
-    transport.onSignal('terminal:exit', (id, exitCode) => {
+    currentImpl.onSignal('terminal:exit', (id, exitCode) => {
       callback(id as string, exitCode as number)
     }),
 
@@ -498,32 +529,33 @@ contextBridge.exposeInMainWorld('api', {
   clearJsonClaudeSessionToolApprovals: (id: string, toolNames?: string[]) =>
     req('jsonClaude:clearSessionToolApprovals', id, toolNames),
 
-  // State transport (snapshot + event stream). Replaces ad-hoc per-field
-  // getters and onXChanged subscriptions one slice at a time.
-  getStateSnapshot: () => transport.getStateSnapshot(),
+  // State transport (snapshot + event stream). Routes to active backend
+  // so XTerminal's font cache and similar listeners follow active. The
+  // BackendsRegistry uses the lower-level __harness_local_transport
+  // handle directly to wire each backend's store, independent of
+  // routing.
+  getStateSnapshot: () => currentImpl.getStateSnapshot(),
   onStateEvent: (callback: (event: unknown, seq: number) => void) =>
-    transport.onStateEvent((event, seq) => callback(event, seq)),
+    currentImpl.onStateEvent((event, seq) => callback(event, seq)),
 
-  // Server-assigned identity of this client. Used by the renderer to
-  // decide whether it is the terminal's current controller or a
-  // spectator, and which "take control" affordance to render.
-  getClientId: () => transport.getClientId(),
+  // Server-assigned identity of this client wrt the active backend.
+  getClientId: () => currentImpl.getClientId(),
 
   // Multi-backend connections list (Tier 1). These always route to the
   // local Electron's transport since the connections list is renderer-
   // shell-owned (see plans/tier-1-multi-backend-ux.md §C/§G). Never
   // forwarded to remote backends — they don't manage other backends.
-  connectionsList: () => req('connections:list'),
+  connectionsList: () => reqLocal('connections:list'),
   connectionsAdd: (
     input: { label: string; url: string; kind: 'remote'; color?: string; initials?: string },
     token: string
-  ) => req('connections:add', input, token),
-  connectionsRemove: (id: string) => req('connections:remove', id),
+  ) => reqLocal('connections:add', input, token),
+  connectionsRemove: (id: string) => reqLocal('connections:remove', id),
   connectionsRename: (id: string, label: string) =>
-    req('connections:rename', id, label),
-  connectionsSetActive: (id: string) => req('connections:setActive', id),
+    reqLocal('connections:rename', id, label),
+  connectionsSetActive: (id: string) => reqLocal('connections:setActive', id),
   connectionsSetLastConnected: (id: string, when?: number) =>
-    req('connections:setLastConnected', id, when),
-  connectionsGetToken: (id: string) => req('connections:getToken', id),
-  connectionsHasToken: (id: string) => req('connections:hasToken', id)
+    reqLocal('connections:setLastConnected', id, when),
+  connectionsGetToken: (id: string) => reqLocal('connections:getToken', id),
+  connectionsHasToken: (id: string) => reqLocal('connections:hasToken', id)
 })

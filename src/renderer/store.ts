@@ -139,6 +139,16 @@ class BackendsRegistry {
     if (this.activeId === id) return
     if (!this.stores.has(id)) throw new Error(`unknown backend ${id}`)
     this.activeId = id
+    // Push the new active transport into the preload's router so
+    // window.api.X(...) calls go to the right backend. The function is
+    // unavailable in environments that don't expose it (e.g. older
+    // preloads or future test fixtures); a missing setter is silently
+    // tolerated.
+    const setter = (window as unknown as {
+      __harness_setActiveTransport?: (impl: LocalTransportHandle) => void
+    }).__harness_setActiveTransport
+    const transport = this.transports.get(id)
+    if (setter && transport) setter(transport)
     for (const l of this.activeIdListeners) l()
   }
 
