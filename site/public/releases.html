@@ -78,6 +78,24 @@
   <!-- Releases -->
   <div class="max-w-3xl mx-auto px-6 pb-24">
 
+    <!-- v2.8.1 -->
+    <section class="release-section py-10">
+      <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
+        <h2 class="text-3xl font-bold tracking-tight">v2.8.1</h2>
+        <span class="text-sm text-neutral-500">May 6, 2026</span>
+      </div>
+      <a href="https://github.com/frenchie4111/harness/releases/tag/v2.8.1" class="text-sm text-amber-400/80 hover:text-amber-300 transition-colors">Download &rarr;</a>
+      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">Targeted bug fixes for activity tracking, the built-in TypeScript editor, and a false re-authentication prompt in chat mode.</p>
+      <div class="note-body">
+        <h4>Fixes</h4>
+        <ul>
+          <li>Fixed worktree activity timestamps updating when nothing meaningful had changed, causing unnecessary background work.</li>
+          <li>Restored TypeScript language features (type checking, hover types, autocompletion) in the built-in file editor.</li>
+          <li>Fixed chat mode incorrectly showing a re-authentication prompt when Claude's reply happened to match the auth-required pattern.</li>
+        </ul>
+      </div>
+    </section>
+
     <!-- v2.8.0 -->
     <section class="release-section py-10">
       <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
