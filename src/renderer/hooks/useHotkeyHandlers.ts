@@ -5,6 +5,7 @@ import { resolveHotkeys, type Action, type HotkeyBinding } from '../hotkeys'
 import { useHotkeys } from './useHotkeys'
 import { groupWorktrees, getGroupKey, type GroupKey } from '../worktree-sort'
 import { focusTerminalById } from '../components/XTerminal'
+import { useConnections, getBackendsRegistry } from '../store'
 
 interface UseHotkeyHandlersArgs {
   worktrees: Worktree[]
@@ -149,6 +150,24 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
     [visibleWorktrees, setActiveWorktreeId]
   )
 
+  // Backend switcher (multi-backend Tier 1, design §F). Cmd+Shift+1..9
+  // jumps to backend N (1-indexed in the chip strip's render order).
+  // The connections list always starts with Local at index 0; Cmd+Shift+1
+  // is "back to local".
+  const connections = useConnections()
+  const switchToBackendByIndex = useCallback(
+    (index: number) => {
+      const target = connections[index]
+      if (!target) return
+      const registry = getBackendsRegistry()
+      if (registry.getActiveId() === target.id) return
+      registry.setActive(target.id)
+      void window.api.connectionsSetActive(target.id)
+      void window.api.connectionsSetLastConnected(target.id)
+    },
+    [connections]
+  )
+
   const cycleWorktree = useCallback(
     (delta: number) => {
       if (allOrderedWorktrees.length === 0) return
@@ -192,6 +211,15 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       worktree7: () => switchToWorktreeByIndex(6),
       worktree8: () => switchToWorktreeByIndex(7),
       worktree9: () => switchToWorktreeByIndex(8),
+      backend1: () => switchToBackendByIndex(0),
+      backend2: () => switchToBackendByIndex(1),
+      backend3: () => switchToBackendByIndex(2),
+      backend4: () => switchToBackendByIndex(3),
+      backend5: () => switchToBackendByIndex(4),
+      backend6: () => switchToBackendByIndex(5),
+      backend7: () => switchToBackendByIndex(6),
+      backend8: () => switchToBackendByIndex(7),
+      backend9: () => switchToBackendByIndex(8),
       newShellTab: () => {
         if (activeWorktreeId) handleAddTerminalTab(activeWorktreeId)
       },
@@ -264,6 +292,7 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
     [
       cycleWorktree,
       switchToWorktreeByIndex,
+      switchToBackendByIndex,
       cycleTab,
       activeWorktreeId,
       terminalTabs,

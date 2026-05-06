@@ -10,6 +10,15 @@ export type Action =
   | 'worktree7'
   | 'worktree8'
   | 'worktree9'
+  | 'backend1'
+  | 'backend2'
+  | 'backend3'
+  | 'backend4'
+  | 'backend5'
+  | 'backend6'
+  | 'backend7'
+  | 'backend8'
+  | 'backend9'
   | 'newShellTab'
   | 'closeTab'
   | 'nextTab'
@@ -54,6 +63,20 @@ export const DEFAULT_HOTKEYS: Record<Action, HotkeyBinding> = {
   worktree7: { key: '7', modifiers: { cmd: true } },
   worktree8: { key: '8', modifiers: { cmd: true } },
   worktree9: { key: '9', modifiers: { cmd: true } },
+  // Backend switcher hotkeys (multi-backend Tier 1, design §F).
+  // Cmd+Shift+1..9 to avoid colliding with worktree1..9. The cycle
+  // hotkey from the design (Cmd+`) is already taken by `focusTerminal`,
+  // so cycle is deferred — index switching is enough for v1's expected
+  // 2-3 backend usage.
+  backend1: { key: '1', modifiers: { cmd: true, shift: true } },
+  backend2: { key: '2', modifiers: { cmd: true, shift: true } },
+  backend3: { key: '3', modifiers: { cmd: true, shift: true } },
+  backend4: { key: '4', modifiers: { cmd: true, shift: true } },
+  backend5: { key: '5', modifiers: { cmd: true, shift: true } },
+  backend6: { key: '6', modifiers: { cmd: true, shift: true } },
+  backend7: { key: '7', modifiers: { cmd: true, shift: true } },
+  backend8: { key: '8', modifiers: { cmd: true, shift: true } },
+  backend9: { key: '9', modifiers: { cmd: true, shift: true } },
   newShellTab: { key: 't', modifiers: { cmd: true } },
   closeTab: { key: 'w', modifiers: { cmd: true } },
   nextTab: { key: 'Tab', modifiers: { ctrl: true } },
@@ -162,6 +185,15 @@ export const ACTION_LABELS: Record<Action, string> = {
   worktree7: 'Switch to worktree 7',
   worktree8: 'Switch to worktree 8',
   worktree9: 'Switch to worktree 9',
+  backend1: 'Switch to backend 1',
+  backend2: 'Switch to backend 2',
+  backend3: 'Switch to backend 3',
+  backend4: 'Switch to backend 4',
+  backend5: 'Switch to backend 5',
+  backend6: 'Switch to backend 6',
+  backend7: 'Switch to backend 7',
+  backend8: 'Switch to backend 8',
+  backend9: 'Switch to backend 9',
   newShellTab: 'New shell tab',
   closeTab: 'Close tab',
   nextTab: 'Next tab',
