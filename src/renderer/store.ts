@@ -390,6 +390,11 @@ async function hydrateRemoteBackend(conn: BackendConnection): Promise<void> {
     // pasted). The token is held separately in secrets.enc. The
     // onConnectionChange callback feeds into the registry's per-backend
     // status, which the chip strip reads to grey disconnected entries.
+    //
+    // onSnapshot fires after every (re)connect — we seed the registry's
+    // ClientStore with each fresh snapshot so an inactive backend that
+    // briefly drops + reconnects in the background catches up cleanly
+    // when the user switches to it.
     const ws = new WebSocketClientTransport({
       url: conn.url,
       token,
@@ -398,11 +403,25 @@ async function hydrateRemoteBackend(conn: BackendConnection): Promise<void> {
           state: connected ? 'connected' : 'disconnected',
           reason
         })
+      },
+      onSnapshot: (snapshot) => {
+        const store = registry.getStore(conn.id)
+        if (store) store.setSnapshot(snapshot.state)
       }
     })
     await ws.connect()
     if (registry.has(conn.id)) return
-    registry.add(conn, ws)
+    // Seed the new ClientStore with the initial snapshot + client id
+    // before registering so the user sees existing worktrees / panes
+    // the instant they switch backends, instead of the onboarding
+    // screen that fires off `initialState`'s empty repoRoots.
+    const [snapshot, clientId] = await Promise.all([
+      ws.getStateSnapshot(),
+      ws.getClientId()
+    ])
+    const store = registry.add(conn, ws)
+    store.setSnapshot(snapshot.state)
+    store.setClientId(clientId)
   } catch (err) {
     // eslint-disable-next-line no-console
     console.warn(`[harness] failed to connect to backend ${conn.id}`, err)

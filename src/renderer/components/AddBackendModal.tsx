@@ -6,6 +6,7 @@ import {
 } from '../../shared/transport/parse-connection-url'
 import { WebSocketClientTransport } from '../../shared/transport/transport-websocket'
 import { getBackendsRegistry } from '../store'
+import type { StateSnapshot } from '../../shared/state'
 import type { BackendConnection } from '../types'
 
 interface AddBackendModalProps {
@@ -85,13 +86,16 @@ export function AddBackendModal({ isOpen, onClose }: AddBackendModalProps): JSX.
       // anything beyond a couple seconds is almost certainly a bad
       // token or wrong port, so we cap the round-trip with our own
       // timer rather than waiting on the WS layer's reconnect logic.
-      const snapshot = await Promise.race<unknown>([
+      // We keep the snapshot to seed the new backend's mirror right
+      // below — without it the renderer would see an empty store and
+      // bounce the user to the onboarding screen.
+      const snapshot = (await Promise.race<unknown>([
         ws.getStateSnapshot(),
         new Promise((_, reject) =>
           setTimeout(() => reject(new Error('Timed out waiting for snapshot — wrong port?')), 5000)
         )
-      ])
-      void snapshot
+      ])) as StateSnapshot
+      const clientId = await ws.getClientId()
 
       // Persist via main. The returned BackendConnection has the new
       // uuid + addedAt and is what we store in the registry.
@@ -105,9 +109,14 @@ export function AddBackendModal({ isOpen, onClose }: AddBackendModalProps): JSX.
       )
 
       // Hand the already-connected transport to the registry — no need
-      // to re-handshake. Then make the new backend active so the chip
-      // strip lights up and subsequent window.api.X calls route here.
-      registry.add(saved, ws)
+      // to re-handshake. Seed the new backend's ClientStore with the
+      // snapshot we just fetched so existing worktrees / panes / sessions
+      // are visible immediately on switch (otherwise the renderer reads
+      // initialState and shows the onboarding screen). Then make the
+      // new backend active so subsequent window.api.X calls route here.
+      const store = registry.add(saved, ws)
+      store.setSnapshot(snapshot.state)
+      store.setClientId(clientId)
       savedId = saved.id  // unblocks the onConnectionChange callback
       registry.setActive(saved.id)
       void window.api.connectionsSetActive(saved.id)
