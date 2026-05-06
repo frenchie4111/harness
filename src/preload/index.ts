@@ -486,5 +486,23 @@ contextBridge.exposeInMainWorld('api', {
   // Server-assigned identity of this client. Used by the renderer to
   // decide whether it is the terminal's current controller or a
   // spectator, and which "take control" affordance to render.
-  getClientId: () => transport.getClientId()
+  getClientId: () => transport.getClientId(),
+
+  // Multi-backend connections list (Tier 1). These always route to the
+  // local Electron's transport since the connections list is renderer-
+  // shell-owned (see plans/tier-1-multi-backend-ux.md §C/§G). Never
+  // forwarded to remote backends — they don't manage other backends.
+  connectionsList: () => req('connections:list'),
+  connectionsAdd: (
+    input: { label: string; url: string; kind: 'remote'; color?: string; initials?: string },
+    token: string
+  ) => req('connections:add', input, token),
+  connectionsRemove: (id: string) => req('connections:remove', id),
+  connectionsRename: (id: string, label: string) =>
+    req('connections:rename', id, label),
+  connectionsSetActive: (id: string) => req('connections:setActive', id),
+  connectionsSetLastConnected: (id: string, when?: number) =>
+    req('connections:setLastConnected', id, when),
+  connectionsGetToken: (id: string) => req('connections:getToken', id),
+  connectionsHasToken: (id: string) => req('connections:hasToken', id)
 })

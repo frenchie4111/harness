@@ -522,7 +522,22 @@ function buildApi(transport: WebSocketClientTransport): ElectronAPI {
     onStateEvent: (callback) =>
       transport.onStateEvent((event, seq) => callback(event, seq)),
 
-    getClientId: () => transport.getClientId()
+    getClientId: () => transport.getClientId(),
+
+    // Multi-backend connections list (Tier 1) is an Electron-only
+    // concept — the web client only ever connects to one backend (the
+    // server it's served from). Stubbed to keep the ElectronAPI
+    // contract satisfied; nothing in the web flow should call these.
+    connectionsList: () => Promise.resolve(unavailable('connectionsList', [])),
+    connectionsAdd: () =>
+      Promise.reject(new Error('connectionsAdd is unavailable in the web client')),
+    connectionsRemove: () => Promise.resolve(unavailable('connectionsRemove', false)),
+    connectionsRename: () => Promise.resolve(unavailable('connectionsRename', false)),
+    connectionsSetActive: () => Promise.resolve(unavailable('connectionsSetActive', false)),
+    connectionsSetLastConnected: () =>
+      Promise.resolve(unavailable('connectionsSetLastConnected', false)),
+    connectionsGetToken: () => Promise.resolve(unavailable('connectionsGetToken', null)),
+    connectionsHasToken: () => Promise.resolve(unavailable('connectionsHasToken', false))
   }
 
   return api

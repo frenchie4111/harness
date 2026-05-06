@@ -1,5 +1,6 @@
 import { existsSync, lstatSync, readFileSync } from 'fs'
 import { createRequire } from 'module'
+import { randomUUID } from 'crypto'
 import { join } from 'path'
 import { PtyManager } from './pty-manager'
 import { ApprovalBridge } from './approval-bridge'
@@ -36,7 +37,7 @@ import { getLeaves, mapLeaves } from '../shared/state/terminals'
 import { listWorktrees, listBranches, continueWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getCommitChangedFiles, getCommitFileDiffSides, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, readWorktreeFile, readWorktreeFileBinary, writeWorktreeFile, getFileDiffSides, getCurrentBranch, symlinkClaudeSettings, type MergeStrategy } from './worktree'
 import { getPRStatus, testToken, starRepo, unstarRepo, isRepoStarred } from './github'
 import { AVAILABLE_EDITORS, DEFAULT_EDITOR_ID, openInEditor } from './editor'
-import { setSecret, hasSecret, deleteSecret } from './secrets'
+import { setSecret, getSecret, hasSecret, deleteSecret } from './secrets'
 import { resolveGitHubToken, getTokenSource, invalidateTokenCache, getCachedToken } from './github-auth'
 import {
   loadConfig,
@@ -53,6 +54,8 @@ import {
   DEFAULT_HARNESS_SYSTEM_PROMPT,
   DEFAULT_HARNESS_SYSTEM_PROMPT_MAIN,
   pruneTerminalHistory,
+  LOCAL_BACKEND_ID,
+  type BackendConnection,
   type PersistedPaneNode,
   type QuestStep
 } from './persistence'
@@ -2410,6 +2413,103 @@ function registerIpcHandlers(): void {
       payload: rounded
     })
     return true
+  })
+
+  // ---- Multi-backend connections list (Tier 1) -----------------------
+  // The connections list is renderer-shell-owned (per plans/tier-1-multi-
+  // backend-ux.md §C/§G) — it lives in the local Electron's config.json,
+  // not in any backend's slice, and is ONLY exposed by the local backend's
+  // transport. Remote backends don't manage other backends. Tokens for
+  // remote connections live in secrets.enc keyed `backend-token:<id>`.
+  //
+  // Renderer-shell handlers are stateless wrt the store — they just read/
+  // write `config` and persist via saveConfig. There's no slice for
+  // connections by design (nothing else needs to subscribe).
+  transport.onRequest('connections:list', () => {
+    return config.connections ?? []
+  })
+
+  transport.onRequest(
+    'connections:add',
+    (
+      _ctx,
+      input: { label: string; url: string; kind: 'remote'; color?: string; initials?: string },
+      token: string
+    ) => {
+      if (!input || input.kind !== 'remote') throw new Error('connections:add only accepts remote connections')
+      if (typeof input.url !== 'string' || !input.url) throw new Error('url is required')
+      if (typeof input.label !== 'string' || !input.label) throw new Error('label is required')
+      if (typeof token !== 'string' || !token) throw new Error('token is required')
+      const id = randomUUID()
+      const conn: BackendConnection = {
+        id,
+        label: input.label,
+        url: input.url,
+        kind: 'remote',
+        addedAt: Date.now(),
+        ...(input.color ? { color: input.color } : {}),
+        ...(input.initials ? { initials: input.initials } : {})
+      }
+      const list = (config.connections ?? []).slice()
+      list.push(conn)
+      config.connections = list
+      setSecret(`backend-token:${id}`, token)
+      saveConfig(config)
+      return conn
+    }
+  )
+
+  transport.onRequest('connections:remove', (_ctx, id: string) => {
+    if (id === LOCAL_BACKEND_ID) throw new Error('cannot remove the local backend')
+    const list = config.connections ?? []
+    const next = list.filter((c) => c.id !== id)
+    if (next.length === list.length) return false
+    config.connections = next
+    if (config.activeBackendId === id) config.activeBackendId = LOCAL_BACKEND_ID
+    deleteSecret(`backend-token:${id}`)
+    saveConfig(config)
+    return true
+  })
+
+  transport.onRequest('connections:rename', (_ctx, id: string, label: string) => {
+    if (typeof label !== 'string' || !label.trim()) throw new Error('label is required')
+    const list = config.connections ?? []
+    const idx = list.findIndex((c) => c.id === id)
+    if (idx < 0) return false
+    const next = list.slice()
+    next[idx] = { ...next[idx], label: label.trim() }
+    config.connections = next
+    saveConfig(config)
+    return true
+  })
+
+  transport.onRequest('connections:setActive', (_ctx, id: string) => {
+    const list = config.connections ?? []
+    if (!list.some((c) => c.id === id)) throw new Error(`unknown backend id: ${id}`)
+    config.activeBackendId = id
+    saveConfig(config)
+    return true
+  })
+
+  transport.onRequest('connections:setLastConnected', (_ctx, id: string, when?: number) => {
+    const list = config.connections ?? []
+    const idx = list.findIndex((c) => c.id === id)
+    if (idx < 0) return false
+    const next = list.slice()
+    next[idx] = { ...next[idx], lastConnectedAt: typeof when === 'number' ? when : Date.now() }
+    config.connections = next
+    saveConfig(config)
+    return true
+  })
+
+  transport.onRequest('connections:getToken', (_ctx, id: string) => {
+    if (id === LOCAL_BACKEND_ID) return null
+    return getSecret(`backend-token:${id}`)
+  })
+
+  transport.onRequest('connections:hasToken', (_ctx, id: string) => {
+    if (id === LOCAL_BACKEND_ID) return false
+    return hasSecret(`backend-token:${id}`)
   })
 
   transport.onSignal('terminal:join', (ctx, id: string) => {

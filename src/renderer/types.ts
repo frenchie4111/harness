@@ -470,6 +470,33 @@ export interface ElectronAPI {
   onStateEvent(callback: (event: StateEvent, seq: number) => void): () => void
 
   getClientId(): Promise<string>
+
+  // Multi-backend connections list (Tier 1). Always routes to the local
+  // Electron backend. See plans/tier-1-multi-backend-ux.md.
+  connectionsList(): Promise<BackendConnection[]>
+  connectionsAdd(
+    input: { label: string; url: string; kind: 'remote'; color?: string; initials?: string },
+    token: string
+  ): Promise<BackendConnection>
+  connectionsRemove(id: string): Promise<boolean>
+  connectionsRename(id: string, label: string): Promise<boolean>
+  connectionsSetActive(id: string): Promise<boolean>
+  connectionsSetLastConnected(id: string, when?: number): Promise<boolean>
+  connectionsGetToken(id: string): Promise<string | null>
+  connectionsHasToken(id: string): Promise<boolean>
+}
+
+/** A configured backend (multi-backend UX). Kept in sync with the
+ *  main-process `BackendConnection` shape in src/main/persistence.ts. */
+export interface BackendConnection {
+  id: string
+  label: string
+  url: string
+  kind: 'local' | 'remote'
+  addedAt: number
+  lastConnectedAt?: number
+  color?: string
+  initials?: string
 }
 
 export type ActivityState = 'processing' | 'waiting' | 'needs-approval' | 'idle' | 'merged'
