@@ -554,6 +554,7 @@ contextBridge.exposeInMainWorld('api', {
   connectionsRename: (id: string, label: string) =>
     reqLocal('connections:rename', id, label),
   connectionsSetActive: (id: string) => reqLocal('connections:setActive', id),
+  connectionsGetActive: () => reqLocal('connections:getActive'),
   connectionsSetLastConnected: (id: string, when?: number) =>
     reqLocal('connections:setLastConnected', id, when),
   connectionsGetToken: (id: string) => reqLocal('connections:getToken', id),

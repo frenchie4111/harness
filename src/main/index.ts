@@ -2491,6 +2491,10 @@ function registerIpcHandlers(): void {
     return true
   })
 
+  transport.onRequest('connections:getActive', () => {
+    return config.activeBackendId ?? LOCAL_BACKEND_ID
+  })
+
   transport.onRequest('connections:setLastConnected', (_ctx, id: string, when?: number) => {
     const list = config.connections ?? []
     const idx = list.findIndex((c) => c.id === id)

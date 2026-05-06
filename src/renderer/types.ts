@@ -481,6 +481,7 @@ export interface ElectronAPI {
   connectionsRemove(id: string): Promise<boolean>
   connectionsRename(id: string, label: string): Promise<boolean>
   connectionsSetActive(id: string): Promise<boolean>
+  connectionsGetActive(): Promise<string>
   connectionsSetLastConnected(id: string, when?: number): Promise<boolean>
   connectionsGetToken(id: string): Promise<string | null>
   connectionsHasToken(id: string): Promise<boolean>

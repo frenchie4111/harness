@@ -32,6 +32,7 @@ import {
   type StateEvent
 } from '../shared/state'
 import type { LocalTransportHandle, BackendConnection } from './types'
+import { WebSocketClientTransport } from '../shared/transport/transport-websocket'
 
 /** Stable id for the in-process Electron backend. Mirrors the value in
  *  src/main/persistence.ts; duplicated here because main isn't
@@ -290,6 +291,55 @@ export async function initStore(): Promise<void> {
       )
     }
   })
+
+  // Hydrate any saved remote backends (Tier 1 multi-backend UX). Each
+  // remote becomes its own (transport, store) pair in the registry; the
+  // user can flip between them via the chip strip. WS connect failures
+  // are swallowed here — the registry entry still gets added so the
+  // chip renders (greyed-disconnected styling lands in step 8) and the
+  // user can retry.
+  //
+  // Skipped in the web client: window.api.connectionsList returns an
+  // empty stub there, so the loop is a no-op. Multi-backend is an
+  // Electron-only feature in Tier 1.
+  try {
+    const connections = await window.api.connectionsList()
+    for (const conn of connections) {
+      if (conn.kind !== 'remote') continue
+      void hydrateRemoteBackend(conn)
+    }
+    const savedActive = await window.api.connectionsGetActive()
+    if (savedActive && registry.has(savedActive)) {
+      registry.setActive(savedActive)
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[harness] failed to hydrate remote backends', err)
+  }
+}
+
+/** Construct a WS transport for a saved remote, fetch its token from
+ *  secrets, connect, and register the pair. Errors are logged but
+ *  non-fatal — the user can retry from the chip strip. */
+async function hydrateRemoteBackend(conn: BackendConnection): Promise<void> {
+  try {
+    const token = await window.api.connectionsGetToken(conn.id)
+    if (!token) {
+      // eslint-disable-next-line no-console
+      console.warn(`[harness] no token stored for backend ${conn.id} — skipping`)
+      return
+    }
+    // BackendConnection.url is the wire URL with ws://-or-wss:// prefix
+    // (parseConnectionUrl preserves the TLS choice from what the user
+    // pasted). The token is held separately in secrets.enc.
+    const ws = new WebSocketClientTransport({ url: conn.url, token })
+    await ws.connect()
+    if (registry.has(conn.id)) return
+    registry.add(conn, ws)
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn(`[harness] failed to connect to backend ${conn.id}`, err)
+  }
 }
 
 function getActiveState(): AppState {

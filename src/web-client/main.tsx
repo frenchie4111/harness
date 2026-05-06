@@ -539,6 +539,7 @@ function buildApi(transport: WebSocketClientTransport): ElectronAPI {
     connectionsRemove: () => Promise.resolve(unavailable('connectionsRemove', false)),
     connectionsRename: () => Promise.resolve(unavailable('connectionsRename', false)),
     connectionsSetActive: () => Promise.resolve(unavailable('connectionsSetActive', false)),
+    connectionsGetActive: () => Promise.resolve(unavailable('connectionsGetActive', 'local')),
     connectionsSetLastConnected: () =>
       Promise.resolve(unavailable('connectionsSetLastConnected', false)),
     connectionsGetToken: () => Promise.resolve(unavailable('connectionsGetToken', null)),

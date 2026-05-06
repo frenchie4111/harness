@@ -31,6 +31,7 @@ import { HotkeyCheatsheet } from './components/HotkeyCheatsheet'
 import { NewProjectScreen } from './components/NewProjectScreen'
 import { RemoteFilePicker } from './components/RemoteFilePicker'
 import { ReportIssueScreen, onOpenReportIssue, type OpenReportIssueDetail } from './components/ReportIssueScreen'
+import { AddBackendModal } from './components/AddBackendModal'
 import iconUrl from '../../resources/icon.png'
 import { PerfMonitorHUD } from './components/PerfMonitorHUD'
 import { focusTerminalById } from './components/XTerminal'
@@ -211,6 +212,7 @@ function DesktopApp(): JSX.Element {
   const [showHotkeyCheatsheet, setShowHotkeyCheatsheet] = useState(false)
   const [showNewProject, setShowNewProject] = useState(false)
   const [reportIssueState, setReportIssueState] = useState<OpenReportIssueDetail | null>(null)
+  const [showAddBackend, setShowAddBackend] = useState(false)
   const [crashedTabIds, setCrashedTabIds] = useState<ReadonlySet<string>>(() => new Set())
   // `theme` and `defaultAgent` are both seeded at init, so we track
   // explicit confirmation separately for the onboarding step checkmarks.
@@ -1088,6 +1090,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
             onAddRepo={handleAddRepo}
             onRemoveRepo={handleRemoveRepo}
             onOpenSettings={() => setShowSettings(true)}
+            onOpenAddBackend={() => setShowAddBackend(true)}
             onOpenHotkeyCheatsheet={() => setShowHotkeyCheatsheet(true)}
             onOpenActivity={() => setShowActivity(true)}
             onOpenCleanup={() => setShowCleanup(true)}
@@ -1350,6 +1353,10 @@ const setQuestStep = useCallback((next: QuestStep) => {
         }}
       />
     )}
+    <AddBackendModal
+      isOpen={showAddBackend}
+      onClose={() => setShowAddBackend(false)}
+    />
     </HotkeysProvider>
   )
 }
