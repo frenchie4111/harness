@@ -97,6 +97,18 @@ if (runtime === 'electron' && process.env['HARNESS_REMOTE_URL']) {
   const remoteShellMod = dynamicRequire('./desktop-shell-remote') as typeof import('./desktop-shell-remote')
   remoteShellMod.bootRemote(remoteUrl)
 } else {
+  // Apply the dev-mode userData override BEFORE fixPathFromLoginShell
+  // runs. path-fix can call log() (on PATH change / timeout / missing
+  // sentinels), and log() reads userDataDir() which caches its first
+  // result — without this, the production userData path gets cached
+  // and the override inside bootLocal arrives too late. bootLocal also
+  // calls applyDevModeOverride; app.setPath is idempotent, so the
+  // second call is a no-op.
+  if (runtime === 'electron') {
+    const dynamicRequire = createRequire(__filename)
+    const ds = dynamicRequire('./desktop-shell') as typeof import('./desktop-shell')
+    ds.applyDevModeOverride()
+  }
   // PATH fix runs before bootLocal so PtyManager / JsonClaudeManager are
   // constructed with an environment that includes Homebrew/nvm/etc.
   // Covers both Electron-from-Dock and headless-via-ssh/systemd, both of
