@@ -102,17 +102,28 @@ interface BackendEntry {
   status: BackendStatus
 }
 
+/** Stable snapshot returned for ids the registry doesn't know about,
+ *  shared across calls so useSyncExternalStore selectors stay
+ *  reference-stable for missing entries. */
+const DEFAULT_BACKEND_STATUS: BackendStatus = { state: 'connected' }
+
 class BackendsRegistry {
   private entries = new Map<string, BackendEntry>()
   private activeId: string = LOCAL_BACKEND_ID
   private activeIdListeners = new Set<() => void>()
   private listListeners = new Set<() => void>()
   private statusListeners = new Set<() => void>()
+  // Cached return values for the read-only hooks. We rebuild the
+  // cached array / status map ONLY when the underlying data changes;
+  // useSyncExternalStore requires getSnapshot to be reference-stable
+  // for unchanged data (otherwise React keeps detecting "new state"
+  // and infinite-loops). Invalidated by the mutators below.
+  private connectionsCache: readonly BackendConnection[] | null = null
 
   add(
     connection: BackendConnection,
     transport: LocalTransportHandle,
-    initialStatus: BackendStatus = { state: 'connected' }
+    initialStatus: BackendStatus = DEFAULT_BACKEND_STATUS
   ): ClientStore {
     if (this.entries.has(connection.id)) {
       throw new Error(`backend already registered: ${connection.id}`)
@@ -125,6 +136,7 @@ class BackendsRegistry {
       status: initialStatus
     })
     transport.onStateEvent((event, _seq) => store.applyEvent(event as StateEvent))
+    this.connectionsCache = null
     for (const l of this.listListeners) l()
     return store
   }
@@ -137,8 +149,8 @@ class BackendsRegistry {
     for (const l of this.statusListeners) l()
   }
 
-  getStatus(id: string): BackendStatus | undefined {
-    return this.entries.get(id)?.status
+  getStatus(id: string): BackendStatus {
+    return this.entries.get(id)?.status ?? DEFAULT_BACKEND_STATUS
   }
 
   subscribeStatus(cb: () => void): () => void {
@@ -155,6 +167,7 @@ class BackendsRegistry {
     if (!this.entries.has(id)) return
     this.entries.delete(id)
     if (this.activeId === id) this.setActive(LOCAL_BACKEND_ID)
+    this.connectionsCache = null
     for (const l of this.listListeners) l()
   }
 
@@ -162,6 +175,7 @@ class BackendsRegistry {
     const entry = this.entries.get(id)
     if (!entry) return
     entry.connection = { ...entry.connection, ...patch }
+    this.connectionsCache = null
     for (const l of this.listListeners) l()
   }
 
@@ -181,8 +195,12 @@ class BackendsRegistry {
     return this.entries.get(id)?.connection
   }
 
-  listConnections(): BackendConnection[] {
-    return Array.from(this.entries.values()).map((e) => e.connection)
+  listConnections(): readonly BackendConnection[] {
+    if (this.connectionsCache) return this.connectionsCache
+    const list: BackendConnection[] = []
+    for (const e of this.entries.values()) list.push(e.connection)
+    this.connectionsCache = list
+    return list
   }
 
   getActiveStore(): ClientStore {
@@ -483,27 +501,71 @@ export function useJsonClaudePendingApprovals() {
   return useAppState((s) => s.jsonClaude.pendingApprovals)
 }
 
+/** Stable empty-array reference returned by the SSR / pre-init hook
+ *  paths so `useSyncExternalStore`'s reference comparison doesn't
+ *  detect a "change" on every render and fall into an infinite update
+ *  loop. */
+const EMPTY_CONNECTIONS: readonly BackendConnection[] = []
+
+/** Stable fallback for `useActiveBackend`'s server-side render path. */
+const FALLBACK_ACTIVE_BACKEND: BackendConnection = {
+  id: LOCAL_BACKEND_ID,
+  label: 'Local',
+  url: '',
+  kind: 'local',
+  addedAt: 0
+}
+
+const subscribeConnectionsList = (cb: () => void): (() => void) =>
+  registry.subscribeList(cb)
+const getConnectionsSnapshot = (): readonly BackendConnection[] =>
+  registry.listConnections()
+const getConnectionsServerSnapshot = (): readonly BackendConnection[] =>
+  EMPTY_CONNECTIONS
+
 /** Returns the list of registered backends (local + any added remotes).
  *  Re-renders on backend add/remove/rename. The chip strip uses this to
- *  render avatars; UI gating uses `useActiveBackend()` instead. */
+ *  render avatars; UI gating uses `useActiveBackend()` instead.
+ *
+ *  Returns a registry-cached array — invalidated only on real
+ *  add/remove/updateConnection — so reference identity is stable
+ *  across renders that don't change the list. */
 export function useConnections(): readonly BackendConnection[] {
   return useSyncExternalStore(
-    (cb) => registry.subscribeList(cb),
-    () => registry.listConnections(),
-    () => []
+    subscribeConnectionsList,
+    getConnectionsSnapshot,
+    getConnectionsServerSnapshot
   )
 }
 
+const subscribeStatus = (cb: () => void): (() => void) =>
+  registry.subscribeStatus(cb)
+const getStatusServerSnapshot = (): BackendStatus => DEFAULT_BACKEND_STATUS
+
 /** Per-backend connection status. Re-renders only on transitions for
  *  the specific id. Local always returns 'connected' since the
- *  in-process transport has no socket to drop. */
+ *  in-process transport has no socket to drop. The stored status
+ *  reference is mutated only when a real transition happens, so
+ *  reference identity is stable across non-transition renders. */
 export function useBackendStatus(id: string): BackendStatus {
   return useSyncExternalStore(
-    (cb) => registry.subscribeStatus(cb),
-    () => registry.getStatus(id) ?? { state: 'connected' },
-    () => ({ state: 'connected' })
+    subscribeStatus,
+    () => registry.getStatus(id),
+    getStatusServerSnapshot
   )
 }
+
+const subscribeActiveBackend = (cb: () => void): (() => void) => {
+  const offList = registry.subscribeList(cb)
+  const offId = registry.subscribeActiveId(cb)
+  return () => {
+    offList()
+    offId()
+  }
+}
+const getActiveBackendSnapshot = (): BackendConnection =>
+  registry.getActiveConnection()
+const getActiveBackendServerSnapshot = (): BackendConnection => FALLBACK_ACTIVE_BACKEND
 
 /** Returns the currently-active backend's connection metadata. Re-renders
  *  on either the active id changing OR the active backend's metadata
@@ -511,22 +573,9 @@ export function useBackendStatus(id: string): BackendStatus {
  *  things like RemoteFilePicker vs native dialog (per design §L). */
 export function useActiveBackend(): BackendConnection {
   return useSyncExternalStore(
-    (cb) => {
-      const offList = registry.subscribeList(cb)
-      const offId = registry.subscribeActiveId(cb)
-      return () => {
-        offList()
-        offId()
-      }
-    },
-    () => registry.getActiveConnection(),
-    () => ({
-      id: LOCAL_BACKEND_ID,
-      label: 'Local',
-      url: '',
-      kind: 'local' as const,
-      addedAt: 0
-    })
+    subscribeActiveBackend,
+    getActiveBackendSnapshot,
+    getActiveBackendServerSnapshot
   )
 }
 
