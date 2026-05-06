@@ -371,6 +371,16 @@ hard dependency on `gh`.
 - **Login shell wrapping** — the PtyManager spawns `/bin/zsh -ilc <command>`
   instead of running the command directly, so the user's full PATH is loaded
   (homebrew binaries, nvm, etc.).
+- **Login-shell PATH fix at boot** — at boot we run the user's login shell once
+  via `path-fix.ts` to capture its PATH and inject into `process.env.PATH`.
+  Without this, the bundled claude (spawned directly, not via shell) inherits
+  whatever stripped PATH Harness was launched with and can't find homebrew/
+  nvm/pyenv tools. The fix runs in both Electron-local boots (Finder/Dock
+  launches with `/usr/bin:/bin:/usr/sbin:/sbin`) and headless boots
+  (`ssh host 'harness-server'` / systemd / launchd run non-interactive
+  non-login = same stripped PATH). The probe uses sentinel-wrapped output
+  so rc-file noise (starship init, nvm welcome) is discarded cleanly. Gated
+  to macOS only; linux can be added if anyone reports the same problem.
 - **Auto-updater is dev-mode no-op** — `setupAutoUpdater()` returns early
   unless `app.isPackaged`.
 - **Dual browser-controller** — Browser tabs are backed by Electron's

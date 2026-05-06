@@ -19,6 +19,7 @@ import { networkInterfaces } from 'os'
 import type { Server as HttpServer } from 'http'
 import type { ServerTransport } from '../shared/transport/transport'
 import { detectRuntime } from './paths'
+import { fixPathFromLoginShell } from './path-fix'
 import { parseCliFlags, USAGE, type CliFlags } from './cli-args'
 import { PlaywrightBrowserManager } from './browser-manager-playwright'
 import type { BrowserManagerLike } from './browser-manager-types'
@@ -96,7 +97,12 @@ if (runtime === 'electron' && process.env['HARNESS_REMOTE_URL']) {
   const remoteShellMod = dynamicRequire('./desktop-shell-remote') as typeof import('./desktop-shell-remote')
   remoteShellMod.bootRemote(remoteUrl)
 } else {
-  bootLocal()
+  // PATH fix runs before bootLocal so PtyManager / JsonClaudeManager are
+  // constructed with an environment that includes Homebrew/nvm/etc.
+  // Covers both Electron-from-Dock and headless-via-ssh/systemd, both of
+  // which can start with a stripped PATH. No-op outside of macOS today;
+  // see path-fix.ts.
+  void fixPathFromLoginShell().then(bootLocal)
 }
 
 // Wrap the entire local-mode boot in a function so the remote-mode
