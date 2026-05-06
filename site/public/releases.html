@@ -78,6 +78,22 @@
   <!-- Releases -->
   <div class="max-w-3xl mx-auto px-6 pb-24">
 
+    <!-- v2.8.2 -->
+    <section class="release-section py-10">
+      <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
+        <h2 class="text-3xl font-bold tracking-tight">v2.8.2</h2>
+        <span class="text-sm text-neutral-500">May 6, 2026</span>
+      </div>
+      <a href="https://github.com/frenchie4111/harness/releases/tag/v2.8.2" class="text-sm text-amber-400/80 hover:text-amber-300 transition-colors">Download &rarr;</a>
+      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">Fixes a PATH issue where Homebrew, nvm, pyenv, and other shell tools were not found when Harness was launched from Finder, the Dock, or a headless service.</p>
+      <div class="note-body">
+        <h4>Fixes</h4>
+        <ul>
+          <li>Harness now captures your login shell's PATH at startup and merges it into the app's environment, so the bundled Claude binary can find Homebrew, nvm, pyenv, and other tools regardless of how the app was launched.</li>
+        </ul>
+      </div>
+    </section>
+
     <!-- v2.8.1 -->
     <section class="release-section py-10">
       <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
