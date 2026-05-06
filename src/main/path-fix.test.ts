@@ -40,6 +40,55 @@ describe('parseProbeOutput', () => {
   })
 })
 
+describe('mergePaths', () => {
+  it('preserves launcher-prepended entries (e.g. node_modules/.bin) at the front', async () => {
+    const { mergePaths } = await import('./path-fix')
+    const existing = '/repo/node_modules/.bin:/opt/homebrew/bin:/usr/bin:/bin'
+    const captured = '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin'
+    expect(mergePaths(existing, captured)).toBe(
+      '/repo/node_modules/.bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin'
+    )
+  })
+
+  it('expands a stripped PATH to the captured value', async () => {
+    const { mergePaths } = await import('./path-fix')
+    const existing = '/usr/bin:/bin:/usr/sbin:/sbin'
+    const captured = '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin'
+    expect(mergePaths(existing, captured)).toBe(captured)
+  })
+
+  it('returns existing when captured is a subset of existing', async () => {
+    const { mergePaths } = await import('./path-fix')
+    const existing = '/foo:/bar:/usr/bin:/bin'
+    const captured = '/usr/bin:/bin'
+    expect(mergePaths(existing, captured)).toBe('/foo:/bar:/usr/bin:/bin')
+  })
+
+  it('is identity when existing equals captured', async () => {
+    const { mergePaths } = await import('./path-fix')
+    const path = '/opt/homebrew/bin:/usr/bin:/bin'
+    expect(mergePaths(path, path)).toBe(path)
+  })
+
+  it('dedupes within existing-only entries', async () => {
+    const { mergePaths } = await import('./path-fix')
+    const existing = '/foo:/bar:/foo:/usr/bin'
+    const captured = '/usr/bin:/bin'
+    expect(mergePaths(existing, captured)).toBe('/foo:/bar:/usr/bin:/bin')
+  })
+
+  it('drops empty entries from both inputs', async () => {
+    const { mergePaths } = await import('./path-fix')
+    expect(mergePaths(':/foo:', '/usr/bin::/bin')).toBe('/foo:/usr/bin:/bin')
+  })
+
+  it('returns captured when existing is empty or undefined', async () => {
+    const { mergePaths } = await import('./path-fix')
+    expect(mergePaths('', '/usr/bin:/bin')).toBe('/usr/bin:/bin')
+    expect(mergePaths(undefined, '/usr/bin:/bin')).toBe('/usr/bin:/bin')
+  })
+})
+
 describe('capturePath', () => {
   it('returns the inner content from a shell that emits the sentinel format', async () => {
     const { capturePath } = await import('./path-fix')

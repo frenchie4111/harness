@@ -1,10 +1,17 @@
 // Run a login + interactive shell once at boot, capture its PATH, and
-// inject the result into process.env so child processes spawned later
-// (the bundled claude, MCP bridges, anything spawned without a shell
-// wrapper) see homebrew/nvm/pyenv/etc. on PATH the same way they would
-// in the user's terminal. Runs in both Electron-local and headless
-// (Node) boots — headless can also start with a stripped PATH when
-// launched via `ssh host 'harness-server'` or a systemd/launchd unit.
+// merge into process.env.PATH so child processes spawned later (the
+// bundled claude, MCP bridges, anything spawned without a shell wrapper)
+// see homebrew/nvm/pyenv/etc. on PATH the same way they would in the
+// user's terminal. Runs in both Electron-local and headless (Node)
+// boots — headless can also start with a stripped PATH when launched
+// via `ssh host 'harness-server'` or a systemd/launchd unit.
+//
+// We merge rather than replace so launcher-prepended entries (npm
+// putting `node_modules/.bin` first when running `npm run dev`, an
+// explicit `Environment=PATH=...` in a systemd unit, etc.) keep their
+// priority. Order is: existing entries that aren't already in captured,
+// followed by the full captured list. Net effect: `node_modules/.bin`
+// stays first; Homebrew/nvm get appended only if missing.
 //
 // Sentinel-delimited capture skips noise from rc files (starship init,
 // nvm "Loading...", etc. that print during shell startup). Timeout
@@ -89,15 +96,36 @@ export async function capturePath(
   })
 }
 
+export function mergePaths(existing: string | undefined, captured: string): string {
+  const capturedEntries = captured.split(':').filter((e) => e.length > 0)
+  if (!existing) return capturedEntries.join(':')
+  const capturedSet = new Set(capturedEntries)
+  const seen = new Set<string>()
+  const existingOnly: string[] = []
+  for (const e of existing.split(':')) {
+    if (e === '') continue
+    if (capturedSet.has(e)) continue
+    if (seen.has(e)) continue
+    seen.add(e)
+    existingOnly.push(e)
+  }
+  return [...existingOnly, ...capturedEntries].join(':')
+}
+
 export async function fixPathFromLoginShell(): Promise<void> {
   if (process.platform !== 'darwin') return
   try {
     const shell = resolveUserShell()
     const captured = await capturePath(shell)
     if (captured == null) return
-    if (captured === process.env.PATH) return
-    log('path-fix', `PATH updated from ${shell} (${captured.length} chars)`)
-    process.env.PATH = captured
+    const existing = process.env.PATH ?? ''
+    const merged = mergePaths(existing, captured)
+    if (merged === existing) return
+    log(
+      'path-fix',
+      `PATH merged from ${shell} (${existing.length} → ${merged.length} chars)`
+    )
+    process.env.PATH = merged
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     log('path-fix', `unexpected error, skipping fix: ${msg}`)
