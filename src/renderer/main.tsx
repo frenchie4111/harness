@@ -30,13 +30,12 @@ initStore()
     )
   })
   .catch((err) => {
-    // initStore awaits the first WS request when running against a
-    // remote backend (preload swapped in WebSocketClientTransport
-    // because --harness-remote-url= was in argv). A connection failure
-    // surfaces here as a rejected promise. In local Electron mode the
-    // ElectronClientTransport's getStateSnapshot is an in-process IPC
-    // call and only fails if main itself is broken — same fallback UI
-    // is fine for both paths.
+    // initStore awaits the first WS request in the web client (the
+    // single backend's transport is WebSocketClientTransport). A
+    // connection failure surfaces here as a rejected promise. In local
+    // Electron mode the ElectronClientTransport's getStateSnapshot is
+    // an in-process IPC call and only fails if main itself is broken —
+    // same fallback UI is fine for both paths.
     showBootError(err)
   })
 

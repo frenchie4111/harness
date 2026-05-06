@@ -4,7 +4,8 @@
 //
 // Test stays in renderer/ (the renderer's tsconfig has the DOM lib
 // types it needs); the implementation moved to shared/transport/ so
-// the preload can also import it for HARNESS_REMOTE_URL mode.
+// both the web client and the Electron renderer can import it (the
+// renderer's BackendsRegistry constructs one per saved remote).
 
 import { describe, it, expect, vi } from 'vitest'
 import { WebSocketServer, WebSocket as WSClient, type WebSocket as WSType } from 'ws'

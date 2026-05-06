@@ -125,15 +125,9 @@ Re-running the install script bumps the version. There's no in-place self-update
 
 ### Connecting the Electron app to a remote server
 
-Once `harness-server` is running on a remote machine, you can drive it from a local Electron Harness instead of (or in addition to) the browser web client. Set `HARNESS_REMOTE_URL` to the WebSocket URL the server printed and launch Harness:
+Once `harness-server` is running on a remote machine, you can drive it from your local Electron Harness alongside the local backend. Open the Harness sidebar's backend chip strip (or `File → Add Backend…`), paste the connection link the host's Settings shows (`http://host:port/?token=...`), and click "Test & save". The link's the same one the browser web client uses; Harness parses out the token, validates the connection, and persists the backend.
 
-```sh
-HARNESS_REMOTE_URL='ws://100.x.x.x:37291?token=<token>' open -na Harness
-```
-
-Or set it persistently in your shell init for whichever remote you use most often. When the env var is present the Electron app skips its local backend entirely (no PTY manager, no PR poller, no IPC handlers) and the renderer connects to the remote over the same WebSocket transport the web client uses. Worktrees, terminals, browser tabs, and json-mode Claude all run on the remote machine — the Electron window is just the UI.
-
-If the connection fails (server down, wrong token, network blocked), the app shows a static error screen with the URL. There's no reconnect-on-disconnect logic in v1 — restart the app to retry. There's also no in-app remote picker yet; switch remotes by changing the env var and relaunching.
+Once added, the chip appears at the bottom of the sidebar. Click to switch — `Cmd+Shift+1..9` jumps directly to the Nth backend (Local is always 1). Each backend has its own worktrees, terminals, browser tabs, and settings; switching changes which backend's UI is rendered, and inactive backends keep streaming so notifications still work. The connections list is encrypted (tokens in `secrets.enc`) and persists across restarts.
 
 ## Uninstallation
 

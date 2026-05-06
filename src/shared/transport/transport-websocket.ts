@@ -1,12 +1,12 @@
 // Browser-side WebSocket implementation of ClientTransport.
 //
 // Lives in `shared/transport/` so it's importable from both the
-// renderer (web client + Electron renderer) and the preload (when
-// HARNESS_REMOTE_URL is set, the Electron preload swaps this in for
-// ElectronClientTransport so the same window.api surface drives a
-// remote backend). The whole point of WS is bypassing the
-// preload/contextBridge plumbing — everything above the transport is
-// already transport-agnostic (see the comment block atop
+// browser web client and the Electron renderer (where the
+// multi-backend BackendsRegistry constructs one of these per saved
+// remote — the local backend uses ElectronClientTransport instead).
+// The whole point of WS is bypassing the preload/contextBridge
+// plumbing for remotes — everything above the transport is already
+// transport-agnostic (see the comment block atop
 // `src/preload/transport-electron.ts`).
 //
 // Responsibilities:

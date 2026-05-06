@@ -385,23 +385,24 @@ hard dependency on `gh`.
   message. The headless renderer (web client) renders a polled JPEG
   via `RemoteBrowserView` instead of a native overlay — live screencast
   is a follow-up.
-- **Electron remote mode** — when launched with `HARNESS_REMOTE_URL` set,
-  `src/main/index.ts` short-circuits at the top: it dynamic-requires
-  `desktop-shell-remote.ts` and skips the entire `bootLocal()` body
-  (no store, no PtyManager, no JsonClaudeManager, no transports, no IPC
-  handlers, no FSMs, no PR poller, no control server). The remote shell
-  just opens a BrowserWindow with `webPreferences.additionalArguments =
-  ['--harness-remote-url=<url>']`. The preload (`src/preload/index.ts`)
-  reads that arg via `findRemoteUrl(process.argv)` and constructs a
-  `WebSocketClientTransport` (now in `src/shared/transport/`) instead
-  of `ElectronClientTransport`. It also sets `window.__HARNESS_WEB__ =
-  true` via contextBridge — the same flag the web client uses, so
-  every renderer branch that already gates on `__HARNESS_WEB__`
-  (RemoteFilePicker, polled browser screenshot view, etc.) works in
-  remote-Electron mode without knowing about it. Connection failures
-  surface as a rejected promise from `initStore()`; `main.tsx`'s
-  `.catch` renders a static error screen with the URL. There's no
-  reconnect-on-disconnect logic; restart the app for v1.
+- **Multi-backend (Tier 1)** — a single Electron Harness can connect
+  to N backends (the in-process local one + remote `harness-server`
+  instances), with a chip strip at the bottom of the sidebar to switch.
+  See `plans/tier-1-multi-backend-ux.md` for the full design.
+  Architecturally: `src/renderer/store.ts` holds a `BackendsRegistry`
+  of `(transport, ClientStore)` pairs; the local entry uses
+  `ElectronClientTransport`, remotes use `WebSocketClientTransport`.
+  Each transport's `onStateEvent` is wired to its own store at
+  registration time, so there's no central event router — per-backend
+  channels are naturally segregated. `window.api.X(...)` routes
+  through a mutable `currentImpl` in the preload that the renderer
+  swaps via `__harness_setActiveTransport` when active changes;
+  `connections:*` methods always go to the local transport
+  (renderer-shell-owned per design §C/§G). The legacy
+  `HARNESS_REMOTE_URL` env-var mode was removed in Tier 1 — adding a
+  remote backend now happens via `File → Add Backend…` or the chip
+  strip's `+` button. Tokens encrypted in `secrets.enc` keyed
+  `backend-token:<id>`; connections list lives in `userData/config.json`.
 - **Dual-claude model** — Harness ships two Claude Code binaries. **xterm
   Claude tabs** spawn `/bin/zsh -ilc claude` so the user's PATH `claude`
   is what runs (lets bleeding-edge / beta testers stay on their own

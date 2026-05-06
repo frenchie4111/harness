@@ -1,36 +1,15 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { ElectronClientTransport } from './transport-electron'
-import { WebSocketClientTransport } from '../shared/transport/transport-websocket'
-import { findRemoteUrl, splitRemoteUrl } from './find-remote-url'
-import type { ClientTransport } from '../shared/transport/transport'
+import type { ClientTransport, LocalTransportHandle } from '../shared/transport/transport'
 
 // Every window.api method is a thin wrapper over the client transport.
 // The transport owns all ipcRenderer interaction; this file just
 // declares the named channels + arg shapes that make up the
-// renderer/main contract. Swapping transports (WebSocket, SSH stdio)
-// means constructing a different ClientTransport here — no other change
-// is needed above this layer.
-//
-// Remote mode: if the BrowserWindow was launched with
-// `--harness-remote-url=<ws-url>` (set by desktop-shell-remote.ts when
-// HARNESS_REMOTE_URL is in the environment), swap in the WebSocket
-// transport so the renderer drives a remote harness-server instead of a
-// local main process. The api surface above the transport stays
-// identical; the connection failure UI is handled in renderer/main.tsx
-// when initStore() rejects.
+// renderer/main contract. Multi-backend routing happens at runtime via
+// `currentImpl` (below) — the renderer's BackendsRegistry pushes a
+// transport handle here whenever the user switches backends.
 
-const remoteUrlRaw = findRemoteUrl(process.argv)
-const isRemote = !!remoteUrlRaw
-let transport: ClientTransport
-if (remoteUrlRaw) {
-  const split = splitRemoteUrl(remoteUrlRaw)
-  if (!split) {
-    throw new Error(`HARNESS_REMOTE_URL is not a valid URL: ${remoteUrlRaw}`)
-  }
-  transport = new WebSocketClientTransport({ url: split.url, token: split.token })
-} else {
-  transport = new ElectronClientTransport()
-}
+const transport: ClientTransport = new ElectronClientTransport()
 
 // Multi-backend (Tier 1): expose the local transport as a plain object
 // so the renderer's BackendsRegistry can wire it up directly to the
@@ -42,7 +21,6 @@ if (remoteUrlRaw) {
 // — duck-typed across the contextBridge so the renderer can treat it as
 // one without importing the class. Same underlying instance as the
 // `window.api` transport below, so events fan out cleanly.
-import type { LocalTransportHandle } from '../shared/transport/transport'
 const localTransportHandle: LocalTransportHandle = {
   getStateSnapshot: () => transport.getStateSnapshot(),
   onStateEvent: (cb) => transport.onStateEvent((event, seq) => cb(event, seq)),
@@ -70,13 +48,13 @@ contextBridge.exposeInMainWorld('__harness_setActiveTransport', (impl: LocalTran
   currentImpl = impl
 })
 
-// Mark the renderer as running against a remote backend so existing
-// `window.__HARNESS_WEB__` branches (RemoteFilePicker, playwright
-// browser screenshot view, etc.) light up the same way they do in the
-// browser web-client. The flag name predates remote-Electron mode but
-// the meaning is the same: "no local Electron backend reachable, route
-// everything through the transport."
-contextBridge.exposeInMainWorld('__HARNESS_WEB__', isRemote)
+// __HARNESS_WEB__ legacy flag — always false in Electron now (the
+// remote-Electron HARNESS_REMOTE_URL path was removed in Tier 1).
+// The web client still sets this to `true` for the boot-error
+// messaging and any remaining `window.__HARNESS_WEB__` reads it
+// runs into. Per-backend UI gating uses
+// `useActiveBackend().kind === 'remote'` instead.
+contextBridge.exposeInMainWorld('__HARNESS_WEB__', false)
 
 // Local platform of the Electron host (always the machine running the
 // BrowserWindow, even in remote-Electron mode where the transport routes
@@ -337,17 +315,14 @@ contextBridge.exposeInMainWorld('api', {
   checkForUpdates: () => req('updater:checkForUpdates'),
   quitAndInstall: () => req('updater:quitAndInstall'),
 
-  // Shell — in remote mode, route through window.open so the URL opens on
-  // the viewing client's machine (intercepted by setWindowOpenHandler in
-  // desktop-shell-remote.ts, or handled natively by the browser in the
-  // web client). In native mode, signal main to call shell.openExternal.
-  openExternal: (url: string) => {
-    if (isRemote) {
-      window.open(url, '_blank', 'noopener,noreferrer')
-    } else {
-      sig('shell:openExternal', url)
-    }
-  },
+  // Shell — open external URLs via the local Electron main process.
+  // The web-client's separate api shim uses window.open instead so URLs
+  // open on the viewing browser's machine; that path doesn't reach this
+  // file. (The remote-Electron HARNESS_REMOTE_URL fallback was removed
+  // in Tier 1; multi-backend remotes don't need browser-side window.open
+  // because we still want the link to open on the local user's machine,
+  // which is exactly what shell.openExternal already does.)
+  openExternal: (url: string) => sig('shell:openExternal', url),
   openDebugLog: () => req('debug:openLog'),
   showDebugLogInFolder: () => req('debug:showLogInFolder'),
 

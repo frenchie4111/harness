@@ -12,13 +12,10 @@ export default defineConfig({
         // `if (runtime === 'electron')` so the headless build doesn't
         // pull electron in. The bundler can't see that require, so the
         // shell needs an explicit entry to land in out/main next to
-        // index.js where the require can find it at runtime. The
-        // remote-mode shell takes the same dynamic-require path when
-        // HARNESS_REMOTE_URL is set, so it's listed here too.
+        // index.js where the require can find it at runtime.
         input: {
           index: resolve(__dirname, 'src/main/index.ts'),
-          'desktop-shell': resolve(__dirname, 'src/main/desktop-shell.ts'),
-          'desktop-shell-remote': resolve(__dirname, 'src/main/desktop-shell-remote.ts')
+          'desktop-shell': resolve(__dirname, 'src/main/desktop-shell.ts')
         },
         external: ['electron', 'node-pty'],
         output: {

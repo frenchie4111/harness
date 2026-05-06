@@ -86,21 +86,11 @@ function toAgentKind(value: string | undefined): AgentKind {
 // override to fight with.
 const runtime = detectRuntime()
 
-// Remote-mode short-circuit: when launched with HARNESS_REMOTE_URL, the
-// renderer talks to a remote harness-server over WebSocket and we skip
-// every local backend service (store, PtyManager, transports, IPC
-// handlers, FSMs, pollers, …). Hand off to the remote shell module via
-// dynamic require — the bundler can't see this path so the headless
-// build never drags Electron in. Once bootRemote() returns we're done;
-// it owns app.whenReady, the menu, the window, and the auto-updater.
-if (runtime === 'electron' && process.env['HARNESS_REMOTE_URL']) {
-  const remoteUrl = process.env['HARNESS_REMOTE_URL']
-  const dynamicRequire = createRequire(__filename)
-  const remoteShellMod = dynamicRequire('./desktop-shell-remote') as typeof import('./desktop-shell-remote')
-  remoteShellMod.bootRemote(remoteUrl)
-} else {
-  bootLocal()
-}
+// Boot the local backend. The HARNESS_REMOTE_URL "process-wide remote"
+// path was removed in Tier 1 (the chip strip / add-backend modal is
+// the only way to reach a remote backend now); see
+// plans/tier-1-multi-backend-ux.md §J.
+bootLocal()
 
 // Wrap the entire local-mode boot in a function so the remote-mode
 // branch above can early-exit cleanly. Function declarations are
@@ -1924,9 +1914,9 @@ function registerIpcHandlers(): void {
   })
 
   // updater:getVersion is mode-agnostic — both Electron windows and WS
-  // clients (web client, HARNESS_REMOTE_URL Electron) ask for it. Reads
-  // from package.json / VERSION rather than Electron's app.getVersion()
-  // so the headless server can answer without an `app`.
+  // clients (web client, multi-backend Electron remotes) ask for it.
+  // Reads from package.json / VERSION rather than Electron's
+  // app.getVersion() so the headless server can answer without an `app`.
   transport.onRequest('updater:getVersion', (_ctx) => getHarnessVersion())
 
   // updater:checkForUpdates / updater:quitAndInstall: the real
