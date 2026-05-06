@@ -9,6 +9,7 @@ import type { GroupKey } from '../worktree-sort'
 import { groupWorktrees } from '../worktree-sort'
 import { WorktreeTab } from './WorktreeTab'
 import { repoNameColor } from './RepoIcon'
+import { BackendChipStrip } from './BackendChipStrip'
 
 interface SidebarProps {
   worktrees: Worktree[]
@@ -417,6 +418,13 @@ export function Sidebar({
           </button>
         )}
       </div>
+
+      {/* Backend chip strip — multi-backend UX (Tier 1). Auto-hides
+          when there's only one backend in the registry; renders one
+          row of avatar+label chips above the bottom icon row when
+          the user has added at least one remote. See plans/
+          tier-1-multi-backend-ux.md §A. */}
+      <BackendChipStrip onAddBackend={() => { /* wired with the add-backend modal in a later commit */ }} />
 
       {/* Bottom actions */}
       <div className="border-t border-border p-2 flex justify-center gap-1 shrink-0">
