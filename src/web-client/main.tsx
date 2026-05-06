@@ -33,6 +33,11 @@ declare global {
      *  (vs. the Electron preload). Components can branch on this to hide
      *  Electron-only affordances. */
     __HARNESS_WEB__?: boolean
+    /** Local-backend transport handle, exposed by the preload (or the
+     *  web-client shim). Plain-object duck-typed ClientTransport — the
+     *  renderer's BackendsRegistry wires it directly to the local
+     *  backend's mirrored ClientStore. */
+    __harness_local_transport?: import('../renderer/types').LocalTransportHandle
   }
 }
 
@@ -564,6 +569,18 @@ async function boot(): Promise<void> {
 
   window.__HARNESS_WEB__ = true
   window.api = buildApi(transport)
+  // The web client is always single-backend — it talks to one server
+  // (the one it was served from). Expose that transport as the registry's
+  // "local" backend so the renderer's BackendsRegistry has the same shape
+  // it does in Electron mode. Multi-backend is an Electron-only concept.
+  window.__harness_local_transport = {
+    getStateSnapshot: () => transport.getStateSnapshot(),
+    onStateEvent: (cb) => transport.onStateEvent((event, seq) => cb(event, seq)),
+    request: (name, ...args) => transport.request(name, ...args),
+    send: (name, ...args) => transport.send(name, ...args),
+    onSignal: (name, handler) => transport.onSignal(name, handler),
+    getClientId: () => transport.getClientId()
+  }
 
   // Dynamic-import everything that touches `window.api`. XTerminal seeds
   // a module-scope font cache by calling `window.api.getStateSnapshot()`

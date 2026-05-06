@@ -518,8 +518,15 @@ export interface ActivityRecord {
 }
 export type ActivityLog = Record<string, ActivityRecord>
 
+// Re-export so existing renderer-side callers can keep importing
+// LocalTransportHandle from `./types`. Canonical definition lives in
+// src/shared/transport/transport.ts so the preload (limited to
+// tsconfig.node.json) can also import it.
+export type { LocalTransportHandle } from '../shared/transport/transport'
+
 declare global {
   interface Window {
     api: ElectronAPI
+    __harness_local_transport?: import('../shared/transport/transport').LocalTransportHandle
   }
 }

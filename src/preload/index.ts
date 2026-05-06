@@ -32,6 +32,27 @@ if (remoteUrlRaw) {
   transport = new ElectronClientTransport()
 }
 
+// Multi-backend (Tier 1): expose the local transport as a plain object
+// so the renderer's BackendsRegistry can wire it up directly to the
+// local backend's mirrored ClientStore. Remote backends construct their
+// own WebSocketClientTransport in renderer code; this handle only ever
+// fronts the in-process Electron main.
+//
+// The plain-object shape is identical to the ClientTransport interface
+// — duck-typed across the contextBridge so the renderer can treat it as
+// one without importing the class. Same underlying instance as the
+// `window.api` transport below, so events fan out cleanly.
+import type { LocalTransportHandle } from '../shared/transport/transport'
+const localTransportHandle: LocalTransportHandle = {
+  getStateSnapshot: () => transport.getStateSnapshot(),
+  onStateEvent: (cb) => transport.onStateEvent((event, seq) => cb(event, seq)),
+  request: (name, ...args) => transport.request(name, ...args),
+  send: (name, ...args) => transport.send(name, ...args),
+  onSignal: (name, handler) => transport.onSignal(name, handler),
+  getClientId: () => transport.getClientId()
+}
+contextBridge.exposeInMainWorld('__harness_local_transport', localTransportHandle)
+
 // Mark the renderer as running against a remote backend so existing
 // `window.__HARNESS_WEB__` branches (RemoteFilePicker, playwright
 // browser screenshot view, etc.) light up the same way they do in the
