@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useBackend } from '../backend'
 
 /** Rolling per-terminal "last few lines of output" cache for the
  * CommandCenter preview. Taps the terminal:data stream the main process
@@ -19,6 +20,7 @@ export function useTailLineBuffer(enabled = true): Record<string, string> {
   const [tailLines, setTailLines] = useState<Record<string, string>>({})
   const tailBuffersRef = useRef<Record<string, string>>({})
   const tailDirtyRef = useRef(false)
+  const backend = useBackend()
 
   useEffect(() => {
     if (!enabled) return
@@ -26,7 +28,7 @@ export function useTailLineBuffer(enabled = true): Record<string, string> {
       // eslint-disable-next-line no-control-regex
       s.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '').replace(/\x1b\][^\x07\x1b]*(\x07|\x1b\\)/g, '')
 
-    const cleanup = window.api.onTerminalData((id, data) => {
+    const cleanup = backend.onTerminalData((id, data) => {
       const prev = tailBuffersRef.current[id] || ''
       const next = (prev + data).slice(-4096)
       tailBuffersRef.current[id] = next
@@ -58,7 +60,7 @@ export function useTailLineBuffer(enabled = true): Record<string, string> {
       cleanup()
       clearInterval(flush)
     }
-  }, [enabled])
+  }, [enabled, backend])
 
   return tailLines
 }

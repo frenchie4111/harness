@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from 'react'
 import { useJsonClaudePendingApprovals } from '../store'
+import { useBackend } from '../backend'
 import type { JsonClaudePendingApproval } from '../../shared/state/json-claude'
 
 interface ApprovalResult {
@@ -19,6 +20,7 @@ interface UseApprovals {
 
 export function useJsonClaudeApprovals(sessionId: string): UseApprovals {
   const pendingApprovals = useJsonClaudePendingApprovals()
+  const backend = useBackend()
   const pending = useMemo(() => {
     const list = Object.values(pendingApprovals).filter(
       (a) => a.sessionId === sessionId
@@ -28,8 +30,8 @@ export function useJsonClaudeApprovals(sessionId: string): UseApprovals {
   }, [pendingApprovals, sessionId])
 
   const resolve = useCallback((requestId: string, result: ApprovalResult) => {
-    void window.api.resolveJsonClaudeApproval(requestId, result)
-  }, [])
+    void backend.resolveJsonClaudeApproval(requestId, result)
+  }, [backend])
 
   return { pending, resolve }
 }

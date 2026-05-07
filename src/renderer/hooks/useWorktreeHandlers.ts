@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { Worktree, PendingWorktree, PRStatus, TerminalTab } from '../types'
 import { markTerminalClosing } from '../components/XTerminal'
 import { useActiveBackend } from '../store'
+import { useBackend } from '../backend'
 
 interface UseWorktreeHandlersArgs {
   worktrees: Worktree[]
@@ -36,6 +37,7 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
 
   const [repoPickerOpen, setRepoPickerOpen] = useState(false)
   const activeBackend = useActiveBackend()
+  const backend = useBackend()
 
   const focusNewRepo = useCallback(
     (root: string) => {
@@ -58,7 +60,7 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
       setRepoPickerOpen(true)
       return
     }
-    const root = await window.api.addRepo()
+    const root = await backend.addRepo()
     // Main dispatches worktrees/reposChanged + listChanged; we just route
     // focus to the new repo's main worktree once it lands in the store.
     if (root) focusNewRepo(root)
@@ -66,7 +68,7 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
 
   const handleRepoPickerSelect = useCallback(
     async (path: string) => {
-      const root = await window.api.addRepoAtPath(path)
+      const root = await backend.addRepoAtPath(path)
       setRepoPickerOpen(false)
       if (root) focusNewRepo(root)
     },
@@ -81,7 +83,7 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
   // refreshes the store list AND seeds default panes (with the prompt
   // embedded) before emitting this event, so we just focus the new path.
   useEffect(() => {
-    const off = window.api.onWorktreesExternalCreate(({ repoRoot, worktree }) => {
+    const off = backend.onWorktreesExternalCreate(({ repoRoot, worktree }) => {
       if (!repoRoots.includes(repoRoot)) return
       setActiveWorktreeId(worktree.path)
     })
@@ -90,7 +92,7 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
 
   const handleRemoveRepo = useCallback(
     async (root: string) => {
-      await window.api.removeRepo(root)
+      await backend.removeRepo(root)
       // Main dispatches reposChanged + listChanged. If our current focus is
       // about to disappear, switch to whatever's first in the remaining list.
       if (activeWorktreeId) {
@@ -107,7 +109,7 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
   )
 
   const handleRefreshWorktrees = useCallback(async () => {
-    await window.api.refreshWorktreesList()
+    await backend.refreshWorktreesList()
   }, [])
 
   const handleSubmitNewWorktree = useCallback(
@@ -123,7 +125,7 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
 
       // Main handles everything: addWorktree → setup script → ensureInitialized
       // (with the prompt embedded in the new Claude tab) → outcome.
-      const result = await window.api.runPendingWorktree({
+      const result = await backend.runPendingWorktree({
         id,
         repoRoot,
         branchName,
@@ -142,12 +144,12 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
   )
 
   const handleRetryPendingWorktree = useCallback((id: string) => {
-    void window.api.retryPendingWorktree(id)
+    void backend.retryPendingWorktree(id)
   }, [])
 
   const handleDismissPendingWorktree = useCallback(
     (id: string) => {
-      void window.api.dismissPendingWorktree(id)
+      void backend.dismissPendingWorktree(id)
       setActiveWorktreeId((prev) => (prev === id ? null : prev))
     },
     [setActiveWorktreeId]
@@ -158,7 +160,7 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
       // "Continue anyway" from a setup-failed screen. Main already recorded
       // createdPath on the pending entry.
       const entry = pendingWorktrees.find((p) => p.id === id)
-      void window.api.dismissPendingWorktree(id)
+      void backend.dismissPendingWorktree(id)
       if (entry?.createdPath) {
         setActiveWorktreeId(entry.createdPath)
       } else {
@@ -172,12 +174,12 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
     async (path: string, newBranchName: string) => {
       const repoRoot = worktreeRepoByPath[path]
       if (!repoRoot) return
-      const result = await window.api.continueWorktree(repoRoot, path, newBranchName)
+      const result = await backend.continueWorktree(repoRoot, path, newBranchName)
       // Main's worktree:continue handler doesn't refresh the store yet — ask
       // for a list refresh so the new branch name shows up.
-      void window.api.refreshWorktreesList()
+      void backend.refreshWorktreesList()
       // Branch changed — re-fetch PR status for this worktree.
-      void window.api.refreshPRsOne(path)
+      void backend.refreshPRsOne(path)
       if (result.stashConflict) {
         window.alert(
           `Checked out ${newBranchName}, but your uncommitted changes did not apply cleanly and are still in the stash.\n\nRun \`git stash pop\` inside the worktree after resolving conflicts.`
@@ -190,7 +192,7 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
   const handleDeleteWorktree = useCallback(
     async (path: string) => {
       // Check for dirty changes
-      const dirty = await window.api.isWorktreeDirty(path)
+      const dirty = await backend.isWorktreeDirty(path)
       if (dirty) {
         const confirmed = window.confirm(
           'This worktree has uncommitted changes that will be lost. Delete anyway?'
@@ -202,10 +204,10 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
       const tabs = terminalTabs[path] || []
       for (const tab of tabs) {
         if (tab.type !== 'diff' && tab.type !== 'file') markTerminalClosing(tab.id)
-        window.api.killTerminal(tab.id)
+        backend.killTerminal(tab.id)
       }
       // Clean up pane state — main owns the panes map
-      void window.api.panesClearForWorktree(path)
+      void backend.panesClearForWorktree(path)
       setActivePaneId((prev) => {
         const next = { ...prev }
         delete next[path]
@@ -219,7 +221,7 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
       const pr = prStatuses[path]
       const repoRoot = worktreeRepoByPath[path]
       if (!repoRoot) return
-      void window.api.removeWorktree(
+      void backend.removeWorktree(
         repoRoot,
         path,
         dirty,
@@ -257,9 +259,9 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
         const tabs = terminalTabs[path] || []
         for (const tab of tabs) {
           if (tab.type !== 'diff' && tab.type !== 'file') markTerminalClosing(tab.id)
-          window.api.killTerminal(tab.id)
+          backend.killTerminal(tab.id)
         }
-        void window.api.panesClearForWorktree(path)
+        void backend.panesClearForWorktree(path)
         setActivePaneId((prev) => {
           const next = { ...prev }
           delete next[path]
@@ -268,7 +270,7 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
         const pr = prStatuses[path]
         const repoRoot = worktreeRepoByPath[path]
         if (repoRoot) {
-          void window.api.removeWorktree(
+          void backend.removeWorktree(
             repoRoot,
             path,
             force,
@@ -295,7 +297,7 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
 
   const handleDismissPendingDeletion = useCallback(
     (path: string) => {
-      void window.api.dismissPendingDeletion(path)
+      void backend.dismissPendingDeletion(path)
       setActiveWorktreeId((prev) => {
         if (prev !== path) return prev
         const next = worktrees.find((w) => w.path !== path)

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useBackend } from '../backend'
 
 /** Stale-while-revalidate query for worktree-scoped data. Keeps a
  * module-level cache keyed by (cacheKey, worktreePath) so a tab switch
@@ -57,6 +58,7 @@ export function useWatchedQuery<T>(
   opts: UseWatchedQueryOptions<T>
 ): UseWatchedQueryResult<T> {
   const { worktreePath, cacheKey, fetcher, fallbackPollMs = 60000 } = opts
+  const backend = useBackend()
 
   const [data, setData] = useState<T | null>(() =>
     worktreePath ? cacheGet<T>(cacheKey, worktreePath) ?? null : null
@@ -113,8 +115,8 @@ export function useWatchedQuery<T>(
 
   useEffect(() => {
     if (!worktreePath) return
-    window.api.watchChangedFiles(worktreePath)
-    const offInvalidated = window.api.onChangedFilesInvalidated((path) => {
+    backend.watchChangedFiles(worktreePath)
+    const offInvalidated = backend.onChangedFilesInvalidated((path) => {
       if (path !== worktreePath) return
       cacheDelete(cacheKey, worktreePath)
       refresh()
@@ -123,9 +125,9 @@ export function useWatchedQuery<T>(
     return () => {
       clearInterval(interval)
       offInvalidated()
-      window.api.unwatchChangedFiles(worktreePath)
+      backend.unwatchChangedFiles(worktreePath)
     }
-  }, [worktreePath, cacheKey, refresh, fallbackPollMs])
+  }, [worktreePath, cacheKey, refresh, fallbackPollMs, backend])
 
   return { data, loading, refresh }
 }

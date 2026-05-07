@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useSettings, usePrs, useOnboarding, useHooks, useWorktrees, useTerminals, usePanes, useLastActive, useUpdater, useRepoConfigs } from './store'
+import { useBackend } from './backend'
 import { useTailLineBuffer } from './hooks/useTailLineBuffer'
 import { useTabHandlers } from './hooks/useTabHandlers'
 import { useHotkeyHandlers } from './hooks/useHotkeyHandlers'
@@ -61,6 +62,9 @@ export default function App(): JSX.Element {
 }
 
 function DesktopApp(): JSX.Element {
+  // Multi-backend RPC surface — routes through the active backend's
+  // transport (local IPC handle for local, WS direct for remotes).
+  const backend = useBackend()
   // Worktree list, repoRoots, and pending-creation FSM all live in the
   // main-process store. activeWorktreeId stays local — it's per-client view
   // focus that eventually becomes per-window.
@@ -242,7 +246,7 @@ function DesktopApp(): JSX.Element {
   // Track which worktrees already have hooks installed so we only prompt once
 
 const setQuestStep = useCallback((next: QuestStep) => {
-    window.api.setOnboardingQuest(next).catch(() => {})
+    backend.setOnboardingQuest(next).catch(() => {})
   }, [])
 
   // Advance the quest based on how many agent worktrees exist (main excluded).
@@ -270,7 +274,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
   // before App mounts. The only thing we still need to do at mount is ask
   // main for a fresh worktree list in case anything changed on disk.
   useEffect(() => {
-    void window.api.refreshWorktreesList()
+    void backend.refreshWorktreesList()
   }, [])
 
   useEffect(() => {
@@ -279,25 +283,25 @@ const setQuestStep = useCallback((next: QuestStep) => {
 
   // Open Settings from the menu (Cmd+,)
   useEffect(() => {
-    const cleanup = window.api.onOpenSettings(() => setShowSettings(true))
+    const cleanup = backend.onOpenSettings(() => setShowSettings(true))
     return cleanup
   }, [])
 
   // Toggle perf monitor from the menu (Cmd+Shift+D)
   useEffect(() => {
-    const cleanup = window.api.onTogglePerfMonitor(() => setShowPerfMonitor((v) => !v))
+    const cleanup = backend.onTogglePerfMonitor(() => setShowPerfMonitor((v) => !v))
     return cleanup
   }, [])
 
   // Open Keyboard Shortcuts from the menu
   useEffect(() => {
-    const cleanup = window.api.onOpenKeyboardShortcuts(() => setShowHotkeyCheatsheet(true))
+    const cleanup = backend.onOpenKeyboardShortcuts(() => setShowHotkeyCheatsheet(true))
     return cleanup
   }, [])
 
   // File → New Project… (Cmd+N)
   useEffect(() => {
-    const cleanup = window.api.onOpenNewProject(() => setShowNewProject(true))
+    const cleanup = backend.onOpenNewProject(() => setShowNewProject(true))
     return cleanup
   }, [])
 
@@ -311,7 +315,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
       setShowHotkeyCheatsheet(false)
       setReportIssueState(detail)
     }
-    const cleanupMenu = window.api.onOpenReportIssue(() => openReport({}))
+    const cleanupMenu = backend.onOpenReportIssue(() => openReport({}))
     const cleanupBus = onOpenReportIssue((detail) => openReport(detail))
     return () => {
       cleanupMenu()
@@ -323,7 +327,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
   // Finds the active worktree's active pane and flips its active tab into
   // a throwing render. The boundary catches it inside the tab.
   useEffect(() => {
-    return window.api.onDebugCrashFocusedTab(() => {
+    return backend.onDebugCrashFocusedTab(() => {
       const wtPath = activeWorktreeId
       if (!wtPath) return
       const tree = panes[wtPath]
@@ -344,7 +348,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
   // Trigger a full PR refresh in main. Used by the sidebar refresh button
   // and after worktree creation/removal.
   const fetchAllPRStatuses = useCallback(() => {
-    void window.api.refreshPRsAll()
+    void backend.refreshPRsAll()
   }, [])
 
   const activeRepoRoot = activeWorktreeId
@@ -359,27 +363,27 @@ const setQuestStep = useCallback((next: QuestStep) => {
   // After a local merge, kick the poller so the merged flag and PR state
   // propagate to the UI without waiting for the 5-min interval.
   const refreshMergedStatus = useCallback(() => {
-    void window.api.refreshPRsAll()
+    void backend.refreshPRsAll()
   }, [])
 
   // Ask main for a single-worktree PR refresh. Used by the activity observer
   // when a terminal enters the "waiting" state (likely just pushed).
   const fetchPRStatus = useCallback((wtPath: string) => {
-    void window.api.refreshPRsOne(wtPath)
+    void backend.refreshPRsOne(wtPath)
   }, [])
 
   // Ask main for a stale-only single-worktree refresh. Used when the user
   // activates a worktree — main dedups internally so rapid switching won't
   // hammer the GitHub API.
   const fetchPRStatusIfStale = useCallback((wtPath: string) => {
-    void window.api.refreshPRsOneIfStale(wtPath)
+    void backend.refreshPRsOneIfStale(wtPath)
   }, [])
 
   // On window focus, ask main for a stale-only bulk refresh. Main dedups
   // against its own lastAllFetchAt clock.
   useEffect(() => {
     const onFocus = (): void => {
-      void window.api.refreshPRsAllIfStale()
+      void backend.refreshPRsAllIfStale()
     }
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
@@ -435,7 +439,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
   useEffect(() => {
     if (!activeWorktreeId) return
     if (isPendingId(activeWorktreeId)) return
-    void window.api.panesEnsureInitialized(activeWorktreeId)
+    void backend.panesEnsureInitialized(activeWorktreeId)
   }, [activeWorktreeId])
 
   // If the active id points at something that no longer exists — a
@@ -454,11 +458,11 @@ const setQuestStep = useCallback((next: QuestStep) => {
   }, [activeWorktreeId, worktrees, pendingWorktrees, pendingDeletions])
 
   const handleAcceptHooks = useCallback(() => {
-    void window.api.acceptHooks()
+    void backend.acceptHooks()
   }, [])
 
   const handleDeclineHooks = useCallback(() => {
-    void window.api.declineHooks()
+    void backend.declineHooks()
   }, [])
 
   // Re-show the update banner if a new download arrives after a prior dismiss.
@@ -477,7 +481,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
   }, [manualAvailableVersion])
 
   const handleUpdateRestart = useCallback(() => {
-    void window.api.quitAndInstall()
+    void backend.quitAndInstall()
   }, [])
 
   // All worktree + repo + pending-creation handlers. Also subscribes to
@@ -661,7 +665,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
       title="Open Git Repository"
       selectLabel="Open"
       selectGuard={async (path) => {
-        const ok = await window.api.isGitRepo(path)
+        const ok = await backend.isGitRepo(path)
         return ok || 'Not a git repository — pick a folder containing a .git directory'
       }}
       onSelect={(path) => {
@@ -790,7 +794,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
                       <button
                         key={opt.id}
                         onClick={() => {
-                          window.api.setTheme(opt.id)
+                          backend.setTheme(opt.id)
                           setThemeChosen(true)
                         }}
                         className={`flex items-center gap-2 px-2 py-1.5 rounded-lg border transition-colors cursor-pointer ${
@@ -844,7 +848,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
                     <button
                       key={agent.kind}
                       onClick={() => {
-                        window.api.setDefaultAgent(agent.kind)
+                        backend.setDefaultAgent(agent.kind)
                         setAgentChosen(true)
                       }}
                       className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
@@ -1019,7 +1023,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
             </span>
             <button
               onClick={() => {
-                if (updaterStatus.releaseUrl) window.api.openExternal(updaterStatus.releaseUrl)
+                if (updaterStatus.releaseUrl) backend.openExternal(updaterStatus.releaseUrl)
               }}
               className="px-3 py-1 bg-info/30 hover:bg-info/40 rounded text-sm text-info transition-colors shrink-0 cursor-pointer no-drag"
             >

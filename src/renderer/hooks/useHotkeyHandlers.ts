@@ -6,6 +6,7 @@ import { useHotkeys } from './useHotkeys'
 import { groupWorktrees, getGroupKey, type GroupKey } from '../worktree-sort'
 import { focusTerminalById } from '../components/XTerminal'
 import { useConnections, getBackendsRegistry } from '../store'
+import { useBackend } from '../backend'
 
 interface UseHotkeyHandlersArgs {
   worktrees: Worktree[]
@@ -155,6 +156,7 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
   // The connections list always starts with Local at index 0; Cmd+Shift+1
   // is "back to local".
   const connections = useConnections()
+  const backend = useBackend()
   const switchToBackendByIndex = useCallback(
     (index: number) => {
       const target = connections[index]
@@ -162,10 +164,10 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       const registry = getBackendsRegistry()
       if (registry.getActiveId() === target.id) return
       registry.setActive(target.id)
-      void window.api.connectionsSetActive(target.id)
-      void window.api.connectionsSetLastConnected(target.id)
+      void backend.connectionsSetActive(target.id)
+      void backend.connectionsSetLastConnected(target.id)
     },
-    [connections]
+    [connections, backend]
   )
 
   const cycleWorktree = useCallback(
@@ -250,11 +252,11 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       openPR: () => {
         if (!activeWorktreeId) return
         const pr = prStatuses[activeWorktreeId]
-        if (pr?.url) window.api.openExternal(pr.url)
+        if (pr?.url) backend.openExternal(pr.url)
       },
       openInEditor: () => {
         if (!activeWorktreeId) return
-        window.api.openInEditor(activeWorktreeId)
+        backend.openInEditor(activeWorktreeId)
       },
       toggleCommandCenter: () => setShowCommandCenter((v) => !v),
       commandPalette: () => {
@@ -312,7 +314,8 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       setCommandPaletteMode,
       setShowPerfMonitor,
       setShowHotkeyCheatsheet,
-      setShowReview
+      setShowReview,
+      backend
     ]
   )
 

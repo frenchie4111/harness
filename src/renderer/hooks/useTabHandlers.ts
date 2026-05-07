@@ -3,6 +3,7 @@ import type { AgentKind, TerminalTab, PaneNode } from '../types'
 import { getLeaves, findLeaf, findLeafByTabId } from '../../shared/state/terminals'
 import { agentDisplayName, getAgentInfo } from '../../shared/agent-registry'
 import { focusTerminalById, markTerminalClosing } from '../components/XTerminal'
+import { useBackend } from '../backend'
 
 function makeTerminalId(prefix: string, worktreePath: string): string {
   const safe = worktreePath.replace(/[/\\]/g, '-').replace(/^-+/, '').replace(/-+/g, '-')
@@ -27,12 +28,13 @@ export function useTabHandlers({
   activeWorktreeId,
   setActiveWorktreeId
 }: UseTabHandlersArgs) {
+  const backend = useBackend()
   const appendTabToPane = useCallback(
     (worktreePath: string, tab: TerminalTab, paneId?: string) => {
       const tree = panes[worktreePath]
       const leaves = tree ? getLeaves(tree) : []
       const targetId = paneId || activePaneId[worktreePath] || leaves[0]?.id
-      void window.api.panesAddTab(worktreePath, tab, targetId)
+      void backend.panesAddTab(worktreePath, tab, targetId)
       if (targetId) {
         setActivePaneId((prev) => ({ ...prev, [worktreePath]: targetId }))
       }
@@ -108,9 +110,9 @@ export function useTabHandlers({
         !tabId.startsWith('browser-')
       ) {
         markTerminalClosing(tabId)
-        window.api.killTerminal(tabId)
+        backend.killTerminal(tabId)
       }
-      void window.api.panesCloseTab(worktreePath, tabId)
+      void backend.panesCloseTab(worktreePath, tabId)
     },
     []
   )
@@ -141,16 +143,16 @@ export function useTabHandlers({
       }
       if (kind === 'json-claude') {
         void (async (): Promise<void> => {
-          await window.api.killJsonClaude(tabId)
-          await window.api.startJsonClaude(tabId, worktreePath)
+          await backend.killJsonClaude(tabId)
+          await backend.startJsonClaude(tabId, worktreePath)
         })()
         return
       }
       markTerminalClosing(tabId)
-      window.api.killTerminal(tabId)
-      window.api.clearTerminalHistory(tabId)
+      backend.killTerminal(tabId)
+      backend.clearTerminalHistory(tabId)
       const newId = `${makeTerminalId('agent', worktreePath)}-${Date.now()}`
-      void window.api.panesRestartAgentTab(worktreePath, tabId, newId)
+      void backend.panesRestartAgentTab(worktreePath, tabId, newId)
     },
     [panes]
   )
@@ -173,14 +175,14 @@ export function useTabHandlers({
       // The renderer just routes the user's intent — XTerminal /
       // JsonModeChat will mount on the new tab type and self-spawn the
       // matching backend with the carried sessionId.
-      void window.api.panesConvertTabType(worktreePath, tabId, newType)
+      void backend.panesConvertTabType(worktreePath, tabId, newType)
     },
     []
   )
 
   const handleSelectTab = useCallback(
     (worktreePath: string, paneId: string, tabId: string) => {
-      void window.api.panesSelectTab(worktreePath, paneId, tabId)
+      void backend.panesSelectTab(worktreePath, paneId, tabId)
       setActivePaneId((prev) => ({ ...prev, [worktreePath]: paneId }))
       // Wake-on-focus is handled in WorkspaceView via a rising-edge
       // effect on leaf.activeTabId, so we don't fire panesWakeTab from
@@ -192,7 +194,7 @@ export function useTabHandlers({
 
   const handleSleepTab = useCallback(
     (worktreePath: string, tabId: string) => {
-      void window.api.panesSleepTab(worktreePath, tabId)
+      void backend.panesSleepTab(worktreePath, tabId)
     },
     []
   )
@@ -221,14 +223,14 @@ export function useTabHandlers({
   const handleReorderTabs = useCallback(
     (worktreePath: string, paneId: string, fromId: string, toId: string) => {
       if (fromId === toId) return
-      void window.api.panesReorderTabs(worktreePath, paneId, fromId, toId)
+      void backend.panesReorderTabs(worktreePath, paneId, fromId, toId)
     },
     []
   )
 
   const handleMoveTabToPane = useCallback(
     (worktreePath: string, tabId: string, toPaneId: string, toIndex?: number) => {
-      void window.api.panesMoveTabToPane(worktreePath, tabId, toPaneId, toIndex)
+      void backend.panesMoveTabToPane(worktreePath, tabId, toPaneId, toIndex)
       setActivePaneId((prev) => ({ ...prev, [worktreePath]: toPaneId }))
     },
     [setActivePaneId]
@@ -240,7 +242,7 @@ export function useTabHandlers({
       fromPaneId: string,
       direction?: 'horizontal' | 'vertical'
     ) => {
-      const newPane = await window.api.panesSplitPane(worktreePath, fromPaneId, direction)
+      const newPane = await backend.panesSplitPane(worktreePath, fromPaneId, direction)
       if (newPane) {
         setActivePaneId((prev) => ({ ...prev, [worktreePath]: newPane.id }))
       }
@@ -284,9 +286,9 @@ export function useTabHandlers({
       const isJsonClaude = targetTab.type === 'json-claude'
       requestAnimationFrame(() => {
         if (isJsonClaude) {
-          window.api.sendJsonClaudeMessage(id, text)
+          backend.sendJsonClaudeMessage(id, text)
         } else {
-          window.api.writeTerminal(id, '\x1b[200~' + text + '\x1b[201~')
+          backend.writeTerminal(id, '\x1b[200~' + text + '\x1b[201~')
           focusTerminalById(id)
         }
       })
