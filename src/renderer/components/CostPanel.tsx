@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { RightPanel } from './RightPanel'
 import { useCosts, usePanes } from '../store'
+import { useBackend } from '../backend'
 import { getLeaves } from '../../shared/state/terminals'
 import {
   totalForSession,
@@ -85,6 +86,7 @@ function Section({
 }
 
 export function CostPanel({ worktreePath }: CostPanelProps): JSX.Element | null {
+  const backend = useBackend()
   const costs = useCosts()
   const panes = usePanes()
 
@@ -154,7 +156,7 @@ export function CostPanel({ worktreePath }: CostPanelProps): JSX.Element | null 
       title="Cost"
       defaultCollapsed
       onCollapsedChange={(c) => {
-        window.api.setCostsInterest(!c)
+        backend.setCostsInterest(!c)
       }}
     >
       <div className="px-3 py-2 flex flex-col gap-3">

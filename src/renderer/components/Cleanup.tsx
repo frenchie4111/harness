@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, Trash2, AlertTriangle, GitPullRequest, CheckCircle2, Loader2, ChevronDown, ChevronRight, ExternalLink } from 'lucide-react'
 import type { Worktree, PRStatus, ActivityLog, BranchCommit } from '../types'
 import { isPRMerged } from '../../shared/state/prs'
+import { useBackend } from '../backend'
 
 interface CleanupProps {
   onClose: () => void
@@ -61,6 +62,7 @@ export function Cleanup({
   lastActive,
   onBulkDelete
 }: CleanupProps): JSX.Element {
+  const backend = useBackend()
   const [ageKey, setAgeKey] = useState<AgeKey>('7d')
   const [repoFilter, setRepoFilter] = useState<string | null>(null) // null = all repos
   const [mergedOnly, setMergedOnly] = useState(false)
@@ -95,9 +97,9 @@ export function Cleanup({
       setLoading(true)
       try {
         const [log, dirtyResults] = await Promise.all([
-          window.api.getActivityLog(),
+          backend.getActivityLog(),
           Promise.all(
-            eligible.map(async (w) => [w.path, await window.api.isWorktreeDirty(w.path)] as const)
+            eligible.map(async (w) => [w.path, await backend.isWorktreeDirty(w.path)] as const)
           )
         ])
         if (cancelled) return
@@ -190,7 +192,7 @@ export function Cleanup({
     })
     if (!commitsByPath[path]) {
       setCommitsByPath((prev) => ({ ...prev, [path]: 'loading' }))
-      window.api
+      backend
         .getBranchCommits(path)
         .then((commits) => {
           setCommitsByPath((prev) => ({ ...prev, [path]: commits }))
@@ -498,7 +500,7 @@ export function Cleanup({
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation()
-                                    window.api.openExternal(pr.url)
+                                    backend.openExternal(pr.url)
                                   }}
                                   className="text-dim hover:text-fg-bright transition-colors cursor-pointer shrink-0 mt-0.5"
                                   title="Open on GitHub"

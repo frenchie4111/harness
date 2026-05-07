@@ -6,6 +6,7 @@ import {
 } from '../../shared/transport/parse-connection-url'
 import { WebSocketClientTransport } from '../../shared/transport/transport-websocket'
 import { getBackendsRegistry } from '../store'
+import { useBackend } from '../backend'
 import type { StateSnapshot } from '../../shared/state'
 import type { BackendConnection } from '../types'
 
@@ -25,6 +26,7 @@ interface AddBackendModalProps {
  *  validation — it's the same instance we then register, so the user
  *  doesn't pay a second connect roundtrip on first activation. */
 export function AddBackendModal({ isOpen, onClose }: AddBackendModalProps): JSX.Element | null {
+  const backend = useBackend()
   const [urlInput, setUrlInput] = useState('')
   const [labelInput, setLabelInput] = useState('')
   const [labelEdited, setLabelEdited] = useState(false)
@@ -99,7 +101,7 @@ export function AddBackendModal({ isOpen, onClose }: AddBackendModalProps): JSX.
 
       // Persist via main. The returned BackendConnection has the new
       // uuid + addedAt and is what we store in the registry.
-      const saved: BackendConnection = await window.api.connectionsAdd(
+      const saved: BackendConnection = await backend.connectionsAdd(
         {
           label,
           url: parseResult.parsed.storedUrl,
@@ -113,14 +115,14 @@ export function AddBackendModal({ isOpen, onClose }: AddBackendModalProps): JSX.
       // snapshot we just fetched so existing worktrees / panes / sessions
       // are visible immediately on switch (otherwise the renderer reads
       // initialState and shows the onboarding screen). Then make the
-      // new backend active so subsequent window.api.X calls route here.
+      // new backend active so subsequent backend.X calls route here.
       const store = registry.add(saved, ws)
       store.setSnapshot(snapshot.state)
       store.setClientId(clientId)
       savedId = saved.id  // unblocks the onConnectionChange callback
       registry.setActive(saved.id)
-      void window.api.connectionsSetActive(saved.id)
-      void window.api.connectionsSetLastConnected(saved.id)
+      void backend.connectionsSetActive(saved.id)
+      void backend.connectionsSetLastConnected(saved.id)
       ws = null  // ownership transferred — don't disconnect on cleanup
       handleClose()
     } catch (err) {
@@ -136,7 +138,7 @@ export function AddBackendModal({ isOpen, onClose }: AddBackendModalProps): JSX.
     } finally {
       setBusy(false)
     }
-  }, [parseResult, effectiveLabel, suggestedLabel, handleClose])
+  }, [parseResult, effectiveLabel, suggestedLabel, handleClose, backend])
 
   if (!isOpen) return null
 

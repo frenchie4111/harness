@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import type { PerfMetrics, PerfSample } from '../types'
 import { renderMetrics, type RenderSample } from '../render-metrics'
+import { useBackend } from '../backend'
 
 const COLOR_NEUTRAL = '#9ca3af'
 const COLOR_WARNING = '#fbbf24'
@@ -297,6 +298,7 @@ interface Props {
 const HUD_WIDTH = 520
 
 export function PerfMonitorHUD({ onClose }: Props): JSX.Element {
+  const backend = useBackend()
   const [metrics, setMetrics] = useState<PerfMetrics | null>(null)
   const [renderHistory, setRenderHistory] = useState<RenderSample[]>([])
   const [renderLatest, setRenderLatest] = useState<RenderSample>(() =>
@@ -347,7 +349,7 @@ export function PerfMonitorHUD({ onClose }: Props): JSX.Element {
     const poll = async (): Promise<void> => {
       if (!active) return
       try {
-        const m = await window.api.getPerfMetrics()
+        const m = await backend.getPerfMetrics()
         if (active) {
           setMetrics(m)
           setRenderHistory(renderMetrics.getHistory())

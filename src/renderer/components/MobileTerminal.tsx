@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CornerDownLeft, X, Send, Keyboard, ArrowDownToLine } from 'lucide-react'
 import { XTerminal, scrollTerminalById, scrollTerminalToBottomById, getTerminalLineHeight, isTerminalAtBottom } from './XTerminal'
 import type { TerminalTab } from '../types'
+import { useBackend } from '../backend'
 
 interface MobileTerminalProps {
   worktreePath: string
@@ -38,6 +39,7 @@ function ctrlByte(key: string): string | null {
 }
 
 export function MobileTerminal({ worktreePath, tab }: MobileTerminalProps): JSX.Element {
+  const backend = useBackend()
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const composingRef = useRef(false)
@@ -49,9 +51,9 @@ export function MobileTerminal({ worktreePath, tab }: MobileTerminalProps): JSX.
 
   const writeRaw = useCallback(
     (data: string): void => {
-      window.api.writeTerminal(terminalId, data)
+      backend.writeTerminal(terminalId, data)
     },
-    [terminalId]
+    [terminalId, backend]
   )
 
   const sendKey = useCallback(

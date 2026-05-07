@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { X, GitPullRequest, ChevronDown, ChevronRight, Layers, Rows3 } from 'lucide-react'
 import { useSettings } from '../store'
+import { useBackend } from '../backend'
 import type {
   Worktree,
   PtyStatus,
@@ -99,13 +100,14 @@ export function CommandCenter({
   onClose,
   onSelect
 }: CommandCenterProps): JSX.Element {
+  const backend = useBackend()
   // Activity log for per-worktree mini timelines.
   const [log, setLog] = useState<ActivityLog>({})
   useEffect(() => {
     let cancelled = false
     const load = async (): Promise<void> => {
       try {
-        const data = await window.api.getActivityLog()
+        const data = await backend.getActivityLog()
         if (!cancelled) setLog(data)
       } catch {
         // ignore

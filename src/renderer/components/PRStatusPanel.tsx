@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { ExternalLink, GitMerge, ChevronDown, Check, GitPullRequest, RefreshCw } from 'lucide-react'
 import { useRepoConfigs, useSettings } from '../store'
+import { useBackend } from '../backend'
 import type {
   PRStatus,
   PRReview,
@@ -86,6 +87,7 @@ function MergeLocallyBody({
   onMerged?: () => void | Promise<void>
   onRemoveWorktree?: (worktreePath: string) => void | Promise<void>
 }): JSX.Element {
+  const backend = useBackend()
   const [mainStatus, setMainStatus] = useState<MainWorktreeStatus | null>(null)
   const [conflictPreview, setConflictPreview] = useState<MergeConflictPreview | null>(null)
   const [busy, setBusy] = useState<'idle' | 'checking' | 'fixing' | 'merging'>('idle')
@@ -107,8 +109,8 @@ function MergeLocallyBody({
     setBusy('checking')
     try {
       const [status, preview] = await Promise.all([
-        window.api.getMainWorktreeStatus(worktree.repoRoot),
-        window.api.previewMergeConflicts(worktree.repoRoot, worktree.branch, worktree.path).catch(() => null)
+        backend.getMainWorktreeStatus(worktree.repoRoot),
+        backend.previewMergeConflicts(worktree.repoRoot, worktree.branch, worktree.path).catch(() => null)
       ])
       setMainStatus(status)
       setConflictPreview(preview)
@@ -142,14 +144,14 @@ function MergeLocallyBody({
     setMenuOpen(false)
     // Persist as new default — "last used wins". The store dispatch
     // re-renders us with the new strategy automatically.
-    void window.api.setMergeStrategy(s)
+    void backend.setMergeStrategy(s)
   }, [])
 
   const handleFix = useCallback(async () => {
     setError(null)
     setBusy('fixing')
     try {
-      const status = await window.api.prepareMainForMerge(worktree.repoRoot)
+      const status = await backend.prepareMainForMerge(worktree.repoRoot)
       setMainStatus(status)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -165,8 +167,8 @@ function MergeLocallyBody({
     setBusy('merging')
     try {
       // Persist strategy on use too, in case the user never opened the dropdown.
-      void window.api.setMergeStrategy(strategy)
-      const result = await window.api.mergeWorktreeLocally(worktree.repoRoot, worktree.branch, strategy, worktree.path)
+      void backend.setMergeStrategy(strategy)
+      const result = await backend.mergeWorktreeLocally(worktree.repoRoot, worktree.branch, strategy, worktree.path)
       setSuccess(`Merged into ${result.baseBranch}`)
       if (onMerged) await onMerged()
     } catch (err) {
@@ -399,6 +401,7 @@ function ReviewSummary({
   reviews: PRReview[]
   decision: PRStatus['reviewDecision']
 }): JSX.Element {
+  const backend = useBackend()
   const [expanded, setExpanded] = useState(false)
   const label = REVIEW_DECISION_LABELS[decision]
 
@@ -429,7 +432,7 @@ function ReviewSummary({
               <div
                 key={review.user}
                 className="flex items-center gap-1.5 text-xs py-0.5 cursor-pointer hover:bg-panel-raised px-1 -mx-1 rounded group"
-                onClick={() => window.api.openExternal(review.htmlUrl)}
+                onClick={() => backend.openExternal(review.htmlUrl)}
                 title={`${review.user}: ${review.state.toLowerCase().replace('_', ' ')}`}
               >
                 <img
@@ -467,6 +470,7 @@ export function PRStatusPanel({
   onRefresh,
   onConnectGithub
 }: PRStatusPanelProps): JSX.Element {
+  const backend = useBackend()
   const [expanded, setExpanded] = useState(false)
 
   // Auto-expand the check list whenever checks are failing so the user sees
@@ -498,7 +502,7 @@ export function PRStatusPanel({
       <button
         onClick={(e) => {
           e.stopPropagation()
-          window.api.openExternal(pr.url)
+          backend.openExternal(pr.url)
         }}
         className="text-xs text-dim hover:text-fg flex items-center gap-1 transition-colors cursor-pointer"
       >
@@ -619,7 +623,7 @@ export function PRStatusPanel({
                     key={check.name}
                     className={rowClasses}
                     onClick={() => {
-                      if (check.detailsUrl) window.api.openExternal(check.detailsUrl)
+                      if (check.detailsUrl) backend.openExternal(check.detailsUrl)
                     }}
                     title={
                       check.detailsUrl

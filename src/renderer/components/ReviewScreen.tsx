@@ -4,6 +4,7 @@ import type { ReviewComment } from './ReviewFileTree'
 import { ReviewSummaryBar } from './ReviewSummaryBar'
 import { ReviewFileTree } from './ReviewFileTree'
 import { ReviewDiffPane } from './ReviewDiffPane'
+import { useBackend } from '../backend'
 
 export interface ReviewCommit {
   hash: string
@@ -32,6 +33,7 @@ export function ReviewScreen({
   onClose,
   onSendToAgent
 }: ReviewScreenProps): JSX.Element {
+  const backend = useBackend()
   const [files, setFiles] = useState<ChangedFile[]>([])
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
   const [reviewedFiles, setReviewedFiles] = useState<Set<string>>(new Set())
@@ -43,8 +45,8 @@ export function ReviewScreen({
     const load = async (): Promise<void> => {
       try {
         const result = commit
-          ? await window.api.getCommitChangedFiles(worktreePath, commit.hash)
-          : await window.api.getChangedFiles(worktreePath, mode)
+          ? await backend.getCommitChangedFiles(worktreePath, commit.hash)
+          : await backend.getChangedFiles(worktreePath, mode)
         if (!cancelled) {
           setFiles(result)
           if (!selectedFile && result.length > 0) {

@@ -12,6 +12,7 @@ import { AllFilesPanel } from './AllFilesPanel'
 import { CostPanel } from './CostPanel'
 import { JsonClaudeTodosPanel } from './JsonClaudeTodosPanel'
 import { RightColumnToolbar } from './RightColumnToolbar'
+import { useBackend } from '../backend'
 
 type ChangedFilesPanelProps = React.ComponentProps<typeof ChangedFilesPanel>
 type AllFilesPanelProps = React.ComponentProps<typeof AllFilesPanel>
@@ -62,6 +63,7 @@ export function RightColumn({
   onOpenReview,
   onCollapse
 }: RightColumnProps): JSX.Element {
+  const backend = useBackend()
   const hidden = effectiveHiddenRightPanels(activeRepoConfig)
   const order = effectiveRightPanelOrder(activeRepoConfig)
 
@@ -69,7 +71,7 @@ export function RightColumn({
     if (!activeRepoRoot) return
     // Send the full hiddenRightPanels object; also null out legacy
     // fields so old values don't leak back in via effective migration.
-    void window.api.setRepoConfig(activeRepoRoot, {
+    void backend.setRepoConfig(activeRepoRoot, {
       hiddenRightPanels: next,
       hideMergePanel: null,
       hidePrPanel: null
@@ -78,7 +80,7 @@ export function RightColumn({
 
   const handleChangeOrder = (next: RightPanelKey[]): void => {
     if (!activeRepoRoot) return
-    void window.api.setRepoConfig(activeRepoRoot, {
+    void backend.setRepoConfig(activeRepoRoot, {
       rightPanelOrder: next
     } as unknown as Partial<RepoConfig>)
   }

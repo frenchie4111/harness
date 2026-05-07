@@ -6,6 +6,7 @@ import type { FileDiffSides, ChangedFile } from '../types'
 import type { ReviewComment } from './ReviewFileTree'
 import { MonacoDiffEditor } from './MonacoDiffEditor'
 import { useSettings } from '../store'
+import { useBackend } from '../backend'
 
 interface ReviewDiffPaneProps {
   worktreePath: string
@@ -197,6 +198,7 @@ export function ReviewDiffPane({
   onAddComment,
   onDeleteComment
 }: ReviewDiffPaneProps): JSX.Element {
+  const backend = useBackend()
   const settings = useSettings()
   const [sides, setSides] = useState<FileDiffSides | null>(null)
   const [loading, setLoading] = useState(false)
@@ -213,8 +215,8 @@ export function ReviewDiffPane({
     setLoading(true)
     setCommentLine(null)
     const promise = commitHash
-      ? window.api.getCommitFileDiffSides(worktreePath, commitHash, file.path)
-      : window.api.getFileDiffSides(worktreePath, file.path, file.staged, mode)
+      ? backend.getCommitFileDiffSides(worktreePath, commitHash, file.path)
+      : backend.getFileDiffSides(worktreePath, file.path, file.staged, mode)
     promise
       .then((result) => {
         if (!cancelled) setSides(result)

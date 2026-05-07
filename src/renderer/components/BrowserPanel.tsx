@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { ArrowLeft, ArrowRight, RotateCw, Wrench, Loader2 } from 'lucide-react'
 import { useBrowser } from '../store'
+import { useBackend } from '../backend'
 import { Tooltip } from './Tooltip'
 import { useActiveBackend } from '../store'
 import { RemoteBrowserView } from './RemoteBrowserView'
@@ -18,6 +19,7 @@ interface BrowserPanelProps {
  * BrowserManager.
  */
 export function BrowserPanel({ tabId, visible, initialUrl }: BrowserPanelProps): JSX.Element {
+  const backend = useBackend()
   const browser = useBrowser()
   const tabState = browser.byTab[tabId]
   const currentUrl = tabState?.url ?? initialUrl
@@ -46,15 +48,15 @@ export function BrowserPanel({ tabId, visible, initialUrl }: BrowserPanelProps):
     const el = bodyRef.current
     if (!el) return
     if (!visible) {
-      window.api.browserHide(tabId)
+      backend.browserHide(tabId)
       return
     }
     const r = el.getBoundingClientRect()
     if (r.width === 0 || r.height === 0) {
-      window.api.browserHide(tabId)
+      backend.browserHide(tabId)
       return
     }
-    window.api.browserSetBounds(tabId, {
+    backend.browserSetBounds(tabId, {
       x: r.left,
       y: r.top,
       width: r.width,
@@ -85,14 +87,14 @@ export function BrowserPanel({ tabId, visible, initialUrl }: BrowserPanelProps):
   useEffect(() => {
     if (webMode) return
     return () => {
-      window.api.browserHide(tabId)
+      backend.browserHide(tabId)
     }
   }, [tabId, webMode])
 
   const submitNav = (): void => {
     setEditing(false)
     if (!draftUrl.trim()) return
-    void window.api.browserNavigate(tabId, draftUrl.trim())
+    void backend.browserNavigate(tabId, draftUrl.trim())
   }
 
   return (
@@ -100,7 +102,7 @@ export function BrowserPanel({ tabId, visible, initialUrl }: BrowserPanelProps):
       <div className="flex items-center gap-1 px-2 h-9 shrink-0 border-b border-border bg-panel">
         <Tooltip label="Back">
           <button
-            onClick={() => void window.api.browserBack(tabId)}
+            onClick={() => void backend.browserBack(tabId)}
             disabled={!canGoBack}
             className="p-1 rounded text-faint hover:text-fg disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
@@ -109,7 +111,7 @@ export function BrowserPanel({ tabId, visible, initialUrl }: BrowserPanelProps):
         </Tooltip>
         <Tooltip label="Forward">
           <button
-            onClick={() => void window.api.browserForward(tabId)}
+            onClick={() => void backend.browserForward(tabId)}
             disabled={!canGoForward}
             className="p-1 rounded text-faint hover:text-fg disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
@@ -118,7 +120,7 @@ export function BrowserPanel({ tabId, visible, initialUrl }: BrowserPanelProps):
         </Tooltip>
         <Tooltip label="Reload">
           <button
-            onClick={() => void window.api.browserReload(tabId)}
+            onClick={() => void backend.browserReload(tabId)}
             className="p-1 rounded text-faint hover:text-fg transition-colors"
           >
             {loading ? <Loader2 size={14} className="animate-spin" /> : <RotateCw size={14} />}
@@ -146,7 +148,7 @@ export function BrowserPanel({ tabId, visible, initialUrl }: BrowserPanelProps):
         />
         <Tooltip label="DevTools">
           <button
-            onClick={() => void window.api.browserOpenDevTools(tabId)}
+            onClick={() => void backend.browserOpenDevTools(tabId)}
             className="p-1 rounded text-faint hover:text-fg transition-colors"
           >
             <Wrench size={14} />

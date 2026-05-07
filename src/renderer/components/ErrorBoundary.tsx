@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { AlertTriangle, RotateCcw, Copy, Check, RefreshCw, MessageSquare } from 'lucide-react'
 import { openReportIssueFor } from './ReportIssueScreen'
+import { getBackend } from '../backend'
 
 interface FallbackRenderProps {
   error: Error
@@ -48,7 +49,14 @@ export class ErrorBoundary extends Component<Props, State> {
   componentDidCatch(error: Error, info: ErrorInfo): void {
     this.setState({ info })
     const label = this.props.label ?? 'renderer'
-    const logError = window.api?.logError
+    // getBackend() throws if called before initBackend() — wrap it so an
+    // error boundary firing during boot doesn't get a second exception.
+    let logError: ReturnType<typeof getBackend>['logError'] | undefined
+    try {
+      logError = getBackend().logError
+    } catch {
+      logError = undefined
+    }
     if (typeof logError === 'function') {
       try {
         logError(label, error, info)

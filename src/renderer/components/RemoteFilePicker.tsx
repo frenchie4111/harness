@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronUp, Folder, FolderOpen, GitBranch, Loader2, X } from 'lucide-react'
 import type { FsEntry } from '../types'
+import { useBackend } from '../backend'
 
 interface RemoteFilePickerProps {
   isOpen: boolean
@@ -35,6 +36,7 @@ export function RemoteFilePicker({
   onSelect,
   onCancel
 }: RemoteFilePickerProps): JSX.Element | null {
+  const backend = useBackend()
   const [currentPath, setCurrentPath] = useState<string>(initialPath ?? '')
   const [pathDraft, setPathDraft] = useState<string>(initialPath ?? '')
   const [entries, setEntries] = useState<FsEntry[]>([])
@@ -50,7 +52,7 @@ export function RemoteFilePicker({
   useEffect(() => {
     if (!isOpen || currentPath) return
     let cancelled = false
-    void window.api.resolveHome().then((home) => {
+    void backend.resolveHome().then((home) => {
       if (cancelled) return
       setCurrentPath(home)
       setPathDraft(home)
@@ -66,7 +68,7 @@ export function RemoteFilePicker({
     const seq = ++fetchSeqRef.current
     setLoading(true)
     setError(null)
-    void window.api
+    void backend
       .listDir(currentPath, { showHidden })
       .then((items) => {
         if (fetchSeqRef.current !== seq) return

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ImageOff } from 'lucide-react'
+import { getBackend } from '../backend'
 
 // Module-level cache so the same image isn't re-read once per render. The
 // values are data URLs ready to drop into <img src=""/>; null marks a
@@ -11,7 +12,7 @@ function fetchImage(path: string, mediaType: string): Promise<string | null> {
   if (CACHE.has(path)) return Promise.resolve(CACHE.get(path)!)
   const inflight = INFLIGHT.get(path)
   if (inflight) return inflight
-  const p = window.api
+  const p = getBackend()
     .readJsonClaudeAttachmentImage(path)
     .then((b64) => {
       const result = b64 ? `data:${mediaType};base64,${b64}` : null

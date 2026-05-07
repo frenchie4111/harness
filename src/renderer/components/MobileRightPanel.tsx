@@ -1,5 +1,6 @@
 import { useCallback } from 'react'
 import { useRepoConfigs, useSettings } from '../store'
+import { useBackend } from '../backend'
 import { PRStatusPanel, MergeLocallyPanel } from './PRStatusPanel'
 import { BranchCommitsPanel } from './BranchCommitsPanel'
 import { CostPanel } from './CostPanel'
@@ -23,6 +24,7 @@ export function MobileRightPanel({
   prLoading,
   onClose
 }: MobileRightPanelProps): JSX.Element {
+  const backend = useBackend()
   const repoConfigs = useRepoConfigs()
   const settings = useSettings()
   const hasGithubToken = settings.hasGithubToken || settings.githubAuthSource === 'gh-cli'
@@ -30,16 +32,16 @@ export function MobileRightPanel({
   void activeRepoConfig
 
   const handleRefresh = useCallback(() => {
-    void window.api.refreshPRsAll()
-  }, [])
+    void backend.refreshPRsAll()
+  }, [backend])
 
   const handleRemoveWorktree = useCallback(
     (path: string): void => {
       if (!activeWorktree) return
-      void window.api.removeWorktree(activeWorktree.repoRoot, path)
+      void backend.removeWorktree(activeWorktree.repoRoot, path)
       onClose()
     },
-    [activeWorktree, onClose]
+    [activeWorktree, onClose, backend]
   )
 
   return (

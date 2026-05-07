@@ -5,6 +5,7 @@ import { Tooltip } from './Tooltip'
 import { detectLanguage, highlightLine } from '../syntax'
 import { MonacoDiffEditor } from './MonacoDiffEditor'
 import { useSettings } from '../store'
+import { useBackend } from '../backend'
 
 interface DiffViewProps {
   worktreePath: string
@@ -32,6 +33,7 @@ function FileDiffView({
   branchDiff,
   onSendToAgent
 }: DiffViewProps): JSX.Element {
+  const backend = useBackend()
   const settings = useSettings()
   const [sides, setSides] = useState<FileDiffSides | null>(null)
   const [loading, setLoading] = useState(true)
@@ -58,7 +60,7 @@ function FileDiffView({
     setSavedValue('')
     setSaveError(null)
     if (!filePath) return
-    window.api
+    backend
       .getFileDiffSides(worktreePath, filePath, staged ?? false, branchDiff ? 'branch' : 'working')
       .then((r) => {
         if (cancelled) return
@@ -77,7 +79,7 @@ function FileDiffView({
     const current = valueRef.current
     if (current === savedRef.current) return
     setSaveError(null)
-    const r = await window.api.writeWorktreeFile(worktreePath, filePath, current)
+    const r = await backend.writeWorktreeFile(worktreePath, filePath, current)
     if (r.ok) {
       setSavedValue(current)
     } else {
@@ -210,6 +212,7 @@ function CommitDiffView({
   commitHash,
   onSendToAgent
 }: DiffViewProps): JSX.Element {
+  const backend = useBackend()
   const [commit, setCommit] = useState<CommitDiff | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -218,7 +221,7 @@ function CommitDiffView({
     setLoading(true)
     setCommit(null)
     if (!commitHash) return
-    window.api.getCommitDiff(worktreePath, commitHash).then((r) => {
+    backend.getCommitDiff(worktreePath, commitHash).then((r) => {
       if (cancelled) return
       setCommit(r)
       setLoading(false)

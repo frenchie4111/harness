@@ -4,6 +4,7 @@ import type { ChangedFile } from '../types'
 import { Tooltip } from './Tooltip'
 import { RightPanel } from './RightPanel'
 import { useWatchedQuery } from '../hooks/useWatchedQuery'
+import { useBackend } from '../backend'
 
 type Mode = 'working' | 'branch'
 
@@ -36,13 +37,14 @@ interface ChangedFilesData {
 }
 
 export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToAgent, onOpenReview }: ChangedFilesPanelProps): JSX.Element {
+  const backend = useBackend()
   const fetcher = useCallback(async (path: string): Promise<ChangedFilesData> => {
     const [working, branch] = await Promise.all([
-      window.api.getChangedFiles(path, 'working'),
-      window.api.getChangedFiles(path, 'branch'),
+      backend.getChangedFiles(path, 'working'),
+      backend.getChangedFiles(path, 'branch'),
     ])
     return { working, branch }
-  }, [])
+  }, [backend])
 
   const { data, loading, refresh } = useWatchedQuery<ChangedFilesData>({
     worktreePath,
@@ -179,6 +181,7 @@ function FileRow({
   onClick: () => void
   onSendToAgent?: (text: string) => void
 }): JSX.Element {
+  const backend = useBackend()
   const lastSlash = file.path.lastIndexOf('/')
   const dir = lastSlash >= 0 ? file.path.slice(0, lastSlash + 1) : ''
   const name = lastSlash >= 0 ? file.path.slice(lastSlash + 1) : file.path
@@ -224,7 +227,7 @@ function FileRow({
           <button
             onClick={(e) => {
               e.stopPropagation()
-              window.api.openInEditor(worktreePath, file.path)
+              backend.openInEditor(worktreePath, file.path)
             }}
             className="shrink-0 opacity-0 group-hover:opacity-100 text-faint hover:text-fg transition-all cursor-pointer"
           >

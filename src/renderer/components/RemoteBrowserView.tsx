@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useBrowser } from '../store'
+import { useBackend } from '../backend'
 
 interface RemoteBrowserViewProps {
   tabId: string
@@ -28,6 +29,7 @@ interface Shot {
  * this gets the agent loop usable in headless mode without it.
  */
 export function RemoteBrowserView({ tabId, visible }: RemoteBrowserViewProps): JSX.Element {
+  const backend = useBackend()
   const browser = useBrowser()
   const tabError = browser.byTab[tabId]?.error
   const [shot, setShot] = useState<Shot | null>(null)
@@ -44,7 +46,7 @@ export function RemoteBrowserView({ tabId, visible }: RemoteBrowserViewProps): J
 
     const refresh = async (): Promise<void> => {
       try {
-        const result = await window.api.browserScreenshot(tabId, {
+        const result = await backend.browserScreenshot(tabId, {
           format: 'jpeg',
           quality: 70
         })
@@ -94,7 +96,7 @@ export function RemoteBrowserView({ tabId, visible }: RemoteBrowserViewProps): J
     const sy = shot.height / rect.height
     const x = Math.round((e.clientX - rect.left) * sx)
     const y = Math.round((e.clientY - rect.top) * sy)
-    void window.api.browserClick(tabId, x, y).catch(() => {})
+    void backend.browserClick(tabId, x, y).catch(() => {})
   }
 
   const submitType = (): void => {
@@ -102,11 +104,11 @@ export function RemoteBrowserView({ tabId, visible }: RemoteBrowserViewProps): J
     setTyping(false)
     setTypeBuf('')
     if (!text) return
-    void window.api.browserType(tabId, text).catch(() => {})
+    void backend.browserType(tabId, text).catch(() => {})
   }
 
   const submitKey = (key: string): void => {
-    void window.api.browserType(tabId, '', key).catch(() => {})
+    void backend.browserType(tabId, '', key).catch(() => {})
   }
 
   return (

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ChevronDown, GitPullRequest, RefreshCw, Loader2, SquareTerminal, FileText, FileDiff, Globe, X, ExternalLink, PanelRightOpen, PanelRightClose } from 'lucide-react'
 import { useWorktrees, usePanes, useTerminals, usePrs, useSettings } from '../store'
+import { useBackend } from '../backend'
 import { groupWorktrees, type WorktreeGroup } from '../worktree-sort'
 import { getLeaves } from '../../shared/state/terminals'
 import type { PtyStatus, TerminalTab, Worktree, PRStatus } from '../types'
@@ -40,6 +41,7 @@ function pickInitialTab(tabs: TerminalTab[]): string | null {
 }
 
 export function MobileApp(): JSX.Element {
+  const backend = useBackend()
   const wtState = useWorktrees()
   const panes = usePanes()
   const terminals = useTerminals()
@@ -67,12 +69,12 @@ export function MobileApp(): JSX.Element {
 
   useEffect(() => {
     if (!activeWorktreeId) return
-    void window.api.panesEnsureInitialized(activeWorktreeId)
+    void backend.panesEnsureInitialized(activeWorktreeId)
   }, [activeWorktreeId])
 
   useEffect(() => {
-    void window.api.refreshWorktreesList()
-    void window.api.refreshPRsAllIfStale()
+    void backend.refreshWorktreesList()
+    void backend.refreshPRsAllIfStale()
   }, [])
 
   const activeWorktree = useMemo(
@@ -117,7 +119,7 @@ export function MobileApp(): JSX.Element {
   const handleConvertTabType = useCallback(
     (tabId: string, newType: 'agent' | 'json-claude') => {
       if (!activeWorktree) return
-      void window.api.panesConvertTabType(activeWorktree.path, tabId, newType)
+      void backend.panesConvertTabType(activeWorktree.path, tabId, newType)
     },
     [activeWorktree]
   )
@@ -192,7 +194,7 @@ export function MobileApp(): JSX.Element {
             aggregateStatuses={aggregateStatuses}
             onSelect={handleSelectWorktree}
             onClose={() => setPickerOpen(false)}
-            onRefresh={() => void window.api.refreshPRsAll()}
+            onRefresh={() => void backend.refreshPRsAll()}
           />
         )}
 

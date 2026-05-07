@@ -5,6 +5,7 @@ import {
 } from '../../shared/state/json-claude'
 import { formatPendingTool } from '../pending-tool'
 import { useJsonClaudeSession, useSettings } from '../store'
+import { useBackend } from '../backend'
 import {
   suggestPermissionPatterns,
   isFileToolCrossCwd,
@@ -40,6 +41,7 @@ export function JsonClaudeApprovalCard({
   approval,
   onResolve
 }: JsonClaudeApprovalCardProps): JSX.Element {
+  const backend = useBackend()
   const settings = useSettings()
   const savedGuidance = settings.autoApproveSteerInstructions
   const [mode, setMode] = useState<
@@ -109,36 +111,36 @@ export function JsonClaudeApprovalCard({
     // Resolve first so the bridge writes the allow response before the
     // kill+respawn that setPermissionMode triggers — otherwise the
     // bridge's stopSession would deny-cancel this in-flight approval.
-    await window.api.resolveJsonClaudeApproval(approval.requestId, {
+    await backend.resolveJsonClaudeApproval(approval.requestId, {
       behavior: 'allow',
       updatedInput: approval.input
     })
     if (isEditTool) {
-      await window.api.setJsonClaudePermissionMode(
+      await backend.setJsonClaudePermissionMode(
         approval.sessionId,
         'acceptEdits'
       )
     } else {
-      await window.api.grantJsonClaudeSessionToolApprovals(approval.sessionId, [
+      await backend.grantJsonClaudeSessionToolApprovals(approval.sessionId, [
         approval.toolName
       ])
     }
   }
 
   async function saveGuidance(): Promise<void> {
-    await window.api.setAutoApproveSteerInstructions(guidanceDraft)
+    await backend.setAutoApproveSteerInstructions(guidanceDraft)
     setGuidanceSavedAt(Date.now())
   }
 
   async function saveGuidanceAndRerun(): Promise<void> {
-    await window.api.setAutoApproveSteerInstructions(guidanceDraft)
+    await backend.setAutoApproveSteerInstructions(guidanceDraft)
     // Setting the saved timestamp before the IPC means the "Saved"
     // hint is briefly visible if re-review happens to be slow on the
     // first call. The card immediately re-renders with autoReview.state
     // back to 'pending' once main dispatches, replacing the static
     // "Auto-approver: …" row with the spinner.
     setGuidanceSavedAt(Date.now())
-    await window.api.rerunJsonClaudeAutoApprovalReview(approval.requestId)
+    await backend.rerunJsonClaudeAutoApprovalReview(approval.requestId)
     setMode('summary')
   }
 

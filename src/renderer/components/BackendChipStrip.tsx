@@ -1,5 +1,6 @@
 import { useCallback } from 'react'
 import { Laptop, Server, Plus } from 'lucide-react'
+import { useBackend } from '../backend'
 import {
   useConnections,
   useActiveBackend,
@@ -22,19 +23,20 @@ interface BackendChipStripProps {
  *
  *  Click a chip to switch the active backend — registry.setActive()
  *  flips which store the slice hooks read from, the preload's router
- *  redirects window.api calls, and we persist activeBackendId via
- *  window.api.connectionsSetActive() so the choice survives a restart.
+ *  redirects backend RPCs, and we persist activeBackendId via
+ *  backend.connectionsSetActive() so the choice survives a restart.
  */
 export function BackendChipStrip({ onAddBackend }: BackendChipStripProps): JSX.Element | null {
   const connections = useConnections()
   const active = useActiveBackend()
+  const backend = useBackend()
 
   const handleSelect = useCallback((id: string) => {
     if (id === active.id) return
     getBackendsRegistry().setActive(id)
-    void window.api.connectionsSetActive(id)
-    void window.api.connectionsSetLastConnected(id)
-  }, [active.id])
+    void backend.connectionsSetActive(id)
+    void backend.connectionsSetLastConnected(id)
+  }, [active.id, backend])
 
   // The strip stays visible even when only Local is registered — the
   // design originally specced auto-hide at 1 backend, but that left

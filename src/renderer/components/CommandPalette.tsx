@@ -6,6 +6,7 @@ import { ACTION_LABELS, bindingToString } from '../hotkeys'
 import { groupWorktrees, GROUP_ORDER, GROUP_LABELS, type GroupKey } from '../worktree-sort'
 import { repoNameColor } from './RepoIcon'
 import { fuzzyMatch } from '../fuzzy'
+import { useBackend } from '../backend'
 
 export type PaletteMode = 'root' | 'files'
 
@@ -216,6 +217,7 @@ export function CommandPalette({
   onAction,
   onOpenFile,
 }: CommandPaletteProps): JSX.Element {
+  const backend = useBackend()
   const [mode, setMode] = useState<PaletteMode>(initialMode)
   const [query, setQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
@@ -240,7 +242,7 @@ export function CommandPalette({
     }
     let cancelled = false
     setFilesLoading(true)
-    window.api.listAllFiles(activeWorktreeId).then((result) => {
+    backend.listAllFiles(activeWorktreeId).then((result) => {
       if (cancelled) return
       FILE_CACHE.set(activeWorktreeId, { files: result, ts: Date.now() })
       setFiles(result)

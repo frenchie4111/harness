@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { ArrowLeft, Loader2, GitCommit, GitPullRequest, GitBranch, Timer, Sparkles } from 'lucide-react'
 import type { WeeklyStats } from '../types'
 import iconUrl from '../../../resources/icon.png'
+import { useBackend } from '../backend'
 
 interface WeeklyWrappedScreenProps {
   onClose: () => void
@@ -30,6 +31,7 @@ function hoursUnit(mins: number): string {
 }
 
 export function WeeklyWrappedScreen({ onClose }: WeeklyWrappedScreenProps): JSX.Element {
+  const backend = useBackend()
   const [stats, setStats] = useState<WeeklyStats | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -37,7 +39,7 @@ export function WeeklyWrappedScreen({ onClose }: WeeklyWrappedScreenProps): JSX.
     let cancelled = false
     setStats(null)
     setError(null)
-    window.api
+    backend
       .getWeeklyStats()
       .then((s) => {
         if (!cancelled) setStats(s)

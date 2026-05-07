@@ -4,6 +4,7 @@ import type { BranchCommit } from '../types'
 import { Tooltip } from './Tooltip'
 import { RightPanel } from './RightPanel'
 import { useWatchedQuery } from '../hooks/useWatchedQuery'
+import { useBackend } from '../backend'
 
 interface BranchCommitsPanelProps {
   worktreePath: string | null
@@ -11,7 +12,8 @@ interface BranchCommitsPanelProps {
 }
 
 export function BranchCommitsPanel({ worktreePath, onOpenCommitReview }: BranchCommitsPanelProps): JSX.Element | null {
-  const fetcher = useCallback((path: string) => window.api.getBranchCommits(path), [])
+  const backend = useBackend()
+  const fetcher = useCallback((path: string) => backend.getBranchCommits(path), [backend])
 
   const { data, loading, refresh } = useWatchedQuery<BranchCommit[]>({
     worktreePath,

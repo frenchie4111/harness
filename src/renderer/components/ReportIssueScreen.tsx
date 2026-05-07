@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Bug, Lightbulb, ExternalLink, X } from 'lucide-react'
 import { HARNESS_NEW_ISSUE_URL } from '../../shared/constants'
+import { useBackend } from '../backend'
 
 export type IssueKind = 'bug' | 'feature'
 
@@ -122,6 +123,7 @@ export function ReportIssueScreen({
   initialBody = '',
   prefilledContext
 }: ReportIssueScreenProps): JSX.Element {
+  const backend = useBackend()
   const [kind, setKind] = useState<IssueKind>(initialKind)
   const [title, setTitle] = useState(initialTitle)
   const [body, setBody] = useState(
@@ -133,8 +135,8 @@ export function ReportIssueScreen({
   const titleInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    void window.api.readRecentLog(200).then(setLog).catch(() => setLog(''))
-    void window.api.getVersion().then(setVersion).catch(() => setVersion(''))
+    void backend.readRecentLog(200).then(setLog).catch(() => setLog(''))
+    void backend.getVersion().then(setVersion).catch(() => setVersion(''))
     const t = setTimeout(() => titleInputRef.current?.focus(), 50)
     return () => clearTimeout(t)
   }, [])
@@ -191,7 +193,7 @@ export function ReportIssueScreen({
       url = buildUrl(finalTitle, finalBody)
     }
 
-    window.api.openExternal(url)
+    backend.openExternal(url)
     onClose()
   }
 

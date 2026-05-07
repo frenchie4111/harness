@@ -3,6 +3,7 @@ import { RefreshCw, AtSign, Code2, ChevronRight, Folder, FolderOpen, FileText } 
 import { Tooltip } from './Tooltip'
 import { RightPanel } from './RightPanel'
 import { useSettings } from '../store'
+import { useBackend } from '../backend'
 import { bindingToString, formatBindingGlyphs, resolveHotkeys } from '../hotkeys'
 
 interface AllFilesPanelProps {
@@ -56,6 +57,7 @@ export function AllFilesPanel({
   onOpenFile,
   onSendToAgent
 }: AllFilesPanelProps): JSX.Element {
+  const backend = useBackend()
   const [files, setFiles] = useState<string[]>([])
   const [hasLoaded, setHasLoaded] = useState(false)
   const [filter, setFilter] = useState('')
@@ -69,7 +71,7 @@ export function AllFilesPanel({
   const refresh = useCallback(async () => {
     if (!worktreePath) return
     try {
-      const result = await window.api.listAllFiles(worktreePath)
+      const result = await backend.listAllFiles(worktreePath)
       setFiles(result)
     } catch (err) {
       console.error('Failed to list files:', err)
@@ -281,6 +283,7 @@ function FileRow({
   onOpenFile: (filePath: string) => void
   onSendToAgent?: (text: string) => void
 }): JSX.Element {
+  const backend = useBackend()
   return (
     <div
       className="flex items-center gap-1 px-2 py-0.5 hover:bg-panel-raised cursor-pointer group"
@@ -306,7 +309,7 @@ function FileRow({
         <button
           onClick={(e) => {
             e.stopPropagation()
-            window.api.openInEditor(worktreePath, path)
+            backend.openInEditor(worktreePath, path)
           }}
           className="shrink-0 opacity-0 group-hover:opacity-100 text-faint hover:text-fg transition-all cursor-pointer"
         >

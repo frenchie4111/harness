@@ -20,6 +20,7 @@ import { FileView } from './FileView'
 import { BrowserPanel } from './BrowserPanel'
 import { JsonModeChat } from './JsonModeChat'
 import { ErrorBoundary } from './ErrorBoundary'
+import { useBackend } from '../backend'
 
 interface WorkspaceViewProps {
   worktreePath: string
@@ -333,6 +334,7 @@ export function WorkspaceView({
   onShowRightColumn,
   crashedTabIds
 }: WorkspaceViewProps): JSX.Element {
+  const backend = useBackend()
   // Stable slot DOM elements keyed by pane.id. Created imperatively and
   // reparented as the pane tree changes, so a split (which causes the
   // source pane's TerminalPanel to unmount + remount at a deeper position)
@@ -385,7 +387,7 @@ export function WorkspaceView({
         active.type === 'json-claude' &&
         (active.mode ?? 'awake') === 'asleep'
       ) {
-        void window.api.panesWakeTab(worktreePath, active.id)
+        void backend.panesWakeTab(worktreePath, active.id)
       }
     }
     prevActiveTabsRef.current = next
@@ -467,7 +469,7 @@ export function WorkspaceView({
     (splitId: string, delta: number, containerSize: number) => {
       if (containerSize === 0) return
       const ratioDelta = delta / containerSize
-      void window.api.panesSetRatio(worktreePath, splitId, Math.max(0.1, Math.min(0.9, findSplitRatio(paneTree, splitId) + ratioDelta)))
+      void backend.panesSetRatio(worktreePath, splitId, Math.max(0.1, Math.min(0.9, findSplitRatio(paneTree, splitId) + ratioDelta)))
     },
     [worktreePath, paneTree]
   )

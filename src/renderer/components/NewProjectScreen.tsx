@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { FolderOpen, Loader2, Sparkles, X } from 'lucide-react'
 import iconUrl from '../../../resources/icon.png'
+import { useBackend } from '../backend'
 
 type GitignorePreset = 'none' | 'node' | 'python' | 'macos'
 
@@ -28,6 +29,7 @@ const GITIGNORE_OPTIONS: { id: GitignorePreset; label: string; hint: string }[] 
 ]
 
 export function NewProjectScreen({ onCancel, onCreated }: NewProjectScreenProps): JSX.Element {
+  const backend = useBackend()
   const [name, setName] = useState('')
   const [parentDir, setParentDir] = useState<string>(
     () => localStorage.getItem(LAST_PARENT_DIR_KEY) ?? ''
@@ -48,7 +50,7 @@ export function NewProjectScreen({ onCancel, onCreated }: NewProjectScreenProps)
   const canSubmit = !submitting && !!trimmedName && !nameError && !!parentDir
 
   const handlePickLocation = useCallback(async () => {
-    const picked = await window.api.pickDirectory({
+    const picked = await backend.pickDirectory({
       defaultPath: parentDir || undefined,
       title: 'Choose parent folder'
     })
@@ -63,7 +65,7 @@ export function NewProjectScreen({ onCancel, onCreated }: NewProjectScreenProps)
     setServerError(null)
     setSubmitting(true)
     try {
-      const result = await window.api.createNewProject({
+      const result = await backend.createNewProject({
         parentDir,
         name: trimmedName,
         includeReadme,

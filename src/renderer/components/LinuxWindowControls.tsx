@@ -1,4 +1,5 @@
 import { Minus, Square, X } from 'lucide-react'
+import { useBackend } from '../backend'
 
 // Replicates the macOS traffic-light slot on Linux, where the OS frame is
 // hidden (see desktop-shell.ts: `frame: false` on linux). Position mirrors
@@ -6,6 +7,10 @@ import { Minus, Square, X } from 'lucide-react'
 // padding on titles in the drag-region stays correct on both platforms.
 // Marked `no-drag` so clicks aren't swallowed by the surrounding drag zone.
 export function LinuxWindowControls(): JSX.Element | null {
+  // useBackend must be called unconditionally; the early return below
+  // is gated on the platform global which is invariant for the life of
+  // the renderer, so React's rules-of-hooks invariant still holds.
+  const backend = useBackend()
   if (typeof window === 'undefined') return null
   if (window.__HARNESS_PLATFORM__ !== 'linux') return null
 
@@ -21,7 +26,7 @@ export function LinuxWindowControls(): JSX.Element | null {
         <button
           type="button"
           aria-label="Close"
-          onClick={() => window.api.windowClose()}
+          onClick={() => backend.windowClose()}
           className={`${button} hover:!bg-error/20 hover:!text-error`}
         >
           <X size={12} strokeWidth={2.25} />
@@ -29,7 +34,7 @@ export function LinuxWindowControls(): JSX.Element | null {
         <button
           type="button"
           aria-label="Minimize"
-          onClick={() => window.api.windowMinimize()}
+          onClick={() => backend.windowMinimize()}
           className={button}
         >
           <Minus size={12} strokeWidth={2.25} />
@@ -37,7 +42,7 @@ export function LinuxWindowControls(): JSX.Element | null {
         <button
           type="button"
           aria-label="Maximize"
-          onClick={() => window.api.windowToggleMaximize()}
+          onClick={() => backend.windowToggleMaximize()}
           className={button}
         >
           <Square size={10} strokeWidth={2.25} />

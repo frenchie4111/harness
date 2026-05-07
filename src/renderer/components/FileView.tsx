@@ -7,6 +7,7 @@ import type { FileBinaryReadResult, FileReadResult } from '../types'
 import { Tooltip } from './Tooltip'
 import { MonacoEditor } from './MonacoEditor'
 import { useSettings } from '../store'
+import { useBackend } from '../backend'
 import 'highlight.js/styles/github-dark.css'
 
 interface FileViewProps {
@@ -47,6 +48,7 @@ function formatBytes(n: number): string {
 }
 
 export function FileView({ worktreePath, filePath, onSendToAgent }: FileViewProps): JSX.Element {
+  const backend = useBackend()
   const settings = useSettings()
   const [result, setResult] = useState<FileReadResult | null>(null)
   const [loading, setLoading] = useState(true)
@@ -85,7 +87,7 @@ export function FileView({ worktreePath, filePath, onSendToAgent }: FileViewProp
       return
     }
     if (needsBinary) {
-      window.api.readWorktreeFileBinary(worktreePath, filePath).then((r: FileBinaryReadResult) => {
+      backend.readWorktreeFileBinary(worktreePath, filePath).then((r: FileBinaryReadResult) => {
         if (cancelled) return
         if (!r.ok) {
           setBinaryError(r.error)
@@ -98,7 +100,7 @@ export function FileView({ worktreePath, filePath, onSendToAgent }: FileViewProp
         setLoading(false)
       })
     } else {
-      window.api.readWorktreeFile(worktreePath, filePath).then((r) => {
+      backend.readWorktreeFile(worktreePath, filePath).then((r) => {
         if (cancelled) return
         setResult(r)
         const content = r.content ?? ''
@@ -126,7 +128,7 @@ export function FileView({ worktreePath, filePath, onSendToAgent }: FileViewProp
     const current = valueRef.current
     if (current === savedRef.current) return
     setSaveError(null)
-    const r = await window.api.writeWorktreeFile(worktreePath, filePath, current)
+    const r = await backend.writeWorktreeFile(worktreePath, filePath, current)
     if (r.ok) {
       setSavedValue(current)
     } else {
@@ -295,6 +297,7 @@ function FileHeader({
   onSave,
   toggleControl
 }: FileHeaderProps): JSX.Element {
+  const backend = useBackend()
   return (
     <div className="shrink-0 flex items-center gap-3 border-b border-border bg-panel px-4 py-2 text-xs">
       <span
@@ -336,7 +339,7 @@ function FileHeader({
       )}
       <Tooltip label="Open in external editor">
         <button
-          onClick={() => window.api.openInEditor(worktreePath, filePath)}
+          onClick={() => backend.openInEditor(worktreePath, filePath)}
           className="shrink-0 text-faint hover:text-fg cursor-pointer"
         >
           <Code2 size={12} />
