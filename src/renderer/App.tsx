@@ -305,6 +305,14 @@ const setQuestStep = useCallback((next: QuestStep) => {
     return cleanup
   }, [])
 
+  // File → Add Backend… — the chip strip is hidden when only Local
+  // exists (no `+` button visible), so the menu is the entry point
+  // for adding the first remote.
+  useEffect(() => {
+    const cleanup = backend.onOpenAddBackend(() => setShowAddBackend(true))
+    return cleanup
+  }, [])
+
   // Report Issue — triggered from the Help menu, the sidebar, the
   // Settings Support section, and the openReportIssueFor() helper (used
   // by the error boundary). Closes any open overlay (Settings, hotkey

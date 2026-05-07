@@ -332,6 +332,11 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
             accelerator: 'CmdOrCtrl+Shift+N',
             click: () => createWindow()
           },
+          { type: 'separator' },
+          {
+            label: 'Add Backend…',
+            click: () => transport.sendSignal('app:openAddBackend')
+          },
           { role: 'close' }
         ]
       },

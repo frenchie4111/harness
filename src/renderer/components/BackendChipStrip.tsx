@@ -53,13 +53,11 @@ export function BackendChipStrip({ onAddBackend }: BackendChipStripProps): JSX.E
     [backend]
   )
 
-  // The strip stays visible even when only Local is registered — the
-  // design originally specced auto-hide at 1 backend, but that left
-  // no way to reach the add-backend `+` button. With Local + `+` always
-  // showing, the user can add their first remote without needing a
-  // separate menu entry. (If we add `File → Add Backend…` later we
-  // can revisit the hide rule.)
-  if (connections.length === 0) return null
+  // Auto-hide when only Local exists (per design §A) — single-backend
+  // installs see no chrome change. `File → Add Backend…` in the
+  // Electron menu is the entry point for the first remote; once the
+  // user adds one, the strip reveals with both chips + the `+` button.
+  if (connections.length <= 1) return null
 
   return (
     <div className="border-t border-border px-2 py-1.5 shrink-0 flex items-center gap-1.5 overflow-x-auto">

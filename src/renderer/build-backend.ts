@@ -375,6 +375,8 @@ export function buildBackend(
       onLocalSignal('app:openReportIssue', () => callback()),
     onDebugCrashFocusedTab: (callback: () => void) =>
       onLocalSignal('app:debugCrashFocusedTab', () => callback()),
+    onOpenAddBackend: (callback: () => void) =>
+      onLocalSignal('app:openAddBackend', () => callback()),
 
     acceptHooks: () => req('hooks:accept'),
     declineHooks: () => req('hooks:decline'),
