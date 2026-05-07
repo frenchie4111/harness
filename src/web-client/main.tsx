@@ -10,7 +10,8 @@
 //   4. Skip `window.__harness_electron_helpers` — drag-drop file
 //      paths and window controls are no-ops in the browser.
 //   5. Dynamic-import the renderer; `initStore()` then calls
-//      `initBackend()` which builds `window.api` over the WS handle.
+//      `initBackend()` which builds the renderer's backend singleton
+//      over the WS handle.
 //      Identical code path to Electron — the only difference is which
 //      transport sits behind the local-backend handle.
 
@@ -61,7 +62,7 @@ async function boot(): Promise<void> {
   // Web client is always single-backend — it talks to one server (the
   // one it was served from). Expose that WS transport as the registry's
   // local backend; the renderer's `initBackend()` (called from
-  // initStore) builds window.api over it. Same shape, same code path
+  // initStore) builds the backend singleton over it. Same shape, same code path
   // as Electron — just with a WS transport in place of the local IPC
   // handle.
   window.__harness_local_transport = {
@@ -78,7 +79,7 @@ async function boot(): Promise<void> {
   window.__harness_electron_helpers = undefined
 
   // Dynamic-import the renderer modules so initStore (which builds
-  // window.api over the local transport) runs before App / XTerminal /
+  // the backend singleton over the local transport) runs before App / XTerminal /
   // etc. read it. XTerminal's font cache is now lazy (initFontCache
   // fires on first mount) so the import-order constraint is softer
   // than it used to be, but we keep dynamic imports here for symmetry

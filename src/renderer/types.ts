@@ -527,7 +527,6 @@ export type { LocalTransportHandle } from '../shared/transport/transport'
 
 declare global {
   interface Window {
-    api: ElectronAPI
     __harness_local_transport?: import('../shared/transport/transport').LocalTransportHandle
   }
 }

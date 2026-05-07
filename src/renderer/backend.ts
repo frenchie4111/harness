@@ -1,29 +1,21 @@
-// Renderer-side backend accessor. Replaces what used to be
-// `window.api`, which lived in the preload and routed through a
-// preload-side `currentImpl` (the source of the contextBridge
-// double-cross perf bug for remote backends — see commit history).
+// Renderer-side backend accessor. Holds the singleton built by
+// `initBackend()` (called from initStore) and serves it via two
+// equivalent shapes:
 //
-// Now: `window.api` is built in renderer context, with each method
-// calling `registry.getActiveTransport()` lazily so the active
-// backend's transport always handles the call. Local routes through
-// the preload's local transport handle (1 bridge crossing — same as
-// today). Remote routes through the renderer-living
-// WebSocketClientTransport directly (0 bridge crossings — same as
-// the standalone web client).
+//   import { useBackend } from '@/backend'   // React components / hooks
+//   import { getBackend } from '@/backend'   // module-level / non-React
 //
-// Shape:
-//   import { useBackend } from '@/backend'   // for React components
-//   import { getBackend } from '@/backend'   // for module-level / non-React
+// The hook is the idiomatic React shape; the getter exists because a
+// few call sites (XTerminal's font-cache module init, the take-control
+// diagnostic, the error boundary) aren't inside React.
 //
-// Both return the same module-scoped singleton. The hook is the
-// idiomatic React shape; the getter exists because some call sites
-// (XTerminal's font cache subscribes at module-eval time, take-control
-// diagnostic in initStore, error boundary's logError) aren't inside
-// React.
-//
-// `window.api` continues to exist as a backward-compat alias set by
-// `initBackend()` so we don't have to migrate ~200 call sites in one
-// commit. Migration to `useBackend()`/`getBackend()` is a follow-up.
+// Each method on the returned object lazily reads
+// `registry.getActiveTransport()` and dispatches the call there, so
+// switching backends instantly redirects subsequent commands. Local
+// active goes through the preload's local-transport handle (1
+// contextBridge crossing — same as the original `window.api`). Remote
+// active goes through the renderer-living WebSocketClientTransport
+// directly (0 crossings — same as the standalone web client).
 
 import type { ElectronAPI } from './types'
 import type {
@@ -48,11 +40,6 @@ export function initBackend(opts: {
 }): void {
   const electronHelpers = window.__harness_electron_helpers ?? null
   backend = buildBackend(opts.getActiveTransport, opts.getLocalTransport, electronHelpers)
-  // Backward-compat alias so existing `window.api.X(...)` call sites keep
-  // working until migrated to `useBackend()` / `getBackend()`. Set as a
-  // plain renderer-side property (not via contextBridge), so it lives
-  // entirely in renderer context — no bridge crossings just to reach it.
-  ;(window as unknown as { api: ElectronAPI }).api = backend
 }
 
 export function getBackend(): ElectronAPI {

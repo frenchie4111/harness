@@ -16,9 +16,9 @@
 // active-id changes — so switching backends triggers a re-render that
 // reads from the new active store.
 //
-// To mutate state, call the corresponding `window.api` method (e.g.
-// `window.api.setTheme(...)`). That goes to whichever backend
-// `window.api` currently routes to (active backend for most surfaces;
+// To mutate state, call the corresponding `useBackend()` method (e.g.
+// `useBackend().setTheme(...)`). That goes to whichever backend the
+// registry currently routes to (active backend for most surfaces;
 // always-local for connections-list mutations). Main dispatches
 // through its store, broadcasts the event back here, the matching
 // per-backend store applies it, and any component reading via the
@@ -33,7 +33,7 @@ import {
 } from '../shared/state'
 import type { LocalTransportHandle, BackendConnection } from './types'
 import { WebSocketClientTransport } from '../shared/transport/transport-websocket'
-import { initBackend } from './backend'
+import { initBackend, getBackend } from './backend'
 
 /** Stable id for the in-process Electron backend. Mirrors the value in
  *  src/main/persistence.ts; duplicated here because main isn't
@@ -234,7 +234,7 @@ class BackendsRegistry {
     if (this.activeId === id) return
     if (!this.entries.has(id)) throw new Error(`unknown backend ${id}`)
     this.activeId = id
-    // No preload-side router to notify any more — `window.api` is
+    // No preload-side router to notify any more — the backend is
     // built in the renderer (see src/renderer/backend.ts) and reads
     // the active transport lazily on each call, so flipping `activeId`
     // here is the entire commit. Listeners below let the hooks
@@ -314,8 +314,8 @@ export async function initStore(): Promise<void> {
   }
   const localStore = registry.add(localConnection, localTransport)
 
-  // Build window.api / `useBackend()` now that the registry knows about
-  // the local backend. Each method routes lazily through the registry's
+  // Build the `useBackend()` singleton now that the registry knows
+  // about the local backend. Each method routes lazily through the registry's
   // active transport (local handle for local, WS direct for remotes —
   // the latter bypasses the preload entirely so remote RPCs are as fast
   // as the standalone web client).
@@ -362,16 +362,17 @@ export async function initStore(): Promise<void> {
   // chip renders (greyed-disconnected styling lands in step 8) and the
   // user can retry.
   //
-  // Skipped in the web client: window.api.connectionsList returns an
+  // Skipped in the web client: backend.connectionsList returns an
   // empty stub there, so the loop is a no-op. Multi-backend is an
   // Electron-only feature in Tier 1.
   try {
-    const connections = await window.api.connectionsList()
+    const backend = getBackend()
+    const connections = await backend.connectionsList()
     for (const conn of connections) {
       if (conn.kind !== 'remote') continue
       void hydrateRemoteBackend(conn)
     }
-    const savedActive = await window.api.connectionsGetActive()
+    const savedActive = await backend.connectionsGetActive()
     if (savedActive && registry.has(savedActive)) {
       registry.setActive(savedActive)
     }
@@ -386,7 +387,7 @@ export async function initStore(): Promise<void> {
  *  non-fatal — the user can retry from the chip strip. */
 async function hydrateRemoteBackend(conn: BackendConnection): Promise<void> {
   try {
-    const token = await window.api.connectionsGetToken(conn.id)
+    const token = await getBackend().connectionsGetToken(conn.id)
     if (!token) {
       // eslint-disable-next-line no-console
       console.warn(`[harness] no token stored for backend ${conn.id} — skipping`)
