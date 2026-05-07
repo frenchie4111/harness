@@ -66,6 +66,8 @@ import { buildClaudeLaunchSettings } from './claude-launch'
 import { HARNESS_REPO_OWNER, HARNESS_REPO_NAME } from '../shared/constants'
 import { readRecentDebugLog } from './debug'
 import { CostTracker } from './cost-tracker'
+import { getAllSessionCosts } from './cost-aggregator'
+import { getClaudeAuthStatus } from './claude-auth'
 import { listDir as fsListDir, isGitRepo as fsIsGitRepo, resolveHome as fsResolveHome } from './fs-listing'
 import { startControlServer } from './control-server'
 import { writeMcpConfigForTerminal, pruneMcpConfigs, getBridgeScriptPath } from './mcp-config'
@@ -457,6 +459,17 @@ costTracker.start()
 transport.onRequest('costs:setInterest', (ctx, expanded: boolean) => {
   costTracker.setClientInterested(ctx.clientId, expanded)
   return true
+})
+
+transport.onRequest(
+  'costs:getAllSessions',
+  async (_ctx, sinceMs?: number) => {
+    return getAllSessionCosts({ sinceMs })
+  }
+)
+
+transport.onRequest('claude:getAuthStatus', async () => {
+  return getClaudeAuthStatus()
 })
 
 // Auto-persist the costs slice to config.json on each change. Debounced

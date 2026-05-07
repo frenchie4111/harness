@@ -224,6 +224,8 @@ contextBridge.exposeInMainWorld('api', {
   setNameClaudeSessions: (enabled: boolean) => req('config:setNameClaudeSessions', enabled),
   setTheme: (theme: string) => req('config:setTheme', theme),
   setCostsInterest: (expanded: boolean) => req('costs:setInterest', expanded),
+  getAllSessionCosts: (sinceMs?: number) => req('costs:getAllSessions', sinceMs),
+  getClaudeAuthStatus: () => req('claude:getAuthStatus'),
   getAvailableThemes: () => req('config:getAvailableThemes'),
   setTerminalFontFamily: (fontFamily: string) => req('config:setTerminalFontFamily', fontFamily),
   getDefaultTerminalFontFamily: () => req('config:getDefaultTerminalFontFamily'),

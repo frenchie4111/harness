@@ -10,6 +10,9 @@ export type { RepoConfig }
 import type { WeeklyStats, TopWorktree } from '../shared/weekly-stats'
 export type { WeeklyStats, TopWorktree }
 
+import type { SessionCostSummary, ClaudeAuthInfo, SubscriptionTier } from '../shared/cost-summary'
+export type { SessionCostSummary, ClaudeAuthInfo, SubscriptionTier }
+
 export interface FsEntry {
   name: string
   isDir: boolean
@@ -284,6 +287,8 @@ export interface ElectronAPI {
   setNameClaudeSessions(enabled: boolean): Promise<boolean>
   setTheme(theme: string): Promise<boolean>
   setCostsInterest(expanded: boolean): Promise<boolean>
+  getAllSessionCosts(sinceMs?: number): Promise<SessionCostSummary[]>
+  getClaudeAuthStatus(): Promise<ClaudeAuthInfo>
   getAvailableThemes(): Promise<readonly string[]>
   setTerminalFontFamily(fontFamily: string): Promise<boolean>
   getDefaultTerminalFontFamily(): Promise<string>

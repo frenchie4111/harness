@@ -9,6 +9,7 @@ import type {
   PRStatus
 } from '../types'
 import { isPRMerged } from '../../shared/state/prs'
+import { ActivityCosts } from './ActivityCosts'
 
 interface ActivityProps {
   onClose: () => void
@@ -99,7 +100,10 @@ function isLiveMerged(
   return !!mergedPaths?.[path] || isPRMerged(prStatuses?.[path])
 }
 
+type ActivityTab = 'timeline' | 'costs'
+
 export function Activity({ onClose, onOpenMyWeek, worktrees, prStatuses, mergedPaths }: ActivityProps): JSX.Element {
+  const [tab, setTab] = useState<ActivityTab>('timeline')
   const [log, setLog] = useState<ActivityLog>({})
   const [range, setRange] = useState<Range>('24h')
   const [now, setNow] = useState(Date.now())
@@ -287,7 +291,28 @@ export function Activity({ onClose, onOpenMyWeek, worktrees, prStatuses, mergedP
         </div>
       </div>
 
+      <div className="shrink-0 border-b border-border flex items-center gap-1 px-4 bg-panel">
+        {([
+          ['timeline', 'Timeline'],
+          ['costs', 'Costs']
+        ] as const).map(([id, label]) => (
+          <button
+            key={id}
+            onClick={() => setTab(id)}
+            className={`px-3 py-2 text-xs transition-colors cursor-pointer border-b-2 -mb-px ${
+              tab === id
+                ? 'text-fg-bright border-accent'
+                : 'text-muted hover:text-fg border-transparent'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       <div className="flex-1 overflow-y-auto">
+        {tab === 'costs' && <ActivityCosts />}
+        {tab === 'timeline' && (
         <div className="max-w-5xl mx-auto px-8 py-8">
           {/* Range selector */}
           <div className="flex items-center gap-2 mb-6">
@@ -415,6 +440,7 @@ export function Activity({ onClose, onOpenMyWeek, worktrees, prStatuses, mergedP
             Activity is recorded locally from Claude Code hooks. Removed worktrees stay in the log so you can see historical trends.
           </p>
         </div>
+        )}
       </div>
     </div>
   )

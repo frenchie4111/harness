@@ -250,6 +250,14 @@ function buildApi(transport: WebSocketClientTransport): ElectronAPI {
     setTheme: (theme) => req('config:setTheme', theme) as Promise<boolean>,
     setCostsInterest: (expanded) =>
       req('costs:setInterest', expanded) as Promise<boolean>,
+    getAllSessionCosts: (sinceMs) =>
+      req('costs:getAllSessions', sinceMs) as ReturnType<
+        ElectronAPI['getAllSessionCosts']
+      >,
+    getClaudeAuthStatus: () =>
+      req('claude:getAuthStatus') as ReturnType<
+        ElectronAPI['getClaudeAuthStatus']
+      >,
     getAvailableThemes: () =>
       req('config:getAvailableThemes') as Promise<readonly string[]>,
     setTerminalFontFamily: (fontFamily) =>
