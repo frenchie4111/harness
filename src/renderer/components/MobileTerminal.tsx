@@ -6,6 +6,18 @@ import type { TerminalTab } from '../types'
 interface MobileTerminalProps {
   worktreePath: string
   tab: TerminalTab & { type: 'agent' | 'shell' }
+  /** True when WorkspaceView marks the wrapping pane as visible. Forwarded
+   *  to XTerminal so its fit/resize machinery only runs while the terminal
+   *  is on-screen. */
+  visible?: boolean
+  /** Forwarded to XTerminal so it can name the session in the title bar
+   *  (and in the cross-client controller list). */
+  sessionName?: string
+  initialPrompt?: string
+  teleportSessionId?: string
+  shellCommand?: string
+  shellCwd?: string
+  onRestartAgent?: () => void
 }
 
 // Escape sequences sent to the PTY for special keys. xterm.js itself
@@ -37,7 +49,17 @@ function ctrlByte(key: string): string | null {
   return null
 }
 
-export function MobileTerminal({ worktreePath, tab }: MobileTerminalProps): JSX.Element {
+export function MobileTerminal({
+  worktreePath,
+  tab,
+  visible = true,
+  sessionName,
+  initialPrompt,
+  teleportSessionId,
+  shellCommand,
+  shellCwd,
+  onRestartAgent
+}: MobileTerminalProps): JSX.Element {
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const composingRef = useRef(false)
@@ -301,9 +323,14 @@ export function MobileTerminal({ worktreePath, tab }: MobileTerminalProps): JSX.
           cwd={worktreePath}
           type={tab.type}
           agentKind={tab.agentKind}
-          visible={true}
-          sessionName={tab.label}
+          visible={visible}
+          sessionName={sessionName ?? tab.label}
           sessionId={tab.sessionId}
+          initialPrompt={initialPrompt}
+          teleportSessionId={teleportSessionId}
+          shellCommand={shellCommand}
+          shellCwd={shellCwd}
+          onRestartAgent={onRestartAgent}
         />
         {/* Hidden textarea — pointer-events:none so touch scrolling on the
             wrapper above isn't eaten; the wrapper's onClick focuses the

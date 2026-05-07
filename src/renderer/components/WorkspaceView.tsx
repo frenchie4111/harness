@@ -11,7 +11,7 @@ import {
   type DragOverEvent,
   type CollisionDetection
 } from '@dnd-kit/core'
-import type { PaneNode, PaneLeaf, PaneSplit, PtyStatus, AgentKind } from '../types'
+import type { PaneNode, PaneLeaf, PaneSplit, PtyStatus, AgentKind, TerminalTab } from '../types'
 import { getLeaves, findLeafByTabId } from '../../shared/state/terminals'
 import { TerminalPanel } from './TerminalPanel'
 import { XTerminal } from './XTerminal'
@@ -20,6 +20,7 @@ import { FileView } from './FileView'
 import { BrowserPanel } from './BrowserPanel'
 import { JsonModeChat } from './JsonModeChat'
 import { ErrorBoundary } from './ErrorBoundary'
+import { MobileTerminal } from './MobileTerminal'
 import { useViewport } from '../hooks/useViewport'
 
 interface WorkspaceViewProps {
@@ -649,6 +650,30 @@ export function WorkspaceView({
                     sessionId={tab.id}
                     worktreePath={worktreePath}
                     mode={tab.mode ?? 'awake'}
+                  />
+                ) : isMobile && isTouch ? (
+                  // Touch + narrow viewport: wrap xterm with the soft-keyboard
+                  // toolbar, hidden textarea and touch-scroll handlers. The
+                  // wrapper renders <XTerminal> internally so PTY plumbing is
+                  // identical to the desktop branch.
+                  <MobileTerminal
+                    worktreePath={worktreePath}
+                    tab={tab as TerminalTab & { type: 'agent' | 'shell' }}
+                    visible={visible && isActiveInPane}
+                    sessionName={
+                      tab.type === 'agent' && nameAgentSessions
+                        ? `${repoLabel}/${branch}`
+                        : undefined
+                    }
+                    initialPrompt={tab.initialPrompt}
+                    teleportSessionId={tab.teleportSessionId}
+                    shellCommand={tab.type === 'shell' ? tab.command : undefined}
+                    shellCwd={tab.type === 'shell' ? tab.cwd : undefined}
+                    onRestartAgent={
+                      tab.type === 'agent'
+                        ? (): void => onRestartAgentTab(worktreePath, tab.id)
+                        : undefined
+                    }
                   />
                 ) : (
                   <XTerminal
