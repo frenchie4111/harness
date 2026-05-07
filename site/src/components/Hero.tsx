@@ -107,6 +107,16 @@ export function Hero() {
           <ReplyCard src="/screenshot-split-pane.png" alt="Split pane feature" text="added it" />
         </LogoTip>
       </div>
+
+      <div className="mt-8 flex justify-center">
+        <a
+          href="https://github.com/frenchie4111/harness/stargazers"
+          className="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg font-semibold text-amber-200 border border-amber-400/40 bg-amber-400/10 hover:bg-amber-400/20 hover:border-amber-400/60 hover:text-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60 transition-colors"
+        >
+          <StarIcon />
+          Please star us on GitHub
+        </a>
+      </div>
     </section>
   )
 }
@@ -289,6 +299,22 @@ function DownloadIcon() {
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
       <polyline points="7 10 12 15 17 10" />
       <line x1="12" y1="15" x2="12" y2="3" />
+    </svg>
+  )
+}
+
+function StarIcon() {
+  return (
+    <svg
+      className="w-5 h-5"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
     </svg>
   )
 }

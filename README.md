@@ -10,6 +10,12 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/frenchie4111/harness/stargazers">
+    <img src="https://img.shields.io/github/stars/frenchie4111/harness?style=for-the-badge&logo=github&logoColor=white&color=f59e0b&labelColor=18181b&label=Please%20star%20us%20on%20GitHub" alt="Please star us on GitHub" />
+  </a>
+</p>
+
+<p align="center">
   <a href="https://harness.mikelyons.org/">Website</a> ·
   <a href="https://github.com/frenchie4111/harness/releases/latest">Download</a> ·
   <a href="https://harness.mikelyons.org/guide.html">Guide</a>
