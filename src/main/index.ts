@@ -2222,6 +2222,17 @@ function registerIpcHandlers(): void {
       jsonClaudeManager.cancelQueued(sessionId, messageId)
     }
   )
+  transport.onSignal(
+    'jsonClaude:answerAskUserQuestion',
+    (
+      _ctx,
+      sessionId: string,
+      toolUseId: string,
+      answers: Record<string, string[]>
+    ) => {
+      jsonClaudeManager.answerAskUserQuestion(sessionId, toolUseId, answers)
+    }
+  )
   transport.onRequest('jsonClaude:kill', (_ctx, sessionId: string) => {
     jsonClaudeManager.kill(sessionId)
     return true

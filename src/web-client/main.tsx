@@ -486,6 +486,8 @@ function buildApi(transport: WebSocketClientTransport): ElectronAPI {
       sig('jsonClaude:send', id, text, images),
     cancelQueuedJsonClaudeMessage: (id, messageId) =>
       sig('jsonClaude:cancelQueued', id, messageId),
+    answerJsonClaudeAskUserQuestion: (sessionId, toolUseId, answers) =>
+      sig('jsonClaude:answerAskUserQuestion', sessionId, toolUseId, answers),
     writeJsonClaudeAttachmentImage: (base64, mediaType) =>
       req('jsonClaude:writeAttachmentImage', base64, mediaType) as Promise<
         string | null

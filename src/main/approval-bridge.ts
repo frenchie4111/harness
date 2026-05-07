@@ -254,6 +254,27 @@ export class ApprovalBridge {
       timestamp: frame.timestamp || Date.now()
     }
 
+    // AskUserQuestion is a client-handled tool: claude's checkPermissions
+    // returns "ask" so we get routed here, but the tool's user-facing UI
+    // is rendered inline by AskUserQuestionCard via dispatchToolCard.
+    // Auto-allow so the user doesn't see a redundant approval card on
+    // top of the question card. claude marks AskUserQuestion with
+    // shouldDefer:true so its own call() doesn't auto-execute — the
+    // SDK consumer (us) is expected to provide the answer as a tool_result,
+    // which JsonClaudeManager.answerAskUserQuestion writes once the user
+    // submits via the card.
+    if (basePayload.toolName === 'AskUserQuestion') {
+      this.writeResponse(socket, frame.id, {
+        behavior: 'allow',
+        updatedInput: basePayload.input
+      })
+      log(
+        'approval-bridge',
+        `auto-allow AskUserQuestion session=${basePayload.sessionId} id=${frame.id}`
+      )
+      return
+    }
+
     // Session-scoped auto-allow set: the user clicked "Allow {tool} this
     // session" on a previous approval, so the bridge resolves matching
     // tools directly without surfacing a card. Checked before the LLM
