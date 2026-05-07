@@ -391,17 +391,26 @@ hard dependency on `gh`.
   See `plans/tier-1-multi-backend-ux.md` for the full design.
   Architecturally: `src/renderer/store.ts` holds a `BackendsRegistry`
   of `(transport, ClientStore)` pairs; the local entry uses
-  `ElectronClientTransport`, remotes use `WebSocketClientTransport`.
-  Each transport's `onStateEvent` is wired to its own store at
+  `ElectronClientTransport` (via the preload's `__harness_local_transport`
+  handle), remotes use `WebSocketClientTransport` directly in renderer
+  context. Each transport's `onStateEvent` is wired to its own store at
   registration time, so there's no central event router — per-backend
-  channels are naturally segregated. `window.api.X(...)` routes
-  through a mutable `currentImpl` in the preload that the renderer
-  swaps via `__harness_setActiveTransport` when active changes;
-  `connections:*` methods always go to the local transport
-  (renderer-shell-owned per design §C/§G). The legacy
-  `HARNESS_REMOTE_URL` env-var mode was removed in Tier 1 — adding a
-  remote backend now happens via `File → Add Backend…` or the chip
-  strip's `+` button. Tokens encrypted in `secrets.enc` keyed
+  channels are naturally segregated. `window.api` is built in the
+  RENDERER (`src/renderer/build-backend.ts`, exported via
+  `src/renderer/backend.ts` as `getBackend()` / `useBackend()`),
+  with each method calling `registry.getActiveTransport().request(...)`
+  lazily. For local active that's the preload-bridged handle (1
+  contextBridge crossing); for remote active it's the WS transport
+  directly (0 crossings — same wire path as the standalone web client).
+  The preload itself is tiny — only exposes the local transport handle
+  and a few electron-only helpers (`webUtils.getPathForFile`, window
+  controls). `connections:*` methods always go to the local transport
+  (renderer-shell-owned per design §C/§G). Menu signals
+  (`onOpenSettings`, etc.) likewise bind to the local transport since
+  only the local Electron has a Menu. The legacy `HARNESS_REMOTE_URL`
+  env-var mode was removed in Tier 1 — adding a remote backend now
+  happens via the chip strip's `+` button (or `File → Add Backend…`
+  if/when wired). Tokens encrypted in `secrets.enc` keyed
   `backend-token:<id>`; connections list lives in `userData/config.json`.
 - **Dual-claude model** — Harness ships two Claude Code binaries. **xterm
   Claude tabs** spawn `/bin/zsh -ilc claude` so the user's PATH `claude`

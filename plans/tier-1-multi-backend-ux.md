@@ -592,32 +592,61 @@ version handshake in v1.
   the existing call sites. No capabilities object, no protocol-version
   handshake in v1.
 
-## Implementation skeleton (out-of-scope for this branch but worth flagging)
+## Implementation as built
 
-What the implementation worktree will need to touch — listed so the
-design questions above stay grounded in real surface area:
+What landed in this branch (cross-reference the commits prefixed
+`tier-1:` for the per-step work). The build deviates from the
+original implementation sketch in two places — both for the better:
 
-- **Renderer:** `src/renderer/store.ts` becomes "N mirrored stores
-  keyed by backend id." `useWorktrees()` etc. read from the active
-  backend's mirror via context.
-- **Preload:** `window.api` becomes a router. Each method either
-  routes to the active backend's transport, or accepts an explicit
-  backend-id arg (rare — only for cross-backend operations, which are
-  Tier 2). The preload owns the map of `backendId → transport`.
-- **Main:** `src/main/index.ts` continues to host the in-process
-  store/FSMs/PTY for the local backend. New: a `BackendsRegistry` in
-  the renderer (not main — main only knows about itself) that holds
-  `{ backendId → { transport, mirroredStore, snapshot } }`.
-- **Persistence:** new fields in `Config`, new secret keys in
-  `secrets.enc`, no migration scripts needed (auto-seed handles it).
-- **Settings UI:** add the backend picker to the Settings panel,
-  refactor each section's read/write to operate on the picked backend
-  for per-backend fields.
-- **Sidebar:** add the rail component, gate visibility on
-  `backends.length > 1`, wire reading from `BackendsRegistry`.
-- **Hotkeys:** add backend-switch actions to `hotkeys.ts`.
-- **Protocol:** version handshake on connect; reject mismatched server
-  versions with a clear error.
+- **`window.api` lives in the renderer, not the preload.** The
+  original sketch had the preload route `window.api.X(...)` through
+  a per-backend transport map. That worked but added a contextBridge
+  round-trip on every call when the active backend was remote (the
+  preload routed to a renderer-living WS transport — every call
+  bridged out and back). Lag was ~2s on remote worktree switches.
+  Fix: build `window.api` (`src/renderer/build-backend.ts`) in
+  renderer context, with each method calling
+  `registry.getActiveTransport().request(...)` lazily. Local active
+  → preload-bridged handle (1 crossing). Remote active → in-renderer
+  WS transport (0 crossings, identical to the standalone web client).
+  Preload shrinks to ~50 lines exposing only the local transport
+  handle and a few electron-only helpers (`webUtils.getPathForFile`,
+  `ipcRenderer.send` for window controls).
+- **No protocol-version handshake.** Per design §L (KISS) we
+  explicitly chose to skip this until a real user hits a stale-server
+  symptom.
 
-None of this is committed yet — implementation lives in a separate
-worktree once this doc reaches a 🟢 majority.
+What landed as planned:
+
+- **Renderer:** `src/renderer/store.ts` holds the `BackendsRegistry`
+  with N `(transport, ClientStore, status)` entries. Per-backend
+  hooks: `useConnections()`, `useActiveBackend()`,
+  `useBackendStatus(id)`. Slice hooks (`useSettings()`,
+  `useWorktrees()`, etc.) read from the active store via
+  `subscribeActive` so switching backends triggers a re-render that
+  picks up the new active store's slice values.
+- **Backend accessor:** `src/renderer/backend.ts` exports
+  `getBackend()` (non-React) and `useBackend()` (React idiom). Both
+  return the same singleton built by `initBackend()` during
+  `initStore`. `window.api` is no longer set; all call sites use
+  the accessors.
+- **Persistence:** `connections[]` + `activeBackendId` added to
+  `Config`. Auto-seed of Local backend on first load via
+  `applyConnectionDefaults()`. Tokens in `secrets.enc` keyed
+  `backend-token:<id>`.
+- **Sidebar:** `BackendChipStrip` mounted above the existing icon row.
+  Visible whenever any backend is registered (the original "hide at
+  1" rule was abandoned because it left no way to reach the `+` button
+  on a fresh install).
+- **Hotkeys:** `Cmd+Shift+1..9` added as `backend1`..`backend9`
+  actions. Cycle hotkey deferred (collided with `focusTerminal`).
+- **Add-backend modal:** `AddBackendModal` uses
+  `parseConnectionUrl` (accepts http/https/ws/wss), opens a WS test
+  connection, validates, persists, and registers the live transport
+  in the registry.
+- **Connection status:** WS transport's `onConnectionChange`
+  callback feeds per-backend status into the registry. Disconnected
+  chips render greyed with the reason in their tooltip.
+- **HARNESS_REMOTE_URL removal:** `bootRemote` /
+  `desktop-shell-remote.ts` / `findRemoteUrl` deleted. The chip strip
+  is the only entry point for remote backends.
