@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Loader2, ChevronDown, ChevronRight, ChevronUp } from 'lucide-react'
-import type { SessionCostSummary } from '../types'
+import { Loader2, ChevronDown, ChevronRight, ChevronUp, Sparkles } from 'lucide-react'
+import type { ClaudeAuthInfo, SessionCostSummary, SubscriptionTier } from '../types'
 import {
   emptyBreakdown,
   cloneBreakdown,
@@ -8,6 +8,7 @@ import {
   type ContentBreakdown
 } from '../../shared/state/costs'
 import { useWorktrees } from '../store'
+import iconUrl from '../../../resources/icon.png'
 
 type Range = '24h' | '7d' | '30d' | 'all'
 
@@ -88,7 +89,23 @@ export function ActivityCosts(): JSX.Element {
   const [loading, setLoading] = useState(false)
   const [showAllRepos, setShowAllRepos] = useState(false)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [auth, setAuth] = useState<ClaudeAuthInfo | null>(null)
   const worktrees = useWorktrees()
+
+  useEffect(() => {
+    let cancelled = false
+    void window.api
+      .getClaudeAuthStatus()
+      .then((info) => {
+        if (!cancelled) setAuth(info)
+      })
+      .catch(() => {
+        if (!cancelled) setAuth(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -209,6 +226,22 @@ export function ActivityCosts(): JSX.Element {
 
   return (
     <div className="max-w-5xl mx-auto px-8 py-8">
+      <div className="flex items-center gap-3 mb-6">
+        <img
+          src={iconUrl}
+          alt="Harness"
+          className="w-9 h-9 rounded-xl brand-glow-amber shrink-0"
+        />
+        <div className="flex-1 min-w-0">
+          <div className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.18em] text-dim">
+            Costs
+          </div>
+          <div className="text-sm text-fg-bright font-medium truncate">
+            Where your tokens went
+          </div>
+        </div>
+      </div>
+
       <div className="flex items-center gap-2 mb-6">
         <span className="text-xs text-dim uppercase tracking-wider mr-2">Range</span>
         {RANGES.map((r) => (
@@ -310,9 +343,80 @@ export function ActivityCosts(): JSX.Element {
         </div>
       )}
 
+      <SubscriptionFootnote auth={auth} totalUsd={total} range={range} />
+
+      <div className="text-center mt-4">
+        <div className="inline-flex items-center gap-1.5 text-[11px] text-dim">
+          <Sparkles size={11} className="text-amber-400/70" />
+          <span>
+            Tracked locally by Harness{' '}
+            <span className="text-faint">– https://harness.mikelyons.org/</span>
+          </span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function tierLabel(tier: SubscriptionTier): string {
+  switch (tier) {
+    case 'pro':
+      return 'Pro'
+    case 'max-5x':
+      return 'Max 5x'
+    case 'max-20x':
+      return 'Max 20x'
+    case 'team':
+      return 'Team'
+    case 'enterprise':
+      return 'Enterprise'
+    case 'unknown':
+      return 'subscription'
+  }
+}
+
+function SubscriptionFootnote({
+  auth,
+  totalUsd,
+  range
+}: {
+  auth: ClaudeAuthInfo | null
+  totalUsd: number
+  range: Range
+}): JSX.Element {
+  if (!auth || !auth.tier) {
+    return (
       <p className="text-xs text-dim mt-6 text-center">
         Costs are computed from session JSONLs in ~/.claude/projects/. Breakdown is estimated by char-length within each turn — the total is exact.
       </p>
+    )
+  }
+
+  const label = tierLabel(auth.tier)
+  const monthly = auth.monthlyUsd
+  const subscriptionPrefix = monthly != null ? `$${monthly}/mo on ${label}` : label
+
+  // Joke selection: if range covers a month-ish window and a known monthly
+  // price exists, riff on the API-equivalent overpay. For shorter windows,
+  // keep it generic so the math doesn't lie.
+  let joke: string
+  if (monthly != null && (range === '30d' || range === 'all')) {
+    if (totalUsd > monthly * 5) {
+      joke = `Thank god you're only paying ${subscriptionPrefix}. This would have been ${formatCost(totalUsd)} on the API.`
+    } else if (totalUsd > monthly) {
+      joke = `${formatCost(totalUsd)} of API-equivalent usage on ${subscriptionPrefix}. Not bad.`
+    } else {
+      joke = `${formatCost(totalUsd)} of API-equivalent usage on ${subscriptionPrefix}.`
+    }
+  } else if (monthly != null) {
+    joke = `Detected ${subscriptionPrefix}. Numbers shown are API-equivalent — your actual bill is the flat sub.`
+  } else {
+    joke = `Detected ${label} subscription. Numbers shown are API-equivalent.`
+  }
+
+  return (
+    <div className="bg-app/30 border border-amber-400/20 rounded-xl px-5 py-3 mt-6 text-xs text-muted text-center">
+      {joke}
     </div>
   )
 }
