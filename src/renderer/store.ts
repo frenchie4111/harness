@@ -165,7 +165,20 @@ class BackendsRegistry {
     if (id === LOCAL_BACKEND_ID) {
       throw new Error('cannot remove local backend')
     }
-    if (!this.entries.has(id)) return
+    const entry = this.entries.get(id)
+    if (!entry) return
+    // Close the underlying transport if it has a close method. The
+    // remote WebSocketClientTransport exposes one; the local handle
+    // (a plain object wrapper around ElectronClientTransport) doesn't,
+    // and we wouldn't want to drop the local IPC channel anyway.
+    const closer = (entry.transport as { close?: () => void }).close
+    if (typeof closer === 'function') {
+      try {
+        closer.call(entry.transport)
+      } catch {
+        /* swallow — we're tearing down regardless */
+      }
+    }
     this.entries.delete(id)
     if (this.activeId === id) this.setActive(LOCAL_BACKEND_ID)
     this.connectionsCache = null
