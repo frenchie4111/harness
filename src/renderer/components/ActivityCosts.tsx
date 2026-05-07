@@ -276,6 +276,7 @@ export function ActivityCosts(): JSX.Element {
                 spent in the {rangeLabel} across {data?.length ?? 0}{' '}
                 {data?.length === 1 ? 'session' : 'sessions'}
               </div>
+              <SubscriptionQuip auth={auth} totalUsd={total} />
             </>
           )}
         </div>
@@ -343,9 +344,11 @@ export function ActivityCosts(): JSX.Element {
         </div>
       )}
 
-      <SubscriptionFootnote auth={auth} totalUsd={total} />
+      <p className="text-[10px] text-dim mt-6 text-center">
+        Costs are computed from session JSONLs in ~/.claude/projects/. Breakdown is estimated by char-length within each turn — the total is exact.
+      </p>
 
-      <div className="text-center mt-4">
+      <div className="text-center mt-3">
         <div className="inline-flex items-center gap-1.5 text-[11px] text-dim">
           <Sparkles size={11} className="text-amber-400/70" />
           <span>
@@ -375,37 +378,33 @@ function tierLabel(tier: SubscriptionTier): string {
   }
 }
 
-function SubscriptionFootnote({
+function SubscriptionQuip({
   auth,
   totalUsd
 }: {
   auth: ClaudeAuthInfo | null
   totalUsd: number
-}): JSX.Element {
-  if (!auth || !auth.tier) {
-    return (
-      <p className="text-xs text-dim mt-6 text-center">
-        Costs are computed from session JSONLs in ~/.claude/projects/. Breakdown is estimated by char-length within each turn — the total is exact.
-      </p>
-    )
-  }
-
+}): JSX.Element | null {
+  if (!auth || !auth.tier) return null
   const label = tierLabel(auth.tier)
   const monthly = auth.monthlyUsd
-  const subscriptionPrefix = monthly != null ? `$${monthly}/mo on ${label}` : label
-
-  let joke: string
-  if (monthly != null && totalUsd > monthly) {
-    joke = `Thank god you're only paying ${subscriptionPrefix}. This would have been ${formatCost(totalUsd)} on the API.`
-  } else if (monthly != null) {
-    joke = `${formatCost(totalUsd)} of API-equivalent usage on ${subscriptionPrefix}.`
-  } else {
-    joke = `Detected ${label} subscription. Numbers shown are API-equivalent.`
+  if (monthly == null) {
+    return (
+      <div className="text-xs text-amber-400/90 mt-3 italic">
+        on {label}.
+      </div>
+    )
   }
-
+  if (totalUsd > monthly) {
+    return (
+      <div className="text-sm text-amber-400 mt-3 italic font-medium">
+        thank god you are only paying ${monthly}/mo
+      </div>
+    )
+  }
   return (
-    <div className="bg-app/30 border border-amber-400/20 rounded-xl px-5 py-3 mt-6 text-xs text-muted text-center">
-      {joke}
+    <div className="text-xs text-dim mt-3 italic">
+      on {label} (${monthly}/mo).
     </div>
   )
 }
@@ -518,6 +517,43 @@ interface BreakdownRow {
   cost: number
 }
 
+// Fixed category colors keep the meaning stable across views: output
+// blocks share a "produced by Claude" hue family (warm), input blocks
+// share a "context replayed" family (cool). Tool-result names get hashed
+// into a fallback palette so each tool gets a stable color across reloads.
+const FIXED_BAR_COLORS: Record<string, string> = {
+  text: 'bg-sky-400',
+  thinking: 'bg-purple-400',
+  tool_use: 'bg-amber-400',
+  'user prompt': 'bg-emerald-400',
+  'asst echo': 'bg-slate-400'
+}
+const TOOL_RESULT_PALETTE = [
+  'bg-cyan-400',
+  'bg-fuchsia-400',
+  'bg-rose-400',
+  'bg-lime-400',
+  'bg-indigo-400',
+  'bg-orange-400',
+  'bg-teal-400',
+  'bg-pink-400',
+  'bg-violet-400',
+  'bg-yellow-400'
+]
+
+function hashLabel(s: string): number {
+  let h = 0
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0
+  return Math.abs(h)
+}
+
+function colorForLabel(label: string): string {
+  return (
+    FIXED_BAR_COLORS[label] ??
+    TOOL_RESULT_PALETTE[hashLabel(label) % TOOL_RESULT_PALETTE.length]
+  )
+}
+
 function BreakdownPanel({
   breakdown,
   total
@@ -547,14 +583,35 @@ function BreakdownPanel({
   const hidden = Math.max(0, nonZero.length - BREAKDOWN_VISIBLE_ROWS)
   const max = nonZero[0].cost
   return (
-    <div className="flex flex-col gap-1.5">
-      {visible.map((r) => (
-        <BreakdownBar key={r.label} row={r} max={max} total={total} />
-      ))}
+    <div className="flex flex-col gap-2.5">
+      {/* Stacked bar — every non-zero category gets a slice, colored to
+          match its row swatch below. Segments narrower than ~0.3% get
+          dropped because they render as hairlines that just clutter. */}
+      <div className="flex h-3 rounded-md overflow-hidden border border-border/40 bg-surface/60">
+        {nonZero.map((r) => {
+          const segWidth = total > 0 ? (r.cost / total) * 100 : 0
+          if (segWidth < 0.3) return null
+          return (
+            <div
+              key={r.label}
+              className={`${colorForLabel(r.label)} hover:brightness-125 transition-all`}
+              style={{ width: `${segWidth}%` }}
+              title={`${r.label} — ${formatCost(r.cost)} (${segWidth.toFixed(1)}%)`}
+            />
+          )
+        })}
+      </div>
+
+      <div className="flex flex-col gap-1">
+        {visible.map((r) => (
+          <BreakdownBar key={r.label} row={r} max={max} total={total} />
+        ))}
+      </div>
+
       {hidden > 0 && (
         <button
           onClick={() => setShowAll((s) => !s)}
-          className="self-start mt-1 text-[10px] text-muted hover:text-fg-bright cursor-pointer flex items-center gap-1 transition-colors"
+          className="self-start text-[10px] text-muted hover:text-fg-bright cursor-pointer flex items-center gap-1 transition-colors"
         >
           {showAll ? (
             <>
@@ -584,13 +641,15 @@ function BreakdownBar({
 }): JSX.Element {
   const pct = total > 0 ? (row.cost / total) * 100 : 0
   const width = max > 0 ? (row.cost / max) * 100 : 0
+  const color = colorForLabel(row.label)
   return (
     <div className="flex items-center gap-2 text-[11px] leading-tight">
+      <span className={`w-2 h-2 rounded-sm shrink-0 ${color}`} />
       <span className="text-muted truncate w-20 shrink-0" title={row.label}>
         {row.label}
       </span>
       <div className="flex-1 h-1.5 bg-surface/60 rounded-sm overflow-hidden">
-        <div className="h-full bg-accent/70" style={{ width: `${width}%` }} />
+        <div className={`h-full ${color}`} style={{ width: `${width}%`, opacity: 0.85 }} />
       </div>
       <span className="text-dim tabular-nums w-10 text-right shrink-0">
         {pct >= 1 ? `${Math.round(pct)}%` : '<1%'}
