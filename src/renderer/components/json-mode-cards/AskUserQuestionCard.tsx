@@ -87,6 +87,19 @@ export function AskUserQuestionCard({
   const [selections, setSelections] = useState<string[][]>(() =>
     questions.map(() => [])
   )
+  // The binary's tool prompt promises every AskUserQuestion gets a
+  // synthetic "Other" choice that lets the user type free-form text.
+  // The prompt also forbids Claude from including its own "Other" in
+  // the predefined options, so we own this entirely on the client side.
+  // Tracked as a parallel { otherChecked, otherText } per question
+  // rather than mixed into `selections` so submit/render logic stays
+  // simple — selections are just the labels Claude offered.
+  const [otherChecked, setOtherChecked] = useState<boolean[]>(() =>
+    questions.map(() => false)
+  )
+  const [otherText, setOtherText] = useState<string[]>(() =>
+    questions.map(() => '')
+  )
 
   const headerLabel =
     questions[0]?.header || (questions.length > 0 ? 'Question' : 'Question')
@@ -104,24 +117,53 @@ export function AskUserQuestionCard({
         return s.includes(label) ? s.filter((l) => l !== label) : [...s, label]
       })
     )
+    if (!multi) {
+      // Single-select: picking a real option clears Other.
+      setOtherChecked((prev) => prev.map((v, i) => (i === qIdx ? false : v)))
+    }
   }
 
-  const allAnswered = questions.every((_, i) => (selections[i]?.length ?? 0) > 0)
-  const canSubmit = canSubmitNow && questions.length > 0 && allAnswered
+  function toggleOther(qIdx: number, multi: boolean): void {
+    setOtherChecked((prev) => {
+      const willBeChecked = !prev[qIdx]
+      if (!multi && willBeChecked) {
+        // Single-select: turning Other on clears any picked label.
+        setSelections((sel) => sel.map((s, i) => (i === qIdx ? [] : s)))
+      }
+      return prev.map((v, i) => (i === qIdx ? willBeChecked : v))
+    })
+  }
+
+  function questionAnswered(i: number): boolean {
+    const labelCount = selections[i]?.length ?? 0
+    if (labelCount > 0) return true
+    if (otherChecked[i]) return otherText[i].trim().length > 0
+    return false
+  }
+
+  const canSubmit =
+    canSubmitNow &&
+    questions.length > 0 &&
+    questions.every((_, i) => questionAnswered(i))
 
   function submit(): void {
     if (!canSubmit || !pendingApproval) return
     // The binary's input schema for AskUserQuestion accepts an optional
     // `answers: Record<string, string>` that the permission component is
     // expected to populate. Multi-select labels are joined with ", " per
-    // the output schema's contract (read from the binary). Once we
-    // resolve with this populated, claude's call() echoes the answers
-    // straight into the tool_result text — no stdin-side wire format
-    // for us to mimic.
+    // the output schema's contract (read from the binary). Custom Other
+    // text is appended into the same comma-joined string — claude reads
+    // the answer as plain text either way. Once we resolve with this
+    // populated, claude's call() echoes the answers straight into the
+    // tool_result text — no stdin-side wire format for us to mimic.
     const answers: Record<string, string> = {}
     questions.forEach((q, i) => {
-      const sel = selections[i] ?? []
-      if (sel.length > 0) answers[q.question] = sel.join(', ')
+      const parts: string[] = [...(selections[i] ?? [])]
+      if (otherChecked[i]) {
+        const t = otherText[i].trim()
+        if (t.length > 0) parts.push(t)
+      }
+      if (parts.length > 0) answers[q.question] = parts.join(', ')
     })
     void window.api.resolveJsonClaudeApproval(pendingApproval.requestId, {
       behavior: 'allow',
@@ -179,6 +221,22 @@ export function AskUserQuestionCard({
                   </label>
                 )
               })}
+              {!isAnswered && (
+                <OtherOption
+                  blockId={block.id}
+                  qIdx={qIdx}
+                  multi={q.multiSelect}
+                  checked={otherChecked[qIdx] ?? false}
+                  text={otherText[qIdx] ?? ''}
+                  onToggle={() => toggleOther(qIdx, q.multiSelect)}
+                  onTextChange={(t) =>
+                    setOtherText((prev) =>
+                      prev.map((v, i) => (i === qIdx ? t : v))
+                    )
+                  }
+                  onSubmit={submit}
+                />
+              )}
             </div>
           </div>
         ))}
@@ -202,6 +260,75 @@ export function AskUserQuestionCard({
         )}
       </div>
     </ToolCardChrome>
+  )
+}
+
+function OtherOption({
+  blockId,
+  qIdx,
+  multi,
+  checked,
+  text,
+  onToggle,
+  onTextChange,
+  onSubmit
+}: {
+  blockId: string | undefined
+  qIdx: number
+  multi: boolean
+  checked: boolean
+  text: string
+  onToggle: () => void
+  onTextChange: (t: string) => void
+  onSubmit: () => void
+}): JSX.Element {
+  const inputId = `auq-${blockId}-${qIdx}-other`
+  const textInputId = `auq-${blockId}-${qIdx}-other-text`
+  return (
+    <div
+      className={`border ${
+        checked ? 'border-accent/60 bg-accent/10' : 'border-border bg-app/30'
+      } rounded`}
+    >
+      <label
+        htmlFor={inputId}
+        className="flex items-start gap-2 px-2 py-1.5 cursor-pointer hover:bg-app/60"
+      >
+        <input
+          id={inputId}
+          type={multi ? 'checkbox' : 'radio'}
+          name={`auq-${blockId}-${qIdx}`}
+          checked={checked}
+          onChange={onToggle}
+          className="mt-0.5 shrink-0"
+        />
+        <div className="flex-1 min-w-0">
+          <div className="text-fg/95 italic">Other</div>
+          <div className="text-muted text-[11px] mt-0.5">
+            Type your own answer
+          </div>
+        </div>
+      </label>
+      {checked && (
+        <div className="px-2 pb-2">
+          <input
+            id={textInputId}
+            type="text"
+            autoFocus
+            value={text}
+            onChange={(e) => onTextChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                onSubmit()
+              }
+            }}
+            placeholder="Your answer…"
+            className="w-full text-xs px-2 py-1 bg-app border border-border/70 rounded focus:outline-none focus:border-accent/60"
+          />
+        </div>
+      )}
+    </div>
   )
 }
 
