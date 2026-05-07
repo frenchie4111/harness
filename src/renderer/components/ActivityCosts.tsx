@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Loader2, ArrowDown, ArrowUp, ChevronDown, ChevronUp } from 'lucide-react'
+import { Loader2, ChevronDown, ChevronRight, ChevronUp } from 'lucide-react'
 import type { SessionCostSummary } from '../types'
 import {
   emptyBreakdown,
@@ -7,6 +7,7 @@ import {
   addBreakdown,
   type ContentBreakdown
 } from '../../shared/state/costs'
+import { useWorktrees } from '../store'
 
 type Range = '24h' | '7d' | '30d' | 'all'
 
@@ -17,9 +18,8 @@ const RANGES: { id: Range; label: string; ms: number | null }[] = [
   { id: 'all', label: 'All time', ms: null }
 ]
 
-type SortKey = 'project' | 'model' | 'cost' | 'lastAt' | 'turns'
-
-const DEFAULT_VISIBLE_ROWS = 5
+const DEFAULT_VISIBLE_REPOS = 5
+const BREAKDOWN_VISIBLE_ROWS = 5
 
 function basename(p: string): string {
   const parts = p.split('/').filter(Boolean)
@@ -45,26 +45,56 @@ function formatModel(model: string | null): string {
   return model.replace(/^claude-/, '').replace(/-\d{8}$/, '')
 }
 
+const dollarsBig = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2
+})
+const dollarsSmall = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  minimumFractionDigits: 4,
+  maximumFractionDigits: 4
+})
+
 function formatCost(usd: number): string {
-  if (usd >= 100) return `$${usd.toFixed(0)}`
-  if (usd >= 1) return `$${usd.toFixed(2)}`
-  if (usd >= 0.01) return `$${usd.toFixed(2)}`
-  if (usd > 0) return `$${usd.toFixed(4)}`
-  return '$0.00'
+  if (usd === 0) return '$0.00'
+  if (usd < 0.01) return dollarsSmall.format(usd)
+  return dollarsBig.format(usd)
+}
+
+interface WorktreeGroup {
+  worktreePath: string
+  branch: string | null
+  totalCostUsd: number
+  turns: number
+  lastAt: number
+  sessions: SessionCostSummary[]
+  models: Set<string>
+}
+
+interface RepoGroup {
+  repoRoot: string
+  totalCostUsd: number
+  turns: number
+  lastAt: number
+  worktrees: WorktreeGroup[]
 }
 
 export function ActivityCosts(): JSX.Element {
   const [range, setRange] = useState<Range>('7d')
   const [data, setData] = useState<SessionCostSummary[] | null>(null)
   const [loading, setLoading] = useState(false)
-  const [sortKey, setSortKey] = useState<SortKey>('cost')
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
-  const [showAll, setShowAll] = useState(false)
+  const [showAllRepos, setShowAllRepos] = useState(false)
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const worktrees = useWorktrees()
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
-    setShowAll(false)
+    setShowAllRepos(false)
+    setExpanded(new Set())
     const ms = RANGES.find((r) => r.id === range)!.ms
     const sinceMs = ms == null ? undefined : Date.now() - ms
     void window.api
@@ -84,6 +114,73 @@ export function ActivityCosts(): JSX.Element {
     }
   }, [range])
 
+  // Map known worktree paths -> {repoRoot, branch}. Sessions whose
+  // projectPath doesn't match a current worktree fall through to the
+  // "Other" repo bucket and use their projectPath as the worktree key.
+  const worktreeIndex = useMemo(() => {
+    const idx = new Map<string, { repoRoot: string; branch: string }>()
+    for (const w of worktrees.list) {
+      idx.set(w.path, { repoRoot: w.repoRoot, branch: w.branch })
+    }
+    return idx
+  }, [worktrees.list])
+
+  const repos = useMemo<RepoGroup[]>(() => {
+    if (!data) return []
+    const byRepo = new Map<string, Map<string, WorktreeGroup>>()
+    for (const s of data) {
+      const wt = worktreeIndex.get(s.projectPath)
+      const repoKey = wt?.repoRoot ?? '__other__'
+      let wtMap = byRepo.get(repoKey)
+      if (!wtMap) {
+        wtMap = new Map()
+        byRepo.set(repoKey, wtMap)
+      }
+      let group = wtMap.get(s.projectPath)
+      if (!group) {
+        group = {
+          worktreePath: s.projectPath,
+          branch: wt?.branch ?? null,
+          totalCostUsd: 0,
+          turns: 0,
+          lastAt: 0,
+          sessions: [],
+          models: new Set()
+        }
+        wtMap.set(s.projectPath, group)
+      }
+      group.totalCostUsd += s.totalCostUsd
+      group.turns += s.turns
+      if (s.lastAt > group.lastAt) group.lastAt = s.lastAt
+      group.sessions.push(s)
+      if (s.model) group.models.add(s.model)
+    }
+
+    const out: RepoGroup[] = []
+    for (const [repoRoot, wtMap] of byRepo) {
+      const worktreeArr = [...wtMap.values()]
+      worktreeArr.sort((a, b) => b.totalCostUsd - a.totalCostUsd)
+      let total = 0
+      let turns = 0
+      let lastAt = 0
+      for (const w of worktreeArr) {
+        total += w.totalCostUsd
+        turns += w.turns
+        if (w.lastAt > lastAt) lastAt = w.lastAt
+        w.sessions.sort((a, b) => b.totalCostUsd - a.totalCostUsd)
+      }
+      out.push({
+        repoRoot,
+        totalCostUsd: total,
+        turns,
+        lastAt,
+        worktrees: worktreeArr
+      })
+    }
+    out.sort((a, b) => b.totalCostUsd - a.totalCostUsd)
+    return out
+  }, [data, worktreeIndex])
+
   const total = useMemo(() => {
     if (!data) return 0
     return data.reduce((acc, r) => acc + r.totalCostUsd, 0)
@@ -96,40 +193,19 @@ export function ActivityCosts(): JSX.Element {
     return acc
   }, [data])
 
-  const sorted = useMemo(() => {
-    if (!data) return []
-    const dir = sortDir === 'asc' ? 1 : -1
-    const rows = [...data]
-    rows.sort((a, b) => {
-      switch (sortKey) {
-        case 'project':
-          return basename(a.projectPath).localeCompare(basename(b.projectPath)) * dir
-        case 'model':
-          return (a.model ?? '').localeCompare(b.model ?? '') * dir
-        case 'cost':
-          return (a.totalCostUsd - b.totalCostUsd) * dir
-        case 'lastAt':
-          return (a.lastAt - b.lastAt) * dir
-        case 'turns':
-          return (a.turns - b.turns) * dir
-      }
-    })
-    return rows
-  }, [data, sortKey, sortDir])
-
-  const handleSort = (key: SortKey): void => {
-    if (key === sortKey) {
-      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
-    } else {
-      setSortKey(key)
-      setSortDir(key === 'project' || key === 'model' ? 'asc' : 'desc')
-    }
-  }
-
-  const visibleRows = showAll ? sorted : sorted.slice(0, DEFAULT_VISIBLE_ROWS)
-  const hiddenCount = Math.max(0, sorted.length - DEFAULT_VISIBLE_ROWS)
+  const visibleRepos = showAllRepos ? repos : repos.slice(0, DEFAULT_VISIBLE_REPOS)
+  const hiddenRepos = Math.max(0, repos.length - DEFAULT_VISIBLE_REPOS)
   const rangeLabel = RANGES.find((r) => r.id === range)!.label.toLowerCase()
   const now = Date.now()
+
+  const toggle = (key: string): void => {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
 
   return (
     <div className="max-w-5xl mx-auto px-8 py-8">
@@ -164,8 +240,8 @@ export function ActivityCosts(): JSX.Element {
                 {formatCost(total)}
               </div>
               <div className="text-xs text-dim mt-1">
-                spent in the {rangeLabel} across {sorted.length}{' '}
-                {sorted.length === 1 ? 'session' : 'sessions'}
+                spent in the {rangeLabel} across {data?.length ?? 0}{' '}
+                {data?.length === 1 ? 'session' : 'sessions'}
               </div>
             </>
           )}
@@ -188,76 +264,45 @@ export function ActivityCosts(): JSX.Element {
         </div>
       </div>
 
-      {!loading && sorted.length === 0 && (
+      {!loading && repos.length === 0 && (
         <div className="text-sm text-dim py-12 text-center">
           No json-mode sessions in the selected period.
         </div>
       )}
 
-      {!loading && sorted.length > 0 && (
+      {!loading && repos.length > 0 && (
         <div className="bg-app/50 border border-border rounded-xl overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-surface/40 text-[10px] uppercase tracking-wider text-dim">
-                <SortHeader k="project" current={sortKey} dir={sortDir} onClick={handleSort}>
-                  Project
-                </SortHeader>
-                <SortHeader k="model" current={sortKey} dir={sortDir} onClick={handleSort}>
-                  Model
-                </SortHeader>
-                <SortHeader k="cost" current={sortKey} dir={sortDir} onClick={handleSort} align="right">
-                  Cost
-                </SortHeader>
-                <SortHeader k="lastAt" current={sortKey} dir={sortDir} onClick={handleSort} align="right">
-                  Last active
-                </SortHeader>
-                <SortHeader k="turns" current={sortKey} dir={sortDir} onClick={handleSort} align="right">
-                  Turns
-                </SortHeader>
-              </tr>
-            </thead>
-            <tbody>
-              {visibleRows.map((r) => (
-                <tr
-                  key={`${r.projectPath}::${r.sessionId}`}
-                  className="border-b border-border/50 last:border-0 hover:bg-surface/30 transition-colors"
-                >
-                  <td
-                    className="px-3 py-2 text-muted font-mono truncate max-w-xs"
-                    title={r.projectPath}
-                  >
-                    {basename(r.projectPath)}
-                  </td>
-                  <td className="px-3 py-2 text-muted font-mono text-xs">
-                    {formatModel(r.model)}
-                  </td>
-                  <td className="px-3 py-2 text-right text-fg-bright tabular-nums">
-                    {formatCost(r.totalCostUsd)}
-                  </td>
-                  <td className="px-3 py-2 text-right text-dim tabular-nums">
-                    {r.lastAt ? formatAge(now - r.lastAt) : '—'}
-                  </td>
-                  <td className="px-3 py-2 text-right text-dim tabular-nums">
-                    {r.turns}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {hiddenCount > 0 && (
+          <div className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-4 px-3 py-2 border-b border-border bg-surface/40 text-[10px] uppercase tracking-wider text-dim">
+            <span>Repository / worktree</span>
+            <span className="text-right w-24">Cost</span>
+            <span className="text-right w-24">Last active</span>
+            <span className="text-right w-16">Turns</span>
+          </div>
+          <div>
+            {visibleRepos.map((repo) => (
+              <RepoRow
+                key={repo.repoRoot}
+                repo={repo}
+                expanded={expanded}
+                onToggle={toggle}
+                now={now}
+              />
+            ))}
+          </div>
+          {hiddenRepos > 0 && (
             <button
-              onClick={() => setShowAll((s) => !s)}
+              onClick={() => setShowAllRepos((s) => !s)}
               className="w-full px-3 py-2 text-xs text-muted hover:text-fg-bright hover:bg-surface/30 border-t border-border/50 cursor-pointer transition-colors flex items-center justify-center gap-1.5"
             >
-              {showAll ? (
+              {showAllRepos ? (
                 <>
                   <ChevronUp size={12} />
-                  Show top {DEFAULT_VISIBLE_ROWS}
+                  Show top {DEFAULT_VISIBLE_REPOS}
                 </>
               ) : (
                 <>
                   <ChevronDown size={12} />
-                  Show {hiddenCount} more
+                  Show {hiddenRepos} more {hiddenRepos === 1 ? 'repo' : 'repos'}
                 </>
               )}
             </button>
@@ -272,34 +317,106 @@ export function ActivityCosts(): JSX.Element {
   )
 }
 
-function SortHeader({
-  k,
-  current,
-  dir,
-  onClick,
-  align,
-  children
+function RepoRow({
+  repo,
+  expanded,
+  onToggle,
+  now
 }: {
-  k: SortKey
-  current: SortKey
-  dir: 'asc' | 'desc'
-  onClick: (k: SortKey) => void
-  align?: 'right'
-  children: React.ReactNode
+  repo: RepoGroup
+  expanded: Set<string>
+  onToggle: (key: string) => void
+  now: number
 }): JSX.Element {
-  const active = current === k
+  const isExpanded = expanded.has(`repo:${repo.repoRoot}`)
+  const repoLabel =
+    repo.repoRoot === '__other__' ? 'Other' : basename(repo.repoRoot)
+  const wtCount = repo.worktrees.length
   return (
-    <th
-      onClick={() => onClick(k)}
-      className={`px-3 py-2 font-medium cursor-pointer select-none hover:text-fg-bright transition-colors ${
-        align === 'right' ? 'text-right' : 'text-left'
-      } ${active ? 'text-fg-bright' : ''}`}
+    <div className="border-b border-border/50 last:border-0">
+      <button
+        onClick={() => onToggle(`repo:${repo.repoRoot}`)}
+        className="w-full grid grid-cols-[1fr_auto_auto_auto] items-center gap-4 px-3 py-2.5 hover:bg-surface/30 cursor-pointer transition-colors text-left"
+      >
+        <div className="flex items-center gap-2 min-w-0">
+          {isExpanded ? (
+            <ChevronDown size={14} className="text-muted shrink-0" />
+          ) : (
+            <ChevronRight size={14} className="text-muted shrink-0" />
+          )}
+          <span
+            className="text-fg-bright font-medium truncate"
+            title={repo.repoRoot === '__other__' ? 'Sessions outside any tracked worktree' : repo.repoRoot}
+          >
+            {repoLabel}
+          </span>
+          <span className="text-[10px] text-dim shrink-0">
+            {wtCount} {wtCount === 1 ? 'worktree' : 'worktrees'}
+          </span>
+        </div>
+        <span className="text-right text-fg-bright tabular-nums w-24">
+          {formatCost(repo.totalCostUsd)}
+        </span>
+        <span className="text-right text-dim text-xs tabular-nums w-24">
+          {repo.lastAt ? formatAge(now - repo.lastAt) : '—'}
+        </span>
+        <span className="text-right text-dim text-xs tabular-nums w-16">
+          {repo.turns.toLocaleString()}
+        </span>
+      </button>
+      {isExpanded && (
+        <div className="bg-surface/20">
+          {repo.worktrees.map((wt) => (
+            <WorktreeRow
+              key={wt.worktreePath}
+              worktree={wt}
+              now={now}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function WorktreeRow({
+  worktree,
+  now
+}: {
+  worktree: WorktreeGroup
+  now: number
+}): JSX.Element {
+  const label = worktree.branch ?? basename(worktree.worktreePath)
+  const sessionCount = worktree.sessions.length
+  const modelLabel = formatModel(
+    worktree.models.size === 1 ? [...worktree.models][0] : null
+  )
+  return (
+    <div
+      className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-4 px-3 py-2 pl-10 border-t border-border/30 hover:bg-surface/40 transition-colors"
+      title={worktree.worktreePath}
     >
-      <span className={`inline-flex items-center gap-1 ${align === 'right' ? 'justify-end' : ''}`}>
-        {children}
-        {active && (dir === 'asc' ? <ArrowUp size={10} /> : <ArrowDown size={10} />)}
+      <div className="flex items-center gap-2 min-w-0">
+        <span className="text-muted font-mono text-xs truncate">{label}</span>
+        <span className="text-[10px] text-dim shrink-0">
+          {sessionCount} {sessionCount === 1 ? 'session' : 'sessions'}
+        </span>
+        {worktree.models.size === 1 && (
+          <span className="text-[10px] text-dim/70 font-mono shrink-0">
+            {modelLabel}
+          </span>
+        )}
+      </div>
+      <span className="text-right text-fg tabular-nums text-sm w-24">
+        {formatCost(worktree.totalCostUsd)}
       </span>
-    </th>
+      <span className="text-right text-dim text-xs tabular-nums w-24">
+        {worktree.lastAt ? formatAge(now - worktree.lastAt) : '—'}
+      </span>
+      <span className="text-right text-dim text-xs tabular-nums w-16">
+        {worktree.turns.toLocaleString()}
+      </span>
+    </div>
   )
 }
 
@@ -307,8 +424,6 @@ interface BreakdownRow {
   label: string
   cost: number
 }
-
-const BREAKDOWN_VISIBLE_ROWS = 5
 
 function BreakdownPanel({
   breakdown,
@@ -387,7 +502,7 @@ function BreakdownBar({
       <span className="text-dim tabular-nums w-10 text-right shrink-0">
         {pct >= 1 ? `${Math.round(pct)}%` : '<1%'}
       </span>
-      <span className="text-fg tabular-nums w-14 text-right shrink-0">
+      <span className="text-fg tabular-nums w-16 text-right shrink-0">
         {formatCost(row.cost)}
       </span>
     </div>
