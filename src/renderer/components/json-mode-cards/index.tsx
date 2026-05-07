@@ -15,6 +15,10 @@ export interface ToolCardProps {
   result?: { content: string; isError: boolean }
   autoApproved?: { model: string; reason: string; timestamp: number }
   sessionAllowed?: { toolName: string; timestamp: number }
+  /** Owning session id. Cards that need to call IPC against the session
+   *  (currently only AskUserQuestionCard's submit) read this; everyone
+   *  else ignores it. */
+  sessionId?: string
   /** Sub-agent fields. Only set by the Task case; other cards ignore
    *  them. Threaded through dispatchToolCard so the renderer keeps the
    *  same call shape for every tool. */
@@ -56,6 +60,7 @@ export function ToolCardChrome({
   brand,
   autoApproved,
   sessionAllowed,
+  defaultExpanded,
   children
 }: {
   name: string
@@ -65,12 +70,17 @@ export function ToolCardChrome({
   brand?: boolean
   autoApproved?: { model: string; reason: string; timestamp: number }
   sessionAllowed?: { toolName: string; timestamp: number }
+  /** Override the collapsed-by-default chrome. Used by interactive cards
+   *  (AskUserQuestion) that need the body visible on first paint —
+   *  collapsed-by-default would hide the form the user is supposed to
+   *  fill in. */
+  defaultExpanded?: boolean
   children: ReactNode
 }): JSX.Element {
   // Collapsed by default. Errors get a visible "error" badge in the
   // header so they're discoverable, but we don't force-expand — the
   // user can choose to drill in.
-  const [expanded, setExpanded] = useState<boolean>(false)
+  const [expanded, setExpanded] = useState<boolean>(defaultExpanded ?? false)
 
   const ring = isError
     ? 'border-danger/50'
@@ -156,6 +166,7 @@ import { GrepCard } from './GrepCard'
 import { GlobCard } from './GlobCard'
 import { TodoWriteCard } from './TodoWriteCard'
 import { TaskCard } from './TaskCard'
+import { AskUserQuestionCard } from './AskUserQuestionCard'
 import { GenericToolCard } from './GenericToolCard'
 
 export function dispatchToolCard(props: ToolCardProps): JSX.Element {
@@ -176,6 +187,8 @@ export function dispatchToolCard(props: ToolCardProps): JSX.Element {
       return <GlobCard {...props} />
     case 'TodoWrite':
       return <TodoWriteCard {...props} />
+    case 'AskUserQuestion':
+      return <AskUserQuestionCard {...props} />
     // 'Task' (older Claude Code) and 'Agent' (2.1.126+) both route to
     // the subagent runner — render either as TaskCard.
     case 'Task':

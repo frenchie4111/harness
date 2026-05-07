@@ -780,6 +780,7 @@ function renderEntries(
                     sessionAllowed: block.id
                       ? ctx.sessionAllowedDecisions[block.id]
                       : undefined,
+                    sessionId: ctx.sessionId,
                     subAgentBody,
                     subAgentChildCount,
                     subAgentDescendantHasPendingApproval
