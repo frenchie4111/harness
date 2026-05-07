@@ -344,11 +344,7 @@ export function ActivityCosts(): JSX.Element {
         </div>
       )}
 
-      <p className="text-[10px] text-dim mt-6 text-center">
-        Costs are computed from session JSONLs in ~/.claude/projects/. Breakdown is estimated by char-length within each turn — the total is exact.
-      </p>
-
-      <div className="text-center mt-3">
+      <div className="text-center mt-6">
         <div className="inline-flex items-center gap-1.5 text-[11px] text-dim">
           <Sparkles size={11} className="text-amber-400/70" />
           <span>
