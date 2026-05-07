@@ -67,6 +67,14 @@ interface TerminalPanelProps {
   onAddTab: () => void
   onAddAgentTab: (agentKind?: AgentKind) => void
   onAddBrowserTab: () => void
+  /** Compact tab strip for narrow viewports — chip styling, no close X
+   *  on inactive tabs, no repo/branch label header. The split, editor,
+   *  and right-panel-expand affordances on the right side stay; opt out
+   *  individually with the more specific flags below. */
+  compact?: boolean
+  /** Hide the split-right + split-down buttons. Pane splits don't render
+   *  at narrow viewports, so the trigger should disappear too. */
+  hideSplitButtons?: boolean
   /** Optional: when defined, alt-clicking the Sparkles button opens a
    *  json-claude tab (experimental, gated by settings.jsonModeClaudeTabs). */
   onAddJsonClaudeTab?: () => void
@@ -267,7 +275,9 @@ export function TerminalPanel({
   onSplitRight,
   onSplitDown,
   showExpandRightColumn,
-  onShowRightColumn
+  onShowRightColumn,
+  compact,
+  hideSplitButtons
 }: TerminalPanelProps): JSX.Element {
   // Droppable target for the pane itself — lets users drop a tab onto an
   // empty pane or past the last tab.
@@ -292,8 +302,12 @@ export function TerminalPanel({
   return (
     <div ref={setPaneDropRef} className="flex-1 flex flex-col min-w-0 bg-app">
       {/* Tab bar */}
-      <div className="drag-region flex items-center border-b border-border bg-panel h-10 shrink-0">
-        {repoLabel && (
+      <div
+        className={`flex items-center border-b border-border bg-panel shrink-0 ${
+          compact ? 'h-11' : 'drag-region h-10'
+        }`}
+      >
+        {repoLabel && !compact && (
           <div
             className="no-drag shrink-0 flex items-baseline gap-1.5 px-3 h-full text-xs whitespace-nowrap"
             title={`${repoLabel} / ${branch}`}
@@ -317,7 +331,14 @@ export function TerminalPanel({
                   isActive={tab.id === pane.activeTabId}
                   status={statuses[tab.id] || 'idle'}
                   shellActivity={shellActivity[tab.id]}
-                  showClose={pane.tabs.length > 1 || paneCount > 1}
+                  showClose={
+                    // Active tab on compact (chip-strip) layout still shows
+                    // its X so the user can close the focused tab; inactive
+                    // tabs hide the X to reduce mis-tap surface.
+                    compact
+                      ? tab.id === pane.activeTabId
+                      : pane.tabs.length > 1 || paneCount > 1
+                  }
                   onSelect={() => onSelectTab(tab.id)}
                   onClose={() => onCloseTab(tab.id)}
                   onConvertTabType={
@@ -394,22 +415,26 @@ export function TerminalPanel({
               <Globe size={12} />
             </button>
           </Tooltip>
-          <Tooltip label="Split pane right" action="splitPaneRight">
-            <button
-              onClick={onSplitRight}
-              className="no-drag shrink-0 px-2 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"
-            >
-              <SplitSquareHorizontal size={12} />
-            </button>
-          </Tooltip>
-          <Tooltip label="Split pane down" action="splitPaneDown">
-            <button
-              onClick={onSplitDown}
-              className="no-drag shrink-0 px-2 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"
-            >
-              <SplitSquareVertical size={12} />
-            </button>
-          </Tooltip>
+          {!hideSplitButtons && (
+            <>
+              <Tooltip label="Split pane right" action="splitPaneRight">
+                <button
+                  onClick={onSplitRight}
+                  className="no-drag shrink-0 px-2 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"
+                >
+                  <SplitSquareHorizontal size={12} />
+                </button>
+              </Tooltip>
+              <Tooltip label="Split pane down" action="splitPaneDown">
+                <button
+                  onClick={onSplitDown}
+                  className="no-drag shrink-0 px-2 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"
+                >
+                  <SplitSquareVertical size={12} />
+                </button>
+              </Tooltip>
+            </>
+          )}
           {showSpectatorChip && activeTab && <SpectatorChip terminalId={activeTab.id} />}
         </div>
         <Tooltip label="Open worktree in editor" action="openInEditor" side="left">

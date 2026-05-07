@@ -20,6 +20,7 @@ import { FileView } from './FileView'
 import { BrowserPanel } from './BrowserPanel'
 import { JsonModeChat } from './JsonModeChat'
 import { ErrorBoundary } from './ErrorBoundary'
+import { useViewport } from '../hooks/useViewport'
 
 interface WorkspaceViewProps {
   worktreePath: string
@@ -391,11 +392,26 @@ export function WorkspaceView({
     prevActiveTabsRef.current = next
   }, [visible, paneTree, worktreePath])
 
+  const { isMobile, isTouch } = useViewport()
+
+  // On touch devices, raise the activation distance so a tap on a tab
+  // doesn't accidentally start a drag (DnD is unusable from a finger).
+  // The chip strip at <md drops the close X on inactive tabs anyway, so
+  // there's nothing to mis-grab once activation is high.
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 4 } })
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: isTouch ? 16 : 4 }
+    })
   )
 
   const leaves = getLeaves(paneTree)
+  // At narrow viewports we collapse the pane tree to the focused leaf —
+  // splits, dividers, and the per-pane TabBar still render their *content*
+  // (every leaf's tabs are portaled in below), but only the focused leaf's
+  // chrome is visible. Hidden leaves still mount the slot host so their
+  // PTY stays alive across viewport flips.
+  const focusedLeaf =
+    leaves.find((l) => l.id === focusedPaneId) ?? leaves[0] ?? null
 
   // Drop slots for leaves that no longer exist so the element can be GC'd
   // and, if a pane with the same id is ever re-created, it starts fresh.
@@ -483,43 +499,108 @@ export function WorkspaceView({
       onDragEnd={handleDragEnd}
     >
       <div className="flex-1 flex min-w-0 bg-app">
-        <SplitRenderer
-          node={paneTree}
-          worktreePath={worktreePath}
-          focusedPaneId={focusedPaneId}
-          statuses={statuses}
-          shellActivity={shellActivity}
-          repoLabel={repoLabel}
-          branch={branch}
-          nameAgentSessions={nameAgentSessions}
-          leafCount={leaves.length}
-          isFirstLeaf={isFirstLeaf}
-          topRightLeafId={topRightLeafId}
-          showExpandRightColumn={rightColumnHidden}
-          onShowRightColumn={onShowRightColumn}
-          registerSlot={attachSlot}
-          onSelectTab={(tabId, paneId) => onSelectTab(worktreePath, paneId, tabId)}
-          onAddTab={(paneId) => onAddTab(worktreePath, paneId)}
-          defaultAgent={defaultAgent}
-          onAddAgentTab={(kind, paneId) => onAddAgentTab(worktreePath, kind, paneId)}
-          onAddBrowserTab={(paneId) => onAddBrowserTab(worktreePath, paneId)}
-          onAddJsonClaudeTab={
-            onAddJsonClaudeTab
-              ? (paneId) => onAddJsonClaudeTab(worktreePath, paneId)
-              : undefined
-          }
-          onConvertTabType={
-            onConvertTabType
-              ? (tabId, newType) => onConvertTabType(worktreePath, tabId, newType)
-              : undefined
-          }
-          defaultClaudeTabType={defaultClaudeTabType}
-          onSleepTab={(tabId) => onSleepTab(worktreePath, tabId)}
-          onCloseTab={(tabId) => onCloseTab(worktreePath, tabId)}
-          onSplitRight={(paneId) => onSplitPane(worktreePath, paneId, 'horizontal')}
-          onSplitDown={(paneId) => onSplitPane(worktreePath, paneId, 'vertical')}
-          onResizeEnd={handleResizeEnd}
-        />
+        {isMobile ? (
+          // Single-leaf view at narrow widths: render only the focused
+          // leaf's TerminalPanel. Slot hosts for the other leaves still
+          // need to exist so their PTYs stay alive — they live below in
+          // a 0-size container outside the visible flow.
+          focusedLeaf ? (
+            <div className="flex-1 flex min-w-0 min-h-0">
+              <TerminalPanel
+                worktreePath={worktreePath}
+                pane={focusedLeaf}
+                isFocused
+                paneCount={1}
+                statuses={statuses}
+                shellActivity={shellActivity}
+                repoLabel={repoLabel}
+                branch={branch}
+                registerSlot={attachSlot}
+                onSelectTab={(tabId) => onSelectTab(worktreePath, focusedLeaf.id, tabId)}
+                onAddTab={() => onAddTab(worktreePath, focusedLeaf.id)}
+                defaultAgent={defaultAgent}
+                onAddAgentTab={(kind) => onAddAgentTab(worktreePath, kind, focusedLeaf.id)}
+                onAddBrowserTab={() => onAddBrowserTab(worktreePath, focusedLeaf.id)}
+                onAddJsonClaudeTab={
+                  onAddJsonClaudeTab
+                    ? () => onAddJsonClaudeTab(worktreePath, focusedLeaf.id)
+                    : undefined
+                }
+                defaultClaudeTabType={defaultClaudeTabType}
+                onConvertTabType={
+                  onConvertTabType
+                    ? (tabId, newType) => onConvertTabType(worktreePath, tabId, newType)
+                    : undefined
+                }
+                onSleepTab={(tabId) => onSleepTab(worktreePath, tabId)}
+                onCloseTab={(tabId) => onCloseTab(worktreePath, tabId)}
+                onSplitRight={() => undefined}
+                onSplitDown={() => undefined}
+                showExpandRightColumn={false}
+                onShowRightColumn={onShowRightColumn}
+                compact
+                hideSplitButtons
+              />
+            </div>
+          ) : null
+        ) : (
+          <SplitRenderer
+            node={paneTree}
+            worktreePath={worktreePath}
+            focusedPaneId={focusedPaneId}
+            statuses={statuses}
+            shellActivity={shellActivity}
+            repoLabel={repoLabel}
+            branch={branch}
+            nameAgentSessions={nameAgentSessions}
+            leafCount={leaves.length}
+            isFirstLeaf={isFirstLeaf}
+            topRightLeafId={topRightLeafId}
+            showExpandRightColumn={rightColumnHidden}
+            onShowRightColumn={onShowRightColumn}
+            registerSlot={attachSlot}
+            onSelectTab={(tabId, paneId) => onSelectTab(worktreePath, paneId, tabId)}
+            onAddTab={(paneId) => onAddTab(worktreePath, paneId)}
+            defaultAgent={defaultAgent}
+            onAddAgentTab={(kind, paneId) => onAddAgentTab(worktreePath, kind, paneId)}
+            onAddBrowserTab={(paneId) => onAddBrowserTab(worktreePath, paneId)}
+            onAddJsonClaudeTab={
+              onAddJsonClaudeTab
+                ? (paneId) => onAddJsonClaudeTab(worktreePath, paneId)
+                : undefined
+            }
+            onConvertTabType={
+              onConvertTabType
+                ? (tabId, newType) => onConvertTabType(worktreePath, tabId, newType)
+                : undefined
+            }
+            defaultClaudeTabType={defaultClaudeTabType}
+            onSleepTab={(tabId) => onSleepTab(worktreePath, tabId)}
+            onCloseTab={(tabId) => onCloseTab(worktreePath, tabId)}
+            onSplitRight={(paneId) => onSplitPane(worktreePath, paneId, 'horizontal')}
+            onSplitDown={(paneId) => onSplitPane(worktreePath, paneId, 'vertical')}
+            onResizeEnd={handleResizeEnd}
+          />
+        )}
+        {isMobile && (
+          // Off-screen container that hosts slot divs for non-focused leaves
+          // so their PTYs keep ticking. Zero size so it doesn't take any
+          // layout space, but still attached to the DOM for portals to
+          // target. Slot reuse logic in attachSlot/ensureSlot does the
+          // rest — when the user pops back to a desktop viewport the slots
+          // hop back into their respective TerminalPanel hosts.
+          <div
+            ref={(el) => {
+              if (!el) return
+              for (const leaf of leaves) {
+                if (leaf.id === focusedLeaf?.id) continue
+                attachSlot(leaf.id, el)
+              }
+            }}
+            className="absolute w-0 h-0 overflow-hidden pointer-events-none"
+            aria-hidden
+          />
+        )}
       </div>
 
       {leaves.flatMap((leaf) =>
