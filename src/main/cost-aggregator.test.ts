@@ -88,6 +88,15 @@ describe('getAllSessionCosts', () => {
     expect(row.totalCostUsd).toBeCloseTo(0.015, 6)
     expect(row.firstAt).toBe(Date.parse('2026-04-01T12:00:00Z'))
     expect(row.lastAt).toBe(Date.parse('2026-04-01T12:01:00Z'))
+    expect(row.breakdown).toBeDefined()
+    const sumBreakdown =
+      row.breakdown.text +
+      row.breakdown.thinking +
+      row.breakdown.toolUse +
+      row.breakdown.userPrompt +
+      row.breakdown.assistantEcho +
+      Object.values(row.breakdown.toolResults).reduce((a, b) => a + b, 0)
+    expect(sumBreakdown).toBeCloseTo(row.totalCostUsd, 6)
   })
 
   it('falls back to encoded dir name when no cwd is in any line', async () => {

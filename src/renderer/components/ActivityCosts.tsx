@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Loader2, ArrowDown, ArrowUp } from 'lucide-react'
+import { Loader2, ArrowDown, ArrowUp, ChevronDown, ChevronUp } from 'lucide-react'
 import type { SessionCostSummary } from '../types'
+import {
+  emptyBreakdown,
+  cloneBreakdown,
+  addBreakdown,
+  type ContentBreakdown
+} from '../../shared/state/costs'
 
 type Range = '24h' | '7d' | '30d' | 'all'
 
@@ -12,6 +18,8 @@ const RANGES: { id: Range; label: string; ms: number | null }[] = [
 ]
 
 type SortKey = 'project' | 'model' | 'cost' | 'lastAt' | 'turns'
+
+const DEFAULT_VISIBLE_ROWS = 5
 
 function basename(p: string): string {
   const parts = p.split('/').filter(Boolean)
@@ -40,7 +48,9 @@ function formatModel(model: string | null): string {
 function formatCost(usd: number): string {
   if (usd >= 100) return `$${usd.toFixed(0)}`
   if (usd >= 1) return `$${usd.toFixed(2)}`
-  return `$${usd.toFixed(4)}`
+  if (usd >= 0.01) return `$${usd.toFixed(2)}`
+  if (usd > 0) return `$${usd.toFixed(4)}`
+  return '$0.00'
 }
 
 export function ActivityCosts(): JSX.Element {
@@ -49,21 +59,26 @@ export function ActivityCosts(): JSX.Element {
   const [loading, setLoading] = useState(false)
   const [sortKey, setSortKey] = useState<SortKey>('cost')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+  const [showAll, setShowAll] = useState(false)
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
+    setShowAll(false)
     const ms = RANGES.find((r) => r.id === range)!.ms
     const sinceMs = ms == null ? undefined : Date.now() - ms
-    void window.api.getAllSessionCosts(sinceMs).then((rows) => {
-      if (cancelled) return
-      setData(rows)
-      setLoading(false)
-    }).catch(() => {
-      if (cancelled) return
-      setData([])
-      setLoading(false)
-    })
+    void window.api
+      .getAllSessionCosts(sinceMs)
+      .then((rows) => {
+        if (cancelled) return
+        setData(rows)
+        setLoading(false)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setData([])
+        setLoading(false)
+      })
     return () => {
       cancelled = true
     }
@@ -72,6 +87,13 @@ export function ActivityCosts(): JSX.Element {
   const total = useMemo(() => {
     if (!data) return 0
     return data.reduce((acc, r) => acc + r.totalCostUsd, 0)
+  }, [data])
+
+  const aggregateBreakdown = useMemo<ContentBreakdown>(() => {
+    const acc = cloneBreakdown(emptyBreakdown)
+    if (!data) return acc
+    for (const row of data) addBreakdown(acc, row.breakdown)
+    return acc
   }, [data])
 
   const sorted = useMemo(() => {
@@ -104,6 +126,8 @@ export function ActivityCosts(): JSX.Element {
     }
   }
 
+  const visibleRows = showAll ? sorted : sorted.slice(0, DEFAULT_VISIBLE_ROWS)
+  const hiddenCount = Math.max(0, sorted.length - DEFAULT_VISIBLE_ROWS)
   const rangeLabel = RANGES.find((r) => r.id === range)!.label.toLowerCase()
   const now = Date.now()
 
@@ -126,24 +150,42 @@ export function ActivityCosts(): JSX.Element {
         ))}
       </div>
 
-      <div className="bg-app/50 border border-border rounded-xl p-6 mb-6">
-        <div className="text-[10px] uppercase tracking-wider text-dim mb-2">Total</div>
-        {loading ? (
-          <div className="flex items-center gap-2 text-muted">
-            <Loader2 size={16} className="animate-spin" />
-            <span className="text-sm">Parsing session history…</span>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="bg-app/50 border border-border rounded-xl p-6 md:col-span-1">
+          <div className="text-[10px] uppercase tracking-wider text-dim mb-2">Total</div>
+          {loading ? (
+            <div className="flex items-center gap-2 text-muted">
+              <Loader2 size={16} className="animate-spin" />
+              <span className="text-sm">Parsing session history…</span>
+            </div>
+          ) : (
+            <>
+              <div className="text-3xl font-bold text-accent tabular-nums">
+                {formatCost(total)}
+              </div>
+              <div className="text-xs text-dim mt-1">
+                spent in the {rangeLabel} across {sorted.length}{' '}
+                {sorted.length === 1 ? 'session' : 'sessions'}
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="bg-app/50 border border-border rounded-xl p-6 md:col-span-2">
+          <div className="text-[10px] uppercase tracking-wider text-dim mb-3">
+            Cost by type
           </div>
-        ) : (
-          <>
-            <div className="text-3xl font-bold text-accent tabular-nums">
-              {formatCost(total)}
+          {loading ? (
+            <div className="flex items-center gap-2 text-muted">
+              <Loader2 size={16} className="animate-spin" />
+              <span className="text-sm">Computing breakdown…</span>
             </div>
-            <div className="text-xs text-dim mt-1">
-              spent in the {rangeLabel} across {sorted.length}{' '}
-              {sorted.length === 1 ? 'session' : 'sessions'}
-            </div>
-          </>
-        )}
+          ) : total > 0 ? (
+            <BreakdownPanel breakdown={aggregateBreakdown} total={total} />
+          ) : (
+            <div className="text-sm text-dim italic">No usage in this range.</div>
+          )}
+        </div>
       </div>
 
       {!loading && sorted.length === 0 && (
@@ -175,7 +217,7 @@ export function ActivityCosts(): JSX.Element {
               </tr>
             </thead>
             <tbody>
-              {sorted.map((r) => (
+              {visibleRows.map((r) => (
                 <tr
                   key={`${r.projectPath}::${r.sessionId}`}
                   className="border-b border-border/50 last:border-0 hover:bg-surface/30 transition-colors"
@@ -202,11 +244,29 @@ export function ActivityCosts(): JSX.Element {
               ))}
             </tbody>
           </table>
+          {hiddenCount > 0 && (
+            <button
+              onClick={() => setShowAll((s) => !s)}
+              className="w-full px-3 py-2 text-xs text-muted hover:text-fg-bright hover:bg-surface/30 border-t border-border/50 cursor-pointer transition-colors flex items-center justify-center gap-1.5"
+            >
+              {showAll ? (
+                <>
+                  <ChevronUp size={12} />
+                  Show top {DEFAULT_VISIBLE_ROWS}
+                </>
+              ) : (
+                <>
+                  <ChevronDown size={12} />
+                  Show {hiddenCount} more
+                </>
+              )}
+            </button>
+          )}
         </div>
       )}
 
       <p className="text-xs text-dim mt-6 text-center">
-        Costs are computed from session JSONLs in ~/.claude/projects/. Cache is in-memory and rebuilt on app restart.
+        Costs are computed from session JSONLs in ~/.claude/projects/. Breakdown is estimated by char-length within each turn — the total is exact.
       </p>
     </div>
   )
@@ -240,5 +300,89 @@ function SortHeader({
         {active && (dir === 'asc' ? <ArrowUp size={10} /> : <ArrowDown size={10} />)}
       </span>
     </th>
+  )
+}
+
+interface BreakdownRow {
+  label: string
+  cost: number
+}
+
+function BreakdownPanel({
+  breakdown,
+  total
+}: {
+  breakdown: ContentBreakdown
+  total: number
+}): JSX.Element {
+  const outputRows: BreakdownRow[] = [
+    { label: 'text', cost: breakdown.text },
+    { label: 'thinking', cost: breakdown.thinking },
+    { label: 'tool_use', cost: breakdown.toolUse }
+  ]
+  const inputRows: BreakdownRow[] = [
+    { label: 'user prompt', cost: breakdown.userPrompt },
+    { label: 'asst echo', cost: breakdown.assistantEcho },
+    ...Object.entries(breakdown.toolResults).map(([name, cost]) => ({
+      label: name,
+      cost
+    }))
+  ]
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <BreakdownSection title="Output (produced)" rows={outputRows} total={total} />
+      <BreakdownSection title="Input (context)" rows={inputRows} total={total} />
+    </div>
+  )
+}
+
+function BreakdownSection({
+  title,
+  rows,
+  total
+}: {
+  title: string
+  rows: BreakdownRow[]
+  total: number
+}): JSX.Element | null {
+  const nonZero = rows.filter((r) => r.cost > 0).sort((a, b) => b.cost - a.cost)
+  if (nonZero.length === 0) return null
+  const max = nonZero[0].cost
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="text-[10px] uppercase tracking-wide text-dim">{title}</div>
+      {nonZero.map((r) => (
+        <BreakdownBar key={r.label} row={r} max={max} total={total} />
+      ))}
+    </div>
+  )
+}
+
+function BreakdownBar({
+  row,
+  max,
+  total
+}: {
+  row: BreakdownRow
+  max: number
+  total: number
+}): JSX.Element {
+  const pct = total > 0 ? (row.cost / total) * 100 : 0
+  const width = max > 0 ? (row.cost / max) * 100 : 0
+  return (
+    <div className="flex items-center gap-2 text-[11px] leading-tight">
+      <span className="text-muted truncate w-20 shrink-0" title={row.label}>
+        {row.label}
+      </span>
+      <div className="flex-1 h-1.5 bg-surface/60 rounded-sm overflow-hidden">
+        <div className="h-full bg-accent/70" style={{ width: `${width}%` }} />
+      </div>
+      <span className="text-dim tabular-nums w-10 text-right shrink-0">
+        {pct >= 1 ? `${Math.round(pct)}%` : '<1%'}
+      </span>
+      <span className="text-fg tabular-nums w-14 text-right shrink-0">
+        {formatCost(row.cost)}
+      </span>
+    </div>
   )
 }

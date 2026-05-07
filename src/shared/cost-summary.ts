@@ -1,3 +1,5 @@
+import type { ContentBreakdown } from './state/costs'
+
 export interface SessionCostSummary {
   sessionId: string
   projectPath: string
@@ -6,4 +8,5 @@ export interface SessionCostSummary {
   firstAt: number
   lastAt: number
   turns: number
+  breakdown: ContentBreakdown
 }

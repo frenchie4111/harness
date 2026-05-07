@@ -11,11 +11,24 @@
 // reverse is lossy, so for display we prefer the `cwd` field that Claude
 // Code writes onto every assistant/user line and fall back to the encoded
 // dir name only if no line carried one.
+//
+// Parsing reuses the same fold logic CostTracker does (jsonl-fold.ts) so
+// per-session breakdown attribution matches the live CostPanel exactly.
 
 import { readdir, stat, readFile } from 'fs/promises'
 import { homedir } from 'os'
 import { join } from 'path'
-import { priceFor, type TokenUsage } from '../shared/pricing'
+import {
+  newFoldState,
+  detectFormat,
+  foldClaudeLines,
+  foldCodexLines
+} from './jsonl-fold'
+import {
+  emptyBreakdown,
+  cloneBreakdown,
+  type ContentBreakdown
+} from '../shared/state/costs'
 import type { SessionCostSummary } from '../shared/cost-summary'
 import { log } from './debug'
 
@@ -109,15 +122,21 @@ async function parseSession(
   const text = await readFile(filePath, 'utf-8')
   const sessionId = fileName.replace(/\.jsonl$/, '')
 
-  let totalCostUsd = 0
-  let model: string | null = null
+  const state = newFoldState()
   let firstAt = Number.POSITIVE_INFINITY
   let lastAt = 0
-  let turns = 0
   let projectPath: string | null = null
+  let turns = 0
 
+  // Walk lines once for metadata extraction (cwd + timestamps + turn count),
+  // then run the format-aware fold over the same text for cost attribution.
+  // This is two passes over a string but the parse cost dominates either way
+  // and keeping the fold strictly per-format keeps the math identical to
+  // CostTracker.
+  let firstNonEmpty: string | null = null
   for (const line of text.split('\n')) {
     if (!line.trim()) continue
+    if (!firstNonEmpty) firstNonEmpty = line
     let obj: Record<string, unknown>
     try {
       obj = JSON.parse(line) as Record<string, unknown>
@@ -135,26 +154,39 @@ async function parseSession(
         if (ts > lastAt) lastAt = ts
       }
     }
-    if (obj.type !== 'assistant') continue
-    const msg = obj.message as Record<string, unknown> | undefined
-    if (!msg) continue
-    const m = typeof msg.model === 'string' ? msg.model : null
-    const usage = (msg.usage ?? null) as TokenUsage | null
-    if (!m || !usage) continue
-    totalCostUsd += priceFor(m, usage)
-    model = m
-    turns += 1
+    if (obj.type === 'assistant') {
+      const msg = obj.message as Record<string, unknown> | undefined
+      if (msg && typeof msg.model === 'string' && msg.usage) turns += 1
+    }
+  }
+
+  if (firstNonEmpty) {
+    const format = detectFormat(firstNonEmpty)
+    if (format === 'codex') foldCodexLines(text, state)
+    else foldClaudeLines(text, state)
   }
 
   if (firstAt === Number.POSITIVE_INFINITY) firstAt = 0
+
+  let totalCostUsd = 0
+  for (const tally of Object.values(state.byModel)) totalCostUsd += tally.cost
+
+  const breakdown: ContentBreakdown = cloneBreakdown(emptyBreakdown)
+  breakdown.text = state.breakdown.text
+  breakdown.thinking = state.breakdown.thinking
+  breakdown.toolUse = state.breakdown.toolUse
+  breakdown.userPrompt = state.breakdown.userPrompt
+  breakdown.assistantEcho = state.breakdown.assistantEcho
+  breakdown.toolResults = { ...state.breakdown.toolResults }
 
   return {
     sessionId,
     projectPath: projectPath ?? dirName,
     totalCostUsd,
-    model,
+    model: state.currentModel,
     firstAt,
     lastAt,
-    turns
+    turns,
+    breakdown
   }
 }
