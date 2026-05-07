@@ -74,6 +74,20 @@ export interface LocalTransportHandle {
   getClientId(): Promise<string>
 }
 
+/** Electron-only helpers exposed by the preload that genuinely can't
+ *  live in the renderer: webUtils.getPathForFile (for resolving paths
+ *  of dropped files) + ipcRenderer.send for window controls (the local
+ *  BrowserWindow is what's being controlled, regardless of which
+ *  backend is active). Null in the web-client. Same cross-context
+ *  shape rationale as LocalTransportHandle — kept in shared/ so the
+ *  preload (tsconfig.node.json) and the renderer can both import it. */
+export interface ElectronOnlyHelpers {
+  getFilePath(file: File): string
+  windowMinimize(): void
+  windowToggleMaximize(): void
+  windowClose(): void
+}
+
 export interface ServerTransport {
   /** Broadcast a state event to every connected client. */
   broadcastStateEvent(event: StateEvent, seq: number): void

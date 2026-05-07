@@ -1,0 +1,501 @@
+// Renderer-side construction of the `Backend` interface — what was
+// historically `window.api`, now built in renderer context so that
+// remote backends (whose transport is a renderer-living
+// WebSocketClientTransport) bypass the preload entirely. See
+// plans/tier-1-multi-backend-ux.md and the discussion in commit
+// history for why we moved this out of the preload.
+//
+// Two transport accessors are passed in (rather than a single
+// `transport` reference):
+//
+//   - `getActiveTransport()` — returns whichever backend the user has
+//     currently selected (local handle for local, WS transport for
+//     remotes). Most methods route through this so the UI's commands
+//     go to the active backend.
+//   - `getLocalTransport()` — always returns the local backend's
+//     transport handle. Used by the connections list (which is a
+//     renderer-shell concern, never forwarded to remotes — see
+//     plans/tier-1-multi-backend-ux.md §C/§G), the menu signals
+//     (only the local Electron has a Menu), and window controls
+//     (the local BrowserWindow is what's being controlled).
+//
+// Both accessors are called LAZILY on each method invocation so that
+// flipping the active backend with `BackendsRegistry.setActive(id)`
+// instantly redirects subsequent calls without rebuilding the
+// Backend object. Components reading via `useBackend()` see a
+// stable reference; only the underlying call destination changes.
+//
+// The actual method declarations below are a near-verbatim move of
+// the contents of the preload's old `contextBridge.exposeInMainWorld('api', ...)`
+// block — same channel names, same arg shapes, same JSDoc-worthy
+// behavior. The historical reason this lived in the preload (single
+// global transport, contextIsolation requiring contextBridge for
+// ipcRenderer) no longer applies once we got multi-backend right.
+
+import type {
+  ClientSignalHandler,
+  ElectronOnlyHelpers,
+  LocalTransportHandle,
+  StateEventListener
+} from '../shared/transport/transport'
+import type { ElectronAPI } from './types'
+
+export type { ElectronOnlyHelpers }
+
+type DataCallback = (id: string, data: string) => void
+type ExitCallback = (id: string, exitCode: number) => void
+
+export function buildBackend(
+  getActiveTransport: () => LocalTransportHandle,
+  getLocalTransport: () => LocalTransportHandle,
+  electronHelpers: ElectronOnlyHelpers | null
+): ElectronAPI {
+  // Active-routed (most things). Goes to whichever backend the user
+  // currently has selected.
+  const req = (name: string, ...args: unknown[]): Promise<unknown> =>
+    getActiveTransport().request(name, ...args)
+  const sig = (name: string, ...args: unknown[]): void =>
+    getActiveTransport().send(name, ...args)
+  const onActiveSignal = (
+    name: string,
+    handler: ClientSignalHandler
+  ): (() => void) => getActiveTransport().onSignal(name, handler)
+
+  // Always-local. Bypasses the active-backend router for renderer-shell
+  // concerns (connections list) and for things only the local Electron
+  // can fire (menu signals, window controls).
+  const reqLocal = (name: string, ...args: unknown[]): Promise<unknown> =>
+    getLocalTransport().request(name, ...args)
+  const sigLocal = (name: string, ...args: unknown[]): void =>
+    getLocalTransport().send(name, ...args)
+  const onLocalSignal = (
+    name: string,
+    handler: ClientSignalHandler
+  ): (() => void) => getLocalTransport().onSignal(name, handler)
+
+  // Stub used when an Electron-only helper is called in the web
+  // client (where `electronHelpers` is null). Logged once per call
+  // site name so a missed branch surfaces in the console without
+  // crashing.
+  const warned = new Set<string>()
+  const electronOnly = <T,>(name: string, fallback: T): T => {
+    if (!warned.has(name)) {
+      warned.add(name)
+      // eslint-disable-next-line no-console
+      console.warn(`[backend] '${name}' is unavailable in this runtime`)
+    }
+    return fallback
+  }
+
+  // The api object literal below is what `window.api` historically
+  // pointed at, modulo the swap from preload-bound helpers (req/sig
+  // closing over a single transport) to the registry-aware ones above.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const api: any = {
+    listWorktrees: (repoRoot: string) => req('worktree:list', repoRoot),
+    listBranches: (repoRoot: string) => req('worktree:branches', repoRoot),
+
+    runPendingWorktree: (params: {
+      id: string
+      repoRoot: string
+      branchName: string
+      initialPrompt?: string
+      teleportSessionId?: string
+    }) => req('worktrees:runPending', params),
+    retryPendingWorktree: (id: string) => req('worktrees:retryPending', id),
+    dismissPendingWorktree: (id: string) => req('worktrees:dismissPending', id),
+    refreshWorktreesList: () => req('worktrees:refreshList'),
+
+    continueWorktree: (
+      repoRoot: string,
+      worktreePath: string,
+      newBranchName: string,
+      baseBranch?: string
+    ) => req('worktree:continue', repoRoot, worktreePath, newBranchName, baseBranch),
+    isWorktreeDirty: (path: string) => req('worktree:isDirty', path),
+    removeWorktree: (
+      repoRoot: string,
+      path: string,
+      force?: boolean,
+      removeMeta?: { prNumber?: number; prState?: 'open' | 'draft' | 'merged' | 'closed' }
+    ) => req('worktree:remove', repoRoot, path, force, removeMeta),
+    dismissPendingDeletion: (path: string) => req('worktree:dismissPendingDeletion', path),
+    getWorktreeDir: (repoRoot: string) => req('worktree:dir', repoRoot),
+
+    listRepos: () => req('repo:list'),
+    addRepo: () => req('repo:add'),
+    addRepoAtPath: (repoRoot: string) => req('repo:addAtPath', repoRoot),
+    removeRepo: (repoRoot: string) => req('repo:remove', repoRoot),
+    createNewProject: (opts: {
+      parentDir: string
+      name: string
+      includeReadme: boolean
+      gitignorePreset: 'none' | 'node' | 'python' | 'macos'
+    }) => req('repo:createNewProject', opts),
+    pickDirectory: (opts?: { defaultPath?: string; title?: string }) =>
+      req('dialog:pickDirectory', opts),
+
+    listDir: (path: string, opts?: { showHidden?: boolean }) =>
+      req('fs:listDir', path, opts),
+    resolveHome: () => req('fs:resolveHome'),
+    isGitRepo: (path: string) => req('fs:isGitRepo', path),
+
+    listAllFiles: (worktreePath: string) => req('worktree:listFiles', worktreePath),
+    readWorktreeFile: (worktreePath: string, filePath: string) =>
+      req('worktree:readFile', worktreePath, filePath),
+    readWorktreeFileBinary: (worktreePath: string, filePath: string) =>
+      req('worktree:readFileBinary', worktreePath, filePath),
+    writeWorktreeFile: (worktreePath: string, filePath: string, contents: string) =>
+      req('worktree:writeFile', worktreePath, filePath, contents),
+
+    getChangedFiles: (worktreePath: string, mode?: 'working' | 'branch') =>
+      req('worktree:changedFiles', worktreePath, mode),
+    watchChangedFiles: (worktreePath: string) =>
+      sig('worktree:watchChangedFiles', worktreePath),
+    unwatchChangedFiles: (worktreePath: string) =>
+      sig('worktree:unwatchChangedFiles', worktreePath),
+    onChangedFilesInvalidated: (callback: (worktreePath: string) => void) =>
+      onActiveSignal('worktree:changedFilesInvalidated', (path) => {
+        callback(path as string)
+      }),
+    getFileDiff: (
+      worktreePath: string,
+      filePath: string,
+      staged: boolean,
+      mode?: 'working' | 'branch'
+    ) => req('worktree:fileDiff', worktreePath, filePath, staged, mode),
+    getFileDiffSides: (
+      worktreePath: string,
+      filePath: string,
+      staged: boolean,
+      mode?: 'working' | 'branch'
+    ) => req('worktree:fileDiffSides', worktreePath, filePath, staged, mode),
+    getBranchCommits: (worktreePath: string) => req('worktree:branchCommits', worktreePath),
+    getCommitDiff: (worktreePath: string, hash: string) =>
+      req('worktree:commitDiff', worktreePath, hash),
+    getCommitChangedFiles: (worktreePath: string, hash: string) =>
+      req('worktree:commitChangedFiles', worktreePath, hash),
+    getCommitFileDiffSides: (worktreePath: string, hash: string, filePath: string) =>
+      req('worktree:commitFileDiffSides', worktreePath, hash, filePath),
+    getMainWorktreeStatus: (repoRoot: string) => req('worktree:mainStatus', repoRoot),
+    prepareMainForMerge: (repoRoot: string) => req('worktree:prepareMain', repoRoot),
+    previewMergeConflicts: (repoRoot: string, sourceBranch: string, worktreePath?: string) =>
+      req('worktree:previewMerge', repoRoot, sourceBranch, worktreePath),
+    mergeWorktreeLocally: (
+      repoRoot: string,
+      sourceBranch: string,
+      strategy: 'squash' | 'merge-commit' | 'fast-forward',
+      worktreePath?: string
+    ) => req('worktree:mergeLocal', repoRoot, sourceBranch, strategy, worktreePath),
+
+    refreshPRsAll: () => req('prs:refreshAll'),
+    refreshPRsAllIfStale: () => req('prs:refreshAllIfStale'),
+    refreshPRsOne: (worktreePath: string) => req('prs:refreshOne', worktreePath),
+    refreshPRsOneIfStale: (worktreePath: string) => req('prs:refreshOneIfStale', worktreePath),
+
+    getWeeklyStats: () => req('stats:getWeekly'),
+
+    setHotkeyOverrides: (hotkeys: Record<string, string>) => req('config:setHotkeys', hotkeys),
+    resetHotkeyOverrides: () => req('config:resetHotkeys'),
+    setClaudeCommand: (command: string) => req('config:setClaudeCommand', command),
+    getDefaultClaudeCommand: () => req('config:getDefaultClaudeCommand'),
+    setWorktreeScripts: (scripts: { setup?: string; teardown?: string }) =>
+      req('config:setWorktreeScripts', scripts),
+    setRepoConfig: (repoRoot: string, next: Record<string, unknown>) =>
+      req('repoConfig:set', repoRoot, next),
+    setClaudeEnvVars: (vars: Record<string, string>) => req('config:setClaudeEnvVars', vars),
+    setDefaultAgent: (agent: string) => req('config:setDefaultAgent', agent),
+    setCodexCommand: (command: string) => req('config:setCodexCommand', command),
+    setClaudeModel: (model: string | null) => req('config:setClaudeModel', model),
+    setCodexModel: (model: string | null) => req('config:setCodexModel', model),
+    setCodexEnvVars: (vars: Record<string, string>) => req('config:setCodexEnvVars', vars),
+    setHarnessMcpEnabled: (enabled: boolean) => req('config:setHarnessMcpEnabled', enabled),
+    setAutoApprovePermissions: (enabled: boolean) =>
+      req('config:setAutoApprovePermissions', enabled),
+    setAutoApproveSteerInstructions: (text: string) =>
+      req('config:setAutoApproveSteerInstructions', text),
+    setClaudeTuiFullscreen: (enabled: boolean) => req('config:setClaudeTuiFullscreen', enabled),
+    setWsTransportEnabled: (enabled: boolean) => req('config:setWsTransportEnabled', enabled),
+    setWsTransportPort: (port: number) => req('config:setWsTransportPort', port),
+    setWsTransportHost: (host: string) => req('config:setWsTransportHost', host),
+    getWsTransportInfo: () => req('config:getWsTransportInfo'),
+    rotateWsToken: () => req('config:rotateWsToken'),
+    getLanAddresses: () => req('net:getLanAddresses'),
+    setBrowserToolsEnabled: (enabled: boolean) => req('config:setBrowserToolsEnabled', enabled),
+    setBrowserToolsMode: (mode: 'view' | 'full') => req('config:setBrowserToolsMode', mode),
+    setJsonModeClaudeTabs: (enabled: boolean) => req('config:setJsonModeClaudeTabs', enabled),
+    setDefaultClaudeTabType: (value: 'xterm' | 'json') =>
+      req('config:setDefaultClaudeTabType', value),
+    setJsonModeChatDensity: (value: 'compact' | 'comfy') =>
+      req('config:setJsonModeChatDensity', value),
+    setJsonModeDefaultPermissionMode: (value: 'default' | 'acceptEdits' | 'plan') =>
+      req('config:setJsonModeDefaultPermissionMode', value),
+    setAutoSleepMinutes: (value: number) => req('config:setAutoSleepMinutes', value),
+    setAutoUpdateEnabled: (enabled: boolean) => req('config:setAutoUpdateEnabled', enabled),
+    setShareClaudeSettings: (enabled: boolean) => req('config:setShareClaudeSettings', enabled),
+    setHarnessSystemPromptEnabled: (enabled: boolean) =>
+      req('config:setHarnessSystemPromptEnabled', enabled),
+    setHarnessSystemPrompt: (prompt: string) => req('config:setHarnessSystemPrompt', prompt),
+    setHarnessSystemPromptMain: (prompt: string) =>
+      req('config:setHarnessSystemPromptMain', prompt),
+    prepareMcpForTerminal: (terminalId: string) =>
+      req('mcp:prepareForTerminal', terminalId),
+    onWorktreesExternalCreate: (
+      callback: (payload: { repoRoot: string; worktree: unknown; initialPrompt?: string }) => void
+    ) =>
+      onActiveSignal('worktrees:externalCreate', (payload) => {
+        callback(payload as { repoRoot: string; worktree: unknown; initialPrompt?: string })
+      }),
+    setNameClaudeSessions: (enabled: boolean) => req('config:setNameClaudeSessions', enabled),
+    setTheme: (theme: string) => req('config:setTheme', theme),
+    setCostsInterest: (expanded: boolean) => req('costs:setInterest', expanded),
+    getAvailableThemes: () => req('config:getAvailableThemes'),
+    setTerminalFontFamily: (fontFamily: string) =>
+      req('config:setTerminalFontFamily', fontFamily),
+    getDefaultTerminalFontFamily: () => req('config:getDefaultTerminalFontFamily'),
+    setTerminalFontSize: (fontSize: number) => req('config:setTerminalFontSize', fontSize),
+
+    panesAddTab: (wtPath: string, tab: unknown, paneId?: string) =>
+      req('panes:addTab', wtPath, tab, paneId),
+    panesCloseTab: (wtPath: string, tabId: string) => req('panes:closeTab', wtPath, tabId),
+    panesRestartAgentTab: (wtPath: string, tabId: string, newId: string) =>
+      req('panes:restartAgentTab', wtPath, tabId, newId),
+    panesConvertTabType: (
+      wtPath: string,
+      tabId: string,
+      newType: 'agent' | 'json-claude'
+    ) => req('panes:convertTabType', wtPath, tabId, newType),
+    panesSelectTab: (wtPath: string, paneId: string, tabId: string) =>
+      req('panes:selectTab', wtPath, paneId, tabId),
+    panesReorderTabs: (wtPath: string, paneId: string, fromId: string, toId: string) =>
+      req('panes:reorderTabs', wtPath, paneId, fromId, toId),
+    panesMoveTabToPane: (wtPath: string, tabId: string, toPaneId: string, toIndex?: number) =>
+      req('panes:moveTabToPane', wtPath, tabId, toPaneId, toIndex),
+    panesSplitPane: (
+      wtPath: string,
+      fromPaneId: string,
+      direction?: 'horizontal' | 'vertical'
+    ) => req('panes:splitPane', wtPath, fromPaneId, direction),
+    panesSetRatio: (wtPath: string, splitId: string, ratio: number) =>
+      req('panes:setRatio', wtPath, splitId, ratio),
+    panesClearForWorktree: (wtPath: string) => req('panes:clearForWorktree', wtPath),
+    panesEnsureInitialized: (wtPath: string) => req('panes:ensureInitialized', wtPath),
+    panesSleepTab: (wtPath: string, tabId: string) => req('panes:sleepTab', wtPath, tabId),
+    panesWakeTab: (wtPath: string, tabId: string) => req('panes:wakeTab', wtPath, tabId),
+
+    getTerminalHistory: (id: string) => req('terminal:getHistory', id),
+    clearTerminalHistory: (id: string) => req('terminal:forgetHistory', id),
+    agentSessionFileExists: (cwd: string, sessionId: string, agentKind?: string) =>
+      req('agent:sessionFileExists', cwd, sessionId, agentKind),
+    getLatestAgentSessionId: (cwd: string, agentKind?: string) =>
+      req('agent:latestSessionId', cwd, agentKind),
+    buildAgentSpawnArgs: (
+      agentKind: string,
+      opts: {
+        terminalId: string
+        cwd: string
+        sessionId?: string
+        initialPrompt?: string
+        teleportSessionId?: string
+        sessionName?: string
+      }
+    ) => req('agent:buildSpawnArgs', agentKind, opts),
+
+    setOnboardingQuest: (quest: string) => req('config:setOnboardingQuest', quest),
+    setWorktreeBase: (mode: 'remote' | 'local') => req('config:setWorktreeBase', mode),
+    setMergeStrategy: (strategy: 'squash' | 'merge-commit' | 'fast-forward') =>
+      req('config:setMergeStrategy', strategy),
+
+    setEditor: (editorId: string) => req('config:setEditor', editorId),
+    getAvailableEditors: () => req('config:getAvailableEditors'),
+    openInEditor: (worktreePath: string, filePath?: string) =>
+      req('editor:open', worktreePath, filePath),
+
+    hasGithubToken: () => req('settings:hasGithubToken'),
+    setGithubToken: (token: string) => req('settings:setGithubToken', token),
+    clearGithubToken: () => req('settings:clearGithubToken'),
+    setHarnessStarred: (starred: boolean) => req('settings:setHarnessStarred', starred),
+
+    getVersion: () => req('updater:getVersion'),
+    readRecentLog: (maxLines?: number) => req('debug:readRecentLog', maxLines),
+    checkForUpdates: () => req('updater:checkForUpdates'),
+    quitAndInstall: () => req('updater:quitAndInstall'),
+
+    // Always-local: shell.openExternal opens on the local user's
+    // machine, never on the remote backend. Same with debug log paths.
+    openExternal: (url: string) => sigLocal('shell:openExternal', url),
+    openDebugLog: () => reqLocal('debug:openLog'),
+    showDebugLogInFolder: () => reqLocal('debug:showLogInFolder'),
+
+    getFilePath: (file: File) =>
+      electronHelpers ? electronHelpers.getFilePath(file) : electronOnly('getFilePath', ''),
+
+    getPerfMetrics: () => req('perf:getMetrics'),
+    perfLogSlowRender: (id: string, ms: number, phase: string) =>
+      sig('perf:logSlowRender', id, ms, phase),
+
+    logError: (
+      label: string,
+      error: { name?: string; message?: string; stack?: string },
+      info?: { componentStack?: string | null }
+    ) =>
+      req(
+        'debug:logError',
+        label,
+        error?.name ?? 'Error',
+        error?.message ?? '',
+        error?.stack ?? '',
+        info?.componentStack ?? ''
+      ),
+
+    // Window controls — always target the local Electron window. In the
+    // web client the helpers are null and these are no-ops (the browser
+    // owns its own window controls).
+    windowMinimize: () =>
+      electronHelpers ? electronHelpers.windowMinimize() : electronOnly('windowMinimize', undefined),
+    windowToggleMaximize: () =>
+      electronHelpers
+        ? electronHelpers.windowToggleMaximize()
+        : electronOnly('windowToggleMaximize', undefined),
+    windowClose: () =>
+      electronHelpers ? electronHelpers.windowClose() : electronOnly('windowClose', undefined),
+
+    // Menu signals — only the local Electron menu fires these. Bind to
+    // local transport so they keep working regardless of which backend
+    // is active.
+    onOpenSettings: (callback: () => void) =>
+      onLocalSignal('app:openSettings', () => callback()),
+    onTogglePerfMonitor: (callback: () => void) =>
+      onLocalSignal('app:togglePerfMonitor', () => callback()),
+    onOpenKeyboardShortcuts: (callback: () => void) =>
+      onLocalSignal('app:openKeyboardShortcuts', () => callback()),
+    onOpenNewProject: (callback: () => void) =>
+      onLocalSignal('menu:newProject', () => callback()),
+    onOpenReportIssue: (callback: () => void) =>
+      onLocalSignal('app:openReportIssue', () => callback()),
+    onDebugCrashFocusedTab: (callback: () => void) =>
+      onLocalSignal('app:debugCrashFocusedTab', () => callback()),
+
+    acceptHooks: () => req('hooks:accept'),
+    declineHooks: () => req('hooks:decline'),
+    uninstallHooks: () => req('hooks:uninstall'),
+
+    browserNavigate: (tabId: string, url: string) => req('browser:navigate', tabId, url),
+    browserBack: (tabId: string) => req('browser:back', tabId),
+    browserForward: (tabId: string) => req('browser:forward', tabId),
+    browserReload: (tabId: string) => req('browser:reload', tabId),
+    browserOpenDevTools: (tabId: string) => req('browser:openDevTools', tabId),
+    browserSetBounds: (
+      tabId: string,
+      bounds: { x: number; y: number; width: number; height: number } | null
+    ) => sig('browser:setBounds', tabId, bounds),
+    browserHide: (tabId: string) => sig('browser:hide', tabId),
+    browserScreenshot: (
+      tabId: string,
+      opts?: { format?: 'jpeg' | 'png'; quality?: number }
+    ) => req('browser:screenshot', tabId, opts),
+    browserClick: (
+      tabId: string,
+      x: number,
+      y: number,
+      opts?: { button?: 'left' | 'right' | 'middle'; clickCount?: number }
+    ) => req('browser:click', tabId, x, y, opts),
+    browserType: (tabId: string, text: string, key?: string) =>
+      req('browser:type', tabId, text, key),
+    browserScroll: (tabId: string, dx: number, dy: number) =>
+      req('browser:scroll', tabId, dx, dy),
+
+    createTerminal: (
+      id: string,
+      cwd: string,
+      cmd: string,
+      args: string[],
+      agentKind?: string,
+      cols?: number,
+      rows?: number
+    ) => sig('pty:create', id, cwd, cmd, args, agentKind, cols, rows),
+    writeTerminal: (id: string, data: string) => sig('pty:write', id, data),
+    resizeTerminal: (id: string, cols: number, rows: number) =>
+      sig('pty:resize', id, cols, rows),
+    killTerminal: (id: string) => sig('pty:kill', id),
+    joinTerminal: (id: string) => sig('terminal:join', id),
+    leaveTerminal: (id: string) => sig('terminal:leave', id),
+    takeTerminalControl: (id: string, cols: number, rows: number) =>
+      sig('terminal:takeControl', id, cols, rows),
+    onTerminalData: (callback: DataCallback) =>
+      onActiveSignal('terminal:data', (id, data) => {
+        callback(id as string, data as string)
+      }),
+    getActivityLog: () => req('activity:get'),
+    clearActivityLog: (worktreePath?: string) => req('activity:clear', worktreePath),
+
+    onTerminalExit: (callback: ExitCallback) =>
+      onActiveSignal('terminal:exit', (id, exitCode) => {
+        callback(id as string, exitCode as number)
+      }),
+
+    resolveJsonClaudeApproval: (
+      requestId: string,
+      result: {
+        behavior: 'allow' | 'deny'
+        updatedInput?: Record<string, unknown>
+        updatedPermissions?: unknown[]
+        message?: string
+        interrupt?: boolean
+      }
+    ) => req('jsonClaude:resolveApproval', requestId, result),
+    rerunJsonClaudeAutoApprovalReview: (requestId: string) =>
+      req('jsonClaude:rerunAutoApprovalReview', requestId),
+    startJsonClaude: (id: string, cwd: string) => req('jsonClaude:start', id, cwd),
+    sendJsonClaudeMessage: (
+      id: string,
+      text: string,
+      images?: Array<{ mediaType: string; data: string; path: string }>
+    ) => sig('jsonClaude:send', id, text, images),
+    cancelQueuedJsonClaudeMessage: (id: string, messageId: string) =>
+      sig('jsonClaude:cancelQueued', id, messageId),
+    writeJsonClaudeAttachmentImage: (base64: string, mediaType: string) =>
+      req('jsonClaude:writeAttachmentImage', base64, mediaType),
+    readJsonClaudeAttachmentImage: (path: string) =>
+      req('jsonClaude:readAttachmentImage', path),
+    getJsonClaudeEntries: (sessionId: string) =>
+      req('jsonClaude:getEntries', sessionId),
+    killJsonClaude: (id: string) => req('jsonClaude:kill', id),
+    interruptJsonClaude: (id: string) => req('jsonClaude:interrupt', id),
+    openJsonClaudeAuthLoginTab: (worktreePath: string) =>
+      req('jsonClaude:openAuthLoginTab', worktreePath),
+    setJsonClaudePermissionMode: (
+      id: string,
+      mode: 'default' | 'acceptEdits' | 'plan'
+    ) => req('jsonClaude:setPermissionMode', id, mode),
+    grantJsonClaudeSessionToolApprovals: (id: string, toolNames: string[]) =>
+      req('jsonClaude:grantSessionToolApprovals', id, toolNames),
+    clearJsonClaudeSessionToolApprovals: (id: string, toolNames?: string[]) =>
+      req('jsonClaude:clearSessionToolApprovals', id, toolNames),
+
+    getStateSnapshot: () => getActiveTransport().getStateSnapshot(),
+    onStateEvent: (callback: StateEventListener) =>
+      getActiveTransport().onStateEvent(callback),
+    getClientId: () => getActiveTransport().getClientId(),
+
+    // Connections list — always-local; the connections list is renderer-
+    // shell-owned (never forwarded to remote backends, which don't
+    // manage other backends). See plans/tier-1-multi-backend-ux.md §C/§G.
+    connectionsList: () => reqLocal('connections:list'),
+    connectionsAdd: (
+      input: { label: string; url: string; kind: 'remote'; color?: string; initials?: string },
+      token: string
+    ) => reqLocal('connections:add', input, token),
+    connectionsRemove: (id: string) => reqLocal('connections:remove', id),
+    connectionsRename: (id: string, label: string) =>
+      reqLocal('connections:rename', id, label),
+    connectionsSetActive: (id: string) => reqLocal('connections:setActive', id),
+    connectionsGetActive: () => reqLocal('connections:getActive'),
+    connectionsSetLastConnected: (id: string, when?: number) =>
+      reqLocal('connections:setLastConnected', id, when),
+    connectionsGetToken: (id: string) => reqLocal('connections:getToken', id),
+    connectionsHasToken: (id: string) => reqLocal('connections:hasToken', id)
+  }
+
+  return api as ElectronAPI
+}

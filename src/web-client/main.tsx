@@ -569,11 +569,12 @@ async function boot(): Promise<void> {
   await transport.connect()
 
   window.__HARNESS_WEB__ = true
-  window.api = buildApi(transport)
-  // The web client is always single-backend — it talks to one server
-  // (the one it was served from). Expose that transport as the registry's
-  // "local" backend so the renderer's BackendsRegistry has the same shape
-  // it does in Electron mode. Multi-backend is an Electron-only concept.
+  // Web client is always single-backend — it talks to one server (the
+  // one it was served from). Expose that WS transport as the registry's
+  // local backend; the renderer's `initBackend()` (called from
+  // initStore) builds window.api over it. Same shape, same code path
+  // as Electron — just with a WS transport in place of the local IPC
+  // handle.
   window.__harness_local_transport = {
     getStateSnapshot: () => transport.getStateSnapshot(),
     onStateEvent: (cb) => transport.onStateEvent((event, seq) => cb(event, seq)),
@@ -582,6 +583,10 @@ async function boot(): Promise<void> {
     onSignal: (name, handler) => transport.onSignal(name, handler),
     getClientId: () => transport.getClientId()
   }
+  // No Electron helpers in the browser — the renderer's build-backend
+  // gracefully no-ops drag-drop file paths and window controls when
+  // this is absent.
+  window.__harness_electron_helpers = undefined
 
   // Dynamic-import everything that touches `window.api`. XTerminal seeds
   // a module-scope font cache by calling `window.api.getStateSnapshot()`

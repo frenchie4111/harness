@@ -99,21 +99,32 @@ function applyFontToAll(): void {
 // stream. XTerminal's font cache lives at module scope (not in React state)
 // because newly mounted xterm instances read it synchronously in the
 // constructor, before any React hook could fire.
-void window.api.getStateSnapshot().then(({ state }) => {
-  currentFontFamily = state.settings.terminalFontFamily || DEFAULT_TERMINAL_FONT_FAMILY
-  currentFontSize = state.settings.terminalFontSize || DEFAULT_TERMINAL_FONT_SIZE
-  applyFontToAll()
-})
-window.api.onStateEvent((raw) => {
-  const event = raw as StateEvent
-  if (event.type === 'settings/terminalFontFamilyChanged') {
-    currentFontFamily = event.payload || DEFAULT_TERMINAL_FONT_FAMILY
+//
+// Init is lazy (called from the first component mount, not at module
+// load) because window.api is built by the renderer's `initBackend()`
+// during initStore — which runs after this module's import hoisting.
+// Pre-init the cache fires the first time an XTerminal mounts; the
+// `applyFontToAll()` sweep updates anything already on screen.
+let fontCacheInitialized = false
+function initFontCache(): void {
+  if (fontCacheInitialized) return
+  fontCacheInitialized = true
+  void window.api.getStateSnapshot().then(({ state }) => {
+    currentFontFamily = state.settings.terminalFontFamily || DEFAULT_TERMINAL_FONT_FAMILY
+    currentFontSize = state.settings.terminalFontSize || DEFAULT_TERMINAL_FONT_SIZE
     applyFontToAll()
-  } else if (event.type === 'settings/terminalFontSizeChanged') {
-    currentFontSize = event.payload || DEFAULT_TERMINAL_FONT_SIZE
-    applyFontToAll()
-  }
-})
+  })
+  window.api.onStateEvent((raw) => {
+    const event = raw as StateEvent
+    if (event.type === 'settings/terminalFontFamilyChanged') {
+      currentFontFamily = event.payload || DEFAULT_TERMINAL_FONT_FAMILY
+      applyFontToAll()
+    } else if (event.type === 'settings/terminalFontSizeChanged') {
+      currentFontSize = event.payload || DEFAULT_TERMINAL_FONT_SIZE
+      applyFontToAll()
+    }
+  })
+}
 
 // Browsers without `font-variant-emoji: text` (iOS Safari < 17.4) happily
 // auto-emojify ambiguous codepoints via the Apple Color Emoji fallback,
@@ -178,6 +189,10 @@ interface XTerminalProps {
 }
 
 export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionName, sessionId, initialPrompt, teleportSessionId, shellCommand, shellCwd, onRestartAgent }: XTerminalProps): JSX.Element {
+  // Lazy font-cache init — fires once on first XTerminal mount. See
+  // initFontCache() comment for why this is lazy rather than at module
+  // top.
+  initFontCache()
   const [exited, setExited] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)

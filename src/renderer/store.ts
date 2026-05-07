@@ -33,6 +33,7 @@ import {
 } from '../shared/state'
 import type { LocalTransportHandle, BackendConnection } from './types'
 import { WebSocketClientTransport } from '../shared/transport/transport-websocket'
+import { initBackend } from './backend'
 
 /** Stable id for the in-process Electron backend. Mirrors the value in
  *  src/main/persistence.ts; duplicated here because main isn't
@@ -233,16 +234,12 @@ class BackendsRegistry {
     if (this.activeId === id) return
     if (!this.entries.has(id)) throw new Error(`unknown backend ${id}`)
     this.activeId = id
-    // Push the new active transport into the preload's router so
-    // window.api.X(...) calls go to the right backend. The function is
-    // unavailable in environments that don't expose it (e.g. older
-    // preloads or future test fixtures); a missing setter is silently
-    // tolerated.
-    const setter = (window as unknown as {
-      __harness_setActiveTransport?: (impl: LocalTransportHandle) => void
-    }).__harness_setActiveTransport
-    const transport = this.entries.get(id)?.transport
-    if (setter && transport) setter(transport)
+    // No preload-side router to notify any more — `window.api` is
+    // built in the renderer (see src/renderer/backend.ts) and reads
+    // the active transport lazily on each call, so flipping `activeId`
+    // here is the entire commit. Listeners below let the hooks
+    // subscribed via useSyncExternalStore re-render with the new
+    // active store's slice values.
     for (const l of this.activeIdListeners) l()
   }
 
@@ -316,6 +313,16 @@ export async function initStore(): Promise<void> {
     addedAt: 0
   }
   const localStore = registry.add(localConnection, localTransport)
+
+  // Build window.api / `useBackend()` now that the registry knows about
+  // the local backend. Each method routes lazily through the registry's
+  // active transport (local handle for local, WS direct for remotes —
+  // the latter bypasses the preload entirely so remote RPCs are as fast
+  // as the standalone web client).
+  initBackend({
+    getActiveTransport: () => registry.getActiveTransport(),
+    getLocalTransport: () => localTransport
+  })
 
   const [snapshot, id] = await Promise.all([
     localTransport.getStateSnapshot(),
