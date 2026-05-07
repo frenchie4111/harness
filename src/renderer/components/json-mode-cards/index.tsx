@@ -8,17 +8,21 @@
 // stays focused on layout + scroll + input + statusbar.
 
 import { useState, type ReactNode } from 'react'
-import type { JsonClaudeMessageBlock } from '../../../shared/state/json-claude'
+import type {
+  JsonClaudeMessageBlock,
+  JsonClaudePendingApproval
+} from '../../../shared/state/json-claude'
 
 export interface ToolCardProps {
   block: JsonClaudeMessageBlock
   result?: { content: string; isError: boolean }
   autoApproved?: { model: string; reason: string; timestamp: number }
   sessionAllowed?: { toolName: string; timestamp: number }
-  /** Owning session id. Cards that need to call IPC against the session
-   *  (currently only AskUserQuestionCard's submit) read this; everyone
-   *  else ignores it. */
-  sessionId?: string
+  /** Pending approval entry for this tool_use, if any. Only consumed by
+   *  AskUserQuestionCard, which uses the existing approval bridge to
+   *  ship the user's selections back to claude as `updatedInput.answers`
+   *  on a `behavior: 'allow'` resolve. */
+  pendingApproval?: JsonClaudePendingApproval
   /** Sub-agent fields. Only set by the Task case; other cards ignore
    *  them. Threaded through dispatchToolCard so the renderer keeps the
    *  same call shape for every tool. */

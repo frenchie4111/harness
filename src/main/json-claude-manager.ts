@@ -746,60 +746,6 @@ export class JsonClaudeManager {
     })
   }
 
-  /** Write a tool_result back for an AskUserQuestion tool_use. The
-   *  approval bridge auto-allows AskUserQuestion (so no approval card
-   *  appears) but claude flags the tool with shouldDefer:true, so its
-   *  own call() doesn't auto-execute — it waits for an externally-
-   *  provided tool_result. We supply that here once the user submits
-   *  their selections via AskUserQuestionCard.
-   *
-   *  Format mirrors the bundled binary's mapToolResultToToolResultBlockParam
-   *  output (TD_ in @anthropic-ai/claude-code): a text body keyed
-   *  `User has answered your questions:` followed by per-question lines
-   *  shaped `"<question>"="<label>"`. Multi-select labels are joined
-   *  with ", ". `answers` is keyed by the original question text and
-   *  carries the labels the user picked for that question (1+ for
-   *  multi-select, 1 for single-select, 0 means "no option selected"). */
-  answerAskUserQuestion(
-    sessionId: string,
-    toolUseId: string,
-    answers: Record<string, string[]>
-  ): void {
-    const inst = this.instances.get(sessionId)
-    if (!inst) return
-    const lines: string[] = []
-    for (const [question, selected] of Object.entries(answers)) {
-      if (!selected || selected.length === 0) {
-        lines.push(`"${question}"=(no option selected)`)
-      } else {
-        lines.push(`"${question}"="${selected.join(', ')}"`)
-      }
-    }
-    const content = `User has answered your questions:\n${lines.join('\n')}`
-    const payload = {
-      type: 'user',
-      message: {
-        role: 'user',
-        content: [
-          { type: 'tool_result', tool_use_id: toolUseId, content }
-        ]
-      }
-    }
-    try {
-      inst.proc.stdin.write(JSON.stringify(payload) + '\n')
-    } catch (err) {
-      log(
-        'json-claude',
-        `answerAskUserQuestion stdin write failed sessionId=${sessionId}`,
-        err instanceof Error ? err.message : String(err)
-      )
-      return
-    }
-    this.store.dispatch({
-      type: 'jsonClaude/toolResultAttached',
-      payload: { sessionId, toolUseId, content, isError: false }
-    })
-  }
 
   /** Send a stdin control_request that aborts the current turn while
    *  keeping the subprocess alive. SIGINT was the spike's first guess

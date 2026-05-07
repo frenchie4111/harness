@@ -453,11 +453,6 @@ contextBridge.exposeInMainWorld('api', {
   ) => sig('jsonClaude:send', id, text, images),
   cancelQueuedJsonClaudeMessage: (id: string, messageId: string) =>
     sig('jsonClaude:cancelQueued', id, messageId),
-  answerJsonClaudeAskUserQuestion: (
-    sessionId: string,
-    toolUseId: string,
-    answers: Record<string, string[]>
-  ) => sig('jsonClaude:answerAskUserQuestion', sessionId, toolUseId, answers),
   writeJsonClaudeAttachmentImage: (
     base64: string,
     mediaType: string

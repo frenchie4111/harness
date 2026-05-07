@@ -35,7 +35,10 @@ import { JsonModeMentionPopover, type MentionPopoverItem } from './JsonModeMenti
 import { JsonModeChatImageThumb } from './JsonModeChatImageThumb'
 import { fuzzyMatch } from '../fuzzy'
 import 'highlight.js/styles/github-dark.css'
-import type { JsonClaudeChatEntry } from '../../shared/state/json-claude'
+import type {
+  JsonClaudeChatEntry,
+  JsonClaudePendingApproval
+} from '../../shared/state/json-claude'
 
 const REMARK_PLUGINS = [remarkGfm]
 const REHYPE_PLUGINS = [rehypeHighlight]
@@ -524,6 +527,10 @@ interface RenderContext {
     string,
     { toolName: string; timestamp: number }
   >
+  /** toolUseId → matching pending approval. Routed through to
+   *  AskUserQuestionCard so it can resolve the approval in-place when
+   *  the user submits answers. Other cards ignore it. */
+  pendingApprovalByToolUseId: Map<string, JsonClaudePendingApproval>
   onCancelQueued: (entryId: string) => void
   sessionId: string
   worktreePath: string
@@ -780,7 +787,9 @@ function renderEntries(
                     sessionAllowed: block.id
                       ? ctx.sessionAllowedDecisions[block.id]
                       : undefined,
-                    sessionId: ctx.sessionId,
+                    pendingApproval: block.id
+                      ? ctx.pendingApprovalByToolUseId.get(block.id)
+                      : undefined,
                     subAgentBody,
                     subAgentChildCount,
                     subAgentDescendantHasPendingApproval
@@ -1089,6 +1098,11 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
     if (!toolUseId) return null
     const approval = approvalByToolUseId.get(toolUseId)
     if (!approval) return null
+    // AskUserQuestion's "approval" IS the question UI — handled inline by
+    // AskUserQuestionCard via dispatchToolCard, which receives the pending
+    // approval via props and resolves it on submit. Skipping the generic
+    // approval card here avoids stacking two prompts on one tool call.
+    if (approval.toolName === 'AskUserQuestion') return null
     return (
       <JsonClaudeApprovalCard
         approval={approval}
@@ -1146,6 +1160,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
       pendingToolUseIds,
       autoApprovedDecisions,
       sessionAllowedDecisions,
+      pendingApprovalByToolUseId: approvalByToolUseId,
       onCancelQueued: (entryId) =>
         window.api.cancelQueuedJsonClaudeMessage(sessionId, entryId),
       sessionId,

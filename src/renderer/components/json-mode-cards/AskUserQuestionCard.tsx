@@ -7,14 +7,20 @@
 //                                         description: string,
 //                                         preview?: string }>,
 //                        multiSelect: boolean }> }
-// The bridge auto-allows the permission round-trip (see approval-bridge);
-// claude marks the tool with shouldDefer:true so the SDK consumer is
-// expected to provide the answer as a tool_result. JsonClaudeManager.
-// answerAskUserQuestion writes that frame to claude's stdin once the
-// user submits below.
+//
+// Wire-format note: the binary marks AskUserQuestion with checkPermissions=ask
+// so claude routes through --permission-prompt-tool. We DON'T auto-allow
+// here — instead we hold the request as a normal pendingApproval and let
+// the user pick options inline. On submit we resolve the approval with
+// `updatedInput.answers` populated (Record<question text, label string>;
+// multi-select labels comma-separated, per the binary's output schema).
+// Claude's call() then runs with answers in scope and produces the
+// canonical tool_result text via mapToolResultToToolResultBlockParam,
+// so we never have to mimic that format ourselves.
 
 import { useMemo, useState } from 'react'
 import { ToolCardChrome, type ToolCardProps } from './index'
+import type { JsonClaudePendingApproval } from '../../../shared/state/json-claude'
 
 export interface QuestionOption {
   label: string
@@ -62,13 +68,22 @@ export function extractQuestions(
     .filter((q): q is Question => q !== null)
 }
 
+interface AskUserQuestionCardProps extends ToolCardProps {
+  pendingApproval?: JsonClaudePendingApproval
+}
+
 export function AskUserQuestionCard({
   block,
   result,
-  sessionId
-}: ToolCardProps): JSX.Element {
+  pendingApproval
+}: AskUserQuestionCardProps): JSX.Element {
   const questions = useMemo(() => extractQuestions(block.input), [block.input])
+  // The card has three states:
+  //   1. pendingApproval set, no result yet → show interactive form
+  //   2. result set → show "Answered" summary (post-submit or post-resume)
+  //   3. neither → show a static "waiting" message (rare race)
   const isAnswered = !!result
+  const canSubmitNow = !isAnswered && !!pendingApproval
   const [selections, setSelections] = useState<string[][]>(() =>
     questions.map(() => [])
   )
@@ -82,26 +97,36 @@ export function AskUserQuestionCard({
       : `${questions.length} question${questions.length === 1 ? '' : 's'}`
 
   function toggle(qIdx: number, label: string, multi: boolean): void {
-    setSelections((prev) => {
-      const next = prev.map((s, i) => {
+    setSelections((prev) =>
+      prev.map((s, i) => {
         if (i !== qIdx) return s
         if (!multi) return [label]
         return s.includes(label) ? s.filter((l) => l !== label) : [...s, label]
       })
-      return next
-    })
+    )
   }
 
   const allAnswered = questions.every((_, i) => (selections[i]?.length ?? 0) > 0)
-  const canSubmit = !isAnswered && questions.length > 0 && allAnswered && !!sessionId
+  const canSubmit = canSubmitNow && questions.length > 0 && allAnswered
 
   function submit(): void {
-    if (!canSubmit || !sessionId || !block.id) return
-    const answers: Record<string, string[]> = {}
+    if (!canSubmit || !pendingApproval) return
+    // The binary's input schema for AskUserQuestion accepts an optional
+    // `answers: Record<string, string>` that the permission component is
+    // expected to populate. Multi-select labels are joined with ", " per
+    // the output schema's contract (read from the binary). Once we
+    // resolve with this populated, claude's call() echoes the answers
+    // straight into the tool_result text — no stdin-side wire format
+    // for us to mimic.
+    const answers: Record<string, string> = {}
     questions.forEach((q, i) => {
-      answers[q.question] = selections[i] ?? []
+      const sel = selections[i] ?? []
+      if (sel.length > 0) answers[q.question] = sel.join(', ')
     })
-    window.api.answerJsonClaudeAskUserQuestion(sessionId, block.id, answers)
+    void window.api.resolveJsonClaudeApproval(pendingApproval.requestId, {
+      behavior: 'allow',
+      updatedInput: { ...pendingApproval.input, answers }
+    })
   }
 
   return (
