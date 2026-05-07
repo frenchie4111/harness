@@ -39,6 +39,16 @@ interface RightColumnProps {
   onSendToAgent: (worktreePath: string, text: string) => void
   onOpenReview: () => void
   onCollapse: () => void
+  /** When true, render as a fixed-position slide-over from the right with
+   *  a backdrop instead of a flex column. Used at narrow viewports so the
+   *  right panel collapses out of the way unless explicitly opened. */
+  slideover?: boolean
+  /** Whether the slide-over is currently visible. Ignored when
+   *  `slideover` is false. */
+  slideoverOpen?: boolean
+  /** Backdrop / close-button click handler. Ignored when `slideover` is
+   *  false. */
+  onSlideoverClose?: () => void
 }
 
 export function RightColumn({
@@ -60,7 +70,10 @@ export function RightColumn({
   onOpenFile,
   onSendToAgent,
   onOpenReview,
-  onCollapse
+  onCollapse,
+  slideover,
+  slideoverOpen,
+  onSlideoverClose
 }: RightColumnProps): JSX.Element {
   const hidden = effectiveHiddenRightPanels(activeRepoConfig)
   const order = effectiveRightPanelOrder(activeRepoConfig)
@@ -146,20 +159,44 @@ export function RightColumn({
     }
   }
 
-  return (
+  const body = (
     <div
-      className="shrink-0 h-full flex flex-col bg-panel"
-      style={{ width }}
+      className={`shrink-0 h-full flex flex-col bg-panel ${
+        slideover ? 'overflow-y-auto' : ''
+      }`}
+      style={slideover ? undefined : { width }}
     >
       <RightColumnToolbar
         hidden={hidden}
         order={order}
         onChangeHidden={handleChangeHidden}
         onChangeOrder={handleChangeOrder}
-        onCollapse={onCollapse}
+        onCollapse={slideover ? onSlideoverClose ?? onCollapse : onCollapse}
         canConfigure={!!activeRepoRoot}
       />
       {order.map((key) => renderPanel(key))}
+    </div>
+  )
+  if (!slideover) return body
+  return (
+    <div
+      className={`fixed inset-0 z-40 ${slideoverOpen ? '' : 'pointer-events-none'}`}
+      aria-hidden={!slideoverOpen}
+    >
+      <div
+        className={`absolute inset-0 bg-black/60 transition-opacity ${
+          slideoverOpen ? 'opacity-100' : 'opacity-0'
+        }`}
+        onClick={onSlideoverClose}
+      />
+      <div
+        className={`absolute inset-y-0 right-0 max-w-[90%] shadow-2xl transform transition-transform ${
+          slideoverOpen ? 'translate-x-0' : 'translate-x-full'
+        }`}
+        style={{ width: 'min(360px, 90%)' }}
+      >
+        {body}
+      </div>
     </div>
   )
 }

@@ -151,6 +151,10 @@ function DesktopApp(): JSX.Element {
   // differ: a desktop user expects toggling-off to give the center pane more
   // width, but a mobile user expects toggling-off to mean "out of my way."
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
+  // Same separation for the right column: at md+ it lives in the layout
+  // and `rightColumnHidden` toggles it; at <md it's a slide-over and
+  // `mobileRightPanelOpen` toggles it.
+  const [mobileRightPanelOpen, setMobileRightPanelOpen] = useState(false)
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
     const saved = Number(localStorage.getItem('harness:sidebarWidth'))
     return Number.isFinite(saved) && saved > 0 ? saved : 224
@@ -1290,10 +1294,10 @@ const setQuestStep = useCallback((next: QuestStep) => {
           onFinish={() => setQuestStep('done')}
         />
         {/* Right panel — hidden on the new-worktree screen so the form gets the full width */}
-        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && reportIssueState === null && !rightColumnHidden && (
+        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && reportIssueState === null && !rightColumnHidden && !isMobile && (
           <ResizeHandle onDelta={handleRightPanelResize} />
         )}
-        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && reportIssueState === null && !rightColumnHidden && (
+        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && reportIssueState === null && (isMobile || !rightColumnHidden) && (
           <RightColumn
             width={rightPanelWidth}
             activeWorktreeId={activeWorktreeId}
@@ -1325,6 +1329,9 @@ const setQuestStep = useCallback((next: QuestStep) => {
               setShowReview(true)
             }}
             onCollapse={() => setRightColumnHidden(true)}
+            slideover={isMobile}
+            slideoverOpen={isMobile ? mobileRightPanelOpen : undefined}
+            onSlideoverClose={() => setMobileRightPanelOpen(false)}
           />
         )}
       </div>
