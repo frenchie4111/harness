@@ -343,7 +343,7 @@ export function ActivityCosts(): JSX.Element {
         </div>
       )}
 
-      <SubscriptionFootnote auth={auth} totalUsd={total} range={range} />
+      <SubscriptionFootnote auth={auth} totalUsd={total} />
 
       <div className="text-center mt-4">
         <div className="inline-flex items-center gap-1.5 text-[11px] text-dim">
@@ -377,12 +377,10 @@ function tierLabel(tier: SubscriptionTier): string {
 
 function SubscriptionFootnote({
   auth,
-  totalUsd,
-  range
+  totalUsd
 }: {
   auth: ClaudeAuthInfo | null
   totalUsd: number
-  range: Range
 }): JSX.Element {
   if (!auth || !auth.tier) {
     return (
@@ -396,20 +394,11 @@ function SubscriptionFootnote({
   const monthly = auth.monthlyUsd
   const subscriptionPrefix = monthly != null ? `$${monthly}/mo on ${label}` : label
 
-  // Joke selection: if range covers a month-ish window and a known monthly
-  // price exists, riff on the API-equivalent overpay. For shorter windows,
-  // keep it generic so the math doesn't lie.
   let joke: string
-  if (monthly != null && (range === '30d' || range === 'all')) {
-    if (totalUsd > monthly * 5) {
-      joke = `Thank god you're only paying ${subscriptionPrefix}. This would have been ${formatCost(totalUsd)} on the API.`
-    } else if (totalUsd > monthly) {
-      joke = `${formatCost(totalUsd)} of API-equivalent usage on ${subscriptionPrefix}. Not bad.`
-    } else {
-      joke = `${formatCost(totalUsd)} of API-equivalent usage on ${subscriptionPrefix}.`
-    }
+  if (monthly != null && totalUsd > monthly) {
+    joke = `Thank god you're only paying ${subscriptionPrefix}. This would have been ${formatCost(totalUsd)} on the API.`
   } else if (monthly != null) {
-    joke = `Detected ${subscriptionPrefix}. Numbers shown are API-equivalent — your actual bill is the flat sub.`
+    joke = `${formatCost(totalUsd)} of API-equivalent usage on ${subscriptionPrefix}.`
   } else {
     joke = `Detected ${label} subscription. Numbers shown are API-equivalent.`
   }
