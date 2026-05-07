@@ -308,6 +308,8 @@ interface BreakdownRow {
   cost: number
 }
 
+const BREAKDOWN_VISIBLE_ROWS = 5
+
 function BreakdownPanel({
   breakdown,
   total
@@ -315,12 +317,11 @@ function BreakdownPanel({
   breakdown: ContentBreakdown
   total: number
 }): JSX.Element {
-  const outputRows: BreakdownRow[] = [
+  const [showAll, setShowAll] = useState(false)
+  const allRows: BreakdownRow[] = [
     { label: 'text', cost: breakdown.text },
     { label: 'thinking', cost: breakdown.thinking },
-    { label: 'tool_use', cost: breakdown.toolUse }
-  ]
-  const inputRows: BreakdownRow[] = [
+    { label: 'tool_use', cost: breakdown.toolUse },
     { label: 'user prompt', cost: breakdown.userPrompt },
     { label: 'asst echo', cost: breakdown.assistantEcho },
     ...Object.entries(breakdown.toolResults).map(([name, cost]) => ({
@@ -328,32 +329,38 @@ function BreakdownPanel({
       cost
     }))
   ]
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <BreakdownSection title="Output (produced)" rows={outputRows} total={total} />
-      <BreakdownSection title="Input (context)" rows={inputRows} total={total} />
-    </div>
-  )
-}
-
-function BreakdownSection({
-  title,
-  rows,
-  total
-}: {
-  title: string
-  rows: BreakdownRow[]
-  total: number
-}): JSX.Element | null {
-  const nonZero = rows.filter((r) => r.cost > 0).sort((a, b) => b.cost - a.cost)
-  if (nonZero.length === 0) return null
+  const nonZero = allRows
+    .filter((r) => r.cost > 0)
+    .sort((a, b) => b.cost - a.cost)
+  if (nonZero.length === 0) {
+    return <div className="text-sm text-dim italic">No usage in this range.</div>
+  }
+  const visible = showAll ? nonZero : nonZero.slice(0, BREAKDOWN_VISIBLE_ROWS)
+  const hidden = Math.max(0, nonZero.length - BREAKDOWN_VISIBLE_ROWS)
   const max = nonZero[0].cost
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="text-[10px] uppercase tracking-wide text-dim">{title}</div>
-      {nonZero.map((r) => (
+      {visible.map((r) => (
         <BreakdownBar key={r.label} row={r} max={max} total={total} />
       ))}
+      {hidden > 0 && (
+        <button
+          onClick={() => setShowAll((s) => !s)}
+          className="self-start mt-1 text-[10px] text-muted hover:text-fg-bright cursor-pointer flex items-center gap-1 transition-colors"
+        >
+          {showAll ? (
+            <>
+              <ChevronUp size={10} />
+              Show top {BREAKDOWN_VISIBLE_ROWS}
+            </>
+          ) : (
+            <>
+              <ChevronDown size={10} />
+              Show {hidden} more
+            </>
+          )}
+        </button>
+      )}
     </div>
   )
 }
