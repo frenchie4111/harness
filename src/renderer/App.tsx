@@ -6,7 +6,7 @@ import { useHotkeyHandlers } from './hooks/useHotkeyHandlers'
 import { useWorktreeHandlers } from './hooks/useWorktreeHandlers'
 import type { Worktree, TerminalTab, PtyStatus, PendingTool, QuestStep, PendingWorktree, UpdaterStatus, RepoConfig, PaneNode } from './types'
 import { getLeaves, findLeaf } from '../shared/state/terminals'
-import { CheckCircle2, FolderOpen } from 'lucide-react'
+import { CheckCircle2, FolderOpen, Menu, PanelRightOpen, PanelRightClose } from 'lucide-react'
 import { THEME_OPTIONS } from './themes'
 import { HotkeysProvider, Tooltip } from './components/Tooltip'
 import { Sidebar } from './components/Sidebar'
@@ -37,25 +37,20 @@ import { focusTerminalById } from './components/XTerminal'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { type GroupKey } from './worktree-sort'
 import { useViewport } from './hooks/useViewport'
-import { MobileApp } from './components/MobileApp'
 
 function isPendingId(id: string | null | undefined): id is string {
   return typeof id === 'string' && id.startsWith('pending:')
 }
 
-// Top-level dispatcher. The desktop tree is large and stateful — we keep
-// it isolated in `DesktopApp` so a viewport flip (mobile↔desktop) doesn't
-// change React's hook order on this outer component. Theme application
-// lives here (not inside DesktopApp) so the mobile branch honors the
-// user's theme choice too — the setting is shared state driven from
-// main, so we only need one subscriber.
+// Top-level wrapper. Theme application lives here (not inside DesktopApp)
+// so a future split between rendering branches still honors the user's
+// theme choice — the setting is shared state driven from main, so we
+// only need one subscriber.
 export default function App(): JSX.Element {
-  const { isMobile } = useViewport()
   const theme = useSettings().theme
   useEffect(() => {
     document.documentElement.dataset.theme = theme
   }, [theme])
-  if (isMobile) return <MobileApp />
   return <DesktopApp />
 }
 
@@ -1075,6 +1070,61 @@ const setQuestStep = useCallback((next: QuestStep) => {
         </div>
       )}
 
+      {/* Mobile top bar: only at narrow widths. Sits between the banners
+          and the main content. The TerminalPanel header right below it
+          owns the tab strip + add buttons; this bar just gives the user
+          a hamburger to reach the sidebar drawer and a toggle to reach
+          the right-panel slide-over (since neither is in the layout flow
+          at <md). */}
+      {isMobile && (
+        <div className="shrink-0 flex items-stretch border-b border-border bg-panel h-11">
+          <button
+            onClick={() => setMobileSidebarOpen(true)}
+            className="shrink-0 inline-flex items-center justify-center w-11 h-full border-r border-border text-dim hover:text-fg hover:bg-panel-raised"
+            aria-label="Open worktrees"
+          >
+            <Menu className="w-4 h-4" />
+          </button>
+          <div className="flex-1 min-w-0 flex items-center px-3">
+            {(() => {
+              const wt = worktrees.find((w) => w.path === activeWorktreeId) ?? null
+              if (!wt) {
+                return <span className="text-sm text-dim truncate">Select a worktree</span>
+              }
+              const repoLabel = wt.repoRoot.split('/').pop() || wt.repoRoot
+              return (
+                <span className="min-w-0 flex flex-col leading-tight">
+                  <span className="text-[10px] uppercase tracking-wider text-dim truncate">
+                    {repoLabel}
+                  </span>
+                  <span className="text-xs font-medium text-fg-bright truncate">
+                    {wt.branch || wt.path.split('/').pop()}
+                  </span>
+                </span>
+              )
+            })()}
+          </div>
+          {activeWorktreeId && (
+            <button
+              onClick={() => setMobileRightPanelOpen((v) => !v)}
+              className={
+                'shrink-0 inline-flex items-center justify-center w-11 h-full border-l border-border ' +
+                (mobileRightPanelOpen
+                  ? 'bg-surface text-fg-bright'
+                  : 'text-dim hover:text-fg hover:bg-panel-raised')
+              }
+              aria-label={mobileRightPanelOpen ? 'Close worktree details' : 'Worktree details'}
+            >
+              {mobileRightPanelOpen ? (
+                <PanelRightClose className="w-4 h-4" />
+              ) : (
+                <PanelRightOpen className="w-4 h-4" />
+              )}
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="flex flex-1 min-h-0">
         {(isMobile || sidebarVisible) && (
           <Sidebar
@@ -1288,11 +1338,13 @@ const setQuestStep = useCallback((next: QuestStep) => {
             onDismiss={handleDismissPendingDeletion}
           />
         )}
-        <QuestCard
-          step={questStep}
-          onDismiss={() => setQuestStep('done')}
-          onFinish={() => setQuestStep('done')}
-        />
+        {!isMobile && (
+          <QuestCard
+            step={questStep}
+            onDismiss={() => setQuestStep('done')}
+            onFinish={() => setQuestStep('done')}
+          />
+        )}
         {/* Right panel — hidden on the new-worktree screen so the form gets the full width */}
         {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && reportIssueState === null && !rightColumnHidden && !isMobile && (
           <ResizeHandle onDelta={handleRightPanelResize} />
