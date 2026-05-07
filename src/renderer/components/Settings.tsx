@@ -3,6 +3,7 @@ import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, 
 import { openReportIssue } from './ReportIssueScreen'
 import { HARNESS_ISSUES_URL, HARNESS_RELEASES_URL } from '../../shared/constants'
 import { useSettings, useUpdater, useRepoConfigs, useHooks } from '../store'
+import { useBackend } from '../backend'
 import type { UpdaterStatus, MergeStrategy, RepoConfig } from '../types'
 import { DEFAULT_HOTKEYS, ACTION_LABELS, bindingToString, eventToBinding, resolveHotkeys, type Action, type HotkeyBinding } from '../hotkeys'
 import { Tooltip } from './Tooltip'
@@ -50,6 +51,7 @@ const SECTIONS: Section[] = [
 ]
 
 export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }: SettingsProps): JSX.Element {
+  const backend = useBackend()
   const [activeSection, setActiveSection] = useState<SectionId>(initialSection ?? 'appearance')
   const [activeSubSection, setActiveSubSection] = useState<SubSectionId | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -282,19 +284,19 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
   // Constants and non-settings state load once; live settings are already
   // hydrated via useSettings() above.
   useEffect(() => {
-    void window.api.getVersion().then(setVersion).catch(() => setVersion(''))
-    window.api.getDefaultClaudeCommand().then(setDefaultClaudeCommand)
-    window.api.getDefaultTerminalFontFamily().then(setDefaultTerminalFontFamily)
-    window.api.getAvailableEditors().then(setAvailableEditors)
-    window.api.getWsTransportInfo().then(setWsInfo)
-    window.api.getLanAddresses().then((addrs) => {
+    void backend.getVersion().then(setVersion).catch(() => setVersion(''))
+    backend.getDefaultClaudeCommand().then(setDefaultClaudeCommand)
+    backend.getDefaultTerminalFontFamily().then(setDefaultTerminalFontFamily)
+    backend.getAvailableEditors().then(setAvailableEditors)
+    backend.getWsTransportInfo().then(setWsInfo)
+    backend.getLanAddresses().then((addrs) => {
       setLanAddresses(addrs)
       if (addrs.length > 0) setSelectedLanAddress(addrs[0].address)
     })
   }, [])
 
   useEffect(() => {
-    window.api.getWsTransportInfo().then(setWsInfo)
+    backend.getWsTransportInfo().then(setWsInfo)
   }, [wsTransportEnabled])
 
   // Whenever claudeEnvVars in the store changes (e.g. another window saved),
@@ -310,7 +312,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     async (repoRoot: string, patch: Record<string, unknown>) => {
       // Main dispatches repoConfigs/changed after saveRepoConfig commits;
       // useRepoConfigs() re-renders us automatically.
-      await window.api.setRepoConfig(repoRoot, patch)
+      await backend.setRepoConfig(repoRoot, patch)
     },
     []
   )
@@ -332,21 +334,21 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
   }, [claudeCommand])
 
   const handleSelectTheme = useCallback(async (id: string) => {
-    await window.api.setTheme(id)
+    await backend.setTheme(id)
   }, [])
 
   const handleTerminalFontFamilyChange = useCallback((value: string) => {
-    void window.api.setTerminalFontFamily(value)
+    void backend.setTerminalFontFamily(value)
   }, [])
 
   const handleResetTerminalFontFamily = useCallback(() => {
-    void window.api.setTerminalFontFamily(defaultTerminalFontFamily)
+    void backend.setTerminalFontFamily(defaultTerminalFontFamily)
   }, [defaultTerminalFontFamily])
 
   const handleTerminalFontSizeChange = useCallback((value: number) => {
     if (!Number.isFinite(value)) return
     const clamped = Math.max(8, Math.min(48, Math.round(value)))
-    void window.api.setTerminalFontSize(clamped)
+    void backend.setTerminalFontSize(clamped)
   }, [])
 
   const [autoSleepDraft, setAutoSleepDraft] = useState<string>(
@@ -363,18 +365,18 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     }
     const clamped = Math.max(0, Math.min(24 * 60, Math.floor(n)))
     if (clamped !== autoSleepMinutes) {
-      void window.api.setAutoSleepMinutes(clamped)
+      void backend.setAutoSleepMinutes(clamped)
     } else {
       setAutoSleepDraft(String(clamped))
     }
   }, [autoSleepDraft, autoSleepMinutes])
 
   const handleSelectEditor = useCallback(async (id: string) => {
-    await window.api.setEditor(id)
+    await backend.setEditor(id)
   }, [])
 
   const handleSelectWorktreeBase = useCallback(async (mode: 'remote' | 'local') => {
-    await window.api.setWorktreeBase(mode)
+    await backend.setWorktreeBase(mode)
   }, [])
 
   const handleSelectMergeStrategy = useCallback(
@@ -382,7 +384,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
       if (scopeRepoRoot) {
         await updateRepoConfig(scopeRepoRoot, { mergeStrategy: strategy })
       } else {
-        await window.api.setMergeStrategy(strategy)
+        await backend.setMergeStrategy(strategy)
       }
     },
     [scopeRepoRoot, updateRepoConfig]
@@ -417,7 +419,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
         teardownCommand: teardownDraft.trim() || null
       })
     } else {
-      await window.api.setWorktreeScripts({ setup: setupDraft, teardown: teardownDraft })
+      await backend.setWorktreeScripts({ setup: setupDraft, teardown: teardownDraft })
     }
     setScriptsSaveResult({ ok: true, message: 'Saved' })
     setTimeout(() => setScriptsSaveResult(null), 2000)
@@ -458,7 +460,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     setSaving(true)
     setTokenResult(null)
     try {
-      const res = await window.api.setGithubToken(token)
+      const res = await backend.setGithubToken(token)
       if (res.ok) {
         const message = res.username ? `Connected as @${res.username}` : 'Token saved'
         setTokenResult({ ok: true, message })
@@ -472,7 +474,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
   }, [token])
 
   const handleClear = useCallback(async () => {
-    await window.api.clearGithubToken()
+    await backend.clearGithubToken()
     setTokenResult({ ok: true, message: 'Token removed' })
   }, [])
 
@@ -481,14 +483,14 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     try {
       // Main dispatches the resulting updater/statusChanged event itself —
       // we just await the call so we know when to clear the spinner.
-      await window.api.checkForUpdates()
+      await backend.checkForUpdates()
     } finally {
       setChecking(false)
     }
   }, [])
 
   const handleRestart = useCallback(() => {
-    window.api.quitAndInstall()
+    backend.quitAndInstall()
   }, [])
 
   // Capture a key press while rebinding
@@ -509,7 +511,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
       const shortcut = bindingToString(binding)
       const next = { ...(hotkeyOverrides || {}), [rebindingAction]: shortcut }
-      void window.api.setHotkeyOverrides(next)
+      void backend.setHotkeyOverrides(next)
       setRebindingAction(null)
     }
 
@@ -532,25 +534,25 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
   const handleResetHotkey = useCallback(async (action: Action) => {
     const next = { ...(hotkeyOverrides || {}) }
     delete next[action]
-    await window.api.setHotkeyOverrides(next)
+    await backend.setHotkeyOverrides(next)
   }, [hotkeyOverrides])
 
   const handleResetAllHotkeys = useCallback(async () => {
-    await window.api.resetHotkeyOverrides()
+    await backend.resetHotkeyOverrides()
   }, [])
 
   const handleSaveClaudeCommand = useCallback(async () => {
     setClaudeSaveResult(null)
-    await window.api.setClaudeCommand(claudeCommandDraft)
+    await backend.setClaudeCommand(claudeCommandDraft)
     setClaudeSaveResult({ ok: true, message: 'Saved · new tabs will use this command' })
   }, [claudeCommandDraft])
 
   const handleToggleHarnessMcp = useCallback(async (enabled: boolean) => {
-    await window.api.setHarnessMcpEnabled(enabled)
+    await backend.setHarnessMcpEnabled(enabled)
   }, [])
 
   const handleToggleAutoApprovePermissions = useCallback(async (enabled: boolean) => {
-    await window.api.setAutoApprovePermissions(enabled)
+    await backend.setAutoApprovePermissions(enabled)
   }, [])
 
   const [autoApproveSteerDraft, setAutoApproveSteerDraft] = useState<string>(autoApproveSteerInstructions)
@@ -562,26 +564,26 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
   >(null)
   const handleSaveAutoApproveSteer = useCallback(async () => {
     setAutoApproveSteerSaveResult(null)
-    await window.api.setAutoApproveSteerInstructions(autoApproveSteerDraft)
+    await backend.setAutoApproveSteerInstructions(autoApproveSteerDraft)
     setAutoApproveSteerSaveResult({ ok: true, message: 'Saved · used on next auto-review' })
   }, [autoApproveSteerDraft])
 
   const handleToggleAutoUpdate = useCallback(async (enabled: boolean) => {
-    await window.api.setAutoUpdateEnabled(enabled)
+    await backend.setAutoUpdateEnabled(enabled)
   }, [])
 
   const handleToggleWsTransport = useCallback(async (enabled: boolean) => {
-    await window.api.setWsTransportEnabled(enabled)
+    await backend.setWsTransportEnabled(enabled)
   }, [])
 
   const handleSaveWsPort = useCallback(async () => {
     const parsed = Number.parseInt(wsPortDraft, 10)
     if (!Number.isFinite(parsed)) return
-    await window.api.setWsTransportPort(parsed)
+    await backend.setWsTransportPort(parsed)
   }, [wsPortDraft])
 
   const handleSelectWsHost = useCallback(async (host: string) => {
-    await window.api.setWsTransportHost(host)
+    await backend.setWsTransportHost(host)
   }, [])
 
   // Build the display URL from the live server when it's running; fall back
@@ -611,7 +613,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
   }, [wsUrl])
 
   const handleOpenWsUrl = useCallback(() => {
-    window.api.openExternal(wsUrl)
+    backend.openExternal(wsUrl)
   }, [wsUrl])
 
   // The WS server is only constructed at app launch, so any divergence
@@ -632,20 +634,20 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
       'Rotate the web-client auth token?\n\nAll existing URLs — bookmarks, home-screen pins, open browser tabs — will stop working after you quit and relaunch Harness. You will need to re-share the new URL with any device you want to reconnect.'
     )
     if (!ok) return
-    await window.api.rotateWsToken()
+    await backend.rotateWsToken()
     setWsTokenRotated(true)
   }, [])
 
   const handleSaveSystemPrompt = useCallback(async () => {
-    await window.api.setHarnessSystemPrompt(systemPromptDraft)
-    await window.api.setHarnessSystemPromptMain(systemPromptMainDraft)
+    await backend.setHarnessSystemPrompt(systemPromptDraft)
+    await backend.setHarnessSystemPromptMain(systemPromptMainDraft)
     setSystemPromptSaveResult({ ok: true, message: 'Saved · new sessions will use this prompt' })
     setTimeout(() => setSystemPromptSaveResult(null), 2000)
   }, [systemPromptDraft, systemPromptMainDraft])
 
   const handleResetSystemPrompt = useCallback(async () => {
-    await window.api.setHarnessSystemPrompt('')
-    await window.api.setHarnessSystemPromptMain('')
+    await backend.setHarnessSystemPrompt('')
+    await backend.setHarnessSystemPromptMain('')
     setSystemPromptSaveResult({ ok: true, message: 'Reset to defaults' })
     setTimeout(() => setSystemPromptSaveResult(null), 2000)
   }, [])
@@ -658,7 +660,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
   const handleResetClaudeCommand = useCallback(async () => {
     setClaudeCommandDraft(defaultClaudeCommand)
-    await window.api.setClaudeCommand(defaultClaudeCommand)
+    await backend.setClaudeCommand(defaultClaudeCommand)
     setClaudeSaveResult({ ok: true, message: 'Reset to default' })
   }, [defaultClaudeCommand])
 
@@ -717,7 +719,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
       setEnvSaveResult({ ok: false, message: `Duplicate name(s): ${duplicates.join(', ')}` })
       return
     }
-    await window.api.setClaudeEnvVars(vars)
+    await backend.setClaudeEnvVars(vars)
     setEnvSaveResult({ ok: true, message: 'Saved · new Claude tabs will see these' })
   }, [claudeEnvRows])
 
@@ -746,7 +748,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
       seen.add(k)
       vars[k] = value
     }
-    await window.api.setClaudeEnvVars(vars)
+    await backend.setClaudeEnvVars(vars)
     setLitellmSaveResult({ ok: true, message: 'Saved · new Claude tabs will use this endpoint' })
     setEnvSaveResult(null)
   }, [litellmBaseUrl, litellmAuthToken, claudeEnvRows])
@@ -767,20 +769,20 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
       seen.add(k)
       vars[k] = value
     }
-    await window.api.setClaudeEnvVars(vars)
+    await backend.setClaudeEnvVars(vars)
     setLitellmSaveResult({ ok: true, message: 'Cleared' })
     setEnvSaveResult(null)
   }, [claudeEnvRows])
 
   const handleSaveCodexCommand = useCallback(async () => {
     setCodexSaveResult(null)
-    await window.api.setCodexCommand(codexCommandDraft)
+    await backend.setCodexCommand(codexCommandDraft)
     setCodexSaveResult({ ok: true, message: 'Saved · new tabs will use this command' })
   }, [codexCommandDraft])
 
   const handleResetCodexCommand = useCallback(async () => {
     setCodexCommandDraft('codex')
-    await window.api.setCodexCommand('codex')
+    await backend.setCodexCommand('codex')
     setCodexSaveResult({ ok: true, message: 'Reset to default' })
   }, [])
 
@@ -799,7 +801,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     }
     if (invalidNames.length > 0) { setCodexEnvSaveResult({ ok: false, message: `Invalid name(s): ${invalidNames.join(', ')}` }); return }
     if (duplicates.length > 0) { setCodexEnvSaveResult({ ok: false, message: `Duplicate name(s): ${duplicates.join(', ')}` }); return }
-    await window.api.setCodexEnvVars(vars)
+    await backend.setCodexEnvVars(vars)
     setCodexEnvSaveResult({ ok: true, message: 'Saved · new Codex tabs will see these' })
   }, [codexEnvRows])
 
@@ -1075,7 +1077,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   {AGENT_REGISTRY.map((agent) => (
                     <button
                       key={agent.kind}
-                      onClick={() => window.api.setDefaultAgent(agent.kind)}
+                      onClick={() => backend.setDefaultAgent(agent.kind)}
                       className={`flex items-center gap-2 px-4 py-2 rounded text-sm font-medium transition-colors cursor-pointer ${
                         defaultAgent === agent.kind
                           ? 'bg-surface text-fg-bright border border-fg'
@@ -1109,7 +1111,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     <>
                       <span className="text-xs text-success flex items-center gap-1"><Check size={12} />Installed</span>
                       <button
-                        onClick={() => void window.api.uninstallHooks()}
+                        onClick={() => void backend.uninstallHooks()}
                         className="ml-auto px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer"
                       >
                         Remove hooks
@@ -1121,7 +1123,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                         {hooksConsent === 'declined' ? 'Declined' : 'Not installed'}
                       </span>
                       <button
-                        onClick={() => void window.api.acceptHooks()}
+                        onClick={() => void backend.acceptHooks()}
                         className="ml-auto px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer"
                       >
                         Install hooks
@@ -1146,7 +1148,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 </p>
                 <select
                   value={claudeModel || ''}
-                  onChange={(e) => { void window.api.setClaudeModel(e.target.value || null) }}
+                  onChange={(e) => { void backend.setClaudeModel(e.target.value || null) }}
                   className="w-full bg-panel border border-border-strong rounded px-3 py-2 text-sm text-fg-bright outline-none focus:border-fg cursor-pointer"
                 >
                   <option value="">(Default — let CLI choose)</option>
@@ -1209,7 +1211,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
                 <div className="mt-4 pt-3 border-t border-border">
                   <label className="flex items-center gap-3 cursor-pointer">
-                    <input type="checkbox" checked={nameClaudeSessions} onChange={(e) => { void window.api.setNameClaudeSessions(e.target.checked) }} className="accent-current w-4 h-4 cursor-pointer" />
+                    <input type="checkbox" checked={nameClaudeSessions} onChange={(e) => { void backend.setNameClaudeSessions(e.target.checked) }} className="accent-current w-4 h-4 cursor-pointer" />
                     <div>
                       <span className="text-sm font-medium text-fg">Name sessions by worktree</span>
                       <p className="text-xs text-dim mt-0.5">Passes <code className="bg-panel px-1 rounded">--name &quot;repo/branch&quot;</code> to Claude.</p>
@@ -1219,7 +1221,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
                 <div className="mt-4 pt-3 border-t border-border">
                   <label className="flex items-start gap-2 cursor-pointer">
-                    <input type="checkbox" checked={claudeTuiFullscreen} onChange={(e) => { void window.api.setClaudeTuiFullscreen(e.target.checked) }} className="mt-0.5 cursor-pointer" />
+                    <input type="checkbox" checked={claudeTuiFullscreen} onChange={(e) => { void backend.setClaudeTuiFullscreen(e.target.checked) }} className="mt-0.5 cursor-pointer" />
                     <div className="flex-1">
                       <div className="text-sm text-fg-bright">Fullscreen TUI by default</div>
                       <div className="text-xs text-dim mt-0.5">
@@ -1327,7 +1329,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 </p>
                 <select
                   value={codexModel || ''}
-                  onChange={(e) => { void window.api.setCodexModel(e.target.value || null) }}
+                  onChange={(e) => { void backend.setCodexModel(e.target.value || null) }}
                   className="w-full bg-panel border border-border-strong rounded px-3 py-2 text-sm text-fg-bright outline-none focus:border-fg cursor-pointer"
                 >
                   <option value="">(Default — let CLI choose)</option>
@@ -1424,7 +1426,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   <input
                     type="checkbox"
                     checked={harnessSystemPromptEnabled}
-                    onChange={(e) => { void window.api.setHarnessSystemPromptEnabled(e.target.checked) }}
+                    onChange={(e) => { void backend.setHarnessSystemPromptEnabled(e.target.checked) }}
                     className="mt-0.5 cursor-pointer"
                   />
                   <div className="flex-1">
@@ -1747,7 +1749,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     <input
                       type="checkbox"
                       checked={shareClaudeSettings}
-                      onChange={(e) => { void window.api.setShareClaudeSettings(e.target.checked) }}
+                      onChange={(e) => { void backend.setShareClaudeSettings(e.target.checked) }}
                       className="accent-current w-4 h-4 cursor-pointer"
                     />
                     <span className="text-sm text-fg">
@@ -1826,7 +1828,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   <input
                     type="checkbox"
                     checked={harnessStarred}
-                    onChange={(e) => { void window.api.setHarnessStarred(e.target.checked) }}
+                    onChange={(e) => { void backend.setHarnessStarred(e.target.checked) }}
                     className="w-3.5 h-3.5 accent-warning cursor-pointer"
                   />
                   <Star
@@ -1917,14 +1919,14 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 <p>
                   Create a token at{' '}
                   <a
-                    onClick={() => window.api.openExternal('https://github.com/settings/tokens?type=beta')}
+                    onClick={() => backend.openExternal('https://github.com/settings/tokens?type=beta')}
                     className="text-muted hover:text-fg-bright underline cursor-pointer"
                   >
                     github.com/settings/tokens
                   </a>
                   {' '}(fine-grained) or{' '}
                   <a
-                    onClick={() => window.api.openExternal('https://github.com/settings/tokens')}
+                    onClick={() => backend.openExternal('https://github.com/settings/tokens')}
                     className="text-muted hover:text-fg-bright underline cursor-pointer"
                   >
                     classic tokens
@@ -2051,7 +2053,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
               <div className="mt-3 text-xs text-dim">
                 <a
-                  onClick={() => window.api.openExternal(HARNESS_RELEASES_URL)}
+                  onClick={() => backend.openExternal(HARNESS_RELEASES_URL)}
                   className="text-muted hover:text-fg-bright underline cursor-pointer"
                 >
                   View all releases on GitHub
@@ -2100,7 +2102,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     type="button"
                     onClick={async () => {
                       setDebugLogError(null)
-                      const result = await window.api.openDebugLog()
+                      const result = await backend.openDebugLog()
                       if (!result.ok) setDebugLogError(result.message)
                     }}
                     className="flex items-center gap-2 px-3 py-2 bg-panel border border-border rounded-lg text-sm text-fg-bright hover:bg-surface transition-colors cursor-pointer"
@@ -2112,7 +2114,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     type="button"
                     onClick={() => {
                       setDebugLogError(null)
-                      void window.api.showDebugLogInFolder()
+                      void backend.showDebugLogInFolder()
                     }}
                     className="flex items-center gap-2 px-3 py-2 bg-panel border border-border rounded-lg text-sm text-fg-bright hover:bg-surface transition-colors cursor-pointer"
                   >
@@ -2136,7 +2138,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 These features are in active development. APIs and UI may change,
                 and you should expect rough edges. Each one is opt-in below.{' '}
                 <a
-                  onClick={() => window.api.openExternal(HARNESS_ISSUES_URL)}
+                  onClick={() => backend.openExternal(HARNESS_ISSUES_URL)}
                   className="text-muted hover:text-fg-bright underline cursor-pointer"
                 >
                   File an issue
@@ -2163,7 +2165,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     type="checkbox"
                     id="browser-tools-enabled"
                     checked={browserToolsEnabled}
-                    onChange={(e) => { void window.api.setBrowserToolsEnabled(e.target.checked) }}
+                    onChange={(e) => { void backend.setBrowserToolsEnabled(e.target.checked) }}
                     className="mt-0.5 cursor-pointer"
                   />
                   <div className="flex-1">
@@ -2173,7 +2175,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     </div>
                     <select
                       value={browserToolsMode}
-                      onChange={(e) => { void window.api.setBrowserToolsMode(e.target.value === 'view' ? 'view' : 'full') }}
+                      onChange={(e) => { void backend.setBrowserToolsMode(e.target.value === 'view' ? 'view' : 'full') }}
                       disabled={!browserToolsEnabled}
                       className="bg-panel border border-border-strong rounded px-2 py-1 text-xs text-fg-bright outline-none focus:border-fg cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                     >
@@ -2207,7 +2209,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   <input
                     type="checkbox"
                     checked={jsonModeClaudeTabs}
-                    onChange={(e) => { void window.api.setJsonModeClaudeTabs(e.target.checked) }}
+                    onChange={(e) => { void backend.setJsonModeClaudeTabs(e.target.checked) }}
                     className="mt-0.5 cursor-pointer"
                   />
                   <div className="flex-1">
@@ -2229,7 +2231,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   <select
                     value={defaultClaudeTabType}
                     onChange={(e) => {
-                      void window.api.setDefaultClaudeTabType(
+                      void backend.setDefaultClaudeTabType(
                         e.target.value === 'json' ? 'json' : 'xterm'
                       )
                     }}
@@ -2253,7 +2255,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     value={jsonModeDefaultPermissionMode}
                     onChange={(e) => {
                       const v = e.target.value
-                      void window.api.setJsonModeDefaultPermissionMode(
+                      void backend.setJsonModeDefaultPermissionMode(
                         v === 'default' || v === 'plan' ? v : 'acceptEdits'
                       )
                     }}
@@ -2317,7 +2319,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     <button
                       type="button"
                       onClick={() => {
-                        void window.api.setJsonModeChatDensity('compact')
+                        void backend.setJsonModeChatDensity('compact')
                       }}
                       className={`px-3 py-1 text-xs cursor-pointer transition-colors ${
                         jsonModeChatDensity === 'compact'
@@ -2330,7 +2332,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     <button
                       type="button"
                       onClick={() => {
-                        void window.api.setJsonModeChatDensity('comfy')
+                        void backend.setJsonModeChatDensity('comfy')
                       }}
                       className={`px-3 py-1 text-xs cursor-pointer transition-colors border-l border-border-strong ${
                         jsonModeChatDensity === 'comfy'

@@ -25,6 +25,7 @@ import {
   ShieldAlert
 } from 'lucide-react'
 import { useJsonClaudeSession, useSettings } from '../store'
+import { useBackend } from '../backend'
 import { useJsonClaudeApprovals } from '../hooks/useJsonClaudeApprovals'
 import { JsonClaudeApprovalCard } from './JsonClaudeApprovalCard'
 import { dispatchToolCard, ToolCardChrome } from './json-mode-cards'
@@ -265,6 +266,7 @@ function SubprocessExitCard({
   worktreePath: string
   isExited: boolean
 }): JSX.Element {
+  const backend = useBackend()
   const detail = message || 'Session ended unexpectedly'
   return (
     <div
@@ -298,8 +300,8 @@ function SubprocessExitCard({
             className="px-3 py-1 bg-danger/15 hover:bg-danger/25 border border-danger/40 rounded text-danger text-xs cursor-pointer flex items-center gap-1.5"
             onClick={() => {
               void (async () => {
-                await window.api.killJsonClaude(sessionId)
-                await window.api.startJsonClaude(sessionId, worktreePath)
+                await backend.killJsonClaude(sessionId)
+                await backend.startJsonClaude(sessionId, worktreePath)
               })()
             }}
           >
@@ -851,6 +853,7 @@ function renderGroupedItems(items: GroupedItem[]): ReactNode {
 }
 
 export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonModeChatProps): JSX.Element {
+  const backend = useBackend()
   const session = useJsonClaudeSession(sessionId)
   const { pending, resolve } = useJsonClaudeApprovals(sessionId)
   const density = useSettings().jsonModeChatDensity
@@ -931,7 +934,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
   useEffect(() => {
     if (mode !== 'awake') return
     if (session) return
-    void window.api.startJsonClaude(sessionId, worktreePath)
+    void backend.startJsonClaude(sessionId, worktreePath)
   }, [sessionId, worktreePath, session, mode])
 
   // Lazy-load the chat history. The wire snapshot ships sessions with
@@ -944,7 +947,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
     if (!session) return
     if (fetchedEntriesForSession.current.has(sessionId)) return
     fetchedEntriesForSession.current.add(sessionId)
-    void window.api.getJsonClaudeEntries(sessionId)
+    void backend.getJsonClaudeEntries(sessionId)
   }, [sessionId, session])
 
   useEffect(() => {
@@ -1146,7 +1149,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
       autoApprovedDecisions,
       sessionAllowedDecisions,
       onCancelQueued: (entryId) =>
-        window.api.cancelQueuedJsonClaudeMessage(sessionId, entryId),
+        backend.cancelQueuedJsonClaudeMessage(sessionId, entryId),
       sessionId,
       worktreePath,
       isExited: session?.state === 'exited',
@@ -1157,15 +1160,15 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
         // the bundled binary and the json-mode subprocess share
         // ~/.claude/, so credentials written by the login tab are
         // visible on the next Retry.
-        void window.api.openJsonClaudeAuthLoginTab(worktreePath)
+        void backend.openJsonClaudeAuthLoginTab(worktreePath)
       },
       onRetryAuth: () => {
         // Same restart sequence as the "Reconnect" button on the exited-
         // session banner: kill (no-op if already gone) then start, which
         // re-attaches with whatever auth state is now in ~/.claude/.
         void (async () => {
-          await window.api.killJsonClaude(sessionId)
-          await window.api.startJsonClaude(sessionId, worktreePath)
+          await backend.killJsonClaude(sessionId)
+          await backend.startJsonClaude(sessionId, worktreePath)
         })()
       }
     })
@@ -1221,7 +1224,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
       return
     }
     let cancelled = false
-    void window.api.listAllFiles(worktreePath).then((result) => {
+    void backend.listAllFiles(worktreePath).then((result) => {
       if (cancelled) return
       FILE_CACHE.set(worktreePath, { files: result, ts: Date.now() })
       setFiles(result)
@@ -1402,7 +1405,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
       // Image files become inline base64 attachments; non-image files
       // become @-mention tokens for Claude to read off disk. Either way
       // we pass the source path so Claude can manipulate the file.
-      const abs = window.api.getFilePath(f) || null
+      const abs = backend.getFilePath(f) || null
       if (f.type.startsWith('image/')) {
         await attachImageFile(f, abs)
         continue
@@ -1442,7 +1445,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
     }))
     if (!session || state === 'exited') return
     if (!text && images.length === 0) return
-    window.api.sendJsonClaudeMessage(
+    backend.sendJsonClaudeMessage(
       sessionId,
       text,
       images.length > 0 ? images : undefined
@@ -1475,7 +1478,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
     let path: string | null = sourcePath
     if (!path) {
       try {
-        path = await window.api.writeJsonClaudeAttachmentImage(data, file.type)
+        path = await backend.writeJsonClaudeAttachmentImage(data, file.type)
       } catch {
         path = null
       }
@@ -1494,7 +1497,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
   }
 
   function interrupt(): void {
-    void window.api.interruptJsonClaude(sessionId)
+    void backend.interruptJsonClaude(sessionId)
   }
 
   const state = session?.state ?? 'idle'
@@ -1510,7 +1513,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
         : permissionMode === 'acceptEdits'
           ? 'plan'
           : 'default'
-    void window.api.setJsonClaudePermissionMode(sessionId, next)
+    void backend.setJsonClaudePermissionMode(sessionId, next)
   }
 
   const modeBadgeStyle =
@@ -1639,7 +1642,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
           </span>
           <button
             onClick={() => {
-              void window.api.clearJsonClaudeSessionToolApprovals(sessionId)
+              void backend.clearJsonClaudeSessionToolApprovals(sessionId)
             }}
             className="ml-auto p-0.5 rounded hover:bg-app/60 text-muted hover:text-fg cursor-pointer shrink-0"
             title="Clear session auto-allow set"

@@ -4,6 +4,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import type { StateEvent } from '../../shared/state'
 import { getClientId, useTerminalSession } from '../store'
+import { getBackend, useBackend } from '../backend'
 import { Eye } from 'lucide-react'
 
 function ClaudeLoader() {
@@ -88,7 +89,7 @@ function applyFontToAll(): void {
     try {
       fit.fit()
       const dims = fit.proposeDimensions()
-      if (dims) window.api.resizeTerminal(id, dims.cols, dims.rows)
+      if (dims) getBackend().resizeTerminal(id, dims.cols, dims.rows)
     } catch {
       // ignore — terminal may not be visible
     }
@@ -101,7 +102,7 @@ function applyFontToAll(): void {
 // constructor, before any React hook could fire.
 //
 // Init is lazy (called from the first component mount, not at module
-// load) because window.api is built by the renderer's `initBackend()`
+// load) because the backend singleton is built by `initBackend()`
 // during initStore — which runs after this module's import hoisting.
 // Pre-init the cache fires the first time an XTerminal mounts; the
 // `applyFontToAll()` sweep updates anything already on screen.
@@ -109,12 +110,13 @@ let fontCacheInitialized = false
 function initFontCache(): void {
   if (fontCacheInitialized) return
   fontCacheInitialized = true
-  void window.api.getStateSnapshot().then(({ state }) => {
+  const backend = getBackend()
+  void backend.getStateSnapshot().then(({ state }) => {
     currentFontFamily = state.settings.terminalFontFamily || DEFAULT_TERMINAL_FONT_FAMILY
     currentFontSize = state.settings.terminalFontSize || DEFAULT_TERMINAL_FONT_SIZE
     applyFontToAll()
   })
-  window.api.onStateEvent((raw) => {
+  backend.onStateEvent((raw) => {
     const event = raw as StateEvent
     if (event.type === 'settings/terminalFontFamilyChanged') {
       currentFontFamily = event.payload || DEFAULT_TERMINAL_FONT_FAMILY
@@ -163,7 +165,7 @@ function sanitizeTerminalData(data: string): string {
  * ownership lives in main (PtyManager), so this is a one-shot fire-and-forget
  * IPC with no renderer-side suppression needed. */
 export function markTerminalClosing(id: string): void {
-  window.api.clearTerminalHistory(id)
+  getBackend().clearTerminalHistory(id)
 }
 
 import type { AgentKind } from '../../shared/state/terminals'
@@ -193,6 +195,7 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
   // initFontCache() comment for why this is lazy rather than at module
   // top.
   initFontCache()
+  const backend = useBackend()
   const [exited, setExited] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
@@ -243,7 +246,7 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
       linkHandler: {
         activate: (_event, uri) => {
           if (uri.startsWith('http://') || uri.startsWith('https://') || uri.startsWith('mailto:')) {
-            window.api.openExternal(uri)
+            backend.openExternal(uri)
           }
         },
         hover: () => {},
@@ -298,7 +301,7 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
       ) {
         e.preventDefault()
         e.stopPropagation()
-        window.api.writeTerminal(terminalId, '\\\r')
+        backend.writeTerminal(terminalId, '\\\r')
         return false
       }
       return true
@@ -322,13 +325,13 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
     let disposed = false
 
     if (type === 'agent') {
-      cleanupExit = window.api.onTerminalExit((id) => {
+      cleanupExit = backend.onTerminalExit((id) => {
         if (id === terminalId && !disposed) setExited(true)
       })
     }
 
     const buildAgentArg = async (): Promise<string> => {
-      return window.api.buildAgentSpawnArgs(agentKind || 'claude', {
+      return backend.buildAgentSpawnArgs(agentKind || 'claude', {
         terminalId,
         cwd,
         sessionId,
@@ -383,17 +386,17 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
       } catch {
         // fall back to main's defaults
       }
-      window.api.createTerminal(terminalId, spawnCwd, shell, args, type === 'agent' ? agentKind : undefined, spawnCols, spawnRows)
+      backend.createTerminal(terminalId, spawnCwd, shell, args, type === 'agent' ? agentKind : undefined, spawnCols, spawnRows)
 
       terminal.onData((data) => {
         // Spectators silently drop input. Main also enforces this, but
         // gating here avoids the round-trip + any suggestion the keystroke
         // "took" (we don't echo back since xterm's local echo is off).
         if (!isControllerRef.current) return
-        window.api.writeTerminal(terminalId, data)
+        backend.writeTerminal(terminalId, data)
       })
 
-      cleanupData = window.api.onTerminalData((id, data) => {
+      cleanupData = backend.onTerminalData((id, data) => {
         if (id === terminalId) {
           terminal.write(sanitizeTerminalData(data))
           setLoading(false)
@@ -411,7 +414,7 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
       }, 800)
     }
 
-    window.api.getTerminalHistory(terminalId).then((history) => {
+    backend.getTerminalHistory(terminalId).then((history) => {
       if (disposed) return
       if (!history) {
         spawnPty()
@@ -465,7 +468,7 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
         const dims = fitAddonRef.current.proposeDimensions()
         if (dims && isControllerRef.current) {
           console.log(`[xterm] ResizeObserver fit id=${terminalId} cols=${dims.cols} rows=${dims.rows}`)
-          window.api.resizeTerminal(terminalId, dims.cols, dims.rows)
+          backend.resizeTerminal(terminalId, dims.cols, dims.rows)
         }
       })
     })
@@ -480,7 +483,7 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
       // user wanting the agent dead — a web client closing a browser
       // tab, a renderer reload, etc. — and any one of those used to
       // take Claude down for every connected client.
-      window.api.leaveTerminal(terminalId)
+      backend.leaveTerminal(terminalId)
       terminalRegistry.delete(terminalId)
       fitRegistry.delete(terminalId)
       resizeObserver.disconnect()
@@ -495,7 +498,7 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
   // dispatching here too covers the attach case (second client mounts
   // an XTerminal for a terminal whose PTY already exists).
   useEffect(() => {
-    window.api.joinTerminal(terminalId)
+    backend.joinTerminal(terminalId)
   }, [terminalId])
 
   // Re-fit when the terminal becomes visible
@@ -520,7 +523,7 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
       const dims = fitAddonRef.current.proposeDimensions()
       if (dims) {
         console.log(`[xterm] resize id=${terminalId} cols=${dims.cols} rows=${dims.rows}`)
-        window.api.resizeTerminal(terminalId, dims.cols, dims.rows)
+        backend.resizeTerminal(terminalId, dims.cols, dims.rows)
       }
     }
 
@@ -553,7 +556,7 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
     if (files.length === 0) return
     e.preventDefault()
     const paths = files
-      .map((f) => window.api.getFilePath(f))
+      .map((f) => backend.getFilePath(f))
       .filter((p) => p && p.length > 0)
     if (paths.length === 0) return
     // Match iTerm2: shell-quote each path, join with spaces, wrap in
@@ -564,7 +567,7 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
     // special chars, not POSIX single-quoting).
     const escapeForDrop = (p: string): string => p.replace(/([ \t"'`$\\!?*()[\]{}|;<>&#])/g, '\\$1')
     const text = paths.map(escapeForDrop).join(' ')
-    window.api.writeTerminal(terminalId, '\x1b[200~' + text + '\x1b[201~')
+    backend.writeTerminal(terminalId, '\x1b[200~' + text + '\x1b[201~')
     terminalRef.current?.focus()
   }
 
@@ -572,7 +575,7 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
     const controller = session?.controllerClientId ?? 'null'
     if (!fitAddonRef.current) {
       console.log(`[take-control] click id=${terminalId} myClientId=${myClientId} prevController=${controller} dims=fallback-120x30`)
-      window.api.takeTerminalControl(terminalId, 120, 30)
+      backend.takeTerminalControl(terminalId, 120, 30)
       return
     }
     try {
@@ -580,14 +583,14 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
       const dims = fitAddonRef.current.proposeDimensions()
       if (dims && dims.cols > 0 && dims.rows > 0) {
         console.log(`[take-control] click id=${terminalId} myClientId=${myClientId} prevController=${controller} dims=${dims.cols}x${dims.rows}`)
-        window.api.takeTerminalControl(terminalId, dims.cols, dims.rows)
+        backend.takeTerminalControl(terminalId, dims.cols, dims.rows)
       } else {
         console.log(`[take-control] click id=${terminalId} myClientId=${myClientId} prevController=${controller} dims=fallback-120x30`)
-        window.api.takeTerminalControl(terminalId, 120, 30)
+        backend.takeTerminalControl(terminalId, 120, 30)
       }
     } catch {
       console.log(`[take-control] click id=${terminalId} myClientId=${myClientId} prevController=${controller} dims=fallback-caught`)
-      window.api.takeTerminalControl(terminalId, 120, 30)
+      backend.takeTerminalControl(terminalId, 120, 30)
     }
   }
 
