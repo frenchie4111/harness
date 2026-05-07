@@ -60,6 +60,12 @@ export default function App(): JSX.Element {
 }
 
 function DesktopApp(): JSX.Element {
+  // Viewport flips trigger drawer/slide-over chrome at narrow widths and
+  // the side-by-side column layout at md+. The Sidebar / RightColumn
+  // components both branch on `drawer` / `slideover` props derived from
+  // this; layout state (mobileSidebarOpen, mobileRightPanelOpen) lives
+  // here so it survives a viewport flip.
+  const { isMobile } = useViewport()
   // Worktree list, repoRoots, and pending-creation FSM all live in the
   // main-process store. activeWorktreeId stays local — it's per-client view
   // focus that eventually becomes per-window.
@@ -138,6 +144,13 @@ function DesktopApp(): JSX.Element {
   const [updateBannerDismissed, setUpdateBannerDismissed] = useState(false)
   const [manualUpdateBannerDismissed, setManualUpdateBannerDismissed] = useState(false)
   const [sidebarVisible, setSidebarVisible] = useState(true)
+  // At narrow viewports the sidebar is rendered as a slide-over drawer
+  // that stays closed by default. The desktop hotkey toggles `sidebarVisible`
+  // (collapses the column); the mobile hamburger toggles `mobileSidebarOpen`
+  // (slides the drawer in/out). They're separate because their semantics
+  // differ: a desktop user expects toggling-off to give the center pane more
+  // width, but a mobile user expects toggling-off to mean "out of my way."
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
     const saved = Number(localStorage.getItem('harness:sidebarWidth'))
     return Number.isFinite(saved) && saved > 0 ? saved : 224
@@ -1059,7 +1072,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
       )}
 
       <div className="flex flex-1 min-h-0">
-        {sidebarVisible && (
+        {(isMobile || sidebarVisible) && (
           <Sidebar
             worktrees={worktrees}
             pendingWorktrees={pendingWorktrees}
@@ -1078,6 +1091,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
               setShowCleanup(false)
               setShowCommandCenter(false)
               setActiveWorktreeId(path)
+              setMobileSidebarOpen(false)
             }}
             onDismissPendingWorktree={handleDismissPendingWorktree}
             onNewWorktree={() => setShowNewWorktree(true)}
@@ -1106,9 +1120,12 @@ const setQuestStep = useCallback((next: QuestStep) => {
             onToggleRepo={toggleRepo}
             unifiedRepos={unifiedRepos}
             onToggleUnifiedRepos={() => setUnifiedRepos((v) => !v)}
+            drawer={isMobile}
+            drawerOpen={isMobile ? mobileSidebarOpen : undefined}
+            onDrawerClose={() => setMobileSidebarOpen(false)}
           />
         )}
-        {sidebarVisible && <ResizeHandle onDelta={handleSidebarResize} />}
+        {!isMobile && sidebarVisible && <ResizeHandle onDelta={handleSidebarResize} />}
         {/* Render ALL worktrees' terminals to keep PTYs alive across switches */}
         {worktrees.map((wt) => {
           const paneTree = panes[wt.path]

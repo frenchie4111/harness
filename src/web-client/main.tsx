@@ -422,6 +422,13 @@ function buildApi(transport: WebSocketClientTransport): ElectronAPI {
     browserScroll: (tabId, dx, dy) =>
       req('browser:scroll', tabId, dx, dy) as Promise<boolean>,
 
+    // Window chrome controls only make sense in desktop Electron — they
+    // address the host BrowserWindow. Web clients run inside the browser's
+    // own chrome and have no equivalent.
+    windowMinimize: () => unavailable('windowMinimize', undefined),
+    windowToggleMaximize: () => unavailable('windowToggleMaximize', undefined),
+    windowClose: () => unavailable('windowClose', undefined),
+
     createTerminal: (id, cwd, cmd, args, agentKind, cols, rows) => {
       sig('pty:create', id, cwd, cmd, args, agentKind, cols, rows)
     },

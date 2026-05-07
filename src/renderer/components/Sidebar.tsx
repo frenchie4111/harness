@@ -46,6 +46,14 @@ interface SidebarProps {
   onToggleRepo: (repoRoot: string) => void
   unifiedRepos: boolean
   onToggleUnifiedRepos: () => void
+  /** When true, render as a fixed-position slide-over drawer with a backdrop
+   *  instead of a flex column. Used at narrow viewports so the sidebar
+   *  collapses out of the way unless explicitly opened. */
+  drawer?: boolean
+  /** Whether the drawer is currently visible. Ignored when `drawer` is false. */
+  drawerOpen?: boolean
+  /** Backdrop or close-button click handler. Ignored when `drawer` is false. */
+  onDrawerClose?: () => void
 }
 
 export function Sidebar({
@@ -82,7 +90,10 @@ export function Sidebar({
   collapsedRepos,
   onToggleRepo,
   unifiedRepos,
-  onToggleUnifiedRepos
+  onToggleUnifiedRepos,
+  drawer,
+  drawerOpen,
+  onDrawerClose
 }: SidebarProps): JSX.Element {
   const metaHeld = useMetaHeld()
   const deletingPaths = useMemo(() => {
@@ -192,10 +203,10 @@ export function Sidebar({
     return repoRoot.split('/').pop() || repoRoot
   }, [])
 
-  return (
+  const body = (
     <div
       className="shrink-0 bg-panel flex flex-col h-full"
-      style={{ width }}
+      style={drawer ? undefined : { width }}
     >
       <svg width="0" height="0" className="absolute" aria-hidden="true">
         <defs>
@@ -476,6 +487,28 @@ export function Sidebar({
             <SettingsIcon size={14} />
           </button>
         </Tooltip>
+      </div>
+    </div>
+  )
+  if (!drawer) return body
+  return (
+    <div
+      className={`fixed inset-0 z-40 ${drawerOpen ? '' : 'pointer-events-none'}`}
+      aria-hidden={!drawerOpen}
+    >
+      <div
+        className={`absolute inset-0 bg-black/60 transition-opacity ${
+          drawerOpen ? 'opacity-100' : 'opacity-0'
+        }`}
+        onClick={onDrawerClose}
+      />
+      <div
+        className={`absolute inset-y-0 left-0 max-w-[85%] shadow-2xl transform transition-transform ${
+          drawerOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+        style={{ width: 'min(320px, 85%)' }}
+      >
+        {body}
       </div>
     </div>
   )
