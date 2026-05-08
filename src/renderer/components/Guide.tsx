@@ -164,9 +164,9 @@ claude`}</CodeBlock>
                 are sorted so the one that needs your attention floats to the top.
               </Bullet>
               <Bullet title="Hotkeys for everything">
-                <code>⌘1</code>–<code>⌘9</code> jumps between worktrees.{' '}
-                <code>⌘T</code> opens a new shell. <code>⌘⇧G</code> opens the active
-                worktree&apos;s PR in your browser. <code>⌘B</code> hides the sidebar.
+                <code>⌘ 1</code>–<code>⌘ 9</code> jumps between worktrees.{' '}
+                <code>⌘ T</code> opens a new shell. <code>⇧ ⌘ G</code> opens the active
+                worktree&apos;s PR in your browser. <code>⌘ B</code> hides the sidebar.
                 All rebindable in Settings.
               </Bullet>
             </ul>

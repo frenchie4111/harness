@@ -20,7 +20,7 @@ export function QuestCard({ step, onDismiss, onFinish }: QuestCardProps): JSX.El
         body: 'The whole point of Harness is that you don\u2019t have to sit and watch. While this one works, fork a second worktree and give it a different task.',
         hint: (
           <>
-            Hit <HotkeyBadge action="newWorktree" /> or use the sidebar to create another.
+            Hit <HotkeyBadge action="newWorktree" variant="strong" /> or use the sidebar to create another.
           </>
         )
       }
@@ -33,8 +33,8 @@ export function QuestCard({ step, onDismiss, onFinish }: QuestCardProps): JSX.El
         body: 'Jump between running agents with number hotkeys so you can keep an eye on both without losing your place.',
         hint: (
           <>
-            <HotkeyBadge action="worktree1" /> for the first,{' '}
-            <HotkeyBadge action="worktree2" /> for the second. Try both.
+            <HotkeyBadge action="worktree1" variant="strong" /> for the first,{' '}
+            <HotkeyBadge action="worktree2" variant="strong" /> for the second. Try both.
           </>
         )
       }
