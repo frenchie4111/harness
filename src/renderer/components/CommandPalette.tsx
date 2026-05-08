@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Search, GitPullRequest, ArrowRight, FileText } from 'lucide-react'
+import { Search, GitPullRequest, ArrowRight, FileText, Server } from 'lucide-react'
 import type { Worktree, PtyStatus, PRStatus } from '../types'
 import type { Action, HotkeyBinding } from '../hotkeys'
 import { ACTION_LABELS, bindingToString } from '../hotkeys'
@@ -22,12 +22,14 @@ interface CommandPaletteProps {
   onSelectWorktree: (path: string) => void
   onAction: (action: Action) => void
   onOpenFile: (filePath: string) => void
+  onAddBackend: () => void
 }
 
 type PaletteItem =
   | { kind: 'worktree'; wt: Worktree }
   | { kind: 'action'; action: Action; label: string; hint?: string }
   | { kind: 'open-files'; label: string }
+  | { kind: 'add-backend'; label: string }
   | { kind: 'heading'; label: string }
   | { kind: 'recent-worktree'; wt: Worktree }
   | { kind: 'recent-action'; action: Action; label: string; hint?: string }
@@ -216,6 +218,7 @@ export function CommandPalette({
   onSelectWorktree,
   onAction,
   onOpenFile,
+  onAddBackend,
 }: CommandPaletteProps): JSX.Element {
   const backend = useBackend()
   const [mode, setMode] = useState<PaletteMode>(initialMode)
@@ -355,6 +358,12 @@ export function CommandPalette({
         items.push({ kind: 'open-files', label: 'Open File…' })
         selectable++
       }
+      // "Add Backend…" virtual action — fuzzy-matches "add backend" /
+      // "remote" / "connect" so users typing any of those find it.
+      if (fuzzyScore(query, 'Add backend') > 0 || /remote|connect|backend/i.test(query)) {
+        items.push({ kind: 'add-backend', label: 'Add Backend…' })
+        selectable++
+      }
     } else {
       const recentPaletteItems: PaletteItem[] = []
       for (const r of recents) {
@@ -396,6 +405,8 @@ export function CommandPalette({
       }
       items.push({ kind: 'heading', label: 'Commands' })
       items.push({ kind: 'open-files', label: 'Open File…' })
+      selectable++
+      items.push({ kind: 'add-backend', label: 'Add Backend…' })
       selectable++
       for (const a of actionItems) {
         items.push({ kind: 'action', ...a })
@@ -454,6 +465,8 @@ export function CommandPalette({
       } else if (item.kind === 'open-files') {
         setMode('files')
         return
+      } else if (item.kind === 'add-backend') {
+        onAddBackend()
       } else if (item.kind === 'recent-file') {
         if (activeWorktreeId) pushRecent(activeWorktreeId, item.path)
         pushPaletteRecent({
@@ -466,7 +479,7 @@ export function CommandPalette({
       }
       onClose()
     },
-    [onClose, onSelectWorktree, onAction, onOpenFile, activeWorktreeId]
+    [onClose, onSelectWorktree, onAction, onOpenFile, onAddBackend, activeWorktreeId]
   )
 
   const handleKeyDown = useCallback(
@@ -694,6 +707,23 @@ export function CommandPalette({
                       {bindingToString(openBinding)}
                     </kbd>
                   )}
+                </button>
+              )
+            }
+
+            if (item.kind === 'add-backend') {
+              return (
+                <button
+                  key={`add-backend-${flatIdx}`}
+                  data-idx={flatIdx}
+                  className={`w-full flex items-center gap-2 px-3 py-2 text-sm cursor-pointer transition-colors ${
+                    isSelected ? 'bg-accent/15 text-fg-bright' : 'text-fg hover:bg-surface-hover'
+                  }`}
+                  onMouseEnter={() => setSelectedIndex(mySelectableIdx)}
+                  onClick={() => execute(item)}
+                >
+                  <Server size={14} className="text-dim shrink-0" />
+                  <span className="truncate flex-1 text-left">{item.label}</span>
                 </button>
               )
             }

@@ -1353,6 +1353,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
           if (handler) handler()
         }}
         onOpenFile={(filePath) => handleOpenFile(filePath)}
+        onAddBackend={() => setShowAddBackend(true)}
       />
     )}
     {showHotkeyCheatsheet && (
