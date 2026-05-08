@@ -1717,24 +1717,32 @@ function extractToolResultsFromArray(
 }
 
 /** Heuristic detector for auth failures surfaced via stream-json `result`
- *  events. Claude Code is generous about what it labels — sometimes
- *  subtype=`error_auth`, sometimes a generic error message containing
- *  401 / 'unauthorized' / 'credentials' / 'expired token'. False
- *  positives just show an extra "looks like auth" card the user can
- *  ignore, so the matcher is intentionally broad. Returns the original
- *  error string for display, or null when nothing auth-shaped landed. */
-const AUTH_PATTERN = /\b(auth|unauthor|credential|401|expired token|please run \/login|invalid api key)\b/i
+ *  events. Two-tier match: structured `subtype === 'error_auth'` always
+ *  wins; otherwise we only try the regex when the turn is actually
+ *  flagged as an error (`is_error: true` or `subtype` starting with
+ *  `error_`). Without that gate, the regex was matching the assistant's
+ *  reply content on normal turns whenever the user happened to discuss
+ *  auth/credentials/401 — false-positive city. */
+const AUTH_PATTERN = /\b(authentication|authoriz|credential|unauthorized|401|expired token|please run \/login|invalid api key)\b/i
 function detectAuthFailureFromResult(parsed: Record<string, unknown>): string | null {
   const subtype = parsed['subtype']
   if (subtype === 'error_auth') {
     const err = pickErrorString(parsed)
     return err ?? 'Authentication failed.'
   }
+  const isError =
+    parsed['is_error'] === true ||
+    (typeof subtype === 'string' && subtype.startsWith('error_'))
+  if (!isError) return null
   const err = pickErrorString(parsed)
   if (err && AUTH_PATTERN.test(err)) return err
   return null
 }
 
+/** Pull a human-readable error string out of a stream-json result event.
+ *  Only looks at `error` / `error.message` — NOT `result` or `message`,
+ *  which are the assistant's reply content on success turns and would
+ *  cause auth-pattern false positives if treated as errors. */
 function pickErrorString(parsed: Record<string, unknown>): string | null {
   const direct = parsed['error']
   if (typeof direct === 'string' && direct.trim()) return direct
@@ -1742,9 +1750,5 @@ function pickErrorString(parsed: Record<string, unknown>): string | null {
     const m = (direct as Record<string, unknown>)['message']
     if (typeof m === 'string' && m.trim()) return m
   }
-  const result = parsed['result']
-  if (typeof result === 'string' && result.trim()) return result
-  const message = parsed['message']
-  if (typeof message === 'string' && message.trim()) return message
   return null
 }

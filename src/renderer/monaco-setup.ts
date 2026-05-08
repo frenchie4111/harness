@@ -22,7 +22,14 @@ import TsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker'
 // don't get semantic noise from unresolved imports (no project-wide type
 // graph — Monaco only sees one file at a time).
 function configureTypescriptDefaults(): void {
-  const ts = monaco.typescript
+  // The runtime API for the TypeScript language service lives at
+  // monaco.languages.typescript. Recent @types mark it as `{deprecated: true}`
+  // and don't expose its members through the type system, so we cast to any.
+  // DO NOT switch this to `monaco.typescript` — that path is undefined at
+  // runtime and throws during module evaluation, silently breaking every
+  // Monaco editor's syntax highlighting + theme.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ts: any = (monaco as any).languages.typescript
   const tsOptions = {
     ...ts.typescriptDefaults.getCompilerOptions(),
     jsx: ts.JsxEmit.Preserve,

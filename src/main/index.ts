@@ -20,6 +20,7 @@ import { networkInterfaces } from 'os'
 import type { Server as HttpServer } from 'http'
 import type { ServerTransport } from '../shared/transport/transport'
 import { detectRuntime } from './paths'
+import { fixPathFromLoginShell } from './path-fix'
 import { parseCliFlags, USAGE, type CliFlags } from './cli-args'
 import { PlaywrightBrowserManager } from './browser-manager-playwright'
 import type { BrowserManagerLike } from './browser-manager-types'
@@ -68,6 +69,8 @@ import { buildClaudeLaunchSettings } from './claude-launch'
 import { HARNESS_REPO_OWNER, HARNESS_REPO_NAME } from '../shared/constants'
 import { readRecentDebugLog } from './debug'
 import { CostTracker } from './cost-tracker'
+import { getAllSessionCosts } from './cost-aggregator'
+import { getClaudeAuthStatus } from './claude-auth'
 import { listDir as fsListDir, isGitRepo as fsIsGitRepo, resolveHome as fsResolveHome } from './fs-listing'
 import { startControlServer } from './control-server'
 import { writeMcpConfigForTerminal, pruneMcpConfigs, getBridgeScriptPath } from './mcp-config'
@@ -87,10 +90,28 @@ function toAgentKind(value: string | undefined): AgentKind {
 const runtime = detectRuntime()
 
 // Boot the local backend. The HARNESS_REMOTE_URL "process-wide remote"
-// path was removed in Tier 1 (the chip strip / add-backend modal is
-// the only way to reach a remote backend now); see
-// plans/tier-1-multi-backend-ux.md §J.
-bootLocal()
+// path was removed in Tier 1 — the chip strip / add-backend modal is
+// the only way to reach a remote backend now (see
+// plans/tier-1-multi-backend-ux.md §J).
+//
+// Apply the dev-mode userData override BEFORE fixPathFromLoginShell
+// runs. path-fix can call log() (on PATH change / timeout / missing
+// sentinels), and log() reads userDataDir() which caches its first
+// result — without this, the production userData path gets cached
+// and the override inside bootLocal arrives too late. bootLocal also
+// calls applyDevModeOverride; app.setPath is idempotent, so the
+// second call is a no-op.
+if (runtime === 'electron') {
+  const dynamicRequire = createRequire(__filename)
+  const ds = dynamicRequire('./desktop-shell') as typeof import('./desktop-shell')
+  ds.applyDevModeOverride()
+}
+// PATH fix runs before bootLocal so PtyManager / JsonClaudeManager are
+// constructed with an environment that includes Homebrew/nvm/etc.
+// Covers both Electron-from-Dock and headless-via-ssh/systemd, both of
+// which can start with a stripped PATH. No-op outside of macOS today;
+// see path-fix.ts.
+void fixPathFromLoginShell().then(bootLocal)
 
 // Wrap the entire local-mode boot in a function so the remote-mode
 // branch above can early-exit cleanly. Function declarations are
@@ -432,6 +453,17 @@ costTracker.start()
 transport.onRequest('costs:setInterest', (ctx, expanded: boolean) => {
   costTracker.setClientInterested(ctx.clientId, expanded)
   return true
+})
+
+transport.onRequest(
+  'costs:getAllSessions',
+  async (_ctx, sinceMs?: number) => {
+    return getAllSessionCosts({ sinceMs })
+  }
+)
+
+transport.onRequest('claude:getAuthStatus', async () => {
+  return getClaudeAuthStatus()
 })
 
 // Auto-persist the costs slice to config.json on each change. Debounced
