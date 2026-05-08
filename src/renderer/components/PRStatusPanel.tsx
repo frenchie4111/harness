@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { ExternalLink, GitMerge, ChevronDown, Check, GitPullRequest, RefreshCw } from 'lucide-react'
+import { ExternalLink, GitMerge, ChevronDown, Check, GitPullRequest, RefreshCw, Loader2 } from 'lucide-react'
 import { useRepoConfigs, useSettings } from '../store'
 import type {
   PRStatus,
@@ -8,7 +8,9 @@ import type {
   Worktree,
   MergeStrategy,
   MainWorktreeStatus,
-  MergeConflictPreview
+  MergeConflictPreview,
+  GitHubMergeMethod,
+  MergePRResult
 } from '../types'
 import { Tooltip } from './Tooltip'
 import { RightPanel } from './RightPanel'
@@ -452,8 +454,183 @@ function ReviewSummary({
   )
 }
 
+// 'fast-forward' has no GitHub equivalent — 'rebase' is the closest
+// approximation but produces different history (linear, but rewritten
+// commits with new SHAs). Tooltip below calls this out.
+const STRATEGY_TO_METHOD: Record<MergeStrategy, GitHubMergeMethod> = {
+  squash: 'squash',
+  'merge-commit': 'merge',
+  'fast-forward': 'rebase'
+}
+
+const METHOD_LABEL: Record<GitHubMergeMethod, string> = {
+  squash: 'squash',
+  merge: 'merge commit',
+  rebase: 'rebase'
+}
+
+interface PRActionsProps {
+  pr: PRStatus
+  worktree?: Worktree | null
+  needsGithubToken: boolean
+}
+
+function PRActions({ pr, worktree, needsGithubToken }: PRActionsProps): JSX.Element {
+  const repoConfigs = useRepoConfigs()
+  const globalStrategy = useSettings().mergeStrategy
+  const strategy: MergeStrategy = worktree
+    ? repoConfigs[worktree.repoRoot]?.mergeStrategy || globalStrategy
+    : globalStrategy
+  const method = STRATEGY_TO_METHOD[strategy]
+  const methodLabel = METHOD_LABEL[method]
+
+  const [confirming, setConfirming] = useState(false)
+  const [merging, setMerging] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [justMerged, setJustMerged] = useState(false)
+  const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current)
+    }
+  }, [])
+
+  // Reset confirm flag if the PR identity changes underneath us.
+  useEffect(() => {
+    setConfirming(false)
+    setError(null)
+    setJustMerged(false)
+    if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current)
+  }, [pr.number, pr.state])
+
+  const isTerminal = pr.state === 'merged' || pr.state === 'closed'
+
+  let disabledReason: string | null = null
+  if (needsGithubToken) disabledReason = 'Connect GitHub token to merge'
+  else if (!worktree) disabledReason = 'No active worktree'
+  else if (pr.state === 'merged') disabledReason = 'Already merged'
+  else if (pr.state === 'closed') disabledReason = 'PR is closed'
+  else if (pr.state === 'draft') disabledReason = "Draft PRs can't be merged"
+  else if (pr.hasConflict === true) disabledReason = 'PR has merge conflicts'
+  const canMerge = disabledReason === null && !merging
+
+  const startConfirm = (): void => {
+    setError(null)
+    setConfirming(true)
+    if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current)
+    confirmTimerRef.current = setTimeout(() => {
+      setConfirming(false)
+      confirmTimerRef.current = null
+    }, 5000)
+  }
+
+  const performMerge = useCallback(async () => {
+    if (!worktree) return
+    if (confirmTimerRef.current) {
+      clearTimeout(confirmTimerRef.current)
+      confirmTimerRef.current = null
+    }
+    setConfirming(false)
+    setMerging(true)
+    setError(null)
+    try {
+      const result: MergePRResult = await window.api.mergePR(worktree.path, method)
+      if (result.ok) {
+        setJustMerged(true)
+      } else {
+        setError(result.error || 'Merge failed')
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setMerging(false)
+    }
+  }, [worktree, method])
+
+  const onMergeClick = (): void => {
+    if (!canMerge) return
+    if (confirming) {
+      void performMerge()
+    } else {
+      startConfirm()
+    }
+  }
+
+  let mergeLabel: string
+  if (merging) mergeLabel = 'Merging…'
+  else if (justMerged) mergeLabel = 'Merged'
+  else if (confirming) mergeLabel = `Confirm ${methodLabel}`
+  else mergeLabel = 'Merge'
+
+  const showMergeButton = !isTerminal
+
+  let mergeTooltip: string
+  if (disabledReason) mergeTooltip = disabledReason
+  else if (confirming) mergeTooltip = 'Click again to confirm'
+  else if (strategy === 'fast-forward')
+    mergeTooltip = 'Merge via GitHub using rebase (closest equivalent to fast-forward)'
+  else mergeTooltip = `Merge via GitHub using ${methodLabel}`
+
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap mb-2">
+      <Tooltip label="Open PR in browser" action="openPR">
+        <button
+          onClick={() => window.api.openExternal(pr.url)}
+          className="px-3 py-1.5 text-xs rounded bg-surface hover:bg-surface/60 text-fg transition-colors cursor-pointer flex items-center gap-1.5"
+        >
+          Open
+          <ExternalLink size={11} />
+        </button>
+      </Tooltip>
+      {showMergeButton && (
+        <Tooltip label={mergeTooltip}>
+          <button
+            onClick={onMergeClick}
+            disabled={!canMerge || justMerged}
+            className={`px-3 py-1.5 text-xs rounded transition-colors cursor-pointer flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed ${
+              confirming
+                ? 'bg-warning/30 hover:bg-warning/40 text-warning border border-warning/50'
+                : 'bg-success/20 hover:bg-success/30 text-success'
+            }`}
+          >
+            {merging ? (
+              <Loader2 size={11} className="animate-spin" />
+            ) : justMerged ? (
+              <Check size={11} />
+            ) : (
+              <GitMerge size={11} />
+            )}
+            {mergeLabel}
+          </button>
+        </Tooltip>
+      )}
+      {showMergeButton && !confirming && !merging && !justMerged && (
+        <span className="text-[10px] text-muted ml-auto">
+          via {methodLabel}
+        </span>
+      )}
+      {error && (
+        <div className="basis-full text-[11px] text-danger leading-snug break-words flex items-center gap-2">
+          <span className="flex-1">{error}</span>
+          <button
+            onClick={() => {
+              setError(null)
+              void performMerge()
+            }}
+            className="px-2 py-0.5 text-[11px] rounded bg-surface hover:bg-surface/60 text-fg transition-colors cursor-pointer shrink-0"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 interface PRStatusPanelProps {
   pr: PRStatus | null | undefined
+  worktree?: Worktree | null
   hasGithubToken?: boolean | null
   loading?: boolean
   onRefresh?: () => void | Promise<void>
@@ -462,6 +639,7 @@ interface PRStatusPanelProps {
 
 export function PRStatusPanel({
   pr,
+  worktree,
   hasGithubToken,
   loading,
   onRefresh,
@@ -477,7 +655,7 @@ export function PRStatusPanel({
 
   const needsGithubToken = hasGithubToken === false
 
-  const refreshButton = !needsGithubToken && onRefresh ? (
+  const actions = !needsGithubToken && onRefresh ? (
     <Tooltip label="Refresh PR status" side="left">
       <button
         onClick={(e) => {
@@ -491,28 +669,6 @@ export function PRStatusPanel({
         <RefreshCw size={11} className={loading ? 'animate-spin' : ''} />
       </button>
     </Tooltip>
-  ) : null
-
-  const openButton = !needsGithubToken && pr ? (
-    <Tooltip label="Open PR in browser" action="openPR" side="left">
-      <button
-        onClick={(e) => {
-          e.stopPropagation()
-          window.api.openExternal(pr.url)
-        }}
-        className="text-xs text-dim hover:text-fg flex items-center gap-1 transition-colors cursor-pointer"
-      >
-        Open
-        <ExternalLink size={11} />
-      </button>
-    </Tooltip>
-  ) : null
-
-  const actions = (refreshButton || openButton) ? (
-    <>
-      {refreshButton}
-      {openButton}
-    </>
   ) : null
 
   return (
@@ -569,6 +725,8 @@ export function PRStatusPanel({
               </span>
             )}
           </div>
+
+          <PRActions pr={pr} worktree={worktree} needsGithubToken={needsGithubToken} />
 
           {/* Merge conflict indicator — styled like the checks line */}
           {pr.hasConflict === true && (

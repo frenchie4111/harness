@@ -166,6 +166,8 @@ contextBridge.exposeInMainWorld('api', {
   refreshPRsAllIfStale: () => req('prs:refreshAllIfStale'),
   refreshPRsOne: (worktreePath: string) => req('prs:refreshOne', worktreePath),
   refreshPRsOneIfStale: (worktreePath: string) => req('prs:refreshOneIfStale', worktreePath),
+  mergePR: (worktreePath: string, method: 'merge' | 'squash' | 'rebase') =>
+    req('pr:merge', worktreePath, method),
 
   getWeeklyStats: () => req('stats:getWeekly'),
 

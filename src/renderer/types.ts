@@ -122,6 +122,15 @@ export type { JsonClaudeChatEntry }
 
 export type MergeStrategy = 'squash' | 'merge-commit' | 'fast-forward'
 
+export type GitHubMergeMethod = 'merge' | 'squash' | 'rebase'
+
+export interface MergePRResult {
+  ok: boolean
+  error?: string
+  errorCode?: 'unauthorized' | 'method_not_allowed' | 'conflict' | 'unprocessable' | 'unknown'
+  sha?: string
+}
+
 export interface MainWorktreeStatus {
   path: string
   currentBranch: string
@@ -210,6 +219,10 @@ export interface ElectronAPI {
   refreshPRsAllIfStale(): Promise<boolean>
   refreshPRsOne(worktreePath: string): Promise<boolean>
   refreshPRsOneIfStale(worktreePath: string): Promise<boolean>
+  mergePR(
+    worktreePath: string,
+    method: GitHubMergeMethod
+  ): Promise<MergePRResult>
 
   getWeeklyStats(): Promise<WeeklyStats>
   getBranchCommits(worktreePath: string): Promise<BranchCommit[]>

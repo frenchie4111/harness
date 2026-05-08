@@ -127,6 +127,8 @@ function buildApi(transport: WebSocketClientTransport): ElectronAPI {
     refreshPRsOne: (worktreePath) => req('prs:refreshOne', worktreePath) as Promise<boolean>,
     refreshPRsOneIfStale: (worktreePath) =>
       req('prs:refreshOneIfStale', worktreePath) as Promise<boolean>,
+    mergePR: (worktreePath, method) =>
+      req('pr:merge', worktreePath, method) as ReturnType<ElectronAPI['mergePR']>,
 
     getWeeklyStats: () => req('stats:getWeekly') as ReturnType<ElectronAPI['getWeeklyStats']>,
 
