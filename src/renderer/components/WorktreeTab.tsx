@@ -185,7 +185,7 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
               ? typeof snoozeWakeAt === 'number'
                 ? `Wakes ${formatWakeAt(snoozeWakeAt)} — click to wake up`
                 : 'Wake up'
-              : 'Snooze'
+              : 'Snooze (option-click to pick a date)'
           }
           side="left"
         >
