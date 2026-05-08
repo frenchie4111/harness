@@ -102,6 +102,11 @@ export function buildBackend(
       initialPrompt?: string
       teleportSessionId?: string
     }) => req('worktrees:runPending', params),
+    runPendingPRWorktree: (params: {
+      id: string
+      repoRoot: string
+      prNumber: number
+    }) => req('worktrees:runPendingPR', params),
     retryPendingWorktree: (id: string) => req('worktrees:retryPending', id),
     dismissPendingWorktree: (id: string) => req('worktrees:dismissPending', id),
     refreshWorktreesList: () => req('worktrees:refreshList'),
@@ -192,6 +197,7 @@ export function buildBackend(
     refreshPRsAllIfStale: () => req('prs:refreshAllIfStale'),
     refreshPRsOne: (worktreePath: string) => req('prs:refreshOne', worktreePath),
     refreshPRsOneIfStale: (worktreePath: string) => req('prs:refreshOneIfStale', worktreePath),
+    listRepoPRs: (repoRoot: string) => req('prs:listOpen', repoRoot),
     mergePR: (worktreePath: string, method: 'merge' | 'squash' | 'rebase') =>
       req('pr:merge', worktreePath, method),
 

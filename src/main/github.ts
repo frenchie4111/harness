@@ -205,94 +205,114 @@ export async function getPRStatus(worktreePath: string): Promise<PRStatus | null
 
     if (!Array.isArray(prList) || prList.length === 0) return null
 
-    const pr = prList[0]
-    const sha = pr.head.sha
-
-    // Fetch check runs, status contexts, and PR detail (for mergeable) in parallel.
-    // The /pulls/{n} endpoint triggers GitHub's background mergeability computation
-    // and returns the result if it's ready — otherwise mergeable is null.
-    const [checkRunsRes, combinedRes, prDetail, reviewsRes] = await Promise.all([
-      githubFetch(`https://api.github.com/repos/${owner}/${repo}/commits/${sha}/check-runs?per_page=100`) as Promise<ApiCheckRunsResponse>,
-      githubFetch(`https://api.github.com/repos/${owner}/${repo}/commits/${sha}/status`) as Promise<ApiCombinedStatus>,
-      githubFetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${pr.number}`) as Promise<ApiPRDetail>,
-      githubFetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${pr.number}/reviews?per_page=100`) as Promise<ApiReview[]>
-    ])
-
-    // mergeable_state 'dirty' is the definitive conflict signal. mergeable===false
-    // alone can also indicate conflicts. Null/unknown means GitHub hasn't finished
-    // computing yet, so we report null and the UI hides the conflict indicator.
-    let hasConflict: boolean | null
-    if (prDetail.mergeable_state === 'dirty') hasConflict = true
-    else if (prDetail.mergeable === false) hasConflict = true
-    else if (prDetail.mergeable === true) hasConflict = false
-    else hasConflict = null
-
-    const checks: CheckStatus[] = []
-    for (const run of checkRunsRes.check_runs || []) {
-      checks.push({
-        name: run.name,
-        state: normalizeCheckState(run.status, run.conclusion),
-        description: run.output?.title || '',
-        summary: run.output?.summary || undefined,
-        detailsUrl: run.html_url || run.details_url || undefined
-      })
-    }
-    for (const s of combinedRes.statuses || []) {
-      checks.push({
-        name: s.context,
-        state: normalizeStatusState(s.state),
-        description: s.description || '',
-        detailsUrl: s.target_url || undefined
-      })
-    }
-
-    // Process reviews — keep all reviews, dedupe to latest per user for decision
-    const reviews: PRReview[] = (Array.isArray(reviewsRes) ? reviewsRes : [])
-      .filter((r) => r.user && r.state !== 'PENDING')
-      .map((r) => ({
-        user: r.user.login,
-        avatarUrl: r.user.avatar_url,
-        state: r.state,
-        body: r.body || '',
-        submittedAt: r.submitted_at,
-        htmlUrl: r.html_url
-      }))
-
-    // Compute overall review decision from the latest review per user
-    const latestByUser = new Map<string, PRReview['state']>()
-    for (const r of reviews) {
-      latestByUser.set(r.user, r.state)
-    }
-    const latestStates = [...latestByUser.values()]
-    let reviewDecision: PRStatus['reviewDecision'] = 'none'
-    if (latestStates.some((s) => s === 'CHANGES_REQUESTED')) reviewDecision = 'changes_requested'
-    else if (latestStates.some((s) => s === 'APPROVED')) reviewDecision = 'approved'
-    else if (latestStates.length > 0) reviewDecision = 'review_required'
-
-    // Determine PR state
-    let state: PRStatus['state']
-    if (pr.merged_at) state = 'merged'
-    else if (pr.state === 'closed') state = 'closed'
-    else if (pr.draft) state = 'draft'
-    else state = 'open'
-
-    return {
-      number: pr.number,
-      title: pr.title,
-      state,
-      url: pr.html_url,
-      branch: branchName,
-      checks,
-      checksOverall: computeOverall(checks),
-      hasConflict,
-      reviews,
-      reviewDecision,
-      additions: prDetail.additions,
-      deletions: prDetail.deletions
-    }
+    return loadPRStatusDetails(owner, repo, prList[0].number, branchName)
   } catch (err) {
     log('github', `getPRStatus failed for ${branchName}`, err instanceof Error ? err.message : err)
     return null
+  }
+}
+
+/** Like getPRStatus, but looks the PR up by explicit number. Used for
+ * worktrees opened from someone else's PR — branch matching can't find
+ * fork PRs because their head is `forker:branch`, not `pr-<N>`. */
+export async function getPRStatusByNumber(
+  worktreePath: string,
+  owner: string,
+  repo: string,
+  number: number
+): Promise<PRStatus | null> {
+  const token = getCachedToken()
+  if (!token) return null
+  const branchName = (await getCurrentBranch(worktreePath)) ?? `pr-${number}`
+  try {
+    return await loadPRStatusDetails(owner, repo, number, branchName)
+  } catch (err) {
+    log('github', `getPRStatusByNumber failed for ${owner}/${repo}#${number}`, err instanceof Error ? err.message : err)
+    return null
+  }
+}
+
+async function loadPRStatusDetails(
+  owner: string,
+  repo: string,
+  number: number,
+  branchName: string
+): Promise<PRStatus | null> {
+  const prDetail = (await githubFetch(
+    `https://api.github.com/repos/${owner}/${repo}/pulls/${number}`
+  )) as ApiPRDetail
+  if (!prDetail || typeof prDetail.number !== 'number') return null
+
+  const sha = prDetail.head.sha
+  const [checkRunsRes, combinedRes, reviewsRes] = await Promise.all([
+    githubFetch(`https://api.github.com/repos/${owner}/${repo}/commits/${sha}/check-runs?per_page=100`) as Promise<ApiCheckRunsResponse>,
+    githubFetch(`https://api.github.com/repos/${owner}/${repo}/commits/${sha}/status`) as Promise<ApiCombinedStatus>,
+    githubFetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${number}/reviews?per_page=100`) as Promise<ApiReview[]>
+  ])
+
+  let hasConflict: boolean | null
+  if (prDetail.mergeable_state === 'dirty') hasConflict = true
+  else if (prDetail.mergeable === false) hasConflict = true
+  else if (prDetail.mergeable === true) hasConflict = false
+  else hasConflict = null
+
+  const checks: CheckStatus[] = []
+  for (const run of checkRunsRes.check_runs || []) {
+    checks.push({
+      name: run.name,
+      state: normalizeCheckState(run.status, run.conclusion),
+      description: run.output?.title || '',
+      summary: run.output?.summary || undefined,
+      detailsUrl: run.html_url || run.details_url || undefined
+    })
+  }
+  for (const s of combinedRes.statuses || []) {
+    checks.push({
+      name: s.context,
+      state: normalizeStatusState(s.state),
+      description: s.description || '',
+      detailsUrl: s.target_url || undefined
+    })
+  }
+
+  const reviews: PRReview[] = (Array.isArray(reviewsRes) ? reviewsRes : [])
+    .filter((r) => r.user && r.state !== 'PENDING')
+    .map((r) => ({
+      user: r.user.login,
+      avatarUrl: r.user.avatar_url,
+      state: r.state,
+      body: r.body || '',
+      submittedAt: r.submitted_at,
+      htmlUrl: r.html_url
+    }))
+
+  const latestByUser = new Map<string, PRReview['state']>()
+  for (const r of reviews) latestByUser.set(r.user, r.state)
+  const latestStates = [...latestByUser.values()]
+  let reviewDecision: PRStatus['reviewDecision'] = 'none'
+  if (latestStates.some((s) => s === 'CHANGES_REQUESTED')) reviewDecision = 'changes_requested'
+  else if (latestStates.some((s) => s === 'APPROVED')) reviewDecision = 'approved'
+  else if (latestStates.length > 0) reviewDecision = 'review_required'
+
+  let state: PRStatus['state']
+  if (prDetail.merged_at) state = 'merged'
+  else if (prDetail.state === 'closed') state = 'closed'
+  else if (prDetail.draft) state = 'draft'
+  else state = 'open'
+
+  return {
+    number: prDetail.number,
+    title: prDetail.title,
+    state,
+    url: prDetail.html_url,
+    branch: branchName,
+    checks,
+    checksOverall: computeOverall(checks),
+    hasConflict,
+    reviews,
+    reviewDecision,
+    additions: prDetail.additions,
+    deletions: prDetail.deletions
   }
 }
 

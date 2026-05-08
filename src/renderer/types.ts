@@ -171,6 +171,15 @@ export interface ElectronAPI {
     | { id: string; outcome: 'setup-failed'; createdPath: string }
     | { id: string; outcome: 'error'; error: string }
   >
+  runPendingPRWorktree(params: {
+    id: string
+    repoRoot: string
+    prNumber: number
+  }): Promise<
+    | { id: string; outcome: 'success'; createdPath: string }
+    | { id: string; outcome: 'setup-failed'; createdPath: string }
+    | { id: string; outcome: 'error'; error: string }
+  >
   retryPendingWorktree(id: string): Promise<
     | { id: string; outcome: 'success'; createdPath: string }
     | { id: string; outcome: 'setup-failed'; createdPath: string }
@@ -222,6 +231,7 @@ export interface ElectronAPI {
   refreshPRsAllIfStale(): Promise<boolean>
   refreshPRsOne(worktreePath: string): Promise<boolean>
   refreshPRsOneIfStale(worktreePath: string): Promise<boolean>
+  listRepoPRs(repoRoot: string): Promise<PRSummary[] | null>
   mergePR(
     worktreePath: string,
     method: GitHubMergeMethod

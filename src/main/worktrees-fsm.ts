@@ -1,14 +1,17 @@
 import {
   addWorktree,
   defaultWorktreeDir,
+  fetchPullRequestRef,
   listWorktrees,
   runWorktreeScript,
-  symlinkClaudeSettings
+  symlinkClaudeSettings,
+  type WorktreeInfo
 } from './worktree'
+import { getPRMetadata, getRepoInfo } from './github'
 import { loadRepoConfig } from './repo-config'
 import { log } from './debug'
 import type { Store } from './store'
-import type { Worktree, PendingWorktree } from '../shared/state/worktrees'
+import type { Worktree, PendingWorktree, WorktreePRReview } from '../shared/state/worktrees'
 
 export type PendingOutcome =
   | { id: string; outcome: 'success'; createdPath: string }
@@ -94,71 +97,13 @@ export class WorktreesFSM {
       const created = await addWorktree(repoRoot, wtDir, branchName, {
         fetchRemote: mode === 'remote'
       })
-
-      const repoCfg = loadRepoConfig(repoRoot)
-      const setupCmd = repoCfg.setupCommand || this.opts.getWorktreeSetupCmd() || ''
-      let setupFailed = false
-      if (setupCmd) {
-        this.store.dispatch({
-          type: 'worktrees/pendingUpdated',
-          payload: { id, patch: { status: 'setup', setupLog: '' } }
-        })
-        let buffered = ''
-        const result = await runWorktreeScript(
-          'setup',
-          setupCmd,
-          { worktreePath: created.path, branch: created.branch, repoRoot },
-          (_stream, chunk) => {
-            buffered += chunk
-            this.store.dispatch({
-              type: 'worktrees/pendingUpdated',
-              payload: { id, patch: { setupLog: buffered } }
-            })
-          }
-        )
-        setupFailed = !result.ok
-        this.store.dispatch({
-          type: 'worktrees/pendingUpdated',
-          payload: { id, patch: { setupExitCode: result.exitCode } }
-        })
-      }
-
-      // Share .claude/settings.local.json with the main worktree so
-      // "Don't ask again" permissions granted in any worktree apply to
-      // all of them. Best-effort — log and continue on failure.
-      const snapshot = this.store.getSnapshot().state
-      if (snapshot.settings.shareClaudeSettings) {
-        try {
-          const mainWt = snapshot.worktrees.list.find(
-            (w) => w.repoRoot === repoRoot && w.isMain
-          )
-          if (mainWt && mainWt.path !== created.path) {
-            symlinkClaudeSettings(mainWt.path, created.path)
-          }
-        } catch (err) {
-          log('hooks', `symlinkClaudeSettings failed for ${created.path}`, err instanceof Error ? err.message : err)
-        }
-      }
-
-      // Worktree exists on disk regardless of script outcome. Pick it up,
-      // refresh the worktree list, and seed its default panes.
-      this.opts.onWorktreeCreated({
-        createdPath: created.path,
+      return await this.finishCreate({
+        id,
+        repoRoot,
+        created,
         initialPrompt,
         teleportSessionId
       })
-      await this.refreshList()
-
-      if (setupFailed) {
-        this.store.dispatch({
-          type: 'worktrees/pendingUpdated',
-          payload: { id, patch: { status: 'setup-failed', createdPath: created.path } }
-        })
-        return { id, outcome: 'setup-failed', createdPath: created.path }
-      }
-
-      this.store.dispatch({ type: 'worktrees/pendingRemoved', payload: id })
-      return { id, outcome: 'success', createdPath: created.path }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       this.store.dispatch({
@@ -167,6 +112,137 @@ export class WorktreesFSM {
       })
       return { id, outcome: 'error', error: message }
     }
+  }
+
+  /** Open someone else's PR as a worktree on a `pr-<N>` branch. Fetches
+   * the PR head, creates the worktree, and stamps prReview metadata so
+   * the PR poller can look it up by number (fork PRs don't show up via
+   * branch matching). */
+  async runPendingPR(params: {
+    id: string
+    repoRoot: string
+    prNumber: number
+  }): Promise<PendingOutcome> {
+    const { id, repoRoot, prNumber } = params
+    const branchName = `pr-${prNumber}`
+    const pending: PendingWorktree = {
+      id,
+      repoRoot,
+      branchName,
+      status: 'creating'
+    }
+    this.store.dispatch({ type: 'worktrees/pendingAdded', payload: pending })
+
+    try {
+      const repoInfo = await getRepoInfo(repoRoot)
+      if (!repoInfo) throw new Error("Couldn't resolve owner/repo from origin URL")
+
+      const meta = await getPRMetadata(repoRoot, prNumber)
+      if (!meta) throw new Error(`Couldn't fetch PR #${prNumber} from GitHub`)
+
+      await fetchPullRequestRef(repoRoot, prNumber)
+
+      const wtDir = defaultWorktreeDir(repoRoot)
+      const created = await addWorktree(repoRoot, wtDir, branchName, {
+        checkoutExisting: true
+      })
+
+      const prReview: WorktreePRReview = {
+        number: prNumber,
+        owner: repoInfo.owner,
+        repo: repoInfo.repo,
+        headSha: meta.headSha
+      }
+      this.store.dispatch({
+        type: 'worktrees/prReviewSet',
+        payload: { path: created.path, prReview }
+      })
+
+      return await this.finishCreate({
+        id,
+        repoRoot,
+        created
+      })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      this.store.dispatch({
+        type: 'worktrees/pendingUpdated',
+        payload: { id, patch: { status: 'error', error: message } }
+      })
+      return { id, outcome: 'error', error: message }
+    }
+  }
+
+  /** Shared post-creation steps: setup script + .claude symlink +
+   * onWorktreeCreated callback + refreshList + final pending outcome. */
+  private async finishCreate(args: {
+    id: string
+    repoRoot: string
+    created: WorktreeInfo
+    initialPrompt?: string
+    teleportSessionId?: string
+  }): Promise<PendingOutcome> {
+    const { id, repoRoot, created, initialPrompt, teleportSessionId } = args
+
+    const repoCfg = loadRepoConfig(repoRoot)
+    const setupCmd = repoCfg.setupCommand || this.opts.getWorktreeSetupCmd() || ''
+    let setupFailed = false
+    if (setupCmd) {
+      this.store.dispatch({
+        type: 'worktrees/pendingUpdated',
+        payload: { id, patch: { status: 'setup', setupLog: '' } }
+      })
+      let buffered = ''
+      const result = await runWorktreeScript(
+        'setup',
+        setupCmd,
+        { worktreePath: created.path, branch: created.branch, repoRoot },
+        (_stream, chunk) => {
+          buffered += chunk
+          this.store.dispatch({
+            type: 'worktrees/pendingUpdated',
+            payload: { id, patch: { setupLog: buffered } }
+          })
+        }
+      )
+      setupFailed = !result.ok
+      this.store.dispatch({
+        type: 'worktrees/pendingUpdated',
+        payload: { id, patch: { setupExitCode: result.exitCode } }
+      })
+    }
+
+    const snapshot = this.store.getSnapshot().state
+    if (snapshot.settings.shareClaudeSettings) {
+      try {
+        const mainWt = snapshot.worktrees.list.find(
+          (w) => w.repoRoot === repoRoot && w.isMain
+        )
+        if (mainWt && mainWt.path !== created.path) {
+          symlinkClaudeSettings(mainWt.path, created.path)
+        }
+      } catch (err) {
+        log('hooks', `symlinkClaudeSettings failed for ${created.path}`, err instanceof Error ? err.message : err)
+      }
+    }
+
+    this.opts.onWorktreeCreated({
+      createdPath: created.path,
+      initialPrompt,
+      teleportSessionId
+    })
+    await this.refreshList()
+
+    if (setupFailed) {
+      this.store.dispatch({
+        type: 'worktrees/pendingUpdated',
+        payload: { id, patch: { status: 'setup-failed', createdPath: created.path } }
+      })
+      return { id, outcome: 'setup-failed', createdPath: created.path }
+    }
+
+    this.store.dispatch({ type: 'worktrees/pendingRemoved', payload: id })
+    return { id, outcome: 'success', createdPath: created.path }
   }
 
   async retryPending(id: string): Promise<PendingOutcome> {

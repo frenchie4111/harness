@@ -36,7 +36,7 @@ import { getWeeklyStats } from './weekly-stats'
 import type { TerminalTab, PaneNode, PaneLeaf } from '../shared/state/terminals'
 import { getLeaves, mapLeaves } from '../shared/state/terminals'
 import { listWorktrees, listBranches, continueWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getCommitChangedFiles, getCommitFileDiffSides, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, readWorktreeFile, readWorktreeFileBinary, writeWorktreeFile, getFileDiffSides, getCurrentBranch, symlinkClaudeSettings, type MergeStrategy } from './worktree'
-import { getPRStatus, testToken, starRepo, unstarRepo, isRepoStarred, mergePR, getRepoInfo, type GitHubMergeMethod, type MergePRResult } from './github'
+import { getPRStatus, listOpenPRs, testToken, starRepo, unstarRepo, isRepoStarred, mergePR, getRepoInfo, type GitHubMergeMethod, type MergePRResult } from './github'
 import { AVAILABLE_EDITORS, DEFAULT_EDITOR_ID, openInEditor } from './editor'
 import { setSecret, getSecret, hasSecret, deleteSecret } from './secrets'
 import { resolveGitHubToken, getTokenSource, invalidateTokenCache, getCachedToken } from './github-auth'
@@ -936,6 +936,12 @@ function registerIpcHandlers(): void {
       return worktreesFSM.runPending(params)
     }
   )
+  transport.onRequest(
+    'worktrees:runPendingPR',
+    async (_ctx, params: { id: string; repoRoot: string; prNumber: number }) => {
+      return worktreesFSM.runPendingPR(params)
+    }
+  )
   transport.onRequest('worktrees:retryPending', async (_ctx, id: string) => {
     return worktreesFSM.retryPending(id)
   })
@@ -1194,6 +1200,14 @@ function registerIpcHandlers(): void {
   transport.onRequest('prs:refreshOneIfStale', (_ctx, worktreePath: string) => {
     prPoller.refreshOneIfStale(worktreePath)
     return true
+  })
+
+  // Used by the "Open PR" tab in New Worktree to populate the picker.
+  // Returns null on auth/network failure so the UI can show a graceful
+  // error state.
+  transport.onRequest('prs:listOpen', async (_ctx, repoRoot: string) => {
+    if (!repoRoot) return null
+    return listOpenPRs(repoRoot)
   })
 
   transport.onRequest(

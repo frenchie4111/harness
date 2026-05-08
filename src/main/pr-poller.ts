@@ -1,7 +1,8 @@
 import { listWorktrees, getBranchSha } from './worktree'
-import { getPRStatus } from './github'
+import { getPRStatus, getPRStatusByNumber } from './github'
 import { log } from './debug'
 import type { Store } from './store'
+import type { Worktree } from '../shared/state/worktrees'
 
 const POLL_INTERVAL_MS = 5 * 60 * 1000
 const STALE_WINDOW_MS = 60 * 1000
@@ -61,10 +62,21 @@ export class PRPoller {
       this.lastAllFetchAt = now
       for (const wt of allWorktrees) this.lastFetchAtByPath.set(wt.path, now)
 
+      // Branch matching can't find PRs from forks (head is `forker:branch`,
+      // not `pr-N`). Worktrees opened via the "Open PR" flow carry a
+      // prReview marker — for those, look up by PR number directly.
+      const prReviewByPath = new Map<string, Worktree['prReview']>()
+      for (const wt of this.store.getSnapshot().state.worktrees.list) {
+        if (wt.prReview) prReviewByPath.set(wt.path, wt.prReview)
+      }
       const statusResults = await Promise.all(
         allWorktrees.map(async (wt) => {
           try {
-            return [wt.path, await getPRStatus(wt.path)] as const
+            const review = prReviewByPath.get(wt.path)
+            const status = review
+              ? await getPRStatusByNumber(wt.path, review.owner, review.repo, review.number)
+              : await getPRStatus(wt.path)
+            return [wt.path, status] as const
           } catch (err) {
             log('pr-poller', `getPRStatus failed for ${wt.path}`, err instanceof Error ? err.message : err)
             return [wt.path, null] as const
@@ -115,7 +127,11 @@ export class PRPoller {
    * activates a stale worktree. */
   async refreshOne(wtPath: string): Promise<void> {
     try {
-      const status = await getPRStatus(wtPath)
+      const wt = this.store.getSnapshot().state.worktrees.list.find((w) => w.path === wtPath)
+      const review = wt?.prReview
+      const status = review
+        ? await getPRStatusByNumber(wtPath, review.owner, review.repo, review.number)
+        : await getPRStatus(wtPath)
       this.lastFetchAtByPath.set(wtPath, Date.now())
       this.store.dispatch({
         type: 'prs/statusChanged',
