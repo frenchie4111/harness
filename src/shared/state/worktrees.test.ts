@@ -220,6 +220,98 @@ describe('worktreesReducer', () => {
     expect(next.pendingDeletions.map((d) => d.path)).toEqual(['/tmp/wt/b'])
   })
 
+  it('listChanged preserves prReview metadata across refreshes', () => {
+    const a = stubWorktree({
+      path: '/a',
+      prReview: { number: 7, owner: 'o', repo: 'r', headSha: 'abc' }
+    })
+    const start: WorktreesState = { ...initialWorktrees, list: [a] }
+    // git worktree list never reports prReview — simulate that by passing
+    // a fresh entry without the field, then assert it survives the merge.
+    const next = apply(start, {
+      type: 'worktrees/listChanged',
+      payload: [stubWorktree({ path: '/a', head: 'newhead' })]
+    })
+    expect(next.list[0].prReview).toEqual({
+      number: 7,
+      owner: 'o',
+      repo: 'r',
+      headSha: 'abc'
+    })
+    expect(next.list[0].head).toBe('newhead')
+  })
+
+  it('listChanged drops prReview when the worktree disappears', () => {
+    const start: WorktreesState = {
+      ...initialWorktrees,
+      list: [
+        stubWorktree({ path: '/a', prReview: { number: 1, owner: 'o', repo: 'r', headSha: 'x' } })
+      ]
+    }
+    const next = apply(start, {
+      type: 'worktrees/listChanged',
+      payload: [stubWorktree({ path: '/b' })]
+    })
+    expect(next.list.map((w) => w.path)).toEqual(['/b'])
+    expect(next.list[0].prReview).toBeUndefined()
+  })
+
+  it('prReviewSet patches a single worktree by path', () => {
+    const start: WorktreesState = {
+      ...initialWorktrees,
+      list: [stubWorktree({ path: '/a' }), stubWorktree({ path: '/b' })]
+    }
+    const review = { number: 42, owner: 'o', repo: 'r', headSha: 'sha' }
+    const next = apply(start, {
+      type: 'worktrees/prReviewSet',
+      payload: { path: '/a', prReview: review }
+    })
+    expect(next.list.find((w) => w.path === '/a')?.prReview).toEqual(review)
+    expect(next.list.find((w) => w.path === '/b')?.prReview).toBeUndefined()
+  })
+
+  it('prReviewSet on an unknown path is a no-op', () => {
+    const start: WorktreesState = {
+      ...initialWorktrees,
+      list: [stubWorktree({ path: '/a' })]
+    }
+    const next = apply(start, {
+      type: 'worktrees/prReviewSet',
+      payload: { path: '/missing', prReview: { number: 1, owner: 'o', repo: 'r', headSha: 'x' } }
+    })
+    expect(next).toBe(start)
+  })
+
+  it('prReviewSet with undefined clears the field', () => {
+    const start: WorktreesState = {
+      ...initialWorktrees,
+      list: [
+        stubWorktree({
+          path: '/a',
+          prReview: { number: 1, owner: 'o', repo: 'r', headSha: 'x' }
+        })
+      ]
+    }
+    const next = apply(start, {
+      type: 'worktrees/prReviewSet',
+      payload: { path: '/a', prReview: undefined }
+    })
+    expect(next.list[0].prReview).toBeUndefined()
+  })
+
+  it('prReviewSet is a no-op when the value is unchanged', () => {
+    const review = { number: 1, owner: 'o', repo: 'r', headSha: 'x' }
+    const start: WorktreesState = {
+      ...initialWorktrees,
+      list: [stubWorktree({ path: '/a', prReview: review })]
+    }
+    const next = apply(start, {
+      type: 'worktrees/prReviewSet',
+      payload: { path: '/a', prReview: { ...review } }
+    })
+    expect(next).toBe(start)
+  })
+
   it('leaves unrelated slices untouched on each event', () => {
     const start: WorktreesState = {
       list: [stubWorktree()],

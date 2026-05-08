@@ -194,6 +194,16 @@ export interface Config {
   // Last-active backend id; restored on next launch so the user sees the
   // backend they were last looking at. Falls back to LOCAL_BACKEND_ID.
   activeBackendId?: string
+  // PR-review metadata for worktrees created via the "Open PR" flow,
+  // keyed by worktree path. Survives restarts because `git worktree list`
+  // never carries it. Pruned when the worktree is removed; rehydrated
+  // into the worktrees slice after the first refreshList at boot.
+  prReviewByPath?: Record<string, {
+    number: number
+    owner: string
+    repo: string
+    headSha: string
+  }>
 }
 
 export const DEFAULT_WORKTREE_BASE: 'remote' | 'local' = 'remote'

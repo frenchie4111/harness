@@ -874,6 +874,36 @@ store.subscribe((event) => {
   }
 })
 
+// Mirror prReview metadata into config.json so it survives restarts.
+// listChanged is the only place the field can disappear (when a worktree
+// is removed); prReviewSet is the only place it gets attached. Rebuilding
+// from state.list keeps the persisted map in sync without bookkeeping.
+store.subscribe((event) => {
+  if (event.type !== 'worktrees/listChanged' && event.type !== 'worktrees/prReviewSet') return
+  const list = store.getSnapshot().state.worktrees.list
+  const next: Record<string, { number: number; owner: string; repo: string; headSha: string }> = {}
+  for (const wt of list) {
+    if (wt.prReview) next[wt.path] = wt.prReview
+  }
+  const prev = config.prReviewByPath || {}
+  const prevKeys = Object.keys(prev)
+  const nextKeys = Object.keys(next)
+  let changed = prevKeys.length !== nextKeys.length
+  if (!changed) {
+    for (const k of nextKeys) {
+      const a = prev[k]
+      const b = next[k]
+      if (!a || a.number !== b.number || a.owner !== b.owner || a.repo !== b.repo || a.headSha !== b.headSha) {
+        changed = true
+        break
+      }
+    }
+  }
+  if (!changed) return
+  config.prReviewByPath = nextKeys.length > 0 ? next : undefined
+  saveConfig(config)
+})
+
 function registerIpcHandlers(): void {
   // Worktree handlers — every call takes an explicit repoRoot, since a single
   // window now shows worktrees from multiple repos at once.
@@ -2637,6 +2667,17 @@ async function runBoot(): Promise<void> {
   void (async () => {
     await panesFSM.restoreFromConfig(config.panes)
     await worktreesFSM.refreshList()
+    // Rehydrate prReview metadata for any PR-review worktrees that
+    // survived restart. listChanged just landed; dispatch one prReviewSet
+    // per persisted entry so the slice reflects the on-disk state.
+    if (config.prReviewByPath) {
+      for (const [path, prReview] of Object.entries(config.prReviewByPath)) {
+        store.dispatch({
+          type: 'worktrees/prReviewSet',
+          payload: { path, prReview }
+        })
+      }
+    }
     migrateClaudeSettingsToSymlinks()
     reconcileBrowserViews()
   })()
