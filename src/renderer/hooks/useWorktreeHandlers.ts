@@ -143,6 +143,25 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
     [setActiveWorktreeId, setShowNewWorktree]
   )
 
+  const handleSubmitNewPRWorktree = useCallback(
+    async (repoRoot: string, prNumber: number) => {
+      const id = `pending:${crypto.randomUUID()}`
+      setActiveWorktreeId(id)
+      setShowNewWorktree(false)
+
+      const result = await backend.runPendingPRWorktree({
+        id,
+        repoRoot,
+        prNumber
+      })
+
+      if (result.outcome === 'success') {
+        setActiveWorktreeId((prev) => (prev === id ? result.createdPath : prev))
+      }
+    },
+    [setActiveWorktreeId, setShowNewWorktree]
+  )
+
   const handleRetryPendingWorktree = useCallback((id: string) => {
     void backend.retryPendingWorktree(id)
   }, [])
@@ -313,6 +332,7 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
     handleRemoveRepo,
     handleRefreshWorktrees,
     handleSubmitNewWorktree,
+    handleSubmitNewPRWorktree,
     handleRetryPendingWorktree,
     handleDismissPendingWorktree,
     handleContinuePendingWorktree,

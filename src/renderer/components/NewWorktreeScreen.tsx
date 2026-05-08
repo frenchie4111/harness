@@ -1,15 +1,29 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { Sparkles, Loader2, X, Map, ListChecks, BookOpen, Radio } from 'lucide-react'
+import { Sparkles, Loader2, X, Map, ListChecks, BookOpen, Radio, GitPullRequest } from 'lucide-react'
 import iconUrl from '../../../resources/icon.png'
 import { sanitizeBranchInput, isValidBranchName } from '../branch-name'
 import { RepoIcon } from './RepoIcon'
+import { useBackend } from '../backend'
+import type { PRSummary } from '../types'
 
 interface NewWorktreeScreenProps {
   onSubmit: (repoRoot: string, branchName: string, initialPrompt: string, teleportSessionId?: string) => Promise<void>
+  onPRSubmit: (repoRoot: string, prNumber: number) => Promise<void>
   onCancel: () => void
   repoRoots: string[]
   /** Repo to pre-select in the picker. Usually the repo of the currently active worktree. */
   defaultRepoRoot?: string
+}
+
+function relTime(iso: string | undefined): string {
+  if (!iso) return ''
+  const t = new Date(iso).getTime()
+  if (!Number.isFinite(t)) return ''
+  const diff = Date.now() - t
+  if (diff < 60_000) return 'just now'
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`
+  return `${Math.floor(diff / 86_400_000)}d ago`
 }
 
 /** Extract a `session_…` id from either a raw id or a full `claude --teleport …` command. */
@@ -55,8 +69,8 @@ const STARTER_PROMPTS = [
   }
 ]
 
-export function NewWorktreeScreen({ onSubmit, onCancel, repoRoots, defaultRepoRoot }: NewWorktreeScreenProps): JSX.Element {
-  const [mode, setMode] = useState<'fresh' | 'teleport'>('fresh')
+export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, defaultRepoRoot }: NewWorktreeScreenProps): JSX.Element {
+  const [mode, setMode] = useState<'fresh' | 'teleport' | 'pr'>('fresh')
   const [selectedRepo, setSelectedRepo] = useState<string>(
     defaultRepoRoot && repoRoots.includes(defaultRepoRoot) ? defaultRepoRoot : repoRoots[0] || ''
   )
@@ -68,6 +82,14 @@ export function NewWorktreeScreen({ onSubmit, onCancel, repoRoots, defaultRepoRo
   const branchRef = useRef<HTMLInputElement>(null)
   const promptRef = useRef<HTMLTextAreaElement>(null)
   const teleportRef = useRef<HTMLInputElement>(null)
+
+  const backend = useBackend()
+  // Cache PR-list fetch results per repo so flipping back to the tab
+  // doesn't re-fetch within the same modal session.
+  const [prsByRepo, setPrsByRepo] = useState<Record<string, PRSummary[] | null>>({})
+  const [prsLoadingRepo, setPrsLoadingRepo] = useState<string | null>(null)
+  const [prsError, setPrsError] = useState<string | null>(null)
+  const [prClickPending, setPrClickPending] = useState<number | null>(null)
 
   const parsedTeleport = mode === 'teleport' ? parseTeleportInput(teleportInput) : null
   const teleportInvalid = mode === 'teleport' && teleportInput.trim().length > 0 && !parsedTeleport
@@ -84,6 +106,48 @@ export function NewWorktreeScreen({ onSubmit, onCancel, repoRoots, defaultRepoRo
   useEffect(() => {
     branchRef.current?.focus()
   }, [])
+
+  // Lazy-load the PR list when the tab is shown for a repo we haven't
+  // fetched yet in this modal session.
+  useEffect(() => {
+    if (mode !== 'pr' || !selectedRepo) return
+    if (selectedRepo in prsByRepo) return
+    if (prsLoadingRepo === selectedRepo) return
+    setPrsLoadingRepo(selectedRepo)
+    setPrsError(null)
+    let cancelled = false
+    void (async () => {
+      try {
+        const result = await backend.listRepoPRs(selectedRepo)
+        if (cancelled) return
+        setPrsByRepo((prev) => ({ ...prev, [selectedRepo]: result }))
+      } catch (err) {
+        if (cancelled) return
+        setPrsError(err instanceof Error ? err.message : 'Failed to fetch PRs')
+        setPrsByRepo((prev) => ({ ...prev, [selectedRepo]: null }))
+      } finally {
+        if (!cancelled) setPrsLoadingRepo(null)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [mode, selectedRepo, prsByRepo, prsLoadingRepo])
+
+  const handlePRClick = useCallback(
+    async (prNumber: number) => {
+      if (prClickPending !== null) return
+      setPrClickPending(prNumber)
+      setError(null)
+      try {
+        await onPRSubmit(selectedRepo, prNumber)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to open PR')
+        setPrClickPending(null)
+      }
+    },
+    [onPRSubmit, prClickPending, selectedRepo]
+  )
 
   const handleBranchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setBranch(sanitizeBranchInput(e.target.value))
@@ -202,6 +266,19 @@ export function NewWorktreeScreen({ onSubmit, onCancel, repoRoots, defaultRepoRo
                 <Radio size={12} />
                 Teleport from claude.ai
               </button>
+              <button
+                type="button"
+                onClick={() => setMode('pr')}
+                disabled={submitting}
+                className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
+                  mode === 'pr'
+                    ? 'bg-panel text-fg-bright shadow-sm'
+                    : 'text-dim hover:text-fg'
+                }`}
+              >
+                <GitPullRequest size={12} />
+                Open PR
+              </button>
             </div>
 
             {repoRoots.length > 1 && (
@@ -258,7 +335,7 @@ export function NewWorktreeScreen({ onSubmit, onCancel, repoRoots, defaultRepoRo
               </label>
             )}
 
-            {mode === 'fresh' ? (
+            {mode === 'fresh' && (
               <label className="block mt-6">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-[11px] font-semibold uppercase tracking-wider text-dim">
@@ -276,7 +353,9 @@ export function NewWorktreeScreen({ onSubmit, onCancel, repoRoots, defaultRepoRo
                   className="w-full bg-app border-2 border-border-strong rounded-lg px-4 py-3 text-sm text-fg-bright placeholder-faint outline-none focus:border-accent transition-colors resize-none"
                 />
               </label>
-            ) : (
+            )}
+
+            {mode === 'teleport' && (
               <label className="block">
                 <div className="mb-2">
                   <span className="text-[11px] font-semibold uppercase tracking-wider text-dim">
@@ -319,44 +398,69 @@ export function NewWorktreeScreen({ onSubmit, onCancel, repoRoots, defaultRepoRo
               </label>
             )}
 
+            {mode === 'pr' && (
+              <PRPickerList
+                prs={prsByRepo[selectedRepo]}
+                loading={prsLoadingRepo === selectedRepo}
+                error={prsError}
+                disabled={prClickPending !== null}
+                pendingNumber={prClickPending}
+                onPick={handlePRClick}
+              />
+            )}
+
             {error && (
               <div className="mt-4 text-sm text-danger bg-danger/10 border border-danger/30 rounded-lg px-3 py-2">
                 {error}
               </div>
             )}
 
-            <div className="flex items-center justify-between mt-6 gap-3">
-              <div className="text-[11px] text-faint">
-                <span className="font-mono">⌘⏎</span> to create ·{' '}
-                <span className="font-mono">Esc</span> to cancel
+            {mode !== 'pr' && (
+              <div className="flex items-center justify-between mt-6 gap-3">
+                <div className="text-[11px] text-faint">
+                  <span className="font-mono">⌘⏎</span> to create ·{' '}
+                  <span className="font-mono">Esc</span> to cancel
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={onCancel}
+                    disabled={submitting}
+                    className="px-4 py-2 text-sm text-dim hover:text-fg transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSubmit}
+                    disabled={!canSubmit}
+                    className="brand-gradient-bg text-white font-semibold text-sm px-5 py-2.5 rounded-lg flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed hover:brightness-110 transition-all shadow-lg cursor-pointer"
+                  >
+                    {submitting ? (
+                      <>
+                        <Loader2 size={14} className="animate-spin" />
+                        Creating…
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles size={14} />
+                        Create worktree
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
+            )}
+
+            {mode === 'pr' && (
+              <div className="flex items-center justify-end mt-6 gap-3">
                 <button
                   onClick={onCancel}
-                  disabled={submitting}
+                  disabled={prClickPending !== null}
                   className="px-4 py-2 text-sm text-dim hover:text-fg transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
-                <button
-                  onClick={handleSubmit}
-                  disabled={!canSubmit}
-                  className="brand-gradient-bg text-white font-semibold text-sm px-5 py-2.5 rounded-lg flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed hover:brightness-110 transition-all shadow-lg cursor-pointer"
-                >
-                  {submitting ? (
-                    <>
-                      <Loader2 size={14} className="animate-spin" />
-                      Creating…
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles size={14} />
-                      Create worktree
-                    </>
-                  )}
-                </button>
               </div>
-            </div>
+            )}
           </div>
 
           {mode === 'fresh' && (
@@ -391,6 +495,84 @@ export function NewWorktreeScreen({ onSubmit, onCancel, repoRoots, defaultRepoRo
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+interface PRPickerListProps {
+  prs: PRSummary[] | null | undefined
+  loading: boolean
+  error: string | null
+  disabled: boolean
+  pendingNumber: number | null
+  onPick: (prNumber: number) => void
+}
+
+function PRPickerList({ prs, loading, error, disabled, pendingNumber, onPick }: PRPickerListProps): JSX.Element {
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center gap-2 py-12 text-sm text-dim">
+        <Loader2 size={14} className="animate-spin" />
+        Fetching open PRs…
+      </div>
+    )
+  }
+  if (error || prs === null) {
+    return (
+      <div className="text-center py-12 text-sm text-dim">
+        Couldn't fetch PRs.{' '}
+        <span className="text-faint">Check your GitHub token in Settings.</span>
+      </div>
+    )
+  }
+  if (!prs || prs.length === 0) {
+    return (
+      <div className="text-center py-12 text-sm text-dim">
+        No open PRs in this repo.
+      </div>
+    )
+  }
+  return (
+    <div className="flex flex-col gap-1.5 max-h-[420px] overflow-y-auto pr-1">
+      {prs.map((pr) => {
+        const isPending = pendingNumber === pr.number
+        return (
+          <button
+            key={pr.number}
+            type="button"
+            onClick={() => onPick(pr.number)}
+            disabled={disabled}
+            className={`text-left bg-panel/60 border border-border/60 rounded-xl p-3 transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 ${
+              isPending ? 'border-accent bg-panel' : 'hover:border-accent hover:bg-panel'
+            }`}
+          >
+            <div className="flex items-baseline gap-2">
+              <span className="font-mono text-xs text-faint shrink-0">#{pr.number}</span>
+              <span className="text-sm text-fg-bright font-medium truncate flex-1 min-w-0">
+                {pr.title}
+              </span>
+              {isPending && <Loader2 size={12} className="animate-spin text-accent shrink-0" />}
+            </div>
+            <div className="mt-1 text-[11px] text-dim flex items-center gap-1.5 flex-wrap">
+              {pr.author && <span>by {pr.author.login}</span>}
+              <span className="text-faint">·</span>
+              <span className="font-mono text-faint">
+                {pr.baseBranch} ← {pr.isFork && pr.headRepoFullName
+                  ? `${pr.headRepoFullName}:${pr.headBranch}`
+                  : pr.headBranch}
+              </span>
+              {pr.draft && (
+                <>
+                  <span className="text-faint">·</span>
+                  <span className="text-faint">draft</span>
+                </>
+              )}
+              <span className="text-faint">·</span>
+              <span>updated {relTime(pr.updatedAt)}</span>
+            </div>
+          </button>
+        )
+      })}
     </div>
   )
 }
