@@ -36,7 +36,7 @@ import { getWeeklyStats } from './weekly-stats'
 import type { TerminalTab, PaneNode, PaneLeaf } from '../shared/state/terminals'
 import { getLeaves, mapLeaves } from '../shared/state/terminals'
 import { listWorktrees, listBranches, continueWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getCommitChangedFiles, getCommitFileDiffSides, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, readWorktreeFile, readWorktreeFileBinary, writeWorktreeFile, getFileDiffSides, getCurrentBranch, symlinkClaudeSettings, type MergeStrategy } from './worktree'
-import { getPRStatus, testToken, starRepo, unstarRepo, isRepoStarred } from './github'
+import { getPRStatus, testToken, starRepo, unstarRepo, isRepoStarred, mergePR, getRepoInfo, type GitHubMergeMethod, type MergePRResult } from './github'
 import { AVAILABLE_EDITORS, DEFAULT_EDITOR_ID, openInEditor } from './editor'
 import { setSecret, getSecret, hasSecret, deleteSecret } from './secrets'
 import { resolveGitHubToken, getTokenSource, invalidateTokenCache, getCachedToken } from './github-auth'
@@ -1165,6 +1165,46 @@ function registerIpcHandlers(): void {
     prPoller.refreshOneIfStale(worktreePath)
     return true
   })
+
+  transport.onRequest(
+    'pr:merge',
+    async (_ctx, worktreePath: string, method: GitHubMergeMethod): Promise<MergePRResult> => {
+      const token = getCachedToken()
+      if (!token) {
+        return {
+          ok: false,
+          error: 'Connect a GitHub token in Settings before merging',
+          errorCode: 'unauthorized'
+        }
+      }
+      const repoInfo = await getRepoInfo(worktreePath)
+      if (!repoInfo) {
+        return {
+          ok: false,
+          error: 'Could not resolve GitHub owner/repo from worktree origin',
+          errorCode: 'unknown'
+        }
+      }
+      const cached = store.getSnapshot().state.prs.byPath[worktreePath]
+      let prNumber = cached?.number
+      if (typeof prNumber !== 'number') {
+        const fetched = await getPRStatus(worktreePath)
+        prNumber = fetched?.number
+      }
+      if (typeof prNumber !== 'number') {
+        return {
+          ok: false,
+          error: 'No pull request found for this worktree',
+          errorCode: 'unknown'
+        }
+      }
+      const result = await mergePR(token, repoInfo.owner, repoInfo.repo, prNumber, method)
+      if (result.ok) {
+        void prPoller.refreshOne(worktreePath)
+      }
+      return result
+    }
+  )
 
   transport.onRequest('stats:getWeekly', async (_ctx) => {
     const snap = store.getSnapshot().state

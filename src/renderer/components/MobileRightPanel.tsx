@@ -55,6 +55,7 @@ export function MobileRightPanel({
         <>
           <PRStatusPanel
             pr={prStatuses[activeWorktree.path] ?? null}
+            worktree={activeWorktree}
             hasGithubToken={hasGithubToken}
             loading={prLoading}
             onRefresh={handleRefresh}

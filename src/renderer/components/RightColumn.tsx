@@ -104,6 +104,7 @@ export function RightColumn({
           <PRStatusPanel
             key="pr"
             pr={activeWorktreeId ? prStatuses[activeWorktreeId] : null}
+            worktree={worktrees.find((w) => w.path === activeWorktreeId) || null}
             hasGithubToken={hasGithubToken}
             loading={prLoading}
             onRefresh={onRefreshPRs}
