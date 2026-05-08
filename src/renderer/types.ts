@@ -114,6 +114,9 @@ export type { PerfMetrics, PerfSample }
 import type { CheckStatus, PRReview, PRStatus } from '../shared/state/prs'
 export type { CheckStatus, PRReview, PRStatus }
 
+import type { PRSummary, PRMetadata } from '../shared/github-types'
+export type { PRSummary, PRMetadata }
+
 import type { BrowserState, BrowserTabState } from '../shared/state/browser'
 export type { BrowserState, BrowserTabState }
 

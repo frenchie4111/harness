@@ -3,8 +3,9 @@ import { promisify } from 'util'
 import { log } from './debug'
 import { getCachedToken, invalidateTokenCache, resolveGitHubToken } from './github-auth'
 import type { CheckStatus, PRReview, PRStatus } from '../shared/state/prs'
+import type { PRSummary, PRMetadata } from '../shared/github-types'
 
-export type { CheckStatus, PRReview, PRStatus }
+export type { CheckStatus, PRReview, PRStatus, PRSummary, PRMetadata }
 
 const execFileAsync = promisify(execFile)
 
@@ -83,6 +84,17 @@ interface ApiPR {
   merged_at: string | null
   html_url: string
   head: { ref: string; sha: string }
+}
+
+interface ApiPRListItem extends ApiPR {
+  user: { login: string; avatar_url: string } | null
+  base: { ref: string; repo: { full_name: string } | null } | null
+  head: {
+    ref: string
+    sha: string
+    repo: { full_name: string } | null
+  }
+  updated_at: string
 }
 
 interface ApiPRDetail extends ApiPR {
@@ -433,6 +445,66 @@ export async function mergePR(
     ok: false,
     error: apiMessage || `${res.status} ${res.statusText}`,
     errorCode: 'unknown'
+  }
+}
+
+function toPRSummary(pr: ApiPRListItem): PRSummary {
+  const baseRepo = pr.base?.repo?.full_name ?? null
+  const headRepo = pr.head?.repo?.full_name ?? null
+  return {
+    number: pr.number,
+    title: pr.title,
+    author: pr.user
+      ? { login: pr.user.login, avatarUrl: pr.user.avatar_url }
+      : null,
+    baseBranch: pr.base?.ref ?? '',
+    headBranch: pr.head?.ref ?? '',
+    headSha: pr.head?.sha ?? '',
+    headRepoFullName: headRepo,
+    isFork: !!baseRepo && !!headRepo && baseRepo !== headRepo,
+    updatedAt: pr.updated_at,
+    url: pr.html_url,
+    draft: pr.draft
+  }
+}
+
+/** List the most recently updated open PRs for the given local repo.
+ *  Returns null on auth/network failure so callers can show a graceful
+ *  empty/error state. Capped at 50 to keep the modal fast. */
+export async function listOpenPRs(repoRoot: string): Promise<PRSummary[] | null> {
+  const repoInfo = await getRepoInfo(repoRoot)
+  if (!repoInfo) return null
+  const { owner, repo } = repoInfo
+  try {
+    const list = (await githubFetch(
+      `https://api.github.com/repos/${owner}/${repo}/pulls?state=open&per_page=50&sort=updated&direction=desc`
+    )) as ApiPRListItem[]
+    if (!Array.isArray(list)) return null
+    return list.map(toPRSummary)
+  } catch (err) {
+    log('github', `listOpenPRs failed for ${owner}/${repo}`, err instanceof Error ? err.message : err)
+    return null
+  }
+}
+
+/** Fetch a single PR's metadata (head SHA + base branch). Used as a
+ *  cheap freshness check immediately before creating a worktree. */
+export async function getPRMetadata(
+  repoRoot: string,
+  prNumber: number
+): Promise<PRMetadata | null> {
+  const repoInfo = await getRepoInfo(repoRoot)
+  if (!repoInfo) return null
+  const { owner, repo } = repoInfo
+  try {
+    const pr = (await githubFetch(
+      `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}`
+    )) as ApiPRListItem
+    if (!pr || typeof pr.number !== 'number') return null
+    return toPRSummary(pr)
+  } catch (err) {
+    log('github', `getPRMetadata failed for ${owner}/${repo}#${prNumber}`, err instanceof Error ? err.message : err)
+    return null
   }
 }
 
