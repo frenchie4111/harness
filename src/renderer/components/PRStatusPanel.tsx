@@ -565,41 +565,45 @@ function PRActions({ pr, worktree, needsGithubToken }: PRActionsProps): JSX.Elem
 
   const showMergeButton = !isTerminal
 
+  let mergeTooltip: string
+  if (disabledReason) mergeTooltip = disabledReason
+  else if (confirming) mergeTooltip = 'Click again to confirm'
+  else if (strategy === 'fast-forward')
+    mergeTooltip = 'Merge via GitHub using rebase (closest equivalent to fast-forward)'
+  else mergeTooltip = `Merge via GitHub using ${methodLabel}`
+
   return (
     <div className="flex items-center gap-1.5 flex-wrap mb-2">
-      <button
-        onClick={() => window.api.openExternal(pr.url)}
-        className="px-3 py-1.5 text-xs rounded bg-surface hover:bg-surface/60 text-fg transition-colors cursor-pointer flex items-center gap-1.5"
-      >
-        Open
-        <ExternalLink size={11} />
-      </button>
-      {showMergeButton && (
+      <Tooltip label="Open PR in browser" action="openPR">
         <button
-          onClick={onMergeClick}
-          disabled={!canMerge || justMerged}
-          title={
-            disabledReason
-              ? disabledReason
-              : strategy === 'fast-forward'
-              ? `Merge using rebase (closest GitHub equivalent to fast-forward)`
-              : `Merge using ${methodLabel}`
-          }
-          className={`px-3 py-1.5 text-xs rounded transition-colors cursor-pointer flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed ${
-            confirming
-              ? 'bg-warning/30 hover:bg-warning/40 text-warning border border-warning/50'
-              : 'bg-success/20 hover:bg-success/30 text-success'
-          }`}
+          onClick={() => window.api.openExternal(pr.url)}
+          className="px-3 py-1.5 text-xs rounded bg-surface hover:bg-surface/60 text-fg transition-colors cursor-pointer flex items-center gap-1.5"
         >
-          {merging ? (
-            <Loader2 size={11} className="animate-spin" />
-          ) : justMerged ? (
-            <Check size={11} />
-          ) : (
-            <GitMerge size={11} />
-          )}
-          {mergeLabel}
+          Open
+          <ExternalLink size={11} />
         </button>
+      </Tooltip>
+      {showMergeButton && (
+        <Tooltip label={mergeTooltip}>
+          <button
+            onClick={onMergeClick}
+            disabled={!canMerge || justMerged}
+            className={`px-3 py-1.5 text-xs rounded transition-colors cursor-pointer flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed ${
+              confirming
+                ? 'bg-warning/30 hover:bg-warning/40 text-warning border border-warning/50'
+                : 'bg-success/20 hover:bg-success/30 text-success'
+            }`}
+          >
+            {merging ? (
+              <Loader2 size={11} className="animate-spin" />
+            ) : justMerged ? (
+              <Check size={11} />
+            ) : (
+              <GitMerge size={11} />
+            )}
+            {mergeLabel}
+          </button>
+        </Tooltip>
       )}
       {showMergeButton && !confirming && !merging && !justMerged && (
         <span className="text-[10px] text-muted ml-auto">
