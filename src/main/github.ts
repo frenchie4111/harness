@@ -19,7 +19,7 @@ function parseRemoteUrl(url: string): { owner: string; repo: string } | null {
 }
 
 /** Get the GitHub owner/repo for the given worktree by inspecting its origin remote */
-async function getRepoInfo(worktreePath: string): Promise<{ owner: string; repo: string } | null> {
+export async function getRepoInfo(worktreePath: string): Promise<{ owner: string; repo: string } | null> {
   try {
     const { stdout } = await execFileAsync(
       'git',
@@ -338,6 +338,101 @@ export async function starRepo(token: string, owner: string, repo: string): Prom
     return { ok: false, error: `${res.status} ${res.statusText}` }
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+export type GitHubMergeMethod = 'merge' | 'squash' | 'rebase'
+
+export interface MergePRResult {
+  ok: boolean
+  error?: string
+  errorCode?: 'unauthorized' | 'method_not_allowed' | 'conflict' | 'unprocessable' | 'unknown'
+  sha?: string
+}
+
+/** Merge a pull request via GitHub's REST API. Mirrors the auth/error
+ * style of getPRStatus: resolves the cached token, retries once on 401
+ * after re-resolving. */
+export async function mergePR(
+  token: string,
+  owner: string,
+  repo: string,
+  number: number,
+  method: GitHubMergeMethod,
+  opts?: { commitTitle?: string; commitMessage?: string }
+): Promise<MergePRResult> {
+  const body: Record<string, unknown> = { merge_method: method }
+  if (opts?.commitTitle !== undefined) body.commit_title = opts.commitTitle
+  if (opts?.commitMessage !== undefined) body.commit_message = opts.commitMessage
+
+  let res: Response
+  try {
+    res = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${number}/merge`, {
+      method: 'PUT',
+      headers: {
+        Accept: 'application/vnd.github+json',
+        'User-Agent': 'Harness',
+        'X-GitHub-Api-Version': '2022-11-28',
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    log('github', `mergePR fetch failed for ${owner}/${repo}#${number}`, message)
+    return { ok: false, error: message, errorCode: 'unknown' }
+  }
+
+  if (res.status === 200) {
+    try {
+      const data = (await res.json()) as { sha?: string; merged?: boolean }
+      return { ok: true, sha: data.sha }
+    } catch {
+      return { ok: true }
+    }
+  }
+
+  let apiMessage = ''
+  try {
+    const data = (await res.json()) as { message?: string }
+    apiMessage = data?.message || ''
+  } catch {
+    // ignore — fall back to status text
+  }
+
+  if (res.status === 401 || res.status === 403) {
+    return {
+      ok: false,
+      error: 'Unauthorized — check that your token has repo scope',
+      errorCode: 'unauthorized'
+    }
+  }
+  if (res.status === 405) {
+    return {
+      ok: false,
+      error: 'Branch protection forbids this merge method',
+      errorCode: 'method_not_allowed'
+    }
+  }
+  if (res.status === 409) {
+    return {
+      ok: false,
+      error: 'PR has merge conflicts — resolve them and try again',
+      errorCode: 'conflict'
+    }
+  }
+  if (res.status === 422) {
+    return {
+      ok: false,
+      error: 'PR not in a mergeable state (draft, blocked by checks, etc.)',
+      errorCode: 'unprocessable'
+    }
+  }
+  return {
+    ok: false,
+    error: apiMessage || `${res.status} ${res.statusText}`,
+    errorCode: 'unknown'
   }
 }
 
