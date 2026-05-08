@@ -454,22 +454,29 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
     // Handle resize — only fit when actually visible. Spectators still
     // call fitAddon.fit() so the local xterm renders at the controller's
     // dimensions, but they don't forward resize signals — the PTY size
-    // is authoritative and owned by the controller.
+    // is authoritative and owned by the controller. Last-reported dims
+    // are kept on a closure-scoped ref to dedupe the IPC: a backend-swap
+    // re-flips display:none on every xterm of the new active worktree,
+    // so without dedup we'd fire a resize per terminal even when the
+    // dimensions are unchanged.
+    let lastReportedCols = -1
+    let lastReportedRows = -1
     const resizeObserver = new ResizeObserver((entries) => {
       const entry = entries[0]
-      const w = Math.round(entry?.contentRect.width ?? 0)
-      const h = Math.round(entry?.contentRect.height ?? 0)
-      console.log(`[xterm] ResizeObserver id=${terminalId} visible=${visibleRef.current} size=${w}x${h}`)
       if (!visibleRef.current) return
-      if (!entry || w === 0 || h === 0) return
+      if (!entry) return
+      const w = Math.round(entry.contentRect.width)
+      const h = Math.round(entry.contentRect.height)
+      if (w === 0 || h === 0) return
       requestAnimationFrame(() => {
         if (!fitAddonRef.current) return
         fitAddonRef.current.fit()
         const dims = fitAddonRef.current.proposeDimensions()
-        if (dims && isControllerRef.current) {
-          console.log(`[xterm] ResizeObserver fit id=${terminalId} cols=${dims.cols} rows=${dims.rows}`)
-          backend.resizeTerminal(terminalId, dims.cols, dims.rows)
-        }
+        if (!dims || !isControllerRef.current) return
+        if (dims.cols === lastReportedCols && dims.rows === lastReportedRows) return
+        lastReportedCols = dims.cols
+        lastReportedRows = dims.rows
+        backend.resizeTerminal(terminalId, dims.cols, dims.rows)
       })
     })
     resizeObserver.observe(containerRef.current)
