@@ -108,14 +108,16 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
   }, [])
 
   // Lazy-load the PR list when the tab is shown for a repo we haven't
-  // fetched yet in this modal session.
+  // fetched yet in this modal session. Deps intentionally exclude
+  // prsByRepo + prsLoadingRepo: setting them inside the effect would
+  // otherwise re-fire it, cancel the in-flight fetch, and strand the
+  // spinner once the canceled response is dropped.
   useEffect(() => {
     if (mode !== 'pr' || !selectedRepo) return
     if (selectedRepo in prsByRepo) return
-    if (prsLoadingRepo === selectedRepo) return
+    let cancelled = false
     setPrsLoadingRepo(selectedRepo)
     setPrsError(null)
-    let cancelled = false
     void (async () => {
       try {
         const result = await backend.listRepoPRs(selectedRepo)
@@ -132,7 +134,8 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
     return () => {
       cancelled = true
     }
-  }, [mode, selectedRepo, prsByRepo, prsLoadingRepo])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, selectedRepo])
 
   const handlePRClick = useCallback(
     async (prNumber: number) => {
