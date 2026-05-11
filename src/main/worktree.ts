@@ -87,9 +87,8 @@ export async function listWorktrees(repoRoot: string): Promise<WorktreeInfo[]> {
   return worktrees
 }
 
-/** Fetch a PR's head ref into a named local branch (typically
- *  `pr-<N>-<head-branch>` for descriptiveness in the sidebar). Force so
- *  a re-opened review picks up new commits without complaining about
+/** Fetch a PR's head ref into a named local branch. Force so a
+ *  re-opened review picks up new commits without complaining about
  *  non-fast-forward. */
 export async function fetchPullRequestRef(
   repoRoot: string,
@@ -102,6 +101,18 @@ export async function fetchPullRequestRef(
     ['fetch', 'origin', `+refs/pull/${prNumber}/head:refs/heads/${localBranch}`],
     { cwd: repoRoot }
   )
+}
+
+/** True if a local branch with this name already exists in the repo. */
+export async function localBranchExists(repoRoot: string, branchName: string): Promise<boolean> {
+  try {
+    await execFileAsync('git', ['rev-parse', '--verify', '--quiet', `refs/heads/${branchName}`], {
+      cwd: repoRoot
+    })
+    return true
+  } catch {
+    return false
+  }
 }
 
 export async function listBranches(repoRoot: string): Promise<string[]> {

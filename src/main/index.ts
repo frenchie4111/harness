@@ -36,7 +36,7 @@ import { getWeeklyStats } from './weekly-stats'
 import type { TerminalTab, PaneNode, PaneLeaf } from '../shared/state/terminals'
 import { getLeaves, mapLeaves } from '../shared/state/terminals'
 import { listWorktrees, listBranches, continueWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getCommitChangedFiles, getCommitFileDiffSides, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, readWorktreeFile, readWorktreeFileBinary, writeWorktreeFile, getFileDiffSides, getCurrentBranch, symlinkClaudeSettings, type MergeStrategy } from './worktree'
-import { getPRStatus, listOpenPRs, testToken, starRepo, unstarRepo, isRepoStarred, mergePR, getRepoInfo, type GitHubMergeMethod, type MergePRResult } from './github'
+import { listOpenPRs, testToken, starRepo, unstarRepo, isRepoStarred, mergePR, getRepoInfo, type GitHubMergeMethod, type MergePRResult } from './github'
 import { AVAILABLE_EDITORS, DEFAULT_EDITOR_ID, openInEditor } from './editor'
 import { setSecret, getSecret, hasSecret, deleteSecret } from './secrets'
 import { resolveGitHubToken, getTokenSource, invalidateTokenCache, getCachedToken } from './github-auth'
@@ -874,35 +874,6 @@ store.subscribe((event) => {
   }
 })
 
-// Mirror prReview metadata into config.json so it survives restarts.
-// listChanged is the only place the field can disappear (when a worktree
-// is removed); prReviewSet is the only place it gets attached. Rebuilding
-// from state.list keeps the persisted map in sync without bookkeeping.
-store.subscribe((event) => {
-  if (event.type !== 'worktrees/listChanged' && event.type !== 'worktrees/prReviewSet') return
-  const list = store.getSnapshot().state.worktrees.list
-  const next: Record<string, { number: number; owner: string; repo: string; headSha: string }> = {}
-  for (const wt of list) {
-    if (wt.prReview) next[wt.path] = wt.prReview
-  }
-  const prev = config.prReviewByPath || {}
-  const prevKeys = Object.keys(prev)
-  const nextKeys = Object.keys(next)
-  let changed = prevKeys.length !== nextKeys.length
-  if (!changed) {
-    for (const k of nextKeys) {
-      const a = prev[k]
-      const b = next[k]
-      if (!a || a.number !== b.number || a.owner !== b.owner || a.repo !== b.repo || a.headSha !== b.headSha) {
-        changed = true
-        break
-      }
-    }
-  }
-  if (!changed) return
-  config.prReviewByPath = nextKeys.length > 0 ? next : undefined
-  saveConfig(config)
-})
 
 function registerIpcHandlers(): void {
   // Worktree handlers — every call takes an explicit repoRoot, since a single
@@ -1232,8 +1203,12 @@ function registerIpcHandlers(): void {
       const cached = store.getSnapshot().state.prs.byPath[worktreePath]
       let prNumber = cached?.number
       if (typeof prNumber !== 'number') {
-        const fetched = await getPRStatus(worktreePath)
-        prNumber = fetched?.number
+        // Force a refresh through the poller so the slice is populated
+        // for the next click; the merge will use the freshly cached
+        // number then. UX-wise this just makes the first click after a
+        // long-stale state require a second click — acceptable.
+        await prPoller.refreshOne(worktreePath)
+        prNumber = store.getSnapshot().state.prs.byPath[worktreePath]?.number
       }
       if (typeof prNumber !== 'number') {
         return {
@@ -2681,17 +2656,6 @@ async function runBoot(): Promise<void> {
   void (async () => {
     await panesFSM.restoreFromConfig(config.panes)
     await worktreesFSM.refreshList()
-    // Rehydrate prReview metadata for any PR-review worktrees that
-    // survived restart. listChanged just landed; dispatch one prReviewSet
-    // per persisted entry so the slice reflects the on-disk state.
-    if (config.prReviewByPath) {
-      for (const [path, prReview] of Object.entries(config.prReviewByPath)) {
-        store.dispatch({
-          type: 'worktrees/prReviewSet',
-          payload: { path, prReview }
-        })
-      }
-    }
     migrateClaudeSettingsToSymlinks()
     reconcileBrowserViews()
   })()

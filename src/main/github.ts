@@ -76,17 +76,13 @@ async function githubFetch(url: string): Promise<unknown> {
   return res.json()
 }
 
-interface ApiPR {
+interface ApiPRListItem {
   number: number
   title: string
   state: 'open' | 'closed'
   draft: boolean
   merged_at: string | null
   html_url: string
-  head: { ref: string; sha: string }
-}
-
-interface ApiPRListItem extends ApiPR {
   user: { login: string; avatar_url: string } | null
   base: { ref: string; repo: { full_name: string } | null } | null
   head: {
@@ -97,11 +93,50 @@ interface ApiPRListItem extends ApiPR {
   updated_at: string
 }
 
-interface ApiPRDetail extends ApiPR {
+interface ApiPRDetail extends ApiPRListItem {
   mergeable: boolean | null
   mergeable_state: string
   additions: number
   deletions: number
+}
+
+/** Normalized PR list item used by the poller's match-by-ref/sha logic.
+ *  Flattened from the GitHub API shape so callers don't have to chase
+ *  optional nested fields. */
+export interface PRListItem {
+  number: number
+  title: string
+  state: 'open' | 'closed'
+  draft: boolean
+  mergedAt: string | null
+  url: string
+  headRef: string
+  headSha: string
+  /** owner/repo of the head — null when the head repo is gone (rare). */
+  headRepoFullName: string | null
+  baseRef: string
+  baseRepoFullName: string | null
+  /** Login + avatar for the PR author. Null when GitHub redacts (rare). */
+  author: { login: string; avatarUrl: string } | null
+  updatedAt: string
+}
+
+function flattenListItem(it: ApiPRListItem): PRListItem {
+  return {
+    number: it.number,
+    title: it.title,
+    state: it.state,
+    draft: it.draft,
+    mergedAt: it.merged_at,
+    url: it.html_url,
+    headRef: it.head?.ref ?? '',
+    headSha: it.head?.sha ?? '',
+    headRepoFullName: it.head?.repo?.full_name ?? null,
+    baseRef: it.base?.ref ?? '',
+    baseRepoFullName: it.base?.repo?.full_name ?? null,
+    author: it.user ? { login: it.user.login, avatarUrl: it.user.avatar_url } : null,
+    updatedAt: it.updated_at
+  }
 }
 
 interface ApiCheckRun {
@@ -184,71 +219,69 @@ function computeOverall(checks: CheckStatus[]): PRStatus['checksOverall'] {
   return 'success'
 }
 
-/** Get PR status for the branch checked out in a worktree. Returns null if no PR or no token. */
-export async function getPRStatus(worktreePath: string): Promise<PRStatus | null> {
+/** List the 100 most-recently-updated PRs for a repo, in any state.
+ *  Caller matches each worktree against this list (by head ref / sha)
+ *  instead of doing one API call per worktree.
+ *
+ *  Returns null on auth/network failure (poller treats this as "no
+ *  matches" and reports nulls for every worktree in the repo). */
+export async function listPullRequests(repoRoot: string): Promise<PRListItem[] | null> {
   const token = getCachedToken()
   if (!token) return null
-
-  const repoInfo = await getRepoInfo(worktreePath)
+  const repoInfo = await getRepoInfo(repoRoot)
   if (!repoInfo) return null
-
-  const branchName = await getCurrentBranch(worktreePath)
-  if (!branchName) return null
-
   const { owner, repo } = repoInfo
-
   try {
-    // Find the PR(s) for this branch. head filter format: "owner:branch"
-    const prList = await githubFetch(
-      `https://api.github.com/repos/${owner}/${repo}/pulls?head=${owner}:${encodeURIComponent(branchName)}&state=all&per_page=1`
-    ) as ApiPR[]
-
-    if (!Array.isArray(prList) || prList.length === 0) return null
-
-    return loadPRStatusDetails(owner, repo, prList[0].number, branchName)
+    const list = (await githubFetch(
+      `https://api.github.com/repos/${owner}/${repo}/pulls?state=all&sort=updated&direction=desc&per_page=100`
+    )) as ApiPRListItem[]
+    if (!Array.isArray(list)) return null
+    return list.map(flattenListItem)
   } catch (err) {
-    log('github', `getPRStatus failed for ${branchName}`, err instanceof Error ? err.message : err)
+    log('github', `listPullRequests failed for ${owner}/${repo}`, err instanceof Error ? err.message : err)
     return null
   }
 }
 
-/** Like getPRStatus, but looks the PR up by explicit number. Used for
- * worktrees opened from someone else's PR — branch matching can't find
- * fork PRs because their head is `forker:branch`, not `pr-<N>`. */
-export async function getPRStatusByNumber(
+/** Build a full PRStatus for a known PR (item from listPullRequests).
+ *  Fans out check-runs / status / reviews / mergeability in parallel,
+ *  then assembles. `localBranch` is the worktree's current branch (just
+ *  carried through into PRStatus.branch for the UI). */
+export async function loadPRStatusForItem(
   worktreePath: string,
-  owner: string,
-  repo: string,
-  number: number
+  item: PRListItem,
+  baseRepo: { owner: string; repo: string }
 ): Promise<PRStatus | null> {
   const token = getCachedToken()
   if (!token) return null
-  const branchName = (await getCurrentBranch(worktreePath)) ?? `pr-${number}`
+  const localBranch = (await getCurrentBranch(worktreePath)) ?? item.headRef
   try {
-    return await loadPRStatusDetails(owner, repo, number, branchName)
+    return await fanOutPRDetails(baseRepo.owner, baseRepo.repo, item, localBranch)
   } catch (err) {
-    log('github', `getPRStatusByNumber failed for ${owner}/${repo}#${number}`, err instanceof Error ? err.message : err)
+    log(
+      'github',
+      `loadPRStatusForItem failed for ${baseRepo.owner}/${baseRepo.repo}#${item.number}`,
+      err instanceof Error ? err.message : err
+    )
     return null
   }
 }
 
-async function loadPRStatusDetails(
+async function fanOutPRDetails(
   owner: string,
   repo: string,
-  number: number,
+  item: PRListItem,
   branchName: string
 ): Promise<PRStatus | null> {
-  const prDetail = (await githubFetch(
-    `https://api.github.com/repos/${owner}/${repo}/pulls/${number}`
-  )) as ApiPRDetail
-  if (!prDetail || typeof prDetail.number !== 'number') return null
-
-  const sha = prDetail.head.sha
-  const [checkRunsRes, combinedRes, reviewsRes] = await Promise.all([
+  const sha = item.headSha
+  const [prDetail, checkRunsRes, combinedRes, reviewsRes] = await Promise.all([
+    githubFetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${item.number}`) as Promise<ApiPRDetail>,
     githubFetch(`https://api.github.com/repos/${owner}/${repo}/commits/${sha}/check-runs?per_page=100`) as Promise<ApiCheckRunsResponse>,
     githubFetch(`https://api.github.com/repos/${owner}/${repo}/commits/${sha}/status`) as Promise<ApiCombinedStatus>,
-    githubFetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${number}/reviews?per_page=100`) as Promise<ApiReview[]>
+    githubFetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${item.number}/reviews?per_page=100`) as Promise<ApiReview[]>
   ])
+
+  if (!prDetail || typeof prDetail.number !== 'number') return null
 
   let hasConflict: boolean | null
   if (prDetail.mergeable_state === 'dirty') hasConflict = true
@@ -295,16 +328,16 @@ async function loadPRStatusDetails(
   else if (latestStates.length > 0) reviewDecision = 'review_required'
 
   let state: PRStatus['state']
-  if (prDetail.merged_at) state = 'merged'
-  else if (prDetail.state === 'closed') state = 'closed'
-  else if (prDetail.draft) state = 'draft'
+  if (item.mergedAt) state = 'merged'
+  else if (item.state === 'closed') state = 'closed'
+  else if (item.draft) state = 'draft'
   else state = 'open'
 
   return {
-    number: prDetail.number,
-    title: prDetail.title,
+    number: item.number,
+    title: item.title,
     state,
-    url: prDetail.html_url,
+    url: item.url,
     branch: branchName,
     checks,
     checksOverall: computeOverall(checks),

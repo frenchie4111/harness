@@ -3,26 +3,46 @@ import {
   defaultWorktreeDir,
   fetchPullRequestRef,
   listWorktrees,
+  localBranchExists,
   runWorktreeScript,
   symlinkClaudeSettings,
   type WorktreeInfo
 } from './worktree'
-import { getPRMetadata, getRepoInfo } from './github'
+import { getPRMetadata } from './github'
 import { loadRepoConfig } from './repo-config'
 import { log } from './debug'
 import type { Store } from './store'
-import type { Worktree, PendingWorktree, WorktreePRReview } from '../shared/state/worktrees'
+import type { Worktree, PendingWorktree } from '../shared/state/worktrees'
 
-/** Compose a descriptive local branch name for a PR-review worktree:
- *  `pr-<N>-<sanitized-head-branch>`. Slashes and other chars that
- *  would create nested dirs or trip up git get collapsed to dashes.
- *  Falls back to bare `pr-<N>` if the head branch sanitizes to empty. */
-export function safePRBranchName(prNumber: number, headBranch: string): string {
-  const safe = headBranch
-    .replace(/[^a-zA-Z0-9._-]/g, '-')
-    .replace(/-+/g, '-')
+/** Sanitize a PR's head branch into a name that's safe as both a git
+ *  branch (we're not strict here since git accepts most things) and a
+ *  filesystem path component. Slashes survive — git accepts them and
+ *  `git worktree add` is happy to nest dirs the same way fresh-start
+ *  worktrees do for branches like `feature/foo`. */
+export function sanitizeHeadBranchForLocal(headBranch: string): string {
+  const cleaned = headBranch
+    .replace(/[~^:?*\[\]\\\x00-\x1f\x7f]/g, '')
+    .replace(/\.{2,}/g, '.')
+    .replace(/@\{/g, '')
     .replace(/^[-.]+|[-.]+$/g, '')
-  return safe ? `pr-${prNumber}-${safe}` : `pr-${prNumber}`
+  return cleaned
+}
+
+/** Pick a local branch name for a PR's head. Prefers the upstream head
+ *  ref directly so the PR poller's ref-match logic just works; falls
+ *  back to a `<head>-pr-<N>` suffix when a local branch with that name
+ *  already exists (e.g. the user has their own work on that ref). */
+export async function chooseLocalPRBranchName(
+  repoRoot: string,
+  headBranch: string,
+  prNumber: number
+): Promise<string> {
+  const sanitized = sanitizeHeadBranchForLocal(headBranch)
+  const candidate = sanitized || `pr-${prNumber}`
+  if (await localBranchExists(repoRoot, candidate)) {
+    return `${candidate}-pr-${prNumber}`
+  }
+  return candidate
 }
 
 export type PendingOutcome =
@@ -126,19 +146,17 @@ export class WorktreesFSM {
     }
   }
 
-  /** Open someone else's PR as a worktree on a `pr-<N>-<head-branch>`
-   * branch. Fetches the PR head, creates the worktree, and stamps
-   * prReview metadata so the PR poller can look it up by number (fork
-   * PRs don't show up via branch matching). */
+  /** Open someone else's PR as a worktree. Fetches the PR head into a
+   * local branch named after the PR's actual head ref (or `<head>-pr-<N>`
+   * if that name is taken locally), so the PR poller's ref-match logic
+   * just works — no per-worktree marker needed. */
   async runPendingPR(params: {
     id: string
     repoRoot: string
     prNumber: number
   }): Promise<PendingOutcome> {
     const { id, repoRoot, prNumber } = params
-    // Initial branch name is the bare `pr-<N>` so the pending screen has
-    // something to show while we go fetch the PR metadata. Once we have
-    // it, patch in the descriptive form (e.g. `pr-29-fix-the-thing`).
+    // Show *something* while we go ask GitHub for the head ref name.
     let branchName = `pr-${prNumber}`
     const pending: PendingWorktree = {
       id,
@@ -149,13 +167,10 @@ export class WorktreesFSM {
     this.store.dispatch({ type: 'worktrees/pendingAdded', payload: pending })
 
     try {
-      const repoInfo = await getRepoInfo(repoRoot)
-      if (!repoInfo) throw new Error("Couldn't resolve owner/repo from origin URL")
-
       const meta = await getPRMetadata(repoRoot, prNumber)
       if (!meta) throw new Error(`Couldn't fetch PR #${prNumber} from GitHub`)
 
-      branchName = safePRBranchName(prNumber, meta.headBranch)
+      branchName = await chooseLocalPRBranchName(repoRoot, meta.headBranch, prNumber)
       if (branchName !== pending.branchName) {
         this.store.dispatch({
           type: 'worktrees/pendingUpdated',
@@ -168,17 +183,6 @@ export class WorktreesFSM {
       const wtDir = defaultWorktreeDir(repoRoot)
       const created = await addWorktree(repoRoot, wtDir, branchName, {
         checkoutExisting: true
-      })
-
-      const prReview: WorktreePRReview = {
-        number: prNumber,
-        owner: repoInfo.owner,
-        repo: repoInfo.repo,
-        headSha: meta.headSha
-      }
-      this.store.dispatch({
-        type: 'worktrees/prReviewSet',
-        payload: { path: created.path, prReview }
       })
 
       return await this.finishCreate({

@@ -1,14 +1,3 @@
-/** Marks a worktree as a checkout of someone's open PR (for review).
- *  Set when the user opens a PR via the "Open PR" tab in New Worktree.
- *  Forward-looking: the future review-IDE features (inline comment
- *  threads, agent-posted reviews) will hang off this. */
-export interface WorktreePRReview {
-  number: number
-  owner: string
-  repo: string
-  headSha: string
-}
-
 export interface Worktree {
   path: string
   branch: string
@@ -19,8 +8,6 @@ export interface Worktree {
   createdAt: number
   /** Repo this worktree belongs to. Set after a cross-repo listWorktrees merge. */
   repoRoot: string
-  /** Set when this worktree was created via the "Open PR" flow. */
-  prReview?: WorktreePRReview
 }
 
 export type PendingStatus = 'creating' | 'setup' | 'setup-failed' | 'error'
@@ -93,10 +80,6 @@ export type WorktreesEvent =
       payload: { path: string; patch: Partial<PendingDeletion> }
     }
   | { type: 'worktrees/pendingDeletionRemoved'; payload: string }
-  | {
-      type: 'worktrees/prReviewSet'
-      payload: { path: string; prReview: WorktreePRReview | undefined }
-    }
 
 export const initialWorktrees: WorktreesState = {
   list: [],
@@ -110,20 +93,8 @@ export function worktreesReducer(
   event: WorktreesEvent
 ): WorktreesState {
   switch (event.type) {
-    case 'worktrees/listChanged': {
-      // git worktree list doesn't carry prReview metadata, so merge it
-      // forward from the existing entries by path. Without this, every
-      // poll would strip the marker off PR-review worktrees.
-      const prByPath = new Map<string, WorktreePRReview>()
-      for (const wt of state.list) {
-        if (wt.prReview) prByPath.set(wt.path, wt.prReview)
-      }
-      const next = event.payload.map((wt) => {
-        const existing = prByPath.get(wt.path)
-        return existing ? { ...wt, prReview: existing } : wt
-      })
-      return { ...state, list: next }
-    }
+    case 'worktrees/listChanged':
+      return { ...state, list: event.payload }
     case 'worktrees/reposChanged':
       return { ...state, repoRoots: event.payload }
     case 'worktrees/pendingAdded':
@@ -171,35 +142,6 @@ export function worktreesReducer(
         ...state,
         pendingDeletions: state.pendingDeletions.filter((d) => d.path !== event.payload)
       }
-    case 'worktrees/prReviewSet': {
-      const i = state.list.findIndex((w) => w.path === event.payload.path)
-      if (i === -1) return state
-      const current = state.list[i]
-      const next = event.payload.prReview
-      // No-op if the field is already set to the same shape — avoids
-      // bouncing reference identity for downstream selectors.
-      if (
-        current.prReview === next ||
-        (current.prReview && next &&
-          current.prReview.number === next.number &&
-          current.prReview.owner === next.owner &&
-          current.prReview.repo === next.repo &&
-          current.prReview.headSha === next.headSha)
-      ) {
-        return state
-      }
-      const patched: Worktree = next
-        ? { ...current, prReview: next }
-        : (() => {
-            const { prReview: _drop, ...rest } = current
-            void _drop
-            return rest
-          })()
-      return {
-        ...state,
-        list: [...state.list.slice(0, i), patched, ...state.list.slice(i + 1)]
-      }
-    }
     default: {
       const _exhaustive: never = event
       void _exhaustive

@@ -1,8 +1,13 @@
 import { listWorktrees, getBranchSha } from './worktree'
-import { getPRStatus, getPRStatusByNumber } from './github'
+import {
+  getRepoInfo,
+  listPullRequests,
+  loadPRStatusForItem,
+  type PRListItem
+} from './github'
 import { log } from './debug'
 import type { Store } from './store'
-import type { Worktree } from '../shared/state/worktrees'
+import type { PRStatus } from '../shared/state/prs'
 
 const POLL_INTERVAL_MS = 5 * 60 * 1000
 const STALE_WINDOW_MS = 60 * 1000
@@ -14,6 +19,47 @@ interface PRPollerOptions {
   /** Called with a pruned map whenever stale entries are detected, so the
    * caller can persist the change. */
   setLocallyMerged: (next: Record<string, string>) => void
+}
+
+interface WorktreeForMatch {
+  path: string
+  branch: string
+  /** Current HEAD SHA — used as the disambiguator for fork PRs where
+   *  multiple PRs could share the same `head.ref`. */
+  head: string
+}
+
+/** Pick the best PR for a worktree from a list. Prefers SHA match
+ *  (handles forks; survives renames), then falls back to (head.ref +
+ *  same-repo head). Returns null if nothing matches. */
+export function pickPRForWorktree(
+  wt: WorktreeForMatch,
+  prs: PRListItem[],
+  baseRepoFullName: string
+): PRListItem | null {
+  if (!prs.length) return null
+  // SHA match is the strongest signal — distinguishes between same-named
+  // branches on different forks, and survives the "user named their own
+  // branch the same as a PR head" case.
+  if (wt.head) {
+    for (const pr of prs) {
+      if (pr.headSha && pr.headSha === wt.head) return pr
+    }
+  }
+  // Fall back to ref+repo match. Restricted to same-repo PRs because a
+  // fork PR's head.ref alone could collide (two forkers both having
+  // `feature/foo`); SHA above already covered the fork case.
+  if (wt.branch) {
+    for (const pr of prs) {
+      if (
+        pr.headRef === wt.branch &&
+        pr.headRepoFullName === baseRepoFullName
+      ) {
+        return pr
+      }
+    }
+  }
+  return null
 }
 
 /** Owns background PR-status polling and on-demand refresh. All writes go
@@ -46,7 +92,12 @@ export class PRPoller {
   }
 
   /** Refresh every worktree across every known repo root. Bulk-replaces
-   * `prs.byPath` and `prs.mergedByPath`. */
+   * `prs.byPath` and `prs.mergedByPath`.
+   *
+   * One `listPullRequests` call per repo instead of one
+   * `pulls?head=…` call per worktree — fewer round-trips when worktrees
+   * outnumber PRs, and fork PRs become naturally findable because each
+   * list item carries `head.repo.full_name`. */
   async refreshAll(): Promise<void> {
     if (this.inFlightAll) return
     const roots = this.opts.getRepoRoots()
@@ -62,23 +113,33 @@ export class PRPoller {
       this.lastAllFetchAt = now
       for (const wt of allWorktrees) this.lastFetchAtByPath.set(wt.path, now)
 
-      // Branch matching can't find PRs from forks (head is `forker:branch`,
-      // not `pr-N`). Worktrees opened via the "Open PR" flow carry a
-      // prReview marker — for those, look up by PR number directly.
-      const prReviewByPath = new Map<string, Worktree['prReview']>()
-      for (const wt of this.store.getSnapshot().state.worktrees.list) {
-        if (wt.prReview) prReviewByPath.set(wt.path, wt.prReview)
+      // Per-repo: fetch the PR list + the base repo's full_name once.
+      // Both are stable for the lifetime of the refresh, so we cache them
+      // by repoRoot for the per-worktree match step below.
+      const repoData = await Promise.all(
+        roots.map(async (root) => {
+          const [info, prs] = await Promise.all([
+            getRepoInfo(root),
+            listPullRequests(root)
+          ])
+          return { root, info, prs }
+        })
+      )
+      const prsByRoot = new Map<
+        string,
+        { info: { owner: string; repo: string } | null; prs: PRListItem[] | null }
+      >()
+      for (const r of repoData) {
+        prsByRoot.set(r.root, { info: r.info, prs: r.prs })
       }
+
       const statusResults = await Promise.all(
         allWorktrees.map(async (wt) => {
           try {
-            const review = prReviewByPath.get(wt.path)
-            const status = review
-              ? await getPRStatusByNumber(wt.path, review.owner, review.repo, review.number)
-              : await getPRStatus(wt.path)
+            const status = await this.statusForWorktree(wt, prsByRoot)
             return [wt.path, status] as const
           } catch (err) {
-            log('pr-poller', `getPRStatus failed for ${wt.path}`, err instanceof Error ? err.message : err)
+            log('pr-poller', `status fetch failed for ${wt.path}`, err instanceof Error ? err.message : err)
             return [wt.path, null] as const
           }
         })
@@ -122,16 +183,54 @@ export class PRPoller {
     }
   }
 
+  private async statusForWorktree(
+    wt: { path: string; branch: string; head: string; repoRoot: string },
+    prsByRoot: Map<
+      string,
+      { info: { owner: string; repo: string } | null; prs: PRListItem[] | null }
+    >
+  ): Promise<PRStatus | null> {
+    const entry = prsByRoot.get(wt.repoRoot)
+    if (!entry || !entry.info || !entry.prs) return null
+    const baseFull = `${entry.info.owner}/${entry.info.repo}`
+    const item = pickPRForWorktree(
+      { path: wt.path, branch: wt.branch, head: wt.head },
+      entry.prs,
+      baseFull
+    )
+    if (!item) return null
+    return loadPRStatusForItem(wt.path, item, entry.info)
+  }
+
   /** Refresh a single worktree's PR status. Used when a Claude terminal
    * reaches the "waiting" state (likely just pushed) or when the user
-   * activates a stale worktree. */
+   * activates a stale worktree.
+   *
+   * Reads (or fetches) the repo's PR list, matches this worktree, and
+   * loads details. Cheaper than the per-worktree branch-filter call we
+   * used to make. */
   async refreshOne(wtPath: string): Promise<void> {
     try {
-      const wt = this.store.getSnapshot().state.worktrees.list.find((w) => w.path === wtPath)
-      const review = wt?.prReview
-      const status = review
-        ? await getPRStatusByNumber(wtPath, review.owner, review.repo, review.number)
-        : await getPRStatus(wtPath)
+      const wt = this.store
+        .getSnapshot()
+        .state.worktrees.list.find((w) => w.path === wtPath)
+      if (!wt) return
+      const [info, prs] = await Promise.all([
+        getRepoInfo(wt.repoRoot),
+        listPullRequests(wt.repoRoot)
+      ])
+      let status: PRStatus | null = null
+      if (info && prs) {
+        const baseFull = `${info.owner}/${info.repo}`
+        const item = pickPRForWorktree(
+          { path: wt.path, branch: wt.branch, head: wt.head },
+          prs,
+          baseFull
+        )
+        if (item) {
+          status = await loadPRStatusForItem(wt.path, item, info)
+        }
+      }
       this.lastFetchAtByPath.set(wtPath, Date.now())
       this.store.dispatch({
         type: 'prs/statusChanged',

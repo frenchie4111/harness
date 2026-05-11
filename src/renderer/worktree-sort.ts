@@ -14,14 +14,11 @@ export function getGroupKey(
   pr: PRStatus | null | undefined,
   locallyMerged?: boolean
 ): GroupKey {
+  void wt
   if (locallyMerged) return 'merged'
-  // PR-review worktrees: stay in "Reviewing" until the underlying PR
-  // is merged/closed, then fall through to "Merged / Closed" so the
-  // group thins out as reviews wrap up.
-  if (wt.prReview) {
-    if (pr && isPRMerged(pr)) return 'merged'
-    return 'reviewing'
-  }
+  // The 'reviewing' bucket is populated by an upcoming follow-up that
+  // adds a viewer-login slot to settings and routes any PR whose author
+  // isn't the viewer into Reviewing. For now no worktree resolves here.
   if (!pr) return 'no-pr'
   if (isPRMerged(pr)) return 'merged'
   if (pr.checksOverall === 'failure' || pr.hasConflict === true || pr.reviewDecision === 'changes_requested') return 'needs-attention'
