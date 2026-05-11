@@ -1,7 +1,7 @@
 import type { Worktree, PRStatus } from './types'
 import { isPRMerged } from '../shared/state/prs'
 
-export type GroupKey = 'needs-attention' | 'active' | 'no-pr' | 'merged'
+export type GroupKey = 'needs-attention' | 'reviewing' | 'active' | 'no-pr' | 'merged'
 
 export interface WorktreeGroup {
   key: GroupKey
@@ -15,16 +15,24 @@ export function getGroupKey(
   locallyMerged?: boolean
 ): GroupKey {
   if (locallyMerged) return 'merged'
+  // PR-review worktrees: stay in "Reviewing" until the underlying PR
+  // is merged/closed, then fall through to "Merged / Closed" so the
+  // group thins out as reviews wrap up.
+  if (wt.prReview) {
+    if (pr && isPRMerged(pr)) return 'merged'
+    return 'reviewing'
+  }
   if (!pr) return 'no-pr'
   if (isPRMerged(pr)) return 'merged'
   if (pr.checksOverall === 'failure' || pr.hasConflict === true || pr.reviewDecision === 'changes_requested') return 'needs-attention'
   return 'active'
 }
 
-export const GROUP_ORDER: GroupKey[] = ['needs-attention', 'active', 'no-pr', 'merged']
+export const GROUP_ORDER: GroupKey[] = ['needs-attention', 'reviewing', 'active', 'no-pr', 'merged']
 
 export const GROUP_LABELS: Record<GroupKey, string> = {
   'needs-attention': 'Needs Attention',
+  reviewing: 'Reviewing',
   active: 'Open PRs',
   'no-pr': 'Active',
   merged: 'Merged / Closed'
@@ -46,6 +54,7 @@ export function groupWorktrees(
 ): WorktreeGroup[] {
   const grouped: Record<GroupKey, Worktree[]> = {
     'needs-attention': [],
+    reviewing: [],
     active: [],
     'no-pr': [],
     merged: []
