@@ -22,6 +22,7 @@ function stubPRStatus(overrides: Partial<PRStatus> = {}): PRStatus {
     state: 'open',
     url: 'https://github.com/o/r/pull/1',
     branch: 'pr-1',
+    author: null,
     checks: [],
     checksOverall: 'success',
     hasConflict: false,
@@ -56,5 +57,44 @@ describe('getGroupKey', () => {
 describe('GROUP_ORDER', () => {
   it('places reviewing between needs-attention and active', () => {
     expect(GROUP_ORDER).toEqual(['needs-attention', 'reviewing', 'active', 'no-pr', 'merged'])
+  })
+})
+
+describe('Reviewing grouping by PR author', () => {
+  it('routes a PR you did not author into reviewing', () => {
+    const pr = stubPRStatus({ author: { login: 'someone-else', avatarUrl: '' } })
+    expect(getGroupKey(stubWorktree(), pr, false, 'me')).toBe('reviewing')
+  })
+
+  it('keeps your own PR in active', () => {
+    const pr = stubPRStatus({ author: { login: 'me', avatarUrl: '' } })
+    expect(getGroupKey(stubWorktree(), pr, false, 'me')).toBe('active')
+  })
+
+  it('falls back when viewerLogin is unknown — treats it as your own PR', () => {
+    const pr = stubPRStatus({ author: { login: 'someone-else', avatarUrl: '' } })
+    expect(getGroupKey(stubWorktree(), pr, false, null)).toBe('active')
+    expect(getGroupKey(stubWorktree(), pr, false)).toBe('active')
+  })
+
+  it('falls back when the PR has no author', () => {
+    const pr = stubPRStatus({ author: null })
+    expect(getGroupKey(stubWorktree(), pr, false, 'me')).toBe('active')
+  })
+
+  it('does NOT mark merged review PRs as reviewing — they move to merged', () => {
+    const pr = stubPRStatus({
+      state: 'merged',
+      author: { login: 'someone-else', avatarUrl: '' }
+    })
+    expect(getGroupKey(stubWorktree(), pr, false, 'me')).toBe('merged')
+  })
+
+  it('takes precedence over needs-attention signals (those are your problem to fix, not theirs)', () => {
+    const pr = stubPRStatus({
+      checksOverall: 'failure',
+      author: { login: 'someone-else', avatarUrl: '' }
+    })
+    expect(getGroupKey(stubWorktree(), pr, false, 'me')).toBe('reviewing')
   })
 })

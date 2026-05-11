@@ -21,6 +21,9 @@ interface SidebarProps {
   shellActivity: Record<string, boolean>
   prStatuses: Record<string, PRStatus | null>
   mergedPaths?: Record<string, boolean>
+  /** GitHub login of the current user. Used to route PRs you didn't
+   *  author into the Reviewing group. Null until the /user call lands. */
+  viewerLogin?: string | null
   prLoading: boolean
   /** Non-main worktrees. Used to decide whether to show the "spawn your first agent" nudge. */
   agentCount: number
@@ -60,6 +63,7 @@ export function Sidebar({
   shellActivity,
   prStatuses,
   mergedPaths,
+  viewerLogin,
   prLoading,
   agentCount,
   onSelectWorktree,
@@ -152,7 +156,7 @@ export function Sidebar({
   // every worktree.
   const byRepo = useMemo(() => {
     if (unifiedRepos && repoRoots.length > 1) {
-      return [{ repoRoot: '__unified__', groups: groupWorktrees(worktrees, prStatuses, mergedPaths) }]
+      return [{ repoRoot: '__unified__', groups: groupWorktrees(worktrees, prStatuses, mergedPaths, viewerLogin) }]
     }
     const map = new Map<string, Worktree[]>()
     for (const root of repoRoots) map.set(root, [])
@@ -162,9 +166,9 @@ export function Sidebar({
     }
     return Array.from(map.entries()).map(([repoRoot, wts]) => ({
       repoRoot,
-      groups: groupWorktrees(wts, prStatuses, mergedPaths)
+      groups: groupWorktrees(wts, prStatuses, mergedPaths, viewerLogin)
     }))
-  }, [repoRoots, worktrees, prStatuses, mergedPaths, unifiedRepos])
+  }, [repoRoots, worktrees, prStatuses, mergedPaths, viewerLogin, unifiedRepos])
 
   const showRepoHeaders = repoRoots.length > 1 && !unifiedRepos
   const showRepoLabelsOnTabs = repoRoots.length > 1 && unifiedRepos

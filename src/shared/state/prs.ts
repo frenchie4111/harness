@@ -23,6 +23,8 @@ export interface PRStatus {
   state: 'open' | 'draft' | 'merged' | 'closed'
   url: string
   branch: string
+  /** Author of the PR. null when GitHub redacts (rare) or pre-Reviewing-grouping data. */
+  author: { login: string; avatarUrl: string } | null
   checks: CheckStatus[]
   checksOverall: 'success' | 'failure' | 'pending' | 'none'
   /** true = has conflicts with base, false = mergeable, null = still computing */

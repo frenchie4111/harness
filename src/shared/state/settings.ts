@@ -35,6 +35,11 @@ export interface SettingsState {
   codexModel: string | null
   hasGithubToken: boolean
   githubAuthSource: 'pat' | 'gh-cli' | null
+  /** GitHub login of the user whose token is configured. Resolved at
+   *  boot via a /user call once the token is available. Used by the
+   *  sidebar to bucket PRs you didn't author into the Reviewing group;
+   *  null until resolved or when the token is missing/invalid. */
+  viewerLogin: string | null
   harnessStarred: boolean | null
   autoUpdateEnabled: boolean
   harnessSystemPromptEnabled: boolean
@@ -108,6 +113,7 @@ export type SettingsEvent =
   | { type: 'settings/shareClaudeSettingsChanged'; payload: boolean }
   | { type: 'settings/hasGithubTokenChanged'; payload: boolean }
   | { type: 'settings/githubAuthSourceChanged'; payload: 'pat' | 'gh-cli' | null }
+  | { type: 'settings/viewerLoginChanged'; payload: string | null }
   | { type: 'settings/harnessStarredChanged'; payload: boolean | null }
   | { type: 'settings/claudeModelChanged'; payload: string | null }
   | { type: 'settings/codexModelChanged'; payload: string | null }
@@ -156,6 +162,7 @@ export const initialSettings: SettingsState = {
   codexModel: null,
   hasGithubToken: false,
   githubAuthSource: null,
+  viewerLogin: null,
   harnessStarred: null,
   autoUpdateEnabled: true,
   harnessSystemPromptEnabled: true,
@@ -215,6 +222,8 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, hasGithubToken: event.payload }
     case 'settings/githubAuthSourceChanged':
       return { ...state, githubAuthSource: event.payload }
+    case 'settings/viewerLoginChanged':
+      return { ...state, viewerLogin: event.payload }
     case 'settings/harnessStarredChanged':
       return { ...state, harnessStarred: event.payload }
     case 'settings/claudeModelChanged':

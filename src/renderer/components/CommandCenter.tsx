@@ -203,12 +203,13 @@ export function CommandCenter({
     repoLabel: string
     groups: ReturnType<typeof groupWorktrees>
   }
+  const viewerLogin = useSettings().viewerLogin
   const sections = useMemo<Section[]>(() => {
     if (unifiedRepos || repoRoots.length <= 1) {
       return [{
         scope: '__unified__',
         repoLabel: '',
-        groups: groupWorktrees(worktrees, prStatuses, mergedPaths)
+        groups: groupWorktrees(worktrees, prStatuses, mergedPaths, viewerLogin)
       }]
     }
     const byRepo = new Map<string, Worktree[]>()
@@ -217,9 +218,9 @@ export function CommandCenter({
     return repoRoots.map((root) => ({
       scope: root,
       repoLabel: root.split('/').pop() || root,
-      groups: groupWorktrees(byRepo.get(root) || [], prStatuses, mergedPaths)
+      groups: groupWorktrees(byRepo.get(root) || [], prStatuses, mergedPaths, viewerLogin)
     }))
-  }, [unifiedRepos, repoRoots, worktrees, prStatuses, mergedPaths])
+  }, [unifiedRepos, repoRoots, worktrees, prStatuses, mergedPaths, viewerLogin])
 
   const totalCards = useMemo(
     () => sections.reduce((acc, s) => acc + s.groups.reduce((a, g) => a + g.worktrees.length, 0), 0),

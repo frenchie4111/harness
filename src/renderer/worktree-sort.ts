@@ -12,15 +12,18 @@ export interface WorktreeGroup {
 export function getGroupKey(
   wt: Worktree,
   pr: PRStatus | null | undefined,
-  locallyMerged?: boolean
+  locallyMerged?: boolean,
+  viewerLogin?: string | null
 ): GroupKey {
   void wt
   if (locallyMerged) return 'merged'
-  // The 'reviewing' bucket is populated by an upcoming follow-up that
-  // adds a viewer-login slot to settings and routes any PR whose author
-  // isn't the viewer into Reviewing. For now no worktree resolves here.
   if (!pr) return 'no-pr'
   if (isPRMerged(pr)) return 'merged'
+  // PR is open: if we know the viewer's login and this PR was authored
+  // by somebody else, it's something we're reviewing. The 'needs-attention'
+  // signals (failing checks, conflicts, changes requested) apply to PRs
+  // we own — for reviews the user doesn't have to fix anything.
+  if (viewerLogin && pr.author && pr.author.login !== viewerLogin) return 'reviewing'
   if (pr.checksOverall === 'failure' || pr.hasConflict === true || pr.reviewDecision === 'changes_requested') return 'needs-attention'
   return 'active'
 }
@@ -47,7 +50,8 @@ function sortByCreatedAt(worktrees: Worktree[]): Worktree[] {
 export function groupWorktrees(
   worktrees: Worktree[],
   prStatuses: Record<string, PRStatus | null>,
-  mergedPaths?: Record<string, boolean>
+  mergedPaths?: Record<string, boolean>,
+  viewerLogin?: string | null
 ): WorktreeGroup[] {
   const grouped: Record<GroupKey, Worktree[]> = {
     'needs-attention': [],
@@ -58,7 +62,7 @@ export function groupWorktrees(
   }
 
   for (const wt of worktrees) {
-    const key = getGroupKey(wt, prStatuses[wt.path], mergedPaths?.[wt.path])
+    const key = getGroupKey(wt, prStatuses[wt.path], mergedPaths?.[wt.path], viewerLogin)
     grouped[key].push(wt)
   }
 
@@ -75,7 +79,8 @@ export function groupWorktrees(
 export function sortedWorktrees(
   worktrees: Worktree[],
   prStatuses: Record<string, PRStatus | null>,
-  mergedPaths?: Record<string, boolean>
+  mergedPaths?: Record<string, boolean>,
+  viewerLogin?: string | null
 ): Worktree[] {
-  return groupWorktrees(worktrees, prStatuses, mergedPaths).flatMap((g) => g.worktrees)
+  return groupWorktrees(worktrees, prStatuses, mergedPaths, viewerLogin).flatMap((g) => g.worktrees)
 }

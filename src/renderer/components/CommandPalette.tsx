@@ -7,6 +7,7 @@ import { groupWorktrees, GROUP_ORDER, GROUP_LABELS, type GroupKey } from '../wor
 import { repoNameColor } from './RepoIcon'
 import { fuzzyMatch } from '../fuzzy'
 import { useBackend } from '../backend'
+import { useSettings } from '../store'
 
 export type PaletteMode = 'root' | 'files'
 
@@ -270,9 +271,10 @@ export function CommandPalette({
     return roots.size > 1
   }, [worktrees])
 
+  const viewerLogin = useSettings().viewerLogin
   const groups = useMemo(
-    () => groupWorktrees(worktrees, prStatuses, mergedPaths),
-    [worktrees, prStatuses, mergedPaths]
+    () => groupWorktrees(worktrees, prStatuses, mergedPaths, viewerLogin),
+    [worktrees, prStatuses, mergedPaths, viewerLogin]
   )
 
   const actionItems = useMemo(() => {

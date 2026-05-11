@@ -489,6 +489,24 @@ store.subscribe((event) => {
 const jsonClaudeStatusDeriver = new JsonClaudeStatusDeriver(store)
 jsonClaudeStatusDeriver.start()
 
+/** Resolve the GitHub login of whoever owns the configured token, and
+ *  dispatch it so the sidebar can route PRs they didn't author into the
+ *  Reviewing group. Best-effort: any failure leaves the slice at null,
+ *  which falls back to the pre-Reviewing grouping. Safe to call after
+ *  any token resolution. */
+async function refreshViewerLogin(): Promise<void> {
+  const token = getCachedToken()
+  if (!token) {
+    store.dispatch({ type: 'settings/viewerLoginChanged', payload: null })
+    return
+  }
+  const result = await testToken(token)
+  store.dispatch({
+    type: 'settings/viewerLoginChanged',
+    payload: result.ok && result.username ? result.username : null
+  })
+}
+
 /** Query the harness star state, dispatch it to the slice, and auto-star
  *  exactly once per user (sticky so manual unstars survive reboots). Safe
  *  to call after any token resolution — boot, PAT save, etc. */
@@ -1978,6 +1996,7 @@ function registerIpcHandlers(): void {
     invalidateTokenCache()
     await resolveGitHubToken()
     store.dispatch({ type: 'settings/githubAuthSourceChanged', payload: getTokenSource() })
+    void refreshViewerLogin()
     await refreshHarnessStarState()
     return { ok: true, username: test.username }
   })
@@ -1988,6 +2007,7 @@ function registerIpcHandlers(): void {
     invalidateTokenCache()
     await resolveGitHubToken()
     store.dispatch({ type: 'settings/githubAuthSourceChanged', payload: getTokenSource() })
+    void refreshViewerLogin()
     await refreshHarnessStarState()
     return true
   })
@@ -2679,6 +2699,9 @@ async function runBoot(): Promise<void> {
     await resolveGitHubToken()
     const source = getTokenSource()
     store.dispatch({ type: 'settings/githubAuthSourceChanged', payload: source })
+    // Fetch the viewer's GitHub login so worktree-sort can route any PR
+    // not authored by us into the Reviewing group. One /user call.
+    void refreshViewerLogin()
     prPoller.start()
     void prPoller.refreshAll()
 

@@ -1085,6 +1085,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
             shellActivity={worktreeShellActivity}
             prStatuses={prStatuses}
             mergedPaths={mergedPaths}
+            viewerLogin={settings.viewerLogin}
             prLoading={prLoading}
             agentCount={agentWorktreeCount}
             onSelectWorktree={(path) => {

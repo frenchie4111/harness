@@ -452,9 +452,10 @@ interface WorktreePickerSheetProps {
 }
 
 function WorktreePickerSheet({ worktrees, prStatuses, mergedPaths, loading, activeWorktreeId, aggregateStatuses, onSelect, onClose, onRefresh }: WorktreePickerSheetProps): JSX.Element {
+  const viewerLogin = useSettings().viewerLogin
   const groups = useMemo<WorktreeGroup[]>(
-    () => groupWorktrees(worktrees, prStatuses, mergedPaths),
-    [worktrees, prStatuses, mergedPaths]
+    () => groupWorktrees(worktrees, prStatuses, mergedPaths, viewerLogin),
+    [worktrees, prStatuses, mergedPaths, viewerLogin]
   )
   return (
     <div className="absolute inset-0 z-30 flex flex-col bg-app">

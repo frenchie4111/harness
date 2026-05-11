@@ -339,6 +339,7 @@ async function fanOutPRDetails(
     state,
     url: item.url,
     branch: branchName,
+    author: item.author,
     checks,
     checksOverall: computeOverall(checks),
     hasConflict,

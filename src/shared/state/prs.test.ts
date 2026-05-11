@@ -18,6 +18,7 @@ function stubPR(overrides: Partial<PRStatus> = {}): PRStatus {
     state: 'open',
     url: 'https://example.com/pr/1',
     branch: 'feature/x',
+    author: null,
     checks: [],
     checksOverall: 'none',
     hasConflict: null,
