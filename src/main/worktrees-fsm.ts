@@ -13,6 +13,18 @@ import { log } from './debug'
 import type { Store } from './store'
 import type { Worktree, PendingWorktree, WorktreePRReview } from '../shared/state/worktrees'
 
+/** Compose a descriptive local branch name for a PR-review worktree:
+ *  `pr-<N>-<sanitized-head-branch>`. Slashes and other chars that
+ *  would create nested dirs or trip up git get collapsed to dashes.
+ *  Falls back to bare `pr-<N>` if the head branch sanitizes to empty. */
+export function safePRBranchName(prNumber: number, headBranch: string): string {
+  const safe = headBranch
+    .replace(/[^a-zA-Z0-9._-]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^[-.]+|[-.]+$/g, '')
+  return safe ? `pr-${prNumber}-${safe}` : `pr-${prNumber}`
+}
+
 export type PendingOutcome =
   | { id: string; outcome: 'success'; createdPath: string }
   | { id: string; outcome: 'setup-failed'; createdPath: string }
@@ -114,17 +126,20 @@ export class WorktreesFSM {
     }
   }
 
-  /** Open someone else's PR as a worktree on a `pr-<N>` branch. Fetches
-   * the PR head, creates the worktree, and stamps prReview metadata so
-   * the PR poller can look it up by number (fork PRs don't show up via
-   * branch matching). */
+  /** Open someone else's PR as a worktree on a `pr-<N>-<head-branch>`
+   * branch. Fetches the PR head, creates the worktree, and stamps
+   * prReview metadata so the PR poller can look it up by number (fork
+   * PRs don't show up via branch matching). */
   async runPendingPR(params: {
     id: string
     repoRoot: string
     prNumber: number
   }): Promise<PendingOutcome> {
     const { id, repoRoot, prNumber } = params
-    const branchName = `pr-${prNumber}`
+    // Initial branch name is the bare `pr-<N>` so the pending screen has
+    // something to show while we go fetch the PR metadata. Once we have
+    // it, patch in the descriptive form (e.g. `pr-29-fix-the-thing`).
+    let branchName = `pr-${prNumber}`
     const pending: PendingWorktree = {
       id,
       repoRoot,
@@ -140,7 +155,15 @@ export class WorktreesFSM {
       const meta = await getPRMetadata(repoRoot, prNumber)
       if (!meta) throw new Error(`Couldn't fetch PR #${prNumber} from GitHub`)
 
-      await fetchPullRequestRef(repoRoot, prNumber)
+      branchName = safePRBranchName(prNumber, meta.headBranch)
+      if (branchName !== pending.branchName) {
+        this.store.dispatch({
+          type: 'worktrees/pendingUpdated',
+          payload: { id, patch: { branchName } }
+        })
+      }
+
+      await fetchPullRequestRef(repoRoot, prNumber, branchName)
 
       const wtDir = defaultWorktreeDir(repoRoot)
       const created = await addWorktree(repoRoot, wtDir, branchName, {

@@ -87,14 +87,19 @@ export async function listWorktrees(repoRoot: string): Promise<WorktreeInfo[]> {
   return worktrees
 }
 
-/** Fetch a PR's head ref into a local branch named pr-<N>. Force so a
- *  re-opened review picks up new commits without complaining about
+/** Fetch a PR's head ref into a named local branch (typically
+ *  `pr-<N>-<head-branch>` for descriptiveness in the sidebar). Force so
+ *  a re-opened review picks up new commits without complaining about
  *  non-fast-forward. */
-export async function fetchPullRequestRef(repoRoot: string, prNumber: number): Promise<void> {
-  log('worktree', `fetching pull/${prNumber}/head into pr-${prNumber}`)
+export async function fetchPullRequestRef(
+  repoRoot: string,
+  prNumber: number,
+  localBranch: string
+): Promise<void> {
+  log('worktree', `fetching pull/${prNumber}/head into ${localBranch}`)
   await execFileAsync(
     'git',
-    ['fetch', 'origin', `+refs/pull/${prNumber}/head:refs/heads/pr-${prNumber}`],
+    ['fetch', 'origin', `+refs/pull/${prNumber}/head:refs/heads/${localBranch}`],
     { cwd: repoRoot }
   )
 }
