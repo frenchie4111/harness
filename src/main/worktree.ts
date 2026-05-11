@@ -89,7 +89,13 @@ export async function listWorktrees(repoRoot: string): Promise<WorktreeInfo[]> {
 
 /** Fetch a PR's head ref into a named local branch. Force so a
  *  re-opened review picks up new commits without complaining about
- *  non-fast-forward. */
+ *  non-fast-forward.
+ *
+ *  Also points `refs/remotes/origin/<localBranch>` at the fetched SHA
+ *  so the unpushed-commit detector (which reads `origin/<branch>` to
+ *  figure out what's been published) treats the PR head as the
+ *  upstream of record. Without this, every commit in a PR-review
+ *  worktree shows up as "unpushed" in the Commits sidebar. */
 export async function fetchPullRequestRef(
   repoRoot: string,
   prNumber: number,
@@ -101,6 +107,29 @@ export async function fetchPullRequestRef(
     ['fetch', 'origin', `+refs/pull/${prNumber}/head:refs/heads/${localBranch}`],
     { cwd: repoRoot }
   )
+  try {
+    const { stdout } = await execFileAsync(
+      'git',
+      ['rev-parse', '--verify', `refs/heads/${localBranch}`],
+      { cwd: repoRoot }
+    )
+    const sha = stdout.trim()
+    if (sha) {
+      await execFileAsync(
+        'git',
+        ['update-ref', `refs/remotes/origin/${localBranch}`, sha],
+        { cwd: repoRoot }
+      )
+    }
+  } catch (err) {
+    // Best-effort. The worst case is the Commits sidebar mislabels
+    // existing PR commits as unpushed — annoying but not blocking.
+    log(
+      'worktree',
+      `failed to update remote-tracking ref for ${localBranch}`,
+      err instanceof Error ? err.message : err
+    )
+  }
 }
 
 /** True if a local branch with this name already exists in the repo. */
