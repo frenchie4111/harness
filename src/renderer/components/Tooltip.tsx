@@ -51,7 +51,7 @@ export function Tooltip({
         >
           <span>{label}</span>
           {hotkeyText && (
-            <span className="font-mono text-[10px] text-faint bg-app border border-border rounded px-1 py-0.5">
+            <span className="text-[10px] text-fg bg-surface border border-border-strong rounded px-1 py-0.5">
               {formatBindingGlyphs(hotkeyText)}
             </span>
           )}

@@ -46,7 +46,7 @@ export function HotkeyBadge({
   if (!text) return null
 
   const base =
-    'inline-flex items-center font-mono text-[10px] leading-none rounded px-1 py-0.5 select-none whitespace-nowrap shrink-0'
+    'inline-flex items-center text-[10px] leading-none rounded px-1 py-0.5 select-none whitespace-nowrap shrink-0'
   const style =
     variant === 'strong'
       ? 'bg-panel-raised border border-border-strong text-fg'
