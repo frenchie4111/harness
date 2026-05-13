@@ -578,15 +578,6 @@ function PRActions({ pr, worktree, needsGithubToken }: PRActionsProps): JSX.Elem
 
   return (
     <div className="flex items-center gap-1.5 flex-wrap mb-2">
-      <Tooltip label="Open PR in browser" action="openPR">
-        <button
-          onClick={() => backend.openExternal(pr.url)}
-          className="px-3 py-1.5 text-xs rounded bg-surface hover:bg-surface/60 text-fg transition-colors cursor-pointer flex items-center gap-1.5"
-        >
-          Open
-          <ExternalLink size={11} />
-        </button>
-      </Tooltip>
       {showMergeButton && (
         <Tooltip label={mergeTooltip}>
           <button
@@ -660,7 +651,7 @@ export function PRStatusPanel({
 
   const needsGithubToken = hasGithubToken === false
 
-  const actions = !needsGithubToken && onRefresh ? (
+  const refreshButton = !needsGithubToken && onRefresh ? (
     <Tooltip label="Refresh PR status" side="left">
       <button
         onClick={(e) => {
@@ -674,6 +665,29 @@ export function PRStatusPanel({
         <RefreshCw size={11} className={loading ? 'animate-spin' : ''} />
       </button>
     </Tooltip>
+  ) : null
+
+  const openButton = !needsGithubToken && pr ? (
+    <Tooltip label="Open PR in browser" action="openPR" side="left">
+      <button
+        onClick={(e) => {
+          e.stopPropagation()
+          backend.openExternal(pr.url)
+        }}
+        className="text-xs text-dim hover:text-fg flex items-center gap-1 transition-colors cursor-pointer"
+        aria-label="Open PR in browser"
+      >
+        #{pr.number}
+        <ExternalLink size={11} />
+      </button>
+    </Tooltip>
+  ) : null
+
+  const actions = (openButton || refreshButton) ? (
+    <div className="flex items-center gap-2">
+      {openButton}
+      {refreshButton}
+    </div>
   ) : null
 
   return (
@@ -711,25 +725,57 @@ export function PRStatusPanel({
 
       {!needsGithubToken && pr && (
         <div className="px-3 py-2">
-          {/* PR title and state */}
-          <div className="flex items-start gap-1.5 mb-1.5">
-            <span className={`text-xs font-medium shrink-0 ${STATE_COLORS[pr.state]}`}>
-              {STATE_LABELS[pr.state]}
-            </span>
-            <a
-              className="text-xs text-fg hover:text-fg-bright truncate cursor-pointer"
-              title={`#${pr.number}: ${pr.title}\n${pr.url}`}
-              onClick={() => setExpanded(!expanded)}
-            >
-              #{pr.number} {pr.title}
-            </a>
-            {typeof pr.additions === 'number' && typeof pr.deletions === 'number' && (
-              <span className="text-xs font-mono shrink-0 ml-auto">
-                <span className="text-success">+{pr.additions}</span>
-                <span className="text-danger ml-1">−{pr.deletions}</span>
-              </span>
-            )}
-          </div>
+          {(() => {
+            const showStateBadge = pr.state !== 'open'
+            const showBaseBranch = !pr.isDefaultBase
+            const showMilestone = !!pr.milestone
+            const showDiff =
+              typeof pr.additions === 'number' && typeof pr.deletions === 'number'
+            if (!showStateBadge && !showBaseBranch && !showMilestone && !showDiff) return null
+            return (
+              <div className="flex items-center gap-1.5 mb-1 text-xs">
+                {showStateBadge && (
+                  <span className={`font-medium shrink-0 ${STATE_COLORS[pr.state]}`}>
+                    {STATE_LABELS[pr.state]}
+                  </span>
+                )}
+                {showBaseBranch && (
+                  <span className="font-mono text-faint truncate">{pr.baseBranch}</span>
+                )}
+                {pr.milestone && (
+                  <a
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      backend.openExternal(pr.milestone!.url)
+                    }}
+                    className={`truncate cursor-pointer transition-colors ${
+                      pr.milestone.state === 'closed'
+                        ? 'text-dim hover:text-fg-bright'
+                        : 'text-muted hover:text-fg-bright'
+                    }`}
+                    title={`Milestone: ${pr.milestone.title}`}
+                  >
+                    {pr.milestone.title}
+                  </a>
+                )}
+                {showDiff && (
+                  <span className="font-mono shrink-0 ml-auto">
+                    <span className="text-success">+{pr.additions}</span>
+                    <span className="text-danger ml-1">−{pr.deletions}</span>
+                  </span>
+                )}
+              </div>
+            )
+          })()}
+
+          {/* PR title */}
+          <a
+            className="block text-xs text-fg hover:text-fg-bright truncate cursor-pointer mb-1.5"
+            title={`${pr.title}\n${pr.url}`}
+            onClick={() => setExpanded(!expanded)}
+          >
+            {pr.title}
+          </a>
 
           <PRActions pr={pr} worktree={worktree} needsGithubToken={needsGithubToken} />
 
