@@ -69,7 +69,7 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToAgent, onO
               e.stopPropagation()
               onOpenReview()
             }}
-            className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-accent text-fg text-[10px] font-medium hover:bg-accent/80 transition-colors cursor-pointer"
+            className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-accent text-app text-[10px] font-medium hover:bg-accent/80 transition-colors cursor-pointer"
           >
             <ClipboardCheck size={10} />
             Review
