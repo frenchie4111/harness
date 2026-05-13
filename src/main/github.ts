@@ -148,6 +148,12 @@ interface ApiPRDetail extends ApiPRListItem {
   mergeable_state: string
   additions: number
   deletions: number
+  base: {
+    ref: string
+    sha: string
+    repo: { full_name: string; default_branch: string } | null
+  }
+  milestone: { title: string; html_url: string; state: 'open' | 'closed'; number: number } | null
 }
 
 /** Normalized PR list item used by the poller's match-by-ref/sha logic.
@@ -401,7 +407,16 @@ async function fanOutPRDetails(
     reviews,
     reviewDecision,
     additions: prDetail.additions,
-    deletions: prDetail.deletions
+    deletions: prDetail.deletions,
+    baseBranch: prDetail.base.ref,
+    isDefaultBase: prDetail.base.ref === (prDetail.base.repo?.default_branch ?? ''),
+    milestone: prDetail.milestone
+      ? {
+          title: prDetail.milestone.title,
+          url: prDetail.milestone.html_url,
+          state: prDetail.milestone.state
+        }
+      : null
   }
 }
 
