@@ -33,6 +33,9 @@ export interface PRStatus {
   reviewDecision: 'approved' | 'changes_requested' | 'review_required' | 'none'
   additions?: number
   deletions?: number
+  baseBranch: string
+  isDefaultBase: boolean
+  milestone?: { title: string; url: string; state: 'open' | 'closed' } | null
 }
 
 export interface PRsState {
