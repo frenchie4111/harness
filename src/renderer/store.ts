@@ -509,6 +509,10 @@ export function useCosts() {
   return useAppState((s) => s.costs)
 }
 
+export function useSnooze() {
+  return useAppState((s) => s.snooze)
+}
+
 export function useBrowser() {
   return useAppState((s) => s.browser)
 }

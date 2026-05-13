@@ -9,6 +9,7 @@ import { initialRepoConfigs } from '../shared/state/repo-configs'
 import { initialCosts, type CostsState } from '../shared/state/costs'
 import { initialBrowser } from '../shared/state/browser'
 import { initialJsonClaude } from '../shared/state/json-claude'
+import { initialSnooze } from '../shared/state/snooze'
 import { initialSettings } from '../shared/state/settings'
 import {
   DEFAULT_CLAUDE_COMMAND,
@@ -41,6 +42,7 @@ export function buildInitialAppState(
     costs: config.costs ? { ...initialCosts, ...config.costs } : initialCosts,
     browser: initialBrowser,
     jsonClaude: initialJsonClaude,
+    snooze: config.snooze ? { byPath: { ...config.snooze } } : initialSnooze,
     settings: {
       ...initialSettings,
       theme: config.theme || DEFAULT_THEME,
@@ -91,7 +93,8 @@ export function buildInitialAppState(
         Number.isFinite(config.autoSleepMinutes) &&
         config.autoSleepMinutes >= 0
           ? Math.floor(config.autoSleepMinutes)
-          : 30
+          : 30,
+      snoozeDefaultDays: Math.max(1, Math.floor(config.snoozeDefaultDays ?? 7))
     }
   }
 }

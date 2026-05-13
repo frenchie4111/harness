@@ -92,6 +92,7 @@ export interface SettingsState {
    *  stays in the tree (history intact) and re-spawns on click. 0
    *  disables auto-sleep entirely. */
   autoSleepMinutes: number
+  snoozeDefaultDays: number
 }
 
 export type SettingsEvent =
@@ -138,6 +139,7 @@ export type SettingsEvent =
       payload: JsonClaudePermissionMode
     }
   | { type: 'settings/autoSleepMinutesChanged'; payload: number }
+  | { type: 'settings/snoozeDefaultDaysChanged'; payload: number }
 
 // Client-side placeholder. Real values are seeded in the main-process Store
 // constructor from the on-disk config and secrets.
@@ -181,7 +183,8 @@ export const initialSettings: SettingsState = {
   useSystemClaudeForJsonMode: false,
   jsonModeChatDensity: 'compact',
   jsonModeDefaultPermissionMode: 'acceptEdits',
-  autoSleepMinutes: 30
+  autoSleepMinutes: 30,
+  snoozeDefaultDays: 7
 }
 
 export function settingsReducer(state: SettingsState, event: SettingsEvent): SettingsState {
@@ -266,6 +269,8 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, jsonModeDefaultPermissionMode: event.payload }
     case 'settings/autoSleepMinutesChanged':
       return { ...state, autoSleepMinutes: event.payload }
+    case 'settings/snoozeDefaultDaysChanged':
+      return { ...state, snoozeDefaultDays: event.payload }
     default: {
       const _exhaustive: never = event
       void _exhaustive

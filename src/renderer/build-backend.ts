@@ -318,6 +318,11 @@ export function buildBackend(
 
     setEditor: (editorId: string) => req('config:setEditor', editorId),
     getAvailableEditors: () => req('config:getAvailableEditors'),
+
+    snooze: (path: string, wakeAt: number) => req('snooze:snooze', path, wakeAt),
+    unsnooze: (path: string) => req('snooze:unsnooze', path),
+    setSnoozeDefaultDays: (days: number) => req('config:setSnoozeDefaultDays', days),
+
     openInEditor: (worktreePath: string, filePath?: string) =>
       req('editor:open', worktreePath, filePath),
 

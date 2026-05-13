@@ -326,6 +326,9 @@ export interface ElectronAPI {
   setMergeStrategy(strategy: MergeStrategy): Promise<boolean>
   setEditor(editorId: string): Promise<boolean>
   getAvailableEditors(): Promise<{ id: string; name: string }[]>
+  snooze(path: string, wakeAt: number): Promise<boolean>
+  unsnooze(path: string): Promise<boolean>
+  setSnoozeDefaultDays(days: number): Promise<boolean>
   openInEditor(worktreePath: string, filePath?: string): Promise<{ ok: true } | { ok: false; error: string }>
 
   panesAddTab(wtPath: string, tab: TerminalTab, paneId?: string): Promise<boolean>

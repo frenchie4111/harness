@@ -32,6 +32,7 @@ import { PanesFSM, stripTransientTabFields } from './panes-fsm'
 import { ActivityDeriver } from './activity-deriver'
 import { AutoSleepMonitor } from './auto-sleep-monitor'
 import { WorktreeWatcher } from './worktree-watcher'
+import { SnoozeTimer } from './snooze-timer'
 import { getWeeklyStats } from './weekly-stats'
 import type { TerminalTab, PaneNode, PaneLeaf } from '../shared/state/terminals'
 import { getLeaves, mapLeaves } from '../shared/state/terminals'
@@ -63,6 +64,7 @@ import {
 import { loadRepoConfig, saveRepoConfig, type RepoConfig } from './repo-config'
 import { createNewProject, type GitignorePreset } from './repo-create'
 import { isWorktreeMerged } from '../shared/state/prs'
+import { MAX_WAKE } from '../shared/state/snooze'
 import { watchStatusDir } from './hooks'
 import { getAgent, type AgentKind } from './agents'
 import { buildClaudeLaunchSettings } from './claude-launch'
@@ -471,6 +473,19 @@ transport.onRequest('claude:getAuthStatus', async () => {
 store.subscribe((event) => {
   if (event.type.startsWith('costs/')) {
     config.costs = store.getSnapshot().state.costs
+    saveConfig(config)
+  }
+})
+
+// Persist snooze entries through to disk so wakeAt survives restart.
+store.subscribe((event) => {
+  if (event.type.startsWith('snooze/')) {
+    const byPath = store.getSnapshot().state.snooze.byPath
+    if (Object.keys(byPath).length === 0) {
+      delete config.snooze
+    } else {
+      config.snooze = byPath
+    }
     saveConfig(config)
   }
 })
@@ -892,6 +907,21 @@ store.subscribe((event) => {
   }
 })
 
+// Drop snooze entries for worktrees that no longer exist so the map
+// can't leak across worktree removals.
+store.subscribe((event) => {
+  if (event.type !== 'worktrees/listChanged') return
+  const live = new Set(store.getSnapshot().state.worktrees.list.map((w) => w.path))
+  const byPath = store.getSnapshot().state.snooze.byPath
+  for (const path of Object.keys(byPath)) {
+    if (!live.has(path)) {
+      store.dispatch({ type: 'snooze/clear', payload: path })
+    }
+  }
+})
+
+const snoozeTimer = new SnoozeTimer(store)
+snoozeTimer.start()
 
 function registerIpcHandlers(): void {
   // Worktree handlers — every call takes an explicit repoRoot, since a single
@@ -2650,6 +2680,41 @@ function registerIpcHandlers(): void {
       `dispatched id=${id} newController=${next?.controllerClientId ?? 'null'} spectators=${JSON.stringify(next?.spectatorClientIds ?? [])}`
     )
     ptyManager.resize(id, cols, rows)
+  })
+
+  transport.onRequest('snooze:snooze', (_ctx, path: string, wakeAt: number) => {
+    if (typeof path !== 'string' || !path) return false
+    const wake = Number(wakeAt)
+    if (!Number.isFinite(wake)) return false
+    const now = Date.now()
+    // Allow MAX_WAKE ("Never") or any wakeAt at least 1 day out (with 1min slack
+    // for clock truncation when the picker rounds to midnight).
+    if (wake !== MAX_WAKE && wake < now + 86400000 - 60000) return false
+    store.dispatch({
+      type: 'snooze/set',
+      payload: { path, snoozedAt: now, wakeAt: wake }
+    })
+    return true
+  })
+
+  transport.onRequest('snooze:unsnooze', (_ctx, path: string) => {
+    if (typeof path !== 'string' || !path) return false
+    store.dispatch({ type: 'snooze/clear', payload: path })
+    return true
+  })
+
+  transport.onRequest('config:setSnoozeDefaultDays', (_ctx, days: number) => {
+    const n = Number(days)
+    if (!Number.isFinite(n)) return false
+    const clamped = Math.max(1, Math.floor(n))
+    if (clamped === 7) {
+      delete config.snoozeDefaultDays
+    } else {
+      config.snoozeDefaultDays = clamped
+    }
+    saveConfig(config)
+    store.dispatch({ type: 'settings/snoozeDefaultDaysChanged', payload: clamped })
+    return true
   })
 }
 

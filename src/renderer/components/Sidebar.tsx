@@ -5,9 +5,11 @@ import { Tooltip } from './Tooltip'
 import { HotkeyBadge } from './HotkeyBadge'
 import { useMetaHeld } from '../hooks/useMetaHeld'
 import type { Worktree, PtyStatus, PendingTool, PRStatus, PendingWorktree, PendingDeletion } from '../types'
+import type { SnoozeEntry } from '../../shared/state'
 import type { GroupKey } from '../worktree-sort'
 import { groupWorktrees } from '../worktree-sort'
 import { WorktreeTab } from './WorktreeTab'
+import { SnoozeCalendar } from './SnoozeCalendar'
 import { repoNameColor } from './RepoIcon'
 import { BackendChipStrip } from './BackendChipStrip'
 
@@ -24,6 +26,9 @@ interface SidebarProps {
   /** GitHub login of the current user. Used to route PRs you didn't
    *  author into the Reviewing group. Null until the /user call lands. */
   viewerLogin?: string | null
+  snoozedPaths?: Record<string, true>
+  snoozeByPath?: Record<string, SnoozeEntry>
+  snoozeDefaultDays?: number
   prLoading: boolean
   /** Non-main worktrees. Used to decide whether to show the "spawn your first agent" nudge. */
   agentCount: number
@@ -64,6 +69,9 @@ export function Sidebar({
   prStatuses,
   mergedPaths,
   viewerLogin,
+  snoozedPaths,
+  snoozeByPath,
+  snoozeDefaultDays,
   prLoading,
   agentCount,
   onSelectWorktree,
@@ -143,6 +151,46 @@ export function Sidebar({
     }
   }, [continueTarget, continueBranchName, onContinueWorktree, cancelContinue])
 
+  const [calendarFor, setCalendarFor] = useState<{
+    path: string
+    anchor: { top: number; left: number; width: number; height: number }
+  } | null>(null)
+
+  const onSnoozeRow = useCallback(
+    (path: string, e: React.MouseEvent) => {
+      if (e.altKey) {
+        const target = e.currentTarget as HTMLElement
+        const rect = target.getBoundingClientRect()
+        setCalendarFor({
+          path,
+          anchor: {
+            top: rect.top,
+            left: rect.left,
+            width: rect.width,
+            height: rect.height
+          }
+        })
+        return
+      }
+      const days = Math.max(1, Math.floor(snoozeDefaultDays ?? 7))
+      window.api.snooze(path, Date.now() + days * 86400000)
+    },
+    [snoozeDefaultDays]
+  )
+
+  const onUnsnoozeRow = useCallback((path: string) => {
+    window.api.unsnooze(path)
+  }, [])
+
+  const handleCalendarPick = useCallback(
+    (wakeAt: number) => {
+      if (!calendarFor) return
+      window.api.snooze(calendarFor.path, wakeAt)
+      setCalendarFor(null)
+    },
+    [calendarFor]
+  )
+
   const handleContinueKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.key === 'Enter') submitContinue()
@@ -156,7 +204,7 @@ export function Sidebar({
   // every worktree.
   const byRepo = useMemo(() => {
     if (unifiedRepos && repoRoots.length > 1) {
-      return [{ repoRoot: '__unified__', groups: groupWorktrees(worktrees, prStatuses, mergedPaths, viewerLogin) }]
+      return [{ repoRoot: '__unified__', groups: groupWorktrees(worktrees, prStatuses, mergedPaths, snoozedPaths, viewerLogin) }]
     }
     const map = new Map<string, Worktree[]>()
     for (const root of repoRoots) map.set(root, [])
@@ -166,9 +214,9 @@ export function Sidebar({
     }
     return Array.from(map.entries()).map(([repoRoot, wts]) => ({
       repoRoot,
-      groups: groupWorktrees(wts, prStatuses, mergedPaths, viewerLogin)
+      groups: groupWorktrees(wts, prStatuses, mergedPaths, snoozedPaths, viewerLogin)
     }))
-  }, [repoRoots, worktrees, prStatuses, mergedPaths, viewerLogin, unifiedRepos])
+  }, [repoRoots, worktrees, prStatuses, mergedPaths, snoozedPaths, viewerLogin, unifiedRepos])
 
   const showRepoHeaders = repoRoots.length > 1 && !unifiedRepos
   const showRepoLabelsOnTabs = repoRoots.length > 1 && unifiedRepos
@@ -310,12 +358,16 @@ export function Sidebar({
                   shellActive={!!shellActivity[wt.path]}
                   prStatus={prStatuses[wt.path]}
                   isMerged={group.key === 'merged'}
+                  isSnoozed={!!snoozedPaths?.[wt.path]}
+                  snoozeWakeAt={snoozeByPath?.[wt.path]?.wakeAt}
                   repoLabel={showRepoLabelsOnTabs ? repoLabelFor(wt.repoRoot) : undefined}
                   cmdOrdinal={cmdOrdinals.get(wt.path)}
                   deleting={deletingPaths.has(wt.path)}
                   onClick={() => onSelectWorktree(wt.path)}
                   onDelete={wt.isMain || deletingPaths.has(wt.path) ? undefined : () => onDeleteWorktree(wt.path)}
                   onContinue={wt.isMain || deletingPaths.has(wt.path) ? undefined : () => beginContinue(wt.path, wt.branch)}
+                  onSnooze={wt.isMain || deletingPaths.has(wt.path) ? undefined : (e) => onSnoozeRow(wt.path, e)}
+                  onUnsnooze={wt.isMain || deletingPaths.has(wt.path) ? undefined : () => onUnsnoozeRow(wt.path)}
                 />
                 {continueTarget?.path === wt.path && (
                   <div className="border-y-2 border-accent bg-panel-raised p-2.5 shadow-inner">
@@ -491,6 +543,14 @@ export function Sidebar({
           </button>
         </Tooltip>
       </div>
+      {calendarFor && (
+        <SnoozeCalendar
+          anchor={calendarFor.anchor}
+          defaultDays={Math.max(1, Math.floor(snoozeDefaultDays ?? 7))}
+          onPick={handleCalendarPick}
+          onDismiss={() => setCalendarFor(null)}
+        />
+      )}
     </div>
   )
 }

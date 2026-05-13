@@ -197,7 +197,8 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     jsonModeDefaultPermissionMode,
     autoSleepMinutes,
     autoApprovePermissions,
-    autoApproveSteerInstructions
+    autoApproveSteerInstructions,
+    snoozeDefaultDays
   } = settings
   const setupScript = worktreeScripts.setup
   const teardownScript = worktreeScripts.teardown
@@ -1736,6 +1737,26 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
               {scopeRepoRoot === null && (
                 <>
+                  <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">Default snooze duration</h3>
+                  <p className="text-xs text-dim mb-3">
+                    How many days a worktree snoozes by default. ⌥-click the
+                    snooze button to pick a specific date or Never.
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={snoozeDefaultDays}
+                      onChange={(e) => {
+                        const n = Math.max(1, Math.floor(Number(e.target.value) || 1))
+                        void window.api.setSnoozeDefaultDays(n)
+                      }}
+                      className="w-20 bg-panel border border-border-strong rounded px-2 py-1 text-sm text-fg-bright outline-none focus:border-fg"
+                    />
+                    <span className="text-xs text-dim">days</span>
+                  </div>
+
                   <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">Share Claude Code permissions</h3>
                   <p className="text-xs text-dim mb-3">
                     Symlink each worktree's{' '}

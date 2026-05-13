@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { useSettings, usePrs, useOnboarding, useHooks, useWorktrees, useTerminals, usePanes, useLastActive, useUpdater, useRepoConfigs } from './store'
+import { useSettings, usePrs, useOnboarding, useHooks, useWorktrees, useTerminals, usePanes, useLastActive, useUpdater, useRepoConfigs, useSnooze } from './store'
 import { useBackend } from './backend'
 import { useTailLineBuffer } from './hooks/useTailLineBuffer'
 import { useTabHandlers } from './hooks/useTabHandlers'
@@ -126,6 +126,12 @@ function DesktopApp(): JSX.Element {
   const prStatuses = prs.byPath
   const mergedPaths = prs.mergedByPath
   const prLoading = prs.loading
+  const snoozeState = useSnooze()
+  const snoozedPaths = useMemo(() => {
+    const m: Record<string, true> = {}
+    for (const p of Object.keys(snoozeState.byPath)) m[p] = true
+    return m
+  }, [snoozeState.byPath])
   // Per-worktree last-active timestamps — derived in main by the
   // activity-deriver, dispatched as terminals/lastActiveChanged events.
   const lastActive = useLastActive()
@@ -176,14 +182,15 @@ function DesktopApp(): JSX.Element {
     (scope: string, key: GroupKey): boolean => {
       const composite = `${scope}:${key}`
       if (composite in collapsedGroups) return collapsedGroups[composite]
-      return key === 'merged'
+      return key === 'merged' || key === 'snoozed'
     },
     [collapsedGroups]
   )
   const toggleGroup = useCallback((scope: string, key: GroupKey) => {
     const composite = `${scope}:${key}`
     setCollapsedGroups((prev) => {
-      const current = composite in prev ? prev[composite] : key === 'merged'
+      const current =
+        composite in prev ? prev[composite] : key === 'merged' || key === 'snoozed'
       return { ...prev, [composite]: !current }
     })
   }, [])
@@ -1086,6 +1093,9 @@ const setQuestStep = useCallback((next: QuestStep) => {
             prStatuses={prStatuses}
             mergedPaths={mergedPaths}
             viewerLogin={settings.viewerLogin}
+            snoozedPaths={snoozedPaths}
+            snoozeByPath={snoozeState.byPath}
+            snoozeDefaultDays={settings.snoozeDefaultDays}
             prLoading={prLoading}
             agentCount={agentWorktreeCount}
             onSelectWorktree={(path) => {
