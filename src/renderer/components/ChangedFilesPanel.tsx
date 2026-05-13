@@ -62,17 +62,6 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToAgent, onO
 
   const actions = (
     <>
-      <Tooltip label="Refresh">
-        <button
-          onClick={(e) => {
-            e.stopPropagation()
-            refresh()
-          }}
-          className="text-faint hover:text-fg transition-colors cursor-pointer"
-        >
-          <RefreshCw size={12} />
-        </button>
-      </Tooltip>
       {onOpenReview && branchFiles.length > 0 && (
         <Tooltip label="Review changes" action="openReview">
           <button
@@ -87,6 +76,17 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToAgent, onO
           </button>
         </Tooltip>
       )}
+      <Tooltip label="Refresh">
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            refresh()
+          }}
+          className="text-faint hover:text-fg transition-colors cursor-pointer"
+        >
+          <RefreshCw size={12} />
+        </button>
+      </Tooltip>
     </>
   )
 
