@@ -1750,7 +1750,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                       value={snoozeDefaultDays}
                       onChange={(e) => {
                         const n = Math.max(1, Math.floor(Number(e.target.value) || 1))
-                        void window.api.setSnoozeDefaultDays(n)
+                        void backend.setSnoozeDefaultDays(n)
                       }}
                       className="w-20 bg-panel border border-border-strong rounded px-2 py-1 text-sm text-fg-bright outline-none focus:border-fg"
                     />

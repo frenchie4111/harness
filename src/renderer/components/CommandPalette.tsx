@@ -7,7 +7,7 @@ import { groupWorktrees, GROUP_ORDER, GROUP_LABELS, type GroupKey } from '../wor
 import { repoNameColor } from './RepoIcon'
 import { fuzzyMatch } from '../fuzzy'
 import { useBackend } from '../backend'
-import { useSettings } from '../store'
+import { useSettings, useSnooze } from '../store'
 
 export type PaletteMode = 'root' | 'files'
 
@@ -272,9 +272,15 @@ export function CommandPalette({
   }, [worktrees])
 
   const viewerLogin = useSettings().viewerLogin
+  const snoozeByPath = useSnooze().byPath
+  const snoozedPaths = useMemo(() => {
+    const m: Record<string, true> = {}
+    for (const p of Object.keys(snoozeByPath)) m[p] = true
+    return m
+  }, [snoozeByPath])
   const groups = useMemo(
-    () => groupWorktrees(worktrees, prStatuses, mergedPaths, viewerLogin),
-    [worktrees, prStatuses, mergedPaths, viewerLogin]
+    () => groupWorktrees(worktrees, prStatuses, mergedPaths, snoozedPaths, viewerLogin),
+    [worktrees, prStatuses, mergedPaths, snoozedPaths, viewerLogin]
   )
 
   const actionItems = useMemo(() => {

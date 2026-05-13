@@ -5,7 +5,7 @@ import { resolveHotkeys, type Action, type HotkeyBinding } from '../hotkeys'
 import { useHotkeys } from './useHotkeys'
 import { groupWorktrees, getGroupKey, type GroupKey } from '../worktree-sort'
 import { focusTerminalById } from '../components/XTerminal'
-import { useConnections, getBackendsRegistry, useSettings } from '../store'
+import { useConnections, getBackendsRegistry, useSettings, useSnooze } from '../store'
 import { useBackend } from '../backend'
 
 interface UseHotkeyHandlersArgs {
@@ -87,9 +87,15 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
   // Mirror the sidebar's grouping/rendering order so hotkey navigation
   // matches what's on screen.
   const viewerLogin = useSettings().viewerLogin
+  const snoozeByPath = useSnooze().byPath
+  const snoozedPaths = useMemo(() => {
+    const m: Record<string, true> = {}
+    for (const p of Object.keys(snoozeByPath)) m[p] = true
+    return m
+  }, [snoozeByPath])
   const byRepoGroups = useMemo(() => {
     if (unifiedRepos && repoRoots.length > 1) {
-      return [{ repoRoot: '__unified__', groups: groupWorktrees(worktrees, prStatuses, mergedPaths, viewerLogin) }]
+      return [{ repoRoot: '__unified__', groups: groupWorktrees(worktrees, prStatuses, mergedPaths, snoozedPaths, viewerLogin) }]
     }
     const map = new Map<string, Worktree[]>()
     for (const root of repoRoots) map.set(root, [])
@@ -99,9 +105,9 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
     }
     return Array.from(map.entries()).map(([repoRoot, wts]) => ({
       repoRoot,
-      groups: groupWorktrees(wts, prStatuses, mergedPaths, viewerLogin)
+      groups: groupWorktrees(wts, prStatuses, mergedPaths, snoozedPaths, viewerLogin)
     }))
-  }, [unifiedRepos, repoRoots, worktrees, prStatuses, mergedPaths, viewerLogin])
+  }, [unifiedRepos, repoRoots, worktrees, prStatuses, mergedPaths, snoozedPaths, viewerLogin])
 
   const allOrderedWorktrees = useMemo(() => {
     const out: Worktree[] = []
