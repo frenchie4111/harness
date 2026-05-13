@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { X, GitPullRequest, ChevronDown, ChevronRight, Layers, Rows3 } from 'lucide-react'
-import { useSettings } from '../store'
+import { useSettings, useSnooze } from '../store'
 import { useBackend } from '../backend'
 import type {
   Worktree,
@@ -204,12 +204,18 @@ export function CommandCenter({
     groups: ReturnType<typeof groupWorktrees>
   }
   const viewerLogin = useSettings().viewerLogin
+  const snoozeByPath = useSnooze().byPath
+  const snoozedPaths = useMemo(() => {
+    const m: Record<string, true> = {}
+    for (const p of Object.keys(snoozeByPath)) m[p] = true
+    return m
+  }, [snoozeByPath])
   const sections = useMemo<Section[]>(() => {
     if (unifiedRepos || repoRoots.length <= 1) {
       return [{
         scope: '__unified__',
         repoLabel: '',
-        groups: groupWorktrees(worktrees, prStatuses, mergedPaths, viewerLogin)
+        groups: groupWorktrees(worktrees, prStatuses, mergedPaths, snoozedPaths, viewerLogin)
       }]
     }
     const byRepo = new Map<string, Worktree[]>()
@@ -218,9 +224,9 @@ export function CommandCenter({
     return repoRoots.map((root) => ({
       scope: root,
       repoLabel: root.split('/').pop() || root,
-      groups: groupWorktrees(byRepo.get(root) || [], prStatuses, mergedPaths, viewerLogin)
+      groups: groupWorktrees(byRepo.get(root) || [], prStatuses, mergedPaths, snoozedPaths, viewerLogin)
     }))
-  }, [unifiedRepos, repoRoots, worktrees, prStatuses, mergedPaths, viewerLogin])
+  }, [unifiedRepos, repoRoots, worktrees, prStatuses, mergedPaths, snoozedPaths, viewerLogin])
 
   const totalCards = useMemo(
     () => sections.reduce((acc, s) => acc + s.groups.reduce((a, g) => a + g.worktrees.length, 0), 0),

@@ -12,6 +12,7 @@ import { WorktreeTab } from './WorktreeTab'
 import { SnoozeCalendar } from './SnoozeCalendar'
 import { repoNameColor } from './RepoIcon'
 import { BackendChipStrip } from './BackendChipStrip'
+import { useBackend } from '../backend'
 
 interface SidebarProps {
   worktrees: Worktree[]
@@ -100,6 +101,7 @@ export function Sidebar({
   onToggleUnifiedRepos
 }: SidebarProps): JSX.Element {
   const metaHeld = useMetaHeld()
+  const backend = useBackend()
   const deletingPaths = useMemo(() => {
     const s = new Set<string>()
     for (const d of pendingDeletions) s.add(d.path)
@@ -173,22 +175,22 @@ export function Sidebar({
         return
       }
       const days = Math.max(1, Math.floor(snoozeDefaultDays ?? 7))
-      window.api.snooze(path, Date.now() + days * 86400000)
+      void backend.snooze(path, Date.now() + days * 86400000)
     },
-    [snoozeDefaultDays]
+    [snoozeDefaultDays, backend]
   )
 
   const onUnsnoozeRow = useCallback((path: string) => {
-    window.api.unsnooze(path)
-  }, [])
+    void backend.unsnooze(path)
+  }, [backend])
 
   const handleCalendarPick = useCallback(
     (wakeAt: number) => {
       if (!calendarFor) return
-      window.api.snooze(calendarFor.path, wakeAt)
+      void backend.snooze(calendarFor.path, wakeAt)
       setCalendarFor(null)
     },
-    [calendarFor]
+    [calendarFor, backend]
   )
 
   const handleContinueKeyDown = useCallback(
