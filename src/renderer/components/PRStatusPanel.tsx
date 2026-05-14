@@ -674,11 +674,11 @@ export function PRStatusPanel({
           e.stopPropagation()
           backend.openExternal(pr.url)
         }}
-        className="text-xs text-dim hover:text-fg flex items-center gap-1 transition-colors cursor-pointer"
+        className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-accent text-app text-[10px] font-medium hover:bg-accent/80 transition-colors cursor-pointer"
         aria-label="Open PR in browser"
       >
         #{pr.number}
-        <ExternalLink size={11} />
+        <ExternalLink size={10} />
       </button>
     </Tooltip>
   ) : null
