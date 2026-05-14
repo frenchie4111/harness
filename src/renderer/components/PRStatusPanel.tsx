@@ -360,7 +360,7 @@ const STATE_LABELS: Record<string, string> = {
 
 const STATE_COLORS: Record<string, string> = {
   open: 'text-success',
-  draft: 'text-muted',
+  draft: 'text-warning',
   merged: 'text-accent',
   closed: 'text-danger'
 }
