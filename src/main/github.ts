@@ -76,6 +76,56 @@ async function githubFetch(url: string): Promise<unknown> {
   return res.json()
 }
 
+type ParentInfo = { owner: string; repo: string } | 'self'
+const forkParentCache = new Map<string, ParentInfo>()
+
+/** Origin (= what `remote.origin.url` points at) plus the repo we should
+ *  query for PR data. For non-forks the two are equal; for forks
+ *  `upstream` is the parent repo where PRs are typically opened. */
+export interface RepoContext {
+  origin: { owner: string; repo: string }
+  upstream: { owner: string; repo: string }
+}
+
+/** Read origin from the worktree and resolve upstream via GitHub. Returns
+ *  null if the worktree has no parseable origin remote. Fork detection is
+ *  cached per-process. */
+export async function getRepoContext(worktreePath: string): Promise<RepoContext | null> {
+  const origin = await getRepoInfo(worktreePath)
+  if (!origin) return null
+  const upstream = await resolveQueryRepo(origin)
+  return { origin, upstream }
+}
+
+/** Resolve which repo to query for PR data. When `origin` is a fork on
+ *  GitHub, PRs are typically opened against the parent repo, so we query
+ *  upstream's pulls list instead. Result is cached per-process. On error
+ *  the cache is left empty so the next poll retries. */
+async function resolveQueryRepo(
+  origin: { owner: string; repo: string }
+): Promise<{ owner: string; repo: string }> {
+  const key = `${origin.owner}/${origin.repo}`
+  const cached = forkParentCache.get(key)
+  if (cached === 'self') return origin
+  if (cached) return cached
+  try {
+    const data = (await githubFetch(
+      `https://api.github.com/repos/${origin.owner}/${origin.repo}`
+    )) as { fork?: boolean; parent?: { owner: { login: string }; name: string } }
+    if (data.fork && data.parent) {
+      const parent = { owner: data.parent.owner.login, repo: data.parent.name }
+      forkParentCache.set(key, parent)
+      log('github', `detected fork ${key} → upstream ${parent.owner}/${parent.repo}`)
+      return parent
+    }
+    forkParentCache.set(key, 'self')
+    return origin
+  } catch (err) {
+    log('github', `fork detection failed for ${key}`, err instanceof Error ? err.message : err)
+    return origin
+  }
+}
+
 interface ApiPRListItem {
   number: number
   title: string
@@ -232,7 +282,8 @@ export async function listPullRequests(repoRoot: string): Promise<PRListItem[] |
   if (!token) return null
   const repoInfo = await getRepoInfo(repoRoot)
   if (!repoInfo) return null
-  const { owner, repo } = repoInfo
+  const queryRepo = await resolveQueryRepo(repoInfo)
+  const { owner, repo } = queryRepo
   try {
     const list = (await githubFetch(
       `https://api.github.com/repos/${owner}/${repo}/pulls?state=all&sort=updated&direction=desc&per_page=100`

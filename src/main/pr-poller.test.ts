@@ -8,7 +8,7 @@ vi.mock('./worktree', () => ({
   getBranchSha: vi.fn()
 }))
 vi.mock('./github', () => ({
-  getRepoInfo: vi.fn(),
+  getRepoContext: vi.fn(),
   listPullRequests: vi.fn(),
   loadPRStatusForItem: vi.fn()
 }))
@@ -17,7 +17,7 @@ import { pickPRForWorktree, PRPoller } from './pr-poller'
 import { Store } from './store'
 import { initialState, type AppState } from '../shared/state'
 import type { PRStatus } from '../shared/state/prs'
-import { getRepoInfo, listPullRequests, loadPRStatusForItem, type PRListItem } from './github'
+import { getRepoContext, listPullRequests, loadPRStatusForItem, type PRListItem } from './github'
 import { listWorktrees, getBranchSha } from './worktree'
 
 function pr(overrides: Partial<PRListItem> = {}): PRListItem {
@@ -152,7 +152,10 @@ function makePoller(initialByPath: Record<string, PRStatus | null>): {
 describe('PRPoller.refreshAll — offline / failure preservation', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(getRepoInfo).mockResolvedValue({ owner: 'o', repo: 'r' })
+    vi.mocked(getRepoContext).mockResolvedValue({
+      origin: { owner: 'o', repo: 'r' },
+      upstream: { owner: 'o', repo: 'r' }
+    })
     vi.mocked(getBranchSha).mockResolvedValue(null)
   })
 

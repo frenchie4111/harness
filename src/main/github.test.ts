@@ -10,7 +10,19 @@ vi.mock('./github-auth', () => ({
   resolveGitHubToken: vi.fn(async () => ({ token: 'fake-token' }))
 }))
 
-import { mergePR } from './github'
+const mocks = vi.hoisted(() => ({ originUrl: '' }))
+
+vi.mock('child_process', async () => {
+  const { promisify } = await import('util')
+  const execFile = vi.fn() as unknown as { [key: symbol]: unknown }
+  // util.promisify reads this symbol off the function and uses it as the
+  // promisified implementation, mirroring Node's built-in handling for
+  // execFile which returns {stdout, stderr}.
+  execFile[promisify.custom] = async () => ({ stdout: mocks.originUrl, stderr: '' })
+  return { execFile }
+})
+
+import { getRepoContext, listPullRequests, mergePR } from './github'
 
 function mockResponse(status: number, body: unknown): Response {
   return {
@@ -109,5 +121,110 @@ describe('mergePR', () => {
     expect(res.ok).toBe(false)
     expect(res.errorCode).toBe('unknown')
     expect(res.error).toBe('network down')
+  })
+})
+
+describe('fork upstream detection', () => {
+  const fetchSpy = vi.spyOn(globalThis, 'fetch')
+
+  beforeEach(() => {
+    fetchSpy.mockReset()
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  // forkParentCache is module-level and persists across tests in this file,
+  // so each test uses a unique owner/repo pair to avoid cache collisions.
+
+  it('getRepoContext resolves upstream to parent when origin is a fork', async () => {
+    mocks.originUrl = 'git@github.com:forker1/myrepo.git\n'
+    fetchSpy.mockResolvedValueOnce(
+      mockResponse(200, {
+        fork: true,
+        parent: { owner: { login: 'upstream1' }, name: 'myrepo' }
+      })
+    )
+    const ctx = await getRepoContext('/some/worktree')
+    expect(ctx).toEqual({
+      origin: { owner: 'forker1', repo: 'myrepo' },
+      upstream: { owner: 'upstream1', repo: 'myrepo' }
+    })
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+    expect(fetchSpy.mock.calls[0][0]).toBe('https://api.github.com/repos/forker1/myrepo')
+  })
+
+  it('getRepoContext leaves upstream === origin for a non-fork repo', async () => {
+    mocks.originUrl = 'git@github.com:owner2/plainrepo.git\n'
+    fetchSpy.mockResolvedValueOnce(mockResponse(200, { fork: false }))
+    const ctx = await getRepoContext('/some/worktree')
+    expect(ctx).toEqual({
+      origin: { owner: 'owner2', repo: 'plainrepo' },
+      upstream: { owner: 'owner2', repo: 'plainrepo' }
+    })
+  })
+
+  it('getRepoContext caches the lookup across calls', async () => {
+    mocks.originUrl = 'git@github.com:forker3/cached.git\n'
+    fetchSpy.mockResolvedValueOnce(
+      mockResponse(200, {
+        fork: true,
+        parent: { owner: { login: 'upstream3' }, name: 'cached' }
+      })
+    )
+    const first = await getRepoContext('/some/worktree')
+    const second = await getRepoContext('/some/worktree')
+    expect(first?.upstream).toEqual({ owner: 'upstream3', repo: 'cached' })
+    expect(second?.upstream).toEqual({ owner: 'upstream3', repo: 'cached' })
+    // Only the first call should hit the API; the second is served from cache.
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('getRepoContext falls back to origin when fork detection fails (no caching)', async () => {
+    mocks.originUrl = 'git@github.com:forker4/fail.git\n'
+    fetchSpy.mockResolvedValueOnce(mockResponse(500, { message: 'oops' }))
+    const first = await getRepoContext('/some/worktree')
+    expect(first).toEqual({
+      origin: { owner: 'forker4', repo: 'fail' },
+      upstream: { owner: 'forker4', repo: 'fail' }
+    })
+    // Next call should retry — error path must not cache.
+    fetchSpy.mockResolvedValueOnce(
+      mockResponse(200, {
+        fork: true,
+        parent: { owner: { login: 'upstream4' }, name: 'fail' }
+      })
+    )
+    const second = await getRepoContext('/some/worktree')
+    expect(second?.upstream).toEqual({ owner: 'upstream4', repo: 'fail' })
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
+  })
+
+  it('listPullRequests queries upstream/pulls when origin is a fork', async () => {
+    mocks.originUrl = 'git@github.com:forker5/proj.git\n'
+    // First fetch: repo metadata for fork detection
+    fetchSpy.mockResolvedValueOnce(
+      mockResponse(200, {
+        fork: true,
+        parent: { owner: { login: 'upstream5' }, name: 'proj' }
+      })
+    )
+    // Second fetch: the pulls list itself (returning empty is fine)
+    fetchSpy.mockResolvedValueOnce(mockResponse(200, []))
+    const prs = await listPullRequests('/some/worktree')
+    expect(prs).toEqual([])
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
+    const pullsUrl = fetchSpy.mock.calls[1][0] as string
+    expect(pullsUrl).toMatch(/^https:\/\/api\.github\.com\/repos\/upstream5\/proj\/pulls\?/)
+  })
+
+  it('listPullRequests queries origin/pulls for a non-fork repo', async () => {
+    mocks.originUrl = 'git@github.com:owner6/plain.git\n'
+    fetchSpy.mockResolvedValueOnce(mockResponse(200, { fork: false }))
+    fetchSpy.mockResolvedValueOnce(mockResponse(200, []))
+    await listPullRequests('/some/worktree')
+    const pullsUrl = fetchSpy.mock.calls[1][0] as string
+    expect(pullsUrl).toMatch(/^https:\/\/api\.github\.com\/repos\/owner6\/plain\/pulls\?/)
   })
 })
