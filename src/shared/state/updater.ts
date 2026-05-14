@@ -7,7 +7,7 @@ export type UpdaterStatus =
       manualInstallRequired?: boolean
     }
   | { state: 'not-available' }
-  | { state: 'downloading'; percent: number }
+  | { state: 'downloading'; percent: number; version: string }
   | { state: 'downloaded'; version: string }
   | { state: 'error'; error: string }
 

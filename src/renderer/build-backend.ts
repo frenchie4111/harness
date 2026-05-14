@@ -335,6 +335,8 @@ export function buildBackend(
     readRecentLog: (maxLines?: number) => req('debug:readRecentLog', maxLines),
     checkForUpdates: () => req('updater:checkForUpdates'),
     quitAndInstall: () => req('updater:quitAndInstall'),
+    devSimulateUpdate: (state: 'available' | 'downloading' | 'downloaded' | 'clear') =>
+      req('updater:devSimulate', state),
 
     // Always-local: shell.openExternal opens on the local user's
     // machine, never on the remote backend. Same with debug log paths.

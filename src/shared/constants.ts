@@ -4,3 +4,11 @@ export const HARNESS_REPO_URL = `https://github.com/${HARNESS_REPO_OWNER}/${HARN
 export const HARNESS_NEW_ISSUE_URL = `${HARNESS_REPO_URL}/issues/new`
 export const HARNESS_ISSUES_URL = `${HARNESS_REPO_URL}/issues`
 export const HARNESS_RELEASES_URL = `${HARNESS_REPO_URL}/releases`
+
+export const HARNESS_SITE_URL = 'https://harness.mikelyons.org'
+export const HARNESS_SITE_RELEASES_URL = `${HARNESS_SITE_URL}/releases.html`
+
+export function harnessReleaseNotesUrl(version: string): string {
+  const v = version.startsWith('v') ? version : `v${version}`
+  return `${HARNESS_SITE_RELEASES_URL}#${v}`
+}

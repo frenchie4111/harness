@@ -184,8 +184,10 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
       log('updater', 'checking for update')
       store.dispatch({ type: 'updater/statusChanged', payload: { state: 'checking' } })
     })
+    let pendingUpdateVersion = ''
     autoUpdater.on('update-available', (info) => {
       log('updater', `update available ${info.version}${manualInstallRequired ? ' (manual install)' : ''}`)
+      pendingUpdateVersion = info.version
       store.dispatch({
         type: 'updater/statusChanged',
         payload: {
@@ -213,7 +215,7 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
     autoUpdater.on('download-progress', (p) => {
       store.dispatch({
         type: 'updater/statusChanged',
-        payload: { state: 'downloading', percent: p.percent }
+        payload: { state: 'downloading', percent: p.percent, version: pendingUpdateVersion }
       })
     })
     autoUpdater.on('update-downloaded', (info) => {
@@ -479,6 +481,25 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
         return { ok: false, error: message }
       }
     })
+
+    if (!app.isPackaged) {
+      transport.onRequest('updater:devSimulate', (_ctx, state: string) => {
+        const version = app.getVersion()
+        if (state === 'available') {
+          store.dispatch({ type: 'updater/statusChanged', payload: { state: 'available', version } })
+        } else if (state === 'downloading') {
+          store.dispatch({
+            type: 'updater/statusChanged',
+            payload: { state: 'downloading', percent: 42, version }
+          })
+        } else if (state === 'downloaded') {
+          store.dispatch({ type: 'updater/statusChanged', payload: { state: 'downloaded', version } })
+        } else {
+          store.dispatch({ type: 'updater/statusChanged', payload: { state: 'not-available' } })
+        }
+        return true
+      })
+    }
 
     transport.onRequest('updater:quitAndInstall', (_ctx) => {
       log('updater', 'quitAndInstall requested — tearing down before handing off to Squirrel')

@@ -28,9 +28,9 @@ describe('updaterReducer', () => {
     expect(state.status).toEqual({ state: 'available', version: '1.13.0' })
     state = updaterReducer(state, {
       type: 'updater/statusChanged',
-      payload: { state: 'downloading', percent: 42.5 }
+      payload: { state: 'downloading', percent: 42.5, version: '1.13.0' }
     })
-    expect(state.status).toEqual({ state: 'downloading', percent: 42.5 })
+    expect(state.status).toEqual({ state: 'downloading', percent: 42.5, version: '1.13.0' })
     state = updaterReducer(state, {
       type: 'updater/statusChanged',
       payload: { state: 'downloaded', version: '1.13.0' }

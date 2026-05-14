@@ -177,6 +177,8 @@ div opening, before the first existing release section).
 
 Rules:
 - Match the exact HTML structure, CSS classes, and formatting of existing entries.
+- The new <section class=\"release-section py-10\"> MUST include id=\"${TAG}\" (e.g. id=\"v1.2.3\") so it can be deep-linked from the in-app updater UI.
+- The version <h2> MUST wrap its text in a self-link matching existing entries, e.g.: <h2 class=\"text-3xl font-bold tracking-tight\"><a href=\"#${TAG}\" class=\"release-anchor\">${TAG}<span class=\"anchor-icon\">🔗</span></a></h2>
 - Rewrite commit messages into user-facing release notes. Write for users, not developers.
 - Group under h4 headings: \"New features\", \"Improvements\", \"Fixes\" — only include sections that have content.
 - Skip meta commits: version bumps, README updates, CI fixes, squash labels.

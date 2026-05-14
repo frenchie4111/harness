@@ -385,6 +385,8 @@ export interface ElectronAPI {
   readRecentLog(maxLines?: number): Promise<string>
   checkForUpdates(): Promise<{ ok: boolean; available?: boolean; version?: string; releaseDate?: string; error?: string }>
   quitAndInstall(): Promise<boolean>
+  /** Dev-only: fakes an updater status so the update UI can be checked in `npm run dev`. */
+  devSimulateUpdate(state: 'available' | 'downloading' | 'downloaded' | 'clear'): Promise<boolean>
 
   getPerfMetrics(): Promise<PerfMetrics>
   perfLogSlowRender(id: string, ms: number, phase: string): void

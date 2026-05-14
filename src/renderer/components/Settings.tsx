@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2, LifeBuoy, Bug, Lightbulb, FlaskConical, Copy, ExternalLink, CalendarDays, FileText, FolderOpen } from 'lucide-react'
 import { openReportIssue } from './ReportIssueScreen'
-import { HARNESS_ISSUES_URL, HARNESS_RELEASES_URL } from '../../shared/constants'
+import { HARNESS_ISSUES_URL, HARNESS_RELEASES_URL, harnessReleaseNotesUrl } from '../../shared/constants'
 import { useSettings, useUpdater, useRepoConfigs, useHooks } from '../store'
 import { useBackend } from '../backend'
 import type { UpdaterStatus, MergeStrategy, RepoConfig } from '../types'
@@ -833,14 +833,31 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
         return (
           <div className="flex items-center gap-2 text-xs text-warning">
             <Download size={12} />
-            Version {updaterStatus.version} available — downloading...
+            <span>
+              <a
+                onClick={() => backend.openExternal(harnessReleaseNotesUrl(updaterStatus.version))}
+                className="underline hover:text-fg-bright cursor-pointer"
+              >
+                Harness {updaterStatus.version}
+              </a>{' '}
+              available — downloading...
+            </span>
           </div>
         )
       case 'downloading':
         return (
           <div className="flex items-center gap-2 text-xs text-warning">
             <Download size={12} />
-            Downloading update... {Math.round(updaterStatus.percent)}%
+            <span>
+              Downloading{' '}
+              <a
+                onClick={() => backend.openExternal(harnessReleaseNotesUrl(updaterStatus.version))}
+                className="underline hover:text-fg-bright cursor-pointer"
+              >
+                Harness {updaterStatus.version}
+              </a>
+              ... {Math.round(updaterStatus.percent)}%
+            </span>
           </div>
         )
       case 'downloaded':
@@ -848,7 +865,15 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2 text-xs text-success">
               <Check size={12} />
-              Version {updaterStatus.version} ready to install
+              <span>
+                <a
+                  onClick={() => backend.openExternal(harnessReleaseNotesUrl(updaterStatus.version))}
+                  className="underline hover:text-fg-bright cursor-pointer"
+                >
+                  Harness {updaterStatus.version}
+                </a>{' '}
+                ready to install
+              </span>
             </div>
             <button
               onClick={handleRestart}
@@ -2034,7 +2059,16 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   <div>
                     <div className="text-sm text-fg">Current version</div>
                     <div className="text-xs text-dim font-mono mt-0.5">
-                      {version || '...'}
+                      {version ? (
+                        <a
+                          onClick={() => backend.openExternal(harnessReleaseNotesUrl(version))}
+                          className="underline hover:text-fg-bright cursor-pointer"
+                        >
+                          {version}
+                        </a>
+                      ) : (
+                        '...'
+                      )}
                     </div>
                   </div>
                   <button
@@ -2050,6 +2084,25 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 {renderUpdaterStatus() && (
                   <div className="pt-3 border-t border-border">
                     {renderUpdaterStatus()}
+                  </div>
+                )}
+
+                {import.meta.env.DEV && (
+                  <div className="mt-3 pt-3 border-t border-border">
+                    <div className="text-[10px] uppercase tracking-wide text-faint mb-1.5">
+                      Dev: simulate updater state
+                    </div>
+                    <div className="flex gap-1.5">
+                      {(['available', 'downloading', 'downloaded', 'clear'] as const).map((s) => (
+                        <button
+                          key={s}
+                          onClick={() => backend.devSimulateUpdate(s)}
+                          className="px-2 py-1 bg-surface hover:bg-surface-hover rounded text-[11px] text-fg transition-colors cursor-pointer"
+                        >
+                          {s}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
 
