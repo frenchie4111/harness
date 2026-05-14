@@ -381,6 +381,31 @@ const OVERALL_COLORS: Record<string, string> = {
   none: 'text-dim'
 }
 
+// Failed/error checks are what the user has to act on, so they go first.
+// Then pending (in progress), then success, then non-actionable
+// neutral/skipped. Within each group, sort by startedAt ascending so the
+// order matches the actual run order on CI.
+const CHECK_STATE_PRIORITY: Record<CheckStatus['state'], number> = {
+  failure: 0,
+  error: 0,
+  pending: 1,
+  success: 2,
+  neutral: 3,
+  skipped: 4
+}
+
+function sortChecksForDisplay(checks: CheckStatus[]): CheckStatus[] {
+  return [...checks].sort((a, b) => {
+    const pa = CHECK_STATE_PRIORITY[a.state]
+    const pb = CHECK_STATE_PRIORITY[b.state]
+    if (pa !== pb) return pa - pb
+    const ta = a.startedAt ? Date.parse(a.startedAt) : Number.POSITIVE_INFINITY
+    const tb = b.startedAt ? Date.parse(b.startedAt) : Number.POSITIVE_INFINITY
+    if (ta !== tb) return ta - tb
+    return a.name.localeCompare(b.name)
+  })
+}
+
 const REVIEW_DECISION_LABELS: Record<PRStatus['reviewDecision'], { text: string; color: string }> = {
   approved: { text: 'Approved', color: 'text-success' },
   changes_requested: { text: 'Changes requested', color: 'text-warning' },
@@ -817,10 +842,11 @@ export function PRStatusPanel({
             )}
           </div>
 
-          {/* Expanded check list */}
+          {/* Expanded check list — sorted: failed → pending → success → neutral/skipped,
+              then by startedAt within each group. */}
           {expanded && pr.checks.length > 0 && (
             <div className="space-y-0.5 max-h-60 overflow-y-auto">
-              {pr.checks.map((check) => {
+              {sortChecksForDisplay(pr.checks).map((check) => {
                 const icon = CHECK_ICONS[check.state]
                 const isFailure = check.state === 'failure' || check.state === 'error'
                 const reason = isFailure

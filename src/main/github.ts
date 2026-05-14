@@ -202,6 +202,7 @@ interface ApiCheckRun {
   conclusion: 'success' | 'failure' | 'neutral' | 'cancelled' | 'skipped' | 'timed_out' | 'action_required' | null
   html_url?: string | null
   details_url?: string | null
+  started_at?: string | null
   output?: { title?: string | null; summary?: string | null }
 }
 
@@ -215,6 +216,7 @@ interface ApiStatus {
   context: string
   description: string | null
   target_url: string | null
+  created_at?: string | null
 }
 
 interface ApiCombinedStatus {
@@ -358,7 +360,8 @@ async function fanOutPRDetails(
       state: normalizeCheckState(run.status, run.conclusion),
       description: run.output?.title || '',
       summary: run.output?.summary || undefined,
-      detailsUrl: run.html_url || run.details_url || undefined
+      detailsUrl: run.html_url || run.details_url || undefined,
+      startedAt: run.started_at || undefined
     })
   }
   for (const s of combinedRes.statuses || []) {
@@ -366,7 +369,8 @@ async function fanOutPRDetails(
       name: s.context,
       state: normalizeStatusState(s.state),
       description: s.description || '',
-      detailsUrl: s.target_url || undefined
+      detailsUrl: s.target_url || undefined,
+      startedAt: s.created_at || undefined
     })
   }
 
