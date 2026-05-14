@@ -725,57 +725,49 @@ export function PRStatusPanel({
 
       {!needsGithubToken && pr && (
         <div className="px-3 py-2">
-          {(() => {
-            const showStateBadge = pr.state !== 'open'
-            const showBaseBranch = !pr.isDefaultBase
-            const showMilestone = !!pr.milestone
-            const showDiff =
-              typeof pr.additions === 'number' && typeof pr.deletions === 'number'
-            if (!showStateBadge && !showBaseBranch && !showMilestone && !showDiff) return null
-            return (
-              <div className="flex items-center gap-1.5 mb-1 text-xs">
-                {showStateBadge && (
-                  <span className={`font-medium shrink-0 ${STATE_COLORS[pr.state]}`}>
-                    {STATE_LABELS[pr.state]}
-                  </span>
-                )}
-                {showBaseBranch && (
-                  <span className="font-mono text-faint truncate">{pr.baseBranch}</span>
-                )}
-                {pr.milestone && (
-                  <a
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      backend.openExternal(pr.milestone!.url)
-                    }}
-                    className={`truncate cursor-pointer transition-colors ${
-                      pr.milestone.state === 'closed'
-                        ? 'text-dim hover:text-fg-bright'
-                        : 'text-muted hover:text-fg-bright'
-                    }`}
-                    title={`Milestone: ${pr.milestone.title}`}
-                  >
-                    {pr.milestone.title}
-                  </a>
-                )}
-                {showDiff && (
-                  <span className="font-mono shrink-0 ml-auto">
-                    <span className="text-success">+{pr.additions}</span>
-                    <span className="text-danger ml-1">−{pr.deletions}</span>
-                  </span>
-                )}
-              </div>
-            )
-          })()}
-
           {/* PR title */}
           <a
-            className="block text-xs text-fg hover:text-fg-bright truncate cursor-pointer mb-1.5"
+            className="block text-xs text-fg hover:text-fg-bright truncate cursor-pointer mb-1"
             title={`${pr.title}\n${pr.url}`}
             onClick={() => setExpanded(!expanded)}
           >
             {pr.title}
           </a>
+
+          <div className="flex items-center gap-1.5 mb-1 text-xs">
+            <span className={`font-medium shrink-0 ${STATE_COLORS[pr.state]}`}>
+              {STATE_LABELS[pr.state]}
+            </span>
+            {!pr.isDefaultBase && (
+              <span className="font-mono text-faint truncate">{pr.baseBranch}</span>
+            )}
+            {pr.milestone ? (
+              <a
+                onClick={(e) => {
+                  e.stopPropagation()
+                  backend.openExternal(pr.milestone!.url)
+                }}
+                className={`shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-medium cursor-pointer transition-colors truncate max-w-[140px] ${
+                  pr.milestone.state === 'closed'
+                    ? 'bg-surface text-dim hover:text-fg-bright'
+                    : 'bg-accent/20 text-accent hover:bg-accent/30'
+                }`}
+                title={`Milestone: ${pr.milestone.title}`}
+              >
+                {pr.milestone.title}
+              </a>
+            ) : (
+              <span className="shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-surface text-faint">
+                No milestone
+              </span>
+            )}
+            {typeof pr.additions === 'number' && typeof pr.deletions === 'number' && (
+              <span className="font-mono shrink-0 ml-auto">
+                <span className="text-success">+{pr.additions}</span>
+                <span className="text-danger ml-1">−{pr.deletions}</span>
+              </span>
+            )}
+          </div>
 
           <PRActions pr={pr} worktree={worktree} needsGithubToken={needsGithubToken} />
 
