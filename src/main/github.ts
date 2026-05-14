@@ -140,6 +140,7 @@ interface ApiPRListItem {
     sha: string
     repo: { full_name: string } | null
   }
+  assignees: { login: string; avatar_url: string }[] | null
   updated_at: string
 }
 
@@ -416,7 +417,11 @@ async function fanOutPRDetails(
           url: prDetail.milestone.html_url,
           state: prDetail.milestone.state
         }
-      : null
+      : null,
+    assignees: (prDetail.assignees ?? []).map((a) => ({
+      login: a.login,
+      avatarUrl: a.avatar_url
+    }))
   }
 }
 

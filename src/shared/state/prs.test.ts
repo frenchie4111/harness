@@ -26,6 +26,7 @@ function stubPR(overrides: Partial<PRStatus> = {}): PRStatus {
     reviewDecision: 'none',
     baseBranch: 'main',
     isDefaultBase: true,
+    assignees: [],
     ...overrides
   }
 }

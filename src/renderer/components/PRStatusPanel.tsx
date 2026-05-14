@@ -761,12 +761,27 @@ export function PRStatusPanel({
                 No milestone
               </span>
             )}
-            {typeof pr.additions === 'number' && typeof pr.deletions === 'number' && (
-              <span className="font-mono shrink-0 ml-auto">
-                <span className="text-success">+{pr.additions}</span>
-                <span className="text-danger ml-1">−{pr.deletions}</span>
-              </span>
-            )}
+            <div className="flex items-center gap-1.5 ml-auto shrink-0">
+              {pr.assignees.length > 0 && (
+                <div className="flex items-center">
+                  {pr.assignees.map((a, i) => (
+                    <img
+                      key={a.login}
+                      src={a.avatarUrl}
+                      alt={a.login}
+                      title={`Assigned to ${a.login}`}
+                      className={`w-4 h-4 rounded-full border border-panel ${i > 0 ? '-ml-1' : ''}`}
+                    />
+                  ))}
+                </div>
+              )}
+              {typeof pr.additions === 'number' && typeof pr.deletions === 'number' && (
+                <span className="font-mono">
+                  <span className="text-success">+{pr.additions}</span>
+                  <span className="text-danger ml-1">−{pr.deletions}</span>
+                </span>
+              )}
+            </div>
           </div>
 
           <PRActions pr={pr} worktree={worktree} needsGithubToken={needsGithubToken} />

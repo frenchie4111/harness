@@ -36,6 +36,7 @@ export interface PRStatus {
   baseBranch: string
   isDefaultBase: boolean
   milestone?: { title: string; url: string; state: 'open' | 'closed' } | null
+  assignees: { login: string; avatarUrl: string }[]
 }
 
 export interface PRsState {
