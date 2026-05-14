@@ -677,8 +677,8 @@ export function PRStatusPanel({
         className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-accent text-app text-[10px] font-medium hover:bg-accent/80 transition-colors cursor-pointer"
         aria-label="Open PR in browser"
       >
+        <GitPullRequest size={10} />
         #{pr.number}
-        <ExternalLink size={10} />
       </button>
     </Tooltip>
   ) : null
