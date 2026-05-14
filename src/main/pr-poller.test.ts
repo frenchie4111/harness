@@ -1,6 +1,24 @@
-import { describe, it, expect } from 'vitest'
-import { pickPRForWorktree } from './pr-poller'
-import type { PRListItem } from './github'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+
+vi.mock('./debug', () => ({
+  log: () => {}
+}))
+vi.mock('./worktree', () => ({
+  listWorktrees: vi.fn(),
+  getBranchSha: vi.fn()
+}))
+vi.mock('./github', () => ({
+  getRepoInfo: vi.fn(),
+  listPullRequests: vi.fn(),
+  loadPRStatusForItem: vi.fn()
+}))
+
+import { pickPRForWorktree, PRPoller } from './pr-poller'
+import { Store } from './store'
+import { initialState, type AppState } from '../shared/state'
+import type { PRStatus } from '../shared/state/prs'
+import { getRepoInfo, listPullRequests, loadPRStatusForItem, type PRListItem } from './github'
+import { listWorktrees, getBranchSha } from './worktree'
 
 function pr(overrides: Partial<PRListItem> = {}): PRListItem {
   return {
@@ -64,5 +82,149 @@ describe('pickPRForWorktree', () => {
   it('returns null on empty list', () => {
     const wt = { path: '/wt', branch: 'feature/foo', head: 'aaa' }
     expect(pickPRForWorktree(wt, [], 'owner/repo')).toBeNull()
+  })
+})
+
+function fakePRStatus(number: number): PRStatus {
+  return {
+    number,
+    title: `PR ${number}`,
+    state: 'open',
+    url: '',
+    branch: '',
+    author: null,
+    checks: [],
+    checksOverall: 'none',
+    hasConflict: null,
+    reviews: [],
+    reviewDecision: 'none'
+  }
+}
+
+function wt(path: string, branch: string, head: string) {
+  return {
+    path,
+    branch,
+    head,
+    isBare: false,
+    isMain: false,
+    createdAt: 0,
+    repoRoot: '/repo'
+  }
+}
+
+function prListItem(overrides: Partial<PRListItem>): PRListItem {
+  return {
+    number: 0,
+    title: '',
+    state: 'open',
+    draft: false,
+    mergedAt: null,
+    url: '',
+    headRef: '',
+    headSha: '',
+    headRepoFullName: 'o/r',
+    baseRef: 'main',
+    baseRepoFullName: 'o/r',
+    author: null,
+    updatedAt: '',
+    ...overrides
+  }
+}
+
+function makePoller(initialByPath: Record<string, PRStatus | null>): {
+  store: Store
+  poller: PRPoller
+} {
+  const state: AppState = {
+    ...initialState,
+    prs: { ...initialState.prs, byPath: initialByPath }
+  }
+  const store = new Store(state)
+  const poller = new PRPoller(store, {
+    getRepoRoots: () => ['/repo'],
+    getLocallyMerged: () => ({}),
+    setLocallyMerged: () => {}
+  })
+  return { store, poller }
+}
+
+describe('PRPoller.refreshAll — offline / failure preservation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(getRepoInfo).mockResolvedValue({ owner: 'o', repo: 'r' })
+    vi.mocked(getBranchSha).mockResolvedValue(null)
+  })
+
+  it('preserves cached byPath when the repo PR list fetch throws (wifi blip)', async () => {
+    const { store, poller } = makePoller({
+      '/wt/a': fakePRStatus(1),
+      '/wt/b': fakePRStatus(2)
+    })
+    vi.mocked(listWorktrees).mockResolvedValue([
+      wt('/wt/a', 'a', 'sha-a'),
+      wt('/wt/b', 'b', 'sha-b')
+    ])
+    vi.mocked(listPullRequests).mockRejectedValue(new Error('ENOTFOUND api.github.com'))
+
+    await poller.refreshAll()
+
+    const byPath = store.getSnapshot().state.prs.byPath
+    expect(byPath['/wt/a']).toEqual(fakePRStatus(1))
+    expect(byPath['/wt/b']).toEqual(fakePRStatus(2))
+  })
+
+  it('overlays successful per-worktree fetches and preserves the failed ones', async () => {
+    const { store, poller } = makePoller({
+      '/wt/a': fakePRStatus(1),
+      '/wt/b': fakePRStatus(2)
+    })
+    vi.mocked(listWorktrees).mockResolvedValue([
+      wt('/wt/a', 'a', 'sha-a'),
+      wt('/wt/b', 'b', 'sha-b')
+    ])
+    vi.mocked(listPullRequests).mockResolvedValue([
+      prListItem({ number: 10, headRef: 'a', headSha: 'sha-a' }),
+      prListItem({ number: 11, headRef: 'b', headSha: 'sha-b' })
+    ])
+    vi.mocked(loadPRStatusForItem).mockImplementation(async (_path, item) => {
+      if (item.number === 10) return fakePRStatus(10)
+      throw new Error('detail fetch failed')
+    })
+
+    await poller.refreshAll()
+
+    const byPath = store.getSnapshot().state.prs.byPath
+    expect(byPath['/wt/a']).toEqual(fakePRStatus(10))
+    expect(byPath['/wt/b']).toEqual(fakePRStatus(2))
+  })
+
+  it('writes authoritative null when fetch succeeds but no PR matches', async () => {
+    const { store, poller } = makePoller({
+      '/wt/a': fakePRStatus(1)
+    })
+    vi.mocked(listWorktrees).mockResolvedValue([wt('/wt/a', 'a', 'sha-a')])
+    vi.mocked(listPullRequests).mockResolvedValue([])
+
+    await poller.refreshAll()
+
+    const byPath = store.getSnapshot().state.prs.byPath
+    expect('/wt/a' in byPath).toBe(true)
+    expect(byPath['/wt/a']).toBeNull()
+  })
+
+  it('drops stale paths whose worktrees no longer exist, even when fetch fails', async () => {
+    const { store, poller } = makePoller({
+      '/wt/a': fakePRStatus(1),
+      '/wt/gone': fakePRStatus(99)
+    })
+    vi.mocked(listWorktrees).mockResolvedValue([wt('/wt/a', 'a', 'sha-a')])
+    vi.mocked(listPullRequests).mockRejectedValue(new Error('offline'))
+
+    await poller.refreshAll()
+
+    const byPath = store.getSnapshot().state.prs.byPath
+    expect(byPath['/wt/a']).toEqual(fakePRStatus(1))
+    expect('/wt/gone' in byPath).toBe(false)
   })
 })

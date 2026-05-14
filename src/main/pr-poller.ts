@@ -91,13 +91,18 @@ export class PRPoller {
     }
   }
 
-  /** Refresh every worktree across every known repo root. Bulk-replaces
-   * `prs.byPath` and `prs.mergedByPath`.
+  /** Refresh every worktree across every known repo root.
    *
    * One `listPullRequests` call per repo instead of one
    * `pulls?head=…` call per worktree — fewer round-trips when worktrees
    * outnumber PRs, and fork PRs become naturally findable because each
-   * list item carries `head.repo.full_name`. */
+   * list item carries `head.repo.full_name`.
+   *
+   * Network-failure handling: per-repo and per-worktree fetches are tagged
+   * ok/failed. The new `byPath` map starts from the current snapshot
+   * (restricted to worktrees that still exist), then successful results
+   * overlay. Failed fetches preserve the previously-cached status — so a
+   * wifi blip doesn't flip every worktree into the "no PR" sidebar group. */
   async refreshAll(): Promise<void> {
     if (this.inFlightAll) return
     const roots = this.opts.getRepoRoots()
@@ -115,38 +120,75 @@ export class PRPoller {
 
       // Per-repo: fetch the PR list + the base repo's full_name once.
       // Both are stable for the lifetime of the refresh, so we cache them
-      // by repoRoot for the per-worktree match step below.
+      // by repoRoot for the per-worktree match step below. ok=false means
+      // a transport failure — every worktree in that repo will be marked
+      // failed so its cached status is preserved.
       const repoData = await Promise.all(
         roots.map(async (root) => {
-          const [info, prs] = await Promise.all([
-            getRepoInfo(root),
-            listPullRequests(root)
-          ])
-          return { root, info, prs }
+          try {
+            const [info, prs] = await Promise.all([
+              getRepoInfo(root),
+              listPullRequests(root)
+            ])
+            return { root, info, prs, ok: true as const }
+          } catch (err) {
+            log('pr-poller', `repo PR list failed for ${root}`, err instanceof Error ? err.message : err)
+            return {
+              root,
+              info: null as { owner: string; repo: string } | null,
+              prs: null as PRListItem[] | null,
+              ok: false as const
+            }
+          }
         })
       )
       const prsByRoot = new Map<
         string,
-        { info: { owner: string; repo: string } | null; prs: PRListItem[] | null }
+        { info: { owner: string; repo: string } | null; prs: PRListItem[] | null; ok: boolean }
       >()
       for (const r of repoData) {
-        prsByRoot.set(r.root, { info: r.info, prs: r.prs })
+        prsByRoot.set(r.root, { info: r.info, prs: r.prs, ok: r.ok })
       }
 
-      const statusResults = await Promise.all(
-        allWorktrees.map(async (wt) => {
+      type StatusResult =
+        | { path: string; ok: true; status: PRStatus | null }
+        | { path: string; ok: false }
+
+      const statusResults: StatusResult[] = await Promise.all(
+        allWorktrees.map(async (wt): Promise<StatusResult> => {
+          const entry = prsByRoot.get(wt.repoRoot)
+          if (!entry) return { path: wt.path, ok: true, status: null }
+          if (!entry.ok) return { path: wt.path, ok: false }
+          if (!entry.info || !entry.prs) return { path: wt.path, ok: true, status: null }
+          const baseFull = `${entry.info.owner}/${entry.info.repo}`
+          const item = pickPRForWorktree(
+            { path: wt.path, branch: wt.branch, head: wt.head },
+            entry.prs,
+            baseFull
+          )
+          if (!item) return { path: wt.path, ok: true, status: null }
           try {
-            const status = await this.statusForWorktree(wt, prsByRoot)
-            return [wt.path, status] as const
+            const status = await loadPRStatusForItem(wt.path, item, entry.info)
+            return { path: wt.path, ok: true, status }
           } catch (err) {
             log('pr-poller', `status fetch failed for ${wt.path}`, err instanceof Error ? err.message : err)
-            return [wt.path, null] as const
+            return { path: wt.path, ok: false }
           }
         })
       )
+
+      const currentByPath = this.store.getSnapshot().state.prs.byPath
+      const allowedPaths = new Set(allWorktrees.map((wt) => wt.path))
+      const newByPath: Record<string, PRStatus | null> = {}
+      for (const path of Object.keys(currentByPath)) {
+        if (allowedPaths.has(path)) newByPath[path] = currentByPath[path]
+      }
+      for (const r of statusResults) {
+        if (r.ok) newByPath[r.path] = r.status
+      }
       this.store.dispatch({
         type: 'prs/bulkStatusChanged',
-        payload: Object.fromEntries(statusResults)
+        payload: newByPath
       })
 
       // Merged status per repo, then flatten. Stale branches get pruned from
@@ -181,25 +223,6 @@ export class PRPoller {
       this.inFlightAll = false
       this.store.dispatch({ type: 'prs/loadingChanged', payload: false })
     }
-  }
-
-  private async statusForWorktree(
-    wt: { path: string; branch: string; head: string; repoRoot: string },
-    prsByRoot: Map<
-      string,
-      { info: { owner: string; repo: string } | null; prs: PRListItem[] | null }
-    >
-  ): Promise<PRStatus | null> {
-    const entry = prsByRoot.get(wt.repoRoot)
-    if (!entry || !entry.info || !entry.prs) return null
-    const baseFull = `${entry.info.owner}/${entry.info.repo}`
-    const item = pickPRForWorktree(
-      { path: wt.path, branch: wt.branch, head: wt.head },
-      entry.prs,
-      baseFull
-    )
-    if (!item) return null
-    return loadPRStatusForItem(wt.path, item, entry.info)
   }
 
   /** Refresh a single worktree's PR status. Used when a Claude terminal

@@ -223,8 +223,10 @@ function computeOverall(checks: CheckStatus[]): PRStatus['checksOverall'] {
  *  Caller matches each worktree against this list (by head ref / sha)
  *  instead of doing one API call per worktree.
  *
- *  Returns null on auth/network failure (poller treats this as "no
- *  matches" and reports nulls for every worktree in the repo). */
+ *  Returns null only when authoritatively there's nothing to fetch: no
+ *  token, or no parseable origin remote. Throws on transport/server
+ *  failure so callers can preserve previously-cached PR state instead
+ *  of treating "offline" as "no PR exists" — see PRPoller.refreshAll. */
 export async function listPullRequests(repoRoot: string): Promise<PRListItem[] | null> {
   const token = getCachedToken()
   if (!token) return null
@@ -235,11 +237,13 @@ export async function listPullRequests(repoRoot: string): Promise<PRListItem[] |
     const list = (await githubFetch(
       `https://api.github.com/repos/${owner}/${repo}/pulls?state=all&sort=updated&direction=desc&per_page=100`
     )) as ApiPRListItem[]
-    if (!Array.isArray(list)) return null
+    if (!Array.isArray(list)) {
+      throw new Error(`listPullRequests: unexpected response shape for ${owner}/${repo}`)
+    }
     return list.map(flattenListItem)
   } catch (err) {
     log('github', `listPullRequests failed for ${owner}/${repo}`, err instanceof Error ? err.message : err)
-    return null
+    throw err
   }
 }
 
@@ -263,7 +267,7 @@ export async function loadPRStatusForItem(
       `loadPRStatusForItem failed for ${baseRepo.owner}/${baseRepo.repo}#${item.number}`,
       err instanceof Error ? err.message : err
     )
-    return null
+    throw err
   }
 }
 
