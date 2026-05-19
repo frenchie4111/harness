@@ -2991,6 +2991,7 @@ async function runBoot(): Promise<void> {
         }
       }
     },
+    runWorktreeSetup: (ctx) => worktreesFSM.runWorktreeSetup(ctx),
     broadcast: (channel, payload) => {
       if (channel === 'worktrees:externalCreate') {
         // Seed panes with the initial prompt BEFORE refreshList — the

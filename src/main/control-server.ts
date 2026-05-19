@@ -89,6 +89,7 @@ export interface ControlServerDeps {
   getRepoRoots: () => string[]
   getWorktreeBase: () => 'remote' | 'local'
   broadcast: (channel: string, ...args: unknown[]) => void
+  runWorktreeSetup: (ctx: { repoRoot: string; worktreePath: string; branch: string }) => Promise<void>
   /** Returns the caller's current scope, or null if the terminal is not
    * associated with any known worktree (e.g. the worktree was deleted). */
   resolveCallerScope: (terminalId: string) => CallerScope | null
@@ -231,6 +232,7 @@ async function handleRequest(
       baseBranch: typeof body.baseBranch === 'string' ? body.baseBranch : undefined,
       fetchRemote: !body.baseBranch && mode === 'remote'
     })
+    await deps.runWorktreeSetup({ repoRoot, worktreePath: created.path, branch: created.branch })
     const initialPrompt = typeof body.initialPrompt === 'string' ? body.initialPrompt : undefined
     deps.broadcast('worktrees:externalCreate', { repoRoot, worktree: created, initialPrompt })
     return sendJson(res, 200, created)

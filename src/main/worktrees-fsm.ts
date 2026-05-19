@@ -272,6 +272,19 @@ export class WorktreesFSM {
     return { id, outcome: 'success', createdPath: created.path }
   }
 
+  /** Run the setup script for a worktree that was created outside the FSM
+   * (e.g. via the MCP create_worktree tool). No-op if no script is configured. */
+  async runWorktreeSetup(ctx: { repoRoot: string; worktreePath: string; branch: string }): Promise<void> {
+    const repoCfg = loadRepoConfig(ctx.repoRoot)
+    const setupCmd = repoCfg.setupCommand || this.opts.getWorktreeSetupCmd() || ''
+    if (!setupCmd) return
+    await runWorktreeScript('setup', setupCmd, {
+      worktreePath: ctx.worktreePath,
+      branch: ctx.branch,
+      repoRoot: ctx.repoRoot
+    })
+  }
+
   async retryPending(id: string): Promise<PendingOutcome> {
     const current = this.store
       .getSnapshot()
