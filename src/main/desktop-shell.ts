@@ -40,12 +40,12 @@ import type { WorktreesFSM } from './worktrees-fsm'
 import type { Config } from './persistence'
 import { saveConfig, saveConfigSync, DEFAULT_THEME, THEME_APP_BG } from './persistence'
 import { registerWindowControlHandlers } from './window-controls'
-import { loadRepoConfig } from './repo-config'
 import { sealAllActive } from './activity'
 import { log, getLogFilePath } from './debug'
 import { isManualUpdateInstallType } from './manual-update'
 import { HARNESS_REPO_URL } from '../shared/constants'
 import { resolveRepoPath } from './repo-resolve'
+import { registerRepoRoot } from './repo-roots'
 import type { AddRepoResult } from '../shared/repo-pick'
 
 export interface DesktopShellInit {
@@ -424,22 +424,11 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
       const resolution = await resolveRepoPath(picked)
       if (resolution.kind === 'ok') {
         const repoRoot = resolution.root
-        if (!config.repoRoots.includes(repoRoot)) {
-          config.repoRoots.push(repoRoot)
-          saveConfig(config)
-          worktreesFSM.dispatchRepos([...config.repoRoots])
-          store.dispatch({
-            type: 'repoConfigs/changed',
-            payload: { repoRoot, config: loadRepoConfig(repoRoot) }
-          })
+        if (registerRepoRoot(repoRoot, { config, store, worktreesFSM })) {
           onRepoAdded(repoRoot)
         }
         return { kind: 'added', repoRoot }
       }
-      // Don't auto-add when git walked up — let the renderer surface
-      // the picked-vs-resolved mismatch so the user can confirm or
-      // cancel (otherwise we'd silently register $HOME or whatever
-      // other ancestor happens to be a repo).
       return resolution
     })
 

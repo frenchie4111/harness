@@ -1,27 +1,20 @@
 import { execFile } from 'child_process'
 import { promisify } from 'util'
-import { existsSync, realpathSync } from 'fs'
-import { join, resolve as resolvePath } from 'path'
+import { realpathSync } from 'fs'
+import { resolve as resolvePath } from 'path'
+import { isGitRepoSync } from './fs-listing'
+import type { RepoPathResolution } from '../shared/repo-pick'
 
 const execFileAsync = promisify(execFile)
 
-export type RepoPathResolution =
-  | { kind: 'ok'; root: string }
-  | { kind: 'walked-up'; picked: string; resolved: string }
-  | { kind: 'not-a-repo'; picked: string }
+export type { RepoPathResolution }
 
 /** Map a user-picked folder to the git toplevel git would actually use
  *  if we ran `git worktree …` inside it.
  *
- *  Three outcomes — see `AddRepoResult` in shared/repo-pick.ts for the
- *  matching renderer-facing shape:
- *
- *  - 'ok' — picked is itself a git repo root; safe to register as-is.
- *  - 'walked-up' — picked has no `.git`, but git's upward discovery
- *    found a real repo at `resolved`. Caller must surface both paths
- *    to the user before registering, otherwise we silently end up
- *    managing whatever ancestor (often `$HOME`) happens to be a repo.
- *  - 'not-a-repo' — git can't find a repository anywhere up the tree.
+ *  The non-'ok' variants must surface to the user — silently registering
+ *  the walked-up ancestor would happily manage `$HOME` (or whatever
+ *  ancestor is a repo) without the user knowing.
  *
  *  Both sides are passed through `realpath` before comparing so the
  *  macOS `/private` symlink prefix doesn't trip a spurious walk-up.
@@ -32,13 +25,12 @@ export async function resolveRepoPath(picked: string): Promise<RepoPathResolutio
   }
   const pickedAbs = resolvePath(picked)
 
-  // Fast path: a `.git` (dir for repos, file for linked worktrees) at
-  // the picked folder means git wouldn't walk up. Skip the subprocess.
-  // Run through `realpath` so we store the canonical form git reports
-  // back from `worktree list` — otherwise paths under symlink prefixes
-  // (e.g. macOS `/tmp` → `/private/tmp`) silently break the
+  // Fast path: picked already has its own `.git` so git wouldn't walk
+  // up. Run through `realpath` so we store the canonical form git
+  // reports back from `worktree list` — otherwise paths under symlink
+  // prefixes (macOS `/tmp` → `/private/tmp`) silently break the
   // `isMain: path === repoRoot` match in listWorktrees.
-  if (existsSync(join(pickedAbs, '.git'))) {
+  if (isGitRepoSync(pickedAbs)) {
     let root = pickedAbs
     try { root = realpathSync(pickedAbs) } catch {}
     return { kind: 'ok', root }

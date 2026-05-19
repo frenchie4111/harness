@@ -24,10 +24,6 @@ export function isGitRepoSync(dirPath: string): boolean {
   return existsSync(join(dirPath, '.git'))
 }
 
-export async function isGitRepo(dirPath: string): Promise<boolean> {
-  return isGitRepoSync(dirPath)
-}
-
 export async function resolveHome(): Promise<string> {
   return homedir()
 }

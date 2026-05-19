@@ -64,6 +64,7 @@ import {
 import { loadRepoConfig, saveRepoConfig, type RepoConfig } from './repo-config'
 import { createNewProject, type GitignorePreset } from './repo-create'
 import { resolveRepoPath } from './repo-resolve'
+import { registerRepoRoot } from './repo-roots'
 import type { AddRepoResult } from '../shared/repo-pick'
 import { isWorktreeMerged } from '../shared/state/prs'
 import { MAX_WAKE } from '../shared/state/snooze'
@@ -75,7 +76,7 @@ import { readRecentDebugLog } from './debug'
 import { CostTracker } from './cost-tracker'
 import { getAllSessionCosts } from './cost-aggregator'
 import { getClaudeAuthStatus } from './claude-auth'
-import { listDir as fsListDir, isGitRepo as fsIsGitRepo, resolveHome as fsResolveHome } from './fs-listing'
+import { listDir as fsListDir, resolveHome as fsResolveHome } from './fs-listing'
 import { startControlServer } from './control-server'
 import { writeMcpConfigForTerminal, pruneMcpConfigs, getBridgeScriptPath } from './mcp-config'
 import { getControlServerInfo } from './control-server'
@@ -1052,14 +1053,7 @@ function registerIpcHandlers(): void {
     const resolution = await resolveRepoPath(picked)
     if (resolution.kind === 'ok') {
       const repoRoot = resolution.root
-      if (!config.repoRoots.includes(repoRoot)) {
-        config.repoRoots.push(repoRoot)
-        saveConfig(config)
-        worktreesFSM.dispatchRepos([...config.repoRoots])
-        store.dispatch({
-          type: 'repoConfigs/changed',
-          payload: { repoRoot, config: loadRepoConfig(repoRoot) }
-        })
+      if (registerRepoRoot(repoRoot, { config, store, worktreesFSM })) {
         void worktreesFSM.refreshList()
       }
       return { kind: 'added', repoRoot }
@@ -1073,7 +1067,6 @@ function registerIpcHandlers(): void {
       fsListDir(dirPath, opts ?? {})
   )
   transport.onRequest('fs:resolveHome', () => fsResolveHome())
-  transport.onRequest('fs:isGitRepo', (_ctx, dirPath: string) => fsIsGitRepo(dirPath))
 
   transport.onRequest(
     'repo:createNewProject',
@@ -1086,14 +1079,7 @@ function registerIpcHandlers(): void {
       const result = await createNewProject(opts)
       if ('error' in result) return result
       const repoRoot = result.path
-      if (!config.repoRoots.includes(repoRoot)) {
-        config.repoRoots.push(repoRoot)
-        saveConfig(config)
-        worktreesFSM.dispatchRepos([...config.repoRoots])
-        store.dispatch({
-          type: 'repoConfigs/changed',
-          payload: { repoRoot, config: loadRepoConfig(repoRoot) }
-        })
+      if (registerRepoRoot(repoRoot, { config, store, worktreesFSM })) {
         void worktreesFSM.refreshList()
       }
       return { path: repoRoot }

@@ -32,6 +32,7 @@ import { HotkeyCheatsheet } from './components/HotkeyCheatsheet'
 import { NewProjectScreen } from './components/NewProjectScreen'
 import { RemoteFilePicker } from './components/RemoteFilePicker'
 import { ResolveRepoModal } from './components/ResolveRepoModal'
+import { RepoAddErrorModal } from './components/RepoAddErrorModal'
 import { ReportIssueScreen, onOpenReportIssue, type OpenReportIssueDetail } from './components/ReportIssueScreen'
 import { AddBackendModal } from './components/AddBackendModal'
 import iconUrl from '../../resources/icon.png'
@@ -519,11 +520,9 @@ const setQuestStep = useCallback((next: QuestStep) => {
     repoPickerOpen,
     handleRepoPickerSelect,
     handleRepoPickerCancel,
-    repoResolvePrompt,
+    repoAddPrompt,
     handleConfirmRepoResolve,
-    handleCancelRepoResolve,
-    repoAddError,
-    handleDismissRepoAddError
+    handleDismissRepoPrompt
   } = useWorktreeHandlers({
     worktrees,
     pendingWorktrees,
@@ -693,41 +692,19 @@ const setQuestStep = useCallback((next: QuestStep) => {
     />
   )
 
-  const resolveRepoModal = repoResolvePrompt ? (
-    <ResolveRepoModal
-      picked={repoResolvePrompt.picked}
-      resolved={repoResolvePrompt.resolved}
-      onConfirm={() => {
-        void handleConfirmRepoResolve()
-      }}
-      onCancel={handleCancelRepoResolve}
-    />
-  ) : null
-
-  const repoAddErrorOverlay = repoAddError ? (
-    <div
-      className="fixed inset-0 z-[70] flex items-start justify-center pt-[15vh] bg-black/40"
-      onClick={handleDismissRepoAddError}
-    >
-      <div
-        className="w-full max-w-md bg-surface rounded-xl shadow-2xl border border-border overflow-hidden flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="px-5 py-3.5 border-b border-border">
-          <h2 className="text-sm font-semibold text-fg-bright">Can't add repository</h2>
-        </div>
-        <div className="px-5 py-4 text-sm text-fg break-all">{repoAddError}</div>
-        <div className="px-5 py-3 border-t border-border flex items-center justify-end gap-2">
-          <button
-            onClick={handleDismissRepoAddError}
-            className="px-4 py-1.5 text-xs font-medium rounded bg-accent/20 hover:bg-accent/30 text-fg-bright border border-accent/40 cursor-pointer transition-colors"
-          >
-            OK
-          </button>
-        </div>
-      </div>
-    </div>
-  ) : null
+  const repoAddPromptOverlay =
+    repoAddPrompt?.kind === 'resolve' ? (
+      <ResolveRepoModal
+        picked={repoAddPrompt.picked}
+        resolved={repoAddPrompt.resolved}
+        onConfirm={() => {
+          void handleConfirmRepoResolve()
+        }}
+        onCancel={handleDismissRepoPrompt}
+      />
+    ) : repoAddPrompt?.kind === 'error' ? (
+      <RepoAddErrorModal message={repoAddPrompt.message} onDismiss={handleDismissRepoPrompt} />
+    ) : null
 
 
   if (repoRoots.length === 0) {
@@ -1037,8 +1014,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
       {settingsOverlay}
       {myWeekOverlay}
       {repoPickerOverlay}
-      {resolveRepoModal}
-      {repoAddErrorOverlay}
+      {repoAddPromptOverlay}
       </HotkeysProvider>
     )
   }
@@ -1383,8 +1359,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
     {settingsOverlay}
     {myWeekOverlay}
     {repoPickerOverlay}
-    {resolveRepoModal}
-    {repoAddErrorOverlay}
+    {repoAddPromptOverlay}
     {showPerfMonitor && <PerfMonitorHUD onClose={() => setShowPerfMonitor(false)} />}
     {showCommandPalette && (
       <CommandPalette

@@ -143,7 +143,6 @@ export function buildBackend(
     listDir: (path: string, opts?: { showHidden?: boolean }) =>
       req('fs:listDir', path, opts),
     resolveHome: () => req('fs:resolveHome'),
-    isGitRepo: (path: string) => req('fs:isGitRepo', path),
 
     listAllFiles: (worktreePath: string) => req('worktree:listFiles', worktreePath),
     readWorktreeFile: (worktreePath: string, filePath: string) =>

@@ -218,7 +218,6 @@ export interface ElectronAPI {
   pickDirectory(opts?: { defaultPath?: string; title?: string }): Promise<string | null>
   listDir(path: string, opts?: { showHidden?: boolean }): Promise<FsEntry[]>
   resolveHome(): Promise<string>
-  isGitRepo(path: string): Promise<boolean>
 
   getMainWorktreeStatus(repoRoot: string): Promise<MainWorktreeStatus>
   prepareMainForMerge(repoRoot: string): Promise<MainWorktreeStatus>

@@ -36,10 +36,11 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
   } = args
 
   const [repoPickerOpen, setRepoPickerOpen] = useState(false)
-  const [repoResolvePrompt, setRepoResolvePrompt] = useState<
-    { picked: string; resolved: string } | null
+  const [repoAddPrompt, setRepoAddPrompt] = useState<
+    | { kind: 'resolve'; picked: string; resolved: string }
+    | { kind: 'error'; message: string }
+    | null
   >(null)
-  const [repoAddError, setRepoAddError] = useState<string | null>(null)
   const activeBackend = useActiveBackend()
   const backend = useBackend()
 
@@ -55,18 +56,24 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
 
   const applyAddRepoResult = useCallback(
     (result: AddRepoResult) => {
-      if (result.kind === 'added') {
-        focusNewRepo(result.repoRoot)
-      } else if (result.kind === 'walked-up') {
-        setRepoResolvePrompt({ picked: result.picked, resolved: result.resolved })
-      } else if (result.kind === 'not-a-repo') {
-        setRepoAddError(
-          result.picked
-            ? `${result.picked} is not a git repository.`
-            : 'That folder is not a git repository.'
-        )
+      switch (result.kind) {
+        case 'added':
+          focusNewRepo(result.repoRoot)
+          return
+        case 'walked-up':
+          setRepoAddPrompt({ kind: 'resolve', picked: result.picked, resolved: result.resolved })
+          return
+        case 'not-a-repo':
+          setRepoAddPrompt({
+            kind: 'error',
+            message: result.picked
+              ? `${result.picked} is not a git repository.`
+              : 'That folder is not a git repository.'
+          })
+          return
+        case 'canceled':
+          return
       }
-      // canceled → no-op
     },
     [focusNewRepo]
   )
@@ -100,19 +107,20 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
   }, [])
 
   const handleConfirmRepoResolve = useCallback(async () => {
-    if (!repoResolvePrompt) return
-    const target = repoResolvePrompt.resolved
-    setRepoResolvePrompt(null)
+    // Use functional setState as a single-shot guard: a rapid second
+    // click sees null and bails out of the IPC.
+    let target: string | null = null
+    setRepoAddPrompt((p) => {
+      if (p && p.kind === 'resolve') target = p.resolved
+      return null
+    })
+    if (!target) return
     const result = await backend.addRepoAtPath(target)
     applyAddRepoResult(result)
-  }, [repoResolvePrompt, applyAddRepoResult])
+  }, [applyAddRepoResult])
 
-  const handleCancelRepoResolve = useCallback(() => {
-    setRepoResolvePrompt(null)
-  }, [])
-
-  const handleDismissRepoAddError = useCallback(() => {
-    setRepoAddError(null)
+  const handleDismissRepoPrompt = useCallback(() => {
+    setRepoAddPrompt(null)
   }, [])
 
   // External worktree creation (from the harness-control MCP). Main
@@ -378,10 +386,8 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
     repoPickerOpen,
     handleRepoPickerSelect,
     handleRepoPickerCancel,
-    repoResolvePrompt,
+    repoAddPrompt,
     handleConfirmRepoResolve,
-    handleCancelRepoResolve,
-    repoAddError,
-    handleDismissRepoAddError
+    handleDismissRepoPrompt
   }
 }
