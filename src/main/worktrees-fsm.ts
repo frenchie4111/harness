@@ -238,19 +238,7 @@ export class WorktreesFSM {
       })
     }
 
-    const snapshot = this.store.getSnapshot().state
-    if (snapshot.settings.shareClaudeSettings) {
-      try {
-        const mainWt = snapshot.worktrees.list.find(
-          (w) => w.repoRoot === repoRoot && w.isMain
-        )
-        if (mainWt && mainWt.path !== created.path) {
-          symlinkClaudeSettings(mainWt.path, created.path)
-        }
-      } catch (err) {
-        log('hooks', `symlinkClaudeSettings failed for ${created.path}`, err instanceof Error ? err.message : err)
-      }
-    }
+    this.applySharedClaudeSettings(repoRoot, created.path)
 
     this.opts.onWorktreeCreated({
       createdPath: created.path,
@@ -279,6 +267,25 @@ export class WorktreesFSM {
       branch: ctx.branch,
       repoRoot: ctx.repoRoot
     })
+  }
+
+  /** Symlink the new worktree's .claude/settings.local.json to main's copy
+   * when `shareClaudeSettings` is enabled. Synchronous — callers should
+   * invoke this BEFORE spawning the Claude tab so it sees shared settings
+   * from its first read. */
+  applySharedClaudeSettings(repoRoot: string, worktreePath: string): void {
+    const snapshot = this.store.getSnapshot().state
+    if (!snapshot.settings.shareClaudeSettings) return
+    try {
+      const mainWt = snapshot.worktrees.list.find(
+        (w) => w.repoRoot === repoRoot && w.isMain
+      )
+      if (mainWt && mainWt.path !== worktreePath) {
+        symlinkClaudeSettings(mainWt.path, worktreePath)
+      }
+    } catch (err) {
+      log('hooks', `symlinkClaudeSettings failed for ${worktreePath}`, err instanceof Error ? err.message : err)
+    }
   }
 
   private resolveSetupCmd(repoRoot: string): string {
