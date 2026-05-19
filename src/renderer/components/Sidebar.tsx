@@ -49,7 +49,28 @@ interface SidebarProps {
   onOpenMyWeek: () => void
   onOpenCleanup: () => void
   onOpenCommandCenter: () => void
-  commandCenterActive: boolean
+  /** Optional: when set, the toolbar's report-issue button toggles via
+   *  this handler (so it participates in the activeOverlay mutex).
+   *  When omitted, falls back to the global openReportIssue() event. */
+  onOpenReportIssue?: () => void
+  /** Which overlay (if any) is currently shown. Drives the active
+   *  highlight on the corresponding toolbar button. Includes overlays
+   *  not reachable from the toolbar (cleanup, newWorktree, review, guide)
+   *  so the type matches App.tsx's `activeOverlay`; the toolbar buttons
+   *  just compare against the names they care about. */
+  activeOverlay:
+    | 'commandCenter'
+    | 'activity'
+    | 'myWeek'
+    | 'hotkeys'
+    | 'reportIssue'
+    | 'settings'
+    | 'cleanup'
+    | 'newWorktree'
+    | 'review'
+    | 'guide'
+    | 'addBackend'
+    | null
   width: number
   collapsedGroups: Record<string, boolean>
   onToggleGroup: (scope: string, key: GroupKey) => void
@@ -92,7 +113,8 @@ export function Sidebar({
   onOpenMyWeek,
   onOpenCleanup,
   onOpenCommandCenter,
-  commandCenterActive,
+  onOpenReportIssue,
+  activeOverlay,
   width,
   collapsedGroups: _collapsedGroups,
   onToggleGroup,
@@ -279,19 +301,6 @@ export function Sidebar({
         <span className="text-xs font-medium text-dim">WORKTREES</span>
         {prLoading && <Loader2 size={10} className="text-faint animate-spin" />}
         <div className="ml-auto flex items-center gap-1">
-          {repoRoots.length > 1 && (
-            <Tooltip
-              label={unifiedRepos ? 'Split by repo' : 'Merge repos into one list'}
-              side="bottom"
-            >
-              <button
-                onClick={onToggleUnifiedRepos}
-                className="text-dim hover:text-fg hover:bg-surface rounded p-0.5 transition-colors cursor-pointer"
-              >
-                {unifiedRepos ? <Rows3 size={12} /> : <Layers size={12} />}
-              </button>
-            </Tooltip>
-          )}
           <Tooltip label="Add repository" side="bottom">
             <button
               onClick={onAddRepo}
@@ -308,6 +317,19 @@ export function Sidebar({
               <Trash2 size={12} />
             </button>
           </Tooltip>
+          {repoRoots.length > 1 && (
+            <Tooltip
+              label={unifiedRepos ? 'Split by repo' : 'Merge repos into one list'}
+              side="bottom"
+            >
+              <button
+                onClick={onToggleUnifiedRepos}
+                className="text-dim hover:text-fg hover:bg-surface rounded p-0.5 transition-colors cursor-pointer"
+              >
+                {unifiedRepos ? <Rows3 size={12} /> : <Layers size={12} />}
+              </button>
+            </Tooltip>
+          )}
           <Tooltip label="Refresh worktrees" action="refreshWorktrees" side="bottom">
             <button
               onClick={onRefresh}
@@ -512,11 +534,7 @@ export function Sidebar({
         <Tooltip label="Command Center" action="toggleCommandCenter" side="top">
           <button
             onClick={onOpenCommandCenter}
-            className={`rounded p-1.5 transition-colors cursor-pointer ${
-              commandCenterActive
-                ? 'text-accent bg-surface'
-                : 'text-dim hover:text-fg hover:bg-surface'
-            }`}
+            className={overlayButtonClass(activeOverlay === 'commandCenter')}
           >
             <LayoutGrid size={14} />
           </button>
@@ -524,7 +542,7 @@ export function Sidebar({
         <Tooltip label="Activity" side="top">
           <button
             onClick={onOpenActivity}
-            className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
+            className={overlayButtonClass(activeOverlay === 'activity')}
           >
             <BarChart3 size={14} />
           </button>
@@ -532,7 +550,7 @@ export function Sidebar({
         <Tooltip label="My week" side="top">
           <button
             onClick={onOpenMyWeek}
-            className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
+            className={overlayButtonClass(activeOverlay === 'myWeek')}
           >
             <CalendarDays size={14} />
           </button>
@@ -540,15 +558,15 @@ export function Sidebar({
         <Tooltip label="Keyboard shortcuts" action="hotkeyCheatsheet" side="top">
           <button
             onClick={onOpenHotkeyCheatsheet}
-            className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
+            className={overlayButtonClass(activeOverlay === 'hotkeys')}
           >
             <Keyboard size={14} />
           </button>
         </Tooltip>
         <Tooltip label="Report an issue / request a feature / submit a suggestion" side="top">
           <button
-            onClick={() => openReportIssue()}
-            className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
+            onClick={() => (onOpenReportIssue ? onOpenReportIssue() : openReportIssue())}
+            className={overlayButtonClass(activeOverlay === 'reportIssue')}
           >
             <MessageSquare size={14} />
           </button>
@@ -556,7 +574,7 @@ export function Sidebar({
         <Tooltip label="Settings" side="top">
           <button
             onClick={onOpenSettings}
-            className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
+            className={overlayButtonClass(activeOverlay === 'settings')}
           >
             <SettingsIcon size={14} />
           </button>
@@ -579,6 +597,13 @@ interface PendingWorktreeRowProps {
   isActive: boolean
   onClick: () => void
   onDismiss: () => void
+}
+
+function overlayButtonClass(active: boolean): string {
+  const base = 'rounded p-1.5 transition-colors cursor-pointer'
+  return active
+    ? `${base} text-accent bg-surface`
+    : `${base} text-dim hover:text-fg hover:bg-surface`
 }
 
 function PendingWorktreeRow({ pending, isActive, onClick, onDismiss }: PendingWorktreeRowProps): JSX.Element {

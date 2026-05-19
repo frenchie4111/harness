@@ -27,13 +27,10 @@ interface UseHotkeyHandlersArgs {
   hotkeyOverrides: Record<string, string> | undefined
   setSidebarVisible: React.Dispatch<React.SetStateAction<boolean>>
   setRightColumnHidden: React.Dispatch<React.SetStateAction<boolean>>
-  setShowNewWorktree: React.Dispatch<React.SetStateAction<boolean>>
-  setShowCommandCenter: React.Dispatch<React.SetStateAction<boolean>>
   setShowCommandPalette: React.Dispatch<React.SetStateAction<boolean>>
   setCommandPaletteMode: React.Dispatch<React.SetStateAction<'root' | 'files'>>
   setShowPerfMonitor: React.Dispatch<React.SetStateAction<boolean>>
   setShowHotkeyCheatsheet: React.Dispatch<React.SetStateAction<boolean>>
-  setShowReview: React.Dispatch<React.SetStateAction<boolean>>
   // Imperative hooks into other handlers — passed in to avoid this hook
   // depending on useTabHandlers + useWorktreeHandlers directly.
   handleAddTerminalTab: (worktreePath: string, paneId?: string) => void
@@ -42,6 +39,13 @@ interface UseHotkeyHandlersArgs {
   handleSplitPane: (worktreePath: string, fromPaneId: string, direction?: 'horizontal' | 'vertical') => void
   handleRefreshWorktrees: () => void
   onRequestRenameActiveTab: () => void
+  /** Open/toggle helpers routed through App.tsx's overlay mutex so the
+   *  hotkey paths land on the same single-overlay invariant as the toolbar
+   *  buttons. */
+  onOpenNewWorktree: () => void
+  onOpenReview: () => void
+  onToggleHotkeyCheatsheet: () => void
+  onToggleCommandCenter: () => void
 }
 
 /** Sidebar-aware hotkey handler block. Computes the visible/ordered
@@ -71,19 +75,20 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
     hotkeyOverrides,
     setSidebarVisible,
     setRightColumnHidden,
-    setShowNewWorktree,
-    setShowCommandCenter,
     setShowCommandPalette,
     setCommandPaletteMode,
     setShowPerfMonitor,
     setShowHotkeyCheatsheet,
-    setShowReview,
     handleAddTerminalTab,
     handleCloseTab,
     handleSelectTab,
     handleSplitPane,
     handleRefreshWorktrees,
-    onRequestRenameActiveTab
+    onRequestRenameActiveTab,
+    onOpenNewWorktree,
+    onOpenReview,
+    onToggleHotkeyCheatsheet,
+    onToggleCommandCenter
   } = args
 
   // Mirror the sidebar's grouping/rendering order so hotkey navigation
@@ -250,7 +255,7 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       nextTab: () => cycleTab(1),
       prevTab: () => cycleTab(-1),
       renameTab: onRequestRenameActiveTab,
-      newWorktree: () => setShowNewWorktree(true),
+      newWorktree: onOpenNewWorktree,
       refreshWorktrees: handleRefreshWorktrees,
       focusTerminal: () => {
         if (!activeWorktreeId) return
@@ -268,7 +273,7 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
         if (!activeWorktreeId) return
         backend.openInEditor(activeWorktreeId)
       },
-      toggleCommandCenter: () => setShowCommandCenter((v) => !v),
+      toggleCommandCenter: onToggleCommandCenter,
       commandPalette: () => {
         setShowHotkeyCheatsheet(false)
         setCommandPaletteMode('root')
@@ -298,8 +303,8 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
         handleSplitPane(activeWorktreeId, fromPaneId, 'vertical')
       },
       togglePerfMonitor: () => setShowPerfMonitor((v) => !v),
-      hotkeyCheatsheet: () => setShowHotkeyCheatsheet((v) => !v),
-      openReview: () => setShowReview(true)
+      hotkeyCheatsheet: onToggleHotkeyCheatsheet,
+      openReview: onOpenReview
     }),
     [
       cycleWorktree,
@@ -318,15 +323,16 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       handleSplitPane,
       setSidebarVisible,
       setRightColumnHidden,
-      setShowNewWorktree,
-      setShowCommandCenter,
       setShowCommandPalette,
       setCommandPaletteMode,
       setShowPerfMonitor,
       setShowHotkeyCheatsheet,
-      setShowReview,
       backend,
-      onRequestRenameActiveTab
+      onRequestRenameActiveTab,
+      onOpenNewWorktree,
+      onOpenReview,
+      onToggleHotkeyCheatsheet,
+      onToggleCommandCenter
     ]
   )
 

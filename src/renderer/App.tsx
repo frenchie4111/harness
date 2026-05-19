@@ -241,6 +241,79 @@ function DesktopApp(): JSX.Element {
   const [showNewProject, setShowNewProject] = useState(false)
   const [reportIssueState, setReportIssueState] = useState<OpenReportIssueDetail | null>(null)
   const [showAddBackend, setShowAddBackend] = useState(false)
+
+  // Every full-screen / column / popup overlay is mutually exclusive:
+  // opening any of them tears down all the others. Toolbar buttons go
+  // through toggleOverlay (clicking the same button closes it); one-shot
+  // openers like "Add worktree" go through openOverlay.
+  type OverlayName =
+    | 'commandCenter'
+    | 'activity'
+    | 'myWeek'
+    | 'hotkeys'
+    | 'reportIssue'
+    | 'settings'
+    | 'cleanup'
+    | 'newWorktree'
+    | 'review'
+    | 'guide'
+    | 'addBackend'
+  const activeOverlay: OverlayName | null = showCommandCenter
+    ? 'commandCenter'
+    : showActivity
+      ? 'activity'
+      : showMyWeek
+        ? 'myWeek'
+        : showHotkeyCheatsheet
+          ? 'hotkeys'
+          : reportIssueState !== null
+            ? 'reportIssue'
+            : showSettings
+              ? 'settings'
+              : showCleanup
+                ? 'cleanup'
+                : showNewWorktree
+                  ? 'newWorktree'
+                  : showReview
+                    ? 'review'
+                    : showGuide
+                      ? 'guide'
+                      : showAddBackend
+                        ? 'addBackend'
+                        : null
+  const applyOverlay = useCallback(
+    (name: OverlayName | null, toggle: boolean): void => {
+      const want = (target: OverlayName, current: boolean): boolean =>
+        target === name ? (toggle ? !current : true) : false
+      setShowCommandCenter((v) => want('commandCenter', v))
+      setShowActivity((v) => want('activity', v))
+      setShowMyWeek((v) => want('myWeek', v))
+      setShowHotkeyCheatsheet((v) => want('hotkeys', v))
+      setShowSettings((v) => want('settings', v))
+      setShowCleanup((v) => want('cleanup', v))
+      setShowNewWorktree((v) => want('newWorktree', v))
+      setShowReview((v) => want('review', v))
+      setShowGuide((v) => want('guide', v))
+      setShowAddBackend((v) => want('addBackend', v))
+      setReportIssueState((v) => {
+        const cur = v !== null
+        return want('reportIssue', cur) ? v ?? {} : null
+      })
+    },
+    []
+  )
+  const toggleOverlay = useCallback(
+    (name: OverlayName): void => applyOverlay(name, true),
+    [applyOverlay]
+  )
+  const openOverlay = useCallback(
+    (name: OverlayName): void => applyOverlay(name, false),
+    [applyOverlay]
+  )
+  const closeAllOverlays = useCallback(
+    (): void => applyOverlay(null, false),
+    [applyOverlay]
+  )
   const [crashedTabIds, setCrashedTabIds] = useState<ReadonlySet<string>>(() => new Set())
   // `theme` and `defaultAgent` are both seeded at init, so we track
   // explicit confirmation separately for the onboarding step checkmarks.
@@ -304,9 +377,9 @@ const setQuestStep = useCallback((next: QuestStep) => {
 
   // Open Settings from the menu (Cmd+,)
   useEffect(() => {
-    const cleanup = backend.onOpenSettings(() => setShowSettings(true))
+    const cleanup = backend.onOpenSettings(() => openOverlay('settings'))
     return cleanup
-  }, [])
+  }, [backend, openOverlay])
 
   // Toggle perf monitor from the menu (Cmd+Shift+D)
   useEffect(() => {
@@ -316,9 +389,9 @@ const setQuestStep = useCallback((next: QuestStep) => {
 
   // Open Keyboard Shortcuts from the menu
   useEffect(() => {
-    const cleanup = backend.onOpenKeyboardShortcuts(() => setShowHotkeyCheatsheet(true))
+    const cleanup = backend.onOpenKeyboardShortcuts(() => openOverlay('hotkeys'))
     return cleanup
-  }, [])
+  }, [backend, openOverlay])
 
   // File → New Project… (Cmd+N)
   useEffect(() => {
@@ -336,12 +409,11 @@ const setQuestStep = useCallback((next: QuestStep) => {
 
   // Report Issue — triggered from the Help menu, the sidebar, the
   // Settings Support section, and the openReportIssueFor() helper (used
-  // by the error boundary). Closes any open overlay (Settings, hotkey
-  // cheatsheet) so the full-screen report takes over the center area.
+  // by the error boundary). Routes through applyOverlay so it takes
+  // over from whatever overlay is currently open.
   useEffect(() => {
     const openReport = (detail: OpenReportIssueDetail): void => {
-      setShowSettings(false)
-      setShowHotkeyCheatsheet(false)
+      closeAllOverlays()
       setReportIssueState(detail)
     }
     const cleanupMenu = backend.onOpenReportIssue(() => openReport({}))
@@ -350,7 +422,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
       cleanupMenu()
       cleanupBus()
     }
-  }, [])
+  }, [closeAllOverlays])
 
   // Debug: Crash Focused Tab (Help menu → for testing the ErrorBoundary).
   // Finds the active worktree's active pane and flips its active tab into
@@ -600,18 +672,26 @@ const setQuestStep = useCallback((next: QuestStep) => {
     hotkeyOverrides,
     setSidebarVisible,
     setRightColumnHidden,
-    setShowNewWorktree,
-    setShowCommandCenter,
     setShowCommandPalette,
     setCommandPaletteMode,
     setShowPerfMonitor,
     setShowHotkeyCheatsheet,
-    setShowReview,
     handleAddTerminalTab,
     handleCloseTab,
     handleSelectTab,
     handleSplitPane,
     handleRefreshWorktrees,
+    onOpenNewWorktree: () => {
+      setNewWorktreeRepoRoot(null)
+      openOverlay('newWorktree')
+    },
+    onOpenReview: () => {
+      setReviewMode('branch')
+      setReviewCommit(undefined)
+      openOverlay('review')
+    },
+    onToggleHotkeyCheatsheet: () => toggleOverlay('hotkeys'),
+    onToggleCommandCenter: () => toggleOverlay('commandCenter'),
     onRequestRenameActiveTab: () => {
       if (!activeWorktreeId) return
       const tabId = activeTabId[activeWorktreeId]
@@ -671,33 +751,6 @@ const setQuestStep = useCallback((next: QuestStep) => {
     )
   }
 
-  const settingsOverlay = showSettings ? (
-    <div className="fixed inset-0 z-50">
-      <Settings
-        onClose={() => {
-          setShowSettings(false)
-          setSettingsInitialSection(undefined)
-        }}
-        onOpenGuide={() => {
-          setShowSettings(false)
-          setSettingsInitialSection(undefined)
-          setShowGuide(true)
-        }}
-        onOpenMyWeek={() => {
-          setShowSettings(false)
-          setSettingsInitialSection(undefined)
-          setShowMyWeek(true)
-        }}
-        initialSection={settingsInitialSection}
-      />
-    </div>
-  ) : null
-
-  const myWeekOverlay = showMyWeek ? (
-    <div className="fixed inset-0 z-50 flex">
-      <WeeklyWrappedScreen onClose={() => setShowMyWeek(false)} />
-    </div>
-  ) : null
 
   const repoPickerOverlay = (
     <RemoteFilePicker
@@ -1031,8 +1084,6 @@ const setQuestStep = useCallback((next: QuestStep) => {
           </div>
         </div>
       </div>
-      {settingsOverlay}
-      {myWeekOverlay}
       {repoPickerOverlay}
       {repoAddPromptOverlay}
       </HotkeysProvider>
@@ -1145,12 +1196,16 @@ const setQuestStep = useCallback((next: QuestStep) => {
               setShowActivity(false)
               setShowCleanup(false)
               setShowCommandCenter(false)
+              setShowSettings(false)
+              setShowMyWeek(false)
+              setShowHotkeyCheatsheet(false)
+              setReportIssueState(null)
               setActiveWorktreeId(path)
             }}
             onDismissPendingWorktree={handleDismissPendingWorktree}
             onNewWorktree={(repoRoot) => {
               setNewWorktreeRepoRoot(repoRoot ?? null)
-              setShowNewWorktree(true)
+              openOverlay('newWorktree')
             }}
             onContinueWorktree={handleContinueWorktree}
             onDeleteWorktree={handleDeleteWorktree}
@@ -1158,19 +1213,15 @@ const setQuestStep = useCallback((next: QuestStep) => {
             repoRoots={repoRoots}
             onAddRepo={handleAddRepo}
             onRemoveRepo={handleRemoveRepo}
-            onOpenSettings={() => setShowSettings(true)}
-            onOpenAddBackend={() => setShowAddBackend(true)}
-            onOpenHotkeyCheatsheet={() => setShowHotkeyCheatsheet(true)}
-            onOpenActivity={() => setShowActivity(true)}
-            onOpenMyWeek={() => setShowMyWeek(true)}
-            onOpenCleanup={() => setShowCleanup(true)}
-            onOpenCommandCenter={() => {
-              setShowNewWorktree(false)
-              setShowActivity(false)
-              setShowCleanup(false)
-              setShowCommandCenter(true)
-            }}
-            commandCenterActive={showCommandCenter}
+            onOpenSettings={() => toggleOverlay('settings')}
+            onOpenAddBackend={() => openOverlay('addBackend')}
+            onOpenHotkeyCheatsheet={() => toggleOverlay('hotkeys')}
+            onOpenActivity={() => toggleOverlay('activity')}
+            onOpenMyWeek={() => toggleOverlay('myWeek')}
+            onOpenCleanup={() => openOverlay('cleanup')}
+            onOpenCommandCenter={() => toggleOverlay('commandCenter')}
+            onOpenReportIssue={() => toggleOverlay('reportIssue')}
+            activeOverlay={activeOverlay}
             width={sidebarWidth}
             collapsedGroups={collapsedGroups}
             onToggleGroup={toggleGroup}
@@ -1188,7 +1239,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
           if (!paneTree) return null
           const leaves = getLeaves(paneTree)
           if (leaves.length === 0 || !leaves.some((l) => l.tabs.length > 0)) return null
-          const isVisible = !showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && reportIssueState === null && wt.path === activeWorktreeId && !pendingDeletionByPath[wt.path]
+          const isVisible = !showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && !showSettings && !showMyWeek && wt.path === activeWorktreeId && !pendingDeletionByPath[wt.path]
           return (
             <div
               key={wt.path}
@@ -1268,14 +1319,30 @@ const setQuestStep = useCallback((next: QuestStep) => {
           <div className="flex-1 min-w-0 flex">
             <Activity
               onClose={() => setShowActivity(false)}
-              onOpenMyWeek={() => {
-                setShowActivity(false)
-                setShowMyWeek(true)
-              }}
               worktrees={worktrees}
               prStatuses={prStatuses}
               mergedPaths={mergedPaths}
             />
+          </div>
+        )}
+        {showSettings && (
+          <div className="flex-1 min-w-0 flex">
+            <Settings
+              onClose={() => {
+                setShowSettings(false)
+                setSettingsInitialSection(undefined)
+              }}
+              onOpenGuide={() => {
+                setSettingsInitialSection(undefined)
+                openOverlay('guide')
+              }}
+              initialSection={settingsInitialSection}
+            />
+          </div>
+        )}
+        {showMyWeek && (
+          <div className="flex-1 min-w-0 flex">
+            <WeeklyWrappedScreen onClose={() => setShowMyWeek(false)} />
           </div>
         )}
         {showCleanup && (
@@ -1329,12 +1396,12 @@ const setQuestStep = useCallback((next: QuestStep) => {
             </div>
           )
         })()}
-        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && reportIssueState === null && !activeWorktreeId && worktrees.length > 0 && (
+        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && !showSettings && !showMyWeek && !activeWorktreeId && worktrees.length > 0 && (
           <div className="flex-1 flex items-center justify-center text-dim">
             Select a worktree to begin
           </div>
         )}
-        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && reportIssueState === null && isPendingId(activeWorktreeId) && (() => {
+        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && !showSettings && !showMyWeek && isPendingId(activeWorktreeId) && (() => {
           const pending = pendingWorktrees.find((p) => p.id === activeWorktreeId)
           if (!pending) return null
           return (
@@ -1346,7 +1413,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
             />
           )
         })()}
-        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && reportIssueState === null && activeWorktreeId && pendingDeletionByPath[activeWorktreeId] && (
+        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && !showSettings && !showMyWeek && activeWorktreeId && pendingDeletionByPath[activeWorktreeId] && (
           <DeletingWorktreeScreen
             deletion={pendingDeletionByPath[activeWorktreeId]}
             onDismiss={handleDismissPendingDeletion}
@@ -1358,10 +1425,10 @@ const setQuestStep = useCallback((next: QuestStep) => {
           onFinish={() => setQuestStep('done')}
         />
         {/* Right panel — hidden on the new-worktree screen so the form gets the full width */}
-        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && reportIssueState === null && !rightColumnHidden && (
+        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && !showSettings && !showMyWeek && !rightColumnHidden && (
           <ResizeHandle onDelta={handleRightPanelResize} />
         )}
-        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && reportIssueState === null && !rightColumnHidden && (
+        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && !showSettings && !showMyWeek && !rightColumnHidden && (
           <RightColumn
             width={rightPanelWidth}
             activeWorktreeId={activeWorktreeId}
@@ -1375,7 +1442,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
             onRefreshPRs={fetchAllPRStatuses}
             onOpenGithubSettings={() => {
               setSettingsInitialSection('github')
-              setShowSettings(true)
+              openOverlay('settings')
             }}
             onMerged={refreshMergedStatus}
             onRemoveWorktree={handleDeleteWorktree}
@@ -1385,20 +1452,18 @@ const setQuestStep = useCallback((next: QuestStep) => {
             onOpenReview={() => {
               setReviewMode('branch')
               setReviewCommit(undefined)
-              setShowReview(true)
+              openOverlay('review')
             }}
             onOpenCommitReview={(hash, shortHash, subject) => {
               setReviewMode('branch')
               setReviewCommit({ hash, shortHash, subject })
-              setShowReview(true)
+              openOverlay('review')
             }}
             onCollapse={() => setRightColumnHidden(true)}
           />
         )}
       </div>
     </div>
-    {settingsOverlay}
-    {myWeekOverlay}
     {repoPickerOverlay}
     {repoAddPromptOverlay}
     {showPerfMonitor && <PerfMonitorHUD onClose={() => setShowPerfMonitor(false)} />}
@@ -1417,6 +1482,10 @@ const setQuestStep = useCallback((next: QuestStep) => {
           setShowActivity(false)
           setShowCleanup(false)
           setShowCommandCenter(false)
+          setShowSettings(false)
+          setShowMyWeek(false)
+          setShowHotkeyCheatsheet(false)
+          setReportIssueState(null)
           setActiveWorktreeId(path)
         }}
         onAction={(action) => {

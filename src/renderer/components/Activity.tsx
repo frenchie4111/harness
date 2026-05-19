@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, Flame, Clock, Zap, GitBranch, GitMerge, RefreshCw, CalendarDays } from 'lucide-react'
+import { ArrowLeft, Flame, Clock, Zap, GitBranch, GitMerge, RefreshCw } from 'lucide-react'
 import type {
   Worktree,
   ActivityLog,
@@ -14,7 +14,6 @@ import { ActivityCosts } from './ActivityCosts'
 
 interface ActivityProps {
   onClose: () => void
-  onOpenMyWeek: () => void
   worktrees: Worktree[]
   prStatuses?: Record<string, PRStatus | null>
   mergedPaths?: Record<string, boolean>
@@ -103,13 +102,24 @@ function isLiveMerged(
 
 type ActivityTab = 'timeline' | 'costs'
 
-export function Activity({ onClose, onOpenMyWeek, worktrees, prStatuses, mergedPaths }: ActivityProps): JSX.Element {
+export function Activity({ onClose, worktrees, prStatuses, mergedPaths }: ActivityProps): JSX.Element {
   const backend = useBackend()
   const [tab, setTab] = useState<ActivityTab>('timeline')
   const [log, setLog] = useState<ActivityLog>({})
   const [range, setRange] = useState<Range>('24h')
   const [now, setNow] = useState(Date.now())
   const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        onClose()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
 
   const loadLog = async (): Promise<void> => {
     setLoading(true)
@@ -264,18 +274,17 @@ export function Activity({ onClose, onOpenMyWeek, worktrees, prStatuses, mergedP
         >
           <ArrowLeft size={14} />
           Back
+          <kbd className="text-[10px] text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono">ESC</kbd>
         </button>
         <span className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 text-sm font-medium text-fg pointer-events-none">
           Activity
         </span>
         <div className="no-drag absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
           <button
-            onClick={onOpenMyWeek}
-            className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted hover:text-fg-bright hover:bg-surface rounded transition-colors cursor-pointer"
-            title="Weekly review"
+            onClick={handleReset}
+            className="text-xs text-muted hover:text-danger transition-colors cursor-pointer"
           >
-            <CalendarDays size={13} />
-            My week
+            reset
           </button>
           <button
             onClick={loadLog}
@@ -283,12 +292,6 @@ export function Activity({ onClose, onOpenMyWeek, worktrees, prStatuses, mergedP
             title="Refresh"
           >
             <RefreshCw size={13} />
-          </button>
-          <button
-            onClick={handleReset}
-            className="text-xs text-muted hover:text-danger transition-colors cursor-pointer"
-          >
-            reset
           </button>
         </div>
       </div>

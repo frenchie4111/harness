@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Bug, Lightbulb, ExternalLink, X } from 'lucide-react'
+import { Bug, Lightbulb, ExternalLink } from 'lucide-react'
 import { HARNESS_NEW_ISSUE_URL } from '../../shared/constants'
 import { useBackend } from '../backend'
 
@@ -198,23 +198,22 @@ export function ReportIssueScreen({
   }
 
   return (
-    <div className="flex-1 flex flex-col min-w-0 bg-app">
-      <div className="drag-region h-10 shrink-0 border-b border-border relative">
-        <button
-          onClick={onClose}
-          className="no-drag absolute left-4 top-1/2 -translate-y-1/2 text-dim hover:text-fg p-1.5 rounded transition-colors cursor-pointer"
-          title="Close (Esc)"
-          type="button"
-        >
-          <X size={16} />
-        </button>
-        <span className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 text-sm font-medium text-fg pointer-events-none">
-          {prefilledContext ? 'Report this crash' : 'Report an issue or request a feature'}
-        </span>
-      </div>
-
-      <div className="flex-1 overflow-y-auto">
-        <div className="max-w-2xl mx-auto px-8 py-8 space-y-6">
+    <div
+      className="fixed inset-0 z-[60] flex items-start justify-center pt-[8vh] bg-app/40"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-2xl bg-surface rounded-xl shadow-2xl border border-border overflow-hidden flex flex-col max-h-[84vh]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-border shrink-0">
+          <h2 className="text-sm font-semibold text-fg-bright">
+            {prefilledContext ? 'Report this crash' : 'Report an issue or request a feature'}
+          </h2>
+          <kbd className="text-[10px] text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono">ESC</kbd>
+        </div>
+        <div className="flex-1 overflow-y-auto">
+        <div className="px-5 py-5 space-y-5">
           <div>
             <label className="text-[11px] font-semibold uppercase tracking-wider text-dim block mb-2">
               Kind
@@ -331,6 +330,7 @@ export function ReportIssueScreen({
               Open on GitHub
             </button>
           </div>
+        </div>
         </div>
       </div>
     </div>

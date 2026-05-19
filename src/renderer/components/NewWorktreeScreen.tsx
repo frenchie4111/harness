@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { Sparkles, Loader2, X, Map, ListChecks, BookOpen, Radio, GitPullRequest } from 'lucide-react'
+import { Sparkles, Loader2, ArrowLeft, Map, ListChecks, BookOpen, Radio, GitPullRequest } from 'lucide-react'
 import iconUrl from '../../../resources/icon.png'
 import { sanitizeBranchInput, isValidBranchName } from '../branch-name'
 import { RepoIcon } from './RepoIcon'
@@ -181,10 +181,6 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
         e.preventDefault()
         handleSubmit()
       }
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        onCancel()
-      }
       if ((e.metaKey || e.ctrlKey) && e.key === '[') {
         e.preventDefault()
         cycleRepo(-1)
@@ -194,8 +190,22 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
         cycleRepo(1)
       }
     },
-    [handleSubmit, onCancel, cycleRepo]
+    [handleSubmit, cycleRepo]
   )
+
+  // Escape closes the screen even when focus is outside the form (e.g.,
+  // after clicking the Back button, which steals focus and would block
+  // the root-level onKeyDown handler).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        onCancel()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onCancel])
 
   const handleBranchKey = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey) {
@@ -209,13 +219,14 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
       className="flex-1 flex flex-col min-w-0 bg-app brand-grid-bg relative"
       onKeyDown={handleKeyDown}
     >
-      <div className="drag-region h-10 shrink-0 flex items-center justify-end pr-2">
+      <div className="drag-region h-10 shrink-0 relative border-b border-border">
         <button
           onClick={onCancel}
-          title="Close (Esc)"
-          className="no-drag text-dim hover:text-fg p-1.5 rounded transition-colors cursor-pointer"
+          className="no-drag absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-xs text-muted hover:text-fg-bright transition-colors cursor-pointer"
         >
-          <X size={16} />
+          <ArrowLeft size={14} />
+          Back
+          <kbd className="text-[10px] text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono">ESC</kbd>
         </button>
       </div>
 

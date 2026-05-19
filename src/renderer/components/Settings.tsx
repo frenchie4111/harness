@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2, LifeBuoy, Bug, Lightbulb, FlaskConical, Copy, CopyCheck, ExternalLink, CalendarDays, FileText, FolderOpen } from 'lucide-react'
+import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2, LifeBuoy, Bug, Lightbulb, FlaskConical, Copy, CopyCheck, ExternalLink, FileText, FolderOpen } from 'lucide-react'
 import { openReportIssue } from './ReportIssueScreen'
 import { HARNESS_ISSUES_URL, HARNESS_RELEASES_URL, harnessReleaseNotesUrl } from '../../shared/constants'
 import { useSettings, useUpdater, useRepoConfigs, useHooks } from '../store'
@@ -17,7 +17,6 @@ import { QRCodeSVG } from 'qrcode.react'
 interface SettingsProps {
   onClose: () => void
   onOpenGuide: () => void
-  onOpenMyWeek: () => void
   initialSection?: SectionId
 }
 
@@ -52,7 +51,7 @@ const SECTIONS: Section[] = [
   { id: 'experimental', label: 'Experimental', icon: FlaskConical }
 ]
 
-export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }: SettingsProps): JSX.Element {
+export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps): JSX.Element {
   const backend = useBackend()
   const [activeSection, setActiveSection] = useState<SectionId>(initialSection ?? 'appearance')
   const [activeSubSection, setActiveSubSection] = useState<SubSectionId | null>(null)
@@ -909,7 +908,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
   }
 
   return (
-    <div className="flex flex-col h-full bg-panel">
+    <div className="flex flex-col h-full w-full bg-panel">
       {/* Title bar (drag region) */}
       <div className="drag-region h-10 shrink-0 border-b border-border relative">
         <button
@@ -926,8 +925,8 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
       </div>
 
       <div className="flex flex-1 min-h-0">
-        {/* Left sidebar */}
-        <div className="w-56 border-r border-border bg-panel flex flex-col shrink-0">
+        {/* Sections sidebar (right) */}
+        <div className="w-56 order-2 border-l border-border bg-panel flex flex-col shrink-0">
           <div className="px-3 py-2">
             <span className="text-xs font-medium text-dim">SECTIONS</span>
           </div>
@@ -993,18 +992,11 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
             <BookOpen size={14} className="shrink-0" />
             <span>Worktree Guide</span>
           </button>
-          <button
-            onClick={onOpenMyWeek}
-            className="flex items-center gap-2 px-3 py-2 text-left text-sm text-muted hover:bg-panel-raised hover:text-fg-bright transition-colors cursor-pointer"
-          >
-            <CalendarDays size={14} className="shrink-0" />
-            <span>My week</span>
-          </button>
         </div>
 
         {/* Main scrollable content */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto">
-          <div className="max-w-2xl p-8 space-y-12">
+          <div className="max-w-5xl p-8 space-y-12">
             {/* Appearance section */}
             <section ref={(el) => { sectionRefs.current.appearance = el }} id="appearance">
               <h2 className="text-lg font-semibold text-fg-bright mb-1">Appearance</h2>

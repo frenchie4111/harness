@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { X, GitPullRequest, ChevronDown, ChevronRight, Layers, Rows3 } from 'lucide-react'
+import { ArrowLeft, GitPullRequest, ChevronDown, ChevronRight, Layers, Rows3 } from 'lucide-react'
 import { useSettings, useSnooze } from '../store'
 import { useBackend } from '../backend'
 import type {
@@ -280,6 +280,15 @@ export function CommandCenter({
     <div className="flex-1 min-w-0 flex flex-col bg-bg">
       {/* Header */}
       <div className="drag-region px-4 py-4 border-b border-border flex items-start gap-6 shrink-0">
+        <button
+          onClick={onClose}
+          className="no-drag flex items-center gap-1.5 px-2 py-1.5 text-xs text-muted hover:text-fg-bright transition-colors cursor-pointer self-center"
+        >
+          <ArrowLeft size={14} />
+          Back
+          <kbd className="text-[10px] text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono">ESC</kbd>
+        </button>
+
         <div className="flex-1 min-w-0">
           <h1 className="text-xl font-bold text-fg-bright tracking-tight no-drag">
             Command Center
@@ -311,14 +320,6 @@ export function CommandCenter({
             {unifiedRepos ? <Rows3 size={16} /> : <Layers size={16} />}
           </button>
         )}
-
-        <button
-          onClick={onClose}
-          className="no-drag p-2 rounded hover:bg-surface text-muted hover:text-fg cursor-pointer"
-          title="Close (Esc)"
-        >
-          <X size={16} />
-        </button>
       </div>
 
       {/* Live stacked bar graph */}
