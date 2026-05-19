@@ -612,7 +612,7 @@ function PRActions({ pr, worktree, needsGithubToken }: PRActionsProps): JSX.Elem
   else if (confirming) mergeLabel = `Confirm ${methodLabel}`
   else mergeLabel = 'Merge'
 
-  const showMergeButton = !isTerminal
+  const showMergeButton = !isTerminal && !pr.queuePosition
 
   let mergeTooltip: string
   if (disabledReason) mergeTooltip = disabledReason
