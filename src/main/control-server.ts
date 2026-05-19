@@ -90,7 +90,6 @@ export interface ControlServerDeps {
   getWorktreeBase: () => 'remote' | 'local'
   broadcast: (channel: string, ...args: unknown[]) => void
   runWorktreeSetup: (ctx: { repoRoot: string; worktreePath: string; branch: string }) => Promise<void>
-  applySharedClaudeSettings: (repoRoot: string, worktreePath: string) => void
   /** Returns the caller's current scope, or null if the terminal is not
    * associated with any known worktree (e.g. the worktree was deleted). */
   resolveCallerScope: (terminalId: string) => CallerScope | null
@@ -233,9 +232,9 @@ async function handleRequest(
       baseBranch: typeof body.baseBranch === 'string' ? body.baseBranch : undefined,
       fetchRemote: !body.baseBranch && mode === 'remote'
     })
-    // Symlink synchronously before broadcast so the Claude tab spawned by
-    // ensureInitialized sees shared settings from its first read.
-    deps.applySharedClaudeSettings(repoRoot, created.path)
+    // runWorktreeSetup runs its synchronous symlink step before the first
+    // await, so the broadcast below can fire immediately and the Claude tab
+    // spawned by ensureInitialized still sees shared settings.
     deps.runWorktreeSetup({ repoRoot, worktreePath: created.path, branch: created.branch })
       .catch((err) => log('control', `setup script failed: ${err instanceof Error ? err.message : String(err)}`))
     const initialPrompt = typeof body.initialPrompt === 'string' ? body.initialPrompt : undefined

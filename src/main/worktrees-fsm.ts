@@ -259,7 +259,13 @@ export class WorktreesFSM {
     return { id, outcome: 'success', createdPath: created.path }
   }
 
+  /** Post-creation work for externally-created worktrees (e.g. the MCP
+   * create_worktree tool): symlink shared Claude settings synchronously,
+   * then run the setup script. The symlink runs before the first await
+   * so callers can fire-and-forget and still rely on it being in place
+   * before they spawn the Claude tab. */
   async runWorktreeSetup(ctx: { repoRoot: string; worktreePath: string; branch: string }): Promise<void> {
+    this.applySharedClaudeSettings(ctx.repoRoot, ctx.worktreePath)
     const setupCmd = this.resolveSetupCmd(ctx.repoRoot)
     if (!setupCmd) return
     await runWorktreeScript('setup', setupCmd, {

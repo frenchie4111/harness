@@ -2992,8 +2992,6 @@ async function runBoot(): Promise<void> {
       }
     },
     runWorktreeSetup: (ctx) => worktreesFSM.runWorktreeSetup(ctx),
-    applySharedClaudeSettings: (repoRoot, worktreePath) =>
-      worktreesFSM.applySharedClaudeSettings(repoRoot, worktreePath),
     broadcast: (channel, payload) => {
       if (channel === 'worktrees:externalCreate') {
         // Seed panes with the initial prompt BEFORE refreshList — the
