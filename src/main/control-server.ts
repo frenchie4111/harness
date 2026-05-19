@@ -232,7 +232,8 @@ async function handleRequest(
       baseBranch: typeof body.baseBranch === 'string' ? body.baseBranch : undefined,
       fetchRemote: !body.baseBranch && mode === 'remote'
     })
-    await deps.runWorktreeSetup({ repoRoot, worktreePath: created.path, branch: created.branch })
+    deps.runWorktreeSetup({ repoRoot, worktreePath: created.path, branch: created.branch })
+      .catch((err) => log('control', `setup script failed: ${err instanceof Error ? err.message : String(err)}`))
     const initialPrompt = typeof body.initialPrompt === 'string' ? body.initialPrompt : undefined
     deps.broadcast('worktrees:externalCreate', { repoRoot, worktree: created, initialPrompt })
     return sendJson(res, 200, created)

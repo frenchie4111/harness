@@ -211,8 +211,7 @@ export class WorktreesFSM {
   }): Promise<PendingOutcome> {
     const { id, repoRoot, created, initialPrompt, teleportSessionId } = args
 
-    const repoCfg = loadRepoConfig(repoRoot)
-    const setupCmd = repoCfg.setupCommand || this.opts.getWorktreeSetupCmd() || ''
+    const setupCmd = this.resolveSetupCmd(repoRoot)
     let setupFailed = false
     if (setupCmd) {
       this.store.dispatch({
@@ -272,17 +271,19 @@ export class WorktreesFSM {
     return { id, outcome: 'success', createdPath: created.path }
   }
 
-  /** Run the setup script for a worktree that was created outside the FSM
-   * (e.g. via the MCP create_worktree tool). No-op if no script is configured. */
   async runWorktreeSetup(ctx: { repoRoot: string; worktreePath: string; branch: string }): Promise<void> {
-    const repoCfg = loadRepoConfig(ctx.repoRoot)
-    const setupCmd = repoCfg.setupCommand || this.opts.getWorktreeSetupCmd() || ''
+    const setupCmd = this.resolveSetupCmd(ctx.repoRoot)
     if (!setupCmd) return
     await runWorktreeScript('setup', setupCmd, {
       worktreePath: ctx.worktreePath,
       branch: ctx.branch,
       repoRoot: ctx.repoRoot
     })
+  }
+
+  private resolveSetupCmd(repoRoot: string): string {
+    const repoCfg = loadRepoConfig(repoRoot)
+    return repoCfg.setupCommand || this.opts.getWorktreeSetupCmd() || ''
   }
 
   async retryPending(id: string): Promise<PendingOutcome> {
