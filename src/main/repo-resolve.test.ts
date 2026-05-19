@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { execFileSync } from 'child_process'
-import { mkdtempSync, mkdirSync, rmSync } from 'fs'
+import { mkdtempSync, mkdirSync, realpathSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join, resolve as resolvePath } from 'path'
 import { resolveRepoPath } from './repo-resolve'
@@ -26,11 +26,13 @@ describe('resolveRepoPath', () => {
     rmSync(root, { recursive: true, force: true })
   })
 
-  it('returns ok when picked is the repo toplevel', async () => {
+  it('returns ok when picked is the repo toplevel, in canonical form', async () => {
     const result = await resolveRepoPath(repo)
     expect(result.kind).toBe('ok')
     if (result.kind === 'ok') {
-      expect(result.root).toBe(resolvePath(repo))
+      // Canonical (realpath'd) form — so the macOS /tmp → /private/tmp
+      // prefix matches what `git worktree list` will later report.
+      expect(result.root).toBe(realpathSync(repo))
     }
   })
 

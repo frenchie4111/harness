@@ -34,8 +34,14 @@ export async function resolveRepoPath(picked: string): Promise<RepoPathResolutio
 
   // Fast path: a `.git` (dir for repos, file for linked worktrees) at
   // the picked folder means git wouldn't walk up. Skip the subprocess.
+  // Run through `realpath` so we store the canonical form git reports
+  // back from `worktree list` — otherwise paths under symlink prefixes
+  // (e.g. macOS `/tmp` → `/private/tmp`) silently break the
+  // `isMain: path === repoRoot` match in listWorktrees.
   if (existsSync(join(pickedAbs, '.git'))) {
-    return { kind: 'ok', root: pickedAbs }
+    let root = pickedAbs
+    try { root = realpathSync(pickedAbs) } catch {}
+    return { kind: 'ok', root }
   }
 
   try {
