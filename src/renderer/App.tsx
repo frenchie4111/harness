@@ -1220,6 +1220,10 @@ const setQuestStep = useCallback((next: QuestStep) => {
             onOpenMyWeek={() => toggleOverlay('myWeek')}
             onOpenCleanup={() => openOverlay('cleanup')}
             onOpenCommandCenter={() => toggleOverlay('commandCenter')}
+            onOpenNewProject={() => {
+              closeAllOverlays()
+              setShowNewProject(true)
+            }}
             onOpenReportIssue={() => toggleOverlay('reportIssue')}
             activeOverlay={activeOverlay}
             width={sidebarWidth}

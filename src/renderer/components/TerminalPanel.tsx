@@ -501,6 +501,7 @@ export function TerminalPanel({
             </button>
           </Tooltip>
         </div>
+        <div className="shrink-0 w-px h-4 bg-border mx-1" />
         <div className="flex items-center h-full overflow-x-auto scrollbar-hidden flex-1 min-w-0">
           <SortableContext items={pane.tabs.map((t) => t.id)} strategy={horizontalListSortingStrategy}>
             {pane.tabs.map((tab) => {

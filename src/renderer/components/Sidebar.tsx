@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from 'react'
-import { ChevronDown, ChevronRight, Plus, RefreshCw, FolderOpen, Loader2, Settings as SettingsIcon, Sparkles, BarChart3, CalendarDays, Trash2, LayoutGrid, X, Layers, Rows3, AlertCircle, Keyboard, MessageSquare } from 'lucide-react'
+import { ChevronDown, ChevronRight, Plus, RefreshCw, FolderOpen, FolderPlus, Loader2, Settings as SettingsIcon, Sparkles, BarChart3, CalendarDays, Trash2, LayoutGrid, X, Layers, Rows3, AlertCircle, Keyboard, MessageSquare } from 'lucide-react'
 import { openReportIssue } from './ReportIssueScreen'
 import { Tooltip } from './Tooltip'
 import { HotkeyBadge } from './HotkeyBadge'
@@ -49,6 +49,7 @@ interface SidebarProps {
   onOpenMyWeek: () => void
   onOpenCleanup: () => void
   onOpenCommandCenter: () => void
+  onOpenNewProject: () => void
   /** Optional: when set, the toolbar's report-issue button toggles via
    *  this handler (so it participates in the activeOverlay mutex).
    *  When omitted, falls back to the global openReportIssue() event. */
@@ -113,6 +114,7 @@ export function Sidebar({
   onOpenMyWeek,
   onOpenCleanup,
   onOpenCommandCenter,
+  onOpenNewProject,
   onOpenReportIssue,
   activeOverlay,
   width,
@@ -537,6 +539,14 @@ export function Sidebar({
             className={overlayButtonClass(activeOverlay === 'commandCenter')}
           >
             <LayoutGrid size={14} />
+          </button>
+        </Tooltip>
+        <Tooltip label="New project" side="top">
+          <button
+            onClick={onOpenNewProject}
+            className={overlayButtonClass(false)}
+          >
+            <FolderPlus size={14} />
           </button>
         </Tooltip>
         <Tooltip label="Activity" side="top">
