@@ -40,11 +40,13 @@ import type { WorktreesFSM } from './worktrees-fsm'
 import type { Config } from './persistence'
 import { saveConfig, saveConfigSync, DEFAULT_THEME, THEME_APP_BG } from './persistence'
 import { registerWindowControlHandlers } from './window-controls'
-import { loadRepoConfig } from './repo-config'
 import { sealAllActive } from './activity'
 import { log, getLogFilePath } from './debug'
 import { isManualUpdateInstallType } from './manual-update'
 import { HARNESS_REPO_URL } from '../shared/constants'
+import { resolveRepoPath } from './repo-resolve'
+import { registerRepoRoot } from './repo-roots'
+import type { AddRepoResult } from '../shared/repo-pick'
 
 export interface DesktopShellInit {
   store: Store
@@ -409,25 +411,25 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
   function registerDesktopHandlers(): void {
     registerWindowControlHandlers()
 
-    transport.onRequest('repo:add', async (_ctx) => {
+    transport.onRequest('repo:add', async (_ctx): Promise<AddRepoResult> => {
       const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0]
       const result = await dialog.showOpenDialog(win!, {
         properties: ['openDirectory'],
         title: 'Open Git Repository'
       })
-      if (result.canceled || result.filePaths.length === 0) return null
-      const repoRoot = result.filePaths[0]
-      if (!config.repoRoots.includes(repoRoot)) {
-        config.repoRoots.push(repoRoot)
-        saveConfig(config)
-        worktreesFSM.dispatchRepos([...config.repoRoots])
-        store.dispatch({
-          type: 'repoConfigs/changed',
-          payload: { repoRoot, config: loadRepoConfig(repoRoot) }
-        })
-        onRepoAdded(repoRoot)
+      if (result.canceled || result.filePaths.length === 0) {
+        return { kind: 'canceled' }
       }
-      return repoRoot
+      const picked = result.filePaths[0]
+      const resolution = await resolveRepoPath(picked)
+      if (resolution.kind === 'ok') {
+        const repoRoot = resolution.root
+        if (registerRepoRoot(repoRoot, { config, store, worktreesFSM })) {
+          onRepoAdded(repoRoot)
+        }
+        return { kind: 'added', repoRoot }
+      }
+      return resolution
     })
 
     transport.onRequest(

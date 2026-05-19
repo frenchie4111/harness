@@ -13,6 +13,9 @@ export type { WeeklyStats, TopWorktree }
 import type { SessionCostSummary, ClaudeAuthInfo, SubscriptionTier } from '../shared/cost-summary'
 export type { SessionCostSummary, ClaudeAuthInfo, SubscriptionTier }
 
+import type { AddRepoResult } from '../shared/repo-pick'
+export type { AddRepoResult }
+
 export interface FsEntry {
   name: string
   isDir: boolean
@@ -203,8 +206,8 @@ export interface ElectronAPI {
   dismissPendingDeletion(path: string): Promise<boolean>
   getWorktreeDir(repoRoot: string): Promise<string>
   listRepos(): Promise<string[]>
-  addRepo(): Promise<string | null>
-  addRepoAtPath(repoRoot: string): Promise<string | null>
+  addRepo(): Promise<AddRepoResult>
+  addRepoAtPath(repoRoot: string): Promise<AddRepoResult>
   removeRepo(repoRoot: string): Promise<boolean>
   createNewProject(opts: {
     parentDir: string
@@ -215,7 +218,6 @@ export interface ElectronAPI {
   pickDirectory(opts?: { defaultPath?: string; title?: string }): Promise<string | null>
   listDir(path: string, opts?: { showHidden?: boolean }): Promise<FsEntry[]>
   resolveHome(): Promise<string>
-  isGitRepo(path: string): Promise<boolean>
 
   getMainWorktreeStatus(repoRoot: string): Promise<MainWorktreeStatus>
   prepareMainForMerge(repoRoot: string): Promise<MainWorktreeStatus>

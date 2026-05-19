@@ -63,6 +63,9 @@ import {
 } from './persistence'
 import { loadRepoConfig, saveRepoConfig, type RepoConfig } from './repo-config'
 import { createNewProject, type GitignorePreset } from './repo-create'
+import { resolveRepoPath } from './repo-resolve'
+import { registerRepoRoot } from './repo-roots'
+import type { AddRepoResult } from '../shared/repo-pick'
 import { isWorktreeMerged } from '../shared/state/prs'
 import { MAX_WAKE } from '../shared/state/snooze'
 import { watchStatusDir } from './hooks'
@@ -73,7 +76,7 @@ import { readRecentDebugLog } from './debug'
 import { CostTracker } from './cost-tracker'
 import { getAllSessionCosts } from './cost-aggregator'
 import { getClaudeAuthStatus } from './claude-auth'
-import { listDir as fsListDir, isGitRepo as fsIsGitRepo, resolveHome as fsResolveHome } from './fs-listing'
+import { listDir as fsListDir, resolveHome as fsResolveHome } from './fs-listing'
 import { startControlServer } from './control-server'
 import { writeMcpConfigForTerminal, pruneMcpConfigs, getBridgeScriptPath } from './mcp-config'
 import { getControlServerInfo } from './control-server'
@@ -1043,19 +1046,19 @@ function registerIpcHandlers(): void {
   // Native repo:add (folder picker) and dialog:pickDirectory live in
   // desktop-shell.ts. The web client uses repo:addAtPath below combined
   // with the renderer-side RemoteFilePicker.
-  transport.onRequest('repo:addAtPath', (_ctx, repoRoot: string) => {
-    if (!repoRoot || typeof repoRoot !== 'string') return null
-    if (!config.repoRoots.includes(repoRoot)) {
-      config.repoRoots.push(repoRoot)
-      saveConfig(config)
-      worktreesFSM.dispatchRepos([...config.repoRoots])
-      store.dispatch({
-        type: 'repoConfigs/changed',
-        payload: { repoRoot, config: loadRepoConfig(repoRoot) }
-      })
-      void worktreesFSM.refreshList()
+  transport.onRequest('repo:addAtPath', async (_ctx, picked: string): Promise<AddRepoResult> => {
+    if (!picked || typeof picked !== 'string') {
+      return { kind: 'not-a-repo', picked: picked || '' }
     }
-    return repoRoot
+    const resolution = await resolveRepoPath(picked)
+    if (resolution.kind === 'ok') {
+      const repoRoot = resolution.root
+      if (registerRepoRoot(repoRoot, { config, store, worktreesFSM })) {
+        void worktreesFSM.refreshList()
+      }
+      return { kind: 'added', repoRoot }
+    }
+    return resolution
   })
 
   transport.onRequest(
@@ -1064,7 +1067,6 @@ function registerIpcHandlers(): void {
       fsListDir(dirPath, opts ?? {})
   )
   transport.onRequest('fs:resolveHome', () => fsResolveHome())
-  transport.onRequest('fs:isGitRepo', (_ctx, dirPath: string) => fsIsGitRepo(dirPath))
 
   transport.onRequest(
     'repo:createNewProject',
@@ -1077,14 +1079,7 @@ function registerIpcHandlers(): void {
       const result = await createNewProject(opts)
       if ('error' in result) return result
       const repoRoot = result.path
-      if (!config.repoRoots.includes(repoRoot)) {
-        config.repoRoots.push(repoRoot)
-        saveConfig(config)
-        worktreesFSM.dispatchRepos([...config.repoRoots])
-        store.dispatch({
-          type: 'repoConfigs/changed',
-          payload: { repoRoot, config: loadRepoConfig(repoRoot) }
-        })
+      if (registerRepoRoot(repoRoot, { config, store, worktreesFSM })) {
         void worktreesFSM.refreshList()
       }
       return { path: repoRoot }

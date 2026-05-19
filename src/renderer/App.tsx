@@ -31,6 +31,8 @@ import { CommandPalette } from './components/CommandPalette'
 import { HotkeyCheatsheet } from './components/HotkeyCheatsheet'
 import { NewProjectScreen } from './components/NewProjectScreen'
 import { RemoteFilePicker } from './components/RemoteFilePicker'
+import { ResolveRepoModal } from './components/ResolveRepoModal'
+import { RepoAddErrorModal } from './components/RepoAddErrorModal'
 import { ReportIssueScreen, onOpenReportIssue, type OpenReportIssueDetail } from './components/ReportIssueScreen'
 import { AddBackendModal } from './components/AddBackendModal'
 import iconUrl from '../../resources/icon.png'
@@ -517,7 +519,10 @@ const setQuestStep = useCallback((next: QuestStep) => {
     handleDismissPendingDeletion,
     repoPickerOpen,
     handleRepoPickerSelect,
-    handleRepoPickerCancel
+    handleRepoPickerCancel,
+    repoAddPrompt,
+    handleConfirmRepoResolve,
+    handleDismissRepoPrompt
   } = useWorktreeHandlers({
     worktrees,
     pendingWorktrees,
@@ -680,16 +685,26 @@ const setQuestStep = useCallback((next: QuestStep) => {
       isOpen={repoPickerOpen}
       title="Open Git Repository"
       selectLabel="Open"
-      selectGuard={async (path) => {
-        const ok = await backend.isGitRepo(path)
-        return ok || 'Not a git repository — pick a folder containing a .git directory'
-      }}
       onSelect={(path) => {
         void handleRepoPickerSelect(path)
       }}
       onCancel={handleRepoPickerCancel}
     />
   )
+
+  const repoAddPromptOverlay =
+    repoAddPrompt?.kind === 'resolve' ? (
+      <ResolveRepoModal
+        picked={repoAddPrompt.picked}
+        resolved={repoAddPrompt.resolved}
+        onConfirm={() => {
+          void handleConfirmRepoResolve()
+        }}
+        onCancel={handleDismissRepoPrompt}
+      />
+    ) : repoAddPrompt?.kind === 'error' ? (
+      <RepoAddErrorModal message={repoAddPrompt.message} onDismiss={handleDismissRepoPrompt} />
+    ) : null
 
 
   if (repoRoots.length === 0) {
@@ -999,6 +1014,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
       {settingsOverlay}
       {myWeekOverlay}
       {repoPickerOverlay}
+      {repoAddPromptOverlay}
       </HotkeysProvider>
     )
   }
@@ -1343,6 +1359,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
     {settingsOverlay}
     {myWeekOverlay}
     {repoPickerOverlay}
+    {repoAddPromptOverlay}
     {showPerfMonitor && <PerfMonitorHUD onClose={() => setShowPerfMonitor(false)} />}
     {showCommandPalette && (
       <CommandPalette

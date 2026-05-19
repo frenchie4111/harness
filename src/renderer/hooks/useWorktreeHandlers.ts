@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { Worktree, PendingWorktree, PRStatus, TerminalTab } from '../types'
+import type { AddRepoResult, Worktree, PendingWorktree, PRStatus, TerminalTab } from '../types'
 import { markTerminalClosing } from '../components/XTerminal'
 import { useActiveBackend } from '../store'
 import { useBackend } from '../backend'
@@ -36,6 +36,11 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
   } = args
 
   const [repoPickerOpen, setRepoPickerOpen] = useState(false)
+  const [repoAddPrompt, setRepoAddPrompt] = useState<
+    | { kind: 'resolve'; picked: string; resolved: string }
+    | { kind: 'error'; message: string }
+    | null
+  >(null)
   const activeBackend = useActiveBackend()
   const backend = useBackend()
 
@@ -49,6 +54,30 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
     [worktrees, setActiveWorktreeId]
   )
 
+  const applyAddRepoResult = useCallback(
+    (result: AddRepoResult) => {
+      switch (result.kind) {
+        case 'added':
+          focusNewRepo(result.repoRoot)
+          return
+        case 'walked-up':
+          setRepoAddPrompt({ kind: 'resolve', picked: result.picked, resolved: result.resolved })
+          return
+        case 'not-a-repo':
+          setRepoAddPrompt({
+            kind: 'error',
+            message: result.picked
+              ? `${result.picked} is not a git repository.`
+              : 'That folder is not a git repository.'
+          })
+          return
+        case 'canceled':
+          return
+      }
+    },
+    [focusNewRepo]
+  )
+
   const handleAddRepo = useCallback(async () => {
     // Active backend is remote: the native dialog runs on the user's
     // laptop, but the repos live on the remote box (or in the web
@@ -60,23 +89,38 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
       setRepoPickerOpen(true)
       return
     }
-    const root = await backend.addRepo()
-    // Main dispatches worktrees/reposChanged + listChanged; we just route
-    // focus to the new repo's main worktree once it lands in the store.
-    if (root) focusNewRepo(root)
-  }, [activeBackend.kind, focusNewRepo])
+    const result = await backend.addRepo()
+    applyAddRepoResult(result)
+  }, [activeBackend.kind, applyAddRepoResult])
 
   const handleRepoPickerSelect = useCallback(
     async (path: string) => {
-      const root = await backend.addRepoAtPath(path)
+      const result = await backend.addRepoAtPath(path)
       setRepoPickerOpen(false)
-      if (root) focusNewRepo(root)
+      applyAddRepoResult(result)
     },
-    [focusNewRepo]
+    [applyAddRepoResult]
   )
 
   const handleRepoPickerCancel = useCallback(() => {
     setRepoPickerOpen(false)
+  }, [])
+
+  const handleConfirmRepoResolve = useCallback(async () => {
+    // Use functional setState as a single-shot guard: a rapid second
+    // click sees null and bails out of the IPC.
+    let target: string | null = null
+    setRepoAddPrompt((p) => {
+      if (p && p.kind === 'resolve') target = p.resolved
+      return null
+    })
+    if (!target) return
+    const result = await backend.addRepoAtPath(target)
+    applyAddRepoResult(result)
+  }, [applyAddRepoResult])
+
+  const handleDismissRepoPrompt = useCallback(() => {
+    setRepoAddPrompt(null)
   }, [])
 
   // External worktree creation (from the harness-control MCP). Main
@@ -341,6 +385,9 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
     handleBulkDeleteWorktrees,
     repoPickerOpen,
     handleRepoPickerSelect,
-    handleRepoPickerCancel
+    handleRepoPickerCancel,
+    repoAddPrompt,
+    handleConfirmRepoResolve,
+    handleDismissRepoPrompt
   }
 }

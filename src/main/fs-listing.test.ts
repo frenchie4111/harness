@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir, homedir } from 'os'
 
-import { listDir, isGitRepo, resolveHome } from './fs-listing'
+import { listDir, isGitRepoSync, resolveHome } from './fs-listing'
 
 let tmp: string
 
@@ -94,26 +94,26 @@ describe('listDir', () => {
   })
 })
 
-describe('isGitRepo', () => {
-  it('returns true for a directory containing a .git subdirectory', async () => {
+describe('isGitRepoSync', () => {
+  it('returns true for a directory containing a .git subdirectory', () => {
     mkdirSync(join(tmp, 'repo'))
     mkdirSync(join(tmp, 'repo', '.git'))
-    expect(await isGitRepo(join(tmp, 'repo'))).toBe(true)
+    expect(isGitRepoSync(join(tmp, 'repo'))).toBe(true)
   })
 
-  it('returns true for a directory containing a .git file (linked worktree)', async () => {
+  it('returns true for a directory containing a .git file (linked worktree)', () => {
     mkdirSync(join(tmp, 'wt'))
     writeFileSync(join(tmp, 'wt', '.git'), 'gitdir: /elsewhere')
-    expect(await isGitRepo(join(tmp, 'wt'))).toBe(true)
+    expect(isGitRepoSync(join(tmp, 'wt'))).toBe(true)
   })
 
-  it('returns false for a plain directory', async () => {
+  it('returns false for a plain directory', () => {
     mkdirSync(join(tmp, 'plain'))
-    expect(await isGitRepo(join(tmp, 'plain'))).toBe(false)
+    expect(isGitRepoSync(join(tmp, 'plain'))).toBe(false)
   })
 
-  it('returns false for a nonexistent directory', async () => {
-    expect(await isGitRepo(join(tmp, 'missing'))).toBe(false)
+  it('returns false for a nonexistent directory', () => {
+    expect(isGitRepoSync(join(tmp, 'missing'))).toBe(false)
   })
 })
 

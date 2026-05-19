@@ -8,7 +8,6 @@ interface RemoteFilePickerProps {
   title: string
   initialPath?: string
   selectLabel?: string
-  selectGuard?: (path: string) => Promise<boolean | string>
   onSelect: (path: string) => void
   onCancel: () => void
 }
@@ -32,7 +31,6 @@ export function RemoteFilePicker({
   title,
   initialPath,
   selectLabel = 'Select',
-  selectGuard,
   onSelect,
   onCancel
 }: RemoteFilePickerProps): JSX.Element | null {
@@ -43,10 +41,7 @@ export function RemoteFilePicker({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showHidden, setShowHidden] = useState(false)
-  const [guardReason, setGuardReason] = useState<string | null>(null)
-  const [guardChecking, setGuardChecking] = useState(false)
   const fetchSeqRef = useRef(0)
-  const guardSeqRef = useRef(0)
 
   // Resolve home as the starting point if no initialPath was provided.
   useEffect(() => {
@@ -83,31 +78,6 @@ export function RemoteFilePicker({
       })
   }, [isOpen, currentPath, showHidden])
 
-  // Re-evaluate the select guard whenever the path changes.
-  useEffect(() => {
-    if (!isOpen || !currentPath) return
-    if (!selectGuard) {
-      setGuardReason(null)
-      setGuardChecking(false)
-      return
-    }
-    const seq = ++guardSeqRef.current
-    setGuardChecking(true)
-    void Promise.resolve(selectGuard(currentPath))
-      .then((res) => {
-        if (guardSeqRef.current !== seq) return
-        if (res === true) setGuardReason(null)
-        else if (typeof res === 'string') setGuardReason(res)
-        else setGuardReason('Cannot select this folder')
-        setGuardChecking(false)
-      })
-      .catch(() => {
-        if (guardSeqRef.current !== seq) return
-        setGuardReason('Cannot select this folder')
-        setGuardChecking(false)
-      })
-  }, [isOpen, currentPath, selectGuard])
-
   // Esc closes; Enter on the path bar navigates.
   useEffect(() => {
     if (!isOpen) return
@@ -139,15 +109,14 @@ export function RemoteFilePicker({
   }, [currentPath, navigateTo])
 
   const handleSelect = useCallback(() => {
-    if (guardReason || guardChecking) return
     onSelect(currentPath)
-  }, [currentPath, guardReason, guardChecking, onSelect])
+  }, [currentPath, onSelect])
 
   const visibleEntries = useMemo(() => entries.filter((e) => e.isDir || e.truncated), [entries])
 
   if (!isOpen) return null
 
-  const selectDisabled = !!guardReason || guardChecking || loading
+  const selectDisabled = loading
 
   return (
     <div
@@ -263,12 +232,8 @@ export function RemoteFilePicker({
         </div>
 
         <div className="px-5 py-3 border-t border-border flex items-center justify-between gap-3">
-          <div className="text-[11px] text-faint truncate min-w-0 flex-1">
-            {guardReason && !loading ? (
-              <span className="text-warning">{guardReason}</span>
-            ) : (
-              <span className="font-mono">{currentPath}</span>
-            )}
+          <div className="text-[11px] text-faint truncate min-w-0 flex-1 font-mono">
+            {currentPath}
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <button
@@ -280,7 +245,6 @@ export function RemoteFilePicker({
             <button
               onClick={handleSelect}
               disabled={selectDisabled}
-              title={guardReason || undefined}
               className="px-4 py-1.5 rounded-md bg-fg-bright text-app font-medium text-sm hover:bg-fg disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
             >
               {selectLabel}
