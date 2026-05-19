@@ -31,6 +31,7 @@ import { CommandPalette } from './components/CommandPalette'
 import { HotkeyCheatsheet } from './components/HotkeyCheatsheet'
 import { NewProjectScreen } from './components/NewProjectScreen'
 import { RemoteFilePicker } from './components/RemoteFilePicker'
+import { ResolveRepoModal } from './components/ResolveRepoModal'
 import { ReportIssueScreen, onOpenReportIssue, type OpenReportIssueDetail } from './components/ReportIssueScreen'
 import { AddBackendModal } from './components/AddBackendModal'
 import iconUrl from '../../resources/icon.png'
@@ -517,7 +518,12 @@ const setQuestStep = useCallback((next: QuestStep) => {
     handleDismissPendingDeletion,
     repoPickerOpen,
     handleRepoPickerSelect,
-    handleRepoPickerCancel
+    handleRepoPickerCancel,
+    repoResolvePrompt,
+    handleConfirmRepoResolve,
+    handleCancelRepoResolve,
+    repoAddError,
+    handleDismissRepoAddError
   } = useWorktreeHandlers({
     worktrees,
     pendingWorktrees,
@@ -680,16 +686,48 @@ const setQuestStep = useCallback((next: QuestStep) => {
       isOpen={repoPickerOpen}
       title="Open Git Repository"
       selectLabel="Open"
-      selectGuard={async (path) => {
-        const ok = await backend.isGitRepo(path)
-        return ok || 'Not a git repository — pick a folder containing a .git directory'
-      }}
       onSelect={(path) => {
         void handleRepoPickerSelect(path)
       }}
       onCancel={handleRepoPickerCancel}
     />
   )
+
+  const resolveRepoModal = repoResolvePrompt ? (
+    <ResolveRepoModal
+      picked={repoResolvePrompt.picked}
+      resolved={repoResolvePrompt.resolved}
+      onConfirm={() => {
+        void handleConfirmRepoResolve()
+      }}
+      onCancel={handleCancelRepoResolve}
+    />
+  ) : null
+
+  const repoAddErrorOverlay = repoAddError ? (
+    <div
+      className="fixed inset-0 z-[70] flex items-start justify-center pt-[15vh] bg-black/40"
+      onClick={handleDismissRepoAddError}
+    >
+      <div
+        className="w-full max-w-md bg-surface rounded-xl shadow-2xl border border-border overflow-hidden flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-5 py-3.5 border-b border-border">
+          <h2 className="text-sm font-semibold text-fg-bright">Can't add repository</h2>
+        </div>
+        <div className="px-5 py-4 text-sm text-fg break-all">{repoAddError}</div>
+        <div className="px-5 py-3 border-t border-border flex items-center justify-end gap-2">
+          <button
+            onClick={handleDismissRepoAddError}
+            className="px-4 py-1.5 text-xs font-medium rounded bg-accent/20 hover:bg-accent/30 text-fg-bright border border-accent/40 cursor-pointer transition-colors"
+          >
+            OK
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null
 
 
   if (repoRoots.length === 0) {
@@ -999,6 +1037,8 @@ const setQuestStep = useCallback((next: QuestStep) => {
       {settingsOverlay}
       {myWeekOverlay}
       {repoPickerOverlay}
+      {resolveRepoModal}
+      {repoAddErrorOverlay}
       </HotkeysProvider>
     )
   }
@@ -1343,6 +1383,8 @@ const setQuestStep = useCallback((next: QuestStep) => {
     {settingsOverlay}
     {myWeekOverlay}
     {repoPickerOverlay}
+    {resolveRepoModal}
+    {repoAddErrorOverlay}
     {showPerfMonitor && <PerfMonitorHUD onClose={() => setShowPerfMonitor(false)} />}
     {showCommandPalette && (
       <CommandPalette
