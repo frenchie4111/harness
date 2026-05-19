@@ -380,9 +380,18 @@ function ordinalSuffix(n: number): string {
   }
 }
 
-function queueBadgeLabel(position: number): string {
-  if (position <= 1) return 'Queued'
-  return `Queued (${position}${ordinalSuffix(position)})`
+function formatEta(seconds: number): string {
+  if (seconds < 60) return '<1m'
+  if (seconds < 3600) return `~${Math.round(seconds / 60)}m`
+  const hours = Math.floor(seconds / 3600)
+  const mins = Math.round((seconds % 3600) / 60)
+  return mins === 0 ? `~${hours}h` : `~${hours}h${mins}m`
+}
+
+function queueBadgeLabel(position: number, etaSeconds?: number): string {
+  const eta = typeof etaSeconds === 'number' ? ` · ${formatEta(etaSeconds)}` : ''
+  if (position <= 1) return `Queued${eta}`
+  return `Queued (${position}${ordinalSuffix(position)}${eta})`
 }
 
 const CHECK_ICONS: Record<CheckStatus['state'], { symbol: string; color: string }> = {
@@ -785,7 +794,9 @@ export function PRStatusPanel({
                 pr.queuePosition ? 'text-accent' : STATE_COLORS[pr.state]
               }`}
             >
-              {pr.queuePosition ? queueBadgeLabel(pr.queuePosition) : STATE_LABELS[pr.state]}
+              {pr.queuePosition
+                ? queueBadgeLabel(pr.queuePosition, pr.queueEstimatedSeconds)
+                : STATE_LABELS[pr.state]}
             </span>
             {!pr.isDefaultBase && (
               <span className="font-mono text-faint truncate">{pr.baseBranch}</span>

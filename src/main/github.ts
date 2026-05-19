@@ -132,7 +132,7 @@ async function fetchMergeQueueEntry(
   owner: string,
   repo: string,
   number: number
-): Promise<{ position: number } | null> {
+): Promise<{ position: number; estimatedSeconds: number | null } | null> {
   const token = getCachedToken()
   if (!token) return null
   try {
@@ -146,18 +146,25 @@ async function fetchMergeQueueEntry(
       },
       body: JSON.stringify({
         query:
-          'query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){mergeQueueEntry{position}}}}',
+          'query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){mergeQueueEntry{position estimatedTimeToMerge}}}}',
         variables: { o: owner, r: repo, n: number }
       })
     })
     if (!res.ok) return null
     const json = (await res.json()) as {
       data?: {
-        repository?: { pullRequest?: { mergeQueueEntry?: { position?: number } | null } | null } | null
+        repository?: {
+          pullRequest?: {
+            mergeQueueEntry?: { position?: number; estimatedTimeToMerge?: number | null } | null
+          } | null
+        } | null
       }
     }
-    const pos = json?.data?.repository?.pullRequest?.mergeQueueEntry?.position
-    return typeof pos === 'number' && pos > 0 ? { position: pos } : null
+    const entry = json?.data?.repository?.pullRequest?.mergeQueueEntry
+    const pos = entry?.position
+    if (typeof pos !== 'number' || pos <= 0) return null
+    const eta = entry?.estimatedTimeToMerge
+    return { position: pos, estimatedSeconds: typeof eta === 'number' ? eta : null }
   } catch (err) {
     log('github', `fetchMergeQueueEntry failed for ${owner}/${repo}#${number}`, err instanceof Error ? err.message : err)
     return null
@@ -465,7 +472,8 @@ async function fanOutPRDetails(
       login: a.login,
       avatarUrl: a.avatar_url
     })),
-    queuePosition: queueEntry?.position
+    queuePosition: queueEntry?.position,
+    queueEstimatedSeconds: queueEntry?.estimatedSeconds ?? undefined
   }
 }
 

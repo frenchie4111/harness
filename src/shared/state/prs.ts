@@ -43,6 +43,9 @@ export interface PRStatus {
   /** 1-indexed position in the merge queue. Present only when the PR is
    * currently enqueued; 1 = head of queue. */
   queuePosition?: number
+  /** GitHub's estimated seconds until this entry merges. Optional —
+   * GitHub returns null until it has enough signal to estimate. */
+  queueEstimatedSeconds?: number
 }
 
 export interface PRsState {
