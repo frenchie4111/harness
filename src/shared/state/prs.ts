@@ -40,6 +40,9 @@ export interface PRStatus {
   isDefaultBase: boolean
   milestone?: { title: string; url: string; state: 'open' | 'closed' } | null
   assignees: { login: string; avatarUrl: string }[]
+  /** 1-indexed position in the merge queue. Present only when the PR is
+   * currently enqueued; 1 = head of queue. */
+  queuePosition?: number
 }
 
 export interface PRsState {

@@ -365,6 +365,26 @@ const STATE_COLORS: Record<string, string> = {
   closed: 'text-danger'
 }
 
+function ordinalSuffix(n: number): string {
+  const mod100 = n % 100
+  if (mod100 >= 11 && mod100 <= 13) return 'th'
+  switch (n % 10) {
+    case 1:
+      return 'st'
+    case 2:
+      return 'nd'
+    case 3:
+      return 'rd'
+    default:
+      return 'th'
+  }
+}
+
+function queueBadgeLabel(position: number): string {
+  if (position <= 1) return 'Queued'
+  return `Queued (${position}${ordinalSuffix(position)})`
+}
+
 const CHECK_ICONS: Record<CheckStatus['state'], { symbol: string; color: string }> = {
   success: { symbol: '\u2713', color: 'text-success' },
   failure: { symbol: '\u2717', color: 'text-danger' },
@@ -760,8 +780,12 @@ export function PRStatusPanel({
           </a>
 
           <div className="flex items-center gap-1.5 mb-1 text-xs">
-            <span className={`font-medium shrink-0 ${STATE_COLORS[pr.state]}`}>
-              {STATE_LABELS[pr.state]}
+            <span
+              className={`font-medium shrink-0 ${
+                pr.queuePosition ? 'text-accent' : STATE_COLORS[pr.state]
+              }`}
+            >
+              {pr.queuePosition ? queueBadgeLabel(pr.queuePosition) : STATE_LABELS[pr.state]}
             </span>
             {!pr.isDefaultBase && (
               <span className="font-mono text-faint truncate">{pr.baseBranch}</span>

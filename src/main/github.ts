@@ -126,6 +126,44 @@ async function resolveQueryRepo(
   }
 }
 
+/** GraphQL POST to fetch a single PR's mergeQueueEntry. Returns null on
+ *  any failure (auth, network, schema) — merge queue position is a nice-to-have. */
+async function fetchMergeQueueEntry(
+  owner: string,
+  repo: string,
+  number: number
+): Promise<{ position: number } | null> {
+  const token = getCachedToken()
+  if (!token) return null
+  try {
+    const res = await fetch('https://api.github.com/graphql', {
+      method: 'POST',
+      headers: {
+        Accept: 'application/vnd.github+json',
+        'User-Agent': 'Harness',
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        query:
+          'query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){mergeQueueEntry{position}}}}',
+        variables: { o: owner, r: repo, n: number }
+      })
+    })
+    if (!res.ok) return null
+    const json = (await res.json()) as {
+      data?: {
+        repository?: { pullRequest?: { mergeQueueEntry?: { position?: number } | null } | null } | null
+      }
+    }
+    const pos = json?.data?.repository?.pullRequest?.mergeQueueEntry?.position
+    return typeof pos === 'number' && pos > 0 ? { position: pos } : null
+  } catch (err) {
+    log('github', `fetchMergeQueueEntry failed for ${owner}/${repo}#${number}`, err instanceof Error ? err.message : err)
+    return null
+  }
+}
+
 interface ApiPRListItem {
   number: number
   title: string
@@ -338,11 +376,12 @@ async function fanOutPRDetails(
   branchName: string
 ): Promise<PRStatus | null> {
   const sha = item.headSha
-  const [prDetail, checkRunsRes, combinedRes, reviewsRes] = await Promise.all([
+  const [prDetail, checkRunsRes, combinedRes, reviewsRes, queueEntry] = await Promise.all([
     githubFetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${item.number}`) as Promise<ApiPRDetail>,
     githubFetch(`https://api.github.com/repos/${owner}/${repo}/commits/${sha}/check-runs?per_page=100`) as Promise<ApiCheckRunsResponse>,
     githubFetch(`https://api.github.com/repos/${owner}/${repo}/commits/${sha}/status`) as Promise<ApiCombinedStatus>,
-    githubFetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${item.number}/reviews?per_page=100`) as Promise<ApiReview[]>
+    githubFetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${item.number}/reviews?per_page=100`) as Promise<ApiReview[]>,
+    fetchMergeQueueEntry(owner, repo, item.number)
   ])
 
   if (!prDetail || typeof prDetail.number !== 'number') return null
@@ -425,7 +464,8 @@ async function fanOutPRDetails(
     assignees: (prDetail.assignees ?? []).map((a) => ({
       login: a.login,
       avatarUrl: a.avatar_url
-    }))
+    })),
+    queuePosition: queueEntry?.position
   }
 }
 
