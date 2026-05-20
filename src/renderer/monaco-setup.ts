@@ -7,14 +7,76 @@ import JsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker'
 import CssWorker from 'monaco-editor/esm/vs/language/css/css.worker?worker'
 import HtmlWorker from 'monaco-editor/esm/vs/language/html/html.worker?worker'
 import TsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker'
+import EditorWorkerUrl from 'monaco-editor/esm/vs/editor/editor.worker?worker&url'
+import JsonWorkerUrl from 'monaco-editor/esm/vs/language/json/json.worker?worker&url'
+import CssWorkerUrl from 'monaco-editor/esm/vs/language/css/css.worker?worker&url'
+import HtmlWorkerUrl from 'monaco-editor/esm/vs/language/html/html.worker?worker&url'
+import TsWorkerUrl from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker&url'
+
+const workerUrlByLabel: Record<string, string> = {
+  editor: EditorWorkerUrl,
+  json: JsonWorkerUrl,
+  css: CssWorkerUrl,
+  scss: CssWorkerUrl,
+  less: CssWorkerUrl,
+  html: HtmlWorkerUrl,
+  handlebars: HtmlWorkerUrl,
+  razor: HtmlWorkerUrl,
+  typescript: TsWorkerUrl,
+  javascript: TsWorkerUrl
+}
+
+// If a Monaco worker fails to construct, Monaco falls back to loading
+// the worker source inline on the main thread. That fallback ALSO fails
+// because the worker chunk is ESM and the inline-parse hits `export`,
+// at which point Monaco's worker subsystem is poisoned for the entire
+// renderer session — every diff editor renders without highlighting
+// until full reload. We can't fix that here; we just capture enough
+// detail to root-cause it and emit a window event so the UI can offer
+// a one-click reload.
+function safeCreateWorker(label: string, factory: () => Worker): Worker {
+  try {
+    const worker = factory()
+    worker.addEventListener('error', (ev) => {
+      const detail = {
+        label,
+        phase: 'runtime',
+        message: ev.message,
+        filename: (ev as ErrorEvent).filename,
+        lineno: (ev as ErrorEvent).lineno,
+        workerUrl: workerUrlByLabel[label]
+      }
+      // eslint-disable-next-line no-console
+      console.error(`[monaco] worker '${label}' runtime error`, detail)
+      window.dispatchEvent(new CustomEvent('monaco:worker-failed', { detail }))
+    })
+    return worker
+  } catch (err) {
+    const detail = {
+      label,
+      phase: 'construct',
+      message: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+      userAgent: navigator.userAgent,
+      workerUrl: workerUrlByLabel[label]
+    }
+    // eslint-disable-next-line no-console
+    console.error(`[monaco] worker '${label}' construction failed`, detail)
+    window.dispatchEvent(new CustomEvent('monaco:worker-failed', { detail }))
+    throw err
+  }
+}
 
 ;(self as unknown as { MonacoEnvironment: monaco.Environment }).MonacoEnvironment = {
   getWorker(_workerId, label) {
-    if (label === 'json') return new JsonWorker()
-    if (label === 'css' || label === 'scss' || label === 'less') return new CssWorker()
-    if (label === 'html' || label === 'handlebars' || label === 'razor') return new HtmlWorker()
-    if (label === 'typescript' || label === 'javascript') return new TsWorker()
-    return new EditorWorker()
+    if (label === 'json') return safeCreateWorker('json', () => new JsonWorker())
+    if (label === 'css' || label === 'scss' || label === 'less')
+      return safeCreateWorker(label, () => new CssWorker())
+    if (label === 'html' || label === 'handlebars' || label === 'razor')
+      return safeCreateWorker(label, () => new HtmlWorker())
+    if (label === 'typescript' || label === 'javascript')
+      return safeCreateWorker(label, () => new TsWorker())
+    return safeCreateWorker('editor', () => new EditorWorker())
   }
 }
 
