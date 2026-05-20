@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import { X, Loader2, Server } from 'lucide-react'
 import {
   parseConnectionUrl,
@@ -55,6 +55,18 @@ export function AddBackendModal({ isOpen, onClose }: AddBackendModalProps): JSX.
     setError(null)
     onClose()
   }, [busy, onClose])
+
+  useEffect(() => {
+    if (!isOpen) return
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        handleClose()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [isOpen, handleClose])
 
   const handleSubmit = useCallback(async () => {
     setError(null)
@@ -150,14 +162,17 @@ export function AddBackendModal({ isOpen, onClose }: AddBackendModalProps): JSX.
             <Server size={14} className="text-accent" />
             <h2 className="text-sm font-semibold text-fg-bright">Add backend</h2>
           </div>
-          <button
-            onClick={handleClose}
-            disabled={busy}
-            className="text-dim hover:text-fg disabled:opacity-50 transition-colors cursor-pointer"
-            aria-label="Close"
-          >
-            <X size={14} />
-          </button>
+          <div className="flex items-center gap-2">
+            <kbd className="text-[10px] text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono">ESC</kbd>
+            <button
+              onClick={handleClose}
+              disabled={busy}
+              className="text-dim hover:text-fg disabled:opacity-50 transition-colors cursor-pointer"
+              aria-label="Close"
+            >
+              <X size={14} />
+            </button>
+          </div>
         </div>
 
         <div className="px-5 py-4 space-y-4">
