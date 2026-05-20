@@ -35,6 +35,7 @@ import { ResolveRepoModal } from './components/ResolveRepoModal'
 import { RepoAddErrorModal } from './components/RepoAddErrorModal'
 import { ReportIssueScreen, onOpenReportIssue, type OpenReportIssueDetail } from './components/ReportIssueScreen'
 import { AddBackendModal } from './components/AddBackendModal'
+import { MonacoWorkerFailedBanner } from './components/MonacoWorkerFailedBanner'
 import iconUrl from '../../resources/icon.png'
 import { PerfMonitorHUD } from './components/PerfMonitorHUD'
 import { focusTerminalById } from './components/XTerminal'
@@ -1023,6 +1024,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
   return (
     <HotkeysProvider bindings={resolvedHotkeys}>
     <div className="flex h-full flex-col">
+      <MonacoWorkerFailedBanner />
       {/* Update-ready banner */}
       {updaterStatus?.state === 'downloaded' && !updateBannerDismissed && (
         <div className="bg-success/15 border-b border-success/30 pl-20 pr-4 py-2.5 drag-region flex items-center gap-3 shrink-0">
