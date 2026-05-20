@@ -161,6 +161,16 @@ function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect
           : 'border-transparent text-dim hover:text-fg'
       }`}
       onClick={onSelect}
+      onMouseDown={(e) => {
+        if (e.button === 1) e.preventDefault()
+      }}
+      onAuxClick={(e) => {
+        if (e.button === 1 && showClose) {
+          e.preventDefault()
+          e.stopPropagation()
+          onClose()
+        }
+      }}
       onContextMenu={
         onConvertTabType || onSleepTab
           ? (e) => {
