@@ -82,6 +82,22 @@
   <!-- Releases -->
   <div class="max-w-3xl mx-auto px-6 pb-24">
 
+    <!-- v2.9.1 -->
+    <section id="v2.9.1" class="release-section py-10">
+      <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
+        <h2 class="text-3xl font-bold tracking-tight"><a href="#v2.9.1" class="release-anchor">v2.9.1<span class="anchor-icon">🔗</span></a></h2>
+        <span class="text-sm text-neutral-500">May 20, 2026</span>
+      </div>
+      <a href="https://github.com/frenchie4111/harness/releases/tag/v2.9.1" class="text-sm text-amber-400/80 hover:text-amber-300 transition-colors">Download &rarr;</a>
+      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">A forward-compatibility patch that keeps Harness stable when connecting to a backend running a newer version — unknown state slices in remote snapshots are now tolerated gracefully instead of causing errors.</p>
+      <div class="note-body">
+        <h4>Fixes</h4>
+        <ul>
+          <li>Harness no longer errors when a remote snapshot contains state slices it doesn't recognise, making mixed-version setups more resilient during rolling updates.</li>
+        </ul>
+      </div>
+    </section>
+
     <!-- v2.9.0 -->
     <section id="v2.9.0" class="release-section py-10">
       <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
