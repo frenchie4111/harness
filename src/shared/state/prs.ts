@@ -6,6 +6,9 @@ export interface CheckStatus {
   summary?: string
   /** External URL to the check's log / details page */
   detailsUrl?: string
+  /** ISO timestamp when the check started. Optional — only used for
+   * ordering checks within a status group. */
+  startedAt?: string
 }
 
 export interface PRReview {
@@ -33,6 +36,16 @@ export interface PRStatus {
   reviewDecision: 'approved' | 'changes_requested' | 'review_required' | 'none'
   additions?: number
   deletions?: number
+  baseBranch: string
+  isDefaultBase: boolean
+  milestone?: { title: string; url: string; state: 'open' | 'closed' } | null
+  assignees: { login: string; avatarUrl: string }[]
+  /** 1-indexed position in the merge queue. Present only when the PR is
+   * currently enqueued; 1 = head of queue. */
+  queuePosition?: number
+  /** GitHub's estimated seconds until this entry merges. Optional —
+   * GitHub returns null until it has enough signal to estimate. */
+  queueEstimatedSeconds?: number
 }
 
 export interface PRsState {

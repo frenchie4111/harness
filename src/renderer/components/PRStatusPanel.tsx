@@ -360,9 +360,38 @@ const STATE_LABELS: Record<string, string> = {
 
 const STATE_COLORS: Record<string, string> = {
   open: 'text-success',
-  draft: 'text-muted',
+  draft: 'text-warning',
   merged: 'text-accent',
   closed: 'text-danger'
+}
+
+function ordinalSuffix(n: number): string {
+  const mod100 = n % 100
+  if (mod100 >= 11 && mod100 <= 13) return 'th'
+  switch (n % 10) {
+    case 1:
+      return 'st'
+    case 2:
+      return 'nd'
+    case 3:
+      return 'rd'
+    default:
+      return 'th'
+  }
+}
+
+function formatEta(seconds: number): string {
+  if (seconds < 60) return '<1m'
+  if (seconds < 3600) return `~${Math.round(seconds / 60)}m`
+  const hours = Math.floor(seconds / 3600)
+  const mins = Math.round((seconds % 3600) / 60)
+  return mins === 0 ? `~${hours}h` : `~${hours}h${mins}m`
+}
+
+function queueBadgeLabel(position: number, etaSeconds?: number): string {
+  const eta = typeof etaSeconds === 'number' ? ` · ${formatEta(etaSeconds)}` : ''
+  if (position <= 1) return `Queued${eta}`
+  return `Queued (${position}${ordinalSuffix(position)}${eta})`
 }
 
 const CHECK_ICONS: Record<CheckStatus['state'], { symbol: string; color: string }> = {
@@ -379,6 +408,31 @@ const OVERALL_COLORS: Record<string, string> = {
   failure: 'text-danger',
   pending: 'text-warning',
   none: 'text-dim'
+}
+
+// Failed/error checks are what the user has to act on, so they go first.
+// Then pending (in progress), then success, then non-actionable
+// neutral/skipped. Within each group, sort by startedAt ascending so the
+// order matches the actual run order on CI.
+const CHECK_STATE_PRIORITY: Record<CheckStatus['state'], number> = {
+  failure: 0,
+  error: 0,
+  pending: 1,
+  success: 2,
+  neutral: 3,
+  skipped: 4
+}
+
+function sortChecksForDisplay(checks: CheckStatus[]): CheckStatus[] {
+  return [...checks].sort((a, b) => {
+    const pa = CHECK_STATE_PRIORITY[a.state]
+    const pb = CHECK_STATE_PRIORITY[b.state]
+    if (pa !== pb) return pa - pb
+    const ta = a.startedAt ? Date.parse(a.startedAt) : Number.POSITIVE_INFINITY
+    const tb = b.startedAt ? Date.parse(b.startedAt) : Number.POSITIVE_INFINITY
+    if (ta !== tb) return ta - tb
+    return a.name.localeCompare(b.name)
+  })
 }
 
 const REVIEW_DECISION_LABELS: Record<PRStatus['reviewDecision'], { text: string; color: string }> = {
@@ -567,7 +621,7 @@ function PRActions({ pr, worktree, needsGithubToken }: PRActionsProps): JSX.Elem
   else if (confirming) mergeLabel = `Confirm ${methodLabel}`
   else mergeLabel = 'Merge'
 
-  const showMergeButton = !isTerminal
+  const showMergeButton = !isTerminal && !pr.queuePosition
 
   let mergeTooltip: string
   if (disabledReason) mergeTooltip = disabledReason
@@ -578,15 +632,6 @@ function PRActions({ pr, worktree, needsGithubToken }: PRActionsProps): JSX.Elem
 
   return (
     <div className="flex items-center gap-1.5 flex-wrap mb-2">
-      <Tooltip label="Open PR in browser" action="openPR">
-        <button
-          onClick={() => backend.openExternal(pr.url)}
-          className="px-3 py-1.5 text-xs rounded bg-surface hover:bg-surface/60 text-fg transition-colors cursor-pointer flex items-center gap-1.5"
-        >
-          Open
-          <ExternalLink size={11} />
-        </button>
-      </Tooltip>
       {showMergeButton && (
         <Tooltip label={mergeTooltip}>
           <button
@@ -660,7 +705,7 @@ export function PRStatusPanel({
 
   const needsGithubToken = hasGithubToken === false
 
-  const actions = !needsGithubToken && onRefresh ? (
+  const refreshButton = !needsGithubToken && onRefresh ? (
     <Tooltip label="Refresh PR status" side="left">
       <button
         onClick={(e) => {
@@ -674,6 +719,29 @@ export function PRStatusPanel({
         <RefreshCw size={11} className={loading ? 'animate-spin' : ''} />
       </button>
     </Tooltip>
+  ) : null
+
+  const openButton = !needsGithubToken && pr ? (
+    <Tooltip label="Open PR in browser" action="openPR" side="left">
+      <button
+        onClick={(e) => {
+          e.stopPropagation()
+          backend.openExternal(pr.url)
+        }}
+        className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-accent text-app text-[10px] font-medium hover:bg-accent/80 transition-colors cursor-pointer"
+        aria-label="Open PR in browser"
+      >
+        <GitPullRequest size={10} />
+        #{pr.number}
+      </button>
+    </Tooltip>
+  ) : null
+
+  const actions = (openButton || refreshButton) ? (
+    <div className="flex items-center gap-2">
+      {openButton}
+      {refreshButton}
+    </div>
   ) : null
 
   return (
@@ -711,24 +779,69 @@ export function PRStatusPanel({
 
       {!needsGithubToken && pr && (
         <div className="px-3 py-2">
-          {/* PR title and state */}
-          <div className="flex items-start gap-1.5 mb-1.5">
-            <span className={`text-xs font-medium shrink-0 ${STATE_COLORS[pr.state]}`}>
-              {STATE_LABELS[pr.state]}
-            </span>
-            <a
-              className="text-xs text-fg hover:text-fg-bright truncate cursor-pointer"
-              title={`#${pr.number}: ${pr.title}\n${pr.url}`}
-              onClick={() => setExpanded(!expanded)}
+          {/* PR title */}
+          <a
+            className="block text-xs text-fg hover:text-fg-bright truncate cursor-pointer mb-1"
+            title={`${pr.title}\n${pr.url}`}
+            onClick={() => setExpanded(!expanded)}
+          >
+            {pr.title}
+          </a>
+
+          <div className="flex items-center gap-1.5 mb-1 text-xs">
+            <span
+              className={`font-medium shrink-0 ${
+                pr.queuePosition ? 'text-accent' : STATE_COLORS[pr.state]
+              }`}
             >
-              #{pr.number} {pr.title}
-            </a>
-            {typeof pr.additions === 'number' && typeof pr.deletions === 'number' && (
-              <span className="text-xs font-mono shrink-0 ml-auto">
-                <span className="text-success">+{pr.additions}</span>
-                <span className="text-danger ml-1">−{pr.deletions}</span>
+              {pr.queuePosition
+                ? queueBadgeLabel(pr.queuePosition, pr.queueEstimatedSeconds)
+                : STATE_LABELS[pr.state]}
+            </span>
+            {!pr.isDefaultBase && (
+              <span className="font-mono text-faint truncate">{pr.baseBranch}</span>
+            )}
+            {pr.milestone ? (
+              <a
+                onClick={(e) => {
+                  e.stopPropagation()
+                  backend.openExternal(pr.milestone!.url)
+                }}
+                className={`shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-medium cursor-pointer transition-colors truncate max-w-[140px] ${
+                  pr.milestone.state === 'closed'
+                    ? 'bg-surface text-dim hover:text-fg-bright'
+                    : 'bg-accent/20 text-accent hover:bg-accent/30'
+                }`}
+                title={`Milestone: ${pr.milestone.title}`}
+              >
+                {pr.milestone.title}
+              </a>
+            ) : (
+              <span className="shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-surface text-faint">
+                No milestone
               </span>
             )}
+            <div className="flex items-center gap-1.5 ml-auto shrink-0">
+              {pr.assignees.length > 0 && (
+                <div className="flex items-center">
+                  {pr.assignees.map((a, i) => (
+                    <img
+                      key={a.login}
+                      src={a.avatarUrl}
+                      alt={a.login}
+                      title={`Assigned to ${a.login}`}
+                      className={`w-4 h-4 rounded-full border border-panel ${i > 0 ? '-ml-1' : ''}`}
+                    />
+                  ))}
+                </div>
+              )}
+              {typeof pr.additions === 'number' && typeof pr.deletions === 'number' && (
+                <span className="font-mono">
+                  <span className="text-success">+{pr.additions}</span>
+                  <span className="text-danger ml-1">−{pr.deletions}</span>
+                </span>
+              )}
+            </div>
           </div>
 
           <PRActions pr={pr} worktree={worktree} needsGithubToken={needsGithubToken} />
@@ -764,10 +877,11 @@ export function PRStatusPanel({
             )}
           </div>
 
-          {/* Expanded check list */}
+          {/* Expanded check list — sorted: failed → pending → success → neutral/skipped,
+              then by startedAt within each group. */}
           {expanded && pr.checks.length > 0 && (
             <div className="space-y-0.5 max-h-60 overflow-y-auto">
-              {pr.checks.map((check) => {
+              {sortChecksForDisplay(pr.checks).map((check) => {
                 const icon = CHECK_ICONS[check.state]
                 const isFailure = check.state === 'failure' || check.state === 'error'
                 const reason = isFailure

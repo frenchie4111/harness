@@ -62,6 +62,20 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToAgent, onO
 
   const actions = (
     <>
+      {onOpenReview && branchFiles.length > 0 && (
+        <Tooltip label="Review changes" action="openReview">
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onOpenReview()
+            }}
+            className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-accent text-app text-[10px] font-medium hover:bg-accent/80 transition-colors cursor-pointer"
+          >
+            <ClipboardCheck size={10} />
+            Review
+          </button>
+        </Tooltip>
+      )}
       <Tooltip label="Refresh">
         <button
           onClick={(e) => {
@@ -73,20 +87,6 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToAgent, onO
           <RefreshCw size={12} />
         </button>
       </Tooltip>
-      {onOpenReview && branchFiles.length > 0 && (
-        <Tooltip label="Review changes" action="openReview">
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              onOpenReview()
-            }}
-            className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-accent text-fg text-[10px] font-medium hover:bg-accent/80 transition-colors cursor-pointer"
-          >
-            <ClipboardCheck size={10} />
-            Review
-          </button>
-        </Tooltip>
-      )}
     </>
   )
 
