@@ -82,6 +82,42 @@
   <!-- Releases -->
   <div class="max-w-3xl mx-auto px-6 pb-24">
 
+    <!-- v2.9.3 -->
+    <section id="v2.9.3" class="release-section py-10">
+      <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
+        <h2 class="text-3xl font-bold tracking-tight"><a href="#v2.9.3" class="release-anchor">v2.9.3<span class="anchor-icon">🔗</span></a></h2>
+        <span class="text-sm text-neutral-500">May 21, 2026</span>
+      </div>
+      <a href="https://github.com/frenchie4111/harness/releases/tag/v2.9.3" class="text-sm text-amber-400/80 hover:text-amber-300 transition-colors">Download &rarr;</a>
+      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">A major feature release — snooze worktrees, open any GitHub PR directly as a worktree, connect to multiple backends from a single window, and merge PRs without leaving the app. Includes API cost tracking per activity, reliable PR status for upstream forks, and deep links from the in-app updater to the relevant changelog section.</p>
+      <div class="note-body">
+        <h4>New features</h4>
+        <ul>
+          <li><strong>Snooze</strong> — snooze a worktree to keep it out of the way until you're ready to return to it.</li>
+          <li><strong>Open PR as worktree</strong> — open any existing GitHub pull request directly as a new worktree, so you can pick up where another session left off without manual branch setup.</li>
+          <li><strong>Multi-backend support</strong> — connect a single Harness window to multiple backends — your local instance plus any number of remote Harness servers — and switch between them using the chip strip at the bottom of the sidebar.</li>
+          <li><strong>Merge button in the PR panel</strong> — merge your pull request directly from the Harness PR panel without switching to GitHub.</li>
+          <li><strong>Activity costs tab</strong> — view accumulated API costs broken down by activity directly in the activity panel.</li>
+          <li><strong>PR status for upstream forks</strong> — Harness now correctly tracks PR status when the pull request originates from an upstream fork, not just same-repo branches.</li>
+          <li><strong>Release notes deep links in the updater</strong> — the in-app update notification now links directly to the relevant changelog section for each release.</li>
+        </ul>
+        <h4>Improvements</h4>
+        <ul>
+          <li><strong>Middle-click to close tabs</strong> — middle-clicking a terminal tab now closes it, matching familiar browser behavior.</li>
+          <li><strong>Improved repository selection</strong> — the repository picker flow is smoother and easier to navigate.</li>
+          <li><strong>Hotkey badge readability</strong> — hotkey badges in tooltips and the onboarding quest card are easier to read.</li>
+        </ul>
+        <h4>Fixes</h4>
+        <ul>
+          <li>Duplicate Claude and Codex hook entries are no longer created when hooks are re-installed — existing entries are now matched by command substring before adding a new one.</li>
+          <li>Fixed the MCP worktree setup script failing in certain configurations.</li>
+          <li>PR status is now preserved from cache when a GitHub API fetch fails, preventing status flickers.</li>
+          <li>Harness no longer errors when a remote snapshot contains state slices it doesn't recognise, making mixed-version setups more resilient during rolling updates.</li>
+          <li>Fixed snooze not routing correctly to the backend in multi-backend setups.</li>
+        </ul>
+      </div>
+    </section>
+
     <!-- v2.9.1 -->
     <section id="v2.9.1" class="release-section py-10">
       <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
