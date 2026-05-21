@@ -239,7 +239,7 @@ function DesktopApp(): JSX.Element {
   const settings = useSettings()
   const { hasGithubToken: hasGithubPat, githubAuthSource, nameClaudeSessions, defaultAgent, theme: activeTheme } = settings
   const nameAgentSessions = nameClaudeSessions
-  const hasGithubToken = hasGithubPat || githubAuthSource === 'gh-cli'
+  const hasGithubToken = hasGithubPat || !!githubAuthSource
   const hotkeyOverrides = settings.hotkeys ?? undefined
   // Onboarding parallelism quest — see QuestCard.tsx for the steps.
   // Quest state lives in the main-process store; its value is seeded from

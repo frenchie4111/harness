@@ -71,7 +71,8 @@ async function githubFetch(url: string): Promise<unknown> {
     res = await doFetch(url, token)
   }
   if (!res.ok) {
-    throw new Error(`GitHub API ${res.status}: ${res.statusText}`)
+    const path = url.replace(/^https:\/\/api\.github\.com/, '')
+    throw new Error(`GitHub API ${res.status} ${res.statusText} for ${path}`)
   }
   return res.json()
 }
