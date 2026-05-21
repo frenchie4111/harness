@@ -103,6 +103,7 @@ export function buildBackend(
       teleportSessionId?: string
       agentKind?: 'claude' | 'codex'
       model?: string
+      checkoutExisting?: boolean
     }) => req('worktrees:runPending', params),
     runPendingPRWorktree: (params: {
       id: string

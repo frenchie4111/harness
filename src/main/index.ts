@@ -1048,6 +1048,7 @@ function registerIpcHandlers(): void {
       teleportSessionId?: string
       agentKind?: 'claude' | 'codex'
       model?: string
+      checkoutExisting?: boolean
     }) => {
       return worktreesFSM.runPending(params)
     }

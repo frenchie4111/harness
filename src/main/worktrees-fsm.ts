@@ -115,8 +115,14 @@ export class WorktreesFSM {
     teleportSessionId?: string
     agentKind?: 'claude' | 'codex'
     model?: string
+    /** When set, check out an existing branch instead of creating one
+     * with `-b`. Used when the user picks from the existing-branches
+     * dropdown — git resolves names like `origin/foo` to a local
+     * tracking branch correctly, whereas `-b origin/foo` would create
+     * a literally-named local branch. */
+    checkoutExisting?: boolean
   }): Promise<PendingOutcome> {
-    const { id, repoRoot, branchName, initialPrompt, teleportSessionId, agentKind, model } = params
+    const { id, repoRoot, branchName, initialPrompt, teleportSessionId, agentKind, model, checkoutExisting } = params
     const pending: PendingWorktree = {
       id,
       repoRoot,
@@ -131,7 +137,8 @@ export class WorktreesFSM {
       const wtDir = defaultWorktreeDir(repoRoot)
       const mode = this.opts.getWorktreeBaseMode()
       const created = await addWorktree(repoRoot, wtDir, branchName, {
-        fetchRemote: mode === 'remote'
+        fetchRemote: mode === 'remote',
+        checkoutExisting
       })
       return await this.finishCreate({
         id,
