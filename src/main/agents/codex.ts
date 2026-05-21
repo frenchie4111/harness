@@ -9,8 +9,10 @@ function shellQuote(s: string): string {
   return "'" + s.replace(/'/g, "'\\''") + "'"
 }
 
-const HARNESS_HOOK_MARKER = '__codex_harness__'
-const HARNESS_HOOK_VERSION = 1
+// Codex strips unknown fields when it normalizes hooks.json, so dedup
+// recognizes our entries by the status-dir path baked into the hook
+// command instead of a sidecar marker.
+const HARNESS_HOOK_COMMAND_SIGNATURE = '/tmp/harness-status'
 
 export const defaultCommand = 'codex'
 export const assignsSessionId = false
@@ -25,7 +27,7 @@ export const hookEvents = [
 
 interface CodexHookEntry {
   matcher?: string
-  hooks: { type: string; command: string; timeout?: number; _marker?: string; _version?: number }[]
+  hooks: { type: string; command: string; timeout?: number }[]
 }
 
 interface CodexHooksFile {
@@ -56,25 +58,18 @@ function writeHooksFile(path: string, data: CodexHooksFile): void {
 
 function makeHarnessHookEntry(command: string): CodexHookEntry {
   return {
-    hooks: [
-      {
-        type: 'command',
-        command,
-        timeout: 5,
-        _marker: HARNESS_HOOK_MARKER,
-        _version: HARNESS_HOOK_VERSION
-      }
-    ]
+    hooks: [{ type: 'command', command, timeout: 5 }]
   }
 }
 
+function isHarnessHookEntry(entry: CodexHookEntry): boolean {
+  return !!entry.hooks?.some(
+    (h) => typeof h.command === 'string' && h.command.includes(HARNESS_HOOK_COMMAND_SIGNATURE)
+  )
+}
+
 function removeOldHarnessEntries(entries: CodexHookEntry[]): CodexHookEntry[] {
-  return entries.filter((entry) => {
-    const hasOurMarker = entry.hooks?.some(
-      (h) => (h as Record<string, unknown>)._marker === HARNESS_HOOK_MARKER
-    )
-    return !hasOurMarker
-  })
+  return entries.filter((entry) => !isHarnessHookEntry(entry))
 }
 
 function ensureCodexHooksEnabled(): void {
@@ -97,10 +92,7 @@ export function hooksInstalled(): boolean {
   if (!hooks) return false
   for (const entries of Object.values(hooks)) {
     for (const entry of entries) {
-      for (const h of entry.hooks || []) {
-        const rec = h as Record<string, unknown>
-        if (rec._marker === HARNESS_HOOK_MARKER && rec._version === HARNESS_HOOK_VERSION) return true
-      }
+      if (isHarnessHookEntry(entry)) return true
     }
   }
   return false

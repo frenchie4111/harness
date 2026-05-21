@@ -12,6 +12,11 @@ import type { PtyStatus } from './pty-manager'
 import type { Store } from './store'
 import { log } from './debug'
 
+// This path is also the signature we use to recognize Harness-installed
+// hook entries when deduping at install time. If you change it, update
+// HARNESS_HOOK_COMMAND_SIGNATURE in src/main/agents/{claude,codex}.ts
+// to match, or older installed entries become unrecognizable and
+// re-installs will append duplicates.
 const STATUS_DIR = '/tmp/harness-status'
 
 export interface PendingTool {
