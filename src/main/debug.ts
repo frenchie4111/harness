@@ -35,6 +35,15 @@ export function getLogFilePath(): string {
   return getLogPath()
 }
 
+export function formatErr(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err)
+  const cause = (err as { cause?: unknown })?.cause
+  if (cause === undefined || cause === null) return msg
+  const causeMsg = cause instanceof Error ? cause.message : String(cause)
+  const causeCode = (cause as { code?: unknown })?.code
+  return causeCode ? `${msg} cause=${causeMsg} code=${String(causeCode)}` : `${msg} cause=${causeMsg}`
+}
+
 export function readRecentDebugLog(maxLines = 200): string {
   const path = getLogPath()
   if (!existsSync(path)) return ''

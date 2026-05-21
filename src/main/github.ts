@@ -1,6 +1,6 @@
 import { execFile } from 'child_process'
 import { promisify } from 'util'
-import { log } from './debug'
+import { log, formatErr } from './debug'
 import { getCachedToken, invalidateTokenCache, resolveGitHubToken } from './github-auth'
 import type { CheckStatus, PRReview, PRStatus } from '../shared/state/prs'
 import type { PRSummary, PRMetadata } from '../shared/github-types'
@@ -121,7 +121,7 @@ async function resolveQueryRepo(
     forkParentCache.set(key, 'self')
     return origin
   } catch (err) {
-    log('github', `fork detection failed for ${key}`, err instanceof Error ? err.message : err)
+    log('github', `fork detection failed for ${key}`, formatErr(err))
     return origin
   }
 }
@@ -293,7 +293,7 @@ export async function listPullRequests(repoRoot: string): Promise<PRListItem[] |
     }
     return list.map(flattenListItem)
   } catch (err) {
-    log('github', `listPullRequests failed for ${owner}/${repo}`, err instanceof Error ? err.message : err)
+    log('github', `listPullRequests failed for ${owner}/${repo}`, formatErr(err))
     throw err
   }
 }
@@ -316,7 +316,7 @@ export async function loadPRStatusForItem(
     log(
       'github',
       `loadPRStatusForItem failed for ${baseRepo.owner}/${baseRepo.repo}#${item.number}`,
-      err instanceof Error ? err.message : err
+      formatErr(err)
     )
     throw err
   }
@@ -501,7 +501,7 @@ export async function mergePR(
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    log('github', `mergePR fetch failed for ${owner}/${repo}#${number}`, message)
+    log('github', `mergePR fetch failed for ${owner}/${repo}#${number}`, formatErr(err))
     return { ok: false, error: message, errorCode: 'unknown' }
   }
 
@@ -591,7 +591,7 @@ export async function listOpenPRs(repoRoot: string): Promise<PRSummary[] | null>
     if (!Array.isArray(list)) return null
     return list.map(toPRSummary)
   } catch (err) {
-    log('github', `listOpenPRs failed for ${owner}/${repo}`, err instanceof Error ? err.message : err)
+    log('github', `listOpenPRs failed for ${owner}/${repo}`, formatErr(err))
     return null
   }
 }
@@ -612,7 +612,7 @@ export async function getPRMetadata(
     if (!pr || typeof pr.number !== 'number') return null
     return toPRSummary(pr)
   } catch (err) {
-    log('github', `getPRMetadata failed for ${owner}/${repo}#${prNumber}`, err instanceof Error ? err.message : err)
+    log('github', `getPRMetadata failed for ${owner}/${repo}#${prNumber}`, formatErr(err))
     return null
   }
 }
