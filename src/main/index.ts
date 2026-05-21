@@ -805,8 +805,11 @@ const autoSleepMonitor = new AutoSleepMonitor(store, panesFSM)
  *  hook command is env-gated on $HARNESS_TERMINAL_ID, so it no-ops for
  *  sessions started outside Harness. */
 function installHooksGlobally(): void {
+  // installHooks() is idempotent — it strips any existing Harness entries
+  // before writing a fresh one — so calling it unconditionally also
+  // collapses duplicate entries left by earlier buggy install passes.
   for (const agent of [getAgent('claude'), getAgent('codex')]) {
-    if (!agent.hooksInstalled()) agent.installHooks()
+    agent.installHooks()
   }
 }
 
