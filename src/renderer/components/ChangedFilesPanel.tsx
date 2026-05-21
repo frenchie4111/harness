@@ -62,6 +62,20 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToAgent, onO
 
   const actions = (
     <>
+      {onOpenReview && branchFiles.length > 0 && (
+        <Tooltip label="Review changes" action="openReview">
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onOpenReview()
+            }}
+            className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-accent text-app text-[10px] font-medium hover:bg-accent/80 transition-colors cursor-pointer"
+          >
+            <ClipboardCheck size={10} />
+            Review
+          </button>
+        </Tooltip>
+      )}
       <Tooltip label="Refresh">
         <button
           onClick={(e) => {
@@ -73,20 +87,6 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToAgent, onO
           <RefreshCw size={12} />
         </button>
       </Tooltip>
-      {onOpenReview && branchFiles.length > 0 && (
-        <Tooltip label="Review changes" action="openReview">
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              onOpenReview()
-            }}
-            className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-accent text-fg text-[10px] font-medium hover:bg-accent/80 transition-colors cursor-pointer"
-          >
-            <ClipboardCheck size={10} />
-            Review
-          </button>
-        </Tooltip>
-      )}
     </>
   )
 
@@ -187,7 +187,15 @@ function FileRow({
   const name = lastSlash >= 0 ? file.path.slice(lastSlash + 1) : file.path
 
   return (
-    <div className="flex items-center gap-2 px-3 py-1 hover:bg-panel-raised cursor-pointer group" onClick={onClick}>
+    <div
+      className="flex items-center gap-2 px-3 py-1 hover:bg-panel-raised cursor-pointer group"
+      onClick={onClick}
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData('text/plain', `@${file.path} `)
+        e.dataTransfer.effectAllowed = 'copy'
+      }}
+    >
       <span className={`shrink-0 w-3 font-mono ${STATUS_COLOR[file.status]}`}>
         {STATUS_LABEL[file.status]}
       </span>

@@ -553,28 +553,39 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
   }, [visible, terminalId])
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>): void => {
-    if (!e.dataTransfer.types.includes('Files')) return
+    const types = e.dataTransfer.types
+    if (!types.includes('Files') && !types.includes('text/plain')) return
     e.preventDefault()
     e.dataTransfer.dropEffect = 'copy'
   }
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>): void => {
     const files = Array.from(e.dataTransfer.files)
-    if (files.length === 0) return
+    if (files.length > 0) {
+      e.preventDefault()
+      const paths = files
+        .map((f) => backend.getFilePath(f))
+        .filter((p) => p && p.length > 0)
+      if (paths.length === 0) return
+      // Match iTerm2: shell-quote each path, join with spaces, wrap in
+      // bracketed-paste markers so Claude (and other readline-style prompts)
+      // treat it as a paste rather than per-keystroke input.
+      // Claude Code detects image paths in pasted text and renders them as
+      // attachments, but only when escaped iTerm2-style (backslash-escaped
+      // special chars, not POSIX single-quoting).
+      const escapeForDrop = (p: string): string => p.replace(/([ \t"'`$\\!?*()[\]{}|;<>&#])/g, '\\$1')
+      const text = paths.map(escapeForDrop).join(' ')
+      backend.writeTerminal(terminalId, '\x1b[200~' + text + '\x1b[201~')
+      terminalRef.current?.focus()
+      return
+    }
+    // In-app drag: panels set a text/plain payload (e.g. "@path/to/file ",
+    // a check URL, or a commit SHA). Pasted verbatim with bracketed-paste
+    // markers so the agent sees it as a single chunk.
+    const dragText = e.dataTransfer.getData('text/plain')
+    if (!dragText) return
     e.preventDefault()
-    const paths = files
-      .map((f) => backend.getFilePath(f))
-      .filter((p) => p && p.length > 0)
-    if (paths.length === 0) return
-    // Match iTerm2: shell-quote each path, join with spaces, wrap in
-    // bracketed-paste markers so Claude (and other readline-style prompts)
-    // treat it as a paste rather than per-keystroke input.
-    // Claude Code detects image paths in pasted text and renders them as
-    // attachments, but only when escaped iTerm2-style (backslash-escaped
-    // special chars, not POSIX single-quoting).
-    const escapeForDrop = (p: string): string => p.replace(/([ \t"'`$\\!?*()[\]{}|;<>&#])/g, '\\$1')
-    const text = paths.map(escapeForDrop).join(' ')
-    backend.writeTerminal(terminalId, '\x1b[200~' + text + '\x1b[201~')
+    backend.writeTerminal(terminalId, '\x1b[200~' + dragText + '\x1b[201~')
     terminalRef.current?.focus()
   }
 

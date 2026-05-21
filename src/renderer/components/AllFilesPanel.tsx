@@ -289,6 +289,11 @@ function FileRow({
       className="flex items-center gap-1 px-2 py-0.5 hover:bg-panel-raised cursor-pointer group"
       style={{ paddingLeft: 8 + depth * 12 + 10 }}
       onClick={() => onOpenFile(path)}
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData('text/plain', `@${path} `)
+        e.dataTransfer.effectAllowed = 'copy'
+      }}
     >
       <FileText size={11} className="shrink-0 text-faint" />
       <span className="truncate min-w-0 flex-1 text-fg">{name}</span>

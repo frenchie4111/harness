@@ -98,7 +98,12 @@ function fakePRStatus(number: number): PRStatus {
     checksOverall: 'none',
     hasConflict: null,
     reviews: [],
-    reviewDecision: 'none'
+    reviewDecision: 'none',
+    baseBranch: 'main',
+    isDefaultBase: true,
+    assignees: [],
+    linkedIssues: [],
+    labels: []
   }
 }
 

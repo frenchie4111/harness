@@ -50,6 +50,23 @@ async function getCurrentBranch(worktreePath: string): Promise<string | null> {
   }
 }
 
+/** Earliest tag (by version-sort) that contains the given commit, or null
+ *  if no tag does / git can't reach the SHA. Used for merged-PR display. */
+async function getFirstTagContaining(worktreePath: string, sha: string): Promise<string | null> {
+  if (!sha || !/^[0-9a-f]{7,40}$/i.test(sha)) return null
+  try {
+    const { stdout } = await execFileAsync(
+      'git',
+      ['tag', '--contains', sha, '--sort=version:refname'],
+      { cwd: worktreePath }
+    )
+    const first = stdout.split('\n').map((s) => s.trim()).find((s) => s.length > 0)
+    return first ?? null
+  } catch {
+    return null
+  }
+}
+
 async function doFetch(url: string, token: string | null): Promise<Response> {
   const headers: Record<string, string> = {
     Accept: 'application/vnd.github+json',
@@ -128,6 +145,90 @@ async function resolveQueryRepo(
   }
 }
 
+interface PRExtras {
+  queueEntry: { position: number; estimatedSeconds: number | null } | null
+  linkedIssues: { number: number; title: string; state: 'open' | 'closed'; url: string }[]
+}
+
+/** GraphQL POST to fetch nice-to-have PR fields not available via REST:
+ *  mergeQueueEntry and closingIssuesReferences. Returns empty defaults on
+ *  any failure (auth, network, schema). */
+async function fetchPRExtras(owner: string, repo: string, number: number): Promise<PRExtras> {
+  const empty: PRExtras = { queueEntry: null, linkedIssues: [] }
+  const token = getCachedToken()
+  if (!token) return empty
+  try {
+    const res = await trackedFetch('https://api.github.com/graphql', {
+      method: 'POST',
+      headers: {
+        Accept: 'application/vnd.github+json',
+        'User-Agent': 'Harness',
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        query:
+          'query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){mergeQueueEntry{position estimatedTimeToMerge} closingIssuesReferences(first:10){nodes{number title state url}}}}}',
+        variables: { o: owner, r: repo, n: number }
+      })
+    })
+    if (!res.ok) return empty
+    const json = (await res.json()) as {
+      data?: {
+        repository?: {
+          pullRequest?: {
+            mergeQueueEntry?: { position?: number; estimatedTimeToMerge?: number | null } | null
+            closingIssuesReferences?: {
+              nodes?: Array<{ number?: number; title?: string; state?: string; url?: string } | null> | null
+            } | null
+          } | null
+        } | null
+      }
+    }
+    const pr = json?.data?.repository?.pullRequest
+    const entry = pr?.mergeQueueEntry
+    const pos = entry?.position
+    const queueEntry =
+      typeof pos === 'number' && pos > 0
+        ? { position: pos, estimatedSeconds: typeof entry?.estimatedTimeToMerge === 'number' ? entry.estimatedTimeToMerge : null }
+        : null
+    const linkedIssues = (pr?.closingIssuesReferences?.nodes ?? [])
+      .filter((n): n is { number: number; title: string; state: string; url: string } =>
+        !!n && typeof n.number === 'number' && typeof n.title === 'string' && typeof n.url === 'string'
+      )
+      .map((n) => ({
+        number: n.number,
+        title: n.title,
+        state: n.state === 'CLOSED' ? ('closed' as const) : ('open' as const),
+        url: n.url
+      }))
+    return { queueEntry, linkedIssues }
+  } catch (err) {
+    log('github', `fetchPRExtras failed for ${owner}/${repo}#${number}`, err instanceof Error ? err.message : err)
+    return empty
+  }
+}
+
+/** Fetches commits-behind via GitHub's compare endpoint. Returns null on
+ *  any failure — the count is a nice-to-have, not a correctness signal. */
+async function fetchBehindBy(
+  owner: string,
+  repo: string,
+  baseRef: string,
+  headSha: string
+): Promise<number | null> {
+  try {
+    const data = (await githubFetch(
+      `https://api.github.com/repos/${owner}/${repo}/compare/${encodeURIComponent(baseRef)}...${encodeURIComponent(headSha)}`
+    )) as { behind_by?: number } | null
+    if (!data || typeof data.behind_by !== 'number') return null
+    return data.behind_by
+  } catch (err) {
+    log('github', `fetchBehindBy failed for ${owner}/${repo} ${baseRef}...${headSha}`, err instanceof Error ? err.message : err)
+    return null
+  }
+}
+
 interface ApiPRListItem {
   number: number
   title: string
@@ -142,6 +243,7 @@ interface ApiPRListItem {
     sha: string
     repo: { full_name: string } | null
   }
+  assignees: { login: string; avatar_url: string }[] | null
   updated_at: string
 }
 
@@ -150,6 +252,14 @@ interface ApiPRDetail extends ApiPRListItem {
   mergeable_state: string
   additions: number
   deletions: number
+  base: {
+    ref: string
+    sha: string
+    repo: { full_name: string; default_branch: string } | null
+  }
+  milestone: { title: string; html_url: string; state: 'open' | 'closed'; number: number } | null
+  labels: { name: string; color: string; description: string | null }[] | null
+  merge_commit_sha: string | null
 }
 
 /** Normalized PR list item used by the poller's match-by-ref/sha logic.
@@ -197,6 +307,7 @@ interface ApiCheckRun {
   conclusion: 'success' | 'failure' | 'neutral' | 'cancelled' | 'skipped' | 'timed_out' | 'action_required' | null
   html_url?: string | null
   details_url?: string | null
+  started_at?: string | null
   output?: { title?: string | null; summary?: string | null }
 }
 
@@ -210,6 +321,7 @@ interface ApiStatus {
   context: string
   description: string | null
   target_url: string | null
+  created_at?: string | null
 }
 
 interface ApiCombinedStatus {
@@ -313,7 +425,7 @@ export async function loadPRStatusForItem(
   if (!token) return null
   const localBranch = (await getCurrentBranch(worktreePath)) ?? item.headRef
   try {
-    return await fanOutPRDetails(baseRepo.owner, baseRepo.repo, item, localBranch)
+    return await fanOutPRDetails(baseRepo.owner, baseRepo.repo, item, localBranch, worktreePath)
   } catch (err) {
     log(
       'github',
@@ -328,14 +440,16 @@ async function fanOutPRDetails(
   owner: string,
   repo: string,
   item: PRListItem,
-  branchName: string
+  branchName: string,
+  worktreePath: string
 ): Promise<PRStatus | null> {
   const sha = item.headSha
-  const [prDetailRes, checkRunsRes, combinedRes, reviewsRes] = await Promise.allSettled([
+  const [prDetailRes, checkRunsRes, combinedRes, reviewsRes, extrasRes] = await Promise.allSettled([
     githubFetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${item.number}`) as Promise<ApiPRDetail>,
     githubFetch(`https://api.github.com/repos/${owner}/${repo}/commits/${sha}/check-runs?per_page=100`) as Promise<ApiCheckRunsResponse>,
     githubFetch(`https://api.github.com/repos/${owner}/${repo}/commits/${sha}/status`) as Promise<ApiCombinedStatus>,
-    githubFetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${item.number}/reviews?per_page=100`) as Promise<ApiReview[]>
+    githubFetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${item.number}/reviews?per_page=100`) as Promise<ApiReview[]>,
+    fetchPRExtras(owner, repo, item.number)
   ])
 
   if (prDetailRes.status === 'rejected') throw prDetailRes.reason
@@ -351,6 +465,19 @@ async function fanOutPRDetails(
   if (reviewsRes.status === 'rejected') {
     log('github', `reviews unavailable for ${owner}/${repo}#${item.number} (continuing)`, formatErr(reviewsRes.reason))
   }
+  if (extrasRes.status === 'rejected') {
+    log('github', `extras unavailable for ${owner}/${repo}#${item.number} (continuing)`, formatErr(extrasRes.reason))
+  }
+  const extras = extrasRes.status === 'fulfilled' ? extrasRes.value : { queueEntry: null, linkedIssues: [] }
+
+  const behindBy = await fetchBehindBy(owner, repo, prDetail.base.ref, sha)
+
+  // Only meaningful once the PR is merged AND we know the merge commit.
+  // Skips the git invocation entirely for open/draft/closed PRs.
+  const firstReleaseTag =
+    item.mergedAt && prDetail.merge_commit_sha
+      ? await getFirstTagContaining(worktreePath, prDetail.merge_commit_sha)
+      : null
 
   let hasConflict: boolean | null
   if (prDetail.mergeable_state === 'dirty') hasConflict = true
@@ -366,7 +493,8 @@ async function fanOutPRDetails(
       state: normalizeCheckState(run.status, run.conclusion),
       description: run.output?.title || '',
       summary: run.output?.summary || undefined,
-      detailsUrl: run.html_url || run.details_url || undefined
+      detailsUrl: run.html_url || run.details_url || undefined,
+      startedAt: run.started_at || undefined
     })
   }
   const combinedStatuses = combinedRes.status === 'fulfilled' ? combinedRes.value.statuses || [] : []
@@ -375,7 +503,8 @@ async function fanOutPRDetails(
       name: s.context,
       state: normalizeStatusState(s.state),
       description: s.description || '',
-      detailsUrl: s.target_url || undefined
+      detailsUrl: s.target_url || undefined,
+      startedAt: s.created_at || undefined
     })
   }
 
@@ -418,7 +547,30 @@ async function fanOutPRDetails(
     reviews,
     reviewDecision,
     additions: prDetail.additions,
-    deletions: prDetail.deletions
+    deletions: prDetail.deletions,
+    baseBranch: prDetail.base.ref,
+    isDefaultBase: prDetail.base.ref === (prDetail.base.repo?.default_branch ?? ''),
+    milestone: prDetail.milestone
+      ? {
+          title: prDetail.milestone.title,
+          url: prDetail.milestone.html_url,
+          state: prDetail.milestone.state
+        }
+      : null,
+    assignees: (prDetail.assignees ?? []).map((a) => ({
+      login: a.login,
+      avatarUrl: a.avatar_url
+    })),
+    queuePosition: extras.queueEntry?.position,
+    queueEstimatedSeconds: extras.queueEntry?.estimatedSeconds ?? undefined,
+    behindBy: behindBy ?? undefined,
+    linkedIssues: extras.linkedIssues,
+    labels: (prDetail.labels ?? []).map((l) => ({
+      name: l.name,
+      color: l.color,
+      description: l.description ?? undefined
+    })),
+    firstReleaseTag: firstReleaseTag ?? undefined
   }
 }
 
