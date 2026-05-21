@@ -330,14 +330,26 @@ async function fanOutPRDetails(
   branchName: string
 ): Promise<PRStatus | null> {
   const sha = item.headSha
-  const [prDetail, checkRunsRes, combinedRes, reviewsRes] = await Promise.all([
+  const [prDetailRes, checkRunsRes, combinedRes, reviewsRes] = await Promise.allSettled([
     githubFetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${item.number}`) as Promise<ApiPRDetail>,
     githubFetch(`https://api.github.com/repos/${owner}/${repo}/commits/${sha}/check-runs?per_page=100`) as Promise<ApiCheckRunsResponse>,
     githubFetch(`https://api.github.com/repos/${owner}/${repo}/commits/${sha}/status`) as Promise<ApiCombinedStatus>,
     githubFetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${item.number}/reviews?per_page=100`) as Promise<ApiReview[]>
   ])
 
+  if (prDetailRes.status === 'rejected') throw prDetailRes.reason
+  const prDetail = prDetailRes.value
   if (!prDetail || typeof prDetail.number !== 'number') return null
+
+  if (checkRunsRes.status === 'rejected') {
+    log('github', `check-runs unavailable for ${owner}/${repo}#${item.number} (continuing)`, formatErr(checkRunsRes.reason))
+  }
+  if (combinedRes.status === 'rejected') {
+    log('github', `combined status unavailable for ${owner}/${repo}#${item.number} (continuing)`, formatErr(combinedRes.reason))
+  }
+  if (reviewsRes.status === 'rejected') {
+    log('github', `reviews unavailable for ${owner}/${repo}#${item.number} (continuing)`, formatErr(reviewsRes.reason))
+  }
 
   let hasConflict: boolean | null
   if (prDetail.mergeable_state === 'dirty') hasConflict = true
@@ -346,7 +358,8 @@ async function fanOutPRDetails(
   else hasConflict = null
 
   const checks: CheckStatus[] = []
-  for (const run of checkRunsRes.check_runs || []) {
+  const checkRuns = checkRunsRes.status === 'fulfilled' ? checkRunsRes.value.check_runs || [] : []
+  for (const run of checkRuns) {
     checks.push({
       name: run.name,
       state: normalizeCheckState(run.status, run.conclusion),
@@ -355,7 +368,8 @@ async function fanOutPRDetails(
       detailsUrl: run.html_url || run.details_url || undefined
     })
   }
-  for (const s of combinedRes.statuses || []) {
+  const combinedStatuses = combinedRes.status === 'fulfilled' ? combinedRes.value.statuses || [] : []
+  for (const s of combinedStatuses) {
     checks.push({
       name: s.context,
       state: normalizeStatusState(s.state),
@@ -364,7 +378,8 @@ async function fanOutPRDetails(
     })
   }
 
-  const reviews: PRReview[] = (Array.isArray(reviewsRes) ? reviewsRes : [])
+  const reviewsList = reviewsRes.status === 'fulfilled' ? reviewsRes.value : []
+  const reviews: PRReview[] = (Array.isArray(reviewsList) ? reviewsList : [])
     .filter((r) => r.user && r.state !== 'PENDING')
     .map((r) => ({
       user: r.user.login,

@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 vi.mock('./debug', () => ({
-  log: vi.fn()
+  log: vi.fn(),
+  formatErr: (err: unknown) => (err instanceof Error ? err.message : String(err))
 }))
 
 vi.mock('./github-auth', () => ({
