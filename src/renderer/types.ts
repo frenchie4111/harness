@@ -378,6 +378,7 @@ export interface ElectronAPI {
   panesEnsureInitialized(wtPath: string): Promise<boolean>
   panesSleepTab(wtPath: string, tabId: string): Promise<boolean>
   panesWakeTab(wtPath: string, tabId: string): Promise<boolean>
+  touchWorktreeLastActive(wtPath: string): Promise<boolean>
   getTerminalHistory(id: string): Promise<string>
   clearTerminalHistory(id: string): Promise<boolean>
   agentSessionFileExists(cwd: string, sessionId: string, agentKind?: AgentKind): Promise<boolean>

@@ -296,6 +296,8 @@ export function buildBackend(
     panesEnsureInitialized: (wtPath: string) => req('panes:ensureInitialized', wtPath),
     panesSleepTab: (wtPath: string, tabId: string) => req('panes:sleepTab', wtPath, tabId),
     panesWakeTab: (wtPath: string, tabId: string) => req('panes:wakeTab', wtPath, tabId),
+    touchWorktreeLastActive: (wtPath: string) =>
+      req('terminals:touchLastActive', wtPath),
 
     getTerminalHistory: (id: string) => req('terminal:getHistory', id),
     clearTerminalHistory: (id: string) => req('terminal:forgetHistory', id),

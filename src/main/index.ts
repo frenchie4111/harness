@@ -1987,6 +1987,18 @@ function registerIpcHandlers(): void {
     panesFSM.wakeJsonClaudeTab(wtPath, tabId)
     return true
   })
+  // Renderer-driven lastActive bump. The composer fires this while the
+  // user is typing so the auto-sleep monitor can't re-sleep a tab mid-
+  // composition — ActivityDeriver only bumps lastActive on status
+  // transitions (and only after a 30s debounce), so typing into an
+  // already-'waiting' tab leaves the timestamp stale otherwise.
+  transport.onRequest('terminals:touchLastActive', (_ctx, wtPath: string) => {
+    store.dispatch({
+      type: 'terminals/lastActiveChanged',
+      payload: { worktreePath: wtPath, ts: Date.now() }
+    })
+    return true
+  })
   // Wake-on-activation. Renderer fires this whenever the user focuses a
   // worktree (sidebar click, hotkey, command palette). Boot-time sleep
   // skips merged worktrees, so this is the only path that wakes them.
