@@ -8,7 +8,10 @@ import { useWorktreeHandlers } from './hooks/useWorktreeHandlers'
 import type { Worktree, TerminalTab, PtyStatus, PendingTool, QuestStep, PendingWorktree, UpdaterStatus, RepoConfig, PaneNode } from './types'
 import { getLeaves, findLeaf } from '../shared/state/terminals'
 import { CheckCircle2, FolderOpen } from 'lucide-react'
-import { THEME_OPTIONS } from './themes'
+import { BUILT_IN_THEMES_BY_MODE } from './themes'
+import { useActiveTheme } from './hooks/useActiveTheme'
+import { applyTheme, effectiveAppBg } from './theme-apply'
+import { getBackend } from './backend'
 import { HotkeysProvider, Tooltip } from './components/Tooltip'
 import { Sidebar } from './components/Sidebar'
 import { ResizeHandle } from './components/ResizeHandle'
@@ -56,10 +59,11 @@ function isPendingId(id: string | null | undefined): id is string {
 // main, so we only need one subscriber.
 export default function App(): JSX.Element {
   const { isMobile } = useViewport()
-  const theme = useSettings().theme
+  const active = useActiveTheme()
   useEffect(() => {
-    document.documentElement.dataset.theme = theme
-  }, [theme])
+    applyTheme(active)
+    getBackend().setLastEffectiveAppBg(effectiveAppBg(active))
+  }, [active])
   if (isMobile) return <MobileApp />
   return <DesktopApp />
 }
@@ -237,7 +241,8 @@ function DesktopApp(): JSX.Element {
   // nobody is currently looking at.
   const tailLines = useTailLineBuffer(showCommandCenter)
   const settings = useSettings()
-  const { hasGithubToken: hasGithubPat, githubAuthSource, nameClaudeSessions, defaultAgent, theme: activeTheme } = settings
+  const { hasGithubToken: hasGithubPat, githubAuthSource, nameClaudeSessions, defaultAgent } = settings
+  const activeTheme = useActiveTheme()
   const nameAgentSessions = nameClaudeSessions
   const hasGithubToken = hasGithubPat || !!githubAuthSource
   const hotkeyOverrides = settings.hotkeys ?? undefined
@@ -286,10 +291,6 @@ const setQuestStep = useCallback((next: QuestStep) => {
   useEffect(() => {
     void backend.refreshWorktreesList()
   }, [])
-
-  useEffect(() => {
-    document.documentElement.dataset.theme = settings.theme
-  }, [settings.theme])
 
   // Open Settings from the menu (Cmd+,)
   useEffect(() => {
@@ -815,18 +816,19 @@ const setQuestStep = useCallback((next: QuestStep) => {
                     </div>
                   )}
                   <div className="flex-1 min-w-0">
-                    <div className="text-fg-bright text-sm font-medium">Pick a theme</div>
-                    <div className="text-xs text-dim mt-0.5">Obviously the most important step. And for the love of god don't pick a light theme.</div>
+                    <div className="text-fg-bright text-sm font-medium">Pick your dark theme</div>
+                    <div className="text-xs text-dim mt-0.5">You can configure a light one and auto-switch with the OS from Settings later.</div>
                   </div>
                 </div>
                 <div className="grid grid-cols-3 gap-1.5 ml-8">
-                  {THEME_OPTIONS.map((opt) => {
-                    const isActive = activeTheme === opt.id && themeChosen
+                  {BUILT_IN_THEMES_BY_MODE.dark.map((opt) => {
+                    const isActive = activeTheme.id === opt.id && themeChosen
                     return (
                       <button
                         key={opt.id}
+                        type="button"
                         onClick={() => {
-                          backend.setTheme(opt.id)
+                          backend.setThemeDark(opt.id)
                           setThemeChosen(true)
                         }}
                         className={`flex items-center gap-2 px-2 py-1.5 rounded-lg border transition-colors cursor-pointer ${

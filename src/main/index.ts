@@ -46,7 +46,6 @@ import {
   saveConfig,
   saveConfigSync,
   DEFAULT_CLAUDE_COMMAND,
-  DEFAULT_THEME,
   AVAILABLE_THEMES,
   THEME_APP_BG,
   DEFAULT_TERMINAL_FONT_FAMILY,
@@ -68,6 +67,7 @@ import { registerRepoRoot } from './repo-roots'
 import type { AddRepoResult } from '../shared/repo-pick'
 import { isWorktreeMerged } from '../shared/state/prs'
 import { MAX_WAKE } from '../shared/state/snooze'
+import { DEFAULT_LIGHT_THEME, DEFAULT_DARK_THEME } from '../shared/state/settings'
 import { watchStatusDir } from './hooks'
 import { getAgent, type AgentKind } from './agents'
 import { buildClaudeLaunchSettings } from './claude-launch'
@@ -82,6 +82,7 @@ import { writeMcpConfigForTerminal, pruneMcpConfigs, getBridgeScriptPath } from 
 import { getControlServerInfo } from './control-server'
 import { recordActivity, getActivityLog, clearAllActivity, clearActivityForWorktree, sealAllActive, touchActivityMeta, finalizeActivity, type ActivityState, type PRState } from './activity'
 import { log, getLogFilePath } from './debug'
+import { loadCustomThemes } from './themes-loader'
 import { perfLog } from './perf-log'
 import { buildInitialAppState } from './build-initial-state'
 
@@ -273,6 +274,15 @@ let config = loadConfig()
 let stopWatchingStatus: (() => void) | null = null
 
 const store = new Store(buildInitialAppState(config, { hasGithubToken: hasSecret('githubToken') }))
+
+// Scan for user-authored themes once the store exists. Done as a
+// dispatch (rather than seeding into buildInitialAppState) so the
+// reload IPC follows the same code path.
+try {
+  store.dispatch({ type: 'settings/customThemesChanged', payload: loadCustomThemes() })
+} catch (err) {
+  log('themes', `initial scan failed: ${(err as Error).message}`)
+}
 const approvalBridge = new ApprovalBridge(store, {
   getClaudeCommand: () =>
     store.getSnapshot().state.settings.claudeCommand || DEFAULT_CLAUDE_COMMAND,
@@ -1718,19 +1728,83 @@ function registerIpcHandlers(): void {
     })
     return true
   })
-  transport.onRequest('config:setTheme', (_ctx, theme: string) => {
-    if (!AVAILABLE_THEMES.includes(theme as (typeof AVAILABLE_THEMES)[number])) {
-      return false
-    }
-    if (theme === DEFAULT_THEME) {
-      delete config.theme
+  transport.onRequest('config:setThemeMode', (_ctx, mode: string) => {
+    if (mode !== 'light' && mode !== 'dark' && mode !== 'system') return false
+    if (mode === 'system') {
+      delete config.themeMode
     } else {
-      config.theme = theme
+      config.themeMode = mode
     }
     saveConfig(config)
-    store.dispatch({ type: 'settings/themeChanged', payload: theme })
+    store.dispatch({ type: 'settings/themeModeChanged', payload: mode })
     return true
   })
+
+  // Accept built-in IDs (validated against AVAILABLE_THEMES) and any
+  // currently-loaded custom theme id of the matching mode. Custom IDs
+  // are filename-derived and not statically known, so the live slice is
+  // the source of truth.
+  const isKnownLightTheme = (id: string): boolean => {
+    if (AVAILABLE_THEMES.includes(id as (typeof AVAILABLE_THEMES)[number])) return true
+    return store.getSnapshot().state.settings.customThemes.some(
+      (t) => t.id === id && t.mode === 'light'
+    )
+  }
+  const isKnownDarkTheme = (id: string): boolean => {
+    if (AVAILABLE_THEMES.includes(id as (typeof AVAILABLE_THEMES)[number])) return true
+    return store.getSnapshot().state.settings.customThemes.some(
+      (t) => t.id === id && t.mode === 'dark'
+    )
+  }
+
+  transport.onRequest('config:setThemeLight', (_ctx, theme: string) => {
+    if (typeof theme !== 'string' || !isKnownLightTheme(theme)) {
+      return false
+    }
+    if (theme === DEFAULT_LIGHT_THEME) {
+      delete config.themeLight
+    } else {
+      config.themeLight = theme
+    }
+    saveConfig(config)
+    store.dispatch({ type: 'settings/themeLightChanged', payload: theme })
+    return true
+  })
+
+  transport.onRequest('config:setThemeDark', (_ctx, theme: string) => {
+    if (typeof theme !== 'string' || !isKnownDarkTheme(theme)) {
+      return false
+    }
+    if (theme === DEFAULT_DARK_THEME) {
+      delete config.themeDark
+    } else {
+      config.themeDark = theme
+    }
+    saveConfig(config)
+    store.dispatch({ type: 'settings/themeDarkChanged', payload: theme })
+    return true
+  })
+
+  // Fire-and-forget: the renderer reports the hex it just applied so we can
+  // use it as the BrowserWindow backgroundColor on the next launch. No
+  // dispatch — this never needs to be reflected in slice state.
+  transport.onSignal('config:setLastEffectiveAppBg', (_ctx, hex: unknown) => {
+    if (typeof hex !== 'string' || !hex) return
+    if (hex === config.lastEffectiveAppBg) return
+    config.lastEffectiveAppBg = hex
+    saveConfig(config)
+  })
+
+  transport.onRequest('config:reloadCustomThemes', (_ctx) => {
+    const themes = loadCustomThemes()
+    store.dispatch({ type: 'settings/customThemesChanged', payload: themes })
+    return themes.length
+  })
+
+  // `config:openThemesFolder` lives in desktop-shell.ts so it only spawns
+  // a window-manager file-browser on the local Electron host. Headless
+  // backends don't register it; the renderer falls back to displaying
+  // the path string.
 
   transport.onRequest('config:setTerminalFontFamily', (_ctx, fontFamily: string) => {
     const trimmed = (fontFamily || '').trim()

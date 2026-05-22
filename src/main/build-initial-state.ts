@@ -6,14 +6,17 @@ import { initialWorktrees } from '../shared/state/worktrees'
 import { initialTerminals } from '../shared/state/terminals'
 import { initialUpdater } from '../shared/state/updater'
 import { initialRepoConfigs } from '../shared/state/repo-configs'
-import { initialCosts, type CostsState } from '../shared/state/costs'
+import { initialCosts } from '../shared/state/costs'
 import { initialBrowser } from '../shared/state/browser'
 import { initialJsonClaude } from '../shared/state/json-claude'
 import { initialSnooze } from '../shared/state/snooze'
-import { initialSettings } from '../shared/state/settings'
+import {
+  initialSettings,
+  DEFAULT_LIGHT_THEME,
+  DEFAULT_DARK_THEME
+} from '../shared/state/settings'
 import {
   DEFAULT_CLAUDE_COMMAND,
-  DEFAULT_THEME,
   DEFAULT_TERMINAL_FONT_FAMILY,
   DEFAULT_TERMINAL_FONT_SIZE,
   DEFAULT_WORKTREE_BASE,
@@ -45,7 +48,12 @@ export function buildInitialAppState(
     snooze: config.snooze ? { byPath: { ...config.snooze } } : initialSnooze,
     settings: {
       ...initialSettings,
-      theme: config.theme || DEFAULT_THEME,
+      themeMode:
+        config.themeMode === 'light' || config.themeMode === 'dark'
+          ? config.themeMode
+          : 'system',
+      themeLight: config.themeLight || DEFAULT_LIGHT_THEME,
+      themeDark: config.themeDark || DEFAULT_DARK_THEME,
       hotkeys: config.hotkeys || null,
       defaultAgent: config.defaultAgent || 'claude',
       claudeCommand: config.claudeCommand || DEFAULT_CLAUDE_COMMAND,

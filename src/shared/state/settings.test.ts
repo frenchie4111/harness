@@ -11,9 +11,48 @@ function apply(state: SettingsState, event: SettingsEvent): SettingsState {
 }
 
 describe('settingsReducer', () => {
-  it('themeChanged sets theme', () => {
-    const next = apply(initialSettings, { type: 'settings/themeChanged', payload: 'solarized' })
-    expect(next.theme).toBe('solarized')
+  it('themeModeChanged sets the mode', () => {
+    expect(initialSettings.themeMode).toBe('system')
+    const dark = apply(initialSettings, { type: 'settings/themeModeChanged', payload: 'dark' })
+    expect(dark.themeMode).toBe('dark')
+    const light = apply(dark, { type: 'settings/themeModeChanged', payload: 'light' })
+    expect(light.themeMode).toBe('light')
+    const sys = apply(light, { type: 'settings/themeModeChanged', payload: 'system' })
+    expect(sys.themeMode).toBe('system')
+  })
+
+  it('themeLightChanged sets the light theme id', () => {
+    expect(initialSettings.themeLight).toBe('solarized-light')
+    const next = apply(initialSettings, {
+      type: 'settings/themeLightChanged',
+      payload: 'solarized-light'
+    })
+    expect(next.themeLight).toBe('solarized-light')
+    const changed = apply(next, {
+      type: 'settings/themeLightChanged',
+      payload: 'custom-light'
+    })
+    expect(changed.themeLight).toBe('custom-light')
+  })
+
+  it('themeDarkChanged sets the dark theme id', () => {
+    expect(initialSettings.themeDark).toBe('dark')
+    const next = apply(initialSettings, { type: 'settings/themeDarkChanged', payload: 'dracula' })
+    expect(next.themeDark).toBe('dracula')
+  })
+
+  it('customThemesChanged replaces the array', () => {
+    expect(initialSettings.customThemes).toEqual([])
+    const next = apply(initialSettings, {
+      type: 'settings/customThemesChanged',
+      payload: [
+        { id: 'midnight', name: 'Midnight', mode: 'dark', colors: { app: '#000' } }
+      ]
+    })
+    expect(next.customThemes).toHaveLength(1)
+    expect(next.customThemes[0].id).toBe('midnight')
+    const cleared = apply(next, { type: 'settings/customThemesChanged', payload: [] })
+    expect(cleared.customThemes).toEqual([])
   })
 
   it('hotkeysChanged replaces the map (including null)', () => {
@@ -420,9 +459,9 @@ describe('settingsReducer', () => {
   })
 
   it('returns a new object reference (no mutation)', () => {
-    const next = apply(initialSettings, { type: 'settings/themeChanged', payload: 'x' })
+    const next = apply(initialSettings, { type: 'settings/themeDarkChanged', payload: 'dracula' })
     expect(next).not.toBe(initialSettings)
-    expect(initialSettings.theme).not.toBe('x')
+    expect(initialSettings.themeDark).not.toBe('dracula')
   })
 
   it('leaves unrelated fields untouched', () => {
@@ -431,7 +470,7 @@ describe('settingsReducer', () => {
       claudeCommand: 'pre-existing',
       nameClaudeSessions: true
     }
-    const next = apply(start, { type: 'settings/themeChanged', payload: 'other' })
+    const next = apply(start, { type: 'settings/themeDarkChanged', payload: 'nord' })
     expect(next.claudeCommand).toBe('pre-existing')
     expect(next.nameClaudeSessions).toBe(true)
   })

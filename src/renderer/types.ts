@@ -313,7 +313,17 @@ export interface ElectronAPI {
   setCodexModel(model: string | null): Promise<boolean>
   setCodexEnvVars(vars: Record<string, string>): Promise<boolean>
   setNameClaudeSessions(enabled: boolean): Promise<boolean>
-  setTheme(theme: string): Promise<boolean>
+  setThemeMode(mode: 'light' | 'dark' | 'system'): Promise<boolean>
+  setThemeLight(theme: string): Promise<boolean>
+  setThemeDark(theme: string): Promise<boolean>
+  setLastEffectiveAppBg(hex: string): void
+  /** Rescan `<userData>/themes/*.json` and update the slice. Returns
+   *  the new theme count. */
+  reloadCustomThemes(): Promise<number>
+  /** Reveal the themes directory in the OS file browser (Electron only).
+   *  Always returns the absolute directory path so the web client can
+   *  surface it manually. */
+  openThemesFolder(): Promise<{ ok: true; path: string } | { ok: false; path: string; message: string }>
   setCostsInterest(expanded: boolean): Promise<boolean>
   getAllSessionCosts(sinceMs?: number): Promise<SessionCostSummary[]>
   getClaudeAuthStatus(): Promise<ClaudeAuthInfo>

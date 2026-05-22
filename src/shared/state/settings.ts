@@ -14,8 +14,50 @@ export type BrowserToolsMode = 'view' | 'full'
 
 export type JsonModeChatDensity = 'compact' | 'comfy'
 
+export type ThemeMode = 'light' | 'dark' | 'system'
+
+/** A theme loaded from `<userData>/themes/*.json`. Stays minimal — the
+ *  loader only validates `name` + `mode` + an optional `colors` map of the
+ *  16 semantic keys; missing keys inherit from the default of that mode at
+ *  apply time. */
+export interface CustomTheme {
+  /** Derived from filename, sanitized to `[a-z0-9-]`. Unique across the
+   *  set (collisions are dropped by the loader). */
+  id: string
+  /** Display label from the file's `name` field. */
+  name: string
+  mode: 'light' | 'dark'
+  /** Partial map of semantic color keys → CSS color string. The loader
+   *  doesn't enforce which keys are present — apply just sets whichever
+   *  are listed. */
+  colors: Record<string, string>
+}
+
+/** Shared empty-array reference so the initial reducer and "no themes on
+ *  disk" outcomes return the same array — keeps `useMemo` deps stable in
+ *  components reading the slice. */
+export const EMPTY_CUSTOM_THEMES: CustomTheme[] = []
+
+/** Built-in theme ids used as the per-mode default when nothing else
+ *  applies — the seed value for `themeLight`/`themeDark`, the IPC "this
+ *  matches the default so don't persist it" guard, and the fallback
+ *  `[data-theme]` selector for partial custom themes. Kept in shared so
+ *  main and renderer agree without crossing the import boundary. */
+export const DEFAULT_LIGHT_THEME = 'solarized-light'
+export const DEFAULT_DARK_THEME = 'dark'
+
 export interface SettingsState {
-  theme: string
+  /** Whether the active theme is the light theme, the dark theme, or follows
+   *  the OS appearance. Default 'system'. */
+  themeMode: ThemeMode
+  /** Theme id used when `themeMode` resolves to 'light'. */
+  themeLight: string
+  /** Theme id used when `themeMode` resolves to 'dark'. */
+  themeDark: string
+  /** User-authored themes loaded from `<userData>/themes/*.json` at boot
+   *  (and on reload). Replaced wholesale on rescan — array reference
+   *  changes only when the on-disk contents actually change. */
+  customThemes: CustomTheme[]
   hotkeys: Record<string, string> | null
   defaultAgent: AgentKindSetting
   claudeCommand: string
@@ -96,7 +138,10 @@ export interface SettingsState {
 }
 
 export type SettingsEvent =
-  | { type: 'settings/themeChanged'; payload: string }
+  | { type: 'settings/themeModeChanged'; payload: ThemeMode }
+  | { type: 'settings/themeLightChanged'; payload: string }
+  | { type: 'settings/themeDarkChanged'; payload: string }
+  | { type: 'settings/customThemesChanged'; payload: CustomTheme[] }
   | { type: 'settings/hotkeysChanged'; payload: Record<string, string> | null }
   | { type: 'settings/defaultAgentChanged'; payload: AgentKindSetting }
   | { type: 'settings/claudeCommandChanged'; payload: string }
@@ -144,7 +189,10 @@ export type SettingsEvent =
 // Client-side placeholder. Real values are seeded in the main-process Store
 // constructor from the on-disk config and secrets.
 export const initialSettings: SettingsState = {
-  theme: 'dark',
+  themeMode: 'system',
+  themeLight: DEFAULT_LIGHT_THEME,
+  themeDark: DEFAULT_DARK_THEME,
+  customThemes: EMPTY_CUSTOM_THEMES,
   hotkeys: null,
   defaultAgent: 'claude',
   claudeCommand: '',
@@ -189,8 +237,14 @@ export const initialSettings: SettingsState = {
 
 export function settingsReducer(state: SettingsState, event: SettingsEvent): SettingsState {
   switch (event.type) {
-    case 'settings/themeChanged':
-      return { ...state, theme: event.payload }
+    case 'settings/themeModeChanged':
+      return { ...state, themeMode: event.payload }
+    case 'settings/themeLightChanged':
+      return { ...state, themeLight: event.payload }
+    case 'settings/themeDarkChanged':
+      return { ...state, themeDark: event.payload }
+    case 'settings/customThemesChanged':
+      return { ...state, customThemes: event.payload }
     case 'settings/hotkeysChanged':
       return { ...state, hotkeys: event.payload }
     case 'settings/defaultAgentChanged':

@@ -9,7 +9,8 @@ import { DEFAULT_HOTKEYS, ACTION_LABELS, bindingToString, eventToBinding, resolv
 import { Tooltip } from './Tooltip'
 import { AGENT_REGISTRY, agentDisplayName, CLAUDE_MODELS, CODEX_MODELS } from '../../shared/agent-registry'
 import { AgentIcon } from './AgentIcon'
-import { THEME_OPTIONS } from '../themes'
+import { BUILT_IN_THEMES_BY_MODE, type ThemeOption } from '../themes'
+import type { CustomTheme } from '../../shared/state/settings'
 import { QRCodeSVG } from 'qrcode.react'
 
 interface SettingsProps {
@@ -160,7 +161,10 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
   // re-renders Settings whenever any client updates any of them.
   const settings = useSettings()
   const {
-    theme,
+    themeMode,
+    themeLight,
+    themeDark,
+    customThemes,
     hotkeys: hotkeyOverrides,
     defaultAgent,
     claudeCommand,
@@ -334,9 +338,17 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     setClaudeCommandDraft(claudeCommand)
   }, [claudeCommand])
 
-  const handleSelectTheme = useCallback(async (id: string) => {
-    await backend.setTheme(id)
-  }, [])
+  const handleSelectThemeMode = useCallback((mode: 'light' | 'dark' | 'system') => {
+    void backend.setThemeMode(mode)
+  }, [backend])
+
+  const handleSelectLightTheme = useCallback((id: string) => {
+    void backend.setThemeLight(id)
+  }, [backend])
+
+  const handleSelectDarkTheme = useCallback((id: string) => {
+    void backend.setThemeDark(id)
+  }, [backend])
 
   const handleTerminalFontFamilyChange = useCallback((value: string) => {
     void backend.setTerminalFontFamily(value)
@@ -998,34 +1010,85 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 Pick a color theme for the major panels. Takes effect immediately.
               </p>
 
-              <div className="bg-panel-raised border border-border rounded-lg divide-y divide-border">
-                {THEME_OPTIONS.map((opt) => {
-                  const isActive = theme === opt.id
-                  return (
-                    <button
-                      key={opt.id}
-                      onClick={() => handleSelectTheme(opt.id)}
-                      className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors cursor-pointer ${
-                        isActive ? 'bg-surface' : 'hover:bg-surface/60'
-                      }`}
-                    >
-                      <div className="flex gap-1 shrink-0">
-                        {opt.swatches.map((c) => (
-                          <span
-                            key={c}
-                            className="w-4 h-4 rounded border border-border-strong"
-                            style={{ backgroundColor: c }}
-                          />
-                        ))}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm text-fg">{opt.label}</div>
-                        <div className="text-xs text-dim truncate">{opt.description}</div>
-                      </div>
-                      {isActive && <Check size={14} className="text-success shrink-0" />}
-                    </button>
-                  )
-                })}
+              {/* Mode picker — native radio inputs styled as a segmented
+                   control. Radios give us proper keyboard semantics for free
+                   (arrow keys move focus, space activates) */}
+              <fieldset className="mb-6">
+                <legend className="text-sm font-semibold text-fg-bright mb-2">Mode</legend>
+                <div className="grid grid-cols-3 gap-2">
+                  {([
+                    { id: 'light', label: 'Light' },
+                    { id: 'dark', label: 'Dark' },
+                    { id: 'system', label: 'Follow system' }
+                  ] as const).map((opt) => {
+                    const isActive = themeMode === opt.id
+                    return (
+                      <label
+                        key={opt.id}
+                        className={`px-3 py-2 rounded-lg border text-sm text-center cursor-pointer transition-colors ${
+                          isActive
+                            ? 'bg-surface text-fg-bright border-fg'
+                            : 'bg-panel-raised text-muted border-border hover:text-fg hover:border-border-strong'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="theme-mode"
+                          value={opt.id}
+                          checked={isActive}
+                          onChange={() => handleSelectThemeMode(opt.id)}
+                          className="sr-only"
+                        />
+                        {opt.label}
+                      </label>
+                    )
+                  })}
+                </div>
+              </fieldset>
+
+              <ThemeModePicker
+                title="Light theme"
+                hint="Used when mode is Light, or when System resolves to light."
+                builtIns={BUILT_IN_THEMES_BY_MODE.light}
+                customs={customThemes.filter((t) => t.mode === 'light')}
+                activeId={themeLight}
+                disabled={themeMode === 'dark'}
+                onSelect={handleSelectLightTheme}
+              />
+
+              <div className="mt-6" />
+
+              <ThemeModePicker
+                title="Dark theme"
+                hint="Used when mode is Dark, or when System resolves to dark."
+                builtIns={BUILT_IN_THEMES_BY_MODE.dark}
+                customs={customThemes.filter((t) => t.mode === 'dark')}
+                activeId={themeDark}
+                disabled={themeMode === 'light'}
+                onSelect={handleSelectDarkTheme}
+              />
+
+              <div className="mt-8">
+                <h3 className="text-sm font-semibold text-fg-bright mb-1">Custom themes</h3>
+                <p className="text-xs text-dim mb-3">
+                  Drop <code className="text-fg">{'<name>.json'}</code> files into your themes folder. They show up in the pickers above, filtered by their <code className="text-fg">mode</code>. {customThemes.length === 0 ? 'None loaded yet.' : `${customThemes.length} loaded.`}
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={async () => { await backend.openThemesFolder() }}
+                    className="px-3 py-1.5 rounded-md border border-border text-sm text-fg bg-panel-raised hover:bg-surface cursor-pointer"
+                  >
+                    Open themes folder
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => { await backend.reloadCustomThemes() }}
+                    className="px-3 py-1.5 rounded-md border border-border text-sm text-fg bg-panel-raised hover:bg-surface cursor-pointer"
+                  >
+                    Reload from disk
+                  </button>
+                </div>
               </div>
 
               <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">Terminal font</h3>
@@ -2655,6 +2718,135 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
             </section>
           </div>
         </div>
+      </div>
+    </div>
+  )
+}
+
+interface ThemeModePickerProps {
+  title: string
+  hint: string
+  builtIns: ThemeOption[]
+  customs: CustomTheme[]
+  activeId: string
+  disabled: boolean
+  onSelect: (id: string) => void
+}
+
+/** A swatch carrying a stable identifier — used as the React key so
+ *  duplicate hexes (e.g. when a theme has the same color for two roles)
+ *  don't collide, and reordering can't shuffle component state. */
+interface Swatch {
+  /** Stable semantic role: 'app' | 'surface' | 'fg' | 'accent' for
+   *  built-ins; arbitrary semantic color key for customs. */
+  role: string
+  color: string
+}
+
+/** Roles shown in the small swatch row next to each theme name. Stable
+ *  across themes so a reorder doesn't shuffle keys. */
+const SWATCH_ROLES = ['app', 'surface', 'fg', 'accent'] as const
+
+function builtInSwatches(opt: ThemeOption): Swatch[] {
+  // THEME_OPTIONS.swatches is positional: [app, surface, fg, accent].
+  const out: Swatch[] = []
+  SWATCH_ROLES.forEach((role, i) => {
+    const color = opt.swatches[i]
+    if (typeof color === 'string') out.push({ role, color })
+  })
+  return out
+}
+
+function customSwatches(c: CustomTheme): Swatch[] {
+  const out: Swatch[] = []
+  for (const role of SWATCH_ROLES) {
+    const v = c.colors[role]
+    if (typeof v === 'string') out.push({ role, color: v })
+  }
+  return out
+}
+
+function ThemeRow({
+  id,
+  label,
+  description,
+  swatches,
+  isActive,
+  onSelect
+}: {
+  id: string
+  label: string
+  description: string
+  swatches: Swatch[]
+  isActive: boolean
+  onSelect: (id: string) => void
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(id)}
+      className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors cursor-pointer ${
+        isActive ? 'bg-surface' : 'hover:bg-surface/60'
+      }`}
+    >
+      <div className="flex gap-1 shrink-0">
+        {swatches.length === 0 ? (
+          <span className="w-4 h-4 rounded border border-border-strong bg-panel" />
+        ) : (
+          swatches.map((s) => (
+            <span
+              key={s.role}
+              className="w-4 h-4 rounded border border-border-strong"
+              style={{ backgroundColor: s.color }}
+            />
+          ))
+        )}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="text-sm text-fg">{label}</div>
+        <div className="text-xs text-dim truncate">{description}</div>
+      </div>
+      {isActive && <Check size={14} className="text-success shrink-0" />}
+    </button>
+  )
+}
+
+function ThemeModePicker({
+  title,
+  hint,
+  builtIns,
+  customs,
+  activeId,
+  disabled,
+  onSelect
+}: ThemeModePickerProps): JSX.Element {
+  return (
+    <div className={disabled ? 'opacity-50' : ''}>
+      <h3 className="text-sm font-semibold text-fg-bright mb-1">{title}</h3>
+      <p className="text-xs text-dim mb-2">{hint}</p>
+      <div className="bg-panel-raised border border-border rounded-lg divide-y divide-border">
+        {builtIns.map((opt) => (
+          <ThemeRow
+            key={opt.id}
+            id={opt.id}
+            label={opt.label}
+            description={opt.description}
+            swatches={builtInSwatches(opt)}
+            isActive={activeId === opt.id}
+            onSelect={onSelect}
+          />
+        ))}
+        {customs.map((c) => (
+          <ThemeRow
+            key={c.id}
+            id={c.id}
+            label={c.name}
+            description={`Custom theme · ${c.id}`}
+            swatches={customSwatches(c)}
+            isActive={activeId === c.id}
+            onSelect={onSelect}
+          />
+        ))}
       </div>
     </div>
   )
