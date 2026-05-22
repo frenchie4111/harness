@@ -1,4 +1,5 @@
 import { listWorktrees, getBranchSha } from './worktree'
+import { isOnRealBranch } from './git-ops-state'
 import {
   getRepoContext,
   listPullRequests,
@@ -204,7 +205,7 @@ export class PRPoller {
         const trees = treesByRoot[i]
         for (const wt of trees) {
           if (wt.isMain) continue
-          if (wt.branch === '(detached)') continue
+          if (!isOnRealBranch(wt.branch)) continue
           const recordedSha = persisted[wt.branch]
           if (!recordedSha) {
             mergedAll[wt.path] = false
