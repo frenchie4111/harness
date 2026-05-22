@@ -2050,25 +2050,6 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               </div>
               )}
 
-              <div className="mt-6 bg-panel-raised border border-border rounded-lg p-4">
-                <label className="flex items-start gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={expandedDiagnosticLoggingEnabled}
-                    onChange={(e) => { void backend.setExpandedDiagnosticLoggingEnabled(e.target.checked) }}
-                    className="mt-0.5 cursor-pointer"
-                  />
-                  <div className="flex-1">
-                    <div className="text-sm text-fg-bright">Expanded diagnostic logging</div>
-                    <div className="text-xs text-dim mt-0.5">
-                      Writes a <code className="bg-panel px-1 rounded">[github-api]</code> line to{' '}
-                      <code className="bg-panel px-1 rounded">debug.log</code> for every GitHub API call
-                      (URL, method, status, duration). Off by default — the per-call volume is high
-                      during PR-refresh bursts. The HUD's "GH API" rate metric is always on regardless.
-                    </div>
-                  </div>
-                </label>
-              </div>
               </>
                 )
               })()}
@@ -2283,6 +2264,24 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 {debugLogError && (
                   <p className="mt-2 text-xs text-danger">{debugLogError}</p>
                 )}
+
+                <label className="mt-4 pt-3 border-t border-border flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={expandedDiagnosticLoggingEnabled}
+                    onChange={(e) => { void backend.setExpandedDiagnosticLoggingEnabled(e.target.checked) }}
+                    className="mt-0.5 cursor-pointer"
+                  />
+                  <div className="flex-1">
+                    <div className="text-sm text-fg-bright">Expanded diagnostic logging</div>
+                    <div className="text-xs text-dim mt-0.5">
+                      Writes a <code className="bg-panel px-1 rounded">[github-api]</code> line to{' '}
+                      <code className="bg-panel px-1 rounded">debug.log</code> for every GitHub API call
+                      (URL, method, status, duration). Off by default — the per-call volume is high
+                      during PR-refresh bursts. The HUD's "GH API" rate metric is always on regardless.
+                    </div>
+                  </div>
+                </label>
               </div>
             </section>
 
