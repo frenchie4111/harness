@@ -18,15 +18,15 @@ describe('Store', () => {
 
   it('applies dispatched events through the reducer', () => {
     const store = new Store()
-    store.dispatch({ type: 'settings/themeChanged', payload: 'solarized' })
-    expect(store.getSnapshot().state.settings.theme).toBe('solarized')
+    store.dispatch({ type: 'settings/themeDarkChanged', payload: 'solarized' })
+    expect(store.getSnapshot().state.settings.themeDark).toBe('solarized')
   })
 
   it('increments seq monotonically per dispatch', () => {
     const store = new Store()
-    store.dispatch({ type: 'settings/themeChanged', payload: 'a' })
+    store.dispatch({ type: 'settings/themeDarkChanged', payload: 'a' })
     expect(store.getSnapshot().seq).toBe(1)
-    store.dispatch({ type: 'settings/themeChanged', payload: 'b' })
+    store.dispatch({ type: 'settings/themeDarkChanged', payload: 'b' })
     expect(store.getSnapshot().seq).toBe(2)
     store.dispatch({ type: 'settings/nameClaudeSessionsChanged', payload: true })
     expect(store.getSnapshot().seq).toBe(3)
@@ -36,7 +36,7 @@ describe('Store', () => {
     const store = new Store()
     const spy = vi.fn()
     store.subscribe(spy)
-    const event: StateEvent = { type: 'settings/themeChanged', payload: 'c' }
+    const event: StateEvent = { type: 'settings/themeDarkChanged', payload: 'c' }
     store.dispatch(event)
     expect(spy).toHaveBeenCalledTimes(1)
     expect(spy).toHaveBeenCalledWith(event, 1)
@@ -48,7 +48,7 @@ describe('Store', () => {
     const b = vi.fn()
     store.subscribe(a)
     store.subscribe(b)
-    store.dispatch({ type: 'settings/themeChanged', payload: 'd' })
+    store.dispatch({ type: 'settings/themeDarkChanged', payload: 'd' })
     expect(a).toHaveBeenCalledTimes(1)
     expect(b).toHaveBeenCalledTimes(1)
   })
@@ -58,25 +58,25 @@ describe('Store', () => {
     const spy = vi.fn()
     const unsubscribe = store.subscribe(spy)
     unsubscribe()
-    store.dispatch({ type: 'settings/themeChanged', payload: 'e' })
+    store.dispatch({ type: 'settings/themeDarkChanged', payload: 'e' })
     expect(spy).not.toHaveBeenCalled()
   })
 
   it('does not mutate the previous snapshot object after dispatch', () => {
     const store = new Store()
     const before = store.getSnapshot().state
-    store.dispatch({ type: 'settings/themeChanged', payload: 'mutated?' })
+    store.dispatch({ type: 'settings/themeDarkChanged', payload: 'mutated?' })
     // The old reference should still hold the old theme — proves we're
     // producing new objects through the reducer, not mutating in place.
-    expect(before.settings.theme).not.toBe('mutated?')
+    expect(before.settings.themeDark).not.toBe('mutated?')
   })
 
   it('accepts a custom initial state', () => {
     const store = new Store({
       ...initialState,
-      settings: { ...initialState.settings, theme: 'preseeded' }
+      settings: { ...initialState.settings, themeDark: 'preseeded' }
     })
-    expect(store.getSnapshot().state.settings.theme).toBe('preseeded')
+    expect(store.getSnapshot().state.settings.themeDark).toBe('preseeded')
     expect(store.getSnapshot().seq).toBe(0)
   })
 })
@@ -92,7 +92,7 @@ describe('Store cascade detection', () => {
 
   it('does not log a cascade for a plain dispatch with no nested dispatches', () => {
     const store = new Store()
-    store.dispatch({ type: 'settings/themeChanged', payload: 'a' })
+    store.dispatch({ type: 'settings/themeDarkChanged', payload: 'a' })
     expect(cascadeCalls()).toHaveLength(0)
   })
 
@@ -100,33 +100,33 @@ describe('Store cascade detection', () => {
     const store = new Store()
     let fired = false
     store.subscribe((event) => {
-      if (event.type === 'settings/themeChanged' && !fired) {
+      if (event.type === 'settings/themeDarkChanged' && !fired) {
         fired = true
         for (let i = 0; i < 16; i++) {
           store.dispatch({ type: 'settings/nameClaudeSessionsChanged', payload: i % 2 === 0 })
         }
       }
     })
-    store.dispatch({ type: 'settings/themeChanged', payload: 'root' })
+    store.dispatch({ type: 'settings/themeDarkChanged', payload: 'root' })
     const calls = cascadeCalls()
     expect(calls).toHaveLength(1)
-    expect(calls[0][1]).toContain('settings/themeChanged')
+    expect(calls[0][1]).toContain('settings/themeDarkChanged')
     expect(calls[0][1]).toContain('16 nested dispatches')
-    expect(calls[0][2]).toEqual({ rootEvent: 'settings/themeChanged', childCount: 16 })
+    expect(calls[0][2]).toEqual({ rootEvent: 'settings/themeDarkChanged', childCount: 16 })
   })
 
   it('does not log when nested dispatches stay at or below the threshold', () => {
     const store = new Store()
     let fired = false
     store.subscribe((event) => {
-      if (event.type === 'settings/themeChanged' && !fired) {
+      if (event.type === 'settings/themeDarkChanged' && !fired) {
         fired = true
         for (let i = 0; i < 10; i++) {
           store.dispatch({ type: 'settings/nameClaudeSessionsChanged', payload: true })
         }
       }
     })
-    store.dispatch({ type: 'settings/themeChanged', payload: 'root' })
+    store.dispatch({ type: 'settings/themeDarkChanged', payload: 'root' })
     expect(cascadeCalls()).toHaveLength(0)
   })
 
@@ -135,19 +135,19 @@ describe('Store cascade detection', () => {
     let cascadeOnNext = false
     let fired = false
     store.subscribe((event) => {
-      if (cascadeOnNext && event.type === 'settings/themeChanged' && !fired) {
+      if (cascadeOnNext && event.type === 'settings/themeDarkChanged' && !fired) {
         fired = true
         for (let i = 0; i < 16; i++) {
           store.dispatch({ type: 'settings/nameClaudeSessionsChanged', payload: true })
         }
       }
     })
-    store.dispatch({ type: 'settings/themeChanged', payload: 'first' })
+    store.dispatch({ type: 'settings/themeDarkChanged', payload: 'first' })
     expect(cascadeCalls()).toHaveLength(0)
     cascadeOnNext = true
-    store.dispatch({ type: 'settings/themeChanged', payload: 'second' })
+    store.dispatch({ type: 'settings/themeDarkChanged', payload: 'second' })
     const calls = cascadeCalls()
     expect(calls).toHaveLength(1)
-    expect(calls[0][2]).toEqual({ rootEvent: 'settings/themeChanged', childCount: 16 })
+    expect(calls[0][2]).toEqual({ rootEvent: 'settings/themeDarkChanged', childCount: 16 })
   })
 })

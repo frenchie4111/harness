@@ -371,15 +371,68 @@ describe('runMigrations (end-to-end)', () => {
   it('preserves unrelated config keys across the whole chain', () => {
     const c: AnyConfig = {
       repoRoot: '/a/repo1',
-      theme: 'dracula',
       claudeCommand: 'claude --verbose',
       terminalFontSize: 15,
       onboarding: { quest: 'finale' }
     }
     runMigrations(c)
-    expect(c.theme).toBe('dracula')
     expect(c.claudeCommand).toBe('claude --verbose')
     expect(c.terminalFontSize).toBe(15)
     expect(c.onboarding).toEqual({ quest: 'finale' })
+  })
+})
+
+describe('v6 → v7: legacy theme → themeMode + themeLight/themeDark', () => {
+  it('promotes a legacy dark theme into themeMode=dark + themeDark', () => {
+    const c: AnyConfig = { theme: 'solarized-dark' }
+    runOne(6, c)
+    expect(c.themeMode).toBe('dark')
+    expect(c.themeDark).toBe('solarized-dark')
+    expect(c.themeLight).toBeUndefined()
+    expect(c.theme).toBeUndefined()
+  })
+
+  it('promotes the legacy light theme into themeMode=light + themeLight', () => {
+    const c: AnyConfig = { theme: 'solarized-light' }
+    runOne(6, c)
+    expect(c.themeMode).toBe('light')
+    expect(c.themeLight).toBe('solarized-light')
+    expect(c.themeDark).toBeUndefined()
+    expect(c.theme).toBeUndefined()
+  })
+
+  it('does not override themeMode=system or step on user choice (no legacy theme)', () => {
+    const c: AnyConfig = { themeMode: 'system', themeDark: 'dracula' }
+    runOne(6, c)
+    expect(c.themeMode).toBe('system')
+    expect(c.themeDark).toBe('dracula')
+    expect(c.theme).toBeUndefined()
+  })
+
+  it('is a no-op when no legacy theme field exists', () => {
+    const c: AnyConfig = { repoRoots: ['/a/repo'] }
+    runOne(6, c)
+    expect(c.theme).toBeUndefined()
+    expect(c.themeMode).toBeUndefined()
+    expect(c.themeLight).toBeUndefined()
+    expect(c.themeDark).toBeUndefined()
+  })
+
+  it('ignores a non-string theme value', () => {
+    const c: AnyConfig = { theme: 42 }
+    runOne(6, c)
+    expect(c.theme).toBe(42)
+    expect(c.themeMode).toBeUndefined()
+  })
+
+  it('end-to-end: legacy theme=dracula migrates through to themeMode=dark', () => {
+    const c: AnyConfig = {
+      theme: 'dracula',
+      repoRoots: ['/a/repo']
+    }
+    runMigrations(c)
+    expect(c.themeMode).toBe('dark')
+    expect(c.themeDark).toBe('dracula')
+    expect(c.theme).toBeUndefined()
   })
 })

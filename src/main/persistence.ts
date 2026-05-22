@@ -75,8 +75,22 @@ export interface Config {
   // Even older — migrated to `legacyPanes` then to `panes` on first load.
   terminalTabs?: Record<string, PersistedTab[]>
   activeTabId?: Record<string, string>
-  // Selected color theme id
-  theme?: string
+  // Theme mode — which of `themeLight` / `themeDark` is active, or whether
+  // to follow the OS color scheme. Default is 'system' (undefined treated
+  // as 'system'). Replaces the legacy single `theme` field; migration
+  // splits the old value into mode + matching slot.
+  themeMode?: 'light' | 'dark' | 'system'
+  // Theme id used when `themeMode` resolves to 'light'. Default
+  // 'solarized-light'.
+  themeLight?: string
+  // Theme id used when `themeMode` resolves to 'dark'. Default 'dark'.
+  themeDark?: string
+  // App-background hex the renderer last applied. Used at next boot to
+  // pick the BrowserWindow background color so the first paint doesn't
+  // flash. Written from the renderer via a fire-and-forget IPC after each
+  // theme apply. Phase 2 will start using this for custom themes whose
+  // hex main can't synchronously resolve at window-open time.
+  lastEffectiveAppBg?: string
   // Terminal font family (CSS font-family string, applied to xterm.js)
   terminalFontFamily?: string
   // Terminal font size in px

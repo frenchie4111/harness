@@ -254,7 +254,12 @@ export function buildBackend(
         callback(payload as { repoRoot: string; worktree: unknown; initialPrompt?: string })
       }),
     setNameClaudeSessions: (enabled: boolean) => req('config:setNameClaudeSessions', enabled),
-    setTheme: (theme: string) => req('config:setTheme', theme),
+    setThemeMode: (mode: 'light' | 'dark' | 'system') => req('config:setThemeMode', mode),
+    setThemeLight: (theme: string) => req('config:setThemeLight', theme),
+    setThemeDark: (theme: string) => req('config:setThemeDark', theme),
+    setLastEffectiveAppBg: (hex: string) => sig('config:setLastEffectiveAppBg', hex),
+    reloadCustomThemes: () => req('config:reloadCustomThemes'),
+    openThemesFolder: () => reqLocal('config:openThemesFolder'),
     setCostsInterest: (expanded: boolean) => req('costs:setInterest', expanded),
     getAllSessionCosts: (sinceMs?: number) => req('costs:getAllSessions', sinceMs),
     getClaudeAuthStatus: () => req('claude:getAuthStatus'),

@@ -59,10 +59,18 @@ describe('buildInitialAppState', () => {
 
   it('applies config overrides to settings', () => {
     const result = buildInitialAppState(
-      { ...emptyConfig, theme: 'solarized', repoRoots: ['/a', '/b'] },
+      {
+        ...emptyConfig,
+        themeMode: 'dark',
+        themeDark: 'dracula',
+        themeLight: 'solarized-light',
+        repoRoots: ['/a', '/b']
+      },
       { hasGithubToken: true }
     )
-    expect(result.settings.theme).toBe('solarized')
+    expect(result.settings.themeMode).toBe('dark')
+    expect(result.settings.themeDark).toBe('dracula')
+    expect(result.settings.themeLight).toBe('solarized-light')
     expect(result.settings.hasGithubToken).toBe(true)
     expect(result.worktrees.repoRoots).toEqual(['/a', '/b'])
   })

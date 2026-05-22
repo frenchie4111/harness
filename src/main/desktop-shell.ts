@@ -27,7 +27,7 @@
 //     update checks) for the few shared handlers that need to call into
 //     the desktop side.
 
-import { app, autoUpdater as nativeAutoUpdater, BrowserWindow, dialog, Menu, nativeImage, screen, shell } from 'electron'
+import { app, autoUpdater as nativeAutoUpdater, BrowserWindow, dialog, Menu, nativeImage, nativeTheme, screen, shell } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import { join } from 'path'
 import { BrowserManager } from './browser-manager'
@@ -38,7 +38,7 @@ import type { CompoundServerTransport } from './transport-compound'
 import type { PtyManager } from './pty-manager'
 import type { WorktreesFSM } from './worktrees-fsm'
 import type { Config } from './persistence'
-import { saveConfig, saveConfigSync, DEFAULT_THEME, THEME_APP_BG } from './persistence'
+import { saveConfig, saveConfigSync, THEME_APP_BG } from './persistence'
 import { registerWindowControlHandlers } from './window-controls'
 import { sealAllActive } from './activity'
 import { log, getLogFilePath } from './debug'
@@ -64,6 +64,21 @@ export interface DesktopShellEarlyHandle {
  *  packaged builds (asar-relative) and dev / unpacked (sibling of the
  *  main bundle output). Lives here so index.ts doesn't need to call
  *  `app.getAppPath()` directly. */
+const FALLBACK_BG = '#0a0a0a'
+
+/** Pick the BrowserWindow backgroundColor that best matches the user's
+ *  configured theme, so the first paint doesn't flash a contrasting bg
+ *  while React mounts. In Phase 1 only built-in themes are known here,
+ *  so the hex is read from `THEME_APP_BG`; the renderer writes whatever
+ *  it actually applied back into `config.lastEffectiveAppBg`, which is
+ *  the Phase 2 cushion for custom themes main can't synchronously see. */
+function resolveWindowBg(config: Config): string {
+  const mode = config.themeMode ?? 'system'
+  const wantDark = mode === 'system' ? nativeTheme.shouldUseDarkColors : mode === 'dark'
+  const id = wantDark ? (config.themeDark ?? 'dark') : (config.themeLight ?? 'solarized-light')
+  return THEME_APP_BG[id] ?? config.lastEffectiveAppBg ?? FALLBACK_BG
+}
+
 export function resolveWebClientDir(): string {
   return app.isPackaged
     ? join(app.getAppPath(), 'out/web-client')
@@ -265,7 +280,7 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
       ...(process.platform === 'linux'
         ? { frame: false }
         : { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 12, y: 12 } }),
-      backgroundColor: THEME_APP_BG[config.theme || DEFAULT_THEME] || THEME_APP_BG[DEFAULT_THEME],
+      backgroundColor: resolveWindowBg(config),
       webPreferences: {
         preload: join(__dirname, '../preload/index.js'),
         contextIsolation: true,
@@ -530,6 +545,13 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
 
     transport.onSignal('shell:openExternal', (_ctx, url: string) => {
       shell.openExternal(url)
+    })
+
+    transport.onRequest('config:openThemesFolder', async (_ctx) => {
+      const { themesDir } = await import('./themes-loader')
+      const dir = themesDir()
+      const err = await shell.openPath(dir)
+      return err ? { ok: false as const, path: dir, message: err } : { ok: true as const, path: dir }
     })
 
     transport.onRequest('debug:openLog', async (_ctx) => {
