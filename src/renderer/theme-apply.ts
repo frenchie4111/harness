@@ -1,50 +1,50 @@
-import type { ResolvedTheme } from "./hooks/useActiveTheme";
+import type { ResolvedTheme } from './hooks/useActiveTheme'
 
 // Tracks which `--color-*` properties we set inline on the documentElement
 // during the previous apply, so the next apply can clear leftovers
 // cleanly. Without this, switching from a custom theme back to a built-in
 // would leak the custom's colors past the [data-theme] selector (inline
 // styles outrank attribute selectors).
-const inlineKeysApplied = new Set<string>();
+const inlineKeysApplied = new Set<string>()
 
 const SEMANTIC_KEYS: ReadonlySet<string> = new Set([
-  "app",
-  "panel",
-  "panel-raised",
-  "surface",
-  "surface-hover",
-  "border",
-  "border-strong",
-  "fg",
-  "fg-bright",
-  "muted",
-  "dim",
-  "faint",
-  "success",
-  "warning",
-  "danger",
-  "info",
-  "accent",
-]);
+  'app',
+  'panel',
+  'panel-raised',
+  'surface',
+  'surface-hover',
+  'border',
+  'border-strong',
+  'fg',
+  'fg-bright',
+  'muted',
+  'dim',
+  'faint',
+  'success',
+  'warning',
+  'danger',
+  'info',
+  'accent'
+])
 
 export function applyTheme(theme: ResolvedTheme): void {
-  if (typeof document === "undefined") return;
-  const root = document.documentElement;
+  if (typeof document === 'undefined') return
+  const root = document.documentElement
 
   // Clear any inline `--color-*` keys left from the previous apply so a
   // partial custom-theme override (or any built-in switch) doesn't leak.
   if (inlineKeysApplied.size > 0) {
     for (const key of inlineKeysApplied) {
-      root.style.removeProperty(key);
+      root.style.removeProperty(key)
     }
-    inlineKeysApplied.clear();
+    inlineKeysApplied.clear()
   }
 
-  if (theme.kind === "built-in") {
+  if (theme.kind === 'built-in') {
     // Built-ins pull every value from the CSS file via the
     // [data-theme="<id>"] selector — setting the attribute is enough.
-    root.dataset.theme = theme.id;
-    return;
+    root.dataset.theme = theme.id
+    return
   }
 
   // Custom theme. Apply its mode's default selector first so any keys
@@ -52,12 +52,12 @@ export function applyTheme(theme: ResolvedTheme): void {
   // mode, then layer the overrides inline. The `[data-theme]` selector
   // wins for unset keys; inline `--color-*` wins for overridden ones
   // because inline trumps attribute selectors by CSS specificity.
-  root.dataset.theme = theme.mode === "dark" ? "dark" : "solarized-light";
+  root.dataset.theme = theme.mode === 'dark' ? 'dark' : 'solarized-light'
   for (const [key, value] of Object.entries(theme.colors)) {
-    if (!SEMANTIC_KEYS.has(key)) continue;
-    const prop = `--color-${key}`;
-    root.style.setProperty(prop, value);
-    inlineKeysApplied.add(prop);
+    if (!SEMANTIC_KEYS.has(key)) continue
+    const prop = `--color-${key}`
+    root.style.setProperty(prop, value)
+    inlineKeysApplied.add(prop)
   }
 }
 
@@ -65,9 +65,9 @@ export function applyTheme(theme: ResolvedTheme): void {
  *  Used as `lastEffectiveAppBg` so main can choose a matching window
  *  background on the next boot. */
 export function effectiveAppBg(theme: ResolvedTheme): string {
-  if (theme.kind === "custom") {
-    return theme.colors.app ?? (theme.mode === "dark" ? "#0a0a0a" : "#fdf6e3");
+  if (theme.kind === 'custom') {
+    return theme.colors.app ?? (theme.mode === 'dark' ? '#0a0a0a' : '#fdf6e3')
   }
   // First swatch on every built-in is its app background hex.
-  return theme.swatches[0];
+  return theme.swatches[0]
 }
