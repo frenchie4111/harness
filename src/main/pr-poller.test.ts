@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('./debug', () => ({
-  log: () => {}
+  log: () => {},
+  formatErr: (err: unknown) => (err instanceof Error ? err.message : String(err))
 }))
 vi.mock('./worktree', () => ({
   listWorktrees: vi.fn(),

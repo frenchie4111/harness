@@ -1,6 +1,6 @@
 import { execFile } from 'child_process'
 import { promisify } from 'util'
-import { log } from './debug'
+import { log, formatErr } from './debug'
 import { getCachedToken, invalidateTokenCache, resolveGitHubToken } from './github-auth'
 import type { CheckStatus, PRReview, PRStatus } from '../shared/state/prs'
 import type { PRSummary, PRMetadata } from '../shared/github-types'
@@ -71,7 +71,8 @@ async function githubFetch(url: string): Promise<unknown> {
     res = await doFetch(url, token)
   }
   if (!res.ok) {
-    throw new Error(`GitHub API ${res.status}: ${res.statusText}`)
+    const path = url.replace(/^https:\/\/api\.github\.com/, '')
+    throw new Error(`GitHub API ${res.status} ${res.statusText} for ${path}`)
   }
   return res.json()
 }
@@ -121,7 +122,7 @@ async function resolveQueryRepo(
     forkParentCache.set(key, 'self')
     return origin
   } catch (err) {
-    log('github', `fork detection failed for ${key}`, err instanceof Error ? err.message : err)
+    log('github', `fork detection failed for ${key}`, formatErr(err))
     return origin
   }
 }
@@ -293,7 +294,7 @@ export async function listPullRequests(repoRoot: string): Promise<PRListItem[] |
     }
     return list.map(flattenListItem)
   } catch (err) {
-    log('github', `listPullRequests failed for ${owner}/${repo}`, err instanceof Error ? err.message : err)
+    log('github', `listPullRequests failed for ${owner}/${repo}`, formatErr(err))
     throw err
   }
 }
@@ -316,7 +317,7 @@ export async function loadPRStatusForItem(
     log(
       'github',
       `loadPRStatusForItem failed for ${baseRepo.owner}/${baseRepo.repo}#${item.number}`,
-      err instanceof Error ? err.message : err
+      formatErr(err)
     )
     throw err
   }
@@ -329,14 +330,26 @@ async function fanOutPRDetails(
   branchName: string
 ): Promise<PRStatus | null> {
   const sha = item.headSha
-  const [prDetail, checkRunsRes, combinedRes, reviewsRes] = await Promise.all([
+  const [prDetailRes, checkRunsRes, combinedRes, reviewsRes] = await Promise.allSettled([
     githubFetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${item.number}`) as Promise<ApiPRDetail>,
     githubFetch(`https://api.github.com/repos/${owner}/${repo}/commits/${sha}/check-runs?per_page=100`) as Promise<ApiCheckRunsResponse>,
     githubFetch(`https://api.github.com/repos/${owner}/${repo}/commits/${sha}/status`) as Promise<ApiCombinedStatus>,
     githubFetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${item.number}/reviews?per_page=100`) as Promise<ApiReview[]>
   ])
 
+  if (prDetailRes.status === 'rejected') throw prDetailRes.reason
+  const prDetail = prDetailRes.value
   if (!prDetail || typeof prDetail.number !== 'number') return null
+
+  if (checkRunsRes.status === 'rejected') {
+    log('github', `check-runs unavailable for ${owner}/${repo}#${item.number} (continuing)`, formatErr(checkRunsRes.reason))
+  }
+  if (combinedRes.status === 'rejected') {
+    log('github', `combined status unavailable for ${owner}/${repo}#${item.number} (continuing)`, formatErr(combinedRes.reason))
+  }
+  if (reviewsRes.status === 'rejected') {
+    log('github', `reviews unavailable for ${owner}/${repo}#${item.number} (continuing)`, formatErr(reviewsRes.reason))
+  }
 
   let hasConflict: boolean | null
   if (prDetail.mergeable_state === 'dirty') hasConflict = true
@@ -345,7 +358,8 @@ async function fanOutPRDetails(
   else hasConflict = null
 
   const checks: CheckStatus[] = []
-  for (const run of checkRunsRes.check_runs || []) {
+  const checkRuns = checkRunsRes.status === 'fulfilled' ? checkRunsRes.value.check_runs || [] : []
+  for (const run of checkRuns) {
     checks.push({
       name: run.name,
       state: normalizeCheckState(run.status, run.conclusion),
@@ -354,7 +368,8 @@ async function fanOutPRDetails(
       detailsUrl: run.html_url || run.details_url || undefined
     })
   }
-  for (const s of combinedRes.statuses || []) {
+  const combinedStatuses = combinedRes.status === 'fulfilled' ? combinedRes.value.statuses || [] : []
+  for (const s of combinedStatuses) {
     checks.push({
       name: s.context,
       state: normalizeStatusState(s.state),
@@ -363,7 +378,8 @@ async function fanOutPRDetails(
     })
   }
 
-  const reviews: PRReview[] = (Array.isArray(reviewsRes) ? reviewsRes : [])
+  const reviewsList = reviewsRes.status === 'fulfilled' ? reviewsRes.value : []
+  const reviews: PRReview[] = (Array.isArray(reviewsList) ? reviewsList : [])
     .filter((r) => r.user && r.state !== 'PENDING')
     .map((r) => ({
       user: r.user.login,
@@ -501,7 +517,7 @@ export async function mergePR(
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    log('github', `mergePR fetch failed for ${owner}/${repo}#${number}`, message)
+    log('github', `mergePR fetch failed for ${owner}/${repo}#${number}`, formatErr(err))
     return { ok: false, error: message, errorCode: 'unknown' }
   }
 
@@ -591,7 +607,7 @@ export async function listOpenPRs(repoRoot: string): Promise<PRSummary[] | null>
     if (!Array.isArray(list)) return null
     return list.map(toPRSummary)
   } catch (err) {
-    log('github', `listOpenPRs failed for ${owner}/${repo}`, err instanceof Error ? err.message : err)
+    log('github', `listOpenPRs failed for ${owner}/${repo}`, formatErr(err))
     return null
   }
 }
@@ -612,7 +628,7 @@ export async function getPRMetadata(
     if (!pr || typeof pr.number !== 'number') return null
     return toPRSummary(pr)
   } catch (err) {
-    log('github', `getPRMetadata failed for ${owner}/${repo}#${prNumber}`, err instanceof Error ? err.message : err)
+    log('github', `getPRMetadata failed for ${owner}/${repo}#${prNumber}`, formatErr(err))
     return null
   }
 }

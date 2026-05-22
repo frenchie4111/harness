@@ -6,7 +6,7 @@ import {
   type PRListItem,
   type RepoContext
 } from './github'
-import { log } from './debug'
+import { log, formatErr } from './debug'
 import type { Store } from './store'
 import type { PRStatus } from '../shared/state/prs'
 
@@ -174,7 +174,7 @@ export class PRPoller {
             const status = await loadPRStatusForItem(wt.path, item, entry.ctx.upstream)
             return { path: wt.path, ok: true, status }
           } catch (err) {
-            log('pr-poller', `status fetch failed for ${wt.path}`, err instanceof Error ? err.message : err)
+            log('pr-poller', `status fetch failed for ${wt.path}`, formatErr(err))
             return { path: wt.path, ok: false }
           }
         })
@@ -263,7 +263,7 @@ export class PRPoller {
         payload: { path: wtPath, status }
       })
     } catch (err) {
-      log('pr-poller', `refreshOne failed for ${wtPath}`, err instanceof Error ? err.message : err)
+      log('pr-poller', `refreshOne failed for ${wtPath}`, formatErr(err))
     }
   }
 

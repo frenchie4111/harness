@@ -27,7 +27,7 @@ export function MobileRightPanel({
   const backend = useBackend()
   const repoConfigs = useRepoConfigs()
   const settings = useSettings()
-  const hasGithubToken = settings.hasGithubToken || settings.githubAuthSource === 'gh-cli'
+  const hasGithubToken = settings.hasGithubToken || !!settings.githubAuthSource
   const activeRepoConfig = activeWorktree ? repoConfigs[activeWorktree.repoRoot] ?? null : null
   void activeRepoConfig
 
