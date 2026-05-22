@@ -25,6 +25,7 @@ import { parseCliFlags, USAGE, type CliFlags } from './cli-args'
 import { PlaywrightBrowserManager } from './browser-manager-playwright'
 import type { BrowserManagerLike } from './browser-manager-types'
 import { PerfMonitor } from './perf-monitor'
+import { setGitHubApiRecorder } from './github-recorder'
 import { PRPoller } from './pr-poller'
 import { WorktreesFSM } from './worktrees-fsm'
 import { WorktreeDeletionFSM } from './worktree-deletion-fsm'
@@ -321,6 +322,7 @@ const jsonClaudeManager = new JsonClaudeManager(store, {
     })
 })
 const perfMonitor = new PerfMonitor()
+setGitHubApiRecorder(() => perfMonitor.recordGitHubApiCall())
 
 // In Electron mode createDesktopShell applies the dev-mode userData
 // override (must run before anything reads paths) and constructs the

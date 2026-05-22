@@ -2,6 +2,7 @@ export interface PerfSample {
   t: number
   storeEventsPerSec: number
   ipcMessagesPerSec: number
+  githubApiCallsPerSec: number
   totalTerminalBytesPerSec: number
   eventLoopLagMs: number
   memoryRssMB: number
@@ -13,6 +14,7 @@ export interface PerfSample {
 export interface PerfMetrics {
   storeEventsPerSec: number
   ipcMessagesPerSec: number
+  githubApiCallsPerSec: number
   terminalBytesPerSec: Record<string, number>
   totalTerminalBytesPerSec: number
   activePtyCount: number

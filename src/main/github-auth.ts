@@ -3,6 +3,7 @@ import { promisify } from 'util'
 import { log } from './debug'
 import { getSecret } from './secrets'
 import { resolveUserShell } from './user-shell'
+import { trackedFetch } from './github-recorder'
 
 const execFileAsync = promisify(execFile)
 
@@ -19,7 +20,7 @@ let resolving: Promise<ResolvedToken | null> | null = null
 /** Probe GET /user to confirm the token works. Returns scopes on success. */
 async function probeToken(token: string): Promise<{ ok: boolean; scopes: string[]; status: number }> {
   try {
-    const res = await fetch('https://api.github.com/user', {
+    const res = await trackedFetch('https://api.github.com/user', {
       headers: {
         Accept: 'application/vnd.github+json',
         'User-Agent': 'Harness',

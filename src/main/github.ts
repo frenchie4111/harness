@@ -2,6 +2,7 @@ import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { log, formatErr } from './debug'
 import { getCachedToken, invalidateTokenCache, resolveGitHubToken } from './github-auth'
+import { trackedFetch } from './github-recorder'
 import type { CheckStatus, PRReview, PRStatus } from '../shared/state/prs'
 import type { PRSummary, PRMetadata } from '../shared/github-types'
 
@@ -56,7 +57,7 @@ async function doFetch(url: string, token: string | null): Promise<Response> {
     'X-GitHub-Api-Version': '2022-11-28'
   }
   if (token) headers.Authorization = `Bearer ${token}`
-  return fetch(url, { headers })
+  return trackedFetch(url, { headers })
 }
 
 /** Make an authenticated request to the GitHub REST API. On 401, invalidate the token cache and retry once. */
@@ -424,7 +425,7 @@ async function fanOutPRDetails(
 /** Check whether the authenticated user has starred the repo. */
 export async function isRepoStarred(token: string, owner: string, repo: string): Promise<boolean | null> {
   try {
-    const res = await fetch(`https://api.github.com/user/starred/${owner}/${repo}`, {
+    const res = await trackedFetch(`https://api.github.com/user/starred/${owner}/${repo}`, {
       headers: {
         Accept: 'application/vnd.github+json',
         'User-Agent': 'Harness',
@@ -442,7 +443,7 @@ export async function isRepoStarred(token: string, owner: string, repo: string):
 /** Unstar a repository. Idempotent. */
 export async function unstarRepo(token: string, owner: string, repo: string): Promise<{ ok: boolean; error?: string }> {
   try {
-    const res = await fetch(`https://api.github.com/user/starred/${owner}/${repo}`, {
+    const res = await trackedFetch(`https://api.github.com/user/starred/${owner}/${repo}`, {
       method: 'DELETE',
       headers: {
         Accept: 'application/vnd.github+json',
@@ -461,7 +462,7 @@ export async function unstarRepo(token: string, owner: string, repo: string): Pr
 /** Star a repository on behalf of the authenticated user. Idempotent. */
 export async function starRepo(token: string, owner: string, repo: string): Promise<{ ok: boolean; error?: string }> {
   try {
-    const res = await fetch(`https://api.github.com/user/starred/${owner}/${repo}`, {
+    const res = await trackedFetch(`https://api.github.com/user/starred/${owner}/${repo}`, {
       method: 'PUT',
       headers: {
         Accept: 'application/vnd.github+json',
@@ -504,7 +505,7 @@ export async function mergePR(
 
   let res: Response
   try {
-    res = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${number}/merge`, {
+    res = await trackedFetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${number}/merge`, {
       method: 'PUT',
       headers: {
         Accept: 'application/vnd.github+json',
@@ -636,7 +637,7 @@ export async function getPRMetadata(
 /** Test a token by making an authenticated request to /user. Returns the username if valid. */
 export async function testToken(token: string): Promise<{ ok: boolean; username?: string; error?: string }> {
   try {
-    const res = await fetch('https://api.github.com/user', {
+    const res = await trackedFetch('https://api.github.com/user', {
       headers: {
         Accept: 'application/vnd.github+json',
         'User-Agent': 'Harness',
