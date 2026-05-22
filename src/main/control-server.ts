@@ -1,5 +1,5 @@
 import { createServer, IncomingMessage, ServerResponse } from 'http'
-import { randomBytes } from 'crypto'
+import { randomBytes, randomUUID } from 'crypto'
 import { addWorktree, listWorktrees, defaultWorktreeDir, WorktreeInfo } from './worktree'
 import { log } from './debug'
 
@@ -90,6 +90,16 @@ export interface ControlServerDeps {
   getWorktreeBase: () => 'remote' | 'local'
   broadcast: (channel: string, ...args: unknown[]) => void
   runWorktreeSetup: (ctx: { repoRoot: string; worktreePath: string; branch: string }) => Promise<void>
+  /** Drive the full PR-creation FSM (fetch PR metadata, fetch refs/pull/<n>/head,
+   * create the worktree, run setup, fire panes init + PR poller refresh) and
+   * return the new worktree's path + branch. Host wires this to
+   * `worktreesFSM.runPendingPR` plus a renderer focus broadcast. */
+  runPendingPRWorktree: (params: {
+    id: string
+    repoRoot: string
+    prNumber: number
+    initialPrompt?: string
+  }) => Promise<{ ok: true; path: string; branch: string } | { ok: false; error: string }>
   /** Returns the caller's current scope, or null if the terminal is not
    * associated with any known worktree (e.g. the worktree was deleted). */
   resolveCallerScope: (terminalId: string) => CallerScope | null
@@ -222,9 +232,38 @@ async function handleRequest(
       }
     }
 
+    const rawPrNumber = body.prNumber
+    let prNumber: number | undefined
+    if (rawPrNumber !== undefined && rawPrNumber !== null && rawPrNumber !== '') {
+      const n = typeof rawPrNumber === 'number' ? rawPrNumber : Number(rawPrNumber)
+      if (!Number.isInteger(n) || n <= 0) {
+        return sendJson(res, 400, { error: 'prNumber must be a positive integer' })
+      }
+      prNumber = n
+    }
+
     const branchName = String(body.branchName || '').trim()
+    const initialPrompt = typeof body.initialPrompt === 'string' ? body.initialPrompt : undefined
+
+    if (prNumber !== undefined) {
+      if (branchName) {
+        log('control', `prNumber=${prNumber} provided — ignoring branchName=${branchName}`)
+      }
+      const result = await deps.runPendingPRWorktree({
+        id: randomUUID(),
+        repoRoot,
+        prNumber,
+        initialPrompt
+      })
+      if (!result.ok) {
+        const status = /couldn't fetch pr|not found|404/i.test(result.error) ? 422 : 502
+        return sendJson(res, status, { error: result.error })
+      }
+      return sendJson(res, 200, { path: result.path, branch: result.branch })
+    }
+
     if (!branchName) {
-      return sendJson(res, 400, { error: 'branchName required' })
+      return sendJson(res, 400, { error: 'branchName or prNumber required' })
     }
     const wtDir = defaultWorktreeDir(repoRoot)
     const mode = deps.getWorktreeBase()
@@ -237,7 +276,6 @@ async function handleRequest(
     // spawned by ensureInitialized still sees shared settings.
     deps.runWorktreeSetup({ repoRoot, worktreePath: created.path, branch: created.branch })
       .catch((err) => log('control', `setup script failed: ${err instanceof Error ? err.message : String(err)}`))
-    const initialPrompt = typeof body.initialPrompt === 'string' ? body.initialPrompt : undefined
     deps.broadcast('worktrees:externalCreate', { repoRoot, worktree: created, initialPrompt })
     return sendJson(res, 200, created)
   }

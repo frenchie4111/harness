@@ -3087,6 +3087,31 @@ async function runBoot(): Promise<void> {
       }
     },
     runWorktreeSetup: (ctx) => worktreesFSM.runWorktreeSetup(ctx),
+    runPendingPRWorktree: async (params) => {
+      // The FSM already handles ensureInitialized (with the prompt) + PR poller
+      // refresh via onWorktreeCreated. We just look up the resolved branch
+      // from the freshly-refreshed store list and emit the focus broadcast
+      // directly so the heavy ensureInitialized/refreshList work doesn't
+      // run a second time through the broadcast path.
+      // 'setup-failed' still means the worktree exists on disk — surface
+      // it to the MCP caller as success so the agent can recover.
+      const outcome = await worktreesFSM.runPendingPR(params)
+      if (outcome.outcome === 'error') {
+        return { ok: false, error: outcome.error }
+      }
+      const found = store
+        .getSnapshot()
+        .state.worktrees.list.find((w) => w.path === outcome.createdPath)
+      if (!found) {
+        return { ok: false, error: `created worktree at ${outcome.createdPath} but couldn't resolve its branch` }
+      }
+      broadcastToAllWindows('worktrees:externalCreate', {
+        repoRoot: params.repoRoot,
+        worktree: found,
+        initialPrompt: params.initialPrompt
+      })
+      return { ok: true, path: found.path, branch: found.branch }
+    },
     broadcast: (channel, payload) => {
       if (channel === 'worktrees:externalCreate') {
         // Seed panes with the initial prompt BEFORE refreshList — the

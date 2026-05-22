@@ -75,13 +75,20 @@ const TOOLS = [
   {
     name: 'create_worktree',
     description:
-      "Create a new git worktree in a Harness-managed repo. Harness will open a new Claude chat tab inside the new worktree automatically. Defaults to the caller's current repo when repoRoot is omitted.",
+      "Create a new git worktree in a Harness-managed repo. Either create a brand-new branch (set branchName) OR check out an existing GitHub PR for review (set prNumber). Harness will open a new Claude chat tab inside the new worktree automatically. Defaults to the caller's current repo when repoRoot is omitted.",
     inputSchema: {
       type: 'object',
       properties: {
         branchName: {
           type: 'string',
-          description: 'Name of the new branch to create for the worktree.'
+          description:
+            'Name of the new branch to create for the worktree. Required when not creating from a PR.'
+        },
+        prNumber: {
+          type: 'integer',
+          minimum: 1,
+          description:
+            'GitHub PR number to check out for review. When set, Harness fetches refs/pull/<n>/head into a local branch named after the PR head (or `<headBranch>-pr-<n>` if taken locally) and opens a worktree against it. Useful for "review this PR" workflows.'
         },
         repoRoot: {
           type: 'string',
@@ -91,15 +98,14 @@ const TOOLS = [
         baseBranch: {
           type: 'string',
           description:
-            "Branch to fork the new worktree from. Defaults to the repo's configured base."
+            "Branch to fork the new worktree from. Defaults to the repo's configured base. Ignored when prNumber is provided."
         },
         initialPrompt: {
           type: 'string',
           description:
-            'A prompt to automatically send to the Claude chat tab when it opens in the new worktree.'
+            'A prompt to automatically send to the Claude chat tab when it opens in the new worktree. Useful for "review this PR for X" or "implement feature Y" prompts.'
         }
-      },
-      required: ['branchName']
+      }
     }
   },
   {
@@ -438,21 +444,26 @@ function filterToolsByPerms(tools, perms) {
 
 async function handleToolCall(name, args) {
   if (name === 'create_worktree') {
-    if (!args || !args.branchName) throw new Error('branchName is required')
+    const prNumber = args && args.prNumber
+    if (!args || (!args.branchName && !prNumber)) {
+      throw new Error('branchName or prNumber is required')
+    }
+    if (prNumber !== undefined && prNumber !== null) {
+      if (!Number.isInteger(prNumber) || prNumber <= 0) {
+        throw new Error('prNumber must be a positive integer')
+      }
+    }
     const r = await callControl('POST', '/worktrees', {
       terminalId: TERMINAL_ID,
       repoRoot: args.repoRoot,
       branchName: args.branchName,
+      prNumber: prNumber,
       baseBranch: args.baseBranch,
       initialPrompt: args.initialPrompt
     })
-    return (
-      'Created worktree ' +
-      r.path +
-      ' on branch ' +
-      r.branch +
-      '. Harness will open a new Claude chat tab in it.'
-    )
+    return prNumber
+      ? `Created worktree ${r.path} on branch ${r.branch} for PR #${prNumber}. Harness will open a new Claude chat tab in it.`
+      : `Created worktree ${r.path} on branch ${r.branch}. Harness will open a new Claude chat tab in it.`
   }
   if (name === 'list_worktrees') {
     const q =

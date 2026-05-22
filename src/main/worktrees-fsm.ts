@@ -154,15 +154,17 @@ export class WorktreesFSM {
     id: string
     repoRoot: string
     prNumber: number
+    initialPrompt?: string
   }): Promise<PendingOutcome> {
-    const { id, repoRoot, prNumber } = params
+    const { id, repoRoot, prNumber, initialPrompt } = params
     // Show *something* while we go ask GitHub for the head ref name.
     let branchName = `pr-${prNumber}`
     const pending: PendingWorktree = {
       id,
       repoRoot,
       branchName,
-      status: 'creating'
+      status: 'creating',
+      initialPrompt
     }
     this.store.dispatch({ type: 'worktrees/pendingAdded', payload: pending })
 
@@ -188,7 +190,8 @@ export class WorktreesFSM {
       return await this.finishCreate({
         id,
         repoRoot,
-        created
+        created,
+        initialPrompt
       })
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
