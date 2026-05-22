@@ -1790,19 +1790,17 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
             // desktop keeps the chat dense.
             className="w-full bg-panel border border-border rounded px-2 py-1.5 text-base sm:text-sm resize-none outline-none focus:border-accent min-h-[60px] max-h-[200px]"
             rows={2}
-            // Slept tabs leave the session record in state='exited' (kill
-            // is how sleep tears down the subprocess), so gate disabled on
-            // mode too — otherwise typing wakes the tab but the user
-            // can't actually type into the disabled box.
-            disabled={mode === 'awake' && state === 'exited'}
+            // Never disabled — sleep kills the subprocess and dispatches
+            // state='exited', and the wake transition arrives as separate
+            // tabWoken + state='running' IPC events. Toggling disabled on
+            // either of those races would briefly blur the focused
+            // textarea, kicking the user out mid-keystroke. send() guards
+            // the actual "no live subprocess" case.
           />
         </div>
         <button
           onClick={() => send()}
-          disabled={
-            (!draft.trim() && attachments.length === 0) ||
-            (mode === 'awake' && state === 'exited')
-          }
+          disabled={!draft.trim() && attachments.length === 0}
           className="px-3 py-1.5 bg-accent text-white rounded text-sm disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
         >
           Send
