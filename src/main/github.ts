@@ -34,22 +34,6 @@ export async function getRepoInfo(worktreePath: string): Promise<{ owner: string
   }
 }
 
-/** Get the current branch of a worktree */
-async function getCurrentBranch(worktreePath: string): Promise<string | null> {
-  try {
-    const { stdout } = await execFileAsync(
-      'git',
-      ['rev-parse', '--abbrev-ref', 'HEAD'],
-      { cwd: worktreePath }
-    )
-    const branch = stdout.trim()
-    if (!branch || branch === 'HEAD') return null
-    return branch
-  } catch {
-    return null
-  }
-}
-
 /** Earliest tag (by version-sort) that contains the given commit, or null
  *  if no tag does / git can't reach the SHA. Used for merged-PR display. */
 async function getFirstTagContaining(worktreePath: string, sha: string): Promise<string | null> {
@@ -145,70 +129,6 @@ async function resolveQueryRepo(
   }
 }
 
-interface PRExtras {
-  queueEntry: { position: number; estimatedSeconds: number | null } | null
-  linkedIssues: { number: number; title: string; state: 'open' | 'closed'; url: string }[]
-}
-
-/** GraphQL POST to fetch nice-to-have PR fields not available via REST:
- *  mergeQueueEntry and closingIssuesReferences. Returns empty defaults on
- *  any failure (auth, network, schema). */
-async function fetchPRExtras(owner: string, repo: string, number: number): Promise<PRExtras> {
-  const empty: PRExtras = { queueEntry: null, linkedIssues: [] }
-  const token = getCachedToken()
-  if (!token) return empty
-  try {
-    const res = await trackedFetch('https://api.github.com/graphql', {
-      method: 'POST',
-      headers: {
-        Accept: 'application/vnd.github+json',
-        'User-Agent': 'Harness',
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        query:
-          'query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){mergeQueueEntry{position estimatedTimeToMerge} closingIssuesReferences(first:10){nodes{number title state url}}}}}',
-        variables: { o: owner, r: repo, n: number }
-      })
-    })
-    if (!res.ok) return empty
-    const json = (await res.json()) as {
-      data?: {
-        repository?: {
-          pullRequest?: {
-            mergeQueueEntry?: { position?: number; estimatedTimeToMerge?: number | null } | null
-            closingIssuesReferences?: {
-              nodes?: Array<{ number?: number; title?: string; state?: string; url?: string } | null> | null
-            } | null
-          } | null
-        } | null
-      }
-    }
-    const pr = json?.data?.repository?.pullRequest
-    const entry = pr?.mergeQueueEntry
-    const pos = entry?.position
-    const queueEntry =
-      typeof pos === 'number' && pos > 0
-        ? { position: pos, estimatedSeconds: typeof entry?.estimatedTimeToMerge === 'number' ? entry.estimatedTimeToMerge : null }
-        : null
-    const linkedIssues = (pr?.closingIssuesReferences?.nodes ?? [])
-      .filter((n): n is { number: number; title: string; state: string; url: string } =>
-        !!n && typeof n.number === 'number' && typeof n.title === 'string' && typeof n.url === 'string'
-      )
-      .map((n) => ({
-        number: n.number,
-        title: n.title,
-        state: n.state === 'CLOSED' ? ('closed' as const) : ('open' as const),
-        url: n.url
-      }))
-    return { queueEntry, linkedIssues }
-  } catch (err) {
-    log('github', `fetchPRExtras failed for ${owner}/${repo}#${number}`, err instanceof Error ? err.message : err)
-    return empty
-  }
-}
-
 /** Fetches commits-behind via GitHub's compare endpoint. Returns null on
  *  any failure — the count is a nice-to-have, not a correctness signal. */
 async function fetchBehindBy(
@@ -247,135 +167,6 @@ interface ApiPRListItem {
   updated_at: string
 }
 
-interface ApiPRDetail extends ApiPRListItem {
-  mergeable: boolean | null
-  mergeable_state: string
-  additions: number
-  deletions: number
-  base: {
-    ref: string
-    sha: string
-    repo: { full_name: string; default_branch: string } | null
-  }
-  milestone: { title: string; html_url: string; state: 'open' | 'closed'; number: number } | null
-  labels: { name: string; color: string; description: string | null }[] | null
-  merge_commit_sha: string | null
-}
-
-/** Normalized PR list item used by the poller's match-by-ref/sha logic.
- *  Flattened from the GitHub API shape so callers don't have to chase
- *  optional nested fields. */
-export interface PRListItem {
-  number: number
-  title: string
-  state: 'open' | 'closed'
-  draft: boolean
-  mergedAt: string | null
-  url: string
-  headRef: string
-  headSha: string
-  /** owner/repo of the head — null when the head repo is gone (rare). */
-  headRepoFullName: string | null
-  baseRef: string
-  baseRepoFullName: string | null
-  /** Login + avatar for the PR author. Null when GitHub redacts (rare). */
-  author: { login: string; avatarUrl: string } | null
-  updatedAt: string
-}
-
-function flattenListItem(it: ApiPRListItem): PRListItem {
-  return {
-    number: it.number,
-    title: it.title,
-    state: it.state,
-    draft: it.draft,
-    mergedAt: it.merged_at,
-    url: it.html_url,
-    headRef: it.head?.ref ?? '',
-    headSha: it.head?.sha ?? '',
-    headRepoFullName: it.head?.repo?.full_name ?? null,
-    baseRef: it.base?.ref ?? '',
-    baseRepoFullName: it.base?.repo?.full_name ?? null,
-    author: it.user ? { login: it.user.login, avatarUrl: it.user.avatar_url } : null,
-    updatedAt: it.updated_at
-  }
-}
-
-interface ApiCheckRun {
-  name: string
-  status: 'queued' | 'in_progress' | 'completed' | 'waiting' | 'requested' | 'pending'
-  conclusion: 'success' | 'failure' | 'neutral' | 'cancelled' | 'skipped' | 'timed_out' | 'action_required' | null
-  html_url?: string | null
-  details_url?: string | null
-  started_at?: string | null
-  output?: { title?: string | null; summary?: string | null }
-}
-
-interface ApiCheckRunsResponse {
-  total_count: number
-  check_runs: ApiCheckRun[]
-}
-
-interface ApiStatus {
-  state: 'error' | 'failure' | 'pending' | 'success'
-  context: string
-  description: string | null
-  target_url: string | null
-  created_at?: string | null
-}
-
-interface ApiCombinedStatus {
-  state: 'success' | 'pending' | 'failure'
-  statuses: ApiStatus[]
-}
-
-interface ApiReview {
-  user: { login: string; avatar_url: string }
-  state: 'APPROVED' | 'CHANGES_REQUESTED' | 'COMMENTED' | 'DISMISSED' | 'PENDING'
-  body: string
-  submitted_at: string
-  html_url: string
-}
-
-function normalizeCheckState(
-  status: ApiCheckRun['status'],
-  conclusion: ApiCheckRun['conclusion']
-): CheckStatus['state'] {
-  if (conclusion) {
-    switch (conclusion) {
-      case 'success':
-        return 'success'
-      case 'failure':
-      case 'timed_out':
-      case 'action_required':
-      case 'cancelled':
-        return 'failure'
-      case 'neutral':
-        return 'neutral'
-      case 'skipped':
-        return 'skipped'
-      default:
-        return 'neutral'
-    }
-  }
-  if (status === 'completed') return 'success'
-  return 'pending'
-}
-
-function normalizeStatusState(state: ApiStatus['state']): CheckStatus['state'] {
-  switch (state) {
-    case 'success':
-      return 'success'
-    case 'failure':
-    case 'error':
-      return 'failure'
-    case 'pending':
-      return 'pending'
-    default:
-      return 'neutral'
-  }
-}
-
 function computeOverall(checks: CheckStatus[]): PRStatus['checksOverall'] {
   if (checks.length === 0) return 'none'
   if (checks.some((c) => c.state === 'failure' || c.state === 'error')) return 'failure'
@@ -383,143 +174,340 @@ function computeOverall(checks: CheckStatus[]): PRStatus['checksOverall'] {
   return 'success'
 }
 
-/** List the 100 most-recently-updated PRs for a repo, in any state.
- *  Caller matches each worktree against this list (by head ref / sha)
- *  instead of doing one API call per worktree.
- *
- *  Returns null only when authoritatively there's nothing to fetch: no
- *  token, or no parseable origin remote. Throws on transport/server
- *  failure so callers can preserve previously-cached PR state instead
- *  of treating "offline" as "no PR exists" — see PRPoller.refreshAll. */
-export async function listPullRequests(repoRoot: string): Promise<PRListItem[] | null> {
-  const token = getCachedToken()
-  if (!token) return null
-  const repoInfo = await getRepoInfo(repoRoot)
-  if (!repoInfo) return null
-  const queryRepo = await resolveQueryRepo(repoInfo)
-  const { owner, repo } = queryRepo
-  try {
-    const list = (await githubFetch(
-      `https://api.github.com/repos/${owner}/${repo}/pulls?state=all&sort=updated&direction=desc&per_page=100`
-    )) as ApiPRListItem[]
-    if (!Array.isArray(list)) {
-      throw new Error(`listPullRequests: unexpected response shape for ${owner}/${repo}`)
-    }
-    return list.map(flattenListItem)
-  } catch (err) {
-    log('github', `listPullRequests failed for ${owner}/${repo}`, formatErr(err))
-    throw err
-  }
-}
-
-/** Build a full PRStatus for a known PR (item from listPullRequests).
- *  Fans out check-runs / status / reviews / mergeability in parallel,
- *  then assembles. `localBranch` is the worktree's current branch (just
- *  carried through into PRStatus.branch for the UI). */
-export async function loadPRStatusForItem(
-  worktreePath: string,
-  item: PRListItem,
-  baseRepo: { owner: string; repo: string }
-): Promise<PRStatus | null> {
-  const token = getCachedToken()
-  if (!token) return null
-  const localBranch = (await getCurrentBranch(worktreePath)) ?? item.headRef
-  try {
-    return await fanOutPRDetails(baseRepo.owner, baseRepo.repo, item, localBranch, worktreePath)
-  } catch (err) {
-    log(
-      'github',
-      `loadPRStatusForItem failed for ${baseRepo.owner}/${baseRepo.repo}#${item.number}`,
-      formatErr(err)
-    )
-    throw err
-  }
-}
-
-async function fanOutPRDetails(
-  owner: string,
-  repo: string,
-  item: PRListItem,
-  branchName: string,
+export interface PRStatusRequest {
+  /** Worktree path — used as the result map key. */
   worktreePath: string
-): Promise<PRStatus | null> {
-  const sha = item.headSha
-  const [prDetailRes, checkRunsRes, combinedRes, reviewsRes, extrasRes] = await Promise.allSettled([
-    githubFetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${item.number}`) as Promise<ApiPRDetail>,
-    githubFetch(`https://api.github.com/repos/${owner}/${repo}/commits/${sha}/check-runs?per_page=100`) as Promise<ApiCheckRunsResponse>,
-    githubFetch(`https://api.github.com/repos/${owner}/${repo}/commits/${sha}/status`) as Promise<ApiCombinedStatus>,
-    githubFetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${item.number}/reviews?per_page=100`) as Promise<ApiReview[]>,
-    fetchPRExtras(owner, repo, item.number)
-  ])
+  /** Local branch name — the PR's head ref on the origin remote.
+   *  Empty / detached worktrees are skipped (result map gets null). */
+  branch: string
+  /** Worktree HEAD SHA — used to disambiguate when multiple PRs share a
+   *  branch name (e.g. several forks contributing branches called "fix"). */
+  headSha: string
+}
 
-  if (prDetailRes.status === 'rejected') throw prDetailRes.reason
-  const prDetail = prDetailRes.value
-  if (!prDetail || typeof prDetail.number !== 'number') return null
+interface GraphQLActor {
+  login?: string | null
+  avatarUrl?: string | null
+}
 
-  if (checkRunsRes.status === 'rejected') {
-    log('github', `check-runs unavailable for ${owner}/${repo}#${item.number} (continuing)`, formatErr(checkRunsRes.reason))
+interface GraphQLPR {
+  number: number
+  title: string
+  state: 'OPEN' | 'CLOSED' | 'MERGED'
+  isDraft: boolean
+  url: string
+  mergedAt: string | null
+  mergeable: 'MERGEABLE' | 'CONFLICTING' | 'UNKNOWN'
+  additions: number
+  deletions: number
+  baseRefName: string
+  baseRepository: { defaultBranchRef: { name: string } | null } | null
+  headRefOid: string
+  headRepository: { nameWithOwner: string } | null
+  mergeCommit: { oid: string } | null
+  author: GraphQLActor | null
+  milestone: { title: string; url: string; state: 'OPEN' | 'CLOSED' } | null
+  assignees: { nodes: Array<GraphQLActor | null> | null } | null
+  labels: { nodes: Array<{ name: string; color: string; description: string | null } | null> | null } | null
+  mergeQueueEntry: { position: number; estimatedTimeToMerge: number | null } | null
+  closingIssuesReferences: {
+    nodes: Array<{ number: number; title: string; state: 'OPEN' | 'CLOSED'; url: string } | null> | null
+  } | null
+  reviews: {
+    nodes: Array<{
+      author: GraphQLActor | null
+      state: 'APPROVED' | 'CHANGES_REQUESTED' | 'COMMENTED' | 'DISMISSED' | 'PENDING'
+      body: string
+      submittedAt: string
+      url: string
+    } | null> | null
+  } | null
+  commits: {
+    nodes: Array<{
+      commit: {
+        statusCheckRollup: {
+          contexts: { nodes: Array<GraphQLCheckContext | null> | null } | null
+        } | null
+      }
+    } | null> | null
+  } | null
+}
+
+type GraphQLCheckContext =
+  | {
+      __typename: 'CheckRun'
+      name: string
+      status:
+        | 'QUEUED'
+        | 'IN_PROGRESS'
+        | 'COMPLETED'
+        | 'WAITING'
+        | 'PENDING'
+        | 'REQUESTED'
+      conclusion:
+        | 'SUCCESS'
+        | 'FAILURE'
+        | 'NEUTRAL'
+        | 'CANCELLED'
+        | 'SKIPPED'
+        | 'TIMED_OUT'
+        | 'ACTION_REQUIRED'
+        | 'STALE'
+        | 'STARTUP_FAILURE'
+        | null
+      detailsUrl: string | null
+      permalink: string | null
+      startedAt: string | null
+      title: string | null
+      summary: string | null
+    }
+  | {
+      __typename: 'StatusContext'
+      context: string
+      state: 'EXPECTED' | 'ERROR' | 'FAILURE' | 'PENDING' | 'SUCCESS'
+      description: string | null
+      targetUrl: string | null
+      createdAt: string | null
+    }
+
+interface GraphQLBatchResponse {
+  data?: {
+    repository?: ({ defaultBranchRef: { name: string } | null } & Record<string, { nodes: GraphQLPR[] | null } | null>) | null
+  } | null
+  errors?: Array<{ message: string }> | null
+}
+
+function gqlCheckState(c: Extract<GraphQLCheckContext, { __typename: 'CheckRun' }>): CheckStatus['state'] {
+  if (c.conclusion) {
+    switch (c.conclusion) {
+      case 'SUCCESS':
+        return 'success'
+      case 'FAILURE':
+      case 'TIMED_OUT':
+      case 'ACTION_REQUIRED':
+      case 'CANCELLED':
+      case 'STARTUP_FAILURE':
+        return 'failure'
+      case 'NEUTRAL':
+        return 'neutral'
+      case 'SKIPPED':
+        return 'skipped'
+      case 'STALE':
+        return 'neutral'
+    }
   }
-  if (combinedRes.status === 'rejected') {
-    log('github', `combined status unavailable for ${owner}/${repo}#${item.number} (continuing)`, formatErr(combinedRes.reason))
+  if (c.status === 'COMPLETED') return 'success'
+  return 'pending'
+}
+
+function gqlStatusState(s: Extract<GraphQLCheckContext, { __typename: 'StatusContext' }>['state']): CheckStatus['state'] {
+  switch (s) {
+    case 'SUCCESS':
+      return 'success'
+    case 'FAILURE':
+    case 'ERROR':
+      return 'failure'
+    case 'PENDING':
+      return 'pending'
+    default:
+      return 'neutral'
   }
-  if (reviewsRes.status === 'rejected') {
-    log('github', `reviews unavailable for ${owner}/${repo}#${item.number} (continuing)`, formatErr(reviewsRes.reason))
+}
+
+const PR_FRAGMENT = `fragment PR on PullRequest {
+  number title state isDraft url mergedAt mergeable additions deletions
+  baseRefName
+  baseRepository { defaultBranchRef { name } }
+  headRefOid
+  headRepository { nameWithOwner }
+  mergeCommit { oid }
+  author { login avatarUrl }
+  milestone { title url state }
+  assignees(first: 10) { nodes { login avatarUrl } }
+  labels(first: 20) { nodes { name color description } }
+  mergeQueueEntry { position estimatedTimeToMerge }
+  closingIssuesReferences(first: 10) { nodes { number title state url } }
+  reviews(last: 100) {
+    nodes { author { login avatarUrl } state body submittedAt url }
   }
-  if (extrasRes.status === 'rejected') {
-    log('github', `extras unavailable for ${owner}/${repo}#${item.number} (continuing)`, formatErr(extrasRes.reason))
+  commits(last: 1) {
+    nodes {
+      commit {
+        statusCheckRollup {
+          contexts(first: 100) {
+            nodes {
+              __typename
+              ... on CheckRun {
+                name status conclusion detailsUrl permalink startedAt title summary
+              }
+              ... on StatusContext {
+                context state description targetUrl createdAt
+              }
+            }
+          }
+        }
+      }
+    }
   }
-  const extras = extrasRes.status === 'fulfilled' ? extrasRes.value : { queueEntry: null, linkedIssues: [] }
+}`
 
-  const behindBy = await fetchBehindBy(owner, repo, prDetail.base.ref, sha)
+/** Build a single GraphQL request that looks up the PR for each requested
+ *  branch via headRefName. Aliased sub-queries keep the whole batch in one
+ *  round-trip. Returns map: worktreePath → PRStatus|null. Throws on
+ *  transport failure so the caller preserves cached state. */
+export async function fetchPRStatusesForRepo(
+  ctx: RepoContext,
+  requests: PRStatusRequest[]
+): Promise<Map<string, PRStatus | null>> {
+  const result = new Map<string, PRStatus | null>()
+  if (requests.length === 0) return result
 
-  // Only meaningful once the PR is merged AND we know the merge commit.
-  // Skips the git invocation entirely for open/draft/closed PRs.
-  const firstReleaseTag =
-    item.mergedAt && prDetail.merge_commit_sha
-      ? await getFirstTagContaining(worktreePath, prDetail.merge_commit_sha)
-      : null
+  const token = getCachedToken()
+  if (!token) {
+    for (const r of requests) result.set(r.worktreePath, null)
+    return result
+  }
 
-  let hasConflict: boolean | null
-  if (prDetail.mergeable_state === 'dirty') hasConflict = true
-  else if (prDetail.mergeable === false) hasConflict = true
-  else if (prDetail.mergeable === true) hasConflict = false
-  else hasConflict = null
+  // Worktrees without a branch (detached / new) can't be looked up by
+  // headRefName. Mark them null up-front; don't include them in the query.
+  const queryable = requests.filter((r) => r.branch && r.branch !== '(detached)')
+  for (const r of requests) {
+    if (!queryable.includes(r)) result.set(r.worktreePath, null)
+  }
+  if (queryable.length === 0) return result
 
-  const checks: CheckStatus[] = []
-  const checkRuns = checkRunsRes.status === 'fulfilled' ? checkRunsRes.value.check_runs || [] : []
-  for (const run of checkRuns) {
-    checks.push({
-      name: run.name,
-      state: normalizeCheckState(run.status, run.conclusion),
-      description: run.output?.title || '',
-      summary: run.output?.summary || undefined,
-      detailsUrl: run.html_url || run.details_url || undefined,
-      startedAt: run.started_at || undefined
+  const { owner, repo } = ctx.upstream
+  const originFull = `${ctx.origin.owner}/${ctx.origin.repo}`
+
+  const varDefs = ['$owner:String!', '$name:String!']
+  const aliasParts: string[] = []
+  const variables: Record<string, string> = { owner, name: repo }
+  queryable.forEach((req, i) => {
+    varDefs.push(`$branch${i}:String!`)
+    variables[`branch${i}`] = req.branch
+    aliasParts.push(
+      `pr${i}: pullRequests(headRefName: $branch${i}, first: 5, orderBy: {field: UPDATED_AT, direction: DESC}) { nodes { ...PR } }`
+    )
+  })
+  const query = `query(${varDefs.join(', ')}) {
+  repository(owner: $owner, name: $name) {
+    defaultBranchRef { name }
+    ${aliasParts.join('\n    ')}
+  }
+}
+${PR_FRAGMENT}`
+
+  const res = await trackedFetch('https://api.github.com/graphql', {
+    method: 'POST',
+    headers: {
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'Harness',
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ query, variables })
+  })
+  if (!res.ok) {
+    throw new Error(`GitHub GraphQL ${res.status} ${res.statusText}`)
+  }
+  const json = (await res.json()) as GraphQLBatchResponse
+  if (json.errors && json.errors.length > 0) {
+    log('github', `GraphQL errors for ${owner}/${repo}`, json.errors.map((e) => e.message).join('; '))
+  }
+  const repoData = json.data?.repository
+  if (!repoData) {
+    throw new Error(`GitHub GraphQL: empty repository response for ${owner}/${repo}`)
+  }
+
+  // Resolve per-request, then fetch behind_by + first-release-tag in parallel.
+  const built = await Promise.all(
+    queryable.map(async (req, i) => {
+      const alias = repoData[`pr${i}`] as { nodes: GraphQLPR[] | null } | null | undefined
+      const nodes = alias?.nodes ?? []
+      const pr = pickPRBySha(nodes, req.headSha, originFull)
+      if (!pr) return { worktreePath: req.worktreePath, status: null as PRStatus | null }
+      const [behindBy, firstReleaseTag] = await Promise.all([
+        pr.state === 'MERGED' || pr.state === 'CLOSED'
+          ? Promise.resolve(null)
+          : fetchBehindBy(owner, repo, pr.baseRefName, pr.headRefOid),
+        pr.state === 'MERGED' && pr.mergeCommit?.oid
+          ? getFirstTagContaining(req.worktreePath, pr.mergeCommit.oid)
+          : Promise.resolve(null)
+      ])
+      const status = buildPRStatus(pr, req.branch, behindBy, firstReleaseTag)
+      return { worktreePath: req.worktreePath, status }
     })
-  }
-  const combinedStatuses = combinedRes.status === 'fulfilled' ? combinedRes.value.statuses || [] : []
-  for (const s of combinedStatuses) {
-    checks.push({
-      name: s.context,
-      state: normalizeStatusState(s.state),
-      description: s.description || '',
-      detailsUrl: s.target_url || undefined,
-      startedAt: s.created_at || undefined
-    })
-  }
+  )
+  for (const b of built) result.set(b.worktreePath, b.status)
+  return result
+}
 
-  const reviewsList = reviewsRes.status === 'fulfilled' ? reviewsRes.value : []
-  const reviews: PRReview[] = (Array.isArray(reviewsList) ? reviewsList : [])
-    .filter((r) => r.user && r.state !== 'PENDING')
-    .map((r) => ({
-      user: r.user.login,
-      avatarUrl: r.user.avatar_url,
+/** Among the up-to-5 PR nodes returned for a single headRefName lookup,
+ *  pick the one most likely to belong to this worktree:
+ *  1. exact SHA match against the worktree's HEAD,
+ *  2. same-origin head (PR opened from this repo, not a fork),
+ *  3. fall back to the most-recently-updated (first node). */
+function pickPRBySha(nodes: GraphQLPR[], headSha: string, originFull: string): GraphQLPR | null {
+  if (nodes.length === 0) return null
+  if (headSha) {
+    const bySha = nodes.find((n) => n.headRefOid === headSha)
+    if (bySha) return bySha
+  }
+  const sameRepo = nodes.find((n) => n.headRepository?.nameWithOwner === originFull)
+  if (sameRepo) return sameRepo
+  return nodes[0]
+}
+
+function buildPRStatus(
+  pr: GraphQLPR,
+  branchName: string,
+  behindBy: number | null,
+  firstReleaseTag: string | null
+): PRStatus {
+  // Dedupe by check name, keeping the latest startedAt — GraphQL's
+  // statusCheckRollup returns one entry per re-run of a check, and the
+  // renderer keys by name.
+  const byName = new Map<string, CheckStatus>()
+  const contexts = pr.commits?.nodes?.[0]?.commit?.statusCheckRollup?.contexts?.nodes ?? []
+  for (const c of contexts) {
+    if (!c) continue
+    const entry: CheckStatus =
+      c.__typename === 'CheckRun'
+        ? {
+            name: c.name,
+            state: gqlCheckState(c),
+            description: c.title || '',
+            summary: c.summary || undefined,
+            detailsUrl: c.permalink || c.detailsUrl || undefined,
+            startedAt: c.startedAt || undefined
+          }
+        : {
+            name: c.context,
+            state: gqlStatusState(c.state),
+            description: c.description || '',
+            detailsUrl: c.targetUrl || undefined,
+            startedAt: c.createdAt || undefined
+          }
+    const prev = byName.get(entry.name)
+    if (!prev || (entry.startedAt ?? '') >= (prev.startedAt ?? '')) {
+      byName.set(entry.name, entry)
+    }
+  }
+  const checks: CheckStatus[] = [...byName.values()]
+
+  const reviewNodes = pr.reviews?.nodes ?? []
+  const reviews: PRReview[] = []
+  for (const r of reviewNodes) {
+    if (!r || !r.author?.login || r.state === 'PENDING') continue
+    reviews.push({
+      user: r.author.login,
+      avatarUrl: r.author.avatarUrl || '',
       state: r.state,
       body: r.body || '',
-      submittedAt: r.submitted_at,
-      htmlUrl: r.html_url
-    }))
-
+      submittedAt: r.submittedAt,
+      htmlUrl: r.url
+    })
+  }
   const latestByUser = new Map<string, PRReview['state']>()
   for (const r of reviews) latestByUser.set(r.user, r.state)
   const latestStates = [...latestByUser.values()]
@@ -529,47 +517,72 @@ async function fanOutPRDetails(
   else if (latestStates.length > 0) reviewDecision = 'review_required'
 
   let state: PRStatus['state']
-  if (item.mergedAt) state = 'merged'
-  else if (item.state === 'closed') state = 'closed'
-  else if (item.draft) state = 'draft'
+  if (pr.state === 'MERGED') state = 'merged'
+  else if (pr.state === 'CLOSED') state = 'closed'
+  else if (pr.isDraft) state = 'draft'
   else state = 'open'
 
+  let hasConflict: boolean | null
+  if (pr.mergeable === 'CONFLICTING') hasConflict = true
+  else if (pr.mergeable === 'MERGEABLE') hasConflict = false
+  else hasConflict = null
+
+  const assignees = (pr.assignees?.nodes ?? [])
+    .filter((a): a is GraphQLActor => !!a?.login)
+    .map((a) => ({ login: a.login!, avatarUrl: a.avatarUrl ?? '' }))
+
+  const labels = (pr.labels?.nodes ?? [])
+    .filter((l): l is { name: string; color: string; description: string | null } => !!l)
+    .map((l) => ({
+      name: l.name,
+      color: l.color,
+      description: l.description ?? undefined
+    }))
+
+  const linkedIssues = (pr.closingIssuesReferences?.nodes ?? [])
+    .filter((n): n is { number: number; title: string; state: 'OPEN' | 'CLOSED'; url: string } => !!n)
+    .map((n) => ({
+      number: n.number,
+      title: n.title,
+      state: n.state === 'CLOSED' ? ('closed' as const) : ('open' as const),
+      url: n.url
+    }))
+
+  const queuePosition = pr.mergeQueueEntry?.position
+  const defaultBranch = pr.baseRepository?.defaultBranchRef?.name ?? ''
+
   return {
-    number: item.number,
-    title: item.title,
+    number: pr.number,
+    title: pr.title,
     state,
-    url: item.url,
+    url: pr.url,
     branch: branchName,
-    author: item.author,
+    author: pr.author?.login ? { login: pr.author.login, avatarUrl: pr.author.avatarUrl ?? '' } : null,
     checks,
     checksOverall: computeOverall(checks),
     hasConflict,
     reviews,
     reviewDecision,
-    additions: prDetail.additions,
-    deletions: prDetail.deletions,
-    baseBranch: prDetail.base.ref,
-    isDefaultBase: prDetail.base.ref === (prDetail.base.repo?.default_branch ?? ''),
-    milestone: prDetail.milestone
+    additions: pr.additions,
+    deletions: pr.deletions,
+    baseBranch: pr.baseRefName,
+    isDefaultBase: pr.baseRefName === defaultBranch,
+    milestone: pr.milestone
       ? {
-          title: prDetail.milestone.title,
-          url: prDetail.milestone.html_url,
-          state: prDetail.milestone.state
+          title: pr.milestone.title,
+          url: pr.milestone.url,
+          state: pr.milestone.state === 'CLOSED' ? 'closed' : 'open'
         }
       : null,
-    assignees: (prDetail.assignees ?? []).map((a) => ({
-      login: a.login,
-      avatarUrl: a.avatar_url
-    })),
-    queuePosition: extras.queueEntry?.position,
-    queueEstimatedSeconds: extras.queueEntry?.estimatedSeconds ?? undefined,
+    assignees,
+    queuePosition: typeof queuePosition === 'number' && queuePosition > 0 ? queuePosition : undefined,
+    queueEstimatedSeconds:
+      typeof pr.mergeQueueEntry?.estimatedTimeToMerge === 'number'
+        ? pr.mergeQueueEntry.estimatedTimeToMerge
+        : undefined,
     behindBy: behindBy ?? undefined,
-    linkedIssues: extras.linkedIssues,
-    labels: (prDetail.labels ?? []).map((l) => ({
-      name: l.name,
-      color: l.color,
-      description: l.description ?? undefined
-    })),
+    linkedIssues,
+    labels,
     firstReleaseTag: firstReleaseTag ?? undefined
   }
 }

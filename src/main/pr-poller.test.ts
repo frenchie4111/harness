@@ -10,81 +10,15 @@ vi.mock('./worktree', () => ({
 }))
 vi.mock('./github', () => ({
   getRepoContext: vi.fn(),
-  listPullRequests: vi.fn(),
-  loadPRStatusForItem: vi.fn()
+  fetchPRStatusesForRepo: vi.fn()
 }))
 
-import { pickPRForWorktree, PRPoller } from './pr-poller'
+import { PRPoller } from './pr-poller'
 import { Store } from './store'
 import { initialState, type AppState } from '../shared/state'
 import type { PRStatus } from '../shared/state/prs'
-import { getRepoContext, listPullRequests, loadPRStatusForItem, type PRListItem } from './github'
+import { getRepoContext, fetchPRStatusesForRepo } from './github'
 import { listWorktrees, getBranchSha } from './worktree'
-
-function pr(overrides: Partial<PRListItem> = {}): PRListItem {
-  return {
-    number: 1,
-    title: '',
-    state: 'open',
-    draft: false,
-    mergedAt: null,
-    url: '',
-    headRef: 'feature/foo',
-    headSha: 'aaa',
-    headRepoFullName: 'owner/repo',
-    baseRef: 'main',
-    baseRepoFullName: 'owner/repo',
-    author: { login: 'alice', avatarUrl: '' },
-    updatedAt: '2025-01-01T00:00:00Z',
-    ...overrides
-  }
-}
-
-describe('pickPRForWorktree', () => {
-  it('matches a same-repo PR by head ref', () => {
-    const wt = { path: '/wt', branch: 'feature/foo', head: 'somelocalsha' }
-    const prs = [pr({ number: 7, headRef: 'feature/foo', headSha: 'remotesha' })]
-    expect(pickPRForWorktree(wt, prs, 'owner/repo')?.number).toBe(7)
-  })
-
-  it('prefers a SHA match over a ref-only match', () => {
-    const wt = { path: '/wt', branch: 'feature/foo', head: 'sha-of-fork-pr' }
-    const prs = [
-      pr({ number: 1, headRef: 'feature/foo', headSha: 'other-sha', headRepoFullName: 'owner/repo' }),
-      pr({ number: 2, headRef: 'feature/foo', headSha: 'sha-of-fork-pr', headRepoFullName: 'forker/repo' })
-    ]
-    expect(pickPRForWorktree(wt, prs, 'owner/repo')?.number).toBe(2)
-  })
-
-  it('matches a fork PR via SHA when the ref alone would be ambiguous', () => {
-    const wt = { path: '/wt', branch: 'feature/foo', head: 'fork-sha' }
-    const prs = [
-      pr({ number: 9, headRef: 'feature/foo', headSha: 'fork-sha', headRepoFullName: 'fork1/repo' })
-    ]
-    expect(pickPRForWorktree(wt, prs, 'owner/repo')?.number).toBe(9)
-  })
-
-  it('refuses to ref-match across repos (fork same-named branch, no SHA match)', () => {
-    // Worktree's branch matches a fork PR's headRef, but SHA has diverged
-    // (user committed locally) and the fork repo differs. We refuse to
-    // claim it via ref-only since that would be wrong for the fork case.
-    const wt = { path: '/wt', branch: 'feature/foo', head: 'diverged-sha' }
-    const prs = [
-      pr({ number: 5, headRef: 'feature/foo', headSha: 'orig-sha', headRepoFullName: 'fork1/repo' })
-    ]
-    expect(pickPRForWorktree(wt, prs, 'owner/repo')).toBeNull()
-  })
-
-  it('returns null when nothing matches', () => {
-    const wt = { path: '/wt', branch: 'other', head: 'x' }
-    expect(pickPRForWorktree(wt, [pr()], 'owner/repo')).toBeNull()
-  })
-
-  it('returns null on empty list', () => {
-    const wt = { path: '/wt', branch: 'feature/foo', head: 'aaa' }
-    expect(pickPRForWorktree(wt, [], 'owner/repo')).toBeNull()
-  })
-})
 
 function fakePRStatus(number: number): PRStatus {
   return {
@@ -119,25 +53,6 @@ function wt(path: string, branch: string, head: string) {
   }
 }
 
-function prListItem(overrides: Partial<PRListItem>): PRListItem {
-  return {
-    number: 0,
-    title: '',
-    state: 'open',
-    draft: false,
-    mergedAt: null,
-    url: '',
-    headRef: '',
-    headSha: '',
-    headRepoFullName: 'o/r',
-    baseRef: 'main',
-    baseRepoFullName: 'o/r',
-    author: null,
-    updatedAt: '',
-    ...overrides
-  }
-}
-
 function makePoller(initialByPath: Record<string, PRStatus | null>): {
   store: Store
   poller: PRPoller
@@ -165,7 +80,7 @@ describe('PRPoller.refreshAll — offline / failure preservation', () => {
     vi.mocked(getBranchSha).mockResolvedValue(null)
   })
 
-  it('preserves cached byPath when the repo PR list fetch throws (wifi blip)', async () => {
+  it('preserves cached byPath when the batched fetch throws (wifi blip)', async () => {
     const { store, poller } = makePoller({
       '/wt/a': fakePRStatus(1),
       '/wt/b': fakePRStatus(2)
@@ -174,7 +89,7 @@ describe('PRPoller.refreshAll — offline / failure preservation', () => {
       wt('/wt/a', 'a', 'sha-a'),
       wt('/wt/b', 'b', 'sha-b')
     ])
-    vi.mocked(listPullRequests).mockRejectedValue(new Error('ENOTFOUND api.github.com'))
+    vi.mocked(fetchPRStatusesForRepo).mockRejectedValue(new Error('ENOTFOUND api.github.com'))
 
     await poller.refreshAll()
 
@@ -183,7 +98,7 @@ describe('PRPoller.refreshAll — offline / failure preservation', () => {
     expect(byPath['/wt/b']).toEqual(fakePRStatus(2))
   })
 
-  it('overlays successful per-worktree fetches and preserves the failed ones', async () => {
+  it('overlays each worktree from the batched result', async () => {
     const { store, poller } = makePoller({
       '/wt/a': fakePRStatus(1),
       '/wt/b': fakePRStatus(2)
@@ -192,28 +107,28 @@ describe('PRPoller.refreshAll — offline / failure preservation', () => {
       wt('/wt/a', 'a', 'sha-a'),
       wt('/wt/b', 'b', 'sha-b')
     ])
-    vi.mocked(listPullRequests).mockResolvedValue([
-      prListItem({ number: 10, headRef: 'a', headSha: 'sha-a' }),
-      prListItem({ number: 11, headRef: 'b', headSha: 'sha-b' })
-    ])
-    vi.mocked(loadPRStatusForItem).mockImplementation(async (_path, item) => {
-      if (item.number === 10) return fakePRStatus(10)
-      throw new Error('detail fetch failed')
-    })
+    vi.mocked(fetchPRStatusesForRepo).mockResolvedValue(
+      new Map<string, PRStatus | null>([
+        ['/wt/a', fakePRStatus(10)],
+        ['/wt/b', fakePRStatus(11)]
+      ])
+    )
 
     await poller.refreshAll()
 
     const byPath = store.getSnapshot().state.prs.byPath
     expect(byPath['/wt/a']).toEqual(fakePRStatus(10))
-    expect(byPath['/wt/b']).toEqual(fakePRStatus(2))
+    expect(byPath['/wt/b']).toEqual(fakePRStatus(11))
   })
 
-  it('writes authoritative null when fetch succeeds but no PR matches', async () => {
+  it('writes null when batched fetch finds no PR for a branch', async () => {
     const { store, poller } = makePoller({
       '/wt/a': fakePRStatus(1)
     })
     vi.mocked(listWorktrees).mockResolvedValue([wt('/wt/a', 'a', 'sha-a')])
-    vi.mocked(listPullRequests).mockResolvedValue([])
+    vi.mocked(fetchPRStatusesForRepo).mockResolvedValue(
+      new Map<string, PRStatus | null>([['/wt/a', null]])
+    )
 
     await poller.refreshAll()
 
@@ -228,7 +143,7 @@ describe('PRPoller.refreshAll — offline / failure preservation', () => {
       '/wt/gone': fakePRStatus(99)
     })
     vi.mocked(listWorktrees).mockResolvedValue([wt('/wt/a', 'a', 'sha-a')])
-    vi.mocked(listPullRequests).mockRejectedValue(new Error('offline'))
+    vi.mocked(fetchPRStatusesForRepo).mockRejectedValue(new Error('offline'))
 
     await poller.refreshAll()
 
