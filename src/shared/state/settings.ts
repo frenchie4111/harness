@@ -38,6 +38,14 @@ export interface CustomTheme {
  *  components reading the slice. */
 export const EMPTY_CUSTOM_THEMES: CustomTheme[] = []
 
+/** Built-in theme ids used as the per-mode default when nothing else
+ *  applies — the seed value for `themeLight`/`themeDark`, the IPC "this
+ *  matches the default so don't persist it" guard, and the fallback
+ *  `[data-theme]` selector for partial custom themes. Kept in shared so
+ *  main and renderer agree without crossing the import boundary. */
+export const DEFAULT_LIGHT_THEME = 'solarized-light'
+export const DEFAULT_DARK_THEME = 'dark'
+
 export interface SettingsState {
   /** Whether the active theme is the light theme, the dark theme, or follows
    *  the OS appearance. Default 'system'. */
@@ -182,8 +190,8 @@ export type SettingsEvent =
 // constructor from the on-disk config and secrets.
 export const initialSettings: SettingsState = {
   themeMode: 'system',
-  themeLight: 'solarized-light',
-  themeDark: 'dark',
+  themeLight: DEFAULT_LIGHT_THEME,
+  themeDark: DEFAULT_DARK_THEME,
   customThemes: EMPTY_CUSTOM_THEMES,
   hotkeys: null,
   defaultAgent: 'claude',

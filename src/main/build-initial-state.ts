@@ -10,7 +10,11 @@ import { initialCosts } from '../shared/state/costs'
 import { initialBrowser } from '../shared/state/browser'
 import { initialJsonClaude } from '../shared/state/json-claude'
 import { initialSnooze } from '../shared/state/snooze'
-import { initialSettings } from '../shared/state/settings'
+import {
+  initialSettings,
+  DEFAULT_LIGHT_THEME,
+  DEFAULT_DARK_THEME
+} from '../shared/state/settings'
 import {
   DEFAULT_CLAUDE_COMMAND,
   DEFAULT_TERMINAL_FONT_FAMILY,
@@ -48,8 +52,8 @@ export function buildInitialAppState(
         config.themeMode === 'light' || config.themeMode === 'dark'
           ? config.themeMode
           : 'system',
-      themeLight: config.themeLight || 'solarized-light',
-      themeDark: config.themeDark || 'dark',
+      themeLight: config.themeLight || DEFAULT_LIGHT_THEME,
+      themeDark: config.themeDark || DEFAULT_DARK_THEME,
       hotkeys: config.hotkeys || null,
       defaultAgent: config.defaultAgent || 'claude',
       claudeCommand: config.claudeCommand || DEFAULT_CLAUDE_COMMAND,

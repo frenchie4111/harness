@@ -39,6 +39,7 @@ import type { PtyManager } from './pty-manager'
 import type { WorktreesFSM } from './worktrees-fsm'
 import type { Config } from './persistence'
 import { saveConfig, saveConfigSync, THEME_APP_BG } from './persistence'
+import { DEFAULT_LIGHT_THEME, DEFAULT_DARK_THEME } from '../shared/state/settings'
 import { registerWindowControlHandlers } from './window-controls'
 import { sealAllActive } from './activity'
 import { log, getLogFilePath } from './debug'
@@ -75,7 +76,9 @@ const FALLBACK_BG = '#0a0a0a'
 function resolveWindowBg(config: Config): string {
   const mode = config.themeMode ?? 'system'
   const wantDark = mode === 'system' ? nativeTheme.shouldUseDarkColors : mode === 'dark'
-  const id = wantDark ? (config.themeDark ?? 'dark') : (config.themeLight ?? 'solarized-light')
+  const id = wantDark
+    ? (config.themeDark ?? DEFAULT_DARK_THEME)
+    : (config.themeLight ?? DEFAULT_LIGHT_THEME)
   return THEME_APP_BG[id] ?? config.lastEffectiveAppBg ?? FALLBACK_BG
 }
 

@@ -1,5 +1,9 @@
 import { useMemo } from 'react'
-import type { CustomTheme } from '../../shared/state/settings'
+import {
+  type CustomTheme,
+  DEFAULT_LIGHT_THEME,
+  DEFAULT_DARK_THEME
+} from '../../shared/state/settings'
 import { useSettings } from '../store'
 import { THEME_OPTIONS, type ThemeOption } from '../themes'
 import { useSystemColorScheme } from './useSystemColorScheme'
@@ -16,9 +20,6 @@ export type ResolvedTheme =
       mode: 'light' | 'dark'
       colors: Record<string, string>
     }
-
-const DEFAULT_DARK_ID = 'dark'
-const DEFAULT_LIGHT_ID = 'solarized-light'
 
 function findBuiltIn(id: string): ThemeOption | undefined {
   return THEME_OPTIONS.find((t) => t.id === id)
@@ -54,7 +55,7 @@ export function resolveTheme(
   if (builtIn && builtIn.mode === mode) return wrapBuiltIn(builtIn)
   const custom = findCustom(id, customs)
   if (custom && custom.mode === mode) return wrapCustom(custom)
-  const fallbackId = mode === 'dark' ? DEFAULT_DARK_ID : DEFAULT_LIGHT_ID
+  const fallbackId = mode === 'dark' ? DEFAULT_DARK_THEME : DEFAULT_LIGHT_THEME
   const fallback = findBuiltIn(fallbackId)
   if (fallback) return wrapBuiltIn(fallback)
   // Should be unreachable — both defaults are in THEME_OPTIONS — but

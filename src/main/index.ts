@@ -46,7 +46,6 @@ import {
   saveConfig,
   saveConfigSync,
   DEFAULT_CLAUDE_COMMAND,
-  DEFAULT_THEME,
   AVAILABLE_THEMES,
   THEME_APP_BG,
   DEFAULT_TERMINAL_FONT_FAMILY,
@@ -68,6 +67,7 @@ import { registerRepoRoot } from './repo-roots'
 import type { AddRepoResult } from '../shared/repo-pick'
 import { isWorktreeMerged } from '../shared/state/prs'
 import { MAX_WAKE } from '../shared/state/snooze'
+import { DEFAULT_LIGHT_THEME, DEFAULT_DARK_THEME } from '../shared/state/settings'
 import { watchStatusDir } from './hooks'
 import { getAgent, type AgentKind } from './agents'
 import { buildClaudeLaunchSettings } from './claude-launch'
@@ -1761,7 +1761,7 @@ function registerIpcHandlers(): void {
     if (typeof theme !== 'string' || !isKnownLightTheme(theme)) {
       return false
     }
-    if (theme === 'solarized-light') {
+    if (theme === DEFAULT_LIGHT_THEME) {
       delete config.themeLight
     } else {
       config.themeLight = theme
@@ -1775,7 +1775,7 @@ function registerIpcHandlers(): void {
     if (typeof theme !== 'string' || !isKnownDarkTheme(theme)) {
       return false
     }
-    if (theme === DEFAULT_THEME) {
+    if (theme === DEFAULT_DARK_THEME) {
       delete config.themeDark
     } else {
       config.themeDark = theme

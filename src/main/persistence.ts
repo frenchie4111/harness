@@ -219,7 +219,6 @@ export interface Config {
 export const DEFAULT_WORKTREE_BASE: 'remote' | 'local' = 'remote'
 export const DEFAULT_MERGE_STRATEGY: 'squash' | 'merge-commit' | 'fast-forward' = 'squash'
 
-export const DEFAULT_THEME = 'dark'
 export const AVAILABLE_THEMES = [
   'dark',
   'dracula',

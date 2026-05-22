@@ -1,3 +1,4 @@
+import { DEFAULT_LIGHT_THEME, DEFAULT_DARK_THEME } from '../shared/state/settings'
 import type { ResolvedTheme } from './hooks/useActiveTheme'
 
 // Tracks which `--color-*` properties we set inline on the documentElement
@@ -52,7 +53,7 @@ export function applyTheme(theme: ResolvedTheme): void {
   // mode, then layer the overrides inline. The `[data-theme]` selector
   // wins for unset keys; inline `--color-*` wins for overridden ones
   // because inline trumps attribute selectors by CSS specificity.
-  root.dataset.theme = theme.mode === 'dark' ? 'dark' : 'solarized-light'
+  root.dataset.theme = theme.mode === 'dark' ? DEFAULT_DARK_THEME : DEFAULT_LIGHT_THEME
   for (const [key, value] of Object.entries(theme.colors)) {
     if (!SEMANTIC_KEYS.has(key)) continue
     const prop = `--color-${key}`
