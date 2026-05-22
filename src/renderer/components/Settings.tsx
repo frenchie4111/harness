@@ -202,7 +202,8 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     autoSleepMinutes,
     autoApprovePermissions,
     autoApproveSteerInstructions,
-    snoozeDefaultDays
+    snoozeDefaultDays,
+    expandedDiagnosticLoggingEnabled
   } = settings
   const setupScript = worktreeScripts.setup
   const teardownScript = worktreeScripts.teardown
@@ -2048,6 +2049,26 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 </p>
               </div>
               )}
+
+              <div className="mt-6 bg-panel-raised border border-border rounded-lg p-4">
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={expandedDiagnosticLoggingEnabled}
+                    onChange={(e) => { void backend.setExpandedDiagnosticLoggingEnabled(e.target.checked) }}
+                    className="mt-0.5 cursor-pointer"
+                  />
+                  <div className="flex-1">
+                    <div className="text-sm text-fg-bright">Expanded diagnostic logging</div>
+                    <div className="text-xs text-dim mt-0.5">
+                      Writes a <code className="bg-panel px-1 rounded">[github-api]</code> line to{' '}
+                      <code className="bg-panel px-1 rounded">debug.log</code> for every GitHub API call
+                      (URL, method, status, duration). Off by default — the per-call volume is high
+                      during PR-refresh bursts. The HUD's "GH API" rate metric is always on regardless.
+                    </div>
+                  </div>
+                </label>
+              </div>
               </>
                 )
               })()}

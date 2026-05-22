@@ -162,7 +162,7 @@ function aggregateEventTypes(
     .sort((a, b) => b.perSec - a.perSec)
 }
 
-const CHART_WIDTH = 500
+const CHART_WIDTH = 560
 const LINE_H = 120
 const BAR_H = 60
 const GAP = 6
@@ -300,7 +300,7 @@ interface Props {
   onClose: () => void
 }
 
-const HUD_WIDTH = 520
+const HUD_WIDTH = 580
 
 export function PerfMonitorHUD({ onClose }: Props): JSX.Element {
   const backend = useBackend()
@@ -525,6 +525,11 @@ export function PerfMonitorHUD({ onClose }: Props): JSX.Element {
           label="Max commit"
           value={`${renderLatest.maxDurationMs.toFixed(1)}ms`}
           className={statusClass(renderLatest.maxDurationMs, 8, 16)}
+        />
+        <Scalar
+          label="GH (1h)"
+          value={metrics ? String(metrics.githubApiCallsLastHour) : '—'}
+          className={metrics ? statusClass(metrics.githubApiCallsLastHour, 500, 2000) : undefined}
         />
       </div>
 

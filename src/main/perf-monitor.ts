@@ -27,6 +27,11 @@ export class PerfMonitor {
 
   private githubApiCallCount = 0
   private githubApiCallsPerSec = 0
+  // 60 one-minute buckets. Current write position rotates as wall-clock
+  // minutes elapse; sum across all 60 = calls in the last hour.
+  private githubApiCallsByMinute: number[] = new Array(60).fill(0)
+  private githubMinuteIndex = 0
+  private githubLastMinuteAt = 0
 
   private terminalBytes: Record<string, number> = {}
   private terminalBytesPerSec: Record<string, number> = {}
@@ -52,6 +57,7 @@ export class PerfMonitor {
   start(store: Store, getActivePtyCount: () => number): void {
     this.activePtyCountFn = getActivePtyCount
     this.startTime = Date.now()
+    this.githubLastMinuteAt = Date.now()
 
     this.unsubscribe = store.subscribe((event) => {
       this.storeEventCount++
@@ -159,7 +165,29 @@ export class PerfMonitor {
   }
 
   recordGitHubApiCall(): void {
+    this.advanceGithubMinuteIfNeeded()
     this.githubApiCallCount++
+    this.githubApiCallsByMinute[this.githubMinuteIndex]++
+  }
+
+  private advanceGithubMinuteIfNeeded(): void {
+    const now = Date.now()
+    const elapsed = now - this.githubLastMinuteAt
+    if (elapsed < 60_000) return
+    let minutesElapsed = Math.floor(elapsed / 60_000)
+    if (minutesElapsed > 60) minutesElapsed = 60
+    for (let i = 0; i < minutesElapsed; i++) {
+      this.githubMinuteIndex = (this.githubMinuteIndex + 1) % 60
+      this.githubApiCallsByMinute[this.githubMinuteIndex] = 0
+    }
+    this.githubLastMinuteAt = now - (elapsed % 60_000)
+  }
+
+  private getGithubApiCallsLastHour(): number {
+    this.advanceGithubMinuteIfNeeded()
+    let sum = 0
+    for (const c of this.githubApiCallsByMinute) sum += c
+    return sum
   }
 
   recordTerminalBytes(id: string, byteCount: number): void {
@@ -172,6 +200,7 @@ export class PerfMonitor {
       storeEventsPerSec: this.storeEventsPerSec,
       ipcMessagesPerSec: this.ipcMessagesPerSec,
       githubApiCallsPerSec: this.githubApiCallsPerSec,
+      githubApiCallsLastHour: this.getGithubApiCallsLastHour(),
       terminalBytesPerSec: { ...this.terminalBytesPerSec },
       totalTerminalBytesPerSec: this.totalTerminalBytesPerSec,
       activePtyCount: this.activePtyCountFn?.() ?? 0,

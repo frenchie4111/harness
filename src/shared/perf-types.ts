@@ -15,6 +15,7 @@ export interface PerfMetrics {
   storeEventsPerSec: number
   ipcMessagesPerSec: number
   githubApiCallsPerSec: number
+  githubApiCallsLastHour: number
   terminalBytesPerSec: Record<string, number>
   totalTerminalBytesPerSec: number
   activePtyCount: number
