@@ -111,17 +111,32 @@ export function AllFilesPanel({
   }, [])
 
   const actions = (
-    <Tooltip label="Refresh">
-      <button
-        onClick={(e) => {
-          e.stopPropagation()
-          refresh()
-        }}
-        className="text-faint hover:text-fg transition-colors cursor-pointer"
-      >
-        <RefreshCw size={12} />
-      </button>
-    </Tooltip>
+    <>
+      {worktreePath && (
+        <Tooltip label="Reveal in Finder">
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              backend.openPath(worktreePath)
+            }}
+            className="text-faint hover:text-fg transition-colors cursor-pointer"
+          >
+            <FolderOpen size={12} />
+          </button>
+        </Tooltip>
+      )}
+      <Tooltip label="Refresh">
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            refresh()
+          }}
+          className="text-faint hover:text-fg transition-colors cursor-pointer"
+        >
+          <RefreshCw size={12} />
+        </button>
+      </Tooltip>
+    </>
   )
 
   return (

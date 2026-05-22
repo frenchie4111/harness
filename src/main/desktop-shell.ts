@@ -557,6 +557,12 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
       return err ? { ok: false as const, path: dir, message: err } : { ok: true as const, path: dir }
     })
 
+    transport.onRequest('shell:openPath', async (_ctx, path: string) => {
+      const error = await shell.openPath(path)
+      if (error) return { ok: false as const, message: error }
+      return { ok: true as const }
+    })
+
     transport.onRequest('debug:openLog', async (_ctx) => {
       const path = getLogFilePath()
       const error = await shell.openPath(path)
