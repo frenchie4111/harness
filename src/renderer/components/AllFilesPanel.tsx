@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { RefreshCw, AtSign, Code2, ChevronRight, Folder, FolderOpen, FileText } from 'lucide-react'
 import { Tooltip } from './Tooltip'
 import { RightPanel } from './RightPanel'
-import { useSettings } from '../store'
+import { useActiveBackend, useSettings } from '../store'
 import { useBackend } from '../backend'
 import { bindingToString, formatBindingGlyphs, resolveHotkeys } from '../hotkeys'
 
@@ -58,6 +58,7 @@ export function AllFilesPanel({
   onSendToAgent
 }: AllFilesPanelProps): JSX.Element {
   const backend = useBackend()
+  const activeBackend = useActiveBackend()
   const [files, setFiles] = useState<string[]>([])
   const [hasLoaded, setHasLoaded] = useState(false)
   const [filter, setFilter] = useState('')
@@ -112,7 +113,7 @@ export function AllFilesPanel({
 
   const actions = (
     <>
-      {worktreePath && (
+      {worktreePath && activeBackend.kind === 'local' && (
         <Tooltip label="Reveal in Finder">
           <button
             onClick={(e) => {
