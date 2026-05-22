@@ -203,30 +203,9 @@ This app assumes that you are going to want to use worktrees (otherwise what's t
 
 It will create a worktree directory at `../<your repo folder>-worktree` and start making worktrees there. This directory will probably be changable at some point
 
-# "Roadmap"
+# Roadmap
 
-- [x] Initial functionality
-- [x] Proper packaging into an app and dmg for other mac users
-- [x] OTA Updates
-- [x] Settings, configurability, etc
-- [x] Better persistence (PTYs don't really stay if you kill the app, which can be a bit frustrating)
-- [x] Multi-repo support
-- [x] MCP server — Claude can create and manage worktrees itself
-- [x] Command center — bird's-eye view of all worktrees
-- [x] Activity tracking — visual timeline of agent status history
-- [x] Syntax-highlighted diffs
-- [x] 9 built-in themes
-- [x] Support other LLM CLI tools — Codex is now supported alongside Claude Code
-- [x] Per-agent model selection
-- [x] Vertical split panes
-- [x] Contextual system prompt injection so the agent knows it's inside Harness
-- [x] Shared permissions via symlinked Claude settings
-- [x] Release notes page inside the app
-- [ ] Browser panes — view localhost dev servers next to the terminal
-- [ ] Dev server management — start/stop/inspect dev servers per worktree
-- [ ] Notifications when claudes are ready for you (maybe peon noises?)
-- [ ] Mobile app
-- [ ] Whatever else people want — add a github issue or email me directly!
+The high-level roadmap has been moved here: https://github.com/frenchie4111/harness/issues/31
 
 # Setup, building, and running locally
 
@@ -265,4 +244,5 @@ xattr -cr release/mac-arm64/Harness.app
 
 # Contributing
 
-I mean if you want? I think you probably just want to tell claude to download it and make whatever changes you want
+We absolutely love contributors. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, PR conventions, and pointers into the architecture docs.
+
