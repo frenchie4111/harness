@@ -298,8 +298,12 @@ which the PtyManager sets when spawning each terminal.
 
 Two log files in `userData`:
 
-- **`debug.log`** — categorical events. Cleared on startup. Tail with
-  `npm run log`.
+- **`debug.log`** — categorical events. **Append-only across sessions**
+  (same persistence model as `perf.log`) so crash forensics from before
+  the most recent restart are still inspectable. Rotated at 10MB into
+  `debug.log.1` (one archive only). Tail with `npm run log` (uses
+  `tail -F` so it survives rotation). Manual clear via `npm run log:clear`
+  (removes both `debug.log` and `debug.log.1`).
 - **`perf.log`** — perf trace. **Append-only across sessions** so lag
   that happened earlier (possibly before the most recent restart) is
   still inspectable. Tail with `npm run log:perf`. Clear before a fresh
