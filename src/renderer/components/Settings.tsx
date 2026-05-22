@@ -10,6 +10,7 @@ import { Tooltip } from './Tooltip'
 import { AGENT_REGISTRY, agentDisplayName, CLAUDE_MODELS, CODEX_MODELS } from '../../shared/agent-registry'
 import { AgentIcon } from './AgentIcon'
 import { BUILT_IN_THEMES_BY_MODE, type ThemeOption } from '../themes'
+import { SEMANTIC_KEYS } from '../theme-apply'
 import type { CustomTheme } from '../../shared/state/settings'
 import { QRCodeSVG } from 'qrcode.react'
 
@@ -2766,13 +2767,33 @@ function customSwatches(c: CustomTheme): Swatch[] {
   return out
 }
 
+function readBuiltInThemeJson(opt: ThemeOption): string {
+  const probe = document.createElement('div')
+  probe.dataset.theme = opt.id
+  probe.style.display = 'none'
+  document.body.appendChild(probe)
+  try {
+    const cs = getComputedStyle(probe)
+    const colors: Record<string, string> = {}
+    for (const key of SEMANTIC_KEYS) {
+      const v = cs.getPropertyValue(`--color-${key}`).trim()
+      if (v) colors[key] = v
+    }
+    return JSON.stringify({ name: opt.label, mode: opt.mode, colors }, null, 2) + '\n'
+  } finally {
+    probe.remove()
+  }
+}
+
 function ThemeRow({
   id,
   label,
   description,
   swatches,
   isActive,
-  onSelect
+  onSelect,
+  onCopy,
+  copied
 }: {
   id: string
   label: string
@@ -2780,6 +2801,8 @@ function ThemeRow({
   swatches: Swatch[]
   isActive: boolean
   onSelect: (id: string) => void
+  onCopy?: () => void
+  copied?: boolean
 }): JSX.Element {
   return (
     <button
@@ -2806,6 +2829,19 @@ function ThemeRow({
         <div className="text-sm text-fg">{label}</div>
         <div className="text-xs text-dim truncate">{description}</div>
       </div>
+      {onCopy && (
+        <Tooltip label={copied ? 'Copied!' : 'Copy as JSON'} side="left">
+          <span
+            role="button"
+            tabIndex={0}
+            onClick={(e) => { e.stopPropagation(); onCopy() }}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onCopy() } }}
+            className="shrink-0 text-dim hover:text-fg transition-colors cursor-pointer p-1"
+          >
+            {copied ? <Check size={14} className="text-success" /> : <Copy size={14} />}
+          </span>
+        </Tooltip>
+      )}
       {isActive && <Check size={14} className="text-success shrink-0" />}
     </button>
   )
@@ -2820,6 +2856,23 @@ function ThemeModePicker({
   disabled,
   onSelect
 }: ThemeModePickerProps): JSX.Element {
+  const [copiedId, setCopiedId] = useState<string | null>(null)
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    return () => {
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current)
+    }
+  }, [])
+  const handleCopy = (opt: ThemeOption): void => {
+    const json = readBuiltInThemeJson(opt)
+    void navigator.clipboard.writeText(json)
+    if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current)
+    setCopiedId(opt.id)
+    copiedTimerRef.current = setTimeout(() => {
+      setCopiedId(null)
+      copiedTimerRef.current = null
+    }, 1500)
+  }
   return (
     <div className={disabled ? 'opacity-50' : ''}>
       <h3 className="text-sm font-semibold text-fg-bright mb-1">{title}</h3>
@@ -2834,6 +2887,8 @@ function ThemeModePicker({
             swatches={builtInSwatches(opt)}
             isActive={activeId === opt.id}
             onSelect={onSelect}
+            onCopy={() => handleCopy(opt)}
+            copied={copiedId === opt.id}
           />
         ))}
         {customs.map((c) => (
