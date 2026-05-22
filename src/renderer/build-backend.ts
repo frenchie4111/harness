@@ -347,6 +347,7 @@ export function buildBackend(
     // Always-local: shell.openExternal opens on the local user's
     // machine, never on the remote backend. Same with debug log paths.
     openExternal: (url: string) => sigLocal('shell:openExternal', url),
+    openPath: (path: string) => reqLocal('shell:openPath', path),
     openDebugLog: () => reqLocal('debug:openLog'),
     showDebugLogInFolder: () => reqLocal('debug:showLogInFolder'),
 
