@@ -95,6 +95,13 @@ if ! gh auth status >/dev/null 2>&1; then
 fi
 ok "gh CLI is authenticated"
 
+# gh needs a default repo set, otherwise `gh release create` fails at the
+# very end of the script after notarization has already completed.
+if ! gh repo set-default --view >/dev/null 2>&1; then
+  fail "gh has no default repo for this directory. Run: gh repo set-default frenchie4111/harness"
+fi
+ok "gh default repo is set"
+
 # claude CLI must be available (used for release notes generation)
 if ! command -v claude >/dev/null 2>&1; then
   fail "claude CLI is not installed. Install with: npm install -g @anthropic-ai/claude-code"
@@ -184,15 +191,38 @@ fi
 CHANGES_FILE=$(mktemp)
 echo "$CHANGES" > "$CHANGES_FILE"
 
+# Build a contributors map for this release: one line per PR authored by
+# someone other than the release maintainer, formatted "#NN @login". The
+# Claude prompt below reads this to inline-credit contributors in the
+# releases.html entry; the gh release notes heredoc later appends a
+# Contributors section listing the unique @logins.
+CONTRIBUTORS_FILE=$(mktemp)
+SELF_USER=$(gh api user --jq .login 2>/dev/null || echo "")
+if [ -n "$PREV_TAG" ]; then
+  for pr_num in $(git log --pretty=format:'%s' "${PREV_TAG}..HEAD" | grep -oE '#[0-9]+' | tr -d '#' | sort -u); do
+    pr_author=$(gh pr view "$pr_num" --json author --jq '.author.login' 2>/dev/null || true)
+    if [ -n "$pr_author" ] && [ "$pr_author" != "$SELF_USER" ]; then
+      echo "#${pr_num} @${pr_author}" >> "$CONTRIBUTORS_FILE"
+    fi
+  done
+fi
+if [ -s "$CONTRIBUTORS_FILE" ]; then
+  ok "External contributors: $(awk '{print $2}' "$CONTRIBUTORS_FILE" | sort -u | paste -sd ' ' -)"
+else
+  echo "  (no external contributors this release)"
+fi
+
 RELEASE_DATE=$(date +"%B %-d, %Y")
 
 claude -p "Add a release entry for ${TAG} (released ${RELEASE_DATE}) to site/public/releases.html.
 
 The raw commit messages since the last release are in ${CHANGES_FILE} — read that file.
 
+External contributors for this release are in ${CONTRIBUTORS_FILE} — read that file too. Each line is '#NN @login' for a PR authored by someone other than the release maintainer. If the file is empty or missing, there are no external contributors and you should skip the credit instructions below.
+
 Read site/public/releases.html to understand the existing HTML structure and writing style,
 then insert the new entry at the top of the releases list (right after the <!-- Releases -->
-div opening, before the first existing release section).
+div opening, before the first existing release section). See the v2.9.3 entry for the canonical inline-credit and trailing-thanks pattern.
 
 Rules:
 - Match the exact HTML structure, CSS classes, and formatting of existing entries.
@@ -204,6 +234,8 @@ Rules:
 - A short 1-2 sentence headline summary in the <p> tag after the download link.
 - Date format: \"${RELEASE_DATE}\".
 - Download link points to: https://github.com/frenchie4111/harness/releases/tag/${TAG}
+- For any <li> whose change corresponds to a PR listed in the contributors file, append an inline credit at the end of the <li>: <em class=\"text-neutral-500\">(thanks <a href=\"https://github.com/LOGIN\" class=\"text-amber-400/80 hover:text-amber-300\">@LOGIN</a>, <a href=\"https://github.com/frenchie4111/harness/pull/NN\" class=\"text-amber-400/80 hover:text-amber-300\">#NN</a>)</em>. Match #NN to the PR number embedded in the original commit message.
+- If the contributors file has any entries, end the .note-body div with a trailing <p class=\"text-neutral-400 text-sm mt-6 leading-relaxed\"> that reads 'Huge thanks to @user1, @user2, and @userN for their contributions to this release.' — each @user wrapped in <a href=\"https://github.com/LOGIN\" class=\"text-amber-400/80 hover:text-amber-300\">@LOGIN</a>, ordered alphabetically, with Oxford-comma 'and' formatting.
 - Do NOT modify any existing release entries. Only add the new one." \
   --allowedTools Read,Edit --model sonnet \
   || warn "Claude failed to update release notes — continuing anyway"
@@ -280,12 +312,29 @@ else
   CHANGES=$(git log --pretty=format:'- %s' "${PREV_TAG}..${TAG}" | grep -v "^- Co-Authored-By:" || true)
 fi
 
+CONTRIBUTORS_SECTION=""
+if [ -s "$CONTRIBUTORS_FILE" ]; then
+  USERS_FORMATTED=$(awk '{print $2}' "$CONTRIBUTORS_FILE" | sort -u | awk '
+    { users[NR] = $0 }
+    END {
+      if (NR == 1) print users[1]
+      else if (NR == 2) print users[1] " and " users[2]
+      else {
+        out = ""
+        for (i = 1; i < NR; i++) out = out users[i] ", "
+        print out "and " users[NR]
+      }
+    }
+  ')
+  CONTRIBUTORS_SECTION=$(printf '\n### Contributors\n\nHuge thanks to %s for their contributions to this release.\n' "$USERS_FORMATTED")
+fi
+
 NOTES_FILE=$(mktemp)
 cat > "$NOTES_FILE" <<EOF
 ## Harness ${TAG}
 
 ### Changes
-${CHANGES}
+${CHANGES}${CONTRIBUTORS_SECTION}
 
 ### Installing
 
@@ -294,6 +343,8 @@ ${CHANGES}
 
 Drag \`Harness.app\` to Applications, then launch it. Existing installs will auto-update.
 EOF
+
+rm -f "$CONTRIBUTORS_FILE"
 
 ok "Release notes generated"
 
