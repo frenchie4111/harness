@@ -2808,7 +2808,7 @@ function ThemeRow({
     <button
       type="button"
       onClick={() => onSelect(id)}
-      className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors cursor-pointer ${
+      className={`group w-full flex items-center gap-3 px-4 py-3 text-left transition-colors cursor-pointer ${
         isActive ? 'bg-surface' : 'hover:bg-surface/60'
       }`}
     >
@@ -2836,7 +2836,9 @@ function ThemeRow({
             tabIndex={0}
             onClick={(e) => { e.stopPropagation(); onCopy() }}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onCopy() } }}
-            className="shrink-0 text-dim hover:text-fg transition-colors cursor-pointer p-1"
+            className={`shrink-0 text-dim hover:text-fg transition-opacity cursor-pointer p-1 ${
+              copied ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus:opacity-100'
+            }`}
           >
             {copied ? <Check size={14} className="text-success" /> : <Copy size={14} />}
           </span>
