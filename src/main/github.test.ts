@@ -481,6 +481,43 @@ describe('fetchPRStatusesForRepo matcher', () => {
     expect(result.get('/wt')).toBeNull()
   })
 
+  it('does not claim a PR for a worktree on a non-default merge-point branch (develop)', async () => {
+    // 'develop' isn't the default branch but PR #50 targets it as base.
+    // A worktree sitting on develop shouldn't be credited with a PR even
+    // if search-by-SHA surfaces a recently squashed candidate.
+    const developSha = 'a'.repeat(40)
+    const featureSha = 'b'.repeat(40)
+    fetchSpy.mockResolvedValueOnce(
+      mockResponse(200, {
+        data: {
+          repository: {
+            defaultBranchRef: { name: 'main' },
+            milestones: { totalCount: 0 },
+            // Worktree on develop: search returns the most-recently-squashed
+            // PR which still claims our origin via sameRepo fallback if we
+            // weren't already excluding it.
+            prBr0: { nodes: [] },
+            // Worktree on feature: legitimately ours, baseRefName=develop.
+            prBr1: { nodes: [gqlPR({ number: 50, baseRefName: 'develop', headRefOid: featureSha })] }
+          },
+          prSearch0: {
+            nodes: [gqlPR({ number: 99, state: 'MERGED', headRefOid: 'c'.repeat(40) })]
+          },
+          prSearch1: { nodes: [] }
+        }
+      })
+    )
+    const result = await fetchPRStatusesForRepo(
+      { origin: { owner: 'o', repo: 'r' }, upstream: { owner: 'o', repo: 'r' } },
+      [
+        { worktreePath: '/wt-dev', branch: 'develop', headSha: developSha },
+        { worktreePath: '/wt-feat', branch: 'feature', headSha: featureSha }
+      ]
+    )
+    expect(result.get('/wt-dev')).toBeNull()
+    expect(result.get('/wt-feat')?.number).toBe(50)
+  })
+
   it('does not claim a PR for a worktree on master when that is the default branch', async () => {
     const masterSha = 'c'.repeat(40)
     const mergedPRHeadSha = 'd'.repeat(40)

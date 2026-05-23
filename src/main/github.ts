@@ -453,7 +453,7 @@ ${PR_FRAGMENT}`
       // not the head of any PR — skip the resolution entirely to avoid
       // misattributing the latest squash-merged PR's status to it.
       if (defaultBranchName && req.branch === defaultBranchName) {
-        return { worktreePath: req.worktreePath, status: null as PRStatus | null }
+        return { worktreePath: req.worktreePath, branch: req.branch, status: null as PRStatus | null }
       }
       const brAlias = repoData[`prBr${i}`] as { nodes: GraphQLPR[] | null } | null | undefined
       const searchAlias = topData[`prSearch${i}`] as
@@ -466,7 +466,7 @@ ${PR_FRAGMENT}`
         (n): n is GraphQLPR => !!n && typeof (n as GraphQLPR).number === 'number'
       )
       const pr = resolvePRForWorktree(branchNodes, searchNodes, req.headSha, originFull)
-      if (!pr) return { worktreePath: req.worktreePath, status: null as PRStatus | null }
+      if (!pr) return { worktreePath: req.worktreePath, branch: req.branch, status: null as PRStatus | null }
       const [behindBy, firstReleaseTag] = await Promise.all([
         pr.state === 'MERGED' || pr.state === 'CLOSED'
           ? Promise.resolve(null)
@@ -476,9 +476,19 @@ ${PR_FRAGMENT}`
           : Promise.resolve(null)
       ])
       const status = buildPRStatus(pr, req.branch, behindBy, firstReleaseTag, hasMilestones)
-      return { worktreePath: req.worktreePath, status }
+      return { worktreePath: req.worktreePath, branch: req.branch, status }
     })
   )
+
+  // Any branch that some PR is targeting as base (develop / integration /
+  // release/*, etc.) is a merge point, not a PR head. Null out attributions
+  // for worktrees sitting on one of those.
+  const baseBranches = new Set<string>()
+  for (const b of built) if (b.status) baseBranches.add(b.status.baseBranch)
+  for (const b of built) {
+    if (b.status && baseBranches.has(b.branch)) b.status = null
+  }
+
   for (const b of built) result.set(b.worktreePath, b.status)
   return result
 }

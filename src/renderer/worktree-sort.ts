@@ -49,6 +49,27 @@ function sortByCreatedAt(worktrees: Worktree[]): Worktree[] {
   })
 }
 
+/** Sort the no-PR / Active group: main first, then any worktree whose
+ *  branch is being targeted by an open PR (merge points like
+ *  develop/integration/release), then everything else by createdAt desc. */
+function sortNoPRGroup(worktrees: Worktree[], baseBranches: Set<string>): Worktree[] {
+  return [...worktrees].sort((a, b) => {
+    if (a.isMain !== b.isMain) return a.isMain ? -1 : 1
+    const aBase = baseBranches.has(a.branch) ? 1 : 0
+    const bBase = baseBranches.has(b.branch) ? 1 : 0
+    if (aBase !== bBase) return bBase - aBase
+    return (b.createdAt || 0) - (a.createdAt || 0)
+  })
+}
+
+function collectBaseBranches(prStatuses: Record<string, PRStatus | null>): Set<string> {
+  const out = new Set<string>()
+  for (const status of Object.values(prStatuses)) {
+    if (status?.baseBranch) out.add(status.baseBranch)
+  }
+  return out
+}
+
 /** Group worktrees by PR status, sorted by creation time within each group */
 export function groupWorktrees(
   worktrees: Worktree[],
@@ -77,12 +98,16 @@ export function groupWorktrees(
     grouped[key].push(wt)
   }
 
+  const baseBranches = collectBaseBranches(prStatuses)
   return GROUP_ORDER
     .filter((key) => grouped[key].length > 0)
     .map((key) => ({
       key,
       label: GROUP_LABELS[key],
-      worktrees: sortByCreatedAt(grouped[key])
+      worktrees:
+        key === 'no-pr'
+          ? sortNoPRGroup(grouped[key], baseBranches)
+          : sortByCreatedAt(grouped[key])
     }))
 }
 
