@@ -9,9 +9,10 @@ import { DEFAULT_HOTKEYS, ACTION_LABELS, bindingToString, eventToBinding, resolv
 import { Tooltip } from './Tooltip'
 import { AGENT_REGISTRY, agentDisplayName, CLAUDE_MODELS, CODEX_MODELS } from '../../shared/agent-registry'
 import { AgentIcon } from './AgentIcon'
-import { BUILT_IN_THEMES_BY_MODE, type ThemeOption } from '../themes'
+import { BUILT_IN_THEMES_BY_MODE, THEME_OPTIONS, type ThemeOption } from '../themes'
 import { SEMANTIC_KEYS } from '../theme-apply'
 import type { CustomTheme } from '../../shared/state/settings'
+import { SurpriseMeThemeModal } from './SurpriseMeThemeModal'
 import { QRCodeSVG } from 'qrcode.react'
 
 interface SettingsProps {
@@ -74,6 +75,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     'agent-codex': null
   })
   const isProgrammaticScroll = useRef(false)
+  const [surprise, setSurprise] = useState<{ themesDir: string; exampleJson: string } | null>(null)
 
   const scrollToSection = useCallback((id: SectionId) => {
     setActiveSection(id)
@@ -1076,6 +1078,21 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   Drop <code className="text-fg">{'<name>.json'}</code> files into your themes folder. They show up in the pickers above, filtered by their <code className="text-fg">mode</code>. {customThemes.length === 0 ? 'None loaded yet.' : `${customThemes.length} loaded.`}
                 </p>
                 <div className="flex gap-2">
+                  <Tooltip label="Ask an agent to generate a theme for you">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const opt = THEME_OPTIONS[Math.floor(Math.random() * THEME_OPTIONS.length)]
+                        if (!opt) return
+                        const exampleJson = readBuiltInThemeJson(opt)
+                        const themesDir = await backend.getThemesDir()
+                        setSurprise({ themesDir, exampleJson })
+                      }}
+                      className="px-3 py-1.5 rounded-md border border-border text-sm text-fg bg-panel-raised hover:bg-surface cursor-pointer"
+                    >
+                      Surprise me!
+                    </button>
+                  </Tooltip>
                   <button
                     type="button"
                     onClick={async () => { await backend.openThemesFolder() }}
@@ -1091,6 +1108,12 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     Reload from disk
                   </button>
                 </div>
+                <SurpriseMeThemeModal
+                  isOpen={surprise !== null}
+                  onClose={() => setSurprise(null)}
+                  themesDir={surprise?.themesDir ?? ''}
+                  exampleJson={surprise?.exampleJson ?? ''}
+                />
               </div>
 
               <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">Terminal font</h3>

@@ -262,6 +262,7 @@ export function buildBackend(
     setLastEffectiveAppBg: (hex: string) => sig('config:setLastEffectiveAppBg', hex),
     reloadCustomThemes: () => req('config:reloadCustomThemes'),
     openThemesFolder: () => reqLocal('config:openThemesFolder'),
+    getThemesDir: () => req('config:getThemesDir'),
     setCostsInterest: (expanded: boolean) => req('costs:setInterest', expanded),
     getAllSessionCosts: (sinceMs?: number) => req('costs:getAllSessions', sinceMs),
     getClaudeAuthStatus: () => req('claude:getAuthStatus'),

@@ -325,6 +325,7 @@ export interface ElectronAPI {
    *  Always returns the absolute directory path so the web client can
    *  surface it manually. */
   openThemesFolder(): Promise<{ ok: true; path: string } | { ok: false; path: string; message: string }>
+  getThemesDir(): Promise<string>
   setCostsInterest(expanded: boolean): Promise<boolean>
   getAllSessionCosts(sinceMs?: number): Promise<SessionCostSummary[]>
   getClaudeAuthStatus(): Promise<ClaudeAuthInfo>

@@ -1819,6 +1819,11 @@ function registerIpcHandlers(): void {
     return themes.length
   })
 
+  transport.onRequest('config:getThemesDir', async (_ctx) => {
+    const { themesDir } = await import('./themes-loader')
+    return themesDir()
+  })
+
   // `config:openThemesFolder` lives in desktop-shell.ts so it only spawns
   // a window-manager file-browser on the local Electron host. Headless
   // backends don't register it; the renderer falls back to displaying
