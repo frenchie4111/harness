@@ -478,7 +478,9 @@ export function Sidebar({
           ))
           return (
             <div key={repoRoot}>
-              {showRepoHeaders && (
+              {showRepoHeaders && (() => {
+                const repoCount = groups.reduce((n, g) => n + g.worktrees.length, 0)
+                return (
                 <button
                   onClick={() => onToggleRepo(repoRoot)}
                   className="group w-full flex items-center gap-1 px-3 mt-1 py-1.5 text-xs font-semibold uppercase tracking-wider text-dim hover:text-fg transition-colors cursor-pointer"
@@ -488,10 +490,13 @@ export function Sidebar({
                     ? <ChevronRight className="w-3 h-3 shrink-0" />
                     : <ChevronDown className="w-3 h-3 shrink-0" />}
                   <span className={`truncate ${repoNameColor(repoName)}`}>{repoName}</span>
+                  <span className="ml-auto text-faint normal-case tracking-normal">
+                    {repoCount}
+                  </span>
                   <Tooltip label={`Remove ${repoName} from workspace`} side="bottom">
                     <span
                       role="button"
-                      className="ml-auto opacity-0 group-hover:opacity-100 text-faint hover:text-danger"
+                      className="opacity-0 group-hover:opacity-100 text-faint hover:text-danger"
                       onClick={(e) => {
                         e.stopPropagation()
                         if (window.confirm(`Remove ${repoName} from this window? Worktrees stay on disk.`)) {
@@ -503,7 +508,8 @@ export function Sidebar({
                     </span>
                   </Tooltip>
                 </button>
-              )}
+                )
+              })()}
               {!repoCollapsed && agentCount > 0 && (
                 <button
                   onClick={() =>
