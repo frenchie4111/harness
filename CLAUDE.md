@@ -467,6 +467,9 @@ These are how the user wants Claude to behave when working on this repo:
    - `npx electron-vite build` — catches missing imports, asset resolution,
      and other bundler-level issues.
    Run `npx vitest run` too if the change could affect reducer/FSM behavior.
+   PR-time CI (`.github/workflows/ci.yml`) runs all three on every PR as a
+   safety net, but the local pre-commit ritual still catches issues before
+   you push.
 
 4. **Don't add comments unless asked.** Code should explain itself; comments
    are reserved for non-obvious "why" notes. The exception is the comment

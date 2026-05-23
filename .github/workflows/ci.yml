@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Cancel an in-flight CI run when a new commit lands on the same branch.
+# Saves CI minutes during rapid pushes; the latest commit is what matters.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # --legacy-peer-deps because electron-vite@5 declares a peer range
+      # that npm's strict resolver rejects against the installed vite@7.
+      # Matches the developer-facing install instructions.
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      # electron-vite build does NOT run tsc on its own — so typecheck
+      # is a separate, required gate.
+      - name: Typecheck
+        run: npm run typecheck
+
+      # Catches missing imports, asset resolution errors, and other
+      # bundler-level issues that tsc alone misses.
+      - name: Build
+        run: npx electron-vite build
+
+      - name: Tests
+        run: npx vitest run
