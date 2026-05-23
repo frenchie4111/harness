@@ -5,7 +5,7 @@ import { HARNESS_ISSUES_URL, HARNESS_RELEASES_URL, harnessReleaseNotesUrl } from
 import { useSettings, useUpdater, useRepoConfigs, useHooks } from '../store'
 import { useBackend } from '../backend'
 import type { UpdaterStatus, MergeStrategy, RepoConfig } from '../types'
-import { DEFAULT_HOTKEYS, ACTION_LABELS, bindingToString, eventToBinding, resolveHotkeys, type Action, type HotkeyBinding } from '../hotkeys'
+import { DEFAULT_HOTKEYS, ACTION_LABELS, bindingToString, eventToBinding, formatBindingGlyphs, resolveHotkeys, type Action, type HotkeyBinding } from '../hotkeys'
 import { Tooltip } from './Tooltip'
 import { AGENT_REGISTRY, agentDisplayName, CLAUDE_MODELS, CODEX_MODELS } from '../../shared/agent-registry'
 import { AgentIcon } from './AgentIcon'
@@ -2515,13 +2515,13 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
                         )}
                         <button
                           onClick={() => setRebindingAction(isRebinding ? null : action)}
-                          className={`min-w-[100px] px-2.5 py-1 rounded text-xs font-mono transition-colors cursor-pointer ${
+                          className={`min-w-[100px] px-2.5 py-1 rounded text-xs transition-colors cursor-pointer ${
                             isRebinding
                               ? 'bg-warning/20 text-warning border border-warning/50 animate-pulse'
                               : 'bg-panel text-fg border border-border-strong hover:border-fg'
                           }`}
                         >
-                          {isRebinding ? 'Press keys...' : bindingToString(binding)}
+                          {isRebinding ? 'Press keys...' : formatBindingGlyphs(bindingToString(binding))}
                         </button>
                       </div>
                     </div>

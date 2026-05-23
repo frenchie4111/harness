@@ -160,7 +160,7 @@ export function formatBindingGlyphs(binding: string, separator = ' '): string {
       if (part === 'ArrowLeft') return '\u2190'
       if (part === 'ArrowRight') return '\u2192'
       if (part === 'Enter') return '\u23CE'
-      if (part === 'Tab') return '\u21E5'
+      if (part === 'Tab') return 'Tab'
       if (part === 'Escape') return 'Esc'
       return part
     })

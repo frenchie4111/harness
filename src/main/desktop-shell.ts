@@ -381,13 +381,14 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
           { role: 'forceReload' },
           { role: 'toggleDevTools' },
           { type: 'separator' },
-          { role: 'togglefullscreen' },
-          { type: 'separator' },
           {
             label: 'Performance Monitor',
             accelerator: 'CmdOrCtrl+Shift+D',
             click: () => transport.sendSignal('app:togglePerfMonitor')
           }
+          // macOS appends "Enter Full Screen" to the View menu
+          // automatically — explicit togglefullscreen role would show up
+          // a second time, so it's intentionally not listed here.
         ]
       },
       {
