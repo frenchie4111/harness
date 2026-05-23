@@ -409,6 +409,8 @@ export function buildBackend(
       onLocalSignal('app:togglePerfMonitor', () => callback()),
     onOpenKeyboardShortcuts: (callback: () => void) =>
       onLocalSignal('app:openKeyboardShortcuts', () => callback()),
+    onCloseFocusedTab: (callback: () => void) =>
+      onLocalSignal('app:closeFocusedTab', () => callback()),
     onOpenNewProject: (callback: () => void) =>
       onLocalSignal('menu:newProject', () => callback()),
     onOpenReportIssue: (callback: () => void) =>

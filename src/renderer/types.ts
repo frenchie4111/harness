@@ -433,6 +433,7 @@ export interface ElectronAPI {
   onOpenSettings(callback: () => void): () => void
   onTogglePerfMonitor(callback: () => void): () => void
   onOpenKeyboardShortcuts(callback: () => void): () => void
+  onCloseFocusedTab(callback: () => void): () => void
   onOpenNewProject(callback: () => void): () => void
   onOpenReportIssue(callback: () => void): () => void
   onDebugCrashFocusedTab(callback: () => void): () => void

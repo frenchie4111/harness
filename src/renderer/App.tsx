@@ -641,6 +641,18 @@ const setQuestStep = useCallback((next: QuestStep) => {
     handleRefreshWorktrees
   })
 
+  // File → Close Tab (Cmd+W). The accelerator lives on the menu item
+  // so it fires even when focus is inside a WebContentsView (browser
+  // tab). Closes the currently active tab in the active worktree.
+  useEffect(() => {
+    const cleanup = backend.onCloseFocusedTab(() => {
+      if (!activeWorktreeId) return
+      const tabId = activeTabId[activeWorktreeId]
+      if (tabId) handleCloseTab(activeWorktreeId, tabId)
+    })
+    return cleanup
+  }, [backend, activeWorktreeId, activeTabId, handleCloseTab])
+
   // Compute aggregate status per worktree (worst status wins)
   const worktreeStatuses: Record<string, PtyStatus> = {}
   const worktreePendingTools: Record<string, PendingTool | null> = {}
