@@ -2,6 +2,24 @@ import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { resolve } from 'path'
+import { execSync } from 'child_process'
+
+// Captured once at vite startup. Restart `npm run dev` after switching
+// branches if you want the title to update.
+function currentGitBranch(): string {
+  try {
+    return execSync('git rev-parse --abbrev-ref HEAD', {
+      cwd: __dirname,
+      stdio: ['pipe', 'pipe', 'ignore']
+    })
+      .toString()
+      .trim()
+  } catch {
+    return ''
+  }
+}
+
+const DEV_BRANCH = currentGitBranch()
 
 export default defineConfig({
   main: {
@@ -37,6 +55,9 @@ export default defineConfig({
   },
   renderer: {
     plugins: [react(), tailwindcss()],
+    define: {
+      __HARNESS_DEV_BRANCH__: JSON.stringify(DEV_BRANCH)
+    },
     build: {
       ssr: false
     }
