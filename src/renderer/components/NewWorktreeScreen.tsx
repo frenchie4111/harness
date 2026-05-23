@@ -4,11 +4,12 @@ import iconUrl from '../../../resources/icon.png'
 import { sanitizeBranchInput, isValidBranchName } from '../branch-name'
 import { RepoIcon } from './RepoIcon'
 import { useBackend } from '../backend'
+import { useSettings } from '../store'
 import type { PRSummary } from '../types'
 
 interface NewWorktreeScreenProps {
   onSubmit: (repoRoot: string, branchName: string, initialPrompt: string, teleportSessionId?: string) => Promise<void>
-  onPRSubmit: (repoRoot: string, prNumber: number) => Promise<void>
+  onPRSubmit: (repoRoot: string, prNumber: number, initialPrompt: string) => Promise<void>
   onCancel: () => void
   repoRoots: string[]
   /** Repo to pre-select in the picker. Usually the repo of the currently active worktree. */
@@ -76,6 +77,8 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
   )
   const [branch, setBranch] = useState('')
   const [prompt, setPrompt] = useState('')
+  const settings = useSettings()
+  const [reviewPrompt, setReviewPrompt] = useState(settings.prReviewPrompt)
   const [teleportInput, setTeleportInput] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -143,13 +146,13 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
       setPrClickPending(prNumber)
       setError(null)
       try {
-        await onPRSubmit(selectedRepo, prNumber)
+        await onPRSubmit(selectedRepo, prNumber, reviewPrompt.trim())
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to open PR')
         setPrClickPending(null)
       }
     },
-    [onPRSubmit, prClickPending, selectedRepo]
+    [onPRSubmit, prClickPending, selectedRepo, reviewPrompt]
   )
 
   const handleBranchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -402,14 +405,34 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
             )}
 
             {mode === 'pr' && (
-              <PRPickerList
-                prs={prsByRepo[selectedRepo]}
-                loading={prsLoadingRepo === selectedRepo}
-                error={prsError}
-                disabled={prClickPending !== null}
-                pendingNumber={prClickPending}
-                onPick={handlePRClick}
-              />
+              <>
+                <label className="block mb-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-dim">
+                      Review prompt
+                    </span>
+                    <span className="text-[11px] text-faint">
+                      sent to Claude after the PR loads · edit defaults in Settings
+                    </span>
+                  </div>
+                  <textarea
+                    value={reviewPrompt}
+                    onChange={(e) => setReviewPrompt(e.target.value)}
+                    placeholder="Leave blank to drop in with no kickoff prompt."
+                    disabled={prClickPending !== null}
+                    rows={4}
+                    className="w-full bg-app border-2 border-border-strong rounded-lg px-4 py-3 text-sm text-fg-bright placeholder-faint outline-none focus:border-accent transition-colors resize-none"
+                  />
+                </label>
+                <PRPickerList
+                  prs={prsByRepo[selectedRepo]}
+                  loading={prsLoadingRepo === selectedRepo}
+                  error={prsError}
+                  disabled={prClickPending !== null}
+                  pendingNumber={prClickPending}
+                  onPick={handlePRClick}
+                />
+              </>
             )}
 
             {error && (

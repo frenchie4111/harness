@@ -188,7 +188,7 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
   )
 
   const handleSubmitNewPRWorktree = useCallback(
-    async (repoRoot: string, prNumber: number) => {
+    async (repoRoot: string, prNumber: number, initialPrompt: string) => {
       const id = `pending:${crypto.randomUUID()}`
       setActiveWorktreeId(id)
       setShowNewWorktree(false)
@@ -196,7 +196,8 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
       const result = await backend.runPendingPRWorktree({
         id,
         repoRoot,
-        prNumber
+        prNumber,
+        initialPrompt: initialPrompt || undefined
       })
 
       if (result.outcome === 'success') {

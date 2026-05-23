@@ -88,6 +88,10 @@ export interface BrowserPerms {
 export interface ControlServerDeps {
   getRepoRoots: () => string[]
   getWorktreeBase: () => 'remote' | 'local'
+  /** Default prompt used when an MCP `create_worktree` call provides
+   * `prNumber` but no explicit `initialPrompt`. Resolved per-request so
+   * Settings edits take effect mid-session. */
+  getPrReviewPrompt: () => string
   broadcast: (channel: string, ...args: unknown[]) => void
   runWorktreeSetup: (ctx: { repoRoot: string; worktreePath: string; branch: string }) => Promise<void>
   /** Drive the full PR-creation FSM (fetch PR metadata, fetch refs/pull/<n>/head,
@@ -249,11 +253,15 @@ async function handleRequest(
       if (branchName) {
         log('control', `prNumber=${prNumber} provided — ignoring branchName=${branchName}`)
       }
+      // No explicit prompt → fall back to the configured review-prompt default.
+      // Empty-string prompts ('') are honored as "no prompt" so callers can
+      // opt out explicitly.
+      const promptForPR = initialPrompt === undefined ? deps.getPrReviewPrompt() : initialPrompt
       const result = await deps.runPendingPRWorktree({
         id: randomUUID(),
         repoRoot,
         prNumber,
-        initialPrompt
+        initialPrompt: promptForPR || undefined
       })
       if (!result.ok) {
         const status = /couldn't fetch pr|not found|404/i.test(result.error) ? 422 : 502

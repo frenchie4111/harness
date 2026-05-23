@@ -13,7 +13,8 @@ import { initialSnooze } from '../shared/state/snooze'
 import {
   initialSettings,
   DEFAULT_LIGHT_THEME,
-  DEFAULT_DARK_THEME
+  DEFAULT_DARK_THEME,
+  DEFAULT_PR_REVIEW_PROMPT
 } from '../shared/state/settings'
 import {
   DEFAULT_CLAUDE_COMMAND,
@@ -103,7 +104,8 @@ export function buildInitialAppState(
           ? Math.floor(config.autoSleepMinutes)
           : 30,
       snoozeDefaultDays: Math.max(1, Math.floor(config.snoozeDefaultDays ?? 7)),
-      expandedDiagnosticLoggingEnabled: config.expandedDiagnosticLoggingEnabled === true
+      expandedDiagnosticLoggingEnabled: config.expandedDiagnosticLoggingEnabled === true,
+      prReviewPrompt: config.prReviewPrompt || DEFAULT_PR_REVIEW_PROMPT
     }
   }
 }

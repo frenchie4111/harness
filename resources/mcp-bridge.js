@@ -103,7 +103,7 @@ const TOOLS = [
         initialPrompt: {
           type: 'string',
           description:
-            'A prompt to automatically send to the Claude chat tab when it opens in the new worktree. Useful for "review this PR for X" or "implement feature Y" prompts.'
+            'A prompt to automatically send to the Claude chat tab when it opens in the new worktree. Useful for "review this PR for X" or "implement feature Y" prompts. When prNumber is set and this is omitted, Harness uses the configured PR review prompt (Settings → Worktrees → PR review prompt). Pass an empty string to explicitly suppress any kickoff prompt on the PR path.'
         }
       }
     }

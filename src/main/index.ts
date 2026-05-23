@@ -68,7 +68,11 @@ import { registerRepoRoot } from './repo-roots'
 import type { AddRepoResult } from '../shared/repo-pick'
 import { isWorktreeMerged } from '../shared/state/prs'
 import { MAX_WAKE } from '../shared/state/snooze'
-import { DEFAULT_LIGHT_THEME, DEFAULT_DARK_THEME } from '../shared/state/settings'
+import {
+  DEFAULT_LIGHT_THEME,
+  DEFAULT_DARK_THEME,
+  DEFAULT_PR_REVIEW_PROMPT
+} from '../shared/state/settings'
 import { watchStatusDir } from './hooks'
 import { getAgent, type AgentKind } from './agents'
 import { buildClaudeLaunchSettings } from './claude-launch'
@@ -1576,6 +1580,21 @@ function registerIpcHandlers(): void {
     return true
   })
 
+  transport.onRequest('config:setPrReviewPrompt', (_ctx, prompt: string) => {
+    const trimmed = prompt.trim()
+    if (!trimmed || trimmed === DEFAULT_PR_REVIEW_PROMPT) {
+      delete config.prReviewPrompt
+    } else {
+      config.prReviewPrompt = prompt
+    }
+    saveConfig(config)
+    store.dispatch({
+      type: 'settings/prReviewPromptChanged',
+      payload: config.prReviewPrompt || DEFAULT_PR_REVIEW_PROMPT
+    })
+    return true
+  })
+
   transport.onRequest('config:setHarnessMcpEnabled', (_ctx, enabled: boolean) => {
     if (enabled) {
       delete config.harnessMcpEnabled
@@ -2949,6 +2968,7 @@ async function runBoot(): Promise<void> {
   startControlServer({
     getRepoRoots: () => config.repoRoots,
     getWorktreeBase: () => config.worktreeBase || DEFAULT_WORKTREE_BASE,
+    getPrReviewPrompt: () => config.prReviewPrompt || DEFAULT_PR_REVIEW_PROMPT,
     resolveCallerScope,
     getBrowserPerms: () => ({
       enabled: config.browserToolsEnabled !== false,

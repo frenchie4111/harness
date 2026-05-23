@@ -151,6 +151,9 @@ export interface Config {
   harnessSystemPromptEnabled?: boolean
   harnessSystemPrompt?: string
   harnessSystemPromptMain?: string
+  // Default kickoff prompt for "Open PR as worktree" / MCP create_worktree
+  // with prNumber. Absent = use the bundled DEFAULT_PR_REVIEW_PROMPT.
+  prReviewPrompt?: string
   // When false, Claude sessions spawn without CLAUDE_CODE_NO_FLICKER=1, so they
   // use the inline (non-fullscreen) TUI mode. Default is enabled (undefined/true).
   claudeTuiFullscreen?: boolean

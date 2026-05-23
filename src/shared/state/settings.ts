@@ -46,6 +46,11 @@ export const EMPTY_CUSTOM_THEMES: CustomTheme[] = []
 export const DEFAULT_LIGHT_THEME = 'solarized-light'
 export const DEFAULT_DARK_THEME = 'dark'
 
+/** Default kickoff prompt for "Open PR as worktree". Editable globally in
+ *  Settings (`prReviewPrompt`) and per-creation in the New Worktree screen. */
+export const DEFAULT_PR_REVIEW_PROMPT =
+  "Review this PR. Read the diff, then check for correctness issues, design problems, security concerns, and missing edge cases. Cite file paths and line numbers for anything you flag. Skip restating what the PR does — focus on what could go wrong or be improved."
+
 export interface SettingsState {
   /** Whether the active theme is the light theme, the dark theme, or follows
    *  the OS appearance. Default 'system'. */
@@ -141,6 +146,12 @@ export interface SettingsState {
    *  volume is high during PR refresh bursts. HUD metrics like "GH API"
    *  rate are always on regardless of this flag. */
   expandedDiagnosticLoggingEnabled: boolean
+  /** Default prompt pre-filled into the "Open PR as worktree" screen and
+   *  used as the kickoff prompt when an MCP `create_worktree` call provides
+   *  a `prNumber` without an explicit `initialPrompt`. The textarea on the
+   *  PR-creation screen is seeded from this value but edits there are
+   *  one-shot — managing the default happens in Settings. */
+  prReviewPrompt: string
 }
 
 export type SettingsEvent =
@@ -192,6 +203,7 @@ export type SettingsEvent =
   | { type: 'settings/autoSleepMinutesChanged'; payload: number }
   | { type: 'settings/snoozeDefaultDaysChanged'; payload: number }
   | { type: 'settings/expandedDiagnosticLoggingEnabledChanged'; payload: boolean }
+  | { type: 'settings/prReviewPromptChanged'; payload: string }
 
 // Client-side placeholder. Real values are seeded in the main-process Store
 // constructor from the on-disk config and secrets.
@@ -240,7 +252,8 @@ export const initialSettings: SettingsState = {
   jsonModeDefaultPermissionMode: 'acceptEdits',
   autoSleepMinutes: 30,
   snoozeDefaultDays: 7,
-  expandedDiagnosticLoggingEnabled: false
+  expandedDiagnosticLoggingEnabled: false,
+  prReviewPrompt: DEFAULT_PR_REVIEW_PROMPT
 }
 
 export function settingsReducer(state: SettingsState, event: SettingsEvent): SettingsState {
@@ -335,6 +348,8 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, snoozeDefaultDays: event.payload }
     case 'settings/expandedDiagnosticLoggingEnabledChanged':
       return { ...state, expandedDiagnosticLoggingEnabled: event.payload }
+    case 'settings/prReviewPromptChanged':
+      return { ...state, prReviewPrompt: event.payload }
     default: {
       const _exhaustive: never = event
       void _exhaustive

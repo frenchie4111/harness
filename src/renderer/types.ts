@@ -178,6 +178,7 @@ export interface ElectronAPI {
     id: string
     repoRoot: string
     prNumber: number
+    initialPrompt?: string
   }): Promise<
     | { id: string; outcome: 'success'; createdPath: string }
     | { id: string; outcome: 'setup-failed'; createdPath: string }
@@ -303,6 +304,7 @@ export interface ElectronAPI {
   setHarnessSystemPromptEnabled(enabled: boolean): Promise<boolean>
   setHarnessSystemPrompt(prompt: string): Promise<boolean>
   setHarnessSystemPromptMain(prompt: string): Promise<boolean>
+  setPrReviewPrompt(prompt: string): Promise<boolean>
   prepareMcpForTerminal(terminalId: string): Promise<string | null>
   onWorktreesExternalCreate(
     callback: (payload: { repoRoot: string; worktree: Worktree; initialPrompt?: string }) => void
