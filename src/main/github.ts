@@ -276,7 +276,12 @@ interface GraphQLBatchResponse {
       | ({
           defaultBranchRef: { name: string } | null
           milestones: { totalCount: number } | null
-        } & Record<string, { nodes: GraphQLPR[] | null } | null>)
+        } & Record<
+          string,
+          | { nodes: GraphQLPR[] | null }
+          | { associatedPullRequests: { nodes: GraphQLPR[] | null } | null }
+          | null
+        >)
       | null
   } | null
   errors?: Array<{ message: string }> | null
@@ -387,12 +392,23 @@ export async function fetchPRStatusesForRepo(
   const varDefs = ['$owner:String!', '$name:String!']
   const aliasParts: string[] = []
   const variables: Record<string, string> = { owner, name: repo }
+  // Branch-name lookup handles the common case. SHA lookup via
+  // object(oid).associatedPullRequests handles `gh pr checkout`-style
+  // synthetic local branches whose name doesn't match the PR's head.ref.
+  // Both fire in the same request so the fallback adds no extra round-trip.
   queryable.forEach((req, i) => {
     varDefs.push(`$branch${i}:String!`)
     variables[`branch${i}`] = req.branch
     aliasParts.push(
-      `pr${i}: pullRequests(headRefName: $branch${i}, first: 5, orderBy: {field: UPDATED_AT, direction: DESC}) { nodes { ...PR } }`
+      `prBr${i}: pullRequests(headRefName: $branch${i}, first: 5, orderBy: {field: UPDATED_AT, direction: DESC}) { nodes { ...PR } }`
     )
+    if (/^[0-9a-f]{40}$/i.test(req.headSha)) {
+      varDefs.push(`$sha${i}:GitObjectID!`)
+      variables[`sha${i}`] = req.headSha
+      aliasParts.push(
+        `prSha${i}: object(oid: $sha${i}) { ... on Commit { associatedPullRequests(first: 5, orderBy: {field: UPDATED_AT, direction: DESC}) { nodes { ...PR } } } }`
+      )
+    }
   })
   const query = `query(${varDefs.join(', ')}) {
   repository(owner: $owner, name: $name) {
@@ -430,8 +446,14 @@ ${PR_FRAGMENT}`
   // Resolve per-request, then fetch behind_by + first-release-tag in parallel.
   const built = await Promise.all(
     queryable.map(async (req, i) => {
-      const alias = repoData[`pr${i}`] as { nodes: GraphQLPR[] | null } | null | undefined
-      const nodes = alias?.nodes ?? []
+      const brAlias = repoData[`prBr${i}`] as { nodes: GraphQLPR[] | null } | null | undefined
+      const shaAlias = repoData[`prSha${i}`] as
+        | { associatedPullRequests?: { nodes: GraphQLPR[] | null } | null }
+        | null
+        | undefined
+      const branchNodes = brAlias?.nodes ?? []
+      const shaNodes = shaAlias?.associatedPullRequests?.nodes ?? []
+      const nodes = dedupePRsByNumber([...branchNodes, ...shaNodes])
       const pr = pickPRBySha(nodes, req.headSha, originFull)
       if (!pr) return { worktreePath: req.worktreePath, status: null as PRStatus | null }
       const [behindBy, firstReleaseTag] = await Promise.all([
@@ -448,6 +470,19 @@ ${PR_FRAGMENT}`
   )
   for (const b of built) result.set(b.worktreePath, b.status)
   return result
+}
+
+/** Combine PR nodes from the branch-name and SHA-based lookups, keeping
+ *  the first occurrence per PR number. */
+function dedupePRsByNumber(nodes: GraphQLPR[]): GraphQLPR[] {
+  const seen = new Set<number>()
+  const out: GraphQLPR[] = []
+  for (const n of nodes) {
+    if (seen.has(n.number)) continue
+    seen.add(n.number)
+    out.push(n)
+  }
+  return out
 }
 
 /** Among the up-to-5 PR nodes returned for a single headRefName lookup,
