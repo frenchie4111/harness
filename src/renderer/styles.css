@@ -427,6 +427,17 @@
   color: transparent;
 }
 
+/* Settings search: brief highlight applied to the scroll target after a
+   search result is clicked, so the user can spot it. */
+.harness-settings-flash {
+  animation: harness-settings-flash 1.5s ease-out;
+  border-radius: 6px;
+}
+@keyframes harness-settings-flash {
+  0%   { box-shadow: 0 0 0 4px var(--color-accent, #f59e0b); background-color: color-mix(in srgb, var(--color-accent, #f59e0b) 25%, transparent); }
+  100% { box-shadow: 0 0 0 0  var(--color-accent, #f59e0b); background-color: transparent; }
+}
+
 /* All buttons and clickable elements get pointer cursor */
 button, [role="button"], a[href], [onclick] {
   cursor: pointer;
