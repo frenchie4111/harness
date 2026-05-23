@@ -10,6 +10,13 @@ export interface ShellActivity {
   processName?: string
 }
 
+/** OSC 9;4 progress state, mirrored from @xterm/addon-progress.
+ *  state: 0 = none, 1 = normal, 2 = error, 3 = indeterminate, 4 = paused/warning. */
+export interface TerminalProgress {
+  state: 0 | 1 | 2 | 3 | 4
+  value: number
+}
+
 export type AgentKind = 'claude' | 'codex'
 
 export interface TerminalTab {
@@ -171,6 +178,9 @@ export interface TerminalsState {
   pendingTools: Record<string, PendingTool | null>
   /** Per-terminal foreground-process indicator for shell tabs. */
   shellActivity: Record<string, ShellActivity>
+  /** Per-terminal OSC 9;4 progress, dispatched from the controller's
+   *  ProgressAddon. Absent entries mean no active progress. */
+  progress: Record<string, TerminalProgress>
   /** Pane layout tree per worktree path. Authored entirely in main via the
    * panes-fsm methods. */
   panes: Record<string, PaneNode>
@@ -193,6 +203,10 @@ export type TerminalsEvent =
   | {
       type: 'terminals/shellActivityChanged'
       payload: { id: string; active: boolean; processName?: string }
+    }
+  | {
+      type: 'terminals/progressChanged'
+      payload: { id: string; state: 0 | 1 | 2 | 3 | 4; value: number }
     }
   | { type: 'terminals/removed'; payload: string }
   | {
@@ -262,6 +276,7 @@ export const initialTerminals: TerminalsState = {
   statuses: {},
   pendingTools: {},
   shellActivity: {},
+  progress: {},
   panes: {},
   lastActive: {},
   sessions: {}
@@ -293,12 +308,30 @@ export function terminalsReducer(
         }
       }
     }
+    case 'terminals/progressChanged': {
+      const { id, state: pstate, value } = event.payload
+      const prev = state.progress[id]
+      // state 0 = no progress: drop the entry to reset cleanly.
+      if (pstate === 0) {
+        if (!prev) return state
+        const { [id]: _dropped, ...rest } = state.progress
+        void _dropped
+        return { ...state, progress: rest }
+      }
+      // Dedup identical updates so high-frequency OSC streams don't fan out.
+      if (prev && prev.state === pstate && prev.value === value) return state
+      return {
+        ...state,
+        progress: { ...state.progress, [id]: { state: pstate, value } }
+      }
+    }
     case 'terminals/removed': {
       const id = event.payload
       if (
         !(id in state.statuses) &&
         !(id in state.pendingTools) &&
         !(id in state.shellActivity) &&
+        !(id in state.progress) &&
         !(id in state.sessions)
       ) {
         return state
@@ -306,16 +339,19 @@ export function terminalsReducer(
       const { [id]: _s, ...restStatuses } = state.statuses
       const { [id]: _p, ...restPending } = state.pendingTools
       const { [id]: _a, ...restActivity } = state.shellActivity
+      const { [id]: _pg, ...restProgress } = state.progress
       const { [id]: _session, ...restSessions } = state.sessions
       void _s
       void _p
       void _a
+      void _pg
       void _session
       return {
         ...state,
         statuses: restStatuses,
         pendingTools: restPending,
         shellActivity: restActivity,
+        progress: restProgress,
         sessions: restSessions
       }
     }

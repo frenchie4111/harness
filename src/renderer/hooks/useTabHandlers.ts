@@ -65,11 +65,16 @@ export function useTabHandlers({
   )
 
   const handleAddBrowserTab = useCallback(
-    (worktreePath: string, paneId?: string) => {
+    (worktreePath: string, paneId?: string, initialUrl?: string) => {
       const id = `browser-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
       appendTabToPane(
         worktreePath,
-        { id, type: 'browser', label: 'Browser', url: 'about:blank' },
+        {
+          id,
+          type: 'browser',
+          label: 'Browser',
+          url: initialUrl && initialUrl.trim() ? initialUrl : 'about:blank'
+        },
         paneId
       )
     },

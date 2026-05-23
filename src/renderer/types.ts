@@ -298,6 +298,7 @@ export interface ElectronAPI {
   ): Promise<boolean>
   setAutoSleepMinutes(value: number): Promise<boolean>
   setAutoUpdateEnabled(enabled: boolean): Promise<boolean>
+  setExpandedDiagnosticLoggingEnabled(enabled: boolean): Promise<boolean>
   setShareClaudeSettings(enabled: boolean): Promise<boolean>
   setHarnessSystemPromptEnabled(enabled: boolean): Promise<boolean>
   setHarnessSystemPrompt(prompt: string): Promise<boolean>
@@ -378,6 +379,7 @@ export interface ElectronAPI {
   panesEnsureInitialized(wtPath: string): Promise<boolean>
   panesSleepTab(wtPath: string, tabId: string): Promise<boolean>
   panesWakeTab(wtPath: string, tabId: string): Promise<boolean>
+  touchWorktreeLastActive(wtPath: string): Promise<boolean>
   getTerminalHistory(id: string): Promise<string>
   clearTerminalHistory(id: string): Promise<boolean>
   agentSessionFileExists(cwd: string, sessionId: string, agentKind?: AgentKind): Promise<boolean>
@@ -410,6 +412,7 @@ export interface ElectronAPI {
   ): Promise<boolean>
 
   openExternal(url: string): void
+  openPath(path: string): Promise<{ ok: true } | { ok: false; message: string }>
   openDebugLog(): Promise<{ ok: true } | { ok: false; message: string }>
   showDebugLogInFolder(): Promise<boolean>
   getFilePath(file: File): string
@@ -466,6 +469,7 @@ export interface ElectronAPI {
   joinTerminal(id: string): void
   leaveTerminal(id: string): void
   takeTerminalControl(id: string, cols: number, rows: number): void
+  setTerminalProgress(id: string, state: 0 | 1 | 2 | 3 | 4, value: number): void
   onTerminalData(callback: (id: string, data: string) => void): () => void
   onTerminalExit(callback: (id: string, exitCode: number) => void): () => void
 

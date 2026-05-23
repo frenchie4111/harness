@@ -135,6 +135,12 @@ export interface SettingsState {
    *  disables auto-sleep entirely. */
   autoSleepMinutes: number
   snoozeDefaultDays: number
+  /** When true, high-volume diagnostic categories are written to
+   *  debug.log — currently per-GitHub-API-call `[github-api]` lines (URL,
+   *  method, status, duration). Off by default because the per-call
+   *  volume is high during PR refresh bursts. HUD metrics like "GH API"
+   *  rate are always on regardless of this flag. */
+  expandedDiagnosticLoggingEnabled: boolean
 }
 
 export type SettingsEvent =
@@ -185,6 +191,7 @@ export type SettingsEvent =
     }
   | { type: 'settings/autoSleepMinutesChanged'; payload: number }
   | { type: 'settings/snoozeDefaultDaysChanged'; payload: number }
+  | { type: 'settings/expandedDiagnosticLoggingEnabledChanged'; payload: boolean }
 
 // Client-side placeholder. Real values are seeded in the main-process Store
 // constructor from the on-disk config and secrets.
@@ -232,7 +239,8 @@ export const initialSettings: SettingsState = {
   jsonModeChatDensity: 'compact',
   jsonModeDefaultPermissionMode: 'acceptEdits',
   autoSleepMinutes: 30,
-  snoozeDefaultDays: 7
+  snoozeDefaultDays: 7,
+  expandedDiagnosticLoggingEnabled: false
 }
 
 export function settingsReducer(state: SettingsState, event: SettingsEvent): SettingsState {
@@ -325,6 +333,8 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, autoSleepMinutes: event.payload }
     case 'settings/snoozeDefaultDaysChanged':
       return { ...state, snoozeDefaultDays: event.payload }
+    case 'settings/expandedDiagnosticLoggingEnabledChanged':
+      return { ...state, expandedDiagnosticLoggingEnabled: event.payload }
     default: {
       const _exhaustive: never = event
       void _exhaustive

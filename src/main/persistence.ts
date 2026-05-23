@@ -214,6 +214,9 @@ export interface Config {
   snooze?: Record<string, SnoozeEntry>
   // Default duration (days) for plain-click snooze. Min 1, default 7.
   snoozeDefaultDays?: number
+  // When true, high-volume diagnostic log categories (currently
+  // [github-api] per-call lines) are written to debug.log. Default off.
+  expandedDiagnosticLoggingEnabled?: boolean
 }
 
 export const DEFAULT_WORKTREE_BASE: 'remote' | 'local' = 'remote'

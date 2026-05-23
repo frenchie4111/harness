@@ -89,6 +89,20 @@ describe('settingsReducer', () => {
     expect(next.claudeEnvVars).toEqual({ FOO: 'bar', BAZ: 'qux' })
   })
 
+  it('expandedDiagnosticLoggingEnabledChanged toggles the flag', () => {
+    expect(initialSettings.expandedDiagnosticLoggingEnabled).toBe(false)
+    const on = apply(initialSettings, {
+      type: 'settings/expandedDiagnosticLoggingEnabledChanged',
+      payload: true
+    })
+    expect(on.expandedDiagnosticLoggingEnabled).toBe(true)
+    const off = apply(on, {
+      type: 'settings/expandedDiagnosticLoggingEnabledChanged',
+      payload: false
+    })
+    expect(off.expandedDiagnosticLoggingEnabled).toBe(false)
+  })
+
   it('autoUpdateEnabledChanged toggles auto-update flag', () => {
     expect(initialSettings.autoUpdateEnabled).toBe(true)
     const off = apply(initialSettings, {

@@ -529,6 +529,14 @@ export function useTerminalSession(terminalId: string) {
   return useAppState((s) => s.terminals.sessions[terminalId] ?? null)
 }
 
+/** Per-terminal OSC 9;4 progress. Narrow over `useTerminals()` so a
+ *  progress tick on terminal A doesn't re-render every tab subscribing
+ *  for terminals B/C/D — the reducer preserves per-key reference identity
+ *  for entries it didn't touch. */
+export function useTerminalProgress(terminalId: string) {
+  return useAppState((s) => s.terminals.progress[terminalId] ?? null)
+}
+
 export function useJsonClaude() {
   return useAppState((s) => s.jsonClaude)
 }

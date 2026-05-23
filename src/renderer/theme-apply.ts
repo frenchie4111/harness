@@ -8,7 +8,7 @@ import type { ResolvedTheme } from './hooks/useActiveTheme'
 // styles outrank attribute selectors).
 const inlineKeysApplied = new Set<string>()
 
-const SEMANTIC_KEYS: ReadonlySet<string> = new Set([
+export const SEMANTIC_KEYS: ReadonlySet<string> = new Set([
   'app',
   'panel',
   'panel-raised',

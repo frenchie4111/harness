@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { RefreshCw, AtSign, Code2, ChevronRight, Folder, FolderOpen, FileText } from 'lucide-react'
 import { Tooltip } from './Tooltip'
 import { RightPanel } from './RightPanel'
-import { useSettings } from '../store'
+import { useActiveBackend, useSettings } from '../store'
 import { useBackend } from '../backend'
 import { bindingToString, formatBindingGlyphs, resolveHotkeys } from '../hotkeys'
 
@@ -58,6 +58,7 @@ export function AllFilesPanel({
   onSendToAgent
 }: AllFilesPanelProps): JSX.Element {
   const backend = useBackend()
+  const activeBackend = useActiveBackend()
   const [files, setFiles] = useState<string[]>([])
   const [hasLoaded, setHasLoaded] = useState(false)
   const [filter, setFilter] = useState('')
@@ -111,17 +112,32 @@ export function AllFilesPanel({
   }, [])
 
   const actions = (
-    <Tooltip label="Refresh">
-      <button
-        onClick={(e) => {
-          e.stopPropagation()
-          refresh()
-        }}
-        className="text-faint hover:text-fg transition-colors cursor-pointer"
-      >
-        <RefreshCw size={12} />
-      </button>
-    </Tooltip>
+    <>
+      {worktreePath && activeBackend.kind === 'local' && (
+        <Tooltip label="Reveal in Finder">
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              backend.openPath(worktreePath)
+            }}
+            className="text-faint hover:text-fg transition-colors cursor-pointer"
+          >
+            <FolderOpen size={12} />
+          </button>
+        </Tooltip>
+      )}
+      <Tooltip label="Refresh">
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            refresh()
+          }}
+          className="text-faint hover:text-fg transition-colors cursor-pointer"
+        >
+          <RefreshCw size={12} />
+        </button>
+      </Tooltip>
+    </>
   )
 
   return (
@@ -289,6 +305,11 @@ function FileRow({
       className="flex items-center gap-1 px-2 py-0.5 hover:bg-panel-raised cursor-pointer group"
       style={{ paddingLeft: 8 + depth * 12 + 10 }}
       onClick={() => onOpenFile(path)}
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData('text/plain', `@${path} `)
+        e.dataTransfer.effectAllowed = 'copy'
+      }}
     >
       <FileText size={11} className="shrink-0 text-faint" />
       <span className="truncate min-w-0 flex-1 text-fg">{name}</span>

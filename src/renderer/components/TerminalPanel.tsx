@@ -11,7 +11,7 @@ import type { WorkspacePane, TerminalTab, PtyStatus, AgentKind } from '../types'
 import { AGENT_REGISTRY, agentDisplayName } from '../../shared/agent-registry'
 import { Tooltip } from './Tooltip'
 import { repoNameColor } from './RepoIcon'
-import { getClientId, useTerminalSession } from '../store'
+import { getClientId, useTerminalProgress, useTerminalSession } from '../store'
 import { useBackend } from '../backend'
 
 /** Chip shown in the tab bar when other clients are attached to the
@@ -116,6 +116,36 @@ interface SortableTabProps {
   onSleepTab?: () => void
 }
 
+const PROGRESS_COLOR: Record<1 | 2 | 3 | 4, string> = {
+  1: 'bg-success',
+  2: 'bg-danger',
+  3: 'bg-fg-bright',
+  4: 'bg-warning'
+}
+
+function TabProgressBar({ terminalId }: { terminalId: string }): JSX.Element | null {
+  const progress = useTerminalProgress(terminalId)
+  if (!progress || progress.state === 0) return null
+  const color = PROGRESS_COLOR[progress.state]
+  // State 3 = indeterminate: full-width bar with a pulse animation.
+  if (progress.state === 3) {
+    return (
+      <div className="absolute left-0 right-0 bottom-0 h-[2px] pointer-events-none">
+        <div className={`h-full w-full ${color} animate-pulse`} />
+      </div>
+    )
+  }
+  const pct = Math.max(0, Math.min(100, progress.value))
+  return (
+    <div className="absolute left-0 right-0 bottom-0 h-[2px] pointer-events-none">
+      <div
+        className={`h-full ${color} transition-[width] duration-150`}
+        style={{ width: `${pct}%` }}
+      />
+    </div>
+  )
+}
+
 function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect, onClose, onConvertTabType, onSleepTab }: SortableTabProps): JSX.Element {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: tab.id
@@ -155,7 +185,7 @@ function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect
       style={style}
       {...attributes}
       {...listeners}
-      className={`no-drag shrink-0 flex items-center gap-1.5 px-3 h-full text-xs cursor-pointer border-b-2 whitespace-nowrap transition-colors ${
+      className={`no-drag relative shrink-0 flex items-center gap-1.5 px-3 h-full text-xs cursor-pointer border-b-2 whitespace-nowrap transition-colors ${
         isActive
           ? 'border-muted text-fg-bright'
           : 'border-transparent text-dim hover:text-fg'
@@ -194,6 +224,7 @@ function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect
         <span className={`w-1.5 h-1.5 rounded-full ${TAB_STATUS_DOT[status]}`} />
       ) : null}
       <span>{tab.label}</span>
+      <TabProgressBar terminalId={tab.id} />
       {showClose && (
         <Tooltip label="Close tab" action="closeTab">
           <button

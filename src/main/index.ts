@@ -25,6 +25,7 @@ import { parseCliFlags, USAGE, type CliFlags } from './cli-args'
 import { PlaywrightBrowserManager } from './browser-manager-playwright'
 import type { BrowserManagerLike } from './browser-manager-types'
 import { PerfMonitor } from './perf-monitor'
+import { setGitHubApiRecorder, setGitHubApiLoggingEnabled } from './github-recorder'
 import { PRPoller } from './pr-poller'
 import { WorktreesFSM } from './worktrees-fsm'
 import { WorktreeDeletionFSM } from './worktree-deletion-fsm'
@@ -321,6 +322,8 @@ const jsonClaudeManager = new JsonClaudeManager(store, {
     })
 })
 const perfMonitor = new PerfMonitor()
+setGitHubApiRecorder(() => perfMonitor.recordGitHubApiCall())
+setGitHubApiLoggingEnabled(config.expandedDiagnosticLoggingEnabled === true)
 
 // In Electron mode createDesktopShell applies the dev-mode userData
 // override (must run before anything reads paths) and constructs the
@@ -1514,6 +1517,21 @@ function registerIpcHandlers(): void {
     return true
   })
 
+  transport.onRequest('config:setExpandedDiagnosticLoggingEnabled', (_ctx, enabled: boolean) => {
+    if (enabled) {
+      config.expandedDiagnosticLoggingEnabled = true
+    } else {
+      delete config.expandedDiagnosticLoggingEnabled
+    }
+    saveConfig(config)
+    setGitHubApiLoggingEnabled(enabled)
+    store.dispatch({
+      type: 'settings/expandedDiagnosticLoggingEnabledChanged',
+      payload: enabled
+    })
+    return true
+  })
+
   transport.onRequest('config:setHarnessSystemPromptEnabled', (_ctx, enabled: boolean) => {
     if (enabled) {
       delete config.harnessSystemPromptEnabled
@@ -1985,6 +2003,18 @@ function registerIpcHandlers(): void {
   })
   transport.onRequest('panes:wakeTab', (_ctx, wtPath: string, tabId: string) => {
     panesFSM.wakeJsonClaudeTab(wtPath, tabId)
+    return true
+  })
+  // Renderer-driven lastActive bump. The composer fires this while the
+  // user is typing so the auto-sleep monitor can't re-sleep a tab mid-
+  // composition — ActivityDeriver only bumps lastActive on status
+  // transitions (and only after a 30s debounce), so typing into an
+  // already-'waiting' tab leaves the timestamp stale otherwise.
+  transport.onRequest('terminals:touchLastActive', (_ctx, wtPath: string) => {
+    store.dispatch({
+      type: 'terminals/lastActiveChanged',
+      payload: { worktreePath: wtPath, ts: Date.now() }
+    })
     return true
   })
   // Wake-on-activation. Renderer fires this whenever the user focuses a
@@ -2752,6 +2782,18 @@ function registerIpcHandlers(): void {
       `dispatched id=${id} newController=${next?.controllerClientId ?? 'null'} spectators=${JSON.stringify(next?.spectatorClientIds ?? [])}`
     )
     ptyManager.resize(id, cols, rows)
+  })
+
+  transport.onSignal('terminal:setProgress', (_ctx, id: string, state: number, value: number) => {
+    // OSC 9;4 progress, mirrored from the controller's xterm ProgressAddon.
+    // Reducer dedups identical updates so we don't fan out per token.
+    if (typeof id !== 'string' || !id) return
+    if (state !== 0 && state !== 1 && state !== 2 && state !== 3 && state !== 4) return
+    const v = Number(value)
+    store.dispatch({
+      type: 'terminals/progressChanged',
+      payload: { id, state, value: Number.isFinite(v) ? v : 0 }
+    })
   })
 
   transport.onRequest('snooze:snooze', (_ctx, path: string, wakeAt: number) => {

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2, LifeBuoy, Bug, Lightbulb, FlaskConical, Copy, ExternalLink, CalendarDays, FileText, FolderOpen } from 'lucide-react'
+import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2, LifeBuoy, Bug, Lightbulb, FlaskConical, Copy, CopyCheck, ExternalLink, CalendarDays, FileText, FolderOpen } from 'lucide-react'
 import { openReportIssue } from './ReportIssueScreen'
 import { HARNESS_ISSUES_URL, HARNESS_RELEASES_URL, harnessReleaseNotesUrl } from '../../shared/constants'
 import { useSettings, useUpdater, useRepoConfigs, useHooks } from '../store'
@@ -10,6 +10,7 @@ import { Tooltip } from './Tooltip'
 import { AGENT_REGISTRY, agentDisplayName, CLAUDE_MODELS, CODEX_MODELS } from '../../shared/agent-registry'
 import { AgentIcon } from './AgentIcon'
 import { BUILT_IN_THEMES_BY_MODE, type ThemeOption } from '../themes'
+import { SEMANTIC_KEYS } from '../theme-apply'
 import type { CustomTheme } from '../../shared/state/settings'
 import { QRCodeSVG } from 'qrcode.react'
 
@@ -202,7 +203,8 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     autoSleepMinutes,
     autoApprovePermissions,
     autoApproveSteerInstructions,
-    snoozeDefaultDays
+    snoozeDefaultDays,
+    expandedDiagnosticLoggingEnabled
   } = settings
   const setupScript = worktreeScripts.setup
   const teardownScript = worktreeScripts.teardown
@@ -2048,6 +2050,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 </p>
               </div>
               )}
+
               </>
                 )
               })()}
@@ -2262,6 +2265,24 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 {debugLogError && (
                   <p className="mt-2 text-xs text-danger">{debugLogError}</p>
                 )}
+
+                <label className="mt-4 pt-3 border-t border-border flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={expandedDiagnosticLoggingEnabled}
+                    onChange={(e) => { void backend.setExpandedDiagnosticLoggingEnabled(e.target.checked) }}
+                    className="mt-0.5 cursor-pointer"
+                  />
+                  <div className="flex-1">
+                    <div className="text-sm text-fg-bright">Expanded diagnostic logging</div>
+                    <div className="text-xs text-dim mt-0.5">
+                      Writes a <code className="bg-panel px-1 rounded">[github-api]</code> line to{' '}
+                      <code className="bg-panel px-1 rounded">debug.log</code> for every GitHub API call
+                      (URL, method, status, duration). Off by default — the per-call volume is high
+                      during PR-refresh bursts. The HUD's "GH API" rate metric is always on regardless.
+                    </div>
+                  </div>
+                </label>
               </div>
             </section>
 
@@ -2766,13 +2787,33 @@ function customSwatches(c: CustomTheme): Swatch[] {
   return out
 }
 
+function readBuiltInThemeJson(opt: ThemeOption): string {
+  const probe = document.createElement('div')
+  probe.dataset.theme = opt.id
+  probe.style.display = 'none'
+  document.body.appendChild(probe)
+  try {
+    const cs = getComputedStyle(probe)
+    const colors: Record<string, string> = {}
+    for (const key of SEMANTIC_KEYS) {
+      const v = cs.getPropertyValue(`--color-${key}`).trim()
+      if (v) colors[key] = v
+    }
+    return JSON.stringify({ name: opt.label, mode: opt.mode, colors }, null, 2) + '\n'
+  } finally {
+    probe.remove()
+  }
+}
+
 function ThemeRow({
   id,
   label,
   description,
   swatches,
   isActive,
-  onSelect
+  onSelect,
+  onCopy,
+  copied
 }: {
   id: string
   label: string
@@ -2780,12 +2821,14 @@ function ThemeRow({
   swatches: Swatch[]
   isActive: boolean
   onSelect: (id: string) => void
+  onCopy?: () => void
+  copied?: boolean
 }): JSX.Element {
   return (
     <button
       type="button"
       onClick={() => onSelect(id)}
-      className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors cursor-pointer ${
+      className={`group w-full flex items-center gap-3 px-4 py-3 text-left transition-colors cursor-pointer ${
         isActive ? 'bg-surface' : 'hover:bg-surface/60'
       }`}
     >
@@ -2806,6 +2849,21 @@ function ThemeRow({
         <div className="text-sm text-fg">{label}</div>
         <div className="text-xs text-dim truncate">{description}</div>
       </div>
+      {onCopy && (
+        <Tooltip label={copied ? 'Copied!' : 'Copy as JSON'} side="left">
+          <span
+            role="button"
+            tabIndex={0}
+            onClick={(e) => { e.stopPropagation(); onCopy() }}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onCopy() } }}
+            className={`shrink-0 text-dim hover:text-fg transition-opacity cursor-pointer p-1 ${
+              copied ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus:opacity-100'
+            }`}
+          >
+            {copied ? <CopyCheck size={14} /> : <Copy size={14} />}
+          </span>
+        </Tooltip>
+      )}
       {isActive && <Check size={14} className="text-success shrink-0" />}
     </button>
   )
@@ -2820,6 +2878,23 @@ function ThemeModePicker({
   disabled,
   onSelect
 }: ThemeModePickerProps): JSX.Element {
+  const [copiedId, setCopiedId] = useState<string | null>(null)
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    return () => {
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current)
+    }
+  }, [])
+  const handleCopy = (opt: ThemeOption): void => {
+    const json = readBuiltInThemeJson(opt)
+    void navigator.clipboard.writeText(json)
+    if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current)
+    setCopiedId(opt.id)
+    copiedTimerRef.current = setTimeout(() => {
+      setCopiedId(null)
+      copiedTimerRef.current = null
+    }, 1500)
+  }
   return (
     <div className={disabled ? 'opacity-50' : ''}>
       <h3 className="text-sm font-semibold text-fg-bright mb-1">{title}</h3>
@@ -2834,6 +2909,8 @@ function ThemeModePicker({
             swatches={builtInSwatches(opt)}
             isActive={activeId === opt.id}
             onSelect={onSelect}
+            onCopy={() => handleCopy(opt)}
+            copied={copiedId === opt.id}
           />
         ))}
         {customs.map((c) => (

@@ -102,7 +102,8 @@ export function buildInitialAppState(
         config.autoSleepMinutes >= 0
           ? Math.floor(config.autoSleepMinutes)
           : 30,
-      snoozeDefaultDays: Math.max(1, Math.floor(config.snoozeDefaultDays ?? 7))
+      snoozeDefaultDays: Math.max(1, Math.floor(config.snoozeDefaultDays ?? 7)),
+      expandedDiagnosticLoggingEnabled: config.expandedDiagnosticLoggingEnabled === true
     }
   }
 }

@@ -239,6 +239,8 @@ export function buildBackend(
       req('config:setJsonModeDefaultPermissionMode', value),
     setAutoSleepMinutes: (value: number) => req('config:setAutoSleepMinutes', value),
     setAutoUpdateEnabled: (enabled: boolean) => req('config:setAutoUpdateEnabled', enabled),
+    setExpandedDiagnosticLoggingEnabled: (enabled: boolean) =>
+      req('config:setExpandedDiagnosticLoggingEnabled', enabled),
     setShareClaudeSettings: (enabled: boolean) => req('config:setShareClaudeSettings', enabled),
     setHarnessSystemPromptEnabled: (enabled: boolean) =>
       req('config:setHarnessSystemPromptEnabled', enabled),
@@ -296,6 +298,8 @@ export function buildBackend(
     panesEnsureInitialized: (wtPath: string) => req('panes:ensureInitialized', wtPath),
     panesSleepTab: (wtPath: string, tabId: string) => req('panes:sleepTab', wtPath, tabId),
     panesWakeTab: (wtPath: string, tabId: string) => req('panes:wakeTab', wtPath, tabId),
+    touchWorktreeLastActive: (wtPath: string) =>
+      req('terminals:touchLastActive', wtPath),
 
     getTerminalHistory: (id: string) => req('terminal:getHistory', id),
     clearTerminalHistory: (id: string) => req('terminal:forgetHistory', id),
@@ -345,6 +349,7 @@ export function buildBackend(
     // Always-local: shell.openExternal opens on the local user's
     // machine, never on the remote backend. Same with debug log paths.
     openExternal: (url: string) => sigLocal('shell:openExternal', url),
+    openPath: (path: string) => reqLocal('shell:openPath', path),
     openDebugLog: () => reqLocal('debug:openLog'),
     showDebugLogInFolder: () => reqLocal('debug:showLogInFolder'),
 
@@ -445,6 +450,8 @@ export function buildBackend(
     leaveTerminal: (id: string) => sig('terminal:leave', id),
     takeTerminalControl: (id: string, cols: number, rows: number) =>
       sig('terminal:takeControl', id, cols, rows),
+    setTerminalProgress: (id: string, state: 0 | 1 | 2 | 3 | 4, value: number) =>
+      sig('terminal:setProgress', id, state, value),
     onTerminalData: (callback: DataCallback) =>
       onActiveSignal('terminal:data', (id, data) => {
         callback(id as string, data as string)

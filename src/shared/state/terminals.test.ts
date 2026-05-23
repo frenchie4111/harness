@@ -208,11 +208,12 @@ describe('terminalsReducer', () => {
     expect(next.shellActivity['term-1']).toEqual({ active: true, processName: 'vim' })
   })
 
-  it('removed clears all three maps for that id', () => {
+  it('removed clears all maps for that id', () => {
     const start: TerminalsState = {
       statuses: { 'term-1': 'processing', 'term-2': 'idle' },
       pendingTools: { 'term-1': { name: 'Bash', input: {} } },
       shellActivity: { 'term-1': { active: true } },
+      progress: { 'term-1': { state: 1, value: 50 } },
       panes: {},
       lastActive: {},
       sessions: {}
@@ -221,6 +222,7 @@ describe('terminalsReducer', () => {
     expect(next.statuses).toEqual({ 'term-2': 'idle' })
     expect(next.pendingTools).toEqual({})
     expect(next.shellActivity).toEqual({})
+    expect(next.progress).toEqual({})
   })
 
   it('removed on an unknown id is a no-op (returns same reference)', () => {
@@ -228,11 +230,44 @@ describe('terminalsReducer', () => {
       statuses: { 'term-1': 'idle' },
       pendingTools: {},
       shellActivity: {},
+      progress: {},
       panes: {},
       lastActive: {},
       sessions: {}
     }
     const next = apply(start, { type: 'terminals/removed', payload: 'missing' })
+    expect(next).toBe(start)
+  })
+
+  it('progressChanged stores normal progress', () => {
+    const next = apply(initialTerminals, {
+      type: 'terminals/progressChanged',
+      payload: { id: 'term-1', state: 1, value: 42 }
+    })
+    expect(next.progress['term-1']).toEqual({ state: 1, value: 42 })
+  })
+
+  it('progressChanged with state 0 drops the entry', () => {
+    const start = apply(initialTerminals, {
+      type: 'terminals/progressChanged',
+      payload: { id: 'term-1', state: 1, value: 80 }
+    })
+    const next = apply(start, {
+      type: 'terminals/progressChanged',
+      payload: { id: 'term-1', state: 0, value: 0 }
+    })
+    expect(next.progress).toEqual({})
+  })
+
+  it('progressChanged dedups identical updates (returns same reference)', () => {
+    const start = apply(initialTerminals, {
+      type: 'terminals/progressChanged',
+      payload: { id: 'term-1', state: 1, value: 25 }
+    })
+    const next = apply(start, {
+      type: 'terminals/progressChanged',
+      payload: { id: 'term-1', state: 1, value: 25 }
+    })
     expect(next).toBe(start)
   })
 

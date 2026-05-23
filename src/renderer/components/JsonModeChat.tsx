@@ -892,6 +892,25 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
     ta.style.height = 'auto'
     ta.style.height = `${ta.scrollHeight}px`
   }, [draft])
+  // Wake-on-typing: first keystroke into a slept tab fires the wake IPC;
+  // subsequent keystrokes only refresh lastActive (debounced 5s) so the
+  // auto-sleep monitor can't re-sleep this worktree mid-composition.
+  const wakeRequestedRef = useRef(false)
+  const lastTouchAtRef = useRef(0)
+  useEffect(() => {
+    if (mode === 'asleep') wakeRequestedRef.current = false
+  }, [mode])
+  const handleComposerActivity = useCallback((): void => {
+    if (mode === 'asleep' && !wakeRequestedRef.current) {
+      wakeRequestedRef.current = true
+      void backend.panesWakeTab(worktreePath, sessionId)
+    }
+    const now = Date.now()
+    if (now - lastTouchAtRef.current >= 5000) {
+      lastTouchAtRef.current = now
+      void backend.touchWorktreeLastActive(worktreePath)
+    }
+  }, [backend, mode, sessionId, worktreePath])
   const scrollRef = useRef<HTMLDivElement | null>(null)
   // dragenter fires for every child element entered, dragleave for every
   // child exited — so a naive boolean flickers as the cursor moves over
@@ -1708,6 +1727,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
               setCursorPos(e.target.selectionStart ?? e.target.value.length)
               // Any text change re-arms a previously dismissed popover.
               setMentionDismissed(null)
+              handleComposerActivity()
             }}
             onSelect={(e) => {
               setCursorPos(e.currentTarget.selectionStart ?? 0)
@@ -1760,21 +1780,27 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
                 send()
               }
             }}
-            placeholder="Message Claude — Cmd/Ctrl+Enter to send"
+            placeholder={
+              mode === 'asleep'
+                ? 'Type to wake this session…'
+                : 'Message Claude — Cmd/Ctrl+Enter to send'
+            }
             // text-base (16px) below sm: prevents iOS Safari from zooming
             // the viewport when the textarea takes focus. text-sm on
             // desktop keeps the chat dense.
             className="w-full bg-panel border border-border rounded px-2 py-1.5 text-base sm:text-sm resize-none outline-none focus:border-accent min-h-[60px] max-h-[200px]"
             rows={2}
-            disabled={state === 'exited'}
+            // Never disabled — sleep kills the subprocess and dispatches
+            // state='exited', and the wake transition arrives as separate
+            // tabWoken + state='running' IPC events. Toggling disabled on
+            // either of those races would briefly blur the focused
+            // textarea, kicking the user out mid-keystroke. send() guards
+            // the actual "no live subprocess" case.
           />
         </div>
         <button
           onClick={() => send()}
-          disabled={
-            (!draft.trim() && attachments.length === 0) ||
-            state === 'exited'
-          }
+          disabled={!draft.trim() && attachments.length === 0}
           className="px-3 py-1.5 bg-accent text-white rounded text-sm disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
         >
           Send

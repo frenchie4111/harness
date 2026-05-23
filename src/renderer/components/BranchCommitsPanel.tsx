@@ -63,6 +63,11 @@ export function BranchCommitsPanel({ worktreePath, onOpenCommitReview }: BranchC
               <div
                 onClick={() => onOpenCommitReview?.(c.hash, c.shortHash, c.subject)}
                 className="group relative flex items-center gap-2.5 pl-4 pr-3 py-1.5 hover:bg-panel-raised cursor-pointer"
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData('text/plain', c.hash)
+                  e.dataTransfer.effectAllowed = 'copy'
+                }}
               >
                 {/* Tree line + dot */}
                 <div className="relative shrink-0 w-3 self-stretch flex justify-center">
