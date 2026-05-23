@@ -606,7 +606,7 @@ export function Sidebar({
             <BookOpen className="w-3.5 h-3.5" />
           </button>
         </Tooltip>
-        <Tooltip label="Settings" side="top">
+        <Tooltip label="Settings" action="openSettings" side="top">
           <button
             onClick={onOpenSettings}
             className={overlayButtonClass(activeOverlay === 'settings')}

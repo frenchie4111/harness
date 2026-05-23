@@ -46,6 +46,7 @@ interface UseHotkeyHandlersArgs {
   onOpenReview: () => void
   onToggleHotkeyCheatsheet: () => void
   onToggleCommandCenter: () => void
+  onToggleSettings: () => void
 }
 
 /** Sidebar-aware hotkey handler block. Computes the visible/ordered
@@ -88,7 +89,8 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
     onOpenNewWorktree,
     onOpenReview,
     onToggleHotkeyCheatsheet,
-    onToggleCommandCenter
+    onToggleCommandCenter,
+    onToggleSettings
   } = args
 
   // Mirror the sidebar's grouping/rendering order so hotkey navigation
@@ -266,6 +268,7 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       },
       toggleSidebar: () => setSidebarVisible((v) => !v),
       toggleRightColumn: () => setRightColumnHidden((v) => !v),
+      openSettings: onToggleSettings,
       uiScaleUp: () => {
         const ladder = ['small', 'medium', 'large', 'x-large'] as const
         const i = ladder.indexOf(uiScale)
@@ -347,6 +350,7 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       onOpenReview,
       onToggleHotkeyCheatsheet,
       onToggleCommandCenter,
+      onToggleSettings,
       uiScale
     ]
   )

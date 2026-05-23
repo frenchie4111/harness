@@ -731,6 +731,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
     },
     onToggleHotkeyCheatsheet: () => toggleOverlay('hotkeys'),
     onToggleCommandCenter: () => toggleOverlay('commandCenter'),
+    onToggleSettings: () => toggleOverlay('settings'),
     onRequestRenameActiveTab: () => {
       if (!activeWorktreeId) return
       const tabId = activeTabId[activeWorktreeId]

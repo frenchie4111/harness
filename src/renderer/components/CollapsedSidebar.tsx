@@ -175,7 +175,7 @@ export function CollapsedSidebar({
             <Keyboard className="w-3.5 h-3.5" />
           </button>
         </Tooltip>
-        <Tooltip label="Settings" side="right">
+        <Tooltip label="Settings" action="openSettings" side="right">
           <button
             onClick={onOpenSettings}
             className={btnClass(activeOverlay === 'settings')}

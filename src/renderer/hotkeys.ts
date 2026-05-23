@@ -39,6 +39,7 @@ export type Action =
   | 'togglePerfMonitor'
   | 'hotkeyCheatsheet'
   | 'openReview'
+  | 'openSettings'
   | 'uiScaleUp'
   | 'uiScaleDown'
 
@@ -100,6 +101,7 @@ export const DEFAULT_HOTKEYS: Record<Action, HotkeyBinding> = {
   togglePerfMonitor: { key: 'd', modifiers: { cmd: true, shift: true } },
   hotkeyCheatsheet: { key: '/', modifiers: { cmd: true, shift: true } },
   openReview: { key: 'r', modifiers: { cmd: true, alt: true } },
+  openSettings: { key: ',', modifiers: { cmd: true } },
   uiScaleUp: { key: '=', modifiers: { cmd: true } },
   uiScaleDown: { key: '-', modifiers: { cmd: true } },
 }
@@ -220,6 +222,7 @@ export const ACTION_LABELS: Record<Action, string> = {
   togglePerfMonitor: 'Performance monitor',
   hotkeyCheatsheet: 'Keyboard shortcuts',
   openReview: 'Review changes',
+  openSettings: 'Open settings',
   uiScaleUp: 'Increase UI size',
   uiScaleDown: 'Decrease UI size'
 }
