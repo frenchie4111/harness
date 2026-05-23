@@ -24,7 +24,7 @@ export function CollapsedRightPanel({ onExpand }: CollapsedRightPanelProps): JSX
       <div className="flex flex-col items-center gap-0.5 py-1 shrink-0">
         <Tooltip label="Expand sidebar" action="toggleRightColumn" side="left">
           <button onClick={onExpand} className={btnClass()}>
-            <PanelRightOpen size={14} />
+            <PanelRightOpen className="w-3.5 h-3.5" />
           </button>
         </Tooltip>
       </div>

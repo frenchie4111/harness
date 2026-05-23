@@ -29,7 +29,7 @@ export function LinuxWindowControls(): JSX.Element | null {
           onClick={() => backend.windowClose()}
           className={`${button} hover:!bg-error/20 hover:!text-error`}
         >
-          <X size={12} strokeWidth={2.25} />
+          <X className="w-3 h-3" strokeWidth={2.25} />
         </button>
         <button
           type="button"
@@ -37,7 +37,7 @@ export function LinuxWindowControls(): JSX.Element | null {
           onClick={() => backend.windowMinimize()}
           className={button}
         >
-          <Minus size={12} strokeWidth={2.25} />
+          <Minus className="w-3 h-3" strokeWidth={2.25} />
         </button>
         <button
           type="button"
@@ -45,7 +45,7 @@ export function LinuxWindowControls(): JSX.Element | null {
           onClick={() => backend.windowToggleMaximize()}
           className={button}
         >
-          <Square size={10} strokeWidth={2.25} />
+          <Square className="w-2.5 h-2.5" strokeWidth={2.25} />
         </button>
       </div>
     </div>

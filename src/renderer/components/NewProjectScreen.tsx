@@ -109,7 +109,7 @@ export function NewProjectScreen({ onCancel, onCreated }: NewProjectScreenProps)
           disabled={submitting}
           className="no-drag absolute top-1/2 -translate-y-1/2 [left:calc(1rem+var(--harness-overlay-leading,0px))] flex items-center gap-1.5 text-xs text-muted hover:text-fg-bright transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          <ArrowLeft size={14} />
+          <ArrowLeft className="w-3.5 h-3.5" />
           Back
           <kbd className="text-xs text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono">ESC</kbd>
         </button>
@@ -174,7 +174,7 @@ export function NewProjectScreen({ onCancel, onCreated }: NewProjectScreenProps)
                   disabled={submitting}
                   className="flex items-center gap-1.5 px-3 py-2.5 rounded-lg border-2 border-border-strong bg-app hover:border-accent text-sm text-fg transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  <FolderOpen size={14} />
+                  <FolderOpen className="w-3.5 h-3.5" />
                   Browse…
                 </button>
               </div>
@@ -254,12 +254,12 @@ export function NewProjectScreen({ onCancel, onCreated }: NewProjectScreenProps)
                 >
                   {submitting ? (
                     <>
-                      <Loader2 size={14} className="animate-spin" />
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
                       Creating…
                     </>
                   ) : (
                     <>
-                      <Sparkles size={14} />
+                      <Sparkles className="w-3.5 h-3.5" />
                       Create project
                     </>
                   )}

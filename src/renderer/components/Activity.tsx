@@ -273,7 +273,7 @@ export function Activity({ onClose, worktrees, prStatuses, mergedPaths }: Activi
           onClick={onClose}
           className="no-drag absolute top-1/2 -translate-y-1/2 [left:calc(1rem+var(--harness-overlay-leading,0px))] flex items-center gap-1.5 text-xs text-muted hover:text-fg-bright transition-colors cursor-pointer"
         >
-          <ArrowLeft size={14} />
+          <ArrowLeft className="w-3.5 h-3.5" />
           Back
           <kbd className="text-xs text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono">ESC</kbd>
         </button>
@@ -306,7 +306,7 @@ export function Activity({ onClose, worktrees, prStatuses, mergedPaths }: Activi
               aria-label="Reset activity log"
               className="text-muted hover:text-danger transition-colors cursor-pointer p-1"
             >
-              <Trash2 size={13} />
+              <Trash2 className="w-3.5 h-3.5" />
             </button>
           </Tooltip>
           <Tooltip label="Refresh activity log" side="left">
@@ -315,7 +315,7 @@ export function Activity({ onClose, worktrees, prStatuses, mergedPaths }: Activi
               className="text-muted hover:text-fg-bright transition-colors cursor-pointer p-1"
               aria-label="Refresh activity log"
             >
-              <RefreshCw size={13} />
+              <RefreshCw className="w-3.5 h-3.5" />
             </button>
           </Tooltip>
         </div>
@@ -473,7 +473,7 @@ function StatCard({
   return (
     <div className="bg-app/50 border border-border rounded-xl p-4">
       <div className="flex items-center gap-2 mb-2">
-        <Icon size={14} className={tint} />
+        <Icon className={`w-3.5 h-3.5 ${tint}`} />
         <span className="text-xs uppercase tracking-wider text-dim">{label}</span>
       </div>
       <div className={`text-2xl font-bold ${tint} tabular-nums`}>{value}</div>

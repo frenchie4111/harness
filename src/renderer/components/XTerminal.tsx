@@ -816,7 +816,7 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
             className="p-0.5 rounded text-dim hover:text-fg-bright hover:bg-border transition-colors"
             aria-label="Close search"
           >
-            <X size={12} />
+            <X className="w-3 h-3" />
           </button>
         </div>
       )}
@@ -838,7 +838,7 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
       {showSpectatorOverlay && (
         <div className="absolute top-2 right-2 flex items-center gap-2 pointer-events-auto">
           <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-panel/90 border border-border text-xs text-dim">
-            <Eye size={12} />
+            <Eye className="w-3 h-3" />
             <span>Spectating</span>
           </div>
           <button

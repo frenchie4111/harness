@@ -76,7 +76,7 @@ export function BackendChipStrip({ onAddBackend }: BackendChipStripProps): JSX.E
           className="shrink-0 w-9 h-9 rounded-lg flex items-center justify-center text-dim hover:text-fg hover:bg-surface transition-colors cursor-pointer border border-dashed border-border-strong"
           aria-label="Add backend"
         >
-          <Plus size={14} />
+          <Plus className="w-3.5 h-3.5" />
         </button>
       </Tooltip>
     </div>
@@ -128,7 +128,7 @@ function BackendChip({ connection, isActive, onSelect, onRemove }: BackendChipPr
                 {connection.initials.slice(0, 2)}
               </span>
             ) : (
-              <Icon size={14} />
+              <Icon className="w-3.5 h-3.5" />
             )}
             {disconnected && (
               <span
@@ -151,7 +151,7 @@ function BackendChip({ connection, isActive, onSelect, onRemove }: BackendChipPr
             aria-label={`Remove ${connection.label}`}
             className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-panel-raised border border-border-strong text-faint hover:text-danger hover:border-danger flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
           >
-            <X size={9} strokeWidth={2.5} />
+            <X className="w-2.5 h-2.5" strokeWidth={2.5} />
           </button>
         </Tooltip>
       )}

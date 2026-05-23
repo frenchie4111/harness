@@ -46,18 +46,20 @@ export function repoLetter(repoName: string): string {
 
 interface RepoIconProps {
   repoName: string
-  size?: number
+  /** Box is 1em × 1em and the letter is 60% of that, so callers control
+   *  size via a font-size class (e.g. `text-sm`, `text-lg`). Without a
+   *  class it inherits the surrounding text-size. */
+  className?: string
 }
 
-export function RepoIcon({ repoName, size = 16 }: RepoIconProps): JSX.Element {
-  const fontSize = Math.round(size * 0.6)
+export function RepoIcon({ repoName, className }: RepoIconProps): JSX.Element {
   return (
     <span
-      className={`inline-flex items-center justify-center rounded-sm text-white font-bold shrink-0 ${repoColor(repoName)}`}
-      style={{ width: size, height: size, fontSize, lineHeight: 1 }}
+      className={`inline-flex items-center justify-center rounded-sm text-white font-bold shrink-0 ${repoColor(repoName)} ${className ?? ''}`}
+      style={{ width: '1em', height: '1em', lineHeight: 1 }}
       title={repoName}
     >
-      {repoLetter(repoName)}
+      <span style={{ fontSize: '0.6em', lineHeight: 1 }}>{repoLetter(repoName)}</span>
     </span>
   )
 }

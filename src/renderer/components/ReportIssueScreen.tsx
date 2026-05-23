@@ -234,7 +234,7 @@ export function ReportIssueScreen({
                     : 'text-dim hover:text-fg'
                 }`}
               >
-                <Bug size={12} />
+                <Bug className="w-3 h-3" />
                 Bug
               </button>
               <button
@@ -246,7 +246,7 @@ export function ReportIssueScreen({
                     : 'text-dim hover:text-fg'
                 }`}
               >
-                <Lightbulb size={12} />
+                <Lightbulb className="w-3 h-3" />
                 Feature request
               </button>
             </div>
@@ -330,7 +330,7 @@ export function ReportIssueScreen({
               disabled={!canSubmit}
               className="flex items-center gap-1.5 px-4 py-2 rounded-md bg-info text-white text-sm font-medium hover:bg-info/90 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              <ExternalLink size={13} />
+              <ExternalLink className="w-3.5 h-3.5" />
               Open on GitHub
             </button>
           </div>

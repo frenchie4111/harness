@@ -228,7 +228,7 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, r
           onClick={onCancel}
           className="no-drag absolute top-1/2 -translate-y-1/2 [left:calc(1rem+var(--harness-overlay-leading,0px))] flex items-center gap-1.5 text-xs text-muted hover:text-fg-bright transition-colors cursor-pointer"
         >
-          <ArrowLeft size={14} />
+          <ArrowLeft className="w-3.5 h-3.5" />
           Back
           <kbd className="text-xs text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono">ESC</kbd>
         </button>
@@ -265,7 +265,7 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, r
                     : 'text-dim hover:text-fg'
                 }`}
               >
-                <Sparkles size={12} />
+                <Sparkles className="w-3 h-3" />
                 Fresh start
               </button>
               <button
@@ -281,7 +281,7 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, r
                     : 'text-dim hover:text-fg'
                 }`}
               >
-                <Radio size={12} />
+                <Radio className="w-3 h-3" />
                 Teleport from claude.ai
               </button>
               <button
@@ -294,7 +294,7 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, r
                     : 'text-dim hover:text-fg'
                 }`}
               >
-                <GitPullRequest size={12} />
+                <GitPullRequest className="w-3 h-3" />
                 Open PR
               </button>
             </div>
@@ -322,7 +322,7 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, r
                           : 'text-dim hover:text-fg'
                       }`}
                     >
-                      <RepoIcon repoName={r.split('/').pop() || r} size={14} />
+                      <RepoIcon repoName={r.split('/').pop() || r} className="text-sm" />
                       {r.split('/').pop() || r}
                     </button>
                   ))}
@@ -452,12 +452,12 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, r
                   >
                     {submitting ? (
                       <>
-                        <Loader2 size={14} className="animate-spin" />
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
                         Creating…
                       </>
                     ) : (
                       <>
-                        <Sparkles size={14} />
+                        <Sparkles className="w-3.5 h-3.5" />
                         Create worktree
                       </>
                     )}
@@ -500,7 +500,7 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, r
                     disabled={submitting}
                     className="text-left bg-panel/60 border border-border/60 hover:border-accent hover:bg-panel rounded-xl p-4 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    <Icon size={18} className="text-accent mb-2" />
+                    <Icon className="w-[1.125rem] h-[1.125rem] text-accent mb-2" />
                     <div className="text-sm text-fg font-medium">{label}</div>
                     <div className="text-xs text-dim mt-0.5">{hint}</div>
                   </button>
@@ -528,7 +528,7 @@ function PRPickerList({ prs, loading, error, disabled, pendingNumber, onPick }: 
   if (loading) {
     return (
       <div className="flex items-center justify-center gap-2 py-12 text-sm text-dim">
-        <Loader2 size={14} className="animate-spin" />
+        <Loader2 className="w-3.5 h-3.5 animate-spin" />
         Fetching open PRs…
       </div>
     )
@@ -567,7 +567,7 @@ function PRPickerList({ prs, loading, error, disabled, pendingNumber, onPick }: 
               <span className="text-sm text-fg-bright font-medium truncate flex-1 min-w-0">
                 {pr.title}
               </span>
-              {isPending && <Loader2 size={12} className="animate-spin text-accent shrink-0" />}
+              {isPending && <Loader2 className="w-3 h-3 animate-spin text-accent shrink-0" />}
             </div>
             <div className="mt-1 text-xs text-dim flex items-center gap-1.5 flex-wrap">
               {pr.author && <span>by {pr.author.login}</span>}

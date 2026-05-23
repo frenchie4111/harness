@@ -82,7 +82,7 @@ export function CollapsedSidebar({
       <div className="flex flex-col items-center gap-0.5 py-1 shrink-0">
         <Tooltip label="Expand sidebar" action="toggleSidebar" side="right">
           <button onClick={onExpand} className={btnClass(false)}>
-            <PanelLeftOpen size={14} />
+            <PanelLeftOpen className="w-3.5 h-3.5" />
           </button>
         </Tooltip>
       </div>
@@ -92,7 +92,7 @@ export function CollapsedSidebar({
       <div className="flex flex-col items-center gap-0.5 py-1 shrink-0">
         <Tooltip label="Add repository" side="right">
           <button onClick={onAddRepo} className={btnClass(false)}>
-            <FolderOpen size={14} />
+            <FolderOpen className="w-3.5 h-3.5" />
           </button>
         </Tooltip>
         <Tooltip label="Add worktree" action="newWorktree" side="right">
@@ -100,7 +100,7 @@ export function CollapsedSidebar({
             onClick={onNewWorktree}
             className={btnClass(activeOverlay === 'newWorktree')}
           >
-            <Plus size={14} />
+            <Plus className="w-3.5 h-3.5" />
           </button>
         </Tooltip>
         <Tooltip label="Clean up old worktrees" side="right">
@@ -108,7 +108,7 @@ export function CollapsedSidebar({
             onClick={onOpenCleanup}
             className={btnClass(activeOverlay === 'cleanup')}
           >
-            <Trash2 size={14} />
+            <Trash2 className="w-3.5 h-3.5" />
           </button>
         </Tooltip>
       </div>
@@ -121,7 +121,7 @@ export function CollapsedSidebar({
             onClick={onOpenCommandCenter}
             className={btnClass(activeOverlay === 'commandCenter')}
           >
-            <LayoutGrid size={14} />
+            <LayoutGrid className="w-3.5 h-3.5" />
           </button>
         </Tooltip>
         <Tooltip label="New project" side="right">
@@ -129,7 +129,7 @@ export function CollapsedSidebar({
             onClick={onOpenNewProject}
             className={btnClass(activeOverlay === 'newProject')}
           >
-            <FolderPlus size={14} />
+            <FolderPlus className="w-3.5 h-3.5" />
           </button>
         </Tooltip>
         <Tooltip label="Activity" side="right">
@@ -137,7 +137,7 @@ export function CollapsedSidebar({
             onClick={onOpenActivity}
             className={btnClass(activeOverlay === 'activity')}
           >
-            <BarChart3 size={14} />
+            <BarChart3 className="w-3.5 h-3.5" />
           </button>
         </Tooltip>
         <Tooltip label="My week" side="right">
@@ -145,7 +145,7 @@ export function CollapsedSidebar({
             onClick={onOpenMyWeek}
             className={btnClass(activeOverlay === 'myWeek')}
           >
-            <CalendarDays size={14} />
+            <CalendarDays className="w-3.5 h-3.5" />
           </button>
         </Tooltip>
         <Tooltip label="Report an issue / request a feature" side="right">
@@ -153,7 +153,7 @@ export function CollapsedSidebar({
             onClick={onOpenReportIssue}
             className={btnClass(activeOverlay === 'reportIssue')}
           >
-            <MessageSquare size={14} />
+            <MessageSquare className="w-3.5 h-3.5" />
           </button>
         </Tooltip>
         <Tooltip label="Keyboard shortcuts" action="hotkeyCheatsheet" side="right">
@@ -161,7 +161,7 @@ export function CollapsedSidebar({
             onClick={onOpenHotkeyCheatsheet}
             className={btnClass(activeOverlay === 'hotkeys')}
           >
-            <Keyboard size={14} />
+            <Keyboard className="w-3.5 h-3.5" />
           </button>
         </Tooltip>
         <Tooltip label="Settings" side="right">
@@ -169,7 +169,7 @@ export function CollapsedSidebar({
             onClick={onOpenSettings}
             className={btnClass(activeOverlay === 'settings')}
           >
-            <SettingsIcon size={14} />
+            <SettingsIcon className="w-3.5 h-3.5" />
           </button>
         </Tooltip>
       </div>

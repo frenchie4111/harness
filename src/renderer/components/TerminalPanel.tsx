@@ -42,7 +42,7 @@ function SpectatorChip({ terminalId }: { terminalId: string }): JSX.Element | nu
   return (
     <Tooltip label={tip}>
       <div className="no-drag shrink-0 flex items-center gap-1 px-2 h-full text-xs text-dim">
-        <Users size={12} />
+        <Users className="w-3 h-3" />
         <span>{others.size}</span>
       </div>
     </Tooltip>
@@ -253,8 +253,7 @@ function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect
       {tab.type === 'shell' ? (
         shellActivity?.active ? (
           <Loader2
-            size={10}
-            className="animate-spin text-fg-bright"
+            className="w-2.5 h-2.5 animate-spin text-fg-bright"
             aria-label={`Running: ${shellActivity.processName || '?'}`}
           />
         ) : (
@@ -299,7 +298,7 @@ function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect
             }}
             className="ml-1 text-faint hover:text-fg transition-colors"
           >
-            <X size={10} />
+            <X className="w-2.5 h-2.5" />
           </button>
         </Tooltip>
       )}
@@ -459,7 +458,7 @@ export function TerminalPanel({
               }}
               className="no-drag shrink-0 px-2 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"
             >
-              <Sparkles size={12} />
+              <Sparkles className="w-3 h-3" />
             </button>
           </Tooltip>
           <Tooltip label="New shell tab" action="newShellTab">
@@ -467,7 +466,7 @@ export function TerminalPanel({
               onClick={onAddTab}
               className="no-drag shrink-0 px-2 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"
             >
-              <SquareTerminal size={12} />
+              <SquareTerminal className="w-3 h-3" />
             </button>
           </Tooltip>
           <Tooltip label="New browser tab">
@@ -475,7 +474,7 @@ export function TerminalPanel({
               onClick={onAddBrowserTab}
               className="no-drag shrink-0 px-2 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"
             >
-              <Globe size={12} />
+              <Globe className="w-3 h-3" />
             </button>
           </Tooltip>
           <div className="shrink-0 w-px h-4 bg-border mx-1" />
@@ -484,7 +483,7 @@ export function TerminalPanel({
               onClick={onSplitRight}
               className="no-drag shrink-0 px-2 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"
             >
-              <SplitSquareHorizontal size={12} />
+              <SplitSquareHorizontal className="w-3 h-3" />
             </button>
           </Tooltip>
           <Tooltip label="Split pane down" action="splitPaneDown">
@@ -492,7 +491,7 @@ export function TerminalPanel({
               onClick={onSplitDown}
               className="no-drag shrink-0 px-2 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"
             >
-              <SplitSquareVertical size={12} />
+              <SplitSquareVertical className="w-3 h-3" />
             </button>
           </Tooltip>
         </div>

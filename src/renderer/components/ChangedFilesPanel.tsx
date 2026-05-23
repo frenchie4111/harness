@@ -70,7 +70,7 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToAgent, onO
             }}
             className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-accent text-app text-xs font-medium hover:bg-accent/80 transition-colors cursor-pointer"
           >
-            <ClipboardCheck size={10} />
+            <ClipboardCheck className="w-2.5 h-2.5" />
             Review
           </button>
         </Tooltip>
@@ -83,7 +83,7 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToAgent, onO
           }}
           className="text-faint hover:text-fg transition-colors cursor-pointer"
         >
-          <RefreshCw size={12} />
+          <RefreshCw className="w-3 h-3" />
         </button>
       </Tooltip>
     </>
@@ -228,7 +228,7 @@ function FileRow({
             }}
             className="shrink-0 opacity-0 group-hover:opacity-100 text-faint hover:text-fg transition-all cursor-pointer"
           >
-            <AtSign size={11} />
+            <AtSign className="w-3 h-3" />
           </button>
         </Tooltip>
       )}
@@ -241,7 +241,7 @@ function FileRow({
             }}
             className="shrink-0 opacity-0 group-hover:opacity-100 text-faint hover:text-fg transition-all cursor-pointer"
           >
-            <Code2 size={11} />
+            <Code2 className="w-3 h-3" />
           </button>
         </Tooltip>
       )}

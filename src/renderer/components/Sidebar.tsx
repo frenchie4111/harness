@@ -308,7 +308,7 @@ export function Sidebar({
             onClick={onCollapse}
             className="text-dim hover:text-fg hover:bg-surface rounded p-0.5 transition-colors cursor-pointer"
           >
-            <PanelLeftClose size={12} />
+            <PanelLeftClose className="w-3 h-3" />
           </button>
         </Tooltip>
         <span className="text-xs font-medium text-dim">WORKTREES</span>
@@ -318,7 +318,7 @@ export function Sidebar({
               onClick={onAddRepo}
               className="text-dim hover:text-fg hover:bg-surface rounded p-0.5 transition-colors cursor-pointer"
             >
-              <FolderOpen size={12} />
+              <FolderOpen className="w-3 h-3" />
             </button>
           </Tooltip>
           <Tooltip label="Clean up old worktrees" side="bottom">
@@ -326,7 +326,7 @@ export function Sidebar({
               onClick={onOpenCleanup}
               className="text-dim hover:text-fg hover:bg-surface rounded p-0.5 transition-colors cursor-pointer"
             >
-              <Trash2 size={12} />
+              <Trash2 className="w-3 h-3" />
             </button>
           </Tooltip>
           {repoRoots.length > 1 && (
@@ -338,7 +338,7 @@ export function Sidebar({
                 onClick={onToggleUnifiedRepos}
                 className="text-dim hover:text-fg hover:bg-surface rounded p-0.5 transition-colors cursor-pointer"
               >
-                {unifiedRepos ? <Rows3 size={12} /> : <Layers size={12} />}
+                {unifiedRepos ? <Rows3 className="w-3 h-3" /> : <Layers className="w-3 h-3" />}
               </button>
             </Tooltip>
           )}
@@ -347,7 +347,7 @@ export function Sidebar({
               onClick={onRefresh}
               className="text-dim hover:text-fg hover:bg-surface rounded p-0.5 transition-colors cursor-pointer"
             >
-              <RefreshCw size={12} className={prLoading ? 'animate-spin' : ''} />
+              <RefreshCw className={`w-3 h-3 ${prLoading ? 'animate-spin' : ''}`} />
             </button>
           </Tooltip>
         </div>
@@ -363,7 +363,7 @@ export function Sidebar({
             <div className="brand-gradient-bg h-0.5" />
             <div className="p-3">
               <div className="flex items-center gap-1.5 mb-1">
-                <Sparkles size={11} className="text-accent" />
+                <Sparkles className="w-3 h-3 text-accent" />
                 <span className="text-xs font-semibold uppercase tracking-wider text-accent">
                   Get started
                 </span>
@@ -392,8 +392,8 @@ export function Sidebar({
               title={isGroupCollapsed(scope, group.key) ? `Expand ${group.label}` : `Collapse ${group.label}`}
             >
               {isGroupCollapsed(scope, group.key)
-                ? <ChevronRight size={12} className="shrink-0" />
-                : <ChevronDown size={12} className="shrink-0" />
+                ? <ChevronRight className="w-3 h-3 shrink-0" />
+                : <ChevronDown className="w-3 h-3 shrink-0" />
               }
               <span className="font-medium">{group.label}</span>
               <span className="text-faint ml-auto">{group.worktrees.length}</span>
@@ -483,8 +483,8 @@ export function Sidebar({
                   title={repoRoot}
                 >
                   {repoCollapsed
-                    ? <ChevronRight size={11} className="shrink-0" />
-                    : <ChevronDown size={11} className="shrink-0" />}
+                    ? <ChevronRight className="w-3 h-3 shrink-0" />
+                    : <ChevronDown className="w-3 h-3 shrink-0" />}
                   <span className={`truncate ${repoNameColor(repoName)}`}>{repoName}</span>
                   <Tooltip label={`Remove ${repoName} from workspace`} side="bottom">
                     <span
@@ -497,7 +497,7 @@ export function Sidebar({
                         }
                       }}
                     >
-                      <X size={11} />
+                      <X className="w-3 h-3" />
                     </span>
                   </Tooltip>
                 </button>
@@ -511,8 +511,7 @@ export function Sidebar({
                 >
                   <span className="absolute left-0 top-0 bottom-0 w-0.5 brand-gradient-flow-bar opacity-0 group-hover:opacity-100 transition-opacity" />
                   <Plus
-                    size={12}
-                    className="shrink-0 text-dim group-hover:[stroke:url(#harness-add-gradient)] transition-colors"
+                    className="w-3 h-3 shrink-0 text-dim group-hover:[stroke:url(#harness-add-gradient)] transition-colors"
                   />
                   <span className="text-xs font-medium brand-gradient-flow-text-hover">
                     Add worktree
@@ -548,7 +547,7 @@ export function Sidebar({
             onClick={onOpenCommandCenter}
             className={overlayButtonClass(activeOverlay === 'commandCenter')}
           >
-            <LayoutGrid size={14} />
+            <LayoutGrid className="w-3.5 h-3.5" />
           </button>
         </Tooltip>
         <Tooltip label="New project" side="top">
@@ -556,7 +555,7 @@ export function Sidebar({
             onClick={onOpenNewProject}
             className={overlayButtonClass(activeOverlay === 'newProject')}
           >
-            <FolderPlus size={14} />
+            <FolderPlus className="w-3.5 h-3.5" />
           </button>
         </Tooltip>
         <Tooltip label="Activity" side="top">
@@ -564,7 +563,7 @@ export function Sidebar({
             onClick={onOpenActivity}
             className={overlayButtonClass(activeOverlay === 'activity')}
           >
-            <BarChart3 size={14} />
+            <BarChart3 className="w-3.5 h-3.5" />
           </button>
         </Tooltip>
         <Tooltip label="My week" side="top">
@@ -572,7 +571,7 @@ export function Sidebar({
             onClick={onOpenMyWeek}
             className={overlayButtonClass(activeOverlay === 'myWeek')}
           >
-            <CalendarDays size={14} />
+            <CalendarDays className="w-3.5 h-3.5" />
           </button>
         </Tooltip>
         <Tooltip label="Keyboard shortcuts" action="hotkeyCheatsheet" side="top">
@@ -580,7 +579,7 @@ export function Sidebar({
             onClick={onOpenHotkeyCheatsheet}
             className={overlayButtonClass(activeOverlay === 'hotkeys')}
           >
-            <Keyboard size={14} />
+            <Keyboard className="w-3.5 h-3.5" />
           </button>
         </Tooltip>
         <Tooltip label="Report an issue / request a feature / submit a suggestion" side="top">
@@ -588,7 +587,7 @@ export function Sidebar({
             onClick={() => (onOpenReportIssue ? onOpenReportIssue() : openReportIssue())}
             className={overlayButtonClass(activeOverlay === 'reportIssue')}
           >
-            <MessageSquare size={14} />
+            <MessageSquare className="w-3.5 h-3.5" />
           </button>
         </Tooltip>
         <Tooltip label="Settings" side="top">
@@ -596,7 +595,7 @@ export function Sidebar({
             onClick={onOpenSettings}
             className={overlayButtonClass(activeOverlay === 'settings')}
           >
-            <SettingsIcon size={14} />
+            <SettingsIcon className="w-3.5 h-3.5" />
           </button>
         </Tooltip>
       </div>
@@ -636,9 +635,9 @@ function PendingWorktreeRow({ pending, isActive, onClick, onDismiss }: PendingWo
       }`}
     >
       {isError ? (
-        <AlertCircle size={13} className="shrink-0 text-danger" />
+        <AlertCircle className="w-3.5 h-3.5 shrink-0 text-danger" />
       ) : (
-        <Loader2 size={13} className="shrink-0 text-accent animate-spin" />
+        <Loader2 className="w-3.5 h-3.5 shrink-0 text-accent animate-spin" />
       )}
       <div className="min-w-0 flex-1">
         <div className="text-sm font-medium truncate">{pending.branchName}</div>
@@ -655,7 +654,7 @@ function PendingWorktreeRow({ pending, isActive, onClick, onDismiss }: PendingWo
             }}
             className="opacity-0 group-hover:opacity-100 text-faint hover:text-danger transition-all shrink-0 cursor-pointer"
           >
-            <X size={12} />
+            <X className="w-3 h-3" />
           </button>
         </Tooltip>
       )}

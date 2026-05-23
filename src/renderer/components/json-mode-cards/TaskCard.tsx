@@ -84,7 +84,7 @@ export function TaskCard({
         <span className="text-muted text-xs w-2 shrink-0 select-none">
           {expanded ? '▾' : '▸'}
         </span>
-        <Sparkles size={11} className="text-muted shrink-0" />
+        <Sparkles className="w-3 h-3 text-muted shrink-0" />
         <span
           className="text-muted shrink-0"
           style={{ fontFamily: 'var(--chat-tool-name-family)' }}
