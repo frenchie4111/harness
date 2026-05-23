@@ -638,7 +638,8 @@ const setQuestStep = useCallback((next: QuestStep) => {
     handleCloseTab,
     handleSelectTab,
     handleSplitPane,
-    handleRefreshWorktrees
+    handleRefreshWorktrees,
+    setShowSettings
   })
 
   // Compute aggregate status per worktree (worst status wins)

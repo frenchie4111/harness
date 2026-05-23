@@ -541,7 +541,7 @@ export function Sidebar({
             <MessageSquare size={14} />
           </button>
         </Tooltip>
-        <Tooltip label="Settings" side="top">
+        <Tooltip label="Settings" action="openSettings" side="top">
           <button
             onClick={onOpenSettings}
             className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
