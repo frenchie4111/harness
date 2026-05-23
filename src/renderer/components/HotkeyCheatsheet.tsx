@@ -82,7 +82,7 @@ export function HotkeyCheatsheet({ resolvedHotkeys, onClose, onOpenCommandPalett
   const groups = buildGroups(resolvedHotkeys)
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-start justify-center pt-[12vh]" onClick={onClose}>
+    <div className="fixed inset-0 z-[60] flex items-start justify-center pt-[12vh] bg-black/30" onClick={onClose}>
       <div
         ref={panelRef}
         className="w-full max-w-2xl bg-surface rounded-xl shadow-2xl border border-border overflow-hidden"

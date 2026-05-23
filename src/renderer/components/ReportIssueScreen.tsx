@@ -205,7 +205,7 @@ export function ReportIssueScreen({
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-start justify-center pt-[8vh] bg-app/40"
+      className="fixed inset-0 z-[60] flex items-start justify-center pt-[8vh] bg-black/30"
       onClick={onClose}
     >
       <div
