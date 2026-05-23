@@ -6,6 +6,21 @@
 // nexe so the user can debug the layout with `ls`, override the Node
 // binary by editing one file, and we don't depend on a single-binary
 // packer that sometimes lags Node releases.
+//
+// Layout of the staged tarball (extracted under ~/.harness-server/):
+//   harness-server-<version>-<platform>/
+//     bin/harness-server                            shell shim
+//     VERSION
+//     lib/
+//       node                                        pinned Node binary
+//       main/index.js                               vite-bundled main process
+//       web-client/                                 vite-bundled renderer
+//       mcp/{permission-prompt-mcp.js, mcp-bridge.js}
+//       node_modules/
+//         node-pty/, ws/                            runtime deps externalized by vite
+//         @anthropic-ai/claude-code-<platform>/    json-mode subprocess (npm layout
+//           package.json                            so require.resolve from main/index.js
+//           claude                                  matches the Electron resolution path)
 
 import { createHash } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
@@ -107,13 +122,14 @@ async function copyClaudeBinary(platform, libDir) {
   if (!pkgName) throw new Error(`No claude-code package mapping for ${platform}`)
   const r = createRequire(join(repoRoot, 'package.json'))
   const pkgJsonPath = r.resolve(`${pkgName}/package.json`)
-  const binSrc = join(dirname(pkgJsonPath), 'claude')
-  if (!existsSync(binSrc)) {
-    throw new Error(`claude binary not found at ${binSrc}. Run npm install first.`)
+  const srcPkgDir = dirname(pkgJsonPath)
+  if (!existsSync(join(srcPkgDir, 'claude'))) {
+    throw new Error(`claude binary not found at ${join(srcPkgDir, 'claude')}. Run npm install first.`)
   }
-  const binDest = join(libDir, 'claude')
-  await cp(binSrc, binDest)
-  await chmod(binDest, 0o755)
+  const destPkgDir = join(libDir, 'node_modules', pkgName)
+  await mkdir(dirname(destPkgDir), { recursive: true })
+  await cp(srcPkgDir, destPkgDir, { recursive: true })
+  await chmod(join(destPkgDir, 'claude'), 0o755)
 }
 
 // vite externalizes runtime npm deps (see vite.headless.config.ts), so
