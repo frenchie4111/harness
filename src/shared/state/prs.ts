@@ -61,6 +61,10 @@ export interface PRStatus {
    * merge commit in the local worktree. Undefined for unmerged PRs, or
    * when no tag yet contains the merge — i.e. unreleased. */
   firstReleaseTag?: string
+  /** True if the PR's repo has at least one milestone defined. Undefined
+   * when we haven't checked (older cached state). The PR pane uses this
+   * to hide the milestone pill entirely on repos that don't use them. */
+  hasMilestones?: boolean
 }
 
 export interface PRsState {

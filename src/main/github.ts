@@ -272,7 +272,12 @@ type GraphQLCheckContext =
 
 interface GraphQLBatchResponse {
   data?: {
-    repository?: ({ defaultBranchRef: { name: string } | null } & Record<string, { nodes: GraphQLPR[] | null } | null>) | null
+    repository?:
+      | ({
+          defaultBranchRef: { name: string } | null
+          milestones: { totalCount: number } | null
+        } & Record<string, { nodes: GraphQLPR[] | null } | null>)
+      | null
   } | null
   errors?: Array<{ message: string }> | null
 }
@@ -392,6 +397,7 @@ export async function fetchPRStatusesForRepo(
   const query = `query(${varDefs.join(', ')}) {
   repository(owner: $owner, name: $name) {
     defaultBranchRef { name }
+    milestones(first: 1) { totalCount }
     ${aliasParts.join('\n    ')}
   }
 }
@@ -419,6 +425,8 @@ ${PR_FRAGMENT}`
     throw new Error(`GitHub GraphQL: empty repository response for ${owner}/${repo}`)
   }
 
+  const hasMilestones = (repoData.milestones?.totalCount ?? 0) > 0
+
   // Resolve per-request, then fetch behind_by + first-release-tag in parallel.
   const built = await Promise.all(
     queryable.map(async (req, i) => {
@@ -434,7 +442,7 @@ ${PR_FRAGMENT}`
           ? getFirstTagContaining(req.worktreePath, pr.mergeCommit.oid)
           : Promise.resolve(null)
       ])
-      const status = buildPRStatus(pr, req.branch, behindBy, firstReleaseTag)
+      const status = buildPRStatus(pr, req.branch, behindBy, firstReleaseTag, hasMilestones)
       return { worktreePath: req.worktreePath, status }
     })
   )
@@ -462,7 +470,8 @@ function buildPRStatus(
   pr: GraphQLPR,
   branchName: string,
   behindBy: number | null,
-  firstReleaseTag: string | null
+  firstReleaseTag: string | null,
+  hasMilestones: boolean
 ): PRStatus {
   // Dedupe by check name, keeping the latest startedAt — GraphQL's
   // statusCheckRollup returns one entry per re-run of a check, and the
@@ -583,7 +592,8 @@ function buildPRStatus(
     behindBy: behindBy ?? undefined,
     linkedIssues,
     labels,
-    firstReleaseTag: firstReleaseTag ?? undefined
+    firstReleaseTag: firstReleaseTag ?? undefined,
+    hasMilestones
   }
 }
 

@@ -415,6 +415,21 @@ function queueBadgeLabel(position: number, etaSeconds?: number): string {
   return `Queued (${position}${ordinalSuffix(position)}${eta})`
 }
 
+/** Decide which milestone affordance the PR pane should render:
+ *   - 'hidden'      → repo has no milestones at all; no slot at all
+ *   - 'pill'        → render the milestone name as a clickable pill
+ *   - 'placeholder' → render the muted "No milestone" placeholder
+ *
+ * hasMilestones === undefined is treated as "we don't know yet" so we
+ * keep showing the slot — older cached state pre-dates the field. */
+export type MilestoneDisplay = 'hidden' | 'pill' | 'placeholder'
+export function milestoneDisplay(
+  pr: Pick<PRStatus, 'hasMilestones' | 'milestone'>
+): MilestoneDisplay {
+  if (pr.hasMilestones === false) return 'hidden'
+  return pr.milestone ? 'pill' : 'placeholder'
+}
+
 const CHECK_ICONS: Record<CheckStatus['state'], { symbol: string; color: string }> = {
   success: { symbol: '\u2713', color: 'text-success' },
   failure: { symbol: '\u2717', color: 'text-danger' },
@@ -842,26 +857,33 @@ export function PRStatusPanel({
                 {queueBadgeLabel(pr.queuePosition, pr.queueEstimatedSeconds)}
               </span>
             )}
-            {pr.milestone ? (
-              <a
-                onClick={(e) => {
-                  e.stopPropagation()
-                  backend.openExternal(pr.milestone!.url)
-                }}
-                className={`shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-medium cursor-pointer transition-colors truncate max-w-[140px] ${
-                  pr.milestone.state === 'closed'
-                    ? 'bg-surface text-dim hover:text-fg-bright'
-                    : 'bg-accent/20 text-accent hover:bg-accent/30'
-                }`}
-                title={`Milestone: ${pr.milestone.title}`}
-              >
-                {pr.milestone.title}
-              </a>
-            ) : (
-              <span className="shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-surface text-faint">
-                No milestone
-              </span>
-            )}
+            {(() => {
+              const display = milestoneDisplay(pr)
+              if (display === 'hidden') return null
+              if (display === 'pill' && pr.milestone) {
+                return (
+                  <a
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      backend.openExternal(pr.milestone!.url)
+                    }}
+                    className={`shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-medium cursor-pointer transition-colors truncate max-w-[140px] ${
+                      pr.milestone.state === 'closed'
+                        ? 'bg-surface text-dim hover:text-fg-bright'
+                        : 'bg-accent/20 text-accent hover:bg-accent/30'
+                    }`}
+                    title={`Milestone: ${pr.milestone.title}`}
+                  >
+                    {pr.milestone.title}
+                  </a>
+                )
+              }
+              return (
+                <span className="shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-surface text-faint">
+                  No milestone
+                </span>
+              )
+            })()}
             <span
               className={`font-mono truncate shrink-0 ${pr.isDefaultBase ? 'text-dim' : 'text-warning'}`}
               title={pr.isDefaultBase ? `Target: ${pr.baseBranch}` : `Target: ${pr.baseBranch} (not the default branch)`}
