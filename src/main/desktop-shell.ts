@@ -359,7 +359,22 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
             label: 'Add Backend…',
             click: () => transport.sendSignal('app:openAddBackend')
           },
-          { role: 'close' }
+          { type: 'separator' },
+          {
+            // Menu accelerator captures Cmd+W even when focus is inside
+            // a WebContentsView (browser tab) — the renderer's keydown
+            // listener doesn't see keystrokes from nested webContents.
+            // Without this, macOS routes Cmd+W to the default "Close
+            // Window" action and the user loses everything.
+            label: 'Close Tab',
+            accelerator: 'CmdOrCtrl+W',
+            click: () => transport.sendSignal('app:closeFocusedTab')
+          },
+          {
+            label: 'Close Window',
+            accelerator: 'CmdOrCtrl+Shift+W',
+            role: 'close'
+          }
         ]
       },
       {

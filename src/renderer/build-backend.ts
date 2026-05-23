@@ -401,6 +401,8 @@ export function buildBackend(
       onLocalSignal('app:openKeyboardShortcuts', () => callback()),
     onOpenWorktreeGuide: (callback: () => void) =>
       onLocalSignal('app:openWorktreeGuide', () => callback()),
+    onCloseFocusedTab: (callback: () => void) =>
+      onLocalSignal('app:closeFocusedTab', () => callback()),
     onOpenNewProject: (callback: () => void) =>
       onLocalSignal('menu:newProject', () => callback()),
     onOpenReportIssue: (callback: () => void) =>
