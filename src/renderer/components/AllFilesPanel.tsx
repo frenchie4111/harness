@@ -113,6 +113,19 @@ export function AllFilesPanel({
 
   const actions = (
     <>
+      {worktreePath && (
+        <Tooltip label="Open worktree in editor" action="openInEditor">
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              backend.openInEditor(worktreePath)
+            }}
+            className="text-faint hover:text-fg transition-colors cursor-pointer"
+          >
+            <Code2 size={12} />
+          </button>
+        </Tooltip>
+      )}
       {worktreePath && activeBackend.kind === 'local' && (
         <Tooltip label="Reveal in Finder">
           <button
