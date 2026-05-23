@@ -444,9 +444,17 @@ ${PR_FRAGMENT}`
 
   const hasMilestones = (repoData.milestones?.totalCount ?? 0) > 0
 
+  const defaultBranchName = repoData.defaultBranchRef?.name ?? ''
+
   // Resolve per-request, then fetch behind_by + first-release-tag in parallel.
   const built = await Promise.all(
     queryable.map(async (req, i) => {
+      // A worktree sitting on the repo's default branch (main/master) is
+      // not the head of any PR — skip the resolution entirely to avoid
+      // misattributing the latest squash-merged PR's status to it.
+      if (defaultBranchName && req.branch === defaultBranchName) {
+        return { worktreePath: req.worktreePath, status: null as PRStatus | null }
+      }
       const brAlias = repoData[`prBr${i}`] as { nodes: GraphQLPR[] | null } | null | undefined
       const searchAlias = topData[`prSearch${i}`] as
         | { nodes: Array<GraphQLPR | { __typename?: string }> | null }
@@ -457,8 +465,7 @@ ${PR_FRAGMENT}`
       const searchNodes = (searchAlias?.nodes ?? []).filter(
         (n): n is GraphQLPR => !!n && typeof (n as GraphQLPR).number === 'number'
       )
-      const nodes = dedupePRsByNumber([...branchNodes, ...searchNodes])
-      const pr = pickPRBySha(nodes, req.headSha, originFull)
+      const pr = resolvePRForWorktree(branchNodes, searchNodes, req.headSha, originFull)
       if (!pr) return { worktreePath: req.worktreePath, status: null as PRStatus | null }
       const [behindBy, firstReleaseTag] = await Promise.all([
         pr.state === 'MERGED' || pr.state === 'CLOSED'
@@ -476,33 +483,37 @@ ${PR_FRAGMENT}`
   return result
 }
 
-/** Combine PR nodes from the branch-name and SHA-based lookups, keeping
- *  the first occurrence per PR number. */
-function dedupePRsByNumber(nodes: GraphQLPR[]): GraphQLPR[] {
-  const seen = new Set<number>()
-  const out: GraphQLPR[] = []
-  for (const n of nodes) {
-    if (seen.has(n.number)) continue
-    seen.add(n.number)
-    out.push(n)
-  }
-  return out
-}
-
-/** Among the up-to-5 PR nodes returned for a single headRefName lookup,
- *  pick the one most likely to belong to this worktree:
- *  1. exact SHA match against the worktree's HEAD,
- *  2. same-origin head (PR opened from this repo, not a fork),
- *  3. fall back to the most-recently-updated (first node). */
-function pickPRBySha(nodes: GraphQLPR[], headSha: string, originFull: string): GraphQLPR | null {
-  if (nodes.length === 0) return null
+/** Resolve which PR (if any) belongs to a given worktree.
+ *
+ *  Branch-name nodes come from `pullRequests(headRefName: $branch)` — the
+ *  filter is by ref, so any same-origin hit is a legitimate match for
+ *  this branch. We prefer an exact SHA match if available, then
+ *  same-origin, then the most-recently-updated.
+ *
+ *  Search nodes come from `search("type:pr repo:o/n <sha>")` — the index
+ *  matches the SHA appearing anywhere in the PR's commit history or
+ *  body, including squash-merge commits that land on the default branch.
+ *  That's too loose to trust on its own, so we require the candidate's
+ *  `headRefOid` to equal the worktree's HEAD SHA before accepting it. */
+function resolvePRForWorktree(
+  branchNodes: GraphQLPR[],
+  searchNodes: GraphQLPR[],
+  headSha: string,
+  originFull: string
+): GraphQLPR | null {
   if (headSha) {
-    const bySha = nodes.find((n) => n.headRefOid === headSha)
+    const bySha =
+      branchNodes.find((n) => n.headRefOid === headSha) ??
+      searchNodes.find((n) => n.headRefOid === headSha)
     if (bySha) return bySha
   }
-  const sameRepo = nodes.find((n) => n.headRepository?.nameWithOwner === originFull)
+  // No SHA match. Same-origin branch-name hit is still a legitimate
+  // match (worktree slightly behind the PR head, or PR force-pushed).
+  // Cross-fork branch-name hits are ignored — `feature/foo` on someone
+  // else's fork is not our PR.
+  const sameRepo = branchNodes.find((n) => n.headRepository?.nameWithOwner === originFull)
   if (sameRepo) return sameRepo
-  return nodes[0]
+  return null
 }
 
 function buildPRStatus(

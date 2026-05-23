@@ -444,6 +444,67 @@ describe('fetchPRStatusesForRepo matcher', () => {
     expect(result.get('/wt')?.number).toBe(200)
   })
 
+  it('does not claim a PR for a worktree on the repo default branch (main)', async () => {
+    // A worktree sitting on main shouldn't be reported as "this PR" just
+    // because the search index for main's HEAD SHA happens to surface the
+    // most-recently-squashed PR. Same for master.
+    const mainSha = 'a'.repeat(40)
+    const mergedPRHeadSha = 'b'.repeat(40)
+    fetchSpy.mockResolvedValueOnce(
+      mockResponse(200, {
+        data: {
+          repository: {
+            defaultBranchRef: { name: 'main' },
+            milestones: { totalCount: 0 },
+            prBr0: { nodes: [] }
+          },
+          // GitHub's search index returns the just-merged PR when you
+          // search the squash commit's SHA — its headRefOid is the
+          // original PR's head, not main's HEAD.
+          prSearch0: {
+            nodes: [
+              gqlPR({
+                number: 999,
+                title: 'Some merged feature',
+                state: 'MERGED',
+                headRefOid: mergedPRHeadSha
+              })
+            ]
+          }
+        }
+      })
+    )
+    const result = await fetchPRStatusesForRepo(
+      { origin: { owner: 'o', repo: 'r' }, upstream: { owner: 'o', repo: 'r' } },
+      [{ worktreePath: '/wt', branch: 'main', headSha: mainSha }]
+    )
+    expect(result.get('/wt')).toBeNull()
+  })
+
+  it('does not claim a PR for a worktree on master when that is the default branch', async () => {
+    const masterSha = 'c'.repeat(40)
+    const mergedPRHeadSha = 'd'.repeat(40)
+    fetchSpy.mockResolvedValueOnce(
+      mockResponse(200, {
+        data: {
+          repository: {
+            defaultBranchRef: { name: 'master' },
+            milestones: { totalCount: 0 },
+            prBr0: { nodes: [] }
+          },
+          prSearch0: {
+            nodes: [gqlPR({ number: 999, state: 'MERGED', headRefOid: mergedPRHeadSha })]
+          }
+        }
+      })
+    )
+    const result = await fetchPRStatusesForRepo(
+      { origin: { owner: 'o', repo: 'r' }, upstream: { owner: 'o', repo: 'r' } },
+      [{ worktreePath: '/wt', branch: 'master', headSha: masterSha }]
+    )
+    expect(result.get('/wt')).toBeNull()
+  })
+
   it('dedupes when both lookups return the same PR', async () => {
     const sha = 'f'.repeat(40)
     fetchSpy.mockResolvedValueOnce(
