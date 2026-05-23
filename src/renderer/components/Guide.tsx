@@ -179,9 +179,9 @@ claude`}</CodeBlock>
                 are sorted so the one that needs your attention floats to the top.
               </Bullet>
               <Bullet title="Hotkeys for everything">
-                <code>⌘ 1</code>–<code>⌘ 9</code> jumps between worktrees.{' '}
-                <code>⌘ T</code> opens a new shell. <code>⇧ ⌘ G</code> opens the active
-                worktree&apos;s PR in your browser. <code>⌘ B</code> hides the sidebar.
+                <Key>⌘1</Key>–<Key>⌘9</Key> jumps between worktrees.{' '}
+                <Key>⌘T</Key> opens a new shell. <Key>⇧⌘G</Key> opens the active
+                worktree&apos;s PR in your browser. <Key>⌘B</Key> hides the sidebar.
                 All rebindable in Settings.
               </Bullet>
             </ul>
@@ -294,6 +294,18 @@ function Bullet({ title, children }: { title: string; children: React.ReactNode 
       <div className="font-medium text-fg-bright mb-0.5">{title}</div>
       <div className="text-sm text-muted leading-relaxed">{children}</div>
     </li>
+  )
+}
+
+/** Inline keyboard glyph. Uses the system sans font (not monospace)
+ *  because the mac modifier glyphs (⌘ ⇧ ⌥ ⌃) render correctly in
+ *  every macOS font but break in many monospace fonts (the ⇧ shows
+ *  up as a tofu in ui-monospace / SF Mono on some setups). */
+function Key({ children }: { children: React.ReactNode }): JSX.Element {
+  return (
+    <span className="inline-block bg-app/40 text-fg-bright text-[0.9em] px-1.5 py-0.5 rounded border border-border/60 align-baseline">
+      {children}
+    </span>
   )
 }
 

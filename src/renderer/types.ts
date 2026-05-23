@@ -77,7 +77,13 @@ export interface PersistedPane {
   activeTabId: string
 }
 
-export type QuestStep = 'hidden' | 'spawn-second' | 'switch-between' | 'finale' | 'done'
+export type QuestStep =
+  | 'hidden'
+  | 'read-guide'
+  | 'spawn-second'
+  | 'switch-between'
+  | 'finale'
+  | 'done'
 
 import type { UpdaterStatus } from '../shared/state/updater'
 export type { UpdaterStatus }

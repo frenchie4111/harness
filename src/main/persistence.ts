@@ -14,7 +14,13 @@ import type { SnoozeEntry } from '../shared/state/snooze'
 
 export type { PersistedPane, PersistedPaneNode, PersistedTab }
 
-export type QuestStep = 'hidden' | 'spawn-second' | 'switch-between' | 'finale' | 'done'
+export type QuestStep =
+  | 'hidden'
+  | 'read-guide'
+  | 'spawn-second'
+  | 'switch-between'
+  | 'finale'
+  | 'done'
 
 /** A configured backend (multi-backend UX, Tier 1).
  *  - `kind: 'local'` is the in-process Electron backend; exactly one exists,

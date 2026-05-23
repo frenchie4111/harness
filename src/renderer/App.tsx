@@ -375,14 +375,21 @@ const setQuestStep = useCallback((next: QuestStep) => {
   // Advance the quest based on how many agent worktrees exist (main excluded).
   useEffect(() => {
     if (questStep === 'done' || questStep === 'finale') return
-    if (questStep === 'hidden' && agentWorktreeCount >= 1) {
+    // First-time intro: as soon as the user has a repo registered (i.e.,
+    // they finished the welcome wizard), surface the "read the worktree
+    // guide" card so they can learn the why before spawning anything.
+    if (questStep === 'hidden' && repoRoots.length > 0 && agentWorktreeCount === 0) {
+      setQuestStep('read-guide')
+      return
+    }
+    if ((questStep === 'hidden' || questStep === 'read-guide') && agentWorktreeCount >= 1) {
       setQuestStep(agentWorktreeCount >= 2 ? 'switch-between' : 'spawn-second')
       return
     }
     if (questStep === 'spawn-second' && agentWorktreeCount >= 2) {
       setQuestStep('switch-between')
     }
-  }, [agentWorktreeCount, questStep, setQuestStep])
+  }, [agentWorktreeCount, questStep, repoRoots.length, setQuestStep])
 
   // Advance the quest when the user switches between two different worktrees
   useEffect(() => {
@@ -1091,14 +1098,6 @@ const setQuestStep = useCallback((next: QuestStep) => {
               </div>
             </div>
 
-            <div className="mt-6 pt-5 border-t border-border/60 text-center">
-              <button
-                onClick={() => setShowGuide(true)}
-                className="text-xs text-accent hover:underline cursor-pointer"
-              >
-                New to multi-agent workflows? Read the worktree guide →
-              </button>
-            </div>
           </div>
         </div>
       </div>
@@ -1495,6 +1494,13 @@ const setQuestStep = useCallback((next: QuestStep) => {
           step={questStep}
           onDismiss={() => setQuestStep('done')}
           onFinish={() => setQuestStep('done')}
+          onOpenGuide={() => {
+            openOverlay('guide')
+            // Advance past read-guide so the card doesn't reappear when
+            // the user closes the guide. The next step (spawn-second)
+            // only renders once they actually spawn an agent.
+            if (questStep === 'read-guide') setQuestStep('spawn-second')
+          }}
         />
         {/* Right panel — hidden on the new-worktree screen so the form gets the full width */}
         {!showNewWorktree && !showNewProject && !showActivity && !showCleanup && !showCommandCenter && !showReview && !showSettings && !showMyWeek && !showGuide && !rightColumnHidden && (

@@ -1,4 +1,4 @@
-import { X, Sparkles, Zap, PartyPopper } from 'lucide-react'
+import { X, Sparkles, Zap, PartyPopper, BookOpen } from 'lucide-react'
 import type { QuestStep } from '../types'
 import { HotkeyBadge } from './HotkeyBadge'
 
@@ -6,12 +6,22 @@ interface QuestCardProps {
   step: QuestStep
   onDismiss: () => void
   onFinish: () => void
+  onOpenGuide: () => void
 }
 
-export function QuestCard({ step, onDismiss, onFinish }: QuestCardProps): JSX.Element | null {
+export function QuestCard({ step, onDismiss, onFinish, onOpenGuide }: QuestCardProps): JSX.Element | null {
   if (step === 'hidden' || step === 'done') return null
 
   const content = (() => {
+    if (step === 'read-guide') {
+      return {
+        icon: <BookOpen className="w-4 h-4 text-accent" />,
+        eyebrow: 'Start here',
+        title: 'New to multi-agent workflows?',
+        body: 'A short guide to git worktrees, why they matter for agentic coding, and how Harness turns them into a workflow you’ll actually use.',
+        hint: null
+      }
+    }
     if (step === 'spawn-second') {
       return {
         icon: <Zap className="w-4 h-4 text-accent" />,
@@ -75,6 +85,14 @@ export function QuestCard({ step, onDismiss, onFinish }: QuestCardProps): JSX.El
           <div className="text-xs text-muted leading-relaxed">{content.body}</div>
           {content.hint && (
             <div className="mt-3 text-xs text-dim">{content.hint}</div>
+          )}
+          {step === 'read-guide' && (
+            <button
+              onClick={onOpenGuide}
+              className="mt-4 w-full brand-gradient-bg text-white font-semibold text-sm px-4 py-2 rounded-lg hover:brightness-110 transition-all cursor-pointer"
+            >
+              Read the guide →
+            </button>
           )}
           {step === 'finale' && (
             <button
