@@ -143,14 +143,20 @@ export function ReportIssueScreen({
 
   useEffect(() => {
     const handler = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape') return
+      // First Escape inside the title/body inputs blurs them so the user
+      // can tell focus moved; the next Escape closes the dialog. Without
+      // this, Escape did nothing while typing, which was confusing.
       if (
-        e.key === 'Escape' &&
-        !(e.target instanceof HTMLTextAreaElement) &&
-        !(e.target instanceof HTMLInputElement)
+        e.target instanceof HTMLTextAreaElement ||
+        e.target instanceof HTMLInputElement
       ) {
         e.preventDefault()
-        onClose()
+        e.target.blur()
+        return
       }
+      e.preventDefault()
+      onClose()
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
