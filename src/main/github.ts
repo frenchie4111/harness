@@ -271,19 +271,16 @@ type GraphQLCheckContext =
     }
 
 interface GraphQLBatchResponse {
-  data?: {
-    repository?:
-      | ({
-          defaultBranchRef: { name: string } | null
-          milestones: { totalCount: number } | null
-        } & Record<
-          string,
-          | { nodes: GraphQLPR[] | null }
-          | { associatedPullRequests: { nodes: GraphQLPR[] | null } | null }
+  data?:
+    | ({
+        repository?:
+          | ({
+              defaultBranchRef: { name: string } | null
+              milestones: { totalCount: number } | null
+            } & Record<string, { nodes: GraphQLPR[] | null } | null>)
           | null
-        >)
-      | null
-  } | null
+      } & Record<string, { nodes: Array<GraphQLPR | { __typename?: string }> | null } | null>)
+    | null
   errors?: Array<{ message: string }> | null
 }
 
@@ -390,23 +387,25 @@ export async function fetchPRStatusesForRepo(
   const originFull = `${ctx.origin.owner}/${ctx.origin.repo}`
 
   const varDefs = ['$owner:String!', '$name:String!']
-  const aliasParts: string[] = []
+  const repoAliasParts: string[] = []
+  const topAliasParts: string[] = []
   const variables: Record<string, string> = { owner, name: repo }
-  // Branch-name lookup handles the common case. SHA lookup via
-  // object(oid).associatedPullRequests handles `gh pr checkout`-style
-  // synthetic local branches whose name doesn't match the PR's head.ref.
-  // Both fire in the same request so the fallback adds no extra round-trip.
+  // Branch-name lookup handles the common case. SHA-via-search handles
+  // both cross-fork PRs (whose commits aren't linked from the upstream's
+  // associatedPullRequests index) and `gh pr checkout`-style synthetic
+  // local branches whose name doesn't match the PR's head.ref. Both fire
+  // in the same request so the fallback adds no extra round-trip.
   queryable.forEach((req, i) => {
     varDefs.push(`$branch${i}:String!`)
     variables[`branch${i}`] = req.branch
-    aliasParts.push(
+    repoAliasParts.push(
       `prBr${i}: pullRequests(headRefName: $branch${i}, first: 5, orderBy: {field: UPDATED_AT, direction: DESC}) { nodes { ...PR } }`
     )
     if (/^[0-9a-f]{40}$/i.test(req.headSha)) {
-      varDefs.push(`$sha${i}:GitObjectID!`)
-      variables[`sha${i}`] = req.headSha
-      aliasParts.push(
-        `prSha${i}: object(oid: $sha${i}) { ... on Commit { associatedPullRequests(first: 5, orderBy: {field: UPDATED_AT, direction: DESC}) { nodes { ...PR } } } }`
+      varDefs.push(`$q${i}:String!`)
+      variables[`q${i}`] = `type:pr repo:${owner}/${repo} ${req.headSha}`
+      topAliasParts.push(
+        `prSearch${i}: search(query: $q${i}, type: ISSUE, first: 5) { nodes { ... on PullRequest { ...PR } } }`
       )
     }
   })
@@ -414,8 +413,9 @@ export async function fetchPRStatusesForRepo(
   repository(owner: $owner, name: $name) {
     defaultBranchRef { name }
     milestones(first: 1) { totalCount }
-    ${aliasParts.join('\n    ')}
+    ${repoAliasParts.join('\n    ')}
   }
+  ${topAliasParts.join('\n  ')}
 }
 ${PR_FRAGMENT}`
 
@@ -440,6 +440,7 @@ ${PR_FRAGMENT}`
   if (!repoData) {
     throw new Error(`GitHub GraphQL: empty repository response for ${owner}/${repo}`)
   }
+  const topData = json.data ?? {}
 
   const hasMilestones = (repoData.milestones?.totalCount ?? 0) > 0
 
@@ -447,13 +448,16 @@ ${PR_FRAGMENT}`
   const built = await Promise.all(
     queryable.map(async (req, i) => {
       const brAlias = repoData[`prBr${i}`] as { nodes: GraphQLPR[] | null } | null | undefined
-      const shaAlias = repoData[`prSha${i}`] as
-        | { associatedPullRequests?: { nodes: GraphQLPR[] | null } | null }
+      const searchAlias = topData[`prSearch${i}`] as
+        | { nodes: Array<GraphQLPR | { __typename?: string }> | null }
         | null
         | undefined
       const branchNodes = brAlias?.nodes ?? []
-      const shaNodes = shaAlias?.associatedPullRequests?.nodes ?? []
-      const nodes = dedupePRsByNumber([...branchNodes, ...shaNodes])
+      // search returns Issue | PullRequest; filter to PR-shaped nodes only.
+      const searchNodes = (searchAlias?.nodes ?? []).filter(
+        (n): n is GraphQLPR => !!n && typeof (n as GraphQLPR).number === 'number'
+      )
+      const nodes = dedupePRsByNumber([...branchNodes, ...searchNodes])
       const pr = pickPRBySha(nodes, req.headSha, originFull)
       if (!pr) return { worktreePath: req.worktreePath, status: null as PRStatus | null }
       const [behindBy, firstReleaseTag] = await Promise.all([
