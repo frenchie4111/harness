@@ -278,28 +278,32 @@ export function CommandCenter({
 
   return (
     <div className="flex-1 min-w-0 flex flex-col bg-bg">
-      {/* Header */}
-      <div className="drag-region px-4 py-4 border-b border-border flex items-start gap-6 shrink-0">
+      {/* Title bar — matches Settings / Activity / etc.: Back on the
+          left (shifted right via CSS var when the sidebar is collapsed
+          so it clears the traffic lights), centered title in the middle.
+          bg-panel matches the other overlays' title bars (CommandCenter
+          body itself is bg-bg, so the title bar needs the override). */}
+      <div className="drag-region h-10 shrink-0 border-b border-border relative bg-panel">
         <button
           onClick={onClose}
-          className="no-drag flex items-center gap-1.5 px-2 py-1.5 text-xs text-muted hover:text-fg-bright transition-colors cursor-pointer self-center [margin-left:var(--harness-overlay-leading,0px)]"
+          className="no-drag absolute top-1/2 -translate-y-1/2 [left:calc(1rem+var(--harness-overlay-leading,0px))] flex items-center gap-1.5 text-xs text-muted hover:text-fg-bright transition-colors cursor-pointer"
         >
           <ArrowLeft size={14} />
           Back
           <kbd className="text-[10px] text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono">ESC</kbd>
         </button>
+        <span className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 text-sm font-medium text-fg pointer-events-none">
+          Command Center
+        </span>
+      </div>
 
-        <div className="flex-1 min-w-0">
-          <h1 className="text-xl font-bold text-fg-bright tracking-tight no-drag">
-            Command Center
-          </h1>
-          <p className="text-xs text-dim mt-0.5 no-drag">
-            {totalCards} session{totalCards === 1 ? '' : 's'} · live view
-          </p>
-        </div>
-
-        {/* Big counts */}
-        <div className="flex items-center gap-4 no-drag">
+      {/* Counts + repo-merge toggle live in their own row so the title
+          bar can stay the thin shared shape; subtitle goes on the left. */}
+      <div className="px-4 py-2 border-b border-border flex items-center gap-6 shrink-0">
+        <p className="text-xs text-dim shrink-0">
+          {totalCards} session{totalCards === 1 ? '' : 's'} · live view
+        </p>
+        <div className="flex items-center gap-4 ml-auto">
           <StatCount
             label="Needs approval"
             value={counts['needs-approval']}
@@ -310,14 +314,13 @@ export function CommandCenter({
           <StatCount label="Working" value={counts.processing} dot="bg-success" />
           <StatCount label="Idle" value={counts.idle} dot="bg-faint" />
         </div>
-
         {repoRoots.length > 1 && (
           <button
             onClick={() => setUnifiedRepos((v) => !v)}
-            className="no-drag p-2 rounded hover:bg-surface text-muted hover:text-fg cursor-pointer"
+            className="p-1.5 rounded hover:bg-surface text-muted hover:text-fg cursor-pointer"
             title={unifiedRepos ? 'Split by repo' : 'Merge repos into one list'}
           >
-            {unifiedRepos ? <Rows3 size={16} /> : <Layers size={16} />}
+            {unifiedRepos ? <Rows3 size={14} /> : <Layers size={14} />}
           </button>
         )}
       </div>
