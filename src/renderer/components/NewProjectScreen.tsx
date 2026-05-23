@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { FolderOpen, Loader2, Sparkles, X } from 'lucide-react'
+import { ArrowLeft, FolderOpen, Loader2, Sparkles } from 'lucide-react'
 import iconUrl from '../../../resources/icon.png'
 import { useBackend } from '../backend'
 
@@ -100,17 +100,18 @@ export function NewProjectScreen({ onCancel, onCreated }: NewProjectScreenProps)
 
   return (
     <div
-      className="flex-1 flex flex-col min-w-0 bg-app brand-grid-bg relative h-full"
+      className="flex-1 flex flex-col min-w-0 bg-app brand-grid-bg relative"
       onKeyDown={handleKeyDown}
     >
-      <div className="drag-region h-10 shrink-0 flex items-center justify-end pr-2">
+      <div className="drag-region h-10 shrink-0 relative border-b border-border">
         <button
           onClick={onCancel}
-          title="Close (Esc)"
           disabled={submitting}
-          className="no-drag text-dim hover:text-fg p-1.5 rounded transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+          className="no-drag absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-xs text-muted hover:text-fg-bright transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          <X size={16} />
+          <ArrowLeft size={14} />
+          Back
+          <kbd className="text-[10px] text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono">ESC</kbd>
         </button>
       </div>
 

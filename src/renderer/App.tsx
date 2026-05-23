@@ -255,6 +255,7 @@ function DesktopApp(): JSX.Element {
     | 'settings'
     | 'cleanup'
     | 'newWorktree'
+    | 'newProject'
     | 'review'
     | 'guide'
     | 'addBackend'
@@ -274,13 +275,15 @@ function DesktopApp(): JSX.Element {
                 ? 'cleanup'
                 : showNewWorktree
                   ? 'newWorktree'
-                  : showReview
-                    ? 'review'
-                    : showGuide
-                      ? 'guide'
-                      : showAddBackend
-                        ? 'addBackend'
-                        : null
+                  : showNewProject
+                    ? 'newProject'
+                    : showReview
+                      ? 'review'
+                      : showGuide
+                        ? 'guide'
+                        : showAddBackend
+                          ? 'addBackend'
+                          : null
   const applyOverlay = useCallback(
     (name: OverlayName | null, toggle: boolean): void => {
       const want = (target: OverlayName, current: boolean): boolean =>
@@ -292,6 +295,7 @@ function DesktopApp(): JSX.Element {
       setShowSettings((v) => want('settings', v))
       setShowCleanup((v) => want('cleanup', v))
       setShowNewWorktree((v) => want('newWorktree', v))
+      setShowNewProject((v) => want('newProject', v))
       setShowReview((v) => want('review', v))
       setShowGuide((v) => want('guide', v))
       setShowAddBackend((v) => want('addBackend', v))
@@ -735,22 +739,6 @@ const setQuestStep = useCallback((next: QuestStep) => {
   if (showGuide) {
     return <Guide onClose={() => setShowGuide(false)} />
   }
-
-  if (showNewProject) {
-    return (
-      <NewProjectScreen
-        onCancel={() => setShowNewProject(false)}
-        onCreated={(createdPath) => {
-          setShowNewProject(false)
-          const main =
-            worktrees.find((w) => w.repoRoot === createdPath && w.isMain) ||
-            worktrees.find((w) => w.repoRoot === createdPath)
-          if (main) setActiveWorktreeId(main.path)
-        }}
-      />
-    )
-  }
-
 
   const repoPickerOverlay = (
     <RemoteFilePicker
@@ -1220,10 +1208,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
             onOpenMyWeek={() => toggleOverlay('myWeek')}
             onOpenCleanup={() => openOverlay('cleanup')}
             onOpenCommandCenter={() => toggleOverlay('commandCenter')}
-            onOpenNewProject={() => {
-              closeAllOverlays()
-              setShowNewProject(true)
-            }}
+            onOpenNewProject={() => toggleOverlay('newProject')}
             onOpenReportIssue={() => toggleOverlay('reportIssue')}
             activeOverlay={activeOverlay}
             width={sidebarWidth}
@@ -1243,7 +1228,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
           if (!paneTree) return null
           const leaves = getLeaves(paneTree)
           if (leaves.length === 0 || !leaves.some((l) => l.tabs.length > 0)) return null
-          const isVisible = !showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && !showSettings && !showMyWeek && wt.path === activeWorktreeId && !pendingDeletionByPath[wt.path]
+          const isVisible = !showNewWorktree && !showNewProject && !showActivity && !showCleanup && !showCommandCenter && !showReview && !showSettings && !showMyWeek && wt.path === activeWorktreeId && !pendingDeletionByPath[wt.path]
           return (
             <div
               key={wt.path}
@@ -1308,6 +1293,18 @@ const setQuestStep = useCallback((next: QuestStep) => {
               newWorktreeRepoRoot ??
               (activeWorktreeId ? worktreeRepoByPath[activeWorktreeId] : undefined)
             }
+          />
+        )}
+        {showNewProject && (
+          <NewProjectScreen
+            onCancel={() => setShowNewProject(false)}
+            onCreated={(createdPath) => {
+              setShowNewProject(false)
+              const main =
+                worktrees.find((w) => w.repoRoot === createdPath && w.isMain) ||
+                worktrees.find((w) => w.repoRoot === createdPath)
+              if (main) setActiveWorktreeId(main.path)
+            }}
           />
         )}
         {reportIssueState !== null && (
@@ -1400,12 +1397,12 @@ const setQuestStep = useCallback((next: QuestStep) => {
             </div>
           )
         })()}
-        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && !showSettings && !showMyWeek && !activeWorktreeId && worktrees.length > 0 && (
+        {!showNewWorktree && !showNewProject && !showActivity && !showCleanup && !showCommandCenter && !showReview && !showSettings && !showMyWeek && !activeWorktreeId && worktrees.length > 0 && (
           <div className="flex-1 flex items-center justify-center text-dim">
             Select a worktree to begin
           </div>
         )}
-        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && !showSettings && !showMyWeek && isPendingId(activeWorktreeId) && (() => {
+        {!showNewWorktree && !showNewProject && !showActivity && !showCleanup && !showCommandCenter && !showReview && !showSettings && !showMyWeek && isPendingId(activeWorktreeId) && (() => {
           const pending = pendingWorktrees.find((p) => p.id === activeWorktreeId)
           if (!pending) return null
           return (
@@ -1417,7 +1414,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
             />
           )
         })()}
-        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && !showSettings && !showMyWeek && activeWorktreeId && pendingDeletionByPath[activeWorktreeId] && (
+        {!showNewWorktree && !showNewProject && !showActivity && !showCleanup && !showCommandCenter && !showReview && !showSettings && !showMyWeek && activeWorktreeId && pendingDeletionByPath[activeWorktreeId] && (
           <DeletingWorktreeScreen
             deletion={pendingDeletionByPath[activeWorktreeId]}
             onDismiss={handleDismissPendingDeletion}
@@ -1429,10 +1426,10 @@ const setQuestStep = useCallback((next: QuestStep) => {
           onFinish={() => setQuestStep('done')}
         />
         {/* Right panel — hidden on the new-worktree screen so the form gets the full width */}
-        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && !showSettings && !showMyWeek && !rightColumnHidden && (
+        {!showNewWorktree && !showNewProject && !showActivity && !showCleanup && !showCommandCenter && !showReview && !showSettings && !showMyWeek && !rightColumnHidden && (
           <ResizeHandle onDelta={handleRightPanelResize} />
         )}
-        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && !showSettings && !showMyWeek && !rightColumnHidden && (
+        {!showNewWorktree && !showNewProject && !showActivity && !showCleanup && !showCommandCenter && !showReview && !showSettings && !showMyWeek && !rightColumnHidden && (
           <RightColumn
             width={rightPanelWidth}
             activeWorktreeId={activeWorktreeId}

@@ -68,6 +68,7 @@ interface SidebarProps {
     | 'settings'
     | 'cleanup'
     | 'newWorktree'
+    | 'newProject'
     | 'review'
     | 'guide'
     | 'addBackend'
@@ -544,7 +545,7 @@ export function Sidebar({
         <Tooltip label="New project" side="top">
           <button
             onClick={onOpenNewProject}
-            className={overlayButtonClass(false)}
+            className={overlayButtonClass(activeOverlay === 'newProject')}
           >
             <FolderPlus size={14} />
           </button>
