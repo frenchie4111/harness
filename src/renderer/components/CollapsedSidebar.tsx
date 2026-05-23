@@ -44,10 +44,6 @@ interface CollapsedSidebarProps {
   onOpenReportIssue: () => void
   onOpenHotkeyCheatsheet: () => void
   onOpenSettings: () => void
-  /** True when any worktree other than the active one is in a waiting or
-   *  needs-approval state. Surfaced as a colored dot so the user can tell
-   *  another agent needs attention without expanding the sidebar. */
-  otherWorktreesBlocked: 'needs-approval' | 'waiting' | null
   activeOverlay: OverlayName | null
 }
 
@@ -74,7 +70,6 @@ export function CollapsedSidebar({
   onOpenReportIssue,
   onOpenHotkeyCheatsheet,
   onOpenSettings,
-  otherWorktreesBlocked,
   activeOverlay
 }: CollapsedSidebarProps): JSX.Element {
   return (
@@ -116,27 +111,6 @@ export function CollapsedSidebar({
             <Trash2 size={14} />
           </button>
         </Tooltip>
-        {otherWorktreesBlocked && (
-          <Tooltip
-            label={
-              otherWorktreesBlocked === 'needs-approval'
-                ? 'Another worktree needs approval'
-                : 'Another worktree is waiting'
-            }
-            side="right"
-          >
-            <div
-              className="p-1.5 cursor-default"
-              aria-label="Other worktree needs attention"
-            >
-              <span
-                className={`block w-2 h-2 rounded-full ${
-                  otherWorktreesBlocked === 'needs-approval' ? 'bg-danger' : 'bg-warning'
-                }`}
-              />
-            </div>
-          </Tooltip>
-        )}
       </div>
 
       <Divider />

@@ -733,19 +733,6 @@ const setQuestStep = useCallback((next: QuestStep) => {
   // 32px of extra padding gets us safely past them.
   const overlayLeadingPx = sidebarVisible ? 0 : 32
 
-  // Highest-priority status across all worktrees other than the active one.
-  // Drives the dot in the collapsed sidebar so the user knows another
-  // worktree wants attention without expanding back.
-  let otherWorktreesBlocked: 'needs-approval' | 'waiting' | null = null
-  for (const [path, status] of Object.entries(worktreeStatuses)) {
-    if (path === activeWorktreeId) continue
-    if (status === 'needs-approval') {
-      otherWorktreesBlocked = 'needs-approval'
-      break
-    }
-    if (status === 'waiting') otherWorktreesBlocked = 'waiting'
-  }
-
   const worktreeShellActivity: Record<string, boolean> = {}
   for (const wt of worktrees) {
     const tabs = terminalTabs[wt.path] || []
@@ -1266,7 +1253,6 @@ const setQuestStep = useCallback((next: QuestStep) => {
             onOpenReportIssue={() => toggleOverlay('reportIssue')}
             onOpenHotkeyCheatsheet={() => toggleOverlay('hotkeys')}
             onOpenSettings={() => toggleOverlay('settings')}
-            otherWorktreesBlocked={otherWorktreesBlocked}
             activeOverlay={activeOverlay}
           />
         )}
