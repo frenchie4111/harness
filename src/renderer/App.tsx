@@ -15,6 +15,7 @@ import { getBackend } from './backend'
 import { HotkeysProvider, Tooltip } from './components/Tooltip'
 import { Sidebar } from './components/Sidebar'
 import { CollapsedSidebar } from './components/CollapsedSidebar'
+import { CollapsedRightPanel } from './components/CollapsedRightPanel'
 import { ResizeHandle } from './components/ResizeHandle'
 import { NewWorktreeScreen } from './components/NewWorktreeScreen'
 import { CreatingWorktreeScreen } from './components/CreatingWorktreeScreen'
@@ -1324,8 +1325,6 @@ const setQuestStep = useCallback((next: QuestStep) => {
                     }
                     setEditingTabId((cur) => (cur === tabId ? null : cur))
                   }}
-                  rightColumnHidden={rightColumnHidden}
-                  onShowRightColumn={() => setRightColumnHidden(false)}
                   // Same traffic-light clearance the overlays use, applied
                   // only to the leftmost pane's top bar (terminal body
                   // stays full width).
@@ -1524,6 +1523,9 @@ const setQuestStep = useCallback((next: QuestStep) => {
             }}
             onCollapse={() => setRightColumnHidden(true)}
           />
+        )}
+        {!showNewWorktree && !showNewProject && !showActivity && !showCleanup && !showCommandCenter && !showReview && !showSettings && !showMyWeek && rightColumnHidden && (
+          <CollapsedRightPanel onExpand={() => setRightColumnHidden(false)} />
         )}
       </div>
     </div>

@@ -72,21 +72,22 @@ export function RightColumnToolbar({
   }
 
   return (
-    <div className="drag-region flex items-center justify-end h-10 shrink-0 border-b border-border bg-panel px-2 gap-1">
-      <div className="no-drag relative" ref={menuRef}>
-        <Tooltip label="Panel visibility">
+    <div className="px-3 py-1.5 flex items-center shrink-0 gap-2">
+      <span className="text-xs font-medium text-dim">CONTEXTS</span>
+      <div className="ml-auto flex items-center gap-1 relative" ref={menuRef}>
+        <Tooltip label="Panel visibility" side="bottom">
           <button
             onClick={() => canConfigure && setMenuOpen((v) => !v)}
             disabled={!canConfigure}
-            className="flex items-center justify-center w-7 h-7 rounded text-muted hover:bg-panel-raised/40 hover:text-fg-bright disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+            className="text-dim hover:text-fg hover:bg-surface rounded p-0.5 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
             aria-label="Panel visibility"
           >
-            <SlidersHorizontal size={14} />
+            <SlidersHorizontal size={12} />
           </button>
         </Tooltip>
         {menuOpen && (
           <div
-            className="absolute right-0 top-9 z-50 min-w-[220px] rounded border border-border bg-panel-raised shadow-lg py-1"
+            className="absolute right-0 top-7 z-50 min-w-[220px] rounded border border-border bg-panel-raised shadow-lg py-1"
             role="menu"
           >
             <div className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-faint font-medium">
@@ -133,16 +134,16 @@ export function RightColumnToolbar({
             })}
           </div>
         )}
+        <Tooltip label="Collapse sidebar" action="toggleRightColumn" side="bottom">
+          <button
+            onClick={onCollapse}
+            className="text-dim hover:text-fg hover:bg-surface rounded p-0.5 transition-colors cursor-pointer"
+            aria-label="Collapse sidebar"
+          >
+            <PanelRightClose size={12} />
+          </button>
+        </Tooltip>
       </div>
-      <Tooltip label="Hide right column" action="toggleRightColumn">
-        <button
-          onClick={onCollapse}
-          className="no-drag flex items-center justify-center w-7 h-7 rounded text-muted hover:bg-panel-raised/40 hover:text-fg-bright cursor-pointer"
-          aria-label="Hide right column"
-        >
-          <PanelRightClose size={14} />
-        </button>
-      </Tooltip>
     </div>
   )
 }

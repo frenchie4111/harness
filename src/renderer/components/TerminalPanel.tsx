@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
-import { X, SquareTerminal, Sparkles, Code2, SplitSquareHorizontal, SplitSquareVertical, Loader2, PanelRightOpen, Globe, Users } from 'lucide-react'
+import { X, SquareTerminal, Sparkles, Code2, SplitSquareHorizontal, SplitSquareVertical, Loader2, Globe, Users } from 'lucide-react'
 import {
   SortableContext,
   horizontalListSortingStrategy,
@@ -93,8 +93,6 @@ interface TerminalPanelProps {
   onStartEditTab?: (tabId: string) => void
   /** Commit (label != null) or cancel (label == null) the inline rename. */
   onFinishEditTab?: (tabId: string, label: string | null) => void
-  showExpandRightColumn: boolean
-  onShowRightColumn: () => void
   /** When > 0, reserve this many pixels at the start of the top bar.
    *  Used to clear the macOS traffic lights when the sidebar is
    *  collapsed and the workspace is butted up against the window edge.
@@ -378,8 +376,6 @@ export function TerminalPanel({
   editingTabId,
   onStartEditTab,
   onFinishEditTab,
-  showExpandRightColumn,
-  onShowRightColumn,
   topBarLeadingPx = 0
 }: TerminalPanelProps): JSX.Element {
   const backend = useBackend()
@@ -546,16 +542,6 @@ export function TerminalPanel({
           </SortableContext>
           {showSpectatorChip && activeTab && <SpectatorChip terminalId={activeTab.id} />}
         </div>
-        {showExpandRightColumn && (
-          <Tooltip label="Show right column" action="toggleRightColumn" side="left">
-            <button
-              onClick={onShowRightColumn}
-              className="no-drag shrink-0 pr-3 h-full text-faint hover:text-fg transition-colors cursor-pointer"
-            >
-              <PanelRightOpen size={13} />
-            </button>
-          </Tooltip>
-        )}
       </div>
 
       {/* Content slot host — WorkspaceView imperatively appends a stable

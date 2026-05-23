@@ -154,6 +154,10 @@ export function RightColumn({
       className="shrink-0 h-full flex flex-col bg-panel"
       style={{ width }}
     >
+      {/* Drag region above the CONTEXTS header so the row aligns with
+          the workspace's title bar and matches the left sidebar's
+          structure (drag region → WORKTREES). */}
+      <div className="drag-region h-10 shrink-0" />
       <RightColumnToolbar
         hidden={hidden}
         order={order}

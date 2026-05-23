@@ -60,8 +60,6 @@ interface WorkspaceViewProps {
   /** Called with the typed label on commit, or null on cancel.
    *  Either way, the parent clears editingTabId. */
   onFinishEditTab?: (tabId: string, label: string | null) => void
-  rightColumnHidden: boolean
-  onShowRightColumn: () => void
   crashedTabIds?: ReadonlySet<string>
   /** Pixels to reserve at the start of the leftmost pane's top bar so
    *  the workspace toolbar clears the macOS traffic lights when the
@@ -144,9 +142,6 @@ function SplitRenderer({
   nameAgentSessions,
   leafCount,
   isFirstLeaf,
-  topRightLeafId,
-  showExpandRightColumn,
-  onShowRightColumn,
   registerSlot,
   onSelectTab,
   onAddTab,
@@ -176,9 +171,6 @@ function SplitRenderer({
   nameAgentSessions: boolean
   leafCount: number
   isFirstLeaf: { value: boolean }
-  topRightLeafId: string
-  showExpandRightColumn: boolean
-  onShowRightColumn: () => void
   registerSlot: (paneId: string, el: HTMLDivElement | null) => void
   onSelectTab: (tabId: string, paneId: string) => void
   onAddTab: (paneId: string) => void
@@ -232,8 +224,6 @@ function SplitRenderer({
           editingTabId={editingTabId}
           onStartEditTab={onStartEditTab}
           onFinishEditTab={onFinishEditTab}
-          showExpandRightColumn={showExpandRightColumn && node.id === topRightLeafId}
-          onShowRightColumn={onShowRightColumn}
           topBarLeadingPx={showLabel ? topBarLeadingPx : 0}
         />
       </div>
@@ -265,9 +255,6 @@ function SplitRenderer({
           nameAgentSessions={nameAgentSessions}
           leafCount={leafCount}
           isFirstLeaf={isFirstLeaf}
-          topRightLeafId={topRightLeafId}
-          showExpandRightColumn={showExpandRightColumn}
-          onShowRightColumn={onShowRightColumn}
           registerSlot={registerSlot}
           onSelectTab={onSelectTab}
           onAddTab={onAddTab}
@@ -309,9 +296,6 @@ function SplitRenderer({
           nameAgentSessions={nameAgentSessions}
           leafCount={leafCount}
           isFirstLeaf={isFirstLeaf}
-          topRightLeafId={topRightLeafId}
-          showExpandRightColumn={showExpandRightColumn}
-          onShowRightColumn={onShowRightColumn}
           registerSlot={registerSlot}
           onSelectTab={onSelectTab}
           onAddTab={onAddTab}
@@ -364,8 +348,6 @@ export function WorkspaceView({
   onFinishEditTab,
   repoLabel,
   branch,
-  rightColumnHidden,
-  onShowRightColumn,
   crashedTabIds,
   topBarLeadingPx
 }: WorkspaceViewProps): JSX.Element {
@@ -510,7 +492,6 @@ export function WorkspaceView({
   )
 
   const isFirstLeaf = { value: true }
-  const topRightLeafId = findTopRightLeaf(paneTree).id
 
   return (
     <DndContext
@@ -531,9 +512,6 @@ export function WorkspaceView({
           nameAgentSessions={nameAgentSessions}
           leafCount={leaves.length}
           isFirstLeaf={isFirstLeaf}
-          topRightLeafId={topRightLeafId}
-          showExpandRightColumn={rightColumnHidden}
-          onShowRightColumn={onShowRightColumn}
           registerSlot={attachSlot}
           onSelectTab={(tabId, paneId) => onSelectTab(worktreePath, paneId, tabId)}
           onAddTab={(paneId) => onAddTab(worktreePath, paneId)}
@@ -639,12 +617,6 @@ export function WorkspaceView({
       )}
     </DndContext>
   )
-}
-
-function findTopRightLeaf(node: PaneNode): PaneLeaf {
-  if (node.type === 'leaf') return node
-  const next = node.direction === 'horizontal' ? node.children[1] : node.children[0]
-  return findTopRightLeaf(next)
 }
 
 function findSplitRatio(node: PaneNode, splitId: string): number {
