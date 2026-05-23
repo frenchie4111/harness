@@ -36,14 +36,14 @@ export function ReviewSummaryBar({
   return (
     <div className="shrink-0 border-b border-border bg-panel drag-region">
       <div className="h-10 flex items-center gap-3 px-3">
-        <Tooltip label="Back to workspace">
-          <button
-            onClick={onClose}
-            className="text-faint hover:text-fg transition-colors cursor-pointer no-drag"
-          >
-            <ArrowLeft size={16} />
-          </button>
-        </Tooltip>
+        <button
+          onClick={onClose}
+          className="no-drag flex items-center gap-1.5 text-xs text-muted hover:text-fg-bright transition-colors cursor-pointer"
+        >
+          <ArrowLeft size={14} />
+          Back
+          <kbd className="text-[10px] text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono">ESC</kbd>
+        </button>
 
         <div className="flex items-baseline gap-1.5 text-xs truncate min-w-0">
           <span className={`font-medium ${repoNameColor(repoLabel)}`}>{repoLabel}</span>
