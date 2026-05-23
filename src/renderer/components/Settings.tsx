@@ -1603,43 +1603,6 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 Controls how new worktrees are created from the sidebar.
               </p>
 
-              <h3 className="text-sm font-semibold text-fg-bright mb-3">PR review prompt</h3>
-              <div className="bg-panel-raised border border-border rounded-lg p-4 mb-6">
-                <p className="text-xs text-dim mb-2">
-                  Default kickoff prompt sent to Claude when you open a PR as a worktree (or when the MCP{' '}
-                  <code className="bg-panel px-1 rounded text-[10px]">create_worktree</code> tool is invoked with{' '}
-                  <code className="bg-panel px-1 rounded text-[10px]">prNumber</code> and no explicit prompt). You can
-                  edit the prompt per-PR from the New Worktree screen.
-                </p>
-                <textarea
-                  value={prReviewPromptDraft}
-                  onChange={(e) => setPrReviewPromptDraft(e.target.value)}
-                  rows={5}
-                  spellCheck={false}
-                  className="w-full bg-panel border border-border-strong rounded px-3 py-2 text-xs text-fg-bright placeholder-faint outline-none focus:border-fg font-mono resize-y"
-                />
-                <div className="flex items-center gap-2 mt-3">
-                  <button
-                    onClick={handleSavePrReviewPrompt}
-                    className="px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer"
-                  >
-                    Save
-                  </button>
-                  <button
-                    onClick={handleResetPrReviewPrompt}
-                    className="flex items-center gap-1 px-3 py-1.5 text-sm text-dim hover:text-fg transition-colors cursor-pointer"
-                  >
-                    <RotateCcw size={12} />
-                    Reset to default
-                  </button>
-                </div>
-                {prReviewPromptSaveResult && (
-                  <div className={`mt-3 text-xs flex items-center gap-1.5 ${prReviewPromptSaveResult.ok ? 'text-success' : 'text-danger'}`}>
-                    {prReviewPromptSaveResult.ok ? <Check size={12} /> : <X size={12} />}{prReviewPromptSaveResult.message}
-                  </div>
-                )}
-              </div>
-
               {repoList.length > 0 && (
                 <div className="mb-4">
                   <div className="flex items-center gap-1 text-[11px] text-faint mb-1.5 uppercase tracking-wide">
@@ -1920,6 +1883,41 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                       Share settings.local.json across worktrees
                     </span>
                   </label>
+
+                  <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">PR review prompt</h3>
+                  <p className="text-xs text-dim mb-3">
+                    Default kickoff prompt sent to Claude when you open a PR as a worktree (or when the MCP{' '}
+                    <code className="bg-panel-raised px-1 rounded text-[10px]">create_worktree</code> tool is invoked
+                    with <code className="bg-panel-raised px-1 rounded text-[10px]">prNumber</code> and no explicit
+                    prompt). You can edit the prompt per-PR from the New Worktree screen.
+                  </p>
+                  <textarea
+                    value={prReviewPromptDraft}
+                    onChange={(e) => setPrReviewPromptDraft(e.target.value)}
+                    rows={5}
+                    spellCheck={false}
+                    className="w-full bg-panel border border-border-strong rounded px-3 py-2 text-xs text-fg-bright placeholder-faint outline-none focus:border-fg font-mono resize-y"
+                  />
+                  <div className="flex items-center gap-2 mt-3">
+                    <button
+                      onClick={handleSavePrReviewPrompt}
+                      className="px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={handleResetPrReviewPrompt}
+                      className="flex items-center gap-1 px-3 py-1.5 text-sm text-dim hover:text-fg transition-colors cursor-pointer"
+                    >
+                      <RotateCcw size={12} />
+                      Reset to default
+                    </button>
+                  </div>
+                  {prReviewPromptSaveResult && (
+                    <div className={`mt-3 text-xs flex items-center gap-1.5 ${prReviewPromptSaveResult.ok ? 'text-success' : 'text-danger'}`}>
+                      {prReviewPromptSaveResult.ok ? <Check size={12} /> : <X size={12} />}{prReviewPromptSaveResult.message}
+                    </div>
+                  )}
                 </>
               )}
 
