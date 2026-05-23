@@ -180,6 +180,37 @@ export function markTerminalClosing(id: string): void {
   getBackend().clearTerminalHistory(id)
 }
 
+// Read the bg/fg from CSS vars set by theme-apply.ts, then build the full
+// xterm theme object. ANSI colors stay hardcoded for now — themes only flow
+// in via --color-app / --color-fg-bright.
+function buildTerminalTheme(): NonNullable<ConstructorParameters<typeof Terminal>[0]>['theme'] {
+  const rootStyle = getComputedStyle(document.documentElement)
+  const bg = rootStyle.getPropertyValue('--color-app').trim() || '#0a0a0a'
+  const fg = rootStyle.getPropertyValue('--color-fg-bright').trim() || '#e5e5e5'
+  return {
+    background: bg,
+    foreground: fg,
+    cursor: fg,
+    selectionBackground: '#33415580',
+    black: bg,
+    red: '#f87171',
+    green: '#4ade80',
+    yellow: '#facc15',
+    blue: '#60a5fa',
+    magenta: '#c084fc',
+    cyan: '#22d3ee',
+    white: fg,
+    brightBlack: '#525252',
+    brightRed: '#fca5a5',
+    brightGreen: '#86efac',
+    brightYellow: '#fde68a',
+    brightBlue: '#93c5fd',
+    brightMagenta: '#d8b4fe',
+    brightCyan: '#67e8f9',
+    brightWhite: '#fafafa'
+  }
+}
+
 import type { AgentKind } from '../../shared/state/terminals'
 import { agentDisplayName } from '../../shared/agent-registry'
 
@@ -244,13 +275,6 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
     if (!containerRef.current || initializedRef.current) return
     initializedRef.current = true
 
-    // Pull background/foreground from the active app theme so the terminal
-    // blends into the panel it's embedded in. xterm.js only accepts literal
-    // color strings, so we read the resolved CSS variables at init time.
-    const rootStyle = getComputedStyle(document.documentElement)
-    const bg = rootStyle.getPropertyValue('--color-app').trim() || '#0a0a0a'
-    const fg = rootStyle.getPropertyValue('--color-fg-bright').trim() || '#e5e5e5'
-
     const openUrlInBrowserTab = (uri: string): void => {
       // Browser tabs live in panes alongside terminals; appending here
       // bypasses the App-level handleAddBrowserTab so XTerminal stays
@@ -292,28 +316,7 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
         hover: () => {},
         leave: () => {}
       },
-      theme: {
-        background: bg,
-        foreground: fg,
-        cursor: fg,
-        selectionBackground: '#33415580',
-        black: bg,
-        red: '#f87171',
-        green: '#4ade80',
-        yellow: '#facc15',
-        blue: '#60a5fa',
-        magenta: '#c084fc',
-        cyan: '#22d3ee',
-        white: fg,
-        brightBlack: '#525252',
-        brightRed: '#fca5a5',
-        brightGreen: '#86efac',
-        brightYellow: '#fde68a',
-        brightBlue: '#93c5fd',
-        brightMagenta: '#d8b4fe',
-        brightCyan: '#67e8f9',
-        brightWhite: '#fafafa'
-      }
+      theme: buildTerminalTheme()
     })
 
     const fitAddon = new FitAddon()
@@ -596,6 +599,24 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
   useEffect(() => {
     backend.joinTerminal(terminalId)
   }, [terminalId])
+
+  // Re-apply the xterm theme when the app theme changes. theme-apply.ts
+  // mutates `data-theme` and inline `style` on :root; observe both so we
+  // pick up built-in switches and custom-theme overrides alike. Using a
+  // MutationObserver (rather than keying on useActiveTheme) avoids a child-
+  // before-parent useEffect race where the child would read stale CSS vars.
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      const terminal = terminalRef.current
+      if (!terminal) return
+      terminal.options.theme = buildTerminalTheme()
+    })
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-theme', 'style']
+    })
+    return () => observer.disconnect()
+  }, [])
 
   // Re-fit when the terminal becomes visible
   useEffect(() => {
