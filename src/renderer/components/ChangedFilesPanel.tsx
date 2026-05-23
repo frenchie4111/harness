@@ -58,7 +58,6 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToAgent, onO
 
   const stagedFiles = workingFiles.filter((f) => f.staged)
   const unstagedFiles = workingFiles.filter((f) => !f.staged)
-  const totalCount = workingFiles.length + branchFiles.length
 
   const actions = (
     <>
@@ -100,8 +99,13 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToAgent, onO
         {worktreePath && hasLoaded && (
           <>
             {/* Uncommitted section */}
-            <div className="px-3 py-1.5 text-[10px] font-medium text-dim uppercase tracking-wider bg-panel-raised/50">
-              Uncommitted
+            <div className="px-3 py-1.5 text-[10px] font-medium text-dim uppercase tracking-wider bg-panel-raised/50 flex items-center">
+              <span>Uncommitted</span>
+              {workingFiles.length > 0 && (
+                <span className="ml-auto text-faint normal-case tracking-normal">
+                  {workingFiles.length}
+                </span>
+              )}
             </div>
             {workingFiles.length === 0 ? (
               <div className="px-3 py-2 text-faint italic">No changes</div>
@@ -139,8 +143,13 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToAgent, onO
             )}
 
             {/* Branch diff section */}
-            <div className="px-3 py-1.5 text-[10px] font-medium text-dim uppercase tracking-wider bg-panel-raised/50 mt-1">
-              Committed
+            <div className="px-3 py-1.5 text-[10px] font-medium text-dim uppercase tracking-wider bg-panel-raised/50 mt-1 flex items-center">
+              <span>Committed</span>
+              {branchFiles.length > 0 && (
+                <span className="ml-auto text-faint normal-case tracking-normal">
+                  {branchFiles.length}
+                </span>
+              )}
             </div>
             {branchFiles.length === 0 ? (
               <div className="px-3 py-2 text-faint italic">No commits on this branch yet</div>
@@ -159,13 +168,6 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToAgent, onO
         )}
       </div>
 
-      {totalCount > 0 && (
-        <div className="px-3 py-1.5 border-t border-border text-[10px] text-faint shrink-0">
-          {workingFiles.length > 0 && <span>{workingFiles.length} uncommitted</span>}
-          {workingFiles.length > 0 && branchFiles.length > 0 && <span> · </span>}
-          {branchFiles.length > 0 && <span>{branchFiles.length} committed</span>}
-        </div>
-      )}
     </RightPanel>
   )
 }
