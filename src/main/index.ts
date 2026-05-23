@@ -415,16 +415,20 @@ if (webHttpServer && wsTransport) {
   })
   webHttpServer.listen(wsPort, wsHost, () => {
     const displayHost = wsHost === '0.0.0.0' ? getLanHost() : wsHost
+    // Resolve the actual listening port — when wsPort is 0 (ephemeral),
+    // address() is the only place the real port surfaces.
+    const addr = webHttpServer.address()
+    const boundPort = addr && typeof addr === 'object' ? addr.port : wsPort
     // Log to stdout so the user can paste the URL into another browser
     // without digging through the debug log. TODO(production): expose
     // through a Settings UI screen with a copy button + regenerate action.
     // eslint-disable-next-line no-console
     console.log(
-      `[ws-transport] enabled on ws://${displayHost}:${wsPort}?token=${wsTransport.getToken()} (bind=${wsHost})`
+      `[ws-transport] enabled on ws://${displayHost}:${boundPort}?token=${wsTransport.getToken()} (bind=${wsHost})`
     )
     // eslint-disable-next-line no-console
     console.log(
-      `[web-client] open http://${displayHost}:${wsPort}/?token=${wsTransport.getToken()}`
+      `[web-client] open http://${displayHost}:${boundPort}/?token=${wsTransport.getToken()}`
     )
   })
 }

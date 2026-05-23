@@ -510,6 +510,17 @@ Linux release builds now produce both `.deb` (Ubuntu/Debian) and
 `.AppImage` (every distro) — both attached to the GitHub release
 automatically by `.github/workflows/build-linux.yml` on tag push.
 
+### Headless smoke test on every PR
+
+PR CI (`.github/workflows/ci.yml`) runs a headless smoke test after the
+typecheck / build / tests block: launches `dist-headless/main/index.js`
+on an ephemeral port, parses the `[web-client] open ...` URL out of its
+stdout, verifies the web client root serves, verifies the auth gate
+rejects unauthenticated requests, verifies a WebSocket client can
+connect with the token, then SIGTERMs and confirms clean shutdown.
+Catches tarball-layout / module-resolution / boot-time regressions
+before they ride a tag push to release.
+
 ### Headless tarballs
 
 The `Headless Release` workflow (`.github/workflows/headless-release.yml`)

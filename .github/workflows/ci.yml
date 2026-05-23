@@ -40,3 +40,100 @@ jobs:
 
       - name: Tests
         run: npx vitest run
+
+      # The headless server bundle is built separately from the Electron
+      # build above (different vite config, different output dir). Builds
+      # both `dist-headless/main` and `dist-headless/web-client`.
+      - name: Build headless server
+        run: npm run build:headless
+
+      # End-to-end smoke test: launches the freshly-built headless server
+      # on an ephemeral port, verifies it serves the web client, rejects
+      # unauthenticated requests, accepts a WebSocket client with the
+      # token, and exits cleanly on SIGTERM. Catches the class of bugs
+      # where the tarball's module layout / chunk resolution / auth gate
+      # is broken — bugs that previously only surfaced after a tag-push
+      # release.
+      - name: Headless smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Isolated data dir so we don't touch the runner's $HOME.
+          LOG=/tmp/harness-server.log
+          HARNESS_DATA_DIR="$(mktemp -d)"
+          export HARNESS_DATA_DIR
+          node dist-headless/main/index.js --port 0 --host 127.0.0.1 > "$LOG" 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true; wait "$SERVER_PID" 2>/dev/null || true' EXIT
+
+          # Wait up to 15s for the server to advertise its URL. The log
+          # line is "[web-client] open http://<host>:<port>/?token=<token>"
+          # — emitted from src/main/index.ts in the webHttpServer.listen
+          # callback. If the log shape changes, this fails loudly (which
+          # is what we want, since other code reads the same line).
+          URL=""
+          for _ in $(seq 1 75); do
+            URL="$(grep -oE 'http://127\.0\.0\.1:[0-9]+/\?token=[a-f0-9]+' "$LOG" | head -1 || true)"
+            if [ -n "$URL" ]; then break; fi
+            sleep 0.2
+          done
+          if [ -z "$URL" ]; then
+            echo "::error::headless server did not advertise a URL within 15s"
+            echo "--- server log ---"
+            cat "$LOG"
+            exit 1
+          fi
+          echo "server up at $URL"
+
+          # 1. Verify the web client root returns 200 with the expected HTML.
+          BODY="$(curl -fsS "$URL")"
+          if ! grep -q 'Harness' <<<"$BODY"; then
+            echo "::error::web client HTML did not contain expected marker"
+            echo "--- first 500 bytes of response ---"
+            echo "${BODY:0:500}"
+            exit 1
+          fi
+          echo "web-client root OK"
+
+          # 2. Verify unauthorized HTTP request rejected (no token).
+          ROOT_URL_NO_TOKEN="${URL%%\?*}"
+          STATUS="$(curl -s -o /dev/null -w '%{http_code}' "$ROOT_URL_NO_TOKEN")"
+          if [ "$STATUS" = "200" ]; then
+            echo "::error::server served unauthenticated request (status 200)"
+            exit 1
+          fi
+          echo "auth gate OK (status $STATUS without token)"
+
+          # 3. Verify a WebSocket client can connect with the token. `ws`
+          # is a top-level dep of this project, so `require('ws')` works
+          # from the repo root post-install.
+          WS_URL="ws://${URL#http://}"
+          node -e "
+            const WS = require('ws');
+            const url = process.argv[1];
+            const ws = new WS(url);
+            const timer = setTimeout(() => {
+              console.error('ws connect timed out');
+              process.exit(1);
+            }, 5000);
+            ws.on('open', () => { clearTimeout(timer); ws.close(); process.exit(0); });
+            ws.on('error', (e) => { console.error('ws error', e.message); process.exit(1); });
+          " "$WS_URL"
+          echo "ws connect OK"
+
+          # 4. Verify clean shutdown — SIGTERM should exit within 5s.
+          # Catches "server hangs on SIGTERM" bugs that would leave
+          # zombies in CI.
+          kill -TERM "$SERVER_PID"
+          for _ in $(seq 1 25); do
+            if ! kill -0 "$SERVER_PID" 2>/dev/null; then break; fi
+            sleep 0.2
+          done
+          if kill -0 "$SERVER_PID" 2>/dev/null; then
+            echo "::error::server did not exit on SIGTERM within 5s"
+            kill -9 "$SERVER_PID" || true
+            exit 1
+          fi
+          echo "clean shutdown OK"
+          trap - EXIT
