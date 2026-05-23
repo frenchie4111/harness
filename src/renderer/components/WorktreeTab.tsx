@@ -1,4 +1,4 @@
-import { GitPullRequest, RotateCw, Trash2, Loader2, Moon } from 'lucide-react'
+import { GitPullRequest, RotateCw, Trash2, Loader2, Moon, TriangleAlert } from 'lucide-react'
 import type { Worktree, PtyStatus, PendingTool, PRStatus } from '../types'
 import { isPRMerged } from '../../shared/state/prs'
 import { formatWakeAt } from '../../shared/state/snooze'
@@ -61,6 +61,18 @@ const PR_ICON_COLOR: Record<string, string> = {
   failure: 'text-danger',
   pending: 'text-warning',
   none: 'text-dim'
+}
+
+const DETACHED_LIKE_PREFIXES = ['rebasing', 'bisecting', 'cherry-picking']
+
+function detachedLikeTooltip(branch: string): string | null {
+  if (branch === '(detached)') return 'Detached HEAD'
+  for (const prefix of DETACHED_LIKE_PREFIXES) {
+    if (branch === prefix || branch.startsWith(`${prefix} `) || branch.startsWith(`${prefix}(`)) {
+      return `In progress: ${branch}`
+    }
+  }
+  return null
 }
 
 const PR_STATE_COLOR: Record<string, string> = {
@@ -137,7 +149,17 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
         </span>
       )}
       <div className="min-w-0 flex-1">
-        <div className="text-sm font-medium truncate">{worktree.branch}</div>
+        <div className="text-sm font-medium truncate flex items-center gap-1">
+          {(() => {
+            const tip = detachedLikeTooltip(worktree.branch)
+            return tip ? (
+              <span className="shrink-0 inline-flex" title={tip} aria-label={tip}>
+                <TriangleAlert size={12} className="text-warning" />
+              </span>
+            ) : null
+          })()}
+          <span className="truncate">{worktree.branch}</span>
+        </div>
         {showPendingTool ? (
           <div className="text-xs text-danger truncate font-mono" title={formatPendingTool(pendingTool!)}>
             {formatPendingTool(pendingTool!)}

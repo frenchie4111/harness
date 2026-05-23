@@ -15,6 +15,7 @@ import { readFile, writeFile } from 'fs/promises'
 import { log } from './debug'
 import { perfLog } from './perf-log'
 import { resolveUserShell, loginShellCommandArgs } from './user-shell'
+import { detectInProgressOp } from './git-ops-state'
 import type { Worktree } from '../shared/state/worktrees'
 
 const execFileAsync = promisify(execFile)
@@ -82,6 +83,15 @@ export async function listWorktrees(repoRoot: string): Promise<WorktreeInfo[]> {
       }
       current = {}
     }
+  }
+
+  const detached = worktrees.filter((w) => w.branch === '(detached)' && !w.isBare)
+  if (detached.length > 0) {
+    const ops = await Promise.all(detached.map((w) => detectInProgressOp(w.path).catch(() => null)))
+    detached.forEach((w, i) => {
+      const op = ops[i]
+      if (op) w.branch = op.label
+    })
   }
 
   return worktrees
