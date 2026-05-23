@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
-import { X, SquareTerminal, Sparkles, Code2, SplitSquareHorizontal, SplitSquareVertical, Loader2, Globe, Users } from 'lucide-react'
+import { X, SquareTerminal, Sparkles, SplitSquareHorizontal, SplitSquareVertical, Loader2, Globe, Users } from 'lucide-react'
 import {
   SortableContext,
   horizontalListSortingStrategy,
@@ -12,7 +12,6 @@ import { AGENT_REGISTRY, agentDisplayName } from '../../shared/agent-registry'
 import { Tooltip } from './Tooltip'
 import { repoNameColor } from './RepoIcon'
 import { getClientId, useTerminalProgress, useTerminalSession } from '../store'
-import { useBackend } from '../backend'
 
 /** Chip shown in the tab bar when other clients are attached to the
  *  active terminal. Click-through is intentional — taking/releasing
@@ -378,7 +377,6 @@ export function TerminalPanel({
   onFinishEditTab,
   topBarLeadingPx = 0
 }: TerminalPanelProps): JSX.Element {
-  const backend = useBackend()
   // Droppable target for the pane itself — lets users drop a tab onto an
   // empty pane or past the last tab.
   const { setNodeRef: setPaneDropRef } = useDroppable({ id: pane.id })
@@ -418,14 +416,6 @@ export function TerminalPanel({
           </div>
         )}
         <div className="flex items-center h-full shrink-0 pl-2">
-          <Tooltip label="Open worktree in editor" action="openInEditor">
-            <button
-              onClick={() => backend.openInEditor(worktreePath)}
-              className="no-drag shrink-0 px-2 h-full text-faint hover:text-fg transition-colors cursor-pointer"
-            >
-              <Code2 size={12} />
-            </button>
-          </Tooltip>
           <Tooltip
             label={(() => {
               const jsonIsDefault = !!onAddJsonClaudeTab && defaultClaudeTabType === 'json'
