@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, Flame, Clock, Zap, GitBranch, GitMerge, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Flame, Clock, Zap, GitBranch, GitMerge, RefreshCw, Trash2 } from 'lucide-react'
+import { Tooltip } from './Tooltip'
 import type {
   Worktree,
   ActivityLog,
@@ -279,21 +280,6 @@ export function Activity({ onClose, worktrees, prStatuses, mergedPaths }: Activi
         <span className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 text-sm font-medium text-fg pointer-events-none">
           Activity
         </span>
-        <div className="no-drag absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
-          <button
-            onClick={handleReset}
-            className="text-xs text-muted hover:text-danger transition-colors cursor-pointer"
-          >
-            reset
-          </button>
-          <button
-            onClick={loadLog}
-            className="text-muted hover:text-fg-bright transition-colors cursor-pointer p-1"
-            title="Refresh"
-          >
-            <RefreshCw size={13} />
-          </button>
-        </div>
       </div>
 
       <div className="shrink-0 border-b border-border flex items-center gap-1 px-4 bg-panel">
@@ -313,6 +299,26 @@ export function Activity({ onClose, worktrees, prStatuses, mergedPaths }: Activi
             {label}
           </button>
         ))}
+        <div className="ml-auto flex items-center gap-2">
+          <Tooltip label="Reset activity log" side="left">
+            <button
+              onClick={handleReset}
+              aria-label="Reset activity log"
+              className="text-muted hover:text-danger transition-colors cursor-pointer p-1"
+            >
+              <Trash2 size={13} />
+            </button>
+          </Tooltip>
+          <Tooltip label="Refresh activity log" side="left">
+            <button
+              onClick={loadLog}
+              className="text-muted hover:text-fg-bright transition-colors cursor-pointer p-1"
+              aria-label="Refresh activity log"
+            >
+              <RefreshCw size={13} />
+            </button>
+          </Tooltip>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto">
