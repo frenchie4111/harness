@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2, LifeBuoy, Bug, Lightbulb, FlaskConical, Copy, CopyCheck, ExternalLink, FileText, FolderOpen } from 'lucide-react'
+import { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect } from 'react'
+import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2, LifeBuoy, Bug, Lightbulb, FlaskConical, Copy, CopyCheck, ExternalLink, FileText, FolderOpen, Search } from 'lucide-react'
 import { openReportIssue } from './ReportIssueScreen'
 import { HARNESS_ISSUES_URL, HARNESS_RELEASES_URL, harnessReleaseNotesUrl } from '../../shared/constants'
 import { useSettings, useUpdater, useRepoConfigs, useHooks } from '../store'
@@ -51,10 +51,46 @@ const SECTIONS: Section[] = [
   { id: 'experimental', label: 'Experimental', icon: FlaskConical }
 ]
 
+interface SearchItem {
+  /** Stable per render — `${sectionId}:${kind}:${index}`. */
+  key: string
+  sectionId: SectionId
+  /** Display text — the heading or label text. */
+  title: string
+  /** Section label, shown as secondary context in results. */
+  context: string
+  element: HTMLElement
+}
+
+function cleanText(el: Element): string {
+  return (el.textContent ?? '').replace(/\s+/g, ' ').trim()
+}
+
+function highlightMatch(text: string, query: string): React.ReactNode {
+  if (!query) return text
+  const lower = text.toLowerCase()
+  const q = query.toLowerCase()
+  const idx = lower.indexOf(q)
+  if (idx < 0) return text
+  return (
+    <>
+      {text.slice(0, idx)}
+      <mark className="bg-accent/30 text-fg-bright rounded px-0.5">
+        {text.slice(idx, idx + query.length)}
+      </mark>
+      {text.slice(idx + query.length)}
+    </>
+  )
+}
+
 export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps): JSX.Element {
   const backend = useBackend()
   const [activeSection, setActiveSection] = useState<SectionId>(initialSection ?? 'appearance')
   const [activeSubSection, setActiveSubSection] = useState<SubSectionId | null>(null)
+  const [sectionSearch, setSectionSearch] = useState('')
+  const [searchIndex, setSearchIndex] = useState<SearchItem[]>([])
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const sidebarRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const sectionRefs = useRef<Record<SectionId, HTMLElement | null>>({
     appearance: null,
@@ -102,6 +138,58 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
       scrollRef.current.scrollTo({ top: el.offsetTop - 24 })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Build the searchable index from the actual rendered DOM. We use a
+  // layout effect so the headings/labels exist before we read them; the
+  // empty dep array is intentional — the section structure is static,
+  // and dynamic content (theme list, custom themes) doesn't add new
+  // searchable headings. If that changes, gate this on a version bump.
+  useLayoutEffect(() => {
+    const items: SearchItem[] = []
+    for (const section of SECTIONS) {
+      const sectionEl = sectionRefs.current[section.id]
+      if (!sectionEl) continue
+      // h2 — the section heading itself. Drop it if it duplicates the
+      // sidebar label (always does, but cheap to keep for ranking).
+      const h2 = sectionEl.querySelector('h2')
+      if (h2) {
+        items.push({
+          key: `${section.id}:h2`,
+          sectionId: section.id,
+          title: cleanText(h2),
+          context: section.label,
+          element: h2
+        })
+      }
+      // h3 — sub-headings inside the section.
+      sectionEl.querySelectorAll('h3').forEach((h3, i) => {
+        const text = cleanText(h3)
+        if (!text) return
+        items.push({
+          key: `${section.id}:h3:${i}`,
+          sectionId: section.id,
+          title: text,
+          context: section.label,
+          element: h3 as HTMLElement
+        })
+      })
+      // labels — typically the title of a single setting/toggle. Skip
+      // ones that wrap inputs whose label text is itself a control
+      // (very long blocks) by capping length.
+      sectionEl.querySelectorAll('label').forEach((label, i) => {
+        const text = cleanText(label).split('\n')[0]
+        if (!text || text.length > 90) return
+        items.push({
+          key: `${section.id}:label:${i}`,
+          sectionId: section.id,
+          title: text,
+          context: section.label,
+          element: label as HTMLElement
+        })
+      })
+    }
+    setSearchIndex(items)
   }, [])
 
   useEffect(() => {
@@ -907,6 +995,56 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
     }
   }
 
+  const sectionQuery = sectionSearch.trim().toLowerCase()
+  const searchResults = useMemo(() => {
+    if (!sectionQuery) return [] as SearchItem[]
+    const out: { item: SearchItem; score: number }[] = []
+    for (const item of searchIndex) {
+      const titleHit = item.title.toLowerCase().indexOf(sectionQuery)
+      const contextHit = item.context.toLowerCase().indexOf(sectionQuery)
+      if (titleHit < 0 && contextHit < 0) continue
+      // Lower is better: title hits beat context hits, earlier positions
+      // beat later ones. Adding the title-position lets `Diagnostics`
+      // sort above a `Diagnostic logging` paragraph match.
+      const score = titleHit >= 0 ? titleHit : 1000 + contextHit
+      out.push({ item, score })
+    }
+    out.sort((a, b) => a.score - b.score)
+    return out.slice(0, 50).map((r) => r.item)
+  }, [sectionQuery, searchIndex])
+
+  const focusNavItemByOffset = useCallback((current: HTMLElement | null, dir: 1 | -1) => {
+    if (!sidebarRef.current) return
+    const items = Array.from(
+      sidebarRef.current.querySelectorAll<HTMLElement>('[data-nav]')
+    )
+    if (items.length === 0) return
+    const idx = current ? items.indexOf(current) : -1
+    let next = idx + dir
+    if (next < 0) {
+      // Moving up off the top item — return to the search input so the
+      // user can keep typing without grabbing the mouse.
+      searchInputRef.current?.focus()
+      return
+    }
+    if (next >= items.length) next = items.length - 1
+    items[next]?.focus()
+  }, [])
+
+  const handleSearchResultClick = useCallback((item: SearchItem) => {
+    const el = item.element
+    if (!el.isConnected) return
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    // Brief highlight ring so the user can spot the destination after
+    // the scroll lands. Toggled via a class — animation lives in
+    // styles.css (see `.harness-settings-flash`).
+    el.classList.remove('harness-settings-flash')
+    // Force reflow so re-adding the class restarts the animation.
+    void el.offsetHeight
+    el.classList.add('harness-settings-flash')
+    window.setTimeout(() => el.classList.remove('harness-settings-flash'), 1600)
+  }, [])
+
   return (
     <div className="flex flex-col h-full w-full bg-panel">
       {/* Title bar (drag region) */}
@@ -926,11 +1064,83 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
 
       <div className="flex flex-1 min-h-0">
         {/* Sections sidebar (right) */}
-        <div className="w-56 order-2 border-l border-border bg-panel flex flex-col shrink-0">
-          <div className="px-3 py-2">
+        <div
+          ref={sidebarRef}
+          onKeyDown={(e) => {
+            if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+            const target = e.target as HTMLElement
+            if (!target.hasAttribute('data-nav')) return
+            e.preventDefault()
+            focusNavItemByOffset(target, e.key === 'ArrowDown' ? 1 : -1)
+          }}
+          className="w-56 order-2 border-l border-border bg-panel flex flex-col shrink-0"
+        >
+          <div className="px-3 py-2 flex items-center justify-between">
             <span className="text-xs font-medium text-dim">SECTIONS</span>
           </div>
-          {SECTIONS.map((section) => {
+          <div className="px-3 pb-2">
+            <div className="relative">
+              <Search
+                size={11}
+                className="absolute left-2 top-1/2 -translate-y-1/2 text-faint pointer-events-none"
+              />
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={sectionSearch}
+                onChange={(e) => setSectionSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    // Keep the global Settings-Escape handler from closing the
+                    // panel: a search-focused Escape should clear the query
+                    // (or blur if already empty), not bounce out of Settings.
+                    e.preventDefault()
+                    e.stopPropagation()
+                    if (sectionSearch) setSectionSearch('')
+                    else e.currentTarget.blur()
+                    return
+                  }
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault()
+                    const first = sidebarRef.current?.querySelector<HTMLElement>('[data-nav]')
+                    first?.focus()
+                  }
+                }}
+                placeholder="Search settings…"
+                className="w-full bg-app border border-border rounded pl-7 pr-6 py-1 text-xs text-fg-bright placeholder-faint outline-none focus:border-accent"
+              />
+              {sectionSearch && (
+                <button
+                  onClick={() => setSectionSearch('')}
+                  aria-label="Clear search"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 text-faint hover:text-fg cursor-pointer"
+                >
+                  <X size={10} />
+                </button>
+              )}
+            </div>
+          </div>
+          {sectionQuery ? (
+            <div className="overflow-y-auto flex-1">
+              {searchResults.length === 0 && (
+                <div className="px-3 py-2 text-xs text-faint">No matches</div>
+              )}
+              {searchResults.map((item) => (
+                <button
+                  key={item.key}
+                  data-nav=""
+                  onClick={() => handleSearchResultClick(item)}
+                  className="w-full px-3 py-1.5 text-left text-xs text-muted hover:bg-panel-raised hover:text-fg-bright transition-colors cursor-pointer flex flex-col gap-0.5 focus:bg-surface focus:text-fg-bright outline-none"
+                >
+                  <span className="text-fg-bright truncate">
+                    {highlightMatch(item.title, sectionQuery)}
+                  </span>
+                  <span className="text-faint text-[10px] truncate">{item.context}</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            SECTIONS.map((section) => {
             const Icon = section.icon
             const isActive = activeSection === section.id
             const needsAttention = section.id === 'github' && !hasToken && authSource !== 'gh-cli'
@@ -946,8 +1156,9 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
             return (
               <div key={section.id}>
                 <button
+                  data-nav=""
                   onClick={() => scrollToSection(section.id)}
-                  className={`w-full ${className}`}
+                  className={`w-full ${className} focus:bg-surface outline-none`}
                 >
                   <Icon size={14} className="shrink-0" />
                   <span>{section.label}</span>
@@ -965,8 +1176,12 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
                       return (
                         <button
                           key={child.id}
+                          // Only navigable when the parent is expanded —
+                          // hidden subsections shouldn't trap arrow focus.
+                          data-nav={isActive ? '' : undefined}
+                          tabIndex={isActive ? 0 : -1}
                           onClick={() => scrollToSubSection(child.id)}
-                          className={`w-full pl-9 pr-3 py-1.5 text-left text-xs transition-colors cursor-pointer ${
+                          className={`w-full pl-9 pr-3 py-1.5 text-left text-xs transition-colors cursor-pointer focus:bg-surface focus:text-fg-bright outline-none ${
                             isSubActive
                               ? 'text-fg-bright bg-surface/60'
                               : 'text-muted hover:text-fg-bright hover:bg-panel-raised'
@@ -980,7 +1195,7 @@ export function Settings({ onClose, onOpenGuide, initialSection }: SettingsProps
                 )}
               </div>
             )
-          })}
+          }))}
 
           <div className="mt-auto border-t border-border px-3 py-2">
             <span className="text-xs font-medium text-dim">HELP</span>
