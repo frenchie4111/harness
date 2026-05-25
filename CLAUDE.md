@@ -512,14 +512,16 @@ automatically by `.github/workflows/build-linux.yml` on tag push.
 
 ### Headless smoke test on every PR
 
-PR CI (`.github/workflows/ci.yml`) runs a headless smoke test after the
-typecheck / build / tests block: launches `dist-headless/main/index.js`
-on an ephemeral port, parses the `[web-client] open ...` URL out of its
-stdout, verifies the web client root serves, verifies the auth gate
-rejects unauthenticated requests, verifies a WebSocket client can
-connect with the token, then SIGTERMs and confirms clean shutdown.
+PR CI (`.github/workflows/ci.yml`) runs `scripts/smoke-headless.sh`
+after the typecheck / build / tests block. The script launches
+`dist-headless/main/index.js` on an ephemeral port, parses the
+`[web-client] open ...` URL out of its stdout, delegates HTTP
+validation to `scripts/web-smoke.mjs` (auth gate + HTML + asset
+reach) and WS validation to `scripts/ws-smoke.mjs` (upgrade +
+snapshot round-trip), then SIGTERMs and confirms clean shutdown.
 Catches tarball-layout / module-resolution / boot-time regressions
-before they ride a tag push to release.
+before they ride a tag push to release. Run locally:
+`npm run build:headless && bash scripts/smoke-headless.sh`.
 
 ### Headless tarballs
 
