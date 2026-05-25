@@ -10,6 +10,7 @@ import { initialCosts } from '../shared/state/costs'
 import { initialBrowser } from '../shared/state/browser'
 import { initialJsonClaude } from '../shared/state/json-claude'
 import { initialSnooze } from '../shared/state/snooze'
+import { initialAnnouncements } from '../shared/state/announcements'
 import {
   initialSettings,
   DEFAULT_LIGHT_THEME,
@@ -47,6 +48,7 @@ export function buildInitialAppState(
     browser: initialBrowser,
     jsonClaude: initialJsonClaude,
     snooze: config.snooze ? { byPath: { ...config.snooze } } : initialSnooze,
+    announcements: initialAnnouncements,
     settings: {
       ...initialSettings,
       themeMode:
@@ -105,7 +107,11 @@ export function buildInitialAppState(
           : 30,
       snoozeDefaultDays: Math.max(1, Math.floor(config.snoozeDefaultDays ?? 7)),
       expandedDiagnosticLoggingEnabled: config.expandedDiagnosticLoggingEnabled === true,
-      prReviewPrompt: config.prReviewPrompt || DEFAULT_PR_REVIEW_PROMPT
+      prReviewPrompt: config.prReviewPrompt || DEFAULT_PR_REVIEW_PROMPT,
+      dismissedAnnouncementIds: Array.isArray(config.dismissedAnnouncementIds)
+        ? config.dismissedAnnouncementIds.filter((x): x is string => typeof x === 'string')
+        : [],
+      announcementsMuted: config.announcementsMuted === true
     }
   }
 }
