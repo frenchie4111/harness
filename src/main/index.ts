@@ -2590,7 +2590,11 @@ function registerIpcHandlers(): void {
       if (!sessionId) return []
       const session = store.getSnapshot().state.jsonClaude.sessions[sessionId]
       const entries = session?.entries ?? []
-      if (session && entries.length > 0) {
+      // Always dispatch when the session exists — even with empty entries,
+      // so the slice flips `entriesHydrated: true`. The renderer uses that
+      // flag to distinguish "haven't fetched yet" (render blank) from
+      // "truly empty session" (render the empty-state card).
+      if (session) {
         store.dispatch({
           type: 'jsonClaude/entriesSeeded',
           payload: { sessionId, entries }
