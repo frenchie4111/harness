@@ -133,7 +133,7 @@ The deep architecture documentation lives in [CLAUDE.md](CLAUDE.md). It's the or
 - **Anti-patterns to avoid in slices and derivers** — common mistakes that look fine in isolation but cause perf problems at scale (subscriber sweeps, reducer `.map()` allocations, etc.).
 - **How performance debugging works** — the perf log + HUD that we lean on when something feels slow.
 
-If you're touching the json-mode chat specifically, the `plans/json-mode-native-chat.md` document has the live feature backlog and design notes.
+If you're touching the Chat interface specifically (internally referred to as "json-mode"), the `plans/json-mode-native-chat.md` document has the live feature backlog and design notes.
 
 ## Code style
 

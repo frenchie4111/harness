@@ -560,7 +560,7 @@ describe('terminalsReducer', () => {
         tabId: 'agent-1',
         newId: 'sess-1',
         newType: 'json-claude',
-        newLabel: 'Claude (JSON)'
+        newLabel: 'Chat'
       }
     })
     const leaves = getLeaves(next.panes['/wt/a'])
@@ -568,7 +568,7 @@ describe('terminalsReducer', () => {
     expect(tab.type).toBe('json-claude')
     expect(tab.id).toBe('sess-1')
     expect(tab.sessionId).toBe('sess-1')
-    expect(tab.label).toBe('Claude (JSON)')
+    expect(tab.label).toBe('Chat')
     expect(leaves[0].activeTabId).toBe('sess-1')
     // Other tabs untouched.
     expect(leaves[0].tabs[1].id).toBe('shell-1')
@@ -578,7 +578,7 @@ describe('terminalsReducer', () => {
     const tree: PaneNode = {
       type: 'leaf',
       id: 'p1',
-      tabs: [{ id: 'sess-1', type: 'json-claude', label: 'Claude (JSON)', sessionId: 'sess-1' }],
+      tabs: [{ id: 'sess-1', type: 'json-claude', label: 'Chat', sessionId: 'sess-1' }],
       activeTabId: 'sess-1'
     }
     const start: TerminalsState = { ...initialTerminals, panes: { '/wt/a': tree } }
@@ -617,7 +617,7 @@ describe('terminalsReducer', () => {
         tabId: 'agent-1',
         newId: 'sess-1',
         newType: 'json-claude',
-        newLabel: 'Claude (JSON)'
+        newLabel: 'Chat'
       }
     })
     const tab = getLeaves(next.panes['/wt/a'])[0].tabs[0]
@@ -630,8 +630,8 @@ describe('terminalsReducer', () => {
       type: 'leaf',
       id: 'p1',
       tabs: [
-        { id: 'sess-1', type: 'json-claude', label: 'Claude (JSON)', sessionId: 'sess-1', mode: 'awake' },
-        { id: 'sess-2', type: 'json-claude', label: 'Claude (JSON)', sessionId: 'sess-2', mode: 'awake' }
+        { id: 'sess-1', type: 'json-claude', label: 'Chat', sessionId: 'sess-1', mode: 'awake' },
+        { id: 'sess-2', type: 'json-claude', label: 'Chat', sessionId: 'sess-2', mode: 'awake' }
       ],
       activeTabId: 'sess-1'
     }
@@ -651,7 +651,7 @@ describe('terminalsReducer', () => {
     const tree: PaneNode = {
       type: 'leaf',
       id: 'p1',
-      tabs: [{ id: 'sess-1', type: 'json-claude', label: 'Claude (JSON)', sessionId: 'sess-1', mode: 'asleep' }],
+      tabs: [{ id: 'sess-1', type: 'json-claude', label: 'Chat', sessionId: 'sess-1', mode: 'asleep' }],
       activeTabId: 'sess-1'
     }
     const start: TerminalsState = { ...initialTerminals, panes: { '/wt/a': tree } }
@@ -691,7 +691,7 @@ describe('terminalsReducer', () => {
     const tree: PaneNode = {
       type: 'leaf',
       id: 'p1',
-      tabs: [{ id: 'sess-1', type: 'json-claude', label: 'Claude (JSON)', sessionId: 'sess-1', mode: 'asleep' }],
+      tabs: [{ id: 'sess-1', type: 'json-claude', label: 'Chat', sessionId: 'sess-1', mode: 'asleep' }],
       activeTabId: 'sess-1'
     }
     const start: TerminalsState = { ...initialTerminals, panes: { '/wt/a': tree } }
@@ -706,7 +706,7 @@ describe('terminalsReducer', () => {
     const tree: PaneNode = {
       type: 'leaf',
       id: 'p1',
-      tabs: [{ id: 'sess-1', type: 'json-claude', label: 'Claude (JSON)', sessionId: 'sess-1', mode: 'awake' }],
+      tabs: [{ id: 'sess-1', type: 'json-claude', label: 'Chat', sessionId: 'sess-1', mode: 'awake' }],
       activeTabId: 'sess-1'
     }
     const start: TerminalsState = { ...initialTerminals, panes: { '/wt/a': tree } }

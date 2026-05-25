@@ -229,7 +229,7 @@ export class PanesFSM {
       agentTab = {
         id: sessionId,
         type: 'json-claude',
-        label: 'Claude (JSON)',
+        label: 'Chat',
         sessionId,
         mode: 'awake',
         model
@@ -418,7 +418,7 @@ export class PanesFSM {
       newType === 'json-claude'
         ? sessionId
         : `agent-${wtPath.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}`
-    const newLabel = newType === 'json-claude' ? 'Claude (JSON)' : agentDisplayName('claude')
+    const newLabel = newType === 'json-claude' ? 'Chat' : agentDisplayName('claude')
     this.store.dispatch({
       type: 'terminals/tabTypeChanged',
       payload: { worktreePath: wtPath, tabId, newId, newType, newLabel }

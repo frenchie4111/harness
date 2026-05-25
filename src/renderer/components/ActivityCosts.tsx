@@ -302,7 +302,7 @@ export function ActivityCosts(): JSX.Element {
 
       {!loading && repos.length === 0 && (
         <div className="text-sm text-dim py-12 text-center">
-          No json-mode sessions in the selected period.
+          No Chat sessions in the selected period.
         </div>
       )}
 
