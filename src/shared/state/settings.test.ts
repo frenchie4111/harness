@@ -481,6 +481,40 @@ describe('settingsReducer', () => {
     expect(next.snoozeDefaultDays).toBe(3)
   })
 
+  it('announcementDismissed appends the id and dedups', () => {
+    expect(initialSettings.dismissedAnnouncementIds).toEqual([])
+    const once = apply(initialSettings, {
+      type: 'settings/announcementDismissed',
+      payload: 'release-1.2'
+    })
+    expect(once.dismissedAnnouncementIds).toEqual(['release-1.2'])
+    const twice = apply(once, {
+      type: 'settings/announcementDismissed',
+      payload: 'release-1.2'
+    })
+    expect(twice.dismissedAnnouncementIds).toEqual(['release-1.2'])
+    expect(twice).toBe(once)
+    const second = apply(twice, {
+      type: 'settings/announcementDismissed',
+      payload: 'hn-front-page'
+    })
+    expect(second.dismissedAnnouncementIds).toEqual(['release-1.2', 'hn-front-page'])
+  })
+
+  it('announcementsMutedChanged toggles the mute flag', () => {
+    expect(initialSettings.announcementsMuted).toBe(false)
+    const on = apply(initialSettings, {
+      type: 'settings/announcementsMutedChanged',
+      payload: true
+    })
+    expect(on.announcementsMuted).toBe(true)
+    const off = apply(on, {
+      type: 'settings/announcementsMutedChanged',
+      payload: false
+    })
+    expect(off.announcementsMuted).toBe(false)
+  })
+
   it('returns a new object reference (no mutation)', () => {
     const next = apply(initialSettings, { type: 'settings/themeDarkChanged', payload: 'dracula' })
     expect(next).not.toBe(initialSettings)

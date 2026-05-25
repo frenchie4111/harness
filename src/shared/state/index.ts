@@ -84,6 +84,12 @@ import {
   type SnoozeEvent,
   type SnoozeState
 } from './snooze'
+import {
+  initialAnnouncements,
+  announcementsReducer,
+  type AnnouncementsEvent,
+  type AnnouncementsState
+} from './announcements'
 
 export type { SettingsState, SettingsEvent }
 export type { UpdaterState, UpdaterEvent, UpdaterStatus } from './updater'
@@ -151,6 +157,11 @@ export type {
 } from './json-claude'
 export type { SnoozeState, SnoozeEvent, SnoozeEntry } from './snooze'
 export { MAX_WAKE } from './snooze'
+export type {
+  AnnouncementsState,
+  AnnouncementsEvent,
+  Announcement
+} from './announcements'
 
 export interface AppState {
   settings: SettingsState
@@ -165,6 +176,7 @@ export interface AppState {
   browser: BrowserState
   jsonClaude: JsonClaudeState
   snooze: SnoozeState
+  announcements: AnnouncementsState
 }
 
 export type StateEvent =
@@ -180,6 +192,7 @@ export type StateEvent =
   | BrowserEvent
   | JsonClaudeEvent
   | SnoozeEvent
+  | AnnouncementsEvent
 
 export const initialState: AppState = {
   settings: initialSettings,
@@ -193,7 +206,8 @@ export const initialState: AppState = {
   costs: initialCosts,
   browser: initialBrowser,
   jsonClaude: initialJsonClaude,
-  snooze: initialSnooze
+  snooze: initialSnooze,
+  announcements: initialAnnouncements
 }
 
 export function rootReducer(state: AppState, event: StateEvent): AppState {
@@ -252,6 +266,12 @@ export function rootReducer(state: AppState, event: StateEvent): AppState {
     return {
       ...state,
       snooze: snoozeReducer(state.snooze, event as SnoozeEvent)
+    }
+  }
+  if (event.type.startsWith('announcements/')) {
+    return {
+      ...state,
+      announcements: announcementsReducer(state.announcements, event as AnnouncementsEvent)
     }
   }
   return state
