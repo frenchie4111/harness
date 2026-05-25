@@ -318,11 +318,12 @@ const jsonClaudeManager = new JsonClaudeManager(store, {
       isMain: scope.isMain
     }
   },
-  getLaunchSettings: (worktreePath) =>
+  getLaunchSettings: (worktreePath, modelOverride) =>
     buildClaudeLaunchSettings({
       cwd: worktreePath,
       worktrees: store.getSnapshot().state.worktrees.list,
-      config
+      config,
+      modelOverride
     })
 })
 const perfMonitor = new PerfMonitor()
@@ -768,6 +769,24 @@ const panesFSM = new PanesFSM(store, {
   }
 })
 
+/** Look up a json-claude tab's persisted `model` override by sessionId
+ *  (which is also the tab id for json-claude tabs). Returned to the
+ *  json-claude manager so resume/kickoff/wake all respect a per-tab pin
+ *  that was set when the worktree was created. */
+function findJsonClaudeTabModel(sessionId: string): string | undefined {
+  const panes = store.getSnapshot().state.terminals.panes
+  for (const tree of Object.values(panes)) {
+    for (const leaf of getLeaves(tree)) {
+      for (const tab of leaf.tabs) {
+        if (tab.id === sessionId && tab.type === 'json-claude') {
+          return tab.model && tab.model.trim() ? tab.model.trim() : undefined
+        }
+      }
+    }
+  }
+  return undefined
+}
+
 /** Single source of truth for "spin up the json-claude subprocess for
  *  this sessionId". Used by the jsonClaude:start IPC handler, the
  *  panesFSM's startJsonClaudeWithPrompt + startJsonClaude options
@@ -789,16 +808,16 @@ function startJsonClaudeSession(sessionId: string, worktreePath: string): void {
   const permMode =
     store.getSnapshot().state.jsonClaude.sessions[sessionId]?.permissionMode ||
     'default'
-  jsonClaudeManager.create(sessionId, worktreePath, permMode)
+  jsonClaudeManager.create(sessionId, worktreePath, permMode, findJsonClaudeTabModel(sessionId))
 }
 
 const worktreesFSM = new WorktreesFSM(store, {
   getRepoRoots: () => config.repoRoots || [],
   getWorktreeSetupCmd: () => config.worktreeSetupCommand || '',
   getWorktreeBaseMode: () => config.worktreeBase || DEFAULT_WORKTREE_BASE,
-  onWorktreeCreated: ({ createdPath, initialPrompt, teleportSessionId }) => {
+  onWorktreeCreated: ({ createdPath, initialPrompt, teleportSessionId, agentKind, model }) => {
     void prPoller.refreshAll()
-    panesFSM.ensureInitialized(createdPath, { initialPrompt, teleportSessionId })
+    panesFSM.ensureInitialized(createdPath, { initialPrompt, teleportSessionId, agentKind, model })
     if (teleportSessionId) {
       setTimeout(() => void worktreesFSM.refreshList(), 10_000)
     }
@@ -974,13 +993,25 @@ function registerIpcHandlers(): void {
       branchName: string
       initialPrompt?: string
       teleportSessionId?: string
+      agentKind?: 'claude' | 'codex'
+      model?: string
     }) => {
       return worktreesFSM.runPending(params)
     }
   )
   transport.onRequest(
     'worktrees:runPendingPR',
-    async (_ctx, params: { id: string; repoRoot: string; prNumber: number }) => {
+    async (
+      _ctx,
+      params: {
+        id: string
+        repoRoot: string
+        prNumber: number
+        initialPrompt?: string
+        agentKind?: 'claude' | 'codex'
+        model?: string
+      }
+    ) => {
       return worktreesFSM.runPendingPR(params)
     }
   )
@@ -2079,7 +2110,10 @@ function registerIpcHandlers(): void {
     (_ctx, agentKind: string, opts: {
       terminalId: string; cwd: string; sessionId?: string;
       initialPrompt?: string; teleportSessionId?: string;
-      sessionName?: string
+      sessionName?: string;
+      /** Per-tab model override (TerminalTab.model). When set, wins over
+       *  the global claudeModel/codexModel setting. */
+      modelOverride?: string
     }): string => {
       const kind = toAgentKind(agentKind)
       const agent = getAgent(kind)
@@ -2091,6 +2125,7 @@ function registerIpcHandlers(): void {
         resolveCallerScope(opts.terminalId)
       )
 
+      const override = opts.modelOverride && opts.modelOverride.trim() ? opts.modelOverride.trim() : undefined
       let systemPrompt: string | undefined
       let tuiFullscreen: boolean | undefined
       let model: string | null
@@ -2098,13 +2133,14 @@ function registerIpcHandlers(): void {
         const launch = buildClaudeLaunchSettings({
           cwd: opts.cwd,
           worktrees: store.getSnapshot().state.worktrees.list,
-          config
+          config,
+          modelOverride: override
         })
         systemPrompt = launch.systemPrompt
         tuiFullscreen = launch.tuiFullscreen
         model = launch.model ?? null
       } else {
-        model = config.codexModel || null
+        model = override || config.codexModel || null
       }
 
       return agent.buildSpawnArgs({ ...opts, command, mcpConfigPath, model, systemPrompt, tuiFullscreen })
@@ -3144,9 +3180,13 @@ async function runBoot(): Promise<void> {
           repoRoot: string
           worktree: { path: string }
           initialPrompt?: string
+          agentKind?: 'claude' | 'codex'
+          model?: string
         }
         panesFSM.ensureInitialized(p.worktree.path, {
-          initialPrompt: p.initialPrompt
+          initialPrompt: p.initialPrompt,
+          agentKind: p.agentKind,
+          model: p.model
         })
         void worktreesFSM.refreshList().then(() => {
           broadcastToAllWindows(channel, payload)

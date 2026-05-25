@@ -75,7 +75,7 @@ const TOOLS = [
   {
     name: 'create_worktree',
     description:
-      "Create a new git worktree in a Harness-managed repo. Either create a brand-new branch (set branchName) OR check out an existing GitHub PR for review (set prNumber). Harness will open a new Claude chat tab inside the new worktree automatically. Defaults to the caller's current repo when repoRoot is omitted.",
+      "Create a new git worktree in a Harness-managed repo. Either create a brand-new branch (set branchName) OR check out an existing GitHub PR for review (set prNumber). Harness will open a new agent chat tab inside the new worktree automatically. Defaults to the caller's current repo when repoRoot is omitted.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -103,7 +103,18 @@ const TOOLS = [
         initialPrompt: {
           type: 'string',
           description:
-            'A prompt to automatically send to the Claude chat tab when it opens in the new worktree. Useful for "review this PR for X" or "implement feature Y" prompts. When prNumber is set and this is omitted, Harness uses the configured PR review prompt (Settings → Worktrees → PR review prompt). Pass an empty string to explicitly suppress any kickoff prompt on the PR path.'
+            'A prompt to automatically send to the agent chat tab when it opens in the new worktree. Useful for "review this PR for X" or "implement feature Y" prompts. When prNumber is set and this is omitted, Harness uses the configured PR review prompt (Settings → Worktrees → PR review prompt). Pass an empty string to explicitly suppress any kickoff prompt on the PR path.'
+        },
+        agentKind: {
+          type: 'string',
+          enum: ['claude', 'codex'],
+          description:
+            "Which CLI agent to spawn in the new worktree's first tab. Defaults to the user's configured default agent (Settings → Agent)."
+        },
+        model: {
+          type: 'string',
+          description:
+            "Model string to pass to the agent CLI's --model flag for this worktree's first tab (e.g. 'opus', 'sonnet-4-5', 'gpt-5'). Pinned per-tab — survives reloads, doesn't affect other worktrees. Omit to use the global default (Settings → Agent)."
         }
       }
     }
@@ -453,17 +464,29 @@ async function handleToolCall(name, args) {
         throw new Error('prNumber must be a positive integer')
       }
     }
+    if (
+      args.agentKind !== undefined &&
+      args.agentKind !== null &&
+      args.agentKind !== 'claude' &&
+      args.agentKind !== 'codex'
+    ) {
+      throw new Error('agentKind must be "claude" or "codex"')
+    }
     const r = await callControl('POST', '/worktrees', {
       terminalId: TERMINAL_ID,
       repoRoot: args.repoRoot,
       branchName: args.branchName,
       prNumber: prNumber,
       baseBranch: args.baseBranch,
-      initialPrompt: args.initialPrompt
+      initialPrompt: args.initialPrompt,
+      agentKind: args.agentKind,
+      model: args.model
     })
+    const agentLabel = args.agentKind === 'codex' ? 'Codex' : 'Claude'
+    const modelSuffix = args.model ? ` (model: ${args.model})` : ''
     return prNumber
-      ? `Created worktree ${r.path} on branch ${r.branch} for PR #${prNumber}. Harness will open a new Claude chat tab in it.`
-      : `Created worktree ${r.path} on branch ${r.branch}. Harness will open a new Claude chat tab in it.`
+      ? `Created worktree ${r.path} on branch ${r.branch} for PR #${prNumber}. Harness will open a new ${agentLabel} chat tab in it${modelSuffix}.`
+      : `Created worktree ${r.path} on branch ${r.branch}. Harness will open a new ${agentLabel} chat tab in it${modelSuffix}.`
   }
   if (name === 'list_worktrees') {
     const q =

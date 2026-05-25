@@ -103,6 +103,8 @@ export interface ControlServerDeps {
     repoRoot: string
     prNumber: number
     initialPrompt?: string
+    agentKind?: 'claude' | 'codex'
+    model?: string
   }) => Promise<{ ok: true; path: string; branch: string } | { ok: false; error: string }>
   /** Returns the caller's current scope, or null if the terminal is not
    * associated with any known worktree (e.g. the worktree was deleted). */
@@ -249,6 +251,16 @@ async function handleRequest(
     const branchName = String(body.branchName || '').trim()
     const initialPrompt = typeof body.initialPrompt === 'string' ? body.initialPrompt : undefined
 
+    const rawAgent = typeof body.agentKind === 'string' ? body.agentKind.trim().toLowerCase() : ''
+    let agentKind: 'claude' | 'codex' | undefined
+    if (rawAgent) {
+      if (rawAgent !== 'claude' && rawAgent !== 'codex') {
+        return sendJson(res, 400, { error: 'agentKind must be "claude" or "codex"' })
+      }
+      agentKind = rawAgent
+    }
+    const model = typeof body.model === 'string' && body.model.trim() ? body.model.trim() : undefined
+
     if (prNumber !== undefined) {
       if (branchName) {
         log('control', `prNumber=${prNumber} provided — ignoring branchName=${branchName}`)
@@ -261,7 +273,9 @@ async function handleRequest(
         id: randomUUID(),
         repoRoot,
         prNumber,
-        initialPrompt: promptForPR || undefined
+        initialPrompt: promptForPR || undefined,
+        agentKind,
+        model
       })
       if (!result.ok) {
         const status = /couldn't fetch pr|not found|404/i.test(result.error) ? 422 : 502
@@ -284,7 +298,13 @@ async function handleRequest(
     // spawned by ensureInitialized still sees shared settings.
     deps.runWorktreeSetup({ repoRoot, worktreePath: created.path, branch: created.branch })
       .catch((err) => log('control', `setup script failed: ${err instanceof Error ? err.message : String(err)}`))
-    deps.broadcast('worktrees:externalCreate', { repoRoot, worktree: created, initialPrompt })
+    deps.broadcast('worktrees:externalCreate', {
+      repoRoot,
+      worktree: created,
+      initialPrompt,
+      agentKind,
+      model
+    })
     return sendJson(res, 200, created)
   }
 

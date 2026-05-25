@@ -161,20 +161,24 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
       repoRoot: string,
       branchName: string,
       initialPrompt: string,
-      teleportSessionId?: string
+      teleportSessionId?: string,
+      agentKind?: 'claude' | 'codex',
+      model?: string
     ) => {
       const id = `pending:${crypto.randomUUID()}`
       setActiveWorktreeId(id)
       setShowNewWorktree(false)
 
       // Main handles everything: addWorktree → setup script → ensureInitialized
-      // (with the prompt embedded in the new Claude tab) → outcome.
+      // (with the prompt embedded in the new agent tab) → outcome.
       const result = await backend.runPendingWorktree({
         id,
         repoRoot,
         branchName,
         initialPrompt: initialPrompt || undefined,
-        teleportSessionId
+        teleportSessionId,
+        agentKind,
+        model
       })
 
       if (result.outcome === 'success') {
@@ -188,7 +192,13 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
   )
 
   const handleSubmitNewPRWorktree = useCallback(
-    async (repoRoot: string, prNumber: number, initialPrompt: string) => {
+    async (
+      repoRoot: string,
+      prNumber: number,
+      initialPrompt: string,
+      agentKind?: 'claude' | 'codex',
+      model?: string
+    ) => {
       const id = `pending:${crypto.randomUUID()}`
       setActiveWorktreeId(id)
       setShowNewWorktree(false)
@@ -197,7 +207,9 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
         id,
         repoRoot,
         prNumber,
-        initialPrompt: initialPrompt || undefined
+        initialPrompt: initialPrompt || undefined,
+        agentKind,
+        model
       })
 
       if (result.outcome === 'success') {

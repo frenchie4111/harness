@@ -93,6 +93,35 @@ describe('buildClaudeLaunchSettings', () => {
     ).toBeUndefined()
   })
 
+  it('modelOverride wins over claudeModel and trims whitespace', () => {
+    const wt = makeWorktree()
+    expect(
+      buildClaudeLaunchSettings({
+        cwd: wt.path,
+        worktrees: [wt],
+        config: { claudeModel: 'opus' },
+        modelOverride: 'sonnet-4-5'
+      }).model
+    ).toBe('sonnet-4-5')
+    expect(
+      buildClaudeLaunchSettings({
+        cwd: wt.path,
+        worktrees: [wt],
+        config: {},
+        modelOverride: '  haiku  '
+      }).model
+    ).toBe('haiku')
+    // Blank/whitespace override falls through to settings.
+    expect(
+      buildClaudeLaunchSettings({
+        cwd: wt.path,
+        worktrees: [wt],
+        config: { claudeModel: 'opus' },
+        modelOverride: '   '
+      }).model
+    ).toBe('opus')
+  })
+
   it('builds sessionName from repoLabel/branch when nameClaudeSessions is on', () => {
     const wt = makeWorktree({ repoRoot: '/Users/x/code/myrepo', branch: 'feat-x' })
     const out = buildClaudeLaunchSettings({

@@ -190,7 +190,15 @@ export class PanesFSM {
 
   ensureInitialized(
     wtPath: string,
-    opts?: { initialPrompt?: string; teleportSessionId?: string }
+    opts?: {
+      initialPrompt?: string
+      teleportSessionId?: string
+      /** Override the default agent kind for this worktree's first tab. */
+      agentKind?: AgentKind
+      /** Override the default model (claudeModel/codexModel setting) for
+       *  this worktree's first tab. Empty/undefined = use settings. */
+      model?: string
+    }
   ): PaneNode {
     const existing = this.getTree(wtPath)
     if (existing && hasAnyTabs(existing)) return existing
@@ -202,8 +210,9 @@ export class PanesFSM {
       return sleeping
     }
 
-    const agentKind = this.opts.getDefaultAgentKind?.() ?? 'claude'
+    const agentKind = opts?.agentKind ?? this.opts.getDefaultAgentKind?.() ?? 'claude'
     const agentInfo = getAgentInfo(agentKind)
+    const model = opts?.model && opts.model.trim() ? opts.model.trim() : undefined
     const shellTabId = `shell-${wtPath}-${Date.now()}`
     // Branch to a json-claude default tab when the user has opted in
     // and the kind is Claude. teleport sessions stay on xterm (json-
@@ -216,7 +225,7 @@ export class PanesFSM {
       this.opts.getDefaultClaudeTabType?.() === 'json' &&
       !opts?.teleportSessionId
     let agentTab: TerminalTab
-    let jsonClaudeKickoff: { sessionId: string; initialPrompt?: string } | null = null
+    let jsonClaudeKickoff: { sessionId: string; initialPrompt?: string; model?: string } | null = null
     if (wantsJson) {
       const sessionId = crypto.randomUUID()
       agentTab = {
@@ -224,9 +233,10 @@ export class PanesFSM {
         type: 'json-claude',
         label: 'Claude (JSON)',
         sessionId,
-        mode: 'awake'
+        mode: 'awake',
+        model
       }
-      jsonClaudeKickoff = { sessionId, initialPrompt: opts?.initialPrompt }
+      jsonClaudeKickoff = { sessionId, initialPrompt: opts?.initialPrompt, model }
     } else {
       const agentTabId = `agent-${wtPath.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}`
       agentTab = {
@@ -236,7 +246,8 @@ export class PanesFSM {
         label: agentInfo.displayName,
         sessionId: agentInfo.assignsSessionId ? crypto.randomUUID() : undefined,
         initialPrompt: opts?.teleportSessionId ? undefined : opts?.initialPrompt,
-        teleportSessionId: opts?.teleportSessionId
+        teleportSessionId: opts?.teleportSessionId,
+        model
       }
     }
     const tabs: TerminalTab[] = [agentTab, { id: shellTabId, type: 'shell', label: 'Shell' }]

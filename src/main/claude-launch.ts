@@ -28,8 +28,11 @@ export function buildClaudeLaunchSettings(input: {
   cwd: string
   worktrees: Worktree[]
   config: ClaudeLaunchConfig
+  /** Per-tab model override. When set (and non-empty after trim), wins
+   *  over `config.claudeModel`. */
+  modelOverride?: string
 }): ClaudeLaunchSettings {
-  const { cwd, worktrees, config } = input
+  const { cwd, worktrees, config, modelOverride } = input
   const wt = worktrees.find((w) => w.path === cwd)
   const isMain = wt?.isMain ?? false
 
@@ -46,7 +49,8 @@ export function buildClaudeLaunchSettings(input: {
     if (!systemPrompt.trim()) systemPrompt = undefined
   }
 
-  const model = config.claudeModel ? config.claudeModel : undefined
+  const override = modelOverride && modelOverride.trim() ? modelOverride.trim() : undefined
+  const model = override || (config.claudeModel ? config.claudeModel : undefined)
 
   let sessionName: string | undefined
   if (config.nameClaudeSessions && wt) {

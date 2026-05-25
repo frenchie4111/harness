@@ -169,6 +169,8 @@ export interface ElectronAPI {
     branchName: string
     initialPrompt?: string
     teleportSessionId?: string
+    agentKind?: 'claude' | 'codex'
+    model?: string
   }): Promise<
     | { id: string; outcome: 'success'; createdPath: string }
     | { id: string; outcome: 'setup-failed'; createdPath: string }
@@ -179,6 +181,8 @@ export interface ElectronAPI {
     repoRoot: string
     prNumber: number
     initialPrompt?: string
+    agentKind?: 'claude' | 'codex'
+    model?: string
   }): Promise<
     | { id: string; outcome: 'success'; createdPath: string }
     | { id: string; outcome: 'setup-failed'; createdPath: string }
@@ -388,7 +392,7 @@ export interface ElectronAPI {
   buildAgentSpawnArgs(agentKind: string, opts: {
     terminalId: string; cwd: string; sessionId?: string;
     initialPrompt?: string; teleportSessionId?: string;
-    sessionName?: string
+    sessionName?: string; modelOverride?: string
   }): Promise<string>
 
   hasGithubToken(): Promise<boolean>

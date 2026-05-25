@@ -101,12 +101,16 @@ export function buildBackend(
       branchName: string
       initialPrompt?: string
       teleportSessionId?: string
+      agentKind?: 'claude' | 'codex'
+      model?: string
     }) => req('worktrees:runPending', params),
     runPendingPRWorktree: (params: {
       id: string
       repoRoot: string
       prNumber: number
       initialPrompt?: string
+      agentKind?: 'claude' | 'codex'
+      model?: string
     }) => req('worktrees:runPendingPR', params),
     retryPendingWorktree: (id: string) => req('worktrees:retryPending', id),
     dismissPendingWorktree: (id: string) => req('worktrees:dismissPending', id),
@@ -316,6 +320,7 @@ export function buildBackend(
         initialPrompt?: string
         teleportSessionId?: string
         sessionName?: string
+        modelOverride?: string
       }
     ) => req('agent:buildSpawnArgs', agentKind, opts),
 

@@ -181,6 +181,9 @@ interface XTerminalProps {
   sessionId?: string
   initialPrompt?: string
   teleportSessionId?: string
+  /** Agent tabs only: per-tab model override. When set, wins over the global
+   *  claudeModel/codexModel setting at spawn time. */
+  modelOverride?: string
   /** Shell tabs only: when set, spawn `<user-shell> -ilc <command>` instead
    * of an interactive login shell. Used for agent-spawned shells. */
   shellCommand?: string
@@ -190,7 +193,7 @@ interface XTerminalProps {
   onRestartAgent?: () => void
 }
 
-export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionName, sessionId, initialPrompt, teleportSessionId, shellCommand, shellCwd, onRestartAgent }: XTerminalProps): JSX.Element {
+export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionName, sessionId, initialPrompt, teleportSessionId, modelOverride, shellCommand, shellCwd, onRestartAgent }: XTerminalProps): JSX.Element {
   // Lazy font-cache init — fires once on first XTerminal mount. See
   // initFontCache() comment for why this is lazy rather than at module
   // top.
@@ -337,7 +340,8 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
         sessionId,
         initialPrompt,
         teleportSessionId,
-        sessionName
+        sessionName,
+        modelOverride
       })
     }
 

@@ -214,6 +214,67 @@ describe('mcp-bridge create_worktree', () => {
     expect(postCall).toBeUndefined()
   })
 
+  it('forwards agentKind + model to POST /worktrees and reports them in result text', async () => {
+    stub = await startStub((req, body, res) => {
+      if (req.url === '/scope') {
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        return res.end(JSON.stringify({ scope: null, browser: { enabled: true, mode: 'full' } }))
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ path: '/tmp/wt-codex', branch: 'feat' }))
+    })
+    bridge = spawnBridge(stub.port, 'tok')
+
+    bridge.send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} })
+    await bridge.next()
+    bridge.send({
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'tools/call',
+      params: {
+        name: 'create_worktree',
+        arguments: { branchName: 'feat', agentKind: 'codex', model: 'gpt-5' }
+      }
+    })
+    const response = await bridge.next()
+
+    expect(response.result.isError).toBeFalsy()
+    const text = response.result.content[0].text
+    expect(text).toContain('Codex')
+    expect(text).toContain('gpt-5')
+
+    const postCall = stub.captured.find((c) => c.method === 'POST' && c.url === '/worktrees')
+    expect(postCall).toBeDefined()
+    expect(postCall.body.agentKind).toBe('codex')
+    expect(postCall.body.model).toBe('gpt-5')
+  })
+
+  it('rejects unknown agentKind locally without hitting the server', async () => {
+    stub = await startStub((req, body, res) => {
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ scope: null, browser: { enabled: true, mode: 'full' } }))
+    })
+    bridge = spawnBridge(stub.port, 'tok')
+
+    bridge.send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} })
+    await bridge.next()
+    bridge.send({
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'tools/call',
+      params: {
+        name: 'create_worktree',
+        arguments: { branchName: 'feat', agentKind: 'gemini' }
+      }
+    })
+    const response = await bridge.next()
+
+    expect(response.result.isError).toBe(true)
+    expect(response.result.content[0].text).toMatch(/claude.*codex/i)
+    const postCall = stub.captured.find((c) => c.method === 'POST' && c.url === '/worktrees')
+    expect(postCall).toBeUndefined()
+  })
+
   it('surfaces server-side PR failures back to the caller', async () => {
     stub = await startStub((req, body, res) => {
       if (req.url === '/scope') {

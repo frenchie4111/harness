@@ -62,6 +62,10 @@ interface WorktreesFSMOptions {
     createdPath: string
     initialPrompt?: string
     teleportSessionId?: string
+    /** Override the default agent kind for the new worktree's first tab. */
+    agentKind?: 'claude' | 'codex'
+    /** Override the default model for the new worktree's first tab. */
+    model?: string
   }) => void
 }
 
@@ -111,8 +115,10 @@ export class WorktreesFSM {
     branchName: string
     initialPrompt?: string
     teleportSessionId?: string
+    agentKind?: 'claude' | 'codex'
+    model?: string
   }): Promise<PendingOutcome> {
-    const { id, repoRoot, branchName, initialPrompt, teleportSessionId } = params
+    const { id, repoRoot, branchName, initialPrompt, teleportSessionId, agentKind, model } = params
     const pending: PendingWorktree = {
       id,
       repoRoot,
@@ -134,7 +140,9 @@ export class WorktreesFSM {
         repoRoot,
         created,
         initialPrompt,
-        teleportSessionId
+        teleportSessionId,
+        agentKind,
+        model
       })
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -155,8 +163,10 @@ export class WorktreesFSM {
     repoRoot: string
     prNumber: number
     initialPrompt?: string
+    agentKind?: 'claude' | 'codex'
+    model?: string
   }): Promise<PendingOutcome> {
-    const { id, repoRoot, prNumber, initialPrompt } = params
+    const { id, repoRoot, prNumber, initialPrompt, agentKind, model } = params
     // Show *something* while we go ask GitHub for the head ref name.
     let branchName = `pr-${prNumber}`
     const pending: PendingWorktree = {
@@ -191,7 +201,9 @@ export class WorktreesFSM {
         id,
         repoRoot,
         created,
-        initialPrompt
+        initialPrompt,
+        agentKind,
+        model
       })
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -211,8 +223,10 @@ export class WorktreesFSM {
     created: WorktreeInfo
     initialPrompt?: string
     teleportSessionId?: string
+    agentKind?: 'claude' | 'codex'
+    model?: string
   }): Promise<PendingOutcome> {
-    const { id, repoRoot, created, initialPrompt, teleportSessionId } = args
+    const { id, repoRoot, created, initialPrompt, teleportSessionId, agentKind, model } = args
 
     const setupCmd = this.resolveSetupCmd(repoRoot)
     let setupFailed = false
@@ -246,7 +260,9 @@ export class WorktreesFSM {
     this.opts.onWorktreeCreated({
       createdPath: created.path,
       initialPrompt,
-      teleportSessionId
+      teleportSessionId,
+      agentKind,
+      model
     })
     await this.refreshList()
 
