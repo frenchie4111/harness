@@ -53,6 +53,7 @@ import {
   DEFAULT_TERMINAL_FONT_SIZE,
   DEFAULT_WORKTREE_BASE,
   DEFAULT_MERGE_STRATEGY,
+  DEFAULT_WORKTREE_DETAIL,
   DEFAULT_HARNESS_SYSTEM_PROMPT,
   DEFAULT_HARNESS_SYSTEM_PROMPT_MAIN,
   pruneTerminalHistory,
@@ -2020,6 +2021,28 @@ function registerIpcHandlers(): void {
       config.mergeStrategy = strategy
       saveConfig(config)
       store.dispatch({ type: 'settings/mergeStrategyChanged', payload: strategy })
+      return true
+    }
+  )
+
+  transport.onRequest(
+    'config:setWorktreeDetail',
+    (_ctx, detail: 'diff' | 'age' | 'pr' | 'none') => {
+      if (
+        detail !== 'diff' &&
+        detail !== 'age' &&
+        detail !== 'pr' &&
+        detail !== 'none'
+      ) {
+        return false
+      }
+      if (detail === DEFAULT_WORKTREE_DETAIL) {
+        delete config.worktreeDetail
+      } else {
+        config.worktreeDetail = detail
+      }
+      saveConfig(config)
+      store.dispatch({ type: 'settings/worktreeDetailChanged', payload: detail })
       return true
     }
   )

@@ -8,6 +8,7 @@ import { focusTerminalById } from '../components/XTerminal'
 import { useConnections, getBackendsRegistry, useSettings, useSnooze } from '../store'
 import { useBackend } from '../backend'
 import { SCALES } from '../../shared/state/settings'
+import { cycleWorktreeDetail } from '../worktree-detail-override'
 
 interface UseHotkeyHandlersArgs {
   worktrees: Worktree[]
@@ -92,6 +93,7 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
   const allSettings = useSettings()
   const viewerLogin = allSettings.viewerLogin
   const uiScale = allSettings.uiScale
+  const configuredWorktreeDetail = allSettings.worktreeDetail
   const snoozeByPath = useSnooze().byPath
   const snoozedPaths = useMemo(() => {
     const m: Record<string, true> = {}
@@ -323,7 +325,8 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       },
       uiScaleReset: () => {
         if (uiScale !== 'small') void backend.setUiScale('small')
-      }
+      },
+      cycleWorktreeDetail: () => cycleWorktreeDetail(configuredWorktreeDetail)
     }),
     [
       cycleWorktree,
@@ -351,7 +354,8 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       setShowReview,
       setShowSettings,
       backend,
-      uiScale
+      uiScale,
+      configuredWorktreeDetail
     ]
   )
 
