@@ -14,25 +14,22 @@
 #   6. Interactive confirm
 #   7. Commit "Release v<ver>", tag, push main + tag
 #
-# That tag push fans out to three parallel GitHub Actions workflows:
-#   - .github/workflows/build-mac.yml      → dmg / zip / blockmap / latest-mac.yml
-#   - .github/workflows/build-linux.yml    → AppImage / deb / latest-linux.yml
-#   - .github/workflows/headless-release.yml → harness-server tarballs
+# That tag push triggers .github/workflows/release.yml, which runs one
+# `create-release` job (reading the body from release-notes/v<ver>.md
+# committed in step 5) followed by three parallel build jobs
+# (build-mac / build-linux / build-headless) that all depend on the
+# create. dmg/zip/blockmap/latest-mac.yml + AppImage/deb/latest-linux.yml
+# + harness-server tarballs all attach to the same release.
 #
-# All three workflows are idempotent on the release (any can create it;
-# the rest upload-with-clobber), and all three read the release body
-# from release-notes/v<ver>.md committed in step 5.
-#
-# Recovery if a workflow fails after tag push:
-#   1. Fix the workflow / secret / build issue on a branch.
-#   2. Delete the tag locally + on origin:
+# Recovery if a build job fails after tag push:
+#   - Single job failed (e.g. flaky notarization)? Re-run that job from
+#     the Actions UI. create-release is idempotent on re-run (detects
+#     the existing release and skips), so a partial replay works.
+#   - Whole release is bad? Delete the tag + release:
+#        gh release delete v<ver> --cleanup-tag
 #        git tag -d v<ver>
-#        git push origin :refs/tags/v<ver>
-#      (Optionally `gh release delete v<ver>` if a partial release was
-#      created before the failure.)
-#   3. Land the fix on main, then re-run this script with the same
-#      version. The workflows are idempotent on tag — re-pushing the
-#      same tag retriggers all three.
+#      Fix the underlying issue, then re-run this script with the same
+#      version. Re-pushing the tag fires release.yml fresh.
 
 set -euo pipefail
 
@@ -95,7 +92,7 @@ fi
 ok "Tag $TAG is available"
 
 # Notarization creds used to live in .env and be checked here — they
-# now live in GitHub Actions secrets (see .github/workflows/build-mac.yml
+# now live in GitHub Actions secrets (see .github/workflows/release.yml
 # header for the list). No local .env check anymore.
 
 # gh CLI must be authenticated
@@ -268,13 +265,12 @@ else
 fi
 
 # ---- Write release-notes/v<ver>.md ----
-# This file is committed alongside the version bump and read by all
-# three CI workflows (build-mac.yml, build-linux.yml,
-# headless-release.yml) as the GitHub Release body. Keeping it as a
-# committed file (rather than passing it through tag annotations or a
-# workflow_dispatch input) keeps the workflows trivially simple — they
-# just `--notes-file release-notes/${TAG}.md` — and gives us an audit
-# trail of every release's notes inside the repo.
+# This file is committed alongside the version bump and read by
+# release.yml's create-release job as the GitHub Release body. Keeping
+# it as a committed file (rather than passing it through tag
+# annotations or a workflow_dispatch input) keeps the workflow trivially
+# simple — it just `--notes-file release-notes/${TAG}.md` — and gives
+# us an audit trail of every release's notes inside the repo.
 step "Writing ${RELEASE_NOTES_FILE}"
 mkdir -p release-notes
 
@@ -320,7 +316,7 @@ COMMITTED=1
 ok "Committed version bump, download links, releases.html entry, and release-notes file"
 
 # ---- Tag and push ----
-# After this point the CI workflows take over. If any of them fail, see
+# After this point release.yml takes over. If a build job fails, see
 # the recovery procedure in the header comment.
 step "Tagging and pushing"
 git tag "$TAG"
@@ -328,10 +324,8 @@ git push origin main
 git push origin "$TAG"
 ok "Pushed main and $TAG"
 
-step "Done — CI is now building"
-echo "  Watch the workflows at:"
-echo "    https://github.com/frenchie4111/harness/actions"
+step "Done — release.yml is now building"
+echo "  Watch the workflow at:"
+echo "    https://github.com/frenchie4111/harness/actions/workflows/release.yml"
 echo "  The GitHub release will appear at:"
 echo "    https://github.com/frenchie4111/harness/releases/tag/${TAG}"
-echo "  (created by whichever of build-mac / build-linux / headless-release"
-echo "   wins the race; the rest upload-with-clobber.)"

@@ -1,0 +1,239 @@
+name: Release
+
+# The canonical tag-driven release pipeline. Fires only on tag push.
+#
+# Shape: one `create-release` job runs first; the three build jobs
+# (mac, linux, headless) declare `needs: create-release` so they only
+# start once the GitHub Release exists. That removes the cross-workflow
+# `gh release create` race we used to have when three independent
+# workflows all fired on the same tag and tried to create the release
+# in parallel.
+#
+# The standalone build-linux.yml and headless-release.yml workflows
+# still exist for branch / workflow_dispatch smoke testing, but their
+# tag triggers and tag-attach steps are gone — this file owns tag push.
+#
+# Required GitHub secrets (Settings → Secrets and variables → Actions):
+#
+#   MAC_CERTS_P12_BASE64        — base64 of an exported Developer ID
+#                                 Application .p12 (export from Keychain
+#                                 Access including the private key, then
+#                                 `base64 -i cert.p12 | pbcopy`).
+#   MAC_CERTS_P12_PASSWORD      — password used when exporting the .p12.
+#   APPLE_ID                    — Apple ID for notarization.
+#   APPLE_APP_SPECIFIC_PASSWORD — app-specific password for the Apple ID.
+#   APPLE_TEAM_ID               — Apple developer Team ID (e.g. M7Y6TPCQ63).
+#
+# GH_TOKEN for gh CLI is auto-provided by Actions as
+# secrets.GITHUB_TOKEN — no manual setup needed.
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  # ---------------------------------------------------------------------
+  # Create the GitHub Release first, so every build job can just
+  # `gh release upload --clobber` without racing on creation.
+  #
+  # Re-run safety: if this job is re-run after a previous successful
+  # run (e.g. a build job failed and the user is replaying), we detect
+  # the existing release and skip the create. Any other gh failure
+  # fails the job loudly — no `|| true` swallowing real errors.
+  # ---------------------------------------------------------------------
+  create-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          NOTES="release-notes/${TAG}.md"
+          if [ ! -f "$NOTES" ]; then
+            echo "::error::Missing $NOTES — scripts/release.sh must commit it before tagging."
+            exit 1
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists — skipping create (re-run scenario)."
+          else
+            gh release create "$TAG" \
+              --title "Harness $TAG" \
+              --notes-file "$NOTES"
+          fi
+
+  # ---------------------------------------------------------------------
+  # macOS: sign + notarize on macos-14 (arm64), produce dmg/zip/blockmap
+  # + latest-mac.yml for both arm64 and x64.
+  # ---------------------------------------------------------------------
+  build-mac:
+    needs: create-release
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # electron-vite@5's peer range rejects vite@7/8 under strict
+      # resolver; --legacy-peer-deps mirrors the local dev install.
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      # Bundled @anthropic-ai/claude-code ships per-arch native binaries
+      # via optionalDependencies. `npm install` only pulls the host-arch
+      # one, so without this step the x64 dmg would ship without a
+      # claude binary (this runner is arm64). --no-save keeps the lock
+      # file clean. electron-builder doesn't filter by the subpackage's
+      # os/cpu, so both binaries land in both dmgs — accepted as bloat.
+      - name: Install cross-arch claude binary (darwin-x64)
+        run: |
+          CLAUDE_VERSION=$(node -e "console.log(require('./package.json').dependencies['@anthropic-ai/claude-code'])")
+          npm install --no-save --ignore-scripts --legacy-peer-deps --force \
+            "@anthropic-ai/claude-code-darwin-x64@${CLAUDE_VERSION}"
+
+      - name: Build renderer + main
+        run: npm run build
+
+      # We bypass `npm run dist:mac` because the npm script wraps
+      # electron-builder in `dotenv -e .env --`, which requires a .env
+      # file on disk. CI injects every var via the env block instead.
+      # --publish=never matches dist:linux and prevents electron-builder
+      # from auto-publishing if it sees a tag + token in env (the upload
+      # step below does the publish via gh CLI).
+      #
+      # CSC_LINK accepts a base64-encoded .p12 string directly;
+      # electron-builder decodes it into a temp keychain, signs with the
+      # identity already pinned in package.json
+      # ("Michael Lyons (M7Y6TPCQ63)"), then notarizes via the APPLE_*
+      # env vars and staples the ticket.
+      - name: Package, sign, and notarize
+        env:
+          CSC_LINK: ${{ secrets.MAC_CERTS_P12_BASE64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTS_P12_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: npx electron-builder --mac --publish=never
+
+      - name: Attach to GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          gh release upload "$TAG" \
+            release/Harness-*.dmg \
+            release/Harness-*-mac.zip \
+            release/Harness-*.blockmap \
+            release/latest-mac.yml \
+            --clobber
+
+  # ---------------------------------------------------------------------
+  # Linux: AppImage + deb on ubuntu-latest.
+  # ---------------------------------------------------------------------
+  build-linux:
+    needs: create-release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # libnss3/libgbm1 keep Electron's sandbox happy if anything tries
+      # to launch it during the build; fakeroot/rpm are needed by
+      # electron-builder's AppImage/deb assembly.
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libnss3 \
+            libgbm1 \
+            libasound2t64 \
+            fakeroot \
+            rpm
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Build Linux packages
+        run: npm run dist:linux
+
+      - name: Attach to GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          gh release upload "$TAG" \
+            release/Harness-*.AppImage \
+            release/Harness-*.deb \
+            release/latest-linux.yml \
+            --clobber
+
+  # ---------------------------------------------------------------------
+  # Headless: harness-server tarballs for the three supported platforms.
+  # darwin-x64 (Intel Mac) is intentionally omitted — the macos-13
+  # runner queue is so backed up that jobs sit unassigned for an hour.
+  # Add it back when GitHub's runner supply recovers, or move to
+  # macos-13-large.
+  # ---------------------------------------------------------------------
+  build-headless:
+    needs: create-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runs-on: macos-14
+            platform: darwin-arm64
+          - runs-on: ubuntu-22.04
+            platform: linux-x64
+          - runs-on: ubuntu-22.04-arm
+            platform: linux-arm64
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # The Node version here MUST match NODE_VERSION in
+      # scripts/pack-headless.mjs — the embedded Node binary in the
+      # tarball is downloaded for that version, and node-pty's pty.node
+      # is rebuilt against its ABI. Bumping one without the other gives
+      # a broken tarball at runtime.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.12.0'
+
+      # npm has a long-running bug (#4828) where optional native deps
+      # (rolldown's per-platform .node binding here) aren't always
+      # installed off a cross-platform package-lock.json with
+      # --legacy-peer-deps. Wiping both forces clean re-resolution per
+      # runner. We can't use the npm cache for the same reason, so
+      # setup-node above intentionally has no `cache: 'npm'`.
+      - name: Install dependencies
+        run: |
+          rm -rf node_modules package-lock.json
+          npm install --legacy-peer-deps
+
+      - name: Build headless bundle
+        run: npm run build:headless
+
+      - name: Pack tarball
+        run: npm run pack:headless
+
+      - name: Attach to GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          gh release upload "$TAG" \
+            release/headless/harness-server-*-${{ matrix.platform }}.tar.gz \
+            release/headless/harness-server-*-${{ matrix.platform }}.tar.gz.sha256 \
+            --clobber
