@@ -9,6 +9,7 @@ import type { Worktree, TerminalTab, PtyStatus, PendingTool, QuestStep, PendingW
 import { getLeaves, findLeaf } from '../shared/state/terminals'
 import { CheckCircle2, FolderOpen } from 'lucide-react'
 import { BUILT_IN_THEMES_BY_MODE } from './themes'
+import { scaleSpec } from '../shared/state/settings'
 import { useActiveTheme } from './hooks/useActiveTheme'
 import { applyTheme, effectiveAppBg } from './theme-apply'
 import { getBackend } from './backend'
@@ -251,6 +252,16 @@ function DesktopApp(): JSX.Element {
   const tailLines = useTailLineBuffer(showCommandCenter)
   const settings = useSettings()
   const { hasGithubToken: hasGithubPat, githubAuthSource, nameClaudeSessions, defaultAgent } = settings
+  // Apply the persisted UI scale to the root html element so every
+  // rem-based size (text-xs/sm/base/lg, w-N/h-N icons, padding-*) shifts
+  // in lockstep. See SCALES in shared/state/settings.ts for the table.
+  useEffect(() => {
+    const px = scaleSpec(settings.uiScale).rootPx
+    document.documentElement.style.fontSize = `${px}px`
+    return () => {
+      document.documentElement.style.fontSize = ''
+    }
+  }, [settings.uiScale])
   const activeTheme = useActiveTheme()
   const nameAgentSessions = nameClaudeSessions
   const hasGithubToken = hasGithubPat || !!githubAuthSource

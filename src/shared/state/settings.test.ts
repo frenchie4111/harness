@@ -427,6 +427,30 @@ describe('settingsReducer', () => {
     expect(compact.jsonModeChatDensity).toBe('compact')
   })
 
+  it('uiScaleChanged walks through every step', () => {
+    expect(initialSettings.uiScale).toBe('small')
+    const medium = apply(initialSettings, {
+      type: 'settings/uiScaleChanged',
+      payload: 'medium'
+    })
+    expect(medium.uiScale).toBe('medium')
+    const large = apply(medium, {
+      type: 'settings/uiScaleChanged',
+      payload: 'large'
+    })
+    expect(large.uiScale).toBe('large')
+    const xl = apply(large, {
+      type: 'settings/uiScaleChanged',
+      payload: 'x-large'
+    })
+    expect(xl.uiScale).toBe('x-large')
+    const back = apply(xl, {
+      type: 'settings/uiScaleChanged',
+      payload: 'small'
+    })
+    expect(back.uiScale).toBe('small')
+  })
+
   it('jsonModeSendOnEnterChanged toggles the send-on-enter flag', () => {
     expect(initialSettings.jsonModeSendOnEnter).toBe(false)
     const on = apply(initialSettings, {

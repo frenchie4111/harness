@@ -195,6 +195,11 @@ export interface Config {
   // historical look). 'comfy' bumps font sizes, padding, and corner
   // radius for newcomers / screen-sharing.
   jsonModeChatDensity?: 'compact' | 'comfy'
+  // Global UI density. Undefined = 'small' (the historical look at 16px
+  // root font-size). 'medium' = 18px, 'large' = 20px, 'x-large' = 22px.
+  // Old values 'compact' / 'normal' / 'roomy' from earlier internal builds
+  // are accepted on disk for migration and mapped in build-initial-state.
+  uiScale?: 'small' | 'medium' | 'large' | 'x-large' | 'compact' | 'normal' | 'roomy'
   // When true, plain Enter sends a message in the JSON-mode chat
   // composer (Shift+Enter inserts a newline). Default off — preserves
   // the historical Cmd/Ctrl+Enter-to-send behavior.

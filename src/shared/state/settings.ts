@@ -14,6 +14,34 @@ export type BrowserToolsMode = 'view' | 'full'
 
 export type JsonModeChatDensity = 'compact' | 'comfy'
 
+/** Four-step UI density. Controls the root `html` font-size so every
+ *  `rem`-based unit (and therefore the entire `text-xs` / `text-sm` /
+ *  `text-base` / `text-lg` scale and every `w-N` / `h-N` icon) shifts
+ *  together. See SCALES below for the authoritative table — adding a
+ *  fifth rung later is a one-line change there. */
+export type UiScale = 'small' | 'medium' | 'large' | 'x-large'
+
+export interface UiScaleSpec {
+  id: UiScale
+  label: string
+  rootPx: number
+  /** Pixels added to the user's `terminalFontSize` so xterm stays in
+   *  proportion with the rest of the UI. XTerminal and the Settings
+   *  preview both read from this same table. */
+  terminalOffset: number
+}
+
+export const SCALES: readonly UiScaleSpec[] = [
+  { id: 'small', label: 'Small', rootPx: 16, terminalOffset: 0 },
+  { id: 'medium', label: 'Medium', rootPx: 18, terminalOffset: 2 },
+  { id: 'large', label: 'Large', rootPx: 20, terminalOffset: 4 },
+  { id: 'x-large', label: 'X-Large', rootPx: 22, terminalOffset: 6 }
+] as const
+
+export function scaleSpec(id: UiScale): UiScaleSpec {
+  return SCALES.find((s) => s.id === id) ?? SCALES[0]
+}
+
 export type ThemeMode = 'light' | 'dark' | 'system'
 
 /** A theme loaded from `<userData>/themes/*.json`. Stays minimal — the
@@ -128,6 +156,8 @@ export interface SettingsState {
    *  radius for newcomers / screen-sharing. Wired via CSS variables on
    *  the chat root, so it's a pure styling switch. */
   jsonModeChatDensity: JsonModeChatDensity
+  /** Global UI density. Maps to a root `html` font-size — see SCALES. */
+  uiScale: UiScale
   /** When true, plain Enter sends a message in the JSON-mode chat
    *  composer (Shift+Enter inserts a newline). When false (default),
    *  the historical behavior applies: Cmd/Ctrl+Enter sends and plain
@@ -210,6 +240,7 @@ export type SettingsEvent =
   | { type: 'settings/autoApproveSteerInstructionsChanged'; payload: string }
   | { type: 'settings/useSystemClaudeForJsonModeChanged'; payload: boolean }
   | { type: 'settings/jsonModeChatDensityChanged'; payload: JsonModeChatDensity }
+  | { type: 'settings/uiScaleChanged'; payload: UiScale }
   | { type: 'settings/jsonModeSendOnEnterChanged'; payload: boolean }
   | {
       type: 'settings/jsonModeDefaultPermissionModeChanged'
@@ -266,6 +297,7 @@ export const initialSettings: SettingsState = {
   autoApproveSteerInstructions: '',
   useSystemClaudeForJsonMode: false,
   jsonModeChatDensity: 'compact',
+  uiScale: 'small',
   jsonModeSendOnEnter: false,
   jsonModeDefaultPermissionMode: 'acceptEdits',
   autoSleepMinutes: 30,
@@ -360,6 +392,8 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, useSystemClaudeForJsonMode: event.payload }
     case 'settings/jsonModeChatDensityChanged':
       return { ...state, jsonModeChatDensity: event.payload }
+    case 'settings/uiScaleChanged':
+      return { ...state, uiScale: event.payload }
     case 'settings/jsonModeSendOnEnterChanged':
       return { ...state, jsonModeSendOnEnter: event.payload }
     case 'settings/jsonModeDefaultPermissionModeChanged':
