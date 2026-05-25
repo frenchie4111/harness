@@ -5,6 +5,7 @@ import { sanitizeBranchInput, isValidBranchName } from '../branch-name'
 import { RepoIcon } from './RepoIcon'
 import { useBackend } from '../backend'
 import { useSettings } from '../store'
+import { CLAUDE_MODELS, CODEX_MODELS } from '../../shared/agent-registry'
 import type { PRSummary } from '../types'
 
 interface NewWorktreeScreenProps {
@@ -690,10 +691,14 @@ function AgentModelRow({
   // think they can flip it.
   const locked = mode === 'teleport'
   const effectiveAgent = locked ? 'claude' : agentKind
-  const placeholder =
-    effectiveAgent === 'codex'
-      ? defaultCodexModel || 'default'
-      : defaultClaudeModel || 'default'
+  const modelOptions = effectiveAgent === 'codex' ? CODEX_MODELS : CLAUDE_MODELS
+  const fallbackModel =
+    effectiveAgent === 'codex' ? defaultCodexModel : defaultClaudeModel
+  const fallbackDisplay =
+    modelOptions.find((m) => m.id === fallbackModel)?.displayName || fallbackModel
+  const defaultLabel = fallbackDisplay
+    ? `(Default — settings: ${fallbackDisplay})`
+    : '(Default — let CLI choose)'
 
   // Auto-open when the user has typed a model override OR picked a non-
   // claude agent — so a state that's already non-default isn't hidden
@@ -702,6 +707,15 @@ function AgentModelRow({
   const [openOverride, setOpenOverride] = useState(false)
   const hasNonDefault = (!locked && agentKind !== 'claude') || model.trim().length > 0
   const open = openOverride || hasNonDefault
+
+  const handleAgentChange = (next: 'claude' | 'codex'): void => {
+    // Reset the model when switching agents — otherwise a stale Claude
+    // model id would be sent as Codex's --model flag (or vice versa).
+    if (next !== agentKind) setModel('')
+    setAgentKind(next)
+  }
+
+  const modelDisplay = modelOptions.find((m) => m.id === model)?.displayName || model
 
   return (
     <div className="mt-5">
@@ -715,7 +729,7 @@ function AgentModelRow({
         {!open && hasNonDefault && (
           <span className="ml-1 normal-case font-normal tracking-normal text-faint">
             ({effectiveAgent === 'codex' ? 'Codex' : 'Claude'}
-            {model.trim() ? ` · ${model.trim()}` : ''})
+            {model.trim() ? ` · ${modelDisplay}` : ''})
           </span>
         )}
       </button>
@@ -727,10 +741,10 @@ function AgentModelRow({
             </span>
             <select
               value={effectiveAgent}
-              onChange={(e) => setAgentKind(e.target.value === 'codex' ? 'codex' : 'claude')}
+              onChange={(e) => handleAgentChange(e.target.value === 'codex' ? 'codex' : 'claude')}
               disabled={disabled || locked}
               title={locked ? 'Teleport sessions require Claude' : undefined}
-              className="bg-app border border-border-strong rounded px-2 py-1 text-xs text-fg-bright outline-none focus:border-accent disabled:opacity-50"
+              className="bg-app border border-border-strong rounded px-2 py-1 text-xs text-fg-bright outline-none focus:border-accent disabled:opacity-50 cursor-pointer"
             >
               <option value="claude">Claude</option>
               <option value="codex">Codex</option>
@@ -740,16 +754,24 @@ function AgentModelRow({
             <span className="text-[11px] font-semibold uppercase tracking-wider text-dim shrink-0">
               Model
             </span>
-            <input
-              type="text"
+            <select
               value={model}
               onChange={(e) => setModel(e.target.value)}
-              placeholder={placeholder}
               disabled={disabled}
-              spellCheck={false}
-              autoComplete="off"
-              className="flex-1 min-w-0 bg-app border border-border-strong rounded px-2 py-1 text-xs font-mono text-fg-bright placeholder-faint outline-none focus:border-accent disabled:opacity-50"
-            />
+              className="flex-1 min-w-0 bg-app border border-border-strong rounded px-2 py-1 text-xs text-fg-bright outline-none focus:border-accent disabled:opacity-50 cursor-pointer"
+            >
+              <option value="">{defaultLabel}</option>
+              <optgroup label="Current">
+                {modelOptions.filter((m) => m.tier === 'current').map((m) => (
+                  <option key={m.id} value={m.id}>{m.displayName}</option>
+                ))}
+              </optgroup>
+              <optgroup label="Legacy">
+                {modelOptions.filter((m) => m.tier === 'legacy').map((m) => (
+                  <option key={m.id} value={m.id}>{m.displayName}</option>
+                ))}
+              </optgroup>
+            </select>
           </div>
         </div>
       )}
