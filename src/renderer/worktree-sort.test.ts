@@ -155,4 +155,26 @@ describe('worktree-sort snoozed group', () => {
   it('getGroupKey returns snoozed when isSnoozed regardless of merged', () => {
     expect(getGroupKey(wt('/a'), mergedPR, true, true)).toBe('snoozed')
   })
+
+  it('no-pr group lists merge-point worktrees (PR bases) above feature worktrees', () => {
+    const main = stubWorktree({ path: '/main', branch: 'main', isMain: true, createdAt: 100 })
+    const develop = stubWorktree({ path: '/develop', branch: 'develop', createdAt: 50 })
+    const feature = stubWorktree({ path: '/feat', branch: 'feature/x', createdAt: 200 })
+    const featureWithPR = stubWorktree({ path: '/other', branch: 'feature/y', createdAt: 300 })
+    // Active PR targets develop — so develop counts as a base branch.
+    const groups = groupWorktrees(
+      [feature, develop, main, featureWithPR],
+      {
+        '/main': null,
+        '/develop': null,
+        '/feat': null,
+        '/other': stubPRStatus({ branch: 'feature/y', baseBranch: 'develop' })
+      },
+      {},
+      {}
+    )
+    const noPR = groups.find((g) => g.key === 'no-pr')!
+    // main pinned to top, then develop (a base branch), then features by createdAt desc.
+    expect(noPR.worktrees.map((w) => w.path)).toEqual(['/main', '/develop', '/feat'])
+  })
 })

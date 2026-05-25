@@ -271,19 +271,16 @@ type GraphQLCheckContext =
     }
 
 interface GraphQLBatchResponse {
-  data?: {
-    repository?:
-      | ({
-          defaultBranchRef: { name: string } | null
-          milestones: { totalCount: number } | null
-        } & Record<
-          string,
-          | { nodes: GraphQLPR[] | null }
-          | { associatedPullRequests: { nodes: GraphQLPR[] | null } | null }
+  data?:
+    | ({
+        repository?:
+          | ({
+              defaultBranchRef: { name: string } | null
+              milestones: { totalCount: number } | null
+            } & Record<string, { nodes: GraphQLPR[] | null } | null>)
           | null
-        >)
-      | null
-  } | null
+      } & Record<string, { nodes: Array<GraphQLPR | { __typename?: string }> | null } | null>)
+    | null
   errors?: Array<{ message: string }> | null
 }
 
@@ -390,23 +387,25 @@ export async function fetchPRStatusesForRepo(
   const originFull = `${ctx.origin.owner}/${ctx.origin.repo}`
 
   const varDefs = ['$owner:String!', '$name:String!']
-  const aliasParts: string[] = []
+  const repoAliasParts: string[] = []
+  const topAliasParts: string[] = []
   const variables: Record<string, string> = { owner, name: repo }
-  // Branch-name lookup handles the common case. SHA lookup via
-  // object(oid).associatedPullRequests handles `gh pr checkout`-style
-  // synthetic local branches whose name doesn't match the PR's head.ref.
-  // Both fire in the same request so the fallback adds no extra round-trip.
+  // Branch-name lookup handles the common case. SHA-via-search handles
+  // both cross-fork PRs (whose commits aren't linked from the upstream's
+  // associatedPullRequests index) and `gh pr checkout`-style synthetic
+  // local branches whose name doesn't match the PR's head.ref. Both fire
+  // in the same request so the fallback adds no extra round-trip.
   queryable.forEach((req, i) => {
     varDefs.push(`$branch${i}:String!`)
     variables[`branch${i}`] = req.branch
-    aliasParts.push(
+    repoAliasParts.push(
       `prBr${i}: pullRequests(headRefName: $branch${i}, first: 5, orderBy: {field: UPDATED_AT, direction: DESC}) { nodes { ...PR } }`
     )
     if (/^[0-9a-f]{40}$/i.test(req.headSha)) {
-      varDefs.push(`$sha${i}:GitObjectID!`)
-      variables[`sha${i}`] = req.headSha
-      aliasParts.push(
-        `prSha${i}: object(oid: $sha${i}) { ... on Commit { associatedPullRequests(first: 5, orderBy: {field: UPDATED_AT, direction: DESC}) { nodes { ...PR } } } }`
+      varDefs.push(`$q${i}:String!`)
+      variables[`q${i}`] = `type:pr repo:${owner}/${repo} ${req.headSha}`
+      topAliasParts.push(
+        `prSearch${i}: search(query: $q${i}, type: ISSUE, first: 5) { nodes { ... on PullRequest { ...PR } } }`
       )
     }
   })
@@ -414,8 +413,9 @@ export async function fetchPRStatusesForRepo(
   repository(owner: $owner, name: $name) {
     defaultBranchRef { name }
     milestones(first: 1) { totalCount }
-    ${aliasParts.join('\n    ')}
+    ${repoAliasParts.join('\n    ')}
   }
+  ${topAliasParts.join('\n  ')}
 }
 ${PR_FRAGMENT}`
 
@@ -440,22 +440,33 @@ ${PR_FRAGMENT}`
   if (!repoData) {
     throw new Error(`GitHub GraphQL: empty repository response for ${owner}/${repo}`)
   }
+  const topData = json.data ?? {}
 
   const hasMilestones = (repoData.milestones?.totalCount ?? 0) > 0
+
+  const defaultBranchName = repoData.defaultBranchRef?.name ?? ''
 
   // Resolve per-request, then fetch behind_by + first-release-tag in parallel.
   const built = await Promise.all(
     queryable.map(async (req, i) => {
+      // A worktree sitting on the repo's default branch (main/master) is
+      // not the head of any PR — skip the resolution entirely to avoid
+      // misattributing the latest squash-merged PR's status to it.
+      if (defaultBranchName && req.branch === defaultBranchName) {
+        return { worktreePath: req.worktreePath, branch: req.branch, status: null as PRStatus | null }
+      }
       const brAlias = repoData[`prBr${i}`] as { nodes: GraphQLPR[] | null } | null | undefined
-      const shaAlias = repoData[`prSha${i}`] as
-        | { associatedPullRequests?: { nodes: GraphQLPR[] | null } | null }
+      const searchAlias = topData[`prSearch${i}`] as
+        | { nodes: Array<GraphQLPR | { __typename?: string }> | null }
         | null
         | undefined
       const branchNodes = brAlias?.nodes ?? []
-      const shaNodes = shaAlias?.associatedPullRequests?.nodes ?? []
-      const nodes = dedupePRsByNumber([...branchNodes, ...shaNodes])
-      const pr = pickPRBySha(nodes, req.headSha, originFull)
-      if (!pr) return { worktreePath: req.worktreePath, status: null as PRStatus | null }
+      // search returns Issue | PullRequest; filter to PR-shaped nodes only.
+      const searchNodes = (searchAlias?.nodes ?? []).filter(
+        (n): n is GraphQLPR => !!n && typeof (n as GraphQLPR).number === 'number'
+      )
+      const pr = resolvePRForWorktree(branchNodes, searchNodes, req.headSha, originFull)
+      if (!pr) return { worktreePath: req.worktreePath, branch: req.branch, status: null as PRStatus | null }
       const [behindBy, firstReleaseTag] = await Promise.all([
         pr.state === 'MERGED' || pr.state === 'CLOSED'
           ? Promise.resolve(null)
@@ -465,40 +476,54 @@ ${PR_FRAGMENT}`
           : Promise.resolve(null)
       ])
       const status = buildPRStatus(pr, req.branch, behindBy, firstReleaseTag, hasMilestones)
-      return { worktreePath: req.worktreePath, status }
+      return { worktreePath: req.worktreePath, branch: req.branch, status }
     })
   )
+
+  // Any branch that some PR is targeting as base (develop / integration /
+  // release/*, etc.) is a merge point, not a PR head. Null out attributions
+  // for worktrees sitting on one of those.
+  const baseBranches = new Set<string>()
+  for (const b of built) if (b.status) baseBranches.add(b.status.baseBranch)
+  for (const b of built) {
+    if (b.status && baseBranches.has(b.branch)) b.status = null
+  }
+
   for (const b of built) result.set(b.worktreePath, b.status)
   return result
 }
 
-/** Combine PR nodes from the branch-name and SHA-based lookups, keeping
- *  the first occurrence per PR number. */
-function dedupePRsByNumber(nodes: GraphQLPR[]): GraphQLPR[] {
-  const seen = new Set<number>()
-  const out: GraphQLPR[] = []
-  for (const n of nodes) {
-    if (seen.has(n.number)) continue
-    seen.add(n.number)
-    out.push(n)
-  }
-  return out
-}
-
-/** Among the up-to-5 PR nodes returned for a single headRefName lookup,
- *  pick the one most likely to belong to this worktree:
- *  1. exact SHA match against the worktree's HEAD,
- *  2. same-origin head (PR opened from this repo, not a fork),
- *  3. fall back to the most-recently-updated (first node). */
-function pickPRBySha(nodes: GraphQLPR[], headSha: string, originFull: string): GraphQLPR | null {
-  if (nodes.length === 0) return null
+/** Resolve which PR (if any) belongs to a given worktree.
+ *
+ *  Branch-name nodes come from `pullRequests(headRefName: $branch)` — the
+ *  filter is by ref, so any same-origin hit is a legitimate match for
+ *  this branch. We prefer an exact SHA match if available, then
+ *  same-origin, then the most-recently-updated.
+ *
+ *  Search nodes come from `search("type:pr repo:o/n <sha>")` — the index
+ *  matches the SHA appearing anywhere in the PR's commit history or
+ *  body, including squash-merge commits that land on the default branch.
+ *  That's too loose to trust on its own, so we require the candidate's
+ *  `headRefOid` to equal the worktree's HEAD SHA before accepting it. */
+function resolvePRForWorktree(
+  branchNodes: GraphQLPR[],
+  searchNodes: GraphQLPR[],
+  headSha: string,
+  originFull: string
+): GraphQLPR | null {
   if (headSha) {
-    const bySha = nodes.find((n) => n.headRefOid === headSha)
+    const bySha =
+      branchNodes.find((n) => n.headRefOid === headSha) ??
+      searchNodes.find((n) => n.headRefOid === headSha)
     if (bySha) return bySha
   }
-  const sameRepo = nodes.find((n) => n.headRepository?.nameWithOwner === originFull)
+  // No SHA match. Same-origin branch-name hit is still a legitimate
+  // match (worktree slightly behind the PR head, or PR force-pushed).
+  // Cross-fork branch-name hits are ignored — `feature/foo` on someone
+  // else's fork is not our PR.
+  const sameRepo = branchNodes.find((n) => n.headRepository?.nameWithOwner === originFull)
   if (sameRepo) return sameRepo
-  return nodes[0]
+  return null
 }
 
 function buildPRStatus(

@@ -279,7 +279,7 @@ describe('fetchPRStatusesForRepo matcher', () => {
     vi.clearAllMocks()
   })
 
-  it('emits both prBr and prSha aliases when worktree HEAD is a valid SHA', async () => {
+  it('emits both prBr and prSearch aliases when worktree HEAD is a valid SHA', async () => {
     const sha = 'b'.repeat(40)
     fetchSpy.mockResolvedValueOnce(
       mockResponse(200, {
@@ -287,9 +287,9 @@ describe('fetchPRStatusesForRepo matcher', () => {
           repository: {
             defaultBranchRef: { name: 'main' },
             milestones: { totalCount: 0 },
-            prBr0: { nodes: [] },
-            prSha0: { associatedPullRequests: { nodes: [] } }
-          }
+            prBr0: { nodes: [] }
+          },
+          prSearch0: { nodes: [] }
         }
       })
     )
@@ -299,11 +299,14 @@ describe('fetchPRStatusesForRepo matcher', () => {
     )
     const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string)
     expect(body.query).toContain('prBr0: pullRequests(headRefName: $branch0')
-    expect(body.query).toContain('prSha0: object(oid: $sha0)')
-    expect(body.variables).toMatchObject({ branch0: 'feature', sha0: sha })
+    expect(body.query).toContain('prSearch0: search(query: $q0, type: ISSUE')
+    expect(body.variables).toMatchObject({
+      branch0: 'feature',
+      q0: `type:pr repo:o/r ${sha}`
+    })
   })
 
-  it('omits the prSha alias when worktree HEAD is not a 40-char SHA', async () => {
+  it('omits the prSearch alias when worktree HEAD is not a 40-char SHA', async () => {
     fetchSpy.mockResolvedValueOnce(
       mockResponse(200, {
         data: {
@@ -321,11 +324,11 @@ describe('fetchPRStatusesForRepo matcher', () => {
     )
     const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string)
     expect(body.query).toContain('prBr0:')
-    expect(body.query).not.toContain('prSha0:')
-    expect(body.variables).not.toHaveProperty('sha0')
+    expect(body.query).not.toContain('prSearch0:')
+    expect(body.variables).not.toHaveProperty('q0')
   })
 
-  it('finds the PR via the SHA fallback when the local branch name does not match the PR head ref', async () => {
+  it('finds the PR via the SHA search fallback when the local branch name does not match the PR head ref', async () => {
     // Mirrors `gh pr checkout 37320` against gradle/gradle: local branch
     // is `pr-37320-strictly-doc-update` but the PR's head.ref on the
     // upstream is `lkasso/documentation/strictly--doc-update`.
@@ -336,12 +339,10 @@ describe('fetchPRStatusesForRepo matcher', () => {
           repository: {
             defaultBranchRef: { name: 'main' },
             milestones: { totalCount: 0 },
-            prBr0: { nodes: [] }, // branch-name lookup misses
-            prSha0: {
-              associatedPullRequests: {
-                nodes: [gqlPR({ number: 37320, title: 'docs: strictly', headRefOid: sha })]
-              }
-            }
+            prBr0: { nodes: [] } // branch-name lookup misses
+          },
+          prSearch0: {
+            nodes: [gqlPR({ number: 37320, title: 'docs: strictly', headRefOid: sha })]
           }
         }
       })
@@ -354,9 +355,67 @@ describe('fetchPRStatusesForRepo matcher', () => {
     expect(result.get('/wt')?.title).toBe('docs: strictly')
   })
 
-  it('prefers a SHA-matched PR when branch and SHA lookups return different PRs', async () => {
-    // Two branches named the same on different forks both produce PRs;
-    // SHA disambiguates to the one whose head commit matches the worktree.
+  it('finds a cross-fork PR via the SHA search fallback', async () => {
+    // Mirrors gradle PR #32046 from MattAlp/gradle: associatedPullRequests
+    // against the upstream is empty for cross-fork PRs, but search by SHA
+    // returns the PR.
+    const sha = 'c'.repeat(40)
+    fetchSpy.mockResolvedValueOnce(
+      mockResponse(200, {
+        data: {
+          repository: {
+            defaultBranchRef: { name: 'main' },
+            milestones: { totalCount: 0 },
+            prBr0: { nodes: [] }
+          },
+          prSearch0: {
+            nodes: [
+              gqlPR({
+                number: 32046,
+                title: 'Graduate aarch64',
+                headRefOid: sha,
+                headRepository: { nameWithOwner: 'MattAlp/gradle' }
+              })
+            ]
+          }
+        }
+      })
+    )
+    const result = await fetchPRStatusesForRepo(
+      { origin: { owner: 'gradle', repo: 'gradle' }, upstream: { owner: 'gradle', repo: 'gradle' } },
+      [{ worktreePath: '/wt', branch: 'sg/pr/32046', headSha: sha }]
+    )
+    expect(result.get('/wt')?.number).toBe(32046)
+  })
+
+  it('ignores non-PR search results (issues without a number field)', async () => {
+    const sha = 'd'.repeat(40)
+    fetchSpy.mockResolvedValueOnce(
+      mockResponse(200, {
+        data: {
+          repository: {
+            defaultBranchRef: { name: 'main' },
+            milestones: { totalCount: 0 },
+            prBr0: { nodes: [] }
+          },
+          prSearch0: {
+            // Empty inline fragment for non-PR Issue + a real PR
+            nodes: [
+              {},
+              gqlPR({ number: 99, headRefOid: sha })
+            ]
+          }
+        }
+      })
+    )
+    const result = await fetchPRStatusesForRepo(
+      { origin: { owner: 'o', repo: 'r' }, upstream: { owner: 'o', repo: 'r' } },
+      [{ worktreePath: '/wt', branch: 'feature', headSha: sha }]
+    )
+    expect(result.get('/wt')?.number).toBe(99)
+  })
+
+  it('prefers a SHA-matched PR when branch and search return different PRs', async () => {
     const sha = 'd'.repeat(40)
     fetchSpy.mockResolvedValueOnce(
       mockResponse(200, {
@@ -372,11 +431,9 @@ describe('fetchPRStatusesForRepo matcher', () => {
                   headRepository: { nameWithOwner: 'someoneelse/r' }
                 })
               ]
-            },
-            prSha0: {
-              associatedPullRequests: { nodes: [gqlPR({ number: 200, headRefOid: sha })] }
             }
-          }
+          },
+          prSearch0: { nodes: [gqlPR({ number: 200, headRefOid: sha })] }
         }
       })
     )
@@ -387,6 +444,104 @@ describe('fetchPRStatusesForRepo matcher', () => {
     expect(result.get('/wt')?.number).toBe(200)
   })
 
+  it('does not claim a PR for a worktree on the repo default branch (main)', async () => {
+    // A worktree sitting on main shouldn't be reported as "this PR" just
+    // because the search index for main's HEAD SHA happens to surface the
+    // most-recently-squashed PR. Same for master.
+    const mainSha = 'a'.repeat(40)
+    const mergedPRHeadSha = 'b'.repeat(40)
+    fetchSpy.mockResolvedValueOnce(
+      mockResponse(200, {
+        data: {
+          repository: {
+            defaultBranchRef: { name: 'main' },
+            milestones: { totalCount: 0 },
+            prBr0: { nodes: [] }
+          },
+          // GitHub's search index returns the just-merged PR when you
+          // search the squash commit's SHA — its headRefOid is the
+          // original PR's head, not main's HEAD.
+          prSearch0: {
+            nodes: [
+              gqlPR({
+                number: 999,
+                title: 'Some merged feature',
+                state: 'MERGED',
+                headRefOid: mergedPRHeadSha
+              })
+            ]
+          }
+        }
+      })
+    )
+    const result = await fetchPRStatusesForRepo(
+      { origin: { owner: 'o', repo: 'r' }, upstream: { owner: 'o', repo: 'r' } },
+      [{ worktreePath: '/wt', branch: 'main', headSha: mainSha }]
+    )
+    expect(result.get('/wt')).toBeNull()
+  })
+
+  it('does not claim a PR for a worktree on a non-default merge-point branch (develop)', async () => {
+    // 'develop' isn't the default branch but PR #50 targets it as base.
+    // A worktree sitting on develop shouldn't be credited with a PR even
+    // if search-by-SHA surfaces a recently squashed candidate.
+    const developSha = 'a'.repeat(40)
+    const featureSha = 'b'.repeat(40)
+    fetchSpy.mockResolvedValueOnce(
+      mockResponse(200, {
+        data: {
+          repository: {
+            defaultBranchRef: { name: 'main' },
+            milestones: { totalCount: 0 },
+            // Worktree on develop: search returns the most-recently-squashed
+            // PR which still claims our origin via sameRepo fallback if we
+            // weren't already excluding it.
+            prBr0: { nodes: [] },
+            // Worktree on feature: legitimately ours, baseRefName=develop.
+            prBr1: { nodes: [gqlPR({ number: 50, baseRefName: 'develop', headRefOid: featureSha })] }
+          },
+          prSearch0: {
+            nodes: [gqlPR({ number: 99, state: 'MERGED', headRefOid: 'c'.repeat(40) })]
+          },
+          prSearch1: { nodes: [] }
+        }
+      })
+    )
+    const result = await fetchPRStatusesForRepo(
+      { origin: { owner: 'o', repo: 'r' }, upstream: { owner: 'o', repo: 'r' } },
+      [
+        { worktreePath: '/wt-dev', branch: 'develop', headSha: developSha },
+        { worktreePath: '/wt-feat', branch: 'feature', headSha: featureSha }
+      ]
+    )
+    expect(result.get('/wt-dev')).toBeNull()
+    expect(result.get('/wt-feat')?.number).toBe(50)
+  })
+
+  it('does not claim a PR for a worktree on master when that is the default branch', async () => {
+    const masterSha = 'c'.repeat(40)
+    const mergedPRHeadSha = 'd'.repeat(40)
+    fetchSpy.mockResolvedValueOnce(
+      mockResponse(200, {
+        data: {
+          repository: {
+            defaultBranchRef: { name: 'master' },
+            milestones: { totalCount: 0 },
+            prBr0: { nodes: [] }
+          },
+          prSearch0: {
+            nodes: [gqlPR({ number: 999, state: 'MERGED', headRefOid: mergedPRHeadSha })]
+          }
+        }
+      })
+    )
+    const result = await fetchPRStatusesForRepo(
+      { origin: { owner: 'o', repo: 'r' }, upstream: { owner: 'o', repo: 'r' } },
+      [{ worktreePath: '/wt', branch: 'master', headSha: masterSha }]
+    )
+    expect(result.get('/wt')).toBeNull()
+  })
+
   it('dedupes when both lookups return the same PR', async () => {
     const sha = 'f'.repeat(40)
     fetchSpy.mockResolvedValueOnce(
@@ -395,11 +550,9 @@ describe('fetchPRStatusesForRepo matcher', () => {
           repository: {
             defaultBranchRef: { name: 'main' },
             milestones: { totalCount: 0 },
-            prBr0: { nodes: [gqlPR({ number: 42, headRefOid: sha })] },
-            prSha0: {
-              associatedPullRequests: { nodes: [gqlPR({ number: 42, headRefOid: sha })] }
-            }
-          }
+            prBr0: { nodes: [gqlPR({ number: 42, headRefOid: sha })] }
+          },
+          prSearch0: { nodes: [gqlPR({ number: 42, headRefOid: sha })] }
         }
       })
     )
