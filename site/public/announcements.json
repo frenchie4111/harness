@@ -1,10 +1,3 @@
 {
-  "announcements": [
-    {
-      "id": "welcome-2026-05",
-      "title": "Welcome to Harness! Star us on GitHub if you find this tool useful.",
-      "href": "https://github.com/frenchie4111/harness",
-      "publishedAt": "2026-05-25T00:00:00Z"
-    }
-  ]
+  "announcements": []
 }

@@ -152,6 +152,15 @@ export interface SettingsState {
    *  PR-creation screen is seeded from this value but edits there are
    *  one-shot — managing the default happens in Settings. */
   prReviewPrompt: string
+  /** Announcement ids the user has dismissed with the per-banner `×`.
+   *  Used to filter the fetched feed down to the most recent unseen
+   *  entry. Append-only — we never garbage-collect because entries fall
+   *  out of the feed on their own once they expire. */
+  dismissedAnnouncementIds: string[]
+  /** When true, all announcement banners are suppressed regardless of
+   *  the feed contents. Set by the "Hide all announcements" action and
+   *  cleared only by the user. */
+  announcementsMuted: boolean
 }
 
 export type SettingsEvent =
@@ -204,6 +213,8 @@ export type SettingsEvent =
   | { type: 'settings/snoozeDefaultDaysChanged'; payload: number }
   | { type: 'settings/expandedDiagnosticLoggingEnabledChanged'; payload: boolean }
   | { type: 'settings/prReviewPromptChanged'; payload: string }
+  | { type: 'settings/announcementDismissed'; payload: string }
+  | { type: 'settings/announcementsMutedChanged'; payload: boolean }
 
 // Client-side placeholder. Real values are seeded in the main-process Store
 // constructor from the on-disk config and secrets.
@@ -253,7 +264,9 @@ export const initialSettings: SettingsState = {
   autoSleepMinutes: 30,
   snoozeDefaultDays: 7,
   expandedDiagnosticLoggingEnabled: false,
-  prReviewPrompt: DEFAULT_PR_REVIEW_PROMPT
+  prReviewPrompt: DEFAULT_PR_REVIEW_PROMPT,
+  dismissedAnnouncementIds: [],
+  announcementsMuted: false
 }
 
 export function settingsReducer(state: SettingsState, event: SettingsEvent): SettingsState {
@@ -350,6 +363,15 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, expandedDiagnosticLoggingEnabled: event.payload }
     case 'settings/prReviewPromptChanged':
       return { ...state, prReviewPrompt: event.payload }
+    case 'settings/announcementDismissed': {
+      if (state.dismissedAnnouncementIds.includes(event.payload)) return state
+      return {
+        ...state,
+        dismissedAnnouncementIds: [...state.dismissedAnnouncementIds, event.payload]
+      }
+    }
+    case 'settings/announcementsMutedChanged':
+      return { ...state, announcementsMuted: event.payload }
     default: {
       const _exhaustive: never = event
       void _exhaustive

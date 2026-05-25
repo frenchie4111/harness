@@ -90,6 +90,7 @@ import { log, getLogFilePath } from './debug'
 import { loadCustomThemes } from './themes-loader'
 import { perfLog } from './perf-log'
 import { buildInitialAppState } from './build-initial-state'
+import { AnnouncementsPoller } from './announcements-poller'
 
 function toAgentKind(value: string | undefined): AgentKind {
   return value === 'codex' ? 'codex' : 'claude'
@@ -583,6 +584,8 @@ const prPoller = new PRPoller(store, {
     saveConfig(config)
   }
 })
+
+const announcementsPoller = new AnnouncementsPoller(store)
 
 ptyManager.setStore(store)
 ptyManager.setSendSignal((channel, ...args) => transport.sendSignal(channel, ...args))
@@ -1269,6 +1272,31 @@ function registerIpcHandlers(): void {
   })
   transport.onRequest('prs:refreshOneIfStale', (_ctx, worktreePath: string) => {
     prPoller.refreshOneIfStale(worktreePath)
+    return true
+  })
+
+  transport.onRequest('announcements:refresh', async (_ctx) => {
+    await announcementsPoller.refresh()
+    return true
+  })
+  transport.onRequest('announcements:dismiss', (_ctx, id: string) => {
+    if (typeof id !== 'string' || !id) return false
+    const existing = config.dismissedAnnouncementIds || []
+    if (!existing.includes(id)) {
+      config.dismissedAnnouncementIds = [...existing, id]
+      saveConfig(config)
+    }
+    store.dispatch({ type: 'settings/announcementDismissed', payload: id })
+    return true
+  })
+  transport.onRequest('announcements:mute', (_ctx, muted: boolean) => {
+    if (muted) {
+      config.announcementsMuted = true
+    } else {
+      delete config.announcementsMuted
+    }
+    saveConfig(config)
+    store.dispatch({ type: 'settings/announcementsMutedChanged', payload: muted === true })
     return true
   })
 
@@ -2944,6 +2972,8 @@ async function runBoot(): Promise<void> {
 
     await refreshHarnessStarState()
   })()
+
+  announcementsPoller.start()
 
   // Seed hooks.consent from disk and migrate legacy per-worktree hooks
   // to a single user-scope install. Runs once per app install; migrated

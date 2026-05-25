@@ -581,6 +581,10 @@ export function useUpdater() {
   return useAppState((s) => s.updater)
 }
 
+export function useAnnouncements() {
+  return useAppState((s) => s.announcements)
+}
+
 export function useRepoConfigs() {
   return useAppState((s) => s.repoConfigs.byRepo)
 }

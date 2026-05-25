@@ -220,6 +220,13 @@ export interface Config {
   // When true, high-volume diagnostic log categories (currently
   // [github-api] per-call lines) are written to debug.log. Default off.
   expandedDiagnosticLoggingEnabled?: boolean
+  // Announcement ids the user dismissed via the banner's `×`. Stored
+  // append-only — entries fall out of the feed naturally on expiry, so
+  // we never need to garbage-collect this list.
+  dismissedAnnouncementIds?: string[]
+  // When true, all announcement banners are suppressed regardless of
+  // feed contents.
+  announcementsMuted?: boolean
 }
 
 export const DEFAULT_WORKTREE_BASE: 'remote' | 'local' = 'remote'
