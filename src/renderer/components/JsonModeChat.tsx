@@ -1621,7 +1621,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
           className="flex-1 overflow-y-auto overflow-x-hidden outline-none"
           style={{ overflowAnchor: 'none' }}
         >
-          {entries.length === 0 && orphanApprovals.length === 0 && !busy && (
+          {entries.length === 0 && orphanApprovals.length === 0 && !busy ? (
             <div className="min-h-full flex flex-col items-center justify-center text-center px-4 select-none">
               <div className="relative mb-6">
                 <div
@@ -1639,7 +1639,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
                 Send a message to get started.
               </p>
             </div>
-          )}
+          ) : (
           <div className="px-4 py-3 space-y-3">
             {groupedItems.map((g) =>
               g.kind === 'single' ? (
@@ -1685,6 +1685,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
               )
             })()}
           </div>
+          )}
         </div>
         {showJumpToBottom && (
           <button
