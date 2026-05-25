@@ -4,12 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Introducing Chat mode | Harness</title>
-  <meta name="description" content="A native React chat interface for Claude Code, built into Harness. Inline approval cards, real scrollback, @-mentions, and Send-on-Enter — shipping alongside the terminal Claude you already know." />
+  <meta name="description" content="A modern chat interface for Claude Code, built into Harness. Same agent, same auth, same MCP setup." />
 
   <!-- Open Graph -->
   <meta property="og:site_name" content="Harness" />
   <meta property="og:title" content="Introducing Chat mode" />
-  <meta property="og:description" content="A native React chat interface for Claude Code, built into Harness. Inline approval cards, real scrollback, @-mentions, and Send-on-Enter — shipping alongside the terminal Claude you already know." />
+  <meta property="og:description" content="A modern chat interface for Claude Code, built into Harness. Same agent, same auth, same MCP setup." />
   <!-- TODO: swap to chat-mode-og.png once shot -->
   <meta property="og:image" content="https://harness.mikelyons.org/screenshot.png" />
   <meta property="og:url" content="https://harness.mikelyons.org/announcements/introducing-chat-mode.html" />
@@ -19,7 +19,7 @@
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="Introducing Chat mode" />
-  <meta name="twitter:description" content="A native React chat interface for Claude Code, built into Harness. Inline approval cards, real scrollback, @-mentions, and Send-on-Enter — shipping alongside the terminal Claude you already know." />
+  <meta name="twitter:description" content="A modern chat interface for Claude Code, built into Harness. Same agent, same auth, same MCP setup." />
   <!-- TODO: swap to chat-mode-og.png once shot -->
   <meta name="twitter:image" content="https://harness.mikelyons.org/screenshot.png" />
 
@@ -46,9 +46,88 @@
     .prose-custom li strong { color: #f5f5f5; font-weight: 600; }
     .prose-custom a { color: #fbbf24; }
     .prose-custom a:hover { color: #fcd34d; }
-    .hero-shot {
+    /* Before/after image comparison slider. Two images stacked at the
+       same size; the top one is clipped from the right via clip-path
+       driven by a CSS custom property --pos (0–100). A draggable handle
+       updates --pos. */
+    .compare { --pos: 50%; position: relative; user-select: none; touch-action: none; }
+    .compare-frame {
+      position: relative;
       width: 100%;
+      aspect-ratio: 2000 / 1375;
+      overflow: hidden;
+      cursor: ew-resize;
+    }
+    .compare-img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
       display: block;
+      pointer-events: none;
+      -webkit-user-drag: none;
+    }
+    .compare-img--top {
+      clip-path: inset(0 calc(100% - var(--pos)) 0 0);
+    }
+    .compare-label {
+      position: absolute;
+      top: 0.75rem;
+      padding: 0.25rem 0.625rem;
+      font-size: 0.6875rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #f5f5f5;
+      background: rgba(0, 0, 0, 0.65);
+      backdrop-filter: blur(4px);
+      border-radius: 999px;
+      pointer-events: none;
+      z-index: 2;
+    }
+    .compare-label--left { left: 0.75rem; }
+    .compare-label--right { right: 0.75rem; }
+    .compare-divider {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: var(--pos);
+      width: 2px;
+      background: rgba(255, 255, 255, 0.85);
+      transform: translateX(-1px);
+      pointer-events: none;
+      z-index: 3;
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+    }
+    .compare-handle {
+      position: absolute;
+      top: 50%;
+      left: var(--pos);
+      transform: translate(-50%, -50%);
+      width: 2.75rem;
+      height: 2.75rem;
+      border-radius: 999px;
+      background: #ffffff;
+      color: #0a0a0a;
+      border: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: ew-resize;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5), 0 0 0 4px rgba(255, 255, 255, 0.12);
+      z-index: 4;
+      padding: 0;
+    }
+    .compare-handle:focus-visible {
+      outline: 2px solid #fbbf24;
+      outline-offset: 4px;
+    }
+    .compare-handle svg { display: block; }
+    .compare-hint {
+      margin-top: 0.75rem;
+      text-align: center;
+      font-size: 0.75rem;
+      color: #737373;
     }
     .feature-card {
       background: rgba(10, 10, 10, 0.6);
@@ -91,16 +170,51 @@
       Introducing <span class="gradient-text">Chat mode.</span>
     </h1>
     <p class="text-lg text-neutral-400 leading-relaxed">
-      A native React chat for Claude Code, built into Harness. The
-      same agent you already use, in a UI that's actually shaped like a
-      chat instead of a 1970s terminal pretending to be one.
+      A modern chat interface for Claude Code, built into Harness.
+      Same agent, same auth, same MCP setup.
     </p>
   </section>
 
-  <!-- Screenshot -->
-  <section class="max-w-5xl mx-auto px-6 pb-16">
-    <!-- TODO: replace with a chat-mode-specific screenshot — currently using the generic site screenshot as a placeholder -->
-    <img src="/screenshot.png" alt="Screenshot of Harness running a Claude session in the new Chat mode." class="hero-shot" />
+  <!-- Comparison slider: same session, same prompts, same window. Chat
+       mode vs. Terminal mode. Drag the handle to swap which one fills
+       the frame. -->
+  <section class="max-w-5xl mx-auto px-6 pb-4">
+    <div class="compare" id="compare">
+      <div class="compare-frame">
+        <img
+          class="compare-img"
+          src="/announcements/img/chat-mode.webp"
+          alt="The same Harness session rendered in Chat mode, with assistant message bubbles, an ASCII Hello World result, and a tool-call card."
+          width="2000"
+          height="1375"
+        />
+        <img
+          class="compare-img compare-img--top"
+          src="/announcements/img/terminal-mode.webp"
+          alt="The same Harness session rendered in Terminal mode, with the Claude Code TUI showing raw streamed output and a > prompt."
+          width="2000"
+          height="1375"
+        />
+        <span class="compare-label compare-label--left">Terminal mode</span>
+        <span class="compare-label compare-label--right">Chat mode</span>
+        <div class="compare-divider" aria-hidden="true"></div>
+        <button
+          class="compare-handle"
+          type="button"
+          role="slider"
+          aria-label="Comparison position"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          aria-valuenow="50"
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="9 6 3 12 9 18" />
+            <polyline points="15 6 21 12 15 18" />
+          </svg>
+        </button>
+      </div>
+    </div>
+    <p class="compare-hint">Same session, same prompts. Drag to compare.</p>
   </section>
 
   <!-- Article -->
@@ -110,21 +224,18 @@
       <h2 class="text-2xl font-bold text-neutral-100 mb-4">A real chat, not a terminal</h2>
       <div class="prose-custom">
         <p>
-          Claude Code is fantastic, but it ships as a TUI. Every time you
-          resize the window your scrollback gets reflowed into spaghetti.
-          Every approval prompt is <code>&gt; 1</code> against a wall of
-          stream text. Long tool calls drown out the conversation. The
-          interaction model is great; the surface around it is fighting
-          the terminal it's drawn on.
+          Claude Code ships as a TUI. Resize the window and your
+          scrollback reflows. Every approval is <code>&gt; 1</code>
+          against a wall of streamed text. Long tool calls bury the
+          conversation underneath their output.
         </p>
         <p>
-          Chat mode is the same agent — same binary, same config, same
-          MCP servers — rendered as a proper chat UI in React. Messages
-          are persistent DOM, not redrawn cells. Tool calls become
-          collapsible cards. Approval prompts are inline, with named
-          buttons. The composer auto-grows up to eight lines and
-          remembers attachments. It behaves the way you'd expect a 2026
-          chat client to behave.
+          Chat mode renders the same session as a React UI. Same
+          binary, same config, same MCP servers. Messages are
+          persistent DOM, not redrawn cells. Tool calls are
+          collapsible cards. Approvals are inline buttons. The
+          composer auto-grows up to eight lines and keeps attachments
+          between sends.
         </p>
       </div>
     </section>
@@ -134,27 +245,27 @@
       <div class="grid sm:grid-cols-2 gap-4">
         <div class="feature-card">
           <h4>Scrollback that survives</h4>
-          <p>Resize the window, split the pane, dock it anywhere — messages stay put. No reflow, no clipped tool output.</p>
+          <p>Resize the window or split the pane. Messages stay where they are. No reflow, no clipped tool output.</p>
         </div>
         <div class="feature-card">
           <h4>Inline approval cards</h4>
-          <p>Every Bash or write hits a card with the exact command, named buttons, and an "allow this session" option for things you'll OK ten times anyway.</p>
+          <p>Every Bash or write shows up as a card with the command, named buttons, and an "allow this session" option for ones you'll OK repeatedly.</p>
         </div>
         <div class="feature-card">
           <h4>@-mentions for files</h4>
-          <p>Type <code>@</code> and pick from a fuzzy-matched list of repo files. They get attached as proper context, not pasted into prose.</p>
+          <p>Type <code>@</code> and pick from a fuzzy-matched file list. Attached as context, not pasted into prose.</p>
         </div>
         <div class="feature-card">
           <h4>Send-on-Enter, if you want it</h4>
-          <p>Default is Enter for newline, ⌘↵ to send — Claude-Code-shaped. Flip the setting if you think in chat clients and Enter should send.</p>
+          <p>Default is Enter for newline, ⌘↵ to send. Flip the setting if Enter should send instead.</p>
         </div>
         <div class="feature-card">
           <h4>Permission modes per chat</h4>
-          <p>Start chats in <em>accept edits</em>, <em>ask every time</em>, or <em>plan</em>. Change it mid-chat from the statusline picker.</p>
+          <p>Start chats in <em>accept edits</em>, <em>ask every time</em>, or <em>plan</em>. Change mid-chat from the statusline picker.</p>
         </div>
         <div class="feature-card">
           <h4>Slept tabs save RAM</h4>
-          <p>Chats you haven't touched in a while tear down their subprocess. Click to wake — history is intact, the agent just spins back up.</p>
+          <p>Chats you haven't touched in a while tear down their subprocess. Click to wake. History is intact, the agent spins back up.</p>
         </div>
       </div>
     </section>
@@ -164,18 +275,16 @@
       <div class="prose-custom">
         <p>
           Terminal Claude isn't going anywhere. It's still the right
-          interface if you live in the TUI, run a bleeding-edge or beta
-          build, or want the raw Claude Code CLI for its own sake. In
-          Harness it's now called <strong>Terminal mode</strong>, and
-          your existing tabs keep working unchanged.
+          option if you live in the TUI, run a beta build, or want the
+          raw Claude Code CLI. In Harness it's now called
+          <strong>Terminal mode</strong>. Existing tabs keep working.
         </p>
         <p>
           Chat mode is a parallel option, pinned to a Claude Code
-          binary that ships with each Harness release. That means the
-          approval-card schema, the streamed JSON shape, and the
-          subprocess contract can't drift mid-conversation — useful
-          trivia, mostly invisible in practice. Both interfaces share
-          <code>~/.claude/</code>, so auth and MCP are configured once.
+          binary that ships with each Harness release. That keeps the
+          approval-card schema and streamed JSON shape stable between
+          updates. Both interfaces share <code>~/.claude/</code>, so
+          auth and MCP are configured once.
         </p>
       </div>
     </section>
@@ -226,5 +335,70 @@
       </div>
     </div>
   </footer>
+
+  <script>
+    (function () {
+      const root = document.getElementById('compare')
+      if (!root) return
+      const frame = root.querySelector('.compare-frame')
+      const handle = root.querySelector('.compare-handle')
+      let dragging = false
+
+      function setPos(pct) {
+        const clamped = Math.max(0, Math.min(100, pct))
+        root.style.setProperty('--pos', clamped + '%')
+        handle.setAttribute('aria-valuenow', String(Math.round(clamped)))
+      }
+
+      function posFromEvent(e) {
+        const rect = frame.getBoundingClientRect()
+        const x = (e.clientX ?? 0) - rect.left
+        return (x / rect.width) * 100
+      }
+
+      function onPointerMove(e) {
+        if (!dragging) return
+        e.preventDefault()
+        setPos(posFromEvent(e))
+      }
+
+      function endDrag() {
+        if (!dragging) return
+        dragging = false
+        window.removeEventListener('pointermove', onPointerMove)
+        window.removeEventListener('pointerup', endDrag)
+        window.removeEventListener('pointercancel', endDrag)
+      }
+
+      function beginDrag(e) {
+        dragging = true
+        setPos(posFromEvent(e))
+        window.addEventListener('pointermove', onPointerMove, { passive: false })
+        window.addEventListener('pointerup', endDrag)
+        window.addEventListener('pointercancel', endDrag)
+      }
+
+      // Drag from anywhere on the frame (including the handle, which sits
+      // on top); also lets a single tap snap the divider to the tap point.
+      frame.addEventListener('pointerdown', (e) => {
+        e.preventDefault()
+        beginDrag(e)
+      })
+
+      // Keyboard support on the handle.
+      handle.addEventListener('keydown', (e) => {
+        const current = parseFloat(root.style.getPropertyValue('--pos')) || 50
+        const step = e.shiftKey ? 10 : 2
+        let next = current
+        if (e.key === 'ArrowLeft') next = current - step
+        else if (e.key === 'ArrowRight') next = current + step
+        else if (e.key === 'Home') next = 0
+        else if (e.key === 'End') next = 100
+        else return
+        e.preventDefault()
+        setPos(next)
+      })
+    })()
+  </script>
 </body>
 </html>
