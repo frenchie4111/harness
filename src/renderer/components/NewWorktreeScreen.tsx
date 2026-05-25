@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { Sparkles, Loader2, X, Map, ListChecks, BookOpen, Radio, GitPullRequest } from 'lucide-react'
+import { Sparkles, Loader2, X, Map, ListChecks, BookOpen, Radio, GitPullRequest, ChevronRight, ChevronDown } from 'lucide-react'
 import iconUrl from '../../../resources/icon.png'
 import { sanitizeBranchInput, isValidBranchName } from '../branch-name'
 import { RepoIcon } from './RepoIcon'
@@ -694,38 +694,65 @@ function AgentModelRow({
     effectiveAgent === 'codex'
       ? defaultCodexModel || 'default'
       : defaultClaudeModel || 'default'
+
+  // Auto-open when the user has typed a model override OR picked a non-
+  // claude agent — so a state that's already non-default isn't hidden
+  // behind a collapsed header. Plain `useState` here makes the open flag
+  // sticky once the user expands; collapsing again is always a click.
+  const [openOverride, setOpenOverride] = useState(false)
+  const hasNonDefault = (!locked && agentKind !== 'claude') || model.trim().length > 0
+  const open = openOverride || hasNonDefault
+
   return (
-    <div className="flex items-center gap-3 mt-5">
-      <div className="flex items-center gap-2">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-dim">
-          Agent
-        </span>
-        <select
-          value={effectiveAgent}
-          onChange={(e) => setAgentKind(e.target.value === 'codex' ? 'codex' : 'claude')}
-          disabled={disabled || locked}
-          title={locked ? 'Teleport sessions require Claude' : undefined}
-          className="bg-app border border-border-strong rounded px-2 py-1 text-xs text-fg-bright outline-none focus:border-accent disabled:opacity-50"
-        >
-          <option value="claude">Claude</option>
-          <option value="codex">Codex</option>
-        </select>
-      </div>
-      <div className="flex items-center gap-2 flex-1 min-w-0">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-dim shrink-0">
-          Model
-        </span>
-        <input
-          type="text"
-          value={model}
-          onChange={(e) => setModel(e.target.value)}
-          placeholder={placeholder}
-          disabled={disabled}
-          spellCheck={false}
-          autoComplete="off"
-          className="flex-1 min-w-0 bg-app border border-border-strong rounded px-2 py-1 text-xs font-mono text-fg-bright placeholder-faint outline-none focus:border-accent disabled:opacity-50"
-        />
-      </div>
+    <div className="mt-5">
+      <button
+        type="button"
+        onClick={() => setOpenOverride((v) => !v)}
+        className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-dim hover:text-fg transition-colors cursor-pointer"
+      >
+        {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        Advanced
+        {!open && hasNonDefault && (
+          <span className="ml-1 normal-case font-normal tracking-normal text-faint">
+            ({effectiveAgent === 'codex' ? 'Codex' : 'Claude'}
+            {model.trim() ? ` · ${model.trim()}` : ''})
+          </span>
+        )}
+      </button>
+      {open && (
+        <div className="flex items-center gap-3 mt-3">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-dim">
+              Agent
+            </span>
+            <select
+              value={effectiveAgent}
+              onChange={(e) => setAgentKind(e.target.value === 'codex' ? 'codex' : 'claude')}
+              disabled={disabled || locked}
+              title={locked ? 'Teleport sessions require Claude' : undefined}
+              className="bg-app border border-border-strong rounded px-2 py-1 text-xs text-fg-bright outline-none focus:border-accent disabled:opacity-50"
+            >
+              <option value="claude">Claude</option>
+              <option value="codex">Codex</option>
+            </select>
+          </div>
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-dim shrink-0">
+              Model
+            </span>
+            <input
+              type="text"
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              placeholder={placeholder}
+              disabled={disabled}
+              spellCheck={false}
+              autoComplete="off"
+              className="flex-1 min-w-0 bg-app border border-border-strong rounded px-2 py-1 text-xs font-mono text-fg-bright placeholder-faint outline-none focus:border-accent disabled:opacity-50"
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }
