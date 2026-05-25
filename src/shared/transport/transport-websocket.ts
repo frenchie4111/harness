@@ -84,6 +84,12 @@ export class WebSocketClientTransport implements ClientTransport {
   async connect(): Promise<void> {
     if (this.connectPromise) return this.connectPromise
     this.connectPromise = this.openSocket()
+    // TODO(#75-followup): callers sometimes report `Uncaught (in promise)
+    // Error: websocket failed to open` on the first failed connect even
+    // though every known awaiter has a catch. Suspect: a secondary
+    // awaiter shares the cached `connectPromise` and lets the rejection
+    // escape. Reproduce with a remote backend whose server is down at
+    // boot and inspect the rejection's stack.
     return this.connectPromise
   }
 

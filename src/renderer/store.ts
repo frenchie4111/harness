@@ -121,7 +121,7 @@ const DEFAULT_BACKEND_STATUS: BackendStatus = { state: 'connected' }
  *  doesn't run again on its own. */
 type ReconnectSubscriber = (backendId: string, clientId: string) => void
 
-class BackendsRegistry {
+export class BackendsRegistry {
   private entries = new Map<string, BackendEntry>()
   private activeId: string = LOCAL_BACKEND_ID
   private activeIdListeners = new Set<() => void>()
@@ -439,7 +439,7 @@ export async function initStore(): Promise<void> {
     const connections = await backend.connectionsList()
     for (const conn of connections) {
       if (conn.kind !== 'remote') continue
-      void hydrateRemoteBackend(conn)
+      void hydrateRemoteBackend(conn, { registry, backend })
     }
     const savedActive = await backend.connectionsGetActive()
     if (savedActive && registry.has(savedActive)) {
@@ -453,10 +453,21 @@ export async function initStore(): Promise<void> {
 
 /** Construct a WS transport for a saved remote, fetch its token from
  *  secrets, connect, and register the pair. Errors are logged but
- *  non-fatal — the user can retry from the chip strip. */
-async function hydrateRemoteBackend(conn: BackendConnection): Promise<void> {
+ *  non-fatal — the user can retry from the chip strip.
+ *
+ *  Exported (with dependency-injection) for tests. Production callers
+ *  pass the module-level `registry` and `backend`. */
+export async function hydrateRemoteBackend(
+  conn: BackendConnection,
+  deps: {
+    registry: BackendsRegistry
+    backend: Pick<import('./types').ElectronAPI, 'connectionsGetToken'>
+    WSCtor?: typeof WebSocketClientTransport
+  }
+): Promise<void> {
+  const { registry: reg, backend, WSCtor = WebSocketClientTransport } = deps
   try {
-    const token = await getBackend().connectionsGetToken(conn.id)
+    const token = await backend.connectionsGetToken(conn.id)
     if (!token) {
       // eslint-disable-next-line no-console
       console.warn(`[harness] no token stored for backend ${conn.id} — skipping`)
@@ -472,18 +483,18 @@ async function hydrateRemoteBackend(conn: BackendConnection): Promise<void> {
     // ClientStore with each fresh snapshot so an inactive backend that
     // briefly drops + reconnects in the background catches up cleanly
     // when the user switches to it.
-    if (registry.has(conn.id)) return
-    const ws = new WebSocketClientTransport({
+    if (reg.has(conn.id)) return
+    const ws = new WSCtor({
       url: conn.url,
       token,
       onConnectionChange: (connected, reason) => {
-        registry.setStatus(conn.id, {
+        reg.setStatus(conn.id, {
           state: connected ? 'connected' : 'disconnected',
           reason
         })
       },
       onSnapshot: (snapshot) => {
-        const store = registry.getStore(conn.id)
+        const store = reg.getStore(conn.id)
         if (store) store.setSnapshot(snapshot.state)
       }
     })
@@ -491,11 +502,23 @@ async function hydrateRemoteBackend(conn: BackendConnection): Promise<void> {
     // callbacks fire through the same path on first connect and on
     // every subsequent reconnect. The store is seeded with initialState
     // until the first snapshot arrives — a brief flash, gone in <100ms.
-    registry.add(conn, ws)
+    reg.add(conn, ws)
     await ws.connect()
   } catch (err) {
     // eslint-disable-next-line no-console
     console.warn(`[harness] failed to connect to backend ${conn.id}`, err)
+    // Drop the half-registered entry so it can't poison active-backend
+    // selection. Without this, the outer hydration loop's
+    // `if (registry.has(savedActive)) setActive(savedActive)` would pin
+    // active at this never-connected remote, and the app would render
+    // the empty-state onboarding screen even though the local backend
+    // has the user's real repos. `remove` auto-falls-back to
+    // LOCAL_BACKEND_ID if the dropped entry was active.
+    try {
+      reg.remove(conn.id)
+    } catch {
+      /* not added or already gone — fine */
+    }
   }
 }
 
