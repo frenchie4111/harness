@@ -1644,6 +1644,13 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
           className="flex-1 overflow-y-auto overflow-x-hidden outline-none"
           style={{ overflowAnchor: 'none' }}
         >
+          {/* Stable wrapper so the auto-scroll ResizeObserver (mounted once
+              with empty deps) always has a firstElementChild to observe.
+              Without it, a fresh chat mounts with entriesHydrated=false and
+              the empty-state ternary returns null, leaving the scroll
+              container childless — the RO is never attached and streaming
+              tokens after entries hydrate don't snap to bottom. */}
+          <div className="min-h-full flex flex-col">
           {entries.length === 0 && orphanApprovals.length === 0 && !busy ? (
             // Empty-state is only safe to show once we've confirmed there's
             // nothing to display. The wire snapshot ships entries stripped
@@ -1653,7 +1660,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
             // Render blank during the fetch; a spinner's appear-then-
             // disappear would itself be a flash.
             entriesHydrated ? (
-              <div className="min-h-full flex flex-col items-center justify-center text-center px-4 select-none">
+              <div className="flex-1 flex flex-col items-center justify-center text-center px-4 select-none">
                 <div className="relative mb-6">
                   <div
                     className="absolute inset-0 rounded-full blur-2xl opacity-30 brand-gradient-bg"
@@ -1718,6 +1725,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
             })()}
           </div>
           )}
+          </div>
         </div>
         {showJumpToBottom && (
           <button
