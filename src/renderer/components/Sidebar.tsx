@@ -265,7 +265,7 @@ export function Sidebar({
       </svg>
       {/* Title bar drag region with app name — vertically aligned with traffic lights at y:12 */}
       <div className="drag-region h-10 relative shrink-0">
-        <span className="absolute left-20 top-[11px] text-xs font-semibold whitespace-nowrap">
+        <span className="absolute left-20 right-2 top-[11px] text-xs font-semibold whitespace-nowrap overflow-hidden text-ellipsis">
           <span className="gradient-text">Harness</span>
           {import.meta.env.DEV && __HARNESS_DEV_BRANCH__ && (
             <span className="text-faint font-normal ml-1">({__HARNESS_DEV_BRANCH__})</span>

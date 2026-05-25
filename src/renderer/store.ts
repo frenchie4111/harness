@@ -27,9 +27,11 @@
 import { useSyncExternalStore } from 'react'
 import {
   initialState,
+  mergeWireSnapshot,
   rootReducer,
   type AppState,
-  type StateEvent
+  type StateEvent,
+  type WireSnapshotState
 } from '../shared/state'
 import type { LocalTransportHandle, BackendConnection } from './types'
 import { WebSocketClientTransport } from '../shared/transport/transport-websocket'
@@ -53,12 +55,17 @@ class ClientStore {
     for (const l of this.listeners) l()
   }
 
-  setSnapshot(state: AppState): void {
-    // Merge with initialState so a remote backend on an older harness-server
-    // version (missing recently-added slices like snooze, repoConfigs, etc.)
-    // doesn't surface as renderer crashes on the first selector access of
-    // an undefined slice. New renderer + old server is the common skew.
-    this.state = { ...initialState, ...state }
+  setSnapshot(state: WireSnapshotState): void {
+    // Per-slice merge against initialState. This is the wire-side trust
+    // boundary: a remote `harness-server` on an older version may be
+    // missing entire slices (added after it shipped) AND/OR be missing
+    // individual fields inside slices it does send (e.g. v2.9.3 sends
+    // `settings` without `customThemes`, which 99262b2 added). A
+    // top-level shallow merge would only fix the first case; the
+    // per-slice merge fixes both. New renderer + old server is the
+    // common skew. The shared helper enforces — via the AppState return
+    // type — that future slice additions can't silently miss this list.
+    this.state = mergeWireSnapshot(state)
     for (const l of this.listeners) l()
   }
 

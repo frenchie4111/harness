@@ -282,6 +282,44 @@ export interface StateSnapshot {
   seq: number
 }
 
+/** Snapshot shape as it comes off the wire. Each slice may be entirely
+ *  absent (older server with a not-yet-existing slice) or present but
+ *  missing recently-added fields (older server with the slice but an
+ *  older schema). Consumers must merge with `initialState` defaults via
+ *  `mergeWireSnapshot` before treating the value as a full `AppState`. */
+export type WireSnapshotState = {
+  [K in keyof AppState]?: Partial<AppState[K]>
+}
+
+/** Per-slice shallow merge of a wire snapshot against `initialState`
+ *  defaults. Protects against two version skews:
+ *
+ *   1. Older server is missing an entire slice (e.g. `snooze` added after
+ *      the server shipped) — `initialState[slice]` fills it in.
+ *   2. Older server has the slice but is missing a recently-added field
+ *      (e.g. `settings.customThemes` added in 99262b2 after v2.9.3) —
+ *      the per-field default from `initialState[slice]` fills it in.
+ *
+ *  If a future PR adds a slice to `AppState`/`initialState` and forgets
+ *  to add a line here, TypeScript will fail the build: the object
+ *  literal won't satisfy `AppState`. */
+export function mergeWireSnapshot(state: WireSnapshotState): AppState {
+  return {
+    settings: { ...initialState.settings, ...state.settings },
+    prs: { ...initialState.prs, ...state.prs },
+    onboarding: { ...initialState.onboarding, ...state.onboarding },
+    hooks: { ...initialState.hooks, ...state.hooks },
+    worktrees: { ...initialState.worktrees, ...state.worktrees },
+    terminals: { ...initialState.terminals, ...state.terminals },
+    updater: { ...initialState.updater, ...state.updater },
+    repoConfigs: { ...initialState.repoConfigs, ...state.repoConfigs },
+    costs: { ...initialState.costs, ...state.costs },
+    browser: { ...initialState.browser, ...state.browser },
+    jsonClaude: { ...initialState.jsonClaude, ...state.jsonClaude },
+    snooze: { ...initialState.snooze, ...state.snooze }
+  }
+}
+
 /** Returns a snapshot with `jsonClaude.sessions[*].entries` elided.
  *  Transports call this before serializing the initial-snapshot frame to
  *  keep the wire payload bounded by the rest of the state — entries grow
