@@ -22,13 +22,13 @@ const OPTIONS: Array<{
 }> = [
   {
     value: 'xterm',
-    label: 'Terminal',
+    label: 'Terminal mode',
     description: "Claude Code's TUI in a shell tab.",
     Icon: TerminalIcon
   },
   {
     value: 'json',
-    label: 'Chat',
+    label: 'Chat mode',
     description:
       'Native interface with inline tool cards and approval flows.',
     Icon: MessageSquare

@@ -261,7 +261,7 @@ function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect
                 onConvertTabType('json-claude')
               }}
             >
-              Switch to Chat
+              Switch to Chat mode
             </button>
           )}
           {onConvertTabType && tab.type === 'json-claude' && (
@@ -273,7 +273,7 @@ function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect
                 onConvertTabType('agent')
               }}
             >
-              Switch to Terminal
+              Switch to Terminal mode
             </button>
           )}
         </div>
@@ -382,8 +382,8 @@ export function TerminalPanel({
                   : ''
               const shiftPart = onAddJsonClaudeTab
                 ? chatIsDefault
-                  ? ` · ⇧-click for Terminal`
-                  : ' · ⇧-click for Chat'
+                  ? ` · ⇧-click for Terminal mode`
+                  : ' · ⇧-click for Chat mode'
                 : ''
               return plain + altPart + shiftPart
             })()}

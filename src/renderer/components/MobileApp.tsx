@@ -389,7 +389,7 @@ function TabChip({ tab, active, status, shellActivity, onSelect, onConvertTabTyp
                 onConvertTabType('json-claude')
               }}
             >
-              Switch to Chat
+              Switch to Chat mode
             </button>
           ) : (
             <button
@@ -400,7 +400,7 @@ function TabChip({ tab, active, status, shellActivity, onSelect, onConvertTabTyp
                 onConvertTabType('agent')
               }}
             >
-              Switch to Terminal
+              Switch to Terminal mode
             </button>
           )}
         </div>
