@@ -856,7 +856,8 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
   const backend = useBackend()
   const session = useJsonClaudeSession(sessionId)
   const { pending, resolve } = useJsonClaudeApprovals(sessionId)
-  const density = useSettings().jsonModeChatDensity
+  const { jsonModeChatDensity: density, defaultClaudeTabType } = useSettings()
+  const cameFromTerminalDefault = defaultClaudeTabType === 'xterm'
   const [draft, setDraft] = useState('')
   // Mention/popover state. `dismissed` carries the draft text at which
   // the user pressed Escape — comparing against the live draft is how we
@@ -1586,6 +1587,24 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
           <div className="bg-panel-raised border border-border-strong rounded px-4 py-2 text-fg-bright shadow-lg">
             Drop image to attach
           </div>
+        </div>
+      )}
+      {cameFromTerminalDefault && (
+        <div className="absolute top-2 left-2 z-30 flex items-center gap-1 pointer-events-auto">
+          <button
+            onClick={() => {
+              void backend.panesConvertTabType(worktreePath, sessionId, 'agent')
+            }}
+            className="px-2 py-1 rounded-md text-xs bg-panel/90 border border-border text-fg-bright hover:bg-border transition-colors"
+          >
+            Switch back
+          </button>
+          <button
+            onClick={() => { void backend.setDefaultClaudeTabType('json') }}
+            className="px-2 py-1 rounded-md text-xs bg-panel/90 border border-border text-fg-bright hover:bg-border transition-colors"
+          >
+            Set Chat as default
+          </button>
         </div>
       )}
       <div className="relative flex-1 min-h-0 flex flex-col">

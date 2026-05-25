@@ -6,7 +6,7 @@ import { ProgressAddon } from '@xterm/addon-progress'
 import { SearchAddon } from '@xterm/addon-search'
 import '@xterm/xterm/css/xterm.css'
 import type { StateEvent } from '../../shared/state'
-import { getClientId, subscribeActiveTransportReconnect, useTerminalSession } from '../store'
+import { getClientId, subscribeActiveTransportReconnect, useSettings, useTerminalSession } from '../store'
 import { getBackend, useBackend } from '../backend'
 import { Eye, X, Sparkles } from 'lucide-react'
 
@@ -243,6 +243,7 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
   // top.
   initFontCache()
   const backend = useBackend()
+  const chatPromotionDismissed = useSettings().chatPromotionDismissed
   const [exited, setExited] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
@@ -849,14 +850,21 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
           </button>
         </div>
       )}
-      {!loading && !exited && onSwitchToChat && type === 'agent' && agentKind === 'claude' && (
-        <div className="absolute top-2 left-2 pointer-events-auto">
+      {!loading && !exited && onSwitchToChat && type === 'agent' && agentKind === 'claude' && !chatPromotionDismissed && (
+        <div className="absolute top-2 left-2 flex items-center gap-1 pointer-events-auto">
           <button
             onClick={onSwitchToChat}
             className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs bg-panel/90 border border-border text-fg-bright hover:bg-border transition-colors"
           >
             <Sparkles size={12} className="text-accent" />
             <span>Switch to the new Chat mode</span>
+          </button>
+          <button
+            onClick={() => { void backend.setChatPromotionDismissed(true) }}
+            aria-label="Dismiss Chat mode promotion"
+            className="p-1 rounded-md bg-panel/90 border border-border text-dim hover:text-fg-bright transition-colors"
+          >
+            <X size={12} />
           </button>
         </div>
       )}

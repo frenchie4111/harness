@@ -102,6 +102,10 @@ export interface SettingsState {
    *  ('xterm') or the React chat interface ('json'). Internal values are
    *  unchanged; the user-facing label is "Terminal" / "Chat". */
   defaultClaudeTabType: 'xterm' | 'json'
+  /** True once the user clicks the X on the "Switch to the new Chat
+   *  mode" overlay shown on Terminal Claude tabs. Persistent so the
+   *  promotion stays dismissed across reloads. */
+  chatPromotionDismissed: boolean
   /** When true, JSON-mode tabs run a Haiku oneshot to auto-approve
    *  obviously-safe tool calls instead of prompting the user. Productivity
    *  feature only — an LLM judging another LLM is not a security boundary.
@@ -196,6 +200,7 @@ export type SettingsEvent =
   | { type: 'settings/browserToolsEnabledChanged'; payload: boolean }
   | { type: 'settings/browserToolsModeChanged'; payload: BrowserToolsMode }
   | { type: 'settings/defaultClaudeTabTypeChanged'; payload: 'xterm' | 'json' }
+  | { type: 'settings/chatPromotionDismissedChanged'; payload: boolean }
   | { type: 'settings/autoApprovePermissionsChanged'; payload: boolean }
   | { type: 'settings/autoApproveSteerInstructionsChanged'; payload: string }
   | { type: 'settings/useSystemClaudeForJsonModeChanged'; payload: boolean }
@@ -250,6 +255,7 @@ export const initialSettings: SettingsState = {
   browserToolsEnabled: true,
   browserToolsMode: 'full',
   defaultClaudeTabType: 'xterm',
+  chatPromotionDismissed: false,
   autoApprovePermissions: false,
   autoApproveSteerInstructions: '',
   useSystemClaudeForJsonMode: false,
@@ -337,6 +343,8 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, browserToolsMode: event.payload }
     case 'settings/defaultClaudeTabTypeChanged':
       return { ...state, defaultClaudeTabType: event.payload }
+    case 'settings/chatPromotionDismissedChanged':
+      return { ...state, chatPromotionDismissed: event.payload }
     case 'settings/autoApprovePermissionsChanged':
       return { ...state, autoApprovePermissions: event.payload }
     case 'settings/autoApproveSteerInstructionsChanged':

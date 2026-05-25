@@ -2664,6 +2664,23 @@ function registerIpcHandlers(): void {
   )
 
   transport.onRequest(
+    'config:setChatPromotionDismissed',
+    (_ctx, value: boolean) => {
+      if (value) {
+        config.chatPromotionDismissed = true
+      } else {
+        delete config.chatPromotionDismissed
+      }
+      saveConfig(config)
+      store.dispatch({
+        type: 'settings/chatPromotionDismissedChanged',
+        payload: value
+      })
+      return true
+    }
+  )
+
+  transport.onRequest(
     'config:setJsonModeChatDensity',
     (_ctx, value: 'compact' | 'comfy') => {
       const next: 'compact' | 'comfy' = value === 'comfy' ? 'comfy' : 'compact'

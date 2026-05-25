@@ -176,6 +176,9 @@ export interface Config {
   // Controls whether new Claude tabs spawn as the terminal-hosted TUI
   // ('xterm') or the React chat interface ('json'). Default 'xterm'.
   defaultClaudeTabType?: 'xterm' | 'json'
+  // True once the user dismisses the "Switch to the new Chat mode"
+  // overlay shown on Terminal Claude tabs.
+  chatPromotionDismissed?: boolean
   // When true, JSON-mode tabs delegate per-tool approval decisions to a
   // Haiku oneshot for obviously-safe tool calls. Productivity feature
   // only — not a security boundary. Default off (undefined treated as

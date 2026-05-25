@@ -355,6 +355,20 @@ describe('settingsReducer', () => {
     expect(full.browserToolsMode).toBe('full')
   })
 
+  it('chatPromotionDismissedChanged toggles the flag', () => {
+    expect(initialSettings.chatPromotionDismissed).toBe(false)
+    const on = apply(initialSettings, {
+      type: 'settings/chatPromotionDismissedChanged',
+      payload: true
+    })
+    expect(on.chatPromotionDismissed).toBe(true)
+    const off = apply(on, {
+      type: 'settings/chatPromotionDismissedChanged',
+      payload: false
+    })
+    expect(off.chatPromotionDismissed).toBe(false)
+  })
+
   it('defaultClaudeTabTypeChanged switches between xterm and json', () => {
     expect(initialSettings.defaultClaudeTabType).toBe('xterm')
     const json = apply(initialSettings, {
