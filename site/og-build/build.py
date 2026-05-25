@@ -17,7 +17,12 @@ CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 
 def data_uri(path: str) -> str:
     ext = os.path.splitext(path)[1].lower()
-    mime = "image/jpeg" if ext in (".jpg", ".jpeg") else "image/png"
+    if ext in (".jpg", ".jpeg"):
+        mime = "image/jpeg"
+    elif ext == ".webp":
+        mime = "image/webp"
+    else:
+        mime = "image/png"
     with open(path, "rb") as f:
         return f"data:{mime};base64," + base64.b64encode(f.read()).decode()
 
@@ -51,7 +56,7 @@ def render(template_name: str, output_name: str, replacements: dict) -> None:
 
 def main() -> int:
     icon = data_uri(os.path.join(PUBLIC, "icon.png"))
-    shot = data_uri(os.path.join(PUBLIC, "harness-demo-poster.jpg"))
+    shot = data_uri(os.path.join(PUBLIC, "announcements/img/chat-mode.webp"))
 
     render("template.html", "og-image.png", {
         "ICON_DATA_URI": icon,
