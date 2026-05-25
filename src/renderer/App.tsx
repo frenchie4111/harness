@@ -26,6 +26,7 @@ import { WeeklyWrappedScreen } from './components/WeeklyWrappedScreen'
 import { Guide } from './components/Guide'
 import { AGENT_REGISTRY } from '../shared/agent-registry'
 import { AgentIcon } from './components/AgentIcon'
+import { InterfaceToggle } from './components/InterfaceToggle'
 import { Activity } from './components/Activity'
 import { Cleanup } from './components/Cleanup'
 import { CommandCenter } from './components/CommandCenter'
@@ -294,7 +295,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
   useEffect(() => {
     if (questStep === 'done' || questStep === 'finale') return
     if (questStep === 'hidden' && agentWorktreeCount >= 1) {
-      setQuestStep(agentWorktreeCount >= 2 ? 'switch-between' : 'choose-interface')
+      setQuestStep(agentWorktreeCount >= 2 ? 'switch-between' : 'spawn-second')
       return
     }
     if (questStep === 'spawn-second' && agentWorktreeCount >= 2) {
@@ -947,6 +948,18 @@ const setQuestStep = useCallback((next: QuestStep) => {
                     </button>
                   ))}
                 </div>
+                {agentChosen && defaultAgent === 'claude' && (
+                  <div className="ml-8 mt-4 pl-4 border-l-2 border-border">
+                    <div className="text-xs text-dim mb-2">
+                      Which interface should new Claude tabs use?
+                    </div>
+                    <InterfaceToggle
+                      value={settings.defaultClaudeTabType}
+                      onChange={(value) => { void backend.setDefaultClaudeTabType(value) }}
+                      size="compact"
+                    />
+                  </div>
+                )}
               </div>
 
               <div
@@ -1423,11 +1436,6 @@ const setQuestStep = useCallback((next: QuestStep) => {
           step={questStep}
           onDismiss={() => setQuestStep('done')}
           onFinish={() => setQuestStep('done')}
-          claudeTabType={settings.defaultClaudeTabType}
-          onSelectClaudeTabType={(value) => {
-            void backend.setDefaultClaudeTabType(value)
-          }}
-          onAdvanceFromInterface={() => setQuestStep('spawn-second')}
         />
         {/* Right panel — hidden on the new-worktree screen so the form gets the full width */}
         {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && reportIssueState === null && !rightColumnHidden && (
