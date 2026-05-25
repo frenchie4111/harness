@@ -1117,7 +1117,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
               {activeAnnouncement.title}
             </a>
           </span>
-          <div className="relative no-drag">
+          <div className="relative no-drag self-stretch flex items-center">
             <button
               aria-label="More announcement options"
               onClick={() => setAnnouncementsMenuOpen((v) => !v)}
@@ -1128,7 +1128,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
             {announcementsMenuOpen && (
               <div
                 role="menu"
-                className="absolute right-0 top-full mt-1 z-20 min-w-[180px] rounded border border-accent/30 bg-app shadow-md text-sm"
+                className="no-drag absolute right-0 top-full mt-1 z-20 min-w-[180px] rounded border border-accent/30 bg-app shadow-md text-sm"
               >
                 <button
                   role="menuitem"
@@ -1136,7 +1136,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
                     setAnnouncementsMenuOpen(false)
                     void backend.muteAnnouncements(true)
                   }}
-                  className="block w-full text-left px-3 py-2 hover:bg-accent/10 cursor-pointer"
+                  className="no-drag block w-full text-left px-3 py-2 hover:bg-accent/10 cursor-pointer"
                 >
                   Hide all announcements
                 </button>
