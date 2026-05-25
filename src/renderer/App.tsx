@@ -289,7 +289,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
   useEffect(() => {
     if (questStep === 'done' || questStep === 'finale') return
     if (questStep === 'hidden' && agentWorktreeCount >= 1) {
-      setQuestStep(agentWorktreeCount >= 2 ? 'switch-between' : 'spawn-second')
+      setQuestStep(agentWorktreeCount >= 2 ? 'switch-between' : 'choose-interface')
       return
     }
     if (questStep === 'spawn-second' && agentWorktreeCount >= 2) {
@@ -1268,15 +1268,9 @@ const setQuestStep = useCallback((next: QuestStep) => {
                   defaultAgent={defaultAgent ?? 'claude'}
                   onAddAgentTab={(wt, kind, paneId) => handleAddAgentTab(wt, kind ?? defaultAgent ?? 'claude', paneId)}
                   onAddBrowserTab={handleAddBrowserTab}
-                  onAddJsonClaudeTab={
-                    settings.jsonModeClaudeTabs ? handleAddJsonClaudeTab : undefined
-                  }
-                  onConvertTabType={
-                    settings.jsonModeClaudeTabs ? handleConvertTabType : undefined
-                  }
-                  defaultClaudeTabType={
-                    settings.jsonModeClaudeTabs ? settings.defaultClaudeTabType : undefined
-                  }
+                  onAddJsonClaudeTab={handleAddJsonClaudeTab}
+                  onConvertTabType={handleConvertTabType}
+                  defaultClaudeTabType={settings.defaultClaudeTabType}
                   onSleepTab={handleSleepTab}
                   onCloseTab={handleCloseTab}
                   onRestartAgentTab={handleRestartAgentTab}
@@ -1401,6 +1395,11 @@ const setQuestStep = useCallback((next: QuestStep) => {
           step={questStep}
           onDismiss={() => setQuestStep('done')}
           onFinish={() => setQuestStep('done')}
+          claudeTabType={settings.defaultClaudeTabType}
+          onSelectClaudeTabType={(value) => {
+            void backend.setDefaultClaudeTabType(value)
+          }}
+          onAdvanceFromInterface={() => setQuestStep('spawn-second')}
         />
         {/* Right panel — hidden on the new-worktree screen so the form gets the full width */}
         {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && reportIssueState === null && !rightColumnHidden && (

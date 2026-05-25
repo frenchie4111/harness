@@ -24,10 +24,9 @@ interface PanesFSMOptions {
   getRepoRootForWorktree: (worktreePath: string) => string | undefined
   getLatestClaudeSessionId: (worktreePath: string) => Promise<string | null>
   getDefaultAgentKind?: () => AgentKind
-  /** Read the JSON-mode Claude feature flag + default-tab-type setting.
-   *  When the flag is on AND default is 'json', a default Claude agent
-   *  tab gets spawned as a json-claude tab instead. Always returns
-   *  'xterm' (or undefined) when the feature flag is off. */
+  /** Read the default Claude interface setting. When this returns 'json',
+   *  a default Claude agent tab spawns as a json-claude tab instead of
+   *  an xterm-hosted one. */
   getDefaultClaudeTabType?: () => 'xterm' | 'json'
   /** Tear down the PTY backing a closed tab. Called for agent + shell
    *  tabs when they're removed from the tree (closeTab, restartAgentTab,

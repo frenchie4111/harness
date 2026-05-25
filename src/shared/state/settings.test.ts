@@ -355,20 +355,6 @@ describe('settingsReducer', () => {
     expect(full.browserToolsMode).toBe('full')
   })
 
-  it('jsonModeClaudeTabsChanged toggles the experimental tab type', () => {
-    expect(initialSettings.jsonModeClaudeTabs).toBe(false)
-    const on = apply(initialSettings, {
-      type: 'settings/jsonModeClaudeTabsChanged',
-      payload: true
-    })
-    expect(on.jsonModeClaudeTabs).toBe(true)
-    const off = apply(on, {
-      type: 'settings/jsonModeClaudeTabsChanged',
-      payload: false
-    })
-    expect(off.jsonModeClaudeTabs).toBe(false)
-  })
-
   it('defaultClaudeTabTypeChanged switches between xterm and json', () => {
     expect(initialSettings.defaultClaudeTabType).toBe('xterm')
     const json = apply(initialSettings, {
@@ -431,8 +417,7 @@ describe('settingsReducer', () => {
     expect(initialSettings.jsonModeDefaultPermissionMode).toBe('acceptEdits')
     const start: SettingsState = {
       ...initialSettings,
-      claudeCommand: 'pre-existing',
-      jsonModeClaudeTabs: true
+      claudeCommand: 'pre-existing'
     }
     const planned = apply(start, {
       type: 'settings/jsonModeDefaultPermissionModeChanged',
@@ -440,7 +425,6 @@ describe('settingsReducer', () => {
     })
     expect(planned.jsonModeDefaultPermissionMode).toBe('plan')
     expect(planned.claudeCommand).toBe('pre-existing')
-    expect(planned.jsonModeClaudeTabs).toBe(true)
     const back = apply(planned, {
       type: 'settings/jsonModeDefaultPermissionModeChanged',
       payload: 'default'

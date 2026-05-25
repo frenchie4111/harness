@@ -46,7 +46,6 @@ export function MobileApp(): JSX.Element {
   const panes = usePanes()
   const terminals = useTerminals()
   const prs = usePrs()
-  const settings = useSettings()
   const snoozeState = useSnooze()
   const snoozedPaths = useMemo(() => {
     const m: Record<string, true> = {}
@@ -157,7 +156,7 @@ export function MobileApp(): JSX.Element {
         pickerOpen={pickerOpen}
         onTogglePicker={() => setPickerOpen((v) => !v)}
         onSelectTab={handleSelectTab}
-        onConvertTabType={settings.jsonModeClaudeTabs ? handleConvertTabType : undefined}
+        onConvertTabType={handleConvertTabType}
         rightPanelOpen={rightPanelOpen}
         onToggleRightPanel={activeWorktree ? () => setRightPanelOpen((v) => !v) : undefined}
       />

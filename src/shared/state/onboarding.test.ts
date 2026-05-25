@@ -11,8 +11,16 @@ describe('onboardingReducer', () => {
   })
 
   it('walks through every quest step', () => {
-    const steps: Array<'hidden' | 'spawn-second' | 'switch-between' | 'finale' | 'done'> = [
+    const steps: Array<
+      | 'hidden'
+      | 'choose-interface'
+      | 'spawn-second'
+      | 'switch-between'
+      | 'finale'
+      | 'done'
+    > = [
       'hidden',
+      'choose-interface',
       'spawn-second',
       'switch-between',
       'finale',

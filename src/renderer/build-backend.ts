@@ -239,7 +239,6 @@ export function buildBackend(
     getLanAddresses: () => req('net:getLanAddresses'),
     setBrowserToolsEnabled: (enabled: boolean) => req('config:setBrowserToolsEnabled', enabled),
     setBrowserToolsMode: (mode: 'view' | 'full') => req('config:setBrowserToolsMode', mode),
-    setJsonModeClaudeTabs: (enabled: boolean) => req('config:setJsonModeClaudeTabs', enabled),
     setDefaultClaudeTabType: (value: 'xterm' | 'json') =>
       req('config:setDefaultClaudeTabType', value),
     setJsonModeChatDensity: (value: 'compact' | 'comfy') =>

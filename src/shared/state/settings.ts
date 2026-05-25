@@ -98,13 +98,9 @@ export interface SettingsState {
   wsTransportHost: string
   browserToolsEnabled: boolean
   browserToolsMode: BrowserToolsMode
-  /** Experimental: when true, render Claude tabs as a JSON-streamed React
-   *  chat (json-claude tab type) instead of an xterm-hosted TUI. Off by
-   *  default. See plans/json-mode-native-chat.md. */
-  jsonModeClaudeTabs: boolean
-  /** When `jsonModeClaudeTabs` is on, controls whether the Claude tab
-   *  spawned by default is the xterm-hosted TUI or the JSON-mode React
-   *  chat. Ignored when `jsonModeClaudeTabs` is off (always xterm). */
+  /** Controls whether new Claude tabs spawn as the terminal-hosted TUI
+   *  ('xterm') or the React chat interface ('json'). Internal values are
+   *  unchanged; the user-facing label is "Terminal" / "Chat". */
   defaultClaudeTabType: 'xterm' | 'json'
   /** When true, JSON-mode tabs run a Haiku oneshot to auto-approve
    *  obviously-safe tool calls instead of prompting the user. Productivity
@@ -199,7 +195,6 @@ export type SettingsEvent =
   | { type: 'settings/wsTransportHostChanged'; payload: string }
   | { type: 'settings/browserToolsEnabledChanged'; payload: boolean }
   | { type: 'settings/browserToolsModeChanged'; payload: BrowserToolsMode }
-  | { type: 'settings/jsonModeClaudeTabsChanged'; payload: boolean }
   | { type: 'settings/defaultClaudeTabTypeChanged'; payload: 'xterm' | 'json' }
   | { type: 'settings/autoApprovePermissionsChanged'; payload: boolean }
   | { type: 'settings/autoApproveSteerInstructionsChanged'; payload: string }
@@ -254,7 +249,6 @@ export const initialSettings: SettingsState = {
   wsTransportHost: '127.0.0.1',
   browserToolsEnabled: true,
   browserToolsMode: 'full',
-  jsonModeClaudeTabs: false,
   defaultClaudeTabType: 'xterm',
   autoApprovePermissions: false,
   autoApproveSteerInstructions: '',
@@ -341,8 +335,6 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, browserToolsEnabled: event.payload }
     case 'settings/browserToolsModeChanged':
       return { ...state, browserToolsMode: event.payload }
-    case 'settings/jsonModeClaudeTabsChanged':
-      return { ...state, jsonModeClaudeTabs: event.payload }
     case 'settings/defaultClaudeTabTypeChanged':
       return { ...state, defaultClaudeTabType: event.payload }
     case 'settings/autoApprovePermissionsChanged':

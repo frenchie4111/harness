@@ -754,9 +754,6 @@ const panesFSM = new PanesFSM(store, {
   getDefaultAgentKind: () => toAgentKind(store.getSnapshot().state.settings.defaultAgent),
   getDefaultClaudeTabType: () => {
     const s = store.getSnapshot().state.settings
-    // The json-mode flag gates everything — when it's off, behave as if
-    // the default is xterm regardless of the per-type setting.
-    if (!s.jsonModeClaudeTabs) return 'xterm'
     return s.defaultClaudeTabType === 'json' ? 'json' : 'xterm'
   },
   // Authoritative PTY teardown when tabs leave the tree. The renderer
@@ -2647,20 +2644,6 @@ function registerIpcHandlers(): void {
       return true
     }
   )
-
-  transport.onRequest('config:setJsonModeClaudeTabs', (_ctx, enabled: boolean) => {
-    if (enabled) {
-      config.jsonModeClaudeTabs = true
-    } else {
-      delete config.jsonModeClaudeTabs
-    }
-    saveConfig(config)
-    store.dispatch({
-      type: 'settings/jsonModeClaudeTabsChanged',
-      payload: enabled
-    })
-    return true
-  })
 
   transport.onRequest(
     'config:setDefaultClaudeTabType',
