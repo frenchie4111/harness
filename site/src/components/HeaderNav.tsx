@@ -16,6 +16,9 @@ export function HeaderNav() {
         <a href="/guide.html" className="hover:text-ink-100 transition-colors">
           Guide
         </a>
+        <a href="/announcements.html" className="hover:text-ink-100 transition-colors">
+          Announcements
+        </a>
         <a href="#install" className="hover:text-ink-100 transition-colors">
           Install
         </a>

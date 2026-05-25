@@ -493,7 +493,16 @@ These are how the user wants Claude to behave when working on this repo:
    in chat (often via .env reminders the harness sends), warn them once
    that it's now in conversation history and tell them to rotate.
 
-8. **GitHub comments use a standard signature.** You're authorized to leave
+8. **Don't put boxes around screenshots on the marketing site.** No
+   `border`, no `border-radius` wrapper, no glow `box-shadow` framing.
+   The dark background on `site/public/*.html` is already the frame;
+   adding a border to an `<img>` makes it look enclosed in a card it
+   isn't part of. Plain `<img>` (width 100%, `display: block`) is the
+   right default. The user has had to undo this on multiple sessions —
+   if a task brief asks for a border around a screenshot, push back
+   before shipping it.
+
+9. **GitHub comments use a standard signature.** You're authorized to leave
    comments on issues and PRs (via the `gh` CLI or the GitHub REST/GraphQL
    API) without re-confirming each time, provided the comment ends with a
    one-line signature so readers know the comment came from an agent acting
