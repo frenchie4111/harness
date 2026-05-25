@@ -5,12 +5,14 @@ import type { Announcement } from '../shared/state/announcements'
 const FEED_URL = 'https://harness.mikelyons.org/announcements.json'
 const POLL_INTERVAL_MS = 6 * 60 * 60 * 1000
 const FETCH_TIMEOUT_MS = 10_000
+const MAX_SUMMARY_LEN = 240
 
 interface RawAnnouncement {
   id?: unknown
   title?: unknown
   href?: unknown
   publishedAt?: unknown
+  summary?: unknown
   expiresAt?: unknown
 }
 
@@ -40,6 +42,16 @@ function validateEntry(raw: unknown): Announcement | null {
     title: r.title,
     href: r.href,
     publishedAt: r.publishedAt
+  }
+  if (typeof r.summary === 'string' && r.summary.trim()) {
+    if (r.summary.length > MAX_SUMMARY_LEN) {
+      log(
+        'announcements',
+        `summary on ${r.id} is ${r.summary.length} chars (max ${MAX_SUMMARY_LEN}) — dropping summary, keeping entry`
+      )
+    } else {
+      cleaned.summary = r.summary
+    }
   }
   if (typeof r.expiresAt === 'string' && !Number.isNaN(Date.parse(r.expiresAt))) {
     cleaned.expiresAt = r.expiresAt

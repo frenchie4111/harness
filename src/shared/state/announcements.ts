@@ -3,6 +3,7 @@ export interface Announcement {
   title: string
   href: string
   publishedAt: string
+  summary?: string
   expiresAt?: string
 }
 

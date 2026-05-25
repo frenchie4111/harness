@@ -1,4 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+
+const logSpy = vi.fn()
+vi.mock('./debug', () => ({
+  log: (...args: unknown[]) => logSpy(...args),
+  formatErr: (err: unknown) => (err instanceof Error ? err.message : String(err))
+}))
+
 import { fetchAnnouncementsFeed } from './announcements-poller'
 
 const originalFetch = globalThis.fetch
@@ -16,6 +23,7 @@ function mockFetch(body: unknown, init: { ok?: boolean; status?: number } = {}):
 describe('fetchAnnouncementsFeed', () => {
   beforeEach(() => {
     globalThis.fetch = originalFetch
+    logSpy.mockClear()
   })
   afterEach(() => {
     globalThis.fetch = originalFetch
@@ -100,5 +108,78 @@ describe('fetchAnnouncementsFeed', () => {
   it('throws on non-2xx responses', async () => {
     mockFetch({}, { ok: false, status: 503 })
     await expect(fetchAnnouncementsFeed('http://mock')).rejects.toThrow(/HTTP 503/)
+  })
+
+  it('includes summary when it is a non-empty string within the length cap', async () => {
+    mockFetch({
+      announcements: [
+        {
+          id: 'ok',
+          title: 'Hello',
+          href: 'https://x.example/y',
+          publishedAt: '2026-05-20T00:00:00Z',
+          summary: 'A short blurb about the post.'
+        }
+      ]
+    })
+    const { items } = await fetchAnnouncementsFeed('http://mock')
+    expect(items).toHaveLength(1)
+    expect(items[0].summary).toBe('A short blurb about the post.')
+  })
+
+  it('ignores non-string summary and keeps the entry', async () => {
+    mockFetch({
+      announcements: [
+        {
+          id: 'ok',
+          title: 'Hello',
+          href: 'https://x.example/y',
+          publishedAt: '2026-05-20T00:00:00Z',
+          summary: 12345
+        }
+      ]
+    })
+    const { items } = await fetchAnnouncementsFeed('http://mock')
+    expect(items).toHaveLength(1)
+    expect(items[0].summary).toBeUndefined()
+  })
+
+  it('omits an empty-string summary', async () => {
+    mockFetch({
+      announcements: [
+        {
+          id: 'ok',
+          title: 'Hello',
+          href: 'https://x.example/y',
+          publishedAt: '2026-05-20T00:00:00Z',
+          summary: '   '
+        }
+      ]
+    })
+    const { items } = await fetchAnnouncementsFeed('http://mock')
+    expect(items).toHaveLength(1)
+    expect(items[0].summary).toBeUndefined()
+  })
+
+  it('drops a summary over 240 chars but keeps the entry, logging the case', async () => {
+    const longSummary = 'x'.repeat(300)
+    mockFetch({
+      announcements: [
+        {
+          id: 'ok',
+          title: 'Hello',
+          href: 'https://x.example/y',
+          publishedAt: '2026-05-20T00:00:00Z',
+          summary: longSummary
+        }
+      ]
+    })
+    const { items } = await fetchAnnouncementsFeed('http://mock')
+    expect(items).toHaveLength(1)
+    expect(items[0].summary).toBeUndefined()
+    const summaryLogs = logSpy.mock.calls.filter(
+      (call) => call[0] === 'announcements' && String(call[1]).includes('summary')
+    )
+    expect(summaryLogs.length).toBeGreaterThan(0)
   })
 })

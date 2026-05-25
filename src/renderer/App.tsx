@@ -1153,10 +1153,13 @@ const setQuestStep = useCallback((next: QuestStep) => {
           <span className="text-accent text-sm flex-1">
             <a
               onClick={() => backend.openExternal(activeAnnouncement.href)}
-              className="underline hover:text-accent cursor-pointer no-drag"
+              className="font-semibold underline hover:text-accent cursor-pointer no-drag"
             >
               {activeAnnouncement.title}
             </a>
+            {activeAnnouncement.summary && (
+              <span className="text-accent/80 ml-2">— {activeAnnouncement.summary}</span>
+            )}
           </span>
           <div className="relative no-drag self-stretch flex items-center">
             <button

@@ -66,4 +66,41 @@ describe('announcementsReducer', () => {
     })
     expect(next).not.toBe(initialAnnouncements)
   })
+
+  it('preserves the summary field on loaded items', () => {
+    const next = announcementsReducer(initialAnnouncements, {
+      type: 'announcements/loaded',
+      payload: {
+        items: [
+          {
+            id: 'a',
+            title: 'A',
+            href: 'https://example.com/a',
+            publishedAt: '2026-05-20T00:00:00Z',
+            summary: 'A short blurb.'
+          }
+        ],
+        fetchedAt: 1
+      }
+    })
+    expect(next.items[0].summary).toBe('A short blurb.')
+  })
+
+  it('items without a summary flow through unchanged', () => {
+    const next = announcementsReducer(initialAnnouncements, {
+      type: 'announcements/loaded',
+      payload: {
+        items: [
+          {
+            id: 'a',
+            title: 'A',
+            href: 'https://example.com/a',
+            publishedAt: '2026-05-20T00:00:00Z'
+          }
+        ],
+        fetchedAt: 1
+      }
+    })
+    expect(next.items[0].summary).toBeUndefined()
+  })
 })
