@@ -251,6 +251,8 @@ export function buildBackend(
       req('config:setJsonModeDefaultPermissionMode', value),
     setAutoSleepMinutes: (value: number) => req('config:setAutoSleepMinutes', value),
     setAutoUpdateEnabled: (enabled: boolean) => req('config:setAutoUpdateEnabled', enabled),
+    setReleaseChannel: (channel: 'stable' | 'beta') =>
+      req('config:setReleaseChannel', channel),
     setExpandedDiagnosticLoggingEnabled: (enabled: boolean) =>
       req('config:setExpandedDiagnosticLoggingEnabled', enabled),
     setShareClaudeSettings: (enabled: boolean) => req('config:setShareClaudeSettings', enabled),

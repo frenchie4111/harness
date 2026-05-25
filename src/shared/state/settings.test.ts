@@ -123,6 +123,20 @@ describe('settingsReducer', () => {
     expect(on.autoUpdateEnabled).toBe(true)
   })
 
+  it('releaseChannelChanged switches between stable and beta', () => {
+    expect(initialSettings.releaseChannel).toBe('stable')
+    const beta = apply(initialSettings, {
+      type: 'settings/releaseChannelChanged',
+      payload: 'beta'
+    })
+    expect(beta.releaseChannel).toBe('beta')
+    const stable = apply(beta, {
+      type: 'settings/releaseChannelChanged',
+      payload: 'stable'
+    })
+    expect(stable.releaseChannel).toBe('stable')
+  })
+
   it('shareClaudeSettingsChanged toggles the share flag', () => {
     expect(initialSettings.shareClaudeSettings).toBe(true)
     const off = apply(initialSettings, {

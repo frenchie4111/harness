@@ -193,6 +193,21 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
       autoUpdater.autoDownload = false
     }
 
+    // Channel is read once at boot. Switching channels in Settings during
+    // a session won't move the live updater — the UI surfaces a "restart
+    // to apply" note. Beta users still receive newer stable builds
+    // because allowPrerelease lets electron-updater compare across
+    // channels by semver (stable `1.2.3` > beta `1.2.3-beta.1`).
+    const channel = store.getSnapshot().state.settings.releaseChannel
+    if (channel === 'beta') {
+      autoUpdater.channel = 'beta'
+      autoUpdater.allowPrerelease = true
+    } else {
+      autoUpdater.channel = 'latest'
+      autoUpdater.allowPrerelease = false
+    }
+    log('updater', `channel=${channel}`)
+
     autoUpdater.logger = {
       info: (msg: string) => log('updater', msg),
       warn: (msg: string) => log('updater', `[warn] ${msg}`),

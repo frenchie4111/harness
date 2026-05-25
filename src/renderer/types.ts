@@ -308,6 +308,7 @@ export interface ElectronAPI {
   ): Promise<boolean>
   setAutoSleepMinutes(value: number): Promise<boolean>
   setAutoUpdateEnabled(enabled: boolean): Promise<boolean>
+  setReleaseChannel(channel: 'stable' | 'beta'): Promise<boolean>
   setExpandedDiagnosticLoggingEnabled(enabled: boolean): Promise<boolean>
   setShareClaudeSettings(enabled: boolean): Promise<boolean>
   setHarnessSystemPromptEnabled(enabled: boolean): Promise<boolean>

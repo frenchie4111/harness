@@ -16,6 +16,12 @@ export type JsonModeChatDensity = 'compact' | 'comfy'
 
 export type ThemeMode = 'light' | 'dark' | 'system'
 
+/** Update channel the user is subscribed to. `stable` (default) only
+ *  picks up `1.2.3`-style releases; `beta` picks up `1.2.3-beta.N`
+ *  pre-releases plus any newer stable. Read once at boot by the auto
+ *  updater; toggling requires a restart. */
+export type ReleaseChannel = 'stable' | 'beta'
+
 /** A theme loaded from `<userData>/themes/*.json`. Stays minimal — the
  *  loader only validates `name` + `mode` + an optional `colors` map of the
  *  16 semantic keys; missing keys inherit from the default of that mode at
@@ -89,6 +95,11 @@ export interface SettingsState {
   viewerLogin: string | null
   harnessStarred: boolean | null
   autoUpdateEnabled: boolean
+  /** Which release channel the auto-updater reads from. 'stable' (default)
+   *  pulls `latest.yml`; 'beta' pulls `beta.yml` and picks up pre-release
+   *  builds plus any newer stable. Restart required for a change to take
+   *  effect — `autoUpdater.channel` is set once during `setupAutoUpdater`. */
+  releaseChannel: ReleaseChannel
   harnessSystemPromptEnabled: boolean
   harnessSystemPrompt: string
   harnessSystemPromptMain: string
@@ -195,6 +206,7 @@ export type SettingsEvent =
   | { type: 'settings/claudeModelChanged'; payload: string | null }
   | { type: 'settings/codexModelChanged'; payload: string | null }
   | { type: 'settings/autoUpdateEnabledChanged'; payload: boolean }
+  | { type: 'settings/releaseChannelChanged'; payload: ReleaseChannel }
   | { type: 'settings/harnessSystemPromptEnabledChanged'; payload: boolean }
   | { type: 'settings/harnessSystemPromptChanged'; payload: string }
   | { type: 'settings/harnessSystemPromptMainChanged'; payload: string }
@@ -251,6 +263,7 @@ export const initialSettings: SettingsState = {
   viewerLogin: null,
   harnessStarred: null,
   autoUpdateEnabled: true,
+  releaseChannel: 'stable',
   harnessSystemPromptEnabled: true,
   harnessSystemPrompt: '',
   harnessSystemPromptMain: '',
@@ -330,6 +343,8 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, codexModel: event.payload }
     case 'settings/autoUpdateEnabledChanged':
       return { ...state, autoUpdateEnabled: event.payload }
+    case 'settings/releaseChannelChanged':
+      return { ...state, releaseChannel: event.payload }
     case 'settings/harnessSystemPromptEnabledChanged':
       return { ...state, harnessSystemPromptEnabled: event.payload }
     case 'settings/harnessSystemPromptChanged':

@@ -1582,6 +1582,21 @@ function registerIpcHandlers(): void {
     return true
   })
 
+  transport.onRequest('config:setReleaseChannel', (_ctx, channel: 'stable' | 'beta') => {
+    const next = channel === 'beta' ? 'beta' : 'stable'
+    if (next === 'stable') {
+      delete config.releaseChannel
+    } else {
+      config.releaseChannel = next
+    }
+    saveConfig(config)
+    store.dispatch({
+      type: 'settings/releaseChannelChanged',
+      payload: next
+    })
+    return true
+  })
+
   transport.onRequest('config:setExpandedDiagnosticLoggingEnabled', (_ctx, enabled: boolean) => {
     if (enabled) {
       config.expandedDiagnosticLoggingEnabled = true

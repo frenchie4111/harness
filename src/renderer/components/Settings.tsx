@@ -188,6 +188,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     worktreeScripts,
     shareClaudeSettings,
     autoUpdateEnabled,
+    releaseChannel,
     harnessSystemPromptEnabled,
     harnessSystemPrompt,
     harnessSystemPromptMain,
@@ -591,6 +592,11 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
   const handleToggleAutoUpdate = useCallback(async (enabled: boolean) => {
     await backend.setAutoUpdateEnabled(enabled)
+  }, [])
+
+  const handleChangeReleaseChannel = useCallback(async (value: string) => {
+    const channel = value === 'beta' ? 'beta' : 'stable'
+    await backend.setReleaseChannel(channel)
   }, [])
 
   const handleToggleWsTransport = useCallback(async (enabled: boolean) => {
@@ -2390,6 +2396,26 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                       </div>
                     </div>
                   </label>
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-border">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex-1">
+                      <div className="text-sm text-fg-bright">Release channel</div>
+                      <div className="text-xs text-dim mt-0.5">
+                        Beta builds ship earlier and may have rough edges. Restart Harness
+                        after changing the channel.
+                      </div>
+                    </div>
+                    <select
+                      value={releaseChannel}
+                      onChange={(e) => handleChangeReleaseChannel(e.target.value)}
+                      className="px-2 py-1 bg-surface border border-border-strong rounded text-sm text-fg-bright cursor-pointer"
+                    >
+                      <option value="stable">Stable</option>
+                      <option value="beta">Beta</option>
+                    </select>
+                  </div>
                 </div>
               </div>
 

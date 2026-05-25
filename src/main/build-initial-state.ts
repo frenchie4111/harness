@@ -78,6 +78,7 @@ export function buildInitialAppState(
       codexModel: config.codexModel || null,
       hasGithubToken: opts.hasGithubToken,
       autoUpdateEnabled: config.autoUpdateEnabled !== false,
+      releaseChannel: config.releaseChannel === 'beta' ? 'beta' : 'stable',
       shareClaudeSettings: config.shareClaudeSettings !== false,
       harnessSystemPromptEnabled: config.harnessSystemPromptEnabled !== false,
       harnessSystemPrompt: config.harnessSystemPrompt || DEFAULT_HARNESS_SYSTEM_PROMPT,

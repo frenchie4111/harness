@@ -135,6 +135,11 @@ export interface Config {
   // on its periodic timer. The manual "Check for updates" button in
   // Settings still works. Default is enabled (undefined/true).
   autoUpdateEnabled?: boolean
+  // Which release channel the auto-updater subscribes to. 'stable' (default,
+  // undefined treated as 'stable') reads `latest.yml`; 'beta' reads
+  // `beta.yml` and picks up pre-release builds too. Set at boot inside
+  // setupAutoUpdater — changes require a restart.
+  releaseChannel?: 'stable' | 'beta'
   // When false, new worktrees don't symlink their .claude/settings.local.json
   // to the main worktree's copy, and the boot migration doesn't convert
   // existing regular files. Default is enabled (undefined/true).
