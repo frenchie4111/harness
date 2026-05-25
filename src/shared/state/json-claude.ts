@@ -132,6 +132,14 @@ export interface JsonClaudeSession {
   /** Buffered chat history for this session. Kept in the store so a
    *  reloading renderer doesn't lose the scrollback. */
   entries: JsonClaudeChatEntry[]
+  /** True once `entries` reflects the authoritative server-side history
+   *  for this session. The wire snapshot ships sessions with stripped
+   *  entries (see `stripJsonClaudeEntries`) and `entriesHydrated: false`,
+   *  so the renderer can distinguish "haven't lazy-fetched entries yet"
+   *  from "session is genuinely empty" — and suppress the empty-state
+   *  flash during the fetch window. The reducer flips this true on
+   *  `entriesSeeded`. Server-side it's always true. */
+  entriesHydrated: boolean
   /** Last text of the most recent user submission; used by the renderer to
    *  pair the echo against the user-card it just rendered optimistically. */
   busy: boolean
@@ -358,7 +366,15 @@ export const initialJsonClaude: JsonClaudeState = {
 export function stripJsonClaudeEntries(state: JsonClaudeState): JsonClaudeState {
   const sessions: Record<string, JsonClaudeSession> = {}
   for (const [id, session] of Object.entries(state.sessions)) {
-    sessions[id] = session.entries.length === 0 ? session : { ...session, entries: [] }
+    // Server-side sessions are always hydrated; renderer-side they may
+    // not be. Either case where stripping would actually change the
+    // session shape (non-empty entries OR a true hydrated flag) requires
+    // a new object — otherwise return the existing reference so
+    // downstream identity checks don't trip.
+    const needsStrip = session.entries.length > 0 || session.entriesHydrated
+    sessions[id] = needsStrip
+      ? { ...session, entries: [], entriesHydrated: false }
+      : session
   }
   return { ...state, sessions }
 }
@@ -446,6 +462,7 @@ export function jsonClaudeReducer(
             exitCode: null,
             exitReason: null,
             entries: existing?.entries ?? [],
+            entriesHydrated: existing?.entriesHydrated ?? false,
             busy: false,
             permissionMode:
               existing?.permissionMode ??
@@ -497,7 +514,11 @@ export function jsonClaudeReducer(
         ...state,
         sessions: {
           ...state.sessions,
-          [session.sessionId]: { ...session, entries: event.payload.entries }
+          [session.sessionId]: {
+            ...session,
+            entries: event.payload.entries,
+            entriesHydrated: true
+          }
         }
       }
     }

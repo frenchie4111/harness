@@ -23,6 +23,7 @@ describe('jsonClaudeReducer', () => {
     expect(next.sessions[SID].state).toBe('connecting')
     expect(next.sessions[SID].worktreePath).toBe(WT)
     expect(next.sessions[SID].entries).toEqual([])
+    expect(next.sessions[SID].entriesHydrated).toBe(false)
     expect(next.sessions[SID].busy).toBe(false)
   })
 
@@ -108,6 +109,18 @@ describe('jsonClaudeReducer', () => {
       payload: { sessionId: SID, entries }
     })
     expect(state.sessions[SID].entries).toEqual(entries)
+    expect(state.sessions[SID].entriesHydrated).toBe(true)
+  })
+
+  it('entriesSeeded flips entriesHydrated to true even with an empty array', () => {
+    let state = seedSession(initialJsonClaude)
+    expect(state.sessions[SID].entriesHydrated).toBe(false)
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/entriesSeeded',
+      payload: { sessionId: SID, entries: [] }
+    })
+    expect(state.sessions[SID].entries).toEqual([])
+    expect(state.sessions[SID].entriesHydrated).toBe(true)
   })
 
   it('entriesSeeded is a no-op for unknown session', () => {
@@ -1204,7 +1217,9 @@ describe('stripJsonClaudeEntries', () => {
     })
     const stripped = stripJsonClaudeEntries(state)
     expect(stripped.sessions[SID].entries).toEqual([])
+    expect(stripped.sessions[SID].entriesHydrated).toBe(false)
     expect(stripped.sessions['session-2'].entries).toEqual([])
+    expect(stripped.sessions['session-2'].entriesHydrated).toBe(false)
   })
 
   it('preserves non-entries fields on each session', () => {
@@ -1242,9 +1257,27 @@ describe('stripJsonClaudeEntries', () => {
     expect(stripped.pendingApprovals).toBe(state.pendingApprovals)
   })
 
-  it('returns the same session reference when entries are already empty', () => {
+  it('returns the same session reference when entries are already empty and not hydrated', () => {
     const state = seedSession(initialJsonClaude)
+    expect(state.sessions[SID].entriesHydrated).toBe(false)
     const stripped = stripJsonClaudeEntries(state)
     expect(stripped.sessions[SID]).toBe(state.sessions[SID])
+  })
+
+  it('resets entriesHydrated even when entries array is already empty', () => {
+    // Server-side post-hydration: entries was filled then drained back
+    // to []. entriesHydrated stays true. Stripping for the wire must
+    // still flip it so the renderer treats the new snapshot as not-yet-
+    // hydrated and re-fetches.
+    let state = seedSession(initialJsonClaude)
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/entriesSeeded',
+      payload: { sessionId: SID, entries: [] }
+    })
+    expect(state.sessions[SID].entriesHydrated).toBe(true)
+    const stripped = stripJsonClaudeEntries(state)
+    expect(stripped.sessions[SID]).not.toBe(state.sessions[SID])
+    expect(stripped.sessions[SID].entries).toEqual([])
+    expect(stripped.sessions[SID].entriesHydrated).toBe(false)
   })
 })

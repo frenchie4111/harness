@@ -1160,6 +1160,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
   // delta — the visible cost is that streaming text lags the actual data
   // by a frame or two, which is invisible to the user.
   const entries = session?.entries ?? []
+  const entriesHydrated = session?.entriesHydrated ?? false
   const deferredEntries = useDeferredValue(entries)
   const rows = useMemo(() => {
     // Sub-agent nesting pre-pass: split the flat entries array into a
@@ -1644,23 +1645,32 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
           style={{ overflowAnchor: 'none' }}
         >
           {entries.length === 0 && orphanApprovals.length === 0 && !busy ? (
-            <div className="min-h-full flex flex-col items-center justify-center text-center px-4 select-none">
-              <div className="relative mb-6">
-                <div
-                  className="absolute inset-0 rounded-full blur-2xl opacity-30 brand-gradient-bg"
-                  aria-hidden
-                />
-                <div className="relative w-16 h-16 rounded-full brand-gradient-bg flex items-center justify-center shadow-lg">
-                  <Sparkles size={26} className="text-white" />
+            // Empty-state is only safe to show once we've confirmed there's
+            // nothing to display. The wire snapshot ships entries stripped
+            // (entriesHydrated=false) and the lazy-fetch above seeds them
+            // shortly after mount — rendering the bright sparkle card in
+            // that window flashes loudly on tabs that actually have history.
+            // Render blank during the fetch; a spinner's appear-then-
+            // disappear would itself be a flash.
+            entriesHydrated ? (
+              <div className="min-h-full flex flex-col items-center justify-center text-center px-4 select-none">
+                <div className="relative mb-6">
+                  <div
+                    className="absolute inset-0 rounded-full blur-2xl opacity-30 brand-gradient-bg"
+                    aria-hidden
+                  />
+                  <div className="relative w-16 h-16 rounded-full brand-gradient-bg flex items-center justify-center shadow-lg">
+                    <Sparkles size={26} className="text-white" />
+                  </div>
                 </div>
+                <h2 className="text-xl font-semibold brand-gradient-text">
+                  What are we going to build today?
+                </h2>
+                <p className="mt-2 text-xs text-muted">
+                  Send a message to get started.
+                </p>
               </div>
-              <h2 className="text-xl font-semibold brand-gradient-text">
-                What are we going to build today?
-              </h2>
-              <p className="mt-2 text-xs text-muted">
-                Send a message to get started.
-              </p>
-            </div>
+            ) : null
           ) : (
           <div className="px-4 py-3 space-y-3">
             {groupedItems.map((g) =>
