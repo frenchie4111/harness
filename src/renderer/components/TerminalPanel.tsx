@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
-import { X, SquareTerminal, Sparkles, Code2, SplitSquareHorizontal, SplitSquareVertical, Loader2, PanelRightOpen, Globe, Users, MessageSquare, Terminal as TerminalIcon } from 'lucide-react'
+import { X, SquareTerminal, Sparkles, Code2, SplitSquareHorizontal, SplitSquareVertical, Loader2, PanelRightOpen, Globe, Users } from 'lucide-react'
 import {
   SortableContext,
   horizontalListSortingStrategy,
@@ -220,39 +220,6 @@ function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect
       ) : null}
       <span>{tab.label}</span>
       <TabProgressBar terminalId={tab.id} />
-      {onConvertTabType &&
-        (tab.type === 'json-claude' ||
-          (tab.type === 'agent' && tab.agentKind === 'claude')) && (
-          <Tooltip
-            label={
-              tab.type === 'json-claude'
-                ? 'Switch to Terminal'
-                : 'Switch to Chat'
-            }
-          >
-            <button
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => {
-                e.stopPropagation()
-                onConvertTabType(
-                  tab.type === 'json-claude' ? 'agent' : 'json-claude'
-                )
-              }}
-              className="ml-1 text-faint hover:text-fg transition-colors"
-              aria-label={
-                tab.type === 'json-claude'
-                  ? 'Switch to Terminal'
-                  : 'Switch to Chat'
-              }
-            >
-              {tab.type === 'json-claude' ? (
-                <TerminalIcon size={11} />
-              ) : (
-                <MessageSquare size={11} />
-              )}
-            </button>
-          </Tooltip>
-        )}
       {showClose && (
         <Tooltip label="Close tab" action="closeTab">
           <button

@@ -588,6 +588,11 @@ export function WorkspaceView({
                         ? (): void => onRestartAgentTab(worktreePath, tab.id)
                         : undefined
                     }
+                    onSwitchToChat={
+                      tab.type === 'agent' && tab.agentKind === 'claude' && onConvertTabType
+                        ? (): void => onConvertTabType(worktreePath, tab.id, 'json-claude')
+                        : undefined
+                    }
                   />
                 )}
               </ErrorBoundary>
