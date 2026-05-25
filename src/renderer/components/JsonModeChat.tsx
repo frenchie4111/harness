@@ -1671,8 +1671,8 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
           </button>
         </div>
       )}
-      <div className="shrink-0 border-t border-border p-2 flex gap-2 items-end">
-        <div className="flex-1 relative rounded">
+      <div className="shrink-0 border-t border-border p-2">
+        <div className="relative rounded-md border border-border bg-panel focus-within:border-accent transition-colors">
           {mentionItems.length > 0 && (
             <JsonModeMentionPopover
               items={mentionItems}
@@ -1682,7 +1682,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
             />
           )}
           {attachments.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mb-1.5">
+            <div className="flex flex-wrap gap-1.5 px-2 pt-2">
               {attachments.map((a) => {
                 const shortPath = a.path
                   ? a.path.startsWith(worktreePath + '/')
@@ -1692,7 +1692,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
                 return (
                   <div
                     key={a.id}
-                    className="relative inline-flex items-center gap-2 bg-panel border border-border rounded overflow-hidden pr-2"
+                    className="relative inline-flex items-center gap-2 bg-app/40 border border-border rounded overflow-hidden pr-2"
                     title={a.path || a.name}
                   >
                     <img
@@ -1788,7 +1788,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
             // text-base (16px) below sm: prevents iOS Safari from zooming
             // the viewport when the textarea takes focus. text-sm on
             // desktop keeps the chat dense.
-            className="w-full bg-panel border border-border rounded px-2 py-1.5 text-base sm:text-sm resize-none outline-none focus:border-accent min-h-[60px] max-h-[200px]"
+            className="block w-full bg-transparent border-0 px-2.5 pt-2 pb-1 text-base sm:text-sm resize-none outline-none placeholder:text-faint min-h-[60px] max-h-[200px]"
             rows={2}
             // Never disabled — sleep kills the subprocess and dispatches
             // state='exited', and the wake transition arrives as separate
@@ -1797,37 +1797,40 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
             // textarea, kicking the user out mid-keystroke. send() guards
             // the actual "no live subprocess" case.
           />
+          <div className="flex items-center gap-2 px-2 pb-1.5 pt-0.5">
+            <div
+              className="flex items-center gap-1.5 text-[10px] text-muted"
+              title={`session ${state}`}
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${stateDot}`} />
+              <span>{state}</span>
+            </div>
+            <button
+              onClick={cyclePermissionMode}
+              className={`px-1.5 py-0.5 rounded border text-[10px] cursor-pointer hover:opacity-80 transition-opacity ${modeBadgeStyle}`}
+              title="Click to cycle permission mode. Applies mid-turn — no restart."
+            >
+              {modeBadgeLabel}
+            </button>
+            <div className="flex-1" />
+            {busy && (
+              <button
+                onClick={interrupt}
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-danger hover:bg-danger/10 cursor-pointer"
+                title="Interrupt the current model turn"
+              >
+                <Square size={9} fill="currentColor" /> interrupt
+              </button>
+            )}
+            <button
+              onClick={() => send()}
+              disabled={!draft.trim() && attachments.length === 0}
+              className="px-2.5 py-0.5 bg-accent text-white rounded text-xs font-medium disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
+            >
+              Send
+            </button>
+          </div>
         </div>
-        <button
-          onClick={() => send()}
-          disabled={!draft.trim() && attachments.length === 0}
-          className="px-3 py-1.5 bg-accent text-white rounded text-sm disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
-        >
-          Send
-        </button>
-      </div>
-      <div className="shrink-0 border-t border-border bg-panel/40 px-3 h-6 flex items-center gap-3 text-[10px] text-muted">
-        <div className="flex items-center gap-1.5" title={`session ${state}`}>
-          <span className={`w-1.5 h-1.5 rounded-full ${stateDot}`} />
-          <span>{state}</span>
-        </div>
-        <div className="flex-1" />
-        {busy && (
-          <button
-            onClick={interrupt}
-            className="flex items-center gap-1 text-danger hover:text-danger/80 cursor-pointer"
-            title="Interrupt the current model turn"
-          >
-            <Square size={9} fill="currentColor" /> interrupt
-          </button>
-        )}
-        <button
-          onClick={cyclePermissionMode}
-          className={`px-1.5 py-0.5 rounded border cursor-pointer hover:opacity-80 transition-opacity ${modeBadgeStyle}`}
-          title="Click to cycle permission mode. Applies mid-turn — no restart."
-        >
-          {modeBadgeLabel}
-        </button>
       </div>
     </div>
   )
