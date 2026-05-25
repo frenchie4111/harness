@@ -201,6 +201,10 @@ export function buildBackend(
     refreshPRsAllIfStale: () => req('prs:refreshAllIfStale'),
     refreshPRsOne: (worktreePath: string) => req('prs:refreshOne', worktreePath),
     refreshPRsOneIfStale: (worktreePath: string) => req('prs:refreshOneIfStale', worktreePath),
+
+    refreshAnnouncements: () => req('announcements:refresh'),
+    dismissAnnouncement: (id: string) => req('announcements:dismiss', id),
+    muteAnnouncements: (muted: boolean) => req('announcements:mute', muted),
     listRepoPRs: (repoRoot: string) => req('prs:listOpen', repoRoot),
     mergePR: (worktreePath: string, method: 'merge' | 'squash' | 'rebase') =>
       req('pr:merge', worktreePath, method),

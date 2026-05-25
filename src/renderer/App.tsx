@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { useSettings, usePrs, useOnboarding, useHooks, useWorktrees, useTerminals, usePanes, useLastActive, useUpdater, useRepoConfigs, useSnooze } from './store'
+import { useSettings, usePrs, useOnboarding, useHooks, useWorktrees, useTerminals, usePanes, useLastActive, useUpdater, useRepoConfigs, useSnooze, useAnnouncements } from './store'
 import { useBackend } from './backend'
 import { useTailLineBuffer } from './hooks/useTailLineBuffer'
 import { useTabHandlers } from './hooks/useTabHandlers'
@@ -156,6 +156,8 @@ function DesktopApp(): JSX.Element {
   const updaterStatus = useUpdater().status
   const [updateBannerDismissed, setUpdateBannerDismissed] = useState(false)
   const [manualUpdateBannerDismissed, setManualUpdateBannerDismissed] = useState(false)
+  const announcements = useAnnouncements()
+  const [announcementsMenuOpen, setAnnouncementsMenuOpen] = useState(false)
   const [sidebarVisible, setSidebarVisible] = useState(true)
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
     const saved = Number(localStorage.getItem('harness:sidebarWidth'))
@@ -259,6 +261,24 @@ function DesktopApp(): JSX.Element {
     () => worktrees.filter((w) => !w.isMain).length,
     [worktrees]
   )
+
+  const activeAnnouncement = useMemo(() => {
+    if (settings.announcementsMuted) return null
+    const dismissed = new Set(settings.dismissedAnnouncementIds)
+    const now = Date.now()
+    const eligible = announcements.items.filter((a) => {
+      if (dismissed.has(a.id)) return false
+      if (a.expiresAt) {
+        const exp = Date.parse(a.expiresAt)
+        if (Number.isFinite(exp) && exp < now) return false
+      }
+      return true
+    })
+    if (eligible.length === 0) return null
+    return eligible.reduce((best, cur) =>
+      Date.parse(cur.publishedAt) > Date.parse(best.publishedAt) ? cur : best
+    )
+  }, [announcements.items, settings.announcementsMuted, settings.dismissedAnnouncementIds])
   // Track which worktrees already have hooks installed so we only prompt once
 
 const setQuestStep = useCallback((next: QuestStep) => {
@@ -400,10 +420,12 @@ const setQuestStep = useCallback((next: QuestStep) => {
   }, [])
 
   // On window focus, ask main for a stale-only bulk refresh. Main dedups
-  // against its own lastAllFetchAt clock.
+  // against its own lastAllFetchAt clock. Announcements piggyback on the
+  // same trigger — the poller is the dedup boundary on that side too.
   useEffect(() => {
     const onFocus = (): void => {
       void backend.refreshPRsAllIfStale()
+      void backend.refreshAnnouncements()
     }
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
@@ -1080,6 +1102,59 @@ const setQuestStep = useCallback((next: QuestStep) => {
             </button>
           </div>
         )}
+
+      {/* Remote announcements banner — fetched in main from
+          harness.mikelyons.org/announcements.json, filtered down to the
+          single newest entry the user hasn't dismissed and that hasn't
+          expired. Muted globally via the kebab menu. */}
+      {activeAnnouncement && (
+        <div className="bg-accent/15 border-b border-accent/30 pl-20 pr-4 py-2.5 drag-region flex items-center gap-3 shrink-0">
+          <span className="text-accent text-sm flex-1">
+            <a
+              onClick={() => backend.openExternal(activeAnnouncement.href)}
+              className="underline hover:text-accent cursor-pointer no-drag"
+            >
+              {activeAnnouncement.title}
+            </a>
+          </span>
+          <div className="relative no-drag">
+            <button
+              aria-label="More announcement options"
+              onClick={() => setAnnouncementsMenuOpen((v) => !v)}
+              className="px-2 py-1 text-accent/80 hover:text-accent text-sm transition-colors shrink-0 cursor-pointer"
+            >
+              &#x22EF;
+            </button>
+            {announcementsMenuOpen && (
+              <div
+                role="menu"
+                className="absolute right-0 top-full mt-1 z-20 min-w-[180px] rounded border border-accent/30 bg-app shadow-md text-sm"
+              >
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setAnnouncementsMenuOpen(false)
+                    void backend.muteAnnouncements(true)
+                  }}
+                  className="block w-full text-left px-3 py-2 hover:bg-accent/10 cursor-pointer"
+                >
+                  Hide all announcements
+                </button>
+              </div>
+            )}
+          </div>
+          <button
+            aria-label="Dismiss announcement"
+            onClick={() => {
+              setAnnouncementsMenuOpen(false)
+              void backend.dismissAnnouncement(activeAnnouncement.id)
+            }}
+            className="px-2 py-1 text-accent/80 hover:text-accent text-sm transition-colors shrink-0 cursor-pointer no-drag"
+          >
+            &times;
+          </button>
+        </div>
+      )}
 
       {/* Hooks consent banner — one-time prompt at first launch. Harness
           installs agent status hooks at ~/.claude/settings.json (+ Codex

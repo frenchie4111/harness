@@ -238,6 +238,10 @@ export interface ElectronAPI {
   refreshPRsAllIfStale(): Promise<boolean>
   refreshPRsOne(worktreePath: string): Promise<boolean>
   refreshPRsOneIfStale(worktreePath: string): Promise<boolean>
+
+  refreshAnnouncements(): Promise<boolean>
+  dismissAnnouncement(id: string): Promise<boolean>
+  muteAnnouncements(muted: boolean): Promise<boolean>
   listRepoPRs(repoRoot: string): Promise<PRSummary[] | null>
   mergePR(
     worktreePath: string,
