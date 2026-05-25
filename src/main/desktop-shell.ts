@@ -421,7 +421,15 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
           {
             label: 'Debug: Crash Focused Tab',
             click: () => transport.sendSignal('app:debugCrashFocusedTab')
-          }
+          },
+          ...(!app.isPackaged
+            ? [
+                {
+                  label: 'Debug: Reset Onboarding',
+                  click: () => transport.sendSignal('app:debugResetOnboarding')
+                } as const
+              ]
+            : [])
         ]
       }
     ]

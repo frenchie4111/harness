@@ -385,6 +385,15 @@ const setQuestStep = useCallback((next: QuestStep) => {
     })
   }, [activeWorktreeId, panes, activePaneId])
 
+  // Debug: Reset Onboarding (dev-only Help menu entry). Walks the quest
+  // back to 'hidden' so the choose-interface card reappears after the
+  // next worktree-add tick.
+  useEffect(() => {
+    return backend.onDebugResetOnboarding(() => {
+      setQuestStep('hidden')
+    })
+  }, [setQuestStep])
+
   // Trigger a full PR refresh in main. Used by the sidebar refresh button
   // and after worktree creation/removal.
   const fetchAllPRStatuses = useCallback(() => {
