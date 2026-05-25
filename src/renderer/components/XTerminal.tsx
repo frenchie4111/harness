@@ -181,8 +181,6 @@ interface XTerminalProps {
   sessionId?: string
   initialPrompt?: string
   teleportSessionId?: string
-  /** Agent tabs only: per-tab model override. When set, wins over the global
-   *  claudeModel/codexModel setting at spawn time. */
   modelOverride?: string
   /** Shell tabs only: when set, spawn `<user-shell> -ilc <command>` instead
    * of an interactive login shell. Used for agent-spawned shells. */

@@ -365,8 +365,6 @@ export class JsonClaudeManager {
     sessionId: string,
     worktreePath: string,
     permissionMode: JsonClaudePermissionMode = 'default',
-    /** Per-tab model override. When set, wins over the global claudeModel
-     *  setting via buildClaudeLaunchSettings. */
     modelOverride?: string
   ): void {
     if (this.instances.has(sessionId)) {

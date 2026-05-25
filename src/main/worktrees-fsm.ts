@@ -62,9 +62,7 @@ interface WorktreesFSMOptions {
     createdPath: string
     initialPrompt?: string
     teleportSessionId?: string
-    /** Override the default agent kind for the new worktree's first tab. */
     agentKind?: 'claude' | 'codex'
-    /** Override the default model for the new worktree's first tab. */
     model?: string
   }) => void
 }

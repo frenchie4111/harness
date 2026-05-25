@@ -28,8 +28,6 @@ export function buildClaudeLaunchSettings(input: {
   cwd: string
   worktrees: Worktree[]
   config: ClaudeLaunchConfig
-  /** Per-tab model override. When set (and non-empty after trim), wins
-   *  over `config.claudeModel`. */
   modelOverride?: string
 }): ClaudeLaunchSettings {
   const { cwd, worktrees, config, modelOverride } = input

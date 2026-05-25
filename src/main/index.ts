@@ -693,7 +693,8 @@ function treeToPersistedNode(node: PaneNode): PersistedPaneNode | null {
           sessionId: stripped.sessionId,
           url: liveUrl || stripped.url,
           command: stripped.command,
-          cwd: stripped.cwd
+          cwd: stripped.cwd,
+          model: stripped.model
         }
       })
     if (tabs.length === 0) return null
@@ -2111,8 +2112,6 @@ function registerIpcHandlers(): void {
       terminalId: string; cwd: string; sessionId?: string;
       initialPrompt?: string; teleportSessionId?: string;
       sessionName?: string;
-      /** Per-tab model override (TerminalTab.model). When set, wins over
-       *  the global claudeModel/codexModel setting. */
       modelOverride?: string
     }): string => {
       const kind = toAgentKind(agentKind)
@@ -3161,10 +3160,16 @@ async function runBoot(): Promise<void> {
       if (!found) {
         return { ok: false, error: `created worktree at ${outcome.createdPath} but couldn't resolve its branch` }
       }
+      // agentKind + model are already applied via the FSM's onWorktreeCreated
+      // path; we still ship them in the broadcast payload so its shape stays
+      // in sync with the new-branch path through deps.broadcast — keeps
+      // future refactors that consolidate the two from silently losing data.
       broadcastToAllWindows('worktrees:externalCreate', {
         repoRoot: params.repoRoot,
         worktree: found,
-        initialPrompt: params.initialPrompt
+        initialPrompt: params.initialPrompt,
+        agentKind: params.agentKind,
+        model: params.model
       })
       return { ok: true, path: found.path, branch: found.branch }
     },

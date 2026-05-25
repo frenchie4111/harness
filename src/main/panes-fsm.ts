@@ -165,7 +165,8 @@ export class PanesFSM {
         sessionId: t.sessionId,
         url: t.url,
         command: t.command,
-        cwd: t.cwd
+        cwd: t.cwd,
+        model: t.model
       }
       // Persisted json-claude tabs hydrate as 'asleep' so app launch
       // doesn't spawn one subprocess per tab. The renderer wakes them
@@ -193,10 +194,7 @@ export class PanesFSM {
     opts?: {
       initialPrompt?: string
       teleportSessionId?: string
-      /** Override the default agent kind for this worktree's first tab. */
       agentKind?: AgentKind
-      /** Override the default model (claudeModel/codexModel setting) for
-       *  this worktree's first tab. Empty/undefined = use settings. */
       model?: string
     }
   ): PaneNode {
