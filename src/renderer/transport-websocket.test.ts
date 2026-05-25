@@ -150,4 +150,67 @@ describe('WebSocketClientTransport', () => {
       await new Promise<void>((r) => server.close(() => r()))
     }
   })
+
+  // Regression test for issue #73: WS reconnects mint a fresh server-side
+  // clientId, but the renderer cached the first-connect id forever. After
+  // any drop the renderer's controller-comparison turned stale and the
+  // server's pty:write gate silently dropped every keystroke. The fix
+  // re-fetches clientId on every (re)connect and fires onReconnect with
+  // it; XTerminal listens to that and re-fires terminal:join.
+  it('fires onReconnect with a fresh clientId after reconnect', async () => {
+    const token = 'test-token'
+    let nextId = 1
+    const idsByWs = new WeakMap<WSType, string>()
+    let serverSocket: WSType | null = null
+    const { port, server } = await startStubServer(token, {
+      onReq: (id, name, _args, ws) => {
+        if (name === 'transport:getClientId') {
+          let assigned = idsByWs.get(ws)
+          if (!assigned) {
+            assigned = `client-${nextId++}`
+            idsByWs.set(ws, assigned)
+          }
+          ws.send(JSON.stringify({ t: 'res', id, ok: true, value: assigned }))
+          return
+        }
+        ws.send(JSON.stringify({ t: 'res', id, ok: false, error: 'unknown' }))
+      },
+      onConnection: (ws) => {
+        serverSocket = ws
+      }
+    })
+
+    const client = new WebSocketClientTransport({
+      url: `ws://127.0.0.1:${port}`,
+      token,
+      initialBackoffMs: 25,
+      WebSocketCtor: WSClient as unknown as typeof WebSocket
+    })
+
+    const seenIds: string[] = []
+    client.onReconnect((id) => {
+      seenIds.push(id)
+    })
+
+    try {
+      await client.connect()
+      // First-connect callback is async (the open handler kicks off a
+      // request and forwards its response) — give it a beat.
+      await new Promise((r) => setTimeout(r, 50))
+      expect(seenIds).toEqual(['client-1'])
+
+      // Close from the server side. The client's close handler schedules
+      // a reconnect at initialBackoffMs.
+      serverSocket!.close()
+      serverSocket = null
+      await new Promise((r) => setTimeout(r, 200))
+
+      expect(seenIds.length).toBeGreaterThanOrEqual(2)
+      expect(seenIds[1]).toBe('client-2')
+      expect(seenIds[1]).not.toBe(seenIds[0])
+    } finally {
+      client.close()
+      await new Promise<void>((r) => server.close(() => r()))
+    }
+  })
 })

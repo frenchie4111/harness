@@ -112,12 +112,22 @@ interface BackendEntry {
  *  reference-stable for missing entries. */
 const DEFAULT_BACKEND_STATUS: BackendStatus = { state: 'connected' }
 
+/** Subscribe to "this transport reconnected" events at the registry
+ *  level. Fires after each (re)connect (including the first), once the
+ *  registry's ClientStore has been seeded with the fresh server-side
+ *  clientId. XTerminal subscribes here to re-fire `terminal:join` after
+ *  a reconnect — the server's old `controllerClientId` was cleared when
+ *  the old socket closed, and the renderer's mount-only join effect
+ *  doesn't run again on its own. */
+type ReconnectSubscriber = (backendId: string, clientId: string) => void
+
 class BackendsRegistry {
   private entries = new Map<string, BackendEntry>()
   private activeId: string = LOCAL_BACKEND_ID
   private activeIdListeners = new Set<() => void>()
   private listListeners = new Set<() => void>()
   private statusListeners = new Set<() => void>()
+  private reconnectListeners = new Set<ReconnectSubscriber>()
   // Cached return values for the read-only hooks. We rebuild the
   // cached array / status map ONLY when the underlying data changes;
   // useSyncExternalStore requires getSnapshot to be reference-stable
@@ -141,9 +151,33 @@ class BackendsRegistry {
       status: initialStatus
     })
     transport.onStateEvent((event, _seq) => store.applyEvent(event as StateEvent))
+    // The WS transport mints a fresh server-side clientId on every
+    // reconnect, so we keep the registry's ClientStore in sync and fan
+    // out to renderer subscribers (XTerminal re-fires terminal:join).
+    // The local Electron transport's onReconnect is a no-op, so this is
+    // a free wire on local backends.
+    transport.onReconnect((clientId) => {
+      store.setClientId(clientId)
+      // eslint-disable-next-line no-console
+      console.log(`[take-control] transport reconnect backend=${connection.id} clientId=${clientId}`)
+      for (const l of this.reconnectListeners) {
+        try {
+          l(connection.id, clientId)
+        } catch {
+          // swallow — a flaky subscriber mustn't kill the registry
+        }
+      }
+    })
     this.connectionsCache = null
     for (const l of this.listListeners) l()
     return store
+  }
+
+  subscribeReconnect(cb: ReconnectSubscriber): () => void {
+    this.reconnectListeners.add(cb)
+    return () => {
+      this.reconnectListeners.delete(cb)
+    }
   }
 
   setStatus(id: string, status: BackendStatus): void {
@@ -305,6 +339,24 @@ export function getClientId(): string | null {
   return registry.getActiveStore().getClientId()
 }
 
+/** Subscribe to "the active backend's transport reconnected" events.
+ *  Fires after each WS (re)connect with the fresh server-side clientId,
+ *  AFTER the registry's per-backend ClientStore has been updated. The
+ *  local Electron transport never reconnects, so this is a no-op for
+ *  the local backend.
+ *
+ *  XTerminal subscribes here to re-fire `terminal:join` — the server
+ *  cleared its old `controllerClientId` when the old socket closed, so
+ *  the renderer has to re-announce itself once it has a new id. */
+export function subscribeActiveTransportReconnect(
+  cb: (clientId: string) => void
+): () => void {
+  return registry.subscribeReconnect((backendId, clientId) => {
+    if (backendId !== registry.getActiveId()) return
+    cb(clientId)
+  })
+}
+
 export async function initStore(): Promise<void> {
   const localTransport = window.__harness_local_transport
   if (!localTransport) {
@@ -420,6 +472,7 @@ async function hydrateRemoteBackend(conn: BackendConnection): Promise<void> {
     // ClientStore with each fresh snapshot so an inactive backend that
     // briefly drops + reconnects in the background catches up cleanly
     // when the user switches to it.
+    if (registry.has(conn.id)) return
     const ws = new WebSocketClientTransport({
       url: conn.url,
       token,
@@ -434,19 +487,12 @@ async function hydrateRemoteBackend(conn: BackendConnection): Promise<void> {
         if (store) store.setSnapshot(snapshot.state)
       }
     })
+    // Register BEFORE connecting so the onSnapshot + onReconnect
+    // callbacks fire through the same path on first connect and on
+    // every subsequent reconnect. The store is seeded with initialState
+    // until the first snapshot arrives — a brief flash, gone in <100ms.
+    registry.add(conn, ws)
     await ws.connect()
-    if (registry.has(conn.id)) return
-    // Seed the new ClientStore with the initial snapshot + client id
-    // before registering so the user sees existing worktrees / panes
-    // the instant they switch backends, instead of the onboarding
-    // screen that fires off `initialState`'s empty repoRoots.
-    const [snapshot, clientId] = await Promise.all([
-      ws.getStateSnapshot(),
-      ws.getClientId()
-    ])
-    const store = registry.add(conn, ws)
-    store.setSnapshot(snapshot.state)
-    store.setClientId(clientId)
   } catch (err) {
     // eslint-disable-next-line no-console
     console.warn(`[harness] failed to connect to backend ${conn.id}`, err)

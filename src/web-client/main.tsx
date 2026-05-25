@@ -71,7 +71,8 @@ async function boot(): Promise<void> {
     request: (name, ...args) => transport.request(name, ...args),
     send: (name, ...args) => transport.send(name, ...args),
     onSignal: (name, handler) => transport.onSignal(name, handler),
-    getClientId: () => transport.getClientId()
+    getClientId: () => transport.getClientId(),
+    onReconnect: (cb) => transport.onReconnect(cb)
   }
   // No Electron helpers in the browser — the renderer's build-backend
   // gracefully no-ops drag-drop file paths and window controls when

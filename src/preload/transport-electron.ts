@@ -11,6 +11,7 @@ import type { StateEvent, StateSnapshot } from '../shared/state'
 import type {
   ClientSignalHandler,
   ClientTransport,
+  ReconnectListener,
   StateEventListener
 } from '../shared/transport/transport'
 
@@ -49,5 +50,9 @@ export class ElectronClientTransport implements ClientTransport {
 
   getClientId(): Promise<string> {
     return ipcRenderer.invoke('transport:getClientId') as Promise<string>
+  }
+
+  onReconnect(_cb: ReconnectListener): () => void {
+    return () => {}
   }
 }
