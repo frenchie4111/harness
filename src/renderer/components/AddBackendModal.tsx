@@ -147,7 +147,7 @@ export function AddBackendModal({ isOpen, onClose }: AddBackendModalProps): JSX.
       <div className="bg-panel border border-border rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
         <div className="flex items-center justify-between px-5 py-3 border-b border-border">
           <div className="flex items-center gap-2">
-            <Server size={14} className="text-accent" />
+            <Server className="w-3.5 h-3.5 text-accent" />
             <h2 className="text-sm font-semibold text-fg-bright">Add backend</h2>
           </div>
           <button
@@ -156,7 +156,7 @@ export function AddBackendModal({ isOpen, onClose }: AddBackendModalProps): JSX.
             className="text-dim hover:text-fg disabled:opacity-50 transition-colors cursor-pointer"
             aria-label="Close"
           >
-            <X size={14} />
+            <X className="w-3.5 h-3.5" />
           </button>
         </div>
 
@@ -223,7 +223,7 @@ export function AddBackendModal({ isOpen, onClose }: AddBackendModalProps): JSX.
             disabled={busy || !urlInput.trim() || (parseResult ? !parseResult.ok : false)}
             className="px-4 py-1.5 text-xs font-medium rounded bg-accent/20 hover:bg-accent/30 text-fg-bright border border-accent/40 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors flex items-center gap-2"
           >
-            {busy && <Loader2 size={11} className="animate-spin" />}
+            {busy && <Loader2 className="w-3 h-3 animate-spin" />}
             {busy ? 'Testing…' : 'Test & save'}
           </button>
         </div>

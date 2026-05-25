@@ -214,7 +214,7 @@ export function FileView({ worktreePath, filePath, onSendToAgent }: FileViewProp
           onClick={() => setMarkdownAsCode((v) => !v)}
           className="shrink-0 text-faint hover:text-fg cursor-pointer"
         >
-          {markdownAsCode ? <Eye size={12} /> : <Code2 size={12} />}
+          {markdownAsCode ? <Eye className="w-3 h-3" /> : <Code2 className="w-3 h-3" />}
         </button>
       </Tooltip>
     ) : null
@@ -323,7 +323,7 @@ function FileHeader({
             disabled={saveDisabled}
             className="shrink-0 text-faint hover:text-fg disabled:opacity-40 disabled:hover:text-faint cursor-pointer disabled:cursor-default"
           >
-            <Save size={12} />
+            <Save className="w-3 h-3" />
           </button>
         </Tooltip>
       )}
@@ -333,7 +333,7 @@ function FileHeader({
             onClick={() => onSendToAgent(`@${filePath} `)}
             className="shrink-0 text-faint hover:text-fg cursor-pointer"
           >
-            <AtSign size={12} />
+            <AtSign className="w-3 h-3" />
           </button>
         </Tooltip>
       )}
@@ -342,7 +342,7 @@ function FileHeader({
           onClick={() => backend.openInEditor(worktreePath, filePath)}
           className="shrink-0 text-faint hover:text-fg cursor-pointer"
         >
-          <Code2 size={12} />
+          <Code2 className="w-3 h-3" />
         </button>
       </Tooltip>
     </div>

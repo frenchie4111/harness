@@ -122,7 +122,7 @@ export function SnoozeCalendar({
           className="text-faint hover:text-fg disabled:opacity-40 cursor-pointer disabled:cursor-default p-0.5"
           aria-label="Previous month"
         >
-          <ChevronLeft size={14} />
+          <ChevronLeft className="w-3.5 h-3.5" />
         </button>
         <div className="text-xs font-semibold text-fg">
           {viewMonth.toLocaleString(undefined, { month: 'long', year: 'numeric' })}
@@ -133,7 +133,7 @@ export function SnoozeCalendar({
           className="text-faint hover:text-fg disabled:opacity-40 cursor-pointer disabled:cursor-default p-0.5"
           aria-label="Next month"
         >
-          <ChevronRight size={14} />
+          <ChevronRight className="w-3.5 h-3.5" />
         </button>
       </div>
 

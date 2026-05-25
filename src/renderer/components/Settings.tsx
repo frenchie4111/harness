@@ -987,21 +987,21 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
       case 'checking':
         return (
           <div className="flex items-center gap-2 text-xs text-muted">
-            <RefreshCw size={12} className="animate-spin" />
+            <RefreshCw className="w-3 h-3 animate-spin" />
             Checking for updates...
           </div>
         )
       case 'not-available':
         return (
           <div className="flex items-center gap-2 text-xs text-success">
-            <Check size={12} />
+            <Check className="w-3 h-3" />
             You&apos;re up to date
           </div>
         )
       case 'available':
         return (
           <div className="flex items-center gap-2 text-xs text-warning">
-            <Download size={12} />
+            <Download className="w-3 h-3" />
             <span>
               <a
                 onClick={() => backend.openExternal(harnessReleaseNotesUrl(updaterStatus.version))}
@@ -1016,7 +1016,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
       case 'downloading':
         return (
           <div className="flex items-center gap-2 text-xs text-warning">
-            <Download size={12} />
+            <Download className="w-3 h-3" />
             <span>
               Downloading{' '}
               <a
@@ -1033,7 +1033,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
         return (
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2 text-xs text-success">
-              <Check size={12} />
+              <Check className="w-3 h-3" />
               <span>
                 <a
                   onClick={() => backend.openExternal(harnessReleaseNotesUrl(updaterStatus.version))}
@@ -1048,7 +1048,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               onClick={handleRestart}
               className="self-start flex items-center gap-1.5 px-3 py-1.5 bg-success/20 hover:bg-success/30 rounded text-xs text-success transition-colors cursor-pointer"
             >
-              <RotateCw size={12} />
+              <RotateCw className="w-3 h-3" />
               Restart &amp; install
             </button>
           </div>
@@ -1056,7 +1056,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
       case 'error':
         return (
           <div className="flex items-center gap-2 text-xs text-danger">
-            <X size={12} />
+            <X className="w-3 h-3" />
             {updaterStatus.error}
           </div>
         )
@@ -1121,7 +1121,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
           onClick={onClose}
           className="no-drag absolute left-20 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-xs text-muted hover:text-fg-bright transition-colors cursor-pointer"
         >
-          <ArrowLeft size={14} />
+          <ArrowLeft className="w-3.5 h-3.5" />
           Back
           <kbd className="text-xs text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono">ESC</kbd>
         </button>
@@ -1228,7 +1228,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   onClick={() => scrollToSection(section.id)}
                   className={`w-full ${className} focus:bg-surface outline-none`}
                 >
-                  <Icon size={14} className="shrink-0" />
+                  <Icon className="w-3.5 h-3.5 shrink-0" />
                   <span>{section.label}</span>
                 </button>
                 {section.children && (
@@ -1272,14 +1272,14 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
             onClick={onOpenGuide}
             className="flex items-center gap-2 px-3 py-2 text-left text-sm text-muted hover:bg-panel-raised hover:text-fg-bright transition-colors cursor-pointer"
           >
-            <BookOpen size={14} className="shrink-0" />
+            <BookOpen className="w-3.5 h-3.5 shrink-0" />
             <span>Worktree Guide</span>
           </button>
           <button
             onClick={onOpenMyWeek}
             className="flex items-center gap-2 px-3 py-2 text-left text-sm text-muted hover:bg-panel-raised hover:text-fg-bright transition-colors cursor-pointer"
           >
-            <CalendarDays size={14} className="shrink-0" />
+            <CalendarDays className="w-3.5 h-3.5 shrink-0" />
             <span>My week</span>
           </button>
         </div>
@@ -1403,7 +1403,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                       onClick={handleResetTerminalFontFamily}
                       className="mt-2 flex items-center gap-1 px-2 py-1 text-xs text-dim hover:text-fg transition-colors cursor-pointer"
                     >
-                      <RotateCcw size={11} />
+                      <RotateCcw className="w-3 h-3" />
                       Reset to default
                     </button>
                   )}
@@ -1459,7 +1459,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                           : 'bg-panel border border-border text-dim hover:text-fg hover:border-border-strong'
                       }`}
                     >
-                      <AgentIcon kind={agent.kind} size={14} />
+                      <AgentIcon kind={agent.kind} className="w-3.5 h-3.5" />
                       {agent.displayName}
                     </button>
                   ))}
@@ -1499,7 +1499,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 <div className="flex items-center gap-2">
                   {hooksConsent === 'accepted' ? (
                     <>
-                      <span className="text-xs text-success flex items-center gap-1"><Check size={12} />Installed</span>
+                      <span className="text-xs text-success flex items-center gap-1"><Check className="w-3 h-3" />Installed</span>
                       <button
                         onClick={() => void backend.uninstallHooks()}
                         className="ml-auto px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer"
@@ -1571,12 +1571,12 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 <div className="flex items-center gap-2 mt-3">
                   <button onClick={handleSaveClaudeCommand} disabled={!claudeCommandDraft.trim()} className="px-3 py-1.5 bg-surface hover:bg-surface-hover disabled:opacity-40 rounded text-sm text-fg-bright transition-colors cursor-pointer">Save</button>
                   {claudeCommandDraft !== defaultClaudeCommand && defaultClaudeCommand && (
-                    <button onClick={handleResetClaudeCommand} className="flex items-center gap-1 px-3 py-1.5 text-sm text-dim hover:text-fg transition-colors cursor-pointer"><RotateCcw size={12} />Reset</button>
+                    <button onClick={handleResetClaudeCommand} className="flex items-center gap-1 px-3 py-1.5 text-sm text-dim hover:text-fg transition-colors cursor-pointer"><RotateCcw className="w-3 h-3" />Reset</button>
                   )}
                 </div>
                 {claudeSaveResult && (
                   <div className={`mt-3 text-xs flex items-center gap-1.5 ${claudeSaveResult.ok ? 'text-success' : 'text-danger'}`}>
-                    {claudeSaveResult.ok ? <Check size={12} /> : <X size={12} />}{claudeSaveResult.message}
+                    {claudeSaveResult.ok ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}{claudeSaveResult.message}
                   </div>
                 )}
 
@@ -1652,7 +1652,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                       />
                       <Tooltip label={litellmAuthRevealed ? 'Hide token' : 'Reveal token'}>
                         <button onClick={() => setLitellmAuthRevealed((v) => !v)} className="p-1.5 text-dim hover:text-fg transition-colors cursor-pointer">
-                          {litellmAuthRevealed ? <EyeOff size={14} /> : <Eye size={14} />}
+                          {litellmAuthRevealed ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                         </button>
                       </Tooltip>
                     </div>
@@ -1666,7 +1666,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 </div>
                 {litellmSaveResult && (
                   <div className={`mt-3 text-xs flex items-center gap-1.5 ${litellmSaveResult.ok ? 'text-success' : 'text-danger'}`}>
-                    {litellmSaveResult.ok ? <Check size={12} /> : <X size={12} />}{litellmSaveResult.message}
+                    {litellmSaveResult.ok ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}{litellmSaveResult.message}
                   </div>
                 )}
               </div>
@@ -1685,20 +1685,20 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                           <input type="text" value={row.key} onChange={(e) => handleUpdateEnvRow(index, 'key', e.target.value)} placeholder="NAME" spellCheck={false} className="w-44 bg-panel border border-border-strong rounded px-2 py-1.5 text-xs text-fg-bright placeholder-faint outline-none focus:border-fg font-mono" />
                           <span className="text-dim text-xs">=</span>
                           <input type={revealed ? 'text' : 'password'} value={row.value} onChange={(e) => handleUpdateEnvRow(index, 'value', e.target.value)} placeholder="value" spellCheck={false} className="flex-1 bg-panel border border-border-strong rounded px-2 py-1.5 text-xs text-fg-bright placeholder-faint outline-none focus:border-fg font-mono" />
-                          <Tooltip label={revealed ? 'Hide value' : 'Reveal value'}><button onClick={() => handleToggleRevealEnvRow(index)} className="p-1.5 text-dim hover:text-fg transition-colors cursor-pointer">{revealed ? <EyeOff size={14} /> : <Eye size={14} />}</button></Tooltip>
-                          <Tooltip label="Remove"><button onClick={() => handleRemoveEnvRow(index)} className="p-1.5 text-dim hover:text-danger transition-colors cursor-pointer"><Trash2 size={14} /></button></Tooltip>
+                          <Tooltip label={revealed ? 'Hide value' : 'Reveal value'}><button onClick={() => handleToggleRevealEnvRow(index)} className="p-1.5 text-dim hover:text-fg transition-colors cursor-pointer">{revealed ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}</button></Tooltip>
+                          <Tooltip label="Remove"><button onClick={() => handleRemoveEnvRow(index)} className="p-1.5 text-dim hover:text-danger transition-colors cursor-pointer"><Trash2 className="w-3.5 h-3.5" /></button></Tooltip>
                         </div>
                       )
                     })}
                   </div>
                 )}
                 <div className="flex items-center gap-2">
-                  <button onClick={handleAddEnvRow} className="flex items-center gap-1 px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer"><Plus size={12} />Add variable</button>
+                  <button onClick={handleAddEnvRow} className="flex items-center gap-1 px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer"><Plus className="w-3 h-3" />Add variable</button>
                   <button onClick={handleSaveClaudeEnvVars} className="px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer">Save</button>
                 </div>
                 {envSaveResult && (
                   <div className={`mt-3 text-xs flex items-center gap-1.5 ${envSaveResult.ok ? 'text-success' : 'text-danger'}`}>
-                    {envSaveResult.ok ? <Check size={12} /> : <X size={12} />}{envSaveResult.message}
+                    {envSaveResult.ok ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}{envSaveResult.message}
                   </div>
                 )}
               </div>
@@ -1886,12 +1886,12 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 <div className="flex items-center gap-2 mt-3">
                   <button onClick={handleSaveCodexCommand} disabled={!codexCommandDraft.trim()} className="px-3 py-1.5 bg-surface hover:bg-surface-hover disabled:opacity-40 rounded text-sm text-fg-bright transition-colors cursor-pointer">Save</button>
                   {codexCommandDraft !== 'codex' && (
-                    <button onClick={handleResetCodexCommand} className="flex items-center gap-1 px-3 py-1.5 text-sm text-dim hover:text-fg transition-colors cursor-pointer"><RotateCcw size={12} />Reset</button>
+                    <button onClick={handleResetCodexCommand} className="flex items-center gap-1 px-3 py-1.5 text-sm text-dim hover:text-fg transition-colors cursor-pointer"><RotateCcw className="w-3 h-3" />Reset</button>
                   )}
                 </div>
                 {codexSaveResult && (
                   <div className={`mt-3 text-xs flex items-center gap-1.5 ${codexSaveResult.ok ? 'text-success' : 'text-danger'}`}>
-                    {codexSaveResult.ok ? <Check size={12} /> : <X size={12} />}{codexSaveResult.message}
+                    {codexSaveResult.ok ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}{codexSaveResult.message}
                   </div>
                 )}
                 {(() => {
@@ -1922,20 +1922,20 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                           <input type="text" value={row.key} onChange={(e) => { setCodexEnvRows((prev) => prev.map((r, i) => (i === index ? { ...r, key: e.target.value } : r))); setCodexEnvSaveResult(null) }} placeholder="NAME" spellCheck={false} className="w-44 bg-panel border border-border-strong rounded px-2 py-1.5 text-xs text-fg-bright placeholder-faint outline-none focus:border-fg font-mono" />
                           <span className="text-dim text-xs">=</span>
                           <input type={revealed ? 'text' : 'password'} value={row.value} onChange={(e) => { setCodexEnvRows((prev) => prev.map((r, i) => (i === index ? { ...r, value: e.target.value } : r))); setCodexEnvSaveResult(null) }} placeholder="value" spellCheck={false} className="flex-1 bg-panel border border-border-strong rounded px-2 py-1.5 text-xs text-fg-bright placeholder-faint outline-none focus:border-fg font-mono" />
-                          <Tooltip label={revealed ? 'Hide value' : 'Reveal value'}><button onClick={() => setCodexRevealedEnvRows((prev) => { const next = new Set(prev); if (next.has(index)) next.delete(index); else next.add(index); return next })} className="p-1.5 text-dim hover:text-fg transition-colors cursor-pointer">{revealed ? <EyeOff size={14} /> : <Eye size={14} />}</button></Tooltip>
-                          <Tooltip label="Remove"><button onClick={() => { setCodexEnvRows((prev) => prev.filter((_, i) => i !== index)); setCodexEnvSaveResult(null) }} className="p-1.5 text-dim hover:text-danger transition-colors cursor-pointer"><Trash2 size={14} /></button></Tooltip>
+                          <Tooltip label={revealed ? 'Hide value' : 'Reveal value'}><button onClick={() => setCodexRevealedEnvRows((prev) => { const next = new Set(prev); if (next.has(index)) next.delete(index); else next.add(index); return next })} className="p-1.5 text-dim hover:text-fg transition-colors cursor-pointer">{revealed ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}</button></Tooltip>
+                          <Tooltip label="Remove"><button onClick={() => { setCodexEnvRows((prev) => prev.filter((_, i) => i !== index)); setCodexEnvSaveResult(null) }} className="p-1.5 text-dim hover:text-danger transition-colors cursor-pointer"><Trash2 className="w-3.5 h-3.5" /></button></Tooltip>
                         </div>
                       )
                     })}
                   </div>
                 )}
                 <div className="flex items-center gap-2">
-                  <button onClick={() => { setCodexEnvRows((prev) => [...prev, { key: '', value: '' }]); setCodexEnvSaveResult(null) }} className="flex items-center gap-1 px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer"><Plus size={12} />Add variable</button>
+                  <button onClick={() => { setCodexEnvRows((prev) => [...prev, { key: '', value: '' }]); setCodexEnvSaveResult(null) }} className="flex items-center gap-1 px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer"><Plus className="w-3 h-3" />Add variable</button>
                   <button onClick={handleSaveCodexEnvVars} className="px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer">Save</button>
                 </div>
                 {codexEnvSaveResult && (
                   <div className={`mt-3 text-xs flex items-center gap-1.5 ${codexEnvSaveResult.ok ? 'text-success' : 'text-danger'}`}>
-                    {codexEnvSaveResult.ok ? <Check size={12} /> : <X size={12} />}{codexEnvSaveResult.message}
+                    {codexEnvSaveResult.ok ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}{codexEnvSaveResult.message}
                   </div>
                 )}
               </div>
@@ -1998,13 +1998,13 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                         onClick={handleResetSystemPrompt}
                         className="flex items-center gap-1 px-3 py-1.5 text-sm text-dim hover:text-fg transition-colors cursor-pointer"
                       >
-                        <RotateCcw size={12} />
+                        <RotateCcw className="w-3 h-3" />
                         Reset to defaults
                       </button>
                     </div>
                     {systemPromptSaveResult && (
                       <div className={`mt-3 text-xs flex items-center gap-1.5 ${systemPromptSaveResult.ok ? 'text-success' : 'text-danger'}`}>
-                        {systemPromptSaveResult.ok ? <Check size={12} /> : <X size={12} />}{systemPromptSaveResult.message}
+                        {systemPromptSaveResult.ok ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}{systemPromptSaveResult.message}
                       </div>
                     )}
                     <p className="mt-3 text-xs text-faint">Changes apply to new sessions only.</p>
@@ -2249,7 +2249,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 </button>
                 {scriptsSaveResult && (
                   <span className={`text-xs flex items-center gap-1.5 ${scriptsSaveResult.ok ? 'text-success' : 'text-danger'}`}>
-                    {scriptsSaveResult.ok ? <Check size={12} /> : <X size={12} />}
+                    {scriptsSaveResult.ok ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
                     {scriptsSaveResult.message}
                   </span>
                 )}
@@ -2326,13 +2326,13 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                       onClick={handleResetPrReviewPrompt}
                       className="flex items-center gap-1 px-3 py-1.5 text-sm text-dim hover:text-fg transition-colors cursor-pointer"
                     >
-                      <RotateCcw size={12} />
+                      <RotateCcw className="w-3 h-3" />
                       Reset to default
                     </button>
                   </div>
                   {prReviewPromptSaveResult && (
                     <div className={`mt-3 text-xs flex items-center gap-1.5 ${prReviewPromptSaveResult.ok ? 'text-success' : 'text-danger'}`}>
-                      {prReviewPromptSaveResult.ok ? <Check size={12} /> : <X size={12} />}{prReviewPromptSaveResult.message}
+                      {prReviewPromptSaveResult.ok ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}{prReviewPromptSaveResult.message}
                     </div>
                   )}
                 </>
@@ -2370,9 +2370,9 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                           : 'border-border hover:border-border-strong text-muted hover:text-fg'
                       }`}
                     >
-                      <Code2 size={14} className={isActive ? 'text-accent' : 'text-faint'} />
+                      <Code2 className={`w-3.5 h-3.5 ${isActive ? 'text-accent' : 'text-faint'}`} />
                       <span className="flex-1">{ed.name}</span>
-                      {isActive && <Check size={12} className="text-accent" />}
+                      {isActive && <Check className="w-3 h-3 text-accent" />}
                     </button>
                   )
                 })}
@@ -2411,9 +2411,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     className="w-3.5 h-3.5 accent-warning cursor-pointer"
                   />
                   <Star
-                    size={14}
-                    className={harnessStarred ? 'text-warning fill-warning shrink-0' : 'text-warning shrink-0'}
-                  />
+                    className={`w-3.5 h-3.5 ${harnessStarred ? 'text-warning fill-warning shrink-0' : 'text-warning shrink-0'}`} />
                   <span className="text-sm text-fg group-hover:text-fg-bright transition-colors">
                     Star Harness on GitHub
                   </span>
@@ -2423,7 +2421,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               {authSource === 'gh-cli' && !hasToken && (
                 <div className="mb-4 rounded-lg p-4 border bg-success/10 border-success/30">
                   <div className="flex items-center gap-2 text-sm text-success">
-                    <Check size={14} />
+                    <Check className="w-3.5 h-3.5" />
                     <span>Using <code className="bg-panel-raised px-1 rounded">gh</code> CLI token (auto-detected)</span>
                   </div>
                   {!showPatForm && (
@@ -2445,7 +2443,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
                 {hasToken && (
                   <div className="flex items-center gap-2 mb-3 text-xs text-success">
-                    <Check size={14} />
+                    <Check className="w-3.5 h-3.5" />
                     <span>A token is currently saved {authSource === 'pat' ? '(in use)' : ''}</span>
                   </div>
                 )}
@@ -2462,7 +2460,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     onClick={() => setShowToken(!showToken)}
                     className="absolute right-2 top-1/2 -translate-y-1/2 text-dim hover:text-fg transition-colors cursor-pointer"
                   >
-                    {showToken ? <EyeOff size={14} /> : <Eye size={14} />}
+                    {showToken ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                   </button>
                 </div>
 
@@ -2486,7 +2484,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
                 {tokenResult && (
                   <div className={`mt-3 text-xs flex items-center gap-1.5 ${tokenResult.ok ? 'text-success' : 'text-danger'}`}>
-                    {tokenResult.ok ? <Check size={12} /> : <X size={12} />}
+                    {tokenResult.ok ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
                     {tokenResult.message}
                   </div>
                 )}
@@ -2533,7 +2531,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     onClick={handleResetAllHotkeys}
                     className="flex items-center gap-1 text-xs text-dim hover:text-fg transition-colors cursor-pointer"
                   >
-                    <RotateCcw size={11} />
+                    <RotateCcw className="w-3 h-3" />
                     Reset all to defaults
                   </button>
                 )}
@@ -2557,7 +2555,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                               onClick={() => handleResetHotkey(action)}
                               className="text-xs text-dim hover:text-fg transition-colors cursor-pointer"
                             >
-                              <RotateCcw size={11} />
+                              <RotateCcw className="w-3 h-3" />
                             </button>
                           </Tooltip>
                         )}
@@ -2658,7 +2656,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     disabled={checking || updaterStatus?.state === 'checking' || updaterStatus?.state === 'downloading'}
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-surface hover:bg-surface-hover disabled:opacity-40 rounded text-sm text-fg-bright transition-colors cursor-pointer"
                   >
-                    <RefreshCw size={12} className={checking ? 'animate-spin' : ''} />
+                    <RefreshCw className={`w-3 h-3 ${checking ? 'animate-spin' : ''}`} />
                     Check for updates
                   </button>
                 </div>
@@ -2730,7 +2728,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   onClick={() => openReportIssue({ kind: 'bug' })}
                   className="flex items-center gap-2 px-3 py-2 bg-panel-raised border border-border rounded-lg text-sm text-fg-bright hover:bg-surface transition-colors cursor-pointer"
                 >
-                  <Bug size={14} />
+                  <Bug className="w-3.5 h-3.5" />
                   Report a bug
                 </button>
                 <button
@@ -2738,7 +2736,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   onClick={() => openReportIssue({ kind: 'feature' })}
                   className="flex items-center gap-2 px-3 py-2 bg-panel-raised border border-border rounded-lg text-sm text-fg-bright hover:bg-surface transition-colors cursor-pointer"
                 >
-                  <Lightbulb size={14} />
+                  <Lightbulb className="w-3.5 h-3.5" />
                   Request a feature
                 </button>
               </div>
@@ -2763,7 +2761,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     }}
                     className="flex items-center gap-2 px-3 py-2 bg-panel border border-border rounded-lg text-sm text-fg-bright hover:bg-surface transition-colors cursor-pointer"
                   >
-                    <FileText size={14} />
+                    <FileText className="w-3.5 h-3.5" />
                     Open debug log
                   </button>
                   <button
@@ -2774,7 +2772,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     }}
                     className="flex items-center gap-2 px-3 py-2 bg-panel border border-border rounded-lg text-sm text-fg-bright hover:bg-surface transition-colors cursor-pointer"
                   >
-                    <FolderOpen size={14} />
+                    <FolderOpen className="w-3.5 h-3.5" />
                     Show in Finder
                   </button>
                 </div>
@@ -2805,7 +2803,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
             {/* Experimental section */}
             <section ref={(el) => { sectionRefs.current.experimental = el }} id="experimental">
               <h2 className="text-lg font-semibold text-fg-bright mb-1 flex items-center gap-2">
-                <FlaskConical size={18} className="text-warning" />
+                <FlaskConical className="w-[1.125rem] h-[1.125rem] text-warning" />
                 Experimental
               </h2>
               <p className="text-sm text-dim mb-4">
@@ -2922,7 +2920,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                         <span
                           className={`text-xs flex items-center gap-1 ${autoApproveSteerSaveResult.ok ? 'text-success' : 'text-danger'}`}
                         >
-                          {autoApproveSteerSaveResult.ok ? <Check size={11} /> : <X size={11} />}
+                          {autoApproveSteerSaveResult.ok ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
                           {autoApproveSteerSaveResult.message}
                         </span>
                       )}
@@ -3008,7 +3006,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                             disabled={!wsInfo}
                             className="p-1.5 text-dim hover:text-fg transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                           >
-                            {showWsToken ? <EyeOff size={14} /> : <Eye size={14} />}
+                            {showWsToken ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                           </button>
                         </Tooltip>
                         <Tooltip label={wsUrlCopied ? 'Copied' : 'Copy URL'}>
@@ -3017,7 +3015,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                             disabled={!wsInfo}
                             className="p-1.5 text-dim hover:text-fg transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                           >
-                            {wsUrlCopied ? <Check size={14} className="text-success" /> : <Copy size={14} />}
+                            {wsUrlCopied ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" />}
                           </button>
                         </Tooltip>
                         <Tooltip label="Open in browser">
@@ -3026,7 +3024,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                             disabled={!wsInfo}
                             className="p-1.5 text-dim hover:text-fg transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                           >
-                            <ExternalLink size={14} />
+                            <ExternalLink className="w-3.5 h-3.5" />
                           </button>
                         </Tooltip>
                         <Tooltip label="Rotate token (invalidates existing URLs)">
@@ -3035,7 +3033,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                             disabled={!wsInfo}
                             className="p-1.5 text-dim hover:text-warning transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                           >
-                            <RotateCcw size={14} />
+                            <RotateCcw className="w-3.5 h-3.5" />
                           </button>
                         </Tooltip>
                       </div>
@@ -3099,7 +3097,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
                 {wsNeedsRestart && (
                   <div className="mt-4 pt-3 border-t border-border flex items-center gap-2">
-                    <RefreshCw size={12} className="text-warning shrink-0" />
+                    <RefreshCw className="w-3 h-3 text-warning shrink-0" />
                     <p className="text-xs text-warning">{wsNeedsRestart}</p>
                   </div>
                 )}
@@ -3228,11 +3226,11 @@ function ThemeRow({
               copied ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus:opacity-100'
             }`}
           >
-            {copied ? <CopyCheck size={14} /> : <Copy size={14} />}
+            {copied ? <CopyCheck className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
           </span>
         </Tooltip>
       )}
-      {isActive && <Check size={14} className="text-success shrink-0" />}
+      {isActive && <Check className="w-3.5 h-3.5 text-success shrink-0" />}
     </button>
   )
 }

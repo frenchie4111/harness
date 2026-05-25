@@ -39,7 +39,7 @@ export function BranchCommitsPanel({ worktreePath, onOpenCommitReview }: BranchC
           }}
           className="text-faint hover:text-fg transition-colors cursor-pointer"
         >
-          <RefreshCw size={12} />
+          <RefreshCw className="w-3 h-3" />
         </button>
       </Tooltip>
     </>
@@ -80,7 +80,7 @@ export function BranchCommitsPanel({ worktreePath, onOpenCommitReview }: BranchC
                 <span className={`shrink-0 font-mono text-xs ${c.pushed ? 'text-faint' : 'text-warning'}`}>{c.shortHash}</span>
                 <span className={`truncate min-w-0 flex-1 ${c.pushed ? 'text-dim' : 'text-fg'}`}>{c.subject}</span>
                 {!c.pushed && (
-                  <ArrowUp size={10} className="shrink-0 text-warning" />
+                  <ArrowUp className="w-2.5 h-2.5 shrink-0 text-warning" />
                 )}
               </div>
             </Tooltip>

@@ -41,7 +41,7 @@ export function ReviewSummaryBar({
             onClick={onClose}
             className="text-faint hover:text-fg transition-colors cursor-pointer no-drag"
           >
-            <ArrowLeft size={16} />
+            <ArrowLeft className="w-4 h-4" />
           </button>
         </Tooltip>
 
@@ -52,7 +52,7 @@ export function ReviewSummaryBar({
           {commit && (
             <>
               <span className="text-faint">/</span>
-              <GitCommitHorizontal size={12} className="text-info shrink-0 relative top-[1px]" />
+              <GitCommitHorizontal className="w-3 h-3 text-info shrink-0 relative top-[1px]" />
               <span className="font-mono text-info">{commit.shortHash}</span>
               <span className="text-dim truncate">{commit.subject}</span>
             </>
@@ -71,7 +71,7 @@ export function ReviewSummaryBar({
         <div className="flex items-center gap-1.5 text-xs no-drag">
           {allReviewed ? (
             <span className="flex items-center gap-1 text-success font-medium">
-              <Check size={12} strokeWidth={2.5} />
+              <Check strokeWidth={2.5} className="w-3 h-3" />
               All reviewed
             </span>
           ) : (
@@ -82,7 +82,7 @@ export function ReviewSummaryBar({
 
           {pendingCommentCount > 0 && (
             <span className="flex items-center gap-1 text-info ml-2">
-              <MessageSquare size={11} />
+              <MessageSquare className="w-3 h-3" />
               {pendingCommentCount}
             </span>
           )}
@@ -93,7 +93,7 @@ export function ReviewSummaryBar({
               disabled={pendingCommentCount === 0}
               className="ml-2 flex items-center gap-1 px-2 py-1 rounded border border-border text-faint hover:text-fg transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-default"
             >
-              <Clipboard size={11} />
+              <Clipboard className="w-3 h-3" />
               Copy
             </button>
           </Tooltip>
@@ -104,7 +104,7 @@ export function ReviewSummaryBar({
               disabled={pendingCommentCount === 0}
               className="flex items-center gap-1 px-2 py-1 rounded bg-accent text-fg text-xs font-medium hover:bg-accent/80 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-default"
             >
-              <Send size={11} />
+              <Send className="w-3 h-3" />
               Send to Agent
             </button>
           </Tooltip>

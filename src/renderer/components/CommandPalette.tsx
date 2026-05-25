@@ -539,10 +539,10 @@ export function CommandPalette({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
-          <Search size={16} className="text-dim shrink-0" />
+          <Search className="w-4 h-4 text-dim shrink-0" />
           {mode === 'files' && (
             <span className="inline-flex items-center gap-1 text-xs bg-accent/15 text-accent px-1.5 py-0.5 rounded font-medium shrink-0">
-              <FileText size={11} />
+              <FileText className="w-3 h-3" />
               Open File
             </span>
           )}
@@ -582,7 +582,7 @@ export function CommandPalette({
                   onMouseEnter={() => setSelectedIndex(idx)}
                   onClick={() => openFile(f.path)}
                 >
-                  <FileText size={13} className="text-dim shrink-0" />
+                  <FileText className="w-3.5 h-3.5 text-dim shrink-0" />
                   <span className="truncate text-left text-fg-bright">
                     {highlightChars(name, f.indices, nameStart)}
                   </span>
@@ -648,7 +648,7 @@ export function CommandPalette({
                     title={STATUS_LABELS[displayStatus]}
                   />
                   {pr && (
-                    <GitPullRequest size={13} className={`shrink-0 ${iconColor}`} />
+                    <GitPullRequest className={`w-3.5 h-3.5 shrink-0 ${iconColor}`} />
                   )}
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-medium truncate text-left">{wt.branch}</div>
@@ -685,7 +685,7 @@ export function CommandPalette({
                   onMouseEnter={() => setSelectedIndex(mySelectableIdx)}
                   onClick={() => execute(item)}
                 >
-                  <FileText size={13} className="text-dim shrink-0" />
+                  <FileText className="w-3.5 h-3.5 text-dim shrink-0" />
                   <span className="truncate text-left text-fg-bright">{name}</span>
                   {dir && (
                     <span className="truncate text-left text-faint text-xs min-w-0 flex-1">
@@ -708,7 +708,7 @@ export function CommandPalette({
                   onMouseEnter={() => setSelectedIndex(mySelectableIdx)}
                   onClick={() => execute(item)}
                 >
-                  <FileText size={14} className="text-dim shrink-0" />
+                  <FileText className="w-3.5 h-3.5 text-dim shrink-0" />
                   <span className="truncate flex-1 text-left">{item.label}</span>
                   {openBinding && (
                     <kbd className="text-xs text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono shrink-0">
@@ -730,7 +730,7 @@ export function CommandPalette({
                   onMouseEnter={() => setSelectedIndex(mySelectableIdx)}
                   onClick={() => execute(item)}
                 >
-                  <Server size={14} className="text-dim shrink-0" />
+                  <Server className="w-3.5 h-3.5 text-dim shrink-0" />
                   <span className="truncate flex-1 text-left">{item.label}</span>
                 </button>
               )
@@ -748,7 +748,7 @@ export function CommandPalette({
                 onMouseEnter={() => setSelectedIndex(mySelectableIdx)}
                 onClick={() => execute(item)}
               >
-                <ArrowRight size={14} className="text-dim shrink-0" />
+                <ArrowRight className="w-3.5 h-3.5 text-dim shrink-0" />
                 <span className="truncate flex-1 text-left">{item.label}</span>
                 {item.hint && (
                   <kbd className="text-xs text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono shrink-0">

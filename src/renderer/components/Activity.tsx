@@ -262,7 +262,7 @@ export function Activity({ onClose, onOpenMyWeek, worktrees, prStatuses, mergedP
           onClick={onClose}
           className="no-drag absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-xs text-muted hover:text-fg-bright transition-colors cursor-pointer"
         >
-          <ArrowLeft size={14} />
+          <ArrowLeft className="w-3.5 h-3.5" />
           Back
         </button>
         <span className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 text-sm font-medium text-fg pointer-events-none">
@@ -274,7 +274,7 @@ export function Activity({ onClose, onOpenMyWeek, worktrees, prStatuses, mergedP
             className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted hover:text-fg-bright hover:bg-surface rounded transition-colors cursor-pointer"
             title="Weekly review"
           >
-            <CalendarDays size={13} />
+            <CalendarDays className="w-3.5 h-3.5" />
             My week
           </button>
           <button
@@ -282,7 +282,7 @@ export function Activity({ onClose, onOpenMyWeek, worktrees, prStatuses, mergedP
             className="text-muted hover:text-fg-bright transition-colors cursor-pointer p-1"
             title="Refresh"
           >
-            <RefreshCw size={13} />
+            <RefreshCw className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={handleReset}
@@ -464,7 +464,7 @@ function StatCard({
   return (
     <div className="bg-app/50 border border-border rounded-xl p-4">
       <div className="flex items-center gap-2 mb-2">
-        <Icon size={14} className={tint} />
+        <Icon className={`w-3.5 h-3.5 ${tint}`} />
         <span className="text-xs uppercase tracking-wider text-dim">{label}</span>
       </div>
       <div className={`text-2xl font-bold ${tint} tabular-nums`}>{value}</div>

@@ -12,7 +12,7 @@ export function Guide({ onClose }: GuideProps): JSX.Element {
           onClick={onClose}
           className="no-drag absolute left-20 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-xs text-muted hover:text-fg-bright transition-colors cursor-pointer"
         >
-          <ArrowLeft size={14} />
+          <ArrowLeft className="w-3.5 h-3.5" />
           Back
         </button>
         <span className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 text-sm font-medium text-fg pointer-events-none">
@@ -246,7 +246,7 @@ claude`}</CodeBlock>
               className="flex items-center gap-2 px-5 py-2.5 bg-accent/20 hover:bg-accent/30 border border-accent/40 rounded-lg text-sm font-medium text-fg-bright transition-colors cursor-pointer"
             >
               Close
-              <ArrowRight size={14} />
+              <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
@@ -268,7 +268,7 @@ function Section({
     <section className="mb-12">
       <div className="flex items-center gap-2.5 mb-4">
         <div className="w-8 h-8 rounded-lg bg-surface flex items-center justify-center text-accent shrink-0">
-          <Icon size={16} />
+          <Icon className="w-4 h-4" />
         </div>
         <h2 className="text-lg font-semibold text-fg-bright">{title}</h2>
       </div>
@@ -326,7 +326,7 @@ function SoloFlow(): JSX.Element {
           return (
             <div key={r.label} className="flex items-center gap-3">
               <div className="flex items-center gap-1.5 w-20 shrink-0">
-                {Icon && <Icon size={12} className="text-muted" />}
+                {Icon && <Icon className="w-3 h-3 text-muted" />}
                 <span className="text-xs text-muted font-mono">{r.label}</span>
               </div>
               <div className="flex-1 flex h-6 rounded-md overflow-hidden border border-border">
@@ -364,7 +364,7 @@ function WorktreeDiagram(): JSX.Element {
       <div className="flex flex-col items-center">
         {/* .git node */}
         <div className="px-4 py-2 rounded-lg bg-surface border border-border-strong flex items-center gap-2">
-          <GitBranch size={14} className="text-accent" />
+          <GitBranch className="w-3.5 h-3.5 text-accent" />
           <code className="text-xs text-fg-bright font-mono">.git</code>
         </div>
         {/* Connecting lines */}
@@ -377,7 +377,7 @@ function WorktreeDiagram(): JSX.Element {
         <div className="grid grid-cols-3 gap-3 w-full max-w-md">
           {trees.map((t) => (
             <div key={t.label} className={`px-2.5 py-3 rounded-lg bg-panel-raised border ${t.ring} flex flex-col items-center gap-1.5 min-w-0`}>
-              <Folder size={16} className={t.color} />
+              <Folder className={`w-4 h-4 ${t.color}`} />
               <code className="text-xs text-fg-bright font-mono truncate max-w-full">{t.label}</code>
               <span className={`text-xs ${t.color} font-mono`}>{t.branch}</span>
             </div>
@@ -396,12 +396,12 @@ function CollisionDiagram(): JSX.Element {
         {/* Before — collision */}
         <div>
           <div className="text-xs uppercase tracking-wider text-danger mb-2 font-semibold flex items-center gap-1">
-            <AlertTriangle size={10} />
+            <AlertTriangle className="w-2.5 h-2.5" />
             <span>Without worktrees</span>
           </div>
           <div className="p-4 rounded-lg bg-danger/10 border border-danger/30 relative">
             <div className="flex items-center gap-1.5 mb-3">
-              <Folder size={14} className="text-danger" />
+              <Folder className="w-3.5 h-3.5 text-danger" />
               <code className="text-xs text-fg-bright font-mono">myrepo/</code>
             </div>
             <div className="space-y-1.5">
@@ -430,7 +430,7 @@ function CollisionDiagram(): JSX.Element {
               { folder: 'myrepo-c/', agent: 'claude #3' }
             ].map((row) => (
               <div key={row.folder} className="p-2 rounded-lg bg-success/10 border border-success/30 flex items-center gap-2">
-                <Folder size={12} className="text-success shrink-0" />
+                <Folder className="w-3 h-3 text-success shrink-0" />
                 <code className="text-xs text-fg-bright font-mono truncate">{row.folder}</code>
                 <div className="flex-1" />
                 <div className="px-1.5 py-0.5 rounded bg-success/20 text-xs text-success font-mono">{row.agent}</div>
@@ -477,7 +477,7 @@ function HarnessMockup(): JSX.Element {
                 <code className="text-xs text-fg-bright font-mono truncate flex-1">{row.name}</code>
                 {row.pr && (
                   <div className="flex items-center gap-1 shrink-0">
-                    <GitPullRequest size={10} className="text-success" />
+                    <GitPullRequest className="w-2.5 h-2.5 text-success" />
                     {row.checks === 'pass' && <span className="w-1.5 h-1.5 rounded-full bg-success" />}
                     {row.checks === 'pending' && <span className="w-1.5 h-1.5 rounded-full bg-warning animate-pulse" />}
                   </div>

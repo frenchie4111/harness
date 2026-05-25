@@ -413,29 +413,29 @@ function TabIcon({ tab, shellActivity, status }: { tab: TerminalTab; shellActivi
   if (tab.type === 'agent') {
     return (
       <span className="inline-flex items-center gap-1">
-        <AgentIcon kind={tab.agentKind ?? 'claude'} size={11} />
+        <AgentIcon kind={tab.agentKind ?? 'claude'} className="w-3 h-3" />
         <span className={'w-1.5 h-1.5 rounded-full ' + STATUS_DOT[status]} />
       </span>
     )
   }
   if (tab.type === 'shell') {
     return shellActivity?.active ? (
-      <Loader2 size={11} className="animate-spin text-fg-bright" />
+      <Loader2 className="w-3 h-3 animate-spin text-fg-bright" />
     ) : (
-      <SquareTerminal size={11} className="text-dim" />
+      <SquareTerminal className="w-3 h-3 text-dim" />
     )
   }
   if (tab.type === 'json-claude') {
     return (
       <span className="inline-flex items-center gap-1">
-        <AgentIcon kind="claude" size={11} />
+        <AgentIcon kind="claude" className="w-3 h-3" />
         <span className="w-1.5 h-1.5 rounded-full bg-accent" />
       </span>
     )
   }
-  if (tab.type === 'diff') return <FileDiff size={11} className="text-dim" />
-  if (tab.type === 'file') return <FileText size={11} className="text-dim" />
-  if (tab.type === 'browser') return <Globe size={11} className="text-dim" />
+  if (tab.type === 'diff') return <FileDiff className="w-3 h-3 text-dim" />
+  if (tab.type === 'file') return <FileText className="w-3 h-3 text-dim" />
+  if (tab.type === 'browser') return <Globe className="w-3 h-3 text-dim" />
   return <span />
 }
 

@@ -68,7 +68,7 @@ export function WeeklyWrappedScreen({ onClose }: WeeklyWrappedScreenProps): JSX.
           onClick={onClose}
           className="no-drag absolute left-20 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-xs text-muted hover:text-fg-bright transition-colors cursor-pointer"
         >
-          <ArrowLeft size={14} />
+          <ArrowLeft className="w-3.5 h-3.5" />
           Back
           <kbd className="text-xs text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono">ESC</kbd>
         </button>
@@ -80,7 +80,7 @@ export function WeeklyWrappedScreen({ onClose }: WeeklyWrappedScreenProps): JSX.
       <div className="flex-1 min-h-0 flex items-center justify-center px-4 pb-4">
         {stats === null && error === null && (
           <div className="flex items-center text-dim">
-            <Loader2 size={20} className="animate-spin mr-2" />
+            <Loader2 className="w-5 h-5 animate-spin mr-2" />
             Crunching your week…
           </div>
         )}
@@ -221,7 +221,7 @@ function WrappedPoster({ stats }: { stats: WeeklyStats }): JSX.Element {
       {/* Closing */}
       <div className="text-center">
         <div className="inline-flex items-center gap-1.5 text-xs text-dim">
-          <Sparkles size={11} className="text-amber-400/70" />
+          <Sparkles className="w-3 h-3 text-amber-400/70" />
           <span>
             See you next week <span className="text-faint">– https://harness.mikelyons.org/</span>
           </span>
@@ -248,7 +248,7 @@ function HeroTile({ icon: Icon, value, label, caption, primary, accent }: HeroTi
       : 'bg-gradient-to-br from-amber-500/12 to-amber-500/5 border-amber-500/25'
   return (
     <div className={`rounded-2xl border ${tone} p-4 flex flex-col gap-1 min-w-0`}>
-      <Icon size={14} className={primary ? 'text-amber-300' : accent === 'purple' ? 'text-purple-300' : 'text-amber-300'} />
+      <Icon className={`w-3.5 h-3.5 ${primary ? 'text-amber-300' : accent === 'purple' ? 'text-purple-300' : 'text-amber-300'}`} />
       <div
         className={
           'font-extrabold leading-none tracking-tight tabular-nums truncate ' +

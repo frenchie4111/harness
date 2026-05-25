@@ -308,7 +308,7 @@ export function CommandCenter({
             className="no-drag p-2 rounded hover:bg-surface text-muted hover:text-fg cursor-pointer"
             title={unifiedRepos ? 'Split by repo' : 'Merge repos into one list'}
           >
-            {unifiedRepos ? <Rows3 size={16} /> : <Layers size={16} />}
+            {unifiedRepos ? <Rows3 className="w-4 h-4" /> : <Layers className="w-4 h-4" />}
           </button>
         )}
 
@@ -317,7 +317,7 @@ export function CommandCenter({
           className="no-drag p-2 rounded hover:bg-surface text-muted hover:text-fg cursor-pointer"
           title="Close (Esc)"
         >
-          <X size={16} />
+          <X className="w-4 h-4" />
         </button>
       </div>
 
@@ -377,8 +377,8 @@ export function CommandCenter({
                     className="w-full flex items-center gap-2 mb-3 text-left text-muted hover:text-fg transition-colors cursor-pointer"
                   >
                     {collapsedHere
-                      ? <ChevronRight size={14} className="shrink-0" />
-                      : <ChevronDown size={14} className="shrink-0" />}
+                      ? <ChevronRight className="w-3.5 h-3.5 shrink-0" />
+                      : <ChevronDown className="w-3.5 h-3.5 shrink-0" />}
                     <h2 className="text-xs font-semibold uppercase tracking-wider">
                       {group.label}
                     </h2>
@@ -432,9 +432,7 @@ export function CommandCenter({
                                 <div className="flex-1" />
                                 {pr && (
                                   <GitPullRequest
-                                    size={12}
-                                    className={
-                                      pr.state === 'merged'
+                                    className={`w-3 h-3 ${pr.state === 'merged'
                                         ? 'text-accent'
                                         : pr.state === 'closed'
                                           ? 'text-danger'
@@ -444,9 +442,7 @@ export function CommandCenter({
                                               ? 'text-warning'
                                               : pr.checksOverall === 'success'
                                                 ? 'text-success'
-                                                : 'text-dim'
-                                    }
-                                  />
+                                                : 'text-dim'}`} />
                                 )}
                                 <span className="text-faint">{relTime(lastActive[wt.path])}</span>
                               </div>

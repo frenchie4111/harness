@@ -968,7 +968,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
                           : 'bg-panel border border-border text-dim hover:text-fg hover:border-border-strong'
                       }`}
                     >
-                      <AgentIcon kind={agent.kind} size={14} />
+                      <AgentIcon kind={agent.kind} className="w-3.5 h-3.5" />
                       {agent.displayName}
                     </button>
                   ))}

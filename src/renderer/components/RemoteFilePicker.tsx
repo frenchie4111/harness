@@ -135,7 +135,7 @@ export function RemoteFilePicker({
             title="Close (Esc)"
             className="text-dim hover:text-fg p-1 rounded transition-colors cursor-pointer"
           >
-            <X size={16} />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
@@ -147,7 +147,7 @@ export function RemoteFilePicker({
               title="Parent directory"
               className="flex items-center justify-center px-2.5 rounded-md border border-border-strong bg-app hover:border-accent text-dim hover:text-fg transition-colors cursor-pointer"
             >
-              <ChevronUp size={14} />
+              <ChevronUp className="w-3.5 h-3.5" />
             </button>
             <input
               type="text"
@@ -173,7 +173,7 @@ export function RemoteFilePicker({
         <div className="flex-1 min-h-0 overflow-y-auto">
           {loading && (
             <div className="flex items-center justify-center py-10 text-dim text-sm gap-2">
-              <Loader2 size={14} className="animate-spin" />
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
               Loading…
             </div>
           )}
@@ -209,9 +209,9 @@ export function RemoteFilePicker({
                       className="w-full text-left flex items-center gap-2.5 px-4 py-1.5 hover:bg-panel/60 transition-colors cursor-pointer group"
                     >
                       {entry.isGitRepo ? (
-                        <FolderOpen size={14} className="text-accent shrink-0" />
+                        <FolderOpen className="w-3.5 h-3.5 text-accent shrink-0" />
                       ) : (
-                        <Folder size={14} className="text-dim shrink-0" />
+                        <Folder className="w-3.5 h-3.5 text-dim shrink-0" />
                       )}
                       <span className="flex-1 text-sm text-fg truncate">{entry.name}</span>
                       {entry.isGitRepo && (
@@ -219,7 +219,7 @@ export function RemoteFilePicker({
                           className="flex items-center gap-1 text-xs font-medium text-success shrink-0"
                           title="Git repository"
                         >
-                          <GitBranch size={10} />
+                          <GitBranch className="w-2.5 h-2.5" />
                           git
                         </span>
                       )}

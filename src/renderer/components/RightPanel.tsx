@@ -89,9 +89,7 @@ export function RightPanel({
           className="no-drag flex-1 flex items-center gap-1.5 px-3 hover:bg-panel-raised/40 cursor-pointer text-left min-w-0"
         >
           <ChevronRight
-            size={12}
-            className={`shrink-0 text-faint transition-transform ${collapsed ? '' : 'rotate-90'}`}
-          />
+            className={`w-3 h-3 shrink-0 text-faint transition-transform ${collapsed ? '' : 'rotate-90'}`} />
           <span className="text-xs font-medium text-muted uppercase tracking-wide truncate">
             {title}
           </span>

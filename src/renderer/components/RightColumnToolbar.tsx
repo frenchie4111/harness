@@ -82,7 +82,7 @@ export function RightColumnToolbar({
             className="flex items-center justify-center w-7 h-7 rounded text-muted hover:bg-panel-raised/40 hover:text-fg-bright disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
             aria-label="Panel visibility"
           >
-            <SlidersHorizontal size={14} />
+            <SlidersHorizontal className="w-3.5 h-3.5" />
           </button>
         </Tooltip>
         {menuOpen && (
@@ -109,7 +109,7 @@ export function RightColumnToolbar({
                     aria-checked={visible}
                   >
                     <span className="w-3 h-3 flex items-center justify-center shrink-0">
-                      {visible && <Check size={12} className="text-accent" />}
+                      {visible && <Check className="w-3 h-3 text-accent" />}
                     </span>
                     <span className="flex-1">{LABELS[key]}</span>
                   </button>
@@ -119,7 +119,7 @@ export function RightColumnToolbar({
                     className="flex items-center justify-center w-5 h-5 rounded text-muted hover:bg-panel/80 hover:text-fg-bright disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
                     aria-label={`Move ${LABELS[key]} up`}
                   >
-                    <ChevronUp size={12} />
+                    <ChevronUp className="w-3 h-3" />
                   </button>
                   <button
                     onClick={() => movePanel(index, 1)}
@@ -127,7 +127,7 @@ export function RightColumnToolbar({
                     className="flex items-center justify-center w-5 h-5 rounded text-muted hover:bg-panel/80 hover:text-fg-bright disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
                     aria-label={`Move ${LABELS[key]} down`}
                   >
-                    <ChevronDown size={12} />
+                    <ChevronDown className="w-3 h-3" />
                   </button>
                 </div>
               )
@@ -141,7 +141,7 @@ export function RightColumnToolbar({
           className="no-drag flex items-center justify-center w-7 h-7 rounded text-muted hover:bg-panel-raised/40 hover:text-fg-bright cursor-pointer"
           aria-label="Hide right column"
         >
-          <PanelRightClose size={14} />
+          <PanelRightClose className="w-3.5 h-3.5" />
         </button>
       </Tooltip>
     </div>

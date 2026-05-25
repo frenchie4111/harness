@@ -373,7 +373,7 @@ export function ReviewDiffPane({
               : 'border-border-strong text-transparent hover:border-faint'
           }`}
         >
-          {reviewed && <Check size={10} strokeWidth={3} />}
+          {reviewed && <Check strokeWidth={3} className="w-2.5 h-2.5" />}
         </button>
 
         <span className="text-xs font-mono truncate flex-1">{file.path}</span>

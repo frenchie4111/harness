@@ -19,7 +19,7 @@ export function MonacoWorkerFailedBanner(): JSX.Element | null {
 
   return (
     <div className="bg-warning/15 border-b border-warning/40 text-warning px-3 py-1.5 text-xs flex items-center gap-3 drag-region shrink-0">
-      <AlertTriangle size={12} className="shrink-0" />
+      <AlertTriangle className="w-3 h-3 shrink-0" />
       <span className="flex-1">
         Diff highlighting and syntax tools are temporarily unavailable (Monaco workers failed to
         load: {failed.join(', ')}). Reload this window to restore.
@@ -35,7 +35,7 @@ export function MonacoWorkerFailedBanner(): JSX.Element | null {
         title="Hide this banner (problem will persist until reload)"
         className="text-warning/70 hover:text-warning cursor-pointer no-drag"
       >
-        <X size={12} />
+        <X className="w-3 h-3" />
       </button>
     </div>
   )
