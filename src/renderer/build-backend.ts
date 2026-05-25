@@ -239,9 +239,10 @@ export function buildBackend(
     getLanAddresses: () => req('net:getLanAddresses'),
     setBrowserToolsEnabled: (enabled: boolean) => req('config:setBrowserToolsEnabled', enabled),
     setBrowserToolsMode: (mode: 'view' | 'full') => req('config:setBrowserToolsMode', mode),
-    setJsonModeClaudeTabs: (enabled: boolean) => req('config:setJsonModeClaudeTabs', enabled),
     setDefaultClaudeTabType: (value: 'xterm' | 'json') =>
       req('config:setDefaultClaudeTabType', value),
+    setChatPromotionDismissed: (value: boolean) =>
+      req('config:setChatPromotionDismissed', value),
     setJsonModeChatDensity: (value: 'compact' | 'comfy') =>
       req('config:setJsonModeChatDensity', value),
     setJsonModeDefaultPermissionMode: (value: 'default' | 'acceptEdits' | 'plan') =>
@@ -412,6 +413,8 @@ export function buildBackend(
       onLocalSignal('app:openReportIssue', () => callback()),
     onDebugCrashFocusedTab: (callback: () => void) =>
       onLocalSignal('app:debugCrashFocusedTab', () => callback()),
+    onDebugPreviewOnboarding: (callback: () => void) =>
+      onLocalSignal('app:debugPreviewOnboarding', () => callback()),
     onOpenAddBackend: (callback: () => void) =>
       onLocalSignal('app:openAddBackend', () => callback()),
 

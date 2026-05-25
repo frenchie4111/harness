@@ -9,6 +9,7 @@ import { DEFAULT_HOTKEYS, ACTION_LABELS, bindingToString, eventToBinding, resolv
 import { Tooltip } from './Tooltip'
 import { AGENT_REGISTRY, agentDisplayName, CLAUDE_MODELS, CODEX_MODELS } from '../../shared/agent-registry'
 import { AgentIcon } from './AgentIcon'
+import { InterfaceToggle } from './InterfaceToggle'
 import { BUILT_IN_THEMES_BY_MODE, type ThemeOption } from '../themes'
 import { SEMANTIC_KEYS } from '../theme-apply'
 import type { CustomTheme } from '../../shared/state/settings'
@@ -197,7 +198,6 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     wsTransportEnabled,
     wsTransportPort,
     wsTransportHost,
-    jsonModeClaudeTabs,
     defaultClaudeTabType,
     jsonModeChatDensity,
     jsonModeDefaultPermissionMode,
@@ -1200,6 +1200,21 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 <p className="mt-2 text-xs text-faint">
                   New agent tabs will use the selected default. Existing tabs are unaffected.
                 </p>
+
+                {defaultAgent === 'claude' && (
+                  <div className="mt-4 pt-4 border-t border-border pl-4 border-l-2 border-l-border ml-1">
+                    <label className="block text-sm font-medium text-fg mb-2">Interface</label>
+                    <p className="text-xs text-dim mb-3">
+                      Which interface new Claude tabs spawn in. Switch any
+                      existing tab from its right-click menu or the chip in
+                      the tab header.
+                    </p>
+                    <InterfaceToggle
+                      value={defaultClaudeTabType}
+                      onChange={(value) => { void backend.setDefaultClaudeTabType(value) }}
+                    />
+                  </div>
+                )}
               </div>
 
               <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-3">
@@ -1419,6 +1434,118 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     {envSaveResult.ok ? <Check size={12} /> : <X size={12} />}{envSaveResult.message}
                   </div>
                 )}
+              </div>
+
+              {/* Chat interface settings — only relevant when running
+                  Chat tabs, but always visible so the controls are findable. */}
+              <div className="mt-4 bg-panel-raised border border-border rounded-lg p-4">
+                <label className="block text-sm font-medium text-fg mb-1">Chat interface</label>
+                <p className="text-xs text-dim mb-3">
+                  Behavior for Claude tabs running the Chat interface
+                  (inline tool cards, approval flows). No effect on
+                  Terminal tabs.
+                </p>
+
+                <div className="pt-3 border-t border-border">
+                  <label className="block text-xs font-medium text-fg mb-1">
+                    Default permission mode for new chats
+                  </label>
+                  <div className="text-xs text-dim mb-2">
+                    New Chat tabs start in this mode. Change per-chat
+                    anytime via the statusline picker.
+                  </div>
+                  <select
+                    value={jsonModeDefaultPermissionMode}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      void backend.setJsonModeDefaultPermissionMode(
+                        v === 'default' || v === 'plan' ? v : 'acceptEdits'
+                      )
+                    }}
+                    className="bg-panel border border-border-strong rounded px-2 py-1 text-xs text-fg-bright outline-none focus:border-fg cursor-pointer"
+                  >
+                    <option value="acceptEdits">
+                      Accept edits — auto-allow Edit/Write, ask for Bash and other tools
+                    </option>
+                    <option value="default">
+                      Ask every time — surface every tool call for approval
+                    </option>
+                    <option value="plan">
+                      Plan mode — read-only, the agent proposes but doesn't act
+                    </option>
+                  </select>
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-border">
+                  <label className="block text-xs font-medium text-fg mb-1">
+                    Auto-sleep idle chats after
+                  </label>
+                  <div className="text-xs text-dim mb-2">
+                    A Chat tab waiting for your reply for this long
+                    (yellow dot) gets its subprocess torn down to free
+                    RAM. Click the tab to wake — history is intact. Set
+                    to 0 to disable.
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={0}
+                      max={24 * 60}
+                      step={1}
+                      value={autoSleepDraft}
+                      onChange={(e) => setAutoSleepDraft(e.target.value)}
+                      onBlur={commitAutoSleepMinutes}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.currentTarget.blur()
+                        }
+                      }}
+                      className="bg-panel border border-border-strong rounded px-2 py-1 text-xs text-fg-bright outline-none focus:border-fg w-24"
+                    />
+                    <span className="text-xs text-dim">minutes</span>
+                  </div>
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-border">
+                  <label className="block text-xs font-medium text-fg mb-1">
+                    Chat density
+                  </label>
+                  <div
+                    className="text-xs text-dim mb-2"
+                    title="Larger text and padding, intended for new users or screen-sharing."
+                  >
+                    Larger text and padding for new users or
+                    screen-sharing.
+                  </div>
+                  <div className="inline-flex rounded border border-border-strong overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void backend.setJsonModeChatDensity('compact')
+                      }}
+                      className={`px-3 py-1 text-xs cursor-pointer transition-colors ${
+                        jsonModeChatDensity === 'compact'
+                          ? 'bg-accent/20 text-fg-bright'
+                          : 'bg-panel text-muted hover:bg-panel-raised'
+                      }`}
+                    >
+                      Compact
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void backend.setJsonModeChatDensity('comfy')
+                      }}
+                      className={`px-3 py-1 text-xs cursor-pointer transition-colors border-l border-border-strong ${
+                        jsonModeChatDensity === 'comfy'
+                          ? 'bg-accent/20 text-fg-bright'
+                          : 'bg-panel text-muted hover:bg-panel-raised'
+                      }`}
+                    >
+                      Comfy
+                    </button>
+                  </div>
+                </div>
               </div>
 
               </div>
@@ -2396,166 +2523,6 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 </div>
               </div>
 
-              {/* JSON-mode Claude tabs sub-card */}
-              <div className="bg-panel-raised border border-warning/30 rounded-lg p-4 mb-4">
-                <div className="flex items-center gap-2 mb-1">
-                  <h3 className="text-sm font-semibold text-fg-bright">JSON-mode Claude tabs</h3>
-                  <span className="text-[10px] font-medium text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
-                    Experimental
-                  </span>
-                </div>
-                <p className="text-xs text-dim mb-3">
-                  Adds a second Claude tab type that runs{' '}
-                  <code className="bg-panel px-1 rounded text-[10px]">claude -p --output-format stream-json</code>{' '}
-                  and renders the conversation in React — native textarea, real
-                  text selection, markdown, syntax highlighting, per-tool cards.
-                  When enabled, <kbd className="bg-panel px-1 rounded text-[10px]">⇧</kbd>-click the
-                  Sparkles button on a worktree's tab bar to spawn one.
-                  Many TUI features are still missing — see{' '}
-                  <code className="bg-panel px-1 rounded text-[10px]">plans/json-mode-native-chat.md</code>.
-                </p>
-
-                <label className="flex items-start gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={jsonModeClaudeTabs}
-                    onChange={(e) => { void backend.setJsonModeClaudeTabs(e.target.checked) }}
-                    className="mt-0.5 cursor-pointer"
-                  />
-                  <div className="flex-1">
-                    <div className="text-sm text-fg-bright">Enable JSON-mode Claude tabs</div>
-                    <div className="text-xs text-dim mt-0.5">
-                      Existing xterm-based Claude tabs are unaffected.
-                    </div>
-                  </div>
-                </label>
-
-                <div className="mt-4 pt-3 border-t border-border">
-                  <label className="block text-xs font-medium text-fg mb-1">
-                    Default Claude tab type
-                  </label>
-                  <div className="text-xs text-dim mb-2">
-                    Which mode new Claude tabs spawn in. Per-tab swap is
-                    available from the tab's right-click menu.
-                  </div>
-                  <select
-                    value={defaultClaudeTabType}
-                    onChange={(e) => {
-                      void backend.setDefaultClaudeTabType(
-                        e.target.value === 'json' ? 'json' : 'xterm'
-                      )
-                    }}
-                    disabled={!jsonModeClaudeTabs}
-                    className="bg-panel border border-border-strong rounded px-2 py-1 text-xs text-fg-bright outline-none focus:border-fg cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    <option value="xterm">xterm (Claude TUI)</option>
-                    <option value="json">JSON-mode (React chat)</option>
-                  </select>
-                </div>
-
-                <div className="mt-4 pt-3 border-t border-border">
-                  <label className="block text-xs font-medium text-fg mb-1">
-                    Default permission mode for new chats
-                  </label>
-                  <div className="text-xs text-dim mb-2">
-                    New json-mode chats start in this mode. Change per-chat
-                    anytime via the statusline picker.
-                  </div>
-                  <select
-                    value={jsonModeDefaultPermissionMode}
-                    onChange={(e) => {
-                      const v = e.target.value
-                      void backend.setJsonModeDefaultPermissionMode(
-                        v === 'default' || v === 'plan' ? v : 'acceptEdits'
-                      )
-                    }}
-                    disabled={!jsonModeClaudeTabs}
-                    className="bg-panel border border-border-strong rounded px-2 py-1 text-xs text-fg-bright outline-none focus:border-fg cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    <option value="acceptEdits">
-                      Accept edits — auto-allow Edit/Write, ask for Bash and other tools
-                    </option>
-                    <option value="default">
-                      Ask every time — surface every tool call for approval
-                    </option>
-                    <option value="plan">
-                      Plan mode — read-only, the agent proposes but doesn't act
-                    </option>
-                  </select>
-                </div>
-
-                <div className="mt-4 pt-3 border-t border-border">
-                  <label className="block text-xs font-medium text-fg mb-1">
-                    Auto-sleep idle chats after
-                  </label>
-                  <div className="text-xs text-dim mb-2">
-                    A json-mode tab waiting for your reply for this long (yellow
-                    dot) gets its subprocess torn down to free RAM. Click the tab
-                    to wake — history is intact. Set to 0 to disable.
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      min={0}
-                      max={24 * 60}
-                      step={1}
-                      value={autoSleepDraft}
-                      onChange={(e) => setAutoSleepDraft(e.target.value)}
-                      onBlur={commitAutoSleepMinutes}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.currentTarget.blur()
-                        }
-                      }}
-                      disabled={!jsonModeClaudeTabs}
-                      className="bg-panel border border-border-strong rounded px-2 py-1 text-xs text-fg-bright outline-none focus:border-fg w-24 disabled:opacity-40 disabled:cursor-not-allowed"
-                    />
-                    <span className="text-xs text-dim">minutes</span>
-                  </div>
-                </div>
-
-                <div className="mt-4 pt-3 border-t border-border">
-                  <label className="block text-xs font-medium text-fg mb-1">
-                    Chat density
-                  </label>
-                  <div
-                    className="text-xs text-dim mb-2"
-                    title="Larger text and padding, intended for new users or screen-sharing."
-                  >
-                    Larger text and padding for new users or screen-sharing. Has
-                    no effect on xterm Claude tabs.
-                  </div>
-                  <div className="inline-flex rounded border border-border-strong overflow-hidden">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void backend.setJsonModeChatDensity('compact')
-                      }}
-                      className={`px-3 py-1 text-xs cursor-pointer transition-colors ${
-                        jsonModeChatDensity === 'compact'
-                          ? 'bg-accent/20 text-fg-bright'
-                          : 'bg-panel text-muted hover:bg-panel-raised'
-                      }`}
-                    >
-                      Compact
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void backend.setJsonModeChatDensity('comfy')
-                      }}
-                      className={`px-3 py-1 text-xs cursor-pointer transition-colors border-l border-border-strong ${
-                        jsonModeChatDensity === 'comfy'
-                          ? 'bg-accent/20 text-fg-bright'
-                          : 'bg-panel text-muted hover:bg-panel-raised'
-                      }`}
-                    >
-                      Comfy
-                    </button>
-                  </div>
-                </div>
-              </div>
-
               {/* Auto-approve safe tool calls sub-card */}
               <div className="bg-panel-raised border border-warning/30 rounded-lg p-4 mb-4">
                 <div className="flex items-center gap-2 mb-1">
@@ -2565,7 +2532,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   </span>
                 </div>
                 <p className="text-xs text-dim mb-3">
-                  In JSON-mode tabs, spawns a Haiku oneshot to approve obviously-safe tool calls (Read, Grep, Edit, …) instead of prompting you. A hardcoded deny-list catches risky calls (<code className="bg-panel px-1 rounded text-[10px]">rm -rf</code>, <code className="bg-panel px-1 rounded text-[10px]">git push</code>, <code className="bg-panel px-1 rounded text-[10px]">WebFetch</code>, …) before Haiku is consulted. Productivity feature only — an LLM judging another LLM is not a security boundary. Has no effect on xterm Claude tabs.
+                  In Chat tabs, spawns a Haiku oneshot to approve obviously-safe tool calls (Read, Grep, Edit, …) instead of prompting you. A hardcoded deny-list catches risky calls (<code className="bg-panel px-1 rounded text-[10px]">rm -rf</code>, <code className="bg-panel px-1 rounded text-[10px]">git push</code>, <code className="bg-panel px-1 rounded text-[10px]">WebFetch</code>, …) before Haiku is consulted. Productivity feature only — an LLM judging another LLM is not a security boundary. Has no effect on Terminal tabs.
                 </p>
 
                 <label className="flex items-start gap-3 cursor-pointer">

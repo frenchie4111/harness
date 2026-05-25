@@ -173,14 +173,12 @@ export interface Config {
   // 'view' = inspect tabs + spawn/navigate, but no clicking, typing, or
   // scrolling. 'full' = everything. Default 'full' (undefined treated as 'full').
   browserToolsMode?: 'view' | 'full'
-  // Experimental: enable the JSON-streamed React chat tab type as an
-  // alternative to xterm-hosted Claude tabs. Default off; gated by the
-  // jsonModeClaudeTabs setting in the renderer.
-  jsonModeClaudeTabs?: boolean
-  // When jsonModeClaudeTabs is on, controls whether the default Claude
-  // tab spawned by panes-fsm is the xterm TUI or the JSON-mode chat.
-  // Ignored when jsonModeClaudeTabs is off.
+  // Controls whether new Claude tabs spawn as the terminal-hosted TUI
+  // ('xterm') or the React chat interface ('json'). Default 'xterm'.
   defaultClaudeTabType?: 'xterm' | 'json'
+  // True once the user dismisses the "Switch to the new Chat mode"
+  // overlay shown on Terminal Claude tabs.
+  chatPromotionDismissed?: boolean
   // When true, JSON-mode tabs delegate per-tool approval decisions to a
   // Haiku oneshot for obviously-safe tool calls. Productivity feature
   // only — not a security boundary. Default off (undefined treated as

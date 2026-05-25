@@ -6,9 +6,10 @@ import { ProgressAddon } from '@xterm/addon-progress'
 import { SearchAddon } from '@xterm/addon-search'
 import '@xterm/xterm/css/xterm.css'
 import type { StateEvent } from '../../shared/state'
-import { getClientId, subscribeActiveTransportReconnect, useTerminalSession } from '../store'
+import { getClientId, subscribeActiveTransportReconnect, useSettings, useTerminalSession } from '../store'
 import { getBackend, useBackend } from '../backend'
-import { Eye, X } from 'lucide-react'
+import { Eye, X, Sparkles } from 'lucide-react'
+import { Tooltip } from './Tooltip'
 
 function ClaudeLoader() {
   return (
@@ -232,14 +233,18 @@ interface XTerminalProps {
    * `cwd` (the worktree root); absolute paths are used as-is. */
   shellCwd?: string
   onRestartAgent?: () => void
+  /** When provided AND this is a Claude agent tab, an overlay chip in
+   *  the top-left invites the user to switch to the Chat interface. */
+  onSwitchToChat?: () => void
 }
 
-export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionName, sessionId, initialPrompt, teleportSessionId, modelOverride, shellCommand, shellCwd, onRestartAgent }: XTerminalProps): JSX.Element {
+export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionName, sessionId, initialPrompt, teleportSessionId, modelOverride, shellCommand, shellCwd, onRestartAgent, onSwitchToChat }: XTerminalProps): JSX.Element {
   // Lazy font-cache init — fires once on first XTerminal mount. See
   // initFontCache() comment for why this is lazy rather than at module
   // top.
   initFontCache()
   const backend = useBackend()
+  const chatPromotionDismissed = useSettings().chatPromotionDismissed
   const [exited, setExited] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
@@ -844,6 +849,28 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
           >
             Take control
           </button>
+        </div>
+      )}
+      {!loading && !exited && onSwitchToChat && type === 'agent' && agentKind === 'claude' && !chatPromotionDismissed && (
+        <div className="absolute top-2 left-2 flex items-center gap-1 pointer-events-auto">
+          <Tooltip label="You can always switch modes by right-clicking the tab.">
+            <button
+              onClick={onSwitchToChat}
+              className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs bg-panel/90 border border-border text-fg-bright hover:bg-border transition-colors"
+            >
+              <Sparkles size={12} className="text-accent" />
+              <span>Switch to the new Chat mode</span>
+            </button>
+          </Tooltip>
+          <Tooltip label="You can always switch modes by right-clicking the tab.">
+            <button
+              onClick={() => { void backend.setChatPromotionDismissed(true) }}
+              aria-label="Dismiss Chat mode promotion"
+              className="p-1 rounded-md bg-panel/90 border border-border text-dim hover:text-fg-bright transition-colors"
+            >
+              <X size={12} />
+            </button>
+          </Tooltip>
         </div>
       )}
       {exited && type === 'agent' && onRestartAgent && (

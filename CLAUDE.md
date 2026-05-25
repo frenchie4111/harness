@@ -20,7 +20,7 @@ navigation.
 - **lucide-react** v1.x for icons (note: brand icons like `Github` are NOT exported in this version — use `GitPullRequest` etc.)
 - **electron-builder** for packaging, signed with the user's personal Developer ID, notarized
 - **electron-updater** for OTA updates from GitHub releases
-- **`@anthropic-ai/claude-code`** is bundled as a dep (pinned native binary) and used by json-mode tabs only. xterm Claude tabs continue to spawn the user's PATH `claude` so power users on bleeding-edge / beta builds keep that experience. Both share `~/.claude/` for auth + MCP config.
+- **`@anthropic-ai/claude-code`** is bundled as a dep (pinned native binary) and used by Chat tabs (internally `json-mode`) only. Terminal tabs (internally xterm-hosted) continue to spawn the user's PATH `claude` so power users on bleeding-edge / beta builds keep that experience. Both share `~/.claude/` for auth + MCP config.
 
 ## Architecture (read this before touching state)
 
@@ -429,10 +429,10 @@ hard dependency on `gh`.
   happens via the chip strip's `+` button (or `File → Add Backend…`
   if/when wired). Tokens encrypted in `secrets.enc` keyed
   `backend-token:<id>`; connections list lives in `userData/config.json`.
-- **Dual-claude model** — Harness ships two Claude Code binaries. **xterm
-  Claude tabs** spawn `/bin/zsh -ilc claude` so the user's PATH `claude`
-  is what runs (lets bleeding-edge / beta testers stay on their own
-  build). **json-mode tabs** spawn the bundled
+- **Dual-claude model** — Harness ships two Claude Code binaries. **Terminal
+  tabs** (internally xterm-hosted) spawn `/bin/zsh -ilc claude` so the user's
+  PATH `claude` is what runs (lets bleeding-edge / beta testers stay on their
+  own build). **Chat tabs** (internally `json-mode`) spawn the bundled
   `@anthropic-ai/claude-code` native binary directly — pinned per Harness
   release so the `--permission-prompt-tool` round trip and stream-json
   schema can't drift between npm publishes. Both share `~/.claude/` for

@@ -299,8 +299,8 @@ export interface ElectronAPI {
   getLanAddresses(): Promise<Array<{ iface: string; address: string }>>
   setBrowserToolsEnabled(enabled: boolean): Promise<boolean>
   setBrowserToolsMode(mode: 'view' | 'full'): Promise<boolean>
-  setJsonModeClaudeTabs(enabled: boolean): Promise<boolean>
   setDefaultClaudeTabType(value: 'xterm' | 'json'): Promise<boolean>
+  setChatPromotionDismissed(value: boolean): Promise<boolean>
   setJsonModeChatDensity(value: 'compact' | 'comfy'): Promise<boolean>
   setJsonModeDefaultPermissionMode(
     value: 'default' | 'acceptEdits' | 'plan'
@@ -435,6 +435,7 @@ export interface ElectronAPI {
   onOpenNewProject(callback: () => void): () => void
   onOpenReportIssue(callback: () => void): () => void
   onDebugCrashFocusedTab(callback: () => void): () => void
+  onDebugPreviewOnboarding(callback: () => void): () => void
   onOpenAddBackend(callback: () => void): () => void
 
   acceptHooks(): Promise<boolean>

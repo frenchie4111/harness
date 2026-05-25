@@ -37,14 +37,12 @@ interface WorkspaceViewProps {
   defaultAgent: AgentKind
   onAddAgentTab: (worktreePath: string, agentKind?: AgentKind, paneId?: string) => void
   onAddBrowserTab: (worktreePath: string, paneId?: string) => void
-  /** Only defined when the jsonModeClaudeTabs feature flag is on. */
   onAddJsonClaudeTab?: (worktreePath: string, paneId?: string) => void
-  /** Convert a tab between xterm and JSON-mode in place. Only defined
-   *  when the jsonModeClaudeTabs feature flag is on. */
+  /** Convert a Claude tab between Terminal and Chat in place. */
   onConvertTabType?: (worktreePath: string, tabId: string, newType: 'agent' | 'json-claude') => void
-  /** Drives whether the Sparkles button's plain click spawns xterm
-   *  or json-claude (and which one the shift modifier flips to).
-   *  Only meaningful when `onAddJsonClaudeTab` is defined. */
+  /** Drives whether the Sparkles button's plain click spawns Terminal
+   *  ('xterm') or Chat ('json'), and which one the shift modifier flips
+   *  to. */
   defaultClaudeTabType?: 'xterm' | 'json'
   onSleepTab: (worktreePath: string, tabId: string) => void
   onCloseTab: (worktreePath: string, tabId: string) => void
@@ -588,6 +586,11 @@ export function WorkspaceView({
                     onRestartAgent={
                       tab.type === 'agent'
                         ? (): void => onRestartAgentTab(worktreePath, tab.id)
+                        : undefined
+                    }
+                    onSwitchToChat={
+                      tab.type === 'agent' && tab.agentKind === 'claude' && onConvertTabType
+                        ? (): void => onConvertTabType(worktreePath, tab.id, 'json-claude')
                         : undefined
                     }
                   />

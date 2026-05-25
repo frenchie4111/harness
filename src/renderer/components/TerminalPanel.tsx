@@ -68,18 +68,14 @@ interface TerminalPanelProps {
   onAddTab: () => void
   onAddAgentTab: (agentKind?: AgentKind) => void
   onAddBrowserTab: () => void
-  /** Optional: when defined, alt-clicking the Sparkles button opens a
-   *  json-claude tab (experimental, gated by settings.jsonModeClaudeTabs). */
+  /** Shift-clicking the Sparkles button opens the non-default Claude
+   *  interface (Terminal if Chat is the default, Chat if Terminal is). */
   onAddJsonClaudeTab?: () => void
-  /** When the JSON-mode flag is on, controls which tab type is the
-   *  *default* (plain click) vs. the *modifier* (shift-click). Lets a
-   *  user who lives in JSON mode flip the button so plain click spawns
-   *  json-claude and shift forces the xterm TUI. Undefined when
-   *  `onAddJsonClaudeTab` is undefined (json-mode flag off). */
+  /** Controls which Claude interface plain-click on Sparkles spawns vs.
+   *  what shift-click flips to. Values are unchanged internal identifiers
+   *  — UI labels them "Terminal" and "Chat". */
   defaultClaudeTabType?: 'xterm' | 'json'
-  /** Optional: convert a tab between xterm Claude and JSON-mode Claude
-   *  in place. Only relevant when the json-mode feature flag is on; the
-   *  parent omits it otherwise so the per-tab right-click menu hides. */
+  /** Convert a Claude tab between Terminal and Chat in place. */
   onConvertTabType?: (tabId: string, newType: 'agent' | 'json-claude') => void
   defaultAgent: AgentKind
   onSleepTab: (tabId: string) => void
@@ -105,10 +101,9 @@ interface SortableTabProps {
   showClose: boolean
   onSelect: () => void
   onClose: () => void
-  /** Optional: when provided, right-clicking the tab opens a small menu
-   *  to convert between xterm Claude and JSON-mode Claude. Only passed
-   *  in when the source tab is convertible (Claude agent or json-claude)
-   *  and the JSON-mode feature flag is on. */
+  /** When provided, right-clicking the tab opens a small menu to convert
+   *  between Terminal and Chat. Passed in only for Claude tabs (agent
+   *  with agentKind=claude, or json-claude). */
   onConvertTabType?: (newType: 'agent' | 'json-claude') => void
   /** Optional: when provided AND the tab is an awake json-claude tab,
    *  the right-click menu shows a "Sleep" item. Sleeping tears down
@@ -266,7 +261,7 @@ function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect
                 onConvertTabType('json-claude')
               }}
             >
-              Convert to JSON-mode chat
+              Switch to Chat mode
             </button>
           )}
           {onConvertTabType && tab.type === 'json-claude' && (
@@ -278,7 +273,7 @@ function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect
                 onConvertTabType('agent')
               }}
             >
-              Convert to terminal mode
+              Switch to Terminal mode
             </button>
           )}
         </div>
@@ -326,9 +321,9 @@ export function TerminalPanel({
   }, [pane.id, registerSlot])
 
   const activeTab = pane.tabs.find((t) => t.id === pane.activeTabId)
-  // Spectator chip only makes sense for xterm-backed tabs. JSON-mode
-  // agent tabs (when they land) re-render per client, so the controller/
-  // spectator concept doesn't apply.
+  // Spectator chip only makes sense for terminal-backed tabs. Chat tabs
+  // re-render per client, so the controller/spectator concept doesn't
+  // apply.
   const showSpectatorChip =
     !!activeTab && (activeTab.type === 'agent' || activeTab.type === 'shell')
 
@@ -377,18 +372,18 @@ export function TerminalPanel({
           </SortableContext>
           <Tooltip
             label={(() => {
-              const jsonIsDefault = !!onAddJsonClaudeTab && defaultClaudeTabType === 'json'
-              const plain = jsonIsDefault
-                ? 'New Claude (JSON) tab'
+              const chatIsDefault = !!onAddJsonClaudeTab && defaultClaudeTabType === 'json'
+              const plain = chatIsDefault
+                ? 'New Chat tab'
                 : `New ${agentDisplayName(defaultAgent)} tab`
               const altPart =
                 AGENT_REGISTRY.length > 1
                   ? ` · ⌥-click for ${agentDisplayName(AGENT_REGISTRY.find((a) => a.kind !== defaultAgent)?.kind)}`
                   : ''
               const shiftPart = onAddJsonClaudeTab
-                ? jsonIsDefault
-                  ? ` · ⇧-click for ${agentDisplayName('claude')} (xterm)`
-                  : ' · ⇧-click for Claude (JSON, experimental)'
+                ? chatIsDefault
+                  ? ` · ⇧-click for Terminal mode`
+                  : ' · ⇧-click for Chat mode'
                 : ''
               return plain + altPart + shiftPart
             })()}
@@ -397,11 +392,11 @@ export function TerminalPanel({
               onClick={(e) => {
                 // Modifier precedence:
                 //   alt → other registered agent (Codex when default is
-                //         Claude, vice versa) — independent of json/xterm.
-                //   shift → "the other Claude tab type" relative to the
+                //         Claude, vice versa) — independent of Chat/Terminal.
+                //   shift → "the other Claude interface" relative to the
                 //         user's defaultClaudeTabType setting.
-                //   plain → the default Claude tab type.
-                const jsonIsDefault =
+                //   plain → the default Claude interface.
+                const chatIsDefault =
                   !!onAddJsonClaudeTab && defaultClaudeTabType === 'json'
                 if (e.altKey && AGENT_REGISTRY.length > 1) {
                   const other = AGENT_REGISTRY.find((a) => a.kind !== defaultAgent)
@@ -409,11 +404,11 @@ export function TerminalPanel({
                   return
                 }
                 if (e.shiftKey && onAddJsonClaudeTab) {
-                  if (jsonIsDefault) onAddAgentTab('claude')
+                  if (chatIsDefault) onAddAgentTab('claude')
                   else onAddJsonClaudeTab()
                   return
                 }
-                if (jsonIsDefault) onAddJsonClaudeTab!()
+                if (chatIsDefault) onAddJsonClaudeTab!()
                 else onAddAgentTab(defaultAgent)
               }}
               className="no-drag shrink-0 px-2 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"

@@ -22,12 +22,14 @@ import {
   X,
   Layers,
   RotateCcw,
-  ShieldAlert
+  ShieldAlert,
+  Sparkles
 } from 'lucide-react'
 import { useJsonClaudeSession, useSettings } from '../store'
 import { useBackend } from '../backend'
 import { useJsonClaudeApprovals } from '../hooks/useJsonClaudeApprovals'
 import { JsonClaudeApprovalCard } from './JsonClaudeApprovalCard'
+import { Tooltip } from './Tooltip'
 import { dispatchToolCard, ToolCardChrome } from './json-mode-cards'
 import { ToolGroup } from './json-mode-cards/ToolGroup'
 import { TaskCard } from './json-mode-cards/TaskCard'
@@ -856,7 +858,8 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
   const backend = useBackend()
   const session = useJsonClaudeSession(sessionId)
   const { pending, resolve } = useJsonClaudeApprovals(sessionId)
-  const density = useSettings().jsonModeChatDensity
+  const { jsonModeChatDensity: density, defaultClaudeTabType } = useSettings()
+  const cameFromTerminalDefault = defaultClaudeTabType === 'xterm'
   const [draft, setDraft] = useState('')
   // Mention/popover state. `dismissed` carries the draft text at which
   // the user pressed Escape — comparing against the live draft is how we
@@ -1588,6 +1591,28 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
           </div>
         </div>
       )}
+      {cameFromTerminalDefault && (
+        <div className="absolute top-2 left-2 z-30 flex items-center gap-1 pointer-events-auto">
+          <Tooltip label="You can always switch modes by right-clicking the tab.">
+            <button
+              onClick={() => {
+                void backend.panesConvertTabType(worktreePath, sessionId, 'agent')
+              }}
+              className="px-2 py-1 rounded-md text-xs bg-panel/90 border border-border text-fg-bright hover:bg-border transition-colors"
+            >
+              Switch back to Terminal mode
+            </button>
+          </Tooltip>
+          <Tooltip label="You can change the default any time in Settings → Agent → Interface.">
+            <button
+              onClick={() => { void backend.setDefaultClaudeTabType('json') }}
+              className="px-2 py-1 rounded-md text-xs bg-panel/90 border border-border text-fg-bright hover:bg-border transition-colors"
+            >
+              Make Chat mode default
+            </button>
+          </Tooltip>
+        </div>
+      )}
       <div className="relative flex-1 min-h-0 flex flex-col">
         <div
           ref={scrollRef}
@@ -1596,6 +1621,25 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
           className="flex-1 overflow-y-auto overflow-x-hidden outline-none"
           style={{ overflowAnchor: 'none' }}
         >
+          {entries.length === 0 && orphanApprovals.length === 0 && !busy ? (
+            <div className="min-h-full flex flex-col items-center justify-center text-center px-4 select-none">
+              <div className="relative mb-6">
+                <div
+                  className="absolute inset-0 rounded-full blur-2xl opacity-30 brand-gradient-bg"
+                  aria-hidden
+                />
+                <div className="relative w-16 h-16 rounded-full brand-gradient-bg flex items-center justify-center shadow-lg">
+                  <Sparkles size={26} className="text-white" />
+                </div>
+              </div>
+              <h2 className="text-xl font-semibold brand-gradient-text">
+                What are we going to build today?
+              </h2>
+              <p className="mt-2 text-xs text-muted">
+                Send a message to get started.
+              </p>
+            </div>
+          ) : (
           <div className="px-4 py-3 space-y-3">
             {groupedItems.map((g) =>
               g.kind === 'single' ? (
@@ -1641,6 +1685,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
               )
             })()}
           </div>
+          )}
         </div>
         {showJumpToBottom && (
           <button
