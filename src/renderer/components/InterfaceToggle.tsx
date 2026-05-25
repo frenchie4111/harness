@@ -30,7 +30,7 @@ const OPTIONS: Array<{
     value: 'json',
     label: 'Chat',
     description:
-      'Native interface with inline tool cards, approval flows, and a cost meter.',
+      'Native interface with inline tool cards and approval flows.',
     Icon: MessageSquare
   }
 ]

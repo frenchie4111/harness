@@ -1442,8 +1442,8 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 <label className="block text-sm font-medium text-fg mb-1">Chat interface</label>
                 <p className="text-xs text-dim mb-3">
                   Behavior for Claude tabs running the Chat interface
-                  (inline tool cards, approval flows, cost meter). No
-                  effect on Terminal tabs.
+                  (inline tool cards, approval flows). No effect on
+                  Terminal tabs.
                 </p>
 
                 <div className="pt-3 border-t border-border">
