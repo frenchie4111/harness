@@ -28,6 +28,7 @@ import { useJsonClaudeSession, useSettings } from '../store'
 import { useBackend } from '../backend'
 import { useJsonClaudeApprovals } from '../hooks/useJsonClaudeApprovals'
 import { JsonClaudeApprovalCard } from './JsonClaudeApprovalCard'
+import { Tooltip } from './Tooltip'
 import { dispatchToolCard, ToolCardChrome } from './json-mode-cards'
 import { ToolGroup } from './json-mode-cards/ToolGroup'
 import { TaskCard } from './json-mode-cards/TaskCard'
@@ -1591,20 +1592,24 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
       )}
       {cameFromTerminalDefault && (
         <div className="absolute top-2 left-2 z-30 flex items-center gap-1 pointer-events-auto">
-          <button
-            onClick={() => {
-              void backend.panesConvertTabType(worktreePath, sessionId, 'agent')
-            }}
-            className="px-2 py-1 rounded-md text-xs bg-panel/90 border border-border text-fg-bright hover:bg-border transition-colors"
-          >
-            Switch back
-          </button>
-          <button
-            onClick={() => { void backend.setDefaultClaudeTabType('json') }}
-            className="px-2 py-1 rounded-md text-xs bg-panel/90 border border-border text-fg-bright hover:bg-border transition-colors"
-          >
-            Set Chat as default
-          </button>
+          <Tooltip label="You can always switch modes by right-clicking the tab.">
+            <button
+              onClick={() => {
+                void backend.panesConvertTabType(worktreePath, sessionId, 'agent')
+              }}
+              className="px-2 py-1 rounded-md text-xs bg-panel/90 border border-border text-fg-bright hover:bg-border transition-colors"
+            >
+              Switch back to Terminal mode
+            </button>
+          </Tooltip>
+          <Tooltip label="You can change the default any time in Settings → Agent → Interface.">
+            <button
+              onClick={() => { void backend.setDefaultClaudeTabType('json') }}
+              className="px-2 py-1 rounded-md text-xs bg-panel/90 border border-border text-fg-bright hover:bg-border transition-colors"
+            >
+              Make Chat mode default
+            </button>
+          </Tooltip>
         </div>
       )}
       <div className="relative flex-1 min-h-0 flex flex-col">
