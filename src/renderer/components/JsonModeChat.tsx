@@ -22,7 +22,8 @@ import {
   X,
   Layers,
   RotateCcw,
-  ShieldAlert
+  ShieldAlert,
+  Sparkles
 } from 'lucide-react'
 import { useJsonClaudeSession, useSettings } from '../store'
 import { useBackend } from '../backend'
@@ -1620,6 +1621,25 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
           className="flex-1 overflow-y-auto overflow-x-hidden outline-none"
           style={{ overflowAnchor: 'none' }}
         >
+          {entries.length === 0 && orphanApprovals.length === 0 && !busy && (
+            <div className="min-h-full flex flex-col items-center justify-center text-center px-4 select-none">
+              <div className="relative mb-6">
+                <div
+                  className="absolute inset-0 rounded-full blur-2xl opacity-30 brand-gradient-bg"
+                  aria-hidden
+                />
+                <div className="relative w-16 h-16 rounded-full brand-gradient-bg flex items-center justify-center shadow-lg">
+                  <Sparkles size={26} className="text-white" />
+                </div>
+              </div>
+              <h2 className="text-xl font-semibold brand-gradient-text">
+                What are we going to build today?
+              </h2>
+              <p className="mt-2 text-xs text-muted">
+                Send a message to get started.
+              </p>
+            </div>
+          )}
           <div className="px-4 py-3 space-y-3">
             {groupedItems.map((g) =>
               g.kind === 'single' ? (
