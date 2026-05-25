@@ -68,7 +68,11 @@ import { registerRepoRoot } from './repo-roots'
 import type { AddRepoResult } from '../shared/repo-pick'
 import { isWorktreeMerged } from '../shared/state/prs'
 import { MAX_WAKE } from '../shared/state/snooze'
-import { DEFAULT_LIGHT_THEME, DEFAULT_DARK_THEME } from '../shared/state/settings'
+import {
+  DEFAULT_LIGHT_THEME,
+  DEFAULT_DARK_THEME,
+  DEFAULT_PR_REVIEW_PROMPT
+} from '../shared/state/settings'
 import { watchStatusDir } from './hooks'
 import { getAgent, type AgentKind } from './agents'
 import { buildClaudeLaunchSettings } from './claude-launch'
@@ -314,11 +318,12 @@ const jsonClaudeManager = new JsonClaudeManager(store, {
       isMain: scope.isMain
     }
   },
-  getLaunchSettings: (worktreePath) =>
+  getLaunchSettings: (worktreePath, modelOverride) =>
     buildClaudeLaunchSettings({
       cwd: worktreePath,
       worktrees: store.getSnapshot().state.worktrees.list,
-      config
+      config,
+      modelOverride
     })
 })
 const perfMonitor = new PerfMonitor()
@@ -692,7 +697,8 @@ function treeToPersistedNode(node: PaneNode): PersistedPaneNode | null {
           sessionId: stripped.sessionId,
           url: liveUrl || stripped.url,
           command: stripped.command,
-          cwd: stripped.cwd
+          cwd: stripped.cwd,
+          model: stripped.model
         }
       })
     if (tabs.length === 0) return null
@@ -768,6 +774,24 @@ const panesFSM = new PanesFSM(store, {
   }
 })
 
+/** Look up a json-claude tab's persisted `model` override by sessionId
+ *  (which is also the tab id for json-claude tabs). Returned to the
+ *  json-claude manager so resume/kickoff/wake all respect a per-tab pin
+ *  that was set when the worktree was created. */
+function findJsonClaudeTabModel(sessionId: string): string | undefined {
+  const panes = store.getSnapshot().state.terminals.panes
+  for (const tree of Object.values(panes)) {
+    for (const leaf of getLeaves(tree)) {
+      for (const tab of leaf.tabs) {
+        if (tab.id === sessionId && tab.type === 'json-claude') {
+          return tab.model && tab.model.trim() ? tab.model.trim() : undefined
+        }
+      }
+    }
+  }
+  return undefined
+}
+
 /** Single source of truth for "spin up the json-claude subprocess for
  *  this sessionId". Used by the jsonClaude:start IPC handler, the
  *  panesFSM's startJsonClaudeWithPrompt + startJsonClaude options
@@ -789,16 +813,16 @@ function startJsonClaudeSession(sessionId: string, worktreePath: string): void {
   const permMode =
     store.getSnapshot().state.jsonClaude.sessions[sessionId]?.permissionMode ||
     'default'
-  jsonClaudeManager.create(sessionId, worktreePath, permMode)
+  jsonClaudeManager.create(sessionId, worktreePath, permMode, findJsonClaudeTabModel(sessionId))
 }
 
 const worktreesFSM = new WorktreesFSM(store, {
   getRepoRoots: () => config.repoRoots || [],
   getWorktreeSetupCmd: () => config.worktreeSetupCommand || '',
   getWorktreeBaseMode: () => config.worktreeBase || DEFAULT_WORKTREE_BASE,
-  onWorktreeCreated: ({ createdPath, initialPrompt, teleportSessionId }) => {
+  onWorktreeCreated: ({ createdPath, initialPrompt, teleportSessionId, agentKind, model }) => {
     void prPoller.refreshAll()
-    panesFSM.ensureInitialized(createdPath, { initialPrompt, teleportSessionId })
+    panesFSM.ensureInitialized(createdPath, { initialPrompt, teleportSessionId, agentKind, model })
     if (teleportSessionId) {
       setTimeout(() => void worktreesFSM.refreshList(), 10_000)
     }
@@ -974,13 +998,25 @@ function registerIpcHandlers(): void {
       branchName: string
       initialPrompt?: string
       teleportSessionId?: string
+      agentKind?: 'claude' | 'codex'
+      model?: string
     }) => {
       return worktreesFSM.runPending(params)
     }
   )
   transport.onRequest(
     'worktrees:runPendingPR',
-    async (_ctx, params: { id: string; repoRoot: string; prNumber: number }) => {
+    async (
+      _ctx,
+      params: {
+        id: string
+        repoRoot: string
+        prNumber: number
+        initialPrompt?: string
+        agentKind?: 'claude' | 'codex'
+        model?: string
+      }
+    ) => {
       return worktreesFSM.runPendingPR(params)
     }
   )
@@ -1580,6 +1616,21 @@ function registerIpcHandlers(): void {
     return true
   })
 
+  transport.onRequest('config:setPrReviewPrompt', (_ctx, prompt: string) => {
+    const trimmed = prompt.trim()
+    if (!trimmed || trimmed === DEFAULT_PR_REVIEW_PROMPT) {
+      delete config.prReviewPrompt
+    } else {
+      config.prReviewPrompt = prompt
+    }
+    saveConfig(config)
+    store.dispatch({
+      type: 'settings/prReviewPromptChanged',
+      payload: config.prReviewPrompt || DEFAULT_PR_REVIEW_PROMPT
+    })
+    return true
+  })
+
   transport.onRequest('config:setHarnessMcpEnabled', (_ctx, enabled: boolean) => {
     if (enabled) {
       delete config.harnessMcpEnabled
@@ -2076,7 +2127,8 @@ function registerIpcHandlers(): void {
     (_ctx, agentKind: string, opts: {
       terminalId: string; cwd: string; sessionId?: string;
       initialPrompt?: string; teleportSessionId?: string;
-      sessionName?: string
+      sessionName?: string;
+      modelOverride?: string
     }): string => {
       const kind = toAgentKind(agentKind)
       const agent = getAgent(kind)
@@ -2088,6 +2140,7 @@ function registerIpcHandlers(): void {
         resolveCallerScope(opts.terminalId)
       )
 
+      const override = opts.modelOverride && opts.modelOverride.trim() ? opts.modelOverride.trim() : undefined
       let systemPrompt: string | undefined
       let tuiFullscreen: boolean | undefined
       let model: string | null
@@ -2095,13 +2148,14 @@ function registerIpcHandlers(): void {
         const launch = buildClaudeLaunchSettings({
           cwd: opts.cwd,
           worktrees: store.getSnapshot().state.worktrees.list,
-          config
+          config,
+          modelOverride: override
         })
         systemPrompt = launch.systemPrompt
         tuiFullscreen = launch.tuiFullscreen
         model = launch.model ?? null
       } else {
-        model = config.codexModel || null
+        model = override || config.codexModel || null
       }
 
       return agent.buildSpawnArgs({ ...opts, command, mcpConfigPath, model, systemPrompt, tuiFullscreen })
@@ -2977,6 +3031,7 @@ async function runBoot(): Promise<void> {
   startControlServer({
     getRepoRoots: () => config.repoRoots,
     getWorktreeBase: () => config.worktreeBase || DEFAULT_WORKTREE_BASE,
+    getPrReviewPrompt: () => config.prReviewPrompt || DEFAULT_PR_REVIEW_PROMPT,
     resolveCallerScope,
     getBrowserPerms: () => ({
       enabled: config.browserToolsEnabled !== false,
@@ -3115,6 +3170,37 @@ async function runBoot(): Promise<void> {
       }
     },
     runWorktreeSetup: (ctx) => worktreesFSM.runWorktreeSetup(ctx),
+    runPendingPRWorktree: async (params) => {
+      // The FSM already handles ensureInitialized (with the prompt) + PR poller
+      // refresh via onWorktreeCreated. We just look up the resolved branch
+      // from the freshly-refreshed store list and emit the focus broadcast
+      // directly so the heavy ensureInitialized/refreshList work doesn't
+      // run a second time through the broadcast path.
+      // 'setup-failed' still means the worktree exists on disk — surface
+      // it to the MCP caller as success so the agent can recover.
+      const outcome = await worktreesFSM.runPendingPR(params)
+      if (outcome.outcome === 'error') {
+        return { ok: false, error: outcome.error }
+      }
+      const found = store
+        .getSnapshot()
+        .state.worktrees.list.find((w) => w.path === outcome.createdPath)
+      if (!found) {
+        return { ok: false, error: `created worktree at ${outcome.createdPath} but couldn't resolve its branch` }
+      }
+      // agentKind + model are already applied via the FSM's onWorktreeCreated
+      // path; we still ship them in the broadcast payload so its shape stays
+      // in sync with the new-branch path through deps.broadcast — keeps
+      // future refactors that consolidate the two from silently losing data.
+      broadcastToAllWindows('worktrees:externalCreate', {
+        repoRoot: params.repoRoot,
+        worktree: found,
+        initialPrompt: params.initialPrompt,
+        agentKind: params.agentKind,
+        model: params.model
+      })
+      return { ok: true, path: found.path, branch: found.branch }
+    },
     broadcast: (channel, payload) => {
       if (channel === 'worktrees:externalCreate') {
         // Seed panes with the initial prompt BEFORE refreshList — the
@@ -3127,9 +3213,13 @@ async function runBoot(): Promise<void> {
           repoRoot: string
           worktree: { path: string }
           initialPrompt?: string
+          agentKind?: 'claude' | 'codex'
+          model?: string
         }
         panesFSM.ensureInitialized(p.worktree.path, {
-          initialPrompt: p.initialPrompt
+          initialPrompt: p.initialPrompt,
+          agentKind: p.agentKind,
+          model: p.model
         })
         void worktreesFSM.refreshList().then(() => {
           broadcastToAllWindows(channel, payload)

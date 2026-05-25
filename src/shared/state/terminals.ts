@@ -31,6 +31,11 @@ export interface TerminalTab {
   mode?: 'awake' | 'asleep'
   /** For agent tabs: which CLI agent this tab runs. */
   agentKind?: AgentKind
+  /** For agent + json-claude tabs: override the model resolved from
+   *  settings (claudeModel/codexModel). Set when a worktree was spawned
+   *  with a one-shot pick (New Worktree screen "Model" field or the MCP
+   *  create_worktree `model` param). Empty/undefined = use settings. */
+  model?: string
   /** For diff/file tabs: the file path */
   filePath?: string
   /** For diff tabs: whether the diff is for staged changes */

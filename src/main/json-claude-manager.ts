@@ -120,7 +120,7 @@ export interface JsonClaudeManagerOptions {
    *  --name) at spawn time from the live config + worktree list. Same
    *  source of truth as the xterm spawn path; see buildClaudeLaunchSettings
    *  in claude-launch.ts. */
-  getLaunchSettings: (worktreePath: string) => ClaudeLaunchSettings
+  getLaunchSettings: (worktreePath: string, modelOverride?: string) => ClaudeLaunchSettings
 }
 
 /** Path to the bundled stdio MCP server we point Claude's
@@ -364,7 +364,8 @@ export class JsonClaudeManager {
   create(
     sessionId: string,
     worktreePath: string,
-    permissionMode: JsonClaudePermissionMode = 'default'
+    permissionMode: JsonClaudePermissionMode = 'default',
+    modelOverride?: string
   ): void {
     if (this.instances.has(sessionId)) {
       log('json-claude', `create no-op — already running sessionId=${sessionId}`)
@@ -432,7 +433,7 @@ export class JsonClaudeManager {
       ? ['--resume', sessionId]
       : ['--session-id', sessionId]
 
-    const launchSettings = this.opts.getLaunchSettings(worktreePath)
+    const launchSettings = this.opts.getLaunchSettings(worktreePath, modelOverride)
     const args = [
       '-p',
       '--input-format',

@@ -101,11 +101,16 @@ export function buildBackend(
       branchName: string
       initialPrompt?: string
       teleportSessionId?: string
+      agentKind?: 'claude' | 'codex'
+      model?: string
     }) => req('worktrees:runPending', params),
     runPendingPRWorktree: (params: {
       id: string
       repoRoot: string
       prNumber: number
+      initialPrompt?: string
+      agentKind?: 'claude' | 'codex'
+      model?: string
     }) => req('worktrees:runPendingPR', params),
     retryPendingWorktree: (id: string) => req('worktrees:retryPending', id),
     dismissPendingWorktree: (id: string) => req('worktrees:dismissPending', id),
@@ -247,6 +252,7 @@ export function buildBackend(
     setHarnessSystemPrompt: (prompt: string) => req('config:setHarnessSystemPrompt', prompt),
     setHarnessSystemPromptMain: (prompt: string) =>
       req('config:setHarnessSystemPromptMain', prompt),
+    setPrReviewPrompt: (prompt: string) => req('config:setPrReviewPrompt', prompt),
     prepareMcpForTerminal: (terminalId: string) =>
       req('mcp:prepareForTerminal', terminalId),
     onWorktreesExternalCreate: (
@@ -316,6 +322,7 @@ export function buildBackend(
         initialPrompt?: string
         teleportSessionId?: string
         sessionName?: string
+        modelOverride?: string
       }
     ) => req('agent:buildSpawnArgs', agentKind, opts),
 

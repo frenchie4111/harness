@@ -103,6 +103,15 @@ describe('settingsReducer', () => {
     expect(off.expandedDiagnosticLoggingEnabled).toBe(false)
   })
 
+  it('prReviewPromptChanged overrides the default review prompt', () => {
+    expect(initialSettings.prReviewPrompt.length).toBeGreaterThan(0)
+    const next = apply(initialSettings, {
+      type: 'settings/prReviewPromptChanged',
+      payload: 'Focus on security issues only.'
+    })
+    expect(next.prReviewPrompt).toBe('Focus on security issues only.')
+  })
+
   it('autoUpdateEnabledChanged toggles auto-update flag', () => {
     expect(initialSettings.autoUpdateEnabled).toBe(true)
     const off = apply(initialSettings, {

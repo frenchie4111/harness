@@ -1,14 +1,29 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { Sparkles, Loader2, X, Map, ListChecks, BookOpen, Radio, GitPullRequest } from 'lucide-react'
+import { Sparkles, Loader2, X, Map, ListChecks, BookOpen, Radio, GitPullRequest, ChevronRight, ChevronDown } from 'lucide-react'
 import iconUrl from '../../../resources/icon.png'
 import { sanitizeBranchInput, isValidBranchName } from '../branch-name'
 import { RepoIcon } from './RepoIcon'
 import { useBackend } from '../backend'
+import { useSettings } from '../store'
+import { CLAUDE_MODELS, CODEX_MODELS } from '../../shared/agent-registry'
 import type { PRSummary } from '../types'
 
 interface NewWorktreeScreenProps {
-  onSubmit: (repoRoot: string, branchName: string, initialPrompt: string, teleportSessionId?: string) => Promise<void>
-  onPRSubmit: (repoRoot: string, prNumber: number) => Promise<void>
+  onSubmit: (
+    repoRoot: string,
+    branchName: string,
+    initialPrompt: string,
+    teleportSessionId?: string,
+    agentKind?: 'claude' | 'codex',
+    model?: string
+  ) => Promise<void>
+  onPRSubmit: (
+    repoRoot: string,
+    prNumber: number,
+    initialPrompt: string,
+    agentKind?: 'claude' | 'codex',
+    model?: string
+  ) => Promise<void>
   onCancel: () => void
   repoRoots: string[]
   /** Repo to pre-select in the picker. Usually the repo of the currently active worktree. */
@@ -76,7 +91,17 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
   )
   const [branch, setBranch] = useState('')
   const [prompt, setPrompt] = useState('')
+  const settings = useSettings()
+  const [reviewPrompt, setReviewPrompt] = useState(settings.prReviewPrompt)
   const [teleportInput, setTeleportInput] = useState('')
+  // Per-creation overrides for agent + model. Default agent comes from
+  // settings; model defaults to empty (= use settings.claudeModel/codexModel
+  // at spawn time). Teleport mode pins to Claude — codex has no equivalent
+  // "resume by id" flow today.
+  const [agentKindOverride, setAgentKindOverride] = useState<'claude' | 'codex'>(
+    settings.defaultAgent === 'codex' ? 'codex' : 'claude'
+  )
+  const [modelOverride, setModelOverride] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const branchRef = useRef<HTMLInputElement>(null)
@@ -143,13 +168,19 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
       setPrClickPending(prNumber)
       setError(null)
       try {
-        await onPRSubmit(selectedRepo, prNumber)
+        await onPRSubmit(
+          selectedRepo,
+          prNumber,
+          reviewPrompt.trim(),
+          agentKindOverride,
+          modelOverride.trim() || undefined
+        )
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to open PR')
         setPrClickPending(null)
       }
     },
-    [onPRSubmit, prClickPending, selectedRepo]
+    [onPRSubmit, prClickPending, selectedRepo, reviewPrompt, agentKindOverride, modelOverride]
   )
 
   const handleBranchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -161,12 +192,23 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
     setSubmitting(true)
     setError(null)
     try {
-      await onSubmit(selectedRepo, effectiveBranch, prompt.trim(), parsedTeleport || undefined)
+      // Teleport mode always Claude — codex has no resume-by-session-id
+      // analog today.
+      const effectiveAgent: 'claude' | 'codex' =
+        mode === 'teleport' ? 'claude' : agentKindOverride
+      await onSubmit(
+        selectedRepo,
+        effectiveBranch,
+        prompt.trim(),
+        parsedTeleport || undefined,
+        effectiveAgent,
+        modelOverride.trim() || undefined
+      )
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create worktree')
       setSubmitting(false)
     }
-  }, [effectiveBranch, prompt, canSubmit, onSubmit, parsedTeleport, selectedRepo])
+  }, [effectiveBranch, prompt, canSubmit, onSubmit, parsedTeleport, selectedRepo, mode, agentKindOverride, modelOverride])
 
   const cycleRepo = useCallback((direction: 1 | -1) => {
     if (repoRoots.length <= 1) return
@@ -402,13 +444,56 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
             )}
 
             {mode === 'pr' && (
-              <PRPickerList
-                prs={prsByRepo[selectedRepo]}
-                loading={prsLoadingRepo === selectedRepo}
-                error={prsError}
-                disabled={prClickPending !== null}
-                pendingNumber={prClickPending}
-                onPick={handlePRClick}
+              <>
+                <label className="block mb-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-dim">
+                      Review prompt
+                    </span>
+                    <span className="text-[11px] text-faint">
+                      sent to Claude after the PR loads · edit defaults in Settings
+                    </span>
+                  </div>
+                  <textarea
+                    value={reviewPrompt}
+                    onChange={(e) => setReviewPrompt(e.target.value)}
+                    placeholder="Leave blank to drop in with no kickoff prompt."
+                    disabled={prClickPending !== null}
+                    rows={4}
+                    className="w-full bg-app border-2 border-border-strong rounded-lg px-4 py-3 text-sm text-fg-bright placeholder-faint outline-none focus:border-accent transition-colors resize-none"
+                  />
+                </label>
+                <AgentModelRow
+                  mode={mode}
+                  agentKind={agentKindOverride}
+                  setAgentKind={setAgentKindOverride}
+                  model={modelOverride}
+                  setModel={setModelOverride}
+                  defaultClaudeModel={settings.claudeModel}
+                  defaultCodexModel={settings.codexModel}
+                  disabled={prClickPending !== null}
+                />
+                <PRPickerList
+                  prs={prsByRepo[selectedRepo]}
+                  loading={prsLoadingRepo === selectedRepo}
+                  error={prsError}
+                  disabled={prClickPending !== null}
+                  pendingNumber={prClickPending}
+                  onPick={handlePRClick}
+                />
+              </>
+            )}
+
+            {mode !== 'pr' && (
+              <AgentModelRow
+                mode={mode}
+                agentKind={agentKindOverride}
+                setAgentKind={setAgentKindOverride}
+                model={modelOverride}
+                setModel={setModelOverride}
+                defaultClaudeModel={settings.claudeModel}
+                defaultCodexModel={settings.codexModel}
+                disabled={submitting}
               />
             )}
 
@@ -576,6 +661,120 @@ function PRPickerList({ prs, loading, error, disabled, pendingNumber, onPick }: 
           </button>
         )
       })}
+    </div>
+  )
+}
+
+interface AgentModelRowProps {
+  mode: 'fresh' | 'teleport' | 'pr'
+  agentKind: 'claude' | 'codex'
+  setAgentKind: (k: 'claude' | 'codex') => void
+  model: string
+  setModel: (m: string) => void
+  defaultClaudeModel: string | null
+  defaultCodexModel: string | null
+  disabled: boolean
+}
+
+function AgentModelRow({
+  mode,
+  agentKind,
+  setAgentKind,
+  model,
+  setModel,
+  defaultClaudeModel,
+  defaultCodexModel,
+  disabled
+}: AgentModelRowProps): JSX.Element {
+  // Teleport mode pins to Claude — codex has no equivalent
+  // "resume by session id" today. Lock the selector so users don't
+  // think they can flip it.
+  const locked = mode === 'teleport'
+  const effectiveAgent = locked ? 'claude' : agentKind
+  const modelOptions = effectiveAgent === 'codex' ? CODEX_MODELS : CLAUDE_MODELS
+  const fallbackModel =
+    effectiveAgent === 'codex' ? defaultCodexModel : defaultClaudeModel
+  const fallbackDisplay =
+    modelOptions.find((m) => m.id === fallbackModel)?.displayName || fallbackModel
+  const defaultLabel = fallbackDisplay
+    ? `(Default — settings: ${fallbackDisplay})`
+    : '(Default — let CLI choose)'
+
+  // Auto-open when the user has typed a model override OR picked a non-
+  // claude agent — so a state that's already non-default isn't hidden
+  // behind a collapsed header. Plain `useState` here makes the open flag
+  // sticky once the user expands; collapsing again is always a click.
+  const [openOverride, setOpenOverride] = useState(false)
+  const hasNonDefault = (!locked && agentKind !== 'claude') || model.trim().length > 0
+  const open = openOverride || hasNonDefault
+
+  const handleAgentChange = (next: 'claude' | 'codex'): void => {
+    // Reset the model when switching agents — otherwise a stale Claude
+    // model id would be sent as Codex's --model flag (or vice versa).
+    if (next !== agentKind) setModel('')
+    setAgentKind(next)
+  }
+
+  const modelDisplay = modelOptions.find((m) => m.id === model)?.displayName || model
+
+  return (
+    <div className="mt-5">
+      <button
+        type="button"
+        onClick={() => setOpenOverride((v) => !v)}
+        className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-dim hover:text-fg transition-colors cursor-pointer"
+      >
+        {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        Advanced
+        {!open && hasNonDefault && (
+          <span className="ml-1 normal-case font-normal tracking-normal text-faint">
+            ({effectiveAgent === 'codex' ? 'Codex' : 'Claude'}
+            {model.trim() ? ` · ${modelDisplay}` : ''})
+          </span>
+        )}
+      </button>
+      {open && (
+        <div className="flex items-center gap-3 mt-3">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-dim">
+              Agent
+            </span>
+            <select
+              value={effectiveAgent}
+              onChange={(e) => handleAgentChange(e.target.value === 'codex' ? 'codex' : 'claude')}
+              disabled={disabled || locked}
+              title={locked ? 'Teleport sessions require Claude' : undefined}
+              className="bg-app border border-border-strong rounded px-2 py-1 text-xs text-fg-bright outline-none focus:border-accent disabled:opacity-50 cursor-pointer"
+            >
+              <option value="claude">Claude</option>
+              <option value="codex">Codex</option>
+            </select>
+          </div>
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-dim shrink-0">
+              Model
+            </span>
+            <select
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              disabled={disabled}
+              className="flex-1 min-w-0 bg-app border border-border-strong rounded px-2 py-1 text-xs text-fg-bright outline-none focus:border-accent disabled:opacity-50 cursor-pointer"
+            >
+              <option value="">{defaultLabel}</option>
+              <optgroup label="Current">
+                {modelOptions.filter((m) => m.tier === 'current').map((m) => (
+                  <option key={m.id} value={m.id}>{m.displayName}</option>
+                ))}
+              </optgroup>
+              <optgroup label="Legacy">
+                {modelOptions.filter((m) => m.tier === 'legacy').map((m) => (
+                  <option key={m.id} value={m.id}>{m.displayName}</option>
+                ))}
+              </optgroup>
+            </select>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

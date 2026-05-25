@@ -28,6 +28,9 @@ export interface PersistedTab {
   command?: string
   /** For shell tabs: cwd (absolute or relative to worktree root). */
   cwd?: string
+  /** For agent + json-claude tabs: per-tab model pin. Wins over the
+   *  global claudeModel/codexModel setting at spawn time. */
+  model?: string
 }
 
 export interface PersistedPane {

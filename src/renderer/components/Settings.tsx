@@ -190,6 +190,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     harnessSystemPromptEnabled,
     harnessSystemPrompt,
     harnessSystemPromptMain,
+    prReviewPrompt,
     claudeTuiFullscreen,
     browserToolsEnabled,
     browserToolsMode,
@@ -252,6 +253,10 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
   const [systemPromptMainDraft, setSystemPromptMainDraft] = useState<string>(harnessSystemPromptMain)
   useEffect(() => { setSystemPromptMainDraft(harnessSystemPromptMain) }, [harnessSystemPromptMain])
   const [systemPromptSaveResult, setSystemPromptSaveResult] = useState<{ ok: boolean; message: string } | null>(null)
+
+  const [prReviewPromptDraft, setPrReviewPromptDraft] = useState<string>(prReviewPrompt)
+  useEffect(() => { setPrReviewPromptDraft(prReviewPrompt) }, [prReviewPrompt])
+  const [prReviewPromptSaveResult, setPrReviewPromptSaveResult] = useState<{ ok: boolean; message: string } | null>(null)
 
   const [defaultTerminalFontFamily, setDefaultTerminalFontFamily] = useState<string>('')
   const [availableEditors, setAvailableEditors] = useState<{ id: string; name: string }[]>([])
@@ -665,6 +670,18 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     await backend.setHarnessSystemPromptMain('')
     setSystemPromptSaveResult({ ok: true, message: 'Reset to defaults' })
     setTimeout(() => setSystemPromptSaveResult(null), 2000)
+  }, [])
+
+  const handleSavePrReviewPrompt = useCallback(async () => {
+    await backend.setPrReviewPrompt(prReviewPromptDraft)
+    setPrReviewPromptSaveResult({ ok: true, message: 'Saved' })
+    setTimeout(() => setPrReviewPromptSaveResult(null), 2000)
+  }, [prReviewPromptDraft])
+
+  const handleResetPrReviewPrompt = useCallback(async () => {
+    await backend.setPrReviewPrompt('')
+    setPrReviewPromptSaveResult({ ok: true, message: 'Reset to default' })
+    setTimeout(() => setPrReviewPromptSaveResult(null), 2000)
   }, [])
 
   const effectiveClaudeCommand = claudeCommandDraft.trim() || defaultClaudeCommand
@@ -1867,6 +1884,41 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                       Share settings.local.json across worktrees
                     </span>
                   </label>
+
+                  <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">PR review prompt</h3>
+                  <p className="text-xs text-dim mb-3">
+                    Default kickoff prompt sent to Claude when you open a PR as a worktree (or when the MCP{' '}
+                    <code className="bg-panel-raised px-1 rounded text-[10px]">create_worktree</code> tool is invoked
+                    with <code className="bg-panel-raised px-1 rounded text-[10px]">prNumber</code> and no explicit
+                    prompt). You can edit the prompt per-PR from the New Worktree screen.
+                  </p>
+                  <textarea
+                    value={prReviewPromptDraft}
+                    onChange={(e) => setPrReviewPromptDraft(e.target.value)}
+                    rows={5}
+                    spellCheck={false}
+                    className="w-full bg-panel border border-border-strong rounded px-3 py-2 text-xs text-fg-bright placeholder-faint outline-none focus:border-fg font-mono resize-y"
+                  />
+                  <div className="flex items-center gap-2 mt-3">
+                    <button
+                      onClick={handleSavePrReviewPrompt}
+                      className="px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={handleResetPrReviewPrompt}
+                      className="flex items-center gap-1 px-3 py-1.5 text-sm text-dim hover:text-fg transition-colors cursor-pointer"
+                    >
+                      <RotateCcw size={12} />
+                      Reset to default
+                    </button>
+                  </div>
+                  {prReviewPromptSaveResult && (
+                    <div className={`mt-3 text-xs flex items-center gap-1.5 ${prReviewPromptSaveResult.ok ? 'text-success' : 'text-danger'}`}>
+                      {prReviewPromptSaveResult.ok ? <Check size={12} /> : <X size={12} />}{prReviewPromptSaveResult.message}
+                    </div>
+                  )}
                 </>
               )}
 
