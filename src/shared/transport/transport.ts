@@ -56,6 +56,14 @@ export type SignalHandler = (ctx: ConnectionContext, ...args: any[]) => void
 export type ClientSignalHandler = (...args: any[]) => void
 export type StateEventListener = (event: StateEvent, seq: number) => void
 
+/** Fires after each successful (re)connect with the server-assigned
+ *  clientId for the new socket. WS reconnects mint a fresh UUID per
+ *  connection, so subscribers (notably the renderer's per-backend
+ *  ClientStore) must refresh any cached clientId on every fire. The
+ *  first connect is also delivered through this callback — there's no
+ *  separate "first connect" path. */
+export type ReconnectListener = (clientId: string) => void
+
 /** Plain-object ClientTransport shape, exposed by the preload (and
  *  the web-client shim) for the local backend. The renderer's
  *  BackendsRegistry treats this as one of N transports and wires it
@@ -72,6 +80,7 @@ export interface LocalTransportHandle {
   send(name: string, ...args: unknown[]): void
   onSignal(name: string, handler: ClientSignalHandler): () => void
   getClientId(): Promise<string>
+  onReconnect(cb: ReconnectListener): () => void
 }
 
 /** Electron-only helpers exposed by the preload that genuinely can't
@@ -131,4 +140,10 @@ export interface ClientTransport {
   /** The server-assigned identity for this client. Stable for the
    *  connection's lifetime; reassigned (new UUID) after a reconnect. */
   getClientId(): Promise<string>
+
+  /** Fires after each successful (re)connect with the fresh server-side
+   *  clientId. For transports that don't reconnect (Electron IPC) this
+   *  may be a no-op — the local clientId is stable for the renderer's
+   *  lifetime, so subscribers can also read it via `getClientId()`. */
+  onReconnect(cb: ReconnectListener): () => void
 }

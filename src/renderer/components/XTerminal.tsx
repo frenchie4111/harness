@@ -6,7 +6,7 @@ import { ProgressAddon } from '@xterm/addon-progress'
 import { SearchAddon } from '@xterm/addon-search'
 import '@xterm/xterm/css/xterm.css'
 import type { StateEvent } from '../../shared/state'
-import { getClientId, useTerminalSession } from '../store'
+import { getClientId, subscribeActiveTransportReconnect, useTerminalSession } from '../store'
 import { getBackend, useBackend } from '../backend'
 import { Eye, X } from 'lucide-react'
 
@@ -601,6 +601,17 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
   useEffect(() => {
     backend.joinTerminal(terminalId)
   }, [terminalId])
+
+  // Re-fire terminal:join after a WS reconnect. The server cleared the
+  // session's controllerClientId when the old socket closed, and the
+  // renderer just got a fresh server-side clientId — without a re-join
+  // the session entry stays orphaned and pty:write is silently dropped
+  // by main's "controllerClientId !== ctx.clientId" gate.
+  useEffect(() => {
+    return subscribeActiveTransportReconnect(() => {
+      backend.joinTerminal(terminalId)
+    })
+  }, [terminalId, backend])
 
   // Re-apply the xterm theme when the app theme changes. theme-apply.ts
   // mutates `data-theme` and inline `style` on :root; observe both so we

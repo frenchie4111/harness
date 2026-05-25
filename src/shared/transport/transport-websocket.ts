@@ -25,6 +25,7 @@ import type { StateEvent, StateSnapshot } from '../state'
 import type {
   ClientSignalHandler,
   ClientTransport,
+  ReconnectListener,
   StateEventListener
 } from './transport'
 
@@ -65,6 +66,7 @@ export class WebSocketClientTransport implements ClientTransport {
   private readonly pending = new Map<string, PendingRequest>()
   private readonly eventListeners = new Set<StateEventListener>()
   private readonly signalListeners = new Map<string, Set<ClientSignalHandler>>()
+  private readonly reconnectListeners = new Set<ReconnectListener>()
   private connectPromise: Promise<void> | null = null
   private closed = false
   private backoffMs: number
@@ -141,6 +143,13 @@ export class WebSocketClientTransport implements ClientTransport {
     return id as string
   }
 
+  onReconnect(cb: ReconnectListener): () => void {
+    this.reconnectListeners.add(cb)
+    return () => {
+      this.reconnectListeners.delete(cb)
+    }
+  }
+
   private openSocket(): Promise<void> {
     return new Promise((resolve, reject) => {
       const url = new URL(this.opts.url)
@@ -161,6 +170,23 @@ export class WebSocketClientTransport implements ClientTransport {
         this.sendSnapshotRequest()
           .then((snap) => {
             this.opts.onSnapshot?.(snap)
+          })
+          .catch(() => {
+            // handled when the socket errors out
+          })
+        // The server mints a new UUID per WebSocket, so the renderer's
+        // cached clientId is stale after every reconnect. Re-fetch and
+        // notify subscribers so they can refresh their mirror's id and
+        // re-fire join-on-mount side effects (terminal:join etc.).
+        this.request('transport:getClientId')
+          .then((id) => {
+            for (const l of this.reconnectListeners) {
+              try {
+                l(id as string)
+              } catch {
+                // swallow — a flaky listener mustn't kill the socket
+              }
+            }
           })
           .catch(() => {
             // handled when the socket errors out
