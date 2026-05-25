@@ -16,8 +16,8 @@ export function QuestCard({ step, onDismiss, onFinish }: QuestCardProps): JSX.El
       return {
         icon: <Zap size={16} className="text-accent" />,
         eyebrow: 'Step 1 of 2',
-        title: 'One agent running. Don\u2019t wait \u2014 spawn another.',
-        body: 'The whole point of Harness is that you don\u2019t have to sit and watch. While this one works, fork a second worktree and give it a different task.',
+        title: 'One agent running. Don’t wait — spawn another.',
+        body: 'The whole point of Harness is that you don’t have to sit and watch. While this one works, fork a second worktree and give it a different task.',
         hint: (
           <>
             Hit <HotkeyBadge action="newWorktree" variant="strong" /> or use the sidebar to create another.
@@ -44,7 +44,7 @@ export function QuestCard({ step, onDismiss, onFinish }: QuestCardProps): JSX.El
       icon: <PartyPopper size={16} className="text-accent" />,
       eyebrow: 'Harnessed up',
       title: 'You just ran two agents in parallel.',
-      body: 'Do it with ten next time. Harness is happiest when it has a lot to juggle \u2014 the status dots keep you honest so nothing slips.',
+      body: 'Do it with ten next time. Harness is happiest when it has a lot to juggle — the status dots keep you honest so nothing slips.',
       hint: null
     }
   })()

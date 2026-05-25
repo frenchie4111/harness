@@ -26,6 +26,7 @@ import { WeeklyWrappedScreen } from './components/WeeklyWrappedScreen'
 import { Guide } from './components/Guide'
 import { AGENT_REGISTRY } from '../shared/agent-registry'
 import { AgentIcon } from './components/AgentIcon'
+import { InterfaceToggle } from './components/InterfaceToggle'
 import { Activity } from './components/Activity'
 import { Cleanup } from './components/Cleanup'
 import { CommandCenter } from './components/CommandCenter'
@@ -234,6 +235,11 @@ function DesktopApp(): JSX.Element {
   const [showNewProject, setShowNewProject] = useState(false)
   const [reportIssueState, setReportIssueState] = useState<OpenReportIssueDetail | null>(null)
   const [showAddBackend, setShowAddBackend] = useState(false)
+  // Dev-only: forces the welcome / onboarding form to render even when
+  // the user already has repos added, so the layout can be inspected
+  // without wiping `userData/config.json`. Toggled from Help → Debug:
+  // Preview Onboarding (gated `!app.isPackaged`).
+  const [previewOnboarding, setPreviewOnboarding] = useState(false)
   const [crashedTabIds, setCrashedTabIds] = useState<ReadonlySet<string>>(() => new Set())
   // `theme` and `defaultAgent` are both seeded at init, so we track
   // explicit confirmation separately for the onboarding step checkmarks.
@@ -384,6 +390,16 @@ const setQuestStep = useCallback((next: QuestStep) => {
       })
     })
   }, [activeWorktreeId, panes, activePaneId])
+
+  // Debug: Preview Onboarding (dev-only Help menu entry). Toggles a
+  // renderer-local override that forces the welcome / onboarding form
+  // to render regardless of repo count — handy for inspecting the
+  // layout without wiping userData.
+  useEffect(() => {
+    return backend.onDebugPreviewOnboarding(() => {
+      setPreviewOnboarding((v) => !v)
+    })
+  }, [])
 
   // Trigger a full PR refresh in main. Used by the sidebar refresh button
   // and after worktree creation/removal.
@@ -732,7 +748,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
     ) : null
 
 
-  if (repoRoots.length === 0) {
+  if (repoRoots.length === 0 || previewOnboarding) {
     const step1Complete = themeChosen
     const step2Complete = agentChosen
     const step3Complete = hooksConsent !== 'pending'
@@ -747,6 +763,19 @@ const setQuestStep = useCallback((next: QuestStep) => {
       <HotkeysProvider bindings={resolvedHotkeys}>
       <div className="flex h-full flex-col">
         <div className="drag-region h-10 shrink-0" />
+        {previewOnboarding && repoRoots.length > 0 && (
+          <div className="shrink-0 px-4 py-1.5 bg-warning/10 border-b border-warning/30 text-xs text-fg-bright flex items-center justify-between gap-3">
+            <span>
+              <strong className="font-semibold">Preview mode</strong> — viewing onboarding with {repoRoots.length} repo{repoRoots.length === 1 ? '' : 's'} already added.
+            </span>
+            <button
+              onClick={() => setPreviewOnboarding(false)}
+              className="px-2 py-0.5 rounded bg-panel border border-border hover:border-border-strong cursor-pointer"
+            >
+              Exit preview
+            </button>
+          </div>
+        )}
         <div className="flex-1 overflow-y-auto">
           <div className="mx-auto max-w-xl w-full px-6 py-6">
             <div className="text-center mb-6">
@@ -919,6 +948,18 @@ const setQuestStep = useCallback((next: QuestStep) => {
                     </button>
                   ))}
                 </div>
+                {agentChosen && defaultAgent === 'claude' && (
+                  <div className="ml-8 mt-4 pl-4 border-l-2 border-border">
+                    <div className="text-xs text-dim mb-2">
+                      Which interface should new Claude tabs use?
+                    </div>
+                    <InterfaceToggle
+                      value={settings.defaultClaudeTabType}
+                      onChange={(value) => { void backend.setDefaultClaudeTabType(value) }}
+                      size="compact"
+                    />
+                  </div>
+                )}
               </div>
 
               <div
@@ -1268,15 +1309,9 @@ const setQuestStep = useCallback((next: QuestStep) => {
                   defaultAgent={defaultAgent ?? 'claude'}
                   onAddAgentTab={(wt, kind, paneId) => handleAddAgentTab(wt, kind ?? defaultAgent ?? 'claude', paneId)}
                   onAddBrowserTab={handleAddBrowserTab}
-                  onAddJsonClaudeTab={
-                    settings.jsonModeClaudeTabs ? handleAddJsonClaudeTab : undefined
-                  }
-                  onConvertTabType={
-                    settings.jsonModeClaudeTabs ? handleConvertTabType : undefined
-                  }
-                  defaultClaudeTabType={
-                    settings.jsonModeClaudeTabs ? settings.defaultClaudeTabType : undefined
-                  }
+                  onAddJsonClaudeTab={handleAddJsonClaudeTab}
+                  onConvertTabType={handleConvertTabType}
+                  defaultClaudeTabType={settings.defaultClaudeTabType}
                   onSleepTab={handleSleepTab}
                   onCloseTab={handleCloseTab}
                   onRestartAgentTab={handleRestartAgentTab}

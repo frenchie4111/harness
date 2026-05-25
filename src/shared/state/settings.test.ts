@@ -355,18 +355,18 @@ describe('settingsReducer', () => {
     expect(full.browserToolsMode).toBe('full')
   })
 
-  it('jsonModeClaudeTabsChanged toggles the experimental tab type', () => {
-    expect(initialSettings.jsonModeClaudeTabs).toBe(false)
+  it('chatPromotionDismissedChanged toggles the flag', () => {
+    expect(initialSettings.chatPromotionDismissed).toBe(false)
     const on = apply(initialSettings, {
-      type: 'settings/jsonModeClaudeTabsChanged',
+      type: 'settings/chatPromotionDismissedChanged',
       payload: true
     })
-    expect(on.jsonModeClaudeTabs).toBe(true)
+    expect(on.chatPromotionDismissed).toBe(true)
     const off = apply(on, {
-      type: 'settings/jsonModeClaudeTabsChanged',
+      type: 'settings/chatPromotionDismissedChanged',
       payload: false
     })
-    expect(off.jsonModeClaudeTabs).toBe(false)
+    expect(off.chatPromotionDismissed).toBe(false)
   })
 
   it('defaultClaudeTabTypeChanged switches between xterm and json', () => {
@@ -445,8 +445,7 @@ describe('settingsReducer', () => {
     expect(initialSettings.jsonModeDefaultPermissionMode).toBe('acceptEdits')
     const start: SettingsState = {
       ...initialSettings,
-      claudeCommand: 'pre-existing',
-      jsonModeClaudeTabs: true
+      claudeCommand: 'pre-existing'
     }
     const planned = apply(start, {
       type: 'settings/jsonModeDefaultPermissionModeChanged',
@@ -454,7 +453,6 @@ describe('settingsReducer', () => {
     })
     expect(planned.jsonModeDefaultPermissionMode).toBe('plan')
     expect(planned.claudeCommand).toBe('pre-existing')
-    expect(planned.jsonModeClaudeTabs).toBe(true)
     const back = apply(planned, {
       type: 'settings/jsonModeDefaultPermissionModeChanged',
       payload: 'default'

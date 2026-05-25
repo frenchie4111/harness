@@ -46,7 +46,6 @@ export function MobileApp(): JSX.Element {
   const panes = usePanes()
   const terminals = useTerminals()
   const prs = usePrs()
-  const settings = useSettings()
   const snoozeState = useSnooze()
   const snoozedPaths = useMemo(() => {
     const m: Record<string, true> = {}
@@ -157,7 +156,7 @@ export function MobileApp(): JSX.Element {
         pickerOpen={pickerOpen}
         onTogglePicker={() => setPickerOpen((v) => !v)}
         onSelectTab={handleSelectTab}
-        onConvertTabType={settings.jsonModeClaudeTabs ? handleConvertTabType : undefined}
+        onConvertTabType={handleConvertTabType}
         rightPanelOpen={rightPanelOpen}
         onToggleRightPanel={activeWorktree ? () => setRightPanelOpen((v) => !v) : undefined}
       />
@@ -253,8 +252,7 @@ interface HeaderProps {
   pickerOpen: boolean
   onTogglePicker: () => void
   onSelectTab: (tabId: string) => void
-  /** Optional convert callback. Defined only when JSON-mode is on; if
-   *  set, tapping the *active* tab opens a swap menu. */
+  /** Tap the active tab to open a Terminal/Chat swap menu. */
   onConvertTabType?: (tabId: string, newType: 'agent' | 'json-claude') => void
   rightPanelOpen: boolean
   onToggleRightPanel?: () => void
@@ -333,8 +331,8 @@ interface TabChipProps {
   status: PtyStatus
   shellActivity?: { active: boolean; processName?: string }
   onSelect: () => void
-  /** Optional: when defined, tapping the active tab opens a swap menu
-   *  to convert between xterm Claude and JSON-mode Claude. */
+  /** Tapping the active tab opens a swap menu to convert between
+   *  Terminal and Chat. */
   onConvertTabType?: (newType: 'agent' | 'json-claude') => void
 }
 
@@ -391,7 +389,7 @@ function TabChip({ tab, active, status, shellActivity, onSelect, onConvertTabTyp
                 onConvertTabType('json-claude')
               }}
             >
-              Convert to JSON-mode chat
+              Switch to Chat mode
             </button>
           ) : (
             <button
@@ -402,7 +400,7 @@ function TabChip({ tab, active, status, shellActivity, onSelect, onConvertTabTyp
                 onConvertTabType('agent')
               }}
             >
-              Convert to terminal mode
+              Switch to Terminal mode
             </button>
           )}
         </div>
