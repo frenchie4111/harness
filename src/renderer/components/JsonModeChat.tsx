@@ -858,8 +858,30 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
   const backend = useBackend()
   const session = useJsonClaudeSession(sessionId)
   const { pending, resolve } = useJsonClaudeApprovals(sessionId)
-  const { jsonModeChatDensity: density, defaultClaudeTabType } = useSettings()
+  const {
+    jsonModeChatDensity: density,
+    jsonModeSendOnEnter: sendOnEnter,
+    defaultClaudeTabType
+  } = useSettings()
   const cameFromTerminalDefault = defaultClaudeTabType === 'xterm'
+  const isMac =
+    typeof window !== 'undefined' &&
+    (window.__HARNESS_PLATFORM__
+      ? window.__HARNESS_PLATFORM__ === 'darwin'
+      : /Mac|iPhone|iPad/.test(navigator.platform || ''))
+  const modKeySymbol = isMac ? '⌘' : 'Ctrl+'
+  const modKeyWord = isMac ? 'Cmd' : 'Ctrl'
+  const sendHotkeyLabel = sendOnEnter
+    ? isMac
+      ? '↵'
+      : 'Enter'
+    : isMac
+      ? `${modKeySymbol}↵`
+      : `${modKeySymbol}Enter`
+  const sendHotkeyAria = sendOnEnter ? 'Enter' : `${modKeyWord}+Enter`
+  const composerPlaceholder = sendOnEnter
+    ? 'Message Claude — Enter to send, Shift+Enter for newline'
+    : `Message Claude — ${modKeyWord}+Enter to send`
   const [draft, setDraft] = useState('')
   // Mention/popover state. `dismissed` carries the draft text at which
   // the user pressed Escape — comparing against the live draft is how we
@@ -1820,15 +1842,26 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
                   return
                 }
               }
-              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                e.preventDefault()
-                send()
+              if (e.key === 'Enter') {
+                // IME composition guard — don't send while composing
+                // CJK input.
+                if (e.nativeEvent.isComposing || e.keyCode === 229) return
+                const wantsSend = sendOnEnter
+                  ? !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey
+                  : e.metaKey || e.ctrlKey
+                if (wantsSend) {
+                  e.preventDefault()
+                  send()
+                  return
+                }
+                // sendOnEnter && Shift+Enter → fall through so the
+                // textarea inserts a newline as usual.
               }
             }}
             placeholder={
               mode === 'asleep'
                 ? 'Type to wake this session…'
-                : 'Message Claude — Cmd/Ctrl+Enter to send'
+                : composerPlaceholder
             }
             // text-base (16px) below sm: prevents iOS Safari from zooming
             // the viewport when the textarea takes focus. text-sm on
@@ -1870,9 +1903,12 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
             <button
               onClick={() => send()}
               disabled={!draft.trim() && attachments.length === 0}
+              aria-label={`Send (${sendHotkeyAria})`}
+              title={`Send (${sendHotkeyAria})`}
               className="px-2.5 py-0.5 bg-accent text-white rounded text-xs font-medium disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
             >
-              Send
+              <span>Send</span>
+              <span className="opacity-60 ml-1">{sendHotkeyLabel}</span>
             </button>
           </div>
         </div>
