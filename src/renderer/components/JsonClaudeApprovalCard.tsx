@@ -205,7 +205,7 @@ export function JsonClaudeApprovalCard({
 
       {autoReview?.state === 'pending' && (
         <div
-          className="flex items-center gap-2 px-3 py-1.5 border-b border-danger/20 bg-app/30 text-[11px] text-muted"
+          className="flex items-center gap-2 px-3 py-1.5 border-b border-danger/20 bg-app/30 text-xs text-muted"
           title="An LLM reviewer is checking this tool call. You can still Allow or Deny manually — whichever happens first wins."
         >
           <span
@@ -216,7 +216,7 @@ export function JsonClaudeApprovalCard({
         </div>
       )}
       {autoReview?.state === 'finished' && autoReview.decision === 'ask' && (
-        <div className="px-3 py-1.5 border-b border-danger/20 bg-app/30 text-[11px] text-muted flex items-center gap-2">
+        <div className="px-3 py-1.5 border-b border-danger/20 bg-app/30 text-xs text-muted flex items-center gap-2">
           <div
             className="flex-1 min-w-0"
             title={`The auto-approver deferred to a human: ${autoReview.reason ?? ''}`}
@@ -232,7 +232,7 @@ export function JsonClaudeApprovalCard({
                 setGuidanceSavedAt(null)
                 setMode('edit-guidance')
               }}
-              className="text-[11px] px-2 py-0.5 rounded border border-border/60 bg-panel hover:bg-app/60 transition-colors shrink-0 cursor-pointer"
+              className="text-xs px-2 py-0.5 rounded border border-border/60 bg-panel hover:bg-app/60 transition-colors shrink-0 cursor-pointer"
               title="Edit the steering guidance and optionally re-run the auto-approver on this request"
             >
               Edit guidance
@@ -243,7 +243,7 @@ export function JsonClaudeApprovalCard({
 
       {mode === 'edit-guidance' && (
         <div className="px-3 py-2 space-y-2 bg-app/20 border-b border-danger/20">
-          <div className="text-[11px] text-muted">
+          <div className="text-xs text-muted">
             Project-specific guidance appended to the auto-approver's policy.
             Save to persist for future requests; "Save & re-review" also re-runs
             the reviewer on this request right now.
@@ -253,7 +253,7 @@ export function JsonClaudeApprovalCard({
             onChange={(e) => setGuidanceDraft(e.target.value)}
             placeholder="e.g. Approve npm install. Deny any Bash that touches /etc."
             spellCheck={false}
-            className="w-full bg-panel border border-border rounded p-2 text-[11px] font-mono outline-none focus:border-accent min-h-[80px] resize-y"
+            className="w-full bg-panel border border-border rounded p-2 text-xs font-mono outline-none focus:border-accent min-h-[80px] resize-y"
           />
           <div className="flex items-center gap-1.5 flex-wrap">
             <button
@@ -280,7 +280,7 @@ export function JsonClaudeApprovalCard({
               Cancel
             </button>
             {guidanceSavedAt !== null && (
-              <span className="text-[11px] text-success">Saved</span>
+              <span className="text-xs text-success">Saved</span>
             )}
           </div>
         </div>
@@ -291,18 +291,18 @@ export function JsonClaudeApprovalCard({
           {approval.toolName === 'Bash' &&
           typeof approval.input?.command === 'string' ? (
             <>
-              <pre className="text-[11px] font-mono bg-app/40 rounded p-2 overflow-x-auto max-h-48 whitespace-pre-wrap">
+              <pre className="text-xs font-mono bg-app/40 rounded p-2 overflow-x-auto max-h-48 whitespace-pre-wrap">
                 {String(approval.input.command)}
               </pre>
               {typeof approval.input?.description === 'string' &&
                 approval.input.description.trim() && (
-                  <div className="text-[11px] text-muted italic">
+                  <div className="text-xs text-muted italic">
                     {String(approval.input.description)}
                   </div>
                 )}
             </>
           ) : (
-            <pre className="text-[11px] font-mono bg-app/40 rounded p-2 overflow-x-auto max-h-48 whitespace-pre-wrap">
+            <pre className="text-xs font-mono bg-app/40 rounded p-2 overflow-x-auto max-h-48 whitespace-pre-wrap">
               {tryFormatInput(approval.input)}
             </pre>
           )}
@@ -349,13 +349,13 @@ export function JsonClaudeApprovalCard({
 
       {mode === 'always' && (
         <div className="px-3 py-2 space-y-2">
-          <div className="text-[11px] text-muted">
+          <div className="text-xs text-muted">
             Pick how broadly to allow future matching calls. The rule is
             written to <span className="font-mono">.claude/settings.local.json</span>{' '}
             and applies across sessions in this worktree.
           </div>
           {crossCwd && (
-            <div className="text-[11px] text-amber-400/90 bg-amber-500/10 border border-amber-500/30 rounded px-2 py-1.5">
+            <div className="text-xs text-amber-400/90 bg-amber-500/10 border border-amber-500/30 rounded px-2 py-1.5">
               This file is outside the worktree. Claude only persists
               path-specific rules relative to the project root, so the
               only option that will actually fire is allowing every{' '}
@@ -368,7 +368,7 @@ export function JsonClaudeApprovalCard({
             {suggestions.map((s) => (
               <label
                 key={s.label}
-                className="flex items-center gap-2 px-2 py-1 rounded hover:bg-app/40 cursor-pointer text-[11px]"
+                className="flex items-center gap-2 px-2 py-1 rounded hover:bg-app/40 cursor-pointer text-xs"
               >
                 <input
                   type="radio"
@@ -381,7 +381,7 @@ export function JsonClaudeApprovalCard({
                   {s.label}
                 </span>
                 <span
-                  className={`shrink-0 text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border ${scopeChipClasses(s.scope)}`}
+                  className={`shrink-0 text-xs uppercase tracking-wide px-1.5 py-0.5 rounded border ${scopeChipClasses(s.scope)}`}
                 >
                   {s.scope}
                 </span>
@@ -408,7 +408,7 @@ export function JsonClaudeApprovalCard({
 
       {mode === 'edit' && (
         <div className="px-3 py-2 space-y-2">
-          <div className="text-[11px] text-muted">
+          <div className="text-xs text-muted">
             Edit the tool input JSON before running.
           </div>
           <textarea
@@ -418,11 +418,11 @@ export function JsonClaudeApprovalCard({
               setEditedInput(e.target.value)
               if (editError) setEditError(null)
             }}
-            className="w-full bg-app/40 border border-border rounded p-2 text-[11px] font-mono outline-none focus:border-accent min-h-[120px]"
+            className="w-full bg-app/40 border border-border rounded p-2 text-xs font-mono outline-none focus:border-accent min-h-[120px]"
             spellCheck={false}
           />
           {editError && (
-            <div className="text-[11px] text-danger">Invalid JSON: {editError}</div>
+            <div className="text-xs text-danger">Invalid JSON: {editError}</div>
           )}
           <div className="flex items-center gap-1.5">
             <button
@@ -449,7 +449,7 @@ export function JsonClaudeApprovalCard({
             placeholder="Reason shown to Claude (optional)"
             className="w-full bg-app/40 border border-border rounded p-2 text-xs outline-none focus:border-danger min-h-[60px] resize-none"
           />
-          <label className="flex items-center gap-1.5 text-[11px] text-muted cursor-pointer select-none">
+          <label className="flex items-center gap-1.5 text-xs text-muted cursor-pointer select-none">
             <input
               type="checkbox"
               checked={interrupt}

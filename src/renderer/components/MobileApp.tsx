@@ -273,7 +273,7 @@ function Header({ worktree, tabs, selectedTabId, statuses, shellActivity, picker
         {worktree ? (
           <>
             <span className="min-w-0 flex flex-col leading-tight">
-              <span className="text-[10px] uppercase tracking-wider text-dim truncate">{repoLabel}</span>
+              <span className="text-xs uppercase tracking-wider text-dim truncate">{repoLabel}</span>
               <span className="text-xs font-medium text-fg-bright truncate">
                 {worktree.branch || worktree.path.split('/').pop()}
               </span>
@@ -492,7 +492,7 @@ function WorktreePickerSheet({ worktrees, prStatuses, mergedPaths, snoozedPaths,
         )}
         {groups.map((group) => (
           <section key={group.key}>
-            <h2 className="sticky top-0 z-10 px-4 py-1.5 text-[10px] uppercase tracking-wider text-dim font-semibold bg-app/95 backdrop-blur border-b border-border">
+            <h2 className="sticky top-0 z-10 px-4 py-1.5 text-xs uppercase tracking-wider text-dim font-semibold bg-app/95 backdrop-blur border-b border-border">
               {group.label}
             </h2>
             <ul className="divide-y divide-border">
@@ -516,7 +516,7 @@ function WorktreePickerSheet({ worktrees, prStatuses, mergedPaths, snoozedPaths,
                             {wt.branch || wt.path.split('/').pop()}
                           </span>
                           {wt.isMain && (
-                            <span className="text-[10px] uppercase tracking-wider text-dim">main</span>
+                            <span className="text-xs uppercase tracking-wider text-dim">main</span>
                           )}
                         </div>
                         <div className="flex items-center gap-2 mt-0.5 text-xs text-dim">

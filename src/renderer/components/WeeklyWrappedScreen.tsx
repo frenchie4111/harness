@@ -70,7 +70,7 @@ export function WeeklyWrappedScreen({ onClose }: WeeklyWrappedScreenProps): JSX.
         >
           <ArrowLeft size={14} />
           Back
-          <kbd className="text-[10px] text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono">ESC</kbd>
+          <kbd className="text-xs text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono">ESC</kbd>
         </button>
         <span className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 text-sm font-medium text-fg pointer-events-none">
           My week
@@ -103,7 +103,7 @@ function WrappedPoster({ stats }: { stats: WeeklyStats }): JSX.Element {
     return (
       <div className="max-w-md text-center">
         <img src={iconUrl} alt="Harness" className="w-14 h-14 mx-auto rounded-2xl brand-glow-amber mb-6" />
-        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-dim mb-2">
+        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-dim mb-2">
           Your week · {formatRange(stats.since, stats.until)}
         </div>
         <p className="text-fg-bright text-2xl font-bold mt-2">A quiet week.</p>
@@ -120,7 +120,7 @@ function WrappedPoster({ stats }: { stats: WeeklyStats }): JSX.Element {
       <div className="flex items-center gap-3">
         <img src={iconUrl} alt="Harness" className="w-9 h-9 rounded-xl brand-glow-amber shrink-0" />
         <div className="flex-1 min-w-0">
-          <div className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.18em] text-dim">
+          <div className="text-xs sm:text-xs font-semibold uppercase tracking-[0.18em] text-dim">
             Your week
           </div>
           <div className="text-sm text-fg-bright font-medium truncate">
@@ -166,7 +166,7 @@ function WrappedPoster({ stats }: { stats: WeeklyStats }): JSX.Element {
         {/* Sparkline + patterns */}
         <div className="rounded-2xl border border-border bg-panel/70 p-4 flex flex-col gap-3">
           <div>
-            <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-dim">
+            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-dim">
               Daily rhythm
             </div>
             <Sparkline values={stats.dailyMinutes} />
@@ -185,7 +185,7 @@ function WrappedPoster({ stats }: { stats: WeeklyStats }): JSX.Element {
 
         {/* Top worktrees — span 2 on desktop */}
         <div className="rounded-2xl border border-border bg-panel/70 p-4 sm:col-span-2">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-dim mb-2">
+          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-dim mb-2">
             Where the week went
           </div>
           {stats.topWorktrees.length === 0 ? (
@@ -204,7 +204,7 @@ function WrappedPoster({ stats }: { stats: WeeklyStats }): JSX.Element {
                         {wt.branch}
                       </div>
                       {wt.repoLabel && (
-                        <div className="text-[10px] text-dim truncate">{wt.repoLabel}</div>
+                        <div className="text-xs text-dim truncate">{wt.repoLabel}</div>
                       )}
                     </div>
                     <div className="text-sm font-bold text-fg-bright tabular-nums shrink-0">
@@ -220,7 +220,7 @@ function WrappedPoster({ stats }: { stats: WeeklyStats }): JSX.Element {
 
       {/* Closing */}
       <div className="text-center">
-        <div className="inline-flex items-center gap-1.5 text-[11px] text-dim">
+        <div className="inline-flex items-center gap-1.5 text-xs text-dim">
           <Sparkles size={11} className="text-amber-400/70" />
           <span>
             See you next week <span className="text-faint">– https://harness.mikelyons.org/</span>
@@ -259,7 +259,7 @@ function HeroTile({ icon: Icon, value, label, caption, primary, accent }: HeroTi
         {value}
       </div>
       <div className="text-xs sm:text-sm font-semibold text-fg truncate">{label}</div>
-      <div className="text-[10px] sm:text-[11px] text-dim truncate">{caption}</div>
+      <div className="text-xs sm:text-xs text-dim truncate">{caption}</div>
     </div>
   )
 }
@@ -267,7 +267,7 @@ function HeroTile({ icon: Icon, value, label, caption, primary, accent }: HeroTi
 function MiniStat({ caption, value }: { caption: string; value: string }): JSX.Element {
   return (
     <div className="min-w-0">
-      <div className="text-[9px] font-semibold uppercase tracking-[0.14em] text-dim">{caption}</div>
+      <div className="text-xs font-semibold uppercase tracking-[0.14em] text-dim">{caption}</div>
       <div className="text-base font-bold text-fg-bright truncate">{value}</div>
     </div>
   )
@@ -297,7 +297,7 @@ function Sparkline({ values }: { values: number[] }): JSX.Element {
               style={{ height: `${pct}%` }}
               title={`${v} min`}
             />
-            <div className={'text-[8px] font-medium ' + (isToday ? 'text-amber-300' : 'text-dim')}>
+            <div className={'text-xs font-medium ' + (isToday ? 'text-amber-300' : 'text-dim')}>
               {dowLabels[dayIdx]}
             </div>
           </div>

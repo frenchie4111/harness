@@ -179,7 +179,7 @@ function FileDiffView({
         )}
       </div>
       {readOnlyBanner && (
-        <div className="shrink-0 border-b border-border bg-info/10 px-4 py-1.5 text-[11px] text-info">
+        <div className="shrink-0 border-b border-border bg-info/10 px-4 py-1.5 text-xs text-info">
           {readOnlyBanner}
         </div>
       )}
@@ -379,7 +379,7 @@ function CommitHeader({ commit }: { commit: CommitDiff }): JSX.Element {
   return (
     <div className="border-b border-border bg-panel px-5 py-4">
       <div className="flex items-center gap-2 mb-2">
-        <span className="font-mono text-[11px] text-info bg-info/10 px-2 py-0.5 rounded">
+        <span className="font-mono text-xs text-info bg-info/10 px-2 py-0.5 rounded">
           {commit.shortHash}
         </span>
         <span className="text-xs text-faint">{formatted}</span>

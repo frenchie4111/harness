@@ -124,7 +124,7 @@ function BackendChip({ connection, isActive, onSelect, onRemove }: BackendChipPr
             style={connection.color ? { backgroundColor: connection.color } : undefined}
           >
             {connection.initials ? (
-              <span className="text-[11px] font-semibold uppercase">
+              <span className="text-xs font-semibold uppercase">
                 {connection.initials.slice(0, 2)}
               </span>
             ) : (

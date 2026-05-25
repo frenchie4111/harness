@@ -164,12 +164,12 @@ export function AddBackendModal({ isOpen, onClose }: AddBackendModalProps): JSX.
           <p className="text-xs text-dim leading-relaxed">
             Paste the connection link the host machine shows under{' '}
             <span className="text-fg">Settings → Server</span>, or the URL{' '}
-            <code className="bg-app/40 px-1 rounded text-[11px]">harness-server</code>{' '}
+            <code className="bg-app/40 px-1 rounded text-xs">harness-server</code>{' '}
             prints on startup.
           </p>
 
           <div className="space-y-1.5">
-            <label className="text-[11px] font-medium text-dim uppercase tracking-wider">
+            <label className="text-xs font-medium text-dim uppercase tracking-wider">
               Connection URL
             </label>
             <textarea
@@ -183,12 +183,12 @@ export function AddBackendModal({ isOpen, onClose }: AddBackendModalProps): JSX.
               className="w-full bg-app/40 border border-border rounded px-2.5 py-1.5 text-xs font-mono text-fg-bright placeholder:text-faint focus:outline-none focus:border-accent disabled:opacity-50 resize-none"
             />
             {parseResult && !parseResult.ok && urlInput.trim() && (
-              <div className="text-[11px] text-warning">{parseResult.error}</div>
+              <div className="text-xs text-warning">{parseResult.error}</div>
             )}
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-[11px] font-medium text-dim uppercase tracking-wider">
+            <label className="text-xs font-medium text-dim uppercase tracking-wider">
               Label (optional)
             </label>
             <input
@@ -204,7 +204,7 @@ export function AddBackendModal({ isOpen, onClose }: AddBackendModalProps): JSX.
           </div>
 
           {error && (
-            <div className="text-[11px] text-danger bg-danger/10 border border-danger/30 rounded px-2.5 py-2">
+            <div className="text-xs text-danger bg-danger/10 border border-danger/30 rounded px-2.5 py-2">
               {error}
             </div>
           )}

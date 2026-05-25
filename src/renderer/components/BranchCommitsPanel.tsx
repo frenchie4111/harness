@@ -29,7 +29,7 @@ export function BranchCommitsPanel({ worktreePath, onOpenCommitReview }: BranchC
   const actions = (
     <>
       {commits.length > 0 && (
-        <span className="text-[10px] text-faint">{commits.length}</span>
+        <span className="text-xs text-faint">{commits.length}</span>
       )}
       <Tooltip label="Refresh">
         <button
@@ -77,7 +77,7 @@ export function BranchCommitsPanel({ worktreePath, onOpenCommitReview }: BranchC
                   />
                   <div className={`relative z-10 self-center w-2 h-2 rounded-full transition-colors ${dotClass}`} />
                 </div>
-                <span className={`shrink-0 font-mono text-[10px] ${c.pushed ? 'text-faint' : 'text-warning'}`}>{c.shortHash}</span>
+                <span className={`shrink-0 font-mono text-xs ${c.pushed ? 'text-faint' : 'text-warning'}`}>{c.shortHash}</span>
                 <span className={`truncate min-w-0 flex-1 ${c.pushed ? 'text-dim' : 'text-fg'}`}>{c.subject}</span>
                 {!c.pushed && (
                   <ArrowUp size={10} className="shrink-0 text-warning" />

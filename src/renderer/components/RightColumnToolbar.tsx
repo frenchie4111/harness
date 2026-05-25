@@ -90,7 +90,7 @@ export function RightColumnToolbar({
             className="absolute right-0 top-9 z-50 min-w-[220px] rounded border border-border bg-panel-raised shadow-lg py-1"
             role="menu"
           >
-            <div className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-faint font-medium">
+            <div className="px-3 py-1.5 text-xs uppercase tracking-wide text-faint font-medium">
               Panels
             </div>
             {order.map((key, index) => {

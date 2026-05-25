@@ -59,7 +59,7 @@ export function ReviewSummaryBar({
           )}
         </div>
 
-        <div className="flex items-center gap-2 text-[11px] text-faint">
+        <div className="flex items-center gap-2 text-xs text-faint">
           <span>{fileCount} file{fileCount !== 1 ? 's' : ''}</span>
           <span className="text-border">·</span>
           {additions > 0 && <span className="text-success">+{additions}</span>}
@@ -68,7 +68,7 @@ export function ReviewSummaryBar({
 
         <div className="flex-1" />
 
-        <div className="flex items-center gap-1.5 text-[11px] no-drag">
+        <div className="flex items-center gap-1.5 text-xs no-drag">
           {allReviewed ? (
             <span className="flex items-center gap-1 text-success font-medium">
               <Check size={12} strokeWidth={2.5} />

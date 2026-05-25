@@ -70,7 +70,7 @@ export function MobileRightPanel({
           />
           <BranchCommitsPanel worktreePath={activeWorktree.path} />
           <CostPanel worktreePath={activeWorktree.path} />
-          <div className="px-4 py-3 text-[11px] text-dim">
+          <div className="px-4 py-3 text-xs text-dim">
             File diffs and commit review open only on desktop for now.
           </div>
         </>

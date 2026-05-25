@@ -1123,7 +1123,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
         >
           <ArrowLeft size={14} />
           Back
-          <kbd className="text-[10px] text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono">ESC</kbd>
+          <kbd className="text-xs text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono">ESC</kbd>
         </button>
         <span className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 text-sm font-medium text-fg pointer-events-none">
           Settings
@@ -1528,7 +1528,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               <div ref={(el) => { subSectionRefs.current['agent-claude'] = el }} id="agent-claude" className="mt-8">
               <h3 className="text-sm font-semibold text-fg-bright mb-3 flex items-center gap-2">
                 Claude Code
-                {defaultAgent === 'claude' && <span className="text-[10px] font-normal text-dim bg-panel px-1.5 py-0.5 rounded">default</span>}
+                {defaultAgent === 'claude' && <span className="text-xs font-normal text-dim bg-panel px-1.5 py-0.5 rounded">default</span>}
               </h3>
 
               <div className="bg-panel-raised border border-border rounded-lg p-4 mb-4">
@@ -1582,8 +1582,8 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
                 <div className="mt-4 pt-3 border-t border-border">
                   <label className="block text-xs font-medium text-fg mb-1">Full command preview</label>
-                  <div className="bg-panel border border-border rounded px-3 py-2 text-[11px] text-fg-bright font-mono break-all">{commandPreview}</div>
-                  <p className="text-[10px] text-dim mt-1">where <code className="bg-panel px-1 rounded">{`<shell>`}</code> is your <code className="bg-panel px-1 rounded">$SHELL</code> (typically <code className="bg-panel px-1 rounded">/bin/bash</code> or <code className="bg-panel px-1 rounded">/bin/zsh</code>).</p>
+                  <div className="bg-panel border border-border rounded px-3 py-2 text-xs text-fg-bright font-mono break-all">{commandPreview}</div>
+                  <p className="text-xs text-dim mt-1">where <code className="bg-panel px-1 rounded">{`<shell>`}</code> is your <code className="bg-panel px-1 rounded">$SHELL</code> (typically <code className="bg-panel px-1 rounded">/bin/bash</code> or <code className="bg-panel px-1 rounded">/bin/zsh</code>).</p>
                 </div>
 
                 <div className="mt-4 pt-3 border-t border-border">
@@ -1592,7 +1592,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     <div className="flex-1">
                       <div className="text-sm text-fg-bright">Enable Harness MCP</div>
                       <div className="text-xs text-dim mt-0.5">
-                        Injects <code className="bg-panel px-1 rounded text-[10px]">harness-control</code> MCP server via <code className="bg-panel px-1 rounded text-[10px]">--mcp-config</code>.
+                        Injects <code className="bg-panel px-1 rounded text-xs">harness-control</code> MCP server via <code className="bg-panel px-1 rounded text-xs">--mcp-config</code>.
                       </div>
                     </div>
                   </label>
@@ -1615,7 +1615,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     <div className="flex-1">
                       <div className="text-sm text-fg-bright">Fullscreen TUI by default</div>
                       <div className="text-xs text-dim mt-0.5">
-                        Sets <code className="bg-panel px-1 rounded text-[10px]">CLAUDE_CODE_NO_FLICKER=1</code> so Claude runs in fullscreen TUI mode instead of taking over your scrollback.
+                        Sets <code className="bg-panel px-1 rounded text-xs">CLAUDE_CODE_NO_FLICKER=1</code> so Claude runs in fullscreen TUI mode instead of taking over your scrollback.
                       </div>
                     </div>
                   </label>
@@ -1629,7 +1629,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 </p>
                 <div className="space-y-2">
                   <div>
-                    <label className="block text-[11px] font-medium text-dim mb-1">Base URL</label>
+                    <label className="block text-xs font-medium text-dim mb-1">Base URL</label>
                     <input
                       type="text"
                       value={litellmBaseUrl}
@@ -1640,7 +1640,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-medium text-dim mb-1">Auth token <span className="text-faint">(optional)</span></label>
+                    <label className="block text-xs font-medium text-dim mb-1">Auth token <span className="text-faint">(optional)</span></label>
                     <div className="flex items-center gap-2">
                       <input
                         type={litellmAuthRevealed ? 'text' : 'password'}
@@ -1843,7 +1843,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               <div ref={(el) => { subSectionRefs.current['agent-codex'] = el }} id="agent-codex" className="mt-8">
               <h3 className="text-sm font-semibold text-fg-bright mb-3 flex items-center gap-2">
                 Codex
-                {defaultAgent === 'codex' && <span className="text-[10px] font-normal text-dim bg-panel px-1.5 py-0.5 rounded">default</span>}
+                {defaultAgent === 'codex' && <span className="text-xs font-normal text-dim bg-panel px-1.5 py-0.5 rounded">default</span>}
               </h3>
 
               <div className="bg-panel-raised border border-border rounded-lg p-4 mb-4">
@@ -1901,8 +1901,8 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   return (
                     <div className="mt-4 pt-3 border-t border-border">
                       <label className="block text-xs font-medium text-fg mb-1">Full command preview</label>
-                      <div className="bg-panel border border-border rounded px-3 py-2 text-[11px] text-fg-bright font-mono break-all">{`<shell> -ilc "${codexPreviewInner}"`}</div>
-                      <p className="text-[10px] text-dim mt-1">where <code className="bg-panel px-1 rounded">{`<shell>`}</code> is your <code className="bg-panel px-1 rounded">$SHELL</code> (typically <code className="bg-panel px-1 rounded">/bin/bash</code> or <code className="bg-panel px-1 rounded">/bin/zsh</code>).</p>
+                      <div className="bg-panel border border-border rounded px-3 py-2 text-xs text-fg-bright font-mono break-all">{`<shell> -ilc "${codexPreviewInner}"`}</div>
+                      <p className="text-xs text-dim mt-1">where <code className="bg-panel px-1 rounded">{`<shell>`}</code> is your <code className="bg-panel px-1 rounded">$SHELL</code> (typically <code className="bg-panel px-1 rounded">/bin/bash</code> or <code className="bg-panel px-1 rounded">/bin/zsh</code>).</p>
                     </div>
                   )
                 })()}
@@ -1956,7 +1956,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   <div className="flex-1">
                     <div className="text-sm text-fg-bright">Inject Harness context into Claude sessions</div>
                     <div className="text-xs text-dim mt-0.5">
-                      Appends <code className="bg-panel px-1 rounded text-[10px]">--append-system-prompt</code> with context about Harness and MCP tools.
+                      Appends <code className="bg-panel px-1 rounded text-xs">--append-system-prompt</code> with context about Harness and MCP tools.
                     </div>
                   </div>
                 </label>
@@ -1965,7 +1965,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   <>
                     <div className="mb-4">
                       <label className="block text-xs font-medium text-fg mb-1">Base prompt</label>
-                      <p className="text-[11px] text-dim mb-2">Sent to every Claude session.</p>
+                      <p className="text-xs text-dim mb-2">Sent to every Claude session.</p>
                       <textarea
                         value={systemPromptDraft}
                         onChange={(e) => setSystemPromptDraft(e.target.value)}
@@ -1977,7 +1977,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
                     <div className="mb-4">
                       <label className="block text-xs font-medium text-fg mb-1">Main worktree addition</label>
-                      <p className="text-[11px] text-dim mb-2">Appended when Claude is running on the main/primary worktree.</p>
+                      <p className="text-xs text-dim mb-2">Appended when Claude is running on the main/primary worktree.</p>
                       <textarea
                         value={systemPromptMainDraft}
                         onChange={(e) => setSystemPromptMainDraft(e.target.value)}
@@ -2007,7 +2007,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                         {systemPromptSaveResult.ok ? <Check size={12} /> : <X size={12} />}{systemPromptSaveResult.message}
                       </div>
                     )}
-                    <p className="mt-3 text-[11px] text-faint">Changes apply to new sessions only.</p>
+                    <p className="mt-3 text-xs text-faint">Changes apply to new sessions only.</p>
                   </>
                 )}
               </div>
@@ -2022,7 +2022,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
               {repoList.length > 0 && (
                 <div className="mb-4">
-                  <div className="flex items-center gap-1 text-[11px] text-faint mb-1.5 uppercase tracking-wide">
+                  <div className="flex items-center gap-1 text-xs text-faint mb-1.5 uppercase tracking-wide">
                     Scope
                   </div>
                   <div className="flex flex-wrap gap-1 bg-panel-raised border border-border rounded p-1">
@@ -2051,7 +2051,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                       </button>
                     ))}
                   </div>
-                  <p className="text-[11px] text-faint mt-1.5">
+                  <p className="text-xs text-faint mt-1.5">
                     {scopeRepoRoot
                       ? <>Editing <code className="bg-panel-raised px-1 rounded">.harness.json</code> in <span className="font-mono">{repoBasename(scopeRepoRoot)}</span>. Unset fields inherit from global. You can commit this file to share settings with teammates.</>
                       : 'Editing global settings. Individual repos can override these values via their .harness.json file.'}
@@ -2105,14 +2105,14 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               <div className="flex items-center justify-between mt-6 mb-1">
                 <h3 className="text-sm font-semibold text-fg-bright">Default merge strategy</h3>
                 {scopeRepoRoot === null && reposOverridingKey('mergeStrategy').length > 0 && (
-                  <span className="text-[10px] text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
+                  <span className="text-xs text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
                     Overridden in {reposOverridingKey('mergeStrategy').map(repoBasename).join(', ')}
                   </span>
                 )}
                 {scopeRepoRoot !== null && scopedMergeStrategyIsOverride && (
                   <button
                     onClick={handleResetMergeStrategyToGlobal}
-                    className="text-[10px] text-dim hover:text-fg underline cursor-pointer"
+                    className="text-xs text-dim hover:text-fg underline cursor-pointer"
                   >
                     Reset to global
                   </button>
@@ -2174,27 +2174,27 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">Setup & teardown scripts</h3>
               <p className="text-xs text-dim mb-3">
                 Optional shell commands run via a login shell
-                (<code className="bg-panel-raised px-1 rounded text-[10px]">zsh -ilc</code>) with
-                the worktree as <code className="bg-panel-raised px-1 rounded text-[10px]">cwd</code>.
+                (<code className="bg-panel-raised px-1 rounded text-xs">zsh -ilc</code>) with
+                the worktree as <code className="bg-panel-raised px-1 rounded text-xs">cwd</code>.
                 Setup runs after a worktree is created; teardown runs before it's removed.
                 The env vars{' '}
-                <code className="bg-panel-raised px-1 rounded text-[10px]">HARNESS_WORKTREE_PATH</code>,{' '}
-                <code className="bg-panel-raised px-1 rounded text-[10px]">HARNESS_BRANCH</code>, and{' '}
-                <code className="bg-panel-raised px-1 rounded text-[10px]">HARNESS_REPO_ROOT</code>{' '}
+                <code className="bg-panel-raised px-1 rounded text-xs">HARNESS_WORKTREE_PATH</code>,{' '}
+                <code className="bg-panel-raised px-1 rounded text-xs">HARNESS_BRANCH</code>, and{' '}
+                <code className="bg-panel-raised px-1 rounded text-xs">HARNESS_REPO_ROOT</code>{' '}
                 are available to the command.
               </p>
 
               <div className="flex items-center justify-between mb-1">
                 <label className="block text-xs text-dim">Setup command</label>
                 {scopeRepoRoot === null && reposOverridingKey('setupCommand').length > 0 && (
-                  <span className="text-[10px] text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
+                  <span className="text-xs text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
                     Overridden in {reposOverridingKey('setupCommand').map(repoBasename).join(', ')}
                   </span>
                 )}
                 {scopeRepoRoot !== null && scopedSetupIsOverride && (
                   <button
                     onClick={handleResetSetupToGlobal}
-                    className="text-[10px] text-dim hover:text-fg underline cursor-pointer"
+                    className="text-xs text-dim hover:text-fg underline cursor-pointer"
                   >
                     Reset to global
                   </button>
@@ -2215,14 +2215,14 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               <div className="flex items-center justify-between mt-3 mb-1">
                 <label className="block text-xs text-dim">Teardown command</label>
                 {scopeRepoRoot === null && reposOverridingKey('teardownCommand').length > 0 && (
-                  <span className="text-[10px] text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
+                  <span className="text-xs text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
                     Overridden in {reposOverridingKey('teardownCommand').map(repoBasename).join(', ')}
                   </span>
                 )}
                 {scopeRepoRoot !== null && scopedTeardownIsOverride && (
                   <button
                     onClick={handleResetTeardownToGlobal}
-                    className="text-[10px] text-dim hover:text-fg underline cursor-pointer"
+                    className="text-xs text-dim hover:text-fg underline cursor-pointer"
                   >
                     Reset to global
                   </button>
@@ -2254,7 +2254,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   </span>
                 )}
               </div>
-              <p className="mt-2 text-[11px] text-faint">
+              <p className="mt-2 text-xs text-faint">
                 Failures are logged but don't block the worktree operation. Leave blank to disable.
               </p>
 
@@ -2283,7 +2283,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">Share Claude Code permissions</h3>
                   <p className="text-xs text-dim mb-3">
                     Symlink each worktree's{' '}
-                    <code className="bg-panel-raised px-1 rounded text-[10px]">.claude/settings.local.json</code>{' '}
+                    <code className="bg-panel-raised px-1 rounded text-xs">.claude/settings.local.json</code>{' '}
                     to the main worktree's copy so "Don't ask again"
                     permissions granted in any worktree apply everywhere.
                     Only takes effect for worktrees created while enabled
@@ -2304,8 +2304,8 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">PR review prompt</h3>
                   <p className="text-xs text-dim mb-3">
                     Default kickoff prompt sent to Claude when you open a PR as a worktree (or when the MCP{' '}
-                    <code className="bg-panel-raised px-1 rounded text-[10px]">create_worktree</code> tool is invoked
-                    with <code className="bg-panel-raised px-1 rounded text-[10px]">prNumber</code> and no explicit
+                    <code className="bg-panel-raised px-1 rounded text-xs">create_worktree</code> tool is invoked
+                    with <code className="bg-panel-raised px-1 rounded text-xs">prNumber</code> and no explicit
                     prompt). You can edit the prompt per-PR from the New Worktree screen.
                   </p>
                   <textarea
@@ -2377,12 +2377,12 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   )
                 })}
               </div>
-              <p className="text-[11px] text-faint">
-                Harness spawns the editor via a login shell (<code className="bg-panel-raised px-1 rounded text-[10px]">zsh -ilc</code>)
+              <p className="text-xs text-faint">
+                Harness spawns the editor via a login shell (<code className="bg-panel-raised px-1 rounded text-xs">zsh -ilc</code>)
                 so homebrew and nvm paths are picked up automatically. If nothing
                 happens when you click "Open in editor", check that the selected
                 editor's CLI is installed (e.g. VS Code's{' '}
-                <code className="bg-panel-raised px-1 rounded text-[10px]">code</code> command,
+                <code className="bg-panel-raised px-1 rounded text-xs">code</code> command,
                 installed via <em>Shell Command: Install 'code' command in PATH</em> from
                 the command palette).
               </p>
@@ -2539,7 +2539,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 )}
               </div>
               <p className="text-sm text-dim mb-4">
-                Click a shortcut to rebind it. Press <kbd className="bg-panel-raised px-1 rounded text-[10px]">Esc</kbd> to cancel.
+                Click a shortcut to rebind it. Press <kbd className="bg-panel-raised px-1 rounded text-xs">Esc</kbd> to cancel.
               </p>
 
               {(() => {
@@ -2671,7 +2671,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
                 {import.meta.env.DEV && (
                   <div className="mt-3 pt-3 border-t border-border">
-                    <div className="text-[10px] uppercase tracking-wide text-faint mb-1.5">
+                    <div className="text-xs uppercase tracking-wide text-faint mb-1.5">
                       Dev: simulate updater state
                     </div>
                     <div className="flex gap-1.5">
@@ -2679,7 +2679,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                         <button
                           key={s}
                           onClick={() => backend.devSimulateUpdate(s)}
-                          className="px-2 py-1 bg-surface hover:bg-surface-hover rounded text-[11px] text-fg transition-colors cursor-pointer"
+                          className="px-2 py-1 bg-surface hover:bg-surface-hover rounded text-xs text-fg transition-colors cursor-pointer"
                         >
                           {s}
                         </button>
@@ -2828,7 +2828,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               >
                 <div className="flex items-center gap-2 mb-1">
                   <h3 className="text-sm font-semibold text-fg-bright">Browser control</h3>
-                  <span className="text-[10px] font-medium text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
+                  <span className="text-xs font-medium text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
                     Experimental
                   </span>
                 </div>
@@ -2849,7 +2849,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   <div className="flex-1">
                     <label htmlFor="browser-tools-enabled" className="text-sm text-fg-bright cursor-pointer">Enable browser tools</label>
                     <div className="text-xs text-dim mt-0.5 mb-2">
-                      Exposes <code className="bg-panel px-1 rounded text-[10px]">harness-control</code> MCP browser_* tools to the agent.
+                      Exposes <code className="bg-panel px-1 rounded text-xs">harness-control</code> MCP browser_* tools to the agent.
                     </div>
                     <select
                       value={browserToolsMode}
@@ -2872,12 +2872,12 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               >
                 <div className="flex items-center gap-2 mb-1">
                   <h3 className="text-sm font-semibold text-fg-bright">Auto-approve safe tool calls</h3>
-                  <span className="text-[10px] font-medium text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
+                  <span className="text-xs font-medium text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
                     Experimental
                   </span>
                 </div>
                 <p className="text-xs text-dim mb-3">
-                  In Chat tabs, spawns a Haiku oneshot to approve obviously-safe tool calls (Read, Grep, Edit, …) instead of prompting you. A hardcoded deny-list catches risky calls (<code className="bg-panel px-1 rounded text-[10px]">rm -rf</code>, <code className="bg-panel px-1 rounded text-[10px]">git push</code>, <code className="bg-panel px-1 rounded text-[10px]">WebFetch</code>, …) before Haiku is consulted. Productivity feature only — an LLM judging another LLM is not a security boundary. Has no effect on Terminal tabs.
+                  In Chat tabs, spawns a Haiku oneshot to approve obviously-safe tool calls (Read, Grep, Edit, …) instead of prompting you. A hardcoded deny-list catches risky calls (<code className="bg-panel px-1 rounded text-xs">rm -rf</code>, <code className="bg-panel px-1 rounded text-xs">git push</code>, <code className="bg-panel px-1 rounded text-xs">WebFetch</code>, …) before Haiku is consulted. Productivity feature only — an LLM judging another LLM is not a security boundary. Has no effect on Terminal tabs.
                 </p>
 
                 <label className="flex items-start gap-3 cursor-pointer">
@@ -2900,8 +2900,8 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     <label className="block text-xs font-medium text-fg mb-1">
                       Project-specific guidance <span className="text-faint font-normal">(optional)</span>
                     </label>
-                    <p className="text-[11px] text-dim mb-2">
-                      Free-text instructions appended to the reviewer's policy prompt. Use to add carve-outs (e.g. <em>&quot;approve <code className="bg-panel px-1 rounded text-[10px]">npm install</code> for this project&quot;</em>) or extra strictness (e.g. <em>&quot;deny any Bash that writes outside src/&quot;</em>). The hardcoded safety bullets always run first; this is purely additive guidance. You can also edit + re-review from any rejected approval card.
+                    <p className="text-xs text-dim mb-2">
+                      Free-text instructions appended to the reviewer's policy prompt. Use to add carve-outs (e.g. <em>&quot;approve <code className="bg-panel px-1 rounded text-xs">npm install</code> for this project&quot;</em>) or extra strictness (e.g. <em>&quot;deny any Bash that writes outside src/&quot;</em>). The hardcoded safety bullets always run first; this is purely additive guidance. You can also edit + re-review from any rejected approval card.
                     </p>
                     <textarea
                       value={autoApproveSteerDraft}
@@ -2920,7 +2920,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                       </button>
                       {autoApproveSteerSaveResult && (
                         <span
-                          className={`text-[11px] flex items-center gap-1 ${autoApproveSteerSaveResult.ok ? 'text-success' : 'text-danger'}`}
+                          className={`text-xs flex items-center gap-1 ${autoApproveSteerSaveResult.ok ? 'text-success' : 'text-danger'}`}
                         >
                           {autoApproveSteerSaveResult.ok ? <Check size={11} /> : <X size={11} />}
                           {autoApproveSteerSaveResult.message}
@@ -2939,7 +2939,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               >
                 <div className="flex items-center gap-2 mb-1">
                   <h3 className="text-sm font-semibold text-fg-bright">Web &amp; mobile client</h3>
-                  <span className="text-[10px] font-medium text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
+                  <span className="text-xs font-medium text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
                     Experimental
                   </span>
                 </div>
@@ -2980,7 +2980,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                             onBlur={handleSaveWsPort}
                             className="w-28 bg-panel border border-border-strong rounded px-2 py-1 text-xs text-fg-bright outline-none focus:border-fg font-mono"
                           />
-                          <span className="text-[11px] text-faint">default 37291</span>
+                          <span className="text-xs text-faint">default 37291</span>
                         </div>
                       </div>
                       <div>
@@ -2999,7 +2999,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     <div className="mt-4 pt-3 border-t border-border">
                       <label className="block text-xs font-medium text-fg mb-1">Connection URL</label>
                       <div className="flex items-center gap-2">
-                        <code className="flex-1 bg-panel border border-border rounded px-2 py-1.5 text-[11px] text-fg-bright font-mono truncate">
+                        <code className="flex-1 bg-panel border border-border rounded px-2 py-1.5 text-xs text-fg-bright font-mono truncate">
                           {showWsToken ? wsUrl : wsUrlMasked}
                         </code>
                         <Tooltip label={showWsToken ? 'Hide token' : 'Show token'}>
@@ -3063,11 +3063,11 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                               </p>
                               {lanAddresses.length > 1 && (
                                 <div>
-                                  <label className="block text-[11px] font-medium text-fg mb-1">Interface</label>
+                                  <label className="block text-xs font-medium text-fg mb-1">Interface</label>
                                   <select
                                     value={selectedLanAddress ?? ''}
                                     onChange={(e) => setSelectedLanAddress(e.target.value)}
-                                    className="w-full bg-panel border border-border-strong rounded px-2 py-1 text-[11px] text-fg-bright outline-none focus:border-fg cursor-pointer font-mono"
+                                    className="w-full bg-panel border border-border-strong rounded px-2 py-1 text-xs text-fg-bright outline-none focus:border-fg cursor-pointer font-mono"
                                   >
                                     {lanAddresses.map((a) => (
                                       <option key={a.iface + a.address} value={a.address}>
@@ -3077,7 +3077,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                                   </select>
                                 </div>
                               )}
-                              <p className="font-mono text-[10px] break-all text-fg">
+                              <p className="font-mono text-xs break-all text-fg">
                                 http://{selectedLanAddress}:{wsInfo?.port}/
                               </p>
                             </div>

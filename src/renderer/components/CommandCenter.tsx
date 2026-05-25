@@ -281,7 +281,7 @@ export function CommandCenter({
       {/* Header */}
       <div className="drag-region px-4 py-4 border-b border-border flex items-start gap-6 shrink-0">
         <div className="flex-1 min-w-0">
-          <h1 className="text-xl font-bold text-fg-bright tracking-tight no-drag">
+          <h1 className="text-lg font-bold text-fg-bright tracking-tight no-drag">
             Command Center
           </h1>
           <p className="text-xs text-dim mt-0.5 no-drag">
@@ -324,8 +324,8 @@ export function CommandCenter({
       {/* Live stacked bar graph */}
       <div className="px-4 py-3 border-b border-border shrink-0">
         <div className="flex items-center justify-between mb-1.5">
-          <span className="text-[10px] uppercase tracking-wider text-faint">Last minute</span>
-          <span className="text-[10px] text-faint">1s intervals</span>
+          <span className="text-xs uppercase tracking-wider text-faint">Last minute</span>
+          <span className="text-xs text-faint">1s intervals</span>
         </div>
         <div className="h-16 flex items-end gap-[2px]">
           {history.map((s, i) => {
@@ -382,7 +382,7 @@ export function CommandCenter({
                     <h2 className="text-xs font-semibold uppercase tracking-wider">
                       {group.label}
                     </h2>
-                    <span className="text-[10px] text-faint">{group.worktrees.length}</span>
+                    <span className="text-xs text-faint">{group.worktrees.length}</span>
                     <div className="flex-1 border-t border-border ml-2" />
                   </button>
 
@@ -417,14 +417,14 @@ export function CommandCenter({
                                 </span>
                               </div>
                               {display === 'needs-approval' && worktreePendingTools[wt.path] && (
-                                <div className="flex items-center gap-1.5 min-w-0 text-[11px] text-danger">
+                                <div className="flex items-center gap-1.5 min-w-0 text-xs text-danger">
                                   <span className="font-semibold shrink-0">Waiting on:</span>
                                   <span className="truncate font-mono">
                                     {formatPendingTool(worktreePendingTools[wt.path] as PendingTool)}
                                   </span>
                                 </div>
                               )}
-                              <div className="flex items-center gap-2 min-w-0 text-[11px]">
+                              <div className="flex items-center gap-2 min-w-0 text-xs">
                                 <span
                                   className={`w-2 h-2 rounded-full shrink-0 ${STATUS_DOT[display]}`}
                                 />
@@ -457,7 +457,7 @@ export function CommandCenter({
                               style={{ backgroundColor: 'var(--color-app)' }}
                             >
                               <pre
-                                className="text-[10px] leading-tight whitespace-pre-wrap break-all line-clamp-6"
+                                className="text-xs leading-tight whitespace-pre-wrap break-all line-clamp-6"
                                 style={{
                                   fontFamily: terminalFont,
                                   color: 'var(--color-fg-bright)'
@@ -533,7 +533,7 @@ function StatCount({
       <span className={`w-2 h-2 rounded-full ${dot} ${pulse ? 'animate-pulse' : ''}`} />
       <div className="flex items-baseline gap-1">
         <span className="text-2xl font-bold tabular-nums text-fg-bright">{value}</span>
-        <span className="text-[10px] uppercase tracking-wider text-faint">{label}</span>
+        <span className="text-xs uppercase tracking-wider text-faint">{label}</span>
       </div>
     </div>
   )

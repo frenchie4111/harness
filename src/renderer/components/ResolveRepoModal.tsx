@@ -66,7 +66,7 @@ export function ResolveRepoModal({
           </p>
 
           <div className="flex flex-col gap-2">
-            <div className="text-[11px] uppercase tracking-wide text-faint">You picked</div>
+            <div className="text-xs uppercase tracking-wide text-faint">You picked</div>
             <div className="flex items-start gap-2 bg-app/40 border border-border rounded px-2.5 py-2 font-mono text-xs text-dim break-all">
               <FolderTree size={12} className="text-faint shrink-0 mt-0.5" />
               {picked}
@@ -74,7 +74,7 @@ export function ResolveRepoModal({
           </div>
 
           <div className="flex flex-col gap-2">
-            <div className="text-[11px] uppercase tracking-wide text-faint">Resolved repository</div>
+            <div className="text-xs uppercase tracking-wide text-faint">Resolved repository</div>
             <div className="flex items-start gap-2 bg-app/40 border border-accent/40 rounded px-2.5 py-2 font-mono text-xs text-fg-bright break-all">
               <FolderTree size={12} className="text-accent shrink-0 mt-0.5" />
               {resolved}

@@ -378,12 +378,12 @@ export function ReviewDiffPane({
 
         <span className="text-xs font-mono truncate flex-1">{file.path}</span>
 
-        <span className={`text-[10px] ${STATUS_COLOR[file.status]}`}>
+        <span className={`text-xs ${STATUS_COLOR[file.status]}`}>
           {STATUS_LABEL[file.status]}
         </span>
 
         {(file.additions !== undefined || file.deletions !== undefined) && (
-          <span className="text-[10px] font-mono tabular-nums">
+          <span className="text-xs font-mono tabular-nums">
             {file.additions !== undefined && file.additions > 0 && (
               <span className="text-success">+{file.additions}</span>
             )}

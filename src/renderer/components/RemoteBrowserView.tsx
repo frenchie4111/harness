@@ -134,7 +134,7 @@ export function RemoteBrowserView({ tabId, visible }: RemoteBrowserViewProps): J
           </div>
         )}
       </div>
-      <div className="shrink-0 flex items-center gap-1 px-2 py-1 border-t border-border bg-panel text-[11px]">
+      <div className="shrink-0 flex items-center gap-1 px-2 py-1 border-t border-border bg-panel text-xs">
         <span className="text-faint">Remote view (screenshot polled every {POLL_MS / 1000}s).</span>
         <div className="flex-1" />
         {typing ? (

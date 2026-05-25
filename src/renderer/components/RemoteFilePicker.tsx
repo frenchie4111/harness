@@ -159,7 +159,7 @@ export function RemoteFilePicker({
               className="flex-1 min-w-0 bg-app border border-border-strong rounded-md px-2.5 py-1.5 font-mono text-xs text-fg-bright placeholder-faint outline-none focus:border-accent transition-colors"
             />
           </form>
-          <label className="flex items-center gap-2 text-[11px] text-dim cursor-pointer w-fit">
+          <label className="flex items-center gap-2 text-xs text-dim cursor-pointer w-fit">
             <input
               type="checkbox"
               checked={showHidden}
@@ -194,7 +194,7 @@ export function RemoteFilePicker({
                   return (
                     <li
                       key="__truncated__"
-                      className="px-4 py-1.5 text-[11px] text-faint italic"
+                      className="px-4 py-1.5 text-xs text-faint italic"
                     >
                       {entry.name}
                     </li>
@@ -216,7 +216,7 @@ export function RemoteFilePicker({
                       <span className="flex-1 text-sm text-fg truncate">{entry.name}</span>
                       {entry.isGitRepo && (
                         <span
-                          className="flex items-center gap-1 text-[10px] font-medium text-success shrink-0"
+                          className="flex items-center gap-1 text-xs font-medium text-success shrink-0"
                           title="Git repository"
                         >
                           <GitBranch size={10} />
@@ -232,7 +232,7 @@ export function RemoteFilePicker({
         </div>
 
         <div className="px-5 py-3 border-t border-border flex items-center justify-between gap-3">
-          <div className="text-[11px] text-faint truncate min-w-0 flex-1 font-mono">
+          <div className="text-xs text-faint truncate min-w-0 flex-1 font-mono">
             {currentPath}
           </div>
           <div className="flex items-center gap-2 shrink-0">

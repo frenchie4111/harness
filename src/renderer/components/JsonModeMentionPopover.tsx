@@ -57,7 +57,7 @@ export function JsonModeMentionPopover({
   return (
     <div className="absolute bottom-full left-0 right-0 mb-1 max-w-lg bg-surface border border-border rounded-md shadow-xl overflow-hidden z-30">
       {header && (
-        <div className="px-3 py-1.5 border-b border-border text-[10px] uppercase tracking-wider text-faint">
+        <div className="px-3 py-1.5 border-b border-border text-xs uppercase tracking-wider text-faint">
           {header}
         </div>
       )}
@@ -93,7 +93,7 @@ export function JsonModeMentionPopover({
                   </span>
                 )}
                 {item.hint && (
-                  <kbd className="text-[10px] text-faint bg-bg px-1 py-0.5 rounded border border-border font-mono shrink-0">
+                  <kbd className="text-xs text-faint bg-bg px-1 py-0.5 rounded border border-border font-mono shrink-0">
                     {item.hint}
                   </kbd>
                 )}
@@ -103,7 +103,7 @@ export function JsonModeMentionPopover({
         )}
       </div>
       {footer && (
-        <div className="px-3 py-1 border-t border-border text-[10px] text-faint">
+        <div className="px-3 py-1 border-t border-border text-xs text-faint">
           {footer}
         </div>
       )}

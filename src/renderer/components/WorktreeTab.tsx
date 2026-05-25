@@ -193,7 +193,7 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
       )}
       {prStatus && typeof prStatus.additions === 'number' && typeof prStatus.deletions === 'number' && (
         <span
-          className="text-[10px] font-mono shrink-0 leading-none group-hover:hidden"
+          className="text-xs font-mono shrink-0 leading-none group-hover:hidden"
           title={`+${prStatus.additions} additions, −${prStatus.deletions} deletions`}
         >
           <span className="text-success">+{prStatus.additions}</span>

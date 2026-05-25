@@ -137,7 +137,7 @@ function ThinkingCard({
           fontSize: 'var(--chat-chrome-text)'
         }}
       >
-        <span className="text-muted text-[9px] w-2 shrink-0 select-none">
+        <span className="text-muted text-xs w-2 shrink-0 select-none">
           {expanded ? '▾' : '▸'}
         </span>
         <Brain size={11} className="text-muted shrink-0" />
@@ -219,7 +219,7 @@ function CompactCard({
           fontSize: 'var(--chat-chrome-text)'
         }}
       >
-        <span className="text-info/70 text-[9px] w-2 shrink-0 select-none">
+        <span className="text-info/70 text-xs w-2 shrink-0 select-none">
           {expanded ? '▾' : '▸'}
         </span>
         <Layers size={11} className="text-info shrink-0" />
@@ -240,14 +240,14 @@ function CompactCard({
         )}
       </button>
       {expanded && (
-        <div className="px-3 py-2 text-[11px] text-muted space-y-1">
+        <div className="px-3 py-2 text-xs text-muted space-y-1">
           <div>
             Earlier conversation history was summarized to free up context.
             New messages continue from the summary.
           </div>
           {(typeof preTokens === 'number' ||
             typeof postTokens === 'number') && (
-            <div className="font-mono text-[10px] text-faint">
+            <div className="font-mono text-xs text-faint">
               {typeof preTokens === 'number' && (
                 <span>before: {preTokens.toLocaleString()} tokens</span>
               )}
@@ -300,7 +300,7 @@ function SubprocessExitCard({
         <span className="opacity-70 truncate flex-1 min-w-0">{detail}</span>
       </div>
       <div className="px-3 py-2 space-y-2">
-        <pre className="text-[11px] text-muted font-mono whitespace-pre-wrap break-words m-0">
+        <pre className="text-xs text-muted font-mono whitespace-pre-wrap break-words m-0">
           {detail}
         </pre>
         {isExited ? (
@@ -318,7 +318,7 @@ function SubprocessExitCard({
             <span>Restart session</span>
           </button>
         ) : (
-          <span className="text-[11px] text-muted italic">
+          <span className="text-xs text-muted italic">
             session restarted
           </span>
         )}
@@ -357,9 +357,9 @@ function AuthFailureCard({
           Authentication failed
         </span>
       </div>
-      <div className="px-3 py-2 text-[11px] text-fg space-y-2">
+      <div className="px-3 py-2 text-xs text-fg space-y-2">
         {message && (
-          <pre className="whitespace-pre-wrap break-words font-mono text-[10px] text-muted bg-app/40 border border-border/40 rounded px-2 py-1 max-h-32 overflow-auto">
+          <pre className="whitespace-pre-wrap break-words font-mono text-xs text-muted bg-app/40 border border-border/40 rounded px-2 py-1 max-h-32 overflow-auto">
             {message}
           </pre>
         )}
@@ -505,7 +505,7 @@ function RateLimitErrorCard({
           Rate limit reached
         </span>
       </div>
-      <div className="px-3 py-2 text-[11px] text-muted space-y-1">
+      <div className="px-3 py-2 text-xs text-muted space-y-1">
         <div className="text-fg/80">{message}</div>
         {resetText && (
           <div className="text-faint">
@@ -785,7 +785,7 @@ function renderEntries(
                     subtitle="preparing call…"
                     variant="info"
                   >
-                    <div className="px-2 py-1.5 text-[11px] text-muted italic flex items-center gap-2">
+                    <div className="px-2 py-1.5 text-xs text-muted italic flex items-center gap-2">
                       <span className="json-claude-cursor" />
                       <span>waiting for input</span>
                     </div>
@@ -1792,7 +1792,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
                     <Sparkles size={26} className="text-white" />
                   </div>
                 </div>
-                <h2 className="text-xl font-semibold brand-gradient-text">
+                <h2 className="text-lg font-semibold brand-gradient-text">
                   What are we going to build today?
                 </h2>
                 <p className="mt-2 text-xs text-muted">
@@ -1856,7 +1856,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
                 (lastBlock?.type === 'text' || lastBlock?.type === 'tool_use')
               if (showWhileStreaming) return null
               return (
-                <div className="flex items-center gap-2 px-2 py-1 text-[11px] text-muted italic">
+                <div className="flex items-center gap-2 px-2 py-1 text-xs text-muted italic">
                   <span className="json-claude-spinner" aria-label="working" />
                   <span>thinking…</span>
                 </div>
@@ -1878,7 +1878,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
         )}
       </div>
       {session && session.sessionToolApprovals.length > 0 && (
-        <div className="shrink-0 border-t border-border bg-panel/40 px-3 py-1 flex items-center gap-2 text-[10px] text-muted">
+        <div className="shrink-0 border-t border-border bg-panel/40 px-3 py-1 flex items-center gap-2 text-xs text-muted">
           <span className="opacity-70">auto-allowing:</span>
           <span className="font-mono truncate">
             {session.sessionToolApprovals.join(', ')}
@@ -1925,7 +1925,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
                       className="h-12 w-12 object-cover shrink-0"
                     />
                     {shortPath && (
-                      <span className="text-[10px] text-faint font-mono max-w-[180px] truncate">
+                      <span className="text-xs text-faint font-mono max-w-[180px] truncate">
                         {shortPath}
                       </span>
                     )}
@@ -2034,7 +2034,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
           />
           <div className="flex items-center gap-2 px-2 pb-1.5 pt-0.5">
             <div
-              className="flex items-center gap-1.5 text-[10px] text-muted"
+              className="flex items-center gap-1.5 text-xs text-muted"
               title={`session ${state}`}
             >
               <span className={`w-1.5 h-1.5 rounded-full ${stateDot}`} />
@@ -2042,7 +2042,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
             </div>
             <button
               onClick={cyclePermissionMode}
-              className={`px-1.5 py-0.5 rounded border text-[10px] cursor-pointer hover:opacity-80 transition-opacity ${modeBadgeStyle}`}
+              className={`px-1.5 py-0.5 rounded border text-xs cursor-pointer hover:opacity-80 transition-opacity ${modeBadgeStyle}`}
               title="Click to cycle permission mode. Applies mid-turn — no restart."
             >
               {modeBadgeLabel}
@@ -2051,7 +2051,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
             {busy && (
               <button
                 onClick={interrupt}
-                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-danger hover:bg-danger/10 cursor-pointer"
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-xs text-danger hover:bg-danger/10 cursor-pointer"
                 title="Interrupt the current model turn"
               >
                 <Square size={9} fill="currentColor" /> interrupt

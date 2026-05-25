@@ -168,15 +168,15 @@ export class ErrorBoundary extends Component<Props, State> {
           {expanded && (
             <div className="px-4 pb-4 space-y-3">
               <div>
-                <div className="text-[11px] uppercase tracking-wide text-dim mb-1">Stack</div>
-                <pre className="text-[11px] font-mono bg-app/60 border border-border rounded p-2 overflow-auto max-h-64 whitespace-pre">
+                <div className="text-xs uppercase tracking-wide text-dim mb-1">Stack</div>
+                <pre className="text-xs font-mono bg-app/60 border border-border rounded p-2 overflow-auto max-h-64 whitespace-pre">
                   {error.stack ?? '(no stack)'}
                 </pre>
               </div>
               {info?.componentStack && (
                 <div>
-                  <div className="text-[11px] uppercase tracking-wide text-dim mb-1">Component stack</div>
-                  <pre className="text-[11px] font-mono bg-app/60 border border-border rounded p-2 overflow-auto max-h-64 whitespace-pre">
+                  <div className="text-xs uppercase tracking-wide text-dim mb-1">Component stack</div>
+                  <pre className="text-xs font-mono bg-app/60 border border-border rounded p-2 overflow-auto max-h-64 whitespace-pre">
                     {info.componentStack.trim()}
                   </pre>
                 </div>

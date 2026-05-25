@@ -186,7 +186,7 @@ export function AllFilesPanel({
         )}
       </div>
       {files.length > 0 && (
-        <div className="px-3 py-1.5 border-t border-border text-[10px] text-faint shrink-0 flex items-center justify-between">
+        <div className="px-3 py-1.5 border-t border-border text-xs text-faint shrink-0 flex items-center justify-between">
           <span>
             {filtering ? `${filtered.length} / ${files.length}` : files.length} file
             {files.length !== 1 ? 's' : ''}

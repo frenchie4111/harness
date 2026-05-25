@@ -249,7 +249,7 @@ function MergeLocallyBody({
                             <div className="text-xs text-fg-bright">
                               {STRATEGY_MENU_LABELS[s]}
                             </div>
-                            <div className="text-[11px] text-faint leading-snug">
+                            <div className="text-xs text-faint leading-snug">
                               {STRATEGY_DESCRIPTIONS[s]}
                             </div>
                           </div>
@@ -262,7 +262,7 @@ function MergeLocallyBody({
             </div>
 
             {hasConflict && conflictPreview && (
-              <div className="text-[11px] text-danger leading-snug space-y-1">
+              <div className="text-xs text-danger leading-snug space-y-1">
                 <div>
                   Merge conflict
                   {conflictPreview.files.length > 0 && (
@@ -278,7 +278,7 @@ function MergeLocallyBody({
                   . Resolve before merging.
                 </div>
                 {conflictPreview.files.length > 1 && (
-                  <ul className="text-faint font-mono text-[10px] space-y-0.5 max-h-20 overflow-y-auto">
+                  <ul className="text-faint font-mono text-xs space-y-0.5 max-h-20 overflow-y-auto">
                     {conflictPreview.files.map((f) => (
                       <li key={f} className="truncate" style={{ direction: 'rtl', textAlign: 'left' }} title={f}>
                         <bdi>{f}</bdi>
@@ -290,7 +290,7 @@ function MergeLocallyBody({
             )}
 
             {needsFix && (
-              <div className="text-[11px] text-warning leading-snug space-y-1">
+              <div className="text-xs text-warning leading-snug space-y-1">
                 <div>
                   Main worktree isn't ready:
                   {mainStatus.isDirty && ' has uncommitted changes'}
@@ -320,7 +320,7 @@ function MergeLocallyBody({
             )}
 
             {error && (
-              <div className="text-[11px] text-danger leading-snug break-words">{error}</div>
+              <div className="text-xs text-danger leading-snug break-words">{error}</div>
             )}
           </>
         )}
@@ -699,14 +699,14 @@ function usePRMergeAction(
   ) : null
 
   const errorRow = error ? (
-    <div className="px-3 pt-2 text-[11px] text-danger leading-snug break-words flex items-center gap-2">
+    <div className="px-3 pt-2 text-xs text-danger leading-snug break-words flex items-center gap-2">
       <span className="flex-1">{error}</span>
       <button
         onClick={() => {
           setError(null)
           void performMerge()
         }}
-        className="px-2 py-0.5 text-[11px] rounded bg-surface hover:bg-surface/60 text-fg transition-colors cursor-pointer shrink-0"
+        className="px-2 py-0.5 text-xs rounded bg-surface hover:bg-surface/60 text-fg transition-colors cursor-pointer shrink-0"
       >
         Retry
       </button>
@@ -813,7 +813,7 @@ export function PRStatusPanel({
                 e.stopPropagation()
                 backend.openExternal(pr.url)
               }}
-              className={`px-1.5 py-0.5 rounded border text-[10px] font-medium transition-colors cursor-pointer shrink-0 ${
+              className={`px-1.5 py-0.5 rounded border text-xs font-medium transition-colors cursor-pointer shrink-0 ${
                 pr.queuePosition
                   ? 'border-accent text-accent hover:bg-accent/10'
                   : STATE_PILL_COLORS[pr.state]
@@ -867,7 +867,7 @@ export function PRStatusPanel({
                       e.stopPropagation()
                       backend.openExternal(pr.milestone!.url)
                     }}
-                    className={`shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-medium cursor-pointer transition-colors truncate max-w-[140px] ${
+                    className={`shrink-0 px-1.5 py-0.5 rounded-full text-xs font-medium cursor-pointer transition-colors truncate max-w-[140px] ${
                       pr.milestone.state === 'closed'
                         ? 'bg-surface text-dim hover:text-fg-bright'
                         : 'bg-accent/20 text-accent hover:bg-accent/30'
@@ -879,7 +879,7 @@ export function PRStatusPanel({
                 )
               }
               return (
-                <span className="shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-surface text-faint">
+                <span className="shrink-0 px-1.5 py-0.5 rounded-full text-xs font-medium bg-surface text-faint">
                   No milestone
                 </span>
               )
@@ -923,7 +923,7 @@ export function PRStatusPanel({
                 return (
                   <span
                     key={label.name}
-                    className="px-1.5 py-0.5 rounded-full text-[10px] font-medium leading-tight"
+                    className="px-1.5 py-0.5 rounded-full text-xs font-medium leading-tight"
                     style={{ backgroundColor: `#${label.color}`, color: fg }}
                     title={label.description || label.name}
                   >
@@ -937,7 +937,7 @@ export function PRStatusPanel({
           {/* Linked issues (Closes #N / GitHub "Link an issue") */}
           {pr.linkedIssues.length > 0 && (
             <div className="flex flex-col gap-0.5">
-              <div className="text-[10px] uppercase tracking-wide text-faint">
+              <div className="text-xs uppercase tracking-wide text-faint">
                 {pr.linkedIssues.length === 1 ? 'Linked issue' : 'Linked issues'}
               </div>
               {pr.linkedIssues.map((iss) => (
@@ -1042,7 +1042,7 @@ export function PRStatusPanel({
                         )}
                       </div>
                       {reason && (
-                        <div className="text-faint text-[11px] leading-snug truncate">
+                        <div className="text-faint text-xs leading-snug truncate">
                           {reason}
                         </div>
                       )}

@@ -541,7 +541,7 @@ export function CommandPalette({
         <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
           <Search size={16} className="text-dim shrink-0" />
           {mode === 'files' && (
-            <span className="inline-flex items-center gap-1 text-[11px] bg-accent/15 text-accent px-1.5 py-0.5 rounded font-medium shrink-0">
+            <span className="inline-flex items-center gap-1 text-xs bg-accent/15 text-accent px-1.5 py-0.5 rounded font-medium shrink-0">
               <FileText size={11} />
               Open File
             </span>
@@ -555,7 +555,7 @@ export function CommandPalette({
             placeholder={mode === 'files' ? 'Search files…' : 'Search worktrees and commands...'}
             className="flex-1 bg-transparent text-fg-bright text-sm outline-none placeholder:text-faint"
           />
-          <kbd className="text-[10px] text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono">ESC</kbd>
+          <kbd className="text-xs text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono">ESC</kbd>
         </div>
 
         <div ref={listRef} className="max-h-80 overflow-y-auto py-1">
@@ -592,7 +592,7 @@ export function CommandPalette({
                     </span>
                   )}
                   {f.recent && !query && (
-                    <span className="text-[10px] text-faint shrink-0">recent</span>
+                    <span className="text-xs text-faint shrink-0">recent</span>
                   )}
                 </button>
               )
@@ -606,7 +606,7 @@ export function CommandPalette({
               return (
                 <div
                   key={`h-${flatIdx}`}
-                  className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-faint"
+                  className="px-3 pt-2 pb-1 text-xs font-semibold uppercase tracking-wider text-faint"
                 >
                   {item.label}
                 </div>
@@ -665,7 +665,7 @@ export function CommandPalette({
                     </div>
                   </div>
                   {isActive && (
-                    <span className="text-[10px] text-accent font-medium shrink-0">current</span>
+                    <span className="text-xs text-accent font-medium shrink-0">current</span>
                   )}
                 </button>
               )
@@ -711,7 +711,7 @@ export function CommandPalette({
                   <FileText size={14} className="text-dim shrink-0" />
                   <span className="truncate flex-1 text-left">{item.label}</span>
                   {openBinding && (
-                    <kbd className="text-[10px] text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono shrink-0">
+                    <kbd className="text-xs text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono shrink-0">
                       {bindingToString(openBinding)}
                     </kbd>
                   )}
@@ -751,7 +751,7 @@ export function CommandPalette({
                 <ArrowRight size={14} className="text-dim shrink-0" />
                 <span className="truncate flex-1 text-left">{item.label}</span>
                 {item.hint && (
-                  <kbd className="text-[10px] text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono shrink-0">
+                  <kbd className="text-xs text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono shrink-0">
                     {item.hint}
                   </kbd>
                 )}
@@ -760,7 +760,7 @@ export function CommandPalette({
           })}
         </div>
         {mode === 'files' && files.length > 0 && (
-          <div className="px-3 py-1.5 border-t border-border text-[10px] text-faint flex items-center justify-between">
+          <div className="px-3 py-1.5 border-t border-border text-xs text-faint flex items-center justify-between">
             <span>{files.length} files · {fileItems.length} shown</span>
             <span className="font-mono">↵ open · esc back</span>
           </div>

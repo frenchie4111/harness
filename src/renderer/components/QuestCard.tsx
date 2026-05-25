@@ -57,7 +57,7 @@ export function QuestCard({ step, onDismiss, onFinish }: QuestCardProps): JSX.El
           <div className="flex items-start justify-between mb-2">
             <div className="flex items-center gap-2">
               {content.icon}
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-dim">
+              <span className="text-xs font-semibold uppercase tracking-wider text-dim">
                 {content.eyebrow}
               </span>
             </div>
@@ -69,7 +69,7 @@ export function QuestCard({ step, onDismiss, onFinish }: QuestCardProps): JSX.El
               <X size={14} />
             </button>
           </div>
-          <div className="text-[15px] font-semibold text-fg-bright leading-snug mb-2">
+          <div className="text-sm font-semibold text-fg-bright leading-snug mb-2">
             {content.title}
           </div>
           <div className="text-xs text-muted leading-relaxed">{content.body}</div>

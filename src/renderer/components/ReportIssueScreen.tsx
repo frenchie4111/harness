@@ -216,7 +216,7 @@ export function ReportIssueScreen({
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-2xl mx-auto px-8 py-8 space-y-6">
           <div>
-            <label className="text-[11px] font-semibold uppercase tracking-wider text-dim block mb-2">
+            <label className="text-xs font-semibold uppercase tracking-wider text-dim block mb-2">
               Kind
             </label>
             <div className="inline-flex p-1 bg-panel border border-border-strong rounded-lg">
@@ -248,7 +248,7 @@ export function ReportIssueScreen({
           </div>
 
           <label className="block">
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-dim block mb-2">
+            <div className="text-xs font-semibold uppercase tracking-wider text-dim block mb-2">
               Title
             </div>
             <input
@@ -261,13 +261,12 @@ export function ReportIssueScreen({
                   ? 'Short summary of the problem'
                   : 'Short summary of the requested feature'
               }
-              style={{ fontSize: '13px' }}
-              className="w-full bg-panel border-2 border-border-strong rounded-lg px-3 py-2.5 text-fg-bright placeholder-faint outline-none focus:border-accent transition-colors"
+              className="w-full bg-panel border-2 border-border-strong rounded-lg px-3 py-2.5 text-sm text-fg-bright placeholder-faint outline-none focus:border-accent transition-colors"
             />
           </label>
 
           <label className="block">
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-dim block mb-2">
+            <div className="text-xs font-semibold uppercase tracking-wider text-dim block mb-2">
               Description
             </div>
             <textarea
@@ -279,8 +278,7 @@ export function ReportIssueScreen({
                   ? 'What happened? What did you expect? Steps to reproduce?'
                   : 'What would you like Harness to do? What problem would it solve?'
               }
-              style={{ fontSize: '13px' }}
-              className="w-full bg-panel border-2 border-border-strong rounded-lg px-3 py-2.5 font-mono text-fg placeholder-faint outline-none focus:border-accent transition-colors resize-y min-h-[200px]"
+              className="w-full bg-panel border-2 border-border-strong rounded-lg px-3 py-2.5 font-mono text-sm text-fg placeholder-faint outline-none focus:border-accent transition-colors resize-y min-h-[200px]"
             />
           </label>
 
@@ -303,10 +301,10 @@ export function ReportIssueScreen({
 
             {includeLog && (
               <div>
-                <div className="text-[11px] text-muted mb-1.5">
+                <div className="text-xs text-muted mb-1.5">
                   Review for sensitive info (paths, branch names) before submitting.
                 </div>
-                <pre className="bg-app border border-border rounded-md px-3 py-2 text-[11px] font-mono text-muted max-h-[200px] overflow-auto whitespace-pre">
+                <pre className="bg-app border border-border rounded-md px-3 py-2 text-xs font-mono text-muted max-h-[200px] overflow-auto whitespace-pre">
                   {log || '(no log content yet — interact with the app to generate entries)'}
                 </pre>
               </div>

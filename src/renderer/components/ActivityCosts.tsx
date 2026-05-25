@@ -235,7 +235,7 @@ export function ActivityCosts(): JSX.Element {
           className="w-9 h-9 rounded-xl brand-glow-amber shrink-0"
         />
         <div className="flex-1 min-w-0">
-          <div className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.18em] text-dim">
+          <div className="text-xs sm:text-xs font-semibold uppercase tracking-[0.18em] text-dim">
             Costs
           </div>
           <div className="text-sm text-fg-bright font-medium truncate">
@@ -263,7 +263,7 @@ export function ActivityCosts(): JSX.Element {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <div className="bg-app/50 border border-border rounded-xl p-6 md:col-span-1">
-          <div className="text-[10px] uppercase tracking-wider text-dim mb-2">Total</div>
+          <div className="text-xs uppercase tracking-wider text-dim mb-2">Total</div>
           {loading ? (
             <div className="flex items-center gap-2 text-muted">
               <Loader2 size={16} className="animate-spin" />
@@ -284,7 +284,7 @@ export function ActivityCosts(): JSX.Element {
         </div>
 
         <div className="bg-app/50 border border-border rounded-xl p-6 md:col-span-2">
-          <div className="text-[10px] uppercase tracking-wider text-dim mb-3">
+          <div className="text-xs uppercase tracking-wider text-dim mb-3">
             Cost by type
           </div>
           {loading ? (
@@ -308,7 +308,7 @@ export function ActivityCosts(): JSX.Element {
 
       {!loading && repos.length > 0 && (
         <div className="bg-app/50 border border-border rounded-xl overflow-hidden">
-          <div className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-4 px-3 py-2 border-b border-border bg-surface/40 text-[10px] uppercase tracking-wider text-dim">
+          <div className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-4 px-3 py-2 border-b border-border bg-surface/40 text-xs uppercase tracking-wider text-dim">
             <span>Repository / worktree</span>
             <span className="text-right w-24">Cost</span>
             <span className="text-right w-24">Last active</span>
@@ -347,7 +347,7 @@ export function ActivityCosts(): JSX.Element {
       )}
 
       <div className="text-center mt-6">
-        <div className="inline-flex items-center gap-1.5 text-[11px] text-dim">
+        <div className="inline-flex items-center gap-1.5 text-xs text-dim">
           <Sparkles size={11} className="text-amber-400/70" />
           <span>
             Tracked locally by Harness{' '}
@@ -440,7 +440,7 @@ function RepoRow({
           >
             {repoLabel}
           </span>
-          <span className="text-[10px] text-dim shrink-0">
+          <span className="text-xs text-dim shrink-0">
             {wtCount} {wtCount === 1 ? 'worktree' : 'worktrees'}
           </span>
         </div>
@@ -488,11 +488,11 @@ function WorktreeRow({
     >
       <div className="flex items-center gap-2 min-w-0">
         <span className="text-muted font-mono text-xs truncate">{label}</span>
-        <span className="text-[10px] text-dim shrink-0">
+        <span className="text-xs text-dim shrink-0">
           {sessionCount} {sessionCount === 1 ? 'session' : 'sessions'}
         </span>
         {worktree.models.size === 1 && (
-          <span className="text-[10px] text-dim/70 font-mono shrink-0">
+          <span className="text-xs text-dim/70 font-mono shrink-0">
             {modelLabel}
           </span>
         )}
@@ -609,7 +609,7 @@ function BreakdownPanel({
       {hidden > 0 && (
         <button
           onClick={() => setShowAll((s) => !s)}
-          className="self-start text-[10px] text-muted hover:text-fg-bright cursor-pointer flex items-center gap-1 transition-colors"
+          className="self-start text-xs text-muted hover:text-fg-bright cursor-pointer flex items-center gap-1 transition-colors"
         >
           {showAll ? (
             <>
@@ -641,7 +641,7 @@ function BreakdownBar({
   const width = max > 0 ? (row.cost / max) * 100 : 0
   const color = colorForLabel(row.label)
   return (
-    <div className="flex items-center gap-2 text-[11px] leading-tight">
+    <div className="flex items-center gap-2 text-xs leading-tight">
       <span className={`w-2 h-2 rounded-sm shrink-0 ${color}`} />
       <span className="text-muted truncate w-20 shrink-0" title={row.label}>
         {row.label}

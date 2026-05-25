@@ -20,13 +20,13 @@ export function GenericToolCard({ block, result, autoApproved, sessionAllowed }:
       sessionAllowed={sessionAllowed}
     >
       {block.input && (
-        <pre className="px-2 py-1 text-[11px] font-mono bg-app/40 whitespace-pre-wrap max-h-40 overflow-auto">
+        <pre className="px-2 py-1 text-xs font-mono bg-app/40 whitespace-pre-wrap max-h-40 overflow-auto">
           {JSON.stringify(block.input, null, 2)}
         </pre>
       )}
       {result && (
         <pre
-          className={`px-2 py-1 text-[11px] font-mono whitespace-pre-wrap max-h-60 overflow-auto ${
+          className={`px-2 py-1 text-xs font-mono whitespace-pre-wrap max-h-60 overflow-auto ${
             result.isError ? 'text-danger' : 'opacity-80'
           }`}
         >

@@ -403,10 +403,10 @@ export function Activity({ onClose, onOpenMyWeek, worktrees, prStatuses, mergedP
                   return (
                     <div key={key} className="mb-4 last:mb-0">
                       <div className="flex items-center gap-2 mb-2">
-                        <span className="text-[10px] uppercase tracking-wider text-dim font-semibold">
+                        <span className="text-xs uppercase tracking-wider text-dim font-semibold">
                           {label}
                         </span>
-                        <span className="text-[10px] text-dim/60 tabular-nums">
+                        <span className="text-xs text-dim/60 tabular-nums">
                           {entries.length}
                         </span>
                         <div className="flex-1 h-px bg-border/50" />
@@ -465,17 +465,17 @@ function StatCard({
     <div className="bg-app/50 border border-border rounded-xl p-4">
       <div className="flex items-center gap-2 mb-2">
         <Icon size={14} className={tint} />
-        <span className="text-[10px] uppercase tracking-wider text-dim">{label}</span>
+        <span className="text-xs uppercase tracking-wider text-dim">{label}</span>
       </div>
       <div className={`text-2xl font-bold ${tint} tabular-nums`}>{value}</div>
-      <div className="text-[10px] text-dim mt-0.5">{sub}</div>
+      <div className="text-xs text-dim mt-0.5">{sub}</div>
     </div>
   )
 }
 
 function Legend(): JSX.Element {
   return (
-    <div className="flex items-center gap-3 text-[10px] text-dim">
+    <div className="flex items-center gap-3 text-xs text-dim">
       <span className="flex items-center gap-1.5">
         <span className="w-2.5 h-2.5 rounded-sm bg-success/80" />
         working
@@ -522,7 +522,7 @@ function TimeAxis({ windowStart, windowEnd }: { windowStart: number; windowEnd: 
           return (
             <div
               key={p}
-              className="absolute text-[9px] text-dim tabular-nums -translate-x-1/2"
+              className="absolute text-xs text-dim tabular-nums -translate-x-1/2"
               style={{ left: `${p * 100}%` }}
             >
               {fmt(t)}
@@ -560,18 +560,18 @@ function WorktreeRow({
       <div className="w-44 shrink-0 flex flex-col leading-tight" title={fullTitle}>
         <div className="flex items-center gap-1.5">
           <span
-            className={`text-[11px] font-mono truncate ${isLive ? 'text-muted' : 'text-dim italic'}`}
+            className={`text-xs font-mono truncate ${isLive ? 'text-muted' : 'text-dim italic'}`}
           >
             {label}
           </span>
           {!isLive && (
-            <span className="text-[8px] uppercase tracking-wider text-dim/70 bg-faint/10 px-1 py-px rounded">
+            <span className="text-xs uppercase tracking-wider text-dim/70 bg-faint/10 px-1 py-px rounded">
               removed
             </span>
           )}
         </div>
         {(repoLabel || diff) && (
-          <div className="flex items-center gap-1.5 text-[9px] text-dim/80 tabular-nums">
+          <div className="flex items-center gap-1.5 text-xs text-dim/80 tabular-nums">
             {repoLabel && <span className="truncate">{repoLabel}</span>}
             {diff && (diff.added || diff.removed) ? (
               <span className="shrink-0">

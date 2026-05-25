@@ -24,7 +24,7 @@ export function Guide({ onClose }: GuideProps): JSX.Element {
         <div className="max-w-3xl mx-auto px-8 py-12">
           {/* Hero */}
           <div className="mb-14">
-            <h1 className="text-4xl font-bold text-fg-bright mb-3 tracking-tight">
+            <h1 className="text-3xl font-bold text-fg-bright mb-3 tracking-tight">
               Run many Claudes in parallel
             </h1>
             <p className="text-lg text-muted leading-relaxed">
@@ -270,7 +270,7 @@ function Section({
         <div className="w-8 h-8 rounded-lg bg-surface flex items-center justify-center text-accent shrink-0">
           <Icon size={16} />
         </div>
-        <h2 className="text-xl font-semibold text-fg-bright">{title}</h2>
+        <h2 className="text-lg font-semibold text-fg-bright">{title}</h2>
       </div>
       <div className="text-sm text-fg leading-relaxed space-y-3 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:bg-surface [&_code]:rounded [&_code]:text-xs [&_code]:text-fg-bright [&_code]:font-mono">
         {children}
@@ -341,7 +341,7 @@ function SoloFlow(): JSX.Element {
             </div>
           )
         })}
-        <div className="flex items-center gap-4 pt-2 text-[10px] text-dim justify-center flex-wrap">
+        <div className="flex items-center gap-4 pt-2 text-xs text-dim justify-center flex-wrap">
           <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-info/60" />kick off</span>
           <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-faint/30" />scrolling reels</span>
           <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-warning/60" />review</span>
@@ -378,8 +378,8 @@ function WorktreeDiagram(): JSX.Element {
           {trees.map((t) => (
             <div key={t.label} className={`px-2.5 py-3 rounded-lg bg-panel-raised border ${t.ring} flex flex-col items-center gap-1.5 min-w-0`}>
               <Folder size={16} className={t.color} />
-              <code className="text-[10px] text-fg-bright font-mono truncate max-w-full">{t.label}</code>
-              <span className={`text-[10px] ${t.color} font-mono`}>{t.branch}</span>
+              <code className="text-xs text-fg-bright font-mono truncate max-w-full">{t.label}</code>
+              <span className={`text-xs ${t.color} font-mono`}>{t.branch}</span>
             </div>
           ))}
         </div>
@@ -395,20 +395,20 @@ function CollisionDiagram(): JSX.Element {
       <div className="grid grid-cols-2 gap-4">
         {/* Before — collision */}
         <div>
-          <div className="text-[10px] uppercase tracking-wider text-danger mb-2 font-semibold flex items-center gap-1">
+          <div className="text-xs uppercase tracking-wider text-danger mb-2 font-semibold flex items-center gap-1">
             <AlertTriangle size={10} />
             <span>Without worktrees</span>
           </div>
           <div className="p-4 rounded-lg bg-danger/10 border border-danger/30 relative">
             <div className="flex items-center gap-1.5 mb-3">
               <Folder size={14} className="text-danger" />
-              <code className="text-[10px] text-fg-bright font-mono">myrepo/</code>
+              <code className="text-xs text-fg-bright font-mono">myrepo/</code>
             </div>
             <div className="space-y-1.5">
               {['claude #1', 'claude #2', 'claude #3'].map((c, i) => (
                 <div
                   key={c}
-                  className="px-2 py-1 rounded bg-danger/20 border border-danger/40 text-[10px] text-fg-bright font-mono"
+                  className="px-2 py-1 rounded bg-danger/20 border border-danger/40 text-xs text-fg-bright font-mono"
                   style={{ transform: `translateX(${i * 4}px) rotate(${i - 1}deg)` }}
                 >
                   {c} ✎ src/api.ts
@@ -419,7 +419,7 @@ function CollisionDiagram(): JSX.Element {
         </div>
         {/* After — isolation */}
         <div>
-          <div className="text-[10px] uppercase tracking-wider text-success mb-2 font-semibold flex items-center gap-1">
+          <div className="text-xs uppercase tracking-wider text-success mb-2 font-semibold flex items-center gap-1">
             <span className="w-2 h-2 rounded-full bg-success" />
             <span>With worktrees</span>
           </div>
@@ -431,9 +431,9 @@ function CollisionDiagram(): JSX.Element {
             ].map((row) => (
               <div key={row.folder} className="p-2 rounded-lg bg-success/10 border border-success/30 flex items-center gap-2">
                 <Folder size={12} className="text-success shrink-0" />
-                <code className="text-[10px] text-fg-bright font-mono truncate">{row.folder}</code>
+                <code className="text-xs text-fg-bright font-mono truncate">{row.folder}</code>
                 <div className="flex-1" />
-                <div className="px-1.5 py-0.5 rounded bg-success/20 text-[9px] text-success font-mono">{row.agent}</div>
+                <div className="px-1.5 py-0.5 rounded bg-success/20 text-xs text-success font-mono">{row.agent}</div>
               </div>
             ))}
           </div>
@@ -474,7 +474,7 @@ function HarnessMockup(): JSX.Element {
             {rows.map((row) => (
               <div key={row.name} className="flex items-center gap-2 px-3 py-2 hover:bg-surface/40 transition-colors">
                 <span className={`w-2 h-2 rounded-full shrink-0 ${dotColor(row.status)}`} />
-                <code className="text-[11px] text-fg-bright font-mono truncate flex-1">{row.name}</code>
+                <code className="text-xs text-fg-bright font-mono truncate flex-1">{row.name}</code>
                 {row.pr && (
                   <div className="flex items-center gap-1 shrink-0">
                     <GitPullRequest size={10} className="text-success" />
@@ -523,7 +523,7 @@ function ParallelTimeline(): JSX.Element {
             </div>
           </div>
         ))}
-        <div className="flex items-center gap-4 pt-2 text-[10px] text-dim justify-center">
+        <div className="flex items-center gap-4 pt-2 text-xs text-dim justify-center">
           <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-success/70" />working</span>
           <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-warning/70" />waiting on you</span>
           <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-info/50" />merged</span>

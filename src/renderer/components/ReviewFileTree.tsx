@@ -93,7 +93,7 @@ function DiffStatBar({ additions, deletions }: { additions: number; deletions: n
   const delBlocks = MAX_STAT_BLOCKS - addBlocks
   return (
     <span className="shrink-0 flex items-center gap-1">
-      <span className="font-mono text-[10px] tabular-nums text-faint">{total}</span>
+      <span className="font-mono text-xs tabular-nums text-faint">{total}</span>
       <span className="flex gap-px">
         {Array.from({ length: addBlocks }, (_, i) => (
           <span key={`a${i}`} className="w-[6px] h-[6px] rounded-[1px] bg-success" />
@@ -210,7 +210,7 @@ export function ReviewFileTree({
             {group.dir && (
               <button
                 onClick={() => onToggleDir(group.dir)}
-                className="w-full flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-dim uppercase tracking-wider bg-panel-raised/50 hover:bg-panel-raised cursor-pointer"
+                className="w-full flex items-center gap-1 px-2 py-1 text-xs font-medium text-dim uppercase tracking-wider bg-panel-raised/50 hover:bg-panel-raised cursor-pointer"
               >
                 <ChevronRight
                   size={10}
@@ -249,7 +249,7 @@ export function ReviewFileTree({
                       {isReviewed && <Check size={9} strokeWidth={3} />}
                     </button>
 
-                    <span className={`shrink-0 w-3 font-mono text-[10px] ${STATUS_COLOR[file.status]}`}>
+                    <span className={`shrink-0 w-3 font-mono text-xs ${STATUS_COLOR[file.status]}`}>
                       {STATUS_LABEL[file.status]}
                     </span>
 
@@ -260,7 +260,7 @@ export function ReviewFileTree({
                     )}
 
                     {commentCount > 0 && (
-                      <span className="shrink-0 text-[9px] bg-info/20 text-info px-1 rounded-full tabular-nums">
+                      <span className="shrink-0 text-xs bg-info/20 text-info px-1 rounded-full tabular-nums">
                         {commentCount}
                       </span>
                     )}

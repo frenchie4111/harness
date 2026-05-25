@@ -321,14 +321,14 @@ export function Sidebar({
             <div className="p-3">
               <div className="flex items-center gap-1.5 mb-1">
                 <Sparkles size={11} className="text-accent" />
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-accent">
+                <span className="text-xs font-semibold uppercase tracking-wider text-accent">
                   Get started
                 </span>
               </div>
-              <div className="text-[13px] font-semibold text-fg-bright leading-snug">
+              <div className="text-sm font-semibold text-fg-bright leading-snug">
                 Spawn your first agent
               </div>
-              <div className="text-[11px] text-dim mt-0.5 leading-snug">
+              <div className="text-xs text-dim mt-0.5 leading-snug">
                 Fork a branch and send a Claude into it.
               </div>
               <div className="mt-2">
@@ -378,7 +378,7 @@ export function Sidebar({
                 />
                 {continueTarget?.path === wt.path && (
                   <div className="border-y-2 border-accent bg-panel-raised p-2.5 shadow-inner">
-                    <div className="text-[10px] font-semibold uppercase tracking-wider text-accent mb-1.5 px-0.5">
+                    <div className="text-xs font-semibold uppercase tracking-wider text-accent mb-1.5 px-0.5">
                       Continue on new branch
                     </div>
                     <input
@@ -436,7 +436,7 @@ export function Sidebar({
               {showRepoHeaders && (
                 <button
                   onClick={() => onToggleRepo(repoRoot)}
-                  className="group w-full flex items-center gap-1 px-3 mt-1 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-dim hover:text-fg transition-colors cursor-pointer"
+                  className="group w-full flex items-center gap-1 px-3 mt-1 py-1.5 text-xs font-semibold uppercase tracking-wider text-dim hover:text-fg transition-colors cursor-pointer"
                   title={repoRoot}
                 >
                   {repoCollapsed
