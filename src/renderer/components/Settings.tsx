@@ -12,7 +12,8 @@ import { AgentIcon } from './AgentIcon'
 import { InterfaceToggle } from './InterfaceToggle'
 import { BUILT_IN_THEMES_BY_MODE, type ThemeOption } from '../themes'
 import { SEMANTIC_KEYS } from '../theme-apply'
-import type { CustomTheme } from '../../shared/state/settings'
+import type { CustomTheme, UiScale } from '../../shared/state/settings'
+import { SCALES, scaleSpec } from '../../shared/state/settings'
 import { QRCodeSVG } from 'qrcode.react'
 
 interface SettingsProps {
@@ -336,6 +337,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     wsTransportHost,
     defaultClaudeTabType,
     jsonModeChatDensity,
+    uiScale,
     jsonModeSendOnEnter,
     jsonModeDefaultPermissionMode,
     autoSleepMinutes,
@@ -486,6 +488,39 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
   const handleSelectThemeMode = useCallback((mode: 'light' | 'dark' | 'system') => {
     void backend.setThemeMode(mode)
   }, [backend])
+
+  // UI scale draft. A live slider that resized the whole app on each drag
+  // tick would be disorienting; instead we hold a local draft and a small
+  // scoped preview (below) shows what the chosen rung looks like. Save
+  // commits via IPC; closing Settings without saving drops the draft.
+  const [draftUiScale, setDraftUiScale] = useState<UiScale>(uiScale)
+  // Resync if the persisted value changes from another client or the
+  // Cmd+= / Cmd+- hotkeys while Settings is open.
+  useEffect(() => { setDraftUiScale(uiScale) }, [uiScale])
+  const uiScaleDirty = draftUiScale !== uiScale
+  const draftScaleSpec = scaleSpec(draftUiScale)
+  const handleSelectUiScale = useCallback((value: UiScale) => {
+    setDraftUiScale(value)
+  }, [])
+  const handleSaveUiScale = useCallback(() => {
+    void backend.setUiScale(draftUiScale)
+  }, [backend, draftUiScale])
+  const handleRevertUiScale = useCallback(() => {
+    setDraftUiScale(uiScale)
+  }, [uiScale])
+
+  // When the persisted uiScale changes the root font-size shifts and the
+  // whole Settings page reflows — the user's scroll position no longer
+  // points at the section they were reading. Re-anchor to the active
+  // section on the next frame after App.tsx's font-size effect runs.
+  const activeSectionRef = useRef(activeSection)
+  useEffect(() => { activeSectionRef.current = activeSection }, [activeSection])
+  const prevUiScaleRef = useRef(uiScale)
+  useEffect(() => {
+    if (uiScale === prevUiScaleRef.current) return
+    prevUiScaleRef.current = uiScale
+    requestAnimationFrame(() => scrollToSection(activeSectionRef.current))
+  }, [uiScale, scrollToSection])
 
   const handleSelectLightTheme = useCallback((id: string) => {
     void backend.setThemeLight(id)
@@ -1375,6 +1410,141 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   </button>
                 </div>
               </div>
+
+              {/* UI scale — drives the root html font-size, so every rem
+                  unit (text-xs/sm/base/lg, w-N/h-N icons, padding-*, gap-*)
+                  scales in lockstep. Native range gives free keyboard
+                  semantics; the four notches are also clickable labels.
+                  Drag is staged in draftUiScale so the whole app doesn't
+                  reflow on every tick — Save commits, Cancel reverts,
+                  and closing Settings without saving drops the draft. */}
+              <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">UI size</h3>
+              <p className="text-xs text-dim mb-3">
+                Scales the entire app — affects sidebar, panels, dialogs.
+                Larger sizes are friendlier for screen-sharing; small packs
+                more on screen.
+              </p>
+              {(() => {
+                const idx = SCALES.findIndex((s) => s.id === draftUiScale)
+                return (
+                  <>
+                    <input
+                      type="range"
+                      min={0}
+                      max={SCALES.length - 1}
+                      step={1}
+                      value={idx < 0 ? 0 : idx}
+                      onChange={(e) => {
+                        const v = Number(e.target.value)
+                        const next = SCALES[v]
+                        if (next) handleSelectUiScale(next.id)
+                      }}
+                      aria-label="UI size"
+                      className="w-full accent-accent cursor-pointer"
+                    />
+                    <div className="mt-1 flex justify-between text-xs text-dim select-none">
+                      {SCALES.map((s) => (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onClick={() => handleSelectUiScale(s.id)}
+                          className={`cursor-pointer transition-colors ${
+                            draftUiScale === s.id ? 'text-fg-bright' : 'hover:text-fg'
+                          }`}
+                        >
+                          {s.label}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )
+              })()}
+
+              {/* Scoped preview — inline em-based sizes anchored to the
+                  draft rung, so dragging only resizes this box. The real
+                  UI shifts on Save (App.tsx watches settings.uiScale). */}
+              <div
+                className="mt-3 rounded border border-border bg-panel/60"
+                style={{
+                  fontSize: `${draftScaleSpec.rootPx}px`,
+                  padding: '0.75em',
+                  lineHeight: 1.4
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: '0.625em',
+                    color: 'var(--color-dim)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em',
+                    fontWeight: 500
+                  }}
+                >
+                  Preview · {draftScaleSpec.label} ({draftScaleSpec.rootPx}px)
+                </div>
+                <div
+                  style={{
+                    marginTop: '0.5em',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5em'
+                  }}
+                >
+                  <span
+                    style={{
+                      width: '0.5em',
+                      height: '0.5em',
+                      borderRadius: '50%',
+                      background: 'var(--color-success)',
+                      flexShrink: 0
+                    }}
+                  />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '0.875em', color: 'var(--color-fg-bright)' }}>
+                      my-branch
+                    </div>
+                    <div style={{ fontSize: '0.6875em', color: 'var(--color-faint)' }}>
+                      last touched 3m ago
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    style={{
+                      fontSize: '0.6875em',
+                      padding: '0.25em 0.5em',
+                      borderRadius: '0.25em',
+                      background:
+                        'color-mix(in srgb, var(--color-accent) 20%, transparent)',
+                      color: 'var(--color-fg-bright)',
+                      border:
+                        '1px solid color-mix(in srgb, var(--color-accent) 40%, transparent)',
+                      cursor: 'default'
+                    }}
+                  >
+                    Action
+                  </button>
+                </div>
+              </div>
+
+              {uiScaleDirty && (
+                <div className="mt-3 flex items-center justify-end gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={handleSaveUiScale}
+                    className="px-2.5 py-1 rounded bg-accent/20 hover:bg-accent/30 text-fg-bright border border-accent/40 cursor-pointer transition-colors"
+                  >
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleRevertUiScale}
+                    className="px-2.5 py-1 rounded text-dim hover:text-fg cursor-pointer transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
 
               <div ref={(el) => { subSectionRefs.current['appearance-terminal-font'] = el }} id="appearance-terminal-font" />
               <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">Terminal font</h3>
