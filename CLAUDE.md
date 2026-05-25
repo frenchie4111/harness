@@ -541,6 +541,25 @@ Linux release builds now produce both `.deb` (Ubuntu/Debian) and
 `.AppImage` (every distro) — both attached to the GitHub release
 automatically by `.github/workflows/build-linux.yml` on tag push.
 
+### Beta channel
+
+`npm run release 1.2.3-beta.1` cuts a beta. Same command, suffix routes
+everything: `electron-builder` publishes to `beta.yml` (mac + linux),
+the GitHub release is marked pre-release, README + releases.html stay
+pointed at the last stable. Iterate with `-beta.2`, `-beta.3`, etc.
+Promote with `npm run release 1.2.3` (no suffix) — both beta and stable
+users update because semver puts `1.2.3` above `1.2.3-beta.N`.
+
+Users opt in via Settings → Updates → Release channel: Beta. Restart
+required after toggling — the live `autoUpdater.channel` is set once
+during boot. Stable users never see beta releases.
+
+Known limitation: first-install users can't pick beta from a fresh
+download — they have to install a stable build first, then toggle in
+Settings. A dedicated beta install URL can be added later if needed.
+
+Dry-run the script without publishing via `npm run release 1.2.3-beta.1 -- --dry-run`.
+
 ### Headless smoke test on every PR
 
 PR CI (`.github/workflows/ci.yml`) runs `scripts/smoke-headless.sh`

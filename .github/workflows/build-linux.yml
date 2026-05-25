@@ -37,8 +37,29 @@ jobs:
       - name: Install dependencies
         run: npm install --legacy-peer-deps
 
+      # Detect channel from the pushed tag (or assume stable for manual
+      # dispatch / branch builds). vX.Y.Z-beta.N → beta channel, anything
+      # else → latest. Drives the electron-builder --config.publish.channel
+      # override and the YAML basename we attach to the release.
+      - name: Detect release channel
+        id: channel
+        run: |
+          REF="${GITHUB_REF}"
+          if [[ "$REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]]; then
+            echo "name=beta" >> "$GITHUB_OUTPUT"
+            echo "yml=beta-linux.yml" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=latest" >> "$GITHUB_OUTPUT"
+            echo "yml=latest-linux.yml" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build Linux packages
-        run: npm run dist:linux
+        run: |
+          if [ "${{ steps.channel.outputs.name }}" = "beta" ]; then
+            npm run dist:linux -- --config.publish.channel=beta
+          else
+            npm run dist:linux
+          fi
 
       - name: Upload workflow artifact (branch / dispatch)
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
@@ -48,7 +69,7 @@ jobs:
           path: |
             release/Harness-*.AppImage
             release/Harness-*.deb
-            release/latest-linux.yml
+            release/${{ steps.channel.outputs.yml }}
           if-no-files-found: error
 
       - name: Attach to GitHub release (tag push)
@@ -60,5 +81,5 @@ jobs:
           gh release upload "$TAG" \
             release/Harness-*.AppImage \
             release/Harness-*.deb \
-            release/latest-linux.yml \
+            "release/${{ steps.channel.outputs.yml }}" \
             --clobber

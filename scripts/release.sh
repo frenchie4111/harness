@@ -21,18 +21,41 @@ set -euo pipefail
 
 # ---- Args ----
 if [ $# -lt 1 ]; then
-  echo "Usage: $0 <version>"
+  echo "Usage: $0 <version> [--dry-run]"
   echo "Example: $0 1.0.1"
+  echo "Example: $0 1.0.1-beta.1   # cuts a beta build"
   exit 1
 fi
 
 VERSION="$1"
 TAG="v${VERSION}"
+DRY_RUN=0
+for arg in "${@:2}"; do
+  case "$arg" in
+    --dry-run) DRY_RUN=1 ;;
+    *) echo "Unknown argument: $arg" >&2; exit 1 ;;
+  esac
+done
 
 # Strip leading v if present
 if [[ "$VERSION" =~ ^v ]]; then
   VERSION="${VERSION#v}"
   TAG="v${VERSION}"
+fi
+
+# Detect stable vs beta and validate version format. Anything else
+# (alpha, rc, plain '1.2', etc.) is rejected — we only ship two channels
+# right now, so allowing other suffixes would silently route them to
+# stable. Add new prerelease shapes here when they actually exist.
+if [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  CHANNEL="latest"
+  CHANNEL_YML_BASENAME="latest"
+elif [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]]; then
+  CHANNEL="beta"
+  CHANNEL_YML_BASENAME="beta"
+else
+  echo "Version must be X.Y.Z or X.Y.Z-beta.N (got: $VERSION)" >&2
+  exit 1
 fi
 
 # ---- Pretty output ----
@@ -51,6 +74,29 @@ fail() { echo -e "${RED}✗${RESET} $1" >&2; exit 1; }
 # ---- Move to repo root ----
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "${SCRIPT_DIR}/.."
+
+# ---- Dry-run short-circuit ----
+# In dry-run mode, validate version parsing and surface the routing
+# decisions but skip every check that touches outside state (working
+# tree, env vars, gh auth, network). This is the fast feedback loop
+# when iterating on the script itself or sanity-checking a version arg.
+if [ "$DRY_RUN" = "1" ]; then
+  step "Dry-run: would release Harness v${VERSION}"
+  echo "  Tag:     $TAG"
+  echo "  Channel: $CHANNEL$([ "$CHANNEL" = "beta" ] && echo " (pre-release)")"
+  echo "  Updater YAML: ${CHANNEL_YML_BASENAME}-mac.yml"
+  if [ "$CHANNEL" = "beta" ]; then
+    echo "  README + releases.html updates: skipped"
+    echo "  electron-builder: --config.publish.channel=beta"
+    echo "  gh release create: --prerelease"
+  else
+    echo "  README + releases.html updates: applied"
+    echo "  electron-builder: (default channel)"
+    echo "  gh release create: (no prerelease flag)"
+  fi
+  ok "Dry run complete"
+  exit 0
+fi
 
 # ---- Preflight ----
 step "Preflight checks"
@@ -115,9 +161,16 @@ ok "Dependencies installed"
 # Confirm before proceeding
 echo
 echo "${BOLD}Ready to release Harness v${VERSION}${RESET}"
-echo "  Commit: $(git rev-parse --short HEAD)"
-echo "  Tag:    $TAG"
+echo "  Commit:  $(git rev-parse --short HEAD)"
+echo "  Tag:     $TAG"
+echo "  Channel: $CHANNEL$([ "$CHANNEL" = "beta" ] && echo " (pre-release)")"
+echo "  Updater YAML: ${CHANNEL_YML_BASENAME}-mac.yml"
+if [ "$CHANNEL" = "beta" ]; then
+  echo "  Skipping README + releases.html updates (stable-only)"
+  echo "  gh release create will be invoked with --prerelease"
+fi
 echo
+
 read -r -p "Proceed? [y/N] " confirm
 if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
   echo "Aborted."
@@ -164,8 +217,16 @@ ok "package.json and package-lock.json updated"
 # The marketing-site Install page reads version from package.json at build
 # time, so it no longer needs in-HTML regex replacement. README still
 # carries hard-coded DMG URLs that we keep in sync here.
-step "Updating download links in README"
-node -e "
+#
+# Beta releases skip this step entirely — README always points at the
+# last stable so a casual visitor downloading from the link doesn't end
+# up on a pre-release build.
+if [ "$CHANNEL" = "beta" ]; then
+  step "Skipping README download-link update (beta release)"
+  ok "README unchanged"
+else
+  step "Updating download links in README"
+  node -e "
 const fs = require('fs');
 const v = '${VERSION}';
 const files = ['README.md'];
@@ -177,9 +238,19 @@ for (const f of files) {
   fs.writeFileSync(f, content);
 }
 "
-ok "Download links updated"
+  ok "Download links updated"
+fi
 
 # ---- Generate release notes for site/public/releases.html ----
+# Beta releases don't update the marketing-site releases page. Stable
+# users only ever see promoted-to-stable entries; iterating betas would
+# fill the page with throwaway -beta.N rows. The GitHub release notes
+# block further down still runs for beta — that's enough for testers.
+if [ "$CHANNEL" = "beta" ]; then
+  step "Skipping releases.html update (beta release)"
+  CONTRIBUTORS_FILE=$(mktemp)
+  ok "releases.html unchanged"
+else
 step "Generating release notes with Claude"
 PREV_TAG=$(git describe --tags --abbrev=0 HEAD 2>/dev/null || true)
 if [ -z "$PREV_TAG" ]; then
@@ -247,6 +318,7 @@ if ! git diff --quiet site/public/releases.html 2>/dev/null; then
 else
   warn "Claude did not modify site/public/releases.html — continuing anyway"
 fi
+fi
 
 # ---- Cross-arch claude binary ----
 # Bundled @anthropic-ai/claude-code ships per-arch native binaries via
@@ -263,9 +335,18 @@ npm install --no-save --ignore-scripts --legacy-peer-deps --force "@anthropic-ai
 ok "Installed @anthropic-ai/claude-code-darwin-x64@${CLAUDE_VERSION}"
 
 # ---- Build / sign / notarize ----
+# Pass --config.publish.channel through to electron-builder when on beta
+# so it emits beta-mac.yml (and bumps the right channel inside the YAML
+# pointer) instead of latest-mac.yml. The CLI override wins over the
+# `build.publish` block in package.json without us needing a separate
+# dist:mac:beta script.
 step "Building, signing, and notarizing (this takes several minutes)"
 rm -rf release
-npm run dist:mac
+if [ "$CHANNEL" = "beta" ]; then
+  HARNESS_RELEASE_CHANNEL=beta npm run dist:mac -- --config.publish.channel=beta
+else
+  npm run dist:mac
+fi
 ok "Build complete"
 
 # Sanity check the artifacts exist
@@ -273,7 +354,7 @@ DMG_ARM64="release/Harness-${VERSION}-arm64.dmg"
 DMG_X64="release/Harness-${VERSION}.dmg"
 ZIP_ARM64="release/Harness-${VERSION}-arm64-mac.zip"
 ZIP_X64="release/Harness-${VERSION}-mac.zip"
-LATEST_YML="release/latest-mac.yml"
+LATEST_YML="release/${CHANNEL_YML_BASENAME}-mac.yml"
 
 for f in "$DMG_ARM64" "$DMG_X64" "$ZIP_ARM64" "$ZIP_X64" "$LATEST_YML"; do
   if [ ! -f "$f" ]; then
@@ -289,10 +370,20 @@ ok "All artifacts present"
 # becomes a no-op and any subsequent failure (tag/push/gh) is left for
 # the user to recover from manually since the artifacts already exist.
 step "Committing version bump and release notes"
-git add package.json package-lock.json README.md site/public/releases.html
-git commit -m "Release v${VERSION}"
+git add package.json package-lock.json
+# On beta, README.md and site/public/releases.html are deliberately
+# unchanged, so don't stage them. On stable, both get the version bump
+# + release-notes update from the steps above.
+if [ "$CHANNEL" != "beta" ]; then
+  git add README.md site/public/releases.html
+fi
+if [ "$CHANNEL" = "beta" ]; then
+  git commit -m "Release v${VERSION} (beta)"
+else
+  git commit -m "Release v${VERSION}"
+fi
 COMMITTED=1
-ok "Committed version bump, download links, and release notes"
+ok "Committed version bump$([ "$CHANNEL" != "beta" ] && echo ", download links, and release notes")"
 
 # ---- Tag and push ----
 step "Tagging and pushing"
@@ -350,6 +441,10 @@ ok "Release notes generated"
 
 # ---- Create GitHub release ----
 step "Creating GitHub release"
+PRERELEASE_FLAG=""
+if [ "$CHANNEL" = "beta" ]; then
+  PRERELEASE_FLAG="--prerelease"
+fi
 gh release create "$TAG" \
   "$DMG_ARM64" \
   "$DMG_X64" \
@@ -361,7 +456,8 @@ gh release create "$TAG" \
   release/Harness-${VERSION}-arm64-mac.zip.blockmap \
   release/Harness-${VERSION}-mac.zip.blockmap \
   --title "Harness ${TAG}" \
-  --notes-file "$NOTES_FILE"
+  --notes-file "$NOTES_FILE" \
+  $PRERELEASE_FLAG
 
 rm -f "$NOTES_FILE"
 
