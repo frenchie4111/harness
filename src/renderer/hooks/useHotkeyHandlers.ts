@@ -7,6 +7,7 @@ import { groupWorktrees, getGroupKey, type GroupKey } from '../worktree-sort'
 import { focusTerminalById } from '../components/XTerminal'
 import { useConnections, getBackendsRegistry, useSettings, useSnooze } from '../store'
 import { useBackend } from '../backend'
+import { SCALES } from '../../shared/state/settings'
 
 interface UseHotkeyHandlersArgs {
   worktrees: Worktree[]
@@ -88,7 +89,9 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
 
   // Mirror the sidebar's grouping/rendering order so hotkey navigation
   // matches what's on screen.
-  const viewerLogin = useSettings().viewerLogin
+  const allSettings = useSettings()
+  const viewerLogin = allSettings.viewerLogin
+  const uiScale = allSettings.uiScale
   const snoozeByPath = useSnooze().byPath
   const snoozedPaths = useMemo(() => {
     const m: Record<string, true> = {}
@@ -307,7 +310,17 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       },
       togglePerfMonitor: () => setShowPerfMonitor((v) => !v),
       hotkeyCheatsheet: () => setShowHotkeyCheatsheet((v) => !v),
-      openReview: () => setShowReview(true)
+      openReview: () => setShowReview(true),
+      uiScaleUp: () => {
+        const i = SCALES.findIndex((s) => s.id === uiScale)
+        const next = SCALES[Math.min(i < 0 ? 0 : i + 1, SCALES.length - 1)]
+        if (next && next.id !== uiScale) void backend.setUiScale(next.id)
+      },
+      uiScaleDown: () => {
+        const i = SCALES.findIndex((s) => s.id === uiScale)
+        const next = SCALES[Math.max(i < 0 ? 0 : i - 1, 0)]
+        if (next && next.id !== uiScale) void backend.setUiScale(next.id)
+      }
     }),
     [
       cycleWorktree,
@@ -334,7 +347,8 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       setShowHotkeyCheatsheet,
       setShowReview,
       setShowSettings,
-      backend
+      backend,
+      uiScale
     ]
   )
 
