@@ -234,6 +234,11 @@ function DesktopApp(): JSX.Element {
   const [showNewProject, setShowNewProject] = useState(false)
   const [reportIssueState, setReportIssueState] = useState<OpenReportIssueDetail | null>(null)
   const [showAddBackend, setShowAddBackend] = useState(false)
+  // Dev-only: forces the welcome / onboarding form to render even when
+  // the user already has repos added, so the layout can be inspected
+  // without wiping `userData/config.json`. Toggled from Help → Debug:
+  // Preview Onboarding (gated `!app.isPackaged`).
+  const [previewOnboarding, setPreviewOnboarding] = useState(false)
   const [crashedTabIds, setCrashedTabIds] = useState<ReadonlySet<string>>(() => new Set())
   // `theme` and `defaultAgent` are both seeded at init, so we track
   // explicit confirmation separately for the onboarding step checkmarks.
@@ -385,14 +390,15 @@ const setQuestStep = useCallback((next: QuestStep) => {
     })
   }, [activeWorktreeId, panes, activePaneId])
 
-  // Debug: Reset Onboarding (dev-only Help menu entry). Walks the quest
-  // back to 'hidden' so the choose-interface card reappears after the
-  // next worktree-add tick.
+  // Debug: Preview Onboarding (dev-only Help menu entry). Toggles a
+  // renderer-local override that forces the welcome / onboarding form
+  // to render regardless of repo count — handy for inspecting the
+  // layout without wiping userData.
   useEffect(() => {
-    return backend.onDebugResetOnboarding(() => {
-      setQuestStep('hidden')
+    return backend.onDebugPreviewOnboarding(() => {
+      setPreviewOnboarding((v) => !v)
     })
-  }, [setQuestStep])
+  }, [])
 
   // Trigger a full PR refresh in main. Used by the sidebar refresh button
   // and after worktree creation/removal.
@@ -741,7 +747,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
     ) : null
 
 
-  if (repoRoots.length === 0) {
+  if (repoRoots.length === 0 || previewOnboarding) {
     const step1Complete = themeChosen
     const step2Complete = agentChosen
     const step3Complete = hooksConsent !== 'pending'
@@ -756,6 +762,19 @@ const setQuestStep = useCallback((next: QuestStep) => {
       <HotkeysProvider bindings={resolvedHotkeys}>
       <div className="flex h-full flex-col">
         <div className="drag-region h-10 shrink-0" />
+        {previewOnboarding && repoRoots.length > 0 && (
+          <div className="shrink-0 px-4 py-1.5 bg-warning/10 border-b border-warning/30 text-xs text-fg-bright flex items-center justify-between gap-3">
+            <span>
+              <strong className="font-semibold">Preview mode</strong> — viewing onboarding with {repoRoots.length} repo{repoRoots.length === 1 ? '' : 's'} already added.
+            </span>
+            <button
+              onClick={() => setPreviewOnboarding(false)}
+              className="px-2 py-0.5 rounded bg-panel border border-border hover:border-border-strong cursor-pointer"
+            >
+              Exit preview
+            </button>
+          </div>
+        )}
         <div className="flex-1 overflow-y-auto">
           <div className="mx-auto max-w-xl w-full px-6 py-6">
             <div className="text-center mb-6">

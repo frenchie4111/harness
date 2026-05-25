@@ -441,7 +441,7 @@ export interface ElectronAPI {
   onOpenNewProject(callback: () => void): () => void
   onOpenReportIssue(callback: () => void): () => void
   onDebugCrashFocusedTab(callback: () => void): () => void
-  onDebugResetOnboarding(callback: () => void): () => void
+  onDebugPreviewOnboarding(callback: () => void): () => void
   onOpenAddBackend(callback: () => void): () => void
 
   acceptHooks(): Promise<boolean>

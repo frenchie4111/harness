@@ -425,8 +425,8 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
           ...(!app.isPackaged
             ? [
                 {
-                  label: 'Debug: Reset Onboarding',
-                  click: () => transport.sendSignal('app:debugResetOnboarding')
+                  label: 'Debug: Preview Onboarding',
+                  click: () => transport.sendSignal('app:debugPreviewOnboarding')
                 } as const
               ]
             : [])
