@@ -1,0 +1,114 @@
+name: Build macOS
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+# Required GitHub secrets (Settings → Secrets and variables → Actions):
+#
+#   MAC_CERTS_P12_BASE64        — base64 of an exported Developer ID
+#                                 Application .p12 (export from Keychain
+#                                 Access including the private key, then
+#                                 `base64 -i cert.p12 | pbcopy`).
+#   MAC_CERTS_P12_PASSWORD      — password used when exporting the .p12.
+#   APPLE_ID                    — Apple ID for notarization.
+#   APPLE_APP_SPECIFIC_PASSWORD — app-specific password for the Apple ID.
+#   APPLE_TEAM_ID               — Apple developer Team ID (e.g. M7Y6TPCQ63).
+#
+# GH_TOKEN for `gh release upload` is auto-provided by Actions as
+# secrets.GITHUB_TOKEN — no manual setup needed.
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    # macos-14 = arm64 runner. We still install the darwin-x64 claude
+    # subpackage below so the x64 dmg ships with a claude binary.
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # electron-vite@5's peer range rejects vite@7/8 under strict
+      # resolver; --legacy-peer-deps mirrors the local dev install and
+      # the Linux workflow.
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      # Bundled @anthropic-ai/claude-code ships per-arch native binaries
+      # via optionalDependencies. `npm install` only pulls the host-arch
+      # one, so without this step the x64 dmg would ship without a
+      # claude binary (this runner is arm64). --no-save keeps the lock
+      # file clean. electron-builder doesn't filter by the subpackage's
+      # os/cpu, so both binaries land in both dmgs — accepted as bloat.
+      - name: Install cross-arch claude binary (darwin-x64)
+        run: |
+          CLAUDE_VERSION=$(node -e "console.log(require('./package.json').dependencies['@anthropic-ai/claude-code'])")
+          npm install --no-save --ignore-scripts --legacy-peer-deps --force \
+            "@anthropic-ai/claude-code-darwin-x64@${CLAUDE_VERSION}"
+
+      - name: Build renderer + main
+        run: npm run build
+
+      # We deliberately bypass `npm run dist:mac` here because the npm
+      # script wraps electron-builder in `dotenv -e .env --`, which
+      # requires a .env file on disk. CI already has every var injected
+      # via the env block, so we call electron-builder directly. Passing
+      # --publish=never matches dist:linux and prevents electron-builder
+      # from auto-publishing if it sees a tag + token in env (we do the
+      # gh release upload ourselves below).
+      #
+      # CSC_LINK accepts a base64-encoded .p12 string directly;
+      # electron-builder decodes it into a temp keychain, signs with the
+      # identity already pinned in package.json
+      # ("Michael Lyons (M7Y6TPCQ63)"), then notarizes via the APPLE_*
+      # env vars and staples the ticket.
+      - name: Package, sign, and notarize
+        env:
+          CSC_LINK: ${{ secrets.MAC_CERTS_P12_BASE64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTS_P12_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: npx electron-builder --mac --publish=never
+
+      - name: Upload workflow artifact (branch / dispatch)
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: harness-mac
+          path: |
+            release/Harness-*.dmg
+            release/Harness-*-mac.zip
+            release/Harness-*.blockmap
+            release/latest-mac.yml
+          if-no-files-found: error
+
+      - name: Attach to GitHub release (tag push)
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          # Any of the three release workflows (mac/linux/headless) can
+          # be first to land on a tag — scripts/release.sh no longer
+          # pre-creates the release. Idempotent create reading notes
+          # from the committed release-notes file; `|| true` catches a
+          # race where another workflow won the create.
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --title "Harness $TAG" \
+              --notes-file "release-notes/${TAG}.md" || true
+          fi
+          gh release upload "$TAG" \
+            release/Harness-*.dmg \
+            release/Harness-*-mac.zip \
+            release/Harness-*.blockmap \
+            release/latest-mac.yml \
+            --clobber

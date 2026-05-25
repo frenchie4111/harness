@@ -57,6 +57,15 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
+          # scripts/release.sh no longer pre-creates the release — any
+          # of mac/linux/headless can be first to land on a tag.
+          # Idempotent create; `|| true` swallows the race where another
+          # workflow won.
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --title "Harness $TAG" \
+              --notes-file "release-notes/${TAG}.md" || true
+          fi
           gh release upload "$TAG" \
             release/Harness-*.AppImage \
             release/Harness-*.deb \
