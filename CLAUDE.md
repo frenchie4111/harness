@@ -493,6 +493,28 @@ These are how the user wants Claude to behave when working on this repo:
    in chat (often via .env reminders the harness sends), warn them once
    that it's now in conversation history and tell them to rotate.
 
+8. **GitHub comments use a standard signature.** You're authorized to leave
+   comments on issues and PRs (via the `gh` CLI or the GitHub REST/GraphQL
+   API) without re-confirming each time, provided the comment ends with a
+   one-line signature so readers know the comment came from an agent acting
+   on the user's behalf, not the user themselves:
+
+   ```
+   _Comment left on behalf of @<github-username> by <agent-name> via [Harness](https://github.com/frenchie4111/harness)._
+   ```
+
+   - `<github-username>` is the user's GitHub login — run
+     `gh api user --jq .login` if you don't already know it from context.
+   - `<agent-name>` is the agent identity from the harness session (Claude,
+     Codex, etc.).
+   - Markdown italics (`_..._`) so the signature renders subtly without
+     dominating the comment body.
+
+   This authorization covers commenting and reacting. **Destructive GitHub
+   actions still need confirmation**: closing/reopening issues, merging or
+   closing PRs, force-pushing, deleting branches or releases, etc. When in
+   doubt, ask.
+
 ## Releasing
 
 End-to-end release is automated via `npm run release <version>`:
