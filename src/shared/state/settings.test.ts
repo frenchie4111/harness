@@ -427,6 +427,20 @@ describe('settingsReducer', () => {
     expect(compact.jsonModeChatDensity).toBe('compact')
   })
 
+  it('jsonModeSendOnEnterChanged toggles the send-on-enter flag', () => {
+    expect(initialSettings.jsonModeSendOnEnter).toBe(false)
+    const on = apply(initialSettings, {
+      type: 'settings/jsonModeSendOnEnterChanged',
+      payload: true
+    })
+    expect(on.jsonModeSendOnEnter).toBe(true)
+    const off = apply(on, {
+      type: 'settings/jsonModeSendOnEnterChanged',
+      payload: false
+    })
+    expect(off.jsonModeSendOnEnter).toBe(false)
+  })
+
   it('jsonModeDefaultPermissionModeChanged sets the default and preserves other settings', () => {
     expect(initialSettings.jsonModeDefaultPermissionMode).toBe('acceptEdits')
     const start: SettingsState = {

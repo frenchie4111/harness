@@ -94,6 +94,7 @@ export function buildInitialAppState(
       autoApproveSteerInstructions: config.autoApproveSteerInstructions || '',
       useSystemClaudeForJsonMode: config.useSystemClaudeForJsonMode === true,
       jsonModeChatDensity: config.jsonModeChatDensity === 'comfy' ? 'comfy' : 'compact',
+      jsonModeSendOnEnter: config.jsonModeSendOnEnter === true,
       jsonModeDefaultPermissionMode:
         config.jsonModeDefaultPermissionMode === 'default' ||
         config.jsonModeDefaultPermissionMode === 'plan'

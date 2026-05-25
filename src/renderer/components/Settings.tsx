@@ -200,6 +200,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     jsonModeClaudeTabs,
     defaultClaudeTabType,
     jsonModeChatDensity,
+    jsonModeSendOnEnter,
     jsonModeDefaultPermissionMode,
     autoSleepMinutes,
     autoApprovePermissions,
@@ -2553,6 +2554,28 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                       Comfy
                     </button>
                   </div>
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-border">
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={jsonModeSendOnEnter}
+                      onChange={(e) => {
+                        void backend.setJsonModeSendOnEnter(e.target.checked)
+                      }}
+                      className="mt-0.5 cursor-pointer"
+                    />
+                    <div className="flex-1">
+                      <div className="text-sm text-fg-bright">
+                        Send messages with Enter
+                      </div>
+                      <div className="text-xs text-dim mt-0.5">
+                        Plain Enter sends; Shift+Enter inserts a newline. When
+                        off, Cmd/Ctrl+Enter sends.
+                      </div>
+                    </div>
+                  </label>
                 </div>
               </div>
 

@@ -2699,6 +2699,24 @@ function registerIpcHandlers(): void {
   )
 
   transport.onRequest(
+    'config:setJsonModeSendOnEnter',
+    (_ctx, value: boolean) => {
+      const next = value === true
+      if (!next) {
+        delete config.jsonModeSendOnEnter
+      } else {
+        config.jsonModeSendOnEnter = true
+      }
+      saveConfig(config)
+      store.dispatch({
+        type: 'settings/jsonModeSendOnEnterChanged',
+        payload: next
+      })
+      return true
+    }
+  )
+
+  transport.onRequest(
     'config:setJsonModeDefaultPermissionMode',
     (_ctx, value: 'default' | 'acceptEdits' | 'plan') => {
       const next: 'default' | 'acceptEdits' | 'plan' =
