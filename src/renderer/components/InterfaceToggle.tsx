@@ -19,6 +19,7 @@ const OPTIONS: Array<{
   label: string
   description: string
   Icon: typeof TerminalIcon
+  badge?: 'new'
 }> = [
   {
     value: 'xterm',
@@ -31,7 +32,8 @@ const OPTIONS: Array<{
     label: 'Chat mode',
     description:
       'Native interface with inline tool cards and approval flows.',
-    Icon: MessageSquare
+    Icon: MessageSquare,
+    badge: 'new'
   }
 ]
 
@@ -69,8 +71,13 @@ export function InterfaceToggle({
             />
             <opt.Icon size={size === 'compact' ? 13 : 14} className="mt-0.5 shrink-0" />
             <span className="flex-1 min-w-0">
-              <span className={`block text-sm font-medium ${selected ? 'text-fg-bright' : 'text-fg'}`}>
-                {opt.label}
+              <span className={`flex items-center gap-1.5 text-sm font-medium ${selected ? 'text-fg-bright' : 'text-fg'}`}>
+                <span>{opt.label}</span>
+                {opt.badge === 'new' && (
+                  <span className="brand-gradient-bg text-white text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full leading-none">
+                    New
+                  </span>
+                )}
               </span>
               <span className={`block ${size === 'compact' ? 'text-[11px]' : 'text-xs'} text-dim mt-0.5`}>
                 {opt.description}
