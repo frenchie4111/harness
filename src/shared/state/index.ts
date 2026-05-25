@@ -316,7 +316,8 @@ export function mergeWireSnapshot(state: WireSnapshotState): AppState {
     costs: { ...initialState.costs, ...state.costs },
     browser: { ...initialState.browser, ...state.browser },
     jsonClaude: { ...initialState.jsonClaude, ...state.jsonClaude },
-    snooze: { ...initialState.snooze, ...state.snooze }
+    snooze: { ...initialState.snooze, ...state.snooze },
+    announcements: { ...initialState.announcements, ...state.announcements }
   }
 }
 
