@@ -580,6 +580,42 @@ These are how the user wants Claude to behave when working on this repo:
     or `gh pr create` against a PR you're reviewing, stop. You're on
     the wrong path — go back and `gh pr checkout <num>` first.
 
+11. **Use the canonical text and icon sizes so the UI scales together.**
+    The renderer's root `html` font-size is driven by the `uiScale`
+    setting, so every `rem`-based size (Tailwind `text-*` and the `w-N` /
+    `h-N` grid) shifts in lockstep. Inline pixel sizes do NOT scale and
+    will look wrong at the larger rungs.
+
+    **Text — pick from this set only:**
+    `text-xs`, `text-sm`, `text-base`, `text-lg`, `text-2xl`, `text-3xl`.
+    No `text-[Npx]`, no inline `style={{ fontSize: ... }}`, no `text-xl` /
+    `text-4xl` / `text-5xl`. If the design seems to call for an
+    in-between size, snap to the nearest canonical step — the per-px
+    hierarchy doesn't earn its keep against the visual noise.
+
+    **Icons — use Tailwind `w-N h-N`, not the lucide `size={N}` prop.**
+    The `size` prop bakes pixel literals into the SVG `width` / `height`
+    attributes, so icons stay fixed regardless of root font-size. The
+    rem-based class scales correctly. Mapping cheat sheet:
+
+    | want | use |
+    |---|---|
+    | 10px | `w-2.5 h-2.5` |
+    | 12px | `w-3 h-3` |
+    | 14px | `w-3.5 h-3.5` |
+    | 16px | `w-4 h-4` |
+    | 18px | `w-[1.125rem] h-[1.125rem]` |
+    | 20px | `w-5 h-5` |
+    | 24px | `w-6 h-6` |
+    | 32px | `w-8 h-8` |
+
+    Exceptions where pixel literals are correct (because the consumer
+    isn't part of the rem grid): Monaco/XTerminal font sizes, the
+    PerfMonitor HUD's SVG numerics, JsonModeChat's
+    `--chat-{body,chrome,meta}-text` CSS variable system, ReviewDiffPane
+    inline styles inside Monaco view zones, and non-icon components
+    that legitimately take a pixel size (e.g. `<QRCodeSVG size={128} />`).
+
 ## Releasing
 
 End-to-end release is automated via `npm run release <version>`:
