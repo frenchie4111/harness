@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync, existsSync, readdirSync, unlinkSync } from 'f
 import { join } from 'path'
 import { getControlServerInfo } from './control-server'
 import type { CallerScope } from './control-server'
-import { isPackaged, userDataDir } from './paths'
+import { detectRuntime, isPackaged, userDataDir } from './paths'
 import { log } from './debug'
 
 function getConfigDir(): string {
@@ -11,11 +11,21 @@ function getConfigDir(): string {
   return dir
 }
 
+/** Three layouts to support — kept in sync with permissionPromptScriptPath
+ *  in json-claude-manager.ts:
+ *  - Packaged Electron: copied by electron-builder to process.resourcesPath.
+ *  - Headless tarball (scripts/pack-headless.mjs): lib/main/ holds this
+ *    bundle, sibling lib/mcp/ holds the MCP script.
+ *  - Dev (Electron unpackaged): __dirname is out/main/, script lives in
+ *    resources/ at the repo root. */
 export function getBridgeScriptPath(): string {
   if (isPackaged()) {
     return join(process.resourcesPath, 'mcp-bridge.js')
   }
-  return join(__dirname, '../../resources/mcp-bridge.js')
+  if (detectRuntime() === 'node') {
+    return join(__dirname, '..', 'mcp', 'mcp-bridge.js')
+  }
+  return join(__dirname, '..', '..', 'resources', 'mcp-bridge.js')
 }
 
 function sanitize(id: string): string {

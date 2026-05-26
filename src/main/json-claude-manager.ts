@@ -22,7 +22,7 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from 'fs'
 import { createRequire } from 'module'
 import { homedir } from 'os'
 import { dirname, join, sep } from 'path'
-import { isPackaged } from './paths'
+import { detectRuntime, isPackaged } from './paths'
 import type { Store } from './store'
 import type {
   JsonClaudeChatEntry,
@@ -124,14 +124,19 @@ export interface JsonClaudeManagerOptions {
 }
 
 /** Path to the bundled stdio MCP server we point Claude's
- *  --permission-prompt-tool at. Mirrors src/main/mcp-config.ts: in dev
- *  the file lives in resources/ at the repo root; in packaged builds
- *  it's copied by electron-builder to process.resourcesPath. paths.ts's
- *  `isPackaged()` returns false outside Electron so the dev fallback
- *  path is what the headless build hits. */
+ *  --permission-prompt-tool at. Three layouts to support:
+ *  - Packaged Electron: copied by electron-builder to process.resourcesPath.
+ *  - Headless tarball (scripts/pack-headless.mjs): lib/main/ holds this
+ *    bundle, sibling lib/mcp/ holds the MCP script.
+ *  - Dev (Electron unpackaged): __dirname is out/main/, script lives in
+ *    resources/ at the repo root.
+ *  Keep in sync with getBridgeScriptPath in mcp-config.ts. */
 function permissionPromptScriptPath(): string {
   if (isPackaged()) {
     return join(process.resourcesPath, 'permission-prompt-mcp.js')
+  }
+  if (detectRuntime() === 'node') {
+    return join(__dirname, '..', 'mcp', 'permission-prompt-mcp.js')
   }
   return join(__dirname, '..', '..', 'resources', 'permission-prompt-mcp.js')
 }
