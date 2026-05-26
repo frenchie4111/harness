@@ -1719,7 +1719,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
                 : 'text-danger hover:bg-panel cursor-pointer'
             }`}
           >
-            <RotateCcw size={12} className="shrink-0" />
+            <RotateCcw className="icon-xs shrink-0" />
             <div className="flex flex-col">
               <span>Rewind to here</span>
               <span className="text-[10px] text-muted">

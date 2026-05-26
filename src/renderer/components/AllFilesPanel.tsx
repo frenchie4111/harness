@@ -122,7 +122,7 @@ export function AllFilesPanel({
             }}
             className="text-faint hover:text-fg transition-colors cursor-pointer"
           >
-            <Code2 size={12} />
+            <Code2 className="icon-xs" />
           </button>
         </Tooltip>
       )}

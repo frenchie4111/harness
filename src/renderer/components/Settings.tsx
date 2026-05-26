@@ -1184,8 +1184,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
           <div className="px-3 pb-2">
             <div className="relative">
               <Search
-                size={11}
-                className="absolute left-2 top-1/2 -translate-y-1/2 text-faint pointer-events-none"
+                className="icon-xs absolute left-2 top-1/2 -translate-y-1/2 text-faint pointer-events-none"
               />
               <input
                 ref={searchInputRef}
@@ -1218,7 +1217,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   aria-label="Clear search"
                   className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 text-faint hover:text-fg cursor-pointer"
                 >
-                  <X size={10} />
+                  <X className="icon-2xs" />
                 </button>
               )}
             </div>
@@ -2772,7 +2771,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                                     className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-panel cursor-pointer"
                                   >
                                     <span className="flex items-center gap-1.5 text-sm text-fg">
-                                      {expanded ? <ChevronDown size={12} className="text-dim" /> : <ChevronRight size={12} className="text-dim" />}
+                                      {expanded ? <ChevronDown className="icon-xs text-dim" /> : <ChevronRight className="icon-xs text-dim" />}
                                       {family.label}
                                       <span className="text-[10px] text-faint">({family.actions.length})</span>
                                     </span>
