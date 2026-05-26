@@ -106,6 +106,14 @@ export interface JsonClaudeChatEntry {
   /** For kind === 'error' with errorKind === 'subprocess-exit'. Whether the
    *  exit was clean (user closed the tab) or unexpected (crash). */
   exitWasClean?: boolean
+  /** On-disk transcript uuid for this entry — the `uuid` field on the
+   *  matching line of `~/.claude/projects/<cwd-encoded>/<sessionId>.jsonl`.
+   *  Only known for entries that were seeded from the transcript on
+   *  resume (live-stream entries don't carry it because the jsonl uuid
+   *  is minted server-side after the line is written). Used by the
+   *  rewind path to target the cut line; absent transcriptUuids fall
+   *  back to ordinal-turn matching at rewind time. */
+  transcriptUuid?: string
   /** For errorKind === 'rate-limit-warning' | 'rate-limit-error'.
    *  Structured detail sourced from the SDK's `rate_limit_info`
    *  payload. All fields optional because the wire shape is sparse —
@@ -317,6 +325,10 @@ export type JsonClaudeEvent =
   | {
       type: 'jsonClaude/entryRemoved'
       payload: { sessionId: string; entryId: string }
+    }
+  | {
+      type: 'jsonClaude/entriesTruncated'
+      payload: { sessionId: string; fromEntryId: string }
     }
   | {
       type: 'jsonClaude/slashCommandsChanged'
@@ -731,6 +743,24 @@ export function jsonClaudeReducer(
         sessions: {
           ...state.sessions,
           [session.sessionId]: { ...session, entries: next }
+        }
+      }
+    }
+    case 'jsonClaude/entriesTruncated': {
+      const session = state.sessions[event.payload.sessionId]
+      if (!session) return state
+      const idx = session.entries.findIndex(
+        (e) => e.entryId === event.payload.fromEntryId
+      )
+      if (idx === -1) return state
+      return {
+        ...state,
+        sessions: {
+          ...state.sessions,
+          [session.sessionId]: {
+            ...session,
+            entries: session.entries.slice(0, idx)
+          }
         }
       }
     }

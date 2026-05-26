@@ -18,7 +18,7 @@
 
 import { spawn, type ChildProcessWithoutNullStreams } from 'child_process'
 import { randomUUID } from 'crypto'
-import { existsSync, readFileSync } from 'fs'
+import { existsSync, readFileSync, renameSync, writeFileSync } from 'fs'
 import { createRequire } from 'module'
 import { homedir } from 'os'
 import { dirname, join, sep } from 'path'
@@ -194,6 +194,27 @@ export function bundledClaudeBinPath(): string {
 }
 
 
+function transcriptPathFor(sessionId: string, worktreePath: string): string {
+  return join(
+    homedir(),
+    '.claude',
+    'projects',
+    worktreePath.replace(/[^a-zA-Z0-9]/g, '-'),
+    `${sessionId}.jsonl`
+  )
+}
+
+export interface RewindOutcome {
+  ok: boolean
+  /** Set when the rewound message was an assistant turn — the user prompt
+   *  that triggered it is dropped from the jsonl AND its text is returned
+   *  here so the renderer can pre-fill the composer. Keeps the "user is
+   *  sitting at the prior state" semantic intact: without promoting the
+   *  orphan prompt, --resume would auto-generate on the next agent step. */
+  composerSeed?: string
+  reason?: string
+}
+
 export class JsonClaudeManager {
   private instances = new Map<string, JsonClaudeInstance>()
   private store: Store
@@ -227,13 +248,7 @@ export class JsonClaudeManager {
       this.store.getSnapshot().state.jsonClaude.sessions[sessionId]
     if (session && session.entries.length > 0) return
 
-    const transcriptPath = join(
-      homedir(),
-      '.claude',
-      'projects',
-      worktreePath.replace(/[^a-zA-Z0-9]/g, '-'),
-      `${sessionId}.jsonl`
-    )
+    const transcriptPath = transcriptPathFor(sessionId, worktreePath)
     if (!existsSync(transcriptPath)) return
 
     let counter = 0
@@ -262,6 +277,8 @@ export class JsonClaudeManager {
       // The session jsonl contains the same user/assistant message
       // shapes the live stream emits, plus internal bookkeeping types
       // (queue-operation, attachment, ai-title, last-prompt) we ignore.
+      const transcriptUuid =
+        typeof parsed['uuid'] === 'string' ? (parsed['uuid'] as string) : undefined
       if (type === 'user') {
         // Skip SDK-synthetic user records that surround compactions and
         // slash-command invocations. Without this filter the seeded
@@ -288,7 +305,8 @@ export class JsonClaudeManager {
             kind: 'user',
             text: content,
             timestamp: Date.now(),
-            entryId: `${sessionId}-seed-u-${counter++}`
+            entryId: `${sessionId}-seed-u-${counter++}`,
+            ...(transcriptUuid ? { transcriptUuid } : {})
           })
         } else if (Array.isArray(content)) {
           for (const r of extractToolResultsFromArray(content)) {
@@ -296,6 +314,7 @@ export class JsonClaudeManager {
               entryId: `${sessionId}-tr-${r.toolUseId}-${seededEntries.length}`,
               kind: 'tool_result',
               timestamp: Date.now(),
+              ...(transcriptUuid ? { transcriptUuid } : {}),
               blocks: [
                 {
                   type: 'tool_result',
@@ -321,6 +340,7 @@ export class JsonClaudeManager {
           blocks,
           timestamp: Date.now(),
           entryId: `${sessionId}-seed-a-${counter++}`,
+          ...(transcriptUuid ? { transcriptUuid } : {}),
           ...(parentToolUseId ? { parentToolUseId } : {})
         })
       } else if (type === 'system' && parsed['subtype'] === 'compact_boundary') {
@@ -339,6 +359,7 @@ export class JsonClaudeManager {
           kind: 'compact',
           timestamp: Date.now(),
           entryId: `${sessionId}-seed-c-${counter++}`,
+          ...(transcriptUuid ? { transcriptUuid } : {}),
           ...(trigger ? { compactTrigger: trigger } : {}),
           ...(typeof preTokens === 'number'
             ? { compactPreTokens: preTokens }
@@ -426,9 +447,7 @@ export class JsonClaudeManager {
 
     const useSystemClaude = this.opts.getUseSystemClaude()
     const claudeCommand = this.opts.getClaudeCommand() || 'claude'
-    const existingSession = existsSync(
-      join(homedir(), '.claude', 'projects', worktreePath.replace(/[^a-zA-Z0-9]/g, '-'), `${sessionId}.jsonl`)
-    )
+    const existingSession = existsSync(transcriptPathFor(sessionId, worktreePath))
     const resumeOrSet = existingSession
       ? ['--resume', sessionId]
       : ['--session-id', sessionId]
@@ -816,6 +835,218 @@ export class JsonClaudeManager {
 
   killAll(): void {
     for (const id of Array.from(this.instances.keys())) this.kill(id)
+  }
+
+  /** Drops the slice entry at `fromEntryId` and every entry after it,
+   *  truncates the on-disk session jsonl at the matching record (or at
+   *  the same ordinal turn position if the entry has no transcriptUuid),
+   *  and respawns the subprocess via --resume so it rehydrates from the
+   *  shortened history. Called from the jsonClaude:rewindTo IPC handler.
+   *
+   *  Pre-cancellation (interrupt in-flight stream, deny pending
+   *  approvals) lives in the IPC handler — it needs to coordinate with
+   *  ApprovalBridge which the manager doesn't reach. By the time we get
+   *  here, busy must be false and pending approvals for this session
+   *  must be cleared.
+   *
+   *  Returns ok=false (without mutating state) if the entry id isn't in
+   *  the slice. Returns composerSeed when the rewound message was an
+   *  assistant turn, so the renderer can pre-fill the user's original
+   *  prompt — see RewindOutcome for the rationale. */
+  rewindTo(sessionId: string, fromEntryId: string): RewindOutcome {
+    const session =
+      this.store.getSnapshot().state.jsonClaude.sessions[sessionId]
+    if (!session) return { ok: false, reason: 'unknown session' }
+    const entries = session.entries
+    const idx = entries.findIndex((e) => e.entryId === fromEntryId)
+    if (idx === -1) return { ok: false, reason: 'entry not in slice' }
+    const target = entries[idx]
+
+    // Assistant-targeted: also drop the user prompt that triggered M,
+    // and promote its text into the composer. Without this the jsonl
+    // ends in an unanswered user message and --resume auto-generates
+    // on the next agent step — breaking "pure rewind, no auto-
+    // regenerate." Walk backwards from idx looking for the nearest
+    // user entry that isn't a tool_result.
+    let cutIdx = idx
+    let composerSeed: string | undefined
+    if (target.kind === 'assistant') {
+      for (let i = idx - 1; i >= 0; i--) {
+        const e = entries[i]
+        if (e.kind === 'user') {
+          cutIdx = i
+          composerSeed = e.text ?? undefined
+          break
+        }
+        if (e.kind === 'tool_result') continue
+        // Hit an assistant / compact / error before finding a user
+        // entry. Shouldn't happen in well-formed conversations, but if
+        // it does, fall through to cutting at idx only — composer stays
+        // empty, jsonl is consistent.
+        break
+      }
+    }
+
+    const truncResult = this.truncateTranscriptAt(sessionId, session.worktreePath, entries, cutIdx)
+    if (!truncResult.ok) {
+      return { ok: false, reason: truncResult.reason }
+    }
+
+    // Kill the subprocess so it doesn't keep writing to the jsonl after
+    // we truncated it. kill() removes from the instance map BEFORE
+    // SIGTERM so the exit handler's stale-instance guard bails on the
+    // delayed exit event — no synthetic subprocess-exit entry fires.
+    if (this.instances.has(sessionId)) this.kill(sessionId)
+
+    // Optimistic slice prune. The respawn below re-seeds from the
+    // truncated jsonl which is authoritative, but pruning up front
+    // keeps the UI snappy.
+    const pruneFromEntryId = entries[cutIdx].entryId
+    this.store.dispatch({
+      type: 'jsonClaude/entriesTruncated',
+      payload: { sessionId, fromEntryId: pruneFromEntryId }
+    })
+
+    return { ok: true, composerSeed }
+  }
+
+  /** Truncate the on-disk jsonl so it ends just before the line that
+   *  corresponds to slice entries[cutIdx]. Matching strategy:
+   *    1. If entries[cutIdx].transcriptUuid is set, find the jsonl line
+   *       whose `uuid` matches and cut there.
+   *    2. Otherwise fall back to ordinal-turn matching: count chat
+   *       turn-records (user / assistant) in the jsonl and stop at
+   *       the same ordinal in the slice's pre-cut turn list. This is
+   *       the path for live-streamed entries that never picked up a
+   *       uuid (the jsonl writes the uuid server-side after the line
+   *       is committed).
+   *  Writes the kept prefix to a `.tmp` and renames atomically. The
+   *  original is moved aside as `<sessionId>.jsonl.rewind-<ts>.bak`
+   *  — the foundation for Phase 2 Undo. */
+  private truncateTranscriptAt(
+    sessionId: string,
+    worktreePath: string,
+    entries: JsonClaudeChatEntry[],
+    cutIdx: number
+  ): { ok: boolean; reason?: string } {
+    const transcriptPath = transcriptPathFor(sessionId, worktreePath)
+    if (!existsSync(transcriptPath)) {
+      // No on-disk session yet — the cut is a slice-only no-op. Caller
+      // still dispatches entriesTruncated.
+      return { ok: true }
+    }
+
+    let raw: string
+    try {
+      raw = readFileSync(transcriptPath, 'utf8')
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err)
+      log('json-claude', `rewind read failed sessionId=${sessionId}`, reason)
+      return { ok: false, reason }
+    }
+
+    const lines = raw.split('\n')
+    let cutLineIdx = -1
+    const targetUuid = entries[cutIdx].transcriptUuid
+
+    if (targetUuid) {
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim()
+        if (!line) continue
+        try {
+          const parsed = JSON.parse(line) as Record<string, unknown>
+          if (parsed['uuid'] === targetUuid) {
+            cutLineIdx = i
+            break
+          }
+        } catch {
+          continue
+        }
+      }
+    }
+
+    if (cutLineIdx === -1) {
+      // Ordinal fallback. Walk the slice's pre-cut turn list, walk the
+      // jsonl's turn records in parallel; the jsonl line index where
+      // the slice turn-counter equals cutIdx's turn-counter is the cut.
+      // "Turn record" matches what the slice surfaces as a chat row:
+      // user (string content) + assistant (live + finalized). We skip
+      // tool_result content arrays and bookkeeping types so the
+      // counters stay in lockstep with the slice's seed.
+      const sliceTurnTarget = countChatTurnsBefore(entries, cutIdx)
+      let jsonlTurnCount = 0
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim()
+        if (!line) continue
+        let parsed: Record<string, unknown>
+        try {
+          parsed = JSON.parse(line)
+        } catch {
+          continue
+        }
+        const t = parsed['type']
+        if (t === 'assistant') {
+          if (jsonlTurnCount === sliceTurnTarget) {
+            cutLineIdx = i
+            break
+          }
+          jsonlTurnCount++
+          continue
+        }
+        if (t === 'user') {
+          if (parsed['isCompactSummary'] === true || parsed['isMeta'] === true) {
+            continue
+          }
+          const message = parsed['message'] as { content?: unknown } | undefined
+          const content = message?.content
+          if (typeof content !== 'string') continue
+          if (
+            content.startsWith('<command-name>') ||
+            content.startsWith('<local-command-stdout>')
+          ) {
+            continue
+          }
+          if (jsonlTurnCount === sliceTurnTarget) {
+            cutLineIdx = i
+            break
+          }
+          jsonlTurnCount++
+        }
+      }
+    }
+
+    if (cutLineIdx === -1) {
+      log(
+        'json-claude',
+        `rewind: no cut line matched sessionId=${sessionId} entryId=${entries[cutIdx].entryId} uuid=${targetUuid ?? '-'}`
+      )
+      return { ok: false, reason: 'no matching jsonl record' }
+    }
+
+    const keptLines = lines.slice(0, cutLineIdx)
+    // Preserve trailing newline shape if the file had one — readFileSync
+    // splits on '\n' and an empty trailing element means the file ended
+    // with \n. Reconstruct with a trailing \n so consumers see the same
+    // file shape they got before.
+    const keptBody = keptLines.length > 0 ? keptLines.join('\n') + '\n' : ''
+
+    const ts = Date.now()
+    const backupPath = `${transcriptPath}.rewind-${ts}.bak`
+    const tmpPath = `${transcriptPath}.rewind-${ts}.tmp`
+    try {
+      writeFileSync(tmpPath, keptBody, 'utf8')
+      renameSync(transcriptPath, backupPath)
+      renameSync(tmpPath, transcriptPath)
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err)
+      log('json-claude', `rewind write failed sessionId=${sessionId}`, reason)
+      return { ok: false, reason }
+    }
+    log(
+      'json-claude',
+      `rewind truncated sessionId=${sessionId} keptLines=${keptLines.length} backup=${backupPath}`
+    )
+    return { ok: true }
   }
 
   /** Change --permission-mode mid-session via the SDK control_request
@@ -1639,6 +1870,24 @@ function streamEventBlockToMessageBlock(
     }
   }
   return null
+}
+
+/** Counts user + assistant chat-turn entries before index `idx` in the
+ *  slice's entries array. The rewind path uses this as an ordinal
+ *  fallback to align the jsonl cut with a slice entry that doesn't
+ *  carry a transcriptUuid (live-streamed turns). Tool_result / system /
+ *  compact / error entries don't count because the jsonl-side counter
+ *  walks the same user+assistant set (see truncateTranscriptAt). */
+function countChatTurnsBefore(
+  entries: JsonClaudeChatEntry[],
+  idx: number
+): number {
+  let n = 0
+  for (let i = 0; i < idx; i++) {
+    const k = entries[i].kind
+    if (k === 'user' || k === 'assistant') n++
+  }
+  return n
 }
 
 function extractAssistantBlocks(ev: Record<string, unknown>): JsonClaudeMessageBlock[] {
