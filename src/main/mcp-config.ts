@@ -11,21 +11,20 @@ function getConfigDir(): string {
   return dir
 }
 
-/** Three layouts to support — kept in sync with permissionPromptScriptPath
- *  in json-claude-manager.ts:
- *  - Packaged Electron: copied by electron-builder to process.resourcesPath.
- *  - Headless tarball (scripts/pack-headless.mjs): lib/main/ holds this
- *    bundle, sibling lib/mcp/ holds the MCP script.
- *  - Dev (Electron unpackaged): __dirname is out/main/, script lives in
+/** Resolve a bundled MCP script by filename. Three runtime layouts:
+ *  - Packaged Electron: electron-builder copies scripts to process.resourcesPath.
+ *  - Headless tarball (scripts/pack-headless.mjs): bundle is at lib/main/,
+ *    scripts are in sibling lib/mcp/.
+ *  - Dev (Electron unpackaged): __dirname is out/main/, scripts live in
  *    resources/ at the repo root. */
+export function resolveBundledMcpScript(name: string): string {
+  if (isPackaged()) return join(process.resourcesPath, name)
+  if (detectRuntime() === 'node') return join(__dirname, '..', 'mcp', name)
+  return join(__dirname, '..', '..', 'resources', name)
+}
+
 export function getBridgeScriptPath(): string {
-  if (isPackaged()) {
-    return join(process.resourcesPath, 'mcp-bridge.js')
-  }
-  if (detectRuntime() === 'node') {
-    return join(__dirname, '..', 'mcp', 'mcp-bridge.js')
-  }
-  return join(__dirname, '..', '..', 'resources', 'mcp-bridge.js')
+  return resolveBundledMcpScript('mcp-bridge.js')
 }
 
 function sanitize(id: string): string {

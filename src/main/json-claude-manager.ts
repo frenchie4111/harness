@@ -22,7 +22,8 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from 'fs'
 import { createRequire } from 'module'
 import { homedir } from 'os'
 import { dirname, join, sep } from 'path'
-import { detectRuntime, isPackaged } from './paths'
+import { isPackaged } from './paths'
+import { resolveBundledMcpScript } from './mcp-config'
 import type { Store } from './store'
 import type {
   JsonClaudeChatEntry,
@@ -121,24 +122,6 @@ export interface JsonClaudeManagerOptions {
    *  source of truth as the xterm spawn path; see buildClaudeLaunchSettings
    *  in claude-launch.ts. */
   getLaunchSettings: (worktreePath: string, modelOverride?: string) => ClaudeLaunchSettings
-}
-
-/** Path to the bundled stdio MCP server we point Claude's
- *  --permission-prompt-tool at. Three layouts to support:
- *  - Packaged Electron: copied by electron-builder to process.resourcesPath.
- *  - Headless tarball (scripts/pack-headless.mjs): lib/main/ holds this
- *    bundle, sibling lib/mcp/ holds the MCP script.
- *  - Dev (Electron unpackaged): __dirname is out/main/, script lives in
- *    resources/ at the repo root.
- *  Keep in sync with getBridgeScriptPath in mcp-config.ts. */
-function permissionPromptScriptPath(): string {
-  if (isPackaged()) {
-    return join(process.resourcesPath, 'permission-prompt-mcp.js')
-  }
-  if (detectRuntime() === 'node') {
-    return join(__dirname, '..', 'mcp', 'permission-prompt-mcp.js')
-  }
-  return join(__dirname, '..', '..', 'resources', 'permission-prompt-mcp.js')
 }
 
 /** Resolves the bundled @anthropic-ai/claude-code native binary by going
@@ -429,7 +412,7 @@ export class JsonClaudeManager {
     > = {
       'harness-permissions': {
         command: process.execPath,
-        args: [permissionPromptScriptPath()],
+        args: [resolveBundledMcpScript('permission-prompt-mcp.js')],
         env: {
           ELECTRON_RUN_AS_NODE: '1',
           HARNESS_APPROVAL_SOCKET: socketPath,
