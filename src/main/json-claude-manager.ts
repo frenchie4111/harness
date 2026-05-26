@@ -22,7 +22,9 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from 'fs'
 import { createRequire } from 'module'
 import { homedir } from 'os'
 import { dirname, join, sep } from 'path'
-import { isPackaged, resolveBundledMcpScript } from './paths'
+import { resolveBundledMcpScript } from './paths'
+import { harnessPluginDir } from './claude-plugin'
+import { buildHarnessControlEnv } from './harness-control-env'
 import type { Store } from './store'
 import type {
   JsonClaudeChatEntry,
@@ -101,14 +103,11 @@ export interface JsonClaudeManagerOptions {
   getApprovalSocketPath: (sessionId: string) => string
   closeApprovalSession: (sessionId: string) => void
   getClaudeEnvVars: () => Record<string, string>
-  /** Looked up from main when building the inline MCP config. Returning
-   *  null means the harness-control bridge isn't injected (settings flag
-   *  off, or control server not yet up). */
+  /** Looked up from main when building the env vars the bundled plugin's
+   *  .mcp.json interpolates. Returning null means the harness-control
+   *  bridge isn't injected (settings flag off, or control server not
+   *  yet up). */
   getControlServer: () => JsonClaudeControlServerInfo | null
-  /** Returns the bundled harness-control bridge script path. Lives in
-   *  resources/ same as permission-prompt-mcp.js — index.ts already
-   *  knows how to resolve it via getBridgeScriptPath(). */
-  getControlBridgeScriptPath: () => string
   /** True when the user has disabled the harness-control MCP via
    *  settings.harnessMcpEnabled. Skips the bridge entry entirely. */
   isHarnessMcpEnabled: () => boolean
@@ -403,8 +402,13 @@ export class JsonClaudeManager {
     //     Claude raises via --permission-prompt-tool. Tool is 'approve'.
     //   * harness-control: the same MCP bridge used by xterm-backed
     //     Claude tabs, exposing harness-control tools (worktree mgmt,
-    //     browser tabs, shell tabs, etc.). Skipped when settings has
-    //     harnessMcpEnabled=false or the control server isn't up.
+    //     browser tabs, shell tabs, etc.). Defined by the bundled plugin's
+    //     .mcp.json (resources/plugins/harness-status/.mcp.json) which is
+    //     loaded by --plugin-dir below; the env vars it interpolates are
+    //     injected onto spawnEnv further down. Skipped (env vars omitted)
+    //     when settings has harnessMcpEnabled=false or the control server
+    //     isn't up — the plugin still loads but ${HARNESS_PORT} would
+    //     expand empty, so the bridge skips itself at startup.
     const mcpServers: Record<
       string,
       { command: string; args: string[]; env: Record<string, string> }
@@ -419,32 +423,27 @@ export class JsonClaudeManager {
         }
       }
     }
+    const mcpConfig = { mcpServers }
+
+    // The plugin's harness-control entry interpolates these env vars from
+    // Claude's launch env. Collected here so spawnEnv below can merge them
+    // in without leaking them into the global process env.
+    let harnessControlEnv: Record<string, string> = {}
     if (this.opts.isHarnessMcpEnabled()) {
       const controlInfo = this.opts.getControlServer()
       if (controlInfo) {
         const scope = this.opts.getCallerScope(sessionId)
-        const controlEnv: Record<string, string> = {
-          ELECTRON_RUN_AS_NODE: '1',
-          HARNESS_PORT: String(controlInfo.port),
-          HARNESS_TOKEN: controlInfo.token,
-          // The bridge keys every control-server call by terminal id —
-          // for json-claude tabs the tab id IS the session id.
-          HARNESS_TERMINAL_ID: sessionId,
-          HARNESS_SESSION_ID: sessionId
-        }
-        if (scope) {
-          controlEnv.HARNESS_WORKTREE_ID = scope.worktreePath
-          controlEnv.HARNESS_REPO_ROOT = scope.repoRoot
-          if (scope.isMain) controlEnv.HARNESS_IS_MAIN = '1'
-        }
-        mcpServers['harness-control'] = {
-          command: process.execPath,
-          args: [this.opts.getControlBridgeScriptPath()],
-          env: controlEnv
-        }
+        harnessControlEnv = buildHarnessControlEnv({
+          execPath: process.execPath,
+          port: controlInfo.port,
+          token: controlInfo.token,
+          terminalId: sessionId,
+          scope: scope
+            ? { worktreePath: scope.worktreePath, repoRoot: scope.repoRoot, isMain: scope.isMain, terminalId: sessionId }
+            : null
+        })
       }
     }
-    const mcpConfig = { mcpServers }
 
     const useSystemClaude = this.opts.getUseSystemClaude()
     const claudeCommand = this.opts.getClaudeCommand() || 'claude'
@@ -468,6 +467,8 @@ export class JsonClaudeManager {
       'mcp__harness-permissions__approve',
       '--mcp-config',
       JSON.stringify(mcpConfig),
+      '--plugin-dir',
+      harnessPluginDir(),
       ...resumeOrSet
     ]
     if (launchSettings.systemPrompt) {
@@ -516,7 +517,15 @@ export class JsonClaudeManager {
       CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1',
       // So our bundled MCP server can identify its parent session
       // when it opens the approval socket.
-      HARNESS_JSON_CLAUDE_SESSION_ID: sessionId
+      HARNESS_JSON_CLAUDE_SESSION_ID: sessionId,
+      // Picked up by the bundled plugin's .mcp.json placeholders
+      // (HARNESS_NODE_EXEC / HARNESS_PORT / HARNESS_TOKEN /
+      // HARNESS_MCP_TERMINAL_ID / HARNESS_WORKTREE_ID / ...). The
+      // intentionally separate HARNESS_MCP_TERMINAL_ID var means
+      // the bridge knows which session it's bound to even though
+      // HARNESS_TERMINAL_ID stays scrubbed (above) to keep the
+      // hooks from double-tracking json-mode sessions.
+      ...harnessControlEnv
     }
     let proc: ChildProcessWithoutNullStreams
     try {

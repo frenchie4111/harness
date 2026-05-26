@@ -1,0 +1,5 @@
+{
+  "name": "harness-status",
+  "version": "1.0.0",
+  "description": "Harness status detection hooks. Generated; see scripts/generate-plugin-hooks.mjs."
+}

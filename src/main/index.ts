@@ -77,6 +77,8 @@ import {
 } from '../shared/state/settings'
 import { watchStatusDir } from './hooks'
 import { getAgent, type AgentKind } from './agents'
+import * as codexHooks from './agents/codex'
+import { stripGlobalHooks as stripGlobalClaudeHooks } from './agents/claude'
 import { buildClaudeLaunchSettings } from './claude-launch'
 import { HARNESS_REPO_OWNER, HARNESS_REPO_NAME } from '../shared/constants'
 import { readRecentDebugLog } from './debug'
@@ -87,7 +89,8 @@ import { listDir as fsListDir, resolveHome as fsResolveHome } from './fs-listing
 import { listConfiguredHosts } from './ssh-config'
 import { SshTunnelManager } from './ssh-tunnel-manager'
 import { startControlServer } from './control-server'
-import { writeMcpConfigForTerminal, pruneMcpConfigs, getBridgeScriptPath } from './mcp-config'
+import { pruneMcpConfigs } from './mcp-config'
+import { buildHarnessControlEnv } from './harness-control-env'
 import { getControlServerInfo } from './control-server'
 import { recordActivity, getActivityLog, clearAllActivity, clearActivityForWorktree, sealAllActive, touchActivityMeta, finalizeActivity, type ActivityState, type PRState } from './activity'
 import { log, getLogFilePath } from './debug'
@@ -326,7 +329,6 @@ const jsonClaudeManager = new JsonClaudeManager(store, {
   getClaudeEnvVars: () =>
     store.getSnapshot().state.settings.claudeEnvVars || {},
   getControlServer: () => getControlServerInfo(),
-  getControlBridgeScriptPath: () => getBridgeScriptPath(),
   isHarnessMcpEnabled: () =>
     store.getSnapshot().state.settings.harnessMcpEnabled !== false,
   getCallerScope: (sessionId) => {
@@ -868,23 +870,20 @@ const activityDeriver = new ActivityDeriver(store)
 // drives panesFSM.sleepJsonClaudeTab.
 const autoSleepMonitor = new AutoSleepMonitor(store, panesFSM)
 
-/** Install agent status hooks at the user-scope settings file for both
- *  supported agents. Called once when consent flips to 'accepted'. The
- *  hook command is env-gated on $HARNESS_TERMINAL_ID, so it no-ops for
- *  sessions started outside Harness. */
-function installHooksGlobally(): void {
-  // installHooks() is idempotent — it strips any existing Harness entries
-  // before writing a fresh one — so calling it unconditionally also
-  // collapses duplicate entries left by earlier buggy install passes.
-  for (const agent of [getAgent('claude'), getAgent('codex')]) {
-    agent.installHooks()
-  }
+/** Install Codex status hooks at ~/.codex/hooks.json. Called when the
+ *  user accepts the hooks-consent prompt. Idempotent — installHooks()
+ *  strips any existing Harness entries before writing a fresh one, so
+ *  calling it unconditionally also collapses duplicate entries left by
+ *  earlier buggy install passes. The hook command is env-gated on
+ *  $HARNESS_TERMINAL_ID, so it no-ops for sessions started outside
+ *  Harness. Claude hooks are not installed at user scope — they ship as
+ *  a plugin loaded via --plugin-dir, see src/main/claude-plugin.ts. */
+function installCodexHooks(): void {
+  codexHooks.installHooks()
 }
 
-function uninstallHooksGlobally(): void {
-  for (const agent of [getAgent('claude'), getAgent('codex')]) {
-    agent.uninstallHooks()
-  }
+function uninstallCodexHooks(): void {
+  codexHooks.uninstallHooks()
 }
 
 /** One-shot boot migration: for every non-main worktree that has a real
@@ -1944,12 +1943,6 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  transport.onRequest('mcp:prepareForTerminal', (_ctx, terminalId: string): string | null => {
-    if (config.harnessMcpEnabled === false) return null
-    if (!terminalId) return null
-    return writeMcpConfigForTerminal(terminalId, resolveCallerScope(terminalId))
-  })
-
   transport.onRequest('config:setWsTransportEnabled', (_ctx, enabled: boolean) => {
     if (enabled) {
       config.wsTransportEnabled = true
@@ -2459,10 +2452,6 @@ function registerIpcHandlers(): void {
       const command = kind === 'claude'
         ? (config.claudeCommand || agent.defaultCommand)
         : (config.codexCommand || agent.defaultCommand)
-      const mcpConfigPath = writeMcpConfigForTerminal(
-        opts.terminalId,
-        resolveCallerScope(opts.terminalId)
-      )
 
       const override = opts.modelOverride && opts.modelOverride.trim() ? opts.modelOverride.trim() : undefined
       let systemPrompt: string | undefined
@@ -2482,7 +2471,7 @@ function registerIpcHandlers(): void {
         model = override || config.codexModel || null
       }
 
-      return agent.buildSpawnArgs({ ...opts, command, mcpConfigPath, model, systemPrompt, tuiFullscreen })
+      return agent.buildSpawnArgs({ ...opts, command, model, systemPrompt, tuiFullscreen })
     }
   )
 
@@ -2592,11 +2581,13 @@ function registerIpcHandlers(): void {
     }
   )
 
-  // Hooks. Install/uninstall happen once at user scope — the hook command
-  // is env-gated on $HARNESS_TERMINAL_ID so sessions spawned outside
+  // Hooks consent — scoped to Codex only. Claude hooks ride along via
+  // --plugin-dir (see src/main/claude-plugin.ts), so no user file is
+  // touched and no consent is needed. The hook command for Codex is
+  // env-gated on $HARNESS_TERMINAL_ID so sessions spawned outside
   // Harness are unaffected.
   transport.onRequest('hooks:accept', (_ctx) => {
-    installHooksGlobally()
+    installCodexHooks()
     config.hooksConsent = 'accepted'
     saveConfig(config)
     store.dispatch({ type: 'hooks/consentChanged', payload: 'accepted' })
@@ -2611,7 +2602,7 @@ function registerIpcHandlers(): void {
   })
 
   transport.onRequest('hooks:uninstall', (_ctx) => {
-    uninstallHooksGlobally()
+    uninstallCodexHooks()
     config.hooksConsent = 'pending'
     saveConfig(config)
     store.dispatch({ type: 'hooks/consentChanged', payload: 'pending' })
@@ -2703,8 +2694,28 @@ function registerIpcHandlers(): void {
     'pty:create',
     (ctx, id: string, cwd: string, cmd: string, args: string[], agentKind?: string, cols?: number, rows?: number) => {
       const isAgent = !!agentKind
-      const extraEnv = agentKind === 'claude' ? config.claudeEnvVars
+      const userEnv = agentKind === 'claude' ? config.claudeEnvVars
         : agentKind === 'codex' ? config.codexEnvVars
+        : undefined
+      // Claude xterm tabs load the bundled Harness plugin via --plugin-dir.
+      // The plugin's .mcp.json interpolates these env vars at launch so the
+      // bridge subprocess can dial back to the control server. Codex tabs
+      // don't get the plugin, so they don't need these — left undefined.
+      let controlEnv: Record<string, string> | undefined
+      if (agentKind === 'claude' && config.harnessMcpEnabled !== false) {
+        const controlInfo = getControlServerInfo()
+        if (controlInfo) {
+          controlEnv = buildHarnessControlEnv({
+            execPath: process.execPath,
+            port: controlInfo.port,
+            token: controlInfo.token,
+            terminalId: id,
+            scope: resolveCallerScope(id)
+          })
+        }
+      }
+      const extraEnv = userEnv || controlEnv
+        ? { ...(userEnv || {}), ...(controlEnv || {}) }
         : undefined
       const existed = ptyManager.hasTerminal(id)
       ptyManager.create(id, cwd, cmd, args, extraEnv, !isAgent, cols, rows)
@@ -3556,65 +3567,62 @@ async function runBoot(): Promise<void> {
 
   announcementsPoller.start()
 
-  // Seed hooks.consent from disk and migrate legacy per-worktree hooks
-  // to a single user-scope install. Runs once per app install; migrated
-  // state sticks via config.hooksMigratedToGlobal.
+  // Boot-time hooks setup.
+  //
+  // Claude: status hooks ship as a plugin bundled with Harness; every
+  // Claude spawn passes --plugin-dir, so there's no user-file install
+  // to consent to and nothing to seed at boot. The one-shot sweep below
+  // strips any legacy Harness entries from a prior user-scope install
+  // (~/.claude/settings.json) and from prior per-worktree installs
+  // (.claude/settings.local.json). Gated by hooksMigratedToPlugin so the
+  // sweep doesn't re-run.
+  //
+  // Codex: still installed at user scope (~/.codex/hooks.json), gated by
+  // hooksConsent. The flow mirrors what Harness did for both agents
+  // before the plugin switch — accept/decline IPC, banner, Settings.
   void (async () => {
     const claudeAgent = getAgent('claude')
-    const codexAgent = getAgent('codex')
 
-    // 1. Decide what the user's previous consent was.
-    //    - Explicit persisted value wins (including 'declined').
-    //    - Otherwise infer from the current state of disk: any global
-    //      install implies 'accepted'; otherwise scan worktrees for
-    //      legacy per-worktree markers as evidence of a prior accept.
+    // 1. Claude legacy-install cleanup (one-shot).
+    if (!config.hooksMigratedToPlugin) {
+      stripGlobalClaudeHooks()
+      for (const root of config.repoRoots || []) {
+        const trees = await listWorktrees(root).catch(() => [])
+        for (const wt of trees) {
+          claudeAgent.stripHooksFromWorktree(wt.path)
+        }
+      }
+      config.hooksMigratedToPlugin = true
+      saveConfig(config)
+    }
+
+    // 2. Codex consent resolution. Explicit persisted value wins; else
+    //    infer 'accepted' from the presence of a global install (handles
+    //    users who consented before the plugin switch), or from legacy
+    //    per-worktree Codex hook entries; else 'pending'.
     let consent: 'pending' | 'accepted' | 'declined' | undefined = config.hooksConsent
     if (!consent) {
-      if (claudeAgent.hooksInstalled() || codexAgent.hooksInstalled()) {
+      if (codexHooks.hooksInstalled()) {
         consent = 'accepted'
       } else {
         let foundLegacy = false
         for (const root of config.repoRoots || []) {
           const trees = await listWorktrees(root).catch(() => [])
           for (const wt of trees) {
-            // Probe via strip helper dry-run: we check existence of the
-            // per-worktree file + its contents cheaply here by attempting
-            // a strip and rolling back mentally — actually easier to just
-            // run the strip and treat the "changed" bit as evidence.
-            if (claudeAgent.stripHooksFromWorktree(wt.path)) foundLegacy = true
-            if (codexAgent.stripHooksFromWorktree(wt.path)) foundLegacy = true
+            if (codexHooks.stripHooksFromWorktree(wt.path)) foundLegacy = true
           }
         }
         consent = foundLegacy ? 'accepted' : 'pending'
-        if (foundLegacy) {
-          // Migration already happened above as a side-effect.
-          config.hooksMigratedToGlobal = true
-        }
       }
       config.hooksConsent = consent
       saveConfig(config)
     }
 
-    // 2. If user previously accepted but the global install is missing
-    //    (fresh upgrade), install now so status tracking keeps working.
-    if (consent === 'accepted') {
-      installHooksGlobally()
-    }
-
-    // 3. Run the one-shot migration sweep to strip legacy per-worktree
-    //    hooks — needed when config.hooksConsent was already persisted
-    //    (explicit path above didn't run the sweep) but we haven't
-    //    swept yet.
-    if (!config.hooksMigratedToGlobal) {
-      for (const root of config.repoRoots || []) {
-        const trees = await listWorktrees(root).catch(() => [])
-        for (const wt of trees) {
-          claudeAgent.stripHooksFromWorktree(wt.path)
-          codexAgent.stripHooksFromWorktree(wt.path)
-        }
-      }
-      config.hooksMigratedToGlobal = true
-      saveConfig(config)
+    // 3. If Codex was accepted but the global install is missing (fresh
+    //    upgrade or external edit), reinstall now so status tracking
+    //    keeps working.
+    if (consent === 'accepted' && !codexHooks.hooksInstalled()) {
+      installCodexHooks()
     }
 
     store.dispatch({ type: 'hooks/consentChanged', payload: consent })

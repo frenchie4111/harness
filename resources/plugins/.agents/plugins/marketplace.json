@@ -1,0 +1,10 @@
+{
+  "name": "harness",
+  "version": "1.0.0",
+  "plugins": [
+    {
+      "name": "harness-status",
+      "source": "./harness-status"
+    }
+  ]
+}

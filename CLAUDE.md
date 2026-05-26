@@ -95,7 +95,7 @@ src/
 │   ├── worktrees.ts               # list, repoRoots, pending FSM entries
 │   ├── terminals.ts               # statuses, pendingTools, shellActivity, panes, lastActive
 │   ├── onboarding.ts              # quest step
-│   ├── hooks.ts                   # consent + justInstalled
+│   ├── hooks.ts                   # Codex hooks consent (Claude rides on --plugin-dir)
 │   ├── updater.ts                 # status (checking/available/downloading/…)
 │   ├── repo-configs.ts            # byRepo: per-repo .harness.json contents
 │   └── *.test.ts                  # vitest reducer tests, one per slice
@@ -195,10 +195,6 @@ Some main-side modules subscribe to the store and react to events:
   `terminals/*` and `prs/*` events, computes per-worktree effective
   state, debounces `lastActive` updates, dedups `recordActivity` calls
   to `activity.ts`.
-- **`installHooksForAcceptedWorktrees`** — small subscriber in
-  `main/index.ts` that listens for `worktrees/listChanged` and
-  `hooks/consentChanged`, installs hooks into any new worktree if
-  consent is `'accepted'`.
 
 Construction order in `main/index.ts` matters: `PanesFSM` is constructed
 **before** `WorktreesFSM` because the latter's `onWorktreeCreated`
@@ -288,11 +284,33 @@ event type if you're trying to find where something happens.
 ## How status detection works
 
 The reliable status (processing / waiting / needs-approval) comes from
-**Claude Code hooks** that we install into each worktree's
-`.claude/settings.local.json`. The hooks write a status JSON to
-`/tmp/harness-status/<terminal-id>.json` and the main process watches that
-directory via `fs.watch`. The hook script uses `$CLAUDE_HARNESS_ID` env var
-which the PtyManager sets when spawning each terminal.
+**Claude Code hooks** that emit one NDJSON line per event to
+`/tmp/harness-status/<terminal-id>.ndjson`. The main process watches that
+directory via `fs.watch` and tails the file (see `src/main/hooks.ts`).
+The hook command env-gates on `$HARNESS_TERMINAL_ID` (set by PtyManager
+when it spawns each tab), so sessions outside Harness no-op cleanly.
+
+**How the hooks get loaded:**
+
+- **Claude** — Harness ships a local Claude Code plugin under
+  `resources/plugins/harness-status/` (manifest at
+  `.claude-plugin/plugin.json`, hooks at `hooks/hooks.json`). Every
+  Claude spawn — both the xterm path and json-mode — passes
+  `--plugin-dir <bundled-path>`. Nothing is written to
+  `~/.claude/settings.json`; no consent is required. The plugin is
+  resolved via `harnessPluginDir()` in `src/main/claude-plugin.ts`
+  (mirrors the `process.resourcesPath` pattern used by `mcp-bridge.js`).
+  A drift-detection test in `src/main/claude-plugin.test.ts` asserts the
+  shipped `hooks.json` matches what `makeHookCommand()` would generate
+  today so the two can't silently diverge.
+- **Codex** — still installed at user scope (`~/.codex/hooks.json`),
+  gated by the consent banner / Settings card. Codex has no plugin
+  system; users have to opt in once. The `hooks/consent` slice +
+  `hooks:accept|decline|uninstall` IPC handlers exist for this path
+  only. A one-shot boot migration (gated by
+  `config.hooksMigratedToPlugin`) strips any legacy Harness entries from
+  the old global Claude install + per-worktree
+  `.claude/settings.local.json` files.
 
 ## How performance debugging works
 

@@ -8,9 +8,8 @@
 //   each event over the `state:event` IPC channel to all renderer
 //   windows. The renderer applies the SAME reducer to its local mirror,
 //   so renderer state is automatically in sync with no glue code.
-// - Internal main-side reactors (e.g. `ActivityDeriver`,
-//   `installHooksForAcceptedWorktrees`) that observe specific events
-//   to do side effects.
+// - Internal main-side reactors (e.g. `ActivityDeriver`) that observe
+//   specific events to do side effects.
 //
 // The `seq` field exists so a future networked client can resync after
 // a reconnect — request "everything since seq N" and replay any missed

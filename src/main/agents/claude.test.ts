@@ -29,7 +29,7 @@ vi.mock('../hooks', () => ({
 
 import { homedir } from 'os'
 import { join } from 'path'
-import { buildSpawnArgs, hooksInstalled, installHooks, hookEvents, uninstallHooks } from './claude'
+import { buildSpawnArgs, hookEvents, stripGlobalHooks } from './claude'
 
 const SETTINGS_PATH = join(homedir(), '.claude', 'settings.json')
 
@@ -62,63 +62,42 @@ describe('buildSpawnArgs', () => {
     expect(result).toContain('--append-system-prompt')
     expect(result).toContain("'\\''")
   })
+
+  it('passes --plugin-dir pointing at the bundled Harness status plugin', () => {
+    const result = buildSpawnArgs({ ...base })
+    expect(result).toContain('--plugin-dir')
+    expect(result).toContain('resources/plugins/harness-status')
+  })
 })
 
-describe('hook install / dedup', () => {
-  it('hooksInstalled() recognizes normalized entries with no _marker field', () => {
-    // Simulate what Claude Code leaves behind after normalizing settings.json:
-    // the _marker and _version sidecar fields are stripped, only the
-    // {type, command, timeout} triple remains.
-    const settings = {
-      hooks: {
-        UserPromptSubmit: [
-          {
-            hooks: [
-              {
-                type: 'command',
-                command:
-                  "bash -c 'd=/tmp/harness-status; printf hi >> \"$d/$h.ndjson\"'",
-                timeout: 5
-              }
-            ]
-          }
-        ]
-      }
-    }
-    fsState.files.set(SETTINGS_PATH, JSON.stringify(settings))
-    expect(hooksInstalled()).toBe(true)
+describe('stripGlobalHooks (legacy migration)', () => {
+  it('returns false when settings.json has no Harness entries', () => {
+    fsState.files.set(
+      SETTINGS_PATH,
+      JSON.stringify({
+        hooks: {
+          UserPromptSubmit: [
+            {
+              hooks: [{ type: 'command', command: 'echo user hook', timeout: 5 }]
+            }
+          ]
+        }
+      })
+    )
+    expect(stripGlobalHooks()).toBe(false)
+    const after = JSON.parse(fsState.files.get(SETTINGS_PATH) as string)
+    expect(after.hooks.UserPromptSubmit).toHaveLength(1)
   })
 
-  it('hooksInstalled() returns false when only user-authored hooks exist', () => {
-    const settings = {
-      hooks: {
-        UserPromptSubmit: [
-          {
-            hooks: [{ type: 'command', command: 'echo user hook', timeout: 5 }]
-          }
-        ]
-      }
-    }
-    fsState.files.set(SETTINGS_PATH, JSON.stringify(settings))
-    expect(hooksInstalled()).toBe(false)
+  it('returns false when settings.json does not exist', () => {
+    expect(stripGlobalHooks()).toBe(false)
   })
 
-  it('installHooks() called twice yields exactly one harness entry per event', () => {
-    installHooks()
-    installHooks()
-    const settings = JSON.parse(fsState.files.get(SETTINGS_PATH) as string)
-    for (const event of hookEvents) {
-      const entries = settings.hooks[event]
-      expect(entries).toHaveLength(1)
-      expect(entries[0].hooks[0].command).toContain('/tmp/harness-status')
+  it('removes legacy Harness entries while preserving user-authored hooks', () => {
+    const userHook = {
+      hooks: [{ type: 'command', command: 'echo user hook', timeout: 10 }]
     }
-  })
-
-  it('installHooks() collapses pre-existing duplicates left by buggy passes', () => {
-    // Three duplicate harness entries per event, all in normalized form
-    // (no _marker / _version). This is the exact shape the user reports
-    // after several buggy install passes.
-    const dupEntry = {
+    const harnessHook = {
       hooks: [
         {
           type: 'command',
@@ -128,66 +107,62 @@ describe('hook install / dedup', () => {
         }
       ]
     }
-    const settings: { hooks: Record<string, unknown[]> } = { hooks: {} }
-    for (const event of hookEvents) {
-      settings.hooks[event] = [dupEntry, dupEntry, dupEntry]
-    }
-    fsState.files.set(SETTINGS_PATH, JSON.stringify(settings))
-
-    installHooks()
-
-    const after = JSON.parse(fsState.files.get(SETTINGS_PATH) as string)
-    for (const event of hookEvents) {
-      expect(after.hooks[event]).toHaveLength(1)
-    }
-  })
-
-  it('installHooks() preserves user-authored hooks (commands not pointing at /tmp/harness-status)', () => {
-    const userHook = {
-      hooks: [{ type: 'command', command: 'echo user hook', timeout: 10 }]
-    }
     fsState.files.set(
       SETTINGS_PATH,
       JSON.stringify({
         hooks: {
-          UserPromptSubmit: [userHook],
-          PreToolUse: [userHook]
+          UserPromptSubmit: [userHook, harnessHook],
+          PreToolUse: [harnessHook]
         },
         unrelatedKey: 'preserve-me'
       })
     )
 
-    installHooks()
-
+    expect(stripGlobalHooks()).toBe(true)
     const after = JSON.parse(fsState.files.get(SETTINGS_PATH) as string)
     expect(after.unrelatedKey).toBe('preserve-me')
-    // User hook still there + one harness entry appended
-    expect(after.hooks.UserPromptSubmit).toContainEqual(userHook)
-    expect(after.hooks.PreToolUse).toContainEqual(userHook)
-    for (const event of hookEvents) {
-      const harnessEntries = (after.hooks[event] as Array<{ hooks: { command: string }[] }>).filter(
-        (e) => e.hooks.some((h) => h.command.includes('/tmp/harness-status'))
-      )
-      expect(harnessEntries).toHaveLength(1)
-    }
+    // User hook survives; harness entry stripped.
+    expect(after.hooks.UserPromptSubmit).toEqual([userHook])
+    // Event with only harness entry → key removed entirely.
+    expect(after.hooks.PreToolUse).toBeUndefined()
   })
 
-  it('uninstallHooks() removes harness entries but preserves user-authored hooks', () => {
-    installHooks()
-    // Add a user-authored hook alongside
+  it('drops the hooks object entirely when no events remain', () => {
+    fsState.files.set(
+      SETTINGS_PATH,
+      JSON.stringify({
+        hooks: {
+          PreToolUse: [
+            {
+              hooks: [
+                {
+                  type: 'command',
+                  command: 'bash -c \'d=/tmp/harness-status; echo x\'',
+                  timeout: 5
+                }
+              ]
+            }
+          ]
+        },
+        otherKey: 'keep'
+      })
+    )
+
+    expect(stripGlobalHooks()).toBe(true)
     const after = JSON.parse(fsState.files.get(SETTINGS_PATH) as string)
-    after.hooks.UserPromptSubmit.push({
-      hooks: [{ type: 'command', command: 'echo user hook' }]
-    })
-    fsState.files.set(SETTINGS_PATH, JSON.stringify(after))
+    expect(after.hooks).toBeUndefined()
+    expect(after.otherKey).toBe('keep')
+  })
+})
 
-    uninstallHooks()
-
-    const final = JSON.parse(fsState.files.get(SETTINGS_PATH) as string)
-    expect(final.hooks?.UserPromptSubmit).toEqual([
-      { hooks: [{ type: 'command', command: 'echo user hook' }] }
+describe('hookEvents', () => {
+  it('exports the events the bundled plugin must register', () => {
+    expect(hookEvents).toEqual([
+      'UserPromptSubmit',
+      'PreToolUse',
+      'PostToolUse',
+      'Stop',
+      'Notification'
     ])
-    // Other events had no user hooks, so they should be gone entirely.
-    expect(final.hooks?.PreToolUse).toBeUndefined()
   })
 })

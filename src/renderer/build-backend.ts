@@ -278,8 +278,6 @@ export function buildBackend(
     setHarnessSystemPromptMain: (prompt: string) =>
       req('config:setHarnessSystemPromptMain', prompt),
     setPrReviewPrompt: (prompt: string) => req('config:setPrReviewPrompt', prompt),
-    prepareMcpForTerminal: (terminalId: string) =>
-      req('mcp:prepareForTerminal', terminalId),
     onWorktreesExternalCreate: (
       callback: (payload: { repoRoot: string; worktree: unknown; initialPrompt?: string }) => void
     ) =>

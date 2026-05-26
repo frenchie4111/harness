@@ -64,12 +64,12 @@
     ],
     "extraResources": [
       {
-        "from": "resources/mcp-bridge.js",
-        "to": "mcp-bridge.js"
-      },
-      {
         "from": "resources/permission-prompt-mcp.js",
         "to": "permission-prompt-mcp.js"
+      },
+      {
+        "from": "resources/plugins",
+        "to": "plugins"
       }
     ],
     "mac": {

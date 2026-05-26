@@ -6,7 +6,7 @@ import { dirname, join } from 'path'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
-const BRIDGE = join(__dirname, 'mcp-bridge.js')
+const BRIDGE = join(__dirname, 'plugins', 'harness-status', 'servers', 'mcp-bridge.js')
 
 function startStub(handler) {
   return new Promise((resolve) => {

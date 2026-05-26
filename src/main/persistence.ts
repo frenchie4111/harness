@@ -164,14 +164,22 @@ export interface Config {
   // to the main worktree's copy, and the boot migration doesn't convert
   // existing regular files. Default is enabled (undefined/true).
   shareClaudeSettings?: boolean
-  // User's choice for installing agent status hooks at user scope
-  // (~/.claude/settings.json, ~/.codex/hooks.json). Persisted so a
-  // declined user doesn't see the banner again on next launch.
+  // User's choice for installing Codex status hooks at user scope
+  // (~/.codex/hooks.json). Claude no longer asks — its hooks ship as a
+  // bundled plugin loaded via --plugin-dir, so nothing is written to
+  // user files. Persisted so a declined user doesn't see the banner
+  // again on next launch.
   hooksConsent?: 'pending' | 'accepted' | 'declined'
-  // One-shot migration flag: once true, we've swept all known worktrees'
-  // per-worktree .claude/settings.local.json + .codex/hooks.json files
-  // and stripped any legacy Harness entries. Prevents re-running the
-  // migration on every boot.
+  // One-shot migration flag: once true, we've swept the legacy Claude
+  // hook installs (~/.claude/settings.json global entries + per-worktree
+  // .claude/settings.local.json) and stripped any Harness entries.
+  // Claude hooks now ship as a plugin; this sweep removes the dead
+  // copies the user no longer needs. Prevents re-running on every boot.
+  hooksMigratedToPlugin?: boolean
+  // Deprecated, kept for migration reads: the prior one-shot flag that
+  // recorded the per-worktree → user-scope sweep. Once Harness has set
+  // hooksMigratedToPlugin we no longer read this. Safe to remove after
+  // 2026-08.
   hooksMigratedToGlobal?: boolean
   harnessSystemPromptEnabled?: boolean
   harnessSystemPrompt?: string

@@ -1701,16 +1701,17 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               </div>
 
               <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-3">
-                Status hooks
+                Codex status hooks
               </h3>
               <div className="bg-panel-raised border border-border rounded-lg p-4">
                 <p className="text-xs text-dim mb-3">
                   Harness installs a small hook at{' '}
-                  <code className="bg-panel px-1 rounded">~/.claude/settings.json</code> and{' '}
                   <code className="bg-panel px-1 rounded">~/.codex/hooks.json</code> so it can
-                  detect when each agent tab is processing, waiting, or awaiting approval.
+                  detect when a Codex tab is processing, waiting, or awaiting approval.
                   The hook only emits when <code className="bg-panel px-1 rounded">$HARNESS_TERMINAL_ID</code>{' '}
                   is set — sessions you launch outside Harness are untouched.
+                  Claude tabs don't need this — their hooks ship bundled with Harness and load
+                  automatically via <code className="bg-panel px-1 rounded">--plugin-dir</code>.
                 </p>
                 <div className="flex items-center gap-2">
                   {hooksConsent === 'accepted' ? (

@@ -564,9 +564,11 @@ const setQuestStep = useCallback((next: QuestStep) => {
     return () => cancelAnimationFrame(raf)
   }, [activeWorktreeId, activeTabId])
 
-  // When a worktree becomes active, refresh its PR status if stale. Hooks
-  // installation and pane initialization both run in main now (see
-  // installHooksForAcceptedWorktrees + WorktreesFSM in src/main/index.ts).
+  // When a worktree becomes active, refresh its PR status if stale.
+  // Pane initialization runs in main via WorktreesFSM. Claude hooks
+  // load via --plugin-dir on every spawn (see src/main/claude-plugin.ts);
+  // Codex hooks are installed at user scope once when consent is
+  // accepted (see the hooks:accept IPC handler in src/main/index.ts).
   useEffect(() => {
     if (!activeWorktreeId) return
     if (isPendingId(activeWorktreeId)) return
@@ -1165,9 +1167,9 @@ const setQuestStep = useCallback((next: QuestStep) => {
                     </div>
                   )}
                   <div className="flex-1 min-w-0">
-                    <div className="text-fg-bright text-sm font-medium">Install status hooks</div>
+                    <div className="text-fg-bright text-sm font-medium">Install Codex status hooks</div>
                     <div className="text-xs text-dim mt-0.5">
-                      Adds a small hook at <code className="bg-app/50 px-1 rounded">~/.claude/settings.json</code> (and the Codex equivalent) so Harness can tell when an agent is{' '}
+                      Adds a small hook at <code className="bg-app/50 px-1 rounded">~/.codex/hooks.json</code> so Harness can tell when a Codex agent is{' '}
                       <span className="inline-flex items-center gap-1 whitespace-nowrap">
                         <span className="w-1.5 h-1.5 rounded-full bg-success" />
                         <span className="text-fg">working</span>
@@ -1179,7 +1181,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
                       <span className="inline-flex items-center gap-1 whitespace-nowrap">
                         <span className="w-1.5 h-1.5 rounded-full bg-danger" />
                         <span className="text-fg">asking for approval</span>
-                      </span>. Only fires for sessions Harness launches — others are untouched.
+                      </span>. Only fires for Codex sessions Harness launches; others are untouched. Skip if you don't use Codex.
                     </div>
                   </div>
                 </div>
@@ -1418,16 +1420,17 @@ const setQuestStep = useCallback((next: QuestStep) => {
         </div>
       )}
 
-      {/* Hooks consent banner — one-time prompt at first launch. Harness
-          installs agent status hooks at ~/.claude/settings.json (+ Codex
-          equivalent). The hook command is gated on $HARNESS_TERMINAL_ID
-          so sessions spawned outside Harness are unaffected. */}
+      {/* Hooks consent banner — one-time prompt for Codex status hook
+          install at ~/.codex/hooks.json. Claude rides along via a
+          bundled plugin (no consent needed). The hook command is gated
+          on $HARNESS_TERMINAL_ID so sessions spawned outside Harness
+          are unaffected. */}
       {hooksConsent === 'pending' && (
         <div className="bg-warning/15 border-b border-warning/30 pl-20 pr-4 py-2.5 drag-region flex items-center gap-3 shrink-0">
           <span className="text-warning text-sm flex-1">
-            Harness installs status hooks at <code className="text-xs">~/.claude/settings.json</code> to detect
-            agent state (waiting, processing, needs approval). They only fire for agents you
-            launch inside Harness and can be removed at any time from Settings.
+            Harness can install status hooks at <code className="text-xs">~/.codex/hooks.json</code> to detect
+            Codex agent state (waiting, processing, needs approval). They only fire for Codex sessions you
+            launch inside Harness and can be removed at any time from Settings. Skip if you don't use Codex.
           </span>
           <button
             onClick={handleAcceptHooks}

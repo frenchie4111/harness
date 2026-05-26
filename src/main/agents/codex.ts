@@ -200,9 +200,9 @@ export function latestSessionId(_cwd: string): string | null {
 }
 
 export function buildSpawnArgs(opts: AgentSpawnOpts): string {
-  // Codex MCP is configured globally via ~/.codex/config.toml, not per-terminal
-  // flags. The mcpConfigPath is unused here but the MCP server was already
-  // registered by the prepareMcpForTerminal IPC call.
+  // Codex MCP is configured globally via ~/.codex/config.toml, not via
+  // per-terminal flags. Harness doesn't register any per-session MCP
+  // servers for Codex; users wire their own in ~/.codex/config.toml.
   let cmd = opts.command
   if (opts.model && !opts.command.includes('--model') && !opts.command.includes('-m ')) {
     cmd += ` --model ${shellQuote(opts.model)}`

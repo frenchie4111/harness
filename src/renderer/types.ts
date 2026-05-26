@@ -344,7 +344,6 @@ export interface ElectronAPI {
   setHarnessSystemPrompt(prompt: string): Promise<boolean>
   setHarnessSystemPromptMain(prompt: string): Promise<boolean>
   setPrReviewPrompt(prompt: string): Promise<boolean>
-  prepareMcpForTerminal(terminalId: string): Promise<string | null>
   onWorktreesExternalCreate(
     callback: (payload: { repoRoot: string; worktree: Worktree; initialPrompt?: string }) => void
   ): () => void
