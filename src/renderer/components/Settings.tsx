@@ -23,7 +23,16 @@ interface SettingsProps {
 }
 
 type SectionId = 'appearance' | 'agent' | 'worktrees' | 'editor' | 'github' | 'hotkeys' | 'updates' | 'support' | 'experimental'
-type SubSectionId = 'agent-general' | 'agent-claude' | 'agent-codex'
+type SubSectionId =
+  | 'appearance-theme'
+  | 'appearance-custom-themes'
+  | 'appearance-terminal-font'
+  | 'agent-general'
+  | 'agent-claude'
+  | 'agent-codex'
+  | 'experimental-browser-control'
+  | 'experimental-auto-approve'
+  | 'experimental-web-mobile'
 
 interface SubSection {
   id: SubSectionId
@@ -38,7 +47,11 @@ interface Section {
 }
 
 const SECTIONS: Section[] = [
-  { id: 'appearance', label: 'Appearance', icon: Palette },
+  { id: 'appearance', label: 'Appearance', icon: Palette, children: [
+    { id: 'appearance-theme', label: 'Theme' },
+    { id: 'appearance-custom-themes', label: 'Custom themes' },
+    { id: 'appearance-terminal-font', label: 'Terminal font' }
+  ]},
   { id: 'agent', label: 'Agent', icon: TerminalIcon, children: [
     { id: 'agent-general', label: 'General' },
     { id: 'agent-claude', label: 'Claude' },
@@ -50,7 +63,11 @@ const SECTIONS: Section[] = [
   { id: 'hotkeys', label: 'Hotkeys', icon: Keyboard },
   { id: 'updates', label: 'Updates', icon: DownloadCloud },
   { id: 'support', label: 'Support', icon: LifeBuoy },
-  { id: 'experimental', label: 'Experimental', icon: FlaskConical }
+  { id: 'experimental', label: 'Experimental', icon: FlaskConical, children: [
+    { id: 'experimental-browser-control', label: 'Browser control' },
+    { id: 'experimental-auto-approve', label: 'Auto-approve' },
+    { id: 'experimental-web-mobile', label: 'Web & mobile' }
+  ]}
 ]
 
 interface SearchItem {
@@ -106,9 +123,15 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     experimental: null
   })
   const subSectionRefs = useRef<Record<SubSectionId, HTMLElement | null>>({
+    'appearance-theme': null,
+    'appearance-custom-themes': null,
+    'appearance-terminal-font': null,
     'agent-general': null,
     'agent-claude': null,
-    'agent-codex': null
+    'agent-codex': null,
+    'experimental-browser-control': null,
+    'experimental-auto-approve': null,
+    'experimental-web-mobile': null
   })
   const isProgrammaticScroll = useRef(false)
 
@@ -1245,6 +1268,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 Pick a color theme for the major panels. Takes effect immediately.
               </p>
 
+              <div ref={(el) => { subSectionRefs.current['appearance-theme'] = el }} id="appearance-theme" />
               {/* Mode picker — native radio inputs styled as a segmented
                    control. Radios give us proper keyboard semantics for free
                    (arrow keys move focus, space activates) */}
@@ -1303,7 +1327,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 onSelect={handleSelectDarkTheme}
               />
 
-              <div className="mt-8">
+              <div ref={(el) => { subSectionRefs.current['appearance-custom-themes'] = el }} id="appearance-custom-themes" className="mt-8">
                 <h3 className="text-sm font-semibold text-fg-bright mb-1">Custom themes</h3>
                 <p className="text-xs text-dim mb-3">
                   Drop <code className="text-fg">{'<name>.json'}</code> files into your themes folder. They show up in the pickers above, filtered by their <code className="text-fg">mode</code>. {customThemes.length === 0 ? 'None loaded yet.' : `${customThemes.length} loaded.`}
@@ -1326,6 +1350,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 </div>
               </div>
 
+              <div ref={(el) => { subSectionRefs.current['appearance-terminal-font'] = el }} id="appearance-terminal-font" />
               <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">Terminal font</h3>
               <p className="text-xs text-dim mb-3">
                 Used by every Claude and shell tab. Provide any CSS font-family value
@@ -2722,7 +2747,11 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               </p>
 
               {/* Browser control sub-card */}
-              <div className="bg-panel-raised border border-warning/30 rounded-lg p-4 mb-4">
+              <div
+                ref={(el) => { subSectionRefs.current['experimental-browser-control'] = el }}
+                id="experimental-browser-control"
+                className="bg-panel-raised border border-warning/30 rounded-lg p-4 mb-4"
+              >
                 <div className="flex items-center gap-2 mb-1">
                   <h3 className="text-sm font-semibold text-fg-bright">Browser control</h3>
                   <span className="text-[10px] font-medium text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
@@ -2762,7 +2791,11 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               </div>
 
               {/* Auto-approve safe tool calls sub-card */}
-              <div className="bg-panel-raised border border-warning/30 rounded-lg p-4 mb-4">
+              <div
+                ref={(el) => { subSectionRefs.current['experimental-auto-approve'] = el }}
+                id="experimental-auto-approve"
+                className="bg-panel-raised border border-warning/30 rounded-lg p-4 mb-4"
+              >
                 <div className="flex items-center gap-2 mb-1">
                   <h3 className="text-sm font-semibold text-fg-bright">Auto-approve safe tool calls</h3>
                   <span className="text-[10px] font-medium text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
@@ -2825,7 +2858,11 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               </div>
 
               {/* Web / mobile client sub-card */}
-              <div className="bg-panel-raised border border-warning/30 rounded-lg p-4">
+              <div
+                ref={(el) => { subSectionRefs.current['experimental-web-mobile'] = el }}
+                id="experimental-web-mobile"
+                className="bg-panel-raised border border-warning/30 rounded-lg p-4"
+              >
                 <div className="flex items-center gap-2 mb-1">
                   <h3 className="text-sm font-semibold text-fg-bright">Web &amp; mobile client</h3>
                   <span className="text-[10px] font-medium text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
