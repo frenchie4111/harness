@@ -33,6 +33,24 @@ export interface BackendConnection {
   lastConnectedAt?: number
   color?: string
   initials?: string
+  /** Present on remotes that were bootstrapped via SSH (vs. plain WS).
+   *  When set, `url` is treated as a cache of the last tunnel's
+   *  ephemeral loopback URL — the source of truth is `ssh.target`, and
+   *  on each connect we re-bootstrap a fresh tunnel and overwrite `url`
+   *  with the new localhost:<port>/?token=... string. See
+   *  plans/remote-main.md §4. */
+  ssh?: {
+    /** Either an alias from ~/.ssh/config (e.g. "build-box") or a
+     *  freeform "user@host[:port]" string. The bootstrap layer treats
+     *  both uniformly via parseSshTarget. */
+    target: string
+    /** Local loopback port we used last time, if any. Lets the next
+     *  reconnect prefer the same port — keeps the URL stable across
+     *  restarts so xterm.js terminal ids the renderer holds don't get
+     *  invalidated by a churning port. Best-effort; if it's taken on
+     *  the next boot we just pick another. */
+    tunnelLocalPort?: number
+  }
 }
 
 export const LOCAL_BACKEND_ID = 'local'

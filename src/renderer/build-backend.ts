@@ -594,7 +594,11 @@ export function buildBackend(
 
     // SSH bootstrap helpers — always-local; only the local Electron
     // backend bootstraps remote backends. See plans/remote-main.md §4.
-    sshListConfiguredHosts: () => reqLocal('ssh:listConfiguredHosts')
+    sshListConfiguredHosts: () => reqLocal('ssh:listConfiguredHosts'),
+    sshBootstrap: (input: { bootstrapId: string; target: string; label: string }) =>
+      reqLocal('ssh:bootstrap', input),
+    sshReconnect: (input: { bootstrapId: string; connectionId: string }) =>
+      reqLocal('ssh:reconnect', input)
   }
 
   return api as ElectronAPI
