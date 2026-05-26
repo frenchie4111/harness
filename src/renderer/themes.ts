@@ -76,7 +76,7 @@ export const THEME_OPTIONS: ThemeOption[] = [
     id: 'cyberfunk',
     label: 'Cyberfunk',
     description: 'Pitch-black neon — magenta wiring, orange sparks.',
-    swatches: ['#000000', '#1f0033', '#ffffff', '#ff6600'],
+    swatches: ['#000000', '#1f0033', '#ff00ff', '#ff6600'],
     mode: 'dark'
   }
 ]
