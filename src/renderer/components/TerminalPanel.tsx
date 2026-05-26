@@ -527,7 +527,7 @@ export function TerminalPanel({
             </button>
           </Tooltip>
         </div>
-        <div className="shrink-0 w-px h-4 bg-border mx-1" />
+        <div className="shrink-0 w-px h-4 bg-border-strong mx-1" />
         {canScrollLeft && (
           <button
             type="button"
