@@ -11,6 +11,7 @@ import { initialBrowser } from '../shared/state/browser'
 import { initialJsonClaude } from '../shared/state/json-claude'
 import { initialSnooze } from '../shared/state/snooze'
 import { initialAnnouncements } from '../shared/state/announcements'
+import { initialScratchpad } from '../shared/state/scratchpad'
 import {
   initialSettings,
   DEFAULT_LIGHT_THEME,
@@ -28,6 +29,24 @@ import {
   type Config
 } from './persistence'
 import { DEFAULT_EDITOR_ID } from './editor'
+
+/** Flatten the nested `repoRoot → worktreePath → text` shape on disk
+ *  into the flat `worktreePath → text` map the slice carries in memory.
+ *  Two repos shouldn't have overlapping worktree paths in practice; if
+ *  they ever do, last-write-wins on iteration order. */
+function flattenScratchpadNotes(
+  nested: Record<string, Record<string, string>> | undefined
+): Record<string, string> {
+  if (!nested) return {}
+  const out: Record<string, string> = {}
+  for (const byPath of Object.values(nested)) {
+    if (!byPath) continue
+    for (const [worktreePath, text] of Object.entries(byPath)) {
+      if (typeof text === 'string' && text !== '') out[worktreePath] = text
+    }
+  }
+  return out
+}
 
 export function buildInitialAppState(
   config: Config,
@@ -49,6 +68,7 @@ export function buildInitialAppState(
     jsonClaude: initialJsonClaude,
     snooze: config.snooze ? { byPath: { ...config.snooze } } : initialSnooze,
     announcements: initialAnnouncements,
+    scratchpad: { byWorktreePath: flattenScratchpadNotes(config.scratchpadNotes) },
     settings: {
       ...initialSettings,
       themeMode:

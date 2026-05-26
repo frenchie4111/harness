@@ -1,4 +1,12 @@
-export type RightPanelKey = 'merge' | 'pr' | 'todos' | 'commits' | 'changedFiles' | 'allFiles' | 'cost'
+export type RightPanelKey =
+  | 'merge'
+  | 'pr'
+  | 'todos'
+  | 'commits'
+  | 'changedFiles'
+  | 'allFiles'
+  | 'cost'
+  | 'scratchpad'
 
 export const DEFAULT_RIGHT_PANEL_ORDER: RightPanelKey[] = [
   'merge',
@@ -7,10 +15,18 @@ export const DEFAULT_RIGHT_PANEL_ORDER: RightPanelKey[] = [
   'changedFiles',
   'allFiles',
   'todos',
-  'cost'
+  'cost',
+  'scratchpad'
 ]
 
 export type HiddenRightPanels = Partial<Record<RightPanelKey, boolean>>
+
+/** Panels hidden by default unless the user explicitly enables them.
+ *  Merged UNDER the saved config in `effectiveHiddenRightPanels` — once a
+ *  user toggles a panel here, their choice wins. */
+export const DEFAULT_HIDDEN_RIGHT_PANELS: HiddenRightPanels = {
+  scratchpad: true
+}
 
 export interface RepoConfig {
   version?: number
@@ -52,9 +68,15 @@ export function effectiveRightPanelOrder(config: RepoConfig | null | undefined):
 }
 
 /** Read an effective hidden map, migrating legacy hideMergePanel /
- * hidePrPanel fields. Returns a fresh object — safe to mutate. */
+ * hidePrPanel fields. Returns a fresh object — safe to mutate.
+ *
+ * DEFAULT_HIDDEN_RIGHT_PANELS is merged UNDER the saved values, so once
+ * the user explicitly toggles a default-hidden panel on, their choice wins. */
 export function effectiveHiddenRightPanels(config: RepoConfig | null | undefined): HiddenRightPanels {
-  const out: HiddenRightPanels = { ...(config?.hiddenRightPanels || {}) }
+  const out: HiddenRightPanels = {
+    ...DEFAULT_HIDDEN_RIGHT_PANELS,
+    ...(config?.hiddenRightPanels || {})
+  }
   if (config?.hideMergePanel && out.merge === undefined) out.merge = true
   if (config?.hidePrPanel && out.pr === undefined) out.pr = true
   return out

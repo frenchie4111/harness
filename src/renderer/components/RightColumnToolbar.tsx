@@ -10,7 +10,8 @@ const LABELS: Record<RightPanelKey, string> = {
   commits: 'Branch Commits',
   changedFiles: 'Changed Files',
   allFiles: 'All Files',
-  cost: 'Cost'
+  cost: 'Cost',
+  scratchpad: 'Scratchpad'
 }
 
 interface RightColumnToolbarProps {
@@ -56,9 +57,9 @@ export function RightColumnToolbar({
 
   const togglePanel = (key: RightPanelKey): void => {
     const isHidden = !!hidden[key]
-    const next: HiddenRightPanels = { ...hidden }
-    if (isHidden) delete next[key]
-    else next[key] = true
+    // Always write explicit boolean (not delete) so the user's choice
+    // wins over any DEFAULT_HIDDEN_RIGHT_PANELS entry on next read.
+    const next: HiddenRightPanels = { ...hidden, [key]: !isHidden }
     onChangeHidden(next)
   }
 

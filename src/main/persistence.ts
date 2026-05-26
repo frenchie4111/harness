@@ -229,6 +229,10 @@ export interface Config {
   // When true, all announcement banners are suppressed regardless of
   // feed contents.
   announcementsMuted?: boolean
+  // Per-worktree scratchpad notes, nested by repoRoot → worktreePath → text.
+  // Same nesting scheme as `panes` so two repos with identical worktree
+  // paths stay distinct. Absent / empty entries are pruned on write.
+  scratchpadNotes?: Record<string, Record<string, string>>
 }
 
 export const DEFAULT_WORKTREE_BASE: 'remote' | 'local' = 'remote'
