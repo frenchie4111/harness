@@ -224,6 +224,26 @@
   --color-accent: #c678dd;
 }
 
+[data-theme="cyberfunk"] {
+  --color-app: #000000;
+  --color-panel: #0a0014;
+  --color-panel-raised: #14001f;
+  --color-surface: #1f0033;
+  --color-surface-hover: #33005c;
+  --color-border: #ff00ff;
+  --color-border-strong: #ff66ff;
+  --color-fg: #ffffff;
+  --color-fg-bright: #ffffff;
+  --color-muted: #ff99ff;
+  --color-dim: #cc66cc;
+  --color-faint: #663366;
+  --color-success: #00ff9d;
+  --color-warning: #ffee00;
+  --color-danger: #ff1a8c;
+  --color-info: #00ffff;
+  --color-accent: #ff6600;
+}
+
 @layer base {
   * {
     margin: 0;

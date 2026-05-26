@@ -243,7 +243,8 @@ export const AVAILABLE_THEMES = [
   'catppuccin-mocha',
   'one-dark',
   'solarized-dark',
-  'solarized-light'
+  'solarized-light',
+  'cyberfunk'
 ] as const
 
 /** App background hex for each theme — used for the Electron window backgroundColor
@@ -257,7 +258,8 @@ export const THEME_APP_BG: Record<string, string> = {
   'catppuccin-mocha': '#1e1e2e',
   'one-dark': '#282c34',
   'solarized-dark': '#002b36',
-  'solarized-light': '#fdf6e3'
+  'solarized-light': '#fdf6e3',
+  'cyberfunk': '#000000'
 }
 
 export const DEFAULT_CLAUDE_COMMAND = 'claude'

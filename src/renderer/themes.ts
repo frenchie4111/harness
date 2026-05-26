@@ -71,6 +71,13 @@ export const THEME_OPTIONS: ThemeOption[] = [
     description: 'The light half of Solarized — easy on the eyes in daylight.',
     swatches: ['#fdf6e3', '#eee8d5', '#657b83', '#268bd2'],
     mode: 'light'
+  },
+  {
+    id: 'cyberfunk',
+    label: 'Cyberfunk',
+    description: 'Pitch-black neon — magenta wiring, orange sparks.',
+    swatches: ['#000000', '#1f0033', '#ffffff', '#ff6600'],
+    mode: 'dark'
   }
 ]
 
