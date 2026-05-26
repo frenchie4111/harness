@@ -12,7 +12,21 @@
 import { readFile } from 'fs/promises'
 import { homedir } from 'os'
 import { join } from 'path'
-import SSHConfig, { LineType, type Line } from 'ssh-config'
+import { createRequire } from 'module'
+import type SSHConfigType from 'ssh-config'
+import type { Line } from 'ssh-config'
+
+// SSH bootstrap is an Electron-only feature (only the local backend
+// bootstraps remotes per plans/remote-main.md §4). The headless tarball
+// doesn't ship `ssh-config`, so we lazy-load it via createRequire —
+// the IPC handler is still registered in headless mode but never called,
+// so the require never fires. If it ever does fire in headless, the
+// surfaced error is "Cannot find module 'ssh-config'", which is the
+// honest answer.
+const dynamicRequire = createRequire(__filename)
+function loadSshConfig(): { default: typeof SSHConfigType; LineType: typeof import('ssh-config').LineType } {
+  return dynamicRequire('ssh-config')
+}
 
 export interface ConfiguredHost {
   /** The Host alias as written in the config file (the picker label). */
@@ -41,7 +55,8 @@ function firstString(value: string | string[] | undefined): string | undefined {
  *  Exported separately from `listConfiguredHosts` so tests can feed
  *  literal text without touching disk. */
 export function parseSshConfigText(text: string): ConfiguredHost[] {
-  let parsed: SSHConfig
+  const { default: SSHConfig, LineType } = loadSshConfig()
+  let parsed: InstanceType<typeof SSHConfig>
   try {
     parsed = SSHConfig.parse(text)
   } catch {
