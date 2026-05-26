@@ -545,6 +545,23 @@ export class PanesFSM {
     let tab: TerminalTab
     if (shouldShell) {
       tab = { id: `shell-${Date.now()}`, type: 'shell', label: 'Shell' }
+    } else if (sourceActive!.type === 'json-claude') {
+      // The Claude CLI requires --session-id to be a UUID, and for json-
+      // claude the tab id doubles as the session id (see main/index.ts's
+      // jsonClaude:start handler). Mint a fresh UUID so the split spawns
+      // a brand-new session with no existing jsonl on disk — that drives
+      // startJsonClaudeSession to use --session-id (new) rather than
+      // --resume. Carry over only fields that make sense for a fresh
+      // chat (label, model) — never copy initialPrompt/teleportSessionId.
+      const sessionId = crypto.randomUUID()
+      tab = {
+        id: sessionId,
+        type: 'json-claude',
+        label: sourceActive!.label,
+        sessionId,
+        mode: 'awake',
+        model: sourceActive!.model
+      }
     } else {
       tab = {
         ...sourceActive!,

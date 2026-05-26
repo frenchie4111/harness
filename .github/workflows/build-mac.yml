@@ -1,0 +1,63 @@
+name: Build macOS
+
+# Dispatch-only smoke test for the macOS build. The canonical
+# tag-driven release runs the same mac build inside
+# .github/workflows/release.yml — this file lets us validate the
+# full sign + notarize chain on a branch (via the Actions UI's
+# "Run workflow" button) without cutting a tag or creating a release.
+#
+# The output dmg / zip / blockmap / latest-mac.yml are uploaded as a
+# workflow artifact (downloadable from the run page for ~90 days) so
+# you can install + Gatekeeper-check the dmg before doing a real
+# release.
+#
+# Requires the same secrets as release.yml — see that file's header.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      # See release.yml for the rationale on each step below; this file
+      # is intentionally a structural mirror of release.yml's build-mac
+      # job so the smoke test exercises the same code path.
+      - name: Install cross-arch claude binary (darwin-x64)
+        run: |
+          CLAUDE_VERSION=$(node -e "console.log(require('./package.json').dependencies['@anthropic-ai/claude-code'])")
+          npm install --no-save --ignore-scripts --legacy-peer-deps --force \
+            "@anthropic-ai/claude-code-darwin-x64@${CLAUDE_VERSION}"
+
+      - name: Build renderer + main
+        run: npm run build
+
+      - name: Package, sign, and notarize
+        env:
+          CSC_LINK: ${{ secrets.MAC_CERTS_P12_BASE64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTS_P12_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: npx electron-builder --mac --publish=never
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: harness-mac
+          path: |
+            release/Harness-*.dmg
+            release/Harness-*-mac.zip
+            release/Harness-*.blockmap
+            release/latest-mac.yml
+          if-no-files-found: error

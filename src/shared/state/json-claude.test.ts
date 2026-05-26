@@ -763,6 +763,74 @@ describe('jsonClaudeReducer', () => {
     expect(next).toBe(state)
   })
 
+  it('entriesTruncated drops the target entry and every entry after it', () => {
+    let state = seedSession(initialJsonClaude)
+    for (const id of ['u1', 'a1', 'u2', 'a2', 'u3']) {
+      state = jsonClaudeReducer(state, {
+        type: 'jsonClaude/entryAppended',
+        payload: {
+          sessionId: SID,
+          entry: { entryId: id, kind: 'user', text: id, timestamp: 1 }
+        }
+      })
+    }
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/entriesTruncated',
+      payload: { sessionId: SID, fromEntryId: 'u2' }
+    })
+    expect(state.sessions[SID].entries.map((e) => e.entryId)).toEqual([
+      'u1',
+      'a1'
+    ])
+  })
+
+  it('entriesTruncated targeting the first entry empties the transcript', () => {
+    let state = seedSession(initialJsonClaude)
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/entryAppended',
+      payload: {
+        sessionId: SID,
+        entry: { entryId: 'u1', kind: 'user', text: 'a', timestamp: 1 }
+      }
+    })
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/entryAppended',
+      payload: {
+        sessionId: SID,
+        entry: { entryId: 'a1', kind: 'user', text: 'b', timestamp: 2 }
+      }
+    })
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/entriesTruncated',
+      payload: { sessionId: SID, fromEntryId: 'u1' }
+    })
+    expect(state.sessions[SID].entries).toEqual([])
+  })
+
+  it('entriesTruncated is a no-op when the id is absent', () => {
+    let state = seedSession(initialJsonClaude)
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/entryAppended',
+      payload: {
+        sessionId: SID,
+        entry: { entryId: 'u1', kind: 'user', text: 'a', timestamp: 1 }
+      }
+    })
+    const next = jsonClaudeReducer(state, {
+      type: 'jsonClaude/entriesTruncated',
+      payload: { sessionId: SID, fromEntryId: 'missing' }
+    })
+    expect(next).toBe(state)
+  })
+
+  it('entriesTruncated is a no-op for unknown session', () => {
+    const next = jsonClaudeReducer(initialJsonClaude, {
+      type: 'jsonClaude/entriesTruncated',
+      payload: { sessionId: 'missing', fromEntryId: 'whatever' }
+    })
+    expect(next).toBe(initialJsonClaude)
+  })
+
   it('slashCommandsChanged populates the per-session list', () => {
     let state = seedSession(initialJsonClaude)
     expect(state.sessions[SID].slashCommands).toEqual([])

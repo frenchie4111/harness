@@ -525,6 +525,10 @@ export interface ElectronAPI {
   getJsonClaudeEntries(sessionId: string): Promise<JsonClaudeChatEntry[]>
   killJsonClaude(id: string): Promise<boolean>
   interruptJsonClaude(id: string): Promise<boolean>
+  rewindJsonClaudeTo(
+    id: string,
+    entryId: string
+  ): Promise<{ ok: boolean; reason?: string }>
   openJsonClaudeAuthLoginTab(
     worktreePath: string
   ): Promise<{ ok: true; tabId: string } | { ok: false; error: string }>

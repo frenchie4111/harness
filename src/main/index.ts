@@ -2566,6 +2566,64 @@ function registerIpcHandlers(): void {
     jsonClaudeManager.interrupt(sessionId)
     return true
   })
+
+  // Rewind to a clicked assistant message. Orchestrates: interrupt
+  // in-flight stream (if any) → await `result` boundary (≤1500ms) so
+  // the jsonl is quiesced → deny pending approvals for the session →
+  // manager.rewindTo (truncate jsonl + kill + slice prune) → respawn
+  // via --resume. The renderer restricts the menu to assistant rows,
+  // so the manager validates the same invariant defensively.
+  transport.onRequest(
+    'jsonClaude:rewindTo',
+    async (
+      _ctx,
+      sessionId: string,
+      entryId: string
+    ): Promise<{ ok: boolean; reason?: string }> => {
+      if (!sessionId || !entryId) return { ok: false, reason: 'missing args' }
+      const startSession = store.getSnapshot().state.jsonClaude.sessions[sessionId]
+      if (!startSession) return { ok: false, reason: 'unknown session' }
+
+      // Quiesce in-flight stream. Subscribe first, then send the
+      // interrupt so we can't miss the resulting busy=false dispatch.
+      if (startSession.busy) {
+        await new Promise<void>((resolve) => {
+          let done = false
+          const finish = (): void => {
+            if (done) return
+            done = true
+            unsub()
+            clearTimeout(timer)
+            resolve()
+          }
+          const unsub = store.subscribe((event) => {
+            if (
+              event.type === 'jsonClaude/busyChanged' &&
+              event.payload.sessionId === sessionId &&
+              event.payload.busy === false
+            ) {
+              finish()
+            }
+          })
+          const timer = setTimeout(finish, 1500)
+          jsonClaudeManager.interrupt(sessionId)
+        })
+      }
+
+      approvalBridge.cancelPendingForSession(sessionId)
+
+      const outcome = jsonClaudeManager.rewindTo(sessionId, entryId)
+      if (!outcome.ok) return { ok: false, reason: outcome.reason }
+
+      // Respawn so --resume re-seeds the slice from the truncated jsonl
+      // (authoritative — our optimistic dispatch in rewindTo is the
+      // pre-respawn fallback).
+      startJsonClaudeSession(sessionId, startSession.worktreePath)
+
+      return { ok: true }
+    }
+  )
+
   transport.onRequest(
     'jsonClaude:openAuthLoginTab',
     (_ctx, worktreePath: string): { ok: true; tabId: string } | { ok: false; error: string } => {

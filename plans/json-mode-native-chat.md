@@ -343,3 +343,205 @@ is shipped.
 | Markdown CSS | `src/renderer/styles.css` (`.markdown` scope) |
 | Integration test | `src/main/approval-bridge.test.ts` |
 | Diagnostic log | `/tmp/harness-permission-mcp.log` (tail to verify MCP wire) |
+
+## Rewind
+
+Right-click any **assistant** message → **Rewind to here**. Keeps
+the clicked message (it becomes "the last thing the agent said")
+and drops every entry that came after it. Leaves the user at that
+point in the conversation with an empty composer, ready to type a
+new response.
+
+### Where the conversation lives
+
+Two synced copies: **Slice (RAM)** at
+`JsonClaudeSession.entries` (`src/shared/state/json-claude.ts:134`) —
+stripped from the wire snapshot (`stripJsonClaudeEntries`, `:366`),
+lazy-fetched via `jsonClaude:getEntries` (`src/main/index.ts:2588`).
+**Session jsonl (disk, claude-code-owned)** at
+`~/.claude/projects/<cwd-encoded>/<sessionId>.jsonl`
+(`src/main/json-claude-manager.ts:230`, `:429`) — the source
+`--resume <sessionId>` rehydrates from, replayed into the slice by
+`seedFromTranscript` (`:225`). Each turn-line carries
+`{uuid, parentUuid, type, message}`; bookkeeping types
+(`queue-operation`, `attachment`, `last-prompt`, `custom-title`,
+`agent-name`) interleave but aren't chat turns.
+
+**Identifying the assistant turn.** Live entries get the API message
+id from `message_start`; seeded entries get it from
+`parsed.message.id`. Both write it to `apiMessageId` on the slice
+entry. This is the key the rewind path uses: a single assistant
+turn is one API call but the on-disk jsonl writes one line per
+content block (thinking, tool_use, text) and they all share the
+same `message.id`. Truncation cuts after the LAST jsonl line
+carrying that id, so the entire turn is preserved as a unit.
+`transcriptUuid` is still populated on seeded entries as a stable
+per-line key but isn't currently used at rewind time — a
+position-based cut would land too early because the slice can group
+multi-block turns into one entry while the jsonl can't.
+
+### Subprocess lifecycle
+
+`JsonClaudeManager` (`src/main/json-claude-manager.ts:197`) owns one
+instance per session id. `create()` (`:364`) spawns with
+`--resume <id>` if the jsonl exists (`:432`), else `--session-id <id>`.
+`kill()` (`:792`) ends stdin + SIGTERM. No first-class restart —
+pattern is `kill()` → `startJsonClaudeSession()`
+(`src/main/index.ts:801`), which re-seeds from disk and respawns.
+Mid-turn controls (`interrupt`, `set_permission_mode`) ride stdin
+`control_request` frames (`:759`, `:831`).
+
+### Resume semantics — truncate on disk, don't replay
+
+`--resume` rehydrates Messages-API state from the jsonl; does **not**
+re-execute turns. The bundled binary also exposes `--fork-session`
+(verified in `claude --help`) — useful in Phase 3.
+
+**Decision: truncate the jsonl in place.** Truncation is $0 in
+tokens, deterministic (keeps original assistant responses byte-for-
+byte so the cache hits on the next user turn), ~30 LOC. Replay-via-
+stream-json would re-run N assistant turns ($$ tokens-out + cache
+bust). Format-drift risk is the same risk `seedFromTranscript`
+already eats.
+
+### Truncation point selection
+
+The menu only appears on assistant rows. The cut keeps the clicked
+assistant message and drops every entry sequenced after it — the
+jsonl now ends with that assistant message, which is the natural
+"ready for next user turn" state. `--resume` rehydrates and waits
+for input.
+
+If the clicked message is mid-stream (`isPartial`), the IPC handler
+interrupts and waits for the `result` boundary before reading the
+jsonl so the file is quiesced. Whatever streamed in by that point
+is preserved.
+
+**System / hook-injected records** (non-turn jsonl rows like
+`attachment`, `queue-operation`) aren't user-targetable (no chat row
+renders them) and pass through the cut when they predate it.
+
+### In-flight state to cancel
+
+| In-flight | Where | Cleanup |
+|---|---|---|
+| Streaming assistant (`busy`, `partial != null`) | `JsonClaudeManager.partial` (`:49`, `:1328`) | `interrupt()` (`:759`); wait ≤1500ms for next `result` |
+| Pending approval round-trip | `ApprovalBridge.pendingResponses` (`src/main/approval-bridge.ts:78`) | New `cancelPendingForSession(sessionId)` — same loop as `stopSession` (`:122`), without tearing the server down |
+| Tool running through MCP (approved, awaiting result) | Untracked; lives inside the subprocess agent loop | Subsumed by interrupt; long-running Bash etc. completes inside the subprocess, result discarded after `kill()` |
+| Queued user messages (`isQueued`) | `entries[i].isQueued` (`src/shared/state/json-claude.ts:73`) | Already on stdin; absorbed by the truncation pass |
+
+Order: **interrupt → await `result` (≤1500ms) → deny pendings →
+kill → truncate jsonl → respawn**. The wait guarantees a quiesced
+jsonl.
+
+### End-to-end flow
+
+1. User right-clicks an assistant message.
+2. Inline context menu pops (positioned `<div>` like
+   `src/renderer/components/TerminalPanel.tsx:199-207`). One
+   destructive item, `RotateCcw` icon: "Rewind to here · drops
+   this message + everything after."
+3. Click. No confirm — Phase 2's Undo affordance is the safety net.
+4. Renderer fires `jsonClaude:rewindTo(sessionId, entryId)` — new
+   IPC handler beside `:2469-2650`.
+5. Main: interrupt → await `result` → deny pendings → call into
+   the manager.
+6. `JsonClaudeManager.rewindTo` reads the clicked entry's
+   `apiMessageId`, kills the subprocess, calls
+   `truncateTranscriptAfterMessage` (scan jsonl for the LAST line
+   whose inner `message.id` matches, write tmp + atomic rename,
+   original backed up as `<sessionId>.jsonl.rewind-<ts>.bak`).
+7. Force-reseed the slice by calling `parseTranscriptEntries` on the
+   freshly-truncated jsonl and dispatching `jsonClaude/entriesSeeded`
+   with the result. The slice and jsonl are now identical.
+8. `startJsonClaudeSession(sessionId, worktreePath)` (`:801`):
+   `seedFromTranscript` no-ops (entries already populated by step 7),
+   `create()` respawns with `--resume`. The next user message starts
+   a fresh turn from this restored state.
+
+**New events:** none — `jsonClaude/entriesTruncated` was added in
+the slice for the prior design but is unused now. `entriesSeeded`
+(pre-existing) handles the slice replacement. New entry field:
+`apiMessageId`.
+
+### UI surface
+
+In `src/renderer/components/JsonModeChat.tsx:540-810`, the entry
+render loop emits multiple rows per assistant entry (text, thinking
+cards, tool cards). The top-level `groupedItems.map` wraps each
+item in a div that only carries `onContextMenu` when the source row
+is part of an assistant entry — right-clicking a user bubble or a
+system card falls through to the browser default.
+
+**No reusable context-menu primitive exists** — `TerminalPanel`
+inlines a positioned `<div>` (`:237-280`). Inline the same pattern;
+extract a `<ContextMenu>` only when a third caller appears. Menu
+item: destructive red, `RotateCcw` (already imported, `:24`), label
+"Rewind to here", muted subtitle "drops everything after this".
+Disabled with explainer when:
+- the assistant row is the latest entry (nothing after to drop),
+- the assistant row is from a sub-agent (`parentToolUseId` set),
+- the entry sits before any `compact_boundary`,
+- the session has exited.
+
+### Token / cache cost
+
+50-turn convo rewound to turn 30: rewind itself = **0 tokens** (no
+model call); next user turn's prompt prefix is identical bytes to
+"as if turn 31 never happened," so Anthropic's prompt cache hits on
+the full prefix — cost ≈ a normal continuation turn. Replay-via-
+stream-json would re-run 30 assistant turns (×$ output + fresh-
+session cache bust). Order-of-magnitude difference; truncation wins.
+
+### Edge cases + open questions
+
+- **Rewind on the very first assistant message** = drop every
+  subsequent exchange but keep the opening user/assistant pair.
+  Disabled if that message is also the latest entry (nothing to drop).
+- **Rewind across a `compact_boundary`.** Truncating into pre-
+  compaction history doesn't help — claude won't see those raw
+  turns on resume (compaction replaced them). Phase 1 **disables
+  the menu on assistant entries that sit before any
+  `compact_boundary`** with a tooltip; Phase 3 could spike
+  truncating compaction state.
+- **Mid-session model switch.** Each jsonl turn carries its model;
+  the post-rewind turn runs on the session's current model. No
+  special case.
+- **Tool-only assistant message (no text block).** Tool-group card
+  carries the entry id to the menu; truncation drops normally.
+- **Scrolled-out-of-view message.** Right-click fires where the user
+  clicked; auto-stick scroll carries the view to the new tail.
+- **Sub-agent turns (`parentToolUseId` set).** Can't usefully
+  rewind a sub-agent in isolation — the parent Task's tool_result
+  depends on the full run. Menu is disabled on those entries;
+  rewinding the parent Task assistant entry drops the whole
+  sub-agent run as a unit.
+- **Open — concurrent rewinds from two viewers.** Per-session async
+  lock on the truncate path in `JsonClaudeManager`.
+
+### Phasing
+
+**Phase 1 — MVP via on-disk truncation.** `transcriptUuid` plumbing
+(or ordinal fallback), `jsonClaude:rewindTo` IPC,
+`JsonClaudeManager.truncateAt`,
+`ApprovalBridge.cancelPendingForSession`,
+`jsonClaude/entriesTruncated` event + reducer + test, inline
+context-menu wired only on assistant rows in `JsonModeChat`,
+disabled state for `compact_boundary` / `parentToolUseId` entries
+and exited sessions. `.bak` written aside, no UI yet.
+
+**Phase 2 — Undo affordance.** Post-rewind toast "Rewound · Undo"
+(~10s lifetime); click restores from `.bak`, kills + respawns,
+re-seeds. Wire is rewind in reverse. Persist the `.bak` reference
+on the session so multi-client + reload preserves the affordance
+until expiry.
+
+**Phase 3 — `--fork-session` for a pristine original.** Fork
+instead of mutating the jsonl; original untouched. Requires a
+session-id migration in the panes slice (non-trivial). Defer until
+Phase 1+2 are field-proven and `--fork-session`'s semantics are
+better documented.
+
+Each phase is independently shippable: Phase 1 delivers the user
+feature; Phase 2 layers safety; Phase 3 hardens the disk story
+without changing the UX.

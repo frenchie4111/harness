@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode
 } from 'react'
 import ReactMarkdown from 'react-markdown'
@@ -83,6 +84,12 @@ interface RenderedRow {
   key: string
   node: ReactNode
   type: 'text' | 'tool'
+  /** Slice entry that produced this row. One assistant entry can emit
+   *  multiple rows (text + thinking + tool_use); they all carry the same
+   *  entryId so a context-menu rewind on any sub-row targets the parent
+   *  entry. Undefined only for rows synthesized outside of an entry
+   *  (none today; reserved). */
+  entryId?: string
   toolName?: string
   hasError?: boolean
   hasPendingApproval?: boolean
@@ -546,6 +553,7 @@ function renderEntries(
       const queued = !!entry.isQueued
       rows.push({
         key: entry.entryId,
+        entryId: entry.entryId,
         type: 'text',
         node: queued ? (
           <div className="flex justify-end">
@@ -611,6 +619,7 @@ function renderEntries(
     if (entry.kind === 'compact') {
       rows.push({
         key: entry.entryId,
+        entryId: entry.entryId,
         type: 'tool',
         node: (
           <CompactCard
@@ -625,6 +634,7 @@ function renderEntries(
     if (entry.kind === 'error' && entry.errorKind === 'subprocess-exit') {
       rows.push({
         key: entry.entryId,
+        entryId: entry.entryId,
         type: 'text',
         node: (
           <SubprocessExitCard
@@ -640,6 +650,7 @@ function renderEntries(
     if (entry.kind === 'error' && entry.errorKind === 'auth-failure') {
       rows.push({
         key: entry.entryId,
+        entryId: entry.entryId,
         type: 'tool',
         node: (
           <AuthFailureCard
@@ -654,6 +665,7 @@ function renderEntries(
     if (entry.kind === 'system' && entry.errorKind === 'rate-limit-warning') {
       rows.push({
         key: entry.entryId,
+        entryId: entry.entryId,
         type: 'tool',
         node: (
           <RateLimitWarningCard
@@ -667,6 +679,7 @@ function renderEntries(
     if (entry.kind === 'error' && entry.errorKind === 'rate-limit-error') {
       rows.push({
         key: entry.entryId,
+        entryId: entry.entryId,
         type: 'tool',
         node: (
           <RateLimitErrorCard
@@ -684,6 +697,7 @@ function renderEntries(
           const idx = thinkingIdx++
           rows.push({
             key: `${entry.entryId}-th-${idx}`,
+            entryId: entry.entryId,
             type: 'tool',
             isThinking: true,
             node: (
@@ -696,6 +710,7 @@ function renderEntries(
         } else if (block.type === 'text' && (block.text || entry.isPartial)) {
           rows.push({
             key: `${entry.entryId}-t`,
+            entryId: entry.entryId,
             type: 'text',
             node: (
               <div
@@ -755,6 +770,7 @@ function renderEntries(
           }
           rows.push({
             key: `${entry.entryId}-${block.id || 'tu'}`,
+            entryId: entry.entryId,
             type: 'tool',
             toolName: block.name,
             hasError: !!result?.isError,
@@ -1233,6 +1249,82 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
 
   const groupedItems = useMemo(() => groupConsecutiveToolRows(rows), [rows])
 
+  // Right-click "Rewind to here" state. Only available on assistant
+  // rows — right-clicking a user bubble or any other row does nothing
+  // (browser default fires). The menu is a positioned <div> a la
+  // TerminalPanel — no reusable ContextMenu primitive yet. Even on
+  // assistant rows the action is disabled when:
+  //   - the row is from a sub-agent (parentToolUseId set) — can't
+  //     usefully rewind in isolation; parent Task's tool_result depends
+  //     on the full run
+  //   - it sits before any compact_boundary — claude won't see those
+  //     raw turns again on --resume so truncating into them doesn't help
+  //   - the session is exited — no subprocess to respawn against
+  const [rewindMenu, setRewindMenu] = useState<
+    | { entryId: string; x: number; y: number; disabledReason: string | null }
+    | null
+  >(null)
+  const lastCompactIdx = useMemo(() => {
+    let last = -1
+    for (let i = 0; i < entries.length; i++) {
+      if (entries[i].kind === 'compact') last = i
+    }
+    return last
+  }, [entries])
+  const entryIndexById = useMemo(() => {
+    const m = new Map<string, number>()
+    for (let i = 0; i < entries.length; i++) m.set(entries[i].entryId, i)
+    return m
+  }, [entries])
+  const rewindDisabledReason = useCallback(
+    (entryId: string): string | null => {
+      const idx = entryIndexById.get(entryId)
+      if (idx === undefined) return 'message not found'
+      const e = entries[idx]
+      if (e.kind !== 'assistant') return 'only assistant messages can be rewound'
+      if (session?.state === 'exited') return 'session is not running'
+      if (e.parentToolUseId) return 'sub-agent steps can’t be rewound individually'
+      if (idx <= lastCompactIdx) {
+        return 'rewinding across a /compact boundary isn’t supported'
+      }
+      if (idx >= entries.length - 1) return 'nothing after this message yet'
+      return null
+    },
+    [entries, entryIndexById, lastCompactIdx, session?.state]
+  )
+  const openRewindMenu = useCallback(
+    (entryId: string, e: ReactMouseEvent): void => {
+      e.preventDefault()
+      e.stopPropagation()
+      setRewindMenu({
+        entryId,
+        x: e.clientX,
+        y: e.clientY,
+        disabledReason: rewindDisabledReason(entryId)
+      })
+    },
+    [rewindDisabledReason]
+  )
+  const performRewind = useCallback(
+    async (entryId: string) => {
+      setRewindMenu(null)
+      await backend.rewindJsonClaudeTo(sessionId, entryId)
+    },
+    [backend, sessionId]
+  )
+  useEffect(() => {
+    if (!rewindMenu) return
+    const onAway = (): void => setRewindMenu(null)
+    window.addEventListener('mousedown', onAway)
+    window.addEventListener('scroll', onAway, true)
+    window.addEventListener('keydown', onAway)
+    return () => {
+      window.removeEventListener('mousedown', onAway)
+      window.removeEventListener('scroll', onAway, true)
+      window.removeEventListener('keydown', onAway)
+    }
+  }, [rewindMenu])
+
   // tool_use ids present in chat history. Cheap one-pass scan over
   // entries, used to detect orphaned approvals without depending on the
   // (heavy) `rows` memo. Critical: rows invalidates on every coalesced
@@ -1607,6 +1699,36 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
       }}
       onDrop={(e) => void handleDrop(e)}
     >
+      {rewindMenu && (
+        <div
+          className="fixed z-50 bg-panel-raised border border-border-strong rounded shadow-lg text-xs py-1 min-w-[14rem]"
+          style={{ left: rewindMenu.x, top: rewindMenu.y }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            disabled={rewindMenu.disabledReason !== null}
+            onClick={(e) => {
+              e.stopPropagation()
+              if (rewindMenu.disabledReason !== null) return
+              void performRewind(rewindMenu.entryId)
+            }}
+            className={`flex w-full items-center gap-2 px-3 py-1.5 text-left ${
+              rewindMenu.disabledReason
+                ? 'text-muted cursor-not-allowed opacity-60'
+                : 'text-danger hover:bg-panel cursor-pointer'
+            }`}
+          >
+            <RotateCcw size={12} className="shrink-0" />
+            <div className="flex flex-col">
+              <span>Rewind to here</span>
+              <span className="text-[10px] text-muted">
+                {rewindMenu.disabledReason ?? 'drops everything after this'}
+              </span>
+            </div>
+          </button>
+        </div>
+      )}
       {isDragOver && (
         <div className="absolute inset-0 z-40 bg-accent/10 border-2 border-dashed border-accent rounded flex items-center justify-center pointer-events-none">
           <div className="bg-panel-raised border border-border-strong rounded px-4 py-2 text-fg-bright shadow-lg">
@@ -1680,13 +1802,30 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
             ) : null
           ) : (
           <div className="px-4 py-3 space-y-3">
-            {groupedItems.map((g) =>
-              g.kind === 'single' ? (
-                <div key={g.key}>{g.rows[0].node}</div>
+            {groupedItems.map((g) => {
+              // Rewind is only meaningful on assistant rows — right-
+              // clicking a user bubble or any other kind of row falls
+              // through to the browser default. For ToolGroup the
+              // target is the first tool's parent assistant entry,
+              // which is exactly the entry to rewind to.
+              const targetEntryId = g.rows[0]?.entryId
+              const targetEntry = targetEntryId
+                ? entries[entryIndexById.get(targetEntryId) ?? -1]
+                : undefined
+              const onContextMenu =
+                targetEntryId && targetEntry?.kind === 'assistant'
+                  ? (e: ReactMouseEvent): void => openRewindMenu(targetEntryId, e)
+                  : undefined
+              return g.kind === 'single' ? (
+                <div key={g.key} onContextMenu={onContextMenu}>
+                  {g.rows[0].node}
+                </div>
               ) : (
-                <ToolGroup key={g.key} rows={g.rows} />
+                <div key={g.key} onContextMenu={onContextMenu}>
+                  <ToolGroup rows={g.rows} />
+                </div>
               )
-            )}
+            })}
             {orphanApprovals.map((a) => (
               <JsonClaudeApprovalCard
                 key={a.requestId}

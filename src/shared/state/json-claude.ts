@@ -106,6 +106,25 @@ export interface JsonClaudeChatEntry {
   /** For kind === 'error' with errorKind === 'subprocess-exit'. Whether the
    *  exit was clean (user closed the tab) or unexpected (crash). */
   exitWasClean?: boolean
+  /** On-disk transcript uuid for this entry — the `uuid` field on the
+   *  matching line of `~/.claude/projects/<cwd-encoded>/<sessionId>.jsonl`.
+   *  Only known for entries that were seeded from the transcript on
+   *  resume (live-stream entries don't carry it because the jsonl uuid
+   *  is minted server-side after the line is written). Not currently
+   *  used at rewind time — see apiMessageId below — but kept around as
+   *  a stable per-line key for future per-block operations. */
+  transcriptUuid?: string
+  /** Anthropic Messages-API id for the assistant message this entry
+   *  belongs to. Stable across live + seeded representations: live
+   *  entries get it from `message_start`, seeded entries from
+   *  `parsed.message.id`. Critical for rewind: a single assistant turn
+   *  is one API call but the on-disk jsonl writes one line per content
+   *  block (thinking, tool_use, text), so multiple slice entries —
+   *  whether live (one consolidated) or seeded (multiple split) — all
+   *  share the same apiMessageId. Truncation cuts AFTER the last
+   *  jsonl line carrying this id, which is the natural end of the
+   *  assistant's turn. */
+  apiMessageId?: string
   /** For errorKind === 'rate-limit-warning' | 'rate-limit-error'.
    *  Structured detail sourced from the SDK's `rate_limit_info`
    *  payload. All fields optional because the wire shape is sparse —
@@ -317,6 +336,10 @@ export type JsonClaudeEvent =
   | {
       type: 'jsonClaude/entryRemoved'
       payload: { sessionId: string; entryId: string }
+    }
+  | {
+      type: 'jsonClaude/entriesTruncated'
+      payload: { sessionId: string; fromEntryId: string }
     }
   | {
       type: 'jsonClaude/slashCommandsChanged'
@@ -731,6 +754,24 @@ export function jsonClaudeReducer(
         sessions: {
           ...state.sessions,
           [session.sessionId]: { ...session, entries: next }
+        }
+      }
+    }
+    case 'jsonClaude/entriesTruncated': {
+      const session = state.sessions[event.payload.sessionId]
+      if (!session) return state
+      const idx = session.entries.findIndex(
+        (e) => e.entryId === event.payload.fromEntryId
+      )
+      if (idx === -1) return state
+      return {
+        ...state,
+        sessions: {
+          ...state.sessions,
+          [session.sessionId]: {
+            ...session,
+            entries: session.entries.slice(0, idx)
+          }
         }
       }
     }
