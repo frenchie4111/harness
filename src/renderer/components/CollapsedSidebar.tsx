@@ -83,6 +83,7 @@ export function CollapsedSidebar({
             <Trash2 className="icon-sm" />
           </button>
         </Tooltip>
+        <div className="h-px w-6 bg-border my-1" />
       </div>
 
       <div className="flex-1" />
