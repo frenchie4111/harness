@@ -1588,6 +1588,16 @@ const setQuestStep = useCallback((next: QuestStep) => {
           <div className="mt-10 shrink-0 flex"><CollapsedRightPanel
             worktreePath={activeWorktreeId}
             onExpand={() => setRightColumnHidden(false)}
+            onReview={() => {
+              setReviewMode('branch')
+              setReviewCommit(undefined)
+              setShowReview(true)
+            }}
+            onFileQuickOpen={() => {
+              setShowHotkeyCheatsheet(false)
+              setCommandPaletteMode('files')
+              setShowCommandPalette(true)
+            }}
           /></div>
         )}
       </div>
