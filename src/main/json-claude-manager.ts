@@ -323,6 +323,18 @@ export class JsonClaudeManager {
           entryId: `${sessionId}-seed-a-${counter++}`,
           ...(parentToolUseId ? { parentToolUseId } : {})
         })
+      } else if (type === 'system' && parsed['subtype'] === 'scheduled_task_fire') {
+        const content =
+          typeof parsed['content'] === 'string'
+            ? (parsed['content'] as string)
+            : undefined
+        seededEntries.push({
+          kind: 'notification',
+          timestamp: Date.now(),
+          entryId: `${sessionId}-seed-n-${counter++}`,
+          notificationSubtype: 'scheduled_task_fire',
+          ...(content ? { notificationContent: content } : {})
+        })
       } else if (type === 'system' && parsed['subtype'] === 'compact_boundary') {
         const meta = parsed['compactMetadata'] as
           | { trigger?: unknown; preTokens?: unknown; postTokens?: unknown }
@@ -1054,6 +1066,33 @@ export class JsonClaudeManager {
           trigger,
           preTokens,
           postTokens,
+          timestamp: Date.now()
+        }
+      })
+      return
+    }
+    if (type === 'system' && subtype === 'scheduled_task_fire') {
+      // Fires when a wakeup/schedule the model registered for itself
+      // triggers and the SDK is about to inject the scheduled prompt
+      // into the next turn. Without surfacing this the user sees a
+      // fresh assistant bubble appear with no breadcrumb explaining
+      // why. Wire shape:
+      //   { type: 'system', subtype: 'scheduled_task_fire',
+      //     content: <prompt or label>, uuid, timestamp }
+      const content =
+        typeof parsed['content'] === 'string'
+          ? (parsed['content'] as string)
+          : undefined
+      const uuid = typeof parsed['uuid'] === 'string' ? parsed['uuid'] : null
+      this.store.dispatch({
+        type: 'jsonClaude/notificationReceived',
+        payload: {
+          sessionId: instance.sessionId,
+          entryId: uuid
+            ? `${instance.sessionId}-n-${uuid}`
+            : `${instance.sessionId}-n-${instance.entryCounter++}`,
+          subtype: 'scheduled_task_fire',
+          ...(content ? { content } : {}),
           timestamp: Date.now()
         }
       })

@@ -47,7 +47,14 @@ export interface JsonClaudeMessageBlock {
 export interface JsonClaudeChatEntry {
   /** Monotonic per-session id so React can key rows stably. */
   entryId: string
-  kind: 'user' | 'assistant' | 'system' | 'error' | 'tool_result' | 'compact'
+  kind:
+    | 'user'
+    | 'assistant'
+    | 'system'
+    | 'error'
+    | 'tool_result'
+    | 'compact'
+    | 'notification'
   blocks?: JsonClaudeMessageBlock[]
   text?: string
   timestamp: number
@@ -121,6 +128,17 @@ export interface JsonClaudeChatEntry {
     /** True when overage credits are currently being consumed. */
     isUsingOverage?: boolean
   }
+  /** For kind === 'notification'. The system-event subtype as emitted by
+   *  the claude-code stream-json output (e.g. 'scheduled_task_fire' when
+   *  a wakeup-tool schedule fires and triggers the next assistant turn).
+   *  Surfaced as a small breadcrumb between assistant bubbles so the user
+   *  can see why a new turn started without an explicit prompt. */
+  notificationSubtype?: string
+  /** For kind === 'notification'. Human-readable one-liner from the
+   *  notification frame's `content` field (e.g. the autonomous-loop
+   *  prompt that the scheduler is re-firing). Empty/missing on
+   *  payload-less notifications — the renderer falls back to the label. */
+  notificationContent?: string
 }
 
 export interface JsonClaudeSession {
@@ -347,6 +365,16 @@ export type JsonClaudeEvent =
         sessionId: string
         toolUseId: string
         toolName: string
+        timestamp: number
+      }
+    }
+  | {
+      type: 'jsonClaude/notificationReceived'
+      payload: {
+        sessionId: string
+        entryId: string
+        subtype: string
+        content?: string
         timestamp: number
       }
     }
@@ -819,6 +847,28 @@ export function jsonClaudeReducer(
         sessions: {
           ...state.sessions,
           [session.sessionId]: { ...session, sessionToolApprovals: next }
+        }
+      }
+    }
+    case 'jsonClaude/notificationReceived': {
+      const session = state.sessions[event.payload.sessionId]
+      if (!session) return state
+      const { entryId, subtype, content, timestamp } = event.payload
+      const entry: JsonClaudeChatEntry = {
+        entryId,
+        kind: 'notification',
+        timestamp,
+        notificationSubtype: subtype,
+        ...(content ? { notificationContent: content } : {})
+      }
+      return {
+        ...state,
+        sessions: {
+          ...state.sessions,
+          [session.sessionId]: {
+            ...session,
+            entries: [...session.entries, entry]
+          }
         }
       }
     }
