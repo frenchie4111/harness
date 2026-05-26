@@ -38,6 +38,7 @@ export type Action =
   | 'togglePerfMonitor'
   | 'hotkeyCheatsheet'
   | 'openReview'
+  | 'openSettings'
 
 export interface Modifiers {
   cmd?: boolean
@@ -96,6 +97,7 @@ export const DEFAULT_HOTKEYS: Record<Action, HotkeyBinding> = {
   togglePerfMonitor: { key: 'd', modifiers: { cmd: true, shift: true } },
   hotkeyCheatsheet: { key: '/', modifiers: { cmd: true, shift: true } },
   openReview: { key: 'r', modifiers: { cmd: true, alt: true } },
+  openSettings: { key: ',', modifiers: { cmd: true } },
 }
 
 /** Check if a KeyboardEvent matches a hotkey binding */
@@ -154,7 +156,7 @@ export function formatBindingGlyphs(binding: string, separator = ' '): string {
       if (part === 'ArrowLeft') return '\u2190'
       if (part === 'ArrowRight') return '\u2192'
       if (part === 'Enter') return '\u23CE'
-      if (part === 'Tab') return '\u21E5'
+      if (part === 'Tab') return 'Tab'
       if (part === 'Escape') return 'Esc'
       return part
     })
@@ -212,8 +214,83 @@ export const ACTION_LABELS: Record<Action, string> = {
   toggleRightColumn: 'Toggle right column',
   togglePerfMonitor: 'Performance monitor',
   hotkeyCheatsheet: 'Keyboard shortcuts',
-  openReview: 'Review changes'
+  openReview: 'Review changes',
+  openSettings: 'Open settings'
 }
+
+export type CategoryId =
+  | 'navigation'
+  | 'backends'
+  | 'worktree-mgmt'
+  | 'tabs'
+  | 'layout'
+  | 'commands'
+  | 'overlays'
+  | 'external'
+
+export interface HotkeyCategory {
+  id: CategoryId
+  label: string
+  actions: Action[]
+  /** Optional groups within the category whose members should render as a
+   *  single collapsed "family" row by default (e.g. worktree1..9). The
+   *  `summary` is what shows on the collapsed row; expand reveals the
+   *  individual actions for rebinding. */
+  families?: { label: string; summary: string; actions: Action[] }[]
+}
+
+export const ACTION_CATEGORIES: HotkeyCategory[] = [
+  {
+    id: 'navigation',
+    label: 'Worktree navigation',
+    actions: ['nextWorktree', 'prevWorktree'],
+    families: [{
+      label: 'Switch to worktree N',
+      summary: '⌘ 1 … ⌘ 9',
+      actions: ['worktree1', 'worktree2', 'worktree3', 'worktree4', 'worktree5', 'worktree6', 'worktree7', 'worktree8', 'worktree9']
+    }]
+  },
+  {
+    id: 'backends',
+    label: 'Backends',
+    actions: [],
+    families: [{
+      label: 'Switch to backend N',
+      summary: '⌘ ⇧ 1 … ⌘ ⇧ 9',
+      actions: ['backend1', 'backend2', 'backend3', 'backend4', 'backend5', 'backend6', 'backend7', 'backend8', 'backend9']
+    }]
+  },
+  {
+    id: 'worktree-mgmt',
+    label: 'Worktree management',
+    actions: ['newWorktree', 'refreshWorktrees']
+  },
+  {
+    id: 'tabs',
+    label: 'Tabs & panes',
+    actions: ['newShellTab', 'closeTab', 'nextTab', 'prevTab', 'focusTerminal', 'splitPaneRight', 'splitPaneDown']
+  },
+  {
+    id: 'layout',
+    label: 'Window layout',
+    actions: ['toggleSidebar', 'toggleRightColumn']
+  },
+  {
+    id: 'commands',
+    label: 'Search & commands',
+    actions: ['commandPalette', 'fileQuickOpen', 'toggleCommandCenter', 'hotkeyCheatsheet']
+  },
+  {
+    id: 'overlays',
+    label: 'App overlays',
+    actions: ['openSettings', 'openReview', 'togglePerfMonitor']
+  },
+  {
+    id: 'external',
+    label: 'External actions',
+    actions: ['openPR', 'openInEditor']
+  }
+]
 
 /** Capture a KeyboardEvent into a HotkeyBinding (for the rebind UI) */
 export function eventToBinding(e: KeyboardEvent): HotkeyBinding | null {

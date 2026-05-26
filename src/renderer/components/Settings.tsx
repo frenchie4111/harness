@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2, LifeBuoy, Bug, Lightbulb, FlaskConical, Copy, CopyCheck, ExternalLink, CalendarDays, FileText, FolderOpen } from 'lucide-react'
+import { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect } from 'react'
+import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2, LifeBuoy, Bug, Lightbulb, FlaskConical, Copy, CopyCheck, ExternalLink, CalendarDays, FileText, FolderOpen, Search, ChevronDown, ChevronRight } from 'lucide-react'
 import { openReportIssue } from './ReportIssueScreen'
 import { HARNESS_ISSUES_URL, HARNESS_RELEASES_URL, harnessReleaseNotesUrl } from '../../shared/constants'
 import { useSettings, useUpdater, useRepoConfigs, useHooks } from '../store'
 import { useBackend } from '../backend'
 import type { UpdaterStatus, MergeStrategy, RepoConfig } from '../types'
-import { DEFAULT_HOTKEYS, ACTION_LABELS, bindingToString, eventToBinding, resolveHotkeys, type Action, type HotkeyBinding } from '../hotkeys'
+import { DEFAULT_HOTKEYS, ACTION_LABELS, ACTION_CATEGORIES, bindingToString, eventToBinding, formatBindingGlyphs, resolveHotkeys, type Action, type HotkeyBinding } from '../hotkeys'
 import { Tooltip } from './Tooltip'
 import { AGENT_REGISTRY, agentDisplayName, CLAUDE_MODELS, CODEX_MODELS } from '../../shared/agent-registry'
 import { AgentIcon } from './AgentIcon'
@@ -23,7 +23,24 @@ interface SettingsProps {
 }
 
 type SectionId = 'appearance' | 'agent' | 'worktrees' | 'editor' | 'github' | 'hotkeys' | 'updates' | 'support' | 'experimental'
-type SubSectionId = 'agent-general' | 'agent-claude' | 'agent-codex'
+type SubSectionId =
+  | 'appearance-theme'
+  | 'appearance-custom-themes'
+  | 'appearance-terminal-font'
+  | 'agent-general'
+  | 'agent-claude'
+  | 'agent-codex'
+  | 'hotkeys-navigation'
+  | 'hotkeys-backends'
+  | 'hotkeys-worktree-mgmt'
+  | 'hotkeys-tabs'
+  | 'hotkeys-layout'
+  | 'hotkeys-commands'
+  | 'hotkeys-overlays'
+  | 'hotkeys-external'
+  | 'experimental-browser-control'
+  | 'experimental-auto-approve'
+  | 'experimental-web-mobile'
 
 interface SubSection {
   id: SubSectionId
@@ -38,7 +55,11 @@ interface Section {
 }
 
 const SECTIONS: Section[] = [
-  { id: 'appearance', label: 'Appearance', icon: Palette },
+  { id: 'appearance', label: 'Appearance', icon: Palette, children: [
+    { id: 'appearance-theme', label: 'Theme' },
+    { id: 'appearance-custom-themes', label: 'Custom themes' },
+    { id: 'appearance-terminal-font', label: 'Terminal font' }
+  ]},
   { id: 'agent', label: 'Agent', icon: TerminalIcon, children: [
     { id: 'agent-general', label: 'General' },
     { id: 'agent-claude', label: 'Claude' },
@@ -47,16 +68,65 @@ const SECTIONS: Section[] = [
   { id: 'worktrees', label: 'Worktrees', icon: GitBranch },
   { id: 'editor', label: 'Editor', icon: Code2 },
   { id: 'github', label: 'GitHub', icon: GitPullRequest },
-  { id: 'hotkeys', label: 'Hotkeys', icon: Keyboard },
+  { id: 'hotkeys', label: 'Hotkeys', icon: Keyboard, children: [
+    { id: 'hotkeys-navigation', label: 'Worktree navigation' },
+    { id: 'hotkeys-backends', label: 'Backends' },
+    { id: 'hotkeys-worktree-mgmt', label: 'Worktree management' },
+    { id: 'hotkeys-tabs', label: 'Tabs & panes' },
+    { id: 'hotkeys-layout', label: 'Window layout' },
+    { id: 'hotkeys-commands', label: 'Search & commands' },
+    { id: 'hotkeys-overlays', label: 'App overlays' },
+    { id: 'hotkeys-external', label: 'External actions' }
+  ]},
   { id: 'updates', label: 'Updates', icon: DownloadCloud },
   { id: 'support', label: 'Support', icon: LifeBuoy },
-  { id: 'experimental', label: 'Experimental', icon: FlaskConical }
+  { id: 'experimental', label: 'Experimental', icon: FlaskConical, children: [
+    { id: 'experimental-browser-control', label: 'Browser control' },
+    { id: 'experimental-auto-approve', label: 'Auto-approve' },
+    { id: 'experimental-web-mobile', label: 'Web & mobile' }
+  ]}
 ]
+
+interface SearchItem {
+  /** Stable per render — `${sectionId}:${kind}:${index}`. */
+  key: string
+  sectionId: SectionId
+  /** Display text — the heading or label text. */
+  title: string
+  /** Section label, shown as secondary context in results. */
+  context: string
+  element: HTMLElement
+}
+
+function cleanText(el: Element): string {
+  return (el.textContent ?? '').replace(/\s+/g, ' ').trim()
+}
+
+function highlightMatch(text: string, query: string): React.ReactNode {
+  if (!query) return text
+  const lower = text.toLowerCase()
+  const q = query.toLowerCase()
+  const idx = lower.indexOf(q)
+  if (idx < 0) return text
+  return (
+    <>
+      {text.slice(0, idx)}
+      <mark className="bg-accent/30 text-fg-bright rounded px-0.5">
+        {text.slice(idx, idx + query.length)}
+      </mark>
+      {text.slice(idx + query.length)}
+    </>
+  )
+}
 
 export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }: SettingsProps): JSX.Element {
   const backend = useBackend()
   const [activeSection, setActiveSection] = useState<SectionId>(initialSection ?? 'appearance')
   const [activeSubSection, setActiveSubSection] = useState<SubSectionId | null>(null)
+  const [sectionSearch, setSectionSearch] = useState('')
+  const [searchIndex, setSearchIndex] = useState<SearchItem[]>([])
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const sidebarRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const sectionRefs = useRef<Record<SectionId, HTMLElement | null>>({
     appearance: null,
@@ -70,9 +140,23 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     experimental: null
   })
   const subSectionRefs = useRef<Record<SubSectionId, HTMLElement | null>>({
+    'appearance-theme': null,
+    'appearance-custom-themes': null,
+    'appearance-terminal-font': null,
     'agent-general': null,
     'agent-claude': null,
-    'agent-codex': null
+    'agent-codex': null,
+    'hotkeys-navigation': null,
+    'hotkeys-backends': null,
+    'hotkeys-worktree-mgmt': null,
+    'hotkeys-tabs': null,
+    'hotkeys-layout': null,
+    'hotkeys-commands': null,
+    'hotkeys-overlays': null,
+    'hotkeys-external': null,
+    'experimental-browser-control': null,
+    'experimental-auto-approve': null,
+    'experimental-web-mobile': null
   })
   const isProgrammaticScroll = useRef(false)
 
@@ -104,6 +188,58 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
       scrollRef.current.scrollTo({ top: el.offsetTop - 24 })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Build the searchable index from the actual rendered DOM. We use a
+  // layout effect so the headings/labels exist before we read them; the
+  // empty dep array is intentional — the section structure is static,
+  // and dynamic content (theme list, custom themes) doesn't add new
+  // searchable headings. If that changes, gate this on a version bump.
+  useLayoutEffect(() => {
+    const items: SearchItem[] = []
+    for (const section of SECTIONS) {
+      const sectionEl = sectionRefs.current[section.id]
+      if (!sectionEl) continue
+      // h2 — the section heading itself. Drop it if it duplicates the
+      // sidebar label (always does, but cheap to keep for ranking).
+      const h2 = sectionEl.querySelector('h2')
+      if (h2) {
+        items.push({
+          key: `${section.id}:h2`,
+          sectionId: section.id,
+          title: cleanText(h2),
+          context: section.label,
+          element: h2
+        })
+      }
+      // h3 — sub-headings inside the section.
+      sectionEl.querySelectorAll('h3').forEach((h3, i) => {
+        const text = cleanText(h3)
+        if (!text) return
+        items.push({
+          key: `${section.id}:h3:${i}`,
+          sectionId: section.id,
+          title: text,
+          context: section.label,
+          element: h3 as HTMLElement
+        })
+      })
+      // labels — typically the title of a single setting/toggle. Skip
+      // ones that wrap inputs whose label text is itself a control
+      // (very long blocks) by capping length.
+      sectionEl.querySelectorAll('label').forEach((label, i) => {
+        const text = cleanText(label).split('\n')[0]
+        if (!text || text.length > 90) return
+        items.push({
+          key: `${section.id}:label:${i}`,
+          sectionId: section.id,
+          title: text,
+          context: section.label,
+          element: label as HTMLElement
+        })
+      })
+    }
+    setSearchIndex(items)
   }, [])
 
   useEffect(() => {
@@ -212,6 +348,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
   const teardownScript = worktreeScripts.teardown
 
   const [rebindingAction, setRebindingAction] = useState<Action | null>(null)
+  const [expandedFamilies, setExpandedFamilies] = useState<Set<string>>(new Set())
   const [defaultClaudeCommand, setDefaultClaudeCommand] = useState<string>('')
   const [claudeSaveResult, setClaudeSaveResult] = useState<{ ok: boolean; message: string } | null>(null)
   // Alias settings.hasGithubToken to the legacy local name so existing JSX
@@ -926,6 +1063,56 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     }
   }
 
+  const sectionQuery = sectionSearch.trim().toLowerCase()
+  const searchResults = useMemo(() => {
+    if (!sectionQuery) return [] as SearchItem[]
+    const out: { item: SearchItem; score: number }[] = []
+    for (const item of searchIndex) {
+      const titleHit = item.title.toLowerCase().indexOf(sectionQuery)
+      const contextHit = item.context.toLowerCase().indexOf(sectionQuery)
+      if (titleHit < 0 && contextHit < 0) continue
+      // Lower is better: title hits beat context hits, earlier positions
+      // beat later ones. Adding the title-position lets `Diagnostics`
+      // sort above a `Diagnostic logging` paragraph match.
+      const score = titleHit >= 0 ? titleHit : 1000 + contextHit
+      out.push({ item, score })
+    }
+    out.sort((a, b) => a.score - b.score)
+    return out.slice(0, 50).map((r) => r.item)
+  }, [sectionQuery, searchIndex])
+
+  const focusNavItemByOffset = useCallback((current: HTMLElement | null, dir: 1 | -1) => {
+    if (!sidebarRef.current) return
+    const items = Array.from(
+      sidebarRef.current.querySelectorAll<HTMLElement>('[data-nav]')
+    )
+    if (items.length === 0) return
+    const idx = current ? items.indexOf(current) : -1
+    let next = idx + dir
+    if (next < 0) {
+      // Moving up off the top item — return to the search input so the
+      // user can keep typing without grabbing the mouse.
+      searchInputRef.current?.focus()
+      return
+    }
+    if (next >= items.length) next = items.length - 1
+    items[next]?.focus()
+  }, [])
+
+  const handleSearchResultClick = useCallback((item: SearchItem) => {
+    const el = item.element
+    if (!el.isConnected) return
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    // Brief highlight ring so the user can spot the destination after
+    // the scroll lands. Toggled via a class — animation lives in
+    // styles.css (see `.harness-settings-flash`).
+    el.classList.remove('harness-settings-flash')
+    // Force reflow so re-adding the class restarts the animation.
+    void el.offsetHeight
+    el.classList.add('harness-settings-flash')
+    window.setTimeout(() => el.classList.remove('harness-settings-flash'), 1600)
+  }, [])
+
   return (
     <div className="flex flex-col h-full bg-panel">
       {/* Title bar (drag region) */}
@@ -945,11 +1132,83 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
       <div className="flex flex-1 min-h-0">
         {/* Left sidebar */}
-        <div className="w-56 border-r border-border bg-panel flex flex-col shrink-0">
-          <div className="px-3 py-2">
+        <div
+          ref={sidebarRef}
+          onKeyDown={(e) => {
+            if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+            const target = e.target as HTMLElement
+            if (!target.hasAttribute('data-nav')) return
+            e.preventDefault()
+            focusNavItemByOffset(target, e.key === 'ArrowDown' ? 1 : -1)
+          }}
+          className="w-56 border-r border-border bg-panel flex flex-col shrink-0"
+        >
+          <div className="px-3 py-2 flex items-center justify-between">
             <span className="text-xs font-medium text-dim">SECTIONS</span>
           </div>
-          {SECTIONS.map((section) => {
+          <div className="px-3 pb-2">
+            <div className="relative">
+              <Search
+                size={11}
+                className="absolute left-2 top-1/2 -translate-y-1/2 text-faint pointer-events-none"
+              />
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={sectionSearch}
+                onChange={(e) => setSectionSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    // Keep the global Settings-Escape handler from closing the
+                    // panel: a search-focused Escape should clear the query
+                    // (or blur if already empty), not bounce out of Settings.
+                    e.preventDefault()
+                    e.stopPropagation()
+                    if (sectionSearch) setSectionSearch('')
+                    else e.currentTarget.blur()
+                    return
+                  }
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault()
+                    const first = sidebarRef.current?.querySelector<HTMLElement>('[data-nav]')
+                    first?.focus()
+                  }
+                }}
+                placeholder="Search settings…"
+                className="w-full bg-app border border-border rounded pl-7 pr-6 py-1 text-xs text-fg-bright placeholder-faint outline-none focus:border-accent"
+              />
+              {sectionSearch && (
+                <button
+                  onClick={() => setSectionSearch('')}
+                  aria-label="Clear search"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 text-faint hover:text-fg cursor-pointer"
+                >
+                  <X size={10} />
+                </button>
+              )}
+            </div>
+          </div>
+          {sectionQuery ? (
+            <div className="overflow-y-auto flex-1">
+              {searchResults.length === 0 && (
+                <div className="px-3 py-2 text-xs text-faint">No matches</div>
+              )}
+              {searchResults.map((item) => (
+                <button
+                  key={item.key}
+                  data-nav=""
+                  onClick={() => handleSearchResultClick(item)}
+                  className="w-full px-3 py-1.5 text-left text-xs text-muted hover:bg-panel-raised hover:text-fg-bright transition-colors cursor-pointer flex flex-col gap-0.5 focus:bg-surface focus:text-fg-bright outline-none"
+                >
+                  <span className="text-fg-bright truncate">
+                    {highlightMatch(item.title, sectionQuery)}
+                  </span>
+                  <span className="text-faint text-[10px] truncate">{item.context}</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            SECTIONS.map((section) => {
             const Icon = section.icon
             const isActive = activeSection === section.id
             const needsAttention = section.id === 'github' && !hasToken && authSource !== 'gh-cli'
@@ -965,8 +1224,9 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
             return (
               <div key={section.id}>
                 <button
+                  data-nav=""
                   onClick={() => scrollToSection(section.id)}
-                  className={`w-full ${className}`}
+                  className={`w-full ${className} focus:bg-surface outline-none`}
                 >
                   <Icon size={14} className="shrink-0" />
                   <span>{section.label}</span>
@@ -984,8 +1244,12 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                       return (
                         <button
                           key={child.id}
+                          // Only navigable when the parent is expanded —
+                          // hidden subsections shouldn't trap arrow focus.
+                          data-nav={isActive ? '' : undefined}
+                          tabIndex={isActive ? 0 : -1}
                           onClick={() => scrollToSubSection(child.id)}
-                          className={`w-full pl-9 pr-3 py-1.5 text-left text-xs transition-colors cursor-pointer ${
+                          className={`w-full pl-9 pr-3 py-1.5 text-left text-xs transition-colors cursor-pointer focus:bg-surface focus:text-fg-bright outline-none ${
                             isSubActive
                               ? 'text-fg-bright bg-surface/60'
                               : 'text-muted hover:text-fg-bright hover:bg-panel-raised'
@@ -999,7 +1263,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 )}
               </div>
             )
-          })}
+          }))}
 
           <div className="mt-auto border-t border-border px-3 py-2">
             <span className="text-xs font-medium text-dim">HELP</span>
@@ -1022,7 +1286,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
         {/* Main scrollable content */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto">
-          <div className="max-w-2xl p-8 space-y-12">
+          <div className="max-w-2xl p-8 pb-[60vh] space-y-12">
             {/* Appearance section */}
             <section ref={(el) => { sectionRefs.current.appearance = el }} id="appearance">
               <h2 className="text-lg font-semibold text-fg-bright mb-1">Appearance</h2>
@@ -1030,6 +1294,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 Pick a color theme for the major panels. Takes effect immediately.
               </p>
 
+              <div ref={(el) => { subSectionRefs.current['appearance-theme'] = el }} id="appearance-theme" />
               {/* Mode picker — native radio inputs styled as a segmented
                    control. Radios give us proper keyboard semantics for free
                    (arrow keys move focus, space activates) */}
@@ -1088,7 +1353,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 onSelect={handleSelectDarkTheme}
               />
 
-              <div className="mt-8">
+              <div ref={(el) => { subSectionRefs.current['appearance-custom-themes'] = el }} id="appearance-custom-themes" className="mt-8">
                 <h3 className="text-sm font-semibold text-fg-bright mb-1">Custom themes</h3>
                 <p className="text-xs text-dim mb-3">
                   Drop <code className="text-fg">{'<name>.json'}</code> files into your themes folder. They show up in the pickers above, filtered by their <code className="text-fg">mode</code>. {customThemes.length === 0 ? 'None loaded yet.' : `${customThemes.length} loaded.`}
@@ -1111,6 +1376,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 </div>
               </div>
 
+              <div ref={(el) => { subSectionRefs.current['appearance-terminal-font'] = el }} id="appearance-terminal-font" />
               <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">Terminal font</h3>
               <p className="text-xs text-dim mb-3">
                 Used by every Claude and shell tab. Provide any CSS font-family value
@@ -2276,14 +2542,13 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 Click a shortcut to rebind it. Press <kbd className="bg-panel-raised px-1 rounded text-[10px]">Esc</kbd> to cancel.
               </p>
 
-              <div className="bg-panel-raised border border-border rounded-lg divide-y divide-border">
-                {(Object.keys(DEFAULT_HOTKEYS) as Action[]).map((action) => {
+              {(() => {
+                const renderRow = (action: Action, indent = false): JSX.Element => {
                   const binding: HotkeyBinding = resolvedHotkeys[action]
                   const isRebinding = rebindingAction === action
                   const overridden = isOverridden(action)
-
                   return (
-                    <div key={action} className="flex items-center justify-between px-3 py-2">
+                    <div key={action} className={`flex items-center justify-between px-3 py-2 ${indent ? 'pl-9' : ''}`}>
                       <span className="text-sm text-fg">{ACTION_LABELS[action]}</span>
                       <div className="flex items-center gap-2">
                         {overridden && (
@@ -2298,19 +2563,68 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                         )}
                         <button
                           onClick={() => setRebindingAction(isRebinding ? null : action)}
-                          className={`min-w-[100px] px-2.5 py-1 rounded text-xs font-mono transition-colors cursor-pointer ${
+                          className={`min-w-[100px] px-2.5 py-1 rounded text-xs transition-colors cursor-pointer ${
                             isRebinding
                               ? 'bg-warning/20 text-warning border border-warning/50 animate-pulse'
                               : 'bg-panel text-fg border border-border-strong hover:border-fg'
                           }`}
                         >
-                          {isRebinding ? 'Press keys...' : bindingToString(binding)}
+                          {isRebinding ? 'Press keys...' : formatBindingGlyphs(bindingToString(binding))}
                         </button>
                       </div>
                     </div>
                   )
-                })}
-              </div>
+                }
+
+                return (
+                  <div className="space-y-6">
+                    {ACTION_CATEGORIES.map((cat) => {
+                      const subId = `hotkeys-${cat.id}` as SubSectionId
+                      return (
+                        <div
+                          key={cat.id}
+                          ref={(el) => { subSectionRefs.current[subId] = el }}
+                          id={subId}
+                        >
+                          <h3 className="text-xs font-medium uppercase tracking-wide text-dim mb-2">{cat.label}</h3>
+                          <div className="bg-panel-raised border border-border rounded-lg divide-y divide-border">
+                            {cat.actions.map((a) => renderRow(a))}
+                            {cat.families?.map((family) => {
+                              const familyKey = `${cat.id}:${family.label}`
+                              const expanded = expandedFamilies.has(familyKey)
+                              return (
+                                <div key={familyKey}>
+                                  <button
+                                    onClick={() => {
+                                      setExpandedFamilies((prev) => {
+                                        const next = new Set(prev)
+                                        if (next.has(familyKey)) next.delete(familyKey)
+                                        else next.add(familyKey)
+                                        return next
+                                      })
+                                    }}
+                                    className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-panel cursor-pointer"
+                                  >
+                                    <span className="flex items-center gap-1.5 text-sm text-fg">
+                                      {expanded ? <ChevronDown size={12} className="text-dim" /> : <ChevronRight size={12} className="text-dim" />}
+                                      {family.label}
+                                      <span className="text-[10px] text-faint">({family.actions.length})</span>
+                                    </span>
+                                    <span className="min-w-[100px] px-2.5 py-1 text-xs text-dim text-center">
+                                      {family.summary}
+                                    </span>
+                                  </button>
+                                  {expanded && family.actions.map((a) => renderRow(a, true))}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })()}
             </section>
 
             {/* Updates section */}
@@ -2507,7 +2821,11 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               </p>
 
               {/* Browser control sub-card */}
-              <div className="bg-panel-raised border border-warning/30 rounded-lg p-4 mb-4">
+              <div
+                ref={(el) => { subSectionRefs.current['experimental-browser-control'] = el }}
+                id="experimental-browser-control"
+                className="bg-panel-raised border border-warning/30 rounded-lg p-4 mb-4"
+              >
                 <div className="flex items-center gap-2 mb-1">
                   <h3 className="text-sm font-semibold text-fg-bright">Browser control</h3>
                   <span className="text-[10px] font-medium text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
@@ -2547,7 +2865,11 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               </div>
 
               {/* Auto-approve safe tool calls sub-card */}
-              <div className="bg-panel-raised border border-warning/30 rounded-lg p-4 mb-4">
+              <div
+                ref={(el) => { subSectionRefs.current['experimental-auto-approve'] = el }}
+                id="experimental-auto-approve"
+                className="bg-panel-raised border border-warning/30 rounded-lg p-4 mb-4"
+              >
                 <div className="flex items-center gap-2 mb-1">
                   <h3 className="text-sm font-semibold text-fg-bright">Auto-approve safe tool calls</h3>
                   <span className="text-[10px] font-medium text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
@@ -2610,7 +2932,11 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               </div>
 
               {/* Web / mobile client sub-card */}
-              <div className="bg-panel-raised border border-warning/30 rounded-lg p-4">
+              <div
+                ref={(el) => { subSectionRefs.current['experimental-web-mobile'] = el }}
+                id="experimental-web-mobile"
+                className="bg-panel-raised border border-warning/30 rounded-lg p-4"
+              >
                 <div className="flex items-center gap-2 mb-1">
                   <h3 className="text-sm font-semibold text-fg-bright">Web &amp; mobile client</h3>
                   <span className="text-[10px] font-medium text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
