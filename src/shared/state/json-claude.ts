@@ -110,10 +110,21 @@ export interface JsonClaudeChatEntry {
    *  matching line of `~/.claude/projects/<cwd-encoded>/<sessionId>.jsonl`.
    *  Only known for entries that were seeded from the transcript on
    *  resume (live-stream entries don't carry it because the jsonl uuid
-   *  is minted server-side after the line is written). Used by the
-   *  rewind path to target the cut line; absent transcriptUuids fall
-   *  back to ordinal-turn matching at rewind time. */
+   *  is minted server-side after the line is written). Not currently
+   *  used at rewind time — see apiMessageId below — but kept around as
+   *  a stable per-line key for future per-block operations. */
   transcriptUuid?: string
+  /** Anthropic Messages-API id for the assistant message this entry
+   *  belongs to. Stable across live + seeded representations: live
+   *  entries get it from `message_start`, seeded entries from
+   *  `parsed.message.id`. Critical for rewind: a single assistant turn
+   *  is one API call but the on-disk jsonl writes one line per content
+   *  block (thinking, tool_use, text), so multiple slice entries —
+   *  whether live (one consolidated) or seeded (multiple split) — all
+   *  share the same apiMessageId. Truncation cuts AFTER the last
+   *  jsonl line carrying this id, which is the natural end of the
+   *  assistant's turn. */
+  apiMessageId?: string
   /** For errorKind === 'rate-limit-warning' | 'rate-limit-error'.
    *  Structured detail sourced from the SDK's `rate_limit_info`
    *  payload. All fields optional because the wire shape is sparse —

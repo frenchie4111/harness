@@ -367,16 +367,18 @@ lazy-fetched via `jsonClaude:getEntries` (`src/main/index.ts:2588`).
 (`queue-operation`, `attachment`, `last-prompt`, `custom-title`,
 `agent-name`) interleave but aren't chat turns.
 
-**Entry-id stability.** Live: `${sessionId}-a-${apiMessageId}`
-(`:1330`), `${sessionId}-u-${counter}` (`:646`). Seeded:
-`${sessionId}-seed-{u,a,c}-${counter}` (`:291`, `:323`, `:341`) —
-**don't carry the jsonl `uuid`**. To target a jsonl line from a
-slice entry we plumb a new `transcriptUuid` on `JsonClaudeChatEntry`,
-populated from `parsed['uuid']` in `seedFromTranscript` and on the
-consolidated `assistant`/`user` events in `handleStreamLine`
-(`:1085`, `:1142`). Fallback if live-stream uuid harvesting is
-flaky: ordinal-turn matching (count `user`+`assistant` jsonl records,
-match index to the slice's turn list).
+**Identifying the assistant turn.** Live entries get the API message
+id from `message_start`; seeded entries get it from
+`parsed.message.id`. Both write it to `apiMessageId` on the slice
+entry. This is the key the rewind path uses: a single assistant
+turn is one API call but the on-disk jsonl writes one line per
+content block (thinking, tool_use, text) and they all share the
+same `message.id`. Truncation cuts after the LAST jsonl line
+carrying that id, so the entire turn is preserved as a unit.
+`transcriptUuid` is still populated on seeded entries as a stable
+per-line key but isn't currently used at rewind time — a
+position-based cut would land too early because the slice can group
+multi-block turns into one entry while the jsonl can't.
 
 ### Subprocess lifecycle
 
@@ -444,20 +446,23 @@ jsonl.
    IPC handler beside `:2469-2650`.
 5. Main: interrupt → await `result` → deny pendings → call into
    the manager.
-6. `JsonClaudeManager.rewindTo` calls `truncateTranscriptAt` with
-   `cutIdx = idx + 1` (read jsonl, write a tmp of pre-cut lines,
-   rename original aside as `<sessionId>.jsonl.rewind-<ts>.bak`,
-   rename tmp into place), then `kill()` the subprocess.
-7. Dispatch new `jsonClaude/entriesTruncated`
-   `{ sessionId, fromEntryId }` (reducer slices `entries` to
-   `[0..idx)`; identity on miss).
+6. `JsonClaudeManager.rewindTo` reads the clicked entry's
+   `apiMessageId`, kills the subprocess, calls
+   `truncateTranscriptAfterMessage` (scan jsonl for the LAST line
+   whose inner `message.id` matches, write tmp + atomic rename,
+   original backed up as `<sessionId>.jsonl.rewind-<ts>.bak`).
+7. Force-reseed the slice by calling `parseTranscriptEntries` on the
+   freshly-truncated jsonl and dispatching `jsonClaude/entriesSeeded`
+   with the result. The slice and jsonl are now identical.
 8. `startJsonClaudeSession(sessionId, worktreePath)` (`:801`):
-   `seedFromTranscript` re-seeds from the truncated jsonl
-   (authoritative); `create()` respawns with `--resume`. The next
-   user message starts a fresh turn from this restored state.
+   `seedFromTranscript` no-ops (entries already populated by step 7),
+   `create()` respawns with `--resume`. The next user message starts
+   a fresh turn from this restored state.
 
-**New events:** `jsonClaude/entriesTruncated` only. No new
-`JsonClaudeSession` fields.
+**New events:** none — `jsonClaude/entriesTruncated` was added in
+the slice for the prior design but is unused now. `entriesSeeded`
+(pre-existing) handles the slice replacement. New entry field:
+`apiMessageId`.
 
 ### UI surface
 
