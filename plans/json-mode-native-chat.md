@@ -343,3 +343,201 @@ is shipped.
 | Markdown CSS | `src/renderer/styles.css` (`.markdown` scope) |
 | Integration test | `src/main/approval-bridge.test.ts` |
 | Diagnostic log | `/tmp/harness-permission-mcp.log` (tail to verify MCP wire) |
+
+## Rewind
+
+Right-click any chat message → **Rewind to here**. Drops the clicked
+message + everything after; leaves the user at the prior state with
+the composer empty (or pre-filled — see *Truncation point selection*
+below). Pure rewind, no auto-regenerate.
+
+### Where the conversation lives
+
+Two synced copies: **Slice (RAM)** at
+`JsonClaudeSession.entries` (`src/shared/state/json-claude.ts:134`) —
+stripped from the wire snapshot (`stripJsonClaudeEntries`, `:366`),
+lazy-fetched via `jsonClaude:getEntries` (`src/main/index.ts:2588`).
+**Session jsonl (disk, claude-code-owned)** at
+`~/.claude/projects/<cwd-encoded>/<sessionId>.jsonl`
+(`src/main/json-claude-manager.ts:230`, `:429`) — the source
+`--resume <sessionId>` rehydrates from, replayed into the slice by
+`seedFromTranscript` (`:225`). Each turn-line carries
+`{uuid, parentUuid, type, message}`; bookkeeping types
+(`queue-operation`, `attachment`, `last-prompt`, `custom-title`,
+`agent-name`) interleave but aren't chat turns.
+
+**Entry-id stability.** Live: `${sessionId}-a-${apiMessageId}`
+(`:1330`), `${sessionId}-u-${counter}` (`:646`). Seeded:
+`${sessionId}-seed-{u,a,c}-${counter}` (`:291`, `:323`, `:341`) —
+**don't carry the jsonl `uuid`**. To target a jsonl line from a
+slice entry we plumb a new `transcriptUuid` on `JsonClaudeChatEntry`,
+populated from `parsed['uuid']` in `seedFromTranscript` and on the
+consolidated `assistant`/`user` events in `handleStreamLine`
+(`:1085`, `:1142`). Fallback if live-stream uuid harvesting is
+flaky: ordinal-turn matching (count `user`+`assistant` jsonl records,
+match index to the slice's turn list).
+
+### Subprocess lifecycle
+
+`JsonClaudeManager` (`src/main/json-claude-manager.ts:197`) owns one
+instance per session id. `create()` (`:364`) spawns with
+`--resume <id>` if the jsonl exists (`:432`), else `--session-id <id>`.
+`kill()` (`:792`) ends stdin + SIGTERM. No first-class restart —
+pattern is `kill()` → `startJsonClaudeSession()`
+(`src/main/index.ts:801`), which re-seeds from disk and respawns.
+Mid-turn controls (`interrupt`, `set_permission_mode`) ride stdin
+`control_request` frames (`:759`, `:831`).
+
+### Resume semantics — truncate on disk, don't replay
+
+`--resume` rehydrates Messages-API state from the jsonl; does **not**
+re-execute turns. The bundled binary also exposes `--fork-session`
+(verified in `claude --help`) — useful in Phase 3.
+
+**Decision: truncate the jsonl in place.** Truncation is $0 in
+tokens, deterministic (keeps original assistant responses byte-for-
+byte so the cache hits on the next user turn), ~30 LOC. Replay-via-
+stream-json would re-run N assistant turns ($$ tokens-out + cache
+bust). Format-drift risk is the same risk `seedFromTranscript`
+already eats.
+
+### Truncation point selection
+
+| Click target | Truncation |
+|---|---|
+| User-prompt M | Cut jsonl before M. Empty composer. |
+| Assistant message M (tool_use blocks + tool_results included) | Cut jsonl before the user prompt that triggered M; promote that prompt's text into the composer. |
+| Mid-stream M (`isPartial`) | Interrupt, wait for `result`, then run the assistant case. |
+
+**Why promote the orphan prompt.** Cutting the assistant turn but
+leaving its triggering user prompt in the jsonl would have
+`--resume` immediately auto-generate on the next agent step,
+breaking the "sitting at the prior state" semantic. Promoting the
+prompt to the composer keeps pure-rewind (no implicit regenerate)
+and matches user intent.
+
+**System / hook-injected records** (non-turn jsonl rows like
+`attachment`, `queue-operation`) aren't user-targetable (no chat row
+renders them) and pass through the cut when they predate it.
+
+### In-flight state to cancel
+
+| In-flight | Where | Cleanup |
+|---|---|---|
+| Streaming assistant (`busy`, `partial != null`) | `JsonClaudeManager.partial` (`:49`, `:1328`) | `interrupt()` (`:759`); wait ≤1500ms for next `result` |
+| Pending approval round-trip | `ApprovalBridge.pendingResponses` (`src/main/approval-bridge.ts:78`) | New `cancelPendingForSession(sessionId)` — same loop as `stopSession` (`:122`), without tearing the server down |
+| Tool running through MCP (approved, awaiting result) | Untracked; lives inside the subprocess agent loop | Subsumed by interrupt; long-running Bash etc. completes inside the subprocess, result discarded after `kill()` |
+| Queued user messages (`isQueued`) | `entries[i].isQueued` (`src/shared/state/json-claude.ts:73`) | Already on stdin; absorbed by the truncation pass |
+
+Order: **interrupt → await `result` (≤1500ms) → deny pendings →
+kill → truncate jsonl → respawn**. The wait guarantees a quiesced
+jsonl.
+
+### End-to-end flow
+
+1. User right-clicks message M.
+2. Inline context menu pops (positioned `<div>` like
+   `src/renderer/components/TerminalPanel.tsx:199-207`). One
+   destructive item, `RotateCcw` icon: "Rewind to here · drops this
+   + everything after."
+3. Click. If `busy` or a pending approval exists, inline confirm
+   ("aborts current turn"). Otherwise no confirm — Phase 2's Undo
+   is the safety net.
+4. Renderer fires `jsonClaude:rewindTo(sessionId, entryId)` — new
+   IPC handler beside `:2469-2650`.
+5. Main: interrupt → await `result` → deny pendings →
+   `kill(sessionId, { silent: true })` (new flag suppresses the
+   synthetic `subprocess-exit` entry from `:1538`).
+6. `JsonClaudeManager.truncateAt(sessionId, worktreePath,
+   transcriptUuid)` — read jsonl, write a tmp of pre-cut lines,
+   rename original aside as `<sessionId>.jsonl.rewind-<ts>.bak`,
+   rename tmp into place.
+7. Dispatch new `jsonClaude/entriesTruncated`
+   `{ sessionId, fromEntryId }` (reducer slices `entries` to
+   `[0..idx)`; identity on miss).
+8. `startJsonClaudeSession(sessionId, worktreePath)` (`:801`):
+   `seedFromTranscript` re-seeds from the truncated jsonl
+   (authoritative); `create()` respawns with `--resume`.
+9. The IPC response returns `{ composerSeed?: string }` so the
+   orphan-prompt-promotion path can pre-fill `JsonModeChat`'s
+   local composer state. `useJsonClaudeSession` re-renders.
+
+**New events:** `jsonClaude/entriesTruncated` only. No new
+`JsonClaudeSession` fields.
+
+### UI surface
+
+In `src/renderer/components/JsonModeChat.tsx:540-810`, wrap each
+turn-level row in a div carrying `entryId` + `onContextMenu`.
+Sub-rows of one assistant entry (multiple text blocks, tool groups)
+all rewind to the parent entry.
+
+**No reusable context-menu primitive exists** — `TerminalPanel`
+inlines a positioned `<div>` (`:237-280`). Inline the same pattern;
+extract a `<ContextMenu>` only when a third caller appears. Menu
+item: destructive red, `RotateCcw` (already imported, `:24`), label
+"Rewind to here", muted subtitle; disabled with tooltip if
+`session.state === 'exited'`.
+
+### Token / cache cost
+
+50-turn convo rewound to turn 30: rewind itself = **0 tokens** (no
+model call); next user turn's prompt prefix is identical bytes to
+"as if turn 31 never happened," so Anthropic's prompt cache hits on
+the full prefix — cost ≈ a normal continuation turn. Replay-via-
+stream-json would re-run 30 assistant turns (×$ output + fresh-
+session cache bust). Order-of-magnitude difference; truncation wins.
+
+### Edge cases + open questions
+
+- **Rewind to the first user message** = clear chat. Truncate to
+  zero turn-records (keep init metadata), drop slice entries, keep
+  the session id. Different mechanism from `/clear` (which uses
+  claude's compaction); same observable result.
+- **Rewind across a `compact_boundary`.** Truncating into pre-
+  compaction history doesn't help — claude won't see those raw
+  turns on resume (compaction replaced them). Phase 1 **disables
+  the menu item on entries before any `compact_boundary`** with a
+  tooltip; Phase 3 could spike truncating compaction state.
+- **Mid-session model switch.** Each jsonl turn carries its model;
+  the post-rewind turn runs on the session's current model. No
+  special case.
+- **Tool-only assistant message (no text block).** Tool-group card
+  carries the entry id to the menu; truncation drops normally.
+- **Scrolled-out-of-view message.** Right-click fires where the user
+  clicked; auto-stick scroll carries the view to the new tail.
+- **Open — sub-agent turns (`parentToolUseId` set).** Can't
+  usefully rewind a sub-agent in isolation (parent Task's
+  tool_result depends on the full run). Recommend: disable rewind
+  on `parentToolUseId`-bearing entries; allow rewind on the parent
+  Task entry (drops the whole sub-agent run as a unit). Confirm in
+  review.
+- **Open — concurrent rewinds from two viewers.** Per-session async
+  lock on the truncate path in `JsonClaudeManager`.
+
+### Phasing
+
+**Phase 1 — MVP via on-disk truncation.** `transcriptUuid` plumbing
+(or ordinal fallback), `jsonClaude:rewindTo` IPC,
+`JsonClaudeManager.truncateAt`,
+`ApprovalBridge.cancelPendingForSession`,
+`jsonClaude/entriesTruncated` event + reducer + test, inline
+context-menu in `JsonModeChat`, orphan-prompt promotion, disabled
+state for `compact_boundary` / `parentToolUseId` entries. `.bak`
+written aside, no UI yet.
+
+**Phase 2 — Undo affordance.** Post-rewind toast "Rewound · Undo"
+(~10s lifetime); click restores from `.bak`, kills + respawns,
+re-seeds. Wire is rewind in reverse. Persist the `.bak` reference
+on the session so multi-client + reload preserves the affordance
+until expiry.
+
+**Phase 3 — `--fork-session` for a pristine original.** Fork
+instead of mutating the jsonl; original untouched. Requires a
+session-id migration in the panes slice (non-trivial). Defer until
+Phase 1+2 are field-proven and `--fork-session`'s semantics are
+better documented.
+
+Each phase is independently shippable: Phase 1 delivers the user
+feature; Phase 2 layers safety; Phase 3 hardens the disk story
+without changing the UX.
