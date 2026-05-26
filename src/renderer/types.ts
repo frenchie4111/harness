@@ -598,6 +598,20 @@ export interface ElectronAPI {
   connectionsSetLastConnected(id: string, when?: number): Promise<boolean>
   connectionsGetToken(id: string): Promise<string | null>
   connectionsHasToken(id: string): Promise<boolean>
+
+  // SSH bootstrap (remote-SSH backend flow). Always-local; the local
+  // Electron backend is the one that drives SSH. See plans/remote-main.md §4.
+  sshListConfiguredHosts(): Promise<ConfiguredHost[]>
+}
+
+/** An SSH host parsed out of `~/.ssh/config`. Mirrors the main-process
+ *  `ConfiguredHost` shape in src/main/ssh-config.ts. */
+export interface ConfiguredHost {
+  alias: string
+  host: string
+  user?: string
+  port?: number
+  identityFile?: string
 }
 
 /** A configured backend (multi-backend UX). Kept in sync with the

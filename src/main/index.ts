@@ -84,6 +84,7 @@ import { CostTracker } from './cost-tracker'
 import { getAllSessionCosts } from './cost-aggregator'
 import { getClaudeAuthStatus } from './claude-auth'
 import { listDir as fsListDir, resolveHome as fsResolveHome } from './fs-listing'
+import { listConfiguredHosts } from './ssh-config'
 import { startControlServer } from './control-server'
 import { writeMcpConfigForTerminal, pruneMcpConfigs, getBridgeScriptPath } from './mcp-config'
 import { getControlServerInfo } from './control-server'
@@ -3103,6 +3104,14 @@ function registerIpcHandlers(): void {
   transport.onRequest('connections:hasToken', (_ctx, id: string) => {
     if (id === LOCAL_BACKEND_ID) return false
     return hasSecret(`backend-token:${id}`)
+  })
+
+  // ---- SSH bootstrap helpers (Tier 1 remote-SSH backend flow) -------
+  // Renderer-shell-owned, like the connections list above. Only the local
+  // Electron backend exposes these — remote backends don't bootstrap other
+  // backends. See plans/remote-main.md §4.
+  transport.onRequest('ssh:listConfiguredHosts', () => {
+    return listConfiguredHosts()
   })
 
   transport.onSignal('terminal:join', (ctx, id: string) => {

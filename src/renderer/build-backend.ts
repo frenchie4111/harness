@@ -590,7 +590,11 @@ export function buildBackend(
     connectionsSetLastConnected: (id: string, when?: number) =>
       reqLocal('connections:setLastConnected', id, when),
     connectionsGetToken: (id: string) => reqLocal('connections:getToken', id),
-    connectionsHasToken: (id: string) => reqLocal('connections:hasToken', id)
+    connectionsHasToken: (id: string) => reqLocal('connections:hasToken', id),
+
+    // SSH bootstrap helpers — always-local; only the local Electron
+    // backend bootstraps remote backends. See plans/remote-main.md §4.
+    sshListConfiguredHosts: () => reqLocal('ssh:listConfiguredHosts')
   }
 
   return api as ElectronAPI
