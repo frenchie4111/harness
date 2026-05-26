@@ -7,7 +7,7 @@ import {
   FilePlus,
   BarChart3,
   CalendarDays,
-  MessageSquare,
+  MessageSquareHeart,
   Keyboard,
   Settings as SettingsIcon
 } from 'lucide-react'
@@ -133,7 +133,7 @@ export function CollapsedSidebar({
             onClick={() => openReportIssue()}
             className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
           >
-            <MessageSquare className="icon-sm" />
+            <MessageSquareHeart className="icon-sm" />
           </button>
         </Tooltip>
         <Tooltip label="Settings" side="right">

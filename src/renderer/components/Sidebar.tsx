@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from 'react'
-import { ChevronDown, ChevronRight, Plus, FolderOpen, Loader2, Settings as SettingsIcon, Sparkles, BarChart3, Trash2, LayoutGrid, X, Layers, Rows3, AlertCircle, Keyboard, MessageSquare, PanelLeftClose, FilePlus, CalendarDays, RefreshCw } from 'lucide-react'
+import { ChevronDown, ChevronRight, Plus, FolderOpen, Loader2, Settings as SettingsIcon, Sparkles, BarChart3, Trash2, LayoutGrid, X, Layers, Rows3, AlertCircle, Keyboard, MessageSquareHeart, PanelLeftClose, FilePlus, CalendarDays, RefreshCw } from 'lucide-react'
 import { openReportIssue } from './ReportIssueScreen'
 import { Tooltip } from './Tooltip'
 import { HotkeyBadge } from './HotkeyBadge'
@@ -562,7 +562,7 @@ export function Sidebar({
             onClick={() => openReportIssue()}
             className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
           >
-            <MessageSquare className="icon-sm" />
+            <MessageSquareHeart className="icon-sm" />
           </button>
         </Tooltip>
         <Tooltip label="Settings" action="openSettings" side="top">
