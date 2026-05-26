@@ -206,12 +206,6 @@ function transcriptPathFor(sessionId: string, worktreePath: string): string {
 
 export interface RewindOutcome {
   ok: boolean
-  /** Set when the rewound message was an assistant turn — the user prompt
-   *  that triggered it is dropped from the jsonl AND its text is returned
-   *  here so the renderer can pre-fill the composer. Keeps the "user is
-   *  sitting at the prior state" semantic intact: without promoting the
-   *  orphan prompt, --resume would auto-generate on the next agent step. */
-  composerSeed?: string
   reason?: string
 }
 
@@ -837,22 +831,23 @@ export class JsonClaudeManager {
     for (const id of Array.from(this.instances.keys())) this.kill(id)
   }
 
-  /** Drops the slice entry at `fromEntryId` and every entry after it,
-   *  truncates the on-disk session jsonl at the matching record (or at
-   *  the same ordinal turn position if the entry has no transcriptUuid),
-   *  and respawns the subprocess via --resume so it rehydrates from the
+  /** Drops the assistant entry at `fromEntryId`, the user prompt that
+   *  triggered it, and every entry in between or after. Truncates the
+   *  on-disk session jsonl at the matching record (or at the same
+   *  ordinal turn position if the entry has no transcriptUuid), and
+   *  respawns the subprocess via --resume so it rehydrates from the
    *  shortened history. Called from the jsonClaude:rewindTo IPC handler.
    *
    *  Pre-cancellation (interrupt in-flight stream, deny pending
-   *  approvals) lives in the IPC handler — it needs to coordinate with
-   *  ApprovalBridge which the manager doesn't reach. By the time we get
-   *  here, busy must be false and pending approvals for this session
-   *  must be cleared.
+   *  approvals) lives in the IPC handler — it needs to coordinate
+   *  with ApprovalBridge which the manager doesn't reach. By the time
+   *  we get here, busy must be false and pending approvals for this
+   *  session must be cleared.
    *
-   *  Returns ok=false (without mutating state) if the entry id isn't in
-   *  the slice. Returns composerSeed when the rewound message was an
-   *  assistant turn, so the renderer can pre-fill the user's original
-   *  prompt — see RewindOutcome for the rationale. */
+   *  Only callable on assistant entries — the renderer enforces this
+   *  at the menu level. If the caller hands us anything else we return
+   *  ok=false so misuse is caught at the boundary rather than silently
+   *  corrupting the jsonl. */
   rewindTo(sessionId: string, fromEntryId: string): RewindOutcome {
     const session =
       this.store.getSnapshot().state.jsonClaude.sessions[sessionId]
@@ -861,30 +856,27 @@ export class JsonClaudeManager {
     const idx = entries.findIndex((e) => e.entryId === fromEntryId)
     if (idx === -1) return { ok: false, reason: 'entry not in slice' }
     const target = entries[idx]
+    if (target.kind !== 'assistant') {
+      return { ok: false, reason: 'rewind targets an assistant message' }
+    }
 
-    // Assistant-targeted: also drop the user prompt that triggered M,
-    // and promote its text into the composer. Without this the jsonl
-    // ends in an unanswered user message and --resume auto-generates
-    // on the next agent step — breaking "pure rewind, no auto-
-    // regenerate." Walk backwards from idx looking for the nearest
-    // user entry that isn't a tool_result.
+    // Cut the triggering user prompt too — otherwise the jsonl ends
+    // in an unanswered user message and --resume auto-generates on the
+    // next agent step, breaking "wait for the user to type their next
+    // response." Walk backwards through any interleaved tool_result
+    // rows until we hit the user prompt that started this turn.
     let cutIdx = idx
-    let composerSeed: string | undefined
-    if (target.kind === 'assistant') {
-      for (let i = idx - 1; i >= 0; i--) {
-        const e = entries[i]
-        if (e.kind === 'user') {
-          cutIdx = i
-          composerSeed = e.text ?? undefined
-          break
-        }
-        if (e.kind === 'tool_result') continue
-        // Hit an assistant / compact / error before finding a user
-        // entry. Shouldn't happen in well-formed conversations, but if
-        // it does, fall through to cutting at idx only — composer stays
-        // empty, jsonl is consistent.
+    for (let i = idx - 1; i >= 0; i--) {
+      const e = entries[i]
+      if (e.kind === 'user') {
+        cutIdx = i
         break
       }
+      if (e.kind === 'tool_result') continue
+      // Hit an assistant / compact / error before a user entry —
+      // malformed history. Fall through to cutting at idx only; the
+      // jsonl truncation is still consistent.
+      break
     }
 
     const truncResult = this.truncateTranscriptAt(sessionId, session.worktreePath, entries, cutIdx)
@@ -907,7 +899,7 @@ export class JsonClaudeManager {
       payload: { sessionId, fromEntryId: pruneFromEntryId }
     })
 
-    return { ok: true, composerSeed }
+    return { ok: true }
   }
 
   /** Truncate the on-disk jsonl so it ends just before the line that

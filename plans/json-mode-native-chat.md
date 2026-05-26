@@ -346,10 +346,10 @@ is shipped.
 
 ## Rewind
 
-Right-click any chat message → **Rewind to here**. Drops the clicked
-message + everything after; leaves the user at the prior state with
-the composer empty (or pre-filled — see *Truncation point selection*
-below). Pure rewind, no auto-regenerate.
+Right-click any **assistant** message → **Rewind to here**. Drops the
+clicked assistant message, the user prompt that triggered it, and
+everything in between or after. Leaves the user at the prior state
+with an empty composer, ready to type a new response.
 
 ### Where the conversation lives
 
@@ -403,18 +403,21 @@ already eats.
 
 ### Truncation point selection
 
-| Click target | Truncation |
-|---|---|
-| User-prompt M | Cut jsonl before M. Empty composer. |
-| Assistant message M (tool_use blocks + tool_results included) | Cut jsonl before the user prompt that triggered M; promote that prompt's text into the composer. |
-| Mid-stream M (`isPartial`) | Interrupt, wait for `result`, then run the assistant case. |
+The menu only appears on assistant rows. The cut always drops:
+- the clicked assistant message (including its tool_use blocks and
+  every tool_result that references one of them),
+- the user prompt that triggered that assistant message,
+- everything sequenced after the clicked message.
 
-**Why promote the orphan prompt.** Cutting the assistant turn but
-leaving its triggering user prompt in the jsonl would have
-`--resume` immediately auto-generate on the next agent step,
-breaking the "sitting at the prior state" semantic. Promoting the
-prompt to the composer keeps pure-rewind (no implicit regenerate)
-and matches user intent.
+If the clicked message is mid-stream (`isPartial`), the IPC handler
+interrupts and waits for the `result` boundary before reading the
+jsonl so the file is quiesced.
+
+**Why cut the triggering user prompt too.** Leaving an unanswered
+user prompt at the tail of the jsonl would have `--resume`
+auto-generate a fresh response on the next agent step — the user
+wouldn't get to type a new response. Cutting both keeps the
+"chat is now waiting on the user" invariant.
 
 **System / hook-injected records** (non-turn jsonl rows like
 `attachment`, `queue-operation`) aren't user-targetable (no chat row
@@ -435,49 +438,49 @@ jsonl.
 
 ### End-to-end flow
 
-1. User right-clicks message M.
+1. User right-clicks an assistant message.
 2. Inline context menu pops (positioned `<div>` like
    `src/renderer/components/TerminalPanel.tsx:199-207`). One
-   destructive item, `RotateCcw` icon: "Rewind to here · drops this
-   + everything after."
-3. Click. If `busy` or a pending approval exists, inline confirm
-   ("aborts current turn"). Otherwise no confirm — Phase 2's Undo
-   is the safety net.
+   destructive item, `RotateCcw` icon: "Rewind to here · drops
+   this message + everything after."
+3. Click. No confirm — Phase 2's Undo affordance is the safety net.
 4. Renderer fires `jsonClaude:rewindTo(sessionId, entryId)` — new
    IPC handler beside `:2469-2650`.
-5. Main: interrupt → await `result` → deny pendings →
-   `kill(sessionId, { silent: true })` (new flag suppresses the
-   synthetic `subprocess-exit` entry from `:1538`).
-6. `JsonClaudeManager.truncateAt(sessionId, worktreePath,
-   transcriptUuid)` — read jsonl, write a tmp of pre-cut lines,
-   rename original aside as `<sessionId>.jsonl.rewind-<ts>.bak`,
-   rename tmp into place.
+5. Main: interrupt → await `result` → deny pendings → call into
+   the manager.
+6. `JsonClaudeManager.rewindTo` walks back from the assistant entry
+   to its triggering user prompt, calls `truncateTranscriptAt`
+   (read jsonl, write a tmp of pre-cut lines, rename original aside
+   as `<sessionId>.jsonl.rewind-<ts>.bak`, rename tmp into place),
+   then `kill()` the subprocess.
 7. Dispatch new `jsonClaude/entriesTruncated`
    `{ sessionId, fromEntryId }` (reducer slices `entries` to
    `[0..idx)`; identity on miss).
 8. `startJsonClaudeSession(sessionId, worktreePath)` (`:801`):
    `seedFromTranscript` re-seeds from the truncated jsonl
-   (authoritative); `create()` respawns with `--resume`.
-9. The IPC response returns `{ composerSeed?: string }` so the
-   orphan-prompt-promotion path can pre-fill `JsonModeChat`'s
-   local composer state. `useJsonClaudeSession` re-renders.
+   (authoritative); `create()` respawns with `--resume`. The next
+   user message starts a fresh turn from this restored state.
 
 **New events:** `jsonClaude/entriesTruncated` only. No new
 `JsonClaudeSession` fields.
 
 ### UI surface
 
-In `src/renderer/components/JsonModeChat.tsx:540-810`, wrap each
-turn-level row in a div carrying `entryId` + `onContextMenu`.
-Sub-rows of one assistant entry (multiple text blocks, tool groups)
-all rewind to the parent entry.
+In `src/renderer/components/JsonModeChat.tsx:540-810`, the entry
+render loop emits multiple rows per assistant entry (text, thinking
+cards, tool cards). The top-level `groupedItems.map` wraps each
+item in a div that only carries `onContextMenu` when the source row
+is part of an assistant entry — right-clicking a user bubble or a
+system card falls through to the browser default.
 
 **No reusable context-menu primitive exists** — `TerminalPanel`
 inlines a positioned `<div>` (`:237-280`). Inline the same pattern;
 extract a `<ContextMenu>` only when a third caller appears. Menu
 item: destructive red, `RotateCcw` (already imported, `:24`), label
-"Rewind to here", muted subtitle; disabled with tooltip if
-`session.state === 'exited'`.
+"Rewind to here", muted subtitle. Disabled with explainer when:
+- the assistant row is from a sub-agent (`parentToolUseId` set),
+- the entry sits before any `compact_boundary`,
+- the session has exited.
 
 ### Token / cache cost
 
@@ -490,15 +493,15 @@ session cache bust). Order-of-magnitude difference; truncation wins.
 
 ### Edge cases + open questions
 
-- **Rewind to the first user message** = clear chat. Truncate to
-  zero turn-records (keep init metadata), drop slice entries, keep
-  the session id. Different mechanism from `/clear` (which uses
-  claude's compaction); same observable result.
+- **Rewind on the very first assistant message** = clear chat
+  (drops it + the only user prompt). Truncate to zero turn-records,
+  keep init metadata, slice entries empty, session id intact.
 - **Rewind across a `compact_boundary`.** Truncating into pre-
   compaction history doesn't help — claude won't see those raw
   turns on resume (compaction replaced them). Phase 1 **disables
-  the menu item on entries before any `compact_boundary`** with a
-  tooltip; Phase 3 could spike truncating compaction state.
+  the menu on assistant entries that sit before any
+  `compact_boundary`** with a tooltip; Phase 3 could spike
+  truncating compaction state.
 - **Mid-session model switch.** Each jsonl turn carries its model;
   the post-rewind turn runs on the session's current model. No
   special case.
@@ -506,12 +509,11 @@ session cache bust). Order-of-magnitude difference; truncation wins.
   carries the entry id to the menu; truncation drops normally.
 - **Scrolled-out-of-view message.** Right-click fires where the user
   clicked; auto-stick scroll carries the view to the new tail.
-- **Open — sub-agent turns (`parentToolUseId` set).** Can't
-  usefully rewind a sub-agent in isolation (parent Task's
-  tool_result depends on the full run). Recommend: disable rewind
-  on `parentToolUseId`-bearing entries; allow rewind on the parent
-  Task entry (drops the whole sub-agent run as a unit). Confirm in
-  review.
+- **Sub-agent turns (`parentToolUseId` set).** Can't usefully
+  rewind a sub-agent in isolation — the parent Task's tool_result
+  depends on the full run. Menu is disabled on those entries;
+  rewinding the parent Task assistant entry drops the whole
+  sub-agent run as a unit.
 - **Open — concurrent rewinds from two viewers.** Per-session async
   lock on the truncate path in `JsonClaudeManager`.
 
@@ -522,9 +524,9 @@ session cache bust). Order-of-magnitude difference; truncation wins.
 `JsonClaudeManager.truncateAt`,
 `ApprovalBridge.cancelPendingForSession`,
 `jsonClaude/entriesTruncated` event + reducer + test, inline
-context-menu in `JsonModeChat`, orphan-prompt promotion, disabled
-state for `compact_boundary` / `parentToolUseId` entries. `.bak`
-written aside, no UI yet.
+context-menu wired only on assistant rows in `JsonModeChat`,
+disabled state for `compact_boundary` / `parentToolUseId` entries
+and exited sessions. `.bak` written aside, no UI yet.
 
 **Phase 2 — Undo affordance.** Post-rewind toast "Rewound · Undo"
 (~10s lifetime); click restores from `.bak`, kills + respawns,

@@ -1249,15 +1249,17 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
 
   const groupedItems = useMemo(() => groupConsecutiveToolRows(rows), [rows])
 
-  // Right-click "Rewind to here" state. The menu is a positioned <div>
-  // a la TerminalPanel — no reusable ContextMenu primitive yet. Phase 1
-  // disables rewind on:
-  //   - sub-agent rows (parentToolUseId set) — can't usefully rewind in
-  //     isolation; parent Task's tool_result depends on the full run
-  //   - entries before any compact_boundary — claude won't see those raw
-  //     turns again on --resume so truncating into them doesn't help
-  //   - queued user entries — already on stdin, jsonl will absorb them
-  //   - while session is exited — no subprocess to respawn against
+  // Right-click "Rewind to here" state. Only available on assistant
+  // rows — right-clicking a user bubble or any other row does nothing
+  // (browser default fires). The menu is a positioned <div> a la
+  // TerminalPanel — no reusable ContextMenu primitive yet. Even on
+  // assistant rows the action is disabled when:
+  //   - the row is from a sub-agent (parentToolUseId set) — can't
+  //     usefully rewind in isolation; parent Task's tool_result depends
+  //     on the full run
+  //   - it sits before any compact_boundary — claude won't see those
+  //     raw turns again on --resume so truncating into them doesn't help
+  //   - the session is exited — no subprocess to respawn against
   const [rewindMenu, setRewindMenu] = useState<
     | { entryId: string; x: number; y: number; disabledReason: string | null }
     | null
@@ -1279,19 +1281,11 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
       const idx = entryIndexById.get(entryId)
       if (idx === undefined) return 'message not found'
       const e = entries[idx]
+      if (e.kind !== 'assistant') return 'only assistant messages can be rewound'
       if (session?.state === 'exited') return 'session is not running'
       if (e.parentToolUseId) return 'sub-agent steps can’t be rewound individually'
       if (idx <= lastCompactIdx) {
         return 'rewinding across a /compact boundary isn’t supported'
-      }
-      if (e.kind === 'user' && e.isQueued) {
-        return 'queued message is already on its way'
-      }
-      if (e.kind === 'compact' || e.kind === 'tool_result') {
-        return 'rewind targets a user or assistant message'
-      }
-      if (e.kind === 'error' || e.kind === 'system') {
-        return 'rewind targets a user or assistant message'
       }
       return null
     },
@@ -1310,15 +1304,10 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
     },
     [rewindDisabledReason]
   )
-  const closeRewindMenu = useCallback(() => setRewindMenu(null), [])
   const performRewind = useCallback(
     async (entryId: string) => {
       setRewindMenu(null)
-      const outcome = await backend.rewindJsonClaudeTo(sessionId, entryId)
-      if (outcome.ok && outcome.composerSeed) {
-        setDraft(outcome.composerSeed)
-        requestAnimationFrame(() => textareaRef.current?.focus())
-      }
+      await backend.rewindJsonClaudeTo(sessionId, entryId)
     },
     [backend, sessionId]
   )
@@ -1813,15 +1802,19 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
           ) : (
           <div className="px-4 py-3 space-y-3">
             {groupedItems.map((g) => {
-              // Right-click target is the entryId of the first row in
-              // the item — for ToolGroup that's the first tool's parent
-              // assistant entry, which is exactly what the user expects
-              // to rewind to when they right-click anywhere in the
-              // group.
+              // Rewind is only meaningful on assistant rows — right-
+              // clicking a user bubble or any other kind of row falls
+              // through to the browser default. For ToolGroup the
+              // target is the first tool's parent assistant entry,
+              // which is exactly the entry to rewind to.
               const targetEntryId = g.rows[0]?.entryId
-              const onContextMenu = targetEntryId
-                ? (e: ReactMouseEvent): void => openRewindMenu(targetEntryId, e)
+              const targetEntry = targetEntryId
+                ? entries[entryIndexById.get(targetEntryId) ?? -1]
                 : undefined
+              const onContextMenu =
+                targetEntryId && targetEntry?.kind === 'assistant'
+                  ? (e: ReactMouseEvent): void => openRewindMenu(targetEntryId, e)
+                  : undefined
               return g.kind === 'single' ? (
                 <div key={g.key} onContextMenu={onContextMenu}>
                   {g.rows[0].node}

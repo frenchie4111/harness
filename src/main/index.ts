@@ -2532,20 +2532,19 @@ function registerIpcHandlers(): void {
     return true
   })
 
-  // Rewind to a clicked message. Orchestrates: interrupt in-flight stream
-  // (if any) → await `result` boundary (≤1500ms) so the jsonl is quiesced
-  // → deny pending approvals for the session → manager.rewindTo
-  // (truncate jsonl + kill + slice prune) → respawn via --resume. The
-  // composerSeed in the returned outcome lets the renderer pre-fill the
-  // input box when the rewound message was an assistant turn — see
-  // RewindOutcome in json-claude-manager.ts for why.
+  // Rewind to a clicked assistant message. Orchestrates: interrupt
+  // in-flight stream (if any) → await `result` boundary (≤1500ms) so
+  // the jsonl is quiesced → deny pending approvals for the session →
+  // manager.rewindTo (truncate jsonl + kill + slice prune) → respawn
+  // via --resume. The renderer restricts the menu to assistant rows,
+  // so the manager validates the same invariant defensively.
   transport.onRequest(
     'jsonClaude:rewindTo',
     async (
       _ctx,
       sessionId: string,
       entryId: string
-    ): Promise<{ ok: boolean; composerSeed?: string; reason?: string }> => {
+    ): Promise<{ ok: boolean; reason?: string }> => {
       if (!sessionId || !entryId) return { ok: false, reason: 'missing args' }
       const startSession = store.getSnapshot().state.jsonClaude.sessions[sessionId]
       if (!startSession) return { ok: false, reason: 'unknown session' }
@@ -2586,10 +2585,7 @@ function registerIpcHandlers(): void {
       // pre-respawn fallback).
       startJsonClaudeSession(sessionId, startSession.worktreePath)
 
-      return {
-        ok: true,
-        ...(outcome.composerSeed ? { composerSeed: outcome.composerSeed } : {})
-      }
+      return { ok: true }
     }
   )
 
