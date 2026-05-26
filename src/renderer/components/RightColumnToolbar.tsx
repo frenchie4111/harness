@@ -74,7 +74,7 @@ export function RightColumnToolbar({
 
   return (
     <div className="px-3 py-1.5 flex items-center gap-2 shrink-0">
-      <span className="text-xs font-medium text-dim">TOOL PANES</span>
+      <span className="text-xs font-medium text-dim">TOOLS</span>
       <div className="ml-auto flex items-center gap-1">
         <div className="no-drag relative" ref={menuRef}>
           <Tooltip label="Panel visibility">
