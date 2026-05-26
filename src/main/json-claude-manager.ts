@@ -831,12 +831,13 @@ export class JsonClaudeManager {
     for (const id of Array.from(this.instances.keys())) this.kill(id)
   }
 
-  /** Drops the assistant entry at `fromEntryId`, the user prompt that
-   *  triggered it, and every entry in between or after. Truncates the
-   *  on-disk session jsonl at the matching record (or at the same
-   *  ordinal turn position if the entry has no transcriptUuid), and
-   *  respawns the subprocess via --resume so it rehydrates from the
-   *  shortened history. Called from the jsonClaude:rewindTo IPC handler.
+  /** Keeps the assistant entry at `fromEntryId` and drops every entry
+   *  after it — "rewind to this message being the last thing the agent
+   *  said." Truncates the on-disk session jsonl at the matching record
+   *  (or at the same ordinal turn position if the entry has no
+   *  transcriptUuid), and respawns the subprocess via --resume so it
+   *  rehydrates from the shortened history. Called from the
+   *  jsonClaude:rewindTo IPC handler.
    *
    *  Pre-cancellation (interrupt in-flight stream, deny pending
    *  approvals) lives in the IPC handler — it needs to coordinate
@@ -860,23 +861,13 @@ export class JsonClaudeManager {
       return { ok: false, reason: 'rewind targets an assistant message' }
     }
 
-    // Cut the triggering user prompt too — otherwise the jsonl ends
-    // in an unanswered user message and --resume auto-generates on the
-    // next agent step, breaking "wait for the user to type their next
-    // response." Walk backwards through any interleaved tool_result
-    // rows until we hit the user prompt that started this turn.
-    let cutIdx = idx
-    for (let i = idx - 1; i >= 0; i--) {
-      const e = entries[i]
-      if (e.kind === 'user') {
-        cutIdx = i
-        break
-      }
-      if (e.kind === 'tool_result') continue
-      // Hit an assistant / compact / error before a user entry —
-      // malformed history. Fall through to cutting at idx only; the
-      // jsonl truncation is still consistent.
-      break
+    // Keep the clicked entry; drop everything after it. The jsonl will
+    // now end with the chosen assistant message, which is the natural
+    // "ready for next user turn" state — --resume rehydrates and waits
+    // for input rather than auto-generating.
+    const cutIdx = idx + 1
+    if (cutIdx >= entries.length) {
+      return { ok: false, reason: 'nothing after this message to drop' }
     }
 
     const truncResult = this.truncateTranscriptAt(sessionId, session.worktreePath, entries, cutIdx)

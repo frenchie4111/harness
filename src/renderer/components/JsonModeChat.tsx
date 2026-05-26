@@ -1287,6 +1287,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
       if (idx <= lastCompactIdx) {
         return 'rewinding across a /compact boundary isn’t supported'
       }
+      if (idx >= entries.length - 1) return 'nothing after this message yet'
       return null
     },
     [entries, entryIndexById, lastCompactIdx, session?.state]
@@ -1722,7 +1723,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
             <div className="flex flex-col">
               <span>Rewind to here</span>
               <span className="text-[10px] text-muted">
-                {rewindMenu.disabledReason ?? 'drops this exchange'}
+                {rewindMenu.disabledReason ?? 'drops everything after this'}
               </span>
             </div>
           </button>

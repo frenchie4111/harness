@@ -346,10 +346,11 @@ is shipped.
 
 ## Rewind
 
-Right-click any **assistant** message → **Rewind to here**. Drops the
-clicked assistant message, the user prompt that triggered it, and
-everything in between or after. Leaves the user at the prior state
-with an empty composer, ready to type a new response.
+Right-click any **assistant** message → **Rewind to here**. Keeps
+the clicked message (it becomes "the last thing the agent said")
+and drops every entry that came after it. Leaves the user at that
+point in the conversation with an empty composer, ready to type a
+new response.
 
 ### Where the conversation lives
 
@@ -403,21 +404,16 @@ already eats.
 
 ### Truncation point selection
 
-The menu only appears on assistant rows. The cut always drops:
-- the clicked assistant message (including its tool_use blocks and
-  every tool_result that references one of them),
-- the user prompt that triggered that assistant message,
-- everything sequenced after the clicked message.
+The menu only appears on assistant rows. The cut keeps the clicked
+assistant message and drops every entry sequenced after it — the
+jsonl now ends with that assistant message, which is the natural
+"ready for next user turn" state. `--resume` rehydrates and waits
+for input.
 
 If the clicked message is mid-stream (`isPartial`), the IPC handler
 interrupts and waits for the `result` boundary before reading the
-jsonl so the file is quiesced.
-
-**Why cut the triggering user prompt too.** Leaving an unanswered
-user prompt at the tail of the jsonl would have `--resume`
-auto-generate a fresh response on the next agent step — the user
-wouldn't get to type a new response. Cutting both keeps the
-"chat is now waiting on the user" invariant.
+jsonl so the file is quiesced. Whatever streamed in by that point
+is preserved.
 
 **System / hook-injected records** (non-turn jsonl rows like
 `attachment`, `queue-operation`) aren't user-targetable (no chat row
@@ -448,11 +444,10 @@ jsonl.
    IPC handler beside `:2469-2650`.
 5. Main: interrupt → await `result` → deny pendings → call into
    the manager.
-6. `JsonClaudeManager.rewindTo` walks back from the assistant entry
-   to its triggering user prompt, calls `truncateTranscriptAt`
-   (read jsonl, write a tmp of pre-cut lines, rename original aside
-   as `<sessionId>.jsonl.rewind-<ts>.bak`, rename tmp into place),
-   then `kill()` the subprocess.
+6. `JsonClaudeManager.rewindTo` calls `truncateTranscriptAt` with
+   `cutIdx = idx + 1` (read jsonl, write a tmp of pre-cut lines,
+   rename original aside as `<sessionId>.jsonl.rewind-<ts>.bak`,
+   rename tmp into place), then `kill()` the subprocess.
 7. Dispatch new `jsonClaude/entriesTruncated`
    `{ sessionId, fromEntryId }` (reducer slices `entries` to
    `[0..idx)`; identity on miss).
@@ -477,7 +472,9 @@ system card falls through to the browser default.
 inlines a positioned `<div>` (`:237-280`). Inline the same pattern;
 extract a `<ContextMenu>` only when a third caller appears. Menu
 item: destructive red, `RotateCcw` (already imported, `:24`), label
-"Rewind to here", muted subtitle. Disabled with explainer when:
+"Rewind to here", muted subtitle "drops everything after this".
+Disabled with explainer when:
+- the assistant row is the latest entry (nothing after to drop),
 - the assistant row is from a sub-agent (`parentToolUseId` set),
 - the entry sits before any `compact_boundary`,
 - the session has exited.
@@ -493,9 +490,9 @@ session cache bust). Order-of-magnitude difference; truncation wins.
 
 ### Edge cases + open questions
 
-- **Rewind on the very first assistant message** = clear chat
-  (drops it + the only user prompt). Truncate to zero turn-records,
-  keep init metadata, slice entries empty, session id intact.
+- **Rewind on the very first assistant message** = drop every
+  subsequent exchange but keep the opening user/assistant pair.
+  Disabled if that message is also the latest entry (nothing to drop).
 - **Rewind across a `compact_boundary`.** Truncating into pre-
   compaction history doesn't help — claude won't see those raw
   turns on resume (compaction replaced them). Phase 1 **disables
