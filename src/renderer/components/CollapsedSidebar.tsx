@@ -88,14 +88,6 @@ export function CollapsedSidebar({
 
         <div className="h-px w-6 bg-border my-1" />
 
-        <Tooltip label="Add repository" side="right">
-          <button
-            onClick={onAddRepo}
-            className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
-          >
-            <FolderOpen className="icon-sm" />
-          </button>
-        </Tooltip>
         <Tooltip label="Add worktree" action="newWorktree" side="right">
           <button
             onClick={onNewWorktree}
@@ -120,7 +112,7 @@ export function CollapsedSidebar({
               className="text-dim hover:text-fg hover:bg-surface rounded px-1 py-1 transition-colors cursor-pointer flex items-center gap-0.5"
               aria-label={`${activeCount} active worktrees`}
             >
-              <Activity size={12} />
+              <Activity className="icon-xs" />
               <span className="text-[10px] tabular-nums leading-none">{activeCount}</span>
             </button>
           </Tooltip>
@@ -132,7 +124,7 @@ export function CollapsedSidebar({
               className="text-warning hover:bg-surface rounded px-1 py-1 transition-colors cursor-pointer flex items-center gap-0.5"
               aria-label={`${needsAttentionCount} needs attention`}
             >
-              <ShieldAlert size={12} />
+              <ShieldAlert className="icon-xs" />
               <span className="text-[10px] tabular-nums leading-none">{needsAttentionCount}</span>
             </button>
           </Tooltip>
@@ -144,7 +136,7 @@ export function CollapsedSidebar({
               className="text-dim hover:text-fg hover:bg-surface rounded px-1 py-1 transition-colors cursor-pointer flex items-center gap-0.5"
               aria-label={`${reviewingCount} reviewing`}
             >
-              <HatGlasses size={12} />
+              <HatGlasses className="icon-xs" />
               <span className="text-[10px] tabular-nums leading-none">{reviewingCount}</span>
             </button>
           </Tooltip>
@@ -156,7 +148,7 @@ export function CollapsedSidebar({
               className="text-dim hover:text-fg hover:bg-surface rounded px-1 py-1 transition-colors cursor-pointer flex items-center gap-0.5"
               aria-label={`${openPRsCount} open PRs`}
             >
-              <GitPullRequest size={12} />
+              <GitPullRequest className="icon-xs" />
               <span className="text-[10px] tabular-nums leading-none">{openPRsCount}</span>
             </button>
           </Tooltip>
@@ -180,6 +172,14 @@ export function CollapsedSidebar({
             className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
           >
             <FilePlus className="icon-sm" />
+          </button>
+        </Tooltip>
+        <Tooltip label="Add repository" side="right">
+          <button
+            onClick={onAddRepo}
+            className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
+          >
+            <FolderOpen className="icon-sm" />
           </button>
         </Tooltip>
         <Tooltip label="Activity" side="right">

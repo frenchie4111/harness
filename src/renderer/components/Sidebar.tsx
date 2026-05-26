@@ -279,14 +279,6 @@ export function Sidebar({
         </Tooltip>
         <span className="text-xs font-medium text-dim">WORKTREES</span>
         <div className="ml-auto flex items-center gap-1">
-          <Tooltip label="Add repository" side="bottom">
-            <button
-              onClick={onAddRepo}
-              className="text-dim hover:text-fg hover:bg-surface rounded p-0.5 transition-colors cursor-pointer"
-            >
-              <FolderOpen className="icon-xs" />
-            </button>
-          </Tooltip>
           <Tooltip label="Clean up old worktrees" side="bottom">
             <button
               onClick={onOpenCleanup}
@@ -531,6 +523,14 @@ export function Sidebar({
             className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
           >
             <FilePlus className="icon-sm" />
+          </button>
+        </Tooltip>
+        <Tooltip label="Add repository" side="top">
+          <button
+            onClick={onAddRepo}
+            className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
+          >
+            <FolderOpen className="icon-sm" />
           </button>
         </Tooltip>
         <Tooltip label="Activity" side="top">
