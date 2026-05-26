@@ -11,6 +11,7 @@ import { ChangedFilesPanel } from './ChangedFilesPanel'
 import { AllFilesPanel } from './AllFilesPanel'
 import { CostPanel } from './CostPanel'
 import { JsonClaudeTodosPanel } from './JsonClaudeTodosPanel'
+import { ScratchpadPanel } from './ScratchpadPanel'
 import { RightColumnToolbar } from './RightColumnToolbar'
 import { useBackend } from '../backend'
 
@@ -146,6 +147,8 @@ export function RightColumn({
         )
       case 'cost':
         return <CostPanel key="cost" worktreePath={activeWorktreeId} />
+      case 'scratchpad':
+        return <ScratchpadPanel key="scratchpad" worktreePath={activeWorktreeId} />
     }
   }
 

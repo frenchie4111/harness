@@ -597,6 +597,16 @@ export function useSnooze() {
   return useAppState((s) => s.snooze)
 }
 
+/** Scratchpad text for one worktree. Per-id selector — only re-renders
+ *  when this worktree's text changes (other worktrees' edits don't fan
+ *  out). Returns '' for unknown / null paths so the consumer doesn't
+ *  need a null check. */
+export function useScratchpad(worktreePath: string | null): string {
+  return useAppState((s) =>
+    worktreePath ? s.scratchpad.byWorktreePath[worktreePath] ?? '' : ''
+  )
+}
+
 export function useBrowser() {
   return useAppState((s) => s.browser)
 }

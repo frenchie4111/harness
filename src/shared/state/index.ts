@@ -90,6 +90,12 @@ import {
   type AnnouncementsEvent,
   type AnnouncementsState
 } from './announcements'
+import {
+  initialScratchpad,
+  scratchpadReducer,
+  type ScratchpadEvent,
+  type ScratchpadState
+} from './scratchpad'
 
 export type { SettingsState, SettingsEvent }
 export type { UpdaterState, UpdaterEvent, UpdaterStatus } from './updater'
@@ -162,6 +168,7 @@ export type {
   AnnouncementsEvent,
   Announcement
 } from './announcements'
+export type { ScratchpadState, ScratchpadEvent } from './scratchpad'
 
 export interface AppState {
   settings: SettingsState
@@ -177,6 +184,7 @@ export interface AppState {
   jsonClaude: JsonClaudeState
   snooze: SnoozeState
   announcements: AnnouncementsState
+  scratchpad: ScratchpadState
 }
 
 export type StateEvent =
@@ -193,6 +201,7 @@ export type StateEvent =
   | JsonClaudeEvent
   | SnoozeEvent
   | AnnouncementsEvent
+  | ScratchpadEvent
 
 export const initialState: AppState = {
   settings: initialSettings,
@@ -207,7 +216,8 @@ export const initialState: AppState = {
   browser: initialBrowser,
   jsonClaude: initialJsonClaude,
   snooze: initialSnooze,
-  announcements: initialAnnouncements
+  announcements: initialAnnouncements,
+  scratchpad: initialScratchpad
 }
 
 export function rootReducer(state: AppState, event: StateEvent): AppState {
@@ -274,6 +284,12 @@ export function rootReducer(state: AppState, event: StateEvent): AppState {
       announcements: announcementsReducer(state.announcements, event as AnnouncementsEvent)
     }
   }
+  if (event.type.startsWith('scratchpad/')) {
+    return {
+      ...state,
+      scratchpad: scratchpadReducer(state.scratchpad, event as ScratchpadEvent)
+    }
+  }
   return state
 }
 
@@ -317,7 +333,8 @@ export function mergeWireSnapshot(state: WireSnapshotState): AppState {
     browser: { ...initialState.browser, ...state.browser },
     jsonClaude: { ...initialState.jsonClaude, ...state.jsonClaude },
     snooze: { ...initialState.snooze, ...state.snooze },
-    announcements: { ...initialState.announcements, ...state.announcements }
+    announcements: { ...initialState.announcements, ...state.announcements },
+    scratchpad: { ...initialState.scratchpad, ...state.scratchpad }
   }
 }
 

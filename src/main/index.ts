@@ -967,6 +967,38 @@ store.subscribe((event) => {
   }
 })
 
+// Same idea for scratchpad notes: drop slice entries for removed
+// worktrees, and prune them from the on-disk config so the file
+// doesn't accumulate orphan paths.
+store.subscribe((event) => {
+  if (event.type !== 'worktrees/listChanged') return
+  const live = new Set(store.getSnapshot().state.worktrees.list.map((w) => w.path))
+  const byPath = store.getSnapshot().state.scratchpad.byWorktreePath
+  let prunedDisk = false
+  for (const path of Object.keys(byPath)) {
+    if (live.has(path)) continue
+    store.dispatch({ type: 'scratchpad/worktreeRemoved', payload: path })
+    if (config.scratchpadNotes) {
+      for (const repoRoot of Object.keys(config.scratchpadNotes)) {
+        const repoMap = config.scratchpadNotes[repoRoot]
+        if (repoMap && path in repoMap) {
+          delete repoMap[path]
+          if (Object.keys(repoMap).length === 0) {
+            delete config.scratchpadNotes[repoRoot]
+          }
+          prunedDisk = true
+        }
+      }
+    }
+  }
+  if (prunedDisk) {
+    if (config.scratchpadNotes && Object.keys(config.scratchpadNotes).length === 0) {
+      delete config.scratchpadNotes
+    }
+    saveConfig(config)
+  }
+})
+
 const snoozeTimer = new SnoozeTimer(store)
 snoozeTimer.start()
 
@@ -2924,6 +2956,44 @@ function registerIpcHandlers(): void {
     store.dispatch({ type: 'snooze/clear', payload: path })
     return true
   })
+
+  transport.onRequest(
+    'scratchpad:setText',
+    (_ctx, worktreePath: string, text: string) => {
+      if (typeof worktreePath !== 'string' || !worktreePath) return false
+      if (typeof text !== 'string') return false
+      const wt = store
+        .getSnapshot()
+        .state.worktrees.list.find((w) => w.path === worktreePath)
+      const repoRoot = wt?.repoRoot
+      if (repoRoot) {
+        const notes = config.scratchpadNotes || {}
+        const repoMap = notes[repoRoot] ? { ...notes[repoRoot] } : {}
+        if (text === '') {
+          delete repoMap[worktreePath]
+        } else {
+          repoMap[worktreePath] = text
+        }
+        const nextNotes = { ...notes }
+        if (Object.keys(repoMap).length === 0) {
+          delete nextNotes[repoRoot]
+        } else {
+          nextNotes[repoRoot] = repoMap
+        }
+        if (Object.keys(nextNotes).length === 0) {
+          delete config.scratchpadNotes
+        } else {
+          config.scratchpadNotes = nextNotes
+        }
+        saveConfig(config)
+      }
+      store.dispatch({
+        type: 'scratchpad/textChanged',
+        payload: { worktreePath, text }
+      })
+      return true
+    }
+  )
 
   transport.onRequest('config:setSnoozeDefaultDays', (_ctx, days: number) => {
     const n = Number(days)
