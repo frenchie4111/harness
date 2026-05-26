@@ -1,19 +1,28 @@
 name: Build macOS
 
-# Dispatch-only smoke test for the macOS build. The canonical
-# tag-driven release runs the same mac build inside
-# .github/workflows/release.yml — this file lets us validate the
-# full sign + notarize chain on a branch (via the Actions UI's
-# "Run workflow" button) without cutting a tag or creating a release.
+# Smoke test for the macOS build. The canonical tag-driven release
+# runs the same mac build inside .github/workflows/release.yml — this
+# file lets us validate the full sign + notarize chain on a branch
+# without cutting a tag or creating a release.
 #
 # The output dmg / zip / blockmap / latest-mac.yml are uploaded as a
 # workflow artifact (downloadable from the run page for ~90 days) so
 # you can install + Gatekeeper-check the dmg before doing a real
 # release.
 #
+# Triggers:
+#   - push to ci/mac-release-workflow: TEMPORARY auto-trigger so we
+#     can iterate on this branch before it merges to main. Remove
+#     before merging — once this workflow file is on main,
+#     workflow_dispatch alone is enough.
+#   - workflow_dispatch: manual run from the Actions UI; only works
+#     once the workflow file is on the default branch.
+#
 # Requires the same secrets as release.yml — see that file's header.
 
 on:
+  push:
+    branches: [ci/mac-release-workflow]
   workflow_dispatch:
 
 jobs:
