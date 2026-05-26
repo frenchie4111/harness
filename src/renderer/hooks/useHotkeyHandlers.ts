@@ -28,6 +28,7 @@ interface UseHotkeyHandlersArgs {
   hotkeyOverrides: Record<string, string> | undefined
   setSidebarVisible: React.Dispatch<React.SetStateAction<boolean>>
   setRightColumnHidden: React.Dispatch<React.SetStateAction<boolean>>
+  setSingleScreenMode: React.Dispatch<React.SetStateAction<boolean>>
   setShowNewWorktree: React.Dispatch<React.SetStateAction<boolean>>
   setShowCommandCenter: React.Dispatch<React.SetStateAction<boolean>>
   setShowCommandPalette: React.Dispatch<React.SetStateAction<boolean>>
@@ -72,6 +73,7 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
     hotkeyOverrides,
     setSidebarVisible,
     setRightColumnHidden,
+    setSingleScreenMode,
     setShowNewWorktree,
     setShowCommandCenter,
     setShowCommandPalette,
@@ -270,6 +272,7 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       toggleSidebar: () => setSidebarVisible((v) => !v),
       toggleRightColumn: () => setRightColumnHidden((v) => !v),
       openSettings: () => setShowSettings((v) => !v),
+      toggleSingleScreen: () => setSingleScreenMode((v) => !v),
       openPR: () => {
         if (!activeWorktreeId) return
         const pr = prStatuses[activeWorktreeId]
@@ -342,6 +345,7 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       handleSplitPane,
       setSidebarVisible,
       setRightColumnHidden,
+      setSingleScreenMode,
       setShowNewWorktree,
       setShowCommandCenter,
       setShowCommandPalette,

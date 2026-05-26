@@ -414,6 +414,8 @@ export function buildBackend(
       onLocalSignal('app:openSettings', () => callback()),
     onTogglePerfMonitor: (callback: () => void) =>
       onLocalSignal('app:togglePerfMonitor', () => callback()),
+    onToggleSingleScreen: (callback: () => void) =>
+      onLocalSignal('app:toggleSingleScreen', () => callback()),
     onOpenKeyboardShortcuts: (callback: () => void) =>
       onLocalSignal('app:openKeyboardShortcuts', () => callback()),
     onCloseFocusedTab: (callback: () => void) =>

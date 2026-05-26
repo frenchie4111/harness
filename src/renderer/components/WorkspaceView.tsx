@@ -50,8 +50,17 @@ interface WorkspaceViewProps {
   onReorderTabs: (worktreePath: string, paneId: string, fromId: string, toId: string) => void
   onMoveTabToPane: (worktreePath: string, tabId: string, toPaneId: string, toIndex?: number) => void
   onSendToAgent?: (worktreePath: string, text: string) => void
-  rightColumnHidden: boolean
-  onShowRightColumn: () => void
+  /** Leading padding for the leftmost leaf's tab bar so it clears the macOS
+   *  traffic lights when no sidebar sits to the left of the workspace. */
+  topBarLeadingPx?: number
+  /** Negative-margin extension on the top-left leaf's tab bar so the tab
+   *  strip visually continues across the gap above the left sidebar (which
+   *  is offset 40px from the top so the tab bar can claim that row). */
+  topBarLeadingExtendPx?: number
+  /** Negative-margin extension on the top-right leaf's tab bar so the tab
+   *  strip visually continues across the gap above the right column (which
+   *  is offset 40px from the top so the tab bar can claim that row). */
+  topBarTrailingExtendPx?: number
   crashedTabIds?: ReadonlySet<string>
 }
 
@@ -130,9 +139,11 @@ function SplitRenderer({
   nameAgentSessions,
   leafCount,
   isFirstLeaf,
+  topLeftLeafId,
   topRightLeafId,
-  showExpandRightColumn,
-  onShowRightColumn,
+  topBarLeadingPx,
+  topBarLeadingExtendPx,
+  topBarTrailingExtendPx,
   registerSlot,
   onSelectTab,
   onAddTab,
@@ -156,9 +167,11 @@ function SplitRenderer({
   nameAgentSessions: boolean
   leafCount: number
   isFirstLeaf: { value: boolean }
+  topLeftLeafId: string
   topRightLeafId: string
-  showExpandRightColumn: boolean
-  onShowRightColumn: () => void
+  topBarLeadingPx: number
+  topBarLeadingExtendPx: number
+  topBarTrailingExtendPx: number
   registerSlot: (paneId: string, el: HTMLDivElement | null) => void
   onSelectTab: (tabId: string, paneId: string) => void
   onAddTab: (paneId: string) => void
@@ -201,8 +214,10 @@ function SplitRenderer({
           onConvertTabType={onConvertTabType}
           onSleepTab={onSleepTab}
           onCloseTab={onCloseTab}
-          showExpandRightColumn={showExpandRightColumn && node.id === topRightLeafId}
-          onShowRightColumn={onShowRightColumn}
+          topBarLeadingPx={node.id === topLeftLeafId ? topBarLeadingPx : 0}
+          topBarLeadingExtendPx={node.id === topLeftLeafId ? topBarLeadingExtendPx : 0}
+          topBarTrailingExtendPx={node.id === topRightLeafId ? topBarTrailingExtendPx : 0}
+          showAppTitle={node.id === topLeftLeafId}
         />
       </div>
     )
@@ -233,9 +248,11 @@ function SplitRenderer({
           nameAgentSessions={nameAgentSessions}
           leafCount={leafCount}
           isFirstLeaf={isFirstLeaf}
+          topLeftLeafId={topLeftLeafId}
           topRightLeafId={topRightLeafId}
-          showExpandRightColumn={showExpandRightColumn}
-          onShowRightColumn={onShowRightColumn}
+          topBarLeadingPx={topBarLeadingPx}
+          topBarLeadingExtendPx={topBarLeadingExtendPx}
+          topBarTrailingExtendPx={topBarTrailingExtendPx}
           registerSlot={registerSlot}
           onSelectTab={onSelectTab}
           onAddTab={onAddTab}
@@ -271,9 +288,11 @@ function SplitRenderer({
           nameAgentSessions={nameAgentSessions}
           leafCount={leafCount}
           isFirstLeaf={isFirstLeaf}
+          topLeftLeafId={topLeftLeafId}
           topRightLeafId={topRightLeafId}
-          showExpandRightColumn={showExpandRightColumn}
-          onShowRightColumn={onShowRightColumn}
+          topBarLeadingPx={topBarLeadingPx}
+          topBarLeadingExtendPx={topBarLeadingExtendPx}
+          topBarTrailingExtendPx={topBarTrailingExtendPx}
           registerSlot={registerSlot}
           onSelectTab={onSelectTab}
           onAddTab={onAddTab}
@@ -316,8 +335,9 @@ export function WorkspaceView({
   onSendToAgent,
   repoLabel,
   branch,
-  rightColumnHidden,
-  onShowRightColumn,
+  topBarLeadingPx = 0,
+  topBarLeadingExtendPx = 0,
+  topBarTrailingExtendPx = 0,
   crashedTabIds
 }: WorkspaceViewProps): JSX.Element {
   const backend = useBackend()
@@ -461,6 +481,7 @@ export function WorkspaceView({
   )
 
   const isFirstLeaf = { value: true }
+  const topLeftLeafId = findTopLeftLeaf(paneTree).id
   const topRightLeafId = findTopRightLeaf(paneTree).id
 
   return (
@@ -482,9 +503,11 @@ export function WorkspaceView({
           nameAgentSessions={nameAgentSessions}
           leafCount={leaves.length}
           isFirstLeaf={isFirstLeaf}
+          topLeftLeafId={topLeftLeafId}
           topRightLeafId={topRightLeafId}
-          showExpandRightColumn={rightColumnHidden}
-          onShowRightColumn={onShowRightColumn}
+          topBarLeadingPx={topBarLeadingPx}
+          topBarLeadingExtendPx={topBarLeadingExtendPx}
+          topBarTrailingExtendPx={topBarTrailingExtendPx}
           registerSlot={attachSlot}
           onSelectTab={(tabId, paneId) => onSelectTab(worktreePath, paneId, tabId)}
           onAddTab={(paneId) => onAddTab(worktreePath, paneId)}
@@ -590,6 +613,11 @@ export function WorkspaceView({
       )}
     </DndContext>
   )
+}
+
+function findTopLeftLeaf(node: PaneNode): PaneLeaf {
+  if (node.type === 'leaf') return node
+  return findTopLeftLeaf(node.children[0])
 }
 
 function findTopRightLeaf(node: PaneNode): PaneLeaf {

@@ -1,9 +1,8 @@
 import { useState, useCallback, useMemo } from 'react'
-import { ChevronDown, ChevronRight, Plus, RefreshCw, FolderOpen, Loader2, Settings as SettingsIcon, Sparkles, BarChart3, Trash2, LayoutGrid, X, Layers, Rows3, AlertCircle, CircleHelp, MessageSquare } from 'lucide-react'
+import { ChevronDown, ChevronRight, Plus, FolderOpen, Loader2, Settings as SettingsIcon, Sparkles, BarChart3, Trash2, LayoutGrid, X, Layers, Rows3, AlertCircle, Keyboard, MessageSquare, PanelLeftClose, FilePlus, CalendarDays, RefreshCw } from 'lucide-react'
 import { openReportIssue } from './ReportIssueScreen'
 import { Tooltip } from './Tooltip'
 import { HotkeyBadge } from './HotkeyBadge'
-import { useMetaHeld } from '../hooks/useMetaHeld'
 import type { Worktree, PtyStatus, PendingTool, PRStatus, PendingWorktree, PendingDeletion } from '../types'
 import type { SnoozeEntry } from '../../shared/state'
 import type { GroupKey } from '../worktree-sort'
@@ -35,7 +34,7 @@ interface SidebarProps {
   agentCount: number
   onSelectWorktree: (path: string) => void
   onDismissPendingWorktree: (id: string) => void
-  onNewWorktree: () => void
+  onNewWorktree: (repoRoot?: string) => void
   onContinueWorktree: (worktreePath: string, newBranchName: string) => Promise<void>
   onDeleteWorktree: (path: string) => Promise<void>
   onRefresh: () => void
@@ -48,7 +47,8 @@ interface SidebarProps {
   onOpenActivity: () => void
   onOpenCleanup: () => void
   onOpenCommandCenter: () => void
-  commandCenterActive: boolean
+  onOpenNewProject: () => void
+  onOpenMyWeek: () => void
   width: number
   collapsedGroups: Record<string, boolean>
   onToggleGroup: (scope: string, key: GroupKey) => void
@@ -57,6 +57,7 @@ interface SidebarProps {
   onToggleRepo: (repoRoot: string) => void
   unifiedRepos: boolean
   onToggleUnifiedRepos: () => void
+  onCollapseSidebar: () => void
 }
 
 export function Sidebar({
@@ -90,7 +91,8 @@ export function Sidebar({
   onOpenActivity,
   onOpenCleanup,
   onOpenCommandCenter,
-  commandCenterActive,
+  onOpenNewProject,
+  onOpenMyWeek,
   width,
   collapsedGroups: _collapsedGroups,
   onToggleGroup,
@@ -98,9 +100,9 @@ export function Sidebar({
   collapsedRepos,
   onToggleRepo,
   unifiedRepos,
-  onToggleUnifiedRepos
+  onToggleUnifiedRepos,
+  onCollapseSidebar
 }: SidebarProps): JSX.Element {
-  const metaHeld = useMetaHeld()
   const backend = useBackend()
   const deletingPaths = useMemo(() => {
     const s = new Set<string>()
@@ -263,62 +265,70 @@ export function Sidebar({
           </linearGradient>
         </defs>
       </svg>
-      {/* Title bar drag region with app name — vertically aligned with traffic lights at y:12.
-          Pixel-locked (left, top, font-size) because the traffic lights are
-          native macOS chrome that doesn't scale with uiScale — letting the
-          title shrink along with the rem grid causes it to overlap the
-          traffic lights at the smaller rungs. */}
-      <div className="drag-region h-10 relative shrink-0">
-        <span className="absolute left-[80px] right-2 top-[11px] text-[12px] font-semibold whitespace-nowrap overflow-hidden text-ellipsis">
-          <span className="gradient-text">Harness</span>
-          {import.meta.env.DEV && __HARNESS_DEV_BRANCH__ && (
-            <span className="text-faint font-normal ml-1">({__HARNESS_DEV_BRANCH__})</span>
-          )}
-        </span>
-      </div>
-
-      {/* Command Center entry */}
-      <div className="px-2 pt-1 pb-1 shrink-0">
-        <button
-          onClick={onOpenCommandCenter}
-          className={`w-full flex items-center gap-2 px-2 py-1.5 rounded transition-colors cursor-pointer ${
-            commandCenterActive
-              ? 'bg-surface text-fg-bright'
-              : 'text-muted hover:bg-panel-raised hover:text-fg'
-          }`}
-        >
-          <LayoutGrid className={`icon-sm ${commandCenterActive ? 'text-accent' : 'text-dim'}`} />
-          <span className="text-sm font-medium">Command Center</span>
-          {metaHeld && (
-            <HotkeyBadge action="toggleCommandCenter" variant="strong" className="ml-auto" />
-          )}
-        </button>
-      </div>
 
       {/* Worktrees header */}
       <div className="px-3 py-1.5 flex items-center gap-2 shrink-0">
+        <Tooltip label="Collapse sidebar" action="toggleSidebar" side="bottom">
+          <button
+            onClick={onCollapseSidebar}
+            className="text-dim hover:text-fg hover:bg-surface rounded p-0.5 transition-colors cursor-pointer"
+            aria-label="Collapse sidebar"
+          >
+            <PanelLeftClose className="icon-xs" />
+          </button>
+        </Tooltip>
         <span className="text-xs font-medium text-dim">WORKTREES</span>
-        {prLoading && <Loader2 className="icon-2xs text-faint animate-spin" />}
-        {repoRoots.length > 1 && (
+        <div className="ml-auto flex items-center gap-1">
+          <Tooltip label="Add repository" side="bottom">
+            <button
+              onClick={onAddRepo}
+              className="text-dim hover:text-fg hover:bg-surface rounded p-0.5 transition-colors cursor-pointer"
+            >
+              <FolderOpen className="icon-xs" />
+            </button>
+          </Tooltip>
+          <Tooltip label="Clean up old worktrees" side="bottom">
+            <button
+              onClick={onOpenCleanup}
+              className="text-dim hover:text-fg hover:bg-surface rounded p-0.5 transition-colors cursor-pointer"
+            >
+              <Trash2 className="icon-xs" />
+            </button>
+          </Tooltip>
           <Tooltip
-            label={unifiedRepos ? 'Split by repo' : 'Merge repos into one list'}
+            label={
+              repoRoots.length <= 1
+                ? 'Merge repos into one list (add another repo to enable)'
+                : unifiedRepos
+                  ? 'Split by repo'
+                  : 'Merge repos into one list'
+            }
             side="bottom"
           >
             <button
               onClick={onToggleUnifiedRepos}
-              className="ml-auto text-dim hover:text-fg hover:bg-surface rounded p-0.5 transition-colors cursor-pointer"
+              disabled={repoRoots.length <= 1}
+              className="text-dim hover:text-fg hover:bg-surface rounded p-0.5 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-dim"
             >
               {unifiedRepos ? <Rows3 className="icon-xs" /> : <Layers className="icon-xs" />}
             </button>
           </Tooltip>
-        )}
+          <Tooltip label="Refresh worktrees" action="refreshWorktrees" side="bottom">
+            <button
+              onClick={onRefresh}
+              className="text-dim hover:text-fg hover:bg-surface rounded p-0.5 transition-colors cursor-pointer"
+            >
+              <RefreshCw className={`icon-xs ${prLoading ? 'animate-spin' : ''}`} />
+            </button>
+          </Tooltip>
+        </div>
       </div>
 
       {/* Worktree list grouped by PR status */}
       <div className="flex-1 overflow-y-auto py-1">
         {agentCount === 0 && (
           <button
-            onClick={onNewWorktree}
+            onClick={() => onNewWorktree()}
             className="group relative mx-2 mb-2 mt-1 w-[calc(100%-1rem)] text-left bg-panel-raised border border-border-strong hover:border-accent rounded-lg overflow-hidden transition-colors cursor-pointer"
           >
             <div className="brand-gradient-bg h-0.5" />
@@ -345,6 +355,7 @@ export function Sidebar({
           const repoCollapsed = collapsedRepos[repoRoot] === true
           const repoName = repoRoot === '__unified__' ? 'All repos' : repoRoot.split('/').pop() || repoRoot
           const scope = repoRoot
+          const repoWorktreeCount = groups.reduce((n, g) => n + g.worktrees.length, 0)
           const groupsBody = groups.map((group) => (
           <div key={group.key}>
             <button
@@ -447,19 +458,41 @@ export function Sidebar({
                     ? <ChevronRight className="icon-xs shrink-0" />
                     : <ChevronDown className="icon-xs shrink-0" />}
                   <span className={`truncate ${repoNameColor(repoName)}`}>{repoName}</span>
-                  <span
-                    role="button"
-                    className="ml-auto opacity-0 group-hover:opacity-100 text-faint hover:text-danger"
-                    title={`Remove ${repoName} from workspace`}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      if (window.confirm(`Remove ${repoName} from this window? Worktrees stay on disk.`)) {
-                        void onRemoveRepo(repoRoot)
-                      }
-                    }}
-                  >
-                    <X className="icon-xs" />
+                  <span className="ml-auto relative flex items-center">
+                    <span className="text-faint normal-case group-hover:opacity-0 transition-opacity">
+                      {repoWorktreeCount}
+                    </span>
+                    <span
+                      role="button"
+                      className="absolute inset-0 flex items-center justify-end opacity-0 group-hover:opacity-100 text-faint hover:text-danger transition-opacity"
+                      title={`Remove ${repoName} from workspace`}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        if (window.confirm(`Remove ${repoName} from this window? Worktrees stay on disk.`)) {
+                          void onRemoveRepo(repoRoot)
+                        }
+                      }}
+                    >
+                      <X className="icon-xs" />
+                    </span>
                   </span>
+                </button>
+              )}
+              {!repoCollapsed && agentCount > 0 && (
+                <button
+                  onClick={() => onNewWorktree(repoRoot === '__unified__' ? undefined : repoRoot)}
+                  className="group relative w-full flex items-center gap-2 px-3 py-1.5 text-dim hover:bg-panel-raised transition-colors cursor-pointer overflow-hidden"
+                >
+                  <span className="absolute left-0 top-0 bottom-0 w-0.5 brand-gradient-flow-bar opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <Plus
+                    className="icon-sm shrink-0 text-dim group-hover:[stroke:url(#harness-add-gradient)] transition-colors"
+                  />
+                  <span className="text-sm font-medium brand-gradient-flow-text-hover">
+                    Add worktree
+                  </span>
+                  {(repoRoot === '__unified__' || !showRepoHeaders) && (
+                    <HotkeyBadge action="newWorktree" className="ml-auto" />
+                  )}
                 </button>
               )}
               {!repoCollapsed && pendingBody}
@@ -472,18 +505,6 @@ export function Sidebar({
             No worktrees found
           </div>
         )}
-        {agentCount > 0 && (
-          <button
-            onClick={onNewWorktree}
-            className="group relative w-full flex items-center gap-2 px-3 py-2 mt-1 text-dim hover:bg-panel-raised transition-colors cursor-pointer overflow-hidden"
-          >
-            <span className="absolute left-0 top-0 bottom-0 w-0.5 brand-gradient-flow-bar opacity-0 group-hover:opacity-100 transition-opacity" />
-            <Plus
-              className="icon-sm shrink-0 text-dim group-hover:[stroke:url(#harness-add-gradient)] transition-colors" />
-            <span className="text-sm font-medium brand-gradient-flow-text-hover">Add worktree</span>
-            <HotkeyBadge action="newWorktree" className="ml-auto" />
-          </button>
-        )}
       </div>
 
       {/* Backend chip strip — multi-backend UX (Tier 1). Auto-hides
@@ -493,30 +514,23 @@ export function Sidebar({
           tier-1-multi-backend-ux.md §A. */}
       <BackendChipStrip onAddBackend={onOpenAddBackend} />
 
-      {/* Bottom actions */}
-      <div className="border-t border-border p-2 flex justify-center gap-1 shrink-0">
-        <Tooltip label="Refresh worktrees" action="refreshWorktrees" side="top">
+      {/* Bottom actions — overlay launchers (worktree-management buttons
+          live in the WORKTREES header now). */}
+      <div className="border-t border-border p-2 flex justify-center items-center gap-1 shrink-0 flex-wrap">
+        <Tooltip label="Command Center" action="toggleCommandCenter" side="top">
           <button
-            onClick={onRefresh}
+            onClick={onOpenCommandCenter}
             className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
           >
-            <RefreshCw className="icon-sm" />
+            <LayoutGrid className="icon-sm" />
           </button>
         </Tooltip>
-        <Tooltip label="Add repository" side="top">
+        <Tooltip label="New project" side="top">
           <button
-            onClick={onAddRepo}
+            onClick={onOpenNewProject}
             className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
           >
-            <FolderOpen className="icon-sm" />
-          </button>
-        </Tooltip>
-        <Tooltip label="Clean up old worktrees" side="top">
-          <button
-            onClick={onOpenCleanup}
-            className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
-          >
-            <Trash2 className="icon-sm" />
+            <FilePlus className="icon-sm" />
           </button>
         </Tooltip>
         <Tooltip label="Activity" side="top">
@@ -527,12 +541,20 @@ export function Sidebar({
             <BarChart3 className="icon-sm" />
           </button>
         </Tooltip>
+        <Tooltip label="My week" side="top">
+          <button
+            onClick={onOpenMyWeek}
+            className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
+          >
+            <CalendarDays className="icon-sm" />
+          </button>
+        </Tooltip>
         <Tooltip label="Keyboard shortcuts" action="hotkeyCheatsheet" side="top">
           <button
             onClick={onOpenHotkeyCheatsheet}
             className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
           >
-            <CircleHelp className="icon-sm" />
+            <Keyboard className="icon-sm" />
           </button>
         </Tooltip>
         <Tooltip label="Report an issue / request a feature / submit a suggestion" side="top">
