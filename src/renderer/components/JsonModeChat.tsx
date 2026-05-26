@@ -1722,7 +1722,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
             <div className="flex flex-col">
               <span>Rewind to here</span>
               <span className="text-[10px] text-muted">
-                {rewindMenu.disabledReason ?? 'drops this message + everything after'}
+                {rewindMenu.disabledReason ?? 'drops this exchange'}
               </span>
             </div>
           </button>
