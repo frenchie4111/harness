@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect } from 'react'
-import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2, LifeBuoy, Bug, Lightbulb, FlaskConical, Copy, CopyCheck, ExternalLink, CalendarDays, FileText, FolderOpen, Search } from 'lucide-react'
+import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2, LifeBuoy, Bug, Lightbulb, FlaskConical, Copy, CopyCheck, ExternalLink, CalendarDays, FileText, FolderOpen, Search, ChevronDown, ChevronRight } from 'lucide-react'
 import { openReportIssue } from './ReportIssueScreen'
 import { HARNESS_ISSUES_URL, HARNESS_RELEASES_URL, harnessReleaseNotesUrl } from '../../shared/constants'
 import { useSettings, useUpdater, useRepoConfigs, useHooks } from '../store'
 import { useBackend } from '../backend'
 import type { UpdaterStatus, MergeStrategy, RepoConfig } from '../types'
-import { DEFAULT_HOTKEYS, ACTION_LABELS, bindingToString, eventToBinding, formatBindingGlyphs, resolveHotkeys, type Action, type HotkeyBinding } from '../hotkeys'
+import { DEFAULT_HOTKEYS, ACTION_LABELS, ACTION_CATEGORIES, bindingToString, eventToBinding, formatBindingGlyphs, resolveHotkeys, type Action, type HotkeyBinding } from '../hotkeys'
 import { Tooltip } from './Tooltip'
 import { AGENT_REGISTRY, agentDisplayName, CLAUDE_MODELS, CODEX_MODELS } from '../../shared/agent-registry'
 import { AgentIcon } from './AgentIcon'
@@ -30,6 +30,14 @@ type SubSectionId =
   | 'agent-general'
   | 'agent-claude'
   | 'agent-codex'
+  | 'hotkeys-navigation'
+  | 'hotkeys-backends'
+  | 'hotkeys-worktree-mgmt'
+  | 'hotkeys-tabs'
+  | 'hotkeys-layout'
+  | 'hotkeys-commands'
+  | 'hotkeys-overlays'
+  | 'hotkeys-external'
   | 'experimental-browser-control'
   | 'experimental-auto-approve'
   | 'experimental-web-mobile'
@@ -60,7 +68,16 @@ const SECTIONS: Section[] = [
   { id: 'worktrees', label: 'Worktrees', icon: GitBranch },
   { id: 'editor', label: 'Editor', icon: Code2 },
   { id: 'github', label: 'GitHub', icon: GitPullRequest },
-  { id: 'hotkeys', label: 'Hotkeys', icon: Keyboard },
+  { id: 'hotkeys', label: 'Hotkeys', icon: Keyboard, children: [
+    { id: 'hotkeys-navigation', label: 'Worktree navigation' },
+    { id: 'hotkeys-backends', label: 'Backends' },
+    { id: 'hotkeys-worktree-mgmt', label: 'Worktree management' },
+    { id: 'hotkeys-tabs', label: 'Tabs & panes' },
+    { id: 'hotkeys-layout', label: 'Window layout' },
+    { id: 'hotkeys-commands', label: 'Search & commands' },
+    { id: 'hotkeys-overlays', label: 'App overlays' },
+    { id: 'hotkeys-external', label: 'External actions' }
+  ]},
   { id: 'updates', label: 'Updates', icon: DownloadCloud },
   { id: 'support', label: 'Support', icon: LifeBuoy },
   { id: 'experimental', label: 'Experimental', icon: FlaskConical, children: [
@@ -129,6 +146,14 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     'agent-general': null,
     'agent-claude': null,
     'agent-codex': null,
+    'hotkeys-navigation': null,
+    'hotkeys-backends': null,
+    'hotkeys-worktree-mgmt': null,
+    'hotkeys-tabs': null,
+    'hotkeys-layout': null,
+    'hotkeys-commands': null,
+    'hotkeys-overlays': null,
+    'hotkeys-external': null,
     'experimental-browser-control': null,
     'experimental-auto-approve': null,
     'experimental-web-mobile': null
@@ -323,6 +348,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
   const teardownScript = worktreeScripts.teardown
 
   const [rebindingAction, setRebindingAction] = useState<Action | null>(null)
+  const [expandedFamilies, setExpandedFamilies] = useState<Set<string>>(new Set())
   const [defaultClaudeCommand, setDefaultClaudeCommand] = useState<string>('')
   const [claudeSaveResult, setClaudeSaveResult] = useState<{ ok: boolean; message: string } | null>(null)
   // Alias settings.hasGithubToken to the legacy local name so existing JSX
@@ -2516,14 +2542,13 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 Click a shortcut to rebind it. Press <kbd className="bg-panel-raised px-1 rounded text-[10px]">Esc</kbd> to cancel.
               </p>
 
-              <div className="bg-panel-raised border border-border rounded-lg divide-y divide-border">
-                {(Object.keys(DEFAULT_HOTKEYS) as Action[]).map((action) => {
+              {(() => {
+                const renderRow = (action: Action, indent = false): JSX.Element => {
                   const binding: HotkeyBinding = resolvedHotkeys[action]
                   const isRebinding = rebindingAction === action
                   const overridden = isOverridden(action)
-
                   return (
-                    <div key={action} className="flex items-center justify-between px-3 py-2">
+                    <div key={action} className={`flex items-center justify-between px-3 py-2 ${indent ? 'pl-9' : ''}`}>
                       <span className="text-sm text-fg">{ACTION_LABELS[action]}</span>
                       <div className="flex items-center gap-2">
                         {overridden && (
@@ -2549,8 +2574,57 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                       </div>
                     </div>
                   )
-                })}
-              </div>
+                }
+
+                return (
+                  <div className="space-y-6">
+                    {ACTION_CATEGORIES.map((cat) => {
+                      const subId = `hotkeys-${cat.id}` as SubSectionId
+                      return (
+                        <div
+                          key={cat.id}
+                          ref={(el) => { subSectionRefs.current[subId] = el }}
+                          id={subId}
+                        >
+                          <h3 className="text-xs font-medium uppercase tracking-wide text-dim mb-2">{cat.label}</h3>
+                          <div className="bg-panel-raised border border-border rounded-lg divide-y divide-border">
+                            {cat.actions.map((a) => renderRow(a))}
+                            {cat.families?.map((family) => {
+                              const familyKey = `${cat.id}:${family.label}`
+                              const expanded = expandedFamilies.has(familyKey)
+                              return (
+                                <div key={familyKey}>
+                                  <button
+                                    onClick={() => {
+                                      setExpandedFamilies((prev) => {
+                                        const next = new Set(prev)
+                                        if (next.has(familyKey)) next.delete(familyKey)
+                                        else next.add(familyKey)
+                                        return next
+                                      })
+                                    }}
+                                    className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-panel cursor-pointer"
+                                  >
+                                    <span className="flex items-center gap-1.5 text-sm text-fg">
+                                      {expanded ? <ChevronDown size={12} className="text-dim" /> : <ChevronRight size={12} className="text-dim" />}
+                                      {family.label}
+                                      <span className="text-[10px] text-faint">({family.actions.length})</span>
+                                    </span>
+                                    <span className="min-w-[100px] px-2.5 py-1 text-xs text-dim text-center">
+                                      {family.summary}
+                                    </span>
+                                  </button>
+                                  {expanded && family.actions.map((a) => renderRow(a, true))}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })()}
             </section>
 
             {/* Updates section */}
