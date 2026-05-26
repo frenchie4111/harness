@@ -31,6 +31,7 @@ function buildGroups(hotkeys: Record<Action, HotkeyBinding>): ShortcutGroup[] {
       rows: [
         { label: 'New shell tab', binding: b('newShellTab') },
         { label: 'Close tab', binding: b('closeTab') },
+        { label: 'Rename tab', binding: b('renameTab') },
         { label: 'Next tab', binding: b('nextTab') },
         { label: 'Previous tab', binding: b('prevTab') },
         { label: 'Split pane right', binding: b('splitPaneRight') },

@@ -211,6 +211,18 @@ function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect
     setEditing(false)
     setEditValue(displayLabel)
   }, [displayLabel])
+  // Cmd+L hotkey path: App-level handler dispatches a window CustomEvent
+  // naming the tabId; the matching SortableTab self-activates edit mode.
+  // A custom event keeps the editing state local to this component
+  // instead of threading another prop down through WorkspaceView.
+  useEffect(() => {
+    const handler = (e: Event): void => {
+      const ce = e as CustomEvent<{ tabId?: string }>
+      if (ce.detail?.tabId === tab.id) startEditing()
+    }
+    window.addEventListener('harness:rename-tab', handler)
+    return () => window.removeEventListener('harness:rename-tab', handler)
+  }, [tab.id, startEditing])
   return (
     <div
       ref={setRefs}

@@ -247,6 +247,14 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       },
       nextTab: () => cycleTab(1),
       prevTab: () => cycleTab(-1),
+      renameTab: () => {
+        if (!activeWorktreeId) return
+        const tabId = activeTabId[activeWorktreeId]
+        if (!tabId) return
+        window.dispatchEvent(
+          new CustomEvent('harness:rename-tab', { detail: { tabId } })
+        )
+      },
       newWorktree: () => setShowNewWorktree(true),
       refreshWorktrees: handleRefreshWorktrees,
       focusTerminal: () => {
