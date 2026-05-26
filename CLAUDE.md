@@ -524,6 +524,62 @@ These are how the user wants Claude to behave when working on this repo:
    closing PRs, force-pushing, deleting branches or releases, etc. When in
    doubt, ask.
 
+10. **When reviewing a PR from a contributor's fork inside a Harness
+    PR-review worktree, push cleanup commits back to THEIR branch — not
+    to upstream `origin` and not to a new branch on the reviewer's fork.**
+    `CONTRIBUTING.md` promises contributors that the reviewer's agent
+    will handle small nitpicks and styling fixes during review. For that
+    promise to hold, the commits must land on the contributor's PR
+    branch so the PR itself updates.
+
+    **The trap.** When Harness opens a PR for review, it fetches
+    `refs/pull/<N>/head` from `origin` (the upstream repo) into a local
+    branch named after the PR's head ref. It does **not** add the
+    contributor's fork as a remote, and the local branch has **no
+    upstream configured**. That means:
+
+    - `git push` with no args fails ("no upstream") — fine, it just
+      makes you stop and think.
+    - `git push -u origin <branch>` *silently succeeds* by creating a
+      new branch on the **upstream repo** (e.g. `frenchie4111/harness`),
+      because the reviewer has write access there. The PR — which
+      references `contributor:<branch>`, not `frenchie4111:<branch>` —
+      does **not** update. This is the most common failure mode.
+    - Creating a new branch like `review-fix/foo` on the reviewer's own
+      fork and opening a parallel PR is also wrong: fragments the
+      change history, confuses the contributor, forces manual
+      cherry-picking.
+
+    **The fix.** Inside the Harness-created worktree, run
+    `gh pr checkout <num>` once before pushing. `gh` is idempotent on a
+    branch that already exists at the right SHA — it just adds the
+    contributor's fork as a remote (named after the fork owner) and
+    sets the branch's upstream to point at it. After that, plain
+    `git push` does the right thing:
+
+    ```sh
+    # inside the Harness PR-review worktree
+    gh pr checkout <num>   # patches up remote + upstream config;
+                           # safe no-op on the existing local branch
+    # …make the fix, commit…
+    git push               # pushes to the contributor's fork; PR updates
+    ```
+
+    Then leave a PR comment with the standard signature (§9) noting
+    what you cleaned up, so the contributor isn't surprised by the new
+    commit.
+
+    **Fallback when `git push` fails with a permissions error.** The
+    contributor disabled "Allow edits by maintainers" on their PR
+    (default is ON, but it can be turned off). In that case post a PR
+    comment with the suggested diff as a code block — do **not** open
+    a parallel PR.
+
+    **Tripwire.** If you find yourself about to run
+    `git checkout -b review-fix/...`, `git push -u origin <branch>`,
+    or `gh pr create` against a PR you're reviewing, stop. You're on
+    the wrong path — go back and `gh pr checkout <num>` first.
+
 ## Releasing
 
 End-to-end release is automated via `npm run release <version>`:
