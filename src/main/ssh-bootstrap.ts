@@ -15,6 +15,8 @@ import type { NodeSSH } from 'node-ssh'
 import { createRequire } from 'module'
 import { createServer, type Server as NetServer, type Socket } from 'net'
 import { randomBytes, randomUUID } from 'crypto'
+import { homedir, userInfo } from 'os'
+import { listConfiguredHosts, type ConfiguredHost } from './ssh-config'
 import type {
   BootstrapError,
   BootstrapPhase
@@ -57,6 +59,99 @@ export function parseSshTarget(raw: string): SshTarget {
     ...(user ? { user } : {}),
     ...(port && Number.isFinite(port) ? { port } : {})
   }
+}
+
+/** Expand a leading `~` to the user's home directory. ssh-config
+ *  files typically reference IdentityFile as `~/.ssh/id_ed25519` —
+ *  ssh2 wants an absolute path. */
+function expandHome(p: string): string {
+  if (p.startsWith('~/')) return p.replace(/^~/, homedir())
+  if (p === '~') return homedir()
+  return p
+}
+
+/** Find the matching ~/.ssh/config entry for a target. The user might
+ *  have typed a literal `Host` alias or a `user@host[:port]` string —
+ *  we look up by alias OR by hostname so both forms get the same
+ *  resolved defaults (Identity file, port, user). */
+function findConfigEntry(
+  hosts: ConfiguredHost[],
+  target: SshTarget
+): ConfiguredHost | undefined {
+  return hosts.find((h) => h.alias === target.raw)
+    ?? hosts.find((h) => h.alias === target.host)
+    ?? hosts.find((h) => h.host === target.host)
+}
+
+/** Build the ssh2 connect config for a target. Resolves User / Port /
+ *  IdentityFile from ~/.ssh/config (since ssh2 doesn't), and falls
+ *  back to the OS username if none of those sources have one. Logs
+ *  the resolved values to the progress stream so the user can see
+ *  what we ended up with. */
+async function resolveSshConnectConfig(
+  target: SshTarget,
+  onLine: (line: string) => void
+): Promise<Record<string, unknown>> {
+  const cfg: Record<string, unknown> = { host: target.host }
+  let configEntry: ConfiguredHost | undefined
+  try {
+    const hosts = await listConfiguredHosts()
+    configEntry = findConfigEntry(hosts, target)
+  } catch {
+    // Parsing failure → no entry; we still try the OS-user fallback below.
+  }
+
+  // Username: explicit user@host wins, then ~/.ssh/config, then OS user.
+  let username = target.user ?? configEntry?.user
+  if (!username) {
+    try {
+      username = userInfo().username
+    } catch {
+      // Best-effort — fall through and let ssh2 raise its own error.
+    }
+  }
+  if (username) cfg.username = username
+
+  // Port: explicit host:port wins, then ~/.ssh/config, else ssh2 default 22.
+  const port = target.port ?? configEntry?.port
+  if (port) cfg.port = port
+
+  // HostName from config takes precedence over the alias for the
+  // actual TCP connect target. (E.g. `Host build` + `HostName build.lan`
+  // — we want to connect to build.lan, not "build".)
+  if (configEntry?.host && configEntry.host !== target.host) {
+    cfg.host = configEntry.host
+  }
+
+  // IdentityFile: best-effort. If the agent has the key, this is
+  // redundant; if not, we need it.
+  if (configEntry?.identityFile) {
+    cfg.privateKeyPath = expandHome(configEntry.identityFile)
+  }
+
+  // Forward the SSH agent socket so agent-loaded keys are tried
+  // automatically (matches the behavior of the `ssh` binary). Without
+  // this, ssh2 only tries the explicit privateKey path. node-ssh /
+  // ssh2 honors `agent` natively.
+  if (process.env.SSH_AUTH_SOCK) {
+    cfg.agent = process.env.SSH_AUTH_SOCK
+  }
+
+  // Keyboard-interactive fallback — some configs require it for
+  // 2FA-style prompts. node-ssh's tryKeyboard flag enables it; we
+  // don't currently surface a prompt UI, so this only helps when the
+  // key in the agent + the keyboard-interactive layer don't conflict.
+  cfg.tryKeyboard = false
+
+  // Resolved-target log line — invaluable when something goes wrong.
+  const parts: string[] = []
+  parts.push(`host=${cfg.host}`)
+  if (cfg.username) parts.push(`user=${cfg.username}`)
+  if (cfg.port) parts.push(`port=${cfg.port}`)
+  if (cfg.privateKeyPath) parts.push(`identity=${cfg.privateKeyPath}`)
+  if (cfg.agent) parts.push('agent=$SSH_AUTH_SOCK')
+  onLine(`resolved: ${parts.join(' ')}`)
+  return cfg
 }
 
 /** Progress callback shape — the orchestrator yields these so the
@@ -371,15 +466,12 @@ export async function bootstrapRemote(
   phase('connecting')
   log(`connecting to ${target.raw} via ssh…`)
   try {
-    // node-ssh's connect honors ~/.ssh/config indirectly: when `host` is
-    // an alias and the matching block has IdentityFile / Port / User,
-    // ssh2's config-reading code picks them up. We forward `user` and
-    // `port` explicitly when the caller parsed them out of `user@host:port`.
-    await ssh.connect({
-      host: target.host,
-      ...(target.user ? { username: target.user } : {}),
-      ...(target.port ? { port: target.port } : {})
-    })
+    // ssh2 does NOT parse ~/.ssh/config (unlike the `ssh` binary), so
+    // we resolve User / Port / IdentityFile ourselves via our own
+    // ssh-config parser. SSH_AUTH_SOCK is forwarded so agent-loaded
+    // keys "just work" without the user copy-pasting an IdentityFile.
+    const connectCfg = await resolveSshConnectConfig(target, log)
+    await ssh.connect(connectCfg)
   } catch (err) {
     const bootstrapErr = asBootstrapError(err, {
       code: 'host_unreachable',
