@@ -1,12 +1,13 @@
 name: Headless Release
 
-on:
-  push:
-    tags: ['v*.*.*']
-  workflow_dispatch:
+# Dispatch-only smoke test for the headless tarball pack across the
+# three supported platforms. The canonical tag-driven release runs the
+# same matrix inside .github/workflows/release.yml — this file lets us
+# validate a headless build on a branch (or via the Actions UI) without
+# cutting a tag.
 
-permissions:
-  contents: write
+on:
+  workflow_dispatch:
 
 jobs:
   pack:
@@ -54,8 +55,7 @@ jobs:
       - name: Pack tarball
         run: npm run pack:headless
 
-      - name: Upload workflow artifact (branch / dispatch)
-        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+      - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: harness-server-${{ matrix.platform }}
@@ -63,14 +63,3 @@ jobs:
             release/headless/harness-server-*-${{ matrix.platform }}.tar.gz
             release/headless/harness-server-*-${{ matrix.platform }}.tar.gz.sha256
           if-no-files-found: error
-
-      - name: Attach to GitHub release (tag push)
-        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAG="${GITHUB_REF#refs/tags/}"
-          gh release upload "$TAG" \
-            release/headless/harness-server-*-${{ matrix.platform }}.tar.gz \
-            release/headless/harness-server-*-${{ matrix.platform }}.tar.gz.sha256 \
-            --clobber
