@@ -1286,7 +1286,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
         {/* Main scrollable content */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto">
-          <div className="max-w-2xl p-8 space-y-12">
+          <div className="max-w-2xl p-8 pb-[60vh] space-y-12">
             {/* Appearance section */}
             <section ref={(el) => { sectionRefs.current.appearance = el }} id="appearance">
               <h2 className="text-lg font-semibold text-fg-bright mb-1">Appearance</h2>
