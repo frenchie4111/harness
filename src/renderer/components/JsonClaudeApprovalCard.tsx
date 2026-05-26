@@ -453,8 +453,7 @@ export function JsonClaudeApprovalCard({
             <input
               type="checkbox"
               checked={interrupt}
-              onChange={(e) => setInterrupt(e.target.checked)}
-            />
+              onChange={(e) => setInterrupt(e.target.checked)} className="icon-base" />
             Interrupt turn (abort the model's current response)
           </label>
           <div className="flex items-center gap-1.5">

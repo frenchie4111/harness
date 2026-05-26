@@ -1760,7 +1760,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
                 <div className="mt-4 pt-3 border-t border-border">
                   <label className="flex items-start gap-2 cursor-pointer">
-                    <input type="checkbox" checked={harnessMcpEnabled} onChange={(e) => handleToggleHarnessMcp(e.target.checked)} className="mt-0.5 cursor-pointer" />
+                    <input type="checkbox" checked={harnessMcpEnabled} onChange={(e) => handleToggleHarnessMcp(e.target.checked)} className="mt-0.5 cursor-pointer icon-base" />
                     <div className="flex-1">
                       <div className="text-sm text-fg-bright">Enable Harness MCP</div>
                       <div className="text-xs text-dim mt-0.5">
@@ -1773,7 +1773,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
                 <div className="mt-4 pt-3 border-t border-border">
                   <label className="flex items-center gap-3 cursor-pointer">
-                    <input type="checkbox" checked={nameClaudeSessions} onChange={(e) => { void backend.setNameClaudeSessions(e.target.checked) }} className="accent-current w-4 h-4 cursor-pointer" />
+                    <input type="checkbox" checked={nameClaudeSessions} onChange={(e) => { void backend.setNameClaudeSessions(e.target.checked) }} className="accent-current icon-base cursor-pointer" />
                     <div>
                       <span className="text-sm font-medium text-fg">Name sessions by worktree</span>
                       <p className="text-xs text-dim mt-0.5">Passes <code className="bg-panel px-1 rounded">--name &quot;repo/branch&quot;</code> to Claude.</p>
@@ -1783,7 +1783,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
                 <div className="mt-4 pt-3 border-t border-border">
                   <label className="flex items-start gap-2 cursor-pointer">
-                    <input type="checkbox" checked={claudeTuiFullscreen} onChange={(e) => { void backend.setClaudeTuiFullscreen(e.target.checked) }} className="mt-0.5 cursor-pointer" />
+                    <input type="checkbox" checked={claudeTuiFullscreen} onChange={(e) => { void backend.setClaudeTuiFullscreen(e.target.checked) }} className="mt-0.5 cursor-pointer icon-base" />
                     <div className="flex-1">
                       <div className="text-sm text-fg-bright">Fullscreen TUI by default</div>
                       <div className="text-xs text-dim mt-0.5">
@@ -1994,8 +1994,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                       onChange={(e) => {
                         void backend.setJsonModeSendOnEnter(e.target.checked)
                       }}
-                      className="mt-0.5 cursor-pointer"
-                    />
+                      className="mt-0.5 cursor-pointer icon-base" />
                     <div className="flex-1">
                       <div className="text-sm text-fg-bright">
                         Send messages with Enter
@@ -2123,8 +2122,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     type="checkbox"
                     checked={harnessSystemPromptEnabled}
                     onChange={(e) => { void backend.setHarnessSystemPromptEnabled(e.target.checked) }}
-                    className="mt-0.5 cursor-pointer"
-                  />
+                    className="mt-0.5 cursor-pointer icon-base" />
                   <div className="flex-1">
                     <div className="text-sm text-fg-bright">Inject Harness context into Claude sessions</div>
                     <div className="text-xs text-dim mt-0.5">
@@ -2466,8 +2464,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                       type="checkbox"
                       checked={shareClaudeSettings}
                       onChange={(e) => { void backend.setShareClaudeSettings(e.target.checked) }}
-                      className="accent-current w-4 h-4 cursor-pointer"
-                    />
+                      className="accent-current icon-base cursor-pointer" />
                     <span className="text-sm text-fg">
                       Share settings.local.json across worktrees
                     </span>
@@ -2580,8 +2577,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     type="checkbox"
                     checked={harnessStarred}
                     onChange={(e) => { void backend.setHarnessStarred(e.target.checked) }}
-                    className="w-3.5 h-3.5 accent-warning cursor-pointer"
-                  />
+                    className="icon-base accent-warning cursor-pointer" />
                   <Star
                     className={`icon-sm ${harnessStarred ? 'text-warning fill-warning shrink-0' : 'text-warning shrink-0'}`} />
                   <span className="text-sm text-fg group-hover:text-fg-bright transition-colors">
@@ -2864,8 +2860,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                       type="checkbox"
                       checked={autoUpdateEnabled}
                       onChange={(e) => handleToggleAutoUpdate(e.target.checked)}
-                      className="mt-0.5 cursor-pointer"
-                    />
+                      className="mt-0.5 cursor-pointer icon-base" />
                     <div className="flex-1">
                       <div className="text-sm text-fg-bright">Check for updates automatically</div>
                       <div className="text-xs text-dim mt-0.5">
@@ -2957,8 +2952,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     type="checkbox"
                     checked={expandedDiagnosticLoggingEnabled}
                     onChange={(e) => { void backend.setExpandedDiagnosticLoggingEnabled(e.target.checked) }}
-                    className="mt-0.5 cursor-pointer"
-                  />
+                    className="mt-0.5 cursor-pointer icon-base" />
                   <div className="flex-1">
                     <div className="text-sm text-fg-bright">Expanded diagnostic logging</div>
                     <div className="text-xs text-dim mt-0.5">
@@ -3014,8 +3008,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     id="browser-tools-enabled"
                     checked={browserToolsEnabled}
                     onChange={(e) => { void backend.setBrowserToolsEnabled(e.target.checked) }}
-                    className="mt-0.5 cursor-pointer"
-                  />
+                    className="mt-0.5 cursor-pointer icon-base" />
                   <div className="flex-1">
                     <label htmlFor="browser-tools-enabled" className="text-sm text-fg-bright cursor-pointer">Enable browser tools</label>
                     <div className="text-xs text-dim mt-0.5 mb-2">
@@ -3055,8 +3048,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     type="checkbox"
                     checked={autoApprovePermissions}
                     onChange={(e) => handleToggleAutoApprovePermissions(e.target.checked)}
-                    className="mt-0.5 cursor-pointer"
-                  />
+                    className="mt-0.5 cursor-pointer icon-base" />
                   <div className="flex-1">
                     <div className="text-sm text-fg-bright">Enable auto-approve</div>
                     <div className="text-xs text-dim mt-0.5">
@@ -3125,8 +3117,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     type="checkbox"
                     checked={wsTransportEnabled}
                     onChange={(e) => { void handleToggleWsTransport(e.target.checked) }}
-                    className="mt-0.5 cursor-pointer"
-                  />
+                    className="mt-0.5 cursor-pointer icon-base" />
                   <div className="flex-1">
                     <div className="text-sm text-fg-bright">Enable web / mobile client</div>
                     <div className="text-xs text-dim mt-0.5">

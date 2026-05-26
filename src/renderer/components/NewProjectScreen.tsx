@@ -190,9 +190,8 @@ export function NewProjectScreen({ onCancel, onCreated }: NewProjectScreenProps)
                 type="checkbox"
                 checked={includeReadme}
                 onChange={(e) => setIncludeReadme(e.target.checked)}
-                className="accent-accent w-4 h-4 cursor-pointer"
-                disabled={submitting}
-              />
+                className="accent-accent icon-base cursor-pointer"
+                disabled={submitting} />
               <label htmlFor="include-readme" className="text-sm text-fg cursor-pointer">
                 Include <code className="text-xs text-fg-bright font-mono">README.md</code>
               </label>

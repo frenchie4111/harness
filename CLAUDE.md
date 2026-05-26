@@ -616,9 +616,10 @@ These are how the user wants Claude to behave when working on this repo:
     new `@utility` entry in `styles.css` and use that instead.
 
     Note: `w-N h-N` literals are still correct for *non-icon* fixed-size
-    boxes — checkboxes (`<input type="checkbox" className="w-4 h-4">`),
-    color swatches, decorative dots, avatar circles. Those aren't
-    icons; don't rename them to `icon-base`.
+    boxes that the design doesn't want growing with `uiScale` — color
+    swatches, decorative dots, avatar circles. Checkboxes are NOT in
+    this set; treat them as icons (use `icon-base`) so the hit target
+    scales with the rest of the UI.
 
     Exceptions where pixel literals are correct (because the consumer
     isn't part of the rem grid): Monaco/XTerminal font sizes, the

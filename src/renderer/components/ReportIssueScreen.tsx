@@ -288,8 +288,7 @@ export function ReportIssueScreen({
                 type="checkbox"
                 checked={includeLog}
                 onChange={(e) => setIncludeLog(e.target.checked)}
-                className="mt-0.5 cursor-pointer"
-              />
+                className="mt-0.5 cursor-pointer icon-base" />
               <div className="flex-1">
                 <div className="text-sm text-fg-bright">Include app logs</div>
                 <div className="text-xs text-dim mt-0.5">

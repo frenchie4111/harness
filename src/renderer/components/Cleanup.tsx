@@ -337,8 +337,7 @@ export function Cleanup({
                 type="checkbox"
                 checked={mergedOnly}
                 onChange={(e) => setMergedOnly(e.target.checked)}
-                className="cursor-pointer"
-              />
+                className="cursor-pointer icon-base" />
               Only merged PRs
             </label>
             <label className="flex items-center gap-1.5 cursor-pointer text-muted hover:text-fg">
@@ -346,8 +345,7 @@ export function Cleanup({
                 type="checkbox"
                 checked={includeDirty}
                 onChange={(e) => setIncludeDirty(e.target.checked)}
-                className="cursor-pointer"
-              />
+                className="cursor-pointer icon-base" />
               Include worktrees with uncommitted changes
             </label>
           </div>
@@ -428,8 +426,7 @@ export function Cleanup({
                             onChange={() => toggleOne(path)}
                             onClick={(e) => e.stopPropagation()}
                             disabled={deleting}
-                            className="cursor-pointer"
-                          />
+                            className="cursor-pointer icon-base" />
                         )}
                         <button
                           onClick={(e) => {

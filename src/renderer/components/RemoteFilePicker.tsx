@@ -164,8 +164,7 @@ export function RemoteFilePicker({
               type="checkbox"
               checked={showHidden}
               onChange={(e) => setShowHidden(e.target.checked)}
-              className="accent-accent w-3.5 h-3.5 cursor-pointer"
-            />
+              className="accent-accent icon-base cursor-pointer" />
             Show hidden files
           </label>
         </div>
