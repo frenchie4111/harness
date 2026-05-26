@@ -23,6 +23,11 @@ export interface TerminalTab {
   id: string
   type: 'agent' | 'shell' | 'diff' | 'file' | 'browser' | 'json-claude'
   label: string
+  /** User-defined override for `label`. When set (non-empty after trim),
+   *  the tab renders this instead of the auto-derived label. Cleared
+   *  with an empty string via terminals/tabRenamed — the reducer drops
+   *  the field rather than persisting "". */
+  customLabel?: string
   /** Only meaningful for json-claude tabs. 'asleep' means no live
    *  subprocess; the tab still exists in the tree and its session
    *  history (in the jsonClaude slice + on-disk jsonl) is intact.
@@ -275,6 +280,10 @@ export type TerminalsEvent =
   | {
       type: 'terminals/tabWoken'
       payload: { worktreePath: string; tabId: string }
+    }
+  | {
+      type: 'terminals/tabRenamed'
+      payload: { worktreePath: string; tabId: string; label: string }
     }
 
 export const initialTerminals: TerminalsState = {
@@ -593,6 +602,41 @@ export function terminalsReducer(
         ]
         mutated = true
         return { ...leaf, tabs: nextTabs }
+      })
+      if (!mutated) return state
+      return { ...state, panes: { ...state.panes, [worktreePath]: updated } }
+    }
+    case 'terminals/tabRenamed': {
+      const { worktreePath, tabId, label } = event.payload
+      const tree = state.panes[worktreePath]
+      if (!tree) return state
+      const trimmed = label.trim()
+      let mutated = false
+      const updated = mapLeaves(tree, (leaf) => {
+        const i = leaf.tabs.findIndex((t) => t.id === tabId)
+        if (i === -1) return leaf
+        const tab = leaf.tabs[i]
+        const current = tab.customLabel
+        if (trimmed === '') {
+          if (current === undefined) return leaf
+          const { customLabel: _dropped, ...rest } = tab
+          void _dropped
+          mutated = true
+          return {
+            ...leaf,
+            tabs: [...leaf.tabs.slice(0, i), rest as TerminalTab, ...leaf.tabs.slice(i + 1)]
+          }
+        }
+        if (current === trimmed) return leaf
+        mutated = true
+        return {
+          ...leaf,
+          tabs: [
+            ...leaf.tabs.slice(0, i),
+            { ...tab, customLabel: trimmed },
+            ...leaf.tabs.slice(i + 1)
+          ]
+        }
       })
       if (!mutated) return state
       return { ...state, panes: { ...state.panes, [worktreePath]: updated } }

@@ -717,6 +717,84 @@ describe('terminalsReducer', () => {
     expect(next).toBe(start)
   })
 
+  it('tabRenamed sets a customLabel on the matching tab', () => {
+    const tree: PaneNode = {
+      type: 'leaf',
+      id: 'p1',
+      tabs: [
+        { id: 't1', type: 'shell', label: 'Shell' },
+        { id: 't2', type: 'shell', label: 'Shell' }
+      ],
+      activeTabId: 't1'
+    }
+    const start: TerminalsState = { ...initialTerminals, panes: { '/wt/a': tree } }
+    const next = apply(start, {
+      type: 'terminals/tabRenamed',
+      payload: { worktreePath: '/wt/a', tabId: 't1', label: 'Build' }
+    })
+    const tabs = getLeaves(next.panes['/wt/a'])[0].tabs
+    expect(tabs[0].customLabel).toBe('Build')
+    expect(tabs[1]).toBe(getLeaves(start.panes['/wt/a'])[0].tabs[1])
+  })
+
+  it('tabRenamed trims the label before storing', () => {
+    const tree: PaneNode = {
+      type: 'leaf',
+      id: 'p1',
+      tabs: [{ id: 't1', type: 'shell', label: 'Shell' }],
+      activeTabId: 't1'
+    }
+    const start: TerminalsState = { ...initialTerminals, panes: { '/wt/a': tree } }
+    const next = apply(start, {
+      type: 'terminals/tabRenamed',
+      payload: { worktreePath: '/wt/a', tabId: 't1', label: '  Build  ' }
+    })
+    expect(getLeaves(next.panes['/wt/a'])[0].tabs[0].customLabel).toBe('Build')
+  })
+
+  it('tabRenamed clears customLabel when given an empty/whitespace label', () => {
+    const tree: PaneNode = {
+      type: 'leaf',
+      id: 'p1',
+      tabs: [{ id: 't1', type: 'shell', label: 'Shell', customLabel: 'Build' }],
+      activeTabId: 't1'
+    }
+    const start: TerminalsState = { ...initialTerminals, panes: { '/wt/a': tree } }
+    const next = apply(start, {
+      type: 'terminals/tabRenamed',
+      payload: { worktreePath: '/wt/a', tabId: 't1', label: '   ' }
+    })
+    const tab = getLeaves(next.panes['/wt/a'])[0].tabs[0]
+    expect('customLabel' in tab).toBe(false)
+  })
+
+  it('tabRenamed is a no-op when the worktree, tab, or value is unchanged', () => {
+    const tree: PaneNode = {
+      type: 'leaf',
+      id: 'p1',
+      tabs: [{ id: 't1', type: 'shell', label: 'Shell', customLabel: 'Build' }],
+      activeTabId: 't1'
+    }
+    const start: TerminalsState = { ...initialTerminals, panes: { '/wt/a': tree } }
+    expect(
+      apply(start, { type: 'terminals/tabRenamed', payload: { worktreePath: '/wt/missing', tabId: 't1', label: 'X' } })
+    ).toBe(start)
+    expect(
+      apply(start, { type: 'terminals/tabRenamed', payload: { worktreePath: '/wt/a', tabId: 'missing', label: 'X' } })
+    ).toBe(start)
+    expect(
+      apply(start, { type: 'terminals/tabRenamed', payload: { worktreePath: '/wt/a', tabId: 't1', label: 'Build' } })
+    ).toBe(start)
+    // Clear-on-already-clear: empty label against a tab without customLabel.
+    const noLabel: TerminalsState = {
+      ...initialTerminals,
+      panes: { '/wt/a': { type: 'leaf', id: 'p1', tabs: [{ id: 't1', type: 'shell', label: 'Shell' }], activeTabId: 't1' } }
+    }
+    expect(
+      apply(noLabel, { type: 'terminals/tabRenamed', payload: { worktreePath: '/wt/a', tabId: 't1', label: '' } })
+    ).toBe(noLabel)
+  })
+
   it('tabTypeChanged is a no-op when the worktree or tab is missing', () => {
     const start: TerminalsState = { ...initialTerminals, panes: { '/wt/a': leaf('p1', ['t1']) } }
     const noWt = apply(start, {

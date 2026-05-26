@@ -701,7 +701,8 @@ function treeToPersistedNode(node: PaneNode): PersistedPaneNode | null {
           url: liveUrl || stripped.url,
           command: stripped.command,
           cwd: stripped.cwd,
-          model: stripped.model
+          model: stripped.model,
+          ...(stripped.customLabel ? { customLabel: stripped.customLabel } : {})
         }
       })
     if (tabs.length === 0) return null
@@ -2038,6 +2039,13 @@ function registerIpcHandlers(): void {
     'panes:selectTab',
     (_ctx, wtPath: string, paneId: string, tabId: string) => {
       panesFSM.selectTab(wtPath, paneId, tabId)
+      return true
+    }
+  )
+  transport.onRequest(
+    'panes:renameTab',
+    (_ctx, wtPath: string, tabId: string, label: string) => {
+      panesFSM.renameTab(wtPath, tabId, label)
       return true
     }
   )

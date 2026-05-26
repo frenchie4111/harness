@@ -165,7 +165,8 @@ export class PanesFSM {
         url: t.url,
         command: t.command,
         cwd: t.cwd,
-        model: t.model
+        model: t.model,
+        ...(t.customLabel ? { customLabel: t.customLabel } : {})
       }
       // Persisted json-claude tabs hydrate as 'asleep' so app launch
       // doesn't spawn one subprocess per tab. The renderer wakes them
@@ -449,6 +450,18 @@ export class PanesFSM {
       leaf.id === paneId ? { ...leaf, activeTabId: tabId } : leaf
     )
     this.commit(wtPath, updated)
+  }
+
+  renameTab(wtPath: string, tabId: string, label: string): void {
+    const tree = this.getTree(wtPath)
+    if (!tree) return
+    const leaf = findLeafByTabId(tree, tabId)
+    if (!leaf) return
+    this.store.dispatch({
+      type: 'terminals/tabRenamed',
+      payload: { worktreePath: wtPath, tabId, label }
+    })
+    this.opts.persist(this.buildPersistPayload())
   }
 
   reorderTabs(

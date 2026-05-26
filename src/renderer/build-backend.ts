@@ -298,6 +298,8 @@ export function buildBackend(
       req('panes:selectTab', wtPath, paneId, tabId),
     panesReorderTabs: (wtPath: string, paneId: string, fromId: string, toId: string) =>
       req('panes:reorderTabs', wtPath, paneId, fromId, toId),
+    panesRenameTab: (wtPath: string, tabId: string, label: string) =>
+      req('panes:renameTab', wtPath, tabId, label),
     panesMoveTabToPane: (wtPath: string, tabId: string, toPaneId: string, toIndex?: number) =>
       req('panes:moveTabToPane', wtPath, tabId, toPaneId, toIndex),
     panesSplitPane: (

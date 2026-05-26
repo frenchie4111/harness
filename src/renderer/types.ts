@@ -370,6 +370,7 @@ export interface ElectronAPI {
     fromId: string,
     toId: string
   ): Promise<boolean>
+  panesRenameTab(wtPath: string, tabId: string, label: string): Promise<boolean>
   panesMoveTabToPane(
     wtPath: string,
     tabId: string,

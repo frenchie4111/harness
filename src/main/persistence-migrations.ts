@@ -31,6 +31,8 @@ export interface PersistedTab {
   /** For agent + json-claude tabs: per-tab model pin. Wins over the
    *  global claudeModel/codexModel setting at spawn time. */
   model?: string
+  /** User-defined label override. Empty/undefined falls back to `label`. */
+  customLabel?: string
 }
 
 export interface PersistedPane {
