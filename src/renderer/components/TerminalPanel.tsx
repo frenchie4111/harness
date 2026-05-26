@@ -439,51 +439,7 @@ export function TerminalPanel({
             <span className="text-fg-bright font-medium">{branch}</span>
           </div>
         )}
-        {canScrollLeft && (
-          <button
-            type="button"
-            onClick={() => scrollTabsBy(-200)}
-            aria-label="Scroll tabs left"
-            className="no-drag shrink-0 px-1 h-full text-faint hover:text-fg transition-colors cursor-pointer"
-          >
-            <ChevronLeft className="w-3.5 h-3.5" />
-          </button>
-        )}
-        <div
-          ref={tabScrollRef}
-          onScroll={updateTabScroll}
-          className="flex items-center h-full overflow-x-auto scrollbar-hidden pl-2 flex-1 min-w-0"
-        >
-          <SortableContext items={pane.tabs.map((t) => t.id)} strategy={horizontalListSortingStrategy}>
-            {pane.tabs.map((tab) => {
-              const isClaudeAgent = tab.type === 'agent' && tab.agentKind === 'claude'
-              const isJsonClaude = tab.type === 'json-claude'
-              const convertible = !!onConvertTabType && (isClaudeAgent || isJsonClaude)
-              return (
-                <SortableTab
-                  key={tab.id}
-                  tab={tab}
-                  isActive={tab.id === pane.activeTabId}
-                  status={statuses[tab.id] || 'idle'}
-                  shellActivity={shellActivity[tab.id]}
-                  showClose={pane.tabs.length > 1 || paneCount > 1}
-                  onSelect={() => onSelectTab(tab.id)}
-                  onClose={() => onCloseTab(tab.id)}
-                  onConvertTabType={
-                    convertible
-                      ? (newType) => onConvertTabType!(tab.id, newType)
-                      : undefined
-                  }
-                  onSleepTab={
-                    isJsonClaude ? () => onSleepTab(tab.id) : undefined
-                  }
-                  onRename={(label) => {
-                    void backend.panesRenameTab(worktreePath, tab.id, label)
-                  }}
-                />
-              )
-            })}
-          </SortableContext>
+        <div className="no-drag shrink-0 flex items-center h-full pl-2">
           <Tooltip
             label={(() => {
               const chatIsDefault = !!onAddJsonClaudeTab && defaultClaudeTabType === 'json'
@@ -546,7 +502,53 @@ export function TerminalPanel({
               <Globe size={12} />
             </button>
           </Tooltip>
-          {showSpectatorChip && activeTab && <SpectatorChip terminalId={activeTab.id} />}
+        </div>
+        <div className="shrink-0 w-px h-4 bg-border mx-1" />
+        {canScrollLeft && (
+          <button
+            type="button"
+            onClick={() => scrollTabsBy(-200)}
+            aria-label="Scroll tabs left"
+            className="no-drag shrink-0 px-1 h-full text-faint hover:text-fg transition-colors cursor-pointer"
+          >
+            <ChevronLeft className="w-3.5 h-3.5" />
+          </button>
+        )}
+        <div
+          ref={tabScrollRef}
+          onScroll={updateTabScroll}
+          className="flex items-center h-full overflow-x-auto scrollbar-hidden flex-1 min-w-0"
+        >
+          <SortableContext items={pane.tabs.map((t) => t.id)} strategy={horizontalListSortingStrategy}>
+            {pane.tabs.map((tab) => {
+              const isClaudeAgent = tab.type === 'agent' && tab.agentKind === 'claude'
+              const isJsonClaude = tab.type === 'json-claude'
+              const convertible = !!onConvertTabType && (isClaudeAgent || isJsonClaude)
+              return (
+                <SortableTab
+                  key={tab.id}
+                  tab={tab}
+                  isActive={tab.id === pane.activeTabId}
+                  status={statuses[tab.id] || 'idle'}
+                  shellActivity={shellActivity[tab.id]}
+                  showClose={pane.tabs.length > 1 || paneCount > 1}
+                  onSelect={() => onSelectTab(tab.id)}
+                  onClose={() => onCloseTab(tab.id)}
+                  onConvertTabType={
+                    convertible
+                      ? (newType) => onConvertTabType!(tab.id, newType)
+                      : undefined
+                  }
+                  onSleepTab={
+                    isJsonClaude ? () => onSleepTab(tab.id) : undefined
+                  }
+                  onRename={(label) => {
+                    void backend.panesRenameTab(worktreePath, tab.id, label)
+                  }}
+                />
+              )
+            })}
+          </SortableContext>
         </div>
         {canScrollRight && (
           <button
@@ -558,6 +560,7 @@ export function TerminalPanel({
             <ChevronRight className="w-3.5 h-3.5" />
           </button>
         )}
+        {showSpectatorChip && activeTab && <SpectatorChip terminalId={activeTab.id} />}
         {showExpandRightColumn && (
           <Tooltip label="Show right column" action="toggleRightColumn" side="left">
             <button
