@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { initialScratchpad, scratchpadReducer, type ScratchpadState } from './scratchpad'
+import {
+  hasScratchpadNote,
+  initialScratchpad,
+  scratchpadReducer,
+  type ScratchpadState
+} from './scratchpad'
 
 describe('scratchpadReducer', () => {
   it('loaded replaces the whole map', () => {
@@ -63,5 +68,26 @@ describe('scratchpadReducer', () => {
       payload: '/missing'
     })
     expect(next).toBe(start)
+  })
+})
+
+describe('hasScratchpadNote', () => {
+  it('returns true for a worktree with a non-empty note', () => {
+    const state: ScratchpadState = { byWorktreePath: { '/a': 'hello' } }
+    expect(hasScratchpadNote(state, '/a')).toBe(true)
+  })
+
+  it('returns false for an unknown worktree path', () => {
+    const state: ScratchpadState = { byWorktreePath: { '/a': 'hello' } }
+    expect(hasScratchpadNote(state, '/missing')).toBe(false)
+  })
+
+  it('returns false on the initial empty slice', () => {
+    expect(hasScratchpadNote(initialScratchpad, '/a')).toBe(false)
+  })
+
+  it('treats an empty-string entry as not dirty (defensive — reducer never stores this)', () => {
+    const state: ScratchpadState = { byWorktreePath: { '/a': '' } }
+    expect(hasScratchpadNote(state, '/a')).toBe(false)
   })
 })

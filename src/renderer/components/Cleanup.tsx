@@ -99,7 +99,10 @@ export function Cleanup({
         const [log, dirtyResults] = await Promise.all([
           backend.getActivityLog(),
           Promise.all(
-            eligible.map(async (w) => [w.path, await backend.isWorktreeDirty(w.path)] as const)
+            eligible.map(async (w) => {
+              const d = await backend.isWorktreeDirty(w.path)
+              return [w.path, d.git || d.scratchpad] as const
+            })
           )
         ])
         if (cancelled) return

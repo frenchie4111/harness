@@ -68,6 +68,7 @@ import { registerRepoRoot } from './repo-roots'
 import type { AddRepoResult } from '../shared/repo-pick'
 import { isWorktreeMerged } from '../shared/state/prs'
 import { MAX_WAKE } from '../shared/state/snooze'
+import { hasScratchpadNote } from '../shared/state/scratchpad'
 import {
   DEFAULT_LIGHT_THEME,
   DEFAULT_DARK_THEME,
@@ -1077,7 +1078,9 @@ function registerIpcHandlers(): void {
   )
 
   transport.onRequest('worktree:isDirty', async (_ctx, path: string) => {
-    return isWorktreeDirty(path)
+    const git = await isWorktreeDirty(path)
+    const scratchpad = hasScratchpadNote(store.getSnapshot().state.scratchpad, path)
+    return { git, scratchpad }
   })
 
   transport.onRequest('worktree:remove', async (_ctx, 

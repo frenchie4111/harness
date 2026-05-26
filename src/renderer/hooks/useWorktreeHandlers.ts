@@ -267,11 +267,16 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
 
   const handleDeleteWorktree = useCallback(
     async (path: string) => {
-      // Check for dirty changes
+      // Check for dirty changes — git tracked + per-worktree scratchpad
+      // notes are reported separately so the dialog can name exactly
+      // what's about to be lost.
       const dirty = await backend.isWorktreeDirty(path)
-      if (dirty) {
+      if (dirty.git || dirty.scratchpad) {
+        const parts: string[] = []
+        if (dirty.git) parts.push('uncommitted changes')
+        if (dirty.scratchpad) parts.push('scratchpad notes')
         const confirmed = window.confirm(
-          'This worktree has uncommitted changes that will be lost. Delete anyway?'
+          `This worktree has ${parts.join(' and ')} that will be lost. Delete anyway?`
         )
         if (!confirmed) return
       }
@@ -297,10 +302,12 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
       const pr = prStatuses[path]
       const repoRoot = worktreeRepoByPath[path]
       if (!repoRoot) return
+      // Only git-tracked dirtiness needs `git worktree remove --force`;
+      // a scratchpad note is invisible to git.
       void backend.removeWorktree(
         repoRoot,
         path,
-        dirty,
+        dirty.git,
         pr ? { prNumber: pr.number, prState: pr.state } : undefined
       )
       if (path === activeWorktreeId) {

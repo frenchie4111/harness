@@ -14,6 +14,17 @@ export const initialScratchpad: ScratchpadState = {
   byWorktreePath: {}
 }
 
+/** True when the given worktree has a non-empty scratchpad note.
+ *  Used by the worktree-delete flow so users can be warned before
+ *  losing notes that don't live in git. */
+export function hasScratchpadNote(
+  state: ScratchpadState,
+  worktreePath: string
+): boolean {
+  const note = state.byWorktreePath[worktreePath]
+  return typeof note === 'string' && note.length > 0
+}
+
 export function scratchpadReducer(
   state: ScratchpadState,
   event: ScratchpadEvent
