@@ -266,7 +266,13 @@ function NotificationCard({
   content?: string
 }): JSX.Element {
   const label =
-    subtype === 'scheduled_task_fire' ? 'Scheduled task fired' : 'Notification'
+    subtype === 'autonomous_loop_wake'
+      ? 'Autonomous loop wake'
+      : subtype === 'loop_schedule_fire'
+        ? 'Loop schedule fired'
+        : subtype === 'scheduled_task_fire'
+          ? 'Scheduled task fired'
+          : 'Notification'
   return (
     <div
       className="my-2 flex items-center gap-2 text-muted"
