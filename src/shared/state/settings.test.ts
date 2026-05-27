@@ -189,6 +189,19 @@ describe('settingsReducer', () => {
     expect(next.mergeStrategy).toBe('fast-forward')
   })
 
+  it('worktreeDetailChanged switches the sidebar detail mode', () => {
+    expect(initialSettings.worktreeDetail).toBe('diff')
+    const age = apply(initialSettings, {
+      type: 'settings/worktreeDetailChanged',
+      payload: 'age'
+    })
+    expect(age.worktreeDetail).toBe('age')
+    const none = apply(age, { type: 'settings/worktreeDetailChanged', payload: 'none' })
+    expect(none.worktreeDetail).toBe('none')
+    const diff = apply(none, { type: 'settings/worktreeDetailChanged', payload: 'diff' })
+    expect(diff.worktreeDetail).toBe('diff')
+  })
+
   it('hasGithubTokenChanged flips the presence flag', () => {
     const hasIt = apply(initialSettings, {
       type: 'settings/hasGithubTokenChanged',

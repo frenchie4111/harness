@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect } from 'react'
-import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2, LifeBuoy, Bug, Lightbulb, FlaskConical, Copy, CopyCheck, ExternalLink, CalendarDays, FileText, FolderOpen, Search, ChevronDown, ChevronRight } from 'lucide-react'
+import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2, Moon, LifeBuoy, Bug, Lightbulb, FlaskConical, Copy, CopyCheck, ExternalLink, CalendarDays, FileText, FolderOpen, Search, ChevronDown, ChevronRight } from 'lucide-react'
 import { openReportIssue } from './ReportIssueScreen'
 import { HARNESS_ISSUES_URL, HARNESS_RELEASES_URL, harnessReleaseNotesUrl } from '../../shared/constants'
 import { useSettings, useUpdater, useRepoConfigs, useHooks } from '../store'
 import { useBackend } from '../backend'
-import type { UpdaterStatus, MergeStrategy, RepoConfig } from '../types'
+import type { UpdaterStatus, MergeStrategy, RepoConfig, WorktreeDetail } from '../types'
 import { DEFAULT_HOTKEYS, ACTION_LABELS, ACTION_CATEGORIES, bindingToString, eventToBinding, formatBindingGlyphs, resolveHotkeys, type Action, type HotkeyBinding } from '../hotkeys'
 import { Tooltip } from './Tooltip'
 import { AGENT_REGISTRY, agentDisplayName, CLAUDE_MODELS, CODEX_MODELS } from '../../shared/agent-registry'
@@ -322,6 +322,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     editor: editorId,
     worktreeBase,
     mergeStrategy,
+    worktreeDetail,
     hasGithubToken: settingsHasToken,
     githubAuthSource: authSource,
     harnessStarred,
@@ -592,6 +593,10 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     },
     [scopeRepoRoot, updateRepoConfig]
   )
+
+  const handleSelectWorktreeDetail = useCallback(async (detail: WorktreeDetail) => {
+    await backend.setWorktreeDetail(detail)
+  }, [])
 
   // Resolve what each control should display for the active scope.
   const scopedRepoCfg = scopeRepoRoot ? repoConfigs[scopeRepoRoot] || {} : null
@@ -1615,6 +1620,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   the quick brown fox 0123 =&gt; != &lt;= -&gt;
                 </div>
               </div>
+
             </section>
 
             {/* Agent section */}
@@ -2435,6 +2441,108 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               <p className="mt-2 text-xs text-faint">
                 Failures are logged but don't block the worktree operation. Leave blank to disable.
               </p>
+
+              {scopeRepoRoot === null && (
+                <>
+                  <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">Worktree details</h3>
+                  <p className="text-xs text-dim mb-3">
+                    What to show next to each worktree row in the sidebar. The
+                    detail hides on hover; row action buttons appear in its place.
+                  </p>
+                  <div className="mb-3 p-2 bg-panel-raised border border-border rounded">
+                    <div className="text-[10px] text-faint mb-1.5 uppercase tracking-wide">Preview</div>
+                    <div className="group flex items-center gap-2 px-3 py-2 bg-surface rounded">
+                      <span
+                        className="w-2 h-2 rounded-full shrink-0 bg-success"
+                        title="Working..."
+                      />
+                      <GitPullRequest size={13} className="text-success shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-medium text-fg-bright truncate">feature/example-branch</div>
+                        <div className="text-xs text-faint truncate">harness/feature-example-branch</div>
+                      </div>
+                      {worktreeDetail === 'diff' && (
+                        <span className="text-[10px] font-mono shrink-0 leading-none group-hover:hidden" title="+42 additions, −7 deletions">
+                          <span className="text-success">+42</span>
+                          <span className="text-danger ml-0.5">−7</span>
+                        </span>
+                      )}
+                      {worktreeDetail === 'age' && (
+                        <span className="text-[10px] font-mono shrink-0 leading-none text-dim group-hover:hidden" title="Created 5 days ago">
+                          5d
+                        </span>
+                      )}
+                      {worktreeDetail === 'pr' && (
+                        <span className="inline-flex items-center gap-1.5 shrink-0 group-hover:hidden">
+                          <span className="text-[10px] text-dim truncate max-w-[6rem]" title="Milestone: v2.10">v2.10</span>
+                          <span className="text-[10px] font-mono leading-none px-1.5 py-0.5 rounded-full bg-panel border border-border-strong text-fg-bright">
+                            #123
+                          </span>
+                          <span
+                            className="w-3.5 h-3.5 rounded-full bg-accent/40 border border-border-strong shrink-0"
+                            title="Assignee: octocat"
+                          />
+                        </span>
+                      )}
+                      <span className="hidden group-hover:flex text-faint shrink-0" title="Snooze">
+                        <Moon size={12} />
+                      </span>
+                      <span className="hidden group-hover:flex text-faint shrink-0" title="Remove worktree">
+                        <Trash2 size={12} />
+                      </span>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    {(
+                      [
+                        {
+                          id: 'diff' as const,
+                          label: 'Diff stat',
+                          description: 'Show added/removed line counts from the PR'
+                        },
+                        {
+                          id: 'age' as const,
+                          label: 'Age',
+                          description: 'Show how long the worktree has existed'
+                        },
+                        {
+                          id: 'pr' as const,
+                          label: 'Pull Request',
+                          description: 'Show assignee avatar, milestone, and PR number'
+                        },
+                        {
+                          id: 'none' as const,
+                          label: 'Nothing',
+                          description: 'Hide the extra detail'
+                        }
+                      ]
+                    ).map((opt) => {
+                      const isActive = worktreeDetail === opt.id
+                      return (
+                        <button
+                          key={opt.id}
+                          onClick={() => handleSelectWorktreeDetail(opt.id)}
+                          className={`w-full text-left rounded border px-3 py-2 transition-colors cursor-pointer ${
+                            isActive
+                              ? 'border-accent bg-panel-raised'
+                              : 'border-border hover:border-border-strong'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <div
+                              className={`w-3 h-3 rounded-full border ${
+                                isActive ? 'border-accent bg-accent' : 'border-border-strong'
+                              }`}
+                            />
+                            <span className="text-sm text-fg-bright">{opt.label}</span>
+                          </div>
+                          <p className="text-xs text-dim mt-1 ml-5">{opt.description}</p>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </>
+              )}
 
               {scopeRepoRoot === null && (
                 <>

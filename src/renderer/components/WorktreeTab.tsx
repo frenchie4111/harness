@@ -2,7 +2,10 @@ import { GitPullRequest, RotateCw, Trash2, Loader2, Moon, TriangleAlert } from '
 import type { Worktree, PtyStatus, PendingTool, PRStatus } from '../types'
 import { isPRMerged } from '../../shared/state/prs'
 import { formatWakeAt } from '../../shared/state/snooze'
+import { useAppState } from '../store'
 import { Tooltip } from './Tooltip'
+import { formatWorktreeAge } from './worktree-detail'
+import { useWorktreeDetailOverride } from '../worktree-detail-override'
 import { repoNameColor } from './RepoIcon'
 import { formatPendingTool } from '../pending-tool'
 import { HotkeyBadge } from './HotkeyBadge'
@@ -84,6 +87,9 @@ const PR_STATE_COLOR: Record<string, string> = {
 
 export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActive, prStatus, isMerged, repoLabel, cmdOrdinal, deleting, isSnoozed, snoozeWakeAt, onClick, onDelete, onContinue, onSnooze, onUnsnooze }: WorktreeTabProps): JSX.Element {
   const metaHeld = useMetaHeld()
+  const configuredWorktreeDetail = useAppState((s) => s.settings.worktreeDetail)
+  const worktreeDetailOverride = useWorktreeDetailOverride()
+  const worktreeDetail = worktreeDetailOverride ?? configuredWorktreeDetail
   const displayStatus: PtyStatus | 'merged' = isMerged ? 'merged' : status
   const showPendingTool = displayStatus === 'needs-approval' && pendingTool
   const canContinue = !!onContinue && isPRMerged(prStatus)
@@ -187,13 +193,47 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
           </button>
         </Tooltip>
       )}
-      {prStatus && typeof prStatus.additions === 'number' && typeof prStatus.deletions === 'number' && (
+      {worktreeDetail === 'diff' && prStatus && typeof prStatus.additions === 'number' && typeof prStatus.deletions === 'number' && (
         <span
           className="text-xs font-mono shrink-0 leading-none group-hover:hidden"
           title={`+${prStatus.additions} additions, −${prStatus.deletions} deletions`}
         >
           <span className="text-success">+{prStatus.additions}</span>
           <span className="text-danger ml-0.5">−{prStatus.deletions}</span>
+        </span>
+      )}
+      {worktreeDetail === 'age' && (
+        <span
+          className="text-[10px] font-mono shrink-0 leading-none text-dim group-hover:hidden"
+          title={worktree.createdAt ? `Created ${new Date(worktree.createdAt).toLocaleString()}` : 'Creation time unknown'}
+        >
+          {formatWorktreeAge(worktree.createdAt)}
+        </span>
+      )}
+      {worktreeDetail === 'pr' && prStatus && (
+        <span className="inline-flex items-center gap-1.5 shrink-0 group-hover:hidden">
+          {prStatus.milestone && (
+            <span
+              className="text-[10px] text-dim truncate max-w-[6rem]"
+              title={`Milestone: ${prStatus.milestone.title}`}
+            >
+              {prStatus.milestone.title}
+            </span>
+          )}
+          <span
+            className="text-[10px] font-mono leading-none px-1.5 py-0.5 rounded-full bg-panel border border-border-strong text-fg-bright"
+            title={`PR #${prStatus.number}`}
+          >
+            #{prStatus.number}
+          </span>
+          {prStatus.assignees[0] && (
+            <img
+              src={prStatus.assignees[0].avatarUrl}
+              alt=""
+              title={`Assignee: ${prStatus.assignees[0].login}${prStatus.assignees.length > 1 ? ` (+${prStatus.assignees.length - 1})` : ''}`}
+              className="w-3.5 h-3.5 rounded-full shrink-0"
+            />
+          )}
         </span>
       )}
       {(onSnooze || onUnsnooze) && !worktree.isMain && (
