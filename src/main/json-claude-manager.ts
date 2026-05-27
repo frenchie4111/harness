@@ -22,8 +22,7 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from 'fs'
 import { createRequire } from 'module'
 import { homedir } from 'os'
 import { dirname, join, sep } from 'path'
-import { isPackaged } from './paths'
-import { resolveBundledMcpScript } from './mcp-config'
+import { isPackaged, resolveBundledMcpScript } from './paths'
 import type { Store } from './store'
 import type {
   JsonClaudeChatEntry,

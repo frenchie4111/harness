@@ -2,25 +2,13 @@ import { mkdirSync, writeFileSync, existsSync, readdirSync, unlinkSync } from 'f
 import { join } from 'path'
 import { getControlServerInfo } from './control-server'
 import type { CallerScope } from './control-server'
-import { detectRuntime, isPackaged, userDataDir } from './paths'
+import { resolveBundledMcpScript, userDataDir } from './paths'
 import { log } from './debug'
 
 function getConfigDir(): string {
   const dir = join(userDataDir(), 'mcp-configs')
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
   return dir
-}
-
-/** Resolve a bundled MCP script by filename. Three runtime layouts:
- *  - Packaged Electron: electron-builder copies scripts to process.resourcesPath.
- *  - Headless tarball (scripts/pack-headless.mjs): bundle is at lib/main/,
- *    scripts are in sibling lib/mcp/.
- *  - Dev (Electron unpackaged): __dirname is out/main/, scripts live in
- *    resources/ at the repo root. */
-export function resolveBundledMcpScript(name: string): string {
-  if (isPackaged()) return join(process.resourcesPath, name)
-  if (detectRuntime() === 'node') return join(__dirname, '..', 'mcp', name)
-  return join(__dirname, '..', '..', 'resources', name)
 }
 
 export function getBridgeScriptPath(): string {

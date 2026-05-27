@@ -78,3 +78,17 @@ export function isPackaged(): boolean {
 export function resetPathsForTests(): void {
   cachedUserDataDir = null
 }
+
+/** Resolve a bundled MCP script by filename. Three runtime layouts:
+ *  - Packaged Electron: electron-builder copies scripts to process.resourcesPath.
+ *  - Headless tarball (scripts/pack-headless.mjs): bundle is at lib/main/,
+ *    scripts are in sibling lib/mcp/.
+ *  - Dev (Electron unpackaged): __dirname is out/main/, scripts live in
+ *    resources/ at the repo root.
+ *  Lives here (not mcp-config.ts) so callers don't pick up control-server's
+ *  transitive worktree.ts → git-ops-state.ts import chain. */
+export function resolveBundledMcpScript(name: string): string {
+  if (isPackaged()) return join(process.resourcesPath, name)
+  if (detectRuntime() === 'node') return join(__dirname, '..', 'mcp', name)
+  return join(__dirname, '..', '..', 'resources', name)
+}
