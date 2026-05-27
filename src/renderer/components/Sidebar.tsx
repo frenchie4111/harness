@@ -263,9 +263,13 @@ export function Sidebar({
           </linearGradient>
         </defs>
       </svg>
-      {/* Title bar drag region with app name — vertically aligned with traffic lights at y:12 */}
+      {/* Title bar drag region with app name — vertically aligned with traffic lights at y:12.
+          Pixel-locked (left, top, font-size) because the traffic lights are
+          native macOS chrome that doesn't scale with uiScale — letting the
+          title shrink along with the rem grid causes it to overlap the
+          traffic lights at the smaller rungs. */}
       <div className="drag-region h-10 relative shrink-0">
-        <span className="absolute left-20 right-2 top-[11px] text-xs font-semibold whitespace-nowrap overflow-hidden text-ellipsis">
+        <span className="absolute left-[80px] right-2 top-[11px] text-[12px] font-semibold whitespace-nowrap overflow-hidden text-ellipsis">
           <span className="gradient-text">Harness</span>
           {import.meta.env.DEV && __HARNESS_DEV_BRANCH__ && (
             <span className="text-faint font-normal ml-1">({__HARNESS_DEV_BRANCH__})</span>
@@ -283,7 +287,7 @@ export function Sidebar({
               : 'text-muted hover:bg-panel-raised hover:text-fg'
           }`}
         >
-          <LayoutGrid size={14} className={commandCenterActive ? 'text-accent' : 'text-dim'} />
+          <LayoutGrid className={`icon-sm ${commandCenterActive ? 'text-accent' : 'text-dim'}`} />
           <span className="text-sm font-medium">Command Center</span>
           {metaHeld && (
             <HotkeyBadge action="toggleCommandCenter" variant="strong" className="ml-auto" />
@@ -294,7 +298,7 @@ export function Sidebar({
       {/* Worktrees header */}
       <div className="px-3 py-1.5 flex items-center gap-2 shrink-0">
         <span className="text-xs font-medium text-dim">WORKTREES</span>
-        {prLoading && <Loader2 size={10} className="text-faint animate-spin" />}
+        {prLoading && <Loader2 className="icon-2xs text-faint animate-spin" />}
         {repoRoots.length > 1 && (
           <Tooltip
             label={unifiedRepos ? 'Split by repo' : 'Merge repos into one list'}
@@ -304,7 +308,7 @@ export function Sidebar({
               onClick={onToggleUnifiedRepos}
               className="ml-auto text-dim hover:text-fg hover:bg-surface rounded p-0.5 transition-colors cursor-pointer"
             >
-              {unifiedRepos ? <Rows3 size={12} /> : <Layers size={12} />}
+              {unifiedRepos ? <Rows3 className="icon-xs" /> : <Layers className="icon-xs" />}
             </button>
           </Tooltip>
         )}
@@ -320,15 +324,15 @@ export function Sidebar({
             <div className="brand-gradient-bg h-0.5" />
             <div className="p-3">
               <div className="flex items-center gap-1.5 mb-1">
-                <Sparkles size={11} className="text-accent" />
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-accent">
+                <Sparkles className="icon-xs text-accent" />
+                <span className="text-xs font-semibold uppercase tracking-wider text-accent">
                   Get started
                 </span>
               </div>
-              <div className="text-[13px] font-semibold text-fg-bright leading-snug">
+              <div className="text-sm font-semibold text-fg-bright leading-snug">
                 Spawn your first agent
               </div>
-              <div className="text-[11px] text-dim mt-0.5 leading-snug">
+              <div className="text-xs text-dim mt-0.5 leading-snug">
                 Fork a branch and send a Claude into it.
               </div>
               <div className="mt-2">
@@ -349,8 +353,8 @@ export function Sidebar({
               title={isGroupCollapsed(scope, group.key) ? `Expand ${group.label}` : `Collapse ${group.label}`}
             >
               {isGroupCollapsed(scope, group.key)
-                ? <ChevronRight size={12} className="shrink-0" />
-                : <ChevronDown size={12} className="shrink-0" />
+                ? <ChevronRight className="icon-xs shrink-0" />
+                : <ChevronDown className="icon-xs shrink-0" />
               }
               <span className="font-medium">{group.label}</span>
               <span className="text-faint ml-auto">{group.worktrees.length}</span>
@@ -378,7 +382,7 @@ export function Sidebar({
                 />
                 {continueTarget?.path === wt.path && (
                   <div className="border-y-2 border-accent bg-panel-raised p-2.5 shadow-inner">
-                    <div className="text-[10px] font-semibold uppercase tracking-wider text-accent mb-1.5 px-0.5">
+                    <div className="text-xs font-semibold uppercase tracking-wider text-accent mb-1.5 px-0.5">
                       Continue on new branch
                     </div>
                     <input
@@ -436,12 +440,12 @@ export function Sidebar({
               {showRepoHeaders && (
                 <button
                   onClick={() => onToggleRepo(repoRoot)}
-                  className="group w-full flex items-center gap-1 px-3 mt-1 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-dim hover:text-fg transition-colors cursor-pointer"
+                  className="group w-full flex items-center gap-1 px-3 mt-1 py-1.5 text-xs font-semibold uppercase tracking-wider text-dim hover:text-fg transition-colors cursor-pointer"
                   title={repoRoot}
                 >
                   {repoCollapsed
-                    ? <ChevronRight size={11} className="shrink-0" />
-                    : <ChevronDown size={11} className="shrink-0" />}
+                    ? <ChevronRight className="icon-xs shrink-0" />
+                    : <ChevronDown className="icon-xs shrink-0" />}
                   <span className={`truncate ${repoNameColor(repoName)}`}>{repoName}</span>
                   <span
                     role="button"
@@ -454,7 +458,7 @@ export function Sidebar({
                       }
                     }}
                   >
-                    <X size={11} />
+                    <X className="icon-xs" />
                   </span>
                 </button>
               )}
@@ -475,9 +479,7 @@ export function Sidebar({
           >
             <span className="absolute left-0 top-0 bottom-0 w-0.5 brand-gradient-flow-bar opacity-0 group-hover:opacity-100 transition-opacity" />
             <Plus
-              size={13}
-              className="shrink-0 text-dim group-hover:[stroke:url(#harness-add-gradient)] transition-colors"
-            />
+              className="icon-sm shrink-0 text-dim group-hover:[stroke:url(#harness-add-gradient)] transition-colors" />
             <span className="text-sm font-medium brand-gradient-flow-text-hover">Add worktree</span>
             <HotkeyBadge action="newWorktree" className="ml-auto" />
           </button>
@@ -498,7 +500,7 @@ export function Sidebar({
             onClick={onRefresh}
             className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
           >
-            <RefreshCw size={14} />
+            <RefreshCw className="icon-sm" />
           </button>
         </Tooltip>
         <Tooltip label="Add repository" side="top">
@@ -506,7 +508,7 @@ export function Sidebar({
             onClick={onAddRepo}
             className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
           >
-            <FolderOpen size={14} />
+            <FolderOpen className="icon-sm" />
           </button>
         </Tooltip>
         <Tooltip label="Clean up old worktrees" side="top">
@@ -514,7 +516,7 @@ export function Sidebar({
             onClick={onOpenCleanup}
             className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
           >
-            <Trash2 size={14} />
+            <Trash2 className="icon-sm" />
           </button>
         </Tooltip>
         <Tooltip label="Activity" side="top">
@@ -522,7 +524,7 @@ export function Sidebar({
             onClick={onOpenActivity}
             className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
           >
-            <BarChart3 size={14} />
+            <BarChart3 className="icon-sm" />
           </button>
         </Tooltip>
         <Tooltip label="Keyboard shortcuts" action="hotkeyCheatsheet" side="top">
@@ -530,7 +532,7 @@ export function Sidebar({
             onClick={onOpenHotkeyCheatsheet}
             className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
           >
-            <CircleHelp size={14} />
+            <CircleHelp className="icon-sm" />
           </button>
         </Tooltip>
         <Tooltip label="Report an issue / request a feature / submit a suggestion" side="top">
@@ -538,7 +540,7 @@ export function Sidebar({
             onClick={() => openReportIssue()}
             className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
           >
-            <MessageSquare size={14} />
+            <MessageSquare className="icon-sm" />
           </button>
         </Tooltip>
         <Tooltip label="Settings" action="openSettings" side="top">
@@ -546,7 +548,7 @@ export function Sidebar({
             onClick={onOpenSettings}
             className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
           >
-            <SettingsIcon size={14} />
+            <SettingsIcon className="icon-sm" />
           </button>
         </Tooltip>
       </div>
@@ -579,9 +581,9 @@ function PendingWorktreeRow({ pending, isActive, onClick, onDismiss }: PendingWo
       }`}
     >
       {isError ? (
-        <AlertCircle size={13} className="shrink-0 text-danger" />
+        <AlertCircle className="icon-sm shrink-0 text-danger" />
       ) : (
-        <Loader2 size={13} className="shrink-0 text-accent animate-spin" />
+        <Loader2 className="icon-sm shrink-0 text-accent animate-spin" />
       )}
       <div className="min-w-0 flex-1">
         <div className="text-sm font-medium truncate">{pending.branchName}</div>
@@ -598,7 +600,7 @@ function PendingWorktreeRow({ pending, isActive, onClick, onDismiss }: PendingWo
             }}
             className="opacity-0 group-hover:opacity-100 text-faint hover:text-danger transition-all shrink-0 cursor-pointer"
           >
-            <X size={12} />
+            <X className="icon-xs" />
           </button>
         </Tooltip>
       )}

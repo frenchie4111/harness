@@ -65,15 +65,15 @@ export function ReadCard({ block, result, autoApproved, sessionAllowed }: ToolCa
       autoApproved={autoApproved}
       sessionAllowed={sessionAllowed}
     >
-      {fp && <div className="px-2 py-1 text-[10px] text-muted truncate font-mono">{fp}</div>}
+      {fp && <div className="px-2 py-1 text-xs text-muted truncate font-mono">{fp}</div>}
       {result && isError && (
-        <pre className="px-2 py-1 text-[11px] font-mono text-danger whitespace-pre-wrap max-h-72 overflow-auto">
+        <pre className="px-2 py-1 text-xs font-mono text-danger whitespace-pre-wrap max-h-72 overflow-auto">
           {trunc(result.content, 4000)}
         </pre>
       )}
       {result && !isError && rendered && (
         <>
-          <div className="text-[11px] font-mono max-h-72 overflow-auto bg-app/30">
+          <div className="text-xs font-mono max-h-72 overflow-auto bg-app/30">
             {visible.map((line, i) => {
               const html = highlightedHtml[i] ?? line.text
               return (
@@ -81,7 +81,7 @@ export function ReadCard({ block, result, autoApproved, sessionAllowed }: ToolCa
                   key={line.num + ':' + i}
                   className={`flex ${hasRange ? 'bg-warning/5' : ''}`}
                 >
-                  <span className="select-none text-muted w-12 shrink-0 text-right pr-2 text-[10px] tabular-nums opacity-70">
+                  <span className="select-none text-muted w-12 shrink-0 text-right pr-2 text-xs tabular-nums opacity-70">
                     {line.num}
                   </span>
                   <code
@@ -96,7 +96,7 @@ export function ReadCard({ block, result, autoApproved, sessionAllowed }: ToolCa
             <button
               type="button"
               onClick={() => setShowAll(true)}
-              className="w-full px-2 py-1 text-[10px] text-muted bg-app/40 hover:bg-app/60 border-t border-border/40 text-center cursor-pointer"
+              className="w-full px-2 py-1 text-xs text-muted bg-app/40 hover:bg-app/60 border-t border-border/40 text-center cursor-pointer"
             >
               + {hidden} more line{hidden === 1 ? '' : 's'}
             </button>

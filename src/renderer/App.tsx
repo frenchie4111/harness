@@ -9,6 +9,7 @@ import type { Worktree, TerminalTab, PtyStatus, PendingTool, QuestStep, PendingW
 import { getLeaves, findLeaf } from '../shared/state/terminals'
 import { CheckCircle2, FolderOpen } from 'lucide-react'
 import { BUILT_IN_THEMES_BY_MODE } from './themes'
+import { SCALES, scaleSpec } from '../shared/state/settings'
 import { useActiveTheme } from './hooks/useActiveTheme'
 import { applyTheme, effectiveAppBg } from './theme-apply'
 import { getBackend } from './backend'
@@ -251,6 +252,16 @@ function DesktopApp(): JSX.Element {
   const tailLines = useTailLineBuffer(showCommandCenter)
   const settings = useSettings()
   const { hasGithubToken: hasGithubPat, githubAuthSource, nameClaudeSessions, defaultAgent } = settings
+  // Apply the persisted UI scale to the root html element so every
+  // rem-based size (text-xs/sm/base/lg, w-N/h-N icons, padding-*) shifts
+  // in lockstep. See SCALES in shared/state/settings.ts for the table.
+  useEffect(() => {
+    const px = scaleSpec(settings.uiScale).rootPx
+    document.documentElement.style.fontSize = `${px}px`
+    return () => {
+      document.documentElement.style.fontSize = ''
+    }
+  }, [settings.uiScale])
   const activeTheme = useActiveTheme()
   const nameAgentSessions = nameClaudeSessions
   const hasGithubToken = hasGithubPat || !!githubAuthSource
@@ -330,6 +341,27 @@ const setQuestStep = useCallback((next: QuestStep) => {
     const cleanup = backend.onTogglePerfMonitor(() => setShowPerfMonitor((v) => !v))
     return cleanup
   }, [])
+
+  // UI size — View menu items (Cmd+= / Cmd+- / Cmd+0). Read the current
+  // rung from the slice on each fire (a useEffect snapshot would stale-
+  // close over the value) and step through SCALES.
+  useEffect(() => {
+    const step = (delta: number): void => {
+      const cur = settings.uiScale
+      const i = SCALES.findIndex((s) => s.id === cur)
+      const idx = i < 0 ? 0 : i
+      const target = SCALES[Math.max(0, Math.min(SCALES.length - 1, idx + delta))]
+      if (target && target.id !== cur) void backend.setUiScale(target.id)
+    }
+    const cleanups = [
+      backend.onUiScaleUp(() => step(1)),
+      backend.onUiScaleDown(() => step(-1)),
+      backend.onUiScaleReset(() => {
+        if (settings.uiScale !== 'small') void backend.setUiScale('small')
+      })
+    ]
+    return () => { for (const c of cleanups) c() }
+  }, [settings.uiScale])
 
   // Open Keyboard Shortcuts from the menu
   useEffect(() => {
@@ -882,7 +914,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
               >
                 <div className="flex items-start gap-3 mb-3">
                   {step1Complete ? (
-                    <CheckCircle2 className="w-5 h-5 text-success shrink-0 mt-0.5" />
+                    <CheckCircle2 className="icon-lg text-success shrink-0 mt-0.5" />
                   ) : (
                     <div
                       className={`w-5 h-5 rounded-full border-2 text-[11px] font-bold flex items-center justify-center shrink-0 mt-0.5 ${
@@ -939,7 +971,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
               >
                 <div className="flex items-start gap-3 mb-3">
                   {step2Complete ? (
-                    <CheckCircle2 className="w-5 h-5 text-success shrink-0 mt-0.5" />
+                    <CheckCircle2 className="icon-lg text-success shrink-0 mt-0.5" />
                   ) : (
                     <div
                       className={`w-5 h-5 rounded-full border-2 text-[11px] font-bold flex items-center justify-center shrink-0 mt-0.5 ${
@@ -968,7 +1000,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
                           : 'bg-panel border border-border text-dim hover:text-fg hover:border-border-strong'
                       }`}
                     >
-                      <AgentIcon kind={agent.kind} size={14} />
+                      <AgentIcon kind={agent.kind} className="icon-sm" />
                       {agent.displayName}
                     </button>
                   ))}
@@ -996,7 +1028,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
               >
                 <div className="flex items-start gap-3 mb-3">
                   {step3Complete ? (
-                    <CheckCircle2 className="w-5 h-5 text-success shrink-0 mt-0.5" />
+                    <CheckCircle2 className="icon-lg text-success shrink-0 mt-0.5" />
                   ) : (
                     <div
                       className={`w-5 h-5 rounded-full border-2 text-[11px] font-bold flex items-center justify-center shrink-0 mt-0.5 ${
@@ -1076,7 +1108,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
                     onClick={handleAddRepo}
                     className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer bg-fg-bright text-app hover:bg-fg border border-fg-bright"
                   >
-                    <FolderOpen className="w-4 h-4" />
+                    <FolderOpen className="icon-base" />
                     Open Repository
                   </button>
                   <span className="text-xs text-dim">

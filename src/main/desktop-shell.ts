@@ -397,6 +397,22 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
           { role: 'toggleDevTools' },
           { type: 'separator' },
           {
+            label: 'Increase UI Size',
+            accelerator: 'CmdOrCtrl+Plus',
+            click: () => transport.sendSignal('app:uiScaleUp')
+          },
+          {
+            label: 'Decrease UI Size',
+            accelerator: 'CmdOrCtrl+-',
+            click: () => transport.sendSignal('app:uiScaleDown')
+          },
+          {
+            label: 'Reset UI Size',
+            accelerator: 'CmdOrCtrl+=',
+            click: () => transport.sendSignal('app:uiScaleReset')
+          },
+          { type: 'separator' },
+          {
             label: 'Performance Monitor',
             accelerator: 'CmdOrCtrl+Shift+D',
             click: () => transport.sendSignal('app:togglePerfMonitor')

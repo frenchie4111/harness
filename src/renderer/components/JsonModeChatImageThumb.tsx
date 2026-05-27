@@ -84,7 +84,7 @@ export function JsonModeChatImageThumb({ path, mediaType }: Props): JSX.Element 
         className="h-16 w-16 rounded bg-panel border border-border flex items-center justify-center text-faint"
         title={`${path} (no longer on disk)`}
       >
-        <ImageOff size={16} />
+        <ImageOff className="icon-base" />
       </div>
     )
   }

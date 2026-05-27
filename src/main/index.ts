@@ -2804,6 +2804,27 @@ function registerIpcHandlers(): void {
   )
 
   transport.onRequest(
+    'config:setUiScale',
+    (_ctx, value: 'x-small' | 'small' | 'medium' | 'large' | 'x-large') => {
+      const next: 'x-small' | 'small' | 'medium' | 'large' | 'x-large' =
+        value === 'x-small' ||
+        value === 'medium' ||
+        value === 'large' ||
+        value === 'x-large'
+          ? value
+          : 'small'
+      if (next === 'small') {
+        delete config.uiScale
+      } else {
+        config.uiScale = next
+      }
+      saveConfig(config)
+      store.dispatch({ type: 'settings/uiScaleChanged', payload: next })
+      return true
+    }
+  )
+
+  transport.onRequest(
     'config:setJsonModeSendOnEnter',
     (_ctx, value: boolean) => {
       const next = value === true

@@ -311,6 +311,7 @@ export interface ElectronAPI {
   setDefaultClaudeTabType(value: 'xterm' | 'json'): Promise<boolean>
   setChatPromotionDismissed(value: boolean): Promise<boolean>
   setJsonModeChatDensity(value: 'compact' | 'comfy'): Promise<boolean>
+  setUiScale(value: 'x-small' | 'small' | 'medium' | 'large' | 'x-large'): Promise<boolean>
   setJsonModeSendOnEnter(enabled: boolean): Promise<boolean>
   setJsonModeDefaultPermissionMode(
     value: 'default' | 'acceptEdits' | 'plan'
@@ -452,6 +453,9 @@ export interface ElectronAPI {
   onDebugCrashFocusedTab(callback: () => void): () => void
   onDebugPreviewOnboarding(callback: () => void): () => void
   onOpenAddBackend(callback: () => void): () => void
+  onUiScaleUp(callback: () => void): () => void
+  onUiScaleDown(callback: () => void): () => void
+  onUiScaleReset(callback: () => void): () => void
 
   acceptHooks(): Promise<boolean>
   declineHooks(): Promise<boolean>

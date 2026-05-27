@@ -41,7 +41,7 @@ export function ReviewSummaryBar({
             onClick={onClose}
             className="text-faint hover:text-fg transition-colors cursor-pointer no-drag"
           >
-            <ArrowLeft size={16} />
+            <ArrowLeft className="icon-base" />
           </button>
         </Tooltip>
 
@@ -52,14 +52,14 @@ export function ReviewSummaryBar({
           {commit && (
             <>
               <span className="text-faint">/</span>
-              <GitCommitHorizontal size={12} className="text-info shrink-0 relative top-[1px]" />
+              <GitCommitHorizontal className="icon-xs text-info shrink-0 relative top-[1px]" />
               <span className="font-mono text-info">{commit.shortHash}</span>
               <span className="text-dim truncate">{commit.subject}</span>
             </>
           )}
         </div>
 
-        <div className="flex items-center gap-2 text-[11px] text-faint">
+        <div className="flex items-center gap-2 text-xs text-faint">
           <span>{fileCount} file{fileCount !== 1 ? 's' : ''}</span>
           <span className="text-border">·</span>
           {additions > 0 && <span className="text-success">+{additions}</span>}
@@ -68,10 +68,10 @@ export function ReviewSummaryBar({
 
         <div className="flex-1" />
 
-        <div className="flex items-center gap-1.5 text-[11px] no-drag">
+        <div className="flex items-center gap-1.5 text-xs no-drag">
           {allReviewed ? (
             <span className="flex items-center gap-1 text-success font-medium">
-              <Check size={12} strokeWidth={2.5} />
+              <Check strokeWidth={2.5} className="icon-xs" />
               All reviewed
             </span>
           ) : (
@@ -82,7 +82,7 @@ export function ReviewSummaryBar({
 
           {pendingCommentCount > 0 && (
             <span className="flex items-center gap-1 text-info ml-2">
-              <MessageSquare size={11} />
+              <MessageSquare className="icon-xs" />
               {pendingCommentCount}
             </span>
           )}
@@ -93,7 +93,7 @@ export function ReviewSummaryBar({
               disabled={pendingCommentCount === 0}
               className="ml-2 flex items-center gap-1 px-2 py-1 rounded border border-border text-faint hover:text-fg transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-default"
             >
-              <Clipboard size={11} />
+              <Clipboard className="icon-xs" />
               Copy
             </button>
           </Tooltip>
@@ -104,7 +104,7 @@ export function ReviewSummaryBar({
               disabled={pendingCommentCount === 0}
               className="flex items-center gap-1 px-2 py-1 rounded bg-accent text-fg text-xs font-medium hover:bg-accent/80 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-default"
             >
-              <Send size={11} />
+              <Send className="icon-xs" />
               Send to Agent
             </button>
           </Tooltip>

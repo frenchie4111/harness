@@ -271,7 +271,7 @@ export function Cleanup({
           onClick={onClose}
           className="no-drag absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-xs text-muted hover:text-fg-bright transition-colors cursor-pointer"
         >
-          <ArrowLeft size={14} />
+          <ArrowLeft className="icon-sm" />
           Back
         </button>
         <span className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 text-sm font-medium text-fg pointer-events-none">
@@ -337,8 +337,7 @@ export function Cleanup({
                 type="checkbox"
                 checked={mergedOnly}
                 onChange={(e) => setMergedOnly(e.target.checked)}
-                className="cursor-pointer"
-              />
+                className="cursor-pointer icon-base" />
               Only merged PRs
             </label>
             <label className="flex items-center gap-1.5 cursor-pointer text-muted hover:text-fg">
@@ -346,8 +345,7 @@ export function Cleanup({
                 type="checkbox"
                 checked={includeDirty}
                 onChange={(e) => setIncludeDirty(e.target.checked)}
-                className="cursor-pointer"
-              />
+                className="cursor-pointer icon-base" />
               Include worktrees with uncommitted changes
             </label>
           </div>
@@ -356,7 +354,7 @@ export function Cleanup({
 
           {!loading && candidates.length === 0 && (
             <div className="bg-app/50 border border-border rounded-xl p-12 text-center">
-              <CheckCircle2 size={32} className="mx-auto mb-3 text-success/80" />
+              <CheckCircle2 className="icon-xl mx-auto mb-3 text-success/80" />
               <div className="text-sm text-fg">Nothing to clean up</div>
               <div className="text-xs text-dim mt-1">
                 No worktrees match the current filters.
@@ -418,9 +416,9 @@ export function Cleanup({
                         }}
                       >
                         {isDeleting ? (
-                          <Loader2 size={14} className="text-danger animate-spin shrink-0" />
+                          <Loader2 className="icon-sm text-danger animate-spin shrink-0" />
                         ) : isDeleted ? (
-                          <CheckCircle2 size={14} className="text-success/70 shrink-0" />
+                          <CheckCircle2 className="icon-sm text-success/70 shrink-0" />
                         ) : (
                           <input
                             type="checkbox"
@@ -428,8 +426,7 @@ export function Cleanup({
                             onChange={() => toggleOne(path)}
                             onClick={(e) => e.stopPropagation()}
                             disabled={deleting}
-                            className="cursor-pointer"
-                          />
+                            className="cursor-pointer icon-base" />
                         )}
                         <button
                           onClick={(e) => {
@@ -440,7 +437,7 @@ export function Cleanup({
                           className="text-dim hover:text-fg transition-colors cursor-pointer shrink-0 disabled:opacity-40"
                           title={isExpanded ? 'Collapse' : 'Show details'}
                         >
-                          {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                          {isExpanded ? <ChevronDown className="icon-sm" /> : <ChevronRight className="icon-sm" />}
                         </button>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
@@ -448,34 +445,34 @@ export function Cleanup({
                               {c.worktree.branch || basename(path)}
                             </span>
                             {c.merged && (
-                              <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-success/15 text-success border border-success/30">
-                                <GitPullRequest size={9} />
+                              <span className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-success/15 text-success border border-success/30">
+                                <GitPullRequest className="icon-2xs" />
                                 merged
                               </span>
                             )}
                             {c.prState === 'open' && (
-                              <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-info/15 text-info border border-info/30">
-                                <GitPullRequest size={9} />
+                              <span className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-info/15 text-info border border-info/30">
+                                <GitPullRequest className="icon-2xs" />
                                 open PR
                               </span>
                             )}
                             {c.prState === 'closed' && !c.merged && (
-                              <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-faint/15 text-dim border border-border">
+                              <span className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-faint/15 text-dim border border-border">
                                 closed PR
                               </span>
                             )}
                             {c.dirty && (
-                              <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-warning/15 text-warning border border-warning/30">
-                                <AlertTriangle size={9} />
+                              <span className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-warning/15 text-warning border border-warning/30">
+                                <AlertTriangle className="icon-2xs" />
                                 uncommitted
                               </span>
                             )}
                           </div>
-                          <div className="text-[11px] text-dim font-mono truncate mt-0.5">
+                          <div className="text-xs text-dim font-mono truncate mt-0.5">
                             {path}
                           </div>
                         </div>
-                        <div className="text-[11px] tabular-nums shrink-0">
+                        <div className="text-xs tabular-nums shrink-0">
                           {isDeleting ? (
                             <span className="text-danger">deleting…</span>
                           ) : isDeleted ? (
@@ -493,7 +490,7 @@ export function Cleanup({
                         <div className="px-4 pb-3 pl-[4.25rem] space-y-3 border-t border-border/50 bg-app/30">
                           {pr && (
                             <div className="pt-3">
-                              <div className="text-[10px] uppercase tracking-wider text-dim mb-1">
+                              <div className="text-xs uppercase tracking-wider text-dim mb-1">
                                 Pull request
                               </div>
                               <div className="flex items-start gap-2">
@@ -508,13 +505,13 @@ export function Cleanup({
                                   className="text-dim hover:text-fg-bright transition-colors cursor-pointer shrink-0 mt-0.5"
                                   title="Open on GitHub"
                                 >
-                                  <ExternalLink size={12} />
+                                  <ExternalLink className="icon-xs" />
                                 </button>
                               </div>
                             </div>
                           )}
                           <div className={pr ? '' : 'pt-3'}>
-                            <div className="text-[10px] uppercase tracking-wider text-dim mb-1">
+                            <div className="text-xs uppercase tracking-wider text-dim mb-1">
                               Recent commits
                             </div>
                             {commits === 'loading' && (
@@ -540,7 +537,7 @@ export function Cleanup({
                                   </div>
                                 ))}
                                 {commits.length > 5 && (
-                                  <div className="text-[11px] text-dim">
+                                  <div className="text-xs text-dim">
                                     +{commits.length - 5} more
                                   </div>
                                 )}
@@ -557,7 +554,7 @@ export function Cleanup({
               <div className="flex items-center justify-end gap-3 mt-5">
                 {selectedDirtyCount > 0 && (
                   <span className="text-xs text-warning flex items-center gap-1.5">
-                    <AlertTriangle size={12} />
+                    <AlertTriangle className="icon-xs" />
                     {selectedDirtyCount} with uncommitted changes
                   </span>
                 )}
@@ -566,7 +563,7 @@ export function Cleanup({
                   disabled={selectedPaths.length === 0 || deleting}
                   className="flex items-center gap-2 px-4 py-2 rounded-lg bg-danger/20 border border-danger/40 text-danger text-sm font-medium hover:bg-danger/30 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  <Trash2 size={14} />
+                  <Trash2 className="icon-sm" />
                   {deleting
                     ? 'Deleting…'
                     : `Delete ${selectedPaths.length || ''} worktree${selectedPaths.length === 1 ? '' : 's'}`.trim()}

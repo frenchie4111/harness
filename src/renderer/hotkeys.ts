@@ -40,6 +40,9 @@ export type Action =
   | 'hotkeyCheatsheet'
   | 'openReview'
   | 'openSettings'
+  | 'uiScaleUp'
+  | 'uiScaleDown'
+  | 'uiScaleReset'
 
 export interface Modifiers {
   cmd?: boolean
@@ -100,6 +103,9 @@ export const DEFAULT_HOTKEYS: Record<Action, HotkeyBinding> = {
   hotkeyCheatsheet: { key: '/', modifiers: { cmd: true, shift: true } },
   openReview: { key: 'r', modifiers: { cmd: true, alt: true } },
   openSettings: { key: ',', modifiers: { cmd: true } },
+  uiScaleUp: { key: '+', modifiers: { cmd: true, shift: true } },
+  uiScaleDown: { key: '-', modifiers: { cmd: true } },
+  uiScaleReset: { key: '=', modifiers: { cmd: true } },
 }
 
 /** Check if a KeyboardEvent matches a hotkey binding */
@@ -218,7 +224,10 @@ export const ACTION_LABELS: Record<Action, string> = {
   togglePerfMonitor: 'Performance monitor',
   hotkeyCheatsheet: 'Keyboard shortcuts',
   openReview: 'Review changes',
-  openSettings: 'Open settings'
+  openSettings: 'Open settings',
+  uiScaleUp: 'Increase UI size',
+  uiScaleDown: 'Decrease UI size',
+  uiScaleReset: 'Reset UI size'
 }
 
 export type CategoryId =
@@ -276,7 +285,7 @@ export const ACTION_CATEGORIES: HotkeyCategory[] = [
   {
     id: 'layout',
     label: 'Window layout',
-    actions: ['toggleSidebar', 'toggleRightColumn']
+    actions: ['toggleSidebar', 'toggleRightColumn', 'uiScaleUp', 'uiScaleDown', 'uiScaleReset']
   },
   {
     id: 'commands',

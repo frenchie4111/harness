@@ -8,6 +8,7 @@ import '@xterm/xterm/css/xterm.css'
 import type { StateEvent } from '../../shared/state'
 import { getClientId, subscribeActiveTransportReconnect, useSettings, useTerminalSession } from '../store'
 import { getBackend, useBackend } from '../backend'
+import { scaleSpec, type UiScale } from '../../shared/state/settings'
 import { Eye, X, Sparkles } from 'lucide-react'
 import { Tooltip } from './Tooltip'
 
@@ -92,11 +93,22 @@ export function isTerminalAtBottom(id: string): boolean {
  * with the user's chosen values without any prop drilling. */
 let currentFontFamily = DEFAULT_TERMINAL_FONT_FAMILY
 let currentFontSize = DEFAULT_TERMINAL_FONT_SIZE
+// `currentFontSize` is the user-configured terminal size. The pixel size
+// we hand to xterm is shifted by `uiScaleOffset` (see SCALES in
+// shared/state/settings.ts) so terminals stay in proportion with the
+// rest of the UI when the scale rung changes. Stored separately so the
+// user's terminalFontSize preference is never overwritten — the offset
+// is added dynamically.
+let uiScaleOffset = 0
+
+function effectiveTerminalFontSize(): number {
+  return currentFontSize + uiScaleOffset
+}
 
 function applyFontToAll(): void {
   for (const [id, term] of terminalRegistry) {
     term.options.fontFamily = currentFontFamily
-    term.options.fontSize = currentFontSize
+    term.options.fontSize = effectiveTerminalFontSize()
     const fit = fitRegistry.get(id)
     if (!fit) continue
     try {
@@ -127,6 +139,7 @@ function initFontCache(): void {
   void backend.getStateSnapshot().then(({ state }) => {
     currentFontFamily = state.settings.terminalFontFamily || DEFAULT_TERMINAL_FONT_FAMILY
     currentFontSize = state.settings.terminalFontSize || DEFAULT_TERMINAL_FONT_SIZE
+    uiScaleOffset = scaleSpec(state.settings.uiScale).terminalOffset
     applyFontToAll()
   })
   backend.onStateEvent((raw) => {
@@ -136,6 +149,9 @@ function initFontCache(): void {
       applyFontToAll()
     } else if (event.type === 'settings/terminalFontSizeChanged') {
       currentFontSize = event.payload || DEFAULT_TERMINAL_FONT_SIZE
+      applyFontToAll()
+    } else if (event.type === 'settings/uiScaleChanged') {
+      uiScaleOffset = scaleSpec(event.payload as UiScale).terminalOffset
       applyFontToAll()
     }
   })
@@ -297,7 +313,7 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
     }
 
     const terminal = new Terminal({
-      fontSize: currentFontSize,
+      fontSize: effectiveTerminalFontSize(),
       fontFamily: currentFontFamily,
       cursorBlink: true,
       cursorStyle: 'bar',
@@ -818,7 +834,7 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
             className="p-0.5 rounded text-dim hover:text-fg-bright hover:bg-border transition-colors"
             aria-label="Close search"
           >
-            <X size={12} />
+            <X className="icon-xs" />
           </button>
         </div>
       )}
@@ -840,7 +856,7 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
       {showSpectatorOverlay && (
         <div className="absolute top-2 right-2 flex items-center gap-2 pointer-events-auto">
           <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-panel/90 border border-border text-xs text-dim">
-            <Eye size={12} />
+            <Eye className="icon-xs" />
             <span>Spectating</span>
           </div>
           <button
@@ -858,7 +874,7 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
               onClick={onSwitchToChat}
               className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs bg-panel/90 border border-border text-fg-bright hover:bg-border transition-colors"
             >
-              <Sparkles size={12} className="text-accent" />
+              <Sparkles className="icon-xs text-accent" />
               <span>Switch to the new Chat mode</span>
             </button>
           </Tooltip>
@@ -868,7 +884,7 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
               aria-label="Dismiss Chat mode promotion"
               className="p-1 rounded-md bg-panel/90 border border-border text-dim hover:text-fg-bright transition-colors"
             >
-              <X size={12} />
+              <X className="icon-xs" />
             </button>
           </Tooltip>
         </div>

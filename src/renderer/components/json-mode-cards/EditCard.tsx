@@ -17,10 +17,10 @@ export function EditCard({ block, result, autoApproved, sessionAllowed }: ToolCa
       autoApproved={autoApproved}
       sessionAllowed={sessionAllowed}
     >
-      {fp && <div className="px-2 py-1 text-[10px] text-muted truncate font-mono">{fp}</div>}
+      {fp && <div className="px-2 py-1 text-xs text-muted truncate font-mono">{fp}</div>}
       <UnifiedDiff oldStr={oldStr} newStr={newStr} filePath={fp} />
       {result && result.isError && (
-        <pre className="px-2 py-1 text-[11px] font-mono text-danger whitespace-pre-wrap">
+        <pre className="px-2 py-1 text-xs font-mono text-danger whitespace-pre-wrap">
           {trunc(result.content, 1000)}
         </pre>
       )}

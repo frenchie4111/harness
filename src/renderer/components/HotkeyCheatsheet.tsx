@@ -91,7 +91,7 @@ export function HotkeyCheatsheet({ resolvedHotkeys, onClose, onOpenCommandPalett
       >
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-border">
           <h2 className="text-sm font-semibold text-fg-bright">Keyboard Shortcuts</h2>
-          <kbd className="text-[10px] text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono">ESC</kbd>
+          <kbd className="text-xs text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono">ESC</kbd>
         </div>
 
         <div className="max-h-[60vh] overflow-y-auto px-5 py-4">
@@ -116,7 +116,7 @@ export function HotkeyCheatsheet({ resolvedHotkeys, onClose, onOpenCommandPalett
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-5">
             {groups.map((group) => (
               <div key={group.title}>
-                <h3 className="text-[10px] font-semibold uppercase tracking-wider text-faint mb-2">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-faint mb-2">
                   {group.title}
                 </h3>
                 <div className="space-y-1">
@@ -135,7 +135,7 @@ export function HotkeyCheatsheet({ resolvedHotkeys, onClose, onOpenCommandPalett
         </div>
 
         <div className="px-5 py-2.5 border-t border-border">
-          <p className="text-[11px] text-faint">
+          <p className="text-xs text-faint">
             Customize in Settings &rarr; Hotkeys
           </p>
         </div>

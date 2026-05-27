@@ -15,12 +15,12 @@ export function UnifiedDiff({
 
   if (lines.length === 0) {
     return (
-      <div className="px-2 py-1 text-[11px] text-muted italic">No changes.</div>
+      <div className="px-2 py-1 text-xs text-muted italic">No changes.</div>
     )
   }
 
   return (
-    <div className="text-[11px] font-mono max-h-72 overflow-auto bg-app/40">
+    <div className="text-xs font-mono max-h-72 overflow-auto bg-app/40">
       {lines.map((ln, i) => {
         if (ln.kind === 'hunk-sep') {
           return (
@@ -29,8 +29,8 @@ export function UnifiedDiff({
               className="flex items-center text-muted bg-app/60 border-y border-border/30 select-none"
             >
               <span className="w-4 shrink-0 text-center">{' '}</span>
-              <span className="w-16 shrink-0 text-right pr-2 text-[10px]">…</span>
-              <span className="flex-1 px-1 text-[10px]">…</span>
+              <span className="w-16 shrink-0 text-right pr-2 text-xs">…</span>
+              <span className="flex-1 px-1 text-xs">…</span>
             </div>
           )
         }
@@ -53,10 +53,10 @@ export function UnifiedDiff({
             <span className="w-4 shrink-0 text-center select-none opacity-70">
               {marker}
             </span>
-            <span className="w-8 shrink-0 text-right pr-1 select-none text-muted text-[10px] tabular-nums">
+            <span className="w-8 shrink-0 text-right pr-1 select-none text-muted text-xs tabular-nums">
               {ln.oldLn ?? ''}
             </span>
-            <span className="w-8 shrink-0 text-right pr-2 select-none text-muted text-[10px] tabular-nums">
+            <span className="w-8 shrink-0 text-right pr-2 select-none text-muted text-xs tabular-nums">
               {ln.newLn ?? ''}
             </span>
             <code

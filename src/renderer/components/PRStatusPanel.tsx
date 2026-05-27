@@ -212,7 +212,7 @@ function MergeLocallyBody({
                   title={hasConflict ? 'Resolve merge conflicts before merging' : undefined}
                   className="flex-1 text-xs bg-accent/20 hover:bg-accent/30 text-fg-bright px-2 py-1.5 rounded-l flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer border-r border-accent/40"
                 >
-                  <GitMerge size={12} />
+                  <GitMerge className="icon-xs" />
                   {busy === 'merging' ? 'Merging…' : STRATEGY_BUTTON_LABELS[strategy]}
                 </button>
                 <button
@@ -222,7 +222,7 @@ function MergeLocallyBody({
                   aria-label="Change merge strategy"
                   title="Change merge strategy"
                 >
-                  <ChevronDown size={12} />
+                  <ChevronDown className="icon-xs" />
                 </button>
               </div>
 
@@ -240,16 +240,14 @@ function MergeLocallyBody({
                           }`}
                         >
                           <Check
-                            size={12}
-                            className={`mt-0.5 shrink-0 ${
+                            className={`icon-xs mt-0.5 shrink-0 ${
                               active ? 'text-accent' : 'opacity-0'
-                            }`}
-                          />
+                            }`} />
                           <div className="min-w-0">
                             <div className="text-xs text-fg-bright">
                               {STRATEGY_MENU_LABELS[s]}
                             </div>
-                            <div className="text-[11px] text-faint leading-snug">
+                            <div className="text-xs text-faint leading-snug">
                               {STRATEGY_DESCRIPTIONS[s]}
                             </div>
                           </div>
@@ -262,7 +260,7 @@ function MergeLocallyBody({
             </div>
 
             {hasConflict && conflictPreview && (
-              <div className="text-[11px] text-danger leading-snug space-y-1">
+              <div className="text-xs text-danger leading-snug space-y-1">
                 <div>
                   Merge conflict
                   {conflictPreview.files.length > 0 && (
@@ -278,7 +276,7 @@ function MergeLocallyBody({
                   . Resolve before merging.
                 </div>
                 {conflictPreview.files.length > 1 && (
-                  <ul className="text-faint font-mono text-[10px] space-y-0.5 max-h-20 overflow-y-auto">
+                  <ul className="text-faint font-mono text-xs space-y-0.5 max-h-20 overflow-y-auto">
                     {conflictPreview.files.map((f) => (
                       <li key={f} className="truncate" style={{ direction: 'rtl', textAlign: 'left' }} title={f}>
                         <bdi>{f}</bdi>
@@ -290,7 +288,7 @@ function MergeLocallyBody({
             )}
 
             {needsFix && (
-              <div className="text-[11px] text-warning leading-snug space-y-1">
+              <div className="text-xs text-warning leading-snug space-y-1">
                 <div>
                   Main worktree isn't ready:
                   {mainStatus.isDirty && ' has uncommitted changes'}
@@ -320,7 +318,7 @@ function MergeLocallyBody({
             )}
 
             {error && (
-              <div className="text-[11px] text-danger leading-snug break-words">{error}</div>
+              <div className="text-xs text-danger leading-snug break-words">{error}</div>
             )}
           </>
         )}
@@ -535,9 +533,7 @@ function ReviewSummary({
                 <span className="text-muted truncate">{review.user}</span>
                 <span className={`shrink-0 ${icon.color}`}>{icon.symbol}</span>
                 <ExternalLink
-                  size={10}
-                  className="shrink-0 text-faint opacity-0 group-hover:opacity-100 transition-opacity ml-auto"
-                />
+                  className="icon-2xs shrink-0 text-faint opacity-0 group-hover:opacity-100 transition-opacity ml-auto" />
               </div>
             )
           })}
@@ -685,13 +681,13 @@ function usePRMergeAction(
         }`}
       >
         {merging ? (
-          <Loader2 size={11} className="animate-spin" />
+          <Loader2 className="icon-xs animate-spin" />
         ) : justMerged ? (
-          <Check size={11} />
+          <Check className="icon-xs" />
         ) : pr.hasConflict === true ? (
-          <GitMergeConflict size={11} />
+          <GitMergeConflict className="icon-xs" />
         ) : (
-          <GitMerge size={11} />
+          <GitMerge className="icon-xs" />
         )}
         {mergeLabel}
       </button>
@@ -699,14 +695,14 @@ function usePRMergeAction(
   ) : null
 
   const errorRow = error ? (
-    <div className="px-3 pt-2 text-[11px] text-danger leading-snug break-words flex items-center gap-2">
+    <div className="px-3 pt-2 text-xs text-danger leading-snug break-words flex items-center gap-2">
       <span className="flex-1">{error}</span>
       <button
         onClick={() => {
           setError(null)
           void performMerge()
         }}
-        className="px-2 py-0.5 text-[11px] rounded bg-surface hover:bg-surface/60 text-fg transition-colors cursor-pointer shrink-0"
+        className="px-2 py-0.5 text-xs rounded bg-surface hover:bg-surface/60 text-fg transition-colors cursor-pointer shrink-0"
       >
         Retry
       </button>
@@ -757,7 +753,7 @@ export function PRStatusPanel({
         className="text-xs text-dim hover:text-fg flex items-center transition-colors cursor-pointer disabled:cursor-default"
         aria-label="Refresh PR status"
       >
-        <RefreshCw size={11} className={loading ? 'animate-spin' : ''} />
+        <RefreshCw className={`icon-xs ${loading ? 'animate-spin' : ''}`} />
       </button>
     </Tooltip>
   ) : null
@@ -787,7 +783,7 @@ export function PRStatusPanel({
               onClick={onConnectGithub}
               className="w-full text-xs bg-info/25 hover:bg-info/35 text-info px-2 py-1.5 rounded flex items-center justify-center gap-1.5 cursor-pointer"
             >
-              <GitPullRequest size={12} />
+              <GitPullRequest className="icon-xs" />
               Connect GitHub
             </button>
           )}
@@ -813,7 +809,7 @@ export function PRStatusPanel({
                 e.stopPropagation()
                 backend.openExternal(pr.url)
               }}
-              className={`px-1.5 py-0.5 rounded border text-[10px] font-medium transition-colors cursor-pointer shrink-0 ${
+              className={`px-1.5 py-0.5 rounded border text-xs font-medium transition-colors cursor-pointer shrink-0 ${
                 pr.queuePosition
                   ? 'border-accent text-accent hover:bg-accent/10'
                   : STATE_PILL_COLORS[pr.state]
@@ -867,7 +863,7 @@ export function PRStatusPanel({
                       e.stopPropagation()
                       backend.openExternal(pr.milestone!.url)
                     }}
-                    className={`shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-medium cursor-pointer transition-colors truncate max-w-[140px] ${
+                    className={`shrink-0 px-1.5 py-0.5 rounded-full text-xs font-medium cursor-pointer transition-colors truncate max-w-[140px] ${
                       pr.milestone.state === 'closed'
                         ? 'bg-surface text-dim hover:text-fg-bright'
                         : 'bg-accent/20 text-accent hover:bg-accent/30'
@@ -879,7 +875,7 @@ export function PRStatusPanel({
                 )
               }
               return (
-                <span className="shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-surface text-faint">
+                <span className="shrink-0 px-1.5 py-0.5 rounded-full text-xs font-medium bg-surface text-faint">
                   No milestone
                 </span>
               )
@@ -895,7 +891,7 @@ export function PRStatusPanel({
                 className="flex items-center gap-0.5 text-warning shrink-0"
                 title={`${pr.behindBy} commit${pr.behindBy === 1 ? '' : 's'} behind ${pr.baseBranch}`}
               >
-                <ArrowDown size={11} />
+                <ArrowDown className="icon-xs" />
                 {pr.behindBy}
               </span>
             )}
@@ -923,7 +919,7 @@ export function PRStatusPanel({
                 return (
                   <span
                     key={label.name}
-                    className="px-1.5 py-0.5 rounded-full text-[10px] font-medium leading-tight"
+                    className="px-1.5 py-0.5 rounded-full text-xs font-medium leading-tight"
                     style={{ backgroundColor: `#${label.color}`, color: fg }}
                     title={label.description || label.name}
                   >
@@ -937,7 +933,7 @@ export function PRStatusPanel({
           {/* Linked issues (Closes #N / GitHub "Link an issue") */}
           {pr.linkedIssues.length > 0 && (
             <div className="flex flex-col gap-0.5">
-              <div className="text-[10px] uppercase tracking-wide text-faint">
+              <div className="text-xs uppercase tracking-wide text-faint">
                 {pr.linkedIssues.length === 1 ? 'Linked issue' : 'Linked issues'}
               </div>
               {pr.linkedIssues.map((iss) => (
@@ -956,9 +952,9 @@ export function PRStatusPanel({
                   }}
                 >
                   {iss.state === 'closed' ? (
-                    <CircleCheck size={12} className="shrink-0 text-dim" />
+                    <CircleCheck className="icon-xs shrink-0 text-dim" />
                   ) : (
-                    <CircleDot size={12} className="shrink-0 text-success" />
+                    <CircleDot className="icon-xs shrink-0 text-success" />
                   )}
                   <span className="font-mono text-faint shrink-0">#{iss.number}</span>
                   <span className={`truncate ${iss.state === 'closed' ? 'text-faint line-through' : 'text-fg'}`}>
@@ -1036,13 +1032,11 @@ export function PRStatusPanel({
                         </span>
                         {clickable && (
                           <ExternalLink
-                            size={10}
-                            className="shrink-0 text-faint opacity-0 group-hover:opacity-100 transition-opacity"
-                          />
+                            className="icon-2xs shrink-0 text-faint opacity-0 group-hover:opacity-100 transition-opacity" />
                         )}
                       </div>
                       {reason && (
-                        <div className="text-faint text-[11px] leading-snug truncate">
+                        <div className="text-faint text-xs leading-snug truncate">
                           {reason}
                         </div>
                       )}

@@ -580,6 +580,54 @@ These are how the user wants Claude to behave when working on this repo:
     or `gh pr create` against a PR you're reviewing, stop. You're on
     the wrong path — go back and `gh pr checkout <num>` first.
 
+11. **Use the canonical text and icon sizes so the UI scales together.**
+    The renderer's root `html` font-size is driven by the `uiScale`
+    setting, so every `rem`-based size (Tailwind `text-*` and the `w-N` /
+    `h-N` grid) shifts in lockstep. Inline pixel sizes do NOT scale and
+    will look wrong at the larger rungs.
+
+    **Text — pick from this set only:**
+    `text-xs`, `text-sm`, `text-base`, `text-lg`, `text-2xl`, `text-3xl`.
+    No `text-[Npx]`, no inline `style={{ fontSize: ... }}`, no `text-xl` /
+    `text-4xl` / `text-5xl`. If the design seems to call for an
+    in-between size, snap to the nearest canonical step — the per-px
+    hierarchy doesn't earn its keep against the visual noise.
+
+    **Icons — use the `icon-*` aliases, not the lucide `size={N}` prop
+    or raw `w-N h-N` classes.** The lucide `size` prop bakes pixel
+    literals into the SVG `width` / `height` attributes, so icons stay
+    fixed regardless of root font-size. `icon-*` is a rem-based alias
+    defined in `src/renderer/styles.css` via Tailwind v4's `@utility`,
+    and mirrors the `text-*` ladder. Pick from this set only:
+
+    | utility    | px   |
+    |---         |---   |
+    | `icon-2xs` | 10px |
+    | `icon-xs`  | 12px |
+    | `icon-sm`  | 14px |
+    | `icon-base`| 16px |
+    | `icon-lg`  | 20px |
+    | `icon-xl`  | 32px |
+
+    Example: `<Loader2 className="icon-sm animate-spin" />`. If a
+    design genuinely wants 18px or 26px (one-offs), use
+    `w-[1.125rem] h-[1.125rem]` / `w-[1.625rem] h-[1.625rem]`. If the
+    rung you need would be the third callsite of that one-off, add a
+    new `@utility` entry in `styles.css` and use that instead.
+
+    Note: `w-N h-N` literals are still correct for *non-icon* fixed-size
+    boxes that the design doesn't want growing with `uiScale` — color
+    swatches, decorative dots, avatar circles. Checkboxes are NOT in
+    this set; treat them as icons (use `icon-base`) so the hit target
+    scales with the rest of the UI.
+
+    Exceptions where pixel literals are correct (because the consumer
+    isn't part of the rem grid): Monaco/XTerminal font sizes, the
+    PerfMonitor HUD's SVG numerics, JsonModeChat's
+    `--chat-{body,chrome,meta}-text` CSS variable system, ReviewDiffPane
+    inline styles inside Monaco view zones, and non-icon components
+    that legitimately take a pixel size (e.g. `<QRCodeSVG size={128} />`).
+
 ## Releasing
 
 End-to-end release is automated via `npm run release <version>`:

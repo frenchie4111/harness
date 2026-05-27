@@ -12,13 +12,13 @@ export function BashCard({ block, result, autoApproved, sessionAllowed }: ToolCa
       autoApproved={autoApproved}
       sessionAllowed={sessionAllowed}
     >
-      {description && <div className="px-2 py-1 text-[11px] text-muted">{description}</div>}
-      <pre className="px-2 py-1 text-[11px] font-mono bg-app/40 whitespace-pre-wrap max-h-32 overflow-auto">
+      {description && <div className="px-2 py-1 text-xs text-muted">{description}</div>}
+      <pre className="px-2 py-1 text-xs font-mono bg-app/40 whitespace-pre-wrap max-h-32 overflow-auto">
         $ {cmd}
       </pre>
       {result && (
         <pre
-          className={`px-2 py-1 text-[11px] font-mono whitespace-pre-wrap max-h-72 overflow-auto ${
+          className={`px-2 py-1 text-xs font-mono whitespace-pre-wrap max-h-72 overflow-auto ${
             result.isError ? 'text-danger' : 'opacity-80'
           }`}
         >

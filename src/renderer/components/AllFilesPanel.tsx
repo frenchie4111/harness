@@ -122,7 +122,7 @@ export function AllFilesPanel({
             }}
             className="text-faint hover:text-fg transition-colors cursor-pointer"
           >
-            <Code2 size={12} />
+            <Code2 className="icon-xs" />
           </button>
         </Tooltip>
       )}
@@ -135,7 +135,7 @@ export function AllFilesPanel({
             }}
             className="text-faint hover:text-fg transition-colors cursor-pointer"
           >
-            <FolderOpen size={12} />
+            <FolderOpen className="icon-xs" />
           </button>
         </Tooltip>
       )}
@@ -147,7 +147,7 @@ export function AllFilesPanel({
           }}
           className="text-faint hover:text-fg transition-colors cursor-pointer"
         >
-          <RefreshCw size={12} />
+          <RefreshCw className="icon-xs" />
         </button>
       </Tooltip>
     </>
@@ -186,7 +186,7 @@ export function AllFilesPanel({
         )}
       </div>
       {files.length > 0 && (
-        <div className="px-3 py-1.5 border-t border-border text-[10px] text-faint shrink-0 flex items-center justify-between">
+        <div className="px-3 py-1.5 border-t border-border text-xs text-faint shrink-0 flex items-center justify-between">
           <span>
             {filtering ? `${filtered.length} / ${files.length}` : files.length} file
             {files.length !== 1 ? 's' : ''}
@@ -284,13 +284,11 @@ function DirRow({
       style={{ paddingLeft: 8 + depth * 12 }}
     >
       <ChevronRight
-        size={10}
-        className={`shrink-0 text-faint transition-transform ${open ? 'rotate-90' : ''}`}
-      />
+        className={`icon-2xs shrink-0 text-faint transition-transform ${open ? 'rotate-90' : ''}`} />
       {open ? (
-        <FolderOpen size={11} className="shrink-0 text-info" />
+        <FolderOpen className="icon-xs shrink-0 text-info" />
       ) : (
-        <Folder size={11} className="shrink-0 text-info" />
+        <Folder className="icon-xs shrink-0 text-info" />
       )}
       <span className="truncate text-fg">{name}</span>
     </div>
@@ -324,7 +322,7 @@ function FileRow({
         e.dataTransfer.effectAllowed = 'copy'
       }}
     >
-      <FileText size={11} className="shrink-0 text-faint" />
+      <FileText className="icon-xs shrink-0 text-faint" />
       <span className="truncate min-w-0 flex-1 text-fg">{name}</span>
       {onSendToAgent && (
         <Tooltip label="Reference in Claude" side="left">
@@ -335,7 +333,7 @@ function FileRow({
             }}
             className="shrink-0 opacity-0 group-hover:opacity-100 text-faint hover:text-fg transition-all cursor-pointer"
           >
-            <AtSign size={11} />
+            <AtSign className="icon-xs" />
           </button>
         </Tooltip>
       )}
@@ -347,7 +345,7 @@ function FileRow({
           }}
           className="shrink-0 opacity-0 group-hover:opacity-100 text-faint hover:text-fg transition-all cursor-pointer"
         >
-          <Code2 size={11} />
+          <Code2 className="icon-xs" />
         </button>
       </Tooltip>
     </div>

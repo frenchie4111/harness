@@ -76,11 +76,11 @@ export function ToolGroup({ rows }: { rows: ToolGroupRow[] }): JSX.Element {
           fontSize: 'var(--chat-chrome-text)'
         }}
       >
-        <span className="text-muted text-[9px] w-2 shrink-0 select-none">
+        <span className="text-muted text-xs w-2 shrink-0 select-none">
           {expanded ? '▾' : '▸'}
         </span>
         {thinkingCount > 0 && (
-          <Brain size={11} className="text-muted shrink-0" />
+          <Brain className="icon-xs text-muted shrink-0" />
         )}
         <span
           className={`shrink-0 ${anyBrand ? 'brand-gradient-text brand-gradient-flow-text-hover' : 'text-muted'}`}

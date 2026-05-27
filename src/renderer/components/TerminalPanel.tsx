@@ -43,7 +43,7 @@ function SpectatorChip({ terminalId }: { terminalId: string }): JSX.Element | nu
   return (
     <Tooltip label={tip}>
       <div className="no-drag shrink-0 flex items-center gap-1 px-2 h-full text-xs text-dim">
-        <Users size={12} />
+        <Users className="icon-xs" />
         <span>{others.size}</span>
       </div>
     </Tooltip>
@@ -263,10 +263,8 @@ function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect
       {tab.type === 'shell' ? (
         shellActivity?.active ? (
           <Loader2
-            size={10}
-            className="animate-spin text-fg-bright"
-            aria-label={`Running: ${shellActivity.processName || '?'}`}
-          />
+            className="icon-2xs animate-spin text-fg-bright"
+            aria-label={`Running: ${shellActivity.processName || '?'}`} />
         ) : (
           <span className="w-1.5 h-1.5 rounded-full bg-faint" />
         )
@@ -310,7 +308,7 @@ function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect
             }}
             className="ml-1 text-faint hover:text-fg transition-colors"
           >
-            <X size={10} />
+            <X className="icon-2xs" />
           </button>
         </Tooltip>
       )}
@@ -507,7 +505,7 @@ export function TerminalPanel({
               }}
               className="no-drag shrink-0 px-2 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"
             >
-              <Sparkles size={12} />
+              <Sparkles className="icon-xs" />
             </button>
           </Tooltip>
           <Tooltip label="New shell tab" action="newShellTab">
@@ -515,7 +513,7 @@ export function TerminalPanel({
               onClick={onAddTab}
               className="no-drag shrink-0 px-2 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"
             >
-              <SquareTerminal size={12} />
+              <SquareTerminal className="icon-xs" />
             </button>
           </Tooltip>
           <Tooltip label="New browser tab">
@@ -523,7 +521,7 @@ export function TerminalPanel({
               onClick={onAddBrowserTab}
               className="no-drag shrink-0 px-2 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"
             >
-              <Globe size={12} />
+              <Globe className="icon-xs" />
             </button>
           </Tooltip>
         </div>
@@ -535,7 +533,7 @@ export function TerminalPanel({
             aria-label="Scroll tabs left"
             className="no-drag shrink-0 px-1 h-full text-faint hover:text-fg transition-colors cursor-pointer"
           >
-            <ChevronLeft className="w-3.5 h-3.5" />
+            <ChevronLeft className="icon-sm" />
           </button>
         )}
         <div
@@ -581,7 +579,7 @@ export function TerminalPanel({
             aria-label="Scroll tabs right"
             className="no-drag shrink-0 px-1 h-full text-faint hover:text-fg transition-colors cursor-pointer"
           >
-            <ChevronRight className="w-3.5 h-3.5" />
+            <ChevronRight className="icon-sm" />
           </button>
         )}
         {showSpectatorChip && activeTab && <SpectatorChip terminalId={activeTab.id} />}
@@ -591,7 +589,7 @@ export function TerminalPanel({
               onClick={onShowRightColumn}
               className="no-drag shrink-0 pr-3 h-full text-faint hover:text-fg transition-colors cursor-pointer"
             >
-              <PanelRightOpen size={13} />
+              <PanelRightOpen className="icon-sm" />
             </button>
           </Tooltip>
         )}

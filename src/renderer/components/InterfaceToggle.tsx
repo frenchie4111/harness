@@ -74,12 +74,12 @@ export function InterfaceToggle({
               <span className={`flex items-center gap-1.5 text-sm font-medium ${selected ? 'text-fg-bright' : 'text-fg'}`}>
                 <span>{opt.label}</span>
                 {opt.badge === 'new' && (
-                  <span className="brand-gradient-bg text-white text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full leading-none">
+                  <span className="brand-gradient-bg text-white text-xs font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full leading-none">
                     New
                   </span>
                 )}
               </span>
-              <span className={`block ${size === 'compact' ? 'text-[11px]' : 'text-xs'} text-dim mt-0.5`}>
+              <span className={`block ${size === 'compact' ? 'text-xs' : 'text-xs'} text-dim mt-0.5`}>
                 {opt.description}
               </span>
             </span>

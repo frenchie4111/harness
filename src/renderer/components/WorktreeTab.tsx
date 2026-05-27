@@ -117,10 +117,8 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
     >
       {deleting ? (
         <Loader2
-          size={11}
-          className="animate-spin text-danger shrink-0"
-          aria-label="Deleting worktree"
-        />
+          className="icon-xs animate-spin text-danger shrink-0"
+          aria-label="Deleting worktree" />
       ) : (
         <span
           className={`w-2 h-2 rounded-full shrink-0 ${STATUS_COLORS[displayStatus]}`}
@@ -129,17 +127,15 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
       )}
       {shellActive && (
         <Loader2
-          size={11}
-          className="animate-spin text-fg-bright shrink-0"
-          aria-label="Shell activity"
-        />
+          className="icon-xs animate-spin text-fg-bright shrink-0"
+          aria-label="Shell activity" />
       )}
       {prStatus && (
         <span
           className="relative shrink-0"
           title={`PR #${prStatus.number}${prStatus.checksOverall !== 'none' ? ` \u2014 checks ${prStatus.checksOverall}` : ''}${iconTitleSuffix}${prStatus.reviewDecision === 'approved' ? ' \u2014 approved' : prStatus.reviewDecision === 'changes_requested' ? ' \u2014 changes requested' : ''}`}
         >
-          <GitPullRequest size={13} className={iconColor} />
+          <GitPullRequest className={`icon-sm ${iconColor}`} />
           {prStatus.reviewDecision === 'approved' && (
             <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-success ring-1 ring-panel" />
           )}
@@ -154,7 +150,7 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
             const tip = detachedLikeTooltip(worktree.branch)
             return tip ? (
               <span className="shrink-0 inline-flex" title={tip} aria-label={tip}>
-                <TriangleAlert size={12} className="text-warning" />
+                <TriangleAlert className="icon-xs text-warning" />
               </span>
             ) : null
           })()}
@@ -187,13 +183,13 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
             }}
             className="hidden group-hover:flex text-faint hover:text-accent transition-colors shrink-0 cursor-pointer"
           >
-            <RotateCw size={12} />
+            <RotateCw className="icon-xs" />
           </button>
         </Tooltip>
       )}
       {prStatus && typeof prStatus.additions === 'number' && typeof prStatus.deletions === 'number' && (
         <span
-          className="text-[10px] font-mono shrink-0 leading-none group-hover:hidden"
+          className="text-xs font-mono shrink-0 leading-none group-hover:hidden"
           title={`+${prStatus.additions} additions, −${prStatus.deletions} deletions`}
         >
           <span className="text-success">+{prStatus.additions}</span>
@@ -222,7 +218,7 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
             }}
             className="hidden group-hover:flex text-faint hover:text-accent transition-colors shrink-0 cursor-pointer"
           >
-            <Moon size={12} />
+            <Moon className="icon-xs" />
           </button>
         </Tooltip>
       )}
@@ -235,7 +231,7 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
             }}
             className="hidden group-hover:flex text-faint hover:text-danger transition-colors shrink-0 cursor-pointer"
           >
-            <Trash2 size={12} />
+            <Trash2 className="icon-xs" />
           </button>
         </Tooltip>
       )}

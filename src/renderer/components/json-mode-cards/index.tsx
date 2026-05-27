@@ -105,7 +105,7 @@ export function ToolCardChrome({
           fontSize: 'var(--chat-chrome-text)'
         }}
       >
-        <span className="text-muted text-[9px] w-2 shrink-0 select-none">
+        <span className="text-muted text-xs w-2 shrink-0 select-none">
           {expanded ? '▾' : '▸'}
         </span>
         <span

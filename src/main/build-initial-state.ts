@@ -114,6 +114,13 @@ export function buildInitialAppState(
       autoApproveSteerInstructions: config.autoApproveSteerInstructions || '',
       useSystemClaudeForJsonMode: config.useSystemClaudeForJsonMode === true,
       jsonModeChatDensity: config.jsonModeChatDensity === 'comfy' ? 'comfy' : 'compact',
+      uiScale:
+        config.uiScale === 'x-small' ||
+        config.uiScale === 'medium' ||
+        config.uiScale === 'large' ||
+        config.uiScale === 'x-large'
+          ? config.uiScale
+          : 'small',
       jsonModeSendOnEnter: config.jsonModeSendOnEnter === true,
       jsonModeDefaultPermissionMode:
         config.jsonModeDefaultPermissionMode === 'default' ||

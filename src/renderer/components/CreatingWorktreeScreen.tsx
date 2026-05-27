@@ -23,7 +23,7 @@ export function CreatingWorktreeScreen({
       <div className="flex-1 min-w-0 flex items-center justify-center p-8">
         <div className="max-w-md w-full bg-panel-raised border border-border-strong rounded-lg p-6">
           <div className="flex items-center gap-2 mb-3">
-            <AlertCircle size={18} className="text-danger" />
+            <AlertCircle className="w-[1.125rem] h-[1.125rem] text-danger" />
             <div className="text-sm font-semibold text-fg-bright">
               Couldn't create <span className="font-mono">{pending.branchName}</span>
             </div>
@@ -57,7 +57,7 @@ export function CreatingWorktreeScreen({
       <div className="flex-1 min-w-0 flex items-center justify-center p-8">
         <div className="max-w-2xl w-full bg-panel-raised border border-border-strong rounded-lg p-6">
           <div className="flex items-center gap-2 mb-1">
-            <AlertCircle size={18} className="text-warning" />
+            <AlertCircle className="w-[1.125rem] h-[1.125rem] text-warning" />
             <div className="text-sm font-semibold text-fg-bright">
               Setup script failed
               {typeof pending.setupExitCode === 'number' && (
@@ -112,8 +112,8 @@ export function CreatingWorktreeScreen({
             onClick={() => setLogsOpen((v) => !v)}
             className="flex items-center gap-1.5 text-xs text-dim hover:text-fg transition-colors cursor-pointer mb-2"
           >
-            {logsOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-            <TerminalIcon size={12} />
+            {logsOpen ? <ChevronDown className="icon-xs" /> : <ChevronRight className="icon-xs" />}
+            <TerminalIcon className="icon-xs" />
             {logsOpen ? 'Hide setup logs' : 'Show setup logs'}
           </button>
           {logsOpen && <ScriptLogViewer log={pending.setupLog || ''} />}

@@ -245,6 +245,8 @@ export function buildBackend(
       req('config:setChatPromotionDismissed', value),
     setJsonModeChatDensity: (value: 'compact' | 'comfy') =>
       req('config:setJsonModeChatDensity', value),
+    setUiScale: (value: 'x-small' | 'small' | 'medium' | 'large' | 'x-large') =>
+      req('config:setUiScale', value),
     setJsonModeSendOnEnter: (enabled: boolean) =>
       req('config:setJsonModeSendOnEnter', enabled),
     setJsonModeDefaultPermissionMode: (value: 'default' | 'acceptEdits' | 'plan') =>
@@ -430,6 +432,12 @@ export function buildBackend(
       onLocalSignal('app:debugPreviewOnboarding', () => callback()),
     onOpenAddBackend: (callback: () => void) =>
       onLocalSignal('app:openAddBackend', () => callback()),
+    onUiScaleUp: (callback: () => void) =>
+      onLocalSignal('app:uiScaleUp', () => callback()),
+    onUiScaleDown: (callback: () => void) =>
+      onLocalSignal('app:uiScaleDown', () => callback()),
+    onUiScaleReset: (callback: () => void) =>
+      onLocalSignal('app:uiScaleReset', () => callback()),
 
     acceptHooks: () => req('hooks:accept'),
     declineHooks: () => req('hooks:decline'),

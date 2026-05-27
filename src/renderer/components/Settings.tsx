@@ -12,7 +12,8 @@ import { AgentIcon } from './AgentIcon'
 import { InterfaceToggle } from './InterfaceToggle'
 import { BUILT_IN_THEMES_BY_MODE, type ThemeOption } from '../themes'
 import { SEMANTIC_KEYS } from '../theme-apply'
-import type { CustomTheme } from '../../shared/state/settings'
+import type { CustomTheme, UiScale } from '../../shared/state/settings'
+import { SCALES, scaleSpec } from '../../shared/state/settings'
 import { QRCodeSVG } from 'qrcode.react'
 
 interface SettingsProps {
@@ -26,6 +27,7 @@ type SectionId = 'appearance' | 'agent' | 'worktrees' | 'editor' | 'github' | 'h
 type SubSectionId =
   | 'appearance-theme'
   | 'appearance-custom-themes'
+  | 'appearance-ui-size'
   | 'appearance-terminal-font'
   | 'agent-general'
   | 'agent-claude'
@@ -58,6 +60,7 @@ const SECTIONS: Section[] = [
   { id: 'appearance', label: 'Appearance', icon: Palette, children: [
     { id: 'appearance-theme', label: 'Theme' },
     { id: 'appearance-custom-themes', label: 'Custom themes' },
+    { id: 'appearance-ui-size', label: 'UI size' },
     { id: 'appearance-terminal-font', label: 'Terminal font' }
   ]},
   { id: 'agent', label: 'Agent', icon: TerminalIcon, children: [
@@ -142,6 +145,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
   const subSectionRefs = useRef<Record<SubSectionId, HTMLElement | null>>({
     'appearance-theme': null,
     'appearance-custom-themes': null,
+    'appearance-ui-size': null,
     'appearance-terminal-font': null,
     'agent-general': null,
     'agent-claude': null,
@@ -336,6 +340,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     wsTransportHost,
     defaultClaudeTabType,
     jsonModeChatDensity,
+    uiScale,
     jsonModeSendOnEnter,
     jsonModeDefaultPermissionMode,
     autoSleepMinutes,
@@ -486,6 +491,46 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
   const handleSelectThemeMode = useCallback((mode: 'light' | 'dark' | 'system') => {
     void backend.setThemeMode(mode)
   }, [backend])
+
+  // UI scale draft. A live slider that resized the whole app on each drag
+  // tick would be disorienting; instead we hold a local draft and a small
+  // scoped preview (below) shows what the chosen rung looks like. Save
+  // commits via IPC; closing Settings without saving drops the draft.
+  const [draftUiScale, setDraftUiScale] = useState<UiScale>(uiScale)
+  // Resync if the persisted value changes from another client or the
+  // Cmd+= / Cmd+- hotkeys while Settings is open.
+  useEffect(() => { setDraftUiScale(uiScale) }, [uiScale])
+  const uiScaleDirty = draftUiScale !== uiScale
+  const draftScaleSpec = scaleSpec(draftUiScale)
+  const handleSelectUiScale = useCallback((value: UiScale) => {
+    setDraftUiScale(value)
+  }, [])
+  const handleSaveUiScale = useCallback(() => {
+    void backend.setUiScale(draftUiScale)
+  }, [backend, draftUiScale])
+  const handleRevertUiScale = useCallback(() => {
+    setDraftUiScale(uiScale)
+  }, [uiScale])
+
+  // When the persisted uiScale changes the root font-size shifts and the
+  // whole Settings page reflows — the user's scroll position no longer
+  // points at the section they were reading. Re-anchor to the active
+  // subsection (or section, if no subsection is active) on the next
+  // frame after App.tsx's font-size effect runs.
+  const activeSectionRef = useRef(activeSection)
+  useEffect(() => { activeSectionRef.current = activeSection }, [activeSection])
+  const activeSubSectionRef = useRef(activeSubSection)
+  useEffect(() => { activeSubSectionRef.current = activeSubSection }, [activeSubSection])
+  const prevUiScaleRef = useRef(uiScale)
+  useEffect(() => {
+    if (uiScale === prevUiScaleRef.current) return
+    prevUiScaleRef.current = uiScale
+    requestAnimationFrame(() => {
+      const sub = activeSubSectionRef.current
+      if (sub) scrollToSubSection(sub)
+      else scrollToSection(activeSectionRef.current)
+    })
+  }, [uiScale, scrollToSection, scrollToSubSection])
 
   const handleSelectLightTheme = useCallback((id: string) => {
     void backend.setThemeLight(id)
@@ -987,21 +1032,21 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
       case 'checking':
         return (
           <div className="flex items-center gap-2 text-xs text-muted">
-            <RefreshCw size={12} className="animate-spin" />
+            <RefreshCw className="icon-xs animate-spin" />
             Checking for updates...
           </div>
         )
       case 'not-available':
         return (
           <div className="flex items-center gap-2 text-xs text-success">
-            <Check size={12} />
+            <Check className="icon-xs" />
             You&apos;re up to date
           </div>
         )
       case 'available':
         return (
           <div className="flex items-center gap-2 text-xs text-warning">
-            <Download size={12} />
+            <Download className="icon-xs" />
             <span>
               <a
                 onClick={() => backend.openExternal(harnessReleaseNotesUrl(updaterStatus.version))}
@@ -1016,7 +1061,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
       case 'downloading':
         return (
           <div className="flex items-center gap-2 text-xs text-warning">
-            <Download size={12} />
+            <Download className="icon-xs" />
             <span>
               Downloading{' '}
               <a
@@ -1033,7 +1078,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
         return (
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2 text-xs text-success">
-              <Check size={12} />
+              <Check className="icon-xs" />
               <span>
                 <a
                   onClick={() => backend.openExternal(harnessReleaseNotesUrl(updaterStatus.version))}
@@ -1048,7 +1093,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               onClick={handleRestart}
               className="self-start flex items-center gap-1.5 px-3 py-1.5 bg-success/20 hover:bg-success/30 rounded text-xs text-success transition-colors cursor-pointer"
             >
-              <RotateCw size={12} />
+              <RotateCw className="icon-xs" />
               Restart &amp; install
             </button>
           </div>
@@ -1056,7 +1101,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
       case 'error':
         return (
           <div className="flex items-center gap-2 text-xs text-danger">
-            <X size={12} />
+            <X className="icon-xs" />
             {updaterStatus.error}
           </div>
         )
@@ -1121,9 +1166,9 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
           onClick={onClose}
           className="no-drag absolute left-20 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-xs text-muted hover:text-fg-bright transition-colors cursor-pointer"
         >
-          <ArrowLeft size={14} />
+          <ArrowLeft className="icon-sm" />
           Back
-          <kbd className="text-[10px] text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono">ESC</kbd>
+          <kbd className="text-xs text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono">ESC</kbd>
         </button>
         <span className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 text-sm font-medium text-fg pointer-events-none">
           Settings
@@ -1149,8 +1194,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
           <div className="px-3 pb-2">
             <div className="relative">
               <Search
-                size={11}
-                className="absolute left-2 top-1/2 -translate-y-1/2 text-faint pointer-events-none"
+                className="icon-xs absolute left-2 top-1/2 -translate-y-1/2 text-faint pointer-events-none"
               />
               <input
                 ref={searchInputRef}
@@ -1183,7 +1227,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   aria-label="Clear search"
                   className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 text-faint hover:text-fg cursor-pointer"
                 >
-                  <X size={10} />
+                  <X className="icon-2xs" />
                 </button>
               )}
             </div>
@@ -1228,7 +1272,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   onClick={() => scrollToSection(section.id)}
                   className={`w-full ${className} focus:bg-surface outline-none`}
                 >
-                  <Icon size={14} className="shrink-0" />
+                  <Icon className="icon-sm shrink-0" />
                   <span>{section.label}</span>
                 </button>
                 {section.children && (
@@ -1272,14 +1316,14 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
             onClick={onOpenGuide}
             className="flex items-center gap-2 px-3 py-2 text-left text-sm text-muted hover:bg-panel-raised hover:text-fg-bright transition-colors cursor-pointer"
           >
-            <BookOpen size={14} className="shrink-0" />
+            <BookOpen className="icon-sm shrink-0" />
             <span>Worktree Guide</span>
           </button>
           <button
             onClick={onOpenMyWeek}
             className="flex items-center gap-2 px-3 py-2 text-left text-sm text-muted hover:bg-panel-raised hover:text-fg-bright transition-colors cursor-pointer"
           >
-            <CalendarDays size={14} className="shrink-0" />
+            <CalendarDays className="icon-sm shrink-0" />
             <span>My week</span>
           </button>
         </div>
@@ -1291,7 +1335,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
             <section ref={(el) => { sectionRefs.current.appearance = el }} id="appearance">
               <h2 className="text-lg font-semibold text-fg-bright mb-1">Appearance</h2>
               <p className="text-sm text-dim mb-4">
-                Pick a color theme for the major panels. Takes effect immediately.
+                Size, theme, and terminal font for the whole app.
               </p>
 
               <div ref={(el) => { subSectionRefs.current['appearance-theme'] = el }} id="appearance-theme" />
@@ -1376,6 +1420,142 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 </div>
               </div>
 
+              <div ref={(el) => { subSectionRefs.current['appearance-ui-size'] = el }} id="appearance-ui-size" />
+              {/* UI scale — drives the root html font-size, so every rem
+                  unit (text-xs/sm/base/lg, w-N/h-N icons, padding-*, gap-*)
+                  scales in lockstep. Native range gives free keyboard
+                  semantics; the four notches are also clickable labels.
+                  Drag is staged in draftUiScale so the whole app doesn't
+                  reflow on every tick — Save commits, Cancel reverts,
+                  and closing Settings without saving drops the draft. */}
+              <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">UI size</h3>
+              <p className="text-xs text-dim mb-3">
+                Scales the entire app — affects sidebar, panels, dialogs.
+                Larger sizes are friendlier for screen-sharing; small packs
+                more on screen.
+              </p>
+              {(() => {
+                const idx = SCALES.findIndex((s) => s.id === draftUiScale)
+                return (
+                  <>
+                    <input
+                      type="range"
+                      min={0}
+                      max={SCALES.length - 1}
+                      step={1}
+                      value={idx < 0 ? 0 : idx}
+                      onChange={(e) => {
+                        const v = Number(e.target.value)
+                        const next = SCALES[v]
+                        if (next) handleSelectUiScale(next.id)
+                      }}
+                      aria-label="UI size"
+                      className="w-full accent-accent cursor-pointer"
+                    />
+                    <div className="mt-1 flex justify-between text-xs text-dim select-none">
+                      {SCALES.map((s) => (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onClick={() => handleSelectUiScale(s.id)}
+                          className={`cursor-pointer transition-colors ${
+                            draftUiScale === s.id ? 'text-fg-bright' : 'hover:text-fg'
+                          }`}
+                        >
+                          {s.label}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )
+              })()}
+
+              {/* Scoped preview — inline em-based sizes anchored to the
+                  draft rung, so dragging only resizes this box. The real
+                  UI shifts on Save (App.tsx watches settings.uiScale). */}
+              <div
+                className="mt-3 rounded border border-border bg-panel/60"
+                style={{
+                  fontSize: `${draftScaleSpec.rootPx}px`,
+                  padding: '0.75em',
+                  lineHeight: 1.4
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: '0.625em',
+                    color: 'var(--color-dim)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em',
+                    fontWeight: 500
+                  }}
+                >
+                  Preview · {draftScaleSpec.label} ({draftScaleSpec.rootPx}px)
+                </div>
+                <div
+                  style={{
+                    marginTop: '0.5em',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5em'
+                  }}
+                >
+                  <span
+                    style={{
+                      width: '0.5em',
+                      height: '0.5em',
+                      borderRadius: '50%',
+                      background: 'var(--color-success)',
+                      flexShrink: 0
+                    }}
+                  />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '0.875em', color: 'var(--color-fg-bright)' }}>
+                      my-branch
+                    </div>
+                    <div style={{ fontSize: '0.6875em', color: 'var(--color-faint)' }}>
+                      last touched 3m ago
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    style={{
+                      fontSize: '0.6875em',
+                      padding: '0.25em 0.5em',
+                      borderRadius: '0.25em',
+                      background:
+                        'color-mix(in srgb, var(--color-accent) 20%, transparent)',
+                      color: 'var(--color-fg-bright)',
+                      border:
+                        '1px solid color-mix(in srgb, var(--color-accent) 40%, transparent)',
+                      cursor: 'default'
+                    }}
+                  >
+                    Action
+                  </button>
+                </div>
+              </div>
+
+              {uiScaleDirty && (
+                <div className="mt-3 flex items-center justify-end gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={handleSaveUiScale}
+                    className="px-2.5 py-1 rounded bg-accent/20 hover:bg-accent/30 text-fg-bright border border-accent/40 cursor-pointer transition-colors"
+                  >
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleRevertUiScale}
+                    className="px-2.5 py-1 rounded text-dim hover:text-fg cursor-pointer transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+
               <div ref={(el) => { subSectionRefs.current['appearance-terminal-font'] = el }} id="appearance-terminal-font" />
               <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">Terminal font</h3>
               <p className="text-xs text-dim mb-3">
@@ -1403,7 +1583,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                       onClick={handleResetTerminalFontFamily}
                       className="mt-2 flex items-center gap-1 px-2 py-1 text-xs text-dim hover:text-fg transition-colors cursor-pointer"
                     >
-                      <RotateCcw size={11} />
+                      <RotateCcw className="icon-xs" />
                       Reset to default
                     </button>
                   )}
@@ -1459,7 +1639,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                           : 'bg-panel border border-border text-dim hover:text-fg hover:border-border-strong'
                       }`}
                     >
-                      <AgentIcon kind={agent.kind} size={14} />
+                      <AgentIcon kind={agent.kind} className="icon-sm" />
                       {agent.displayName}
                     </button>
                   ))}
@@ -1499,7 +1679,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 <div className="flex items-center gap-2">
                   {hooksConsent === 'accepted' ? (
                     <>
-                      <span className="text-xs text-success flex items-center gap-1"><Check size={12} />Installed</span>
+                      <span className="text-xs text-success flex items-center gap-1"><Check className="icon-xs" />Installed</span>
                       <button
                         onClick={() => void backend.uninstallHooks()}
                         className="ml-auto px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer"
@@ -1528,7 +1708,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               <div ref={(el) => { subSectionRefs.current['agent-claude'] = el }} id="agent-claude" className="mt-8">
               <h3 className="text-sm font-semibold text-fg-bright mb-3 flex items-center gap-2">
                 Claude Code
-                {defaultAgent === 'claude' && <span className="text-[10px] font-normal text-dim bg-panel px-1.5 py-0.5 rounded">default</span>}
+                {defaultAgent === 'claude' && <span className="text-xs font-normal text-dim bg-panel px-1.5 py-0.5 rounded">default</span>}
               </h3>
 
               <div className="bg-panel-raised border border-border rounded-lg p-4 mb-4">
@@ -1571,28 +1751,28 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 <div className="flex items-center gap-2 mt-3">
                   <button onClick={handleSaveClaudeCommand} disabled={!claudeCommandDraft.trim()} className="px-3 py-1.5 bg-surface hover:bg-surface-hover disabled:opacity-40 rounded text-sm text-fg-bright transition-colors cursor-pointer">Save</button>
                   {claudeCommandDraft !== defaultClaudeCommand && defaultClaudeCommand && (
-                    <button onClick={handleResetClaudeCommand} className="flex items-center gap-1 px-3 py-1.5 text-sm text-dim hover:text-fg transition-colors cursor-pointer"><RotateCcw size={12} />Reset</button>
+                    <button onClick={handleResetClaudeCommand} className="flex items-center gap-1 px-3 py-1.5 text-sm text-dim hover:text-fg transition-colors cursor-pointer"><RotateCcw className="icon-xs" />Reset</button>
                   )}
                 </div>
                 {claudeSaveResult && (
                   <div className={`mt-3 text-xs flex items-center gap-1.5 ${claudeSaveResult.ok ? 'text-success' : 'text-danger'}`}>
-                    {claudeSaveResult.ok ? <Check size={12} /> : <X size={12} />}{claudeSaveResult.message}
+                    {claudeSaveResult.ok ? <Check className="icon-xs" /> : <X className="icon-xs" />}{claudeSaveResult.message}
                   </div>
                 )}
 
                 <div className="mt-4 pt-3 border-t border-border">
                   <label className="block text-xs font-medium text-fg mb-1">Full command preview</label>
-                  <div className="bg-panel border border-border rounded px-3 py-2 text-[11px] text-fg-bright font-mono break-all">{commandPreview}</div>
-                  <p className="text-[10px] text-dim mt-1">where <code className="bg-panel px-1 rounded">{`<shell>`}</code> is your <code className="bg-panel px-1 rounded">$SHELL</code> (typically <code className="bg-panel px-1 rounded">/bin/bash</code> or <code className="bg-panel px-1 rounded">/bin/zsh</code>).</p>
+                  <div className="bg-panel border border-border rounded px-3 py-2 text-xs text-fg-bright font-mono break-all">{commandPreview}</div>
+                  <p className="text-xs text-dim mt-1">where <code className="bg-panel px-1 rounded">{`<shell>`}</code> is your <code className="bg-panel px-1 rounded">$SHELL</code> (typically <code className="bg-panel px-1 rounded">/bin/bash</code> or <code className="bg-panel px-1 rounded">/bin/zsh</code>).</p>
                 </div>
 
                 <div className="mt-4 pt-3 border-t border-border">
                   <label className="flex items-start gap-2 cursor-pointer">
-                    <input type="checkbox" checked={harnessMcpEnabled} onChange={(e) => handleToggleHarnessMcp(e.target.checked)} className="mt-0.5 cursor-pointer" />
+                    <input type="checkbox" checked={harnessMcpEnabled} onChange={(e) => handleToggleHarnessMcp(e.target.checked)} className="mt-0.5 cursor-pointer icon-base" />
                     <div className="flex-1">
                       <div className="text-sm text-fg-bright">Enable Harness MCP</div>
                       <div className="text-xs text-dim mt-0.5">
-                        Injects <code className="bg-panel px-1 rounded text-[10px]">harness-control</code> MCP server via <code className="bg-panel px-1 rounded text-[10px]">--mcp-config</code>.
+                        Injects <code className="bg-panel px-1 rounded text-xs">harness-control</code> MCP server via <code className="bg-panel px-1 rounded text-xs">--mcp-config</code>.
                       </div>
                     </div>
                   </label>
@@ -1601,7 +1781,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
                 <div className="mt-4 pt-3 border-t border-border">
                   <label className="flex items-center gap-3 cursor-pointer">
-                    <input type="checkbox" checked={nameClaudeSessions} onChange={(e) => { void backend.setNameClaudeSessions(e.target.checked) }} className="accent-current w-4 h-4 cursor-pointer" />
+                    <input type="checkbox" checked={nameClaudeSessions} onChange={(e) => { void backend.setNameClaudeSessions(e.target.checked) }} className="accent-current icon-base cursor-pointer" />
                     <div>
                       <span className="text-sm font-medium text-fg">Name sessions by worktree</span>
                       <p className="text-xs text-dim mt-0.5">Passes <code className="bg-panel px-1 rounded">--name &quot;repo/branch&quot;</code> to Claude.</p>
@@ -1611,11 +1791,11 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
                 <div className="mt-4 pt-3 border-t border-border">
                   <label className="flex items-start gap-2 cursor-pointer">
-                    <input type="checkbox" checked={claudeTuiFullscreen} onChange={(e) => { void backend.setClaudeTuiFullscreen(e.target.checked) }} className="mt-0.5 cursor-pointer" />
+                    <input type="checkbox" checked={claudeTuiFullscreen} onChange={(e) => { void backend.setClaudeTuiFullscreen(e.target.checked) }} className="mt-0.5 cursor-pointer icon-base" />
                     <div className="flex-1">
                       <div className="text-sm text-fg-bright">Fullscreen TUI by default</div>
                       <div className="text-xs text-dim mt-0.5">
-                        Sets <code className="bg-panel px-1 rounded text-[10px]">CLAUDE_CODE_NO_FLICKER=1</code> so Claude runs in fullscreen TUI mode instead of taking over your scrollback.
+                        Sets <code className="bg-panel px-1 rounded text-xs">CLAUDE_CODE_NO_FLICKER=1</code> so Claude runs in fullscreen TUI mode instead of taking over your scrollback.
                       </div>
                     </div>
                   </label>
@@ -1629,7 +1809,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 </p>
                 <div className="space-y-2">
                   <div>
-                    <label className="block text-[11px] font-medium text-dim mb-1">Base URL</label>
+                    <label className="block text-xs font-medium text-dim mb-1">Base URL</label>
                     <input
                       type="text"
                       value={litellmBaseUrl}
@@ -1640,7 +1820,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-medium text-dim mb-1">Auth token <span className="text-faint">(optional)</span></label>
+                    <label className="block text-xs font-medium text-dim mb-1">Auth token <span className="text-faint">(optional)</span></label>
                     <div className="flex items-center gap-2">
                       <input
                         type={litellmAuthRevealed ? 'text' : 'password'}
@@ -1652,7 +1832,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                       />
                       <Tooltip label={litellmAuthRevealed ? 'Hide token' : 'Reveal token'}>
                         <button onClick={() => setLitellmAuthRevealed((v) => !v)} className="p-1.5 text-dim hover:text-fg transition-colors cursor-pointer">
-                          {litellmAuthRevealed ? <EyeOff size={14} /> : <Eye size={14} />}
+                          {litellmAuthRevealed ? <EyeOff className="icon-sm" /> : <Eye className="icon-sm" />}
                         </button>
                       </Tooltip>
                     </div>
@@ -1666,7 +1846,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 </div>
                 {litellmSaveResult && (
                   <div className={`mt-3 text-xs flex items-center gap-1.5 ${litellmSaveResult.ok ? 'text-success' : 'text-danger'}`}>
-                    {litellmSaveResult.ok ? <Check size={12} /> : <X size={12} />}{litellmSaveResult.message}
+                    {litellmSaveResult.ok ? <Check className="icon-xs" /> : <X className="icon-xs" />}{litellmSaveResult.message}
                   </div>
                 )}
               </div>
@@ -1685,20 +1865,20 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                           <input type="text" value={row.key} onChange={(e) => handleUpdateEnvRow(index, 'key', e.target.value)} placeholder="NAME" spellCheck={false} className="w-44 bg-panel border border-border-strong rounded px-2 py-1.5 text-xs text-fg-bright placeholder-faint outline-none focus:border-fg font-mono" />
                           <span className="text-dim text-xs">=</span>
                           <input type={revealed ? 'text' : 'password'} value={row.value} onChange={(e) => handleUpdateEnvRow(index, 'value', e.target.value)} placeholder="value" spellCheck={false} className="flex-1 bg-panel border border-border-strong rounded px-2 py-1.5 text-xs text-fg-bright placeholder-faint outline-none focus:border-fg font-mono" />
-                          <Tooltip label={revealed ? 'Hide value' : 'Reveal value'}><button onClick={() => handleToggleRevealEnvRow(index)} className="p-1.5 text-dim hover:text-fg transition-colors cursor-pointer">{revealed ? <EyeOff size={14} /> : <Eye size={14} />}</button></Tooltip>
-                          <Tooltip label="Remove"><button onClick={() => handleRemoveEnvRow(index)} className="p-1.5 text-dim hover:text-danger transition-colors cursor-pointer"><Trash2 size={14} /></button></Tooltip>
+                          <Tooltip label={revealed ? 'Hide value' : 'Reveal value'}><button onClick={() => handleToggleRevealEnvRow(index)} className="p-1.5 text-dim hover:text-fg transition-colors cursor-pointer">{revealed ? <EyeOff className="icon-sm" /> : <Eye className="icon-sm" />}</button></Tooltip>
+                          <Tooltip label="Remove"><button onClick={() => handleRemoveEnvRow(index)} className="p-1.5 text-dim hover:text-danger transition-colors cursor-pointer"><Trash2 className="icon-sm" /></button></Tooltip>
                         </div>
                       )
                     })}
                   </div>
                 )}
                 <div className="flex items-center gap-2">
-                  <button onClick={handleAddEnvRow} className="flex items-center gap-1 px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer"><Plus size={12} />Add variable</button>
+                  <button onClick={handleAddEnvRow} className="flex items-center gap-1 px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer"><Plus className="icon-xs" />Add variable</button>
                   <button onClick={handleSaveClaudeEnvVars} className="px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer">Save</button>
                 </div>
                 {envSaveResult && (
                   <div className={`mt-3 text-xs flex items-center gap-1.5 ${envSaveResult.ok ? 'text-success' : 'text-danger'}`}>
-                    {envSaveResult.ok ? <Check size={12} /> : <X size={12} />}{envSaveResult.message}
+                    {envSaveResult.ok ? <Check className="icon-xs" /> : <X className="icon-xs" />}{envSaveResult.message}
                   </div>
                 )}
               </div>
@@ -1822,8 +2002,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                       onChange={(e) => {
                         void backend.setJsonModeSendOnEnter(e.target.checked)
                       }}
-                      className="mt-0.5 cursor-pointer"
-                    />
+                      className="mt-0.5 cursor-pointer icon-base" />
                     <div className="flex-1">
                       <div className="text-sm text-fg-bright">
                         Send messages with Enter
@@ -1843,7 +2022,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               <div ref={(el) => { subSectionRefs.current['agent-codex'] = el }} id="agent-codex" className="mt-8">
               <h3 className="text-sm font-semibold text-fg-bright mb-3 flex items-center gap-2">
                 Codex
-                {defaultAgent === 'codex' && <span className="text-[10px] font-normal text-dim bg-panel px-1.5 py-0.5 rounded">default</span>}
+                {defaultAgent === 'codex' && <span className="text-xs font-normal text-dim bg-panel px-1.5 py-0.5 rounded">default</span>}
               </h3>
 
               <div className="bg-panel-raised border border-border rounded-lg p-4 mb-4">
@@ -1886,12 +2065,12 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 <div className="flex items-center gap-2 mt-3">
                   <button onClick={handleSaveCodexCommand} disabled={!codexCommandDraft.trim()} className="px-3 py-1.5 bg-surface hover:bg-surface-hover disabled:opacity-40 rounded text-sm text-fg-bright transition-colors cursor-pointer">Save</button>
                   {codexCommandDraft !== 'codex' && (
-                    <button onClick={handleResetCodexCommand} className="flex items-center gap-1 px-3 py-1.5 text-sm text-dim hover:text-fg transition-colors cursor-pointer"><RotateCcw size={12} />Reset</button>
+                    <button onClick={handleResetCodexCommand} className="flex items-center gap-1 px-3 py-1.5 text-sm text-dim hover:text-fg transition-colors cursor-pointer"><RotateCcw className="icon-xs" />Reset</button>
                   )}
                 </div>
                 {codexSaveResult && (
                   <div className={`mt-3 text-xs flex items-center gap-1.5 ${codexSaveResult.ok ? 'text-success' : 'text-danger'}`}>
-                    {codexSaveResult.ok ? <Check size={12} /> : <X size={12} />}{codexSaveResult.message}
+                    {codexSaveResult.ok ? <Check className="icon-xs" /> : <X className="icon-xs" />}{codexSaveResult.message}
                   </div>
                 )}
                 {(() => {
@@ -1901,8 +2080,8 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   return (
                     <div className="mt-4 pt-3 border-t border-border">
                       <label className="block text-xs font-medium text-fg mb-1">Full command preview</label>
-                      <div className="bg-panel border border-border rounded px-3 py-2 text-[11px] text-fg-bright font-mono break-all">{`<shell> -ilc "${codexPreviewInner}"`}</div>
-                      <p className="text-[10px] text-dim mt-1">where <code className="bg-panel px-1 rounded">{`<shell>`}</code> is your <code className="bg-panel px-1 rounded">$SHELL</code> (typically <code className="bg-panel px-1 rounded">/bin/bash</code> or <code className="bg-panel px-1 rounded">/bin/zsh</code>).</p>
+                      <div className="bg-panel border border-border rounded px-3 py-2 text-xs text-fg-bright font-mono break-all">{`<shell> -ilc "${codexPreviewInner}"`}</div>
+                      <p className="text-xs text-dim mt-1">where <code className="bg-panel px-1 rounded">{`<shell>`}</code> is your <code className="bg-panel px-1 rounded">$SHELL</code> (typically <code className="bg-panel px-1 rounded">/bin/bash</code> or <code className="bg-panel px-1 rounded">/bin/zsh</code>).</p>
                     </div>
                   )
                 })()}
@@ -1922,20 +2101,20 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                           <input type="text" value={row.key} onChange={(e) => { setCodexEnvRows((prev) => prev.map((r, i) => (i === index ? { ...r, key: e.target.value } : r))); setCodexEnvSaveResult(null) }} placeholder="NAME" spellCheck={false} className="w-44 bg-panel border border-border-strong rounded px-2 py-1.5 text-xs text-fg-bright placeholder-faint outline-none focus:border-fg font-mono" />
                           <span className="text-dim text-xs">=</span>
                           <input type={revealed ? 'text' : 'password'} value={row.value} onChange={(e) => { setCodexEnvRows((prev) => prev.map((r, i) => (i === index ? { ...r, value: e.target.value } : r))); setCodexEnvSaveResult(null) }} placeholder="value" spellCheck={false} className="flex-1 bg-panel border border-border-strong rounded px-2 py-1.5 text-xs text-fg-bright placeholder-faint outline-none focus:border-fg font-mono" />
-                          <Tooltip label={revealed ? 'Hide value' : 'Reveal value'}><button onClick={() => setCodexRevealedEnvRows((prev) => { const next = new Set(prev); if (next.has(index)) next.delete(index); else next.add(index); return next })} className="p-1.5 text-dim hover:text-fg transition-colors cursor-pointer">{revealed ? <EyeOff size={14} /> : <Eye size={14} />}</button></Tooltip>
-                          <Tooltip label="Remove"><button onClick={() => { setCodexEnvRows((prev) => prev.filter((_, i) => i !== index)); setCodexEnvSaveResult(null) }} className="p-1.5 text-dim hover:text-danger transition-colors cursor-pointer"><Trash2 size={14} /></button></Tooltip>
+                          <Tooltip label={revealed ? 'Hide value' : 'Reveal value'}><button onClick={() => setCodexRevealedEnvRows((prev) => { const next = new Set(prev); if (next.has(index)) next.delete(index); else next.add(index); return next })} className="p-1.5 text-dim hover:text-fg transition-colors cursor-pointer">{revealed ? <EyeOff className="icon-sm" /> : <Eye className="icon-sm" />}</button></Tooltip>
+                          <Tooltip label="Remove"><button onClick={() => { setCodexEnvRows((prev) => prev.filter((_, i) => i !== index)); setCodexEnvSaveResult(null) }} className="p-1.5 text-dim hover:text-danger transition-colors cursor-pointer"><Trash2 className="icon-sm" /></button></Tooltip>
                         </div>
                       )
                     })}
                   </div>
                 )}
                 <div className="flex items-center gap-2">
-                  <button onClick={() => { setCodexEnvRows((prev) => [...prev, { key: '', value: '' }]); setCodexEnvSaveResult(null) }} className="flex items-center gap-1 px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer"><Plus size={12} />Add variable</button>
+                  <button onClick={() => { setCodexEnvRows((prev) => [...prev, { key: '', value: '' }]); setCodexEnvSaveResult(null) }} className="flex items-center gap-1 px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer"><Plus className="icon-xs" />Add variable</button>
                   <button onClick={handleSaveCodexEnvVars} className="px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer">Save</button>
                 </div>
                 {codexEnvSaveResult && (
                   <div className={`mt-3 text-xs flex items-center gap-1.5 ${codexEnvSaveResult.ok ? 'text-success' : 'text-danger'}`}>
-                    {codexEnvSaveResult.ok ? <Check size={12} /> : <X size={12} />}{codexEnvSaveResult.message}
+                    {codexEnvSaveResult.ok ? <Check className="icon-xs" /> : <X className="icon-xs" />}{codexEnvSaveResult.message}
                   </div>
                 )}
               </div>
@@ -1951,12 +2130,11 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     type="checkbox"
                     checked={harnessSystemPromptEnabled}
                     onChange={(e) => { void backend.setHarnessSystemPromptEnabled(e.target.checked) }}
-                    className="mt-0.5 cursor-pointer"
-                  />
+                    className="mt-0.5 cursor-pointer icon-base" />
                   <div className="flex-1">
                     <div className="text-sm text-fg-bright">Inject Harness context into Claude sessions</div>
                     <div className="text-xs text-dim mt-0.5">
-                      Appends <code className="bg-panel px-1 rounded text-[10px]">--append-system-prompt</code> with context about Harness and MCP tools.
+                      Appends <code className="bg-panel px-1 rounded text-xs">--append-system-prompt</code> with context about Harness and MCP tools.
                     </div>
                   </div>
                 </label>
@@ -1965,7 +2143,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   <>
                     <div className="mb-4">
                       <label className="block text-xs font-medium text-fg mb-1">Base prompt</label>
-                      <p className="text-[11px] text-dim mb-2">Sent to every Claude session.</p>
+                      <p className="text-xs text-dim mb-2">Sent to every Claude session.</p>
                       <textarea
                         value={systemPromptDraft}
                         onChange={(e) => setSystemPromptDraft(e.target.value)}
@@ -1977,7 +2155,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
                     <div className="mb-4">
                       <label className="block text-xs font-medium text-fg mb-1">Main worktree addition</label>
-                      <p className="text-[11px] text-dim mb-2">Appended when Claude is running on the main/primary worktree.</p>
+                      <p className="text-xs text-dim mb-2">Appended when Claude is running on the main/primary worktree.</p>
                       <textarea
                         value={systemPromptMainDraft}
                         onChange={(e) => setSystemPromptMainDraft(e.target.value)}
@@ -1998,16 +2176,16 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                         onClick={handleResetSystemPrompt}
                         className="flex items-center gap-1 px-3 py-1.5 text-sm text-dim hover:text-fg transition-colors cursor-pointer"
                       >
-                        <RotateCcw size={12} />
+                        <RotateCcw className="icon-xs" />
                         Reset to defaults
                       </button>
                     </div>
                     {systemPromptSaveResult && (
                       <div className={`mt-3 text-xs flex items-center gap-1.5 ${systemPromptSaveResult.ok ? 'text-success' : 'text-danger'}`}>
-                        {systemPromptSaveResult.ok ? <Check size={12} /> : <X size={12} />}{systemPromptSaveResult.message}
+                        {systemPromptSaveResult.ok ? <Check className="icon-xs" /> : <X className="icon-xs" />}{systemPromptSaveResult.message}
                       </div>
                     )}
-                    <p className="mt-3 text-[11px] text-faint">Changes apply to new sessions only.</p>
+                    <p className="mt-3 text-xs text-faint">Changes apply to new sessions only.</p>
                   </>
                 )}
               </div>
@@ -2022,7 +2200,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
               {repoList.length > 0 && (
                 <div className="mb-4">
-                  <div className="flex items-center gap-1 text-[11px] text-faint mb-1.5 uppercase tracking-wide">
+                  <div className="flex items-center gap-1 text-xs text-faint mb-1.5 uppercase tracking-wide">
                     Scope
                   </div>
                   <div className="flex flex-wrap gap-1 bg-panel-raised border border-border rounded p-1">
@@ -2051,7 +2229,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                       </button>
                     ))}
                   </div>
-                  <p className="text-[11px] text-faint mt-1.5">
+                  <p className="text-xs text-faint mt-1.5">
                     {scopeRepoRoot
                       ? <>Editing <code className="bg-panel-raised px-1 rounded">.harness.json</code> in <span className="font-mono">{repoBasename(scopeRepoRoot)}</span>. Unset fields inherit from global. You can commit this file to share settings with teammates.</>
                       : 'Editing global settings. Individual repos can override these values via their .harness.json file.'}
@@ -2105,14 +2283,14 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               <div className="flex items-center justify-between mt-6 mb-1">
                 <h3 className="text-sm font-semibold text-fg-bright">Default merge strategy</h3>
                 {scopeRepoRoot === null && reposOverridingKey('mergeStrategy').length > 0 && (
-                  <span className="text-[10px] text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
+                  <span className="text-xs text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
                     Overridden in {reposOverridingKey('mergeStrategy').map(repoBasename).join(', ')}
                   </span>
                 )}
                 {scopeRepoRoot !== null && scopedMergeStrategyIsOverride && (
                   <button
                     onClick={handleResetMergeStrategyToGlobal}
-                    className="text-[10px] text-dim hover:text-fg underline cursor-pointer"
+                    className="text-xs text-dim hover:text-fg underline cursor-pointer"
                   >
                     Reset to global
                   </button>
@@ -2174,27 +2352,27 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">Setup & teardown scripts</h3>
               <p className="text-xs text-dim mb-3">
                 Optional shell commands run via a login shell
-                (<code className="bg-panel-raised px-1 rounded text-[10px]">zsh -ilc</code>) with
-                the worktree as <code className="bg-panel-raised px-1 rounded text-[10px]">cwd</code>.
+                (<code className="bg-panel-raised px-1 rounded text-xs">zsh -ilc</code>) with
+                the worktree as <code className="bg-panel-raised px-1 rounded text-xs">cwd</code>.
                 Setup runs after a worktree is created; teardown runs before it's removed.
                 The env vars{' '}
-                <code className="bg-panel-raised px-1 rounded text-[10px]">HARNESS_WORKTREE_PATH</code>,{' '}
-                <code className="bg-panel-raised px-1 rounded text-[10px]">HARNESS_BRANCH</code>, and{' '}
-                <code className="bg-panel-raised px-1 rounded text-[10px]">HARNESS_REPO_ROOT</code>{' '}
+                <code className="bg-panel-raised px-1 rounded text-xs">HARNESS_WORKTREE_PATH</code>,{' '}
+                <code className="bg-panel-raised px-1 rounded text-xs">HARNESS_BRANCH</code>, and{' '}
+                <code className="bg-panel-raised px-1 rounded text-xs">HARNESS_REPO_ROOT</code>{' '}
                 are available to the command.
               </p>
 
               <div className="flex items-center justify-between mb-1">
                 <label className="block text-xs text-dim">Setup command</label>
                 {scopeRepoRoot === null && reposOverridingKey('setupCommand').length > 0 && (
-                  <span className="text-[10px] text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
+                  <span className="text-xs text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
                     Overridden in {reposOverridingKey('setupCommand').map(repoBasename).join(', ')}
                   </span>
                 )}
                 {scopeRepoRoot !== null && scopedSetupIsOverride && (
                   <button
                     onClick={handleResetSetupToGlobal}
-                    className="text-[10px] text-dim hover:text-fg underline cursor-pointer"
+                    className="text-xs text-dim hover:text-fg underline cursor-pointer"
                   >
                     Reset to global
                   </button>
@@ -2215,14 +2393,14 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               <div className="flex items-center justify-between mt-3 mb-1">
                 <label className="block text-xs text-dim">Teardown command</label>
                 {scopeRepoRoot === null && reposOverridingKey('teardownCommand').length > 0 && (
-                  <span className="text-[10px] text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
+                  <span className="text-xs text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
                     Overridden in {reposOverridingKey('teardownCommand').map(repoBasename).join(', ')}
                   </span>
                 )}
                 {scopeRepoRoot !== null && scopedTeardownIsOverride && (
                   <button
                     onClick={handleResetTeardownToGlobal}
-                    className="text-[10px] text-dim hover:text-fg underline cursor-pointer"
+                    className="text-xs text-dim hover:text-fg underline cursor-pointer"
                   >
                     Reset to global
                   </button>
@@ -2249,12 +2427,12 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 </button>
                 {scriptsSaveResult && (
                   <span className={`text-xs flex items-center gap-1.5 ${scriptsSaveResult.ok ? 'text-success' : 'text-danger'}`}>
-                    {scriptsSaveResult.ok ? <Check size={12} /> : <X size={12} />}
+                    {scriptsSaveResult.ok ? <Check className="icon-xs" /> : <X className="icon-xs" />}
                     {scriptsSaveResult.message}
                   </span>
                 )}
               </div>
-              <p className="mt-2 text-[11px] text-faint">
+              <p className="mt-2 text-xs text-faint">
                 Failures are logged but don't block the worktree operation. Leave blank to disable.
               </p>
 
@@ -2283,7 +2461,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">Share Claude Code permissions</h3>
                   <p className="text-xs text-dim mb-3">
                     Symlink each worktree's{' '}
-                    <code className="bg-panel-raised px-1 rounded text-[10px]">.claude/settings.local.json</code>{' '}
+                    <code className="bg-panel-raised px-1 rounded text-xs">.claude/settings.local.json</code>{' '}
                     to the main worktree's copy so "Don't ask again"
                     permissions granted in any worktree apply everywhere.
                     Only takes effect for worktrees created while enabled
@@ -2294,8 +2472,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                       type="checkbox"
                       checked={shareClaudeSettings}
                       onChange={(e) => { void backend.setShareClaudeSettings(e.target.checked) }}
-                      className="accent-current w-4 h-4 cursor-pointer"
-                    />
+                      className="accent-current icon-base cursor-pointer" />
                     <span className="text-sm text-fg">
                       Share settings.local.json across worktrees
                     </span>
@@ -2304,8 +2481,8 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">PR review prompt</h3>
                   <p className="text-xs text-dim mb-3">
                     Default kickoff prompt sent to Claude when you open a PR as a worktree (or when the MCP{' '}
-                    <code className="bg-panel-raised px-1 rounded text-[10px]">create_worktree</code> tool is invoked
-                    with <code className="bg-panel-raised px-1 rounded text-[10px]">prNumber</code> and no explicit
+                    <code className="bg-panel-raised px-1 rounded text-xs">create_worktree</code> tool is invoked
+                    with <code className="bg-panel-raised px-1 rounded text-xs">prNumber</code> and no explicit
                     prompt). You can edit the prompt per-PR from the New Worktree screen.
                   </p>
                   <textarea
@@ -2326,13 +2503,13 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                       onClick={handleResetPrReviewPrompt}
                       className="flex items-center gap-1 px-3 py-1.5 text-sm text-dim hover:text-fg transition-colors cursor-pointer"
                     >
-                      <RotateCcw size={12} />
+                      <RotateCcw className="icon-xs" />
                       Reset to default
                     </button>
                   </div>
                   {prReviewPromptSaveResult && (
                     <div className={`mt-3 text-xs flex items-center gap-1.5 ${prReviewPromptSaveResult.ok ? 'text-success' : 'text-danger'}`}>
-                      {prReviewPromptSaveResult.ok ? <Check size={12} /> : <X size={12} />}{prReviewPromptSaveResult.message}
+                      {prReviewPromptSaveResult.ok ? <Check className="icon-xs" /> : <X className="icon-xs" />}{prReviewPromptSaveResult.message}
                     </div>
                   )}
                 </>
@@ -2370,19 +2547,19 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                           : 'border-border hover:border-border-strong text-muted hover:text-fg'
                       }`}
                     >
-                      <Code2 size={14} className={isActive ? 'text-accent' : 'text-faint'} />
+                      <Code2 className={`icon-sm ${isActive ? 'text-accent' : 'text-faint'}`} />
                       <span className="flex-1">{ed.name}</span>
-                      {isActive && <Check size={12} className="text-accent" />}
+                      {isActive && <Check className="icon-xs text-accent" />}
                     </button>
                   )
                 })}
               </div>
-              <p className="text-[11px] text-faint">
-                Harness spawns the editor via a login shell (<code className="bg-panel-raised px-1 rounded text-[10px]">zsh -ilc</code>)
+              <p className="text-xs text-faint">
+                Harness spawns the editor via a login shell (<code className="bg-panel-raised px-1 rounded text-xs">zsh -ilc</code>)
                 so homebrew and nvm paths are picked up automatically. If nothing
                 happens when you click "Open in editor", check that the selected
                 editor's CLI is installed (e.g. VS Code's{' '}
-                <code className="bg-panel-raised px-1 rounded text-[10px]">code</code> command,
+                <code className="bg-panel-raised px-1 rounded text-xs">code</code> command,
                 installed via <em>Shell Command: Install 'code' command in PATH</em> from
                 the command palette).
               </p>
@@ -2408,12 +2585,9 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     type="checkbox"
                     checked={harnessStarred}
                     onChange={(e) => { void backend.setHarnessStarred(e.target.checked) }}
-                    className="w-3.5 h-3.5 accent-warning cursor-pointer"
-                  />
+                    className="icon-base accent-warning cursor-pointer" />
                   <Star
-                    size={14}
-                    className={harnessStarred ? 'text-warning fill-warning shrink-0' : 'text-warning shrink-0'}
-                  />
+                    className={`icon-sm ${harnessStarred ? 'text-warning fill-warning shrink-0' : 'text-warning shrink-0'}`} />
                   <span className="text-sm text-fg group-hover:text-fg-bright transition-colors">
                     Star Harness on GitHub
                   </span>
@@ -2423,7 +2597,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               {authSource === 'gh-cli' && !hasToken && (
                 <div className="mb-4 rounded-lg p-4 border bg-success/10 border-success/30">
                   <div className="flex items-center gap-2 text-sm text-success">
-                    <Check size={14} />
+                    <Check className="icon-sm" />
                     <span>Using <code className="bg-panel-raised px-1 rounded">gh</code> CLI token (auto-detected)</span>
                   </div>
                   {!showPatForm && (
@@ -2445,7 +2619,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
                 {hasToken && (
                   <div className="flex items-center gap-2 mb-3 text-xs text-success">
-                    <Check size={14} />
+                    <Check className="icon-sm" />
                     <span>A token is currently saved {authSource === 'pat' ? '(in use)' : ''}</span>
                   </div>
                 )}
@@ -2462,7 +2636,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     onClick={() => setShowToken(!showToken)}
                     className="absolute right-2 top-1/2 -translate-y-1/2 text-dim hover:text-fg transition-colors cursor-pointer"
                   >
-                    {showToken ? <EyeOff size={14} /> : <Eye size={14} />}
+                    {showToken ? <EyeOff className="icon-sm" /> : <Eye className="icon-sm" />}
                   </button>
                 </div>
 
@@ -2486,7 +2660,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
                 {tokenResult && (
                   <div className={`mt-3 text-xs flex items-center gap-1.5 ${tokenResult.ok ? 'text-success' : 'text-danger'}`}>
-                    {tokenResult.ok ? <Check size={12} /> : <X size={12} />}
+                    {tokenResult.ok ? <Check className="icon-xs" /> : <X className="icon-xs" />}
                     {tokenResult.message}
                   </div>
                 )}
@@ -2533,13 +2707,13 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     onClick={handleResetAllHotkeys}
                     className="flex items-center gap-1 text-xs text-dim hover:text-fg transition-colors cursor-pointer"
                   >
-                    <RotateCcw size={11} />
+                    <RotateCcw className="icon-xs" />
                     Reset all to defaults
                   </button>
                 )}
               </div>
               <p className="text-sm text-dim mb-4">
-                Click a shortcut to rebind it. Press <kbd className="bg-panel-raised px-1 rounded text-[10px]">Esc</kbd> to cancel.
+                Click a shortcut to rebind it. Press <kbd className="bg-panel-raised px-1 rounded text-xs">Esc</kbd> to cancel.
               </p>
 
               {(() => {
@@ -2557,7 +2731,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                               onClick={() => handleResetHotkey(action)}
                               className="text-xs text-dim hover:text-fg transition-colors cursor-pointer"
                             >
-                              <RotateCcw size={11} />
+                              <RotateCcw className="icon-xs" />
                             </button>
                           </Tooltip>
                         )}
@@ -2606,7 +2780,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                                     className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-panel cursor-pointer"
                                   >
                                     <span className="flex items-center gap-1.5 text-sm text-fg">
-                                      {expanded ? <ChevronDown size={12} className="text-dim" /> : <ChevronRight size={12} className="text-dim" />}
+                                      {expanded ? <ChevronDown className="icon-xs text-dim" /> : <ChevronRight className="icon-xs text-dim" />}
                                       {family.label}
                                       <span className="text-[10px] text-faint">({family.actions.length})</span>
                                     </span>
@@ -2658,7 +2832,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     disabled={checking || updaterStatus?.state === 'checking' || updaterStatus?.state === 'downloading'}
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-surface hover:bg-surface-hover disabled:opacity-40 rounded text-sm text-fg-bright transition-colors cursor-pointer"
                   >
-                    <RefreshCw size={12} className={checking ? 'animate-spin' : ''} />
+                    <RefreshCw className={`icon-xs ${checking ? 'animate-spin' : ''}`} />
                     Check for updates
                   </button>
                 </div>
@@ -2671,7 +2845,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
                 {import.meta.env.DEV && (
                   <div className="mt-3 pt-3 border-t border-border">
-                    <div className="text-[10px] uppercase tracking-wide text-faint mb-1.5">
+                    <div className="text-xs uppercase tracking-wide text-faint mb-1.5">
                       Dev: simulate updater state
                     </div>
                     <div className="flex gap-1.5">
@@ -2679,7 +2853,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                         <button
                           key={s}
                           onClick={() => backend.devSimulateUpdate(s)}
-                          className="px-2 py-1 bg-surface hover:bg-surface-hover rounded text-[11px] text-fg transition-colors cursor-pointer"
+                          className="px-2 py-1 bg-surface hover:bg-surface-hover rounded text-xs text-fg transition-colors cursor-pointer"
                         >
                           {s}
                         </button>
@@ -2694,8 +2868,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                       type="checkbox"
                       checked={autoUpdateEnabled}
                       onChange={(e) => handleToggleAutoUpdate(e.target.checked)}
-                      className="mt-0.5 cursor-pointer"
-                    />
+                      className="mt-0.5 cursor-pointer icon-base" />
                     <div className="flex-1">
                       <div className="text-sm text-fg-bright">Check for updates automatically</div>
                       <div className="text-xs text-dim mt-0.5">
@@ -2730,7 +2903,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   onClick={() => openReportIssue({ kind: 'bug' })}
                   className="flex items-center gap-2 px-3 py-2 bg-panel-raised border border-border rounded-lg text-sm text-fg-bright hover:bg-surface transition-colors cursor-pointer"
                 >
-                  <Bug size={14} />
+                  <Bug className="icon-sm" />
                   Report a bug
                 </button>
                 <button
@@ -2738,7 +2911,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   onClick={() => openReportIssue({ kind: 'feature' })}
                   className="flex items-center gap-2 px-3 py-2 bg-panel-raised border border-border rounded-lg text-sm text-fg-bright hover:bg-surface transition-colors cursor-pointer"
                 >
-                  <Lightbulb size={14} />
+                  <Lightbulb className="icon-sm" />
                   Request a feature
                 </button>
               </div>
@@ -2763,7 +2936,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     }}
                     className="flex items-center gap-2 px-3 py-2 bg-panel border border-border rounded-lg text-sm text-fg-bright hover:bg-surface transition-colors cursor-pointer"
                   >
-                    <FileText size={14} />
+                    <FileText className="icon-sm" />
                     Open debug log
                   </button>
                   <button
@@ -2774,7 +2947,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     }}
                     className="flex items-center gap-2 px-3 py-2 bg-panel border border-border rounded-lg text-sm text-fg-bright hover:bg-surface transition-colors cursor-pointer"
                   >
-                    <FolderOpen size={14} />
+                    <FolderOpen className="icon-sm" />
                     Show in Finder
                   </button>
                 </div>
@@ -2787,8 +2960,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     type="checkbox"
                     checked={expandedDiagnosticLoggingEnabled}
                     onChange={(e) => { void backend.setExpandedDiagnosticLoggingEnabled(e.target.checked) }}
-                    className="mt-0.5 cursor-pointer"
-                  />
+                    className="mt-0.5 cursor-pointer icon-base" />
                   <div className="flex-1">
                     <div className="text-sm text-fg-bright">Expanded diagnostic logging</div>
                     <div className="text-xs text-dim mt-0.5">
@@ -2805,7 +2977,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
             {/* Experimental section */}
             <section ref={(el) => { sectionRefs.current.experimental = el }} id="experimental">
               <h2 className="text-lg font-semibold text-fg-bright mb-1 flex items-center gap-2">
-                <FlaskConical size={18} className="text-warning" />
+                <FlaskConical className="w-[1.125rem] h-[1.125rem] text-warning" />
                 Experimental
               </h2>
               <p className="text-sm text-dim mb-4">
@@ -2828,7 +3000,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               >
                 <div className="flex items-center gap-2 mb-1">
                   <h3 className="text-sm font-semibold text-fg-bright">Browser control</h3>
-                  <span className="text-[10px] font-medium text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
+                  <span className="text-xs font-medium text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
                     Experimental
                   </span>
                 </div>
@@ -2844,12 +3016,11 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     id="browser-tools-enabled"
                     checked={browserToolsEnabled}
                     onChange={(e) => { void backend.setBrowserToolsEnabled(e.target.checked) }}
-                    className="mt-0.5 cursor-pointer"
-                  />
+                    className="mt-0.5 cursor-pointer icon-base" />
                   <div className="flex-1">
                     <label htmlFor="browser-tools-enabled" className="text-sm text-fg-bright cursor-pointer">Enable browser tools</label>
                     <div className="text-xs text-dim mt-0.5 mb-2">
-                      Exposes <code className="bg-panel px-1 rounded text-[10px]">harness-control</code> MCP browser_* tools to the agent.
+                      Exposes <code className="bg-panel px-1 rounded text-xs">harness-control</code> MCP browser_* tools to the agent.
                     </div>
                     <select
                       value={browserToolsMode}
@@ -2872,12 +3043,12 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               >
                 <div className="flex items-center gap-2 mb-1">
                   <h3 className="text-sm font-semibold text-fg-bright">Auto-approve safe tool calls</h3>
-                  <span className="text-[10px] font-medium text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
+                  <span className="text-xs font-medium text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
                     Experimental
                   </span>
                 </div>
                 <p className="text-xs text-dim mb-3">
-                  In Chat tabs, spawns a Haiku oneshot to approve obviously-safe tool calls (Read, Grep, Edit, …) instead of prompting you. A hardcoded deny-list catches risky calls (<code className="bg-panel px-1 rounded text-[10px]">rm -rf</code>, <code className="bg-panel px-1 rounded text-[10px]">git push</code>, <code className="bg-panel px-1 rounded text-[10px]">WebFetch</code>, …) before Haiku is consulted. Productivity feature only — an LLM judging another LLM is not a security boundary. Has no effect on Terminal tabs.
+                  In Chat tabs, spawns a Haiku oneshot to approve obviously-safe tool calls (Read, Grep, Edit, …) instead of prompting you. A hardcoded deny-list catches risky calls (<code className="bg-panel px-1 rounded text-xs">rm -rf</code>, <code className="bg-panel px-1 rounded text-xs">git push</code>, <code className="bg-panel px-1 rounded text-xs">WebFetch</code>, …) before Haiku is consulted. Productivity feature only — an LLM judging another LLM is not a security boundary. Has no effect on Terminal tabs.
                 </p>
 
                 <label className="flex items-start gap-3 cursor-pointer">
@@ -2885,8 +3056,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     type="checkbox"
                     checked={autoApprovePermissions}
                     onChange={(e) => handleToggleAutoApprovePermissions(e.target.checked)}
-                    className="mt-0.5 cursor-pointer"
-                  />
+                    className="mt-0.5 cursor-pointer icon-base" />
                   <div className="flex-1">
                     <div className="text-sm text-fg-bright">Enable auto-approve</div>
                     <div className="text-xs text-dim mt-0.5">
@@ -2900,8 +3070,8 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     <label className="block text-xs font-medium text-fg mb-1">
                       Project-specific guidance <span className="text-faint font-normal">(optional)</span>
                     </label>
-                    <p className="text-[11px] text-dim mb-2">
-                      Free-text instructions appended to the reviewer's policy prompt. Use to add carve-outs (e.g. <em>&quot;approve <code className="bg-panel px-1 rounded text-[10px]">npm install</code> for this project&quot;</em>) or extra strictness (e.g. <em>&quot;deny any Bash that writes outside src/&quot;</em>). The hardcoded safety bullets always run first; this is purely additive guidance. You can also edit + re-review from any rejected approval card.
+                    <p className="text-xs text-dim mb-2">
+                      Free-text instructions appended to the reviewer's policy prompt. Use to add carve-outs (e.g. <em>&quot;approve <code className="bg-panel px-1 rounded text-xs">npm install</code> for this project&quot;</em>) or extra strictness (e.g. <em>&quot;deny any Bash that writes outside src/&quot;</em>). The hardcoded safety bullets always run first; this is purely additive guidance. You can also edit + re-review from any rejected approval card.
                     </p>
                     <textarea
                       value={autoApproveSteerDraft}
@@ -2920,9 +3090,9 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                       </button>
                       {autoApproveSteerSaveResult && (
                         <span
-                          className={`text-[11px] flex items-center gap-1 ${autoApproveSteerSaveResult.ok ? 'text-success' : 'text-danger'}`}
+                          className={`text-xs flex items-center gap-1 ${autoApproveSteerSaveResult.ok ? 'text-success' : 'text-danger'}`}
                         >
-                          {autoApproveSteerSaveResult.ok ? <Check size={11} /> : <X size={11} />}
+                          {autoApproveSteerSaveResult.ok ? <Check className="icon-xs" /> : <X className="icon-xs" />}
                           {autoApproveSteerSaveResult.message}
                         </span>
                       )}
@@ -2939,7 +3109,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               >
                 <div className="flex items-center gap-2 mb-1">
                   <h3 className="text-sm font-semibold text-fg-bright">Web &amp; mobile client</h3>
-                  <span className="text-[10px] font-medium text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
+                  <span className="text-xs font-medium text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
                     Experimental
                   </span>
                 </div>
@@ -2955,8 +3125,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     type="checkbox"
                     checked={wsTransportEnabled}
                     onChange={(e) => { void handleToggleWsTransport(e.target.checked) }}
-                    className="mt-0.5 cursor-pointer"
-                  />
+                    className="mt-0.5 cursor-pointer icon-base" />
                   <div className="flex-1">
                     <div className="text-sm text-fg-bright">Enable web / mobile client</div>
                     <div className="text-xs text-dim mt-0.5">
@@ -2980,7 +3149,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                             onBlur={handleSaveWsPort}
                             className="w-28 bg-panel border border-border-strong rounded px-2 py-1 text-xs text-fg-bright outline-none focus:border-fg font-mono"
                           />
-                          <span className="text-[11px] text-faint">default 37291</span>
+                          <span className="text-xs text-faint">default 37291</span>
                         </div>
                       </div>
                       <div>
@@ -2999,7 +3168,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     <div className="mt-4 pt-3 border-t border-border">
                       <label className="block text-xs font-medium text-fg mb-1">Connection URL</label>
                       <div className="flex items-center gap-2">
-                        <code className="flex-1 bg-panel border border-border rounded px-2 py-1.5 text-[11px] text-fg-bright font-mono truncate">
+                        <code className="flex-1 bg-panel border border-border rounded px-2 py-1.5 text-xs text-fg-bright font-mono truncate">
                           {showWsToken ? wsUrl : wsUrlMasked}
                         </code>
                         <Tooltip label={showWsToken ? 'Hide token' : 'Show token'}>
@@ -3008,7 +3177,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                             disabled={!wsInfo}
                             className="p-1.5 text-dim hover:text-fg transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                           >
-                            {showWsToken ? <EyeOff size={14} /> : <Eye size={14} />}
+                            {showWsToken ? <EyeOff className="icon-sm" /> : <Eye className="icon-sm" />}
                           </button>
                         </Tooltip>
                         <Tooltip label={wsUrlCopied ? 'Copied' : 'Copy URL'}>
@@ -3017,7 +3186,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                             disabled={!wsInfo}
                             className="p-1.5 text-dim hover:text-fg transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                           >
-                            {wsUrlCopied ? <Check size={14} className="text-success" /> : <Copy size={14} />}
+                            {wsUrlCopied ? <Check className="icon-sm text-success" /> : <Copy className="icon-sm" />}
                           </button>
                         </Tooltip>
                         <Tooltip label="Open in browser">
@@ -3026,7 +3195,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                             disabled={!wsInfo}
                             className="p-1.5 text-dim hover:text-fg transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                           >
-                            <ExternalLink size={14} />
+                            <ExternalLink className="icon-sm" />
                           </button>
                         </Tooltip>
                         <Tooltip label="Rotate token (invalidates existing URLs)">
@@ -3035,7 +3204,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                             disabled={!wsInfo}
                             className="p-1.5 text-dim hover:text-warning transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                           >
-                            <RotateCcw size={14} />
+                            <RotateCcw className="icon-sm" />
                           </button>
                         </Tooltip>
                       </div>
@@ -3063,11 +3232,11 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                               </p>
                               {lanAddresses.length > 1 && (
                                 <div>
-                                  <label className="block text-[11px] font-medium text-fg mb-1">Interface</label>
+                                  <label className="block text-xs font-medium text-fg mb-1">Interface</label>
                                   <select
                                     value={selectedLanAddress ?? ''}
                                     onChange={(e) => setSelectedLanAddress(e.target.value)}
-                                    className="w-full bg-panel border border-border-strong rounded px-2 py-1 text-[11px] text-fg-bright outline-none focus:border-fg cursor-pointer font-mono"
+                                    className="w-full bg-panel border border-border-strong rounded px-2 py-1 text-xs text-fg-bright outline-none focus:border-fg cursor-pointer font-mono"
                                   >
                                     {lanAddresses.map((a) => (
                                       <option key={a.iface + a.address} value={a.address}>
@@ -3077,7 +3246,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                                   </select>
                                 </div>
                               )}
-                              <p className="font-mono text-[10px] break-all text-fg">
+                              <p className="font-mono text-xs break-all text-fg">
                                 http://{selectedLanAddress}:{wsInfo?.port}/
                               </p>
                             </div>
@@ -3099,7 +3268,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
                 {wsNeedsRestart && (
                   <div className="mt-4 pt-3 border-t border-border flex items-center gap-2">
-                    <RefreshCw size={12} className="text-warning shrink-0" />
+                    <RefreshCw className="icon-xs text-warning shrink-0" />
                     <p className="text-xs text-warning">{wsNeedsRestart}</p>
                   </div>
                 )}
@@ -3228,11 +3397,11 @@ function ThemeRow({
               copied ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus:opacity-100'
             }`}
           >
-            {copied ? <CopyCheck size={14} /> : <Copy size={14} />}
+            {copied ? <CopyCheck className="icon-sm" /> : <Copy className="icon-sm" />}
           </span>
         </Tooltip>
       )}
-      {isActive && <Check size={14} className="text-success shrink-0" />}
+      {isActive && <Check className="icon-sm text-success shrink-0" />}
     </button>
   )
 }

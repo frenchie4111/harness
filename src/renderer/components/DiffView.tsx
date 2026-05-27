@@ -163,7 +163,7 @@ function FileDiffView({
               disabled={!dirty}
               className="shrink-0 text-faint hover:text-fg disabled:opacity-40 disabled:hover:text-faint cursor-pointer disabled:cursor-default"
             >
-              <Save size={12} />
+              <Save className="icon-xs" />
             </button>
           </Tooltip>
         )}
@@ -173,13 +173,13 @@ function FileDiffView({
               onClick={() => onSendToAgent(`@${filePath} `)}
               className="shrink-0 text-faint hover:text-fg cursor-pointer"
             >
-              <AtSign size={12} />
+              <AtSign className="icon-xs" />
             </button>
           </Tooltip>
         )}
       </div>
       {readOnlyBanner && (
-        <div className="shrink-0 border-b border-border bg-info/10 px-4 py-1.5 text-[11px] text-info">
+        <div className="shrink-0 border-b border-border bg-info/10 px-4 py-1.5 text-xs text-info">
           {readOnlyBanner}
         </div>
       )}
@@ -277,7 +277,7 @@ function CommitDiffView({
                       }}
                       className="opacity-0 group-hover/line:opacity-100 text-faint hover:text-fg transition-opacity cursor-pointer"
                     >
-                      <AtSign size={10} />
+                      <AtSign className="icon-2xs" />
                     </button>
                   </Tooltip>
                 )}
@@ -379,7 +379,7 @@ function CommitHeader({ commit }: { commit: CommitDiff }): JSX.Element {
   return (
     <div className="border-b border-border bg-panel px-5 py-4">
       <div className="flex items-center gap-2 mb-2">
-        <span className="font-mono text-[11px] text-info bg-info/10 px-2 py-0.5 rounded">
+        <span className="font-mono text-xs text-info bg-info/10 px-2 py-0.5 rounded">
           {commit.shortHash}
         </span>
         <span className="text-xs text-faint">{formatted}</span>

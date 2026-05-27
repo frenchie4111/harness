@@ -244,6 +244,46 @@
   --color-accent: #ff6600;
 }
 
+/* --- Icon size scale ---
+ * Semantic aliases for the small square sizes lucide and AgentIcon need.
+ * All units are rem so toggling the root font-size (uiScale) shifts every
+ * icon in lockstep with the text scale. Names mirror the Tailwind text-*
+ * ladder for muscle memory.
+ *   icon-2xs  10px (0.625rem)
+ *   icon-xs   12px (0.75rem)
+ *   icon-sm   14px (0.875rem)
+ *   icon-base 16px (1rem)         — default
+ *   icon-lg   20px (1.25rem)
+ *   icon-xl   32px (2rem)
+ * 18px and 26px are intentionally not aliased — they're one-offs (see
+ * w-[1.125rem] / w-[1.625rem] sites). Add a rung here only when its
+ * usage hits double digits.
+ */
+@utility icon-2xs {
+  width: 0.625rem;
+  height: 0.625rem;
+}
+@utility icon-xs {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+@utility icon-sm {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+@utility icon-base {
+  width: 1rem;
+  height: 1rem;
+}
+@utility icon-lg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+@utility icon-xl {
+  width: 2rem;
+  height: 2rem;
+}
+
 @layer base {
   * {
     margin: 0;
