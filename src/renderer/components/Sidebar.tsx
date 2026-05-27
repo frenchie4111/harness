@@ -267,7 +267,7 @@ export function Sidebar({
       </svg>
 
       {/* Worktrees header */}
-      <div className="px-3 py-1.5 flex items-center gap-2 shrink-0">
+      <div className="px-3 py-3 flex items-center gap-2 shrink-0">
         <Tooltip label="Collapse sidebar" action="toggleSidebar" side="bottom">
           <button
             onClick={onCollapseSidebar}

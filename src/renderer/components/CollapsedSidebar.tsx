@@ -75,7 +75,7 @@ export function CollapsedSidebar({
       className="shrink-0 bg-panel flex flex-col h-full border-r border-border"
       style={{ width: WIDTH }}
     >
-      <div className="no-drag flex flex-col items-center gap-1 py-1">
+      <div className="no-drag flex flex-col items-center gap-1 py-3">
         <Tooltip label="Expand sidebar" action="toggleSidebar" side="right">
           <button
             onClick={onExpand}
@@ -157,7 +157,7 @@ export function CollapsedSidebar({
 
       <div className="flex-1" />
 
-      <div className="no-drag flex flex-col items-center gap-1 py-1">
+      <div className="no-drag flex flex-col items-center gap-1 py-3">
         <Tooltip label="Command Center" action="toggleCommandCenter" side="right">
           <button
             onClick={onOpenCommandCenter}

@@ -246,7 +246,7 @@ export function CollapsedRightPanel({
       className="shrink-0 h-full flex flex-col bg-panel border-l border-border"
       style={{ width: WIDTH }}
     >
-      <div className="no-drag flex flex-col items-center gap-1 py-1">
+      <div className="no-drag flex flex-col items-center gap-1 py-3">
         <Tooltip label="Expand sidebar" action="toggleRightColumn" side="left">
           <button
             onClick={onExpand}
@@ -392,7 +392,7 @@ export function CollapsedRightPanel({
 
       <div className="flex-1" />
 
-      <div className="no-drag flex flex-col items-center gap-1 py-1">
+      <div className="no-drag flex flex-col items-center gap-1 py-3">
         <Tooltip label="Refresh commits, changed files, and PR info" side="left">
           <button
             onClick={handleRefreshAll}
