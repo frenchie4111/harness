@@ -109,6 +109,7 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
   )
   const [branch, setBranch] = useState('')
   const [existingBranch, setExistingBranch] = useState<string | null>(null)
+  const [branchTab, setBranchTab] = useState<'new' | 'existing'>('new')
   const [prompt, setPrompt] = useState('')
   const settings = useSettings()
   const [reviewPrompt, setReviewPrompt] = useState(settings.prReviewPrompt)
@@ -141,14 +142,18 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
 
   const parsedTeleport = mode === 'teleport' ? parseTeleportInput(teleportInput) : null
   const teleportInvalid = mode === 'teleport' && teleportInput.trim().length > 0 && !parsedTeleport
+  // The active branch tab dictates which value is submitted — picking from the
+  // hidden tab does NOT carry through. Keeps "what you see is what you submit"
+  // intact when the user toggles between New / Existing.
+  const submitBranch = branchTab === 'new' ? branch : (existingBranch ?? '')
   const effectiveBranch = mode === 'teleport'
     ? (parsedTeleport ? teleportFolderName(parsedTeleport) : '')
-    : (existingBranch ?? branch)
+    : submitBranch
   const canSubmit =
     !submitting &&
     !!selectedRepo &&
     (mode === 'fresh'
-      ? (existingBranch ? isValidBranchName(existingBranch) : isValidBranchName(branch))
+      ? isValidBranchName(submitBranch)
       : !!parsedTeleport && !teleportInvalid && isValidBranchName(effectiveBranch))
 
   useEffect(() => {
@@ -247,10 +252,10 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
       // analog today.
       const effectiveAgent: 'claude' | 'codex' =
         mode === 'teleport' ? 'claude' : agentKindOverride
-      // When the user picked from the existing-branches combobox, ask the
-      // FSM to `git worktree add <dir> <branch>` (no `-b`) so an existing
-      // local or remote-tracking ref is checked out — not created literally.
-      const checkoutExisting = mode === 'fresh' && existingBranch !== null
+      // When the active tab is Existing, ask the FSM to
+      // `git worktree add <dir> <branch>` (no `-b`) so an existing local or
+      // remote-tracking ref is checked out — not created literally.
+      const checkoutExisting = mode === 'fresh' && branchTab === 'existing'
       await onSubmit(
         selectedRepo,
         effectiveBranch,
@@ -264,7 +269,7 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
       setError(err instanceof Error ? err.message : 'Failed to create worktree')
       setSubmitting(false)
     }
-  }, [effectiveBranch, prompt, canSubmit, onSubmit, parsedTeleport, selectedRepo, mode, agentKindOverride, modelOverride, existingBranch])
+  }, [effectiveBranch, prompt, canSubmit, onSubmit, parsedTeleport, selectedRepo, mode, agentKindOverride, modelOverride, branchTab])
 
   const cycleRepo = useCallback((direction: 1 | -1) => {
     if (repoRoots.length <= 1) return
@@ -329,7 +334,7 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
               New <span className="brand-gradient-text">worktree</span>
             </h1>
             <p className="text-muted text-base">
-              Fork a branch and send a Claude into it.
+              Fork a branch or select an existing branch and send Claude into it.
             </p>
           </div>
 
@@ -414,13 +419,38 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
             )}
 
             {mode === 'fresh' && (
-              <>
-                <label className="block">
-                  <div className="mb-2">
-                    <span className="text-[11px] font-semibold uppercase tracking-wider text-dim">
-                      New branch
-                    </span>
-                  </div>
+              <div>
+                <div className="flex p-1 bg-app border border-border-strong rounded-lg mb-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBranchTab('new')
+                      requestAnimationFrame(() => branchRef.current?.focus())
+                    }}
+                    disabled={submitting}
+                    className={`flex-1 flex items-center justify-center px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
+                      branchTab === 'new'
+                        ? 'bg-panel text-fg-bright shadow-sm'
+                        : 'text-dim hover:text-fg'
+                    }`}
+                  >
+                    New branch
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBranchTab('existing')}
+                    disabled={submitting}
+                    className={`flex-1 flex items-center justify-center px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
+                      branchTab === 'existing'
+                        ? 'bg-panel text-fg-bright shadow-sm'
+                        : 'text-dim hover:text-fg'
+                    }`}
+                  >
+                    Existing branch
+                  </button>
+                </div>
+
+                {branchTab === 'new' ? (
                   <input
                     ref={branchRef}
                     type="text"
@@ -428,29 +458,22 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
                     onChange={handleBranchChange}
                     onKeyDown={handleBranchKey}
                     placeholder="fix-the-thing"
-                    disabled={submitting || existingBranch !== null}
+                    disabled={submitting}
                     autoComplete="off"
                     spellCheck={false}
                     style={{ fontSize: '13px' }}
                     className="w-full bg-app border-2 border-border-strong rounded-lg px-3 py-2.5 font-mono text-fg-bright placeholder-faint outline-none focus:border-accent transition-colors disabled:opacity-50"
                   />
-                </label>
-
-                <div className="mt-4">
-                  <div className="mb-2">
-                    <span className="text-[11px] font-semibold uppercase tracking-wider text-dim">
-                      Existing branches
-                    </span>
-                  </div>
+                ) : (
                   <ExistingBranchCombobox
                     branches={branchesByRepo[selectedRepo] || []}
                     value={existingBranch}
                     onChange={handlePickExistingBranch}
-                    disabled={submitting || branch.length > 0 || !selectedRepo}
+                    disabled={submitting || !selectedRepo}
                     placeholder={!selectedRepo ? 'Select a repository first' : undefined}
                   />
-                </div>
-              </>
+                )}
+              </div>
             )}
 
             {mode === 'fresh' && (
@@ -640,6 +663,7 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
                       if (!branch) {
                         setBranch(starterBranch)
                         setExistingBranch(null)
+                        setBranchTab('new')
                       }
                       setPrompt(starterPrompt)
                       promptRef.current?.focus()
