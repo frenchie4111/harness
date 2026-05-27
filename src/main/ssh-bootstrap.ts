@@ -326,22 +326,26 @@ async function startServerDetached(
   onLine: (line: string) => void
 ): Promise<RemoteState> {
   const token = randomBytes(32).toString('hex')
-  // Start fresh — truncate the log so we don't tail stale lines.
-  // `setsid` detaches the process group so the SSH session disconnecting
-  // doesn't take the server with it (nohup alone is not enough on some
-  // shells when the parent SSH channel closes hard). The `</dev/null`
-  // closes stdin so the process doesn't get SIGHUP'd when the channel
-  // does close.
+  // Detach so the server survives the SSH session closing:
+  //   - `nohup` ignores SIGHUP when sshd tears down the channel.
+  //   - Redirecting stdin to /dev/null + stdout/stderr to the log
+  //     means the SSH channel doesn't keep the process tethered
+  //     waiting for tty traffic.
+  //   - The trailing `&` puts it in the background so we can read the
+  //     pid and return immediately.
+  //
+  // Newlines (not `&&`) separate statements so `cmd &` followed by the
+  // next line parses cleanly — the `& &&` form is a syntax error in any
+  // POSIX shell. `disown` (bash-only) and `setsid` (not on every Unix)
+  // are deliberately omitted; nohup + fd redirection is enough for
+  // every shell we care about.
   const script = [
     `mkdir -p ${REMOTE_INSTALL_DIR}`,
     `: > ${REMOTE_LOG_FILE}`,
-    `export HARNESS_AUTH_TOKEN=${shellEscape(token)}`,
-    `export HARNESS_WS_HOST=127.0.0.1`,
-    `nohup setsid ${REMOTE_BIN} --port 0 --host 127.0.0.1 >${REMOTE_LOG_FILE} 2>&1 </dev/null &`,
-    `disown $!`,
+    `nohup env HARNESS_AUTH_TOKEN=${shellEscape(token)} HARNESS_WS_HOST=127.0.0.1 ${REMOTE_BIN} --port 0 --host 127.0.0.1 > ${REMOTE_LOG_FILE} 2>&1 < /dev/null &`,
     `echo $!`
-  ].join(' && ')
-  const launch = await ssh.execCommand(`sh -c ${shellEscape(script)}`)
+  ].join('\n')
+  const launch = await ssh.execCommand(`sh -s`, { stdin: script })
   if (launch.code !== 0) {
     throw Object.assign(new Error('failed to launch harness-server'), {
       bootstrapError: {
