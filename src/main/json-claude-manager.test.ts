@@ -78,6 +78,7 @@ describe('JsonClaudeManager', () => {
     return new JsonClaudeManager(store, {
       getClaudeCommand: () => 'claude',
       getUseSystemClaude: () => useSystemClaude,
+      getClaudeCodeEntrypoint: () => 'claude-vscode',
       getApprovalSocketPath: (sid) => `/tmp/sock-${sid}`,
       closeApprovalSession: vi.fn(),
       getClaudeEnvVars: () => ({}),

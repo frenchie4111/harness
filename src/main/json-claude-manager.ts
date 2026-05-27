@@ -98,6 +98,14 @@ export interface JsonClaudeManagerOptions {
    *  Diagnostic toggle wired to settings.useSystemClaudeForJsonMode —
    *  no UI, defaults false. */
   getUseSystemClaude: () => boolean
+  /** Value the manager writes to the CLAUDE_CODE_ENTRYPOINT env var on
+   *  every Chat-mode subprocess spawn. Returning empty string leaves
+   *  the var unset (claude-code's autodetect takes over). The bundled
+   *  binary's UM() classifier keys interactive-vs-SDK billing off this
+   *  string; 'claude-vscode' matches the official VS Code extension
+   *  and keeps subscription users on interactive limits rather than
+   *  the Agent SDK credit bucket (effective 2026-06-15). */
+  getClaudeCodeEntrypoint: () => string
   getApprovalSocketPath: (sessionId: string) => string
   closeApprovalSession: (sessionId: string) => void
   getClaudeEnvVars: () => Record<string, string>
@@ -516,7 +524,8 @@ export class JsonClaudeManager {
     }
     delete childEnv.CLAUDE_HARNESS_ID
     delete childEnv.HARNESS_TERMINAL_ID
-    const spawnEnv = {
+    const entrypoint = this.opts.getClaudeCodeEntrypoint()
+    const spawnEnv: Record<string, string> = {
       ...childEnv,
       ...envVars,
       // Memory isolation: the auto-memory subsystem writes into
@@ -531,6 +540,17 @@ export class JsonClaudeManager {
       // when it opens the approval socket.
       HARNESS_JSON_CLAUDE_SESSION_ID: sessionId
     }
+    // Identify ourselves to claude-code as an interactive IDE-style host
+    // (matches the official VS Code extension's value), so the bundled
+    // binary classifies us in the interactive bucket — keeps subscription
+    // users on their interactive Claude limits instead of moving them to
+    // the new Agent SDK credit bucket (effective June 15, 2026). See
+    // https://support.claude.com/en/articles/15036540 and the UM() check
+    // in the bundled binary (returns true when CLAUDE_CODE_ENTRYPOINT is
+    // not in {sdk-ts, sdk-py, sdk-cli, local-agent}). Empty string opts
+    // out — claude-code's autodetect classifies us as 'sdk-cli' in that
+    // case, which is the pre-fix behavior.
+    if (entrypoint) spawnEnv.CLAUDE_CODE_ENTRYPOINT = entrypoint
     let proc: ChildProcessWithoutNullStreams
     try {
       if (useSystemClaude) {
@@ -1064,11 +1084,15 @@ export class JsonClaudeManager {
       }
       delete childEnv.CLAUDE_HARNESS_ID
       delete childEnv.HARNESS_TERMINAL_ID
-      const spawnEnv = {
+      const entrypoint = this.opts.getClaudeCodeEntrypoint()
+      const spawnEnv: Record<string, string> = {
         ...childEnv,
         ...envVars,
         CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1'
       }
+      // Match the live spawn's billing-identity signal so the probe doesn't
+      // report a different entrypoint to Anthropic than the real session.
+      if (entrypoint) spawnEnv.CLAUDE_CODE_ENTRYPOINT = entrypoint
       log('json-claude', `probe spawn cwd=${cwd} bundled=${!useSystemClaude}`)
       let proc: ChildProcessWithoutNullStreams
       try {

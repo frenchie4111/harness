@@ -191,6 +191,15 @@ export interface Config {
   // Diagnostic toggle (no UI): when true, json-mode tabs spawn the user's
   // PATH `claude` instead of the bundled one. Default off.
   useSystemClaudeForJsonMode?: boolean
+  // Internal: identifier sent to claude-code via CLAUDE_CODE_ENTRYPOINT in
+  // Chat-mode (json-mode) sessions. Default 'claude-vscode' matches the
+  // official VS Code extension's value, which the bundled binary's UM()
+  // classifier treats as interactive — keeps subscription users on their
+  // interactive Claude limits instead of the Agent SDK credit bucket
+  // (effective 2026-06-15). Set to 'sdk-cli' for the pre-fix behavior, or
+  // empty string to leave the env var unset entirely. No UI — edit
+  // config.json manually.
+  claudeCodeEntrypoint?: string
   // Visual density of the JSON-mode chat. Undefined = compact (the
   // historical look). 'comfy' bumps font sizes, padding, and corner
   // radius for newcomers / screen-sharing.

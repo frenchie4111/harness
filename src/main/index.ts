@@ -303,6 +303,10 @@ const jsonClaudeManager = new JsonClaudeManager(store, {
     store.getSnapshot().state.settings.claudeCommand || DEFAULT_CLAUDE_COMMAND,
   getUseSystemClaude: () =>
     store.getSnapshot().state.settings.useSystemClaudeForJsonMode === true,
+  getClaudeCodeEntrypoint: () =>
+    typeof config.claudeCodeEntrypoint === 'string'
+      ? config.claudeCodeEntrypoint
+      : 'claude-vscode',
   getApprovalSocketPath: (sessionId) => approvalBridge.startSession(sessionId),
   closeApprovalSession: (sessionId) => approvalBridge.stopSession(sessionId),
   getClaudeEnvVars: () =>
