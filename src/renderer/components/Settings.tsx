@@ -27,6 +27,7 @@ type SectionId = 'appearance' | 'agent' | 'worktrees' | 'editor' | 'github' | 'h
 type SubSectionId =
   | 'appearance-theme'
   | 'appearance-custom-themes'
+  | 'appearance-ui-size'
   | 'appearance-terminal-font'
   | 'agent-general'
   | 'agent-claude'
@@ -59,6 +60,7 @@ const SECTIONS: Section[] = [
   { id: 'appearance', label: 'Appearance', icon: Palette, children: [
     { id: 'appearance-theme', label: 'Theme' },
     { id: 'appearance-custom-themes', label: 'Custom themes' },
+    { id: 'appearance-ui-size', label: 'UI size' },
     { id: 'appearance-terminal-font', label: 'Terminal font' }
   ]},
   { id: 'agent', label: 'Agent', icon: TerminalIcon, children: [
@@ -143,6 +145,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
   const subSectionRefs = useRef<Record<SubSectionId, HTMLElement | null>>({
     'appearance-theme': null,
     'appearance-custom-themes': null,
+    'appearance-ui-size': null,
     'appearance-terminal-font': null,
     'agent-general': null,
     'agent-claude': null,
@@ -1328,6 +1331,89 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 Size, theme, and terminal font for the whole app.
               </p>
 
+              <div ref={(el) => { subSectionRefs.current['appearance-theme'] = el }} id="appearance-theme" />
+              {/* Mode picker — native radio inputs styled as a segmented
+                   control. Radios give us proper keyboard semantics for free
+                   (arrow keys move focus, space activates) */}
+              <fieldset className="mb-6">
+                <legend className="text-sm font-semibold text-fg-bright mb-2">Mode</legend>
+                <div className="grid grid-cols-3 gap-2">
+                  {([
+                    { id: 'light', label: 'Light' },
+                    { id: 'dark', label: 'Dark' },
+                    { id: 'system', label: 'Follow system' }
+                  ] as const).map((opt) => {
+                    const isActive = themeMode === opt.id
+                    return (
+                      <label
+                        key={opt.id}
+                        className={`px-3 py-2 rounded-lg border text-sm text-center cursor-pointer transition-colors ${
+                          isActive
+                            ? 'bg-surface text-fg-bright border-fg'
+                            : 'bg-panel-raised text-muted border-border hover:text-fg hover:border-border-strong'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="theme-mode"
+                          value={opt.id}
+                          checked={isActive}
+                          onChange={() => handleSelectThemeMode(opt.id)}
+                          className="sr-only"
+                        />
+                        {opt.label}
+                      </label>
+                    )
+                  })}
+                </div>
+              </fieldset>
+
+              <ThemeModePicker
+                title="Light theme"
+                hint="Used when mode is Light, or when System resolves to light."
+                builtIns={BUILT_IN_THEMES_BY_MODE.light}
+                customs={customThemes.filter((t) => t.mode === 'light')}
+                activeId={themeLight}
+                disabled={themeMode === 'dark'}
+                onSelect={handleSelectLightTheme}
+              />
+
+              <div className="mt-6" />
+
+              <ThemeModePicker
+                title="Dark theme"
+                hint="Used when mode is Dark, or when System resolves to dark."
+                builtIns={BUILT_IN_THEMES_BY_MODE.dark}
+                customs={customThemes.filter((t) => t.mode === 'dark')}
+                activeId={themeDark}
+                disabled={themeMode === 'light'}
+                onSelect={handleSelectDarkTheme}
+              />
+
+              <div ref={(el) => { subSectionRefs.current['appearance-custom-themes'] = el }} id="appearance-custom-themes" className="mt-8">
+                <h3 className="text-sm font-semibold text-fg-bright mb-1">Custom themes</h3>
+                <p className="text-xs text-dim mb-3">
+                  Drop <code className="text-fg">{'<name>.json'}</code> files into your themes folder. They show up in the pickers above, filtered by their <code className="text-fg">mode</code>. {customThemes.length === 0 ? 'None loaded yet.' : `${customThemes.length} loaded.`}
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={async () => { await backend.openThemesFolder() }}
+                    className="px-3 py-1.5 rounded-md border border-border text-sm text-fg bg-panel-raised hover:bg-surface cursor-pointer"
+                  >
+                    Open themes folder
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => { await backend.reloadCustomThemes() }}
+                    className="px-3 py-1.5 rounded-md border border-border text-sm text-fg bg-panel-raised hover:bg-surface cursor-pointer"
+                  >
+                    Reload from disk
+                  </button>
+                </div>
+              </div>
+
+              <div ref={(el) => { subSectionRefs.current['appearance-ui-size'] = el }} id="appearance-ui-size" />
               {/* UI scale — drives the root html font-size, so every rem
                   unit (text-xs/sm/base/lg, w-N/h-N icons, padding-*, gap-*)
                   scales in lockstep. Native range gives free keyboard
@@ -1335,7 +1421,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   Drag is staged in draftUiScale so the whole app doesn't
                   reflow on every tick — Save commits, Cancel reverts,
                   and closing Settings without saving drops the draft. */}
-              <h3 className="text-sm font-semibold text-fg-bright mb-1">UI size</h3>
+              <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">UI size</h3>
               <p className="text-xs text-dim mb-3">
                 Scales the entire app — affects sidebar, panels, dialogs.
                 Larger sizes are friendlier for screen-sharing; small packs
@@ -1462,90 +1548,6 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   </button>
                 </div>
               )}
-
-              <div className="mt-8 mb-6 border-t border-border" />
-
-              <div ref={(el) => { subSectionRefs.current['appearance-theme'] = el }} id="appearance-theme" />
-              {/* Mode picker — native radio inputs styled as a segmented
-                   control. Radios give us proper keyboard semantics for free
-                   (arrow keys move focus, space activates) */}
-              <fieldset className="mb-6">
-                <legend className="text-sm font-semibold text-fg-bright mb-2">Mode</legend>
-                <div className="grid grid-cols-3 gap-2">
-                  {([
-                    { id: 'light', label: 'Light' },
-                    { id: 'dark', label: 'Dark' },
-                    { id: 'system', label: 'Follow system' }
-                  ] as const).map((opt) => {
-                    const isActive = themeMode === opt.id
-                    return (
-                      <label
-                        key={opt.id}
-                        className={`px-3 py-2 rounded-lg border text-sm text-center cursor-pointer transition-colors ${
-                          isActive
-                            ? 'bg-surface text-fg-bright border-fg'
-                            : 'bg-panel-raised text-muted border-border hover:text-fg hover:border-border-strong'
-                        }`}
-                      >
-                        <input
-                          type="radio"
-                          name="theme-mode"
-                          value={opt.id}
-                          checked={isActive}
-                          onChange={() => handleSelectThemeMode(opt.id)}
-                          className="sr-only"
-                        />
-                        {opt.label}
-                      </label>
-                    )
-                  })}
-                </div>
-              </fieldset>
-
-              <ThemeModePicker
-                title="Light theme"
-                hint="Used when mode is Light, or when System resolves to light."
-                builtIns={BUILT_IN_THEMES_BY_MODE.light}
-                customs={customThemes.filter((t) => t.mode === 'light')}
-                activeId={themeLight}
-                disabled={themeMode === 'dark'}
-                onSelect={handleSelectLightTheme}
-              />
-
-              <div className="mt-6" />
-
-              <ThemeModePicker
-                title="Dark theme"
-                hint="Used when mode is Dark, or when System resolves to dark."
-                builtIns={BUILT_IN_THEMES_BY_MODE.dark}
-                customs={customThemes.filter((t) => t.mode === 'dark')}
-                activeId={themeDark}
-                disabled={themeMode === 'light'}
-                onSelect={handleSelectDarkTheme}
-              />
-
-              <div ref={(el) => { subSectionRefs.current['appearance-custom-themes'] = el }} id="appearance-custom-themes" className="mt-8">
-                <h3 className="text-sm font-semibold text-fg-bright mb-1">Custom themes</h3>
-                <p className="text-xs text-dim mb-3">
-                  Drop <code className="text-fg">{'<name>.json'}</code> files into your themes folder. They show up in the pickers above, filtered by their <code className="text-fg">mode</code>. {customThemes.length === 0 ? 'None loaded yet.' : `${customThemes.length} loaded.`}
-                </p>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={async () => { await backend.openThemesFolder() }}
-                    className="px-3 py-1.5 rounded-md border border-border text-sm text-fg bg-panel-raised hover:bg-surface cursor-pointer"
-                  >
-                    Open themes folder
-                  </button>
-                  <button
-                    type="button"
-                    onClick={async () => { await backend.reloadCustomThemes() }}
-                    className="px-3 py-1.5 rounded-md border border-border text-sm text-fg bg-panel-raised hover:bg-surface cursor-pointer"
-                  >
-                    Reload from disk
-                  </button>
-                </div>
-              </div>
 
               <div ref={(el) => { subSectionRefs.current['appearance-terminal-font'] = el }} id="appearance-terminal-font" />
               <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">Terminal font</h3>
