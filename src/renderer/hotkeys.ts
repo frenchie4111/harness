@@ -36,6 +36,7 @@ export type Action =
   | 'splitPaneRight'
   | 'splitPaneDown'
   | 'toggleRightColumn'
+  | 'toggleSingleScreen'
   | 'togglePerfMonitor'
   | 'hotkeyCheatsheet'
   | 'openReview'
@@ -99,7 +100,8 @@ export const DEFAULT_HOTKEYS: Record<Action, HotkeyBinding> = {
   fileQuickOpen: { key: 'p', modifiers: { cmd: true } },
   splitPaneRight: { key: 'd', modifiers: { cmd: true } },
   splitPaneDown: { key: 'd', modifiers: { cmd: true, alt: true } },
-  toggleRightColumn: { key: 'b', modifiers: { cmd: true, alt: true } },
+  toggleRightColumn: { key: 'b', modifiers: { cmd: true, shift: true } },
+  toggleSingleScreen: { key: 'F12', modifiers: {} },
   togglePerfMonitor: { key: 'd', modifiers: { cmd: true, shift: true } },
   hotkeyCheatsheet: { key: '/', modifiers: { cmd: true, shift: true } },
   openReview: { key: 'r', modifiers: { cmd: true, alt: true } },
@@ -223,6 +225,7 @@ export const ACTION_LABELS: Record<Action, string> = {
   splitPaneRight: 'Split pane right',
   splitPaneDown: 'Split pane down',
   toggleRightColumn: 'Toggle right column',
+  toggleSingleScreen: 'Toggle single screen mode',
   togglePerfMonitor: 'Performance monitor',
   hotkeyCheatsheet: 'Keyboard shortcuts',
   openReview: 'Review changes',

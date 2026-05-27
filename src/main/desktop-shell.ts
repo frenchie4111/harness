@@ -413,6 +413,12 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
           },
           { type: 'separator' },
           {
+            label: 'Single Screen Mode',
+            accelerator: 'F12',
+            click: () => transport.sendSignal('app:toggleSingleScreen')
+          },
+          { type: 'separator' },
+          {
             label: 'Performance Monitor',
             accelerator: 'CmdOrCtrl+Shift+D',
             click: () => transport.sendSignal('app:togglePerfMonitor')

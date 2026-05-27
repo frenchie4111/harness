@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
-import { X, SquareTerminal, Sparkles, Loader2, PanelRightOpen, Globe, Users, ChevronLeft, ChevronRight } from 'lucide-react'
+import { X, SquareTerminal, Sparkles, Loader2, Globe, Users, ChevronLeft, ChevronRight } from 'lucide-react'
 import {
   SortableContext,
   horizontalListSortingStrategy,
@@ -80,8 +80,21 @@ interface TerminalPanelProps {
   defaultAgent: AgentKind
   onSleepTab: (tabId: string) => void
   onCloseTab: (tabId: string) => void
-  showExpandRightColumn: boolean
-  onShowRightColumn: () => void
+  /** Leading padding on the tab bar to clear the macOS traffic lights when
+   *  no sidebar sits to the left of this pane. Set per-leaf by WorkspaceView
+   *  to the leftmost leaf only. */
+  topBarLeadingPx?: number
+  /** Negative left margin on the tab bar so it visually extends across the
+   *  empty space above the left sidebar (which sits 40px down from the top).
+   *  Set per-leaf by WorkspaceView to the topmost-left leaf only. */
+  topBarLeadingExtendPx?: number
+  /** Negative right margin on the tab bar so it visually extends across the
+   *  empty space above the right column (which sits 40px down from the top).
+   *  Set per-leaf by WorkspaceView to the topmost-right leaf only. */
+  topBarTrailingExtendPx?: number
+  /** Render the "Harness" app title at the start of the tab bar. Set true
+   *  on the top-left leaf only so the title appears once per workspace. */
+  showAppTitle?: boolean
 }
 
 const TAB_STATUS_DOT: Record<PtyStatus, string> = {
@@ -401,8 +414,10 @@ export function TerminalPanel({
   defaultAgent,
   onSleepTab,
   onCloseTab,
-  showExpandRightColumn,
-  onShowRightColumn
+  topBarLeadingPx = 0,
+  topBarLeadingExtendPx = 0,
+  topBarTrailingExtendPx = 0,
+  showAppTitle = false
 }: TerminalPanelProps): JSX.Element {
   const backend = useBackend()
   const { setNodeRef: setPaneDropRef } = useDroppable({ id: pane.id })
@@ -448,8 +463,33 @@ export function TerminalPanel({
 
   return (
     <div ref={setPaneDropRef} className="flex-1 flex flex-col min-w-0 bg-app">
-      {/* Tab bar */}
-      <div className="drag-region flex items-center border-b border-border bg-panel h-10 shrink-0">
+      {/* Tab bar — marginLeft extends the bar to the window's left edge;
+          paddingLeft is the absolute distance from that edge to first
+          content (set to clear the macOS traffic lights), so the title
+          stays pinned regardless of sidebar collapse state. */}
+      <div
+        className="drag-region flex items-center border-b border-border bg-panel h-10 shrink-0 relative z-10"
+        style={
+          topBarLeadingPx > 0 || topBarLeadingExtendPx > 0 || topBarTrailingExtendPx > 0
+            ? {
+                paddingLeft: topBarLeadingPx > 0 ? topBarLeadingPx : undefined,
+                marginLeft: topBarLeadingExtendPx > 0 ? -topBarLeadingExtendPx : undefined,
+                marginRight: topBarTrailingExtendPx > 0 ? -topBarTrailingExtendPx : undefined
+              }
+            : undefined
+        }
+      >
+        {showAppTitle && (
+          <div className="shrink-0 flex items-center h-full px-3 text-xs font-semibold whitespace-nowrap">
+            <span className="gradient-text">Harness</span>
+            {import.meta.env.DEV && __HARNESS_DEV_BRANCH__ && (
+              <span className="text-faint font-normal ml-1">({__HARNESS_DEV_BRANCH__})</span>
+            )}
+          </div>
+        )}
+        {showAppTitle && repoLabel && (
+          <div className="shrink-0 w-px h-4 bg-border" />
+        )}
         {repoLabel && (
           <div
             className="no-drag shrink-0 flex items-baseline gap-1.5 px-3 h-full text-xs whitespace-nowrap"
@@ -583,16 +623,6 @@ export function TerminalPanel({
           </button>
         )}
         {showSpectatorChip && activeTab && <SpectatorChip terminalId={activeTab.id} />}
-        {showExpandRightColumn && (
-          <Tooltip label="Show right column" action="toggleRightColumn" side="left">
-            <button
-              onClick={onShowRightColumn}
-              className="no-drag shrink-0 pr-3 h-full text-faint hover:text-fg transition-colors cursor-pointer"
-            >
-              <PanelRightOpen className="icon-sm" />
-            </button>
-          </Tooltip>
-        )}
       </div>
 
       {/* Content slot host — WorkspaceView imperatively appends a stable

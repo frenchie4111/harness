@@ -447,6 +447,7 @@ export interface ElectronAPI {
   windowClose(): void
   onOpenSettings(callback: () => void): () => void
   onTogglePerfMonitor(callback: () => void): () => void
+  onToggleSingleScreen(callback: () => void): () => void
   onOpenKeyboardShortcuts(callback: () => void): () => void
   onCloseFocusedTab(callback: () => void): () => void
   onSplitPaneRight(callback: () => void): () => void

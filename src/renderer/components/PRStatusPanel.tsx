@@ -553,9 +553,9 @@ const STRATEGY_TO_METHOD: Record<MergeStrategy, GitHubMergeMethod> = {
 }
 
 const METHOD_LABEL: Record<GitHubMergeMethod, string> = {
-  squash: 'Squash+Merge',
+  squash: 'Squash',
   merge: 'Merge',
-  rebase: 'Rebase+Merge'
+  rebase: 'Rebase'
 }
 
 interface PRMergeAction {

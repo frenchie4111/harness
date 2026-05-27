@@ -73,23 +73,25 @@ export function RightColumnToolbar({
   }
 
   return (
-    <div className="drag-region flex items-center justify-end h-10 shrink-0 border-b border-border bg-panel px-2 gap-1">
-      <div className="no-drag relative" ref={menuRef}>
-        <Tooltip label="Panel visibility">
-          <button
-            onClick={() => canConfigure && setMenuOpen((v) => !v)}
-            disabled={!canConfigure}
-            className="flex items-center justify-center w-7 h-7 rounded text-muted hover:bg-panel-raised/40 hover:text-fg-bright disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-            aria-label="Panel visibility"
-          >
-            <SlidersHorizontal className="icon-sm" />
-          </button>
-        </Tooltip>
-        {menuOpen && (
-          <div
-            className="absolute right-0 top-9 z-50 min-w-[220px] rounded border border-border bg-panel-raised shadow-lg py-1"
-            role="menu"
-          >
+    <div className="px-3 py-3 flex items-center gap-2 shrink-0">
+      <span className="text-xs font-medium text-dim">TOOLS</span>
+      <div className="ml-auto flex items-center gap-1">
+        <div className="no-drag relative" ref={menuRef}>
+          <Tooltip label="Panel visibility">
+            <button
+              onClick={() => canConfigure && setMenuOpen((v) => !v)}
+              disabled={!canConfigure}
+              className="text-dim hover:text-fg hover:bg-surface rounded p-0.5 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-dim"
+              aria-label="Panel visibility"
+            >
+              <SlidersHorizontal className="icon-xs" />
+            </button>
+          </Tooltip>
+          {menuOpen && (
+            <div
+              className="absolute right-0 top-7 z-50 min-w-[220px] rounded border border-border bg-panel-raised shadow-lg py-1"
+              role="menu"
+            >
             <div className="px-3 py-1.5 text-xs uppercase tracking-wide text-faint font-medium">
               Panels
             </div>
@@ -134,16 +136,17 @@ export function RightColumnToolbar({
             })}
           </div>
         )}
+        </div>
+        <Tooltip label="Collapse sidebar" action="toggleRightColumn">
+          <button
+            onClick={onCollapse}
+            className="text-dim hover:text-fg hover:bg-surface rounded p-0.5 transition-colors cursor-pointer"
+            aria-label="Collapse right column"
+          >
+            <PanelRightClose className="icon-xs" />
+          </button>
+        </Tooltip>
       </div>
-      <Tooltip label="Hide right column" action="toggleRightColumn">
-        <button
-          onClick={onCollapse}
-          className="no-drag flex items-center justify-center w-7 h-7 rounded text-muted hover:bg-panel-raised/40 hover:text-fg-bright cursor-pointer"
-          aria-label="Hide right column"
-        >
-          <PanelRightClose className="icon-sm" />
-        </button>
-      </Tooltip>
     </div>
   )
 }

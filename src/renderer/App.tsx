@@ -22,6 +22,8 @@ import { DeletingWorktreeScreen } from './components/DeletingWorktreeScreen'
 import { QuestCard } from './components/QuestCard'
 import { WorkspaceView } from './components/WorkspaceView'
 import { RightColumn } from './components/RightColumn'
+import { CollapsedSidebar } from './components/CollapsedSidebar'
+import { CollapsedRightPanel } from './components/CollapsedRightPanel'
 import { Settings } from './components/Settings'
 import { WeeklyWrappedScreen } from './components/WeeklyWrappedScreen'
 import { Guide } from './components/Guide'
@@ -161,6 +163,7 @@ function DesktopApp(): JSX.Element {
   const announcements = useAnnouncements()
   const [announcementsMenuOpen, setAnnouncementsMenuOpen] = useState(false)
   const [sidebarVisible, setSidebarVisible] = useState(true)
+  const [singleScreenMode, setSingleScreenMode] = useState(false)
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
     const saved = Number(localStorage.getItem('harness:sidebarWidth'))
     return Number.isFinite(saved) && saved > 0 ? saved : 224
@@ -216,6 +219,7 @@ function DesktopApp(): JSX.Element {
     setRightPanelWidth((w) => Math.max(180, Math.min(600, w - delta)))
   }, [])
   const [showNewWorktree, setShowNewWorktree] = useState(false)
+  const [newWorktreeRepo, setNewWorktreeRepo] = useState<string | undefined>(undefined)
   // Worktrees whose git creation is still running (or has errored). They
   // show in the sidebar immediately on submit so the user sees the new entry
   // right away instead of waiting on the modal.
@@ -362,6 +366,12 @@ const setQuestStep = useCallback((next: QuestStep) => {
     ]
     return () => { for (const c of cleanups) c() }
   }, [settings.uiScale])
+
+  // Toggle single-screen mode from the menu (F12)
+  useEffect(() => {
+    const cleanup = backend.onToggleSingleScreen(() => setSingleScreenMode((v) => !v))
+    return cleanup
+  }, [])
 
   // Open Keyboard Shortcuts from the menu
   useEffect(() => {
@@ -659,6 +669,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
     hotkeyOverrides,
     setSidebarVisible,
     setRightColumnHidden,
+    setSingleScreenMode,
     setShowNewWorktree,
     setShowCommandCenter,
     setShowCommandPalette,
@@ -1284,8 +1295,8 @@ const setQuestStep = useCallback((next: QuestStep) => {
       )}
 
       <div className="flex flex-1 min-h-0">
-        {sidebarVisible && (
-          <Sidebar
+        {!singleScreenMode && sidebarVisible && (
+          <div className="mt-10 shrink-0 flex"><Sidebar
             worktrees={worktrees}
             pendingWorktrees={pendingWorktrees}
             pendingDeletions={pendingDeletions}
@@ -1309,7 +1320,10 @@ const setQuestStep = useCallback((next: QuestStep) => {
               setActiveWorktreeId(path)
             }}
             onDismissPendingWorktree={handleDismissPendingWorktree}
-            onNewWorktree={() => setShowNewWorktree(true)}
+            onNewWorktree={(repoRoot) => {
+              setNewWorktreeRepo(repoRoot)
+              setShowNewWorktree(true)
+            }}
             onContinueWorktree={handleContinueWorktree}
             onDeleteWorktree={handleDeleteWorktree}
             onRefresh={handleRefreshWorktrees}
@@ -1327,7 +1341,8 @@ const setQuestStep = useCallback((next: QuestStep) => {
               setShowCleanup(false)
               setShowCommandCenter(true)
             }}
-            commandCenterActive={showCommandCenter}
+            onOpenNewProject={() => setShowNewProject(true)}
+            onOpenMyWeek={() => setShowMyWeek(true)}
             width={sidebarWidth}
             collapsedGroups={collapsedGroups}
             onToggleGroup={toggleGroup}
@@ -1336,9 +1351,34 @@ const setQuestStep = useCallback((next: QuestStep) => {
             onToggleRepo={toggleRepo}
             unifiedRepos={unifiedRepos}
             onToggleUnifiedRepos={() => setUnifiedRepos((v) => !v)}
-          />
+            onCollapseSidebar={() => setSidebarVisible(false)}
+          /></div>
         )}
-        {sidebarVisible && <ResizeHandle onDelta={handleSidebarResize} />}
+        {!singleScreenMode && !sidebarVisible && (
+          <div className="mt-10 shrink-0 flex"><CollapsedSidebar
+            onExpand={() => setSidebarVisible(true)}
+            onAddRepo={handleAddRepo}
+            onNewWorktree={() => {
+              setNewWorktreeRepo(undefined)
+              setShowNewWorktree(true)
+            }}
+            onOpenCleanup={() => setShowCleanup(true)}
+            onOpenCommandCenter={() => {
+              setShowNewWorktree(false)
+              setShowActivity(false)
+              setShowCleanup(false)
+              setShowCommandCenter(true)
+            }}
+            onOpenNewProject={() => setShowNewProject(true)}
+            onOpenActivity={() => setShowActivity(true)}
+            onOpenMyWeek={() => setShowMyWeek(true)}
+            onOpenHotkeyCheatsheet={() => setShowHotkeyCheatsheet(true)}
+            onOpenSettings={() => setShowSettings(true)}
+          /></div>
+        )}
+        {!singleScreenMode && sidebarVisible && (
+          <div className="mt-10 shrink-0 flex"><ResizeHandle onDelta={handleSidebarResize} /></div>
+        )}
         {/* Render ALL worktrees' terminals to keep PTYs alive across switches */}
         {worktrees.map((wt) => {
           const paneTree = panes[wt.path]
@@ -1378,8 +1418,17 @@ const setQuestStep = useCallback((next: QuestStep) => {
                   onReorderTabs={handleReorderTabs}
                   onMoveTabToPane={handleMoveTabToPane}
                   onSendToAgent={handleSendToAgent}
-                  rightColumnHidden={rightColumnHidden}
-                  onShowRightColumn={() => setRightColumnHidden(false)}
+                  topBarLeadingPx={80}
+                  topBarLeadingExtendPx={
+                    singleScreenMode ? 0 : sidebarVisible ? sidebarWidth + 1 : 48
+                  }
+                  topBarTrailingExtendPx={
+                    !singleScreenMode && !showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && reportIssueState === null
+                      ? rightColumnHidden
+                        ? 48
+                        : rightPanelWidth + 1
+                      : 0
+                  }
                 />
               </ErrorBoundary>
             </div>
@@ -1391,7 +1440,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
             onPRSubmit={handleSubmitNewPRWorktree}
             onCancel={() => setShowNewWorktree(false)}
             repoRoots={repoRoots}
-            defaultRepoRoot={activeWorktreeId ? worktreeRepoByPath[activeWorktreeId] : undefined}
+            defaultRepoRoot={newWorktreeRepo ?? (activeWorktreeId ? worktreeRepoByPath[activeWorktreeId] : undefined)}
           />
         )}
         {reportIssueState !== null && (
@@ -1496,12 +1545,13 @@ const setQuestStep = useCallback((next: QuestStep) => {
           onDismiss={() => setQuestStep('done')}
           onFinish={() => setQuestStep('done')}
         />
-        {/* Right panel — hidden on the new-worktree screen so the form gets the full width */}
-        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && reportIssueState === null && !rightColumnHidden && (
-          <ResizeHandle onDelta={handleRightPanelResize} />
+        {/* Right panel — hidden on the new-worktree screen so the form gets the full width.
+            Pushed down 40px so the workspace tab bar can extend across the top, full width. */}
+        {!singleScreenMode && !showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && reportIssueState === null && !rightColumnHidden && (
+          <div className="mt-10 shrink-0 flex"><ResizeHandle onDelta={handleRightPanelResize} /></div>
         )}
-        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && reportIssueState === null && !rightColumnHidden && (
-          <RightColumn
+        {!singleScreenMode && !showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && reportIssueState === null && !rightColumnHidden && (
+          <div className="mt-10 shrink-0 flex"><RightColumn
             width={rightPanelWidth}
             activeWorktreeId={activeWorktreeId}
             activeRepoRoot={activeRepoRoot}
@@ -1532,7 +1582,23 @@ const setQuestStep = useCallback((next: QuestStep) => {
               setShowReview(true)
             }}
             onCollapse={() => setRightColumnHidden(true)}
-          />
+          /></div>
+        )}
+        {!singleScreenMode && !showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && reportIssueState === null && rightColumnHidden && (
+          <div className="mt-10 shrink-0 flex"><CollapsedRightPanel
+            worktreePath={activeWorktreeId}
+            onExpand={() => setRightColumnHidden(false)}
+            onReview={() => {
+              setReviewMode('branch')
+              setReviewCommit(undefined)
+              setShowReview(true)
+            }}
+            onFileQuickOpen={() => {
+              setShowHotkeyCheatsheet(false)
+              setCommandPaletteMode('files')
+              setShowCommandPalette(true)
+            }}
+          /></div>
         )}
       </div>
     </div>
