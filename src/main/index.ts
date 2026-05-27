@@ -1129,7 +1129,9 @@ async function runSshReconnect(input: {
       ssh: result.ssh,
       tunnelServer: result.tunnelServer
     })
-    const url = `http://127.0.0.1:${result.localPort}/?token=${result.token}`
+    // ws:// not http:// — WebSocketClientTransport calls `new WebSocket(url)`
+    // which throws on http schemes.
+    const url = `ws://127.0.0.1:${result.localPort}/?token=${result.token}`
     const idx = (config.connections ?? []).findIndex((c) => c.id === conn.id)
     if (idx >= 0) {
       const next = config.connections!.slice()
@@ -3298,7 +3300,9 @@ function registerIpcHandlers(): void {
         // Mint the BackendConnection + persist + register tunnel. The
         // URL is the ephemeral loopback we just opened; on next launch
         // we'll re-derive it after re-running the bootstrap.
-        const url = `http://127.0.0.1:${result.localPort}/?token=${result.token}`
+        // ws:// not http:// — WebSocketClientTransport calls `new WebSocket(url)`
+    // which throws on http schemes.
+    const url = `ws://127.0.0.1:${result.localPort}/?token=${result.token}`
         const id = randomUUID()
         const conn: BackendConnection = {
           id,

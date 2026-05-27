@@ -76,14 +76,15 @@ export class SshTunnelManager {
   }
 
   /** Return the local URL the renderer should connect to for this
-   *  backend. Includes the token in the query string, matching the
-   *  format Settings displays for non-SSH remotes — so the existing
-   *  parseConnectionUrl + WebSocketClientTransport pipeline accepts
-   *  it unchanged. */
+   *  backend. The scheme is `ws://` because the loopback is consumed
+   *  directly by `WebSocketClientTransport` (which calls `new
+   *  WebSocket(url)` — that throws on `http://`). Non-SSH backends
+   *  pasted via the URL tab go through `parseConnectionUrl` which
+   *  normalizes http→ws too. */
   buildLocalUrl(backendId: string): string | null {
     const entry = this.byBackendId.get(backendId)
     if (!entry) return null
-    return `http://127.0.0.1:${entry.localPort}/?token=${entry.token}`
+    return `ws://127.0.0.1:${entry.localPort}/?token=${entry.token}`
   }
 
   private disposeEntry(entry: TunnelEntry): void {
