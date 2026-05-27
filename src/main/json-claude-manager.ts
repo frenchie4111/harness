@@ -292,6 +292,7 @@ export class JsonClaudeManager {
         if (typeof content === 'string') {
           if (
             content.startsWith('<command-name>') ||
+            content.startsWith('<command-message>') ||
             content.startsWith('<local-command-stdout>')
           ) {
             continue
