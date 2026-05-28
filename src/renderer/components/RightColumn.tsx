@@ -35,7 +35,6 @@ interface RightColumnProps {
   onOpenGithubSettings: () => void
   onMerged: () => void
   onRemoveWorktree: (path: string) => void
-  onOpenCommitReview: (hash: string, shortHash: string, subject: string) => void
   onOpenDiff: ChangedFilesPanelProps['onOpenDiff']
   onOpenFile: AllFilesPanelProps['onOpenFile']
   onSendToAgent: (worktreePath: string, text: string) => void
@@ -57,7 +56,6 @@ export function RightColumn({
   onOpenGithubSettings,
   onMerged,
   onRemoveWorktree,
-  onOpenCommitReview,
   onOpenDiff,
   onOpenFile,
   onSendToAgent,
@@ -115,13 +113,7 @@ export function RightColumn({
       case 'todos':
         return <JsonClaudeTodosPanel key="todos" focusedTabId={focusedTabId} />
       case 'commits':
-        return (
-          <BranchCommitsPanel
-            key="commits"
-            worktreePath={activeWorktreeId}
-            onOpenCommitReview={onOpenCommitReview}
-          />
-        )
+        return <BranchCommitsPanel key="commits" worktreePath={activeWorktreeId} />
       case 'changedFiles':
         return (
           <ChangedFilesPanel

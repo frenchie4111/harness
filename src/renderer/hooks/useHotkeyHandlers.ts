@@ -36,7 +36,6 @@ interface UseHotkeyHandlersArgs {
   setCommandPaletteMode: React.Dispatch<React.SetStateAction<'root' | 'files'>>
   setShowPerfMonitor: React.Dispatch<React.SetStateAction<boolean>>
   setShowHotkeyCheatsheet: React.Dispatch<React.SetStateAction<boolean>>
-  setShowReview: React.Dispatch<React.SetStateAction<boolean>>
   // Imperative hooks into other handlers — passed in to avoid this hook
   // depending on useTabHandlers + useWorktreeHandlers directly.
   handleAddTerminalTab: (worktreePath: string, paneId?: string) => void
@@ -81,7 +80,6 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
     setCommandPaletteMode,
     setShowPerfMonitor,
     setShowHotkeyCheatsheet,
-    setShowReview,
     handleAddTerminalTab,
     handleCloseTab,
     handleSelectTab,
@@ -317,7 +315,9 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       },
       togglePerfMonitor: () => setShowPerfMonitor((v) => !v),
       hotkeyCheatsheet: () => setShowHotkeyCheatsheet((v) => !v),
-      openReview: () => setShowReview(true),
+      openReview: () => {
+        if (activeWorktreeId) void backend.panesOpenReview(activeWorktreeId)
+      },
       uiScaleUp: () => {
         const i = SCALES.findIndex((s) => s.id === uiScale)
         const next = SCALES[Math.min(i < 0 ? 0 : i + 1, SCALES.length - 1)]
@@ -357,7 +357,6 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       setCommandPaletteMode,
       setShowPerfMonitor,
       setShowHotkeyCheatsheet,
-      setShowReview,
       setShowSettings,
       backend,
       uiScale,

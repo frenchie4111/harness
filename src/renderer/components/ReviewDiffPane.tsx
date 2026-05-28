@@ -13,6 +13,9 @@ interface ReviewDiffPaneProps {
   file: ChangedFile | null
   mode: 'working' | 'branch'
   commitHash?: string
+  /** When set, diffs the file across the commit range fromHash^..toHash.
+   *  Overrides commitHash and mode. */
+  commitRange?: { fromHash: string; toHash: string }
   reviewed: boolean
   comments: ReviewComment[]
   onToggleReviewed: () => void
@@ -192,6 +195,7 @@ export function ReviewDiffPane({
   file,
   mode,
   commitHash,
+  commitRange,
   reviewed,
   comments,
   onToggleReviewed,
@@ -214,9 +218,16 @@ export function ReviewDiffPane({
     let cancelled = false
     setLoading(true)
     setCommentLine(null)
-    const promise = commitHash
-      ? backend.getCommitFileDiffSides(worktreePath, commitHash, file.path)
-      : backend.getFileDiffSides(worktreePath, file.path, file.staged, mode)
+    const promise = commitRange
+      ? backend.getCommitRangeFileDiffSides(
+          worktreePath,
+          commitRange.fromHash,
+          commitRange.toHash,
+          file.path
+        )
+      : commitHash
+        ? backend.getCommitFileDiffSides(worktreePath, commitHash, file.path)
+        : backend.getFileDiffSides(worktreePath, file.path, file.staged, mode)
     promise
       .then((result) => {
         if (!cancelled) setSides(result)
@@ -230,7 +241,7 @@ export function ReviewDiffPane({
     return () => {
       cancelled = true
     }
-  }, [worktreePath, file?.path, file?.staged, mode, commitHash])
+  }, [worktreePath, file?.path, file?.staged, mode, commitHash, commitRange?.fromHash, commitRange?.toHash])
 
   const clearViewZones = useCallback(() => {
     const editor = editorRef.current
