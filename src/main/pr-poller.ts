@@ -126,10 +126,15 @@ export class PRPoller {
       })
 
       // Merged status per repo, then flatten. Stale branches get pruned from
-      // the persisted locallyMerged map.
+      // the persisted locallyMerged map. Two passes: collect the worktrees
+      // that need a `git rev-parse` lookup, fire them all in parallel, then
+      // walk results. The serial-await version stalled boot by ~30ms × N at
+      // typical worktree counts.
       const persisted = { ...this.opts.getLocallyMerged() }
       const mergedAll: Record<string, boolean> = {}
       let prunedAny = false
+      type ShaJob = { root: string; path: string; branch: string; recordedSha: string }
+      const shaJobs: ShaJob[] = []
       for (let i = 0; i < roots.length; i++) {
         const root = roots[i]
         const trees = treesByRoot[i]
@@ -141,14 +146,21 @@ export class PRPoller {
             mergedAll[wt.path] = false
             continue
           }
-          const branchSha = await getBranchSha(root, wt.branch).catch(() => null)
-          if (branchSha && branchSha === recordedSha) {
-            mergedAll[wt.path] = true
-          } else {
-            delete persisted[wt.branch]
-            prunedAny = true
-            mergedAll[wt.path] = false
-          }
+          shaJobs.push({ root, path: wt.path, branch: wt.branch, recordedSha })
+        }
+      }
+      const shaResults = await Promise.all(
+        shaJobs.map((j) => getBranchSha(j.root, j.branch).catch(() => null))
+      )
+      for (let k = 0; k < shaJobs.length; k++) {
+        const job = shaJobs[k]
+        const branchSha = shaResults[k]
+        if (branchSha && branchSha === job.recordedSha) {
+          mergedAll[job.path] = true
+        } else {
+          delete persisted[job.branch]
+          prunedAny = true
+          mergedAll[job.path] = false
         }
       }
       if (prunedAny) this.opts.setLocallyMerged(persisted)

@@ -923,7 +923,13 @@ let bootDrained = false
 const pendingBootInit = new Set<string>()
 let bootTimer: NodeJS.Timeout | null = null
 
-function drainBootInit(force: boolean): void {
+// Yield to the event loop every N inits so 30+ ensureInitialized
+// dispatches (each followed by a renderer state-event broadcast and a
+// JSON persist write) don't run as one synchronous block. Without this,
+// boot freezes the UI for seconds while the renderer can't paint
+// between dispatches.
+const BOOT_INIT_BATCH_SIZE = 3
+async function drainBootInit(force: boolean): Promise<void> {
   if (bootDrained) return
   bootDrained = true
   if (bootTimer) {
@@ -931,12 +937,17 @@ function drainBootInit(force: boolean): void {
     bootTimer = null
   }
   const state = store.getSnapshot().state
-  for (const path of pendingBootInit) {
+  const paths = [...pendingBootInit]
+  pendingBootInit.clear()
+  for (let i = 0; i < paths.length; i++) {
+    const path = paths[i]
     if (force || !isWorktreeMerged(state.prs, path)) {
       panesFSM.ensureInitialized(path)
     }
+    if (i + 1 < paths.length && (i + 1) % BOOT_INIT_BATCH_SIZE === 0) {
+      await new Promise<void>((resolve) => setImmediate(resolve))
+    }
   }
-  pendingBootInit.clear()
 }
 
 store.subscribe((event) => {
@@ -948,12 +959,14 @@ store.subscribe((event) => {
     }
     for (const wt of list) pendingBootInit.add(wt.path)
     if (!bootTimer) {
-      bootTimer = setTimeout(() => drainBootInit(true), BOOT_INIT_TIMEOUT_MS)
+      bootTimer = setTimeout(() => {
+        drainBootInit(true).catch((err) => log('boot', 'drainBootInit (timeout) failed', err))
+      }, BOOT_INIT_TIMEOUT_MS)
     }
     return
   }
   if (event.type === 'prs/mergedChanged' && !bootDrained) {
-    drainBootInit(false)
+    drainBootInit(false).catch((err) => log('boot', 'drainBootInit (merged) failed', err))
   }
 })
 
@@ -2148,7 +2161,14 @@ function registerIpcHandlers(): void {
     return true
   })
   transport.onRequest('panes:wakeTab', (_ctx, wtPath: string, tabId: string) => {
-    panesFSM.wakeJsonClaudeTab(wtPath, tabId)
+    // Route by tab type. json-claude needs its subprocess spawned;
+    // shell only flips mode (XTerminal owns the PTY spawn). Dispatch by
+    // type here rather than fanning out to both methods so any future
+    // unconditional side-effect added to either wake path can't silently
+    // fire on the wrong tab type.
+    const type = panesFSM.getTabType(wtPath, tabId)
+    if (type === 'json-claude') panesFSM.wakeJsonClaudeTab(wtPath, tabId)
+    else if (type === 'shell') panesFSM.wakeShellTab(wtPath, tabId)
     return true
   })
   // Renderer-driven lastActive bump. The composer fires this while the

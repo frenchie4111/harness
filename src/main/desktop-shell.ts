@@ -420,7 +420,7 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
           { type: 'separator' },
           {
             label: 'Performance Monitor',
-            accelerator: 'CmdOrCtrl+Shift+D',
+            accelerator: 'CmdOrCtrl+Alt+P',
             click: () => transport.sendSignal('app:togglePerfMonitor')
           }
           // macOS appends "Enter Full Screen" to the View menu
@@ -441,7 +441,7 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
           },
           {
             label: 'Split Pane Down',
-            accelerator: 'CmdOrCtrl+Alt+D',
+            accelerator: 'CmdOrCtrl+Shift+D',
             click: () => transport.sendSignal('app:splitPaneDown')
           },
           { type: 'separator' },
