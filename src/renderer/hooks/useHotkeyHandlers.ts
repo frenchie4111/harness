@@ -301,7 +301,8 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
         if (!tree) return
         const leaves = getLeaves(tree)
         if (leaves.length === 0) return
-        const fromPaneId = activePaneId[activeWorktreeId] || leaves[leaves.length - 1].id
+        const stored = activePaneId[activeWorktreeId]
+        const fromPaneId = leaves.some((l) => l.id === stored) ? stored : leaves[leaves.length - 1].id
         handleSplitPane(activeWorktreeId, fromPaneId, 'horizontal')
       },
       splitPaneDown: () => {
@@ -310,7 +311,8 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
         if (!tree) return
         const leaves = getLeaves(tree)
         if (leaves.length === 0) return
-        const fromPaneId = activePaneId[activeWorktreeId] || leaves[leaves.length - 1].id
+        const stored = activePaneId[activeWorktreeId]
+        const fromPaneId = leaves.some((l) => l.id === stored) ? stored : leaves[leaves.length - 1].id
         handleSplitPane(activeWorktreeId, fromPaneId, 'vertical')
       },
       togglePerfMonitor: () => setShowPerfMonitor((v) => !v),
