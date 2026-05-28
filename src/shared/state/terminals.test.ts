@@ -672,7 +672,7 @@ describe('terminalsReducer', () => {
     expect(alreadyAsleep).toBe(start)
   })
 
-  it('tabSlept refuses non-json-claude tabs', () => {
+  it('tabSlept refuses agent tabs (sleepable types are json-claude and shell only)', () => {
     const tree: PaneNode = {
       type: 'leaf',
       id: 'p1',
@@ -685,6 +685,36 @@ describe('terminalsReducer', () => {
       payload: { worktreePath: '/wt/a', tabId: 'agent-1' }
     })
     expect(next).toBe(start)
+  })
+
+  it('tabSlept flips a shell tab to mode asleep', () => {
+    const tree: PaneNode = {
+      type: 'leaf',
+      id: 'p1',
+      tabs: [{ id: 'sh-1', type: 'shell', label: 'Shell' }],
+      activeTabId: 'sh-1'
+    }
+    const start: TerminalsState = { ...initialTerminals, panes: { '/wt/a': tree } }
+    const next = apply(start, {
+      type: 'terminals/tabSlept',
+      payload: { worktreePath: '/wt/a', tabId: 'sh-1' }
+    })
+    expect(getLeaves(next.panes['/wt/a'])[0].tabs[0].mode).toBe('asleep')
+  })
+
+  it('tabWoken flips a shell tab to mode awake', () => {
+    const tree: PaneNode = {
+      type: 'leaf',
+      id: 'p1',
+      tabs: [{ id: 'sh-1', type: 'shell', label: 'Shell', mode: 'asleep' }],
+      activeTabId: 'sh-1'
+    }
+    const start: TerminalsState = { ...initialTerminals, panes: { '/wt/a': tree } }
+    const next = apply(start, {
+      type: 'terminals/tabWoken',
+      payload: { worktreePath: '/wt/a', tabId: 'sh-1' }
+    })
+    expect(getLeaves(next.panes['/wt/a'])[0].tabs[0].mode).toBe('awake')
   })
 
   it('tabWoken flips a json-claude tab to mode awake', () => {

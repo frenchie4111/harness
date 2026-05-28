@@ -168,10 +168,12 @@ export class PanesFSM {
         model: t.model,
         ...(t.customLabel ? { customLabel: t.customLabel } : {})
       }
-      // Persisted json-claude tabs hydrate as 'asleep' so app launch
-      // doesn't spawn one subprocess per tab. The renderer wakes them
-      // on first focus via panes:wakeTab.
-      if (base.type === 'json-claude') {
+      // Persisted json-claude and shell tabs hydrate as 'asleep' so app
+      // launch doesn't construct an xterm + spawn a subprocess per tab
+      // across every restored worktree. The renderer wakes them on
+      // first focus via panes:wakeTab. (Agent tabs stay eager so
+      // background processing they're in the middle of resumes promptly.)
+      if (base.type === 'json-claude' || base.type === 'shell') {
         return { ...base, mode: 'asleep' }
       }
       if (base.type !== 'agent' || base.sessionId) return base
@@ -340,6 +342,24 @@ export class PanesFSM {
       payload: { worktreePath: wtPath, tabId }
     })
     this.opts.startJsonClaude?.(tabId, wtPath)
+    this.opts.persist(this.buildPersistPayload())
+  }
+
+  /** Flip a slept shell tab to awake. No subprocess spawn here — the
+   *  renderer's XTerminal mount path owns PTY creation; flipping mode
+   *  is what makes WorkspaceView render it in the first place. */
+  wakeShellTab(wtPath: string, tabId: string): void {
+    const tree = this.getTree(wtPath)
+    if (!tree) return
+    const leaf = findLeafByTabId(tree, tabId)
+    if (!leaf) return
+    const tab = leaf.tabs.find((t) => t.id === tabId)
+    if (!tab || tab.type !== 'shell') return
+    if ((tab.mode ?? 'awake') === 'awake') return
+    this.store.dispatch({
+      type: 'terminals/tabWoken',
+      payload: { worktreePath: wtPath, tabId }
+    })
     this.opts.persist(this.buildPersistPayload())
   }
 

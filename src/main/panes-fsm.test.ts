@@ -174,3 +174,39 @@ describe('PanesFSM.splitPane', () => {
     }
   })
 })
+
+describe('PanesFSM.restoreFromConfig', () => {
+  it('hydrates persisted shell and json-claude tabs as asleep, agent tabs as awake', async () => {
+    const { fsm, store } = buildFSM()
+    const wtPath = '/wt/restore'
+    await fsm.restoreFromConfig({
+      _ignored: {
+        [wtPath]: {
+          type: 'leaf',
+          id: 'pane-1',
+          tabs: [
+            { id: 'sh-1', type: 'shell', label: 'Shell' },
+            { id: 'agent-1', type: 'agent', label: 'Claude', agentKind: 'claude' },
+            {
+              id: 'chat-1',
+              type: 'json-claude',
+              label: 'Chat',
+              sessionId: 'chat-1'
+            }
+          ],
+          activeTabId: 'sh-1'
+        }
+      }
+    })
+    fsm.ensureInitialized(wtPath)
+    const tree = store.getSnapshot().state.terminals.panes[wtPath]
+    expect(tree?.type).toBe('leaf')
+    const leaf = tree as PaneLeaf
+    const shellTab = leaf.tabs.find((t) => t.id === 'sh-1')
+    const agentTab = leaf.tabs.find((t) => t.id === 'agent-1')
+    const chatTab = leaf.tabs.find((t) => t.id === 'chat-1')
+    expect(shellTab?.mode).toBe('asleep')
+    expect(agentTab?.mode).toBeUndefined()
+    expect(chatTab?.mode).toBe('asleep')
+  })
+})

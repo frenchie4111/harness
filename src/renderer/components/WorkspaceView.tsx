@@ -390,7 +390,7 @@ export function WorkspaceView({
       const active = leaf.tabs.find((t) => t.id === leaf.activeTabId)
       if (
         active &&
-        active.type === 'json-claude' &&
+        (active.type === 'json-claude' || active.type === 'shell') &&
         (active.mode ?? 'awake') === 'asleep'
       ) {
         void backend.panesWakeTab(worktreePath, active.id)
@@ -578,6 +578,15 @@ export function WorkspaceView({
                     worktreePath={worktreePath}
                     mode={tab.mode ?? 'awake'}
                   />
+                ) : tab.type === 'shell' && (tab.mode ?? 'awake') === 'asleep' ? (
+                  // Skip XTerminal entirely while asleep — its mount
+                  // path constructs an xterm.js Terminal, loads a stack
+                  // of addons, calls getTerminalHistory, etc., even when
+                  // hidden. The rising-edge wake effect above fires
+                  // panesWakeTab when the worktree becomes visible AND
+                  // this is the active tab in its leaf, so the user
+                  // doesn't see the placeholder in practice.
+                  <div className="absolute inset-0 bg-app" />
                 ) : (
                   <XTerminal
                     terminalId={tab.id}
