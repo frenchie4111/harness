@@ -1405,6 +1405,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
                   crashedTabIds={crashedTabIds}
                   nameAgentSessions={nameAgentSessions}
                   onSelectTab={handleSelectTab}
+                  onFocusPane={(wtPath, paneId) => setActivePaneId((prev) => prev[wtPath] === paneId ? prev : { ...prev, [wtPath]: paneId })}
                   onAddTab={handleAddTerminalTab}
                   defaultAgent={defaultAgent ?? 'claude'}
                   onAddAgentTab={(wt, kind, paneId) => handleAddAgentTab(wt, kind ?? defaultAgent ?? 'claude', paneId)}

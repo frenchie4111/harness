@@ -56,16 +56,35 @@
 <body class="min-h-screen grid-bg">
 
   <!-- Nav -->
-  <nav class="max-w-6xl mx-auto px-6 py-6 flex items-center justify-between">
+  <nav class="max-w-6xl mx-auto px-6 py-6 flex items-center justify-between relative z-30">
     <a href="/" class="flex items-center gap-3">
       <img src="icon.png" alt="Harness icon" class="w-9 h-9 rounded-lg" />
       <span class="text-xl font-bold">Harness</span>
     </a>
-    <div class="flex items-center gap-4 sm:gap-6 text-sm text-neutral-400">
-      <a href="/#features" class="hidden sm:inline hover:text-neutral-100 transition-colors">Features</a>
+    <div class="hidden sm:flex items-center gap-4 sm:gap-6 text-sm text-neutral-400">
+      <a href="/#features" class="hover:text-neutral-100 transition-colors">Features</a>
       <a href="guide.html" class="hover:text-neutral-100 transition-colors">Guide</a>
       <a href="/#install" class="hover:text-neutral-100 transition-colors">Install</a>
       <a href="https://github.com/frenchie4111/harness" class="hover:text-neutral-100 transition-colors">GitHub</a>
+    </div>
+    <button
+      id="mobile-menu-toggle"
+      type="button"
+      aria-label="Open menu"
+      aria-expanded="false"
+      aria-controls="mobile-menu"
+      class="sm:hidden p-2 -mr-2 text-neutral-400 hover:text-neutral-100 transition-colors"
+    ></button>
+    <div
+      id="mobile-menu"
+      class="hidden sm:hidden absolute top-full left-0 right-0 mx-4 mt-1 bg-[#0a0a0a]/95 backdrop-blur border border-neutral-800 rounded-lg shadow-xl overflow-hidden"
+    >
+      <nav class="flex flex-col py-2 text-sm text-neutral-400">
+        <a href="/#features" class="px-4 py-3 hover:bg-neutral-800/50 hover:text-neutral-100 transition-colors">Features</a>
+        <a href="guide.html" class="px-4 py-3 hover:bg-neutral-800/50 hover:text-neutral-100 transition-colors">Guide</a>
+        <a href="/#install" class="px-4 py-3 hover:bg-neutral-800/50 hover:text-neutral-100 transition-colors">Install</a>
+        <a href="https://github.com/frenchie4111/harness" class="px-4 py-3 hover:bg-neutral-800/50 hover:text-neutral-100 transition-colors">GitHub</a>
+      </nav>
     </div>
   </nav>
 
@@ -843,5 +862,36 @@
       </div>
     </div>
   </footer>
+
+  <script>
+    (function () {
+      var btn = document.getElementById('mobile-menu-toggle');
+      var menu = document.getElementById('mobile-menu');
+      if (!btn || !menu) return;
+      var iconMenu = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>';
+      var iconX = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M6 18L18 6"/></svg>';
+      btn.innerHTML = iconMenu;
+      var open = false;
+      function setOpen(next) {
+        open = next;
+        menu.classList.toggle('hidden', !open);
+        btn.innerHTML = open ? iconX : iconMenu;
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        btn.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+        document.body.classList.toggle('overflow-hidden', open);
+      }
+      btn.addEventListener('click', function (e) { e.stopPropagation(); setOpen(!open); });
+      document.addEventListener('mousedown', function (e) {
+        if (!open) return;
+        if (!menu.contains(e.target) && !btn.contains(e.target)) setOpen(false);
+      });
+      document.addEventListener('keydown', function (e) {
+        if (open && e.key === 'Escape') setOpen(false);
+      });
+      menu.querySelectorAll('a').forEach(function (a) {
+        a.addEventListener('click', function () { setOpen(false); });
+      });
+    })();
+  </script>
 </body>
 </html>
