@@ -33,6 +33,7 @@ interface WorkspaceViewProps {
   repoLabel: string
   branch: string
   onSelectTab: (worktreePath: string, paneId: string, tabId: string) => void
+  onFocusPane?: (worktreePath: string, paneId: string) => void
   onAddTab: (worktreePath: string, paneId?: string) => void
   defaultAgent: AgentKind
   onAddAgentTab: (worktreePath: string, agentKind?: AgentKind, paneId?: string) => void
@@ -146,6 +147,7 @@ function SplitRenderer({
   topBarTrailingExtendPx,
   registerSlot,
   onSelectTab,
+  onFocusPane,
   onAddTab,
   defaultAgent,
   onAddAgentTab,
@@ -174,6 +176,7 @@ function SplitRenderer({
   topBarTrailingExtendPx: number
   registerSlot: (paneId: string, el: HTMLDivElement | null) => void
   onSelectTab: (tabId: string, paneId: string) => void
+  onFocusPane?: (paneId: string) => void
   onAddTab: (paneId: string) => void
   defaultAgent: AgentKind
   onAddAgentTab: (kind: AgentKind | undefined, paneId: string) => void
@@ -191,7 +194,10 @@ function SplitRenderer({
     const showLabel = isFirstLeaf.value
     if (isFirstLeaf.value) isFirstLeaf.value = false
     return (
-      <div className="flex-1 flex min-w-0 min-h-0">
+      <div
+        className="flex-1 flex min-w-0 min-h-0"
+        onMouseDownCapture={() => onFocusPane?.(node.id)}
+      >
         <TerminalPanel
           worktreePath={worktreePath}
           pane={node}
@@ -255,6 +261,7 @@ function SplitRenderer({
           topBarTrailingExtendPx={topBarTrailingExtendPx}
           registerSlot={registerSlot}
           onSelectTab={onSelectTab}
+          onFocusPane={onFocusPane}
           onAddTab={onAddTab}
           defaultAgent={defaultAgent}
           onAddAgentTab={onAddAgentTab}
@@ -295,6 +302,7 @@ function SplitRenderer({
           topBarTrailingExtendPx={topBarTrailingExtendPx}
           registerSlot={registerSlot}
           onSelectTab={onSelectTab}
+          onFocusPane={onFocusPane}
           onAddTab={onAddTab}
           defaultAgent={defaultAgent}
           onAddAgentTab={onAddAgentTab}
@@ -320,6 +328,7 @@ export function WorkspaceView({
   visible,
   nameAgentSessions,
   onSelectTab,
+  onFocusPane,
   onAddTab,
   defaultAgent,
   onAddAgentTab,
@@ -510,6 +519,7 @@ export function WorkspaceView({
           topBarTrailingExtendPx={topBarTrailingExtendPx}
           registerSlot={attachSlot}
           onSelectTab={(tabId, paneId) => onSelectTab(worktreePath, paneId, tabId)}
+          onFocusPane={onFocusPane ? (paneId) => onFocusPane(worktreePath, paneId) : undefined}
           onAddTab={(paneId) => onAddTab(worktreePath, paneId)}
           defaultAgent={defaultAgent}
           onAddAgentTab={(kind, paneId) => onAddAgentTab(worktreePath, kind, paneId)}
@@ -539,6 +549,7 @@ export function WorkspaceView({
             <div
               className="absolute inset-0"
               style={{ display: isActiveInPane ? 'block' : 'none' }}
+              onMouseDownCapture={() => onFocusPane?.(worktreePath, leaf.id)}
             >
               <ErrorBoundary label={`pane:${tab.type}:${tab.id}`}>
                 {crashedTabIds?.has(tab.id) ? (
