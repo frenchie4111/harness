@@ -21,7 +21,7 @@ export type AgentKind = 'claude' | 'codex'
 
 export interface TerminalTab {
   id: string
-  type: 'agent' | 'shell' | 'diff' | 'file' | 'browser' | 'json-claude'
+  type: 'agent' | 'shell' | 'diff' | 'file' | 'browser' | 'json-claude' | 'review'
   label: string
   /** User-defined override for `label`. When set (non-empty after trim),
    *  the tab renders this instead of the auto-derived label. Cleared
@@ -64,6 +64,12 @@ export interface TerminalTab {
   /** For shell tabs: directory to run in. Relative paths resolve against the
    * worktree root; absolute paths are used as-is. */
   cwd?: string
+  /** For review tabs: which commits the review is showing. When both
+   *  reviewFromCommit and reviewToCommit are undefined, the review shows the
+   *  whole branch (uncommitted + all commits ahead of base). When set, they
+   *  bound a contiguous range; equal values = a single commit. */
+  reviewFromCommit?: string
+  reviewToCommit?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -285,6 +291,15 @@ export type TerminalsEvent =
   | {
       type: 'terminals/tabRenamed'
       payload: { worktreePath: string; tabId: string; label: string }
+    }
+  | {
+      type: 'terminals/reviewSelectionChanged'
+      payload: {
+        worktreePath: string
+        tabId: string
+        fromCommit?: string
+        toCommit?: string
+      }
     }
 
 export const initialTerminals: TerminalsState = {
@@ -637,6 +652,31 @@ export function terminalsReducer(
             { ...tab, customLabel: trimmed },
             ...leaf.tabs.slice(i + 1)
           ]
+        }
+      })
+      if (!mutated) return state
+      return { ...state, panes: { ...state.panes, [worktreePath]: updated } }
+    }
+    case 'terminals/reviewSelectionChanged': {
+      const { worktreePath, tabId, fromCommit, toCommit } = event.payload
+      const tree = state.panes[worktreePath]
+      if (!tree) return state
+      let mutated = false
+      const updated = mapLeaves(tree, (leaf) => {
+        const i = leaf.tabs.findIndex((t) => t.id === tabId)
+        if (i === -1) return leaf
+        const tab = leaf.tabs[i]
+        if (tab.type !== 'review') return leaf
+        if (tab.reviewFromCommit === fromCommit && tab.reviewToCommit === toCommit) return leaf
+        mutated = true
+        const next: TerminalTab = { ...tab }
+        if (fromCommit === undefined) delete next.reviewFromCommit
+        else next.reviewFromCommit = fromCommit
+        if (toCommit === undefined) delete next.reviewToCommit
+        else next.reviewToCommit = toCommit
+        return {
+          ...leaf,
+          tabs: [...leaf.tabs.slice(0, i), next, ...leaf.tabs.slice(i + 1)]
         }
       })
       if (!mutated) return state

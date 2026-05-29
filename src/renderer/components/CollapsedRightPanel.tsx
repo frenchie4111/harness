@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   PanelRightOpen,
   GitMerge,
+  GitMergeConflict,
   GitPullRequest,
   ClipboardCheck,
   Code2,
@@ -16,9 +17,11 @@ import {
   CircleX
 } from 'lucide-react'
 import { Tooltip } from './Tooltip'
-import { useActiveBackend, usePrs, useRepoConfigs, useSettings, useWorktrees } from '../store'
+import { useActiveBackend, usePanes, usePrs, useRepoConfigs, useSettings, useWorktrees } from '../store'
 import { useBackend } from '../backend'
 import { useWatchedQuery } from '../hooks/useWatchedQuery'
+import { useReviewProgress } from '../review-progress'
+import { getLeaves } from '../../shared/state/terminals'
 import { effectiveHiddenRightPanels } from '../../shared/state/repo-configs'
 import type {
   BranchCommit,
@@ -109,11 +112,48 @@ export function CollapsedRightPanel({
     })
   const changedFilesCount =
     (changedFilesData?.working.length ?? 0) + (changedFilesData?.branch.length ?? 0)
+
+  // Find this worktree's review tab id (at most one — enforced by
+  // PanesFSM.openReviewTab) so the badge can subtract reviewed files
+  // from the to-review count as the user works through the list.
+  const panes = usePanes()
+  const reviewTabId = useMemo(() => {
+    if (!worktreePath) return ''
+    const tree = panes[worktreePath]
+    if (!tree) return ''
+    for (const leaf of getLeaves(tree)) {
+      for (const tab of leaf.tabs) {
+        if (tab.type === 'review') return tab.id
+      }
+    }
+    return ''
+  }, [panes, worktreePath])
+  const reviewProgress = useReviewProgress(reviewTabId)
+  // When a review tab exists, its progress is authoritative — both for
+  // the total (which honors the user's commit-range pick) and for the
+  // reviewed delta. Otherwise fall back to the raw branch file count.
+  const reviewFilesCount = reviewProgress
+    ? Math.max(0, reviewProgress.total - reviewProgress.reviewed)
+    : changedFilesData?.branch.length ?? 0
   const commitsCount = commitsData?.length ?? 0
   const hasUnpushedCommits = !!commitsData?.some((c) => !c.pushed)
 
+  // Expand the right column AND uncollapse the named RightPanel section.
+  // RightPanel listens for the CustomEvent and self-expands. Sections that
+  // can be hidden per-repo via hiddenRightPanels (scratchpad) also need
+  // un-hiding — that's a separate config write, handled by callers as needed.
+  const expandSection = useCallback(
+    (sectionId: string) => {
+      onExpand()
+      window.dispatchEvent(
+        new CustomEvent('harness:expand-right-panel', { detail: { id: sectionId } })
+      )
+    },
+    [onExpand]
+  )
+
   const onOpenScratchpad = useCallback(() => {
-    onExpand()
+    expandSection('scratchpad')
     if (!worktree) return
     const repoRoot = worktree.repoRoot
     const currentConfig = repoConfigs[repoRoot] ?? null
@@ -122,7 +162,7 @@ export function CollapsedRightPanel({
     void backend.setRepoConfig(repoRoot, {
       hiddenRightPanels: { ...currentHidden, scratchpad: false }
     })
-  }, [onExpand, worktree, repoConfigs, backend])
+  }, [expandSection, worktree, repoConfigs, backend])
 
   const handleRefreshAll = useCallback(() => {
     refreshChangedFiles()
@@ -212,29 +252,38 @@ export function CollapsedRightPanel({
     }, 5000)
   }, [canMerge, confirming, performMerge])
 
+  // Mirror PRStatusPanel's merge-button color/state logic so the
+  // collapsed-strip button reads the same as the expanded version:
+  // conflict → danger tint, confirming → warning tint w/ border, normal →
+  // success tint. Disabled-for-other-reasons stays neutral.
+  const hasConflict = pr?.hasConflict === true
   let mergeTooltip: string
-  let mergeColor: string
   let MergeIcon = GitMerge
+  let mergeClasses: string
   if (merging) {
     mergeTooltip = `Merging via ${methodLabel}…`
-    mergeColor = 'text-dim'
     MergeIcon = Loader2
+    mergeClasses = 'bg-success/20 hover:bg-success/30 text-success'
   } else if (justMerged) {
     mergeTooltip = 'Merged ✓'
-    mergeColor = 'text-success'
     MergeIcon = Check
+    mergeClasses = 'bg-success/20 hover:bg-success/30 text-success'
   } else if (error) {
     mergeTooltip = error
-    mergeColor = 'text-danger'
+    mergeClasses = 'bg-danger/20 hover:bg-danger/20 text-danger'
+  } else if (hasConflict) {
+    mergeTooltip = 'There are merge conflicts'
+    MergeIcon = GitMergeConflict
+    mergeClasses = 'bg-danger/20 hover:bg-danger/20 text-danger'
   } else if (mergeDisabledReason) {
     mergeTooltip = mergeDisabledReason
-    mergeColor = 'text-dim'
+    mergeClasses = 'text-dim hover:text-fg hover:bg-surface'
   } else if (confirming) {
     mergeTooltip = `Click again to merge via ${methodLabel}`
-    mergeColor = 'text-warning'
+    mergeClasses = 'bg-warning/30 hover:bg-warning/40 text-warning border border-warning/50'
   } else {
     mergeTooltip = `Merge PR on GitHub (${methodLabel})`
-    mergeColor = 'text-dim'
+    mergeClasses = 'bg-success/20 hover:bg-success/30 text-success'
   }
 
   const hasPR = !!pr
@@ -276,8 +325,10 @@ export function CollapsedRightPanel({
         <Tooltip label={mergeTooltip} side="left">
           <button
             onClick={onMergeClick}
-            disabled={!canMerge}
-            className={`${mergeColor} hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent`}
+            disabled={!canMerge && !hasConflict}
+            className={`${mergeClasses} rounded p-1.5 transition-colors cursor-pointer disabled:cursor-not-allowed ${
+              hasConflict ? '' : 'disabled:opacity-40'
+            }`}
             aria-label="Merge PR on GitHub"
           >
             <MergeIcon className={`icon-sm ${merging ? 'animate-spin' : ''}`} />
@@ -289,7 +340,7 @@ export function CollapsedRightPanel({
             side="left"
           >
             <button
-              onClick={onExpand}
+              onClick={() => expandSection('pull-request')}
               className="text-danger hover:bg-surface rounded px-1 py-1 transition-colors cursor-pointer flex items-center gap-0.5"
               aria-label={`${failedChecksCount} failed checks`}
             >
@@ -301,13 +352,28 @@ export function CollapsedRightPanel({
 
         <div className="h-px w-6 bg-border my-1" />
 
-        <Tooltip label="Review changes" action="openReview" side="left">
+        <Tooltip
+          label={
+            reviewFilesCount > 0
+              ? `Review ${reviewFilesCount} file${reviewFilesCount === 1 ? '' : 's'}`
+              : 'Review changes'
+          }
+          action="openReview"
+          side="left"
+        >
           <button
             onClick={onReview}
-            className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
-            aria-label="Review changes"
+            className="bg-accent text-app hover:bg-accent/80 rounded px-1 py-1 transition-colors cursor-pointer flex items-center gap-0.5"
+            aria-label={
+              reviewFilesCount > 0
+                ? `Review ${reviewFilesCount} files`
+                : 'Review changes'
+            }
           >
-            <ClipboardCheck className="icon-sm" />
+            <ClipboardCheck className="icon-xs" />
+            {reviewFilesCount > 0 && (
+              <span className="text-[10px] tabular-nums leading-none">{reviewFilesCount}</span>
+            )}
           </button>
         </Tooltip>
 
@@ -316,7 +382,7 @@ export function CollapsedRightPanel({
           side="left"
         >
           <button
-            onClick={onExpand}
+            onClick={() => expandSection('changed-files')}
             className="text-dim hover:text-fg hover:bg-surface rounded px-1 py-1 transition-colors cursor-pointer flex items-center gap-0.5"
             aria-label={`${changedFilesCount} changed files`}
           >
@@ -333,7 +399,7 @@ export function CollapsedRightPanel({
           side="left"
         >
           <button
-            onClick={onExpand}
+            onClick={() => expandSection('commits')}
             className={`${hasUnpushedCommits ? 'text-warning' : 'text-dim'} hover:text-fg hover:bg-surface rounded px-1 py-1 transition-colors cursor-pointer flex items-center gap-0.5`}
             aria-label={`${commitsCount} commits`}
           >

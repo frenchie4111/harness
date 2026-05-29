@@ -19,6 +19,7 @@ import { DiffView } from './DiffView'
 import { FileView } from './FileView'
 import { BrowserPanel } from './BrowserPanel'
 import { JsonModeChat } from './JsonModeChat'
+import { ReviewPane } from './ReviewPane'
 import { ErrorBoundary } from './ErrorBoundary'
 import { useBackend } from '../backend'
 
@@ -598,6 +599,18 @@ export function WorkspaceView({
                   // this is the active tab in its leaf, so the user
                   // doesn't see the placeholder in practice.
                   <div className="absolute inset-0 bg-app" />
+                ) : tab.type === 'review' ? (
+                  <ReviewPane
+                    tabId={tab.id}
+                    worktreePath={worktreePath}
+                    fromCommit={tab.reviewFromCommit}
+                    toCommit={tab.reviewToCommit}
+                    onSendToAgent={
+                      onSendToAgent
+                        ? (text) => onSendToAgent(worktreePath, text)
+                        : undefined
+                    }
+                  />
                 ) : (
                   <XTerminal
                     terminalId={tab.id}

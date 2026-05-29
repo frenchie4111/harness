@@ -774,6 +774,84 @@ async function getCommitChangedFilesImpl(
   return result
 }
 
+export async function getCommitRangeChangedFiles(
+  worktreePath: string,
+  fromHash: string,
+  toHash: string
+): Promise<ChangedFile[]> {
+  const t0 = performance.now()
+  if (
+    !/^[0-9a-fA-F]{4,64}$/.test(fromHash) ||
+    !/^[0-9a-fA-F]{4,64}$/.test(toHash)
+  ) {
+    return []
+  }
+  let walledExec = 0
+  let cumExec = 0
+  let outputBytes = 0
+  const execParts: number[] = []
+  let result: ChangedFile[] = []
+
+  const range = `${fromHash}^..${toHash}`
+  try {
+    const tA = performance.now()
+    const [nameStatus, ns] = await Promise.all([
+      tracedExec(['diff', '--name-status', range], {
+        cwd: worktreePath
+      }),
+      numstatExec(worktreePath, [range])
+    ])
+    walledExec += performance.now() - tA
+    cumExec += nameStatus.execMs + ns.execMs
+    execParts.push(nameStatus.execMs, ns.execMs)
+    outputBytes += nameStatus.outputBytes + ns.outputBytes
+
+    const counts = parseNumstatZ(ns.stdout)
+    for (const line of nameStatus.stdout.split('\n')) {
+      if (!line) continue
+      const parts = line.split('\t')
+      const code = parts[0]
+      const filePath = parts[parts.length - 1]
+      const file: ChangedFile = { path: filePath, status: mapNameStatus(code), staged: false }
+      applyCounts(file, counts.get(filePath))
+      result.push(file)
+    }
+  } catch {
+    result = []
+  }
+
+  logGitOp('getCommitRangeChangedFiles', { fromHash, toHash }, t0, walledExec, cumExec, outputBytes, execParts)
+  perfLog(
+    'changed-files',
+    `mode=range path=${basename(worktreePath)} took=${(performance.now() - t0).toFixed(0)}ms files=${result.length}`,
+    { worktreePath, mode: 'range', fromHash, toHash, ms: +(performance.now() - t0).toFixed(1), fileCount: result.length }
+  )
+  return result
+}
+
+export async function getCommitRangeFileDiffSides(
+  worktreePath: string,
+  fromHash: string,
+  toHash: string,
+  filePath: string
+): Promise<FileDiffSides> {
+  if (
+    !/^[0-9a-fA-F]{4,64}$/.test(fromHash) ||
+    !/^[0-9a-fA-F]{4,64}$/.test(toHash)
+  ) {
+    return { original: '', modified: '', originalExists: false, modifiedExists: false, modifiedBinary: false }
+  }
+  const original = await getFileAtRef(worktreePath, `${fromHash}^`, filePath)
+  const modified = await getFileAtRef(worktreePath, toHash, filePath)
+  return {
+    original: original ?? '',
+    modified: modified ?? '',
+    originalExists: original != null,
+    modifiedExists: modified != null,
+    modifiedBinary: false
+  }
+}
+
 export async function getCommitFileDiffSides(
   worktreePath: string,
   hash: string,

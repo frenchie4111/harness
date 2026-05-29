@@ -37,7 +37,7 @@ import { SnoozeTimer } from './snooze-timer'
 import { getWeeklyStats } from './weekly-stats'
 import type { TerminalTab, PaneNode, PaneLeaf } from '../shared/state/terminals'
 import { getLeaves, mapLeaves } from '../shared/state/terminals'
-import { listWorktrees, listBranches, continueWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getCommitChangedFiles, getCommitFileDiffSides, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, readWorktreeFile, readWorktreeFileBinary, writeWorktreeFile, getFileDiffSides, getCurrentBranch, symlinkClaudeSettings, type MergeStrategy } from './worktree'
+import { listWorktrees, listBranches, continueWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getCommitChangedFiles, getCommitFileDiffSides, getCommitRangeChangedFiles, getCommitRangeFileDiffSides, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, readWorktreeFile, readWorktreeFileBinary, writeWorktreeFile, getFileDiffSides, getCurrentBranch, symlinkClaudeSettings, type MergeStrategy } from './worktree'
 import { listOpenPRs, testToken, starRepo, unstarRepo, isRepoStarred, mergePR, getRepoInfo, type GitHubMergeMethod, type MergePRResult } from './github'
 import { AVAILABLE_EDITORS, DEFAULT_EDITOR_ID, openInEditor } from './editor'
 import { setSecret, getSecret, hasSecret, deleteSecret } from './secrets'
@@ -1301,6 +1301,20 @@ function registerIpcHandlers(): void {
     }
   )
 
+  transport.onRequest(
+    'worktree:commitRangeChangedFiles',
+    async (_ctx, worktreePath: string, fromHash: string, toHash: string) => {
+      return getCommitRangeChangedFiles(worktreePath, fromHash, toHash)
+    }
+  )
+
+  transport.onRequest(
+    'worktree:commitRangeFileDiffSides',
+    async (_ctx, worktreePath: string, fromHash: string, toHash: string, filePath: string) => {
+      return getCommitRangeFileDiffSides(worktreePath, fromHash, toHash, filePath)
+    }
+  )
+
   // PR status lives in the main-process store, polled by PRPoller. Renderers
   // subscribe via the state event stream; these methods trigger on-demand
   // refreshes (new worktree created, window focus, worktree activate,
@@ -2136,6 +2150,17 @@ function registerIpcHandlers(): void {
       toIndex?: number
     ) => {
       panesFSM.moveTabToPane(wtPath, tabId, toPaneId, toIndex)
+      return true
+    }
+  )
+  transport.onRequest('panes:openReview', (_ctx, wtPath: string) => {
+    panesFSM.openReviewTab(wtPath)
+    return true
+  })
+  transport.onRequest(
+    'panes:setReviewSelection',
+    (_ctx, wtPath: string, tabId: string, fromCommit?: string, toCommit?: string) => {
+      panesFSM.setReviewSelection(wtPath, tabId, fromCommit, toCommit)
       return true
     }
   )

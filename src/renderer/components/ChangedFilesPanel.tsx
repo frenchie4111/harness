@@ -69,9 +69,9 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToAgent, onO
               e.stopPropagation()
               onOpenReview()
             }}
-            className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-accent text-app text-xs font-medium hover:bg-accent/80 transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 px-2 py-1 rounded bg-accent text-app text-xs hover:bg-accent/80 transition-colors cursor-pointer"
           >
-            <ClipboardCheck className="icon-2xs" />
+            <ClipboardCheck className="icon-xs" />
             Review
           </button>
         </Tooltip>

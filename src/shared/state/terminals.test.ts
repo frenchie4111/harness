@@ -851,6 +851,76 @@ describe('terminalsReducer', () => {
     expect(noTab).toBe(start)
   })
 
+  it('reviewSelectionChanged updates a review tab\'s commit range', () => {
+    const tree: PaneNode = {
+      type: 'leaf',
+      id: 'p1',
+      tabs: [
+        { id: 'r1', type: 'review', label: 'Review' },
+        { id: 't2', type: 'shell', label: 'Shell' }
+      ],
+      activeTabId: 'r1'
+    }
+    const start: TerminalsState = { ...initialTerminals, panes: { '/wt/a': tree } }
+    const next = apply(start, {
+      type: 'terminals/reviewSelectionChanged',
+      payload: { worktreePath: '/wt/a', tabId: 'r1', fromCommit: 'abc', toCommit: 'def' }
+    })
+    const tabs = getLeaves(next.panes['/wt/a'])[0].tabs
+    expect(tabs[0].reviewFromCommit).toBe('abc')
+    expect(tabs[0].reviewToCommit).toBe('def')
+    // Shell tab next to it should not be cloned.
+    expect(tabs[1]).toBe(getLeaves(start.panes['/wt/a'])[0].tabs[1])
+  })
+
+  it('reviewSelectionChanged clears commit range when both fields are undefined', () => {
+    const tree: PaneNode = {
+      type: 'leaf',
+      id: 'p1',
+      tabs: [{ id: 'r1', type: 'review', label: 'Review', reviewFromCommit: 'a', reviewToCommit: 'b' }],
+      activeTabId: 'r1'
+    }
+    const start: TerminalsState = { ...initialTerminals, panes: { '/wt/a': tree } }
+    const next = apply(start, {
+      type: 'terminals/reviewSelectionChanged',
+      payload: { worktreePath: '/wt/a', tabId: 'r1' }
+    })
+    const tab = getLeaves(next.panes['/wt/a'])[0].tabs[0]
+    expect('reviewFromCommit' in tab).toBe(false)
+    expect('reviewToCommit' in tab).toBe(false)
+  })
+
+  it('reviewSelectionChanged is a no-op for non-review tabs and unchanged values', () => {
+    const tree: PaneNode = {
+      type: 'leaf',
+      id: 'p1',
+      tabs: [
+        { id: 'r1', type: 'review', label: 'Review', reviewFromCommit: 'a', reviewToCommit: 'b' },
+        { id: 's1', type: 'shell', label: 'Shell' }
+      ],
+      activeTabId: 'r1'
+    }
+    const start: TerminalsState = { ...initialTerminals, panes: { '/wt/a': tree } }
+    expect(
+      apply(start, {
+        type: 'terminals/reviewSelectionChanged',
+        payload: { worktreePath: '/wt/missing', tabId: 'r1', fromCommit: 'x' }
+      })
+    ).toBe(start)
+    expect(
+      apply(start, {
+        type: 'terminals/reviewSelectionChanged',
+        payload: { worktreePath: '/wt/a', tabId: 's1', fromCommit: 'x' }
+      })
+    ).toBe(start)
+    expect(
+      apply(start, {
+        type: 'terminals/reviewSelectionChanged',
+        payload: { worktreePath: '/wt/a', tabId: 'r1', fromCommit: 'a', toCommit: 'b' }
+      })
+    ).toBe(start)
+  })
+
   it('sessionIdDiscovered backfills a session id in pane tree', () => {
     const tree: PaneNode = {
       type: 'split',

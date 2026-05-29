@@ -264,6 +264,13 @@ export interface ElectronAPI {
   getCommitDiff(worktreePath: string, hash: string): Promise<CommitDiff | null>
   getCommitChangedFiles(worktreePath: string, hash: string): Promise<ChangedFile[]>
   getCommitFileDiffSides(worktreePath: string, hash: string, filePath: string): Promise<FileDiffSides>
+  getCommitRangeChangedFiles(worktreePath: string, fromHash: string, toHash: string): Promise<ChangedFile[]>
+  getCommitRangeFileDiffSides(
+    worktreePath: string,
+    fromHash: string,
+    toHash: string,
+    filePath: string
+  ): Promise<FileDiffSides>
   listAllFiles(worktreePath: string): Promise<string[]>
   readWorktreeFile(worktreePath: string, filePath: string): Promise<FileReadResult>
   readWorktreeFileBinary(
@@ -405,6 +412,13 @@ export interface ElectronAPI {
   panesEnsureInitialized(wtPath: string): Promise<boolean>
   panesSleepTab(wtPath: string, tabId: string): Promise<boolean>
   panesWakeTab(wtPath: string, tabId: string): Promise<boolean>
+  panesOpenReview(wtPath: string): Promise<boolean>
+  panesSetReviewSelection(
+    wtPath: string,
+    tabId: string,
+    fromCommit?: string,
+    toCommit?: string
+  ): Promise<boolean>
   touchWorktreeLastActive(wtPath: string): Promise<boolean>
   getTerminalHistory(id: string): Promise<string>
   clearTerminalHistory(id: string): Promise<boolean>

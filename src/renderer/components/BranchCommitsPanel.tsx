@@ -8,10 +8,9 @@ import { useBackend } from '../backend'
 
 interface BranchCommitsPanelProps {
   worktreePath: string | null
-  onOpenCommitReview?: (hash: string, shortHash: string, subject: string) => void
 }
 
-export function BranchCommitsPanel({ worktreePath, onOpenCommitReview }: BranchCommitsPanelProps): JSX.Element | null {
+export function BranchCommitsPanel({ worktreePath }: BranchCommitsPanelProps): JSX.Element | null {
   const backend = useBackend()
   const fetcher = useCallback((path: string) => backend.getBranchCommits(path), [backend])
 
@@ -61,8 +60,7 @@ export function BranchCommitsPanel({ worktreePath, onOpenCommitReview }: BranchC
           return (
             <Tooltip key={c.hash} label={`${c.shortHash} · ${c.author} · ${c.relativeDate} · ${tipSuffix}`} side="left">
               <div
-                onClick={() => onOpenCommitReview?.(c.hash, c.shortHash, c.subject)}
-                className="group relative flex items-center gap-2.5 pl-4 pr-3 py-1.5 hover:bg-panel-raised cursor-pointer"
+                className="group relative flex items-center gap-2.5 pl-4 pr-3 py-1.5 hover:bg-panel-raised"
                 draggable
                 onDragStart={(e) => {
                   e.dataTransfer.setData('text/plain', c.hash)

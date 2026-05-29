@@ -186,6 +186,14 @@ export function buildBackend(
       req('worktree:commitChangedFiles', worktreePath, hash),
     getCommitFileDiffSides: (worktreePath: string, hash: string, filePath: string) =>
       req('worktree:commitFileDiffSides', worktreePath, hash, filePath),
+    getCommitRangeChangedFiles: (worktreePath: string, fromHash: string, toHash: string) =>
+      req('worktree:commitRangeChangedFiles', worktreePath, fromHash, toHash),
+    getCommitRangeFileDiffSides: (
+      worktreePath: string,
+      fromHash: string,
+      toHash: string,
+      filePath: string
+    ) => req('worktree:commitRangeFileDiffSides', worktreePath, fromHash, toHash, filePath),
     getMainWorktreeStatus: (repoRoot: string) => req('worktree:mainStatus', repoRoot),
     prepareMainForMerge: (repoRoot: string) => req('worktree:prepareMain', repoRoot),
     previewMergeConflicts: (repoRoot: string, sourceBranch: string, worktreePath?: string) =>
@@ -315,6 +323,13 @@ export function buildBackend(
     panesEnsureInitialized: (wtPath: string) => req('panes:ensureInitialized', wtPath),
     panesSleepTab: (wtPath: string, tabId: string) => req('panes:sleepTab', wtPath, tabId),
     panesWakeTab: (wtPath: string, tabId: string) => req('panes:wakeTab', wtPath, tabId),
+    panesOpenReview: (wtPath: string) => req('panes:openReview', wtPath),
+    panesSetReviewSelection: (
+      wtPath: string,
+      tabId: string,
+      fromCommit?: string,
+      toCommit?: string
+    ) => req('panes:setReviewSelection', wtPath, tabId, fromCommit, toCommit),
     touchWorktreeLastActive: (wtPath: string) =>
       req('terminals:touchLastActive', wtPath),
 

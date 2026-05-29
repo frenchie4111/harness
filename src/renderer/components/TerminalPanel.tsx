@@ -13,6 +13,7 @@ import { Tooltip } from './Tooltip'
 import { repoNameColor } from './RepoIcon'
 import { getClientId, useTerminalProgress, useTerminalSession } from '../store'
 import { useBackend } from '../backend'
+import { useReviewProgress } from '../review-progress'
 
 /** Chip shown in the tab bar when other clients are attached to the
  *  active terminal. Click-through is intentional — taking/releasing
@@ -188,7 +189,12 @@ function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect
     }
   }, [menu])
 
-  const displayLabel = tab.customLabel ?? tab.label
+  const reviewProgress = useReviewProgress(tab.type === 'review' ? tab.id : '')
+  const baseLabel = tab.customLabel ?? tab.label
+  const displayLabel =
+    tab.type === 'review' && reviewProgress && !tab.customLabel
+      ? `${tab.label} (${reviewProgress.reviewed}/${reviewProgress.total})`
+      : baseLabel
   const [editing, setEditing] = useState(false)
   const [editValue, setEditValue] = useState(displayLabel)
   const inputRef = useRef<HTMLInputElement | null>(null)
@@ -281,7 +287,7 @@ function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect
         ) : (
           <span className="w-1.5 h-1.5 rounded-full bg-faint" />
         )
-      ) : tab.type !== 'diff' && tab.type !== 'file' ? (
+      ) : tab.type !== 'diff' && tab.type !== 'file' && tab.type !== 'review' ? (
         <span className={`w-1.5 h-1.5 rounded-full ${TAB_STATUS_DOT[status]}`} />
       ) : null}
       {editing ? (

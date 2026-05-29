@@ -497,6 +497,52 @@ export class PanesFSM {
     this.opts.persist(this.buildPersistPayload())
   }
 
+  /** Activate the existing review tab for this worktree, or create one if
+   *  none exists. Only one review tab can live per worktree at a time —
+   *  every entry point in the renderer funnels through here. */
+  openReviewTab(wtPath: string): void {
+    const tree = this.getTree(wtPath)
+    if (tree) {
+      let existing: { paneId: string; tabId: string } | null = null
+      for (const leaf of getLeaves(tree)) {
+        for (const tab of leaf.tabs) {
+          if (tab.type === 'review') {
+            existing = { paneId: leaf.id, tabId: tab.id }
+            break
+          }
+        }
+        if (existing) break
+      }
+      if (existing) {
+        const updated = mapLeaves(tree, (leaf) =>
+          leaf.id === existing!.paneId ? { ...leaf, activeTabId: existing!.tabId } : leaf
+        )
+        this.commit(wtPath, updated)
+        return
+      }
+    }
+    const tab: TerminalTab = {
+      id: `review-${wtPath.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}`,
+      type: 'review',
+      label: 'Review'
+    }
+    this.addTab(wtPath, tab)
+  }
+
+  /** Update the commit range a review tab is showing. Called by the
+   *  in-view commit picker. Persists nothing (review tabs are ephemeral). */
+  setReviewSelection(
+    wtPath: string,
+    tabId: string,
+    fromCommit?: string,
+    toCommit?: string
+  ): void {
+    this.store.dispatch({
+      type: 'terminals/reviewSelectionChanged',
+      payload: { worktreePath: wtPath, tabId, fromCommit, toCommit }
+    })
+  }
+
   reorderTabs(
     wtPath: string,
     paneId: string,
