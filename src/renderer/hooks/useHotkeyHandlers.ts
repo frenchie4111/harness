@@ -36,6 +36,10 @@ interface UseHotkeyHandlersArgs {
   setCommandPaletteMode: React.Dispatch<React.SetStateAction<'root' | 'files'>>
   setShowPerfMonitor: React.Dispatch<React.SetStateAction<boolean>>
   setShowHotkeyCheatsheet: React.Dispatch<React.SetStateAction<boolean>>
+  setShowQuakeTerminal: React.Dispatch<React.SetStateAction<boolean>>
+  /** False when a full-content view is hiding the workspace tab bar; the Quake
+   * terminal toggle is a no-op then. */
+  quakeTerminalAllowed: boolean
   // Imperative hooks into other handlers — passed in to avoid this hook
   // depending on useTabHandlers + useWorktreeHandlers directly.
   handleAddTerminalTab: (worktreePath: string, paneId?: string) => void
@@ -80,6 +84,8 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
     setCommandPaletteMode,
     setShowPerfMonitor,
     setShowHotkeyCheatsheet,
+    setShowQuakeTerminal,
+    quakeTerminalAllowed,
     handleAddTerminalTab,
     handleCloseTab,
     handleSelectTab,
@@ -318,6 +324,14 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       openReview: () => {
         if (activeWorktreeId) void backend.panesOpenReview(activeWorktreeId)
       },
+      toggleQuakeTerminal: () => {
+        // Read live keyboard focus: only open when it's inside a workspace
+        // tab/agent (xterm terminal or Chat) — not the sidebar, panels, or
+        // other chrome. Closing is always allowed (the open overlay itself
+        // holds focus, which isn't a workspace tab).
+        const inTab = !!document.activeElement?.closest('[data-tab-content]')
+        setShowQuakeTerminal((open) => (open ? false : quakeTerminalAllowed && inTab))
+      },
       uiScaleUp: () => {
         const i = SCALES.findIndex((s) => s.id === uiScale)
         const next = SCALES[Math.min(i < 0 ? 0 : i + 1, SCALES.length - 1)]
@@ -357,6 +371,8 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       setCommandPaletteMode,
       setShowPerfMonitor,
       setShowHotkeyCheatsheet,
+      setShowQuakeTerminal,
+      quakeTerminalAllowed,
       setShowSettings,
       backend,
       uiScale,

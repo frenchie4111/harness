@@ -569,6 +569,7 @@ export function WorkspaceView({
           return createPortal(
             <div
               className="absolute inset-0"
+              data-tab-content
               style={{ display: isActiveInPane ? 'block' : 'none' }}
               onMouseDownCapture={() => onFocusPane?.(worktreePath, leaf.id)}
             >
