@@ -338,7 +338,17 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
           { role: 'hideOthers' },
           { role: 'unhide' },
           { type: 'separator' },
-          { role: 'quit' }
+          // Custom Quit with NO accelerator: macOS ignores
+          // registerAccelerator:false for app-menu items and binds ⌘Q
+          // anyway, and that binding fires before-input-event with the
+          // keyup suppressed — which breaks hold-to-quit. Leaving the
+          // accelerator off entirely frees ⌘Q so the keystroke (keydown
+          // AND keyup) flows to our handlers, where the hold gesture lives.
+          // Menu click still quits immediately.
+          {
+            label: `Quit ${app.name}`,
+            click: () => app.quit()
+          }
         ]
       },
       {
@@ -671,6 +681,60 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
       app.quit()
     }
   })
+
+  // ── Hold-⌘Q-to-quit ────────────────────────────────────────────────
+  // Chrome-style: a ⌘Q tap does nothing; holding it for HOLD_TO_QUIT_MS
+  // quits. The whole gesture is detected here in main via
+  // `before-input-event`, which fires for EVERY webContents — the main
+  // window and each embedded browser tab (a WebContentsView has its own
+  // input pipeline the renderer's window listener never sees) — so the
+  // gesture, and the guard against an accidental quit, work no matter
+  // what's focused.
+  //
+  // Two things make this work and are easy to regress:
+  //   1. The Quit menu item has NO accelerator (see buildMenu). macOS
+  //      ignores registerAccelerator:false for app-menu items and would
+  //      otherwise bind ⌘Q and quit on keydown.
+  //   2. We must NOT call event.preventDefault() here. Doing so suppresses
+  //      the keyUp that cancels the hold (on both before-input-event and
+  //      the DOM), which turns every tap into a quit. Leaking ⌘Q to the
+  //      page is harmless — nothing else binds it.
+  //
+  // The hold is cancelled by the ⌘ (Meta) keyUp — releasing the whole
+  // chord. macOS suppresses the letter keyUp while ⌘ is held, so we don't
+  // rely on the Q keyUp. The 1s timer runs here; the renderer overlay is
+  // driven by the start/cancel signals (CSS fill in styles.css matches
+  // HOLD_TO_QUIT_MS).
+  const HOLD_TO_QUIT_MS = 1000
+  let holdQuitTimer: NodeJS.Timeout | null = null
+  const startHoldToQuit = (): void => {
+    if (holdQuitTimer) return
+    transport.sendSignal('app:holdToQuitStart')
+    holdQuitTimer = setTimeout(() => {
+      holdQuitTimer = null
+      app.quit()
+    }, HOLD_TO_QUIT_MS)
+  }
+  const cancelHoldToQuit = (): void => {
+    if (!holdQuitTimer) return
+    clearTimeout(holdQuitTimer)
+    holdQuitTimer = null
+    transport.sendSignal('app:holdToQuitCancel')
+  }
+  app.on('web-contents-created', (_e, contents) => {
+    contents.on('before-input-event', (_event, input) => {
+      const isQ = input.key === 'q' || input.key === 'Q'
+      if (input.type === 'keyDown' && input.meta && isQ) {
+        startHoldToQuit()
+      } else if (input.type === 'keyUp' && (input.key === 'Meta' || isQ)) {
+        cancelHoldToQuit()
+      } else if (input.type === 'keyDown' && holdQuitTimer) {
+        cancelHoldToQuit() // any other key aborts a pending hold
+      }
+    })
+  })
+  // Safety net: losing window focus mid-hold (e.g. ⌘-Tab) cancels too.
+  app.on('browser-window-blur', () => cancelHoldToQuit())
 
   app.on('before-quit', () => {
     getStopWatchingStatus()?.()

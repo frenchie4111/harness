@@ -11,6 +11,7 @@ import { CheckCircle2, FolderOpen } from 'lucide-react'
 import { BUILT_IN_THEMES_BY_MODE } from './themes'
 import { SCALES, scaleSpec } from '../shared/state/settings'
 import { useActiveTheme } from './hooks/useActiveTheme'
+import { useHoldToQuit } from './hooks/useHoldToQuit'
 import { applyTheme, effectiveAppBg } from './theme-apply'
 import { getBackend } from './backend'
 import { HotkeysProvider, Tooltip } from './components/Tooltip'
@@ -45,6 +46,7 @@ import { AddBackendModal } from './components/AddBackendModal'
 import { MonacoWorkerFailedBanner } from './components/MonacoWorkerFailedBanner'
 import iconUrl from '../../resources/icon.png'
 import { PerfMonitorHUD } from './components/PerfMonitorHUD'
+import { HoldToQuitOverlay } from './components/HoldToQuitOverlay'
 import { focusTerminalById } from './components/XTerminal'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { type GroupKey } from './worktree-sort'
@@ -255,6 +257,7 @@ function DesktopApp(): JSX.Element {
   const [commandPaletteMode, setCommandPaletteMode] = useState<'root' | 'files'>('root')
   const [showPerfMonitor, setShowPerfMonitor] = useState(false)
   const [showHotkeyCheatsheet, setShowHotkeyCheatsheet] = useState(false)
+  const holdingToQuit = useHoldToQuit()
   const [showNewProject, setShowNewProject] = useState(false)
   const [reportIssueState, setReportIssueState] = useState<OpenReportIssueDetail | null>(null)
   const [showAddBackend, setShowAddBackend] = useState(false)
@@ -1708,6 +1711,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
       isOpen={showAddBackend}
       onClose={() => setShowAddBackend(false)}
     />
+    {holdingToQuit && <HoldToQuitOverlay />}
     </HotkeysProvider>
   )
 }

@@ -432,6 +432,12 @@ export function buildBackend(
     // is active.
     onOpenSettings: (callback: () => void) =>
       onLocalSignal('app:openSettings', () => callback()),
+    // Hold-⌘Q-to-quit overlay, driven entirely by the main process (it
+    // owns the before-input-event detection + hold timer). Always local.
+    onHoldToQuitStart: (callback: () => void) =>
+      onLocalSignal('app:holdToQuitStart', () => callback()),
+    onHoldToQuitCancel: (callback: () => void) =>
+      onLocalSignal('app:holdToQuitCancel', () => callback()),
     onTogglePerfMonitor: (callback: () => void) =>
       onLocalSignal('app:togglePerfMonitor', () => callback()),
     onToggleSingleScreen: (callback: () => void) =>

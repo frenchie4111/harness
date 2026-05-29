@@ -465,6 +465,8 @@ export interface ElectronAPI {
   windowToggleMaximize(): void
   windowClose(): void
   onOpenSettings(callback: () => void): () => void
+  onHoldToQuitStart(callback: () => void): () => void
+  onHoldToQuitCancel(callback: () => void): () => void
   onTogglePerfMonitor(callback: () => void): () => void
   onToggleSingleScreen(callback: () => void): () => void
   onOpenKeyboardShortcuts(callback: () => void): () => void

@@ -731,3 +731,18 @@ button, [role="button"], a[href], [onclick] {
 .xterm .xterm-rows {
   font-variant-emoji: text;
 }
+
+/* "Hold ⌘Q to Quit" progress fill. The hold timer is HOLD_TO_QUIT_MS
+ * (1000ms) in main/desktop-shell.ts, but the overlay only mounts after
+ * the start signal crosses IPC and React commits — so the bar starts a
+ * beat late. We fill in 850ms so it reads as full by the time the quit
+ * fires. The overlay unmounts when the hold ends, restarting the
+ * animation on each hold. */
+.hold-to-quit-fill {
+  width: 0%;
+  animation: hold-to-quit-fill 850ms linear forwards;
+}
+@keyframes hold-to-quit-fill {
+  from { width: 0%; }
+  to { width: 100%; }
+}
