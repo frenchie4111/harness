@@ -38,7 +38,7 @@ import { getWeeklyStats } from './weekly-stats'
 import type { TerminalTab, PaneNode, PaneLeaf } from '../shared/state/terminals'
 import { getLeaves, mapLeaves } from '../shared/state/terminals'
 import { listWorktrees, listBranches, continueWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getCommitChangedFiles, getCommitFileDiffSides, getCommitRangeChangedFiles, getCommitRangeFileDiffSides, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, readWorktreeFile, readWorktreeFileBinary, writeWorktreeFile, getFileDiffSides, getCurrentBranch, symlinkClaudeSettings, type MergeStrategy } from './worktree'
-import { listOpenPRs, testToken, starRepo, unstarRepo, isRepoStarred, mergePR, getRepoInfo, type GitHubMergeMethod, type MergePRResult } from './github'
+import { listOpenPRs, testToken, starRepo, unstarRepo, isRepoStarred, mergePR, approvePR, getRepoInfo, type GitHubMergeMethod, type MergePRResult } from './github'
 import { AVAILABLE_EDITORS, DEFAULT_EDITOR_ID, openInEditor } from './editor'
 import { setSecret, getSecret, hasSecret, deleteSecret } from './secrets'
 import { resolveGitHubToken, getTokenSource, invalidateTokenCache, getCachedToken } from './github-auth'
@@ -1423,6 +1423,26 @@ function registerIpcHandlers(): void {
         }
       }
       const result = await mergePR(token, repoInfo.owner, repoInfo.repo, prNumber, method)
+      if (result.ok) {
+        void prPoller.refreshOne(worktreePath)
+      }
+      return result
+    }
+  )
+
+  transport.onRequest(
+    'pr:approve',
+    async (_ctx, worktreePath: string): Promise<{ ok: true } | { ok: false; error: string }> => {
+      const cached = store.getSnapshot().state.prs.byPath[worktreePath]
+      let prNumber = cached?.number
+      if (typeof prNumber !== 'number') {
+        await prPoller.refreshOne(worktreePath)
+        prNumber = store.getSnapshot().state.prs.byPath[worktreePath]?.number
+      }
+      if (typeof prNumber !== 'number') {
+        return { ok: false, error: 'No pull request found for this worktree' }
+      }
+      const result = await approvePR(worktreePath, prNumber)
       if (result.ok) {
         void prPoller.refreshOne(worktreePath)
       }

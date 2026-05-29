@@ -716,6 +716,57 @@ ${PR_FRAGMENT}`
   return buildPRStatus(pr, branchName, null, firstReleaseTag, hasMilestones)
 }
 
+/** Submit an APPROVE review on a PR with no comment body. Mirrors
+ *  GitHub's "Approve without comment" — an empty body is fine when the
+ *  `event` is APPROVE. */
+export async function approvePR(
+  repoRoot: string,
+  prNumber: number
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const ctx = await getRepoContext(repoRoot)
+  if (!ctx) return { ok: false, error: 'No GitHub origin remote detected' }
+  const token = getCachedToken()
+  if (!token) return { ok: false, error: 'No GitHub token configured' }
+  const { owner, repo } = ctx.upstream
+  try {
+    const res = await trackedFetch(
+      `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}/reviews`,
+      {
+        method: 'POST',
+        headers: {
+          Accept: 'application/vnd.github+json',
+          'User-Agent': 'Harness',
+          'X-GitHub-Api-Version': '2022-11-28',
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ event: 'APPROVE' })
+      }
+    )
+    if (res.status === 200 || res.status === 201) return { ok: true }
+    let apiMessage = ''
+    try {
+      const data = (await res.json()) as { message?: string }
+      apiMessage = data?.message || ''
+    } catch {
+      // ignore — fall through to status text
+    }
+    if (res.status === 401 || res.status === 403) {
+      return { ok: false, error: 'Unauthorized — check that your token has repo scope' }
+    }
+    if (res.status === 422) {
+      // Most common 422 here is "Can not approve your own pull request",
+      // which the UI should filter out before calling. Surface GitHub's
+      // message so unexpected cases aren't silent.
+      return { ok: false, error: apiMessage || 'PR cannot be approved' }
+    }
+    return { ok: false, error: apiMessage || `${res.status} ${res.statusText}` }
+  } catch (err) {
+    log('github', `approvePR fetch failed for ${owner}/${repo}#${prNumber}`, formatErr(err))
+    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
 /** Check whether the authenticated user has starred the repo. */
 export async function isRepoStarred(token: string, owner: string, repo: string): Promise<boolean | null> {
   try {

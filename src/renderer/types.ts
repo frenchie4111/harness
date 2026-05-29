@@ -260,6 +260,9 @@ export interface ElectronAPI {
     worktreePath: string,
     method: GitHubMergeMethod
   ): Promise<MergePRResult>
+  approvePR(
+    worktreePath: string
+  ): Promise<{ ok: true } | { ok: false; error: string }>
 
   getWeeklyStats(): Promise<WeeklyStats>
   getBranchCommits(worktreePath: string): Promise<BranchCommit[]>
