@@ -69,6 +69,15 @@ describe('getGroupKey', () => {
     expect(getGroupKey(stubWorktree(), stubPRStatus(), true)).toBe('merged')
     expect(getGroupKey(stubWorktree(), null, true)).toBe('merged')
   })
+
+  it('a previously-known open PR that transitions to merged moves to "merged" not "no-pr"', () => {
+    const w = stubWorktree()
+    // Simulate the open → merged transition: same PR identity, terminal state.
+    expect(getGroupKey(w, stubPRStatus({ state: 'open' }))).toBe('active')
+    expect(getGroupKey(w, stubPRStatus({ state: 'merged' }))).toBe('merged')
+    // If the PR is closed without merging, same group.
+    expect(getGroupKey(w, stubPRStatus({ state: 'closed' }))).toBe('merged')
+  })
 })
 
 describe('GROUP_ORDER', () => {

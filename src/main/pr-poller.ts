@@ -3,6 +3,7 @@ import { isOnRealBranch } from './git-ops-state'
 import {
   getRepoContext,
   fetchPRStatusesForRepo,
+  fetchPRStatusByNumber,
   type PRStatusRequest,
   type RepoContext
 } from './github'
@@ -120,6 +121,56 @@ export class PRPoller {
           newByPath[path] = status
         }
       }
+
+      // Branch-name lookup goes blind on a PR whose head branch was
+      // deleted post-merge: the per-branch GraphQL hit returns nothing
+      // and the worktree would slide into "Active". Look those up by
+      // their previously-known PR number so the terminal state sticks.
+      type Followup = { path: string; root: string; branch: string; prNumber: number }
+      const followups: Followup[] = []
+      for (const wt of allWorktrees) {
+        const prev = currentByPath[wt.path]
+        const next = newByPath[wt.path]
+        if (
+          prev &&
+          next === null &&
+          prev.state !== 'merged' &&
+          prev.state !== 'closed'
+        ) {
+          followups.push({
+            path: wt.path,
+            root: wt.repoRoot,
+            branch: wt.branch,
+            prNumber: prev.number
+          })
+        }
+      }
+      if (followups.length > 0) {
+        const ctxByRoot = new Map<string, RepoContext | null>()
+        await Promise.all(
+          Array.from(new Set(followups.map((f) => f.root))).map(async (root) => {
+            ctxByRoot.set(root, await getRepoContext(root).catch(() => null))
+          })
+        )
+        const followupResults = await Promise.all(
+          followups.map(async (f) => {
+            const ctx = ctxByRoot.get(f.root)
+            if (!ctx) return { path: f.path, status: null as PRStatus | null }
+            try {
+              const status = await fetchPRStatusByNumber(ctx, f.prNumber, f.path, f.branch)
+              return { path: f.path, status }
+            } catch (err) {
+              log('pr-poller', `followup PR #${f.prNumber} failed for ${f.path}`, formatErr(err))
+              return { path: f.path, status: null }
+            }
+          })
+        )
+        for (const r of followupResults) {
+          if (r.status && (r.status.state === 'merged' || r.status.state === 'closed')) {
+            newByPath[r.path] = r.status
+          }
+        }
+      }
       this.store.dispatch({
         type: 'prs/bulkStatusChanged',
         payload: newByPath
@@ -189,6 +240,15 @@ export class PRPoller {
           { worktreePath: wt.path, branch: wt.branch, headSha: wt.head }
         ])
         status = statuses.get(wt.path) ?? null
+        if (!status) {
+          const prev = this.store.getSnapshot().state.prs.byPath[wtPath]
+          if (prev && prev.state !== 'merged' && prev.state !== 'closed') {
+            const followup = await fetchPRStatusByNumber(ctx, prev.number, wt.path, wt.branch).catch(() => null)
+            if (followup && (followup.state === 'merged' || followup.state === 'closed')) {
+              status = followup
+            }
+          }
+        }
       }
       this.lastFetchAtByPath.set(wtPath, Date.now())
       this.store.dispatch({

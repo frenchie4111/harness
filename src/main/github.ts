@@ -657,6 +657,65 @@ function buildPRStatus(
   }
 }
 
+/** Fetch one PR by number from the upstream repo and build a PRStatus.
+ *  Used as a fallback by the poller: when the per-branch GraphQL lookup
+ *  comes back empty for a worktree that previously had a known PR (most
+ *  commonly because the PR merged and its head branch was deleted on
+ *  GitHub), we replay the lookup by number so the status survives the
+ *  transition instead of bouncing through "Active". */
+export async function fetchPRStatusByNumber(
+  ctx: RepoContext,
+  prNumber: number,
+  worktreePath: string,
+  branchName: string
+): Promise<PRStatus | null> {
+  const token = getCachedToken()
+  if (!token) return null
+  const { owner, repo } = ctx.upstream
+  const query = `query($owner:String!, $name:String!, $number:Int!) {
+  repository(owner: $owner, name: $name) {
+    defaultBranchRef { name }
+    milestones(first: 1) { totalCount }
+    pullRequest(number: $number) { ...PR }
+  }
+}
+${PR_FRAGMENT}`
+  const res = await trackedFetch('https://api.github.com/graphql', {
+    method: 'POST',
+    headers: {
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'Harness',
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ query, variables: { owner, name: repo, number: prNumber } })
+  })
+  if (!res.ok) {
+    throw new Error(`GitHub GraphQL ${res.status} ${res.statusText}`)
+  }
+  const json = (await res.json()) as {
+    data?: {
+      repository?: {
+        defaultBranchRef: { name: string } | null
+        milestones: { totalCount: number } | null
+        pullRequest: GraphQLPR | null
+      } | null
+    } | null
+    errors?: Array<{ message: string }> | null
+  }
+  if (json.errors && json.errors.length > 0) {
+    log('github', `GraphQL errors for ${owner}/${repo}#${prNumber}`, json.errors.map((e) => e.message).join('; '))
+  }
+  const pr = json.data?.repository?.pullRequest
+  if (!pr) return null
+  const hasMilestones = (json.data?.repository?.milestones?.totalCount ?? 0) > 0
+  const firstReleaseTag =
+    pr.state === 'MERGED' && pr.mergeCommit?.oid
+      ? await getFirstTagContaining(worktreePath, pr.mergeCommit.oid)
+      : null
+  return buildPRStatus(pr, branchName, null, firstReleaseTag, hasMilestones)
+}
+
 /** Check whether the authenticated user has starred the repo. */
 export async function isRepoStarred(token: string, owner: string, repo: string): Promise<boolean | null> {
   try {
