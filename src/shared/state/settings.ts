@@ -44,6 +44,19 @@ export function scaleSpec(id: UiScale): UiScaleSpec {
   return SCALES.find((s) => s.id === id) ?? SCALES[0]
 }
 
+/** The pixel font-size a code editor / terminal should use at a given UI
+ *  scale: the user's configured `terminalFontSize` shifted by the scale's
+ *  `terminalOffset` so Monaco and xterm stay in proportion with the rest of
+ *  the rem-scaled UI. Monaco consumers (DiffView / FileView / ReviewDiffPane)
+ *  and XTerminal both go through this — passing the raw setting instead makes
+ *  the editor ignore `uiScale`. */
+export function scaledEditorFontSize(
+  terminalFontSize: number | undefined,
+  uiScale: UiScale
+): number {
+  return (terminalFontSize || 13) + scaleSpec(uiScale).terminalOffset
+}
+
 export type ThemeMode = 'light' | 'dark' | 'system'
 
 /** A theme loaded from `<userData>/themes/*.json`. Stays minimal — the

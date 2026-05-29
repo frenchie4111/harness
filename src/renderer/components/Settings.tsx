@@ -1252,7 +1252,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   <span className="text-fg-bright truncate">
                     {highlightMatch(item.title, sectionQuery)}
                   </span>
-                  <span className="text-faint text-[10px] truncate">{item.context}</span>
+                  <span className="text-faint text-xs truncate">{item.context}</span>
                 </button>
               ))}
             </div>
@@ -2450,32 +2450,32 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     detail hides on hover; row action buttons appear in its place.
                   </p>
                   <div className="mb-3 p-2 bg-panel-raised border border-border rounded">
-                    <div className="text-[10px] text-faint mb-1.5 uppercase tracking-wide">Preview</div>
+                    <div className="text-xs text-faint mb-1.5 uppercase tracking-wide">Preview</div>
                     <div className="group flex items-center gap-2 px-3 py-2 bg-surface rounded">
                       <span
                         className="w-2 h-2 rounded-full shrink-0 bg-success"
                         title="Working..."
                       />
-                      <GitPullRequest size={13} className="text-success shrink-0" />
+                      <GitPullRequest className="icon-xs text-success shrink-0" />
                       <div className="min-w-0 flex-1">
                         <div className="text-sm font-medium text-fg-bright truncate">feature/example-branch</div>
                         <div className="text-xs text-faint truncate">harness/feature-example-branch</div>
                       </div>
                       {worktreeDetail === 'diff' && (
-                        <span className="text-[10px] font-mono shrink-0 leading-none group-hover:hidden" title="+42 additions, −7 deletions">
+                        <span className="text-xs font-mono shrink-0 leading-none group-hover:hidden" title="+42 additions, −7 deletions">
                           <span className="text-success">+42</span>
                           <span className="text-danger ml-0.5">−7</span>
                         </span>
                       )}
                       {worktreeDetail === 'age' && (
-                        <span className="text-[10px] font-mono shrink-0 leading-none text-dim group-hover:hidden" title="Created 5 days ago">
+                        <span className="text-xs font-mono shrink-0 leading-none text-dim group-hover:hidden" title="Created 5 days ago">
                           5d
                         </span>
                       )}
                       {worktreeDetail === 'pr' && (
                         <span className="inline-flex items-center gap-1.5 shrink-0 group-hover:hidden">
-                          <span className="text-[10px] text-dim truncate max-w-[6rem]" title="Milestone: v2.10">v2.10</span>
-                          <span className="text-[10px] font-mono leading-none px-1.5 py-0.5 rounded-full bg-panel border border-border-strong text-fg-bright">
+                          <span className="text-xs text-dim truncate max-w-[6rem]" title="Milestone: v2.10">v2.10</span>
+                          <span className="text-xs font-mono leading-none px-1.5 py-0.5 rounded-full bg-panel border border-border-strong text-fg-bright">
                             #123
                           </span>
                           <span
@@ -2485,10 +2485,10 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                         </span>
                       )}
                       <span className="hidden group-hover:flex text-faint shrink-0" title="Snooze">
-                        <Moon size={12} />
+                        <Moon className="icon-xs" />
                       </span>
                       <span className="hidden group-hover:flex text-faint shrink-0" title="Remove worktree">
-                        <Trash2 size={12} />
+                        <Trash2 className="icon-xs" />
                       </span>
                     </div>
                   </div>
@@ -2890,7 +2890,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                                     <span className="flex items-center gap-1.5 text-sm text-fg">
                                       {expanded ? <ChevronDown className="icon-xs text-dim" /> : <ChevronRight className="icon-xs text-dim" />}
                                       {family.label}
-                                      <span className="text-[10px] text-faint">({family.actions.length})</span>
+                                      <span className="text-xs text-faint">({family.actions.length})</span>
                                     </span>
                                     <span className="min-w-[100px] px-2.5 py-1 text-xs text-dim text-center">
                                       {family.summary}

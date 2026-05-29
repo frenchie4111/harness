@@ -8,6 +8,7 @@ import { MonacoDiffEditor } from './MonacoDiffEditor'
 import { Tooltip } from './Tooltip'
 import { useSettings } from '../store'
 import { useBackend } from '../backend'
+import { scaledEditorFontSize } from '../../shared/state/settings'
 
 interface ReviewDiffPaneProps {
   worktreePath: string
@@ -436,7 +437,7 @@ export function ReviewDiffPane({
             filePath={file.path}
             readOnly
             fontFamily={settings.terminalFontFamily || undefined}
-            fontSize={settings.terminalFontSize}
+            fontSize={scaledEditorFontSize(settings.terminalFontSize, settings.uiScale)}
             wordWrap={wordWrap}
             onReferenceLine={handleReferenceLine}
             onEditorMount={handleEditorMount}
