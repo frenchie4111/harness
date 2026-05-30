@@ -32,6 +32,7 @@ import { WorktreeDeletionFSM } from './worktree-deletion-fsm'
 import { PanesFSM, stripTransientTabFields } from './panes-fsm'
 import { ActivityDeriver } from './activity-deriver'
 import { AutoSleepMonitor } from './auto-sleep-monitor'
+import { WakeLockController } from './wake-lock-controller'
 import { WorktreeWatcher } from './worktree-watcher'
 import { SnoozeTimer } from './snooze-timer'
 import { getWeeklyStats } from './weekly-stats'
@@ -73,7 +74,8 @@ import { hasScratchpadNote } from '../shared/state/scratchpad'
 import {
   DEFAULT_LIGHT_THEME,
   DEFAULT_DARK_THEME,
-  DEFAULT_PR_REVIEW_PROMPT
+  DEFAULT_PR_REVIEW_PROMPT,
+  type PreventSleepMode
 } from '../shared/state/settings'
 import { watchStatusDir } from './hooks'
 import { getAgent, type AgentKind } from './agents'
@@ -867,6 +869,11 @@ const activityDeriver = new ActivityDeriver(store)
 // settings.autoSleepMinutes). Constructed after panesFSM since it
 // drives panesFSM.sleepJsonClaudeTab.
 const autoSleepMonitor = new AutoSleepMonitor(store, panesFSM)
+
+// Holds a power-save blocker while the configured prevent-sleep mode
+// (or the temporary timer) wants the machine awake. Pure side effect —
+// subscribes to the store, never owns slice state.
+const wakeLockController = new WakeLockController(store)
 
 /** Install agent status hooks at the user-scope settings file for both
  *  supported agents. Called once when consent flips to 'accepted'. The
@@ -3134,6 +3141,32 @@ function registerIpcHandlers(): void {
     return true
   })
 
+  // ---- Prevent-sleep (wake-lock) -------------------------------------
+  // Mode is persisted; the temporary "+1h" timer (preventSleepUntil) is
+  // session-only and dispatched without saving.
+  const PREVENT_SLEEP_MODES: PreventSleepMode[] = ['off', 'while-agents-running', 'always']
+
+  transport.onRequest('config:setPreventSleepMode', (_ctx, value: PreventSleepMode) => {
+    if (!PREVENT_SLEEP_MODES.includes(value)) return false
+    if (value === 'off') delete config.preventSleepMode
+    else config.preventSleepMode = value
+    saveConfig(config)
+    store.dispatch({ type: 'settings/preventSleepModeChanged', payload: value })
+    return true
+  })
+
+  transport.onRequest('config:setPreventSleepUntil', (_ctx, value: number | null) => {
+    // null / invalid → clear; a positive epoch-ms → arm. Session-only: never
+    // written to config.json — the WakeLockController owns expiry and the
+    // timer resets on relaunch by design.
+    const next =
+      typeof value === 'number' && Number.isFinite(value) && value > 0
+        ? Math.floor(value)
+        : null
+    store.dispatch({ type: 'settings/preventSleepUntilChanged', payload: next })
+    return true
+  })
+
   // ---- Multi-backend connections list (Tier 1) -----------------------
   // The connections list is renderer-shell-owned (per plans/tier-1-multi-
   // backend-ux.md §C/§G) — it lives in the local Electron's config.json,
@@ -3538,6 +3571,8 @@ async function runBoot(): Promise<void> {
   activityDeriver.start()
 
   autoSleepMonitor.start()
+
+  wakeLockController.start()
 
   // Resolve the GitHub token (PAT → gh CLI → none) before the PR poller
   // makes its first call. The poller's initial refreshAll waits on this.

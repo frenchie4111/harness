@@ -46,6 +46,7 @@ export type Action =
   | 'uiScaleDown'
   | 'uiScaleReset'
   | 'cycleWorktreeDetail'
+  | 'cyclePreventSleep'
 
 export interface Modifiers {
   cmd?: boolean
@@ -117,6 +118,7 @@ export const DEFAULT_HOTKEYS: Record<Action, HotkeyBinding> = {
   uiScaleDown: { key: '-', modifiers: { cmd: true } },
   uiScaleReset: { key: '=', modifiers: { cmd: true } },
   cycleWorktreeDetail: { key: 'i', modifiers: { cmd: true } },
+  cyclePreventSleep: { key: 'u', modifiers: { cmd: true, shift: true } },
 }
 
 /** Actions triggered by a gesture (e.g. double-tap Shift) rather than a
@@ -256,7 +258,8 @@ export const ACTION_LABELS: Record<Action, string> = {
   uiScaleUp: 'Increase UI size',
   uiScaleDown: 'Decrease UI size',
   uiScaleReset: 'Reset UI size',
-  cycleWorktreeDetail: 'Cycle worktree detail (sidebar)'
+  cycleWorktreeDetail: 'Cycle worktree detail (sidebar)',
+  cyclePreventSleep: 'Cycle prevent-sleep mode'
 }
 
 export type CategoryId =
@@ -314,7 +317,7 @@ export const ACTION_CATEGORIES: HotkeyCategory[] = [
   {
     id: 'layout',
     label: 'Window layout',
-    actions: ['toggleSidebar', 'toggleRightColumn', 'toggleSingleScreen', 'uiScaleUp', 'uiScaleDown', 'uiScaleReset', 'cycleWorktreeDetail']
+    actions: ['toggleSidebar', 'toggleRightColumn', 'toggleSingleScreen', 'uiScaleUp', 'uiScaleDown', 'uiScaleReset', 'cycleWorktreeDetail', 'cyclePreventSleep']
   },
   {
     id: 'commands',

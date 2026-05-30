@@ -94,6 +94,11 @@ export const DEFAULT_DARK_THEME = 'dark'
 export const DEFAULT_PR_REVIEW_PROMPT =
   "Review this PR. Read the diff, then check for correctness issues, design problems, security concerns, and missing edge cases. Cite file paths and line numbers for anything you flag. Skip restating what the PR does — focus on what could go wrong or be improved."
 
+/** Primary wake-lock mode. The actual hold = (this mode wants it) OR (the
+ *  transient `preventSleepUntil` timer is still live). Single-select; the
+ *  timer overlay covers the "also keep awake right now" case. */
+export type PreventSleepMode = 'off' | 'while-agents-running' | 'always'
+
 export interface SettingsState {
   /** Whether the active theme is the light theme, the dark theme, or follows
    *  the OS appearance. Default 'system'. */
@@ -216,6 +221,17 @@ export interface SettingsState {
    *  the feed contents. Set by the "Hide all announcements" action and
    *  cleared only by the user. */
   announcementsMuted: boolean
+  /** Primary wake-lock mode. The side effect (a power-save blocker)
+   *  lives in the main-process WakeLockController — never in the store.
+   *  Default 'off'. */
+  preventSleepMode: PreventSleepMode
+  /** Epoch-ms deadline for the temporary "keep awake for the next hour"
+   *  overlay, or null when no timer is running. Shared world state (a
+   *  second client sees the countdown) but deliberately NOT persisted to
+   *  config — a temporary hold resets on app relaunch rather than
+   *  surprising the user days later. The WakeLockController clears it back
+   *  to null when the deadline passes. */
+  preventSleepUntil: number | null
 }
 
 export type SettingsEvent =
@@ -274,6 +290,8 @@ export type SettingsEvent =
   | { type: 'settings/prReviewPromptChanged'; payload: string }
   | { type: 'settings/announcementDismissed'; payload: string }
   | { type: 'settings/announcementsMutedChanged'; payload: boolean }
+  | { type: 'settings/preventSleepModeChanged'; payload: PreventSleepMode }
+  | { type: 'settings/preventSleepUntilChanged'; payload: number | null }
 
 // Client-side placeholder. Real values are seeded in the main-process Store
 // constructor from the on-disk config and secrets.
@@ -329,7 +347,9 @@ export const initialSettings: SettingsState = {
   expandedDiagnosticLoggingEnabled: false,
   prReviewPrompt: DEFAULT_PR_REVIEW_PROMPT,
   dismissedAnnouncementIds: [],
-  announcementsMuted: false
+  announcementsMuted: false,
+  preventSleepMode: 'off',
+  preventSleepUntil: null
 }
 
 export function settingsReducer(state: SettingsState, event: SettingsEvent): SettingsState {
@@ -443,6 +463,10 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
     }
     case 'settings/announcementsMutedChanged':
       return { ...state, announcementsMuted: event.payload }
+    case 'settings/preventSleepModeChanged':
+      return { ...state, preventSleepMode: event.payload }
+    case 'settings/preventSleepUntilChanged':
+      return { ...state, preventSleepUntil: event.payload }
     default: {
       const _exhaustive: never = event
       void _exhaustive
