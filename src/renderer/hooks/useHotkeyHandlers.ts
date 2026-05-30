@@ -16,6 +16,8 @@ import {
 import { useBackend } from '../backend'
 import { SCALES } from '../../shared/state/settings'
 import { cycleWorktreeDetail } from '../worktree-detail-override'
+import { advancePreventSleep, PREVENT_SLEEP_META, PREVENT_SLEEP_TOAST_KEY } from '../prevent-sleep'
+import { showToast } from '../toast'
 
 interface UseHotkeyHandlersArgs {
   worktrees: Worktree[]
@@ -109,6 +111,8 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
   const viewerLogin = allSettings.viewerLogin
   const uiScale = allSettings.uiScale
   const configuredWorktreeDetail = allSettings.worktreeDetail
+  const preventSleepMode = allSettings.preventSleepMode
+  const preventSleepUntil = allSettings.preventSleepUntil
   const snoozeByPath = useSnooze().byPath
   const snoozedPaths = useMemo(() => {
     const m: Record<string, true> = {}
@@ -413,6 +417,15 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
           behavior: 'deny',
           message: 'user denied'
         })
+      },
+      cyclePreventSleep: () => {
+        const next = advancePreventSleep(
+          preventSleepMode,
+          preventSleepUntil,
+          Date.now(),
+          backend
+        )
+        showToast(PREVENT_SLEEP_META[next].toast, next, PREVENT_SLEEP_TOAST_KEY)
       }
     }),
     [
@@ -446,7 +459,9 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       uiScale,
       configuredWorktreeDetail,
       onStartAliasEdit,
-      activeApproval
+      activeApproval,
+      preventSleepMode,
+      preventSleepUntil
     ]
   )
 
