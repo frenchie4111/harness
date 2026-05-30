@@ -17,6 +17,7 @@ import {
   CircleX
 } from 'lucide-react'
 import { Tooltip } from './Tooltip'
+import { CommitInfoModal } from './CommitInfoModal'
 import { useActiveBackend, usePanes, usePrs, useRepoConfigs, useSettings, useWorktrees } from '../store'
 import { useBackend } from '../backend'
 import { useWatchedQuery } from '../hooks/useWatchedQuery'
@@ -137,6 +138,15 @@ export function CollapsedRightPanel({
     : changedFilesData?.branch.length ?? 0
   const commitsCount = commitsData?.length ?? 0
   const hasUnpushedCommits = !!commitsData?.some((c) => !c.pushed)
+
+  // Commit-info popover opened from the commits button. Tracks the selected
+  // commit by index so the popup's up/down controls can walk the list; x is
+  // the strip's left edge (the popover flies out from there), y the button.
+  const [commitPopover, setCommitPopover] = useState<{
+    index: number
+    x: number
+    y: number
+  } | null>(null)
 
   // Expand the right column AND uncollapse the named RightPanel section.
   // RightPanel listens for the CustomEvent and self-expands. Sections that
@@ -291,7 +301,9 @@ export function CollapsedRightPanel({
   const failedChecksCount = pr?.checks.filter((c) => c.state === 'failure' || c.state === 'error').length ?? 0
 
   return (
+    <>
     <div
+      data-right-sidebar
       className="shrink-0 h-full flex flex-col bg-panel border-l border-border"
       style={{ width: WIDTH }}
     >
@@ -399,7 +411,19 @@ export function CollapsedRightPanel({
           side="left"
         >
           <button
-            onClick={() => expandSection('commits')}
+            onClick={(e) => {
+              // Open the newest commit in the popup; fall back to expanding the
+              // section when there are no commits to show.
+              if (commitsCount === 0) {
+                expandSection('commits')
+                return
+              }
+              const sidebar = (e.currentTarget as HTMLElement).closest(
+                '[data-right-sidebar]'
+              ) as HTMLElement | null
+              const x = sidebar ? sidebar.getBoundingClientRect().left : e.clientX
+              setCommitPopover({ index: 0, x, y: e.clientY })
+            }}
             className={`${hasUnpushedCommits ? 'text-warning' : 'text-dim'} hover:text-fg hover:bg-surface rounded px-1 py-1 transition-colors cursor-pointer flex items-center gap-0.5`}
             aria-label={`${commitsCount} commits`}
           >
@@ -471,5 +495,25 @@ export function CollapsedRightPanel({
         </Tooltip>
       </div>
     </div>
+    {commitPopover && worktreePath && commitsData?.[commitPopover.index] && (
+      <CommitInfoModal
+        worktreePath={worktreePath}
+        sha={commitsData[commitPopover.index].hash}
+        anchor={{ x: commitPopover.x, y: commitPopover.y }}
+        placement="right-edge"
+        nav={{
+          onPrev: () =>
+            setCommitPopover((p) => (p && p.index > 0 ? { ...p, index: p.index - 1 } : p)),
+          onNext: () =>
+            setCommitPopover((p) =>
+              p && p.index < commitsCount - 1 ? { ...p, index: p.index + 1 } : p
+            ),
+          hasPrev: commitPopover.index > 0,
+          hasNext: commitPopover.index < commitsCount - 1
+        }}
+        onClose={() => setCommitPopover(null)}
+      />
+    )}
+    </>
   )
 }

@@ -146,6 +146,7 @@ export function RightColumn({
 
   return (
     <div
+      data-right-sidebar
       className="shrink-0 h-full flex flex-col bg-panel"
       style={{ width }}
     >

@@ -1,14 +1,29 @@
 import { useEffect, useState } from 'react'
-import { GitCommitHorizontal, Copy, Check, X, Loader2 } from 'lucide-react'
+import { GitCommitHorizontal, Copy, Check, X, Loader2, ChevronUp, ChevronDown } from 'lucide-react'
 import { getBackend } from '../backend'
 import type { ChangedFile, CommitMeta } from '../types'
+
+/** Optional prev/next navigation through a surrounding list of commits.
+ *  Only the Commits panel supplies this; the terminal popups omit it. */
+export interface CommitNav {
+  onPrev: () => void
+  onNext: () => void
+  hasPrev: boolean
+  hasNext: boolean
+}
 
 interface CommitInfoModalProps {
   worktreePath: string
   /** Full or abbreviated SHA to render. */
   sha: string
-  /** Viewport coordinates of the click, used to anchor the popover. */
+  /** Viewport coordinates used to anchor the popover. */
   anchor: { x: number; y: number }
+  /** 'cursor' (default): popover's top-left sits at the anchor (terminal use).
+   *  'right-edge': popover's RIGHT edge sits at anchor.x so it flies out from
+   *  the left side of the right sidebar (Commits panel use). */
+  placement?: 'cursor' | 'right-edge'
+  /** When present, renders up/down controls (and binds ↑/↓) to walk the list. */
+  nav?: CommitNav
   onClose: () => void
 }
 
@@ -58,6 +73,8 @@ export function CommitInfoModal({
   worktreePath,
   sha,
   anchor,
+  placement = 'cursor',
+  nav,
   onClose
 }: CommitInfoModalProps): JSX.Element {
   const [meta, setMeta] = useState<CommitMeta | null>(null)
@@ -99,6 +116,14 @@ export function CommitInfoModal({
         // propagation the Escape would also be sent to the agent/PTY.
         e.stopPropagation()
         onClose()
+      } else if (nav && e.key === 'ArrowUp' && nav.hasPrev) {
+        e.preventDefault()
+        e.stopPropagation()
+        nav.onPrev()
+      } else if (nav && e.key === 'ArrowDown' && nav.hasNext) {
+        e.preventDefault()
+        e.stopPropagation()
+        nav.onNext()
       }
     }
     // Capture phase: xterm's textarea handler calls stopPropagation() on keys
@@ -106,7 +131,7 @@ export function CommitInfoModal({
     // the terminal is focused. Capturing runs us first.
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [onClose])
+  }, [onClose, nav])
 
   const copySha = (): void => {
     const full = meta?.hash ?? sha
@@ -118,10 +143,16 @@ export function CommitInfoModal({
 
   const shortSha = meta?.shortHash ?? sha.slice(0, 10)
 
-  // Anchor below-right of the click, clamped into the viewport.
+  // Clamp the popover into the viewport. 'right-edge' butts its right side
+  // against anchor.x (the sidebar's left edge) so it reads as flying out of
+  // the sidebar; 'cursor' drops it below-right of the click.
   const maxHeight = Math.round(window.innerHeight * POPOVER_MAX_HEIGHT_FRAC)
-  const left = Math.max(8, Math.min(anchor.x, window.innerWidth - POPOVER_WIDTH - 8))
-  const top = Math.max(8, Math.min(anchor.y + 10, window.innerHeight - maxHeight - 8))
+  const left =
+    placement === 'right-edge'
+      ? Math.max(8, anchor.x - POPOVER_WIDTH - 6)
+      : Math.max(8, Math.min(anchor.x, window.innerWidth - POPOVER_WIDTH - 8))
+  const topRaw = placement === 'right-edge' ? anchor.y - 8 : anchor.y + 10
+  const top = Math.max(8, Math.min(topRaw, window.innerHeight - maxHeight - 8))
 
   return (
     // Transparent full-screen catcher: any click outside the popover closes it.
@@ -150,13 +181,35 @@ export function CommitInfoModal({
               {meta.subject}
             </span>
           )}
-          <button
-            onClick={onClose}
-            title="Close"
-            className="ml-auto p-0.5 rounded hover:bg-surface-hover text-faint hover:text-fg-bright cursor-pointer shrink-0"
-          >
-            <X className="icon-xs" />
-          </button>
+          <div className="ml-auto flex items-center gap-0.5 shrink-0">
+            {nav && (
+              <>
+                <button
+                  onClick={nav.onPrev}
+                  disabled={!nav.hasPrev}
+                  title="Previous commit (↑)"
+                  className="p-0.5 rounded hover:bg-surface-hover text-faint hover:text-fg-bright cursor-pointer disabled:opacity-30 disabled:cursor-default disabled:hover:bg-transparent disabled:hover:text-faint"
+                >
+                  <ChevronUp className="icon-xs" />
+                </button>
+                <button
+                  onClick={nav.onNext}
+                  disabled={!nav.hasNext}
+                  title="Next commit (↓)"
+                  className="p-0.5 rounded hover:bg-surface-hover text-faint hover:text-fg-bright cursor-pointer disabled:opacity-30 disabled:cursor-default disabled:hover:bg-transparent disabled:hover:text-faint"
+                >
+                  <ChevronDown className="icon-xs" />
+                </button>
+              </>
+            )}
+            <button
+              onClick={onClose}
+              title="Close"
+              className="p-0.5 rounded hover:bg-surface-hover text-faint hover:text-fg-bright cursor-pointer"
+            >
+              <X className="icon-xs" />
+            </button>
+          </div>
         </div>
 
         {state === 'loading' && (
