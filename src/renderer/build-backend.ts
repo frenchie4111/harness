@@ -39,6 +39,7 @@ import type {
   StateEventListener
 } from '../shared/transport/transport'
 import type { ElectronAPI } from './types'
+import type { PreventSleepMode } from '../shared/state/settings'
 
 export type { ElectronOnlyHelpers }
 
@@ -268,6 +269,10 @@ export function buildBackend(
     setJsonModeDefaultPermissionMode: (value: 'default' | 'acceptEdits' | 'plan') =>
       req('config:setJsonModeDefaultPermissionMode', value),
     setAutoSleepMinutes: (value: number) => req('config:setAutoSleepMinutes', value),
+    setPreventSleepMode: (value: PreventSleepMode) =>
+      req('config:setPreventSleepMode', value),
+    setPreventSleepUntil: (value: number | null) =>
+      req('config:setPreventSleepUntil', value),
     setAutoUpdateEnabled: (enabled: boolean) => req('config:setAutoUpdateEnabled', enabled),
     setWarnBeforeQuitting: (enabled: boolean) => req('config:setWarnBeforeQuitting', enabled),
     setExpandedDiagnosticLoggingEnabled: (enabled: boolean) =>
