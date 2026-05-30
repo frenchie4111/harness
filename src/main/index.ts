@@ -37,7 +37,7 @@ import { SnoozeTimer } from './snooze-timer'
 import { getWeeklyStats } from './weekly-stats'
 import type { TerminalTab, PaneNode, PaneLeaf } from '../shared/state/terminals'
 import { getLeaves, mapLeaves } from '../shared/state/terminals'
-import { listWorktrees, listBranches, continueWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getCommitChangedFiles, getCommitFileDiffSides, getCommitRangeChangedFiles, getCommitRangeFileDiffSides, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, readWorktreeFile, readWorktreeFileBinary, writeWorktreeFile, getFileDiffSides, getCurrentBranch, symlinkClaudeSettings, type MergeStrategy } from './worktree'
+import { listWorktrees, listBranches, continueWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getCommitMeta, getCommitChangedFiles, getCommitFileDiffSides, getCommitRangeChangedFiles, getCommitRangeFileDiffSides, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, listRecentCommitShas, readWorktreeFile, readWorktreeFileBinary, writeWorktreeFile, getFileDiffSides, getCurrentBranch, symlinkClaudeSettings, type MergeStrategy } from './worktree'
 import { listOpenPRs, testToken, starRepo, unstarRepo, isRepoStarred, mergePR, approvePR, getRepoInfo, type GitHubMergeMethod, type MergePRResult } from './github'
 import { AVAILABLE_EDITORS, DEFAULT_EDITOR_ID, openInEditor } from './editor'
 import { setSecret, getSecret, hasSecret, deleteSecret } from './secrets'
@@ -1269,6 +1269,10 @@ function registerIpcHandlers(): void {
     return listAllFiles(worktreePath)
   })
 
+  transport.onRequest('worktree:recentCommitShas', async (_ctx, worktreePath: string) => {
+    return listRecentCommitShas(worktreePath)
+  })
+
   transport.onRequest('worktree:readFile', async (_ctx, worktreePath: string, filePath: string) => {
     return readWorktreeFile(worktreePath, filePath)
   })
@@ -1305,6 +1309,10 @@ function registerIpcHandlers(): void {
 
   transport.onRequest('worktree:commitDiff', async (_ctx, worktreePath: string, hash: string) => {
     return getCommitDiff(worktreePath, hash)
+  })
+
+  transport.onRequest('worktree:commitMeta', async (_ctx, worktreePath: string, hash: string) => {
+    return getCommitMeta(worktreePath, hash)
   })
 
   transport.onRequest('worktree:commitChangedFiles', async (_ctx, worktreePath: string, hash: string) => {

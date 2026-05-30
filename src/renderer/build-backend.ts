@@ -152,6 +152,8 @@ export function buildBackend(
     resolveHome: () => req('fs:resolveHome'),
 
     listAllFiles: (worktreePath: string) => req('worktree:listFiles', worktreePath),
+    listRecentCommitShas: (worktreePath: string) =>
+      req('worktree:recentCommitShas', worktreePath),
     readWorktreeFile: (worktreePath: string, filePath: string) =>
       req('worktree:readFile', worktreePath, filePath),
     readWorktreeFileBinary: (worktreePath: string, filePath: string) =>
@@ -184,6 +186,8 @@ export function buildBackend(
     getBranchCommits: (worktreePath: string) => req('worktree:branchCommits', worktreePath),
     getCommitDiff: (worktreePath: string, hash: string) =>
       req('worktree:commitDiff', worktreePath, hash),
+    getCommitMeta: (worktreePath: string, hash: string) =>
+      req('worktree:commitMeta', worktreePath, hash),
     getCommitChangedFiles: (worktreePath: string, hash: string) =>
       req('worktree:commitChangedFiles', worktreePath, hash),
     getCommitFileDiffSides: (worktreePath: string, hash: string, filePath: string) =>

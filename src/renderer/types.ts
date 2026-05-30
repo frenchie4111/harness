@@ -91,7 +91,7 @@ export type QuestStep = 'hidden' | 'spawn-second' | 'switch-between' | 'finale' 
 import type { UpdaterStatus } from '../shared/state/updater'
 export type { UpdaterStatus }
 
-export interface CommitDiff {
+export interface CommitMeta {
   hash: string
   shortHash: string
   author: string
@@ -99,6 +99,9 @@ export interface CommitDiff {
   date: string
   subject: string
   body: string
+}
+
+export interface CommitDiff extends CommitMeta {
   diff: string
 }
 
@@ -267,6 +270,7 @@ export interface ElectronAPI {
   getWeeklyStats(): Promise<WeeklyStats>
   getBranchCommits(worktreePath: string): Promise<BranchCommit[]>
   getCommitDiff(worktreePath: string, hash: string): Promise<CommitDiff | null>
+  getCommitMeta(worktreePath: string, hash: string): Promise<CommitMeta | null>
   getCommitChangedFiles(worktreePath: string, hash: string): Promise<ChangedFile[]>
   getCommitFileDiffSides(worktreePath: string, hash: string, filePath: string): Promise<FileDiffSides>
   getCommitRangeChangedFiles(worktreePath: string, fromHash: string, toHash: string): Promise<ChangedFile[]>
@@ -277,6 +281,7 @@ export interface ElectronAPI {
     filePath: string
   ): Promise<FileDiffSides>
   listAllFiles(worktreePath: string): Promise<string[]>
+  listRecentCommitShas(worktreePath: string): Promise<string[]>
   readWorktreeFile(worktreePath: string, filePath: string): Promise<FileReadResult>
   readWorktreeFileBinary(
     worktreePath: string,
