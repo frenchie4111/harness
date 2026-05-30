@@ -2195,6 +2195,13 @@ function registerIpcHandlers(): void {
     return true
   })
   transport.onRequest(
+    'panes:openFile',
+    (_ctx, wtPath: string, filePath: string, nearTabId?: string) => {
+      panesFSM.openFileTab(wtPath, filePath, nearTabId)
+      return true
+    }
+  )
+  transport.onRequest(
     'panes:setReviewSelection',
     (_ctx, wtPath: string, tabId: string, fromCommit?: string, toCommit?: string) => {
       panesFSM.setReviewSelection(wtPath, tabId, fromCommit, toCommit)

@@ -8,6 +8,11 @@ import '@xterm/xterm/css/xterm.css'
 import type { StateEvent } from '../../shared/state'
 import { getClientId, subscribeActiveTransportReconnect, useSettings, useTerminalSession } from '../store'
 import { getBackend, useBackend } from '../backend'
+import {
+  makeFileLinkProvider,
+  loadWorktreeFiles,
+  getCachedWorktreeFiles
+} from '../terminal-file-links'
 import { scaledEditorFontSize, type UiScale } from '../../shared/state/settings'
 import { Eye, X, Sparkles } from 'lucide-react'
 import { Tooltip } from './Tooltip'
@@ -275,6 +280,14 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
   initFontCache()
   const backend = useBackend()
   const chatPromotionDismissed = useSettings().chatPromotionDismissed
+
+  // Prime + refresh the worktree file list that validates file-path links.
+  // Shared across this worktree's tabs and rate-limited inside
+  // loadWorktreeFiles, so reloading when the tab becomes visible is cheap.
+  useEffect(() => {
+    if (!visible) return
+    void loadWorktreeFiles(cwd, (c) => backend.listAllFiles(c))
+  }, [cwd, visible, backend])
   const [exited, setExited] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
@@ -397,6 +410,24 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
     const searchResultsSub = searchAddon.onDidChangeResults((e) => {
       setSearchResults({ resultIndex: e.resultIndex, resultCount: e.resultCount })
     })
+
+    // File-path links: validate against the worktree's file list and make
+    // real, in-worktree paths clickable. Like URLs: plain click opens the
+    // file in the external editor; Cmd/Ctrl-click opens an in-app file tab.
+    const fileLinkProvider = terminal.registerLinkProvider(
+      makeFileLinkProvider({
+        terminal,
+        cwd,
+        getKnownFiles: () => getCachedWorktreeFiles(cwd),
+        openInApp: (rel) => {
+          void backend.panesOpenFile(cwd, rel, terminalId)
+        },
+        openInEditor: (rel) => {
+          void backend.openInEditor(cwd, rel)
+        },
+        onHoverChange: (hovering) => setHoveredLink(hovering ? 'file:' : null)
+      })
+    )
 
     // Translate Shift+Enter into "backslash + Enter" (\\\r). By default xterm
     // sends bare \r for both Enter and Shift+Enter, so Claude Code can't tell
@@ -645,6 +676,7 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
       cleanupExit?.()
       searchResultsSub.dispose()
       progressSub.dispose()
+      fileLinkProvider.dispose()
       searchAddonRef.current = null
       terminal.dispose()
     }

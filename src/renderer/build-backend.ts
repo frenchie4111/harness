@@ -327,6 +327,8 @@ export function buildBackend(
     panesSleepTab: (wtPath: string, tabId: string) => req('panes:sleepTab', wtPath, tabId),
     panesWakeTab: (wtPath: string, tabId: string) => req('panes:wakeTab', wtPath, tabId),
     panesOpenReview: (wtPath: string) => req('panes:openReview', wtPath),
+    panesOpenFile: (wtPath: string, filePath: string, nearTabId?: string) =>
+      req('panes:openFile', wtPath, filePath, nearTabId),
     panesSetReviewSelection: (
       wtPath: string,
       tabId: string,

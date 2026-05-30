@@ -529,6 +529,45 @@ export class PanesFSM {
     this.addTab(wtPath, tab)
   }
 
+  /** Open (or focus) a file viewer tab for `filePath` (worktree-relative).
+   *  Dedupes on filePath so opening the same file from the changed-files
+   *  panel or a clicked terminal file-link converges on one shared tab.
+   *  Uses the same `file-<path>` id scheme as the renderer's handleOpenFile.
+   *  When `nearTabId` is given (the terminal a file-link was clicked in), the
+   *  new tab opens in that terminal's pane so a split layout opens the file
+   *  where the click happened rather than always in the first pane. */
+  openFileTab(wtPath: string, filePath: string, nearTabId?: string): void {
+    const tree = this.getTree(wtPath)
+    if (tree) {
+      let existing: { paneId: string; tabId: string } | null = null
+      for (const leaf of getLeaves(tree)) {
+        for (const tab of leaf.tabs) {
+          if (tab.type === 'file' && tab.filePath === filePath) {
+            existing = { paneId: leaf.id, tabId: tab.id }
+            break
+          }
+        }
+        if (existing) break
+      }
+      if (existing) {
+        const updated = mapLeaves(tree, (leaf) =>
+          leaf.id === existing!.paneId ? { ...leaf, activeTabId: existing!.tabId } : leaf
+        )
+        this.commit(wtPath, updated)
+        return
+      }
+    }
+    const targetPaneId =
+      tree && nearTabId ? findLeafByTabId(tree, nearTabId)?.id : undefined
+    const tab: TerminalTab = {
+      id: `file-${filePath}`,
+      type: 'file',
+      label: filePath.split('/').pop() || filePath,
+      filePath
+    }
+    this.addTab(wtPath, tab, targetPaneId)
+  }
+
   /** Update the commit range a review tab is showing. Called by the
    *  in-view commit picker. Persists nothing (review tabs are ephemeral). */
   setReviewSelection(
