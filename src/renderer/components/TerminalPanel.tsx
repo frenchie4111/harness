@@ -125,6 +125,12 @@ interface SortableTabProps {
   onRename: (label: string) => void
 }
 
+// Interactive session tabs (Claude/agent terminals, raw shells, chat) and
+// browser tabs carry a user-meaningful name. The remaining content tabs
+// (diff/file/review) are driven by what they're showing, so renaming them
+// is disallowed.
+const RENAMEABLE_TAB_TYPES = new Set<TerminalTab['type']>(['agent', 'shell', 'json-claude', 'browser'])
+
 const PROGRESS_COLOR: Record<1 | 2 | 3 | 4, string> = {
   1: 'bg-success',
   2: 'bg-danger',
@@ -189,6 +195,10 @@ function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect
     }
   }, [menu])
 
+  const canRename = RENAMEABLE_TAB_TYPES.has(tab.type)
+  const canSleep = !!onSleepTab && tab.type === 'json-claude' && (tab.mode ?? 'awake') === 'awake'
+  const canConvert = !!onConvertTabType && (tab.type === 'agent' || tab.type === 'json-claude')
+  const hasMenuItems = canRename || canSleep || canConvert
   const reviewProgress = useReviewProgress(tab.type === 'review' ? tab.id : '')
   const baseLabel = tab.customLabel ?? tab.label
   const displayLabel =
@@ -199,9 +209,10 @@ function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect
   const [editValue, setEditValue] = useState(displayLabel)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const startEditing = useCallback(() => {
+    if (!canRename) return
     setEditValue(displayLabel)
     setEditing(true)
-  }, [displayLabel])
+  }, [canRename, displayLabel])
   useEffect(() => {
     if (editing) {
       const el = inputRef.current
@@ -276,6 +287,7 @@ function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect
       }}
       onContextMenu={(e) => {
         e.preventDefault()
+        if (!hasMenuItems) return
         setMenu({ x: e.clientX, y: e.clientY })
       }}
     >
@@ -337,17 +349,19 @@ function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect
           style={{ left: menu.x, top: menu.y }}
           onMouseDown={(e) => e.stopPropagation()}
         >
-          <button
-            className="block w-full text-left px-3 py-1.5 hover:bg-panel text-fg-bright cursor-pointer"
-            onClick={(e) => {
-              e.stopPropagation()
-              setMenu(null)
-              startEditing()
-            }}
-          >
-            Rename Tab
-          </button>
-          {tab.customLabel !== undefined && (
+          {canRename && (
+            <button
+              className="block w-full text-left px-3 py-1.5 hover:bg-panel text-fg-bright cursor-pointer"
+              onClick={(e) => {
+                e.stopPropagation()
+                setMenu(null)
+                startEditing()
+              }}
+            >
+              Rename Tab
+            </button>
+          )}
+          {canRename && tab.customLabel !== undefined && (
             <button
               className="block w-full text-left px-3 py-1.5 hover:bg-panel text-fg-bright cursor-pointer"
               onClick={(e) => {
@@ -359,7 +373,7 @@ function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect
               Reset Name
             </button>
           )}
-          {onSleepTab && tab.type === 'json-claude' && (tab.mode ?? 'awake') === 'awake' && (
+          {canSleep && (
             <button
               className="block w-full text-left px-3 py-1.5 hover:bg-panel text-fg-bright cursor-pointer"
               onClick={(e) => {
