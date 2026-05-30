@@ -64,6 +64,19 @@ export interface TerminalTab {
   /** For shell tabs: directory to run in. Relative paths resolve against the
    * worktree root; absolute paths are used as-is. */
   cwd?: string
+  /** For shell tabs spawned via the MCP `create_shell` with `background:true`:
+   * the tab is created without stealing focus and its title renders italic.
+   * Cleared the moment the tab is selected (terminals/tabSelected), after
+   * which it behaves like any other shell tab. Also drives spawn-while-hidden
+   * in XTerminal so a background command runs even though its tab is never
+   * displayed. */
+  background?: boolean
+  /** For shell tabs: seconds to wait after a *successful* exit (code 0)
+   * before the tab auto-closes, unless it is its leaf's active tab at that
+   * moment. Undefined = never auto-close. Set by the MCP `create_shell`
+   * (default 30); cleared to undefined when the user clicks "Keep open",
+   * which the ShellAutoCloseMonitor re-reads at fire time to cancel. */
+  closeDelay?: number
   /** For review tabs: which commits the review is showing. When both
    *  reviewFromCommit and reviewToCommit are undefined, the review shows the
    *  whole branch (uncommitted + all commits ahead of base). When set, they
@@ -300,6 +313,10 @@ export type TerminalsEvent =
         fromCommit?: string
         toCommit?: string
       }
+    }
+  | {
+      type: 'terminals/tabCloseDelayChanged'
+      payload: { worktreePath: string; tabId: string; closeDelay: number | null }
     }
 
 export const initialTerminals: TerminalsState = {
@@ -674,6 +691,32 @@ export function terminalsReducer(
         else next.reviewFromCommit = fromCommit
         if (toCommit === undefined) delete next.reviewToCommit
         else next.reviewToCommit = toCommit
+        return {
+          ...leaf,
+          tabs: [...leaf.tabs.slice(0, i), next, ...leaf.tabs.slice(i + 1)]
+        }
+      })
+      if (!mutated) return state
+      return { ...state, panes: { ...state.panes, [worktreePath]: updated } }
+    }
+    case 'terminals/tabCloseDelayChanged': {
+      const { worktreePath, tabId, closeDelay } = event.payload
+      const tree = state.panes[worktreePath]
+      if (!tree) return state
+      let mutated = false
+      const updated = mapLeaves(tree, (leaf) => {
+        const i = leaf.tabs.findIndex((t) => t.id === tabId)
+        if (i === -1) return leaf
+        const tab = leaf.tabs[i]
+        const next: TerminalTab = { ...tab }
+        if (closeDelay === null) {
+          if (tab.closeDelay === undefined) return leaf
+          delete next.closeDelay
+        } else {
+          if (tab.closeDelay === closeDelay) return leaf
+          next.closeDelay = closeDelay
+        }
+        mutated = true
         return {
           ...leaf,
           tabs: [...leaf.tabs.slice(0, i), next, ...leaf.tabs.slice(i + 1)]

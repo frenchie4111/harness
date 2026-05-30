@@ -350,7 +350,7 @@ const TOOLS = [
   {
     name: 'create_shell',
     description:
-      "Spawn a new shell tab in this worktree. If `command` is set, runs it via `zsh -ilc <command>`; otherwise opens an interactive login shell. Returns the new shell's id — keep it so you can read_shell_output / kill_shell later. Use this instead of telling the user to run `npm run dev` by hand.",
+      "Spawn a new shell tab in this worktree. If `command` is set, runs it via `zsh -ilc <command>`; otherwise opens an interactive login shell. Returns the new shell's id — keep it so you can read_shell_output / kill_shell later. Use this instead of telling the user to run `npm run dev` by hand. By default the tab auto-closes 30s after the command finishes successfully (override with close_delay); a failed command leaves the tab open.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -368,6 +368,16 @@ const TOOLS = [
           type: 'string',
           description:
             'Optional short label shown on the tab. Defaults to a truncated form of the command.'
+        },
+        background: {
+          type: 'boolean',
+          description:
+            'When true, the tab is created without switching the UI to it, and its title renders italic until selected. Use for commands you want to run without interrupting the user. Defaults to false.'
+        },
+        close_delay: {
+          type: 'number',
+          description:
+            'Seconds (integer >= 0) to wait after the command finishes successfully before auto-closing the tab. 0 closes immediately on success. Failed commands never auto-close, and a tab the user is actively viewing will not close. Defaults to 30.'
         }
       }
     }
@@ -635,13 +645,17 @@ async function handleToolCall(name, args) {
     return JSON.stringify((r && r.shells) || [], null, 2)
   }
   if (name === 'create_shell') {
-    const r = await callControl('POST', '/shells', {
+    const body = {
       command: (args && args.command) || '',
       cwd: (args && args.cwd) || '',
-      label: (args && args.label) || ''
-    })
+      label: (args && args.label) || '',
+      background: !!(args && args.background)
+    }
+    if (args && args.close_delay != null) body.closeDelay = args.close_delay
+    const r = await callControl('POST', '/shells', body)
     const commandPart = args && args.command ? ' (' + args.command + ')' : ''
-    return 'Created shell ' + r.id + ' "' + r.label + '"' + commandPart
+    const bgPart = body.background ? ' [background]' : ''
+    return 'Created shell ' + r.id + ' "' + r.label + '"' + commandPart + bgPart
   }
   if (name === 'read_shell_output') {
     if (!args || !args.shell_id) throw new Error('shell_id is required')

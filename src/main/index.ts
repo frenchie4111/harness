@@ -32,6 +32,7 @@ import { WorktreeDeletionFSM } from './worktree-deletion-fsm'
 import { PanesFSM, stripTransientTabFields } from './panes-fsm'
 import { ActivityDeriver } from './activity-deriver'
 import { AutoSleepMonitor } from './auto-sleep-monitor'
+import { ShellAutoCloseMonitor } from './shell-autoclose-monitor'
 import { WorktreeWatcher } from './worktree-watcher'
 import { SnoozeTimer } from './snooze-timer'
 import { getWeeklyStats } from './weekly-stats'
@@ -867,6 +868,11 @@ const activityDeriver = new ActivityDeriver(store)
 // settings.autoSleepMinutes). Constructed after panesFSM since it
 // drives panesFSM.sleepJsonClaudeTab.
 const autoSleepMonitor = new AutoSleepMonitor(store, panesFSM)
+
+// Auto-closes shell tabs a configurable delay after a successful command
+// exit. Self-wires to ptyManager's exit listener in its constructor.
+const shellAutoCloseMonitor = new ShellAutoCloseMonitor(store, panesFSM, ptyManager)
+void shellAutoCloseMonitor
 
 /** Install agent status hooks at the user-scope settings file for both
  *  supported agents. Called once when consent flips to 'accepted'. The
@@ -2384,6 +2390,15 @@ function registerIpcHandlers(): void {
     else if (type === 'shell') panesFSM.wakeShellTab(wtPath, tabId)
     return true
   })
+  // "Keep open" / re-arm for a shell tab's auto-close. delay === null
+  // disarms (clears closeDelay); a number re-arms it.
+  transport.onRequest(
+    'panes:setShellCloseDelay',
+    (_ctx, wtPath: string, tabId: string, delay: number | null) => {
+      panesFSM.setShellCloseDelay(wtPath, tabId, delay)
+      return true
+    }
+  )
   // Renderer-driven lastActive bump. The composer fires this while the
   // user is typing so the auto-sleep monitor can't re-sleep a tab mid-
   // composition — ActivityDeriver only bumps lastActive on status
@@ -3758,17 +3773,24 @@ async function runBoot(): Promise<void> {
         const finalLines = kept.length > lines ? kept.slice(-lines) : kept
         return { output: finalLines.join('\n'), matchCount }
       },
-      createShell: (wtPath, { command, cwd, label }) => {
+      createShell: (wtPath, { command, cwd, label, background, closeDelay }) => {
         const id = `shell-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
         const fallback = command ? command.slice(0, 32) : 'Shell'
         const finalLabel = (label && label.trim()) || fallback
-        panesFSM.addTab(wtPath, {
-          id,
-          type: 'shell',
-          label: finalLabel,
-          command,
-          cwd
-        })
+        panesFSM.addTab(
+          wtPath,
+          {
+            id,
+            type: 'shell',
+            label: finalLabel,
+            command,
+            cwd,
+            background: background || undefined,
+            closeDelay
+          },
+          undefined,
+          { activate: !background }
+        )
         return { id, label: finalLabel }
       },
       killShell: (shellId) => {

@@ -211,6 +211,63 @@ describe('PanesFSM.restoreFromConfig', () => {
   })
 })
 
+describe('PanesFSM.addTab background activation', () => {
+  it('activate:false appends without changing the leaf activeTabId', () => {
+    const { fsm, store } = buildFSM()
+    const wtPath = '/wt/bg'
+    seedLeaf(store, wtPath, {
+      type: 'leaf',
+      id: 'p1',
+      tabs: [{ id: 'agent-1', type: 'agent', label: 'Claude' }],
+      activeTabId: 'agent-1'
+    })
+    fsm.addTab(
+      wtPath,
+      { id: 'sh-1', type: 'shell', label: 'build', background: true },
+      undefined,
+      { activate: false }
+    )
+    const leaf = store.getSnapshot().state.terminals.panes[wtPath] as PaneLeaf
+    expect(leaf.tabs.map((t) => t.id)).toEqual(['agent-1', 'sh-1'])
+    expect(leaf.activeTabId).toBe('agent-1')
+  })
+
+  it('default (activate) makes the new tab active', () => {
+    const { fsm, store } = buildFSM()
+    const wtPath = '/wt/fg'
+    seedLeaf(store, wtPath, {
+      type: 'leaf',
+      id: 'p1',
+      tabs: [{ id: 'agent-1', type: 'agent', label: 'Claude' }],
+      activeTabId: 'agent-1'
+    })
+    fsm.addTab(wtPath, { id: 'sh-1', type: 'shell', label: 'build' })
+    const leaf = store.getSnapshot().state.terminals.panes[wtPath] as PaneLeaf
+    expect(leaf.activeTabId).toBe('sh-1')
+  })
+})
+
+describe('PanesFSM.selectTab', () => {
+  it('clears the background flag when a background tab is selected', () => {
+    const { fsm, store } = buildFSM()
+    const wtPath = '/wt/sel'
+    seedLeaf(store, wtPath, {
+      type: 'leaf',
+      id: 'p1',
+      tabs: [
+        { id: 'agent-1', type: 'agent', label: 'Claude' },
+        { id: 'sh-1', type: 'shell', label: 'build', background: true }
+      ],
+      activeTabId: 'agent-1'
+    })
+    fsm.selectTab(wtPath, 'p1', 'sh-1')
+    const leaf = store.getSnapshot().state.terminals.panes[wtPath] as PaneLeaf
+    expect(leaf.activeTabId).toBe('sh-1')
+    const shellTab = leaf.tabs.find((t) => t.id === 'sh-1')
+    expect(shellTab?.background).toBeUndefined()
+  })
+})
+
 describe('PanesFSM.openFileTab', () => {
   it('appends a file tab with the file-<path> id and basename label', () => {
     const { fsm, store } = buildFSM()

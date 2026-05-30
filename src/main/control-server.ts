@@ -65,7 +65,13 @@ export interface ShellQueries {
   ) => { output: string; matchCount?: number; error?: string }
   createShell: (
     worktreePath: string,
-    opts: { command?: string; cwd?: string; label?: string }
+    opts: {
+      command?: string
+      cwd?: string
+      label?: string
+      background?: boolean
+      closeDelay?: number
+    }
   ) => { id: string; label: string }
   killShell: (shellId: string) => void
 }
@@ -507,10 +513,20 @@ async function handleRequest(
       const command = typeof body.command === 'string' ? body.command.trim() : ''
       const cwd = typeof body.cwd === 'string' ? body.cwd.trim() : ''
       const label = typeof body.label === 'string' ? body.label.trim() : ''
+      const background = body.background === true
+      // closeDelay defaults to 30s when omitted; a provided value must be a
+      // non-negative finite number (0 = close immediately on success).
+      const rawDelay = body.closeDelay
+      const closeDelay =
+        typeof rawDelay === 'number' && Number.isFinite(rawDelay) && rawDelay >= 0
+          ? Math.floor(rawDelay)
+          : 30
       const created = deps.shell.createShell(callerWorktree, {
         command: command || undefined,
         cwd: cwd || undefined,
-        label: label || undefined
+        label: label || undefined,
+        background,
+        closeDelay
       })
       return sendJson(res, 200, created)
     }

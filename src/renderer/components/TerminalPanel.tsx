@@ -331,7 +331,7 @@ function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect
           aria-label="Rename tab"
         />
       ) : (
-        <span>{displayLabel}</span>
+        <span className={tab.background ? 'italic' : undefined}>{displayLabel}</span>
       )}
       <TabProgressBar terminalId={tab.id} />
       {showClose && (

@@ -286,7 +286,16 @@ export class PanesFSM {
     return pane
   }
 
-  addTab(wtPath: string, tab: TerminalTab, paneId?: string): void {
+  addTab(
+    wtPath: string,
+    tab: TerminalTab,
+    paneId?: string,
+    opts?: { activate?: boolean }
+  ): void {
+    // Background tabs (create_shell background:true) are appended without
+    // stealing focus — the leaf keeps its current activeTabId. A brand-new
+    // leaf is the exception below: a lone tab is unavoidably active.
+    const activate = opts?.activate !== false
     // Brand-new json-claude tabs default to 'awake' — the user just
     // clicked to create one, so the renderer's auto-spawn path should
     // proceed. Slept-by-default only applies to tabs hydrated from
@@ -313,7 +322,7 @@ export class PanesFSM {
       return {
         ...leaf,
         tabs: [...leaf.tabs, normalizedTab],
-        activeTabId: normalizedTab.id
+        activeTabId: activate ? normalizedTab.id : leaf.activeTabId
       }
     })
     this.commit(wtPath, updated)
@@ -479,9 +488,22 @@ export class PanesFSM {
   selectTab(wtPath: string, paneId: string, tabId: string): void {
     const tree = this.getTree(wtPath)
     if (!tree || !findLeaf(tree, paneId)) return
-    const updated = mapLeaves(tree, (leaf) =>
-      leaf.id === paneId ? { ...leaf, activeTabId: tabId } : leaf
-    )
+    const updated = mapLeaves(tree, (leaf) => {
+      if (leaf.id !== paneId) return leaf
+      // Selecting a background shell promotes it to a normal tab: drop the
+      // `background` flag so its title stops rendering italic.
+      const i = leaf.tabs.findIndex((t) => t.id === tabId)
+      if (i !== -1 && leaf.tabs[i].background) {
+        const { background: _bg, ...rest } = leaf.tabs[i]
+        void _bg
+        return {
+          ...leaf,
+          activeTabId: tabId,
+          tabs: [...leaf.tabs.slice(0, i), rest as TerminalTab, ...leaf.tabs.slice(i + 1)]
+        }
+      }
+      return { ...leaf, activeTabId: tabId }
+    })
     this.commit(wtPath, updated)
   }
 
@@ -493,6 +515,20 @@ export class PanesFSM {
     this.store.dispatch({
       type: 'terminals/tabRenamed',
       payload: { worktreePath: wtPath, tabId, label }
+    })
+    this.opts.persist(this.buildPersistPayload())
+  }
+
+  /** Arm (number) or disarm (null) a shell tab's auto-close delay. Drives
+   *  the "Keep open" button — the ShellAutoCloseMonitor re-reads this at
+   *  fire time, so clearing it cancels a pending close. */
+  setShellCloseDelay(wtPath: string, tabId: string, closeDelay: number | null): void {
+    const tree = this.getTree(wtPath)
+    if (!tree) return
+    if (!findLeafByTabId(tree, tabId)) return
+    this.store.dispatch({
+      type: 'terminals/tabCloseDelayChanged',
+      payload: { worktreePath: wtPath, tabId, closeDelay }
     })
     this.opts.persist(this.buildPersistPayload())
   }

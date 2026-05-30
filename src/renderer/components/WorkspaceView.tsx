@@ -646,6 +646,13 @@ export function WorkspaceView({
                     modelOverride={tab.type === 'agent' ? tab.model : undefined}
                     shellCommand={tab.type === 'shell' ? tab.command : undefined}
                     shellCwd={tab.type === 'shell' ? tab.cwd : undefined}
+                    shellBackground={tab.type === 'shell' ? tab.background : undefined}
+                    shellCloseDelay={tab.type === 'shell' ? tab.closeDelay : undefined}
+                    onKeepOpen={
+                      tab.type === 'shell'
+                        ? (): void => { void backend.panesSetShellCloseDelay(worktreePath, tab.id, null) }
+                        : undefined
+                    }
                     onRestartAgent={
                       tab.type === 'agent'
                         ? (): void => onRestartAgentTab(worktreePath, tab.id)

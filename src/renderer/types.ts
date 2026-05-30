@@ -423,6 +423,7 @@ export interface ElectronAPI {
   panesEnsureInitialized(wtPath: string): Promise<boolean>
   panesSleepTab(wtPath: string, tabId: string): Promise<boolean>
   panesWakeTab(wtPath: string, tabId: string): Promise<boolean>
+  panesSetShellCloseDelay(wtPath: string, tabId: string, delay: number | null): Promise<boolean>
   panesOpenReview(wtPath: string): Promise<boolean>
   panesOpenFile(wtPath: string, filePath: string, nearTabId?: string): Promise<boolean>
   panesSetReviewSelection(

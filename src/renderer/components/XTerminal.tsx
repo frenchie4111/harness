@@ -292,13 +292,21 @@ interface XTerminalProps {
    * replay. The Quake overlay sets this — the marker is useful chrome for
    * in-pane tabs but noise on the transient drop-down console. */
   hideRestoreNotice?: boolean
+  /** Shell tabs only: this is a background shell (create_shell background:true).
+   * Spawn the PTY even while the tab is hidden so the command actually runs. */
+  shellBackground?: boolean
+  /** Shell tabs only: auto-close delay in seconds, or undefined when not
+   * armed. When set, an overlay banner offers to keep the tab open. */
+  shellCloseDelay?: number
+  /** Disarm the shell tab's auto-close (the "Keep open" action). */
+  onKeepOpen?: () => void
   onRestartAgent?: () => void
   /** When provided AND this is a Claude agent tab, an overlay chip in
    *  the top-left invites the user to switch to the Chat interface. */
   onSwitchToChat?: () => void
 }
 
-export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionName, sessionId, initialPrompt, teleportSessionId, modelOverride, shellCommand, shellCwd, backgroundVar, preamble, hideRestoreNotice, onRestartAgent, onSwitchToChat }: XTerminalProps): JSX.Element {
+export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionName, sessionId, initialPrompt, teleportSessionId, modelOverride, shellCommand, shellCwd, backgroundVar, preamble, hideRestoreNotice, shellBackground, shellCloseDelay, onKeepOpen, onRestartAgent, onSwitchToChat }: XTerminalProps): JSX.Element {
   // Lazy font-cache init — fires once on first XTerminal mount. See
   // initFontCache() comment for why this is lazy rather than at module
   // top.
@@ -335,6 +343,9 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
   )
   const commitHoverTimer = useRef<number | null>(null)
   const [exited, setExited] = useState(false)
+  // Local-only: hides the auto-close prompt after "Close when done" without
+  // disarming the behavior. "Keep open" instead clears closeDelay in state.
+  const [closePromptDismissed, setClosePromptDismissed] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
@@ -620,8 +631,15 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
       // Spawning now would come up at the fallback 120x30 and every burst
       // of output before the first resize IPC would paint at the wrong
       // column, producing a visible "flash" when the worktree is opened.
+      //
+      // Exception: a background shell (create_shell background:true) is
+      // meant to run without ever being displayed. Deferring would mean its
+      // command never executes, so we spawn immediately at the fallback
+      // grid — there's no flash because nobody is watching, and a later
+      // resize reflows it if the user does open the tab.
       const rect = containerRef.current?.getBoundingClientRect()
-      if (!rect || rect.width < 20 || rect.height < 20) {
+      const noLayout = !rect || rect.width < 20 || rect.height < 20
+      if (noLayout && !shellBackground) {
         pendingSpawnRef.current = () => { void spawnPty() }
         return
       }
@@ -1061,6 +1079,24 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
               <X className="icon-xs" />
             </button>
           </Tooltip>
+        </div>
+      )}
+      {type === 'shell' && shellCloseDelay !== undefined && onKeepOpen && !closePromptDismissed && (
+        <div className="absolute top-2 right-2 flex items-center gap-1 pointer-events-auto">
+          <Tooltip label={`This tab closes ${shellCloseDelay}s after the command succeeds.`}>
+            <button
+              onClick={() => { onKeepOpen(); setClosePromptDismissed(true) }}
+              className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs bg-panel/90 border border-border text-fg-bright hover:bg-border transition-colors"
+            >
+              <span>Keep open</span>
+            </button>
+          </Tooltip>
+          <button
+            onClick={() => setClosePromptDismissed(true)}
+            className="px-2 py-1 rounded-md text-xs bg-panel/90 border border-border text-dim hover:text-fg-bright transition-colors"
+          >
+            Close when done
+          </button>
         </div>
       )}
       {exited && type === 'agent' && onRestartAgent && (
