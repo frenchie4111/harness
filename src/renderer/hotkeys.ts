@@ -165,9 +165,15 @@ export function parseBinding(shortcut: string): HotkeyBinding {
   return { key, modifiers }
 }
 
-/** Format a Cmd+Shift+E-style string as ⌘⇧E with Unicode mac glyphs. */
+/**
+ * Format a Cmd+Shift+E-style string as ⇧⌘E with Unicode mac glyphs.
+ * Modifiers always render in macOS HIG order ⌃ ⌥ ⇧ ⌘ (Shift before Cmd),
+ * regardless of the order they appear in the input string.
+ */
 export function formatBindingGlyphs(binding: string, separator = ' '): string {
-  return binding
+  // Canonical macOS modifier order: Control, Option, Shift, Command.
+  const MOD_ORDER = ['⌃', '⌥', '⇧', '⌘']
+  const glyphs = binding
     .split('+')
     .map((part) => {
       const lower = part.trim().toLowerCase()
@@ -184,7 +190,11 @@ export function formatBindingGlyphs(binding: string, separator = ' '): string {
       if (part === 'Escape') return 'Esc'
       return part
     })
-    .join(separator)
+  const mods = glyphs
+    .filter((g) => MOD_ORDER.includes(g))
+    .sort((a, b) => MOD_ORDER.indexOf(a) - MOD_ORDER.indexOf(b))
+  const rest = glyphs.filter((g) => !MOD_ORDER.includes(g))
+  return [...mods, ...rest].join(separator)
 }
 
 /** Convert a binding back to a human-readable string like "Ctrl+Alt+Shift+Cmd+T" — Mac order. */
@@ -287,7 +297,7 @@ export const ACTION_CATEGORIES: HotkeyCategory[] = [
     actions: [],
     families: [{
       label: 'Switch to backend N',
-      summary: '⌘ ⇧ 1 … ⌘ ⇧ 9',
+      summary: '⇧ ⌘ 1 … ⇧ ⌘ 9',
       actions: ['backend1', 'backend2', 'backend3', 'backend4', 'backend5', 'backend6', 'backend7', 'backend8', 'backend9']
     }]
   },
@@ -299,12 +309,12 @@ export const ACTION_CATEGORIES: HotkeyCategory[] = [
   {
     id: 'tabs',
     label: 'Tabs & panes',
-    actions: ['newShellTab', 'closeTab', 'nextTab', 'prevTab', 'splitPaneRight', 'splitPaneDown']
+    actions: ['newShellTab', 'closeTab', 'renameTab', 'nextTab', 'prevTab', 'focusTerminal', 'splitPaneRight', 'splitPaneDown']
   },
   {
     id: 'layout',
     label: 'Window layout',
-    actions: ['toggleSidebar', 'toggleRightColumn', 'uiScaleUp', 'uiScaleDown', 'uiScaleReset', 'cycleWorktreeDetail']
+    actions: ['toggleSidebar', 'toggleRightColumn', 'toggleSingleScreen', 'uiScaleUp', 'uiScaleDown', 'uiScaleReset', 'cycleWorktreeDetail']
   },
   {
     id: 'commands',
