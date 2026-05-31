@@ -298,7 +298,7 @@ interface XTerminalProps {
   /** Shell tabs only: auto-close delay in seconds, or undefined when not
    * armed. When set, an overlay banner offers to keep the tab open. */
   shellCloseDelay?: number
-  /** Disarm the shell tab's auto-close (the "Keep open" action). */
+  /** Disarm the shell tab's auto-close (the "Do not close" action). */
   onKeepOpen?: () => void
   onRestartAgent?: () => void
   /** When provided AND this is a Claude agent tab, an overlay chip in
@@ -343,8 +343,9 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
   )
   const commitHoverTimer = useRef<number | null>(null)
   const [exited, setExited] = useState(false)
-  // Local-only: hides the auto-close prompt after "Close when done" without
-  // disarming the behavior. "Keep open" instead clears closeDelay in state.
+  // Local-only: hides the auto-close prompt after "Close if successful"
+  // without disarming the behavior. "Do not close" instead clears closeDelay
+  // in state.
   const [closePromptDismissed, setClosePromptDismissed] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
@@ -1088,14 +1089,14 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
               onClick={() => { onKeepOpen(); setClosePromptDismissed(true) }}
               className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs bg-panel/90 border border-border text-fg-bright hover:bg-border transition-colors"
             >
-              <span>Keep open</span>
+              <span>Do not close</span>
             </button>
           </Tooltip>
           <button
             onClick={() => setClosePromptDismissed(true)}
             className="px-2 py-1 rounded-md text-xs bg-panel/90 border border-border text-dim hover:text-fg-bright transition-colors"
           >
-            Close when done
+            Close if successful
           </button>
         </div>
       )}

@@ -372,12 +372,12 @@ const TOOLS = [
         background: {
           type: 'boolean',
           description:
-            'When true, the tab is created without switching the UI to it, and its title renders italic until selected. Use for commands you want to run without interrupting the user. Defaults to false.'
+            'When true, the tab is created in the background. Use for commands you want to run without interrupting the user. Defaults to false.'
         },
         close_delay: {
           type: 'number',
           description:
-            'Seconds (integer >= 0) to wait after the command finishes successfully before auto-closing the tab. 0 closes immediately on success. Failed commands never auto-close, and a tab the user is actively viewing will not close. Defaults to 30.'
+            'Seconds (integer >= 0) to wait after the command finishes successfully before closing the tab. 0 closes immediately on success. Defaults to 30.'
         }
       }
     }
