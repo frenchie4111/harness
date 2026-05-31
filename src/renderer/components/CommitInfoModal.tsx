@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { GitCommitHorizontal, Copy, Check, X, Loader2, ChevronUp, ChevronDown } from 'lucide-react'
 import { getBackend } from '../backend'
 import type { ChangedFile, CommitMeta } from '../types'
@@ -50,8 +50,30 @@ function FileRow({ file }: { file: ChangedFile }): JSX.Element {
   const lastSlash = file.path.lastIndexOf('/')
   const dir = lastSlash >= 0 ? file.path.slice(0, lastSlash + 1) : ''
   const name = lastSlash >= 0 ? file.path.slice(lastSlash + 1) : file.path
+  const [copied, setCopied] = useState(false)
+  const timer = useRef<number | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (timer.current !== null) window.clearTimeout(timer.current)
+    }
+  }, [])
+
+  const copyPath = (): void => {
+    void navigator.clipboard?.writeText(file.path).then(() => {
+      setCopied(true)
+      if (timer.current !== null) window.clearTimeout(timer.current)
+      timer.current = window.setTimeout(() => setCopied(false), 1200)
+    })
+  }
+
   return (
-    <div className="flex items-center gap-2 py-0.5 text-xs">
+    <button
+      type="button"
+      onClick={copyPath}
+      title="Copy path"
+      className="group flex w-full items-center gap-2 py-0.5 text-xs text-left rounded hover:bg-surface-hover cursor-pointer"
+    >
       <span className={`shrink-0 w-3 font-mono ${STATUS_COLOR[file.status]}`}>
         {STATUS_LABEL[file.status]}
       </span>
@@ -59,13 +81,18 @@ function FileRow({ file }: { file: ChangedFile }): JSX.Element {
         {dir && <span className="text-faint">{dir}</span>}
         <span className="text-fg">{name}</span>
       </span>
+      {copied ? (
+        <Check className="icon-2xs shrink-0 text-success" />
+      ) : (
+        <Copy className="icon-2xs shrink-0 opacity-0 group-hover:opacity-60" />
+      )}
       {(file.additions || file.deletions) && (
         <span className="shrink-0 font-mono tabular-nums">
           {file.additions ? <span className="text-success">+{file.additions}</span> : null}
           {file.deletions ? <span className="text-danger ml-1">−{file.deletions}</span> : null}
         </span>
       )}
-    </div>
+    </button>
   )
 }
 
