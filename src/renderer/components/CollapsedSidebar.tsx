@@ -214,7 +214,7 @@ export function CollapsedSidebar({
             <MessageSquareHeart className="icon-sm" />
           </button>
         </Tooltip>
-        <Tooltip label="Settings" side="right">
+        <Tooltip label="Settings" action="openSettings" side="right">
           <button
             onClick={onOpenSettings}
             className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
