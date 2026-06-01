@@ -715,20 +715,34 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
   //      the DOM), which turns every tap into a quit. Leaking ⌘Q to the
   //      page is harmless — nothing else binds it.
   //
-  // The hold is cancelled by the ⌘ (Meta) keyUp — releasing the whole
-  // chord. macOS suppresses the letter keyUp while ⌘ is held, so we don't
-  // rely on the Q keyUp. The 1s timer runs here; the renderer overlay is
-  // driven by the start/cancel signals (CSS fill in styles.css matches
-  // HOLD_TO_QUIT_MS).
+  // The chord must stay held the WHOLE time. Releasing ⌘ cancels via its
+  // keyUp. Releasing Q is the tricky one: macOS suppresses the letter keyUp
+  // while ⌘ is held, so a Q keyUp never arrives and ⌘ alone would keep the
+  // timer running to a quit. So we lean on OS key-repeat instead — while ⌘Q
+  // is physically held the autorepeat keyDowns for Q keep arriving; the
+  // instant Q is released (⌘ still down) they stop. A watchdog longer than
+  // the repeat interval but shorter than the hold catches that gap and
+  // cancels, so the gesture genuinely requires BOTH ⌘ and Q, not ⌘ alone.
+  // The 1s timer runs here; the renderer overlay is driven by the
+  // start/cancel signals (CSS fill in styles.css matches HOLD_TO_QUIT_MS).
   //
   // Shortcut: two quick ⌘Q taps (each keydown within DOUBLE_TAP_MS of the
   // last) quit immediately, so power users don't have to wait out the hold.
-  // OS key-repeat (isAutoRepeat) is ignored so a single held ⌘Q can't read
-  // as a double-tap.
+  // OS key-repeat (isAutoRepeat) is never treated as a fresh tap so a single
+  // held ⌘Q can't read as a double-tap.
   const HOLD_TO_QUIT_MS = 1000
   const DOUBLE_TAP_MS = 400
+  const Q_REPEAT_GRACE_MS = 600
   let lastQuitTapAt = 0
   let holdQuitTimer: NodeJS.Timeout | null = null
+  let qHeartbeatTimer: NodeJS.Timeout | null = null
+  const armQHeartbeat = (): void => {
+    if (qHeartbeatTimer) clearTimeout(qHeartbeatTimer)
+    qHeartbeatTimer = setTimeout(() => {
+      qHeartbeatTimer = null
+      cancelHoldToQuit() // no Q autorepeat within the grace window → Q released
+    }, Q_REPEAT_GRACE_MS)
+  }
   const startHoldToQuit = (): void => {
     if (holdQuitTimer) return
     transport.sendSignal('app:holdToQuitStart')
@@ -736,8 +750,13 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
       holdQuitTimer = null
       app.quit()
     }, HOLD_TO_QUIT_MS)
+    armQHeartbeat()
   }
   const cancelHoldToQuit = (): void => {
+    if (qHeartbeatTimer) {
+      clearTimeout(qHeartbeatTimer)
+      qHeartbeatTimer = null
+    }
     if (!holdQuitTimer) return
     clearTimeout(holdQuitTimer)
     holdQuitTimer = null
@@ -747,7 +766,10 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
     contents.on('before-input-event', (_event, input) => {
       const isQ = input.key === 'q' || input.key === 'Q'
       if (input.type === 'keyDown' && input.meta && isQ) {
-        if (input.isAutoRepeat) return // OS key-repeat while holding, not a new tap
+        if (input.isAutoRepeat) {
+          if (holdQuitTimer) armQHeartbeat() // Q still held — refresh the watchdog
+          return
+        }
         if (!store.getSnapshot().state.settings.warnBeforeQuitting) {
           app.quit() // gesture disabled — ⌘Q quits immediately
           return
