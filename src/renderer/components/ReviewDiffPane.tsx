@@ -596,6 +596,31 @@ export function ReviewDiffPane({
   // Last diff line the mouse was over, for the `c` shortcut. null ⇒ not
   // over any line ⇒ file-level comment (line 0).
   const hoveredLineRef = useRef<number | null>(null)
+  // Comment ResizeObservers funnel their desired zone heights here; a single
+  // rAF applies them all in one changeViewZones. Without batching, each
+  // observer relayouts the editor, nudging other comment wrappers and firing
+  // their observers — an N×N cascade that freezes the renderer.
+  const pendingZoneHeightsRef = useRef(new Map<string, { zone: monaco.editor.IViewZone; h: number }>())
+  const layoutRafRef = useRef(0)
+  const flushZoneLayout = useCallback(() => {
+    if (layoutRafRef.current) return
+    layoutRafRef.current = requestAnimationFrame(() => {
+      layoutRafRef.current = 0
+      const pending = pendingZoneHeightsRef.current
+      const ed = editorRef.current
+      if (!ed || pending.size === 0) {
+        pending.clear()
+        return
+      }
+      ed.getModifiedEditor().changeViewZones((acc) => {
+        for (const [zoneId, { zone, h }] of pending) {
+          zone.heightInPx = h
+          acc.layoutZone(zoneId)
+        }
+      })
+      pending.clear()
+    })
+  }, [])
 
   useEffect(() => {
     if (!file) {
@@ -650,6 +675,11 @@ export function ReviewDiffPane({
       }
     })
     viewZonesRef.current = []
+    pendingZoneHeightsRef.current.clear()
+    if (layoutRafRef.current) {
+      cancelAnimationFrame(layoutRafRef.current)
+      layoutRafRef.current = 0
+    }
   }, [])
 
   // Sync view zones whenever comments or commentLine changes
@@ -751,18 +781,16 @@ export function ReviewDiffPane({
         }
 
         // Resize the comment zone to fit its rendered content so collapse /
-        // expand and markdown reflow don't clip. The observed height depends
-        // only on the comment content (not the zone height), so there's no
-        // feedback loop.
+        // expand and markdown reflow don't clip. Enqueue the new height and
+        // let the batched rAF apply all changes in one changeViewZones, so
+        // observers can't cascade into a layout storm.
         let resizeObserver: ResizeObserver | undefined
         if (item.type === 'comment') {
           resizeObserver = new ResizeObserver(() => {
-            const ed = editorRef.current
-            if (!ed) return
             const h = Math.ceil(stickyWrapper.scrollHeight) + 8
             if (!h || zone.heightInPx === h) return
-            zone.heightInPx = h
-            ed.getModifiedEditor().changeViewZones((acc) => acc.layoutZone(zoneId))
+            pendingZoneHeightsRef.current.set(zoneId, { zone, h })
+            flushZoneLayout()
           })
           resizeObserver.observe(stickyWrapper)
         }
@@ -772,7 +800,7 @@ export function ReviewDiffPane({
     })
 
     viewZonesRef.current = newZones
-  }, [comments, commentLine, editorNonce, expandAll, clearViewZones, onAddComment, onDeleteComment, onAddReply, onResolveThread, pendingResolve])
+  }, [comments, commentLine, editorNonce, expandAll, clearViewZones, flushZoneLayout, onAddComment, onDeleteComment, onAddReply, onResolveThread, pendingResolve])
 
   // Clean up view zones on unmount
   useEffect(() => {
@@ -783,6 +811,7 @@ export function ReviewDiffPane({
         queueMicrotask(() => z.root.unmount())
       }
       viewZonesRef.current = []
+      if (layoutRafRef.current) cancelAnimationFrame(layoutRafRef.current)
     }
   }, [])
 
