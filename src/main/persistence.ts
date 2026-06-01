@@ -278,6 +278,7 @@ export const AVAILABLE_THEMES = [
   'one-dark',
   'solarized-dark',
   'solarized-light',
+  'hub-delight',
   'cyberfunk'
 ] as const
 
@@ -293,6 +294,7 @@ export const THEME_APP_BG: Record<string, string> = {
   'one-dark': '#282c34',
   'solarized-dark': '#002b36',
   'solarized-light': '#fdf6e3',
+  'hub-delight': '#ffffff',
   'cyberfunk': '#000000'
 }
 
