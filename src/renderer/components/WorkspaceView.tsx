@@ -52,6 +52,9 @@ interface WorkspaceViewProps {
   onReorderTabs: (worktreePath: string, paneId: string, fromId: string, toId: string) => void
   onMoveTabToPane: (worktreePath: string, tabId: string, toPaneId: string, toIndex?: number) => void
   onSendToAgent?: (worktreePath: string, text: string) => void
+  /** Open the dedicated editor (file) tab for a path — used by the diff
+   *  tab's Edit action so editing never happens in the diff pane. */
+  onOpenFile?: (worktreePath: string, filePath: string) => void
   /** Leading padding for the leftmost leaf's tab bar so it clears the macOS
    *  traffic lights when no sidebar sits to the left of the workspace. */
   topBarLeadingPx?: number
@@ -359,6 +362,7 @@ export function WorkspaceView({
   onReorderTabs,
   onMoveTabToPane,
   onSendToAgent,
+  onOpenFile,
   repoLabel,
   branch,
   topBarLeadingPx = 0,
@@ -583,6 +587,10 @@ export function WorkspaceView({
                     staged={tab.staged ?? false}
                     branchDiff={tab.branchDiff ?? false}
                     commitHash={tab.commitHash}
+                    active={visible && isActiveInPane}
+                    onOpenEditor={
+                      onOpenFile ? (filePath) => onOpenFile(worktreePath, filePath) : undefined
+                    }
                     onSendToAgent={
                       onSendToAgent
                         ? (text) => onSendToAgent(worktreePath, text)
@@ -591,6 +599,7 @@ export function WorkspaceView({
                   />
                 ) : tab.type === 'file' ? (
                   <FileView
+                    tabId={tab.id}
                     worktreePath={worktreePath}
                     filePath={tab.filePath}
                     onSendToAgent={
@@ -626,6 +635,7 @@ export function WorkspaceView({
                     worktreePath={worktreePath}
                     fromCommit={tab.reviewFromCommit}
                     toCommit={tab.reviewToCommit}
+                    active={visible && isActiveInPane}
                     onSendToAgent={
                       onSendToAgent
                         ? (text) => onSendToAgent(worktreePath, text)

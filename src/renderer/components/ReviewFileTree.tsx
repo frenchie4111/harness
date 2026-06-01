@@ -8,6 +8,16 @@ export interface ReviewComment {
   lineNumber: number
   body: string
   timestamp: number
+  /** GitHub review-comment id once pushed/fetched. Absent = local-only. */
+  remoteId?: number
+  /** GitHub login of the author, for comments fetched from the PR. */
+  author?: string
+  /** Author avatar URL, for comments fetched from the PR. */
+  authorAvatarUrl?: string
+  /** ISO creation timestamp, for comments fetched from the PR. */
+  createdAt?: string
+  /** Link to the comment on GitHub. */
+  htmlUrl?: string
 }
 
 interface ReviewFileTreeProps {
@@ -22,6 +32,14 @@ interface ReviewFileTreeProps {
   onSelectFile: (path: string) => void
   onToggleReviewed: (path: string) => void
   onToggleDir: (dir: string) => void
+  /** s = side-by-side, d = unified. Lives here so every review keyboard
+   *  shortcut shares one handler/pattern. */
+  onSetSideBySide: (sideBySide: boolean) => void
+  /** ? toggles the review shortcuts popup. */
+  onShowShortcuts: () => void
+  /** True when the review tab is the active/visible tab — the keyboard
+   *  shortcuts no-op otherwise so a background review tab doesn't react. */
+  active?: boolean
 }
 
 const STATUS_LABEL: Record<ChangedFile['status'], string> = {
@@ -150,7 +168,10 @@ export function ReviewFileTree({
   collapsedDirs,
   onSelectFile,
   onToggleReviewed,
-  onToggleDir
+  onToggleDir,
+  onSetSideBySide,
+  onShowShortcuts,
+  active
 }: ReviewFileTreeProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null)
   const [filter, setFilter] = useState('')
@@ -207,6 +228,7 @@ export function ReviewFileTree({
 
   useEffect(() => {
     const handler = (e: KeyboardEvent): void => {
+      if (!active) return
       if (
         e.target instanceof HTMLTextAreaElement ||
         e.target instanceof HTMLInputElement
@@ -225,6 +247,15 @@ export function ReviewFileTree({
       } else if (e.key === '[') {
         e.preventDefault()
         navigateUnreviewed(-1)
+      } else if (e.key === 's' && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault()
+        onSetSideBySide(true)
+      } else if (e.key === 'd' && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault()
+        onSetSideBySide(false)
+      } else if (e.key === '?') {
+        e.preventDefault()
+        onShowShortcuts()
       } else if (e.key === 'r' && !e.metaKey && !e.ctrlKey) {
         e.preventDefault()
         if (selectedFile) {
@@ -247,7 +278,7 @@ export function ReviewFileTree({
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [navigateFile, navigateUnreviewed, selectedFile, navigableFiles, reviewedFiles, onSelectFile, onToggleReviewed])
+  }, [active, navigateFile, navigateUnreviewed, selectedFile, navigableFiles, reviewedFiles, onSelectFile, onToggleReviewed, onSetSideBySide, onShowShortcuts])
 
   return (
     <div ref={containerRef} className="flex flex-col h-full text-xs select-none">

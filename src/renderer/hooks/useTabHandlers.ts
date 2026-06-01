@@ -4,6 +4,7 @@ import { getLeaves, findLeaf, findLeafByTabId } from '../../shared/state/termina
 import { agentDisplayName, getAgentInfo } from '../../shared/agent-registry'
 import { focusTerminalById, markTerminalClosing } from '../components/XTerminal'
 import { useBackend } from '../backend'
+import { isTabDirty, clearTabDirty } from '../dirty-tabs'
 
 function makeTerminalId(prefix: string, worktreePath: string): string {
   const safe = worktreePath.replace(/[/\\]/g, '-').replace(/^-+/, '').replace(/-+/g, '-')
@@ -103,6 +104,13 @@ export function useTabHandlers({
 
   const handleCloseTab = useCallback(
     (worktreePath: string, tabId: string) => {
+      // An editor tab with unsaved edits would silently discard them on
+      // close — confirm first. The dirty flag is published by FileView.
+      if (isTabDirty(tabId)) {
+        const ok = window.confirm('This file has unsaved changes. Close the tab and discard them?')
+        if (!ok) return
+        clearTabDirty(tabId)
+      }
       // PanesFSM is the authoritative path for json-claude/agent/shell
       // teardown — its closeTab kills the subprocess via killJsonClaude
       // or killTabPty. The PTY-side notification here is purely an

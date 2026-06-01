@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import * as monaco from 'monaco-editor'
-import { ArrowRightFromLine, Check, WrapText } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import { ArrowRightFromLine, Check, MessagesSquare, WrapText } from 'lucide-react'
 import type { FileDiffSides, ChangedFile } from '../types'
 import type { ReviewComment } from './ReviewFileTree'
 import { MonacoDiffEditor } from './MonacoDiffEditor'
@@ -20,6 +22,16 @@ interface ReviewDiffPaneProps {
   commitRange?: { fromHash: string; toHash: string }
   reviewed: boolean
   comments: ReviewComment[]
+  /** Unified (false) vs side-by-side (true) — owned by ReviewPane so the
+   *  choice is one control for the whole review, not per file. */
+  sideBySide: boolean
+  /** Hide whitespace-only changes (true) vs surface them (false). */
+  ignoreTrimWhitespace: boolean
+  /** True when the review tab is active/visible — gates the `c` shortcut. */
+  active?: boolean
+  /** Scroll the diff to this line when it matches the current file. Used by
+   *  the comment list to jump to a comment. */
+  revealTarget?: { filePath: string; line: number; nonce: number } | null
   onToggleReviewed: () => void
   onAddComment: (lineNumber: number, body: string) => void
   onDeleteComment: (id: string) => void
@@ -43,6 +55,21 @@ const STATUS_COLOR: Record<ChangedFile['status'], string> = {
   untracked: 'text-dim'
 }
 
+const COMMENT_REMARK_PLUGINS = [remarkGfm]
+
+function formatRelTime(ms: number): string {
+  if (!ms || Number.isNaN(ms)) return ''
+  const s = Math.floor((Date.now() - ms) / 1000)
+  if (s < 60) return 'just now'
+  const m = Math.floor(s / 60)
+  if (m < 60) return `${m}m ago`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h}h ago`
+  const d = Math.floor(h / 24)
+  if (d < 30) return `${d}d ago`
+  return new Date(ms).toLocaleDateString()
+}
+
 function InlineComment({
   comment,
   onDelete
@@ -50,38 +77,91 @@ function InlineComment({
   comment: ReviewComment
   onDelete: () => void
 }): JSX.Element {
+  const ts = comment.createdAt ? Date.parse(comment.createdAt) : comment.timestamp
+  const timeStr = formatRelTime(ts)
   return (
     <div
       style={{
-        display: 'flex',
-        alignItems: 'flex-start',
-        gap: '0.5rem',
-        padding: '0.375rem 0.75rem',
-        fontSize: '0.75rem',
-        borderLeft: '3px solid var(--color-info, #58a6ff)',
-        background: 'color-mix(in srgb, var(--color-info, #58a6ff) 8%, transparent)',
-        margin: '0.125rem 0.5rem'
+        display: 'inline-flex',
+        flexDirection: 'column',
+        gap: '4px',
+        padding: '8px 12px',
+        fontSize: '12px',
+        border: '1px solid color-mix(in srgb, var(--color-info, #58a6ff) 60%, transparent)',
+        borderLeft: '4px solid var(--color-info, #58a6ff)',
+        borderRadius: '0 6px 6px 0',
+        background: 'color-mix(in srgb, var(--color-info, #58a6ff) 28%, var(--color-panel-raised))',
+        boxShadow: '0 2px 10px rgba(0, 0, 0, 0.4)',
+        margin: '4px 0',
+        maxWidth: '760px'
       }}
     >
-      <span style={{ flex: 1, color: 'var(--color-fg)', whiteSpace: 'pre-wrap' }}>
-        {comment.body}
-      </span>
-      <button
-        onClick={onDelete}
-        style={{
-          flexShrink: 0,
-          color: 'var(--color-faint)',
-          cursor: 'pointer',
-          background: 'none',
-          border: 'none',
-          fontSize: '0.6875rem',
-          padding: '0 0.125rem'
-        }}
-        onMouseOver={(e) => (e.currentTarget.style.color = 'var(--color-danger, #f85149)')}
-        onMouseOut={(e) => (e.currentTarget.style.color = 'var(--color-faint)')}
-      >
-        ✕
-      </button>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        {comment.authorAvatarUrl ? (
+          <img
+            src={comment.authorAvatarUrl}
+            alt={comment.author ?? ''}
+            style={{ width: '18px', height: '18px', borderRadius: '50%', flexShrink: 0 }}
+          />
+        ) : comment.author ? (
+          <span
+            style={{
+              width: '18px',
+              height: '18px',
+              borderRadius: '50%',
+              flexShrink: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'var(--color-panel)',
+              color: 'var(--color-faint)',
+              fontSize: '10px',
+              textTransform: 'uppercase'
+            }}
+          >
+            {comment.author.slice(0, 1)}
+          </span>
+        ) : null}
+        {comment.author && (
+          <span style={{ fontWeight: 600, color: 'var(--color-fg)' }}>@{comment.author}</span>
+        )}
+        {timeStr &&
+          (comment.htmlUrl ? (
+            <a
+              href={comment.htmlUrl}
+              target="_blank"
+              rel="noreferrer"
+              style={{ color: 'var(--color-faint)', fontSize: '11px' }}
+            >
+              {timeStr}
+            </a>
+          ) : (
+            <span style={{ color: 'var(--color-faint)', fontSize: '11px' }}>{timeStr}</span>
+          ))}
+        {comment.remoteId === undefined && (
+          <button
+            onClick={onDelete}
+            title="Delete comment"
+            style={{
+              marginLeft: 'auto',
+              flexShrink: 0,
+              color: 'var(--color-faint)',
+              cursor: 'pointer',
+              background: 'none',
+              border: 'none',
+              fontSize: '11px',
+              padding: '0 2px'
+            }}
+            onMouseOver={(e) => (e.currentTarget.style.color = 'var(--color-danger, #f85149)')}
+            onMouseOut={(e) => (e.currentTarget.style.color = 'var(--color-faint)')}
+          >
+            ✕
+          </button>
+        )}
+      </div>
+      <div className="markdown" style={{ color: 'var(--color-fg)', minWidth: 0, fontSize: '12px' }}>
+        <ReactMarkdown remarkPlugins={COMMENT_REMARK_PLUGINS}>{comment.body}</ReactMarkdown>
+      </div>
     </div>
   )
 }
@@ -116,8 +196,8 @@ function InlineCommentInput({
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontSize: '0.625rem', color: 'var(--color-faint)', fontFamily: 'monospace' }}>
-          Line {lineNumber}
+        <span style={{ fontSize: '10px', color: 'var(--color-faint)', fontFamily: 'monospace' }}>
+          {lineNumber === 0 ? 'File comment' : `Line ${lineNumber}`}
         </span>
         <button
           onClick={onCancel}
@@ -202,6 +282,10 @@ export function ReviewDiffPane({
   commitRange,
   reviewed,
   comments,
+  sideBySide,
+  ignoreTrimWhitespace,
+  active,
+  revealTarget,
   onToggleReviewed,
   onAddComment,
   onDeleteComment,
@@ -213,8 +297,15 @@ export function ReviewDiffPane({
   const [sides, setSides] = useState<FileDiffSides | null>(null)
   const [loading, setLoading] = useState(false)
   const [commentLine, setCommentLine] = useState<number | null>(null)
+  // Bumped each time the diff editor (re)mounts so the view-zone effect
+  // re-runs and re-draws comments — the editor unmounts/remounts on every
+  // file switch, and a ref alone wouldn't retrigger the effect.
+  const [editorNonce, setEditorNonce] = useState(0)
   const editorRef = useRef<monaco.editor.IStandaloneDiffEditor | null>(null)
   const viewZonesRef = useRef<ViewZoneEntry[]>([])
+  // Last diff line the mouse was over, for the `c` shortcut. null ⇒ not
+  // over any line ⇒ file-level comment (line 0).
+  const hoveredLineRef = useRef<number | null>(null)
 
   useEffect(() => {
     if (!file) {
@@ -224,6 +315,12 @@ export function ReviewDiffPane({
     let cancelled = false
     setLoading(true)
     setCommentLine(null)
+    // The editor unmounts while the new diff loads; drop our handle and
+    // tear down the old comment widgets so the remount re-creates them
+    // cleanly (and the view-zone effect no-ops until the new editor mounts).
+    for (const z of viewZonesRef.current) queueMicrotask(() => z.root.unmount())
+    viewZonesRef.current = []
+    editorRef.current = null
     const promise = commitRange
       ? backend.getCommitRangeFileDiffSides(
           worktreePath,
@@ -258,7 +355,7 @@ export function ReviewDiffPane({
     modifiedEd.changeViewZones((accessor) => {
       for (const z of zones) {
         accessor.removeZone(z.zoneId)
-        z.root.unmount()
+        queueMicrotask(() => z.root.unmount())
       }
     })
     viewZonesRef.current = []
@@ -310,7 +407,7 @@ export function ReviewDiffPane({
         stickyWrapper.style.width = `${contentWidth}px`
         domNode.appendChild(stickyWrapper)
 
-        const heightInLines = item.type === 'input' ? 7 : 2
+        const heightInLines = item.type === 'input' ? 7 : 4
         const zoneId = accessor.addZone({
           afterLineNumber: item.lineNumber,
           heightInLines,
@@ -342,33 +439,97 @@ export function ReviewDiffPane({
     })
 
     viewZonesRef.current = newZones
-  }, [comments, commentLine, clearViewZones, onAddComment, onDeleteComment])
+  }, [comments, commentLine, editorNonce, clearViewZones, onAddComment, onDeleteComment])
 
   // Clean up view zones on unmount
   useEffect(() => {
     return () => {
       const zones = viewZonesRef.current
-      for (const z of zones) z.root.unmount()
+      for (const z of zones) queueMicrotask(() => z.root.unmount())
       viewZonesRef.current = []
     }
   }, [])
+
+  // Scroll to a comment's line when the comment list navigates here. Keyed
+  // on the request nonce + editor mount so it fires once the right file's
+  // editor is ready.
+  useEffect(() => {
+    if (!revealTarget || !file || revealTarget.filePath !== file.path) return
+    const editor = editorRef.current
+    if (!editor) return
+    const line = Math.max(1, revealTarget.line)
+    // The editor may have just remounted for this file and the comment view
+    // zones (which shift line positions) are added in a sibling effect, so a
+    // single reveal often lands off. Reveal on the next frame AND again on a
+    // short timeout to catch the settled layout.
+    const modEd = editor.getModifiedEditor()
+    const doReveal = (): void => {
+      modEd.setPosition({ lineNumber: line, column: 1 })
+      modEd.revealLineInCenter(line, monaco.editor.ScrollType.Immediate)
+    }
+    const raf = requestAnimationFrame(doReveal)
+    const t = setTimeout(doReveal, 140)
+    return () => {
+      cancelAnimationFrame(raf)
+      clearTimeout(t)
+    }
+  }, [revealTarget?.nonce, revealTarget?.filePath, editorNonce, file?.path])
 
   const handleReferenceLine = useCallback((lineNumber: number) => {
     setCommentLine(lineNumber)
   }, [])
 
+  const jumpToFirstComment = useCallback(() => {
+    if (comments.length === 0) return
+    const first = [...comments].sort((a, b) => a.lineNumber - b.lineNumber)[0]
+    const editor = editorRef.current
+    if (!editor) return
+    const line = Math.max(1, first.lineNumber)
+    const modEd = editor.getModifiedEditor()
+    modEd.setPosition({ lineNumber: line, column: 1 })
+    modEd.revealLineInCenter(line)
+  }, [comments])
+
   const handleEditorMount = useCallback(
     (editor: monaco.editor.IStandaloneDiffEditor) => {
       editorRef.current = editor
-      // Keep sticky wrappers sized to the visible viewport on resize
-      editor.getModifiedEditor().onDidLayoutChange((layout) => {
+      setEditorNonce((n) => n + 1)
+      const modEd = editor.getModifiedEditor()
+      // Keep sticky wrappers sized to the visible viewport on resize.
+      modEd.onDidLayoutChange((layout) => {
         for (const z of viewZonesRef.current) {
           z.stickyWrapper.style.width = `${layout.contentWidth}px`
         }
       })
+      // Track the hovered line so `c` can target it.
+      modEd.onMouseMove((e) => {
+        hoveredLineRef.current = e.target.position?.lineNumber ?? null
+      })
+      modEd.onMouseLeave(() => {
+        hoveredLineRef.current = null
+      })
     },
     []
   )
+
+  // `c` opens a comment input on the hovered diff line, or a file-level
+  // comment (line 0) when the mouse isn't over a line. Window listener so
+  // it works whether focus is in the diff or the file tree; matches the
+  // review shortcut style — bail only on a real form field (the inline
+  // comment box and the file filter), never on Monaco's own input.
+  useEffect(() => {
+    if (!file || !active) return
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== 'c' || e.metaKey || e.ctrlKey || e.altKey) return
+      const el = e.target as HTMLElement | null
+      if (el instanceof HTMLInputElement) return
+      if (el instanceof HTMLTextAreaElement && !el.classList.contains('inputarea')) return
+      e.preventDefault()
+      setCommentLine(hoveredLineRef.current ?? 0)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [file, active])
 
   if (!file) {
     return (
@@ -382,20 +543,6 @@ export function ReviewDiffPane({
     <div className="flex flex-col h-full">
       {/* File header */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-panel shrink-0">
-        <Tooltip label={reviewed ? 'Mark as not viewed (r)' : 'Mark as viewed (r)'}>
-          <button
-            onClick={onToggleReviewed}
-            aria-label={reviewed ? 'Mark as not viewed' : 'Mark as viewed'}
-            className={`shrink-0 w-4 h-4 rounded border flex items-center justify-center transition-colors cursor-pointer ${
-              reviewed
-                ? 'bg-success/20 border-success text-success'
-                : 'border-border-strong text-transparent hover:border-faint'
-            }`}
-          >
-            {reviewed && <Check strokeWidth={3} className="icon-2xs" />}
-          </button>
-        </Tooltip>
-
         <span className="text-xs font-mono truncate flex-1">{file.path}</span>
 
         <span className={`text-xs ${STATUS_COLOR[file.status]}`}>
@@ -421,6 +568,34 @@ export function ReviewDiffPane({
             {wordWrap ? <ArrowRightFromLine className="icon-xs" /> : <WrapText className="icon-xs" />}
           </button>
         </Tooltip>
+
+        {comments.length > 0 && (
+          <Tooltip label="Jump to the first comment in this file">
+            <button
+              onClick={jumpToFirstComment}
+              aria-label="Jump to first comment"
+              className="shrink-0 flex items-center gap-1 px-2 py-1 rounded border border-border text-info hover:text-info/70 transition-colors cursor-pointer"
+            >
+              <MessagesSquare className="icon-xs" />
+              {comments.length}
+            </button>
+          </Tooltip>
+        )}
+
+        <Tooltip label={reviewed ? 'Mark as not viewed (r)' : 'Mark as viewed (r)'}>
+          <button
+            onClick={onToggleReviewed}
+            aria-pressed={reviewed}
+            className={`shrink-0 flex items-center gap-1 px-2 py-1 rounded border text-xs transition-colors cursor-pointer ${
+              reviewed
+                ? 'bg-success/20 border-success text-success'
+                : 'border-border-strong text-faint hover:text-fg hover:border-faint'
+            }`}
+          >
+            <Check strokeWidth={3} className="icon-2xs" />
+            Viewed
+          </button>
+        </Tooltip>
       </div>
 
       {/* Diff with inline comments via view zones */}
@@ -436,6 +611,8 @@ export function ReviewDiffPane({
             modified={sides.modified}
             filePath={file.path}
             readOnly
+            renderSideBySide={sideBySide}
+            ignoreTrimWhitespace={ignoreTrimWhitespace}
             fontFamily={settings.terminalFontFamily || undefined}
             fontSize={scaledEditorFontSize(settings.terminalFontSize, settings.uiScale)}
             wordWrap={wordWrap}

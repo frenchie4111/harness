@@ -7,6 +7,11 @@ interface MonacoDiffEditorProps {
   modified: string
   filePath?: string
   readOnly?: boolean
+  /** Side-by-side (true) vs inline/unified (false, default) rendering. */
+  renderSideBySide?: boolean
+  /** Hide whitespace-only changes (Monaco default true). Set false to
+   *  surface trailing/leading whitespace diffs. */
+  ignoreTrimWhitespace?: boolean
   fontFamily?: string
   fontSize?: number
   wordWrap?: boolean
@@ -23,6 +28,8 @@ export function MonacoDiffEditor({
   modified,
   filePath,
   readOnly = true,
+  renderSideBySide = false,
+  ignoreTrimWhitespace = true,
   fontFamily,
   fontSize,
   wordWrap = false,
@@ -56,7 +63,13 @@ export function MonacoDiffEditor({
 
     const editor = monaco.editor.createDiffEditor(hostRef.current, {
       theme: 'harness',
-      renderSideBySide: false,
+      renderSideBySide,
+      // Without this, Monaco silently falls back to the inline view when the
+      // editor is narrower than renderSideBySideInlineBreakpoint (~900px) —
+      // so "Split" looks identical to "Unified" in a narrow pane. Force it
+      // to honor renderSideBySide at any width.
+      useInlineViewWhenSpaceIsLimited: false,
+      ignoreTrimWhitespace,
       readOnly,
       originalEditable: false,
       automaticLayout: true,
@@ -177,6 +190,14 @@ export function MonacoDiffEditor({
   useEffect(() => {
     editorRef.current?.updateOptions({ readOnly })
   }, [readOnly])
+
+  useEffect(() => {
+    editorRef.current?.updateOptions({ renderSideBySide })
+  }, [renderSideBySide])
+
+  useEffect(() => {
+    editorRef.current?.updateOptions({ ignoreTrimWhitespace })
+  }, [ignoreTrimWhitespace])
 
   useEffect(() => {
     editorRef.current?.updateOptions({

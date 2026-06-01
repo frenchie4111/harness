@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
-import { X, SquareTerminal, Sparkles, Loader2, Globe, Users, ChevronLeft, ChevronRight } from 'lucide-react'
+import { X, SquareTerminal, Sparkles, Loader2, Globe, Users, ChevronLeft, ChevronRight, Diff, File, ClipboardCheck } from 'lucide-react'
 import {
   SortableContext,
   horizontalListSortingStrategy,
@@ -304,9 +304,15 @@ function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect
         ) : (
           <span className="w-1.5 h-1.5 rounded-full bg-faint" />
         )
-      ) : tab.type !== 'diff' && tab.type !== 'file' && tab.type !== 'review' ? (
+      ) : tab.type === 'diff' ? (
+        <Diff className="icon-xs shrink-0 text-faint" />
+      ) : tab.type === 'file' ? (
+        <File className="icon-xs shrink-0 text-faint" />
+      ) : tab.type === 'review' ? (
+        <ClipboardCheck className="icon-xs shrink-0 text-faint" />
+      ) : (
         <span className={`w-1.5 h-1.5 rounded-full ${TAB_STATUS_DOT[status]}`} />
-      ) : null}
+      )}
       {editing ? (
         <input
           ref={inputRef}
