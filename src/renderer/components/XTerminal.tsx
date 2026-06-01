@@ -372,15 +372,21 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
     // closure so the destination logic can't drift. Plain click → OS
     // default browser; Cmd/Ctrl-click → in-app browser tab; mailto →
     // external (the in-app browser can't open it).
+    const isWebUri = (uri: string): boolean =>
+      uri.startsWith('http://') || uri.startsWith('https://')
+    // Schemes we'll hand to the OS on a plain click. vnc:// resolves to the
+    // user's Screen Sharing / VNC client; mailto: to their mail client.
+    const isExternalUri = (uri: string): boolean =>
+      isWebUri(uri) || uri.startsWith('mailto:') || uri.startsWith('vnc://')
     const activateUri = (event: { metaKey: boolean; ctrlKey: boolean }, uri: string): void => {
-      const inApp = (event.metaKey || event.ctrlKey) && !uri.startsWith('mailto:')
+      // Only web URLs can render in an in-app browser tab; vnc:// and mailto:
+      // are OS-handled schemes, so they always go external.
+      const inApp = (event.metaKey || event.ctrlKey) && isWebUri(uri)
       if (inApp) {
-        if (uri.startsWith('http://') || uri.startsWith('https://')) {
-          openUrlInBrowserTab(uri)
-        }
+        openUrlInBrowserTab(uri)
         return
       }
-      if (uri.startsWith('http://') || uri.startsWith('https://') || uri.startsWith('mailto:')) {
+      if (isExternalUri(uri)) {
         backend.openExternal(uri)
       }
     }
@@ -417,7 +423,12 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
       },
       {
         hover: (_event, uri) => setHoveredLink(uri),
-        leave: () => setHoveredLink(null)
+        leave: () => setHoveredLink(null),
+        // Extend the addon's default scheme list (https?) to also match
+        // vnc:// so Screen Sharing links are clickable. Mirrors the upstream
+        // trailing-punctuation trimming so we don't eat a closing ) or .
+        urlRegex:
+          /(https?|HTTPS?|vnc|VNC):[/]{2}[^\s"'!*(){}|\\\^<>`]*[^\s"':,.!?{}|\\\^~\[\]`()<>]/
       }
     )
     terminal.loadAddon(webLinksAddon)
