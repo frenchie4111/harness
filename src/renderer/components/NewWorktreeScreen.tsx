@@ -32,20 +32,11 @@ interface NewWorktreeScreenProps {
   defaultRepoRoot?: string
 }
 
-/** Normalize `git branch -a --format=%(refname:short)` output: strip the
- * `origin/` prefix, drop the remote HEAD pointer, dedup against locals. */
+/** Sort + clean the local-branch list from the backend. The backend already
+ * limits to locals via `git branch --format=...` (no `-a`), so all we do
+ * here is drop empty/HEAD entries and alphabetize. */
 function normalizeBranchList(raw: string[]): string[] {
-  const seen = new Set<string>()
-  const out: string[] = []
-  for (const line of raw) {
-    if (!line || line.includes('->')) continue
-    const stripped = line.startsWith('origin/') ? line.slice('origin/'.length) : line
-    if (!stripped || stripped === 'HEAD') continue
-    if (seen.has(stripped)) continue
-    seen.add(stripped)
-    out.push(stripped)
-  }
-  return out.sort((a, b) => a.localeCompare(b))
+  return raw.filter((b) => b && b !== 'HEAD').sort((a, b) => a.localeCompare(b))
 }
 
 function relTime(iso: string | undefined): string {
@@ -109,7 +100,11 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
   )
   const [branch, setBranch] = useState('')
   const [existingBranch, setExistingBranch] = useState<string | null>(null)
-  const [branchTab, setBranchTab] = useState<'new' | 'existing'>('new')
+  // Free-text ref: commit SHA, tag, remote-tracking ref (`origin/foo`), etc.
+  // Submitted as-is — `git worktree add` resolves it and lands in a detached
+  // HEAD (commit/tag) or DWIM-creates a tracking branch (remote ref).
+  const [refValue, setRefValue] = useState('')
+  const [branchTab, setBranchTab] = useState<'new' | 'existing' | 'ref'>('new')
   const [prompt, setPrompt] = useState('')
   const settings = useSettings()
   const [reviewPrompt, setReviewPrompt] = useState(settings.prReviewPrompt)
@@ -142,18 +137,29 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
 
   const parsedTeleport = mode === 'teleport' ? parseTeleportInput(teleportInput) : null
   const teleportInvalid = mode === 'teleport' && teleportInput.trim().length > 0 && !parsedTeleport
-  // The active branch tab dictates which value is submitted — picking from the
+  // The active branch tab dictates which value is submitted — picking from a
   // hidden tab does NOT carry through. Keeps "what you see is what you submit"
-  // intact when the user toggles between New / Existing.
-  const submitBranch = branchTab === 'new' ? branch : (existingBranch ?? '')
+  // intact when the user toggles between New / Existing / Ref.
+  const submitBranch =
+    branchTab === 'new'
+      ? branch
+      : branchTab === 'existing'
+        ? (existingBranch ?? '')
+        : refValue.trim()
   const effectiveBranch = mode === 'teleport'
     ? (parsedTeleport ? teleportFolderName(parsedTeleport) : '')
     : submitBranch
+  // For the Ref tab a raw ref can include chars that `isValidBranchName`
+  // rightly rejects for branch *creation* (commit SHAs are fine, but
+  // expressions like `HEAD~3` aren't valid branch names). Trust git to
+  // resolve the ref at worktree-add time and validate non-emptiness here.
   const canSubmit =
     !submitting &&
     !!selectedRepo &&
     (mode === 'fresh'
-      ? isValidBranchName(submitBranch)
+      ? branchTab === 'ref'
+        ? submitBranch.length > 0
+        : isValidBranchName(submitBranch)
       : !!parsedTeleport && !teleportInvalid && isValidBranchName(effectiveBranch))
 
   useEffect(() => {
@@ -235,12 +241,30 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
 
   const handleBranchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setBranch(sanitizeBranchInput(e.target.value))
-    setExistingBranch(null)
   }, [])
 
   const handlePickExistingBranch = useCallback((name: string | null) => {
     setExistingBranch(name)
-    if (name) setBranch('')
+  }, [])
+
+  const handleRefChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    // No sanitization: refs legitimately contain chars (`~`, `^`) that
+    // sanitizeBranchInput strips. Trust git to validate at worktree-add time.
+    setRefValue(e.target.value)
+  }, [])
+
+  // Switching tabs wipes the value of the tab being left, so each tab is
+  // a fresh slate when entered. Without this, a stale value typed into one
+  // tab would silently linger and could be submitted later if the user
+  // toggled back to it.
+  const switchBranchTab = useCallback((next: 'new' | 'existing' | 'ref') => {
+    setBranchTab((prev) => {
+      if (prev === next) return prev
+      if (prev === 'new') setBranch('')
+      else if (prev === 'existing') setExistingBranch(null)
+      else setRefValue('')
+      return next
+    })
   }, [])
 
   const handleSubmit = useCallback(async () => {
@@ -252,10 +276,10 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
       // analog today.
       const effectiveAgent: 'claude' | 'codex' =
         mode === 'teleport' ? 'claude' : agentKindOverride
-      // When the active tab is Existing, ask the FSM to
-      // `git worktree add <dir> <branch>` (no `-b`) so an existing local or
-      // remote-tracking ref is checked out — not created literally.
-      const checkoutExisting = mode === 'fresh' && branchTab === 'existing'
+      // When the active tab is Existing or Ref, ask the FSM to
+      // `git worktree add <dir> <ref>` (no `-b`) so the supplied ref is
+      // resolved (branch / tag / commit / remote ref) — not created literally.
+      const checkoutExisting = mode === 'fresh' && branchTab !== 'new'
       await onSubmit(
         selectedRepo,
         effectiveBranch,
@@ -424,7 +448,7 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
                   <button
                     type="button"
                     onClick={() => {
-                      setBranchTab('new')
+                      switchBranchTab('new')
                       requestAnimationFrame(() => branchRef.current?.focus())
                     }}
                     disabled={submitting}
@@ -438,7 +462,7 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
                   </button>
                   <button
                     type="button"
-                    onClick={() => setBranchTab('existing')}
+                    onClick={() => switchBranchTab('existing')}
                     disabled={submitting}
                     className={`flex-1 flex items-center justify-center px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
                       branchTab === 'existing'
@@ -448,9 +472,21 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
                   >
                     Existing branch
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => switchBranchTab('ref')}
+                    disabled={submitting}
+                    className={`flex-1 flex items-center justify-center px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
+                      branchTab === 'ref'
+                        ? 'bg-panel text-fg-bright shadow-sm'
+                        : 'text-dim hover:text-fg'
+                    }`}
+                  >
+                    Any Git Ref
+                  </button>
                 </div>
 
-                {branchTab === 'new' ? (
+                {branchTab === 'new' && (
                   <input
                     ref={branchRef}
                     type="text"
@@ -461,10 +497,10 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
                     disabled={submitting}
                     autoComplete="off"
                     spellCheck={false}
-                    style={{ fontSize: '13px' }}
-                    className="w-full bg-app border-2 border-border-strong rounded-lg px-3 py-2.5 font-mono text-fg-bright placeholder-faint outline-none focus:border-accent transition-colors disabled:opacity-50"
+                    className="w-full bg-app border-2 border-border-strong rounded-lg px-3 py-2.5 font-mono text-sm text-fg-bright placeholder-faint outline-none focus:border-accent transition-colors disabled:opacity-50"
                   />
-                ) : (
+                )}
+                {branchTab === 'existing' && (
                   <ExistingBranchCombobox
                     branches={branchesByRepo[selectedRepo] || []}
                     value={existingBranch}
@@ -472,6 +508,24 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
                     disabled={submitting || !selectedRepo}
                     placeholder={!selectedRepo ? 'Select a repository first' : undefined}
                   />
+                )}
+                {branchTab === 'ref' && (
+                  <div>
+                    <input
+                      type="text"
+                      value={refValue}
+                      onChange={handleRefChange}
+                      onKeyDown={handleBranchKey}
+                      placeholder="commit SHA, tag, or origin/branch"
+                      disabled={submitting || !selectedRepo}
+                      autoComplete="off"
+                      spellCheck={false}
+                      className="w-full bg-app border-2 border-border-strong rounded-lg px-3 py-2.5 font-mono text-sm text-fg-bright placeholder-faint outline-none focus:border-accent transition-colors disabled:opacity-50"
+                    />
+                    <p className="text-xs text-dim mt-1.5">
+                      Any git ref — commit SHA, tag, or remote branch. The worktree starts in detached HEAD (commit/tag) or DWIM-creates a tracking branch (remote ref).
+                    </p>
+                  </div>
                 )}
               </div>
             )}
@@ -661,9 +715,8 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
                     type="button"
                     onClick={() => {
                       if (!branch) {
+                        switchBranchTab('new')
                         setBranch(starterBranch)
-                        setExistingBranch(null)
-                        setBranchTab('new')
                       }
                       setPrompt(starterPrompt)
                       promptRef.current?.focus()
@@ -884,12 +937,13 @@ interface ExistingBranchComboboxProps {
   onChange: (name: string | null) => void
   disabled: boolean
   /** Optional override for the input placeholder. When omitted, the
-   * combobox picks one of its own ("Type to filter…" or "No branches
-   * found") based on `branches.length`. */
+   * combobox picks one of its own ("Filter local branches…" or
+   * "No local branches found") based on `branches.length`. */
   placeholder?: string
 }
 
-/** Typeahead combobox over the local + remote branch list. Typing
+/** Typeahead combobox over the local branch list (remote-tracking refs
+ * are excluded — users wanting `origin/foo` should use the Ref tab). Typing
  * filters by substring (case-insensitive); ArrowUp/Down navigate;
  * Enter commits the highlighted match; Esc closes the panel; the
  * X button clears the current selection back to null. */
@@ -982,12 +1036,11 @@ function ExistingBranchCombobox({
           onFocus={handleFocus}
           onBlur={handleBlur}
           onKeyDown={handleKey}
-          placeholder={placeholder ?? (branches.length === 0 ? 'No branches found' : 'Type to filter…')}
+          placeholder={placeholder ?? (branches.length === 0 ? 'No local branches found' : 'Filter local branches…')}
           disabled={disabled || branches.length === 0}
           autoComplete="off"
           spellCheck={false}
-          style={{ fontSize: '13px' }}
-          className="w-full bg-app border-2 border-border-strong rounded-lg pl-3 pr-16 py-2.5 font-mono text-fg-bright placeholder-faint outline-none focus:border-accent transition-colors disabled:opacity-50"
+          className="w-full bg-app border-2 border-border-strong rounded-lg pl-3 pr-16 py-2.5 font-mono text-sm text-fg-bright placeholder-faint outline-none focus:border-accent transition-colors disabled:opacity-50"
         />
         <div className="absolute inset-y-0 right-2 flex items-center gap-1">
           {value !== null && !disabled && (
@@ -1003,10 +1056,10 @@ function ExistingBranchCombobox({
               className="text-dim hover:text-fg p-1 rounded cursor-pointer"
               title="Clear selection"
             >
-              <X size={12} />
+              <X className="icon-xs" />
             </button>
           )}
-          <ChevronDown size={14} className="text-dim pointer-events-none" />
+          <ChevronDown className="icon-sm text-dim pointer-events-none" />
         </div>
       </div>
       {open && filtered.length > 0 && (
@@ -1025,7 +1078,7 @@ function ExistingBranchCombobox({
               }`}
             >
               {value === b ? (
-                <Check size={12} className="text-accent shrink-0" />
+                <Check className="icon-xs text-accent shrink-0" />
               ) : (
                 <span className="w-3 shrink-0" />
               )}
