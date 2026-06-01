@@ -104,6 +104,7 @@ export function buildBackend(
       agentKind?: 'claude' | 'codex'
       model?: string
       checkoutExisting?: boolean
+      baseRef?: string
     }) => req('worktrees:runPending', params),
     runPendingPRWorktree: (params: {
       id: string

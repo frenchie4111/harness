@@ -16,7 +16,8 @@ interface NewWorktreeScreenProps {
     teleportSessionId?: string,
     agentKind?: 'claude' | 'codex',
     model?: string,
-    checkoutExisting?: boolean
+    checkoutExisting?: boolean,
+    baseRef?: string
   ) => Promise<void>
   onPRSubmit: (
     repoRoot: string,
@@ -101,9 +102,12 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
   const [branch, setBranch] = useState('')
   const [existingBranch, setExistingBranch] = useState<string | null>(null)
   // Free-text ref: commit SHA, tag, remote-tracking ref (`origin/foo`), etc.
-  // Submitted as-is — `git worktree add` resolves it and lands in a detached
-  // HEAD (commit/tag) or DWIM-creates a tracking branch (remote ref).
+  // Used as the base the new branch (`refBranch`) is forked from — the
+  // worktree is created with `-b <refBranch> <refValue>` so it always lands
+  // on a named local branch, never a detached HEAD.
   const [refValue, setRefValue] = useState('')
+  // The name of the new branch to create at `refValue` on the Ref tab.
+  const [refBranch, setRefBranch] = useState('')
   const [branchTab, setBranchTab] = useState<'new' | 'existing' | 'ref'>('new')
   const [prompt, setPrompt] = useState('')
   const settings = useSettings()
@@ -145,20 +149,23 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
       ? branch
       : branchTab === 'existing'
         ? (existingBranch ?? '')
-        : refValue.trim()
+        : refBranch
   const effectiveBranch = mode === 'teleport'
     ? (parsedTeleport ? teleportFolderName(parsedTeleport) : '')
     : submitBranch
-  // For the Ref tab a raw ref can include chars that `isValidBranchName`
-  // rightly rejects for branch *creation* (commit SHAs are fine, but
-  // expressions like `HEAD~3` aren't valid branch names). Trust git to
-  // resolve the ref at worktree-add time and validate non-emptiness here.
+  // On the Ref tab the new branch is forked from this base ref (commit SHA,
+  // tag, remote ref, or an expression like `HEAD~3`). It can include chars
+  // that `isValidBranchName` rightly rejects for branch *names*, so it's only
+  // validated for non-emptiness — git resolves it at worktree-add time.
+  const baseRef = branchTab === 'ref' ? refValue.trim() : undefined
+  // The Ref tab requires BOTH a valid new branch name and a non-empty base
+  // ref; other tabs just need a valid branch name (or a parsed teleport id).
   const canSubmit =
     !submitting &&
     !!selectedRepo &&
     (mode === 'fresh'
       ? branchTab === 'ref'
-        ? submitBranch.length > 0
+        ? isValidBranchName(submitBranch) && !!baseRef
         : isValidBranchName(submitBranch)
       : !!parsedTeleport && !teleportInvalid && isValidBranchName(effectiveBranch))
 
@@ -253,6 +260,10 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
     setRefValue(e.target.value)
   }, [])
 
+  const handleRefBranchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setRefBranch(sanitizeBranchInput(e.target.value))
+  }, [])
+
   // Switching tabs wipes the value of the tab being left, so each tab is
   // a fresh slate when entered. Without this, a stale value typed into one
   // tab would silently linger and could be submitted later if the user
@@ -262,7 +273,10 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
       if (prev === next) return prev
       if (prev === 'new') setBranch('')
       else if (prev === 'existing') setExistingBranch(null)
-      else setRefValue('')
+      else {
+        setRefValue('')
+        setRefBranch('')
+      }
       return next
     })
   }, [])
@@ -276,10 +290,10 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
       // analog today.
       const effectiveAgent: 'claude' | 'codex' =
         mode === 'teleport' ? 'claude' : agentKindOverride
-      // When the active tab is Existing or Ref, ask the FSM to
-      // `git worktree add <dir> <ref>` (no `-b`) so the supplied ref is
-      // resolved (branch / tag / commit / remote ref) — not created literally.
-      const checkoutExisting = mode === 'fresh' && branchTab !== 'new'
+      // Existing tab: `git worktree add <dir> <branch>` (no `-b`) so git
+      // checks out the already-existing local branch as-is. Ref tab: create
+      // a new branch named `effectiveBranch` forked from `baseRef`.
+      const checkoutExisting = mode === 'fresh' && branchTab === 'existing'
       await onSubmit(
         selectedRepo,
         effectiveBranch,
@@ -287,13 +301,14 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
         parsedTeleport || undefined,
         effectiveAgent,
         modelOverride.trim() || undefined,
-        checkoutExisting
+        checkoutExisting,
+        baseRef
       )
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create worktree')
       setSubmitting(false)
     }
-  }, [effectiveBranch, prompt, canSubmit, onSubmit, parsedTeleport, selectedRepo, mode, agentKindOverride, modelOverride, branchTab])
+  }, [effectiveBranch, prompt, canSubmit, onSubmit, parsedTeleport, selectedRepo, mode, agentKindOverride, modelOverride, branchTab, baseRef])
 
   const cycleRepo = useCallback((direction: 1 | -1) => {
     if (repoRoots.length <= 1) return
@@ -510,20 +525,30 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
                   />
                 )}
                 {branchTab === 'ref' && (
-                  <div>
+                  <div className="space-y-2">
                     <input
                       type="text"
-                      value={refValue}
-                      onChange={handleRefChange}
-                      onKeyDown={handleBranchKey}
-                      placeholder="commit SHA, tag, or origin/branch"
+                      value={refBranch}
+                      onChange={handleRefBranchChange}
+                      placeholder="new-branch-name"
                       disabled={submitting || !selectedRepo}
                       autoComplete="off"
                       spellCheck={false}
                       className="w-full bg-app border-2 border-border-strong rounded-lg px-3 py-2.5 font-mono text-sm text-fg-bright placeholder-faint outline-none focus:border-accent transition-colors disabled:opacity-50"
                     />
-                    <p className="text-xs text-dim mt-1.5">
-                      Any git ref — commit SHA, tag, or remote branch. The worktree starts in detached HEAD (commit/tag) or DWIM-creates a tracking branch (remote ref).
+                    <input
+                      type="text"
+                      value={refValue}
+                      onChange={handleRefChange}
+                      onKeyDown={handleBranchKey}
+                      placeholder="from: commit SHA, tag, or origin/branch"
+                      disabled={submitting || !selectedRepo}
+                      autoComplete="off"
+                      spellCheck={false}
+                      className="w-full bg-app border-2 border-border-strong rounded-lg px-3 py-2.5 font-mono text-sm text-fg-bright placeholder-faint outline-none focus:border-accent transition-colors disabled:opacity-50"
+                    />
+                    <p className="text-xs text-dim">
+                      Creates a new branch at any git ref — a commit SHA, tag, or remote branch (e.g. <span className="font-mono">origin/main</span>).
                     </p>
                   </div>
                 )}

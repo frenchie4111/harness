@@ -1049,6 +1049,7 @@ function registerIpcHandlers(): void {
       agentKind?: 'claude' | 'codex'
       model?: string
       checkoutExisting?: boolean
+      baseRef?: string
     }) => {
       return worktreesFSM.runPending(params)
     }
