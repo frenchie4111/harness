@@ -127,6 +127,7 @@ export function RightColumn({
             }
             onOpenReview={onOpenReview}
             onOpenReviewFile={onOpenReviewFile}
+            onOpenFile={onOpenFile}
           />
         )
       case 'allFiles':
