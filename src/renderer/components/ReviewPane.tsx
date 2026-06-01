@@ -510,7 +510,7 @@ export function ReviewPane({
               <button
                 onClick={handleSendToAgent}
                 disabled={comments.length === 0 || !onSendToAgent}
-                className="flex items-center gap-1 px-2 py-1 rounded bg-accent text-fg text-xs font-medium hover:bg-accent/80 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-default"
+                className="flex items-center gap-1 px-2 py-1 rounded bg-accent text-app text-xs font-medium hover:bg-accent/80 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-default"
               >
                 <Send className="icon-xs" />
                 Send to Agent

@@ -433,7 +433,7 @@ function CommentThread({
                 padding: '2px 8px',
                 borderRadius: '4px',
                 background: replyBody.trim() ? 'var(--color-accent)' : 'var(--color-border)',
-                color: 'var(--color-fg)',
+                color: replyBody.trim() ? 'var(--color-app)' : 'var(--color-faint)',
                 border: 'none',
                 cursor: replyBody.trim() ? 'pointer' : 'default',
                 opacity: replyBody.trim() ? 1 : 0.4
@@ -536,7 +536,7 @@ function InlineCommentInput({
             padding: '0.125rem 0.5rem',
             borderRadius: '0.25rem',
             background: body.trim() ? 'var(--color-accent)' : 'var(--color-border)',
-            color: 'var(--color-fg)',
+            color: body.trim() ? 'var(--color-app)' : 'var(--color-faint)',
             border: 'none',
             cursor: body.trim() ? 'pointer' : 'default',
             opacity: body.trim() ? 1 : 0.3
