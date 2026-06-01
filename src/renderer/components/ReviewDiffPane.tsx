@@ -70,6 +70,9 @@ function formatRelTime(ms: number): string {
   return new Date(ms).toLocaleDateString()
 }
 
+const COMMENT_BG = 'color-mix(in srgb, var(--color-info, #58a6ff) 28%, var(--color-panel-raised))'
+const COLLAPSED_BODY_PX = 64
+
 function InlineComment({
   comment,
   onDelete
@@ -79,8 +82,18 @@ function InlineComment({
 }): JSX.Element {
   const ts = comment.createdAt ? Date.parse(comment.createdAt) : comment.timestamp
   const timeStr = formatRelTime(ts)
+  const [expanded, setExpanded] = useState(false)
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const [collapsible, setCollapsible] = useState(false)
+  useEffect(() => {
+    const el = bodyRef.current
+    if (el) setCollapsible(el.scrollHeight > COLLAPSED_BODY_PX + 4)
+  }, [comment.body])
+  const clamped = collapsible && !expanded
+
   return (
     <div
+      onClick={() => collapsible && setExpanded((v) => !v)}
       style={{
         display: 'inline-flex',
         flexDirection: 'column',
@@ -90,10 +103,11 @@ function InlineComment({
         border: '1px solid color-mix(in srgb, var(--color-info, #58a6ff) 60%, transparent)',
         borderLeft: '4px solid var(--color-info, #58a6ff)',
         borderRadius: '0 6px 6px 0',
-        background: 'color-mix(in srgb, var(--color-info, #58a6ff) 28%, var(--color-panel-raised))',
+        background: COMMENT_BG,
         boxShadow: '0 2px 10px rgba(0, 0, 0, 0.4)',
         margin: '4px 0',
-        maxWidth: '760px'
+        maxWidth: '760px',
+        cursor: collapsible ? 'pointer' : 'default'
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -131,6 +145,7 @@ function InlineComment({
               href={comment.htmlUrl}
               target="_blank"
               rel="noreferrer"
+              onClick={(e) => e.stopPropagation()}
               style={{ color: 'var(--color-faint)', fontSize: '11px' }}
             >
               {timeStr}
@@ -140,7 +155,10 @@ function InlineComment({
           ))}
         {comment.remoteId === undefined && (
           <button
-            onClick={onDelete}
+            onClick={(e) => {
+              e.stopPropagation()
+              onDelete()
+            }}
             title="Delete comment"
             style={{
               marginLeft: 'auto',
@@ -159,9 +177,53 @@ function InlineComment({
           </button>
         )}
       </div>
-      <div className="markdown" style={{ color: 'var(--color-fg)', minWidth: 0, fontSize: '12px' }}>
-        <ReactMarkdown remarkPlugins={COMMENT_REMARK_PLUGINS}>{comment.body}</ReactMarkdown>
+      <div style={{ position: 'relative' }}>
+        <div
+          ref={bodyRef}
+          className="markdown"
+          style={{
+            color: 'var(--color-fg)',
+            minWidth: 0,
+            fontSize: '12px',
+            maxHeight: clamped ? `${COLLAPSED_BODY_PX}px` : undefined,
+            overflow: 'hidden'
+          }}
+        >
+          <ReactMarkdown remarkPlugins={COMMENT_REMARK_PLUGINS}>{comment.body}</ReactMarkdown>
+        </div>
+        {clamped && (
+          <div
+            style={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: '20px',
+              background: `linear-gradient(to bottom, transparent, ${COMMENT_BG})`,
+              pointerEvents: 'none'
+            }}
+          />
+        )}
       </div>
+      {collapsible && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            setExpanded((v) => !v)
+          }}
+          style={{
+            alignSelf: 'flex-start',
+            background: 'none',
+            border: 'none',
+            padding: 0,
+            color: 'var(--color-info)',
+            cursor: 'pointer',
+            fontSize: '11px'
+          }}
+        >
+          {expanded ? 'Show less' : 'Show more'}
+        </button>
+      )}
     </div>
   )
 }
@@ -269,9 +331,13 @@ function InlineCommentInput({
 
 interface ViewZoneEntry {
   zoneId: string
+  /** Kept so we can mutate heightInPx and re-layout when the comment's
+   *  rendered height changes (collapse/expand, markdown reflow). */
+  zone: monaco.editor.IViewZone
   root: Root
   domNode: HTMLDivElement
   stickyWrapper: HTMLDivElement
+  resizeObserver?: ResizeObserver
 }
 
 export function ReviewDiffPane({
@@ -354,6 +420,7 @@ export function ReviewDiffPane({
     if (zones.length === 0) return
     modifiedEd.changeViewZones((accessor) => {
       for (const z of zones) {
+        z.resizeObserver?.disconnect()
         accessor.removeZone(z.zoneId)
         queueMicrotask(() => z.root.unmount())
       }
@@ -407,13 +474,14 @@ export function ReviewDiffPane({
         stickyWrapper.style.width = `${contentWidth}px`
         domNode.appendChild(stickyWrapper)
 
-        const heightInLines = item.type === 'input' ? 7 : 4
-        const zoneId = accessor.addZone({
+        const zone: monaco.editor.IViewZone = {
           afterLineNumber: item.lineNumber,
-          heightInLines,
           domNode,
           suppressMouseDown: false
-        })
+        }
+        if (item.type === 'input') zone.heightInLines = 7
+        else zone.heightInPx = 76 // estimate; the ResizeObserver corrects it
+        const zoneId = accessor.addZone(zone)
 
         const root = createRoot(stickyWrapper)
         if (item.type === 'comment' && item.comment) {
@@ -434,7 +502,24 @@ export function ReviewDiffPane({
           )
         }
 
-        newZones.push({ zoneId, root, domNode, stickyWrapper })
+        // Resize the comment zone to fit its rendered content so collapse /
+        // expand and markdown reflow don't clip. The observed height depends
+        // only on the comment content (not the zone height), so there's no
+        // feedback loop.
+        let resizeObserver: ResizeObserver | undefined
+        if (item.type === 'comment') {
+          resizeObserver = new ResizeObserver(() => {
+            const ed = editorRef.current
+            if (!ed) return
+            const h = Math.ceil(stickyWrapper.scrollHeight) + 8
+            if (!h || zone.heightInPx === h) return
+            zone.heightInPx = h
+            ed.getModifiedEditor().changeViewZones((acc) => acc.layoutZone(zoneId))
+          })
+          resizeObserver.observe(stickyWrapper)
+        }
+
+        newZones.push({ zoneId, zone, root, domNode, stickyWrapper, resizeObserver })
       }
     })
 
@@ -445,7 +530,10 @@ export function ReviewDiffPane({
   useEffect(() => {
     return () => {
       const zones = viewZonesRef.current
-      for (const z of zones) queueMicrotask(() => z.root.unmount())
+      for (const z of zones) {
+        z.resizeObserver?.disconnect()
+        queueMicrotask(() => z.root.unmount())
+      }
       viewZonesRef.current = []
     }
   }, [])
