@@ -75,7 +75,7 @@ export const THEME_OPTIONS: ThemeOption[] = [
   {
     id: 'hub-delight',
     label: 'Hub Delight',
-    description: 'GitHub Light — crisp white with the classic GitHub blue.',
+    description: 'Crisp white, classic blue, recognizable.',
     swatches: ['#ffffff', '#eaeef2', '#24292e', '#0366d6'],
     mode: 'light'
   },
