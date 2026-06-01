@@ -134,6 +134,21 @@ function readVar(name: string, fallback: string): string {
   return v || fallback
 }
 
+/** Resolve a CSS color (hex/oklch/named/var) to its luminance and decide if
+ *  it reads as dark — used to pick Monaco's vs vs vs-dark base. */
+function isColorDark(color: string): boolean {
+  const probe = document.createElement('span')
+  probe.style.color = color
+  probe.style.display = 'none'
+  document.documentElement.appendChild(probe)
+  const rgb = getComputedStyle(probe).color
+  probe.remove()
+  const m = rgb.match(/\d+(\.\d+)?/g)
+  if (!m || m.length < 3) return true
+  const [r, g, b] = m.map(Number)
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b < 128
+}
+
 export function defineHarnessTheme(): void {
   const bg = readVar('--color-app', '#0b0d10')
   const panel = readVar('--color-panel', '#12151a')
@@ -141,9 +156,10 @@ export function defineHarnessTheme(): void {
   const muted = readVar('--color-muted', '#b0b0b0')
   const faint = readVar('--color-faint', '#6b7280')
   const border = readVar('--color-border', '#1f242c')
+  const dark = isColorDark(bg)
 
   monaco.editor.defineTheme('harness', {
-    base: 'vs-dark',
+    base: dark ? 'vs-dark' : 'vs',
     inherit: true,
     rules: [
       { token: '', foreground: fg.replace('#', '') }
@@ -174,6 +190,20 @@ export function defineHarnessTheme(): void {
     }
   })
   monaco.editor.setTheme('harness')
+}
+
+// Re-derive the Monaco theme whenever the app theme changes. theme-apply
+// mutates `data-theme` and inline custom-property styles on :root, so watch
+// both — same signal XTerminal re-themes on. Without this, open diff/file
+// editors keep their boot-time colors across a light/dark switch.
+let themeObserver: MutationObserver | null = null
+export function watchHarnessTheme(): void {
+  if (themeObserver) return
+  themeObserver = new MutationObserver(() => defineHarnessTheme())
+  themeObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['data-theme', 'style', 'class']
+  })
 }
 
 // Map common file extensions to Monaco language ids. Monaco ships with
