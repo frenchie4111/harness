@@ -629,12 +629,12 @@ export function ReviewDiffPane({
       editorRef.current = editor
       setEditorNonce((n) => n + 1)
       const modEd = editor.getModifiedEditor()
-      // Keep sticky wrappers sized to the visible viewport on resize.
-      modEd.onDidLayoutChange((layout) => {
-        for (const z of viewZonesRef.current) {
-          z.stickyWrapper.style.width = `${layout.contentWidth}px`
-        }
-      })
+      // NOTE: do NOT rewrite sticky-wrapper widths on layout change. Each
+      // comment zone has a ResizeObserver watching its wrapper; mutating the
+      // wrapper here would retrigger that observer → changeViewZones → layout
+      // change → loop (a renderer-freezing feedback storm). The comment is
+      // capped at 760px and left-pinned, so a fixed width set at creation is
+      // fine.
       // Track the hovered line so `c` can target it.
       modEd.onMouseMove((e) => {
         hoveredLineRef.current = e.target.position?.lineNumber ?? null
