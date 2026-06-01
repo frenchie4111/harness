@@ -75,7 +75,6 @@ function formatRelTime(ms: number): string {
   return new Date(ms).toLocaleDateString()
 }
 
-const COMMENT_BG = 'color-mix(in srgb, var(--color-info, #58a6ff) 28%, var(--color-panel-raised))'
 const COLLAPSED_BODY_PX = 64
 
 function InlineComment({
@@ -98,6 +97,12 @@ function InlineComment({
   }, [comment.body])
   const clamped = collapsible && !expanded
 
+  // Local-only or pending-review comments are drafts (not yet published on
+  // the PR); tint them differently (amber) from published comments (blue).
+  const isDraft = comment.draft || comment.remoteId === undefined
+  const accent = isDraft ? 'var(--color-warning, #d29922)' : 'var(--color-info, #58a6ff)'
+  const bg = `color-mix(in srgb, ${accent} ${isDraft ? '20%' : '28%'}, var(--color-panel-raised))`
+
   return (
     <div
       onClick={(e) => {
@@ -119,10 +124,10 @@ function InlineComment({
         gap: '4px',
         padding: '8px 12px',
         fontSize: '12px',
-        border: '1px solid color-mix(in srgb, var(--color-info, #58a6ff) 60%, transparent)',
-        borderLeft: '4px solid var(--color-info, #58a6ff)',
+        border: `1px solid color-mix(in srgb, ${accent} 60%, transparent)`,
+        borderLeft: `4px solid ${accent}`,
         borderRadius: '0 6px 6px 0',
-        background: COMMENT_BG,
+        background: bg,
         boxShadow: '0 2px 10px rgba(0, 0, 0, 0.4)',
         margin: '4px 0',
         maxWidth: '760px',
@@ -172,6 +177,21 @@ function InlineComment({
           ) : (
             <span style={{ color: 'var(--color-faint)', fontSize: '11px' }}>{timeStr}</span>
           ))}
+        {isDraft && (
+          <span
+            style={{
+              fontSize: '10px',
+              color: accent,
+              border: `1px solid ${accent}`,
+              borderRadius: '3px',
+              padding: '0 4px',
+              textTransform: 'uppercase',
+              letterSpacing: '0.04em'
+            }}
+          >
+            Draft
+          </span>
+        )}
         {comment.remoteId === undefined && (
           <button
             onClick={(e) => {
@@ -220,7 +240,7 @@ function InlineComment({
               right: 0,
               bottom: 0,
               height: '20px',
-              background: `linear-gradient(to bottom, transparent, ${COMMENT_BG})`,
+              background: `linear-gradient(to bottom, transparent, ${bg})`,
               pointerEvents: 'none'
             }}
           />
@@ -237,7 +257,7 @@ function InlineComment({
             background: 'none',
             border: 'none',
             padding: 0,
-            color: 'var(--color-info)',
+            color: accent,
             cursor: 'pointer',
             fontSize: '11px'
           }}

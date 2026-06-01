@@ -1398,7 +1398,8 @@ export async function syncPRReview(
         author: rc.user?.login,
         authorAvatarUrl: rc.user?.avatar_url,
         createdAt: rc.created_at,
-        htmlUrl: rc.html_url
+        htmlUrl: rc.html_url,
+        draft: false
       })
     }
   }
@@ -1445,7 +1446,8 @@ export async function syncPRReview(
           author: c.author?.login,
           authorAvatarUrl: c.author?.avatarUrl,
           createdAt: c.createdAt,
-          htmlUrl: c.url
+          htmlUrl: c.url,
+          draft: true
         })
       }
     }

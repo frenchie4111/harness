@@ -18,6 +18,8 @@ export interface ReviewComment {
   createdAt?: string
   /** Link to the comment on GitHub. */
   htmlUrl?: string
+  /** True for a comment on an unsubmitted (pending) review. */
+  draft?: boolean
 }
 
 interface ReviewFileTreeProps {
