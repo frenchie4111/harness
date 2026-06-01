@@ -536,13 +536,19 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     })
   }, [uiScale, scrollToSection, scrollToSubSection])
 
+  // Picking a theme also switches the mode to that theme's mode when we're
+  // in the opposite mode, so a click always takes effect (otherwise picking
+  // a light theme while in Dark just sets a preference and looks like a
+  // no-op). System mode is left alone — that's an explicit OS-follows choice.
   const handleSelectLightTheme = useCallback((id: string) => {
     void backend.setThemeLight(id)
-  }, [backend])
+    if (themeMode === 'dark') void backend.setThemeMode('light')
+  }, [backend, themeMode])
 
   const handleSelectDarkTheme = useCallback((id: string) => {
     void backend.setThemeDark(id)
-  }, [backend])
+    if (themeMode === 'light') void backend.setThemeMode('dark')
+  }, [backend, themeMode])
 
   const handleTerminalFontFamilyChange = useCallback((value: string) => {
     void backend.setTerminalFontFamily(value)
