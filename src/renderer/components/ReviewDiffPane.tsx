@@ -55,12 +55,12 @@ function InlineComment({
       style={{
         display: 'flex',
         alignItems: 'flex-start',
-        gap: '8px',
-        padding: '6px 12px',
-        fontSize: '12px',
+        gap: '0.5rem',
+        padding: '0.375rem 0.75rem',
+        fontSize: '0.75rem',
         borderLeft: '3px solid var(--color-info, #58a6ff)',
         background: 'color-mix(in srgb, var(--color-info, #58a6ff) 8%, transparent)',
-        margin: '2px 8px'
+        margin: '0.125rem 0.5rem'
       }}
     >
       <span style={{ flex: 1, color: 'var(--color-fg)', whiteSpace: 'pre-wrap' }}>
@@ -74,8 +74,8 @@ function InlineComment({
           cursor: 'pointer',
           background: 'none',
           border: 'none',
-          fontSize: '11px',
-          padding: '0 2px'
+          fontSize: '0.6875rem',
+          padding: '0 0.125rem'
         }}
         onMouseOver={(e) => (e.currentTarget.style.color = 'var(--color-danger, #f85149)')}
         onMouseOut={(e) => (e.currentTarget.style.color = 'var(--color-faint)')}
@@ -107,16 +107,16 @@ function InlineCommentInput({
       style={{
         display: 'flex',
         flexDirection: 'column',
-        gap: '6px',
-        padding: '8px 12px',
-        margin: '2px 8px',
-        borderRadius: '4px',
+        gap: '0.375rem',
+        padding: '0.5rem 0.75rem',
+        margin: '0.125rem 0.5rem',
+        borderRadius: '0.25rem',
         border: '1px solid var(--color-border-strong)',
         background: 'var(--color-panel-raised)'
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontSize: '10px', color: 'var(--color-faint)', fontFamily: 'monospace' }}>
+        <span style={{ fontSize: '0.625rem', color: 'var(--color-faint)', fontFamily: 'monospace' }}>
           Line {lineNumber}
         </span>
         <button
@@ -126,7 +126,7 @@ function InlineCommentInput({
             cursor: 'pointer',
             background: 'none',
             border: 'none',
-            fontSize: '12px'
+            fontSize: '0.75rem'
           }}
         >
           ✕
@@ -153,26 +153,26 @@ function InlineCommentInput({
           width: '100%',
           background: 'var(--color-surface)',
           color: 'var(--color-fg)',
-          fontSize: '12px',
-          borderRadius: '4px',
+          fontSize: '0.75rem',
+          borderRadius: '0.25rem',
           border: '1px solid var(--color-border)',
-          padding: '6px 8px',
+          padding: '0.375rem 0.5rem',
           resize: 'none',
           outline: 'none',
           fontFamily: 'inherit'
         }}
       />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontSize: '10px', color: 'var(--color-faint)' }}>⌘Enter to submit</span>
+        <span style={{ fontSize: '0.625rem', color: 'var(--color-faint)' }}>⌘Enter to submit</span>
         <button
           onClick={() => {
             if (body.trim()) onSubmit(body.trim())
           }}
           disabled={!body.trim()}
           style={{
-            fontSize: '11px',
-            padding: '2px 8px',
-            borderRadius: '4px',
+            fontSize: '0.6875rem',
+            padding: '0.125rem 0.5rem',
+            borderRadius: '0.25rem',
             background: body.trim() ? 'var(--color-accent)' : 'var(--color-border)',
             color: 'var(--color-fg)',
             border: 'none',
