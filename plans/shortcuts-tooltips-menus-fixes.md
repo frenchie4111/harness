@@ -53,17 +53,18 @@ right sidebar" / "Expand right sidebar" in `RightColumnToolbar.tsx` and
 The Electron menu accelerator is consumed at the menu layer, so the renderer
 hotkey for the same chord never fires. Both decisions are settled below.
 
-### 2a. ⌘N collision — **decided: ⌘N = New Worktree, ⌃N = New Project**
+### 2a. ⌘N collision — **decided: ⌘N = New Worktree, New Project = no shortcut**
 - **Menu** `File → New Project…` = `CmdOrCtrl+N` (`src/main/desktop-shell.ts`)
 - **Renderer** `newWorktree` = ⌘N (`hotkeys.ts:92`)
 - Result today: ⌘N opens New Project; the "new worktree" hotkey is dead.
 
-**Change:** repoint the menu item's accelerator to `Ctrl+N` (literal Control on
-macOS too) so it no longer captures ⌘N. The renderer `newWorktree` ⌘N hotkey
-then fires as intended. No `DEFAULT_HOTKEYS` change needed; a New Worktree menu
-item is deferred with the rest of Fix 5.
-- Caveat: ⌃N is "next line" in readline/terminals; acceptable since New Project
-  is a low-frequency action and the menu item still works by click.
+**Change:** remove the menu item's accelerator entirely so it no longer captures
+⌘N. The renderer `newWorktree` ⌘N hotkey then fires as intended. No
+`DEFAULT_HOTKEYS` change needed; a New Worktree menu item is deferred with the
+rest of Fix 5.
+- Note: the original fix repointed the accelerator to `Ctrl+N`, but ⌃N never
+  triggered New Project reliably, so it was dropped. New Project is now
+  menu/button-only with no shortcut hint.
 
 ### 2b. ⌘⇧R collision — **decided: drop Force Reload's accelerator**
 - **Menu** `View → Force Reload` (role `forceReload`, default ⌘⇧R)
@@ -73,12 +74,15 @@ item is deferred with the rest of Fix 5.
 **Change:** Force Reload is a dev-only escape hatch → remove its accelerator
 (keep the menu item clickable) so `refreshWorktrees` ⌘⇧R works.
 
-**As built:** New Project… accelerator changed to `Ctrl+N`; `View → Force Reload`
-swapped from `role: 'forceReload'` to a custom item that calls
+**As built:** New Project…'s accelerator was removed entirely (`5b1b5f4`) — an
+interim `Ctrl+N` accelerator (`a72a190`) never reliably triggered New Project, so
+it and the `hotkey="Ctrl+N"` tooltip hints in the expanded + collapsed sidebars
+were dropped. `View → Force Reload` swapped from `role: 'forceReload'` to a
+custom item that calls
 `BrowserWindow.getFocusedWindow()?.webContents.reloadIgnoringCache()` with no
 accelerator. Both in `src/main/desktop-shell.ts`. Still needs a manual smoke
-test in a packaged/dev launch to confirm the chords route correctly (not
-covered by unit tests).
+test in a packaged/dev launch to confirm ⌘N (New Worktree) and ⌘⇧R (Refresh
+Worktrees) route correctly (not covered by unit tests).
 
 ---
 
@@ -205,8 +209,8 @@ accelerator shows correctly in the menu.
 
 - **Fix 5** — menu-bar expansion, still deferred (see its section).
 - **Manual smoke test for Fix 2** — confirm in a real launch that ⌘N opens New
-  Worktree, ⌃N opens New Project, and ⌘⇧R refreshes worktrees (no unit coverage
-  for menu-accelerator routing).
+  Worktree and ⌘⇧R refreshes worktrees (no unit coverage for menu-accelerator
+  routing). New Project has no shortcut.
 
 ## Sequencing (as executed)
 
@@ -216,7 +220,7 @@ accelerator shows correctly in the menu.
 4. **Fix 5** — deferred; not in scope until unblocked.
 
 ## Decisions (settled)
-- **Fix 2a:** ⌘N = New Worktree; New Project moves to ⌃N.
+- **Fix 2a:** ⌘N = New Worktree; New Project has no shortcut (interim ⌃N dropped — it never fired).
 - **Fix 2b:** drop Force Reload's accelerator so ⇧⌘R = Refresh worktrees.
 - **Modifier display order:** macOS HIG ⌃⌥⇧⌘ (Shift before Cmd) everywhere.
 - **Right panel naming:** "right sidebar" in all copy.
