@@ -129,7 +129,6 @@ function InlineComment({
         borderRadius: '0 6px 6px 0',
         background: bg,
         boxShadow: '0 2px 10px rgba(0, 0, 0, 0.4)',
-        margin: '4px 0',
         maxWidth: '760px',
         cursor: collapsible ? 'pointer' : 'default'
       }}
@@ -265,6 +264,28 @@ function InlineComment({
           {expanded ? 'Show less' : 'Show more'}
         </button>
       )}
+    </div>
+  )
+}
+
+/** A comment thread: the root comment followed by its replies, each inset
+ *  and touching the one above so the reply relationship reads visually. */
+function CommentThread({
+  thread,
+  onDelete,
+  forceExpanded
+}: {
+  thread: ReviewComment[]
+  onDelete: (id: string) => void
+  forceExpanded?: boolean
+}): JSX.Element {
+  return (
+    <div style={{ margin: '4px 0', display: 'flex', flexDirection: 'column' }}>
+      {thread.map((c, i) => (
+        <div key={c.id} style={{ marginLeft: i === 0 ? 0 : 16, minWidth: 0 }}>
+          <InlineComment comment={c} onDelete={() => onDelete(c.id)} forceExpanded={forceExpanded} />
+        </div>
+      ))}
     </div>
   )
 }
@@ -480,16 +501,34 @@ export function ReviewDiffPane({
     const modifiedEd = editor.getModifiedEditor()
     const newZones: ViewZoneEntry[] = []
 
-    // Collect all items to render: existing comments + the input (if active)
+    // Collect all items to render: comment threads + the input (if active).
     interface ZoneItem {
       type: 'comment' | 'input'
       lineNumber: number
-      comment?: ReviewComment
+      thread?: ReviewComment[]
     }
     const items: ZoneItem[] = []
 
+    // Group comments into threads: a reply keys to its parent's remoteId, a
+    // root keys to its own. So a root and its replies share a thread.
+    const threadMap = new Map<string, ReviewComment[]>()
     for (const c of comments) {
-      items.push({ type: 'comment', lineNumber: c.lineNumber, comment: c })
+      const rootId = c.inReplyToId ?? c.remoteId
+      const key = rootId !== undefined ? `id:${rootId}` : `local:${c.id}`
+      const arr = threadMap.get(key)
+      if (arr) arr.push(c)
+      else threadMap.set(key, [c])
+    }
+    const timeOf = (c: ReviewComment): number =>
+      c.createdAt ? Date.parse(c.createdAt) : c.timestamp
+    for (const thread of threadMap.values()) {
+      // Root first (no inReplyToId), then replies oldest→newest.
+      thread.sort((a, b) => {
+        const ar = a.inReplyToId === undefined ? 0 : 1
+        const br = b.inReplyToId === undefined ? 0 : 1
+        return ar !== br ? ar - br : timeOf(a) - timeOf(b)
+      })
+      items.push({ type: 'comment', lineNumber: thread[0].lineNumber, thread })
     }
     if (commentLine !== null) {
       items.push({ type: 'input', lineNumber: commentLine })
@@ -526,12 +565,11 @@ export function ReviewDiffPane({
         const zoneId = accessor.addZone(zone)
 
         const root = createRoot(stickyWrapper)
-        if (item.type === 'comment' && item.comment) {
-          const c = item.comment
+        if (item.type === 'comment' && item.thread) {
           root.render(
-            <InlineComment
-              comment={c}
-              onDelete={() => onDeleteComment(c.id)}
+            <CommentThread
+              thread={item.thread}
+              onDelete={(id) => onDeleteComment(id)}
               forceExpanded={expandAll}
             />
           )

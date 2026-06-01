@@ -1386,6 +1386,7 @@ export async function syncPRReview(
     body?: string
     created_at?: string
     html_url?: string
+    in_reply_to_id?: number
     user?: { login?: string; avatar_url?: string }
   }
   const collect = (arr: ApiComment[]): void => {
@@ -1399,7 +1400,8 @@ export async function syncPRReview(
         authorAvatarUrl: rc.user?.avatar_url,
         createdAt: rc.created_at,
         htmlUrl: rc.html_url,
-        draft: false
+        draft: false,
+        inReplyToId: rc.in_reply_to_id
       })
     }
   }
@@ -1413,7 +1415,7 @@ export async function syncPRReview(
   // pull them via GraphQL where originalLine is populated.
   const draftQuery = await ghGraphQL(
     token,
-    'query($o:String!,$n:String!,$num:Int!){repository(owner:$o,name:$n){pullRequest(number:$num){reviews(first:20,states:[PENDING]){nodes{comments(first:100){nodes{databaseId path line originalLine body createdAt url author{login avatarUrl}}}}}}}}',
+    'query($o:String!,$n:String!,$num:Int!){repository(owner:$o,name:$n){pullRequest(number:$num){reviews(first:20,states:[PENDING]){nodes{comments(first:100){nodes{databaseId path line originalLine body createdAt url replyTo{databaseId} author{login avatarUrl}}}}}}}}',
     { o: owner, n: repo, num: prNumber }
   )
   if (draftQuery.ok) {
@@ -1425,6 +1427,7 @@ export async function syncPRReview(
       body?: string
       createdAt?: string
       url?: string
+      replyTo?: { databaseId?: number }
       author?: { login?: string; avatarUrl?: string }
     }
     const reviews =
@@ -1447,7 +1450,8 @@ export async function syncPRReview(
           authorAvatarUrl: c.author?.avatarUrl,
           createdAt: c.createdAt,
           htmlUrl: c.url,
-          draft: true
+          draft: true,
+          inReplyToId: c.replyTo?.databaseId
         })
       }
     }

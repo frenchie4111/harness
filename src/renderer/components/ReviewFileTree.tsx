@@ -20,6 +20,8 @@ export interface ReviewComment {
   htmlUrl?: string
   /** True for a comment on an unsubmitted (pending) review. */
   draft?: boolean
+  /** remoteId of the comment this replies to (thread root), if any. */
+  inReplyToId?: number
 }
 
 interface ReviewFileTreeProps {

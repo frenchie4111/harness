@@ -46,6 +46,8 @@ export interface ReviewSyncComment {
   htmlUrl?: string
   /** True for a comment on an unsubmitted (pending) review. */
   draft?: boolean
+  /** remoteId of the comment this one replies to (thread root), if any. */
+  inReplyToId?: number
 }
 
 export interface ReviewSyncInput {

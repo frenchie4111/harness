@@ -293,7 +293,8 @@ export function ReviewPane({
             authorAvatarUrl: c.authorAvatarUrl,
             createdAt: c.createdAt,
             htmlUrl: c.htmlUrl,
-            draft: c.draft
+            draft: c.draft,
+            inReplyToId: c.inReplyToId
           }))
         )
         // Reflect the merged viewed state (local ∪ GitHub) so files viewed
