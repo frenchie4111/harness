@@ -384,8 +384,24 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
   useHotkeys(hotkeyActions, hotkeyOverrides)
 
   // focusTerminal is a gesture, not a key chord: double-tap Shift to jump
-  // focus to the active worktree's current tab.
-  useDoubleTapShift(useCallback(() => hotkeyActions.focusTerminal?.(), [hotkeyActions]))
+  // focus to the active worktree's current tab. Skip when focus is in an
+  // editable field (palette search, rename input, settings, …) so the gesture
+  // doesn't yank focus mid-typing — xterm's own hidden textarea counts as
+  // editable too, but firing there is a harmless no-op (already focused).
+  useDoubleTapShift(
+    useCallback(() => {
+      const el = document.activeElement as HTMLElement | null
+      if (
+        el &&
+        (el.isContentEditable ||
+          el.tagName === 'INPUT' ||
+          el.tagName === 'TEXTAREA' ||
+          el.tagName === 'SELECT')
+      )
+        return
+      hotkeyActions.focusTerminal?.()
+    }, [hotkeyActions])
+  )
 
   const resolvedHotkeys = useMemo(() => resolveHotkeys(hotkeyOverrides), [hotkeyOverrides])
 
