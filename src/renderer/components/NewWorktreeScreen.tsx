@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { Sparkles, Loader2, X, Map, ListChecks, BookOpen, Radio, GitPullRequest, ChevronRight, ChevronDown, Check } from 'lucide-react'
+import { Sparkles, Loader2, X, Map as MapIcon, ListChecks, BookOpen, Radio, GitPullRequest, ChevronRight, ChevronDown, Check } from 'lucide-react'
 import iconUrl from '../../../resources/icon.png'
 import { sanitizeBranchInput, isValidBranchName } from '../branch-name'
 import { RepoIcon } from './RepoIcon'
@@ -69,7 +69,7 @@ function teleportFolderName(sessionId: string): string {
 
 const STARTER_PROMPTS = [
   {
-    icon: Map,
+    icon: MapIcon,
     label: 'Map the repo',
     hint: 'A one-paragraph architecture summary',
     branch: 'map-repo',
@@ -134,6 +134,9 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
   const [prsLoadingRepo, setPrsLoadingRepo] = useState<string | null>(null)
   const [prsError, setPrsError] = useState<string | null>(null)
   const [prClickPending, setPrClickPending] = useState<number | null>(null)
+  // PR mode is select-then-create — same pattern as the other modes. Clicking
+  // a row selects it; the footer "Create worktree" button submits.
+  const [selectedPRNumber, setSelectedPRNumber] = useState<number | null>(null)
 
   // Same pattern as prsByRepo: cache normalized branch lists per repo
   // for the lifetime of the modal. Reset when repo changes.
@@ -203,26 +206,29 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, selectedRepo])
 
-  const handlePRClick = useCallback(
-    async (prNumber: number) => {
-      if (prClickPending !== null) return
-      setPrClickPending(prNumber)
-      setError(null)
-      try {
-        await onPRSubmit(
-          selectedRepo,
-          prNumber,
-          reviewPrompt.trim(),
-          agentKindOverride,
-          modelOverride.trim() || undefined
-        )
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to open PR')
-        setPrClickPending(null)
-      }
-    },
-    [onPRSubmit, prClickPending, selectedRepo, reviewPrompt, agentKindOverride, modelOverride]
-  )
+  const handlePRSelect = useCallback((prNumber: number) => {
+    setSelectedPRNumber((prev) => (prev === prNumber ? null : prNumber))
+    setError(null)
+  }, [])
+
+  const handlePRSubmit = useCallback(async () => {
+    if (prClickPending !== null) return
+    if (selectedPRNumber === null) return
+    setPrClickPending(selectedPRNumber)
+    setError(null)
+    try {
+      await onPRSubmit(
+        selectedRepo,
+        selectedPRNumber,
+        reviewPrompt.trim(),
+        agentKindOverride,
+        modelOverride.trim() || undefined
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to open PR')
+      setPrClickPending(null)
+    }
+  }, [onPRSubmit, prClickPending, selectedPRNumber, selectedRepo, reviewPrompt, agentKindOverride, modelOverride])
 
   // Lazy-fetch branches for the selected repo when entering fresh mode.
   // Same self-cancellation pattern as the PR list above.
@@ -321,7 +327,8 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
     (e: React.KeyboardEvent) => {
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault()
-        handleSubmit()
+        if (mode === 'pr') void handlePRSubmit()
+        else handleSubmit()
       }
       if (e.key === 'Escape') {
         e.preventDefault()
@@ -336,8 +343,13 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
         cycleRepo(1)
       }
     },
-    [handleSubmit, onCancel, cycleRepo]
+    [mode, handlePRSubmit, handleSubmit, onCancel, cycleRepo]
   )
+
+  // Selection is per-(repo, PR-list) — switching repos invalidates it.
+  useEffect(() => {
+    setSelectedPRNumber(null)
+  }, [selectedRepo, mode])
 
   const handleBranchKey = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey) {
@@ -652,8 +664,10 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
                   loading={prsLoadingRepo === selectedRepo}
                   error={prsError}
                   disabled={prClickPending !== null}
+                  selectedNumber={selectedPRNumber}
                   pendingNumber={prClickPending}
-                  onPick={handlePRClick}
+                  viewerLogin={settings.viewerLogin}
+                  onSelect={handlePRSelect}
                 />
               </>
             )}
@@ -713,14 +727,37 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
             )}
 
             {mode === 'pr' && (
-              <div className="flex items-center justify-end mt-6 gap-3">
-                <button
-                  onClick={onCancel}
-                  disabled={prClickPending !== null}
-                  className="px-4 py-2 text-sm text-dim hover:text-fg transition-colors cursor-pointer"
-                >
-                  Cancel
-                </button>
+              <div className="flex items-center justify-between mt-6 gap-3">
+                <div className="text-xs text-faint">
+                  <span className="font-mono">⌘⏎</span> to create ·{' '}
+                  <span className="font-mono">Esc</span> to cancel
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={onCancel}
+                    disabled={prClickPending !== null}
+                    className="px-4 py-2 text-sm text-dim hover:text-fg transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => void handlePRSubmit()}
+                    disabled={selectedPRNumber === null || prClickPending !== null}
+                    className="brand-gradient-bg text-white font-semibold text-sm px-5 py-2.5 rounded-lg flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed hover:brightness-110 transition-all shadow-lg cursor-pointer"
+                  >
+                    {prClickPending !== null ? (
+                      <>
+                        <Loader2 className="icon-sm animate-spin" />
+                        Creating…
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="icon-sm" />
+                        Create worktree
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -769,11 +806,59 @@ interface PRPickerListProps {
   loading: boolean
   error: string | null
   disabled: boolean
+  /** Currently-selected PR number — drives the highlight. */
+  selectedNumber: number | null
+  /** PR number currently being submitted — drives the row spinner. */
   pendingNumber: number | null
-  onPick: (prNumber: number) => void
+  viewerLogin: string | null
+  onSelect: (prNumber: number) => void
 }
 
-function PRPickerList({ prs, loading, error, disabled, pendingNumber, onPick }: PRPickerListProps): JSX.Element {
+const CHECKS_OVERALL_COLORS: Record<NonNullable<PRSummary['checksOverall']>, string> = {
+  success: 'bg-success',
+  failure: 'bg-danger',
+  pending: 'bg-warning',
+  none: 'bg-dim'
+}
+
+const CHECKS_OVERALL_LABELS: Record<NonNullable<PRSummary['checksOverall']>, string> = {
+  success: 'All checks passing',
+  failure: 'Some checks failing',
+  pending: 'Checks running',
+  none: 'No checks'
+}
+
+function labelTextColor(hex: string): string {
+  if (!/^[0-9a-fA-F]{6}$/.test(hex)) return '#fff'
+  const r = parseInt(hex.slice(0, 2), 16)
+  const g = parseInt(hex.slice(2, 4), 16)
+  const b = parseInt(hex.slice(4, 6), 16)
+  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b
+  return lum > 140 ? '#1f2328' : '#ffffff'
+}
+
+const MAX_VISIBLE_LABELS = 4
+
+function isViewerRequested(pr: PRSummary, viewerLogin: string | null): boolean {
+  if (!viewerLogin) return false
+  if (pr.author?.login === viewerLogin) return false
+  return pr.requestedReviewers.some((r) => r.login === viewerLogin)
+}
+
+function PRPickerList({
+  prs,
+  loading,
+  error,
+  disabled,
+  selectedNumber,
+  pendingNumber,
+  viewerLogin,
+  onSelect
+}: PRPickerListProps): JSX.Element {
+  // Persist across reopens of the same modal session but not across
+  // app restarts — useState in the modal component, not a slice.
+  const [needsMyReviewOnly, setNeedsMyReviewOnly] = useState(false)
+
   if (loading) {
     return (
       <div className="flex items-center justify-center gap-2 py-12 text-sm text-dim">
@@ -797,48 +882,191 @@ function PRPickerList({ prs, loading, error, disabled, pendingNumber, onPick }: 
       </div>
     )
   }
+
+  const needsMyReviewCount = prs.filter((p) => isViewerRequested(p, viewerLogin)).length
+  const showFilter = needsMyReviewCount > 0
+  const filteredPrs = needsMyReviewOnly
+    ? prs.filter((p) => isViewerRequested(p, viewerLogin))
+    : prs
+
   return (
-    <div className="flex flex-col gap-1.5 max-h-[420px] overflow-y-auto pr-1">
-      {prs.map((pr) => {
-        const isPending = pendingNumber === pr.number
-        return (
+    <div className="flex flex-col gap-2 mt-5">
+      {showFilter && (
+        <div className="flex items-center gap-2">
           <button
-            key={pr.number}
             type="button"
-            onClick={() => onPick(pr.number)}
+            onClick={() => setNeedsMyReviewOnly((v) => !v)}
             disabled={disabled}
-            className={`text-left bg-panel/60 border border-border/60 rounded-xl p-3 transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 ${
-              isPending ? 'border-accent bg-panel' : 'hover:border-accent hover:bg-panel'
+            className={`px-2.5 py-1 text-xs rounded-full border transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 flex items-center gap-1.5 ${
+              needsMyReviewOnly
+                ? 'bg-accent/25 border-accent text-fg-bright'
+                : 'bg-app border-border-strong text-dim hover:text-fg hover:border-accent'
             }`}
           >
-            <div className="flex items-baseline gap-2">
-              <span className="font-mono text-xs text-faint shrink-0">#{pr.number}</span>
-              <span className="text-sm text-fg-bright font-medium truncate flex-1 min-w-0">
-                {pr.title}
-              </span>
-              {isPending && <Loader2 className="icon-xs animate-spin text-accent shrink-0" />}
-            </div>
-            <div className="mt-1 text-xs text-dim flex items-center gap-1.5 flex-wrap">
-              {pr.author && <span>by {pr.author.login}</span>}
-              <span className="text-faint">·</span>
-              <span className="font-mono text-faint">
-                {pr.baseBranch} ← {pr.isFork && pr.headRepoFullName
-                  ? `${pr.headRepoFullName}:${pr.headBranch}`
-                  : pr.headBranch}
-              </span>
-              {pr.draft && (
-                <>
-                  <span className="text-faint">·</span>
-                  <span className="text-faint">draft</span>
-                </>
-              )}
-              <span className="text-faint">·</span>
-              <span>updated {relTime(pr.updatedAt)}</span>
-            </div>
+            Needs my review
+            <span
+              className={`px-1 rounded text-xs font-medium ${
+                needsMyReviewOnly ? 'bg-accent/30' : 'bg-panel/80'
+              }`}
+            >
+              {needsMyReviewCount}
+            </span>
           </button>
-        )
-      })}
+        </div>
+      )}
+      <div className="flex flex-col gap-1.5 max-h-[420px] overflow-y-auto pr-1">
+        {filteredPrs.length === 0 ? (
+          <div className="text-center py-12 text-sm text-dim">
+            No PRs need your review.
+          </div>
+        ) : (
+          filteredPrs.map((pr) => (
+            <PRPickerRow
+              key={pr.number}
+              pr={pr}
+              viewerLogin={viewerLogin}
+              isSelected={selectedNumber === pr.number}
+              isPending={pendingNumber === pr.number}
+              disabled={disabled}
+              onSelect={onSelect}
+            />
+          ))
+        )}
+      </div>
     </div>
+  )
+}
+
+interface PRPickerRowProps {
+  pr: PRSummary
+  viewerLogin: string | null
+  isSelected: boolean
+  isPending: boolean
+  disabled: boolean
+  onSelect: (prNumber: number) => void
+}
+
+function PRPickerRow({ pr, viewerLogin, isSelected, isPending, disabled, onSelect }: PRPickerRowProps): JSX.Element {
+  const viewerRequested = isViewerRequested(pr, viewerLogin)
+  const visibleLabels = pr.labels.slice(0, MAX_VISIBLE_LABELS)
+  const overflowLabels = pr.labels.length - visibleLabels.length
+
+  // Merge requested reviewers + reviewed-state reviewers into one avatar
+  // strip, deduped by login. Ring color reflects state.
+  type ReviewerCell = { login: string; avatarUrl: string; ring: string; title: string }
+  const reviewerByLogin: Map<string, ReviewerCell> = new Map()
+  for (const r of pr.requestedReviewers) {
+    reviewerByLogin.set(r.login, {
+      login: r.login,
+      avatarUrl: r.avatarUrl,
+      ring: 'ring-1 ring-faint',
+      title: `${r.login} (review requested)`
+    })
+  }
+  for (const r of pr.reviewerStates) {
+    const ring =
+      r.state === 'APPROVED'
+        ? 'ring-1 ring-success'
+        : r.state === 'CHANGES_REQUESTED'
+          ? 'ring-1 ring-warning'
+          : 'ring-1 ring-dim'
+    const label =
+      r.state === 'APPROVED'
+        ? 'approved'
+        : r.state === 'CHANGES_REQUESTED'
+          ? 'requested changes'
+          : 'commented'
+    reviewerByLogin.set(r.login, {
+      login: r.login,
+      avatarUrl: r.avatarUrl,
+      ring,
+      title: `${r.login} (${label})`
+    })
+  }
+  const reviewerAvatars = [...reviewerByLogin.values()]
+
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(pr.number)}
+      disabled={disabled}
+      aria-pressed={isSelected}
+      className={`text-left bg-panel/60 border rounded-xl p-3 transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 ${
+        isSelected || isPending ? 'border-accent bg-panel' : 'border-border/60 hover:border-accent hover:bg-panel'
+      }`}
+    >
+      <div className="flex items-baseline gap-2">
+        <span className="font-mono text-xs text-faint shrink-0">#{pr.number}</span>
+        <span className="text-sm text-fg-bright font-medium truncate flex-1 min-w-0">
+          {pr.title}
+        </span>
+        {viewerRequested && (
+          <span
+            className="shrink-0 px-1.5 py-0.5 rounded-full text-xs font-medium bg-accent/25 text-fg-bright"
+            title="You are a requested reviewer"
+          >
+            Needs your review
+          </span>
+        )}
+        {pr.checksOverall && (
+          <span
+            className={`inline-block w-2 h-2 rounded-full shrink-0 ${CHECKS_OVERALL_COLORS[pr.checksOverall]}`}
+            title={CHECKS_OVERALL_LABELS[pr.checksOverall]}
+          />
+        )}
+        {isPending && <Loader2 className="icon-xs animate-spin text-accent shrink-0" />}
+      </div>
+      <div className="mt-1 text-xs text-dim flex items-center gap-1.5 flex-wrap">
+        {pr.author && <span>by {pr.author.login}</span>}
+        <span className="text-faint">·</span>
+        <span className="font-mono text-faint">
+          {pr.baseBranch} ← {pr.isFork && pr.headRepoFullName
+            ? `${pr.headRepoFullName}:${pr.headBranch}`
+            : pr.headBranch}
+        </span>
+        {pr.draft && (
+          <>
+            <span className="text-faint">·</span>
+            <span className="text-faint">draft</span>
+          </>
+        )}
+        <span className="text-faint">·</span>
+        <span>updated {relTime(pr.updatedAt)}</span>
+        {reviewerAvatars.length > 0 && (
+          <span className="flex items-center ml-1">
+            {reviewerAvatars.map((r, i) => (
+              <img
+                key={r.login}
+                src={r.avatarUrl}
+                alt={r.login}
+                title={r.title}
+                className={`w-4 h-4 rounded-full ${r.ring} ${i > 0 ? '-ml-1' : ''}`}
+              />
+            ))}
+          </span>
+        )}
+      </div>
+      {visibleLabels.length > 0 && (
+        <div className="mt-1.5 flex items-center flex-wrap gap-1">
+          {visibleLabels.map((label) => {
+            const fg = labelTextColor(label.color)
+            return (
+              <span
+                key={label.name}
+                className="px-1.5 py-0.5 rounded-full text-xs font-medium leading-tight"
+                style={{ backgroundColor: `#${label.color}`, color: fg }}
+                title={label.name}
+              >
+                {label.name}
+              </span>
+            )
+          })}
+          {overflowLabels > 0 && (
+            <span className="text-xs text-faint">+{overflowLabels}</span>
+          )}
+        </div>
+      )}
+    </button>
   )
 }
 

@@ -712,6 +712,102 @@ function usePRMergeAction(
   return { button, errorRow }
 }
 
+interface PRApproveAction {
+  button: JSX.Element | null
+  errorRow: JSX.Element | null
+}
+
+/** Approve-button visibility heuristic — mirrors github.com's "Approve"
+ *  affordance on the Files/Review tab. The button shows only when the
+ *  viewer is plausibly a reviewer of someone else's PR: not the author,
+ *  hasn't already approved, and either the PR is still waiting for a
+ *  first review or the viewer's latest review was CHANGES_REQUESTED
+ *  (so they can flip to APPROVE). Returns null otherwise. */
+function usePRApproveAction(
+  pr: PRStatus | null | undefined,
+  worktree: Worktree | null | undefined,
+  viewerLogin: string | null,
+  needsGithubToken: boolean
+): PRApproveAction {
+  const backend = useBackend()
+  const [approving, setApproving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [justApproved, setJustApproved] = useState(false)
+
+  useEffect(() => {
+    setApproving(false)
+    setError(null)
+    setJustApproved(false)
+  }, [pr?.number])
+
+  const performApprove = useCallback(async () => {
+    if (!worktree) return
+    setApproving(true)
+    setError(null)
+    try {
+      const result = await backend.approvePR(worktree.path)
+      if (result.ok) setJustApproved(true)
+      else setError(result.error || 'Approval failed')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setApproving(false)
+    }
+  }, [worktree, backend])
+
+  if (!pr || !worktree || needsGithubToken) return { button: null, errorRow: null }
+  if (pr.state !== 'open') return { button: null, errorRow: null }
+  if (!viewerLogin) return { button: null, errorRow: null }
+  if (pr.author?.login === viewerLogin) return { button: null, errorRow: null }
+
+  let viewerLatest: PRReview | null = null
+  for (const r of pr.reviews) {
+    if (r.user !== viewerLogin) continue
+    if (!viewerLatest || r.submittedAt > viewerLatest.submittedAt) viewerLatest = r
+  }
+  if (viewerLatest?.state === 'APPROVED') return { button: null, errorRow: null }
+
+  const showApprove =
+    pr.reviewDecision === 'review_required' ||
+    viewerLatest?.state === 'CHANGES_REQUESTED'
+  if (!showApprove) return { button: null, errorRow: null }
+
+  const button = (
+    <Tooltip label={justApproved ? 'Approved' : 'Approve this pull request'}>
+      <button
+        onClick={() => void performApprove()}
+        disabled={approving || justApproved}
+        aria-label="Approve pull request"
+        className="px-2 py-1 text-xs rounded transition-colors cursor-pointer flex items-center gap-1.5 disabled:cursor-not-allowed disabled:opacity-40 bg-success/20 hover:bg-success/30 text-success"
+      >
+        {approving ? (
+          <Loader2 className="icon-xs animate-spin" />
+        ) : (
+          <Check className="icon-xs" />
+        )}
+        {justApproved ? 'Approved' : 'Approve'}
+      </button>
+    </Tooltip>
+  )
+
+  const errorRow = error ? (
+    <div className="px-3 pt-2 text-xs text-danger leading-snug break-words flex items-center gap-2">
+      <span className="flex-1">{error}</span>
+      <button
+        onClick={() => {
+          setError(null)
+          void performApprove()
+        }}
+        className="px-2 py-0.5 text-xs rounded bg-surface hover:bg-surface/60 text-fg transition-colors cursor-pointer shrink-0"
+      >
+        Retry
+      </button>
+    </div>
+  ) : null
+
+  return { button, errorRow }
+}
+
 interface PRStatusPanelProps {
   pr: PRStatus | null | undefined
   worktree?: Worktree | null
@@ -740,7 +836,9 @@ export function PRStatusPanel({
 
   const needsGithubToken = hasGithubToken === false
 
+  const settings = useSettings()
   const mergeAction = usePRMergeAction(pr, worktree, needsGithubToken)
+  const approveAction = usePRApproveAction(pr, worktree, settings.viewerLogin, needsGithubToken)
 
   const refreshButton = !needsGithubToken && onRefresh ? (
     <Tooltip label="Refresh PR status" side="left">
@@ -758,8 +856,9 @@ export function PRStatusPanel({
     </Tooltip>
   ) : null
 
-  const actions = (mergeAction.button || refreshButton) ? (
+  const actions = (approveAction.button || mergeAction.button || refreshButton) ? (
     <div className="flex items-center gap-2">
+      {approveAction.button}
       {mergeAction.button}
       {refreshButton}
     </div>
@@ -799,6 +898,7 @@ export function PRStatusPanel({
       )}
 
       {mergeAction.errorRow}
+      {approveAction.errorRow}
 
       {!needsGithubToken && pr && (
         <div className="px-3 py-2 space-y-2">
