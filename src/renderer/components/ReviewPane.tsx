@@ -581,6 +581,9 @@ export function ReviewPane({
             onToggleDir={handleToggleDir}
             onSetSideBySide={setSideBySide}
             onShowShortcuts={() => setShowShortcuts((v) => !v)}
+            onRevealLine={(filePath, line) =>
+              setRevealTarget({ filePath, line, nonce: ++revealNonceRef.current })
+            }
             active={active}
           />
         </div>
@@ -931,7 +934,9 @@ function CommentDropdown({
 const REVIEW_SHORTCUTS: [string, string][] = [
   ['j / ↓', 'Next file'],
   ['k / ↑', 'Previous file'],
-  ['] / [', 'Next / previous unreviewed file'],
+  ['⇧J / ⇧↓', 'Next unreviewed file'],
+  ['⇧K / ⇧↑', 'Previous unreviewed file'],
+  ['] / [', 'Next / previous comment in file'],
   ['r', 'Mark file viewed / unviewed'],
   ['s / d', 'Side-by-side / unified diff'],
   ['c', 'Comment on hovered line (or file)'],

@@ -45,6 +45,8 @@ interface ReviewFileTreeProps {
   onSetSideBySide: (sideBySide: boolean) => void
   /** ? toggles the review shortcuts popup. */
   onShowShortcuts: () => void
+  /** Scroll the diff to a line — used by ] / [ comment navigation. */
+  onRevealLine: (filePath: string, line: number) => void
   /** True when the review tab is the active/visible tab — the keyboard
    *  shortcuts no-op otherwise so a background review tab doesn't react. */
   active?: boolean
@@ -179,6 +181,7 @@ export function ReviewFileTree({
   onToggleDir,
   onSetSideBySide,
   onShowShortcuts,
+  onRevealLine,
   active
 }: ReviewFileTreeProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -234,6 +237,31 @@ export function ReviewFileTree({
     [navigableFiles, reviewedFiles, selectedFile, onSelectFile]
   )
 
+  // ] / [ cycle through the comment threads in the current file. Roots only
+  // (replies share their parent's line), sorted by line.
+  const fileCommentLines = useMemo(() => {
+    if (!selectedFile) return [] as number[]
+    return comments
+      .filter((c) => c.filePath === selectedFile && c.inReplyToId === undefined)
+      .map((c) => c.lineNumber)
+      .sort((a, b) => a - b)
+  }, [comments, selectedFile])
+  const commentNavRef = useRef(-1)
+  useEffect(() => {
+    commentNavRef.current = -1
+  }, [selectedFile])
+  const navigateComment = useCallback(
+    (delta: number) => {
+      if (!selectedFile || fileCommentLines.length === 0) return
+      const n = fileCommentLines.length
+      const cur = commentNavRef.current
+      const idx = cur < 0 ? (delta > 0 ? 0 : n - 1) : (cur + delta + n) % n
+      commentNavRef.current = idx
+      onRevealLine(selectedFile, fileCommentLines[idx])
+    },
+    [selectedFile, fileCommentLines, onRevealLine]
+  )
+
   useEffect(() => {
     const handler = (e: KeyboardEvent): void => {
       if (!active) return
@@ -243,18 +271,24 @@ export function ReviewFileTree({
       ) {
         return
       }
-      if (e.key === 'j' || (e.key === 'ArrowDown' && !e.metaKey)) {
+      if (e.shiftKey && (e.key === 'J' || e.key === 'ArrowDown')) {
+        e.preventDefault()
+        navigateUnreviewed(1)
+      } else if (e.shiftKey && (e.key === 'K' || e.key === 'ArrowUp')) {
+        e.preventDefault()
+        navigateUnreviewed(-1)
+      } else if (!e.shiftKey && (e.key === 'j' || (e.key === 'ArrowDown' && !e.metaKey))) {
         e.preventDefault()
         navigateFile(1)
-      } else if (e.key === 'k' || (e.key === 'ArrowUp' && !e.metaKey)) {
+      } else if (!e.shiftKey && (e.key === 'k' || (e.key === 'ArrowUp' && !e.metaKey))) {
         e.preventDefault()
         navigateFile(-1)
       } else if (e.key === ']') {
         e.preventDefault()
-        navigateUnreviewed(1)
+        navigateComment(1)
       } else if (e.key === '[') {
         e.preventDefault()
-        navigateUnreviewed(-1)
+        navigateComment(-1)
       } else if (e.key === 's' && !e.metaKey && !e.ctrlKey) {
         e.preventDefault()
         onSetSideBySide(true)
@@ -286,7 +320,7 @@ export function ReviewFileTree({
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [active, navigateFile, navigateUnreviewed, selectedFile, navigableFiles, reviewedFiles, onSelectFile, onToggleReviewed, onSetSideBySide, onShowShortcuts])
+  }, [active, navigateFile, navigateUnreviewed, navigateComment, selectedFile, navigableFiles, reviewedFiles, onSelectFile, onToggleReviewed, onSetSideBySide, onShowShortcuts])
 
   return (
     <div ref={containerRef} className="flex flex-col h-full text-xs select-none">
