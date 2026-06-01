@@ -2,6 +2,7 @@ import * as pty from 'node-pty'
 import { execFile } from 'child_process'
 import { log } from './debug'
 import { cleanupTerminalLog } from './hooks'
+import { resolveUserShell } from './user-shell'
 import {
   saveTerminalHistory,
   loadTerminalHistory,
@@ -148,7 +149,10 @@ export class PtyManager {
       CLAUDE_HARNESS_ID: id,
       HARNESS_TERMINAL_ID: id
     } as Record<string, string>
-    const shell = command || env.SHELL || '/bin/zsh'
+    // An explicit command wins; otherwise resolve the user's shell the same
+    // way the rest of the app does (resolveUserShell: $SHELL → zsh → bash →
+    // sh, existence-checked), so a box without /bin/zsh still gets a shell.
+    const shell = command || resolveUserShell()
     let ptyProcess: pty.IPty
     try {
       ptyProcess = pty.spawn(shell, args, {
