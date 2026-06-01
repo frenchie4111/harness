@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { Sparkles, Loader2, X, Map, ListChecks, BookOpen, Radio, GitPullRequest, ChevronRight, ChevronDown } from 'lucide-react'
+import { Sparkles, Loader2, X, Map, ListChecks, BookOpen, Radio, GitPullRequest, ChevronRight, ChevronDown, Check } from 'lucide-react'
 import iconUrl from '../../../resources/icon.png'
 import { sanitizeBranchInput, isValidBranchName } from '../branch-name'
 import { RepoIcon } from './RepoIcon'
@@ -15,19 +15,29 @@ interface NewWorktreeScreenProps {
     initialPrompt: string,
     teleportSessionId?: string,
     agentKind?: 'claude' | 'codex',
-    model?: string
+    model?: string,
+    checkoutExisting?: boolean,
+    baseRef?: string
   ) => Promise<void>
   onPRSubmit: (
     repoRoot: string,
     prNumber: number,
     initialPrompt: string,
     agentKind?: 'claude' | 'codex',
-    model?: string
+    model?: string,
+    checkoutExisting?: boolean
   ) => Promise<void>
   onCancel: () => void
   repoRoots: string[]
   /** Repo to pre-select in the picker. Usually the repo of the currently active worktree. */
   defaultRepoRoot?: string
+}
+
+/** Sort + clean the local-branch list from the backend. The backend already
+ * limits to locals via `git branch --format=...` (no `-a`), so all we do
+ * here is drop empty/HEAD entries and alphabetize. */
+function normalizeBranchList(raw: string[]): string[] {
+  return raw.filter((b) => b && b !== 'HEAD').sort((a, b) => a.localeCompare(b))
 }
 
 function relTime(iso: string | undefined): string {
@@ -90,6 +100,15 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
     defaultRepoRoot && repoRoots.includes(defaultRepoRoot) ? defaultRepoRoot : repoRoots[0] || ''
   )
   const [branch, setBranch] = useState('')
+  const [existingBranch, setExistingBranch] = useState<string | null>(null)
+  // Free-text ref: commit SHA, tag, remote-tracking ref (`origin/foo`), etc.
+  // Used as the base the new branch (`refBranch`) is forked from — the
+  // worktree is created with `-b <refBranch> <refValue>` so it always lands
+  // on a named local branch, never a detached HEAD.
+  const [refValue, setRefValue] = useState('')
+  // The name of the new branch to create at `refValue` on the Ref tab.
+  const [refBranch, setRefBranch] = useState('')
+  const [branchTab, setBranchTab] = useState<'new' | 'existing' | 'ref'>('new')
   const [prompt, setPrompt] = useState('')
   const settings = useSettings()
   const [reviewPrompt, setReviewPrompt] = useState(settings.prReviewPrompt)
@@ -116,16 +135,38 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
   const [prsError, setPrsError] = useState<string | null>(null)
   const [prClickPending, setPrClickPending] = useState<number | null>(null)
 
+  // Same pattern as prsByRepo: cache normalized branch lists per repo
+  // for the lifetime of the modal. Reset when repo changes.
+  const [branchesByRepo, setBranchesByRepo] = useState<Record<string, string[]>>({})
+
   const parsedTeleport = mode === 'teleport' ? parseTeleportInput(teleportInput) : null
   const teleportInvalid = mode === 'teleport' && teleportInput.trim().length > 0 && !parsedTeleport
+  // The active branch tab dictates which value is submitted — picking from a
+  // hidden tab does NOT carry through. Keeps "what you see is what you submit"
+  // intact when the user toggles between New / Existing / Ref.
+  const submitBranch =
+    branchTab === 'new'
+      ? branch
+      : branchTab === 'existing'
+        ? (existingBranch ?? '')
+        : refBranch
   const effectiveBranch = mode === 'teleport'
     ? (parsedTeleport ? teleportFolderName(parsedTeleport) : '')
-    : branch
+    : submitBranch
+  // On the Ref tab the new branch is forked from this base ref (commit SHA,
+  // tag, remote ref, or an expression like `HEAD~3`). It can include chars
+  // that `isValidBranchName` rightly rejects for branch *names*, so it's only
+  // validated for non-emptiness — git resolves it at worktree-add time.
+  const baseRef = branchTab === 'ref' ? refValue.trim() : undefined
+  // The Ref tab requires BOTH a valid new branch name and a non-empty base
+  // ref; other tabs just need a valid branch name (or a parsed teleport id).
   const canSubmit =
     !submitting &&
     !!selectedRepo &&
     (mode === 'fresh'
-      ? isValidBranchName(branch)
+      ? branchTab === 'ref'
+        ? isValidBranchName(submitBranch) && !!baseRef
+        : isValidBranchName(submitBranch)
       : !!parsedTeleport && !teleportInvalid && isValidBranchName(effectiveBranch))
 
   useEffect(() => {
@@ -183,8 +224,61 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
     [onPRSubmit, prClickPending, selectedRepo, reviewPrompt, agentKindOverride, modelOverride]
   )
 
+  // Lazy-fetch branches for the selected repo when entering fresh mode.
+  // Same self-cancellation pattern as the PR list above.
+  useEffect(() => {
+    if (mode !== 'fresh' || !selectedRepo) return
+    if (selectedRepo in branchesByRepo) return
+    let cancelled = false
+    void (async () => {
+      try {
+        const raw = await backend.listBranches(selectedRepo)
+        if (cancelled) return
+        setBranchesByRepo((prev) => ({ ...prev, [selectedRepo]: normalizeBranchList(raw) }))
+      } catch {
+        if (cancelled) return
+        setBranchesByRepo((prev) => ({ ...prev, [selectedRepo]: [] }))
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, selectedRepo])
+
   const handleBranchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setBranch(sanitizeBranchInput(e.target.value))
+  }, [])
+
+  const handlePickExistingBranch = useCallback((name: string | null) => {
+    setExistingBranch(name)
+  }, [])
+
+  const handleRefChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    // No sanitization: refs legitimately contain chars (`~`, `^`) that
+    // sanitizeBranchInput strips. Trust git to validate at worktree-add time.
+    setRefValue(e.target.value)
+  }, [])
+
+  const handleRefBranchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setRefBranch(sanitizeBranchInput(e.target.value))
+  }, [])
+
+  // Switching tabs wipes the value of the tab being left, so each tab is
+  // a fresh slate when entered. Without this, a stale value typed into one
+  // tab would silently linger and could be submitted later if the user
+  // toggled back to it.
+  const switchBranchTab = useCallback((next: 'new' | 'existing' | 'ref') => {
+    setBranchTab((prev) => {
+      if (prev === next) return prev
+      if (prev === 'new') setBranch('')
+      else if (prev === 'existing') setExistingBranch(null)
+      else {
+        setRefValue('')
+        setRefBranch('')
+      }
+      return next
+    })
   }, [])
 
   const handleSubmit = useCallback(async () => {
@@ -196,19 +290,25 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
       // analog today.
       const effectiveAgent: 'claude' | 'codex' =
         mode === 'teleport' ? 'claude' : agentKindOverride
+      // Existing tab: `git worktree add <dir> <branch>` (no `-b`) so git
+      // checks out the already-existing local branch as-is. Ref tab: create
+      // a new branch named `effectiveBranch` forked from `baseRef`.
+      const checkoutExisting = mode === 'fresh' && branchTab === 'existing'
       await onSubmit(
         selectedRepo,
         effectiveBranch,
         prompt.trim(),
         parsedTeleport || undefined,
         effectiveAgent,
-        modelOverride.trim() || undefined
+        modelOverride.trim() || undefined,
+        checkoutExisting,
+        baseRef
       )
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create worktree')
       setSubmitting(false)
     }
-  }, [effectiveBranch, prompt, canSubmit, onSubmit, parsedTeleport, selectedRepo, mode, agentKindOverride, modelOverride])
+  }, [effectiveBranch, prompt, canSubmit, onSubmit, parsedTeleport, selectedRepo, mode, agentKindOverride, modelOverride, branchTab, baseRef])
 
   const cycleRepo = useCallback((direction: 1 | -1) => {
     if (repoRoots.length <= 1) return
@@ -273,7 +373,7 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
               New <span className="brand-gradient-text">worktree</span>
             </h1>
             <p className="text-muted text-base">
-              Fork a branch and send a Claude into it.
+              Fork a branch or select an existing branch and send Claude into it.
             </p>
           </div>
 
@@ -358,25 +458,101 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
             )}
 
             {mode === 'fresh' && (
-              <label className="block">
-                <div className="mb-2">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-dim">
-                    Branch name
-                  </span>
+              <div>
+                <div className="flex p-1 bg-app border border-border-strong rounded-lg mb-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      switchBranchTab('new')
+                      requestAnimationFrame(() => branchRef.current?.focus())
+                    }}
+                    disabled={submitting}
+                    className={`flex-1 flex items-center justify-center px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
+                      branchTab === 'new'
+                        ? 'bg-panel text-fg-bright shadow-sm'
+                        : 'text-dim hover:text-fg'
+                    }`}
+                  >
+                    New branch
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => switchBranchTab('existing')}
+                    disabled={submitting}
+                    className={`flex-1 flex items-center justify-center px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
+                      branchTab === 'existing'
+                        ? 'bg-panel text-fg-bright shadow-sm'
+                        : 'text-dim hover:text-fg'
+                    }`}
+                  >
+                    Existing branch
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => switchBranchTab('ref')}
+                    disabled={submitting}
+                    className={`flex-1 flex items-center justify-center px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
+                      branchTab === 'ref'
+                        ? 'bg-panel text-fg-bright shadow-sm'
+                        : 'text-dim hover:text-fg'
+                    }`}
+                  >
+                    Any Git Ref
+                  </button>
                 </div>
-                <input
-                  ref={branchRef}
-                  type="text"
-                  value={branch}
-                  onChange={handleBranchChange}
-                  onKeyDown={handleBranchKey}
-                  placeholder="fix-the-thing"
-                  disabled={submitting}
-                  autoComplete="off"
-                  spellCheck={false}
-                  className="w-full bg-app border-2 border-border-strong rounded-lg px-3 py-2.5 font-mono text-sm text-fg-bright placeholder-faint outline-none focus:border-accent transition-colors"
-                />
-              </label>
+
+                {branchTab === 'new' && (
+                  <input
+                    ref={branchRef}
+                    type="text"
+                    value={branch}
+                    onChange={handleBranchChange}
+                    onKeyDown={handleBranchKey}
+                    placeholder="fix-the-thing"
+                    disabled={submitting}
+                    autoComplete="off"
+                    spellCheck={false}
+                    className="w-full bg-app border-2 border-border-strong rounded-lg px-3 py-2.5 font-mono text-sm text-fg-bright placeholder-faint outline-none focus:border-accent transition-colors disabled:opacity-50"
+                  />
+                )}
+                {branchTab === 'existing' && (
+                  <ExistingBranchCombobox
+                    branches={branchesByRepo[selectedRepo] || []}
+                    value={existingBranch}
+                    onChange={handlePickExistingBranch}
+                    disabled={submitting || !selectedRepo}
+                    placeholder={!selectedRepo ? 'Select a repository first' : undefined}
+                  />
+                )}
+                {branchTab === 'ref' && (
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      value={refBranch}
+                      onChange={handleRefBranchChange}
+                      placeholder="new-branch-name"
+                      disabled={submitting || !selectedRepo}
+                      autoComplete="off"
+                      spellCheck={false}
+                      className="w-full bg-app border-2 border-border-strong rounded-lg px-3 py-2.5 font-mono text-sm text-fg-bright placeholder-faint outline-none focus:border-accent transition-colors disabled:opacity-50"
+                    />
+                    <input
+                      type="text"
+                      value={refValue}
+                      onChange={handleRefChange}
+                      onKeyDown={handleBranchKey}
+                      placeholder="from: commit SHA, tag, or origin/branch"
+                      disabled={submitting || !selectedRepo}
+                      autoComplete="off"
+                      spellCheck={false}
+                      className="w-full bg-app border-2 border-border-strong rounded-lg px-3 py-2.5 font-mono text-sm text-fg-bright placeholder-faint outline-none focus:border-accent transition-colors disabled:opacity-50"
+                    />
+                    <p className="text-xs text-dim">
+                      Creates a new branch at any git ref — a commit SHA, tag, or remote branch (e.g. <span className="font-mono">origin/main</span>).
+                    </p>
+                  </div>
+                )}
+              </div>
             )}
 
             {mode === 'fresh' && (
@@ -563,7 +739,10 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
                     key={label}
                     type="button"
                     onClick={() => {
-                      if (!branch) setBranch(starterBranch)
+                      if (!branch) {
+                        switchBranchTab('new')
+                        setBranch(starterBranch)
+                      }
                       setPrompt(starterPrompt)
                       promptRef.current?.focus()
                     }}
@@ -771,6 +950,166 @@ function AgentModelRow({
               </optgroup>
             </select>
           </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+interface ExistingBranchComboboxProps {
+  branches: string[]
+  value: string | null
+  onChange: (name: string | null) => void
+  disabled: boolean
+  /** Optional override for the input placeholder. When omitted, the
+   * combobox picks one of its own ("Filter local branches…" or
+   * "No local branches found") based on `branches.length`. */
+  placeholder?: string
+}
+
+/** Typeahead combobox over the local branch list (remote-tracking refs
+ * are excluded — users wanting `origin/foo` should use the Ref tab). Typing
+ * filters by substring (case-insensitive); ArrowUp/Down navigate;
+ * Enter commits the highlighted match; Esc closes the panel; the
+ * X button clears the current selection back to null. */
+function ExistingBranchCombobox({
+  branches,
+  value,
+  onChange,
+  disabled,
+  placeholder
+}: ExistingBranchComboboxProps): JSX.Element {
+  const [query, setQuery] = useState('')
+  const [open, setOpen] = useState(false)
+  const [highlight, setHighlight] = useState(0)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // When a value is committed externally (or initially), reflect it in
+  // the visible query so the user sees what they picked.
+  useEffect(() => {
+    if (value !== null) setQuery(value)
+    else if (!open) setQuery('')
+  }, [value, open])
+
+  const filtered = (() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return branches
+    return branches.filter((b) => b.toLowerCase().includes(q))
+  })()
+
+  useEffect(() => {
+    if (highlight >= filtered.length) setHighlight(0)
+  }, [filtered.length, highlight])
+
+  const commit = (name: string) => {
+    onChange(name)
+    setQuery(name)
+    setOpen(false)
+  }
+
+  const handleKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      if (!open) setOpen(true)
+      setHighlight((h) => Math.min(filtered.length - 1, h + 1))
+      return
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setHighlight((h) => Math.max(0, h - 1))
+      return
+    }
+    if (e.key === 'Enter') {
+      if (open && filtered[highlight]) {
+        e.preventDefault()
+        e.stopPropagation()
+        commit(filtered[highlight])
+      }
+      return
+    }
+    if (e.key === 'Escape' && open) {
+      e.preventDefault()
+      e.stopPropagation()
+      setOpen(false)
+    }
+  }
+
+  const handleBlur = () => {
+    // Defer so a click on a dropdown item registers before we unmount it.
+    closeTimer.current = setTimeout(() => setOpen(false), 120)
+  }
+  const handleFocus = () => {
+    if (closeTimer.current) clearTimeout(closeTimer.current)
+    if (!disabled) setOpen(true)
+  }
+
+  return (
+    <div className="relative">
+      <div className="relative">
+        <input
+          ref={inputRef}
+          type="text"
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value)
+            setOpen(true)
+            // Typing invalidates the prior committed pick until they
+            // match a branch again.
+            if (value !== null) onChange(null)
+          }}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
+          onKeyDown={handleKey}
+          placeholder={placeholder ?? (branches.length === 0 ? 'No local branches found' : 'Filter local branches…')}
+          disabled={disabled || branches.length === 0}
+          autoComplete="off"
+          spellCheck={false}
+          className="w-full bg-app border-2 border-border-strong rounded-lg pl-3 pr-16 py-2.5 font-mono text-sm text-fg-bright placeholder-faint outline-none focus:border-accent transition-colors disabled:opacity-50"
+        />
+        <div className="absolute inset-y-0 right-2 flex items-center gap-1">
+          {value !== null && !disabled && (
+            <button
+              type="button"
+              onMouseDown={(e) => {
+                // mousedown beats blur — clear before the input loses focus.
+                e.preventDefault()
+                onChange(null)
+                setQuery('')
+                inputRef.current?.focus()
+              }}
+              className="text-dim hover:text-fg p-1 rounded cursor-pointer"
+              title="Clear selection"
+            >
+              <X className="icon-xs" />
+            </button>
+          )}
+          <ChevronDown className="icon-sm text-dim pointer-events-none" />
+        </div>
+      </div>
+      {open && filtered.length > 0 && (
+        <div className="absolute z-10 mt-1 w-full max-h-56 overflow-y-auto bg-panel border border-border-strong rounded-lg shadow-xl">
+          {filtered.map((b, i) => (
+            <button
+              key={b}
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault()
+                commit(b)
+              }}
+              onMouseEnter={() => setHighlight(i)}
+              className={`w-full text-left px-3 py-1.5 font-mono text-xs flex items-center gap-2 cursor-pointer ${
+                i === highlight ? 'bg-accent/20 text-fg-bright' : 'text-fg hover:bg-app/60'
+              }`}
+            >
+              {value === b ? (
+                <Check className="icon-xs text-accent shrink-0" />
+              ) : (
+                <span className="w-3 shrink-0" />
+              )}
+              <span className="truncate">{b}</span>
+            </button>
+          ))}
         </div>
       )}
     </div>

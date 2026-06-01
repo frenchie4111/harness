@@ -181,6 +181,7 @@ Once added, the chip appears at the bottom of the sidebar. Click to switch — `
 - **Status at a glance** — sidebar dots show which agent is working, waiting, or needs approval (powered by Claude Code hooks)
 - **Command center** — bird's-eye grid of every worktree with mini activity timelines
 - **Tabs + vertical split panes** — Claude, shells, and editor/diff tabs scoped to each checkout, splittable side-by-side
+- **Existing-branch worktrees** — fork a new branch, pick a local branch from a typeahead, or check out any git ref (commit SHA, tag, or remote-tracking ref)
 - **9 themes** — dark, dracula, nord, gruvbox, tokyo night, catppuccin, one dark, solarized dark/light
 - **Configurable hotkeys** — ⌘1–⌘9 to jump between worktrees, all rebindable
 - **MCP: Claude controls Harness** — a built-in MCP server lets Claude create and list worktrees on its own
