@@ -1274,7 +1274,6 @@ export async function syncPRReview(
   // 2. Find the viewer's existing pending review, if any. Pending reviews are
   //    only returned to their author, so any PENDING entry here is ours.
   let pendingReviewNodeId = ''
-  let pendingReviewId: number | null = null
   try {
     const res = await ghRequest(token, `${base}/reviews?per_page=100`, 'GET')
     if (res.ok && Array.isArray(res.json)) {
@@ -1283,7 +1282,6 @@ export async function syncPRReview(
       )
       if (pending) {
         pendingReviewNodeId = pending.node_id
-        pendingReviewId = pending.id
       }
     }
   } catch (err) {
@@ -1330,10 +1328,6 @@ export async function syncPRReview(
       )
       if (r.ok) {
         pushed += toPush.length
-        const dbId = (
-          r.data as { addPullRequestReview?: { pullRequestReview?: { databaseId?: number } } } | undefined
-        )?.addPullRequestReview?.pullRequestReview?.databaseId
-        if (typeof dbId === 'number') pendingReviewId = dbId
       } else {
         failed += toPush.length
         log('github', `create draft review failed: ${r.error}`)
@@ -1414,13 +1408,49 @@ export async function syncPRReview(
   } catch (err) {
     log('github', 'list review comments error', formatErr(err))
   }
-  if (pendingReviewId !== null) {
-    try {
-      const drafts = await ghRequest(token, `${base}/reviews/${pendingReviewId}/comments?per_page=100`, 'GET')
-      if (drafts.ok && Array.isArray(drafts.json)) collect(drafts.json as ApiComment[])
-    } catch (err) {
-      log('github', 'list pending review comments error', formatErr(err))
+  // Pending (draft) review comments come back from REST with a null line, so
+  // pull them via GraphQL where originalLine is populated.
+  const draftQuery = await ghGraphQL(
+    token,
+    'query($o:String!,$n:String!,$num:Int!){repository(owner:$o,name:$n){pullRequest(number:$num){reviews(first:20,states:[PENDING]){nodes{comments(first:100){nodes{databaseId path line originalLine body createdAt url author{login avatarUrl}}}}}}}}',
+    { o: owner, n: repo, num: prNumber }
+  )
+  if (draftQuery.ok) {
+    type GqlComment = {
+      databaseId?: number
+      path?: string
+      line?: number | null
+      originalLine?: number | null
+      body?: string
+      createdAt?: string
+      url?: string
+      author?: { login?: string; avatarUrl?: string }
     }
+    const reviews =
+      (
+        draftQuery.data as {
+          repository?: {
+            pullRequest?: { reviews?: { nodes?: Array<{ comments?: { nodes?: GqlComment[] } }> } }
+          }
+        }
+      )?.repository?.pullRequest?.reviews?.nodes ?? []
+    for (const rev of reviews) {
+      for (const c of rev?.comments?.nodes ?? []) {
+        if (typeof c.databaseId !== 'number' || !c.path) continue
+        pulled.push({
+          filePath: c.path,
+          lineNumber: c.line ?? c.originalLine ?? 0,
+          body: c.body ?? '',
+          remoteId: c.databaseId,
+          author: c.author?.login,
+          authorAvatarUrl: c.author?.avatarUrl,
+          createdAt: c.createdAt,
+          htmlUrl: c.url
+        })
+      }
+    }
+  } else {
+    log('github', `pending review comments query failed: ${draftQuery.error}`)
   }
 
   // Drafts pulled from a pending review can come back with a null/0 line.
@@ -1436,17 +1466,28 @@ export async function syncPRReview(
     }
   }
 
+  // Collapse identical duplicates (e.g. drafts accidentally pushed twice by
+  // earlier syncs) so they don't pile up. Keyed on file+line+body+author so
+  // distinct reviewers' identical text isn't merged.
+  const seen = new Set<string>()
+  const dedupedPulled = pulled.filter((c) => {
+    const k = `${c.filePath}:${c.lineNumber}:${c.body}:${c.author ?? ''}`
+    if (seen.has(k)) return false
+    seen.add(k)
+    return true
+  })
+
   // Keep local comments not represented in the pulled set — file-level
   // comments (no draft support) and any that failed to push — so they're
   // not lost and can retry next sync.
-  const pulledKey = new Set(pulled.map((c) => `${c.filePath}:${c.lineNumber}:${c.body}`))
+  const pulledKey = new Set(dedupedPulled.map((c) => `${c.filePath}:${c.lineNumber}:${c.body}`))
   const keptLocal = input.comments.filter(
     (c) => c.remoteId === undefined && !pulledKey.has(`${c.filePath}:${c.lineNumber}:${c.body}`)
   )
 
   return {
     ok: true,
-    comments: [...pulled, ...keptLocal],
+    comments: [...dedupedPulled, ...keptLocal],
     reviewedFiles: mergedReviewed,
     pushed,
     failed
