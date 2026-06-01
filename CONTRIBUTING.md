@@ -26,6 +26,42 @@ npm run dev
 
 The `--legacy-peer-deps` flag is required because of an `electron-vite@5` peer range.
 
+## Building and testing the headless server
+
+The backend also runs as a standalone `harness-server` — see the [Headless server](README.md#headless-server) section of the README for the user-facing install + connect flow. If you're changing anything the headless path touches, these two scripts let you build and exercise a real Linux server without leaving your Mac. Both need Docker running.
+
+### Building Linux tarballs — `pack:headless:linux`
+
+`harness-server` can't be cross-compiled the easy way: it bundles `node-pty` (a native C++ addon) and a platform-gated `@anthropic-ai/claude-code-<arch>` prebuilt, so each Linux tarball has to be assembled with a Linux toolchain. The script does that inside a per-arch container:
+
+```sh
+npm run pack:headless:linux               # both linux/arm64 + linux/amd64
+npm run pack:headless:linux linux/arm64   # just one arch
+```
+
+Tarballs land in `release/headless/` as `harness-server-<version>-linux-<arch>.tar.gz` (+ `.sha256`).
+
+On Apple Silicon the `linux/arm64` build is VM-native and quick; `linux/amd64` runs under emulation. The script keeps that cheap by running the heavy `npm ci` + bundle step **once** on the native arch into a shared volume and only compiling the small per-arch bits (`node-pty`) under emulation — both arches together build in ~5 min. Pass `linux/arm64` alone when amd64 isn't what you're testing, and turning on Docker Desktop's "Use Rosetta for x86/amd64 emulation" speeds the amd64 path further.
+
+To build a tarball for the platform you're already on (the `darwin-arm64` tarball on your Mac, or natively on a Linux box), skip Docker and run `npm run pack:headless` directly.
+
+### Running one in a container — `run-headless-container.sh`
+
+Once the matching tarball exists, this spins up an Ubuntu container, installs Node + `claude` + `codex`, installs the tarball, and prints how to start the server and connect:
+
+```sh
+./scripts/run-headless-container.sh linux/arm64   # server :37291, ssh :2222
+./scripts/run-headless-container.sh linux/amd64   # server :37292, ssh :2223
+```
+
+Each arch gets its own ports and container name, so you can run both at once. The script injects your `~/.ssh` public key so you can `ssh -p <port> root@localhost` into the box (handy for authenticating `claude`/`codex`). It stops short of starting the server so you choose when — it echoes the exact `docker exec … harness-server --host 0.0.0.0 --port <port>` command plus the connect URL (open it in a browser, or paste it into the Electron app's `File → Add Backend…`).
+
+Tear down when finished:
+
+```sh
+docker rm -f harness_linux-arm64 harness_linux-amd64
+```
+
 ## How to edit code in this codebase
 
 Honestly - every single line of code in this codebase is written by claude. (at least all the lines I wrote). So I highly recommend using claude code to make changes (I keep harness itself open at all times)
