@@ -3,6 +3,7 @@ import type { Worktree, PRStatus, PaneNode, TerminalTab } from '../types'
 import { getLeaves, findLeaf } from '../../shared/state/terminals'
 import { resolveHotkeys, type Action, type HotkeyBinding } from '../hotkeys'
 import { useHotkeys } from './useHotkeys'
+import { useDoubleTapShift } from './useDoubleTapShift'
 import { groupWorktrees, getGroupKey, type GroupKey } from '../worktree-sort'
 import { focusTerminalById } from '../components/XTerminal'
 import { useConnections, getBackendsRegistry, useSettings, useSnooze } from '../store'
@@ -381,6 +382,10 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
   )
 
   useHotkeys(hotkeyActions, hotkeyOverrides)
+
+  // focusTerminal is a gesture, not a key chord: double-tap Shift to jump
+  // focus to the active worktree's current tab.
+  useDoubleTapShift(useCallback(() => hotkeyActions.focusTerminal?.(), [hotkeyActions]))
 
   const resolvedHotkeys = useMemo(() => resolveHotkeys(hotkeyOverrides), [hotkeyOverrides])
 

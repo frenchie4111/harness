@@ -92,6 +92,10 @@ export const DEFAULT_HOTKEYS: Record<Action, HotkeyBinding> = {
   prevTab: { key: 'Tab', modifiers: { ctrl: true, shift: true } },
   newWorktree: { key: 'n', modifiers: { cmd: true } },
   refreshWorktrees: { key: 'r', modifiers: { cmd: true, shift: true } },
+  // Gesture-driven: focusTerminal fires on a double-tap of Shift (see
+  // GESTURE_ACTIONS / useDoubleTapShift), not this binding. The entry stays so
+  // the action remains a valid member of the binding map; the key matcher in
+  // useHotkeys skips it.
   focusTerminal: { key: '`', modifiers: { ctrl: true, shift: true } },
   toggleSidebar: { key: 'b', modifiers: { cmd: true } },
   openPR: { key: 'g', modifiers: { cmd: true, shift: true } },
@@ -114,6 +118,11 @@ export const DEFAULT_HOTKEYS: Record<Action, HotkeyBinding> = {
   uiScaleReset: { key: '=', modifiers: { cmd: true } },
   cycleWorktreeDetail: { key: 'i', modifiers: { cmd: true } },
 }
+
+/** Actions triggered by a gesture (e.g. double-tap Shift) rather than a
+ * modifier+key chord. The key matcher in useHotkeys skips these, and the
+ * Settings rebind UI omits them — they have no editable binding. */
+export const GESTURE_ACTIONS: ReadonlySet<Action> = new Set<Action>(['focusTerminal'])
 
 /** Check if a KeyboardEvent matches a hotkey binding */
 export function matchesBinding(e: KeyboardEvent, binding: HotkeyBinding): boolean {
@@ -290,7 +299,7 @@ export const ACTION_CATEGORIES: HotkeyCategory[] = [
   {
     id: 'tabs',
     label: 'Tabs & panes',
-    actions: ['newShellTab', 'closeTab', 'nextTab', 'prevTab', 'focusTerminal', 'splitPaneRight', 'splitPaneDown']
+    actions: ['newShellTab', 'closeTab', 'nextTab', 'prevTab', 'splitPaneRight', 'splitPaneDown']
   },
   {
     id: 'layout',

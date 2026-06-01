@@ -23,7 +23,7 @@ function buildGroups(hotkeys: Record<Action, HotkeyBinding>): ShortcutGroup[] {
         { label: 'Next worktree', binding: b('nextWorktree') },
         { label: 'Previous worktree', binding: b('prevWorktree') },
         { label: 'Open file...', binding: b('fileQuickOpen') },
-        { label: 'Focus terminal', binding: b('focusTerminal') },
+        { label: 'Focus terminal', binding: 'Shift+Shift' },
       ],
     },
     {
