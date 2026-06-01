@@ -100,7 +100,19 @@ function InlineComment({
 
   return (
     <div
-      onClick={() => collapsible && setExpanded((v) => !v)}
+      onClick={(e) => {
+        if (!collapsible) return
+        // Don't toggle the comment when interacting with controls rendered
+        // inside it — a <details> disclosure, links, buttons, form fields.
+        if (
+          (e.target as HTMLElement | null)?.closest(
+            'a, button, summary, details, input, textarea, select, label'
+          )
+        ) {
+          return
+        }
+        setExpanded((v) => !v)
+      }}
       style={{
         display: 'inline-flex',
         flexDirection: 'column',
