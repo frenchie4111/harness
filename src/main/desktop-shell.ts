@@ -371,9 +371,6 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
         submenu: [
           {
             label: 'New Project…',
-            // Ctrl+N (literal Control on macOS too) so it doesn't capture ⌘N,
-            // which is the renderer's New Worktree hotkey.
-            accelerator: 'Ctrl+N',
             click: () => transport.sendSignal('menu:newProject')
           },
           {

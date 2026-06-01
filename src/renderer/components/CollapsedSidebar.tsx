@@ -166,7 +166,7 @@ export function CollapsedSidebar({
             <LayoutGrid className="icon-sm" />
           </button>
         </Tooltip>
-        <Tooltip label="New project" hotkey="Ctrl+N" side="right">
+        <Tooltip label="New project" side="right">
           <button
             onClick={onOpenNewProject}
             className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"

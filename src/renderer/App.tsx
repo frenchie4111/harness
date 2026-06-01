@@ -419,7 +419,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
     return cleanup
   }, [])
 
-  // File → New Project… (Cmd+N)
+  // File → New Project…
   useEffect(() => {
     const cleanup = backend.onOpenNewProject(() => setShowNewProject(true))
     return cleanup

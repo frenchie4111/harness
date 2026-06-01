@@ -517,7 +517,7 @@ export function Sidebar({
             <LayoutGrid className="icon-sm" />
           </button>
         </Tooltip>
-        <Tooltip label="New project" hotkey="Ctrl+N" side="top">
+        <Tooltip label="New project" side="top">
           <button
             onClick={onOpenNewProject}
             className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
