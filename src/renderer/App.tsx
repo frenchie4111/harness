@@ -1589,12 +1589,17 @@ const setQuestStep = useCallback((next: QuestStep) => {
           onFinish={() => setQuestStep('done')}
         />
         {/* Right panel — hidden on the new-worktree screen so the form gets the full width.
-            Pushed down 40px so the workspace tab bar can extend across the top, full width. */}
+            Pushed down 40px so the workspace tab bar can extend across the top, full width.
+            The 40px top spacers are deliberately NOT drag regions: the tab bar's trailing
+            extension already paints a drag region over this strip with `no-drag` tabs punched
+            out. macOS app-region rects are union/diff'd in DOM order (last wins per pixel), so a
+            `drag-region` here — rendered after the tab bar — would re-mark the tab pixels as
+            draggable and swallow clicks on tabs that overflow above the right column. */}
         {!singleScreenMode && !showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && reportIssueState === null && !rightColumnHidden && (
-          <div className="shrink-0 flex flex-col"><div className="drag-region h-10 shrink-0" /><div className="flex-1 min-h-0 flex"><ResizeHandle onDelta={handleRightPanelResize} /></div></div>
+          <div className="shrink-0 flex flex-col"><div className="h-10 shrink-0" /><div className="flex-1 min-h-0 flex"><ResizeHandle onDelta={handleRightPanelResize} /></div></div>
         )}
         {!singleScreenMode && !showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && reportIssueState === null && !rightColumnHidden && (
-          <div className="shrink-0 flex flex-col"><div className="drag-region h-10 shrink-0" /><div className="flex-1 min-h-0 flex"><RightColumn
+          <div className="shrink-0 flex flex-col"><div className="h-10 shrink-0" /><div className="flex-1 min-h-0 flex"><RightColumn
             width={rightPanelWidth}
             activeWorktreeId={activeWorktreeId}
             activeRepoRoot={activeRepoRoot}
@@ -1621,7 +1626,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
           /></div></div>
         )}
         {!singleScreenMode && !showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && reportIssueState === null && rightColumnHidden && (
-          <div className="shrink-0 flex flex-col"><div className="drag-region h-10 shrink-0" /><div className="flex-1 min-h-0 flex"><CollapsedRightPanel
+          <div className="shrink-0 flex flex-col"><div className="h-10 shrink-0" /><div className="flex-1 min-h-0 flex"><CollapsedRightPanel
             worktreePath={activeWorktreeId}
             onExpand={() => setRightColumnHidden(false)}
             onReview={() => {
