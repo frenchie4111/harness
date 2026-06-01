@@ -72,12 +72,16 @@ export function HotkeyCheatsheet({ resolvedHotkeys, onClose, onOpenCommandPalett
   useEffect(() => {
     const handler = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') {
+        // Capture phase + stopPropagation so Esc closes the sheet and never
+        // reaches the focused xterm textarea behind it — otherwise the agent
+        // tab forwards Esc to the PTY and interrupts its current work.
         e.preventDefault()
+        e.stopPropagation()
         onClose()
       }
     }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
+    window.addEventListener('keydown', handler, true)
+    return () => window.removeEventListener('keydown', handler, true)
   }, [onClose])
 
   const groups = buildGroups(resolvedHotkeys)
