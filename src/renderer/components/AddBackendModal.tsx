@@ -386,9 +386,15 @@ function SshTab({ onClose }: { onClose: () => void }): JSX.Element {
             disabled={busy}
             className="w-full bg-app/40 border border-border rounded px-2.5 py-1.5 text-xs text-fg-bright focus:outline-none focus:border-accent disabled:opacity-50"
           >
-            {hostsLoaded && hosts.length === 0 && (
-              <option value={CUSTOM_HOST}>No hosts in ~/.ssh/config — use Custom…</option>
-            )}
+            {/* Custom host… at the top so the freeform input is the
+                first thing users see — gets it in front of people who
+                don't have ~/.ssh/config entries set up yet, or who'd
+                rather type a one-off than pick. */}
+            <option value={CUSTOM_HOST}>
+              {hostsLoaded && hosts.length === 0
+                ? 'No hosts in ~/.ssh/config — use Custom…'
+                : 'Custom host…'}
+            </option>
             {hosts.map((h) => (
               <option key={h.alias} value={h.alias}>
                 {h.alias}
@@ -397,7 +403,6 @@ function SshTab({ onClose }: { onClose: () => void }): JSX.Element {
                   : ` (${h.host})`}
               </option>
             ))}
-            <option value={CUSTOM_HOST}>Custom host…</option>
           </select>
         </div>
 

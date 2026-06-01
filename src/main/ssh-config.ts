@@ -64,6 +64,12 @@ export function parseSshConfigText(text: string): ConfiguredHost[] {
   }
 
   const hosts: ConfiguredHost[] = []
+  // Dedupe by alias — users sometimes layer overrides with multiple
+  // `Host build-box` blocks. ssh's first-match-wins means we keep the
+  // first occurrence and skip the rest. Without this, the renderer
+  // emits React-key warnings AND shows the same host twice in the
+  // dropdown.
+  const seen = new Set<string>()
   for (const line of parsed as Line[]) {
     if (line.type !== LineType.DIRECTIVE) continue
     if (line.param.toLowerCase() !== 'host') continue
@@ -75,6 +81,8 @@ export function parseSshConfigText(text: string): ConfiguredHost[] {
       : [line.value]
     for (const alias of aliases) {
       if (!alias || isWildcard(alias)) continue
+      if (seen.has(alias)) continue
+      seen.add(alias)
       // `compute()` walks the file applying directives, so per-host
       // settings inherit from Match / Host * blocks the way ssh itself
       // resolves them. We just pull the resolved values out.
@@ -100,6 +108,55 @@ export function parseSshConfigText(text: string): ConfiguredHost[] {
     }
   }
   return hosts
+}
+
+/** Resolve the effective ssh-config settings for an arbitrary host
+ *  string — honors wildcard `Host *.foo.com` blocks the way `ssh`
+ *  itself does, which the alias-list-based lookup can't (a freeform
+ *  `mike@build.gradle.org` target wouldn't match a `Host *.gradle.org`
+ *  entry by name, but `compute()` does because it's pattern-based).
+ *
+ *  Returns null when the config file is missing/unparsable or the host
+ *  has no matching block. Caller (the SSH bootstrap) treats null as
+ *  "no defaults, use the explicit target string verbatim + ssh-agent
+ *  fallback." */
+export async function computeForHost(host: string): Promise<{
+  user?: string
+  port?: number
+  hostName?: string
+  identityFile?: string
+} | null> {
+  const path = join(homedir(), '.ssh', 'config')
+  let text: string
+  try {
+    text = await readFile(path, 'utf8')
+  } catch {
+    return null
+  }
+  const { default: SSHConfig } = loadSshConfig()
+  let parsed: InstanceType<typeof SSHConfig>
+  try {
+    parsed = SSHConfig.parse(text)
+  } catch {
+    return null
+  }
+  let resolved: Record<string, string | string[]>
+  try {
+    resolved = parsed.compute(host)
+  } catch {
+    return null
+  }
+  const user = firstString(resolved.User)
+  const portStr = firstString(resolved.Port)
+  const port = portStr ? Number(portStr) : undefined
+  const hostName = firstString(resolved.HostName)
+  const identityFile = firstString(resolved.IdentityFile)
+  return {
+    ...(user ? { user } : {}),
+    ...(port && Number.isFinite(port) ? { port } : {}),
+    ...(hostName ? { hostName } : {}),
+    ...(identityFile ? { identityFile } : {})
+  }
 }
 
 /** Read `~/.ssh/config` and return the list of connectable Host aliases.

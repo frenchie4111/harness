@@ -16,7 +16,7 @@ import { createRequire } from 'module'
 import { createServer, type Server as NetServer, type Socket } from 'net'
 import { randomBytes, randomUUID } from 'crypto'
 import { homedir, userInfo } from 'os'
-import { listConfiguredHosts, type ConfiguredHost } from './ssh-config'
+import { computeForHost } from './ssh-config'
 import type {
   BootstrapError,
   BootstrapPhase
@@ -70,39 +70,35 @@ function expandHome(p: string): string {
   return p
 }
 
-/** Find the matching ~/.ssh/config entry for a target. The user might
- *  have typed a literal `Host` alias or a `user@host[:port]` string —
- *  we look up by alias OR by hostname so both forms get the same
- *  resolved defaults (Identity file, port, user). */
-function findConfigEntry(
-  hosts: ConfiguredHost[],
-  target: SshTarget
-): ConfiguredHost | undefined {
-  return hosts.find((h) => h.alias === target.raw)
-    ?? hosts.find((h) => h.alias === target.host)
-    ?? hosts.find((h) => h.host === target.host)
-}
-
 /** Build the ssh2 connect config for a target. Resolves User / Port /
  *  IdentityFile from ~/.ssh/config (since ssh2 doesn't), and falls
  *  back to the OS username if none of those sources have one. Logs
  *  the resolved values to the progress stream so the user can see
- *  what we ended up with. */
+ *  what we ended up with.
+ *
+ *  Uses ssh-config's `compute()` rather than an alias-list lookup, so
+ *  wildcard blocks like `Host *.gradle.org` are honored when the user
+ *  types `mike@build.gradle.org` directly. Match here mirrors how the
+ *  `ssh` binary itself applies config. */
 async function resolveSshConnectConfig(
   target: SshTarget,
   onLine: (line: string) => void
 ): Promise<Record<string, unknown>> {
   const cfg: Record<string, unknown> = { host: target.host }
-  let configEntry: ConfiguredHost | undefined
-  try {
-    const hosts = await listConfiguredHosts()
-    configEntry = findConfigEntry(hosts, target)
-  } catch {
-    // Parsing failure → no entry; we still try the OS-user fallback below.
+  // Compute against both the raw input (which might be a Host alias)
+  // AND the parsed hostname — same key wins in OpenSSH first-match,
+  // so we try the alias-y form first.
+  let resolved: Awaited<ReturnType<typeof computeForHost>> = null
+  if (target.raw && target.raw !== target.host) {
+    resolved = await computeForHost(target.raw)
+  }
+  if (!resolved || (!resolved.user && !resolved.port && !resolved.identityFile && !resolved.hostName)) {
+    const hostResolved = await computeForHost(target.host)
+    if (hostResolved) resolved = hostResolved
   }
 
   // Username: explicit user@host wins, then ~/.ssh/config, then OS user.
-  let username = target.user ?? configEntry?.user
+  let username = target.user ?? resolved?.user
   if (!username) {
     try {
       username = userInfo().username
@@ -113,20 +109,22 @@ async function resolveSshConnectConfig(
   if (username) cfg.username = username
 
   // Port: explicit host:port wins, then ~/.ssh/config, else ssh2 default 22.
-  const port = target.port ?? configEntry?.port
+  const port = target.port ?? resolved?.port
   if (port) cfg.port = port
 
   // HostName from config takes precedence over the alias for the
   // actual TCP connect target. (E.g. `Host build` + `HostName build.lan`
   // — we want to connect to build.lan, not "build".)
-  if (configEntry?.host && configEntry.host !== target.host) {
-    cfg.host = configEntry.host
+  if (resolved?.hostName && resolved.hostName !== target.host) {
+    cfg.host = resolved.hostName
   }
 
   // IdentityFile: best-effort. If the agent has the key, this is
-  // redundant; if not, we need it.
-  if (configEntry?.identityFile) {
-    cfg.privateKeyPath = expandHome(configEntry.identityFile)
+  // redundant; if not, we need it. compute() picks up wildcard blocks
+  // (`Host *.gradle.org IdentityFile …`) that the alias-list lookup
+  // missed.
+  if (resolved?.identityFile) {
+    cfg.privateKeyPath = expandHome(resolved.identityFile)
   }
 
   // Forward the SSH agent socket so agent-loaded keys are tried

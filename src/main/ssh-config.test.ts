@@ -105,4 +105,27 @@ Host weird
     // sections. The important contract is that we never throw.
     expect(() => parseSshConfigText('this is not really ssh config')).not.toThrow()
   })
+
+  it('dedupes duplicate Host entries, keeping the first (OpenSSH first-match-wins)', () => {
+    // Real users layer overrides with multiple Host blocks for the same
+    // alias. We need stable React keys for the dropdown AND ssh's own
+    // semantics resolve to the first block's settings, so dedupe by
+    // keeping the first occurrence.
+    const text = `
+Host build-box
+  HostName build-box.local
+  User mike
+
+Host build-box
+  HostName overridden.local
+  User other
+`
+    const hosts = parseSshConfigText(text)
+    expect(hosts).toHaveLength(1)
+    expect(hosts[0]).toMatchObject({
+      alias: 'build-box',
+      host: 'build-box.local',
+      user: 'mike'
+    })
+  })
 })
