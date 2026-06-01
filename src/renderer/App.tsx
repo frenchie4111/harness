@@ -5,7 +5,7 @@ import { useTailLineBuffer } from './hooks/useTailLineBuffer'
 import { useTabHandlers } from './hooks/useTabHandlers'
 import { useHotkeyHandlers } from './hooks/useHotkeyHandlers'
 import { useWorktreeHandlers } from './hooks/useWorktreeHandlers'
-import type { Worktree, TerminalTab, PtyStatus, PendingTool, QuestStep, PendingWorktree, UpdaterStatus, RepoConfig, PaneNode } from './types'
+import type { Worktree, TerminalTab, PtyStatus, PendingTool, QuestStep, PendingWorktree, UpdaterStatus, RepoConfig, PaneNode, BackendInfo } from './types'
 import { getLeaves, findLeaf } from '../shared/state/terminals'
 import { CheckCircle2, FolderOpen } from 'lucide-react'
 import { BUILT_IN_THEMES_BY_MODE } from './themes'
@@ -307,6 +307,21 @@ function DesktopApp(): JSX.Element {
   const nameAgentSessions = nameClaudeSessions
   const hasGithubToken = hasGithubPat || !!githubAuthSource
   const hotkeyOverrides = settings.hotkeys ?? undefined
+  // Backend identity for the welcome screen. Fetched per active backend so
+  // the web client / multi-backend remotes show the SERVER's host, not the
+  // viewer's. Re-fetched when the active backend changes; transient (not
+  // shared state) so it's plain useState.
+  const [backendInfo, setBackendInfo] = useState<BackendInfo | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    setBackendInfo(null)
+    backend.getBackendInfo().then(
+      (info) => { if (!cancelled) setBackendInfo(info) },
+      () => {}
+    )
+    return () => { cancelled = true }
+  }, [backend])
+
   // Onboarding parallelism quest — see QuestCard.tsx for the steps.
   // Quest state lives in the main-process store; its value is seeded from
   // config on boot so it's already correct on first render.
@@ -895,6 +910,11 @@ const setQuestStep = useCallback((next: QuestStep) => {
                 Run many coding agents in parallel — one window, isolated git worktrees,
                 clear status on who needs you.
               </p>
+              {backendInfo && (
+                <p className="mt-3 text-xs font-mono text-dim">
+                  {backendInfo.hostname} · {backendInfo.platform} {backendInfo.release} {backendInfo.arch} · v{backendInfo.version}
+                </p>
+              )}
             </div>
 
             <div className="grid grid-cols-3 gap-2 mb-8">

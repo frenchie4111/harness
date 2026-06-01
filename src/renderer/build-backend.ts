@@ -382,6 +382,7 @@ export function buildBackend(
     setHarnessStarred: (starred: boolean) => req('settings:setHarnessStarred', starred),
 
     getVersion: () => req('updater:getVersion'),
+    getBackendInfo: () => req('system:getBackendInfo'),
     readRecentLog: (maxLines?: number) => req('debug:readRecentLog', maxLines),
     checkForUpdates: () => req('updater:checkForUpdates'),
     quitAndInstall: () => req('updater:quitAndInstall'),
