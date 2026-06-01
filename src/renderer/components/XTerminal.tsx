@@ -66,7 +66,7 @@ const fitRegistry = new Map<string, FitAddon>()
 // treated as one we may need to withhold from the PTY.
 // eslint-disable-next-line no-control-regex
 const SGR_MOUSE_REPORT = /^\x1b\[<(\d+);\d+;\d+[Mm]$/
-function isMouseButtonReport(data: string): boolean {
+export function isMouseButtonReport(data: string): boolean {
   const match = SGR_MOUSE_REPORT.exec(data)
   if (!match) return false
   const button = Number(match[1])
