@@ -231,7 +231,7 @@ export function FileView({ worktreePath, filePath, onSendToAgent }: FileViewProp
         onClick={() => setWordWrap((v) => !v)}
         className="shrink-0 text-faint hover:text-fg cursor-pointer"
       >
-        {wordWrap ? <ArrowRightFromLine size={12} /> : <WrapText size={12} />}
+        {wordWrap ? <ArrowRightFromLine className="icon-xs" /> : <WrapText className="icon-xs" />}
       </button>
     </Tooltip>
   ) : null
