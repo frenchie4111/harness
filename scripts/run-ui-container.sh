@@ -3,9 +3,14 @@
 # Start + provision a linux/arm64 container that runs the full Harness Electron
 # UI on a virtual display (Xvfb), exposed to the host over VNC.
 #
-# Unlike run-headless-container.sh (which runs the standalone harness-server +
-# web client), this builds and launches the desktop app itself under Xvfb +
-# fluxbox + x11vnc, so you can drive the real GUI from a VNC viewer on the host.
+# It runs THIS checkout's build — your local Harness, not a fresh clone — so
+# whatever you've committed here is what shows up in the container. The app is
+# built on the host (electron-vite produces plain JS in out/, which runs fine
+# on linux) and copied in; the container only npm-installs to get the
+# linux-native deps (electron, node-pty). Separately it clones a repo as a test
+# workspace for Harness to open and create worktrees from. Unlike
+# run-headless-container.sh (standalone harness-server + web client), this is
+# the desktop GUI under Xvfb + fluxbox + x11vnc, driven from a VNC viewer.
 #
 # Usage: ./scripts/run-ui-container.sh
 #
@@ -13,7 +18,8 @@
 #   open vnc://localhost:5901        # then enter the VNC password
 #
 # Env overrides:
-#   HARNESS_CLONE_URL       repo to build (default: upstream frenchie4111/harness)
+#   HARNESS_CLONE_URL       test-workspace repo to clone (default: upstream
+#                           frenchie4111/harness) — NOT the app that runs
 #   HARNESS_VNC_PORT        host port to map to the container's :5900 (default 5901)
 #   HARNESS_VNC_PASSWORD    VNC password (default: harness)
 #   HARNESS_UI_GEOMETRY     Xvfb screen geometry (default: 1600x1000)
@@ -38,11 +44,20 @@ VNC_PW="${HARNESS_VNC_PASSWORD:-harness}"
 GEOMETRY="${HARNESS_UI_GEOMETRY:-1600x1000}"
 CLONE_URL="${HARNESS_CLONE_URL:-https://github.com/frenchie4111/harness.git}"
 CLONE_DEST="$(basename "$CLONE_URL" .git)"
+APP_DIR="/opt/harness-app"   # the host's build runs from here; the clone is separate
 
 # --- guard against an existing container of the same name ---
 if docker ps -a --format '{{.Names}}' | grep -qx "$NAME"; then
   err "container '$NAME' already exists — remove it first: docker rm -f $NAME"
 fi
+
+# --- build the local UI on the host; this is the version the container runs.
+#     out/ is plain bundled JS (no native code), so it runs in the linux
+#     container against the linux-native node_modules installed below. ---
+log "building the local Harness UI on the host (electron-vite build)"
+( cd "$REPO_ROOT" && npx electron-vite build ) \
+  || err "host build failed — run 'npm install --legacy-peer-deps' in the repo first"
+[ -f "$REPO_ROOT/out/main/index.js" ] || err "build produced no out/main/index.js"
 
 # --- start the container (detached, keepalive). --shm-size avoids Chromium's
 #     /dev/shm exhaustion crashes. ---
@@ -78,14 +93,24 @@ docker exec "$NAME" bash -lc '
   npm install -g @anthropic-ai/claude-code @openai/codex
   claude --version && codex --version'
 
-# --- build the Harness UI from source (electron-vite build -> out/) ---
-log "cloning $CLONE_URL and building the UI (npm install + electron-vite build)"
-docker exec "$NAME" bash -lc "
-  set -e
-  git clone '$CLONE_URL' ~/$CLONE_DEST
-  cd ~/$CLONE_DEST
-  npm install --legacy-peer-deps
-  npx electron-vite build"
+# --- install the host's build as the app + its linux-native deps ---
+# Snapshot the committed source (gitignored node_modules/out excluded), overlay
+# the out/ just built on the host, then npm install so node-pty + electron are
+# the linux/arm64 builds. This runs YOUR local Harness, not a fresh clone.
+log "installing the local build into the container ($APP_DIR)"
+git -C "$REPO_ROOT" archive --format=tar HEAD \
+  | docker exec -i "$NAME" bash -lc "mkdir -p $APP_DIR && tar -x -C $APP_DIR"
+docker cp "$REPO_ROOT/out" "$NAME":"$APP_DIR/out"
+docker exec "$NAME" bash -lc "cd $APP_DIR && npm install --legacy-peer-deps"
+
+# --- clone a repo as a test workspace for Harness to open (not the app) ---
+log "cloning $CLONE_URL as a test workspace (~/$CLONE_DEST)"
+if docker exec "$NAME" bash -lc "git clone '$CLONE_URL' ~/$CLONE_DEST"; then
+  REPO_NOTE="A clone of $CLONE_URL is at ~/$CLONE_DEST in the container — point Harness at that path to create worktrees."
+else
+  REPO_NOTE="(test-workspace clone failed — for a private fork set HARNESS_CLONE_URL, or clone one over SSH.)"
+  printf 'warning: test-workspace clone failed; the UI is otherwise ready\n' >&2
+fi
 
 # --- store the VNC password ---
 log "configuring VNC (password auth)"
@@ -116,7 +141,7 @@ x11vnc -display :99 -forever -shared -rfbport 5900 -rfbauth /root/.vnc/passwd \
   -bg -o /var/log/x11vnc.log
 # noVNC: serve the browser VNC client and proxy its WebSocket to x11vnc:5900.
 websockify --web=/usr/share/novnc 6080 localhost:5900 >/var/log/websockify.log 2>&1 &
-cd /root/${CLONE_DEST}
+cd ${APP_DIR}
 dbus-run-session -- node_modules/.bin/electron . \
   --no-sandbox --disable-gpu --disable-dev-shm-usage \
   >/var/log/harness-ui.log 2>&1
@@ -138,6 +163,8 @@ Connect from the host (give Electron a few seconds to paint). Password: $VNC_PW
 For copy+paste prefer the browser (noVNC's clipboard panel) or a real VNC
 client like TigerVNC/RealVNC — macOS Screen Sharing greys out shared
 clipboard for non-Apple VNC servers.
+
+This is your local build (from $REPO_ROOT). $REPO_NOTE
 
 Logs (inside the container):
 
