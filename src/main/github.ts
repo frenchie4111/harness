@@ -1423,6 +1423,19 @@ export async function syncPRReview(
     }
   }
 
+  // Drafts pulled from a pending review can come back with a null/0 line.
+  // Recover it from the matching local comment (same file + body) so the
+  // pulled copy renders at the right line AND dedupes against the local one
+  // — otherwise it lands at the top and the local copy is kept too.
+  for (const p of pulled) {
+    if (p.lineNumber === 0) {
+      const local = input.comments.find(
+        (c) => c.filePath === p.filePath && c.body === p.body && c.lineNumber > 0
+      )
+      if (local) p.lineNumber = local.lineNumber
+    }
+  }
+
   // Keep local comments not represented in the pulled set — file-level
   // comments (no draft support) and any that failed to push — so they're
   // not lost and can retry next sync.
