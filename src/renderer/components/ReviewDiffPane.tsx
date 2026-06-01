@@ -382,7 +382,7 @@ export function ReviewDiffPane({
     <div className="flex flex-col h-full">
       {/* File header */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-panel shrink-0">
-        <Tooltip label={reviewed ? 'Mark as not viewed (r)' : 'Mark as viewed (r)'}>
+        <Tooltip label={reviewed ? 'Mark as not viewed' : 'Mark as viewed'} hotkey="r">
           <button
             onClick={onToggleReviewed}
             aria-label={reviewed ? 'Mark as not viewed' : 'Mark as viewed'}

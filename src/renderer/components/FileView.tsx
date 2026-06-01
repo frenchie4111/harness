@@ -340,7 +340,7 @@ function FileHeader({
       {wrapToggleControl}
       {toggleControl}
       {showSave && (
-        <Tooltip label={dirty ? 'Save (⌘S)' : 'Saved'}>
+        <Tooltip label={dirty ? 'Save' : 'Saved'} hotkey={dirty ? 'Cmd+S' : undefined}>
           <button
             onClick={onSave}
             disabled={saveDisabled}

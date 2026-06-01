@@ -168,7 +168,7 @@ function FileDiffView({
           </button>
         </Tooltip>
         {editable && (
-          <Tooltip label={dirty ? 'Save (⌘S)' : 'Saved'}>
+          <Tooltip label={dirty ? 'Save' : 'Saved'} hotkey={dirty ? 'Cmd+S' : undefined}>
             <button
               onClick={save}
               disabled={!dirty}
