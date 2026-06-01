@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { AtSign, Save } from 'lucide-react'
+import { ArrowRightFromLine, AtSign, Save, WrapText } from 'lucide-react'
 import type { CommitDiff, FileDiffSides } from '../types'
 import { Tooltip } from './Tooltip'
 import { detectLanguage, highlightLine } from '../syntax'
@@ -40,6 +40,7 @@ function FileDiffView({
   const [modifiedValue, setModifiedValue] = useState('')
   const [savedValue, setSavedValue] = useState('')
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [wordWrap, setWordWrap] = useState(false)
 
   const valueRef = useRef(modifiedValue)
   const savedRef = useRef(savedValue)
@@ -59,6 +60,7 @@ function FileDiffView({
     setModifiedValue('')
     setSavedValue('')
     setSaveError(null)
+    setWordWrap(false)
     if (!filePath) return
     backend
       .getFileDiffSides(worktreePath, filePath, staged ?? false, branchDiff ? 'branch' : 'working')
@@ -156,6 +158,14 @@ function FileDiffView({
         {branchDiff && <span className="shrink-0 text-info">branch</span>}
         {!sides.originalExists && <span className="shrink-0 text-success">new file</span>}
         {!sides.modifiedExists && <span className="shrink-0 text-danger">deleted</span>}
+        <Tooltip label={wordWrap ? 'No wrap' : 'Word wrap'}>
+          <button
+            onClick={() => setWordWrap((v) => !v)}
+            className="shrink-0 text-faint hover:text-fg cursor-pointer"
+          >
+            {wordWrap ? <ArrowRightFromLine className="icon-xs" /> : <WrapText className="icon-xs" />}
+          </button>
+        </Tooltip>
         {editable && (
           <Tooltip label={dirty ? 'Save (⌘S)' : 'Saved'}>
             <button
@@ -191,6 +201,7 @@ function FileDiffView({
           readOnly={!editable}
           fontFamily={settings.terminalFontFamily || undefined}
           fontSize={settings.terminalFontSize}
+          wordWrap={wordWrap}
           onModifiedChange={editable ? setModifiedValue : undefined}
           onSave={editable ? save : undefined}
           onReferenceLine={

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import * as monaco from 'monaco-editor'
-import { Check } from 'lucide-react'
+import { ArrowRightFromLine, Check, WrapText } from 'lucide-react'
 import type { FileDiffSides, ChangedFile } from '../types'
 import type { ReviewComment } from './ReviewFileTree'
 import { MonacoDiffEditor } from './MonacoDiffEditor'
@@ -22,6 +22,8 @@ interface ReviewDiffPaneProps {
   onToggleReviewed: () => void
   onAddComment: (lineNumber: number, body: string) => void
   onDeleteComment: (id: string) => void
+  wordWrap: boolean
+  onWordWrapChange: (next: boolean) => void
 }
 
 const STATUS_LABEL: Record<ChangedFile['status'], string> = {
@@ -201,7 +203,9 @@ export function ReviewDiffPane({
   comments,
   onToggleReviewed,
   onAddComment,
-  onDeleteComment
+  onDeleteComment,
+  wordWrap,
+  onWordWrapChange
 }: ReviewDiffPaneProps): JSX.Element {
   const backend = useBackend()
   const settings = useSettings()
@@ -407,6 +411,15 @@ export function ReviewDiffPane({
             )}
           </span>
         )}
+
+        <Tooltip label={wordWrap ? 'No wrap' : 'Word wrap'}>
+          <button
+            onClick={() => onWordWrapChange(!wordWrap)}
+            className="shrink-0 text-faint hover:text-fg cursor-pointer"
+          >
+            {wordWrap ? <ArrowRightFromLine className="icon-xs" /> : <WrapText className="icon-xs" />}
+          </button>
+        </Tooltip>
       </div>
 
       {/* Diff with inline comments via view zones */}
@@ -424,6 +437,7 @@ export function ReviewDiffPane({
             readOnly
             fontFamily={settings.terminalFontFamily || undefined}
             fontSize={settings.terminalFontSize}
+            wordWrap={wordWrap}
             onReferenceLine={handleReferenceLine}
             onEditorMount={handleEditorMount}
             glyphClassName="comment-line-glyph"
