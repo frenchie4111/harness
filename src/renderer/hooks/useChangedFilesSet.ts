@@ -3,11 +3,32 @@ import type { ChangedFile } from '../types'
 import { useBackend } from '../backend'
 import { useWatchedQuery } from './useWatchedQuery'
 
+/** Single-letter glyphs that mirror the labels used in the
+ *  ChangedFilesPanel "Committed" section. Surfaces that want to
+ *  reuse the same visual language (e.g. AllFilesPanel, CommandPalette)
+ *  import these instead of re-defining them. */
+export const CHANGED_STATUS_LABEL: Record<ChangedFile['status'], string> = {
+  added: 'A',
+  modified: 'M',
+  deleted: 'D',
+  renamed: 'R',
+  untracked: 'U',
+}
+
+export const CHANGED_STATUS_COLOR: Record<ChangedFile['status'], string> = {
+  added: 'text-success',
+  modified: 'text-warning',
+  deleted: 'text-danger',
+  renamed: 'text-info',
+  untracked: 'text-dim',
+}
+
 export interface ChangedFilesSetResult {
-  /** Relative paths in the branch diff vs base — what a PR would contain. */
-  paths: Set<string>
-  /** Folders (with trailing slash trimmed) that contain at least one
-   *  changed descendant. Useful for tree rollup indicators. */
+  /** Per-path lookup. Use `.has(p)` for inclusion checks, `.get(p)` for
+   *  the full entry (status, additions, deletions). */
+  byPath: Map<string, ChangedFile>
+  /** Folders (no trailing slash) that contain at least one changed
+   *  descendant. Useful for tree rollup indicators. */
   folders: Set<string>
   /** Original ordering as returned by git (newest-touched first when
    *  available). Used by the Command Palette to pick the top N for the
@@ -16,7 +37,7 @@ export interface ChangedFilesSetResult {
 }
 
 const EMPTY: ChangedFilesSetResult = {
-  paths: new Set(),
+  byPath: new Map(),
   folders: new Set(),
   list: [],
 }
@@ -36,16 +57,16 @@ export function useChangedFilesSet(worktreePath: string | null): ChangedFilesSet
 
   return useMemo(() => {
     if (!data || data.length === 0) return EMPTY
-    const paths = new Set<string>()
+    const byPath = new Map<string, ChangedFile>()
     const folders = new Set<string>()
     for (const f of data) {
-      paths.add(f.path)
+      byPath.set(f.path, f)
       let idx = f.path.indexOf('/')
       while (idx >= 0) {
         folders.add(f.path.slice(0, idx))
         idx = f.path.indexOf('/', idx + 1)
       }
     }
-    return { paths, folders, list: data }
+    return { byPath, folders, list: data }
   }, [data])
 }

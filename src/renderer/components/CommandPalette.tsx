@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Search, GitPullRequest, ArrowRight, FileText, Server } from 'lucide-react'
-import type { Worktree, PtyStatus, PRStatus } from '../types'
+import type { Worktree, PtyStatus, PRStatus, ChangedFile } from '../types'
 import type { Action, HotkeyBinding } from '../hotkeys'
 import { ACTION_LABELS, bindingToString } from '../hotkeys'
 import { groupWorktrees, GROUP_ORDER, GROUP_LABELS, type GroupKey } from '../worktree-sort'
@@ -8,7 +8,11 @@ import { repoNameColor } from './RepoIcon'
 import { fuzzyMatch } from '../fuzzy'
 import { useBackend } from '../backend'
 import { useSettings, useSnooze } from '../store'
-import { useChangedFilesSet } from '../hooks/useChangedFilesSet'
+import {
+  CHANGED_STATUS_COLOR,
+  CHANGED_STATUS_LABEL,
+  useChangedFilesSet,
+} from '../hooks/useChangedFilesSet'
 
 export type PaletteMode = 'root' | 'files'
 
@@ -41,7 +45,7 @@ type FileItem = {
   path: string
   indices: number[]
   recent: boolean
-  changed: boolean
+  changedStatus?: ChangedFile['status']
 }
 
 interface PaletteRecent {
@@ -311,7 +315,7 @@ export function CommandPalette({
     const q = query.trim()
     const recents = loadRecents(activeWorktreeId)
     const recentSet = new Set(recents)
-    const changedSet = changedFiles.paths
+    const changedByPath = changedFiles.byPath
     const fileSet = new Set(files)
 
     if (q.length === 0) {
@@ -324,20 +328,25 @@ export function CommandPalette({
       for (const cf of changedFiles.list) {
         if (items.length >= CHANGED_SECTION_LIMIT) break
         if (!fileSet.has(cf.path)) continue
-        items.push({ path: cf.path, indices: [], recent: recentSet.has(cf.path), changed: true })
+        items.push({
+          path: cf.path,
+          indices: [],
+          recent: recentSet.has(cf.path),
+          changedStatus: cf.status,
+        })
         seen.add(cf.path)
       }
       const changedSectionCount = items.length
       for (const p of recents) {
         if (seen.has(p)) continue
         if (!fileSet.has(p)) continue
-        items.push({ path: p, indices: [], recent: true, changed: false })
+        items.push({ path: p, indices: [], recent: true })
         seen.add(p)
       }
       for (const p of files) {
         if (items.length >= CHANGED_SECTION_LIMIT + 50 + recents.length) break
         if (seen.has(p)) continue
-        items.push({ path: p, indices: [], recent: false, changed: false })
+        items.push({ path: p, indices: [], recent: false })
       }
       return { items, changedSectionCount }
     }
@@ -347,7 +356,7 @@ export function CommandPalette({
       .map((r) => ({
         item: r.item,
         indices: r.indices,
-        score: changedSet.has(r.item) ? r.score * CHANGED_SCORE_BOOST : r.score,
+        score: changedByPath.has(r.item) ? r.score * CHANGED_SCORE_BOOST : r.score,
       }))
       .sort((a, b) => b.score - a.score)
     return {
@@ -355,7 +364,7 @@ export function CommandPalette({
         path: r.item,
         indices: r.indices,
         recent: recentSet.has(r.item),
-        changed: changedSet.has(r.item),
+        changedStatus: changedByPath.get(r.item)?.status,
       })),
       changedSectionCount: 0,
     }
@@ -638,13 +647,15 @@ export function CommandPalette({
                     onMouseEnter={() => setSelectedIndex(idx)}
                     onClick={() => openFile(f.path)}
                   >
-                    <FileText className="icon-sm text-dim shrink-0" />
-                    {f.changed && (
+                    {f.changedStatus ? (
                       <span
-                        className="w-1.5 h-1.5 rounded-full bg-accent shrink-0"
-                        title="Changed in this PR"
-                        aria-hidden="true"
-                      />
+                        className={`shrink-0 w-3 font-mono text-center text-xs ${CHANGED_STATUS_COLOR[f.changedStatus]}`}
+                        title={`${f.changedStatus} in this PR`}
+                      >
+                        {CHANGED_STATUS_LABEL[f.changedStatus]}
+                      </span>
+                    ) : (
+                      <FileText className="icon-sm text-dim shrink-0" />
                     )}
                     <span className="truncate text-left text-fg-bright">
                       {highlightChars(name, f.indices, nameStart)}
@@ -654,7 +665,7 @@ export function CommandPalette({
                         {highlightChars(dir, f.indices, 0)}
                       </span>
                     )}
-                    {f.recent && !query && !f.changed && (
+                    {f.recent && !query && !f.changedStatus && (
                       <span className="text-xs text-faint shrink-0">recent</span>
                     )}
                   </button>

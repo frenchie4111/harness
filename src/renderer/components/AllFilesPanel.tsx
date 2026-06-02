@@ -5,7 +5,12 @@ import { RightPanel } from './RightPanel'
 import { useActiveBackend, useSettings } from '../store'
 import { useBackend } from '../backend'
 import { bindingToString, formatBindingGlyphs, resolveHotkeys } from '../hotkeys'
-import { useChangedFilesSet } from '../hooks/useChangedFilesSet'
+import type { ChangedFile } from '../types'
+import {
+  CHANGED_STATUS_COLOR,
+  CHANGED_STATUS_LABEL,
+  useChangedFilesSet,
+} from '../hooks/useChangedFilesSet'
 
 interface AllFilesPanelProps {
   worktreePath: string | null
@@ -58,13 +63,13 @@ function sortChildren(node: TreeNode): TreeNode[] {
  *  original alphabetical order from sortChildren. */
 function sortChildrenChangedFirst(
   node: TreeNode,
-  changedPaths: Set<string>,
+  changedByPath: Map<string, ChangedFile>,
   changedFolders: Set<string>
 ): TreeNode[] {
   const base = sortChildren(node)
-  if (changedPaths.size === 0) return base
+  if (changedByPath.size === 0) return base
   const isChanged = (n: TreeNode): boolean =>
-    n.isFile ? changedPaths.has(n.path) : changedFolders.has(n.path)
+    n.isFile ? changedByPath.has(n.path) : changedFolders.has(n.path)
   return base
     .map((n, i) => ({ n, i, changed: isChanged(n) }))
     .sort((a, b) => {
@@ -206,7 +211,7 @@ export function AllFilesPanel({
             onToggle={toggle}
             onOpenFile={onOpenFile}
             onSendToAgent={onSendToAgent}
-            changedPaths={changed.paths}
+            changedByPath={changed.byPath}
             changedFolders={changed.folders}
             changedFirst={filtering}
           />
@@ -234,7 +239,7 @@ interface TreeBranchProps {
   onToggle: (path: string) => void
   onOpenFile: (filePath: string) => void
   onSendToAgent?: (text: string) => void
-  changedPaths: Set<string>
+  changedByPath: Map<string, ChangedFile>
   changedFolders: Set<string>
   changedFirst: boolean
 }
@@ -248,12 +253,12 @@ function TreeBranch({
   onToggle,
   onOpenFile,
   onSendToAgent,
-  changedPaths,
+  changedByPath,
   changedFolders,
   changedFirst
 }: TreeBranchProps): JSX.Element {
   const children = changedFirst
-    ? sortChildrenChangedFirst(node, changedPaths, changedFolders)
+    ? sortChildrenChangedFirst(node, changedByPath, changedFolders)
     : sortChildren(node)
   return (
     <>
@@ -268,7 +273,7 @@ function TreeBranch({
               worktreePath={worktreePath}
               onOpenFile={onOpenFile}
               onSendToAgent={onSendToAgent}
-              changed={changedPaths.has(child.path)}
+              changedStatus={changedByPath.get(child.path)?.status}
             />
           )
         }
@@ -293,7 +298,7 @@ function TreeBranch({
                 onToggle={onToggle}
                 onOpenFile={onOpenFile}
                 onSendToAgent={onSendToAgent}
-                changedPaths={changedPaths}
+                changedByPath={changedByPath}
                 changedFolders={changedFolders}
                 changedFirst={changedFirst}
               />
@@ -351,7 +356,7 @@ function FileRow({
   worktreePath,
   onOpenFile,
   onSendToAgent,
-  changed
+  changedStatus
 }: {
   name: string
   path: string
@@ -359,7 +364,7 @@ function FileRow({
   worktreePath: string
   onOpenFile: (filePath: string) => void
   onSendToAgent?: (text: string) => void
-  changed: boolean
+  changedStatus?: ChangedFile['status']
 }): JSX.Element {
   const backend = useBackend()
   return (
@@ -373,13 +378,15 @@ function FileRow({
         e.dataTransfer.effectAllowed = 'copy'
       }}
     >
-      <FileText className="icon-xs shrink-0 text-faint" />
-      {changed && (
+      {changedStatus ? (
         <span
-          className="w-1.5 h-1.5 rounded-full bg-accent shrink-0"
-          title="Changed in this PR"
-          aria-hidden="true"
-        />
+          className={`shrink-0 w-3 font-mono text-center ${CHANGED_STATUS_COLOR[changedStatus]}`}
+          title={`${changedStatus} in this PR`}
+        >
+          {CHANGED_STATUS_LABEL[changedStatus]}
+        </span>
+      ) : (
+        <FileText className="icon-xs shrink-0 text-faint" />
       )}
       <span className="truncate min-w-0 flex-1 text-fg">{name}</span>
       {onSendToAgent && (
