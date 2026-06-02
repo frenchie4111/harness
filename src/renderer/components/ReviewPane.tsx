@@ -490,16 +490,6 @@ export function ReviewPane({
             onReviewDiffMode={(m) => backend.setReviewDiffMode(m)}
           />
 
-          <CommitSelector
-            commits={commits}
-            isWholeBranch={isWholeBranch}
-            selectionIndices={selectionIndices}
-            onSelectAll={handleSelectAllCommits}
-            onCommitClick={handleCommitClick}
-            fromCommit={fromCommit}
-            toCommit={toCommit}
-          />
-
           <div className="flex-1" />
 
           <div className="flex items-center gap-1.5 text-xs">
@@ -622,30 +612,43 @@ export function ReviewPane({
       </div>
 
       <div className="flex flex-1 min-h-0">
-        {/* File tree */}
+        {/* File tree column — commit selector scopes the file list below it */}
         <div
-          className="shrink-0 overflow-hidden"
+          className="shrink-0 flex flex-col min-h-0"
           style={{ width: fileTreeWidth }}
         >
-          <ReviewFileTree
-            files={files}
-            selectedFile={selectedFile}
-            reviewedFiles={reviewedFiles}
-            comments={comments}
-            collapsedDirs={collapsedDirs}
-            onSelectFile={(fp) => {
-              setSelectedFile(fp)
-              scrollToFile(fp)
-            }}
-            onToggleReviewed={handleToggleReviewed}
-            onToggleDir={handleToggleDir}
-            onSetSideBySide={setSideBySide}
-            onShowShortcuts={() => setShowShortcuts((v) => !v)}
-            onRevealLine={(filePath, line) =>
-              setRevealTarget({ filePath, line, nonce: ++revealNonceRef.current })
-            }
-            active={active}
-          />
+          <div className="shrink-0 p-2 border-b border-border">
+            <CommitSelector
+              commits={commits}
+              isWholeBranch={isWholeBranch}
+              selectionIndices={selectionIndices}
+              onSelectAll={handleSelectAllCommits}
+              onCommitClick={handleCommitClick}
+              fromCommit={fromCommit}
+              toCommit={toCommit}
+            />
+          </div>
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <ReviewFileTree
+              files={files}
+              selectedFile={selectedFile}
+              reviewedFiles={reviewedFiles}
+              comments={comments}
+              collapsedDirs={collapsedDirs}
+              onSelectFile={(fp) => {
+                setSelectedFile(fp)
+                scrollToFile(fp)
+              }}
+              onToggleReviewed={handleToggleReviewed}
+              onToggleDir={handleToggleDir}
+              onSetSideBySide={setSideBySide}
+              onShowShortcuts={() => setShowShortcuts((v) => !v)}
+              onRevealLine={(filePath, line) =>
+                setRevealTarget({ filePath, line, nonce: ++revealNonceRef.current })
+              }
+              active={active}
+            />
+          </div>
         </div>
 
         <ResizeHandle onDelta={handleFileTreeResize} />
