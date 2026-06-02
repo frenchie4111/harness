@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { Send, Clipboard, Check, MessageSquare, GitCommitHorizontal, ArrowUp, ChevronDown, Pilcrow, X, Keyboard, CloudSync, Loader2, Monitor, Sun, Moon, WrapText, GitPullRequest } from 'lucide-react'
+import { Send, Clipboard, Check, MessageSquare, GitCommitHorizontal, ArrowUp, ChevronDown, Pilcrow, X, Keyboard, CloudSync, Loader2, WrapText, GitPullRequest, Menu } from 'lucide-react'
 import type { ChangedFile, BranchCommit } from '../types'
 import type { PRReview } from '../../shared/state/prs'
 import type { ReviewComment } from './ReviewFileTree'
@@ -441,6 +441,17 @@ export function ReviewPane({
       {/* Top controls bar */}
       <div className="shrink-0 border-b border-border bg-panel">
         <div className="h-10 flex items-center gap-3 px-3">
+          <ReviewViewMenu
+            sideBySide={sideBySide}
+            onSideBySide={setSideBySide}
+            wordWrap={wordWrap}
+            onWordWrap={setWordWrap}
+            showWhitespace={showWhitespace}
+            onShowWhitespace={setShowWhitespace}
+            reviewDiffMode={reviewDiffMode}
+            onReviewDiffMode={(m) => backend.setReviewDiffMode(m)}
+          />
+
           <CommitSelector
             commits={commits}
             isWholeBranch={isWholeBranch}
@@ -451,78 +462,17 @@ export function ReviewPane({
             toCommit={toCommit}
           />
 
-          <div className="flex items-center rounded border border-border overflow-hidden text-xs">
-            <ModeButton active={sideBySide} label="Split" hint="s" onClick={() => setSideBySide(true)} />
-            <ModeButton active={!sideBySide} label="Unified" hint="d" onClick={() => setSideBySide(false)} />
-          </div>
-
-          <Tooltip label={showWhitespace ? 'Showing whitespace changes' : 'Ignoring whitespace changes'}>
-            <button
-              onClick={() => setShowWhitespace((v) => !v)}
-              aria-pressed={showWhitespace}
-              className={`flex items-center shrink-0 px-1.5 py-1 rounded border text-xs cursor-pointer transition-colors ${
-                showWhitespace ? 'border-accent text-accent' : 'border-border text-faint hover:text-fg'
-              }`}
-            >
-              <Pilcrow className="icon-xs" />
-            </button>
-          </Tooltip>
-
-          <Tooltip label={wordWrap ? 'No word wrap' : 'Word wrap'}>
-            <button
-              onClick={() => setWordWrap((v) => !v)}
-              aria-pressed={wordWrap}
-              className={`flex items-center shrink-0 px-1.5 py-1 rounded border text-xs cursor-pointer transition-colors ${
-                wordWrap ? 'border-accent text-accent' : 'border-border text-faint hover:text-fg'
-              }`}
-            >
-              <WrapText className="icon-xs" />
-            </button>
-          </Tooltip>
-
-          <Tooltip
-            label={
-              reviewDiffMode === 'match'
-                ? 'Diff theme: matches app — click for light'
-                : reviewDiffMode === 'light'
-                  ? 'Diff theme: light — click for dark'
-                  : 'Diff theme: dark — click to match app'
-            }
-          >
-            <button
-              onClick={() =>
-                backend.setReviewDiffMode(
-                  reviewDiffMode === 'match' ? 'light' : reviewDiffMode === 'light' ? 'dark' : 'match'
-                )
-              }
-              aria-label="Cycle diff theme"
-              className={`flex items-center shrink-0 px-1.5 py-1 rounded border text-xs cursor-pointer transition-colors ${
-                reviewDiffMode !== 'match'
-                  ? 'border-accent text-accent'
-                  : 'border-border text-faint hover:text-fg'
-              }`}
-            >
-              {reviewDiffMode === 'match' ? (
-                <Monitor className="icon-xs" />
-              ) : reviewDiffMode === 'light' ? (
-                <Sun className="icon-xs" />
-              ) : (
-                <Moon className="icon-xs" />
-              )}
-            </button>
-          </Tooltip>
-
           <div className="flex-1" />
 
           <div className="flex items-center gap-1.5 text-xs">
-            <Tooltip label="Copy comments to clipboard">
+            <Tooltip label="Send all comments to the active agent terminal">
               <button
-                onClick={handleCopyComments}
-                disabled={comments.length === 0}
-                className="flex items-center gap-1 px-2 py-1 rounded border border-border text-faint hover:text-fg transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-default"
+                onClick={handleSendToAgent}
+                disabled={comments.length === 0 || !onSendToAgent}
+                className="flex items-center gap-1 px-2 py-1 rounded bg-accent text-app text-xs font-medium hover:bg-accent/80 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-default"
               >
-                <Clipboard className="icon-xs" />
-                Copy
+                <Send className="icon-xs" />
+                Send to Agent
               </button>
             </Tooltip>
 
@@ -540,14 +490,14 @@ export function ReviewPane({
               <button
                 onClick={handleSync}
                 disabled={!prNumber || !isWholeBranch || syncing}
-                className="relative flex items-center gap-1 px-2 py-1 rounded border border-border text-faint hover:text-fg transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-default"
+                aria-label="Sync review to PR"
+                className="relative flex items-center shrink-0 px-1.5 py-1 rounded border border-border text-faint hover:text-fg transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-default"
               >
                 {syncing ? (
                   <Loader2 className="icon-xs animate-spin" />
                 ) : (
                   <CloudSync className="icon-xs" />
                 )}
-                Sync
                 {syncState !== 'idle' && (
                   <span
                     className={`absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full ${
@@ -562,27 +512,7 @@ export function ReviewPane({
                 )}
               </button>
             </Tooltip>
-
-            <Tooltip label="Send all comments to the active agent terminal">
-              <button
-                onClick={handleSendToAgent}
-                disabled={comments.length === 0 || !onSendToAgent}
-                className="flex items-center gap-1 px-2 py-1 rounded bg-accent text-app text-xs font-medium hover:bg-accent/80 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-default"
-              >
-                <Send className="icon-xs" />
-                Send to Agent
-              </button>
-            </Tooltip>
           </div>
-
-          <Tooltip label="Keyboard shortcuts (?)">
-            <button
-              onClick={() => setShowShortcuts((v) => !v)}
-              className="flex items-center shrink-0 px-1.5 py-1 rounded border border-border text-faint hover:text-fg cursor-pointer transition-colors"
-            >
-              <Keyboard className="icon-xs" />
-            </button>
-          </Tooltip>
         </div>
 
         {/* Second row — review status info */}
@@ -605,6 +535,7 @@ export function ReviewPane({
 
           <CommentDropdown
             comments={comments}
+            onCopy={handleCopyComments}
             onSelect={(c) => {
               setSelectedFile(c.filePath)
               setRevealTarget({ filePath: c.filePath, line: c.lineNumber, nonce: ++revealNonceRef.current })
@@ -630,6 +561,16 @@ export function ReviewPane({
               {totalDeletions > 0 && <span className="text-danger ml-1">−{totalDeletions}</span>}
             </span>
           )}
+
+          <Tooltip label="Keyboard shortcuts (?)">
+            <button
+              onClick={() => setShowShortcuts((v) => !v)}
+              aria-label="Keyboard shortcuts"
+              className="flex items-center shrink-0 px-1.5 py-1 rounded border border-border text-faint hover:text-fg cursor-pointer transition-colors"
+            >
+              <Keyboard className="icon-xs" />
+            </button>
+          </Tooltip>
         </div>
 
         <div className="h-[2px] bg-border/50 relative">
@@ -699,6 +640,110 @@ export function ReviewPane({
           />
         </div>
       </div>
+    </div>
+  )
+}
+
+function ReviewViewMenu({
+  sideBySide,
+  onSideBySide,
+  wordWrap,
+  onWordWrap,
+  showWhitespace,
+  onShowWhitespace,
+  reviewDiffMode,
+  onReviewDiffMode
+}: {
+  sideBySide: boolean
+  onSideBySide: (v: boolean) => void
+  wordWrap: boolean
+  onWordWrap: (v: boolean) => void
+  showWhitespace: boolean
+  onShowWhitespace: (v: boolean) => void
+  reviewDiffMode: 'match' | 'light' | 'dark'
+  onReviewDiffMode: (m: 'match' | 'light' | 'dark') => void
+}): JSX.Element {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: MouseEvent): void => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    window.addEventListener('mousedown', onDown)
+    return () => window.removeEventListener('mousedown', onDown)
+  }, [open])
+
+  return (
+    <div className="relative shrink-0" ref={ref}>
+      <Tooltip label="Diff view options">
+        <button
+          onClick={() => setOpen((v) => !v)}
+          aria-label="Diff view options"
+          aria-expanded={open}
+          className={`flex items-center px-1.5 py-1 rounded border cursor-pointer transition-colors ${
+            open ? 'border-accent text-accent' : 'border-border text-faint hover:text-fg'
+          }`}
+        >
+          <Menu className="icon-xs" />
+        </button>
+      </Tooltip>
+      {open && (
+        <div className="absolute left-0 top-full mt-1 z-50 w-56 rounded-lg border border-border-strong bg-panel-raised shadow-lg p-2 flex flex-col gap-1.5 text-xs">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-faint">Diff style</span>
+            <div className="flex items-center rounded border border-border overflow-hidden">
+              <ModeButton active={sideBySide} label="Split" hint="s" onClick={() => onSideBySide(true)} />
+              <ModeButton active={!sideBySide} label="Unified" hint="d" onClick={() => onSideBySide(false)} />
+            </div>
+          </div>
+
+          <button
+            onClick={() => onWordWrap(!wordWrap)}
+            aria-pressed={wordWrap}
+            className="flex items-center justify-between gap-2 px-1 py-1 rounded hover:bg-panel cursor-pointer"
+          >
+            <span className="flex items-center gap-1.5 text-faint">
+              <WrapText className="icon-xs" /> Word wrap
+            </span>
+            <span className={wordWrap ? 'text-accent' : 'text-dim'}>{wordWrap ? 'On' : 'Off'}</span>
+          </button>
+
+          <button
+            onClick={() => onShowWhitespace(!showWhitespace)}
+            aria-pressed={showWhitespace}
+            className="flex items-center justify-between gap-2 px-1 py-1 rounded hover:bg-panel cursor-pointer"
+          >
+            <span className="flex items-center gap-1.5 text-faint">
+              <Pilcrow className="icon-xs" /> Whitespace
+            </span>
+            <span className={showWhitespace ? 'text-accent' : 'text-dim'}>
+              {showWhitespace ? 'Shown' : 'Hidden'}
+            </span>
+          </button>
+
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-faint">Theme</span>
+            <div className="flex items-center rounded border border-border overflow-hidden">
+              <ModeButton
+                active={reviewDiffMode === 'match'}
+                label="App"
+                onClick={() => onReviewDiffMode('match')}
+              />
+              <ModeButton
+                active={reviewDiffMode === 'light'}
+                label="Light"
+                onClick={() => onReviewDiffMode('light')}
+              />
+              <ModeButton
+                active={reviewDiffMode === 'dark'}
+                label="Dark"
+                onClick={() => onReviewDiffMode('dark')}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -933,10 +978,12 @@ function ReviewerStatus({ reviews }: { reviews: PRReview[] }): JSX.Element | nul
 
 function CommentDropdown({
   comments,
-  onSelect
+  onSelect,
+  onCopy
 }: {
   comments: ReviewComment[]
   onSelect: (c: ReviewComment) => void
+  onCopy: () => void
 }): JSX.Element {
   const [open, setOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement | null>(null)
@@ -971,6 +1018,16 @@ function CommentDropdown({
           className="absolute z-50 top-full left-0 mt-1 w-[28rem] max-h-[20rem] overflow-y-auto bg-panel-raised border border-border-strong rounded shadow-lg py-1"
           onMouseDown={(e) => e.stopPropagation()}
         >
+          <button
+            onClick={() => {
+              onCopy()
+              setOpen(false)
+            }}
+            className="w-full flex items-center gap-1.5 px-3 py-1.5 text-xs text-faint hover:text-fg hover:bg-panel transition-colors cursor-pointer border-b border-border/60"
+          >
+            <Clipboard className="icon-xs" />
+            Copy all comments to clipboard
+          </button>
           {sorted.map((c) => {
             const name = c.filePath.split('/').pop() || c.filePath
             return (

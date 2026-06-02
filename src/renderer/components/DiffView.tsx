@@ -248,11 +248,11 @@ export function ModeButton({
 }: {
   active: boolean
   label: string
-  hint: string
+  hint?: string
   onClick: () => void
 }): JSX.Element {
   return (
-    <Tooltip label={`${label} (${hint})`}>
+    <Tooltip label={hint ? `${label} (${hint})` : label}>
       <button
         onClick={onClick}
         className={`px-2 py-0.5 cursor-pointer transition-colors ${
