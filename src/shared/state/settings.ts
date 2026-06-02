@@ -44,6 +44,19 @@ export function scaleSpec(id: UiScale): UiScaleSpec {
   return SCALES.find((s) => s.id === id) ?? SCALES[0]
 }
 
+/** The pixel font-size a code editor / terminal should use at a given UI
+ *  scale: the user's configured `terminalFontSize` shifted by the scale's
+ *  `terminalOffset` so Monaco and xterm stay in proportion with the rest of
+ *  the rem-scaled UI. Monaco consumers (DiffView / FileView / ReviewDiffPane)
+ *  and XTerminal both go through this — passing the raw setting instead makes
+ *  the editor ignore `uiScale`. */
+export function scaledEditorFontSize(
+  terminalFontSize: number | undefined,
+  uiScale: UiScale
+): number {
+  return (terminalFontSize || 13) + scaleSpec(uiScale).terminalOffset
+}
+
 export type ThemeMode = 'light' | 'dark' | 'system'
 
 /** A theme loaded from `<userData>/themes/*.json`. Stays minimal — the
@@ -120,6 +133,10 @@ export interface SettingsState {
   viewerLogin: string | null
   harnessStarred: boolean | null
   autoUpdateEnabled: boolean
+  /** When true (default), ⌘Q must be held briefly to quit (Chrome-style
+   *  "Warn Before Quitting"); a tap shows a toast and does nothing. When
+   *  false, ⌘Q quits immediately. */
+  warnBeforeQuitting: boolean
   harnessSystemPromptEnabled: boolean
   harnessSystemPrompt: string
   harnessSystemPromptMain: string
@@ -229,6 +246,7 @@ export type SettingsEvent =
   | { type: 'settings/claudeModelChanged'; payload: string | null }
   | { type: 'settings/codexModelChanged'; payload: string | null }
   | { type: 'settings/autoUpdateEnabledChanged'; payload: boolean }
+  | { type: 'settings/warnBeforeQuittingChanged'; payload: boolean }
   | { type: 'settings/harnessSystemPromptEnabledChanged'; payload: boolean }
   | { type: 'settings/harnessSystemPromptChanged'; payload: string }
   | { type: 'settings/harnessSystemPromptMainChanged'; payload: string }
@@ -287,6 +305,7 @@ export const initialSettings: SettingsState = {
   viewerLogin: null,
   harnessStarred: null,
   autoUpdateEnabled: true,
+  warnBeforeQuitting: true,
   harnessSystemPromptEnabled: true,
   harnessSystemPrompt: '',
   harnessSystemPromptMain: '',
@@ -369,6 +388,8 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, codexModel: event.payload }
     case 'settings/autoUpdateEnabledChanged':
       return { ...state, autoUpdateEnabled: event.payload }
+    case 'settings/warnBeforeQuittingChanged':
+      return { ...state, warnBeforeQuitting: event.payload }
     case 'settings/harnessSystemPromptEnabledChanged':
       return { ...state, harnessSystemPromptEnabled: event.payload }
     case 'settings/harnessSystemPromptChanged':

@@ -1033,6 +1033,22 @@ store.subscribe((event) => {
 const snoozeTimer = new SnoozeTimer(store)
 snoozeTimer.start()
 
+// Toggle "Warn Before Quitting". Shared by the Settings IPC handler and the
+// app-menu checkbox (wired into the desktop shell), so both stay in sync.
+// Persists only the off state (default-on, like autoUpdateEnabled).
+function setWarnBeforeQuitting(enabled: boolean): void {
+  if (enabled) {
+    delete config.warnBeforeQuitting
+  } else {
+    config.warnBeforeQuitting = false
+  }
+  saveConfig(config)
+  store.dispatch({
+    type: 'settings/warnBeforeQuittingChanged',
+    payload: config.warnBeforeQuitting !== false
+  })
+}
+
 function registerIpcHandlers(): void {
   // Worktree handlers — every call takes an explicit repoRoot, since a single
   // window now shows worktrees from multiple repos at once.
@@ -1680,6 +1696,11 @@ function registerIpcHandlers(): void {
     } else {
       desktopHooks.startAutoUpdateChecks()
     }
+    return true
+  })
+
+  transport.onRequest('config:setWarnBeforeQuitting', (_ctx, enabled: boolean) => {
+    setWarnBeforeQuitting(enabled)
     return true
   })
 
@@ -3582,7 +3603,8 @@ if (desktopShellMod && desktopEarly) {
     onBeforeQuit: () => {
       jsonClaudeManager.killAll()
       approvalBridge.stopAll()
-    }
+    },
+    setWarnBeforeQuitting
   })
   desktopHooks.startAutoUpdateChecks = handle.startAutoUpdateChecks
   desktopHooks.stopAutoUpdateChecks = handle.stopAutoUpdateChecks

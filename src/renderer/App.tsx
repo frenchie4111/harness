@@ -11,6 +11,7 @@ import { CheckCircle2, FolderOpen } from 'lucide-react'
 import { BUILT_IN_THEMES_BY_MODE } from './themes'
 import { SCALES, scaleSpec } from '../shared/state/settings'
 import { useActiveTheme } from './hooks/useActiveTheme'
+import { useHoldToQuit } from './hooks/useHoldToQuit'
 import { applyTheme, effectiveAppBg } from './theme-apply'
 import { getBackend } from './backend'
 import { HotkeysProvider, Tooltip } from './components/Tooltip'
@@ -45,6 +46,7 @@ import { AddBackendModal } from './components/AddBackendModal'
 import { MonacoWorkerFailedBanner } from './components/MonacoWorkerFailedBanner'
 import iconUrl from '../../resources/icon.png'
 import { PerfMonitorHUD } from './components/PerfMonitorHUD'
+import { HoldToQuitOverlay } from './components/HoldToQuitOverlay'
 import { focusTerminalById } from './components/XTerminal'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { type GroupKey } from './worktree-sort'
@@ -255,6 +257,7 @@ function DesktopApp(): JSX.Element {
   const [commandPaletteMode, setCommandPaletteMode] = useState<'root' | 'files'>('root')
   const [showPerfMonitor, setShowPerfMonitor] = useState(false)
   const [showHotkeyCheatsheet, setShowHotkeyCheatsheet] = useState(false)
+  const holdToQuit = useHoldToQuit()
   const [showNewProject, setShowNewProject] = useState(false)
   const [reportIssueState, setReportIssueState] = useState<OpenReportIssueDetail | null>(null)
   const [showAddBackend, setShowAddBackend] = useState(false)
@@ -282,6 +285,22 @@ function DesktopApp(): JSX.Element {
     document.documentElement.style.fontSize = `${px}px`
     return () => {
       document.documentElement.style.fontSize = ''
+    }
+  }, [settings.uiScale])
+  // Transient "Resize: <label>" toast in the upper center whenever the UI
+  // scale changes. Per-client ephemeral UI, so local state — not a slice.
+  // prevUiScaleRef seeds to the current value so we don't toast on mount.
+  const [resizeToast, setResizeToast] = useState<string | null>(null)
+  const resizeToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const prevUiScaleRef = useRef(settings.uiScale)
+  useEffect(() => {
+    if (settings.uiScale === prevUiScaleRef.current) return
+    prevUiScaleRef.current = settings.uiScale
+    setResizeToast(scaleSpec(settings.uiScale).label)
+    if (resizeToastTimer.current) clearTimeout(resizeToastTimer.current)
+    resizeToastTimer.current = setTimeout(() => setResizeToast(null), 1200)
+    return () => {
+      if (resizeToastTimer.current) clearTimeout(resizeToastTimer.current)
     }
   }, [settings.uiScale])
   const activeTheme = useActiveTheme()
@@ -1205,6 +1224,13 @@ const setQuestStep = useCallback((next: QuestStep) => {
     <HotkeysProvider bindings={resolvedHotkeys}>
     <div className="flex h-full flex-col">
       <MonacoWorkerFailedBanner />
+      {resizeToast && (
+        <div className="pointer-events-none fixed top-12 left-1/2 -translate-x-1/2 z-[60]">
+          <div className="rounded-md border border-border-strong bg-panel/95 px-3 py-1.5 text-sm text-fg-bright shadow-lg backdrop-blur">
+            Resize: {resizeToast}
+          </div>
+        </div>
+      )}
       {/* Update-ready banner */}
       {updaterStatus?.state === 'downloaded' && !updateBannerDismissed && (
         <div className="bg-success/15 border-b border-success/30 pl-20 pr-4 py-2.5 drag-region flex items-center gap-3 shrink-0">
@@ -1685,6 +1711,9 @@ const setQuestStep = useCallback((next: QuestStep) => {
       isOpen={showAddBackend}
       onClose={() => setShowAddBackend(false)}
     />
+    {holdToQuit.phase !== 'idle' && (
+      <HoldToQuitOverlay key={holdToQuit.holdId} fading={holdToQuit.phase === 'fading'} />
+    )}
     </HotkeysProvider>
   )
 }
