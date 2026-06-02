@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { useSettings, usePrs, useOnboarding, useHooks, useWorktrees, useTerminals, usePanes, useLastActive, useUpdater, useRepoConfigs, useSnooze, useAnnouncements } from './store'
+import { useSettings, usePrs, useOnboarding, useHooks, useWorktrees, useTerminals, usePanes, useLastActive, useUpdater, useRepoConfigs, useSnooze, useAnnouncements, useActiveBackend } from './store'
 import { useBackend } from './backend'
 import { useTailLineBuffer } from './hooks/useTailLineBuffer'
 import { useTabHandlers } from './hooks/useTabHandlers'
 import { useHotkeyHandlers } from './hooks/useHotkeyHandlers'
 import { useWorktreeHandlers } from './hooks/useWorktreeHandlers'
-import type { Worktree, TerminalTab, PtyStatus, PendingTool, QuestStep, PendingWorktree, UpdaterStatus, RepoConfig, PaneNode } from './types'
+import type { Worktree, TerminalTab, PtyStatus, PendingTool, QuestStep, PendingWorktree, UpdaterStatus, RepoConfig, PaneNode, BackendInfo } from './types'
 import { getLeaves, findLeaf } from '../shared/state/terminals'
 import { CheckCircle2, FolderOpen } from 'lucide-react'
 import { BUILT_IN_THEMES_BY_MODE } from './themes'
@@ -307,6 +307,25 @@ function DesktopApp(): JSX.Element {
   const nameAgentSessions = nameClaudeSessions
   const hasGithubToken = hasGithubPat || !!githubAuthSource
   const hotkeyOverrides = settings.hotkeys ?? undefined
+  // Backend identity for the welcome screen. Fetched per active backend so
+  // the web client / multi-backend remotes show the SERVER's host, not the
+  // viewer's. `backend` is a stable singleton that routes to whatever the
+  // active transport is, so it can't be the effect's trigger — we key on the
+  // active backend id (which DOES change on chip switch / SSH connect) so the
+  // identity re-fetches against the newly-active backend instead of being
+  // frozen to whatever was active at mount (the local host).
+  const activeBackendId = useActiveBackend().id
+  const [backendInfo, setBackendInfo] = useState<BackendInfo | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    setBackendInfo(null)
+    backend.getBackendInfo().then(
+      (info) => { if (!cancelled) setBackendInfo(info) },
+      () => {}
+    )
+    return () => { cancelled = true }
+  }, [backend, activeBackendId])
+
   // Onboarding parallelism quest — see QuestCard.tsx for the steps.
   // Quest state lives in the main-process store; its value is seeded from
   // config on boot so it's already correct on first render.
@@ -895,6 +914,11 @@ const setQuestStep = useCallback((next: QuestStep) => {
                 Run many coding agents in parallel — one window, isolated git worktrees,
                 clear status on who needs you.
               </p>
+              {backendInfo && (
+                <p className="mt-3 text-xs font-mono text-dim">
+                  {backendInfo.hostname} · {backendInfo.platform} {backendInfo.release} {backendInfo.arch} · v{backendInfo.version}
+                </p>
+              )}
             </div>
 
             <div className="grid grid-cols-3 gap-2 mb-8">

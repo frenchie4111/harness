@@ -1,0 +1,10 @@
+# Staging dir for opt-in cross-platform harness-server tarballs.
+#
+# `scripts/stage-server-tarballs.mjs` (npm run bundle:servers / pack:servers)
+# copies release/headless/harness-server-*-<platform>.tar.gz (+ .sha256) here
+# so electron-builder's extraResources picks them up into the packaged app's
+# resources/headless/. The SSH bootstrap's upload mode then finds them via
+# resolveBundledServerDir() and pushes the matching one to a remote.
+#
+# Default builds leave this dir empty (the *.tar.gz* are gitignored), so the
+# packaged app carries no extra ~130MB-per-platform payload unless you opt in.

@@ -213,7 +213,17 @@ async function main() {
   )
 
   const shim = `#!/bin/sh
-DIR="$(cd "$(dirname "$0")/.." && pwd)"
+# Resolve symlinks so the launcher still finds its bundled Node + app when
+# invoked via a symlink (e.g. /usr/local/bin/harness-server -> .../bin/...).
+SELF="$0"
+while [ -L "$SELF" ]; do
+  LINK="$(readlink "$SELF")"
+  case "$LINK" in
+    /*) SELF="$LINK" ;;
+    *)  SELF="$(dirname "$SELF")/$LINK" ;;
+  esac
+done
+DIR="$(cd "$(dirname "$SELF")/.." && pwd)"
 
 # --version short-circuits without booting Node so it stays instant.
 case "$1" in
