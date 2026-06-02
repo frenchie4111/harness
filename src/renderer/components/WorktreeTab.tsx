@@ -204,7 +204,7 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
       )}
       {worktreeDetail === 'age' && (
         <span
-          className="text-[10px] font-mono shrink-0 leading-none text-dim group-hover:hidden"
+          className="text-xs font-mono shrink-0 leading-none text-dim group-hover:hidden"
           title={worktree.createdAt ? `Created ${new Date(worktree.createdAt).toLocaleString()}` : 'Creation time unknown'}
         >
           {formatWorktreeAge(worktree.createdAt)}
@@ -214,14 +214,14 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
         <span className="inline-flex items-center gap-1.5 shrink-0 group-hover:hidden">
           {prStatus.milestone && (
             <span
-              className="text-[10px] text-dim truncate max-w-[6rem]"
+              className="text-xs text-dim truncate max-w-[6rem]"
               title={`Milestone: ${prStatus.milestone.title}`}
             >
               {prStatus.milestone.title}
             </span>
           )}
           <span
-            className="text-[10px] font-mono leading-none px-1.5 py-0.5 rounded-full bg-panel border border-border-strong text-fg-bright"
+            className="text-xs font-mono leading-none px-1.5 py-0.5 rounded-full bg-panel border border-border-strong text-fg-bright"
             title={`PR #${prStatus.number}`}
           >
             #{prStatus.number}

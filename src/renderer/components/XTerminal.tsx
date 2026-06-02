@@ -8,7 +8,7 @@ import '@xterm/xterm/css/xterm.css'
 import type { StateEvent } from '../../shared/state'
 import { getClientId, subscribeActiveTransportReconnect, useSettings, useTerminalSession } from '../store'
 import { getBackend, useBackend } from '../backend'
-import { scaleSpec, type UiScale } from '../../shared/state/settings'
+import { scaledEditorFontSize, type UiScale } from '../../shared/state/settings'
 import { Eye, X, Sparkles } from 'lucide-react'
 import { Tooltip } from './Tooltip'
 
@@ -107,15 +107,16 @@ export function isTerminalAtBottom(id: string): boolean {
 let currentFontFamily = DEFAULT_TERMINAL_FONT_FAMILY
 let currentFontSize = DEFAULT_TERMINAL_FONT_SIZE
 // `currentFontSize` is the user-configured terminal size. The pixel size
-// we hand to xterm is shifted by `uiScaleOffset` (see SCALES in
-// shared/state/settings.ts) so terminals stay in proportion with the
-// rest of the UI when the scale rung changes. Stored separately so the
-// user's terminalFontSize preference is never overwritten — the offset
-// is added dynamically.
-let uiScaleOffset = 0
+// we hand to xterm is shifted by the current scale's `terminalOffset` (see
+// SCALES in shared/state/settings.ts) so terminals stay in proportion with
+// the rest of the UI when the scale rung changes. Stored separately so the
+// user's terminalFontSize preference is never overwritten — the offset is
+// applied dynamically via `scaledEditorFontSize`, the same helper Monaco
+// editors use.
+let currentUiScale: UiScale = 'small'
 
 function effectiveTerminalFontSize(): number {
-  return currentFontSize + uiScaleOffset
+  return scaledEditorFontSize(currentFontSize, currentUiScale)
 }
 
 function applyFontToAll(): void {
@@ -152,7 +153,7 @@ function initFontCache(): void {
   void backend.getStateSnapshot().then(({ state }) => {
     currentFontFamily = state.settings.terminalFontFamily || DEFAULT_TERMINAL_FONT_FAMILY
     currentFontSize = state.settings.terminalFontSize || DEFAULT_TERMINAL_FONT_SIZE
-    uiScaleOffset = scaleSpec(state.settings.uiScale).terminalOffset
+    currentUiScale = state.settings.uiScale
     applyFontToAll()
   })
   backend.onStateEvent((raw) => {
@@ -164,7 +165,7 @@ function initFontCache(): void {
       currentFontSize = event.payload || DEFAULT_TERMINAL_FONT_SIZE
       applyFontToAll()
     } else if (event.type === 'settings/uiScaleChanged') {
-      uiScaleOffset = scaleSpec(event.payload as UiScale).terminalOffset
+      currentUiScale = event.payload as UiScale
       applyFontToAll()
     }
   })

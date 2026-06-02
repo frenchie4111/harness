@@ -1722,7 +1722,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
             <RotateCcw className="icon-xs shrink-0" />
             <div className="flex flex-col">
               <span>Rewind to here</span>
-              <span className="text-[10px] text-muted">
+              <span className="text-xs text-muted">
                 {rewindMenu.disabledReason ?? 'drops everything after this'}
               </span>
             </div>

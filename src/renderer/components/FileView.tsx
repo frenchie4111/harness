@@ -8,6 +8,7 @@ import { Tooltip } from './Tooltip'
 import { MonacoEditor } from './MonacoEditor'
 import { useSettings } from '../store'
 import { useBackend } from '../backend'
+import { scaledEditorFontSize } from '../../shared/state/settings'
 import 'highlight.js/styles/github-dark.css'
 
 interface FileViewProps {
@@ -273,7 +274,7 @@ export function FileView({ worktreePath, filePath, onSendToAgent }: FileViewProp
             filePath={filePath}
             readOnly={false}
             fontFamily={settings.terminalFontFamily || undefined}
-            fontSize={settings.terminalFontSize}
+            fontSize={scaledEditorFontSize(settings.terminalFontSize, settings.uiScale)}
             wordWrap={wordWrap}
             onChange={setValue}
             onSave={save}
