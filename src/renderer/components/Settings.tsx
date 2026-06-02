@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect } from 'react'
-import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2, Moon, LifeBuoy, Bug, Lightbulb, FlaskConical, Copy, CopyCheck, ExternalLink, CalendarDays, FileText, FolderOpen, Search, ChevronDown, ChevronRight } from 'lucide-react'
+import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2, Moon, LifeBuoy, Bug, Lightbulb, FlaskConical, Copy, CopyCheck, ExternalLink, CalendarDays, FileText, FolderOpen, Search, ChevronDown, ChevronRight, SlidersHorizontal } from 'lucide-react'
 import { openReportIssue } from './ReportIssueScreen'
 import { HARNESS_ISSUES_URL, HARNESS_RELEASES_URL, harnessReleaseNotesUrl } from '../../shared/constants'
 import { useSettings, useUpdater, useRepoConfigs, useHooks } from '../store'
@@ -23,7 +23,7 @@ interface SettingsProps {
   initialSection?: SectionId
 }
 
-type SectionId = 'appearance' | 'agent' | 'worktrees' | 'editor' | 'github' | 'hotkeys' | 'updates' | 'support' | 'experimental'
+type SectionId = 'general' | 'appearance' | 'agent' | 'worktrees' | 'editor' | 'github' | 'hotkeys' | 'updates' | 'support' | 'experimental'
 type SubSectionId =
   | 'appearance-theme'
   | 'appearance-custom-themes'
@@ -57,6 +57,7 @@ interface Section {
 }
 
 const SECTIONS: Section[] = [
+  { id: 'general', label: 'General', icon: SlidersHorizontal },
   { id: 'appearance', label: 'Appearance', icon: Palette, children: [
     { id: 'appearance-theme', label: 'Theme' },
     { id: 'appearance-custom-themes', label: 'Custom themes' },
@@ -132,6 +133,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
   const sidebarRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const sectionRefs = useRef<Record<SectionId, HTMLElement | null>>({
+    general: null,
     appearance: null,
     agent: null,
     worktrees: null,
@@ -255,7 +257,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     const onScroll = (): void => {
       if (isProgrammaticScroll.current) return
       const scrollTop = container.scrollTop
-      let current: SectionId = 'appearance'
+      let current: SectionId = 'general'
       for (const section of SECTIONS) {
         const el = sectionRefs.current[section.id]
         if (el && el.offsetTop - 48 <= scrollTop) {
@@ -329,6 +331,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     worktreeScripts,
     shareClaudeSettings,
     autoUpdateEnabled,
+    warnBeforeQuitting,
     harnessSystemPromptEnabled,
     harnessSystemPrompt,
     harnessSystemPromptMain,
@@ -778,6 +781,10 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
   const handleToggleAutoUpdate = useCallback(async (enabled: boolean) => {
     await backend.setAutoUpdateEnabled(enabled)
+  }, [])
+
+  const handleToggleWarnBeforeQuitting = useCallback(async (enabled: boolean) => {
+    await backend.setWarnBeforeQuitting(enabled)
   }, [])
 
   const handleToggleWsTransport = useCallback(async (enabled: boolean) => {
@@ -1252,7 +1259,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   <span className="text-fg-bright truncate">
                     {highlightMatch(item.title, sectionQuery)}
                   </span>
-                  <span className="text-faint text-[10px] truncate">{item.context}</span>
+                  <span className="text-faint text-xs truncate">{item.context}</span>
                 </button>
               ))}
             </div>
@@ -1336,6 +1343,29 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
         {/* Main scrollable content */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto">
           <div className="max-w-2xl p-8 pb-[60vh] space-y-12">
+            {/* General section */}
+            <section ref={(el) => { sectionRefs.current.general = el }} id="general">
+              <h2 className="text-lg font-semibold text-fg-bright mb-1">General</h2>
+              <p className="text-sm text-dim mb-4">
+                App-wide behavior.
+              </p>
+              <label className="flex items-start gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={warnBeforeQuitting}
+                  onChange={(e) => handleToggleWarnBeforeQuitting(e.target.checked)}
+                  className="mt-0.5 cursor-pointer icon-base" />
+                <div className="flex-1">
+                  <div className="text-sm text-fg-bright">Warn before quitting (⌘Q)</div>
+                  <div className="text-xs text-dim mt-0.5">
+                    When enabled, you must hold ⌘Q briefly to quit — a tap shows a
+                    reminder and does nothing, so you don&apos;t lose running agents
+                    and terminals by accident. Disable to quit immediately on ⌘Q.
+                  </div>
+                </div>
+              </label>
+            </section>
+
             {/* Appearance section */}
             <section ref={(el) => { sectionRefs.current.appearance = el }} id="appearance">
               <h2 className="text-lg font-semibold text-fg-bright mb-1">Appearance</h2>
@@ -2450,32 +2480,32 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     detail hides on hover; row action buttons appear in its place.
                   </p>
                   <div className="mb-3 p-2 bg-panel-raised border border-border rounded">
-                    <div className="text-[10px] text-faint mb-1.5 uppercase tracking-wide">Preview</div>
+                    <div className="text-xs text-faint mb-1.5 uppercase tracking-wide">Preview</div>
                     <div className="group flex items-center gap-2 px-3 py-2 bg-surface rounded">
                       <span
                         className="w-2 h-2 rounded-full shrink-0 bg-success"
                         title="Working..."
                       />
-                      <GitPullRequest size={13} className="text-success shrink-0" />
+                      <GitPullRequest className="icon-xs text-success shrink-0" />
                       <div className="min-w-0 flex-1">
                         <div className="text-sm font-medium text-fg-bright truncate">feature/example-branch</div>
                         <div className="text-xs text-faint truncate">harness/feature-example-branch</div>
                       </div>
                       {worktreeDetail === 'diff' && (
-                        <span className="text-[10px] font-mono shrink-0 leading-none group-hover:hidden" title="+42 additions, −7 deletions">
+                        <span className="text-xs font-mono shrink-0 leading-none group-hover:hidden" title="+42 additions, −7 deletions">
                           <span className="text-success">+42</span>
                           <span className="text-danger ml-0.5">−7</span>
                         </span>
                       )}
                       {worktreeDetail === 'age' && (
-                        <span className="text-[10px] font-mono shrink-0 leading-none text-dim group-hover:hidden" title="Created 5 days ago">
+                        <span className="text-xs font-mono shrink-0 leading-none text-dim group-hover:hidden" title="Created 5 days ago">
                           5d
                         </span>
                       )}
                       {worktreeDetail === 'pr' && (
                         <span className="inline-flex items-center gap-1.5 shrink-0 group-hover:hidden">
-                          <span className="text-[10px] text-dim truncate max-w-[6rem]" title="Milestone: v2.10">v2.10</span>
-                          <span className="text-[10px] font-mono leading-none px-1.5 py-0.5 rounded-full bg-panel border border-border-strong text-fg-bright">
+                          <span className="text-xs text-dim truncate max-w-[6rem]" title="Milestone: v2.10">v2.10</span>
+                          <span className="text-xs font-mono leading-none px-1.5 py-0.5 rounded-full bg-panel border border-border-strong text-fg-bright">
                             #123
                           </span>
                           <span
@@ -2485,10 +2515,10 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                         </span>
                       )}
                       <span className="hidden group-hover:flex text-faint shrink-0" title="Snooze">
-                        <Moon size={12} />
+                        <Moon className="icon-xs" />
                       </span>
                       <span className="hidden group-hover:flex text-faint shrink-0" title="Remove worktree">
-                        <Trash2 size={12} />
+                        <Trash2 className="icon-xs" />
                       </span>
                     </div>
                   </div>
@@ -2890,7 +2920,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                                     <span className="flex items-center gap-1.5 text-sm text-fg">
                                       {expanded ? <ChevronDown className="icon-xs text-dim" /> : <ChevronRight className="icon-xs text-dim" />}
                                       {family.label}
-                                      <span className="text-[10px] text-faint">({family.actions.length})</span>
+                                      <span className="text-xs text-faint">({family.actions.length})</span>
                                     </span>
                                     <span className="min-w-[100px] px-2.5 py-1 text-xs text-dim text-center">
                                       {family.summary}

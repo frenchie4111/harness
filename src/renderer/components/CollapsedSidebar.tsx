@@ -113,7 +113,7 @@ export function CollapsedSidebar({
               aria-label={`${activeCount} active worktrees`}
             >
               <Activity className="icon-xs" />
-              <span className="text-[10px] tabular-nums leading-none">{activeCount}</span>
+              <span className="text-xs tabular-nums leading-none">{activeCount}</span>
             </button>
           </Tooltip>
         )}
@@ -125,7 +125,7 @@ export function CollapsedSidebar({
               aria-label={`${needsAttentionCount} needs attention`}
             >
               <ShieldAlert className="icon-xs" />
-              <span className="text-[10px] tabular-nums leading-none">{needsAttentionCount}</span>
+              <span className="text-xs tabular-nums leading-none">{needsAttentionCount}</span>
             </button>
           </Tooltip>
         )}
@@ -137,7 +137,7 @@ export function CollapsedSidebar({
               aria-label={`${reviewingCount} reviewing`}
             >
               <HatGlasses className="icon-xs" />
-              <span className="text-[10px] tabular-nums leading-none">{reviewingCount}</span>
+              <span className="text-xs tabular-nums leading-none">{reviewingCount}</span>
             </button>
           </Tooltip>
         )}
@@ -149,7 +149,7 @@ export function CollapsedSidebar({
               aria-label={`${openPRsCount} open PRs`}
             >
               <GitPullRequest className="icon-xs" />
-              <span className="text-[10px] tabular-nums leading-none">{openPRsCount}</span>
+              <span className="text-xs tabular-nums leading-none">{openPRsCount}</span>
             </button>
           </Tooltip>
         )}

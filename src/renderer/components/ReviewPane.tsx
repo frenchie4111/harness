@@ -36,6 +36,9 @@ export function ReviewPane({
   const [comments, setComments] = useState<ReviewComment[]>([])
   const [collapsedDirs, setCollapsedDirs] = useState<Set<string>>(new Set())
   const [fileTreeWidth, setFileTreeWidth] = useState<number>(240)
+  // Hoisted above ReviewDiffPane so the choice persists as the reviewer
+  // clicks through files in the same review session.
+  const [wordWrap, setWordWrap] = useState(false)
 
   // Whole-branch when both bounds are undefined. Single commit when both
   // are set and equal. Otherwise a contiguous range.
@@ -354,6 +357,8 @@ export function ReviewPane({
             }}
             onAddComment={handleAddComment}
             onDeleteComment={handleDeleteComment}
+            wordWrap={wordWrap}
+            onWordWrapChange={setWordWrap}
           />
         </div>
       </div>

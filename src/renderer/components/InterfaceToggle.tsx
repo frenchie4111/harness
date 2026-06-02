@@ -69,7 +69,7 @@ export function InterfaceToggle({
               }`}
               aria-hidden
             />
-            <opt.Icon size={size === 'compact' ? 13 : 14} className="mt-0.5 shrink-0" />
+            <opt.Icon className={`${size === 'compact' ? 'icon-xs' : 'icon-sm'} mt-0.5 shrink-0`} />
             <span className="flex-1 min-w-0">
               <span className={`flex items-center gap-1.5 text-sm font-medium ${selected ? 'text-fg-bright' : 'text-fg'}`}>
                 <span>{opt.label}</span>

@@ -100,6 +100,7 @@ export function buildInitialAppState(
       codexModel: config.codexModel || null,
       hasGithubToken: opts.hasGithubToken,
       autoUpdateEnabled: config.autoUpdateEnabled !== false,
+      warnBeforeQuitting: config.warnBeforeQuitting !== false,
       shareClaudeSettings: config.shareClaudeSettings !== false,
       harnessSystemPromptEnabled: config.harnessSystemPromptEnabled !== false,
       harnessSystemPrompt: config.harnessSystemPrompt || DEFAULT_HARNESS_SYSTEM_PROMPT,

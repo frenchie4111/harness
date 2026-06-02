@@ -22,17 +22,43 @@ document.getElementById('btn').addEventListener('click', () => {
 </script>
 </body></html>`
 
+// CI runners without a system Chrome would occasionally see `chromium.launch`
+// stall in browser discovery for >30s instead of throwing fast, blowing past
+// vitest's beforeAll hookTimeout and turning a designed-skip into a hard
+// CI failure. Race the launch against a short timer so the no-browser case
+// always lands in the skip branch instead.
+const PROBE_TIMEOUT_MS = 10_000
+
 async function probeBrowser(): Promise<{ ok: true } | { ok: false; reason: string }> {
   try {
     const dynamicRequire = createRequire(__filename)
     const { chromium } = dynamicRequire('playwright-core') as typeof import('playwright-core')
     const explicit = process.env['HARNESS_PLAYWRIGHT_BROWSER']
-    const browser =
+    const launchPromise =
       explicit && explicit.trim()
-        ? await chromium.launch({ headless: true, executablePath: explicit.trim() })
-        : await chromium.launch({ headless: true, channel: 'chrome' })
-    await browser.close()
-    return { ok: true }
+        ? chromium.launch({ headless: true, executablePath: explicit.trim() })
+        : chromium.launch({ headless: true, channel: 'chrome' })
+    // Defensive: if the launch eventually resolves *after* we've given up,
+    // close the orphan so we don't leak a chromium process.
+    let abandoned = false
+    void launchPromise.then((b) => { if (abandoned) void b.close().catch(() => {}) }).catch(() => {})
+    let timer: NodeJS.Timeout | undefined
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error(`probeBrowser timed out after ${PROBE_TIMEOUT_MS}ms`)),
+        PROBE_TIMEOUT_MS
+      )
+    })
+    try {
+      const browser = await Promise.race([launchPromise, timeoutPromise])
+      await browser.close()
+      return { ok: true }
+    } catch (err) {
+      abandoned = true
+      throw err
+    } finally {
+      if (timer) clearTimeout(timer)
+    }
   } catch (err) {
     return { ok: false, reason: err instanceof Error ? err.message : String(err) }
   }

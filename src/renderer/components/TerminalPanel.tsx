@@ -11,6 +11,7 @@ import type { WorkspacePane, TerminalTab, PtyStatus, AgentKind } from '../types'
 import { AGENT_REGISTRY, agentDisplayName } from '../../shared/agent-registry'
 import { Tooltip } from './Tooltip'
 import { repoNameColor } from './RepoIcon'
+import { AppTitleSegment } from './AppTitleSegment'
 import { getClientId, useTerminalProgress, useTerminalSession } from '../store'
 import { useBackend } from '../backend'
 import { useReviewProgress } from '../review-progress'
@@ -96,6 +97,10 @@ interface TerminalPanelProps {
   /** Render the "Harness" app title at the start of the tab bar. Set true
    *  on the top-left leaf only so the title appears once per workspace. */
   showAppTitle?: boolean
+  /** Reports the window-x of the "Harness" segment's right edge (the edge
+   *  just before the repo/branch label). The host uses it to cap the sidebar
+   *  width so the sidebar lines up with that edge. */
+  onTitleBlockEdge?: (px: number) => void
 }
 
 const TAB_STATUS_DOT: Record<PtyStatus, string> = {
@@ -259,10 +264,10 @@ function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect
       style={style}
       {...attributes}
       {...listeners}
-      className={`no-drag relative shrink-0 flex items-center gap-1.5 px-3 h-full text-xs cursor-pointer border-b-2 whitespace-nowrap transition-colors ${
+      className={`no-drag relative shrink-0 flex items-center gap-1.5 px-3 h-full text-xs cursor-pointer border-b-2 border-l border-l-border [&:first-child]:border-l-0 whitespace-nowrap transition-colors ${
         isActive
-          ? 'border-muted text-fg-bright'
-          : 'border-transparent text-dim hover:text-fg'
+          ? 'border-b-muted text-fg-bright'
+          : 'border-b-transparent text-dim hover:text-fg'
       }`}
       onClick={(e) => {
         // dnd-kit's pointer sensor swallows the native dblclick event, so
@@ -437,7 +442,8 @@ export function TerminalPanel({
   topBarLeadingPx = 0,
   topBarLeadingExtendPx = 0,
   topBarTrailingExtendPx = 0,
-  showAppTitle = false
+  showAppTitle = false,
+  onTitleBlockEdge
 }: TerminalPanelProps): JSX.Element {
   const backend = useBackend()
   const { setNodeRef: setPaneDropRef } = useDroppable({ id: pane.id })
@@ -499,17 +505,7 @@ export function TerminalPanel({
             : undefined
         }
       >
-        {showAppTitle && (
-          <div className="shrink-0 flex items-center h-full px-3 text-xs font-semibold whitespace-nowrap">
-            <span className="gradient-text">Harness</span>
-            {import.meta.env.DEV && __HARNESS_DEV_BRANCH__ && (
-              <span className="text-faint font-normal ml-1">({__HARNESS_DEV_BRANCH__})</span>
-            )}
-          </div>
-        )}
-        {showAppTitle && repoLabel && (
-          <div className="shrink-0 w-px h-4 bg-border" />
-        )}
+        {showAppTitle && <AppTitleSegment onEdge={onTitleBlockEdge} />}
         {repoLabel && (
           <div
             className="no-drag shrink-0 flex items-baseline gap-1.5 px-3 h-full text-xs whitespace-nowrap"

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AtSign, Code2, Eye, Save } from 'lucide-react'
+import { ArrowRightFromLine, AtSign, Code2, Eye, Save, WrapText } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import rehypeHighlight from 'rehype-highlight'
 import remarkGfm from 'remark-gfm'
@@ -8,6 +8,7 @@ import { Tooltip } from './Tooltip'
 import { MonacoEditor } from './MonacoEditor'
 import { useSettings } from '../store'
 import { useBackend } from '../backend'
+import { scaledEditorFontSize } from '../../shared/state/settings'
 import 'highlight.js/styles/github-dark.css'
 
 interface FileViewProps {
@@ -56,6 +57,7 @@ export function FileView({ worktreePath, filePath, onSendToAgent }: FileViewProp
   const [savedValue, setSavedValue] = useState('')
   const [saveError, setSaveError] = useState<string | null>(null)
   const [markdownAsCode, setMarkdownAsCode] = useState(false)
+  const [wordWrap, setWordWrap] = useState(false)
   const [binary, setBinary] = useState<{ url: string; size: number; mime: string } | null>(null)
   const [binaryError, setBinaryError] = useState<string | null>(null)
 
@@ -82,6 +84,7 @@ export function FileView({ worktreePath, filePath, onSendToAgent }: FileViewProp
     setBinary(null)
     setBinaryError(null)
     setMarkdownAsCode(false)
+    setWordWrap(false)
     if (!filePath) {
       setLoading(false)
       return
@@ -206,6 +209,10 @@ export function FileView({ worktreePath, filePath, onSendToAgent }: FileViewProp
 
   const isMarkdown = mode === 'markdown' && !result.binary && !result.truncated
   const showMarkdownRendered = isMarkdown && !markdownAsCode
+  // Monaco is mounted whenever we're not showing the binary placeholder,
+  // truncated placeholder, or rendered markdown — i.e. whenever the
+  // user is looking at editable text. The wrap toggle is only useful then.
+  const showMonaco = !result.binary && !result.truncated && !showMarkdownRendered
 
   const toggleControl =
     isMarkdown && !result.binary && !result.truncated ? (
@@ -218,6 +225,17 @@ export function FileView({ worktreePath, filePath, onSendToAgent }: FileViewProp
         </button>
       </Tooltip>
     ) : null
+
+  const wrapToggleControl: JSX.Element | null = showMonaco ? (
+    <Tooltip label={wordWrap ? 'No wrap' : 'Word wrap'}>
+      <button
+        onClick={() => setWordWrap((v) => !v)}
+        className="shrink-0 text-faint hover:text-fg cursor-pointer"
+      >
+        {wordWrap ? <ArrowRightFromLine className="icon-xs" /> : <WrapText className="icon-xs" />}
+      </button>
+    </Tooltip>
+  ) : null
 
   return (
     <div className="h-full flex flex-col bg-app">
@@ -233,6 +251,7 @@ export function FileView({ worktreePath, filePath, onSendToAgent }: FileViewProp
         saveDisabled={!dirty || result.binary || showMarkdownRendered}
         onSave={save}
         toggleControl={toggleControl}
+        wrapToggleControl={wrapToggleControl}
       />
       <div className="flex-1 min-h-0">
         {result.binary ? (
@@ -255,7 +274,8 @@ export function FileView({ worktreePath, filePath, onSendToAgent }: FileViewProp
             filePath={filePath}
             readOnly={false}
             fontFamily={settings.terminalFontFamily || undefined}
-            fontSize={settings.terminalFontSize}
+            fontSize={scaledEditorFontSize(settings.terminalFontSize, settings.uiScale)}
+            wordWrap={wordWrap}
             onChange={setValue}
             onSave={save}
             onReferenceLine={
@@ -282,6 +302,7 @@ interface FileHeaderProps {
   saveDisabled?: boolean
   onSave: () => void
   toggleControl: JSX.Element | null
+  wrapToggleControl?: JSX.Element | null
 }
 
 function FileHeader({
@@ -295,7 +316,8 @@ function FileHeader({
   showSave,
   saveDisabled,
   onSave,
-  toggleControl
+  toggleControl,
+  wrapToggleControl
 }: FileHeaderProps): JSX.Element {
   const backend = useBackend()
   return (
@@ -315,6 +337,7 @@ function FileHeader({
       )}
       <span className="text-faint shrink-0">{formatBytes(size)}</span>
       {truncated && <span className="shrink-0 text-warning">truncated</span>}
+      {wrapToggleControl}
       {toggleControl}
       {showSave && (
         <Tooltip label={dirty ? 'Save (⌘S)' : 'Saved'}>

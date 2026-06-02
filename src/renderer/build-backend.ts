@@ -103,6 +103,8 @@ export function buildBackend(
       teleportSessionId?: string
       agentKind?: 'claude' | 'codex'
       model?: string
+      checkoutExisting?: boolean
+      baseRef?: string
     }) => req('worktrees:runPending', params),
     runPendingPRWorktree: (params: {
       id: string
@@ -216,6 +218,7 @@ export function buildBackend(
     listRepoPRs: (repoRoot: string) => req('prs:listOpen', repoRoot),
     mergePR: (worktreePath: string, method: 'merge' | 'squash' | 'rebase') =>
       req('pr:merge', worktreePath, method),
+    approvePR: (worktreePath: string) => req('pr:approve', worktreePath),
 
     getWeeklyStats: () => req('stats:getWeekly'),
 
@@ -261,6 +264,7 @@ export function buildBackend(
       req('config:setJsonModeDefaultPermissionMode', value),
     setAutoSleepMinutes: (value: number) => req('config:setAutoSleepMinutes', value),
     setAutoUpdateEnabled: (enabled: boolean) => req('config:setAutoUpdateEnabled', enabled),
+    setWarnBeforeQuitting: (enabled: boolean) => req('config:setWarnBeforeQuitting', enabled),
     setExpandedDiagnosticLoggingEnabled: (enabled: boolean) =>
       req('config:setExpandedDiagnosticLoggingEnabled', enabled),
     setShareClaudeSettings: (enabled: boolean) => req('config:setShareClaudeSettings', enabled),
@@ -429,6 +433,12 @@ export function buildBackend(
     // is active.
     onOpenSettings: (callback: () => void) =>
       onLocalSignal('app:openSettings', () => callback()),
+    // Hold-⌘Q-to-quit overlay, driven entirely by the main process (it
+    // owns the before-input-event detection + hold timer). Always local.
+    onHoldToQuitStart: (callback: () => void) =>
+      onLocalSignal('app:holdToQuitStart', () => callback()),
+    onHoldToQuitCancel: (callback: () => void) =>
+      onLocalSignal('app:holdToQuitCancel', () => callback()),
     onTogglePerfMonitor: (callback: () => void) =>
       onLocalSignal('app:togglePerfMonitor', () => callback()),
     onToggleSingleScreen: (callback: () => void) =>

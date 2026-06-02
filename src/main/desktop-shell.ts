@@ -133,6 +133,9 @@ export interface DesktopShellStartDeps {
    *  feature managers (e.g. approval-bridge) that live there can clean
    *  up without desktop-shell needing to know about them. */
   onBeforeQuit?: () => void
+  /** Persist + dispatch the "Warn Before Quitting" toggle. Shared with the
+   *  Settings IPC handler so the app-menu checkbox stays in sync. */
+  setWarnBeforeQuitting: (enabled: boolean) => void
 }
 
 export interface DesktopShellStartHandle {
@@ -155,7 +158,8 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
     getStopWatchingStatus,
     setStopWatchingStatus,
     onRepoAdded,
-    onBeforeQuit
+    onBeforeQuit,
+    setWarnBeforeQuitting
   } = deps
 
   registerDesktopHandlers()
@@ -338,7 +342,28 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
           { role: 'hideOthers' },
           { role: 'unhide' },
           { type: 'separator' },
-          { role: 'quit' }
+          // Toggles the hold-⌘Q-to-quit gesture (see before-input-event
+          // below). `checked` reads live state; buildMenu() re-runs when
+          // the setting changes (store subscription) so the menu and the
+          // Settings toggle stay in sync.
+          {
+            label: 'Warn Before Quitting (⌘Q)',
+            type: 'checkbox',
+            checked: store.getSnapshot().state.settings.warnBeforeQuitting,
+            click: (item) => setWarnBeforeQuitting(item.checked)
+          },
+          { type: 'separator' },
+          // Custom Quit with NO accelerator: macOS ignores
+          // registerAccelerator:false for app-menu items and binds ⌘Q
+          // anyway, and that binding fires before-input-event with the
+          // keyup suppressed — which breaks hold-to-quit. Leaving the
+          // accelerator off entirely frees ⌘Q so the keystroke (keydown
+          // AND keyup) flows to our handlers, where the hold gesture lives.
+          // Menu click still quits immediately.
+          {
+            label: `Quit ${app.name}`,
+            click: () => app.quit()
+          }
         ]
       },
       {
@@ -669,6 +694,113 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') {
       app.quit()
+    }
+  })
+
+  // ── Hold-⌘Q-to-quit ────────────────────────────────────────────────
+  // Chrome-style: a ⌘Q tap does nothing; holding it for HOLD_TO_QUIT_MS
+  // quits. The whole gesture is detected here in main via
+  // `before-input-event`, which fires for EVERY webContents — the main
+  // window and each embedded browser tab (a WebContentsView has its own
+  // input pipeline the renderer's window listener never sees) — so the
+  // gesture, and the guard against an accidental quit, work no matter
+  // what's focused.
+  //
+  // Two things make this work and are easy to regress:
+  //   1. The Quit menu item has NO accelerator (see buildMenu). macOS
+  //      ignores registerAccelerator:false for app-menu items and would
+  //      otherwise bind ⌘Q and quit on keydown.
+  //   2. We must NOT call event.preventDefault() here. Doing so suppresses
+  //      the keyUp that cancels the hold (on both before-input-event and
+  //      the DOM), which turns every tap into a quit. Leaking ⌘Q to the
+  //      page is harmless — nothing else binds it.
+  //
+  // The chord must stay held the WHOLE time. Releasing ⌘ cancels via its
+  // keyUp. Releasing Q is the tricky one: macOS suppresses the letter keyUp
+  // while ⌘ is held, so a Q keyUp never arrives and ⌘ alone would keep the
+  // timer running to a quit. So we lean on OS key-repeat instead — while ⌘Q
+  // is physically held the autorepeat keyDowns for Q keep arriving; the
+  // instant Q is released (⌘ still down) they stop. A watchdog longer than
+  // the repeat interval but shorter than the hold catches that gap and
+  // cancels, so the gesture genuinely requires BOTH ⌘ and Q, not ⌘ alone.
+  // The 1s timer runs here; the renderer overlay is driven by the
+  // start/cancel signals (CSS fill in styles.css matches HOLD_TO_QUIT_MS).
+  //
+  // Shortcut: two quick ⌘Q taps (each keydown within DOUBLE_TAP_MS of the
+  // last) quit immediately, so power users don't have to wait out the hold.
+  // OS key-repeat (isAutoRepeat) is never treated as a fresh tap so a single
+  // held ⌘Q can't read as a double-tap.
+  const HOLD_TO_QUIT_MS = 1000
+  const DOUBLE_TAP_MS = 400
+  const Q_REPEAT_GRACE_MS = 600
+  let lastQuitTapAt = 0
+  let holdQuitTimer: NodeJS.Timeout | null = null
+  let qHeartbeatTimer: NodeJS.Timeout | null = null
+  const armQHeartbeat = (): void => {
+    if (qHeartbeatTimer) clearTimeout(qHeartbeatTimer)
+    qHeartbeatTimer = setTimeout(() => {
+      qHeartbeatTimer = null
+      cancelHoldToQuit() // no Q autorepeat within the grace window → Q released
+    }, Q_REPEAT_GRACE_MS)
+  }
+  const startHoldToQuit = (): void => {
+    if (holdQuitTimer) return
+    transport.sendSignal('app:holdToQuitStart')
+    holdQuitTimer = setTimeout(() => {
+      holdQuitTimer = null
+      app.quit()
+    }, HOLD_TO_QUIT_MS)
+    armQHeartbeat()
+  }
+  const cancelHoldToQuit = (): void => {
+    if (qHeartbeatTimer) {
+      clearTimeout(qHeartbeatTimer)
+      qHeartbeatTimer = null
+    }
+    if (!holdQuitTimer) return
+    clearTimeout(holdQuitTimer)
+    holdQuitTimer = null
+    transport.sendSignal('app:holdToQuitCancel')
+  }
+  app.on('web-contents-created', (_e, contents) => {
+    contents.on('before-input-event', (_event, input) => {
+      const isQ = input.key === 'q' || input.key === 'Q'
+      if (input.type === 'keyDown' && input.meta && isQ) {
+        if (input.isAutoRepeat) {
+          if (holdQuitTimer) armQHeartbeat() // Q still held — refresh the watchdog
+          return
+        }
+        if (!store.getSnapshot().state.settings.warnBeforeQuitting) {
+          app.quit() // gesture disabled — ⌘Q quits immediately
+          return
+        }
+        const now = Date.now()
+        if (now - lastQuitTapAt < DOUBLE_TAP_MS) {
+          cancelHoldToQuit() // second quick tap — quit now, skip the hold
+          app.quit()
+          return
+        }
+        lastQuitTapAt = now
+        startHoldToQuit()
+      } else if (input.type === 'keyUp' && (input.key === 'Meta' || isQ)) {
+        cancelHoldToQuit()
+      } else if (input.type === 'keyDown' && holdQuitTimer) {
+        cancelHoldToQuit() // any other key aborts a pending hold
+      }
+    })
+  })
+  // Safety net: losing window focus mid-hold (e.g. ⌘-Tab) cancels too.
+  app.on('browser-window-blur', () => cancelHoldToQuit())
+
+  // Keep the "Warn Before Quitting" menu checkbox in sync when the setting
+  // is toggled from Settings (or anywhere). Cheap: re-derive one boolean
+  // per store event and only rebuild the menu when it actually flips.
+  let lastWarnBeforeQuitting = store.getSnapshot().state.settings.warnBeforeQuitting
+  store.subscribe(() => {
+    const warn = store.getSnapshot().state.settings.warnBeforeQuitting
+    if (warn !== lastWarnBeforeQuitting) {
+      lastWarnBeforeQuitting = warn
+      buildMenu()
     }
   })
 

@@ -38,7 +38,7 @@ import { getWeeklyStats } from './weekly-stats'
 import type { TerminalTab, PaneNode, PaneLeaf } from '../shared/state/terminals'
 import { getLeaves, mapLeaves } from '../shared/state/terminals'
 import { listWorktrees, listBranches, continueWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getCommitChangedFiles, getCommitFileDiffSides, getCommitRangeChangedFiles, getCommitRangeFileDiffSides, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, readWorktreeFile, readWorktreeFileBinary, writeWorktreeFile, getFileDiffSides, getCurrentBranch, symlinkClaudeSettings, type MergeStrategy } from './worktree'
-import { listOpenPRs, testToken, starRepo, unstarRepo, isRepoStarred, mergePR, getRepoInfo, type GitHubMergeMethod, type MergePRResult } from './github'
+import { listOpenPRs, testToken, starRepo, unstarRepo, isRepoStarred, mergePR, approvePR, getRepoInfo, type GitHubMergeMethod, type MergePRResult } from './github'
 import { AVAILABLE_EDITORS, DEFAULT_EDITOR_ID, openInEditor } from './editor'
 import { setSecret, getSecret, hasSecret, deleteSecret } from './secrets'
 import { resolveGitHubToken, getTokenSource, invalidateTokenCache, getCachedToken } from './github-auth'
@@ -97,6 +97,21 @@ import { AnnouncementsPoller } from './announcements-poller'
 function toAgentKind(value: string | undefined): AgentKind {
   return value === 'codex' ? 'codex' : 'claude'
 }
+
+// Dev-restart resilience: electron-vite closes our stdout/stderr pipe on
+// stop/restart; an in-flight console write then fails with EIO/EPIPE. These
+// are benign during teardown — swallow only the pipe-write codes, rethrow
+// everything else. Covers both the sync throw (uncaughtException) and the
+// async error-event path (stream 'error').
+const isBenignPipeError = (e: unknown): boolean =>
+  !!e && typeof e === 'object' && ['EIO', 'EPIPE'].includes((e as NodeJS.ErrnoException).code ?? '')
+
+process.stdout.on('error', (e) => { if (!isBenignPipeError(e)) throw e })
+process.stderr.on('error', (e) => { if (!isBenignPipeError(e)) throw e })
+process.on('uncaughtException', (e) => {
+  if (isBenignPipeError(e)) return
+  throw e
+})
 
 // Runtime detection — Electron sets process.versions.electron, plain
 // Node leaves it undefined. The mode picks itself; there's no env-var
@@ -1018,6 +1033,22 @@ store.subscribe((event) => {
 const snoozeTimer = new SnoozeTimer(store)
 snoozeTimer.start()
 
+// Toggle "Warn Before Quitting". Shared by the Settings IPC handler and the
+// app-menu checkbox (wired into the desktop shell), so both stay in sync.
+// Persists only the off state (default-on, like autoUpdateEnabled).
+function setWarnBeforeQuitting(enabled: boolean): void {
+  if (enabled) {
+    delete config.warnBeforeQuitting
+  } else {
+    config.warnBeforeQuitting = false
+  }
+  saveConfig(config)
+  store.dispatch({
+    type: 'settings/warnBeforeQuittingChanged',
+    payload: config.warnBeforeQuitting !== false
+  })
+}
+
 function registerIpcHandlers(): void {
   // Worktree handlers — every call takes an explicit repoRoot, since a single
   // window now shows worktrees from multiple repos at once.
@@ -1048,6 +1079,8 @@ function registerIpcHandlers(): void {
       teleportSessionId?: string
       agentKind?: 'claude' | 'codex'
       model?: string
+      checkoutExisting?: boolean
+      baseRef?: string
     }) => {
       return worktreesFSM.runPending(params)
     }
@@ -1413,6 +1446,26 @@ function registerIpcHandlers(): void {
     }
   )
 
+  transport.onRequest(
+    'pr:approve',
+    async (_ctx, worktreePath: string): Promise<{ ok: true } | { ok: false; error: string }> => {
+      const cached = store.getSnapshot().state.prs.byPath[worktreePath]
+      let prNumber = cached?.number
+      if (typeof prNumber !== 'number') {
+        await prPoller.refreshOne(worktreePath)
+        prNumber = store.getSnapshot().state.prs.byPath[worktreePath]?.number
+      }
+      if (typeof prNumber !== 'number') {
+        return { ok: false, error: 'No pull request found for this worktree' }
+      }
+      const result = await approvePR(worktreePath, prNumber)
+      if (result.ok) {
+        void prPoller.refreshOne(worktreePath)
+      }
+      return result
+    }
+  )
+
   transport.onRequest('stats:getWeekly', async (_ctx) => {
     const snap = store.getSnapshot().state
     return getWeeklyStats(snap.prs, snap.worktrees)
@@ -1643,6 +1696,11 @@ function registerIpcHandlers(): void {
     } else {
       desktopHooks.startAutoUpdateChecks()
     }
+    return true
+  })
+
+  transport.onRequest('config:setWarnBeforeQuitting', (_ctx, enabled: boolean) => {
+    setWarnBeforeQuitting(enabled)
     return true
   })
 
@@ -3545,7 +3603,8 @@ if (desktopShellMod && desktopEarly) {
     onBeforeQuit: () => {
       jsonClaudeManager.killAll()
       approvalBridge.stopAll()
-    }
+    },
+    setWarnBeforeQuitting
   })
   desktopHooks.startAutoUpdateChecks = handle.startAutoUpdateChecks
   desktopHooks.stopAutoUpdateChecks = handle.stopAutoUpdateChecks

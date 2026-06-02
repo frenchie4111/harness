@@ -345,7 +345,7 @@ export function CollapsedRightPanel({
               aria-label={`${failedChecksCount} failed checks`}
             >
               <CircleX className="icon-xs" />
-              <span className="text-[10px] tabular-nums leading-none">{failedChecksCount}</span>
+              <span className="text-xs tabular-nums leading-none">{failedChecksCount}</span>
             </button>
           </Tooltip>
         )}
@@ -387,7 +387,7 @@ export function CollapsedRightPanel({
             aria-label={`${changedFilesCount} changed files`}
           >
             <Pencil className="icon-xs" />
-            <span className="text-[10px] tabular-nums leading-none">{changedFilesCount}</span>
+            <span className="text-xs tabular-nums leading-none">{changedFilesCount}</span>
           </button>
         </Tooltip>
         <Tooltip
@@ -404,7 +404,7 @@ export function CollapsedRightPanel({
             aria-label={`${commitsCount} commits`}
           >
             <GitCommitHorizontal className="icon-xs" />
-            <span className="text-[10px] tabular-nums leading-none">{commitsCount}</span>
+            <span className="text-xs tabular-nums leading-none">{commitsCount}</span>
           </button>
         </Tooltip>
 

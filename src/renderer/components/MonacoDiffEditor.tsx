@@ -9,6 +9,7 @@ interface MonacoDiffEditorProps {
   readOnly?: boolean
   fontFamily?: string
   fontSize?: number
+  wordWrap?: boolean
   onModifiedChange?: (value: string) => void
   onSave?: () => void
   onReferenceLine?: (lineNumber: number) => void
@@ -24,6 +25,7 @@ export function MonacoDiffEditor({
   readOnly = true,
   fontFamily,
   fontSize,
+  wordWrap = false,
   onModifiedChange,
   onSave,
   onReferenceLine,
@@ -61,6 +63,7 @@ export function MonacoDiffEditor({
       glyphMargin: true,
       fontFamily: fontFamily || undefined,
       fontSize: fontSize || 13,
+      wordWrap: wordWrap ? 'on' : 'off',
       minimap: { enabled: false },
       scrollBeyondLastLine: false,
       renderLineHighlight: 'line',
@@ -181,6 +184,10 @@ export function MonacoDiffEditor({
       fontSize: fontSize || 13
     })
   }, [fontFamily, fontSize])
+
+  useEffect(() => {
+    editorRef.current?.updateOptions({ wordWrap: wordWrap ? 'on' : 'off' })
+  }, [wordWrap])
 
   return <div ref={hostRef} className="h-full w-full" />
 }

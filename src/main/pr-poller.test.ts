@@ -10,14 +10,15 @@ vi.mock('./worktree', () => ({
 }))
 vi.mock('./github', () => ({
   getRepoContext: vi.fn(),
-  fetchPRStatusesForRepo: vi.fn()
+  fetchPRStatusesForRepo: vi.fn(),
+  fetchPRStatusByNumber: vi.fn()
 }))
 
 import { PRPoller } from './pr-poller'
 import { Store } from './store'
 import { initialState, type AppState } from '../shared/state'
 import type { PRStatus } from '../shared/state/prs'
-import { getRepoContext, fetchPRStatusesForRepo } from './github'
+import { getRepoContext, fetchPRStatusesForRepo, fetchPRStatusByNumber } from './github'
 import { listWorktrees, getBranchSha } from './worktree'
 
 function fakePRStatus(number: number): PRStatus {
@@ -150,5 +151,45 @@ describe('PRPoller.refreshAll — offline / failure preservation', () => {
     const byPath = store.getSnapshot().state.prs.byPath
     expect(byPath['/wt/a']).toEqual(fakePRStatus(1))
     expect('/wt/gone' in byPath).toBe(false)
+  })
+
+  it('retains merged-state PRStatus when branch-name lookup returns null after merge', async () => {
+    const { store, poller } = makePoller({
+      '/wt/a': fakePRStatus(42)
+    })
+    vi.mocked(listWorktrees).mockResolvedValue([wt('/wt/a', 'a', 'sha-a')])
+    // Batch fetch comes back null — head branch deleted post-merge.
+    vi.mocked(fetchPRStatusesForRepo).mockResolvedValue(
+      new Map<string, PRStatus | null>([['/wt/a', null]])
+    )
+    // Followup by PR number finds the merged PR.
+    vi.mocked(fetchPRStatusByNumber).mockResolvedValue({
+      ...fakePRStatus(42),
+      state: 'merged'
+    })
+
+    await poller.refreshAll()
+
+    expect(vi.mocked(fetchPRStatusByNumber)).toHaveBeenCalledWith(
+      expect.any(Object),
+      42,
+      '/wt/a',
+      'a'
+    )
+    expect(store.getSnapshot().state.prs.byPath['/wt/a']?.state).toBe('merged')
+  })
+
+  it('does not run a followup when the previously-known PR was already in a terminal state', async () => {
+    const { poller } = makePoller({
+      '/wt/a': { ...fakePRStatus(42), state: 'merged' }
+    })
+    vi.mocked(listWorktrees).mockResolvedValue([wt('/wt/a', 'a', 'sha-a')])
+    vi.mocked(fetchPRStatusesForRepo).mockResolvedValue(
+      new Map<string, PRStatus | null>([['/wt/a', null]])
+    )
+
+    await poller.refreshAll()
+
+    expect(vi.mocked(fetchPRStatusByNumber)).not.toHaveBeenCalled()
   })
 })

@@ -8,6 +8,7 @@ interface MonacoEditorProps {
   readOnly?: boolean
   fontFamily?: string
   fontSize?: number
+  wordWrap?: boolean
   onChange?: (value: string) => void
   onSave?: () => void
   onReferenceLine?: (lineNumber: number) => void
@@ -19,6 +20,7 @@ export function MonacoEditor({
   readOnly = false,
   fontFamily,
   fontSize,
+  wordWrap = false,
   onChange,
   onSave,
   onReferenceLine
@@ -44,6 +46,7 @@ export function MonacoEditor({
       theme: 'harness',
       fontFamily: fontFamily || undefined,
       fontSize: fontSize || 13,
+      wordWrap: wordWrap ? 'on' : 'off',
       automaticLayout: true,
       glyphMargin: true,
       minimap: { enabled: false },
@@ -146,6 +149,10 @@ export function MonacoEditor({
       fontSize: fontSize || 13
     })
   }, [fontFamily, fontSize])
+
+  useEffect(() => {
+    editorRef.current?.updateOptions({ wordWrap: wordWrap ? 'on' : 'off' })
+  }, [wordWrap])
 
   return <div ref={hostRef} className="h-full w-full" />
 }
