@@ -103,6 +103,8 @@ export function buildBackend(
       teleportSessionId?: string
       agentKind?: 'claude' | 'codex'
       model?: string
+      checkoutExisting?: boolean
+      baseRef?: string
     }) => req('worktrees:runPending', params),
     runPendingPRWorktree: (params: {
       id: string
@@ -216,6 +218,7 @@ export function buildBackend(
     listRepoPRs: (repoRoot: string) => req('prs:listOpen', repoRoot),
     mergePR: (worktreePath: string, method: 'merge' | 'squash' | 'rebase') =>
       req('pr:merge', worktreePath, method),
+    approvePR: (worktreePath: string) => req('pr:approve', worktreePath),
 
     getWeeklyStats: () => req('stats:getWeekly'),
 

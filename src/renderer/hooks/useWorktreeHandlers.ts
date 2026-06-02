@@ -163,7 +163,9 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
       initialPrompt: string,
       teleportSessionId?: string,
       agentKind?: 'claude' | 'codex',
-      model?: string
+      model?: string,
+      checkoutExisting?: boolean,
+      baseRef?: string
     ) => {
       const id = `pending:${crypto.randomUUID()}`
       setActiveWorktreeId(id)
@@ -178,7 +180,9 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
         initialPrompt: initialPrompt || undefined,
         teleportSessionId,
         agentKind,
-        model
+        model,
+        checkoutExisting,
+        baseRef
       })
 
       if (result.outcome === 'success') {

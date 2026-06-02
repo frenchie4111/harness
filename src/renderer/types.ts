@@ -181,7 +181,9 @@ export interface ElectronAPI {
     initialPrompt?: string
     teleportSessionId?: string
     agentKind?: 'claude' | 'codex'
-    model?: string
+    model?: string,
+    checkoutExisting?: boolean
+    baseRef?: string
   }): Promise<
     | { id: string; outcome: 'success'; createdPath: string }
     | { id: string; outcome: 'setup-failed'; createdPath: string }
@@ -258,6 +260,9 @@ export interface ElectronAPI {
     worktreePath: string,
     method: GitHubMergeMethod
   ): Promise<MergePRResult>
+  approvePR(
+    worktreePath: string
+  ): Promise<{ ok: true } | { ok: false; error: string }>
 
   getWeeklyStats(): Promise<WeeklyStats>
   getBranchCommits(worktreePath: string): Promise<BranchCommit[]>

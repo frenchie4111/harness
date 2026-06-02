@@ -60,6 +60,19 @@ const terminalRegistry = new Map<string, Terminal>()
 /** Fit addons keyed by terminal id, so font-change listeners can refit. */
 const fitRegistry = new Map<string, FitAddon>()
 
+// Matches an SGR mouse button press/release report (`ESC [ < btn ; col ; row M|m`).
+// Motion (bit 0x20) and wheel (bit 0x40) reports are excluded so hovering and
+// scrolling still reach a mouse-aware app — only an actual button click is
+// treated as one we may need to withhold from the PTY.
+// eslint-disable-next-line no-control-regex
+const SGR_MOUSE_REPORT = /^\x1b\[<(\d+);\d+;\d+[Mm]$/
+export function isMouseButtonReport(data: string): boolean {
+  const match = SGR_MOUSE_REPORT.exec(data)
+  if (!match) return false
+  const button = Number(match[1])
+  return (button & 0x20) === 0 && (button & 0x40) === 0
+}
+
 export function focusTerminalById(id: string): void {
   terminalRegistry.get(id)?.focus()
 }
@@ -313,31 +326,42 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
       void backend.panesAddTab(cwd, { id, type: 'browser', label, url: uri })
     }
 
+    // Both link providers — xterm's core OSC 8 provider (via `linkHandler`)
+    // and the WebLinksAddon (plain-text URLs) — route through this one
+    // closure so the destination logic can't drift. Plain click → OS
+    // default browser; Cmd/Ctrl-click → in-app browser tab; mailto →
+    // external (the in-app browser can't open it).
+    const activateUri = (event: { metaKey: boolean; ctrlKey: boolean }, uri: string): void => {
+      const inApp = (event.metaKey || event.ctrlKey) && !uri.startsWith('mailto:')
+      if (inApp) {
+        if (uri.startsWith('http://') || uri.startsWith('https://')) {
+          openUrlInBrowserTab(uri)
+        }
+        return
+      }
+      if (uri.startsWith('http://') || uri.startsWith('https://') || uri.startsWith('mailto:')) {
+        backend.openExternal(uri)
+      }
+    }
+
+    // Tracks the URL currently under the pointer (set/cleared by the link
+    // providers' hover/leave). Used to swallow a link click's mouse-report
+    // bytes before they reach the PTY — see the onData handler below.
+    let hoveredLinkUri: string | null = null
+    const setHoveredLink = (uri: string | null): void => {
+      hoveredLinkUri = uri
+    }
+
     const terminal = new Terminal({
       fontSize: effectiveTerminalFontSize(),
       fontFamily: currentFontFamily,
       cursorBlink: true,
       cursorStyle: 'bar',
       allowProposedApi: true,
-      // Route OSC 8 hyperlink clicks: plain click sends the URL to the OS
-      // default browser; Cmd/Ctrl-click opens an in-app browser tab in this
-      // terminal's worktree. mailto: always goes external (in-app browser
-      // can't handle it).
       linkHandler: {
-        activate: (event, uri) => {
-          const inApp = (event.metaKey || event.ctrlKey) && !uri.startsWith('mailto:')
-          if (inApp) {
-            if (uri.startsWith('http://') || uri.startsWith('https://')) {
-              openUrlInBrowserTab(uri)
-            }
-            return
-          }
-          if (uri.startsWith('http://') || uri.startsWith('https://') || uri.startsWith('mailto:')) {
-            backend.openExternal(uri)
-          }
-        },
-        hover: () => {},
-        leave: () => {}
+        activate: (event, uri) => activateUri(event, uri),
+        hover: (_event, uri) => setHoveredLink(uri),
+        leave: () => setHoveredLink(null)
       },
       theme: buildTerminalTheme()
     })
@@ -345,15 +369,16 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
     const fitAddon = new FitAddon()
     terminal.loadAddon(fitAddon)
 
-    const webLinksAddon = new WebLinksAddon((event, uri) => {
-      event.preventDefault()
-      const inApp = event.metaKey || event.ctrlKey
-      if (inApp) {
-        openUrlInBrowserTab(uri)
-      } else {
-        backend.openExternal(uri)
+    const webLinksAddon = new WebLinksAddon(
+      (event, uri) => {
+        event.preventDefault()
+        activateUri(event, uri)
+      },
+      {
+        hover: (_event, uri) => setHoveredLink(uri),
+        leave: () => setHoveredLink(null)
       }
-    })
+    )
     terminal.loadAddon(webLinksAddon)
 
     const progressAddon = new ProgressAddon()
@@ -506,6 +531,15 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
         // gating here avoids the round-trip + any suggestion the keystroke
         // "took" (we don't echo back since xterm's local echo is off).
         if (!isControllerRef.current) return
+        // When the pointer is over a link, withhold the click's mouse-report
+        // bytes from the PTY. A mouse-aware app (e.g. Claude Code, which
+        // enables mouse tracking) can't tell the click landed on one of its
+        // OSC 8 hyperlinks, so it would ALSO open the URL — a second browser
+        // tab on top of Harness's own link handling. Harness's linkHandler /
+        // WebLinksAddon still fire on the same click, so the link opens
+        // exactly once and honors the Cmd/Ctrl modifier. Non-link clicks
+        // pass through untouched so the app's mouse UI keeps working.
+        if (hoveredLinkUri && isMouseButtonReport(data)) return
         backend.writeTerminal(terminalId, data)
       })
 

@@ -155,9 +155,13 @@ export async function localBranchExists(repoRoot: string, branchName: string): P
 }
 
 export async function listBranches(repoRoot: string): Promise<string[]> {
+  // Local branches only. Remote-tracking refs (`origin/*`) are intentionally
+  // excluded — hundreds of remote branches make the picker UI unusable. Users
+  // who need a remote ref can type it into the Ref tab on the New worktree
+  // screen.
   const { stdout } = await execFileAsync(
     'git',
-    ['branch', '-a', '--format=%(refname:short)'],
+    ['branch', '--format=%(refname:short)'],
     { cwd: repoRoot }
   )
   return stdout.trim().split('\n').filter(Boolean)
