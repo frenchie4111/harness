@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { Send, Clipboard, Check, MessageSquare, GitCommitHorizontal, ArrowUp, ChevronDown, Pilcrow, X, Keyboard, CloudSync, Loader2, WrapText, GitPullRequest, Menu } from 'lucide-react'
+import { Send, Clipboard, MessageSquare, GitCommitHorizontal, ArrowUp, ChevronDown, Pilcrow, X, Keyboard, CloudSync, Loader2, WrapText, GitPullRequest, Menu } from 'lucide-react'
 import type { ChangedFile, BranchCommit } from '../types'
 import type { PRReview } from '../../shared/state/prs'
 import type { ReviewComment } from './ReviewFileTree'
@@ -479,72 +479,6 @@ export function ReviewPane({
       {/* Top controls bar */}
       <div className="shrink-0 border-b border-border bg-panel">
         <div className="h-10 flex items-center gap-3 px-3">
-          <ReviewViewMenu
-            sideBySide={sideBySide}
-            onSideBySide={setSideBySide}
-            wordWrap={wordWrap}
-            onWordWrap={setWordWrap}
-            showWhitespace={showWhitespace}
-            onShowWhitespace={setShowWhitespace}
-            reviewDiffMode={reviewDiffMode}
-            onReviewDiffMode={(m) => backend.setReviewDiffMode(m)}
-          />
-
-          <div className="flex-1" />
-
-          <div className="flex items-center gap-1.5 text-xs">
-            <Tooltip label="Send all comments to the active agent terminal">
-              <button
-                onClick={handleSendToAgent}
-                disabled={comments.length === 0 || !onSendToAgent}
-                className="flex items-center gap-1 px-2 py-1 rounded bg-accent text-app text-xs font-medium hover:bg-accent/80 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-default"
-              >
-                <Send className="icon-xs" />
-                Send to Agent
-              </button>
-            </Tooltip>
-
-            <Tooltip
-              label={
-                !prNumber
-                  ? 'No pull request for this worktree'
-                  : !isWholeBranch
-                    ? 'Sync only works when reviewing all commits'
-                    : syncState !== 'idle' && syncDetail
-                      ? syncDetail
-                      : 'Sync: push draft comments & viewed state to the PR (submit on GitHub)'
-              }
-            >
-              <button
-                onClick={handleSync}
-                disabled={!prNumber || !isWholeBranch || syncing}
-                aria-label="Sync review to PR"
-                className="relative flex items-center shrink-0 px-1.5 py-1 rounded border border-border text-faint hover:text-fg transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-default"
-              >
-                {syncing ? (
-                  <Loader2 className="icon-xs animate-spin" />
-                ) : (
-                  <CloudSync className="icon-xs" />
-                )}
-                {syncState !== 'idle' && (
-                  <span
-                    className={`absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full ${
-                      syncState === 'error'
-                        ? 'bg-danger'
-                        : syncState === 'syncing'
-                          ? 'bg-warning'
-                          : 'bg-success'
-                    }`}
-                    aria-hidden
-                  />
-                )}
-              </button>
-            </Tooltip>
-          </div>
-        </div>
-
-        {/* Second row — review status info */}
-        <div className="h-9 flex items-center gap-3 px-3 border-t border-border/60 text-xs">
           <Tooltip label={pr ? 'PR description' : 'No pull request for this worktree'}>
             <button
               onClick={() => setShowPrDescription((v) => !v)}
@@ -559,7 +493,15 @@ export function ReviewPane({
             </button>
           </Tooltip>
 
-          {pr && <ReviewerStatus reviews={pr.reviews} />}
+          <Tooltip label="Keyboard shortcuts (?)">
+            <button
+              onClick={() => setShowShortcuts((v) => !v)}
+              aria-label="Keyboard shortcuts"
+              className="flex items-center shrink-0 px-1.5 py-1 rounded border border-border text-faint hover:text-fg cursor-pointer transition-colors"
+            >
+              <Keyboard className="icon-xs" />
+            </button>
+          </Tooltip>
 
           <CommentDropdown
             comments={comments}
@@ -570,35 +512,83 @@ export function ReviewPane({
             }}
           />
 
+          {pr && <ReviewerStatus reviews={pr.reviews} />}
+
+          <ReviewViewMenu
+            sideBySide={sideBySide}
+            onSideBySide={setSideBySide}
+            wordWrap={wordWrap}
+            onWordWrap={setWordWrap}
+            showWhitespace={showWhitespace}
+            onShowWhitespace={setShowWhitespace}
+            reviewDiffMode={reviewDiffMode}
+            onReviewDiffMode={(m) => backend.setReviewDiffMode(m)}
+          />
+
           <div className="flex-1" />
 
-          {allReviewed ? (
-            <span className="flex items-center gap-1 text-success font-medium">
-              <Check strokeWidth={2.5} className="icon-xs" />
-              All reviewed
+          <div className="flex items-center gap-3 text-xs">
+            <span className={`tabular-nums ${allReviewed ? 'text-success font-medium' : 'text-faint'}`}>
+              {reviewedFiles.size}/{files.length} reviewed
             </span>
-          ) : (
-            <span className="text-faint tabular-nums">
-              {reviewedFiles.size} reviewed · {Math.max(0, files.length - reviewedFiles.size)} remaining
-            </span>
-          )}
 
-          {(totalAdditions > 0 || totalDeletions > 0) && (
-            <span className="font-mono tabular-nums shrink-0">
-              {totalAdditions > 0 && <span className="text-success">+{totalAdditions}</span>}
-              {totalDeletions > 0 && <span className="text-danger ml-1">−{totalDeletions}</span>}
-            </span>
-          )}
+            {(totalAdditions > 0 || totalDeletions > 0) && (
+              <span className="font-mono tabular-nums shrink-0">
+                {totalAdditions > 0 && <span className="text-success">+{totalAdditions}</span>}
+                {totalDeletions > 0 && <span className="text-danger ml-1">−{totalDeletions}</span>}
+              </span>
+            )}
 
-          <Tooltip label="Keyboard shortcuts (?)">
-            <button
-              onClick={() => setShowShortcuts((v) => !v)}
-              aria-label="Keyboard shortcuts"
-              className="flex items-center shrink-0 px-1.5 py-1 rounded border border-border text-faint hover:text-fg cursor-pointer transition-colors"
-            >
-              <Keyboard className="icon-xs" />
-            </button>
-          </Tooltip>
+            <div className="flex items-center gap-1.5">
+              <Tooltip label="Send all comments to the active agent terminal">
+                <button
+                  onClick={handleSendToAgent}
+                  disabled={comments.length === 0 || !onSendToAgent}
+                  className="flex items-center gap-1 px-2 py-1 rounded bg-accent text-app text-xs font-medium hover:bg-accent/80 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-default"
+                >
+                  <Send className="icon-xs" />
+                  Send to Agent
+                </button>
+              </Tooltip>
+
+              <Tooltip
+                label={
+                  !prNumber
+                    ? 'No pull request for this worktree'
+                    : !isWholeBranch
+                      ? 'Sync only works when reviewing all commits'
+                      : syncState !== 'idle' && syncDetail
+                        ? syncDetail
+                        : 'Sync: push draft comments & viewed state to the PR (submit on GitHub)'
+                }
+              >
+                <button
+                  onClick={handleSync}
+                  disabled={!prNumber || !isWholeBranch || syncing}
+                  aria-label="Sync review to PR"
+                  className="relative flex items-center shrink-0 px-1.5 py-1 rounded border border-border text-faint hover:text-fg transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-default"
+                >
+                  {syncing ? (
+                    <Loader2 className="icon-xs animate-spin" />
+                  ) : (
+                    <CloudSync className="icon-xs" />
+                  )}
+                  {syncState !== 'idle' && (
+                    <span
+                      className={`absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full ${
+                        syncState === 'error'
+                          ? 'bg-danger'
+                          : syncState === 'syncing'
+                            ? 'bg-warning'
+                            : 'bg-success'
+                      }`}
+                      aria-hidden
+                    />
+                  )}
+                </button>
+              </Tooltip>
+            </div>
+          </div>
         </div>
 
         <div className="h-[2px] bg-border/50 relative">
@@ -1074,7 +1064,7 @@ function CommentDropdown({
         className="flex items-center gap-1 text-info hover:text-info/70 transition-colors cursor-pointer disabled:text-faint disabled:cursor-default"
       >
         <MessageSquare className="icon-xs" />
-        {comments.length} {comments.length === 1 ? 'comment' : 'comments'}
+        {comments.length}
         {comments.length > 0 && <ChevronDown className="icon-2xs" />}
       </button>
       {open && comments.length > 0 && (
