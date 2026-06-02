@@ -636,6 +636,9 @@ export function WorkspaceView({
                     fromCommit={tab.reviewFromCommit}
                     toCommit={tab.reviewToCommit}
                     active={visible && isActiveInPane}
+                    onOpenEditor={
+                      onOpenFile ? (filePath) => onOpenFile(worktreePath, filePath) : undefined
+                    }
                     onSendToAgent={
                       onSendToAgent
                         ? (text) => onSendToAgent(worktreePath, text)

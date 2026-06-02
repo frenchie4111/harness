@@ -28,6 +28,9 @@ interface ReviewPaneProps {
    *  Gates the review keyboard shortcuts so they don't fire from a
    *  background tab. */
   active?: boolean
+  /** Open a file as an editable in-app file tab. Undefined disables the
+   *  "Open in editor" affordance. */
+  onOpenEditor?: (filePath: string) => void
   onSendToAgent?: (text: string) => void
 }
 
@@ -39,6 +42,7 @@ export function ReviewPane({
   fromCommit,
   toCommit,
   active,
+  onOpenEditor,
   onSendToAgent
 }: ReviewPaneProps): JSX.Element {
   const backend = useBackend()
@@ -659,6 +663,7 @@ export function ReviewPane({
             onAddComment={handleAddComment}
             onDeleteComment={handleDeleteComment}
             wordWrap={wordWrap}
+            onOpenEditor={onOpenEditor}
             onAddReply={handleAddReply}
             onResolveThread={handleResolveThread}
             pendingResolve={pendingResolve}

@@ -5,7 +5,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
 import rehypeSanitize from 'rehype-sanitize'
-import { Check, CheckCheck, Copy, FoldVertical, MessagesSquare, Reply, UnfoldVertical } from 'lucide-react'
+import { Check, CheckCheck, Copy, FoldVertical, MessagesSquare, Pencil, Reply, UnfoldVertical } from 'lucide-react'
 import type { FileDiffSides, ChangedFile } from '../types'
 import type { ReviewComment } from './ReviewFileTree'
 import { MonacoDiffEditor } from './MonacoDiffEditor'
@@ -38,6 +38,9 @@ interface ReviewDiffPaneProps {
   onAddComment: (lineNumber: number, body: string) => void
   onDeleteComment: (id: string) => void
   wordWrap: boolean
+  /** Open this file as an editable in-app file tab. Undefined hides the
+   *  "Open in editor" button. */
+  onOpenEditor?: (filePath: string) => void
   onAddReply: (
     root: { filePath: string; lineNumber: number; remoteId: number },
     body: string
@@ -575,6 +578,7 @@ export function ReviewDiffPane({
   onAddComment,
   onDeleteComment,
   wordWrap,
+  onOpenEditor,
   onAddReply,
   onResolveThread,
   pendingResolve
@@ -995,6 +999,18 @@ export function ReviewDiffPane({
             Viewed
           </button>
         </Tooltip>
+
+        {onOpenEditor && file.status !== 'deleted' && (
+          <Tooltip label="Open in editor">
+            <button
+              onClick={() => onOpenEditor(file.path)}
+              aria-label="Open in editor"
+              className="shrink-0 text-faint hover:text-fg cursor-pointer"
+            >
+              <Pencil className="icon-xs" />
+            </button>
+          </Tooltip>
+        )}
       </div>
 
       {/* Diff with inline comments via view zones */}
