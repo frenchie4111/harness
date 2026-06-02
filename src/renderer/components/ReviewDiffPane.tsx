@@ -5,7 +5,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
 import rehypeSanitize from 'rehype-sanitize'
-import { Check, CheckCheck, Copy, FoldVertical, MessagesSquare, Pencil, Reply, UnfoldVertical } from 'lucide-react'
+import { Check, CheckCheck, ChevronDown, ChevronRight, Copy, FoldVertical, MessagesSquare, Pencil, Reply, UnfoldVertical } from 'lucide-react'
 import type { FileDiffSides, ChangedFile } from '../types'
 import type { ReviewComment } from './ReviewFileTree'
 import { MonacoDiffEditor } from './MonacoDiffEditor'
@@ -38,6 +38,9 @@ interface ReviewDiffPaneProps {
   /** Scroll the diff to this line when it matches the current file. Used by
    *  the comment list to jump to a comment. */
   revealTarget?: { filePath: string; line: number; nonce: number } | null
+  /** Collapsed sections render just the header (no diff editor). */
+  collapsed?: boolean
+  onToggleCollapsed?: () => void
   onToggleReviewed: () => void
   onAddComment: (lineNumber: number, body: string) => void
   onDeleteComment: (id: string) => void
@@ -578,6 +581,8 @@ export function ReviewDiffPane({
   active,
   scrollRoot,
   revealTarget,
+  collapsed = false,
+  onToggleCollapsed,
   onToggleReviewed,
   onAddComment,
   onDeleteComment,
@@ -960,6 +965,17 @@ export function ReviewDiffPane({
     >
       {/* File header */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-panel sticky top-0 z-20">
+        {onToggleCollapsed && (
+          <button
+            onClick={onToggleCollapsed}
+            aria-label={collapsed ? 'Expand diff' : 'Collapse diff'}
+            aria-expanded={!collapsed}
+            className="shrink-0 text-faint hover:text-fg cursor-pointer"
+          >
+            {collapsed ? <ChevronRight className="icon-sm" /> : <ChevronDown className="icon-sm" />}
+          </button>
+        )}
+
         <Tooltip label={copiedPath ? 'Copied!' : 'Copy file path'}>
           <button
             onClick={() => {
@@ -1063,7 +1079,9 @@ export function ReviewDiffPane({
       </div>
 
       {/* Diff with inline comments via view zones. Auto-height: the editor
-          grows to its content and the stacked container owns the scroll. */}
+          grows to its content and the stacked container owns the scroll.
+          Collapsed sections render just the header. */}
+      {!collapsed && (
       <div className="relative" style={{ height: hostHeight }}>
         {!hasBeenNear ? (
           <div className="absolute inset-0" aria-hidden />
@@ -1099,6 +1117,7 @@ export function ReviewDiffPane({
           />
         ) : null}
       </div>
+      )}
     </div>
   )
 }

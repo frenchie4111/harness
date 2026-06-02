@@ -51,6 +51,9 @@ export function ReviewPane({
   const [files, setFiles] = useState<ChangedFile[]>([])
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
   const [reviewedFiles, setReviewedFiles] = useState<Set<string>>(new Set())
+  // Files whose diff is collapsed in the stacked view. Marking a file viewed
+  // collapses it (GitHub-style); the chevron toggles collapse independently.
+  const [collapsedFiles, setCollapsedFiles] = useState<Set<string>>(new Set())
   const [comments, setComments] = useState<ReviewComment[]>([])
   const [collapsedDirs, setCollapsedDirs] = useState<Set<string>>(new Set())
   const [fileTreeWidth, setFileTreeWidth] = useState<number>(240)
@@ -193,13 +196,30 @@ export function ReviewPane({
     (path: string) => {
       setReviewedFiles((prev) => {
         const next = new Set(prev)
-        if (next.has(path)) next.delete(path)
-        else next.add(path)
+        const nowReviewed = !next.has(path)
+        if (nowReviewed) next.add(path)
+        else next.delete(path)
+        // Collapse on view, expand on un-view.
+        setCollapsedFiles((c) => {
+          const cn = new Set(c)
+          if (nowReviewed) cn.add(path)
+          else cn.delete(path)
+          return cn
+        })
         return next
       })
     },
     []
   )
+
+  const handleToggleCollapsed = useCallback((path: string) => {
+    setCollapsedFiles((prev) => {
+      const next = new Set(prev)
+      if (next.has(path)) next.delete(path)
+      else next.add(path)
+      return next
+    })
+  }, [])
 
   const handleToggleDir = useCallback((dir: string) => {
     setCollapsedDirs((prev) => {
@@ -341,8 +361,13 @@ export function ReviewPane({
           }))
         )
         // Reflect the merged viewed state (local ∪ GitHub) so files viewed
-        // on GitHub show as reviewed here too.
+        // on GitHub show as reviewed here too — and collapse those diffs.
         setReviewedFiles(new Set(result.reviewedFiles))
+        setCollapsedFiles((prev) => {
+          const next = new Set(prev)
+          for (const p of result.reviewedFiles) next.add(p)
+          return next
+        })
         // Resolve requests were sent; GitHub's resolved state is now in the
         // pulled comments, so clear the pending set.
         if (!pullOnly) setPendingResolve(new Set())
@@ -630,7 +655,7 @@ export function ReviewPane({
                   if (el) sectionRefs.current.set(f.path, el)
                   else sectionRefs.current.delete(f.path)
                 }}
-                className="border-b border-border"
+                className="mb-2 border-b-4 border-border/70"
               >
                 <ReviewDiffPane
                   worktreePath={worktreePath}
@@ -643,6 +668,7 @@ export function ReviewPane({
                       : undefined
                   }
                   reviewed={reviewedFiles.has(f.path)}
+                  collapsed={collapsedFiles.has(f.path)}
                   comments={comments.filter((c) => c.filePath === f.path)}
                   sideBySide={sideBySide}
                   ignoreTrimWhitespace={!showWhitespace}
@@ -650,6 +676,7 @@ export function ReviewPane({
                   scrollRoot={stackScrollRef}
                   revealTarget={revealTarget}
                   onToggleReviewed={() => handleToggleReviewed(f.path)}
+                  onToggleCollapsed={() => handleToggleCollapsed(f.path)}
                   onAddComment={(line, body) => handleAddComment(f.path, line, body)}
                   onDeleteComment={handleDeleteComment}
                   wordWrap={wordWrap}
