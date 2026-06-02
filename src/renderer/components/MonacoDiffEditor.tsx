@@ -89,6 +89,10 @@ export function MonacoDiffEditor({
       fontSize: fontSize || 13,
       wordWrap: wordWrap ? 'on' : 'off',
       minimap: { enabled: false },
+      // No minimap and no diff overview ruler (the colored change-strip on
+      // the right edge) — keeps the stacked review clean.
+      renderOverviewRuler: false,
+      overviewRulerLanes: 0,
       scrollBeyondLastLine: false,
       renderLineHighlight: 'line',
       smoothScrolling: true,
