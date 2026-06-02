@@ -199,6 +199,7 @@ interface GraphQLActor {
 interface GraphQLPR {
   number: number
   title: string
+  body: string
   state: 'OPEN' | 'CLOSED' | 'MERGED'
   isDraft: boolean
   url: string
@@ -328,7 +329,7 @@ function gqlStatusState(s: Extract<GraphQLCheckContext, { __typename: 'StatusCon
 }
 
 const PR_FRAGMENT = `fragment PR on PullRequest {
-  number title state isDraft url mergedAt mergeable additions deletions
+  number title body state isDraft url mergedAt mergeable additions deletions
   baseRefName
   baseRepository { defaultBranchRef { name } }
   headRefOid
@@ -629,6 +630,7 @@ function buildPRStatus(
   return {
     number: pr.number,
     title: pr.title,
+    body: pr.body || '',
     state,
     url: pr.url,
     branch: branchName,

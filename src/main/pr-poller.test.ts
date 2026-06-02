@@ -25,6 +25,7 @@ function fakePRStatus(number: number): PRStatus {
   return {
     number,
     title: `PR ${number}`,
+    body: '',
     state: 'open',
     url: '',
     branch: '',

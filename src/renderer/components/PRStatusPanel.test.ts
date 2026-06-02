@@ -6,6 +6,7 @@ function pr(overrides: Partial<PRStatus> = {}): PRStatus {
   return {
     number: 1,
     title: '',
+    body: '',
     state: 'open',
     url: '',
     branch: 'feature',

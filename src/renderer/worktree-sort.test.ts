@@ -29,6 +29,7 @@ function stubPRStatus(overrides: Partial<PRStatus> = {}): PRStatus {
   return {
     number: 1,
     title: 'PR',
+    body: '',
     state: 'open',
     url: 'https://github.com/o/r/pull/1',
     branch: 'pr-1',

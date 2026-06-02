@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { Send, Clipboard, Check, MessageSquare, GitCommitHorizontal, ArrowUp, ChevronDown, Pilcrow, X, Keyboard, CloudSync, Loader2, Monitor, Sun, Moon, WrapText } from 'lucide-react'
+import { Send, Clipboard, Check, MessageSquare, GitCommitHorizontal, ArrowUp, ChevronDown, Pilcrow, X, Keyboard, CloudSync, Loader2, Monitor, Sun, Moon, WrapText, GitPullRequest } from 'lucide-react'
 import type { ChangedFile, BranchCommit } from '../types'
 import type { PRReview } from '../../shared/state/prs'
 import type { ReviewComment } from './ReviewFileTree'
@@ -60,6 +60,7 @@ export function ReviewPane({
   const [sideBySide, setSideBySide] = useState(false)
   const [showWhitespace, setShowWhitespace] = useState(false)
   const [showShortcuts, setShowShortcuts] = useState(false)
+  const [showPrDescription, setShowPrDescription] = useState(false)
   const [revealTarget, setRevealTarget] = useState<{ filePath: string; line: number; nonce: number } | null>(null)
   const revealNonceRef = useRef(0)
   const [refreshKey, setRefreshKey] = useState(0)
@@ -428,6 +429,15 @@ export function ReviewPane({
   return (
     <div className="relative flex flex-col h-full w-full bg-bg">
       {showShortcuts && <ReviewShortcutsPopup onClose={() => setShowShortcuts(false)} />}
+      {showPrDescription && pr && (
+        <PrDescriptionPanel
+          title={pr.title}
+          number={pr.number}
+          body={pr.body}
+          url={pr.url}
+          onClose={() => setShowPrDescription(false)}
+        />
+      )}
       {/* Top controls bar */}
       <div className="shrink-0 border-b border-border bg-panel">
         <div className="h-10 flex items-center gap-3 px-3">
@@ -577,6 +587,20 @@ export function ReviewPane({
 
         {/* Second row — review status info */}
         <div className="h-9 flex items-center gap-3 px-3 border-t border-border/60 text-xs">
+          <Tooltip label={pr ? 'PR description' : 'No pull request for this worktree'}>
+            <button
+              onClick={() => setShowPrDescription((v) => !v)}
+              disabled={!pr}
+              aria-pressed={showPrDescription}
+              aria-label="Show PR description"
+              className={`flex items-center shrink-0 px-1.5 py-1 rounded border transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-default ${
+                showPrDescription ? 'border-accent text-accent' : 'border-border text-faint hover:text-fg'
+              }`}
+            >
+              <GitPullRequest className="icon-xs" />
+            </button>
+          </Tooltip>
+
           {pr && <ReviewerStatus reviews={pr.reviews} />}
 
           <CommentDropdown
@@ -1027,6 +1051,71 @@ function ReviewShortcutsPopup({ onClose }: { onClose: () => void }): JSX.Element
               </kbd>
             </div>
           ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PrDescriptionPanel({
+  title,
+  number,
+  body,
+  url,
+  onClose
+}: {
+  title: string
+  number: number
+  body: string
+  url: string
+  onClose: () => void
+}): JSX.Element {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        onClose()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  return (
+    <div
+      className="absolute inset-0 z-50 flex items-center justify-center bg-black/40"
+      onClick={onClose}
+    >
+      <div
+        className="w-[42rem] max-w-[90%] max-h-[80%] flex flex-col rounded-lg border border-border-strong bg-panel-raised shadow-lg"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
+          <GitPullRequest className="icon-sm text-faint shrink-0" />
+          <a
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            className="text-base font-medium text-fg hover:underline truncate"
+          >
+            {title} <span className="text-faint">#{number}</span>
+          </a>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="ml-auto shrink-0 text-faint hover:text-fg cursor-pointer"
+          >
+            <X className="icon-base" />
+          </button>
+        </div>
+        <div className="markdown overflow-y-auto px-4 py-3 text-sm">
+          {body.trim() ? (
+            <ReactMarkdown remarkPlugins={REVIEW_MD_PLUGINS} rehypePlugins={REVIEW_REHYPE_PLUGINS}>
+              {body}
+            </ReactMarkdown>
+          ) : (
+            <span className="text-faint italic">No description provided.</span>
+          )}
         </div>
       </div>
     </div>
