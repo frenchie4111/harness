@@ -103,6 +103,9 @@ export interface Config {
   themeLight?: string
   // Theme id used when `themeMode` resolves to 'dark'. Default 'dark'.
   themeDark?: string
+  // Appearance override for the review tab's code editors. Default 'match'
+  // (follow the app theme); 'light'/'dark' pin the diffs to that palette.
+  reviewDiffMode?: 'match' | 'light' | 'dark'
   // App-background hex the renderer last applied. Used at next boot to
   // pick the BrowserWindow background color so the first paint doesn't
   // flash. Written from the renderer via a fire-and-forget IPC after each

@@ -2,6 +2,7 @@
 // editor is constructed. Vite's ?worker suffix bundles each worker as a
 // standalone chunk and returns a Worker constructor.
 import * as monaco from 'monaco-editor'
+import { DEFAULT_LIGHT_THEME, DEFAULT_DARK_THEME } from '../shared/state/settings'
 import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
 import JsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker'
 import CssWorker from 'monaco-editor/esm/vs/language/css/css.worker?worker'
@@ -127,10 +128,10 @@ function configureTypescriptDefaults(): void {
 
 configureTypescriptDefaults()
 
-// Pull current Tailwind theme tokens from the document and build a Monaco
+// Pull current Tailwind theme tokens from a source element and build a Monaco
 // theme that tracks them. Called once at boot and on theme changes.
-function readVar(name: string, fallback: string): string {
-  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+function readVar(source: HTMLElement, name: string, fallback: string): string {
+  const v = getComputedStyle(source).getPropertyValue(name).trim()
   return v || fallback
 }
 
@@ -149,13 +150,56 @@ function isColorDark(color: string): boolean {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b < 128
 }
 
+// Review-diff appearance override. 'match' (default) tracks the app theme by
+// reading `:root`; 'light'/'dark' pin the editors to the configured light/dark
+// palette so the diffs can differ from the app chrome. Monaco's theme is
+// global, so this redefines the single 'harness' theme — every Monaco surface
+// (diff + file viewers) follows it, while the non-Monaco chrome/terminals
+// keep the app theme.
+let reviewDiffMode: 'match' | 'light' | 'dark' = 'match'
+let lightThemeId = DEFAULT_LIGHT_THEME
+let darkThemeId = DEFAULT_DARK_THEME
+
+export function setReviewDiffMode(
+  mode: 'match' | 'light' | 'dark',
+  lightId: string,
+  darkId: string
+): void {
+  reviewDiffMode = mode
+  lightThemeId = lightId
+  darkThemeId = darkId
+  defineHarnessTheme()
+}
+
+// Resolve the element whose `--color-*` vars the Monaco theme reads. For
+// 'match' that's the live document root; for an override we mount a hidden
+// probe carrying the target theme's `[data-theme]` attribute — built-in
+// palettes are plain attribute-selector rules, so the probe gets the full
+// palette regardless of what the document root currently is.
+function withThemeSource<T>(use: (source: HTMLElement) => T): T {
+  if (reviewDiffMode === 'match') return use(document.documentElement)
+  const probe = document.createElement('div')
+  probe.dataset.theme = reviewDiffMode === 'light' ? lightThemeId : darkThemeId
+  probe.style.display = 'none'
+  document.documentElement.appendChild(probe)
+  try {
+    return use(probe)
+  } finally {
+    probe.remove()
+  }
+}
+
 export function defineHarnessTheme(): void {
-  const bg = readVar('--color-app', '#0b0d10')
-  const panel = readVar('--color-panel', '#12151a')
-  const fg = readVar('--color-fg', '#e6e6e6')
-  const muted = readVar('--color-muted', '#b0b0b0')
-  const faint = readVar('--color-faint', '#6b7280')
-  const border = readVar('--color-border', '#1f242c')
+  withThemeSource(defineHarnessThemeFromSource)
+}
+
+function defineHarnessThemeFromSource(source: HTMLElement): void {
+  const bg = readVar(source, '--color-app', '#0b0d10')
+  const panel = readVar(source, '--color-panel', '#12151a')
+  const fg = readVar(source, '--color-fg', '#e6e6e6')
+  const muted = readVar(source, '--color-muted', '#b0b0b0')
+  const faint = readVar(source, '--color-faint', '#6b7280')
+  const border = readVar(source, '--color-border', '#1f242c')
   const dark = isColorDark(bg)
 
   monaco.editor.defineTheme('harness', {

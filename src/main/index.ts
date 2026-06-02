@@ -2115,6 +2115,18 @@ function registerIpcHandlers(): void {
     return true
   })
 
+  transport.onRequest('config:setReviewDiffMode', (_ctx, mode: string) => {
+    if (mode !== 'match' && mode !== 'light' && mode !== 'dark') return false
+    if (mode === 'match') {
+      delete config.reviewDiffMode
+    } else {
+      config.reviewDiffMode = mode
+    }
+    saveConfig(config)
+    store.dispatch({ type: 'settings/reviewDiffModeChanged', payload: mode })
+    return true
+  })
+
   // Accept built-in IDs (validated against AVAILABLE_THEMES) and any
   // currently-loaded custom theme id of the matching mode. Custom IDs
   // are filename-derived and not statically known, so the live slice is

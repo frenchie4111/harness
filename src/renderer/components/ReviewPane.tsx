@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { Send, Clipboard, Check, MessageSquare, GitCommitHorizontal, ArrowUp, ChevronDown, Pilcrow, X, Keyboard, CloudSync, Loader2 } from 'lucide-react'
+import { Send, Clipboard, Check, MessageSquare, GitCommitHorizontal, ArrowUp, ChevronDown, Pilcrow, X, Keyboard, CloudSync, Loader2, Monitor, Sun, Moon } from 'lucide-react'
 import type { ChangedFile, BranchCommit } from '../types'
 import type { PRReview } from '../../shared/state/prs'
 import type { ReviewComment } from './ReviewFileTree'
@@ -13,7 +13,7 @@ import { ModeButton } from './DiffView'
 import { ResizeHandle } from './ResizeHandle'
 import { Tooltip } from './Tooltip'
 import { useBackend } from '../backend'
-import { usePrs } from '../store'
+import { usePrs, useSettings } from '../store'
 import { setReviewProgress, clearReviewProgress } from '../review-progress'
 import { useReviewFileRequest } from '../review-open-file'
 
@@ -42,6 +42,7 @@ export function ReviewPane({
   onSendToAgent
 }: ReviewPaneProps): JSX.Element {
   const backend = useBackend()
+  const { reviewDiffMode } = useSettings()
   const [commits, setCommits] = useState<BranchCommit[]>([])
   const [files, setFiles] = useState<ChangedFile[]>([])
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
@@ -452,6 +453,38 @@ export function ReviewPane({
               }`}
             >
               <Pilcrow className="icon-xs" />
+            </button>
+          </Tooltip>
+
+          <Tooltip
+            label={
+              reviewDiffMode === 'match'
+                ? 'Diff theme: matches app — click for light'
+                : reviewDiffMode === 'light'
+                  ? 'Diff theme: light — click for dark'
+                  : 'Diff theme: dark — click to match app'
+            }
+          >
+            <button
+              onClick={() =>
+                backend.setReviewDiffMode(
+                  reviewDiffMode === 'match' ? 'light' : reviewDiffMode === 'light' ? 'dark' : 'match'
+                )
+              }
+              aria-label="Cycle diff theme"
+              className={`flex items-center shrink-0 px-1.5 py-1 rounded border text-xs cursor-pointer transition-colors ${
+                reviewDiffMode !== 'match'
+                  ? 'border-accent text-accent'
+                  : 'border-border text-faint hover:text-fg'
+              }`}
+            >
+              {reviewDiffMode === 'match' ? (
+                <Monitor className="icon-xs" />
+              ) : reviewDiffMode === 'light' ? (
+                <Sun className="icon-xs" />
+              ) : (
+                <Moon className="icon-xs" />
+              )}
             </button>
           </Tooltip>
 

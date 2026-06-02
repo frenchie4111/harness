@@ -13,6 +13,7 @@ import { SCALES, scaleSpec } from '../shared/state/settings'
 import { useActiveTheme } from './hooks/useActiveTheme'
 import { useHoldToQuit } from './hooks/useHoldToQuit'
 import { applyTheme, effectiveAppBg } from './theme-apply'
+import { setReviewDiffMode } from './monaco-setup'
 import { getBackend } from './backend'
 import { HotkeysProvider, Tooltip } from './components/Tooltip'
 import { Sidebar } from './components/Sidebar'
@@ -75,10 +76,16 @@ const TITLE_LEADING_PX = 80
 export default function App(): JSX.Element {
   const { isMobile } = useViewport()
   const active = useActiveTheme()
+  const { reviewDiffMode, themeLight, themeDark } = useSettings()
   useEffect(() => {
     applyTheme(active)
     getBackend().setLastEffectiveAppBg(effectiveAppBg(active))
   }, [active])
+  // Push the review-diff appearance override into Monaco. Runs after
+  // applyTheme so the 'match' path reads the freshly-applied :root palette.
+  useEffect(() => {
+    setReviewDiffMode(reviewDiffMode, themeLight, themeDark)
+  }, [reviewDiffMode, themeLight, themeDark, active])
   if (isMobile) return <MobileApp />
   return <DesktopApp />
 }

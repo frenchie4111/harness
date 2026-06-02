@@ -59,6 +59,12 @@ export function scaledEditorFontSize(
 
 export type ThemeMode = 'light' | 'dark' | 'system'
 
+/** Appearance override for the review tab's code editors. `'match'` tracks
+ *  the app theme (default); `'light'`/`'dark'` pin the diff/file editors to
+ *  the configured light/dark palette regardless of the app's mode, so the
+ *  chrome can stay dark while the diffs render light. */
+export type ReviewDiffMode = 'match' | 'light' | 'dark'
+
 /** A theme loaded from `<userData>/themes/*.json`. Stays minimal — the
  *  loader only validates `name` + `mode` + an optional `colors` map of the
  *  16 semantic keys; missing keys inherit from the default of that mode at
@@ -102,6 +108,10 @@ export interface SettingsState {
   themeLight: string
   /** Theme id used when `themeMode` resolves to 'dark'. */
   themeDark: string
+  /** Appearance override for the review tab's code editors. Default 'match'
+   *  (follow the app theme). 'light'/'dark' pin them to the configured
+   *  light/dark palette so the diffs can differ from the app chrome. */
+  reviewDiffMode: ReviewDiffMode
   /** User-authored themes loaded from `<userData>/themes/*.json` at boot
    *  (and on reload). Replaced wholesale on rescan — array reference
    *  changes only when the on-disk contents actually change. */
@@ -222,6 +232,7 @@ export type SettingsEvent =
   | { type: 'settings/themeModeChanged'; payload: ThemeMode }
   | { type: 'settings/themeLightChanged'; payload: string }
   | { type: 'settings/themeDarkChanged'; payload: string }
+  | { type: 'settings/reviewDiffModeChanged'; payload: ReviewDiffMode }
   | { type: 'settings/customThemesChanged'; payload: CustomTheme[] }
   | { type: 'settings/hotkeysChanged'; payload: Record<string, string> | null }
   | { type: 'settings/defaultAgentChanged'; payload: AgentKindSetting }
@@ -281,6 +292,7 @@ export const initialSettings: SettingsState = {
   themeMode: 'system',
   themeLight: DEFAULT_LIGHT_THEME,
   themeDark: DEFAULT_DARK_THEME,
+  reviewDiffMode: 'match',
   customThemes: EMPTY_CUSTOM_THEMES,
   hotkeys: null,
   defaultAgent: 'claude',
@@ -340,6 +352,8 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, themeLight: event.payload }
     case 'settings/themeDarkChanged':
       return { ...state, themeDark: event.payload }
+    case 'settings/reviewDiffModeChanged':
+      return { ...state, reviewDiffMode: event.payload }
     case 'settings/customThemesChanged':
       return { ...state, customThemes: event.payload }
     case 'settings/hotkeysChanged':

@@ -293,6 +293,8 @@ export function buildBackend(
     setThemeMode: (mode: 'light' | 'dark' | 'system') => req('config:setThemeMode', mode),
     setThemeLight: (theme: string) => req('config:setThemeLight', theme),
     setThemeDark: (theme: string) => req('config:setThemeDark', theme),
+    setReviewDiffMode: (mode: 'match' | 'light' | 'dark') =>
+      req('config:setReviewDiffMode', mode),
     setLastEffectiveAppBg: (hex: string) => sig('config:setLastEffectiveAppBg', hex),
     reloadCustomThemes: () => req('config:reloadCustomThemes'),
     openThemesFolder: () => reqLocal('config:openThemesFolder'),
