@@ -1,4 +1,4 @@
-import { GitPullRequest, RotateCw, Trash2, Loader2, Moon, TriangleAlert } from 'lucide-react'
+import { GitPullRequest, RotateCw, Trash2, Loader2, Moon, TriangleAlert, AlarmClock } from 'lucide-react'
 import type { Worktree, PtyStatus, PendingTool, PRStatus } from '../types'
 import { isPRMerged } from '../../shared/state/prs'
 import { formatWakeAt } from '../../shared/state/snooze'
@@ -258,7 +258,7 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
             }}
             className="hidden group-hover:flex text-faint hover:text-accent transition-colors shrink-0 cursor-pointer"
           >
-            <Moon className="icon-xs" />
+            {isSnoozed ? <AlarmClock className="icon-xs" /> : <Moon className="icon-xs" />}
           </button>
         </Tooltip>
       )}
