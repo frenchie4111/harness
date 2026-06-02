@@ -853,13 +853,13 @@ function CommitSelector({
       : `${shortOf(commits, fromCommit)}…${shortOf(commits, toCommit)}`
 
   return (
-    <div ref={wrapperRef} className="relative">
+    <div ref={wrapperRef} className="relative w-full">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 px-2 py-1 rounded border border-border text-xs text-fg hover:bg-panel-raised transition-colors cursor-pointer min-w-0"
+        className="flex w-full items-center gap-1.5 px-2 py-1 rounded border border-border text-xs text-fg hover:bg-panel-raised transition-colors cursor-pointer"
       >
         <GitCommitHorizontal className="icon-xs text-faint shrink-0" />
-        <span className="font-mono max-w-[10rem] truncate">{buttonLabel}</span>
+        <span className="font-mono flex-1 min-w-0 truncate text-left">{buttonLabel}</span>
         <ChevronDown className="icon-2xs text-faint shrink-0" />
       </button>
       {open && (
