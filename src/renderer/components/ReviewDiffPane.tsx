@@ -612,6 +612,7 @@ export function ReviewDiffPane({
   const rootRef = useRef<HTMLDivElement | null>(null)
   const isHoveredRef = useRef(false)
   const [hasBeenNear, setHasBeenNear] = useState(false)
+  const [mounted, setMounted] = useState(false)
   const [contentHeight, setContentHeight] = useState(0)
   // Deleted files and very large diffs default to a click-to-reveal
   // placeholder rather than rendering the whole thing.
@@ -656,21 +657,48 @@ export function ReviewDiffPane({
     })
   }, [])
 
-  // Mark this section "near" once it scrolls within ~800px of the viewport,
-  // then stay mounted. Observed against the stacked scroll container.
+  // Virtualize: mount the Monaco editor when this section scrolls within
+  // ~800px of the viewport, unmount it once it's more than ~2000px away. The
+  // hysteresis band (800–2000px) keeps sections near the edge from
+  // thrash-cycling. `hasBeenNear` (latched) gates the one-time diff fetch so
+  // the cached sides survive unmount/remount; `mounted` toggles the editor.
   useEffect(() => {
-    if (hasBeenNear) return
     const el = rootRef.current
     if (!el) return
-    const io = new IntersectionObserver(
+    const root = scrollRoot?.current ?? null
+    const mountIO = new IntersectionObserver(
       (entries) => {
-        if (entries.some((e) => e.isIntersecting)) setHasBeenNear(true)
+        if (entries.some((e) => e.isIntersecting)) {
+          setHasBeenNear(true)
+          setMounted(true)
+        }
       },
-      { root: scrollRoot?.current ?? null, rootMargin: '800px 0px' }
+      { root, rootMargin: '800px 0px' }
     )
-    io.observe(el)
-    return () => io.disconnect()
-  }, [hasBeenNear, scrollRoot])
+    const unmountIO = new IntersectionObserver(
+      (entries) => {
+        if (entries.every((e) => !e.isIntersecting)) setMounted(false)
+      },
+      { root, rootMargin: '2000px 0px' }
+    )
+    mountIO.observe(el)
+    unmountIO.observe(el)
+    return () => {
+      mountIO.disconnect()
+      unmountIO.disconnect()
+    }
+  }, [scrollRoot])
+
+  // When the editor is unmounted (scrolled far away), drop our handle and
+  // tear down the comment view-zone React roots so they don't leak; the
+  // measured height stays in `contentHeight` so the placeholder holds the
+  // scroll position. Comments re-render on remount via the view-zone effect.
+  useEffect(() => {
+    if (mounted) return
+    for (const z of viewZonesRef.current) queueMicrotask(() => z.root.unmount())
+    viewZonesRef.current = []
+    editorRef.current = null
+  }, [mounted])
 
   useEffect(() => {
     if (!file || !hasBeenNear) {
@@ -1113,7 +1141,7 @@ export function ReviewDiffPane({
       )}
       {!collapsed && !withheld && (
       <div className="relative" style={{ height: hostHeight }}>
-        {!hasBeenNear ? (
+        {!mounted ? (
           <div className="absolute inset-0" aria-hidden />
         ) : loading ? (
           <div className="absolute inset-0 flex items-center justify-center text-faint text-sm">
