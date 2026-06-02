@@ -624,9 +624,15 @@ These are how the user wants Claude to behave when working on this repo:
     Exceptions where pixel literals are correct (because the consumer
     isn't part of the rem grid): Monaco/XTerminal font sizes, the
     PerfMonitor HUD's SVG numerics, JsonModeChat's
-    `--chat-{body,chrome,meta}-text` CSS variable system, ReviewDiffPane
-    inline styles inside Monaco view zones, and non-icon components
-    that legitimately take a pixel size (e.g. `<QRCodeSVG size={128} />`).
+    `--chat-{body,chrome,meta}-text` CSS variable system, and non-icon
+    components that legitimately take a pixel size (e.g.
+    `<QRCodeSVG size={128} />`).
+
+    Note: ReviewDiffPane's inline-styled comment widgets render into
+    Monaco view zones via `createRoot`, but they're still in the same
+    document, so `rem` resolves against the scaled root `<html>` —
+    they use `rem` (not px) so they scale with `uiScale` like the rest
+    of the UI. Don't reintroduce px font sizes there.
 
 ## Releasing
 

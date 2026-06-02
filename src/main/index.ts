@@ -38,7 +38,7 @@ import { getWeeklyStats } from './weekly-stats'
 import type { TerminalTab, PaneNode, PaneLeaf } from '../shared/state/terminals'
 import { getLeaves, mapLeaves } from '../shared/state/terminals'
 import { listWorktrees, listBranches, continueWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getCommitChangedFiles, getCommitFileDiffSides, getCommitRangeChangedFiles, getCommitRangeFileDiffSides, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, readWorktreeFile, readWorktreeFileBinary, writeWorktreeFile, getFileDiffSides, getCurrentBranch, symlinkClaudeSettings, type MergeStrategy } from './worktree'
-import { listOpenPRs, testToken, starRepo, unstarRepo, isRepoStarred, mergePR, getRepoInfo, type GitHubMergeMethod, type MergePRResult } from './github'
+import { listOpenPRs, testToken, starRepo, unstarRepo, isRepoStarred, mergePR, approvePR, getRepoInfo, type GitHubMergeMethod, type MergePRResult } from './github'
 import { AVAILABLE_EDITORS, DEFAULT_EDITOR_ID, openInEditor } from './editor'
 import { setSecret, getSecret, hasSecret, deleteSecret } from './secrets'
 import { resolveGitHubToken, getTokenSource, invalidateTokenCache, getCachedToken } from './github-auth'
@@ -97,6 +97,21 @@ import { AnnouncementsPoller } from './announcements-poller'
 function toAgentKind(value: string | undefined): AgentKind {
   return value === 'codex' ? 'codex' : 'claude'
 }
+
+// Dev-restart resilience: electron-vite closes our stdout/stderr pipe on
+// stop/restart; an in-flight console write then fails with EIO/EPIPE. These
+// are benign during teardown — swallow only the pipe-write codes, rethrow
+// everything else. Covers both the sync throw (uncaughtException) and the
+// async error-event path (stream 'error').
+const isBenignPipeError = (e: unknown): boolean =>
+  !!e && typeof e === 'object' && ['EIO', 'EPIPE'].includes((e as NodeJS.ErrnoException).code ?? '')
+
+process.stdout.on('error', (e) => { if (!isBenignPipeError(e)) throw e })
+process.stderr.on('error', (e) => { if (!isBenignPipeError(e)) throw e })
+process.on('uncaughtException', (e) => {
+  if (isBenignPipeError(e)) return
+  throw e
+})
 
 // Runtime detection — Electron sets process.versions.electron, plain
 // Node leaves it undefined. The mode picks itself; there's no env-var
@@ -1408,6 +1423,26 @@ function registerIpcHandlers(): void {
         }
       }
       const result = await mergePR(token, repoInfo.owner, repoInfo.repo, prNumber, method)
+      if (result.ok) {
+        void prPoller.refreshOne(worktreePath)
+      }
+      return result
+    }
+  )
+
+  transport.onRequest(
+    'pr:approve',
+    async (_ctx, worktreePath: string): Promise<{ ok: true } | { ok: false; error: string }> => {
+      const cached = store.getSnapshot().state.prs.byPath[worktreePath]
+      let prNumber = cached?.number
+      if (typeof prNumber !== 'number') {
+        await prPoller.refreshOne(worktreePath)
+        prNumber = store.getSnapshot().state.prs.byPath[worktreePath]?.number
+      }
+      if (typeof prNumber !== 'number') {
+        return { ok: false, error: 'No pull request found for this worktree' }
+      }
+      const result = await approvePR(worktreePath, prNumber)
       if (result.ok) {
         void prPoller.refreshOne(worktreePath)
       }

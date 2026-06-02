@@ -6,6 +6,7 @@ import { detectLanguage, highlightLine } from '../syntax'
 import { MonacoDiffEditor } from './MonacoDiffEditor'
 import { useSettings } from '../store'
 import { useBackend } from '../backend'
+import { scaledEditorFontSize } from '../../shared/state/settings'
 
 interface DiffViewProps {
   worktreePath: string
@@ -200,7 +201,7 @@ function FileDiffView({
           filePath={filePath}
           readOnly={!editable}
           fontFamily={settings.terminalFontFamily || undefined}
-          fontSize={settings.terminalFontSize}
+          fontSize={scaledEditorFontSize(settings.terminalFontSize, settings.uiScale)}
           wordWrap={wordWrap}
           onModifiedChange={editable ? setModifiedValue : undefined}
           onSave={editable ? save : undefined}
