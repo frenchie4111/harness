@@ -128,7 +128,7 @@ function InlineComment({
         setExpanded((v) => !v)
       }}
       style={{
-        display: 'inline-flex',
+        display: 'flex',
         flexDirection: 'column',
         gap: '4px',
         padding: '8px 12px',
@@ -138,7 +138,6 @@ function InlineComment({
         borderRadius: '0 6px 6px 0',
         background: bg,
         boxShadow: '0 2px 10px rgba(0, 0, 0, 0.4)',
-        maxWidth: '760px',
         cursor: collapsible ? 'pointer' : 'default'
       }}
     >
@@ -382,7 +381,7 @@ function CommentThread({
       </div>
 
       {replying && (
-        <div style={{ marginTop: '4px', marginLeft: thread.length > 1 ? 16 : 0, maxWidth: '760px' }}>
+        <div style={{ marginTop: '4px', marginLeft: thread.length > 1 ? 16 : 0 }}>
           <textarea
             ref={replyRef}
             value={replyBody}
