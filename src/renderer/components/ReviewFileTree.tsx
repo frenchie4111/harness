@@ -333,7 +333,7 @@ export function ReviewFileTree({
           className="w-full bg-panel-raised border border-border rounded px-2 py-1 text-xs text-fg placeholder:text-faint focus:outline-none focus:border-border-strong"
         />
       </div>
-      <div className="flex-1 overflow-y-auto min-h-0">
+      <div className="flex-1 overflow-auto min-h-0">
         {filtering && navigableFiles.length === 0 && (
           <div className="px-3 py-2 text-faint">No matches</div>
         )}
@@ -438,7 +438,7 @@ function DirRow({
   return (
     <div
       onClick={onToggle}
-      className="flex items-center gap-1 px-2 py-0.5 hover:bg-panel-raised cursor-pointer select-none"
+      className="flex w-max min-w-full items-center gap-1 px-2 py-0.5 hover:bg-panel-raised cursor-pointer select-none"
       style={{ paddingLeft: 8 + depth * 12 }}
     >
       <ChevronRight
@@ -449,7 +449,7 @@ function DirRow({
       ) : (
         <Folder className="icon-xs shrink-0 text-info" />
       )}
-      <span className="truncate text-fg">{name}</span>
+      <span className="whitespace-nowrap text-fg">{name}</span>
     </div>
   )
 }
@@ -475,7 +475,7 @@ function FileRow({
   return (
     <div
       onClick={onSelect}
-      className={`flex items-center gap-1.5 py-0.5 pr-2 cursor-pointer transition-colors ${
+      className={`flex w-max min-w-full items-center gap-1.5 py-0.5 pr-2 cursor-pointer transition-colors ${
         selected
           ? 'bg-accent/15 border-l-2 border-accent'
           : 'border-l-2 border-transparent hover:bg-panel-raised'
@@ -488,7 +488,7 @@ function FileRow({
         {STATUS_LABEL[file.status]}
       </span>
 
-      <span className="truncate flex-1 text-fg">{name}</span>
+      <span className="whitespace-nowrap text-fg">{name}</span>
 
       {commentCount > 0 && (
         <span className="shrink-0 text-xs bg-info/20 text-info px-1 rounded-full tabular-nums">
