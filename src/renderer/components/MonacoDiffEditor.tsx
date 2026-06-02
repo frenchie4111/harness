@@ -127,7 +127,26 @@ export function MonacoDiffEditor({
     // includes deleted-line and comment view zones) so the host can size to
     // fit and the outer container owns the scroll.
     let heightSubs: monaco.IDisposable[] = []
+    let revealTimer = 0
     if (autoHeight) {
+      // Mount hidden and fade in once the diff has actually computed —
+      // otherwise the fresh editor briefly paints the full modified text
+      // un-tokenized and before hideUnchangedRegions collapses it, a visible
+      // flash on (re)expand. Set synchronously so the first paint is hidden.
+      const host = hostRef.current
+      if (host) {
+        host.style.opacity = '0'
+        host.style.transition = 'opacity 100ms ease'
+      }
+      let revealed = false
+      const reveal = (): void => {
+        if (revealed) return
+        revealed = true
+        // One more frame so tokenization for the visible range lands too.
+        requestAnimationFrame(() => {
+          if (hostRef.current) hostRef.current.style.opacity = '1'
+        })
+      }
       const reportHeight = (): void => {
         const mod = editor.getModifiedEditor()
         const orig = editor.getOriginalEditor()
@@ -139,9 +158,15 @@ export function MonacoDiffEditor({
       heightSubs = [
         editor.getModifiedEditor().onDidContentSizeChange(reportHeight),
         editor.getOriginalEditor().onDidContentSizeChange(reportHeight),
-        editor.onDidUpdateDiff(reportHeight)
+        editor.onDidUpdateDiff(() => {
+          reportHeight()
+          reveal()
+        })
       ]
       reportHeight()
+      // Fallback: reveal even if onDidUpdateDiff never fires (identical
+      // content, error, binary) so the editor can't get stuck invisible.
+      revealTimer = window.setTimeout(reveal, 300)
     }
 
     const changeSub = editor
@@ -195,6 +220,7 @@ export function MonacoDiffEditor({
       leaveSub.dispose()
       downSub.dispose()
       for (const s of heightSubs) s.dispose()
+      if (revealTimer) clearTimeout(revealTimer)
       glyphCollection.clear()
       // Dispose the editor before the models it holds. Disposing models
       // first fires "TextModel got disposed before DiffEditorWidget model
