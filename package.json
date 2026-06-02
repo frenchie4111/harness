@@ -20,7 +20,8 @@
     "build:headless": "vite build --config vite.headless.config.ts && vite build --config vite.headless-web.config.ts",
     "dev:headless": "npm run build:headless && HARNESS_DATA_DIR=./.headless-data HARNESS_WS_HOST=${HARNESS_WS_HOST:-127.0.0.1} node dist-headless/main/index.js",
     "pack:headless": "node scripts/pack-headless.mjs",
-    "pack:headless:all": "echo 'Cross-platform packaging happens in CI. Run pack:headless to build for the current host.'",
+    "pack:headless:linux": "bash scripts/pack-headless-linux.sh",
+    "pack:headless:all": "npm run pack:headless && npm run pack:headless:linux",
     "preview": "electron-vite preview",
     "typecheck": "tsc -b --force",
     "test": "vitest run",
@@ -29,6 +30,8 @@
     "rebuild:dev": "electron-rebuild -f -w node-pty",
     "pack": "npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --dir --arm64 --config.mac.identity=null",
     "postpack": "npm run rebuild:dev",
+    "bundle:servers": "node scripts/stage-server-tarballs.mjs",
+    "pack:servers": "npm run bundle:servers && npm run pack",
     "dist": "npm run build && dotenv -e .env -- electron-builder",
     "postdist": "npm run rebuild:dev",
     "dist:mac": "npm run build && dotenv -e .env -- electron-builder --mac",
@@ -70,6 +73,15 @@
       {
         "from": "resources/permission-prompt-mcp.js",
         "to": "permission-prompt-mcp.js"
+      },
+      {
+        "from": "scripts/install-headless.sh",
+        "to": "install-headless.sh"
+      },
+      {
+        "from": "resources/headless",
+        "to": "headless",
+        "filter": ["**/*.tar.gz", "**/*.tar.gz.sha256"]
       }
     ],
     "mac": {

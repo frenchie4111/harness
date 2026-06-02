@@ -26,6 +26,58 @@ npm run dev
 
 The `--legacy-peer-deps` flag is required because of an `electron-vite@5` peer range.
 
+## Building and testing on Linux
+
+A few Docker-based helpers let you build and exercise Harness on Linux without leaving your Mac — the standalone `harness-server` (see the README's [Headless server](README.md#headless-server) section for the user-facing install + connect flow) and the full desktop UI over VNC. All of them need Docker running.
+
+### Building Linux tarballs — `pack:headless:linux`
+
+`harness-server` can't be cross-compiled the easy way: it bundles `node-pty` (a native C++ addon) and a platform-gated `@anthropic-ai/claude-code-<arch>` prebuilt, so each Linux tarball has to be assembled with a Linux toolchain. The script does that inside a per-arch container:
+
+```sh
+npm run pack:headless:linux               # both linux/arm64 + linux/amd64
+npm run pack:headless:linux linux/arm64   # just one arch
+```
+
+Tarballs land in `release/headless/` as `harness-server-<version>-linux-<arch>.tar.gz` (+ `.sha256`).
+
+On Apple Silicon the `linux/arm64` build is VM-native and quick; `linux/amd64` runs under emulation. The script keeps that cheap by running the heavy `npm ci` + bundle step **once** on the native arch into a shared volume and only compiling the small per-arch bits (`node-pty`) under emulation — both arches together build in ~5 min. Pass `linux/arm64` alone when amd64 isn't what you're testing, and turning on Docker Desktop's "Use Rosetta for x86/amd64 emulation" speeds the amd64 path further.
+
+To build a tarball for the platform you're already on (the `darwin-arm64` tarball on your Mac, or natively on a Linux box), skip Docker and run `npm run pack:headless` directly.
+
+### Running the server in a container — `run-headless-container.sh`
+
+Once the matching tarball exists, this spins up an Ubuntu container, installs Node + `claude` + `codex`, installs the tarball, and prints how to start the server and connect:
+
+```sh
+./scripts/run-headless-container.sh linux/arm64   # server :37291, ssh :2222
+./scripts/run-headless-container.sh linux/amd64   # server :37292, ssh :2223
+```
+
+Each arch gets its own ports and container name, so you can run both at once. The script injects your `~/.ssh` public key so you can `ssh -p <port> root@localhost` into the box (handy for authenticating `claude`/`codex`). It stops short of starting the server so you choose when — it echoes the exact `docker exec … harness-server --host 0.0.0.0 --port <port>` command plus the connect URL (open it in a browser, or paste it into the Electron app's `File → Add Backend…`).
+
+Tear down when finished:
+
+```sh
+docker rm -f harness_linux-arm64 harness_linux-amd64
+```
+
+### Running the full UI over VNC — `run-ui-container.sh`
+
+To exercise the actual Electron desktop app on Linux (not just the headless server), this builds Harness from source in a `linux/arm64` container and runs it on a virtual display, served over VNC:
+
+```sh
+./scripts/run-ui-container.sh
+```
+
+It installs Electron's runtime libraries + Node + `claude`/`codex`, builds the app (`electron-vite build`), and launches it under Xvfb + fluxbox with `x11vnc` (the app runs as root with the sandbox disabled, the same `ELECTRON_DISABLE_SANDBOX` the `dev` script uses). Connect from the host with a VNC client:
+
+```sh
+open vnc://localhost:5901      # macOS Screen Sharing; password: harness
+```
+
+Override the repo with `HARNESS_CLONE_URL`, the host port with `HARNESS_VNC_PORT`, the password with `HARNESS_VNC_PASSWORD`, and the screen size with `HARNESS_UI_GEOMETRY`. The Electron log is at `/var/log/harness-ui.log` inside the container. Tear down with `docker rm -f harness_ui`.
+
 ## How to edit code in this codebase
 
 Honestly - every single line of code in this codebase is written by claude. (at least all the lines I wrote). So I highly recommend using claude code to make changes (I keep harness itself open at all times)

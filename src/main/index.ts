@@ -16,7 +16,7 @@ import { WebSocketServerTransport } from './transport-websocket'
 import { CompoundServerTransport } from './transport-compound'
 import { createWebClientServer } from './web-client-server'
 import { getOrCreateWsToken, rotateWsToken } from './ws-token'
-import { networkInterfaces } from 'os'
+import { networkInterfaces, hostname as osHostname, type as osType, release as osRelease, machine as osMachine } from 'os'
 import type { Server as HttpServer } from 'http'
 import type { ServerTransport } from '../shared/transport/transport'
 import { detectRuntime } from './paths'
@@ -213,8 +213,12 @@ function getHarnessVersion(): string {
         return typeof v === 'string' ? v : null
       }
     },
+    // Headless tarball: the VERSION sidecar sits at the install root, next
+    // to bin/ and lib/ — i.e. two levels up from lib/main/index.js. (The
+    // old '../VERSION' was off by one: it pointed at lib/VERSION, which
+    // never exists, so packed tarball servers reported version "unknown".)
     {
-      path: join(__dirname, '..', 'VERSION'),
+      path: join(__dirname, '..', '..', 'VERSION'),
       parse: (text) => text.trim() || null
     }
   ]
@@ -2528,6 +2532,19 @@ function registerIpcHandlers(): void {
   // Reads from package.json / VERSION rather than Electron's
   // app.getVersion() so the headless server can answer without an `app`.
   transport.onRequest('updater:getVersion', (_ctx) => getHarnessVersion())
+
+  // system:getBackendInfo identifies the machine actually running this
+  // backend — for a web client / multi-backend remote that's the SERVER's
+  // host, not the viewer's. Routed through the transport like getVersion so
+  // each connected backend answers for itself. os.machine() mirrors
+  // `uname -m` (aarch64/x86_64); os.type()+release() mirror `uname -s -r`.
+  transport.onRequest('system:getBackendInfo', (_ctx) => ({
+    hostname: osHostname(),
+    platform: osType(),
+    release: osRelease(),
+    arch: osMachine(),
+    version: getHarnessVersion()
+  }))
 
   // updater:checkForUpdates / updater:quitAndInstall: the real
   // implementations live in desktop-shell.ts (they drive electron-updater

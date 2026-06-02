@@ -15,8 +15,12 @@ import type { NodeSSH } from 'node-ssh'
 import { createRequire } from 'module'
 import { createServer, type Server as NetServer, type Socket } from 'net'
 import { randomBytes, randomUUID } from 'crypto'
+import { existsSync, readdirSync, statSync } from 'fs'
+import { readFile } from 'fs/promises'
 import { homedir, userInfo } from 'os'
+import { basename, join } from 'path'
 import { computeForHost } from './ssh-config'
+import { resolveBundledScript, resolveBundledServerDir } from './paths'
 import type {
   BootstrapError,
   BootstrapPhase
@@ -181,14 +185,119 @@ const REMOTE_BIN = `${REMOTE_INSTALL_DIR}/bin/harness-server`
 const REMOTE_STATE_FILE = `${REMOTE_INSTALL_DIR}/state.json`
 const REMOTE_LOG_FILE = `${REMOTE_INSTALL_DIR}/log`
 
-/** Read from env so dev / CI can point the install script at a fork or
- *  staging release. Mirrors the script's HARNESS_SERVER_BASE_URL hook. */
-function installScriptUrl(): string {
-  const fork = process.env.HARNESS_INSTALL_SCRIPT_URL
-  if (fork) return fork
-  return 'https://raw.githubusercontent.com/frenchie4111/harness/main/scripts/install-headless.sh'
+/** Locate the `install-headless.sh` that THIS Harness ships, so the remote
+ *  runs the installer that matches the version doing the bootstrap (rather
+ *  than `curl`-ing whatever is on `main` at GitHub). Resolution is handled by
+ *  `resolveBundledScript` (packaged → resourcesPath; dev → repo `scripts/`),
+ *  anchored on `app.getAppPath()` so lazy-import chunking doesn't skew it. */
+function resolveBundledInstallScript(): string {
+  return resolveBundledScript('install-headless.sh')
 }
 
+/** Server-tarball platform tag matching `scripts/pack-headless.mjs` naming
+ *  (`harness-server-<version>-<platform>.tar.gz`). */
+type ServerPlatform = 'darwin-arm64' | 'linux-x64' | 'linux-arm64'
+
+/** Probe the remote's OS + arch via `uname` and map to the tarball platform
+ *  tag. Returns null for anything we don't publish a tarball for (e.g.
+ *  darwin-x64), which pushes the caller onto download mode. */
+async function detectRemotePlatform(ssh: NodeSSH): Promise<ServerPlatform | null> {
+  const r = await ssh.execCommand('uname -s; uname -m')
+  const [osRaw = '', archRaw = ''] = r.stdout.trim().split(/\r?\n/)
+  const os = osRaw.trim()
+  const arch = archRaw.trim()
+  let osTag: 'darwin' | 'linux' | null = null
+  if (os === 'Darwin') osTag = 'darwin'
+  else if (os === 'Linux') osTag = 'linux'
+  let archTag: 'arm64' | 'x64' | null = null
+  if (arch === 'arm64' || arch === 'aarch64') archTag = 'arm64'
+  else if (arch === 'x86_64' || arch === 'amd64') archTag = 'x64'
+  if (!osTag || !archTag) return null
+  const tag = `${osTag}-${archTag}`
+  // darwin-x64 isn't published (see pack-headless.mjs); treat as unknown.
+  if (tag === 'darwin-x64') return null
+  return tag as ServerPlatform
+}
+
+interface LocalTarball {
+  path: string
+  sha256Path?: string
+}
+
+/** Find a locally-built server tarball matching the remote platform so we can
+ *  upload it instead of having the remote pull from GitHub. Resolution:
+ *   1. `HARNESS_SERVER_LOCAL_TARBALL` — explicit path, wins outright.
+ *   2. `HARNESS_SERVER_TARBALL_DIR`, else `resolveBundledServerDir()` (dev
+ *      `release/headless/`; packaged `resourcesPath/headless/`) — newest
+ *      `harness-server-*-<platform>.tar.gz` in that dir.
+ *  Returns null when none is found (→ download mode). A default packaged
+ *  build ships no tarballs, so upload mode only kicks in for a build made
+ *  with `pack:servers` (or when an explicit path/dir env is set). */
+function findLocalServerTarball(platform: ServerPlatform): LocalTarball | null {
+  const explicit = process.env.HARNESS_SERVER_LOCAL_TARBALL
+  if (explicit) {
+    if (!existsSync(explicit)) return null
+    const sha = `${explicit}.sha256`
+    return { path: explicit, ...(existsSync(sha) ? { sha256Path: sha } : {}) }
+  }
+  const dir = process.env.HARNESS_SERVER_TARBALL_DIR ?? resolveBundledServerDir()
+  if (!dir || !existsSync(dir)) return null
+  const suffix = `-${platform}.tar.gz`
+  let best: { path: string; mtime: number } | null = null
+  for (const name of readdirSync(dir)) {
+    if (!name.startsWith('harness-server-') || !name.endsWith(suffix)) continue
+    const full = join(dir, name)
+    let mtime = 0
+    try {
+      mtime = statSync(full).mtimeMs
+    } catch {
+      continue
+    }
+    if (!best || mtime > best.mtime) best = { path: full, mtime }
+  }
+  if (!best) return null
+  const sha = `${best.path}.sha256`
+  return { path: best.path, ...(existsSync(sha) ? { sha256Path: sha } : {}) }
+}
+
+/** Upload a local tarball (+ its `.sha256` sidecar if present) to an
+ *  ephemeral `/tmp` staging dir on the remote and return the remote paths.
+ *  Streams coarse percentage progress into `onLine`. Caller is responsible
+ *  for `rm -rf`-ing the staging dir once the installer has run. */
+async function stageTarballOnRemote(
+  ssh: NodeSSH,
+  local: LocalTarball,
+  onLine: (line: string) => void
+): Promise<{ remoteTarball: string; stagingDir: string }> {
+  const stagingDir = `/tmp/harness-provision-${randomUUID()}`
+  await ssh.execCommand(`mkdir -p ${shellEscape(stagingDir)}`)
+  const remoteTarball = `${stagingDir}/${basename(local.path)}`
+  const sizeMb = (statSync(local.path).size / (1024 * 1024)).toFixed(1)
+  onLine(`uploading ${basename(local.path)} (${sizeMb} MB) to ${stagingDir}…`)
+  let lastPct = -1
+  await ssh.putFile(local.path, remoteTarball, null, {
+    // ssh2's TransferOptions.step — (transferred, _chunk, total). Log every
+    // ~10% so the modal's progress log shows the upload moving without
+    // flooding the slice with a line per packet.
+    step: (transferred: number, _chunk: number, total: number) => {
+      if (!total) return
+      const pct = Math.floor((transferred / total) * 100)
+      if (pct >= lastPct + 10 || pct === 100) {
+        lastPct = pct
+        onLine(`  upload ${pct}%`)
+      }
+    }
+  })
+  if (local.sha256Path) {
+    await ssh.putFile(local.sha256Path, `${remoteTarball}.sha256`)
+  }
+  onLine('upload complete')
+  return { remoteTarball, stagingDir }
+}
+
+/** Env-var prefix for download mode — points the installer at a fork /
+ *  staging release. Mirrors the script's HARNESS_SERVER_BASE_URL/VERSION
+ *  hooks. */
 function installerEnvPrefix(): string {
   const base = process.env.HARNESS_SERVER_BASE_URL
   const version = process.env.HARNESS_SERVER_VERSION
@@ -252,13 +361,69 @@ async function probeServer(ssh: NodeSSH): Promise<string | null> {
   return out
 }
 
-/** Run the install script over SSH. Streams output into `onLine`. */
+/** Provision `harness-server` on the remote. The installer script is the
+ *  copy THIS Harness ships (piped over the wire, not curled from GitHub), so
+ *  it always matches the version doing the bootstrap. The server bytes come
+ *  from one of two sources, auto-selected:
+ *
+ *   - **upload**: a locally-built tarball matching the remote platform is
+ *     `putFile`d to the remote and the installer runs in
+ *     `HARNESS_SERVER_TARBALL` mode (no GitHub round-trip).
+ *   - **download**: no local tarball → the installer pulls a published
+ *     release (honoring HARNESS_SERVER_BASE_URL/VERSION).
+ *
+ *  Set `HARNESS_PROVISION_RELEASE_ONLY=1` to force download mode. */
 async function runInstall(ssh: NodeSSH, onLine: (line: string) => void): Promise<void> {
-  const cmd = `${installerEnvPrefix()}curl -fsSL ${shellEscape(installScriptUrl())} | sh`
+  const scriptPath = resolveBundledInstallScript()
+  let script: string
+  try {
+    script = await readFile(scriptPath, 'utf8')
+  } catch (err) {
+    throw Object.assign(new Error('could not read bundled install-headless.sh'), {
+      bootstrapError: {
+        code: 'install_failed',
+        message: 'bundled install-headless.sh is missing',
+        detail: `${scriptPath}: ${err instanceof Error ? err.message : String(err)}`
+      } satisfies BootstrapError
+    })
+  }
+
+  // Decide the server-bytes source.
+  let envPrefix = installerEnvPrefix()
+  let stagingDir: string | null = null
+  const releaseOnly = process.env.HARNESS_PROVISION_RELEASE_ONLY === '1'
+  if (!releaseOnly) {
+    const platform = await detectRemotePlatform(ssh)
+    const local = platform ? findLocalServerTarball(platform) : null
+    if (local) {
+      onLine(`remote platform ${platform}; staging local tarball ${basename(local.path)}`)
+      const staged = await stageTarballOnRemote(ssh, local, onLine)
+      stagingDir = staged.stagingDir
+      // Upload mode wins: only the tarball path matters to the installer.
+      envPrefix = `HARNESS_SERVER_TARBALL=${shellEscape(staged.remoteTarball)} `
+    } else {
+      onLine(
+        platform
+          ? `no local ${platform} tarball found; installing from GitHub release`
+          : 'remote platform not published as a tarball; installing from GitHub release'
+      )
+    }
+  }
+
+  // Pipe OUR install-headless.sh to the remote: `env <prefix> sh -s` reads
+  // the script from stdin with the chosen env applied. Newline-separated
+  // statements are unaffected — `sh -s` runs the whole stdin as a script.
+  const cmd = `env ${envPrefix}sh -s`
   const result = await ssh.execCommand(cmd, {
+    stdin: script,
     onStdout: (chunk: Buffer) => emitLines(chunk.toString('utf8'), onLine),
     onStderr: (chunk: Buffer) => emitLines(chunk.toString('utf8'), onLine)
   })
+  // Clean up the staging dir regardless of outcome — it's an ephemeral
+  // /tmp upload, not something we want to leave behind.
+  if (stagingDir) {
+    await ssh.execCommand(`rm -rf ${shellEscape(stagingDir)}`).catch(() => {})
+  }
   if (result.code !== 0) {
     // The installer already prints "error: ..." on failure; bubble it up
     // verbatim so the UI's progress log matches what the user would see

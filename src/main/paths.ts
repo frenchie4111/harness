@@ -45,7 +45,11 @@ function ensureDir(dir: string, mode = 0o700): string {
   return dir
 }
 
-function loadElectronApp(): { getPath: (name: string) => string; isPackaged: boolean } {
+function loadElectronApp(): {
+  getPath: (name: string) => string
+  getAppPath: () => string
+  isPackaged: boolean
+} {
   const dynamicRequire = createRequire(__filename)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (dynamicRequire('electron') as any).app
@@ -91,4 +95,35 @@ export function resolveBundledMcpScript(name: string): string {
   if (isPackaged()) return join(process.resourcesPath, name)
   if (detectRuntime() === 'node') return join(__dirname, '..', 'mcp', name)
   return join(__dirname, '..', '..', 'resources', name)
+}
+
+/** Resolve a script shipped from the repo's `scripts/` dir (Electron-only
+ *  callers — currently the SSH bootstrap). Two layouts:
+ *   - Packaged: electron-builder copies it to `process.resourcesPath`
+ *     (see the `extraResources` entry in package.json).
+ *   - Dev (unpackaged Electron): it lives in the live source tree under
+ *     `<appPath>/scripts/`.
+ *  Anchored on `app.getAppPath()` rather than `__dirname` because callers
+ *  may be lazy-`import()`ed into `out/main/chunks/`, where relative
+ *  `__dirname` math is one (or more) levels off. */
+export function resolveBundledScript(name: string): string {
+  if (isPackaged()) return join(process.resourcesPath, name)
+  return join(loadElectronApp().getAppPath(), 'scripts', name)
+}
+
+/** Directory to search for locally-staged `harness-server` tarballs that
+ *  upload-mode provisioning can push to a remote (instead of the remote
+ *  pulling from GitHub). Symmetric with `resolveBundledScript`:
+ *   - Packaged: a `headless/` subdir under `process.resourcesPath`,
+ *     populated opt-in by `scripts/stage-server-tarballs.mjs` (the
+ *     `pack:servers` npm script). A default build ships this dir empty, so
+ *     the lookup finds nothing and the bootstrap falls back to download
+ *     mode — no ~130MB-per-platform bloat unless you ask for it.
+ *   - Dev (unpackaged Electron): the repo's `release/headless/`, where
+ *     `pack:headless*` writes tarballs.
+ *  Returns null in headless/node mode (SSH bootstrap is Electron-only). */
+export function resolveBundledServerDir(): string | null {
+  if (detectRuntime() !== 'electron') return null
+  if (isPackaged()) return join(process.resourcesPath, 'headless')
+  return join(loadElectronApp().getAppPath(), 'release', 'headless')
 }

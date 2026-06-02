@@ -11,3 +11,7 @@ release/
 .DS_Store
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
+# Opt-in cross-platform server tarballs staged for packaging (see
+# scripts/stage-server-tarballs.mjs); the .gitkeep itself is tracked.
+resources/headless/*.tar.gz
+resources/headless/*.tar.gz.sha256
