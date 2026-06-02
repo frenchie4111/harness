@@ -5,6 +5,7 @@ import { RightPanel } from './RightPanel'
 import { useActiveBackend, useSettings } from '../store'
 import { useBackend } from '../backend'
 import { bindingToString, formatBindingGlyphs, resolveHotkeys } from '../hotkeys'
+import { useChangedFilesSet } from '../hooks/useChangedFilesSet'
 
 interface AllFilesPanelProps {
   worktreePath: string | null
@@ -52,6 +53,28 @@ function sortChildren(node: TreeNode): TreeNode[] {
   })
 }
 
+/** When the user has a filter typed, surface changed files above
+ *  unchanged ones within the filtered list. Stable tiebreak by the
+ *  original alphabetical order from sortChildren. */
+function sortChildrenChangedFirst(
+  node: TreeNode,
+  changedPaths: Set<string>,
+  changedFolders: Set<string>
+): TreeNode[] {
+  const base = sortChildren(node)
+  if (changedPaths.size === 0) return base
+  const isChanged = (n: TreeNode): boolean =>
+    n.isFile ? changedPaths.has(n.path) : changedFolders.has(n.path)
+  return base
+    .map((n, i) => ({ n, i, changed: isChanged(n) }))
+    .sort((a, b) => {
+      if (a.n.isFile !== b.n.isFile) return a.n.isFile ? 1 : -1
+      if (a.changed !== b.changed) return a.changed ? -1 : 1
+      return a.i - b.i
+    })
+    .map((e) => e.n)
+}
+
 export function AllFilesPanel({
   worktreePath,
   onOpenFile,
@@ -68,6 +91,7 @@ export function AllFilesPanel({
     const binding = resolveHotkeys(settings.hotkeys ?? undefined).fileQuickOpen
     return formatBindingGlyphs(bindingToString(binding))
   }, [settings.hotkeys])
+  const changed = useChangedFilesSet(worktreePath)
 
   const refresh = useCallback(async () => {
     if (!worktreePath) return
@@ -182,6 +206,9 @@ export function AllFilesPanel({
             onToggle={toggle}
             onOpenFile={onOpenFile}
             onSendToAgent={onSendToAgent}
+            changedPaths={changed.paths}
+            changedFolders={changed.folders}
+            changedFirst={filtering}
           />
         )}
       </div>
@@ -207,6 +234,9 @@ interface TreeBranchProps {
   onToggle: (path: string) => void
   onOpenFile: (filePath: string) => void
   onSendToAgent?: (text: string) => void
+  changedPaths: Set<string>
+  changedFolders: Set<string>
+  changedFirst: boolean
 }
 
 function TreeBranch({
@@ -217,9 +247,14 @@ function TreeBranch({
   worktreePath,
   onToggle,
   onOpenFile,
-  onSendToAgent
+  onSendToAgent,
+  changedPaths,
+  changedFolders,
+  changedFirst
 }: TreeBranchProps): JSX.Element {
-  const children = sortChildren(node)
+  const children = changedFirst
+    ? sortChildrenChangedFirst(node, changedPaths, changedFolders)
+    : sortChildren(node)
   return (
     <>
       {children.map((child) => {
@@ -233,6 +268,7 @@ function TreeBranch({
               worktreePath={worktreePath}
               onOpenFile={onOpenFile}
               onSendToAgent={onSendToAgent}
+              changed={changedPaths.has(child.path)}
             />
           )
         }
@@ -245,6 +281,7 @@ function TreeBranch({
               depth={depth}
               open={isOpen}
               onToggle={() => onToggle(child.path)}
+              hasChangedDescendant={changedFolders.has(child.path)}
             />
             {isOpen && (
               <TreeBranch
@@ -256,6 +293,9 @@ function TreeBranch({
                 onToggle={onToggle}
                 onOpenFile={onOpenFile}
                 onSendToAgent={onSendToAgent}
+                changedPaths={changedPaths}
+                changedFolders={changedFolders}
+                changedFirst={changedFirst}
               />
             )}
           </div>
@@ -269,13 +309,15 @@ function DirRow({
   name,
   depth,
   open,
-  onToggle
+  onToggle,
+  hasChangedDescendant
 }: {
   name: string
   path: string
   depth: number
   open: boolean
   onToggle: () => void
+  hasChangedDescendant: boolean
 }): JSX.Element {
   return (
     <div
@@ -291,6 +333,13 @@ function DirRow({
         <Folder className="icon-xs shrink-0 text-info" />
       )}
       <span className="truncate text-fg">{name}</span>
+      {hasChangedDescendant && (
+        <span
+          className="w-1 h-1 rounded-full bg-accent/50 shrink-0 ml-1"
+          title="Contains changes in this PR"
+          aria-hidden="true"
+        />
+      )}
     </div>
   )
 }
@@ -301,7 +350,8 @@ function FileRow({
   depth,
   worktreePath,
   onOpenFile,
-  onSendToAgent
+  onSendToAgent,
+  changed
 }: {
   name: string
   path: string
@@ -309,6 +359,7 @@ function FileRow({
   worktreePath: string
   onOpenFile: (filePath: string) => void
   onSendToAgent?: (text: string) => void
+  changed: boolean
 }): JSX.Element {
   const backend = useBackend()
   return (
@@ -323,6 +374,13 @@ function FileRow({
       }}
     >
       <FileText className="icon-xs shrink-0 text-faint" />
+      {changed && (
+        <span
+          className="w-1.5 h-1.5 rounded-full bg-accent shrink-0"
+          title="Changed in this PR"
+          aria-hidden="true"
+        />
+      )}
       <span className="truncate min-w-0 flex-1 text-fg">{name}</span>
       {onSendToAgent && (
         <Tooltip label="Reference in Claude" side="left">
