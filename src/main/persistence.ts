@@ -139,6 +139,9 @@ export interface Config {
   // on its periodic timer. The manual "Check for updates" button in
   // Settings still works. Default is enabled (undefined/true).
   autoUpdateEnabled?: boolean
+  // When false, ⌘Q quits immediately. When true/undefined (default), ⌘Q
+  // must be held briefly to quit (Chrome-style "Warn Before Quitting").
+  warnBeforeQuitting?: boolean
   // When false, new worktrees don't symlink their .claude/settings.local.json
   // to the main worktree's copy, and the boot migration doesn't convert
   // existing regular files. Default is enabled (undefined/true).

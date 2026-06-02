@@ -332,6 +332,7 @@ export interface ElectronAPI {
   ): Promise<boolean>
   setAutoSleepMinutes(value: number): Promise<boolean>
   setAutoUpdateEnabled(enabled: boolean): Promise<boolean>
+  setWarnBeforeQuitting(enabled: boolean): Promise<boolean>
   setExpandedDiagnosticLoggingEnabled(enabled: boolean): Promise<boolean>
   setShareClaudeSettings(enabled: boolean): Promise<boolean>
   setHarnessSystemPromptEnabled(enabled: boolean): Promise<boolean>
@@ -465,6 +466,8 @@ export interface ElectronAPI {
   windowToggleMaximize(): void
   windowClose(): void
   onOpenSettings(callback: () => void): () => void
+  onHoldToQuitStart(callback: () => void): () => void
+  onHoldToQuitCancel(callback: () => void): () => void
   onTogglePerfMonitor(callback: () => void): () => void
   onToggleSingleScreen(callback: () => void): () => void
   onOpenKeyboardShortcuts(callback: () => void): () => void
