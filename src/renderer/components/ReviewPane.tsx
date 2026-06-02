@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { Send, Clipboard, Check, MessageSquare, GitCommitHorizontal, ArrowUp, ChevronDown, Pilcrow, X, Keyboard, CloudSync, Loader2, Monitor, Sun, Moon } from 'lucide-react'
+import { Send, Clipboard, Check, MessageSquare, GitCommitHorizontal, ArrowUp, ChevronDown, Pilcrow, X, Keyboard, CloudSync, Loader2, Monitor, Sun, Moon, WrapText } from 'lucide-react'
 import type { ChangedFile, BranchCommit } from '../types'
 import type { PRReview } from '../../shared/state/prs'
 import type { ReviewComment } from './ReviewFileTree'
@@ -456,6 +456,18 @@ export function ReviewPane({
             </button>
           </Tooltip>
 
+          <Tooltip label={wordWrap ? 'No word wrap' : 'Word wrap'}>
+            <button
+              onClick={() => setWordWrap((v) => !v)}
+              aria-pressed={wordWrap}
+              className={`flex items-center shrink-0 px-1.5 py-1 rounded border text-xs cursor-pointer transition-colors ${
+                wordWrap ? 'border-accent text-accent' : 'border-border text-faint hover:text-fg'
+              }`}
+            >
+              <WrapText className="icon-xs" />
+            </button>
+          </Tooltip>
+
           <Tooltip
             label={
               reviewDiffMode === 'match'
@@ -647,7 +659,6 @@ export function ReviewPane({
             onAddComment={handleAddComment}
             onDeleteComment={handleDeleteComment}
             wordWrap={wordWrap}
-            onWordWrapChange={setWordWrap}
             onAddReply={handleAddReply}
             onResolveThread={handleResolveThread}
             pendingResolve={pendingResolve}

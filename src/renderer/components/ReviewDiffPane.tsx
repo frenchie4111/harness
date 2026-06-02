@@ -5,7 +5,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
 import rehypeSanitize from 'rehype-sanitize'
-import { ArrowRightFromLine, Check, CheckCheck, FoldVertical, MessagesSquare, Reply, UnfoldVertical, WrapText } from 'lucide-react'
+import { Check, CheckCheck, FoldVertical, MessagesSquare, Reply, UnfoldVertical } from 'lucide-react'
 import type { FileDiffSides, ChangedFile } from '../types'
 import type { ReviewComment } from './ReviewFileTree'
 import { MonacoDiffEditor } from './MonacoDiffEditor'
@@ -38,7 +38,6 @@ interface ReviewDiffPaneProps {
   onAddComment: (lineNumber: number, body: string) => void
   onDeleteComment: (id: string) => void
   wordWrap: boolean
-  onWordWrapChange: (next: boolean) => void
   onAddReply: (
     root: { filePath: string; lineNumber: number; remoteId: number },
     body: string
@@ -576,7 +575,6 @@ export function ReviewDiffPane({
   onAddComment,
   onDeleteComment,
   wordWrap,
-  onWordWrapChange,
   onAddReply,
   onResolveThread,
   pendingResolve
@@ -931,15 +929,6 @@ export function ReviewDiffPane({
             )}
           </span>
         )}
-
-        <Tooltip label={wordWrap ? 'No wrap' : 'Word wrap'}>
-          <button
-            onClick={() => onWordWrapChange(!wordWrap)}
-            className="shrink-0 text-faint hover:text-fg cursor-pointer"
-          >
-            {wordWrap ? <ArrowRightFromLine className="icon-xs" /> : <WrapText className="icon-xs" />}
-          </button>
-        </Tooltip>
 
         {comments.length > 0 && (
           <Tooltip label="Jump to the first comment in this file">
