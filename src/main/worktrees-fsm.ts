@@ -12,7 +12,7 @@ import { getPRMetadata } from './github'
 import { loadRepoConfig } from './repo-config'
 import { log } from './debug'
 import type { Store } from './store'
-import type { Worktree, PendingWorktree } from '../shared/state/worktrees'
+import { worktreeListsEqual, type Worktree, type PendingWorktree } from '../shared/state/worktrees'
 
 /** Sanitize a PR's head branch into a name that's safe as both a git
  *  branch (we're not strict here since git accepts most things) and a
@@ -93,8 +93,20 @@ export class WorktreesFSM {
       )
     )
     const flat = results.flat()
-    this.store.dispatch({ type: 'worktrees/listChanged', payload: flat })
+    this.applyList(flat)
     return flat
+  }
+
+  /** Replace the flat worktree list, but only dispatch when it actually
+   * differs from what's in the store. Lets the PR poller and the branch
+   * watcher re-derive branch labels on a tick / fs event without churning
+   * the array reference (and re-rendering the world) when nothing moved.
+   * Returns whether a dispatch was emitted. */
+  applyList(flat: Worktree[]): boolean {
+    const current = this.store.getSnapshot().state.worktrees.list
+    if (worktreeListsEqual(current, flat)) return false
+    this.store.dispatch({ type: 'worktrees/listChanged', payload: flat })
+    return true
   }
 
   dispatchRepos(roots: string[]): void {

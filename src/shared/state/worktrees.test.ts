@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   initialWorktrees,
   worktreesReducer,
+  worktreeListsEqual,
   type PendingDeletion,
   type PendingWorktree,
   type Worktree,
@@ -35,6 +36,41 @@ function stubPending(overrides: Partial<PendingWorktree> = {}): PendingWorktree 
     ...overrides
   }
 }
+
+describe('worktreeListsEqual', () => {
+  it('is true for the same reference and for structurally identical lists', () => {
+    const a = [stubWorktree({ path: '/a' }), stubWorktree({ path: '/b' })]
+    expect(worktreeListsEqual(a, a)).toBe(true)
+    const b = [stubWorktree({ path: '/a' }), stubWorktree({ path: '/b' })]
+    expect(worktreeListsEqual(a, b)).toBe(true)
+  })
+
+  it('is false when length differs', () => {
+    const a = [stubWorktree({ path: '/a' })]
+    const b = [stubWorktree({ path: '/a' }), stubWorktree({ path: '/b' })]
+    expect(worktreeListsEqual(a, b)).toBe(false)
+  })
+
+  it('detects a branch label change (the rebasing-2/22 -> back-on-branch case)', () => {
+    const a = [stubWorktree({ path: '/a', branch: 'rebasing 2/22' })]
+    const b = [stubWorktree({ path: '/a', branch: 'feature/a' })]
+    expect(worktreeListsEqual(a, b)).toBe(false)
+  })
+
+  it('detects head/path/repoRoot/flag changes', () => {
+    const base = stubWorktree({ path: '/a' })
+    expect(worktreeListsEqual([base], [stubWorktree({ path: '/a', head: 'cafe' })])).toBe(false)
+    expect(worktreeListsEqual([base], [stubWorktree({ path: '/z' })])).toBe(false)
+    expect(worktreeListsEqual([base], [stubWorktree({ path: '/a', isMain: true })])).toBe(false)
+    expect(worktreeListsEqual([base], [stubWorktree({ path: '/a', repoRoot: '/other' })])).toBe(false)
+  })
+
+  it('is order-sensitive', () => {
+    const a = [stubWorktree({ path: '/a' }), stubWorktree({ path: '/b' })]
+    const b = [stubWorktree({ path: '/b' }), stubWorktree({ path: '/a' })]
+    expect(worktreeListsEqual(a, b)).toBe(false)
+  })
+})
 
 describe('worktreesReducer', () => {
   it('listChanged replaces the flat list', () => {

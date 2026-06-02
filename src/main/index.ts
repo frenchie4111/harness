@@ -34,6 +34,7 @@ import { ActivityDeriver } from './activity-deriver'
 import { AutoSleepMonitor } from './auto-sleep-monitor'
 import { WorktreeWatcher } from './worktree-watcher'
 import { FileContentWatcher } from './file-content-watcher'
+import { BranchSyncWatcher } from './branch-sync-watcher'
 import { SnoozeTimer } from './snooze-timer'
 import { getWeeklyStats } from './weekly-stats'
 import type { TerminalTab, PaneNode, PaneLeaf } from '../shared/state/terminals'
@@ -888,6 +889,22 @@ const worktreesFSM = new WorktreesFSM(store, {
 const worktreeDeletionFSM = new WorktreeDeletionFSM(store, {
   getGlobalTeardownCmd: () => config.worktreeTeardownCommand || '',
   worktreesFSM
+})
+
+// Event-driven branch-name sync. Watches each worktree's gitdir HEAD so a
+// branch switch / rename / detached-HEAD / rebase step in a terminal re-reads
+// the branch immediately, instead of waiting for the next create/delete/manual
+// refresh (which is how "rebasing 2/22" used to get stuck forever). refreshList
+// is deduped via applyList, so a no-op fs event won't churn the store.
+const branchSyncWatcher = new BranchSyncWatcher(() => {
+  void worktreesFSM.refreshList()
+})
+// Keep the watch set in lockstep with the worktree list. Only reacts to
+// listChanged (infrequent); sync() is a cheap set-diff that opens/closes
+// watchers and never dispatches, so there's no feedback loop.
+store.subscribe((event) => {
+  if (event.type !== 'worktrees/listChanged') return
+  branchSyncWatcher.sync(store.getSnapshot().state.worktrees.list)
 })
 
 const activityDeriver = new ActivityDeriver(store)
@@ -3970,6 +3987,7 @@ if (desktopShellMod && desktopEarly) {
       // Close local tunnel ends — the remote `harness-server` is left
       // running (intentional; see plans/remote-main.md §4).
       sshTunnelManager.closeAll()
+      branchSyncWatcher.shutdown()
     },
     setWarnBeforeQuitting
   })
@@ -3990,6 +4008,7 @@ if (desktopShellMod && desktopEarly) {
     ptyManager.killAll('SIGKILL')
     jsonClaudeManager.killAll()
     approvalBridge.stopAll()
+    branchSyncWatcher.shutdown()
     browserManager.destroyAll()
     sshTunnelManager.closeAll()
     sealAllActive()
