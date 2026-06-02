@@ -258,7 +258,7 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
             }}
             className="hidden group-hover:flex text-faint hover:text-accent transition-colors shrink-0 cursor-pointer"
           >
-            {isSnoozed ? <AlarmClock size={12} /> : <Moon size={12} />}
+            {isSnoozed ? <AlarmClock className="icon-xs" /> : <Moon className="icon-xs" />}
           </button>
         </Tooltip>
       )}
