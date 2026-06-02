@@ -947,30 +947,52 @@ export function ReviewDiffPane({
     }
   }, [])
 
-  // Scroll to a comment's line when the comment list navigates here. Keyed
-  // on the request nonce + editor mount so it fires once the right file's
-  // editor is ready.
+  // Reveal a specific line when the comment list / find navigates here. In
+  // the stacked auto-height view the editor owns no scroll, so we scroll the
+  // OUTER container to the line's pixel offset (getTopForLineNumber accounts
+  // for collapsed regions + view zones) and briefly flash the line. Keyed on
+  // the request nonce + editor mount so it fires once this file's editor is
+  // ready (it may have just mounted from the scroll).
   useEffect(() => {
     if (!revealTarget || !file || revealTarget.filePath !== file.path) return
     const editor = editorRef.current
+    const container = scrollRoot?.current
     if (!editor) return
     const line = Math.max(1, revealTarget.line)
-    // The editor may have just remounted for this file and the comment view
-    // zones (which shift line positions) are added in a sibling effect, so a
-    // single reveal often lands off. Reveal on the next frame AND again on a
-    // short timeout to catch the settled layout.
     const modEd = editor.getModifiedEditor()
+    let flash: monaco.editor.IEditorDecorationsCollection | null = null
     const doReveal = (): void => {
-      modEd.setPosition({ lineNumber: line, column: 1 })
-      modEd.revealLineInCenter(line, monaco.editor.ScrollType.Immediate)
+      if (container) {
+        const node = modEd.getDomNode()
+        if (node) {
+          const cRect = container.getBoundingClientRect()
+          const eRect = node.getBoundingClientRect()
+          const editorTop = eRect.top - cRect.top + container.scrollTop
+          const lineTop = modEd.getTopForLineNumber(line)
+          container.scrollTo({ top: Math.max(0, editorTop + lineTop - 96), behavior: 'smooth' })
+        }
+      }
+      if (!flash) {
+        flash = modEd.createDecorationsCollection([
+          {
+            range: new monaco.Range(line, 1, line, 1),
+            options: { isWholeLine: true, className: 'reveal-flash-line' }
+          }
+        ])
+      }
     }
+    // Reveal on the next frame AND after a short delay to catch the settled
+    // layout (view zones / mount can shift line positions).
     const raf = requestAnimationFrame(doReveal)
-    const t = setTimeout(doReveal, 140)
+    const t = setTimeout(doReveal, 160)
+    const clearT = setTimeout(() => flash?.clear(), 1500)
     return () => {
       cancelAnimationFrame(raf)
       clearTimeout(t)
+      clearTimeout(clearT)
+      flash?.clear()
     }
-  }, [revealTarget?.nonce, revealTarget?.filePath, editorNonce, file?.path])
+  }, [revealTarget?.nonce, revealTarget?.filePath, editorNonce, file?.path, scrollRoot])
 
   const handleReferenceLine = useCallback((lineNumber: number) => {
     setCommentLine(lineNumber)

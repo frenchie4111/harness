@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { Send, Clipboard, MessageSquare, GitCommitHorizontal, ArrowUp, ChevronDown, Pilcrow, X, Keyboard, CloudSync, Loader2, WrapText, GitPullRequest, Menu } from 'lucide-react'
+import { Send, Clipboard, MessageSquare, GitCommitHorizontal, ArrowUp, ChevronDown, ChevronUp, Pilcrow, X, Keyboard, CloudSync, Loader2, WrapText, GitPullRequest, Menu, Search } from 'lucide-react'
 import type { ChangedFile, BranchCommit } from '../types'
 import type { PRReview } from '../../shared/state/prs'
 import type { ReviewComment } from './ReviewFileTree'
@@ -64,6 +64,16 @@ export function ReviewPane({
   const [showWhitespace, setShowWhitespace] = useState(false)
   const [showShortcuts, setShowShortcuts] = useState(false)
   const [showPrDescription, setShowPrDescription] = useState(false)
+  // Cmd+F find-across-all-diffs state. Matches are computed over every file's
+  // modified content (fetched + cached on first search) since each Monaco
+  // editor only searches itself and far sections aren't even mounted.
+  const [findOpen, setFindOpen] = useState(false)
+  const [findQuery, setFindQuery] = useState('')
+  const [matches, setMatches] = useState<{ filePath: string; line: number; preview: string }[]>([])
+  const [matchIndex, setMatchIndex] = useState(0)
+  const [searching, setSearching] = useState(false)
+  const contentCacheRef = useRef<Map<string, string[]>>(new Map())
+  const findInputRef = useRef<HTMLInputElement | null>(null)
   const [revealTarget, setRevealTarget] = useState<{ filePath: string; line: number; nonce: number } | null>(null)
   const revealNonceRef = useRef(0)
   // Scroll container + per-file section elements for the stacked all-files
@@ -73,11 +83,14 @@ export function ReviewPane({
   const scrollToFile = useCallback((filePath: string) => {
     sectionRefs.current.get(filePath)?.scrollIntoView({ block: 'start', behavior: 'smooth' })
   }, [])
-  // Scroll the stacked view to whichever file the comment list / file tree
-  // last asked to reveal.
+  // Bring the target file near the viewport instantly (so a virtualized-far
+  // section mounts); the section's own reveal effect then smooth-scrolls to
+  // the exact line.
   useEffect(() => {
-    if (revealTarget) scrollToFile(revealTarget.filePath)
-  }, [revealTarget, scrollToFile])
+    if (revealTarget) {
+      sectionRefs.current.get(revealTarget.filePath)?.scrollIntoView({ block: 'start' })
+    }
+  }, [revealTarget])
   const [refreshKey, setRefreshKey] = useState(0)
   const [syncState, setSyncState] = useState<'idle' | 'syncing' | 'ok' | 'error'>('idle')
   const [syncDetail, setSyncDetail] = useState<string | null>(null)
@@ -464,6 +477,106 @@ export function ReviewPane({
     [commits, selectionIndices, backend, worktreePath, tabId]
   )
 
+  // ----- Cmd+F: find across all diffs -----------------------------------
+  // Drop the content cache when the underlying diff changes.
+  useEffect(() => {
+    contentCacheRef.current = new Map()
+  }, [worktreePath, isWholeBranch, isSingleCommit, fromCommit, toCommit, refreshKey])
+
+  const fetchModified = useCallback(
+    async (filePath: string): Promise<string[]> => {
+      try {
+        const sides =
+          !isWholeBranch && !isSingleCommit && fromCommit && toCommit
+            ? await backend.getCommitRangeFileDiffSides(worktreePath, fromCommit, toCommit, filePath)
+            : isSingleCommit && fromCommit
+              ? await backend.getCommitFileDiffSides(worktreePath, fromCommit, filePath)
+              : await backend.getFileDiffSides(worktreePath, filePath, false, 'branch')
+        return (sides?.modified ?? '').split('\n')
+      } catch {
+        return []
+      }
+    },
+    [backend, worktreePath, isWholeBranch, isSingleCommit, fromCommit, toCommit]
+  )
+
+  const gotoMatch = useCallback((idx: number) => {
+    setMatches((cur) => {
+      if (cur.length === 0) return cur
+      const n = ((idx % cur.length) + cur.length) % cur.length
+      setMatchIndex(n)
+      const m = cur[n]
+      setRevealTarget({ filePath: m.filePath, line: m.line, nonce: ++revealNonceRef.current })
+      return cur
+    })
+  }, [])
+
+  // Cmd/Ctrl+F opens the find bar (capture phase so it beats Monaco's own
+  // per-editor find). Only while this review tab is active.
+  useEffect(() => {
+    if (!active) return
+    const onKey = (e: KeyboardEvent): void => {
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && (e.key === 'f' || e.key === 'F')) {
+        e.preventDefault()
+        e.stopPropagation()
+        setFindOpen(true)
+        requestAnimationFrame(() => {
+          findInputRef.current?.focus()
+          findInputRef.current?.select()
+        })
+      }
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [active])
+
+  // Run the search (debounced). Fetches + caches each file's modified content
+  // on first use, then matches case-insensitively across every file.
+  useEffect(() => {
+    if (!findOpen) return
+    const q = findQuery.trim()
+    if (!q) {
+      setMatches([])
+      setMatchIndex(0)
+      return
+    }
+    let cancelled = false
+    const t = setTimeout(async () => {
+      setSearching(true)
+      const cache = contentCacheRef.current
+      const missing = files.filter((f) => !cache.has(f.path) && f.status !== 'deleted')
+      await Promise.all(
+        missing.map(async (f) => {
+          const lines = await fetchModified(f.path)
+          if (!cancelled) cache.set(f.path, lines)
+        })
+      )
+      if (cancelled) return
+      const ql = q.toLowerCase()
+      const found: { filePath: string; line: number; preview: string }[] = []
+      for (const f of files) {
+        const lines = cache.get(f.path)
+        if (!lines) continue
+        for (let i = 0; i < lines.length; i++) {
+          if (lines[i].toLowerCase().includes(ql)) {
+            found.push({ filePath: f.path, line: i + 1, preview: lines[i].trim().slice(0, 200) })
+          }
+        }
+      }
+      if (cancelled) return
+      setMatches(found)
+      setMatchIndex(0)
+      setSearching(false)
+      if (found.length > 0) {
+        setRevealTarget({ filePath: found[0].filePath, line: found[0].line, nonce: ++revealNonceRef.current })
+      }
+    }, 200)
+    return () => {
+      cancelled = true
+      clearTimeout(t)
+    }
+  }, [findQuery, findOpen, files, fetchModified])
+
   const allReviewed = files.length > 0 && reviewedFiles.size === files.length
   const progress = files.length > 0 ? reviewedFiles.size / files.length : 0
 
@@ -478,6 +591,53 @@ export function ReviewPane({
           url={pr.url}
           onClose={() => setShowPrDescription(false)}
         />
+      )}
+      {findOpen && (
+        <div className="absolute top-1 right-3 z-[60] flex items-center gap-2 rounded border border-border-strong bg-panel-raised shadow-lg px-2 py-1.5 text-xs">
+          <Search className="icon-xs text-faint shrink-0" />
+          <input
+            ref={findInputRef}
+            value={findQuery}
+            onChange={(e) => setFindQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                gotoMatch(matchIndex + (e.shiftKey ? -1 : 1))
+              } else if (e.key === 'Escape') {
+                e.preventDefault()
+                setFindOpen(false)
+              }
+            }}
+            placeholder="Find in all diffs"
+            className="bg-transparent outline-none text-fg w-52 placeholder:text-faint"
+          />
+          <span className="text-faint tabular-nums shrink-0 min-w-[3.5rem] text-right">
+            {searching ? '…' : findQuery.trim() === '' ? '' : matches.length === 0 ? 'No results' : `${matchIndex + 1}/${matches.length}`}
+          </span>
+          <button
+            onClick={() => gotoMatch(matchIndex - 1)}
+            disabled={matches.length === 0}
+            aria-label="Previous match"
+            className="shrink-0 text-faint hover:text-fg cursor-pointer disabled:opacity-30 disabled:cursor-default"
+          >
+            <ChevronUp className="icon-xs" />
+          </button>
+          <button
+            onClick={() => gotoMatch(matchIndex + 1)}
+            disabled={matches.length === 0}
+            aria-label="Next match"
+            className="shrink-0 text-faint hover:text-fg cursor-pointer disabled:opacity-30 disabled:cursor-default"
+          >
+            <ChevronDown className="icon-xs" />
+          </button>
+          <button
+            onClick={() => setFindOpen(false)}
+            aria-label="Close find"
+            className="shrink-0 text-faint hover:text-fg cursor-pointer"
+          >
+            <X className="icon-xs" />
+          </button>
+        </div>
       )}
       {/* Top controls bar */}
       <div className="shrink-0 border-b border-border bg-panel">
