@@ -65,6 +65,17 @@ const STATUS_LABEL: Record<ChangedFile['status'], string> = {
   untracked: 'Untracked'
 }
 
+// Diffs with more than this many changed lines are withheld behind a
+// click-to-reveal placeholder so the stacked view stays light by default.
+const LARGE_DIFF_LINES = 600
+
+/** Why a file's diff is hidden by default (null = shown normally). */
+function withheldReason(file: ChangedFile): 'deleted' | 'large' | null {
+  if (file.status === 'deleted') return 'deleted'
+  if ((file.additions ?? 0) + (file.deletions ?? 0) > LARGE_DIFF_LINES) return 'large'
+  return null
+}
+
 const STATUS_COLOR: Record<ChangedFile['status'], string> = {
   added: 'text-success',
   modified: 'text-warning',
@@ -602,6 +613,9 @@ export function ReviewDiffPane({
   const isHoveredRef = useRef(false)
   const [hasBeenNear, setHasBeenNear] = useState(false)
   const [contentHeight, setContentHeight] = useState(0)
+  // Deleted files and very large diffs default to a click-to-reveal
+  // placeholder rather than rendering the whole thing.
+  const [revealed, setRevealed] = useState(false)
   const [sides, setSides] = useState<FileDiffSides | null>(null)
   const [loading, setLoading] = useState(false)
   const [commentLine, setCommentLine] = useState<number | null>(null)
@@ -663,6 +677,8 @@ export function ReviewDiffPane({
       if (!file) setSides(null)
       return
     }
+    // Don't fetch withheld (deleted / very large) diffs until the user opts in.
+    if (withheldReason(file) && !revealed) return
     let cancelled = false
     setLoading(true)
     setCommentLine(null)
@@ -695,7 +711,7 @@ export function ReviewDiffPane({
     return () => {
       cancelled = true
     }
-  }, [hasBeenNear, worktreePath, file?.path, file?.staged, mode, commitHash, commitRange?.fromHash, commitRange?.toHash])
+  }, [hasBeenNear, revealed, worktreePath, file?.path, file?.staged, mode, commitHash, commitRange?.fromHash, commitRange?.toHash])
 
   const clearViewZones = useCallback(() => {
     const editor = editorRef.current
@@ -951,6 +967,8 @@ export function ReviewDiffPane({
     Math.max(160, ((file.additions ?? 0) + (file.deletions ?? 0) + 8) * lineH)
   )
   const hostHeight = contentHeight > 0 ? contentHeight : estimateHeight
+  const reason = withheldReason(file)
+  const withheld = reason !== null && !revealed
 
   return (
     <div
@@ -1080,8 +1098,20 @@ export function ReviewDiffPane({
 
       {/* Diff with inline comments via view zones. Auto-height: the editor
           grows to its content and the stacked container owns the scroll.
-          Collapsed sections render just the header. */}
-      {!collapsed && (
+          Collapsed sections render just the header; deleted/large diffs are
+          withheld behind a click-to-reveal row. */}
+      {!collapsed && withheld && (
+        <button
+          onClick={() => setRevealed(true)}
+          className="w-full text-left px-3 py-4 text-sm text-faint hover:text-fg hover:bg-panel/40 transition-colors cursor-pointer"
+        >
+          {reason === 'deleted'
+            ? 'Diff not shown for deleted files by default'
+            : 'Large diffs are not shown by default'}
+          <span className="ml-2 text-dim">(click to show)</span>
+        </button>
+      )}
+      {!collapsed && !withheld && (
       <div className="relative" style={{ height: hostHeight }}>
         {!hasBeenNear ? (
           <div className="absolute inset-0" aria-hidden />
