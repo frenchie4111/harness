@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, type RefObject } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import * as monaco from 'monaco-editor'
 import ReactMarkdown from 'react-markdown'
@@ -31,6 +31,10 @@ interface ReviewDiffPaneProps {
   ignoreTrimWhitespace: boolean
   /** True when the review tab is active/visible — gates the `c` shortcut. */
   active?: boolean
+  /** The scroll container that stacks all the file sections. Used as the
+   *  IntersectionObserver root so this section lazy-mounts its Monaco editor
+   *  only when it nears the viewport. */
+  scrollRoot?: RefObject<HTMLElement | null>
   /** Scroll the diff to this line when it matches the current file. Used by
    *  the comment list to jump to a comment. */
   revealTarget?: { filePath: string; line: number; nonce: number } | null
@@ -572,6 +576,7 @@ export function ReviewDiffPane({
   sideBySide,
   ignoreTrimWhitespace,
   active,
+  scrollRoot,
   revealTarget,
   onToggleReviewed,
   onAddComment,
@@ -584,6 +589,14 @@ export function ReviewDiffPane({
 }: ReviewDiffPaneProps): JSX.Element {
   const backend = useBackend()
   const settings = useSettings()
+  // Lazy-mount: the Monaco editor is only constructed once this section has
+  // scrolled near the viewport (stays mounted afterwards). `contentHeight`
+  // is the editor's reported height in auto-height mode; before mount we show
+  // a placeholder sized from the file's +/- counts so scroll stays stable.
+  const rootRef = useRef<HTMLDivElement | null>(null)
+  const isHoveredRef = useRef(false)
+  const [hasBeenNear, setHasBeenNear] = useState(false)
+  const [contentHeight, setContentHeight] = useState(0)
   const [sides, setSides] = useState<FileDiffSides | null>(null)
   const [loading, setLoading] = useState(false)
   const [commentLine, setCommentLine] = useState<number | null>(null)
@@ -624,9 +637,25 @@ export function ReviewDiffPane({
     })
   }, [])
 
+  // Mark this section "near" once it scrolls within ~800px of the viewport,
+  // then stay mounted. Observed against the stacked scroll container.
   useEffect(() => {
-    if (!file) {
-      setSides(null)
+    if (hasBeenNear) return
+    const el = rootRef.current
+    if (!el) return
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) setHasBeenNear(true)
+      },
+      { root: scrollRoot?.current ?? null, rootMargin: '800px 0px' }
+    )
+    io.observe(el)
+    return () => io.disconnect()
+  }, [hasBeenNear, scrollRoot])
+
+  useEffect(() => {
+    if (!file || !hasBeenNear) {
+      if (!file) setSides(null)
       return
     }
     let cancelled = false
@@ -661,7 +690,7 @@ export function ReviewDiffPane({
     return () => {
       cancelled = true
     }
-  }, [worktreePath, file?.path, file?.staged, mode, commitHash, commitRange?.fromHash, commitRange?.toHash])
+  }, [hasBeenNear, worktreePath, file?.path, file?.staged, mode, commitHash, commitRange?.fromHash, commitRange?.toHash])
 
   const clearViewZones = useCallback(() => {
     const editor = editorRef.current
@@ -880,14 +909,16 @@ export function ReviewDiffPane({
   )
 
   // `c` opens a comment input on the hovered diff line, or a file-level
-  // comment (line 0) when the mouse isn't over a line. Window listener so
-  // it works whether focus is in the diff or the file tree; matches the
-  // review shortcut style — bail only on a real form field (the inline
-  // comment box and the file filter), never on Monaco's own input.
+  // comment (line 0) when the mouse isn't over a line. Every stacked section
+  // installs this listener, so it only acts when the mouse is over THIS
+  // section — otherwise N sections would all open an input at once. Bail only
+  // on a real form field (the inline comment box and the file filter), never
+  // on Monaco's own input.
   useEffect(() => {
     if (!file || !active) return
     const onKey = (e: KeyboardEvent): void => {
       if (e.key !== 'c' || e.metaKey || e.ctrlKey || e.altKey) return
+      if (!isHoveredRef.current) return
       const el = e.target as HTMLElement | null
       if (el instanceof HTMLInputElement) return
       if (el instanceof HTMLTextAreaElement && !el.classList.contains('inputarea')) return
@@ -906,10 +937,29 @@ export function ReviewDiffPane({
     )
   }
 
+  // Auto-height host: use the editor's reported content height once mounted,
+  // else a placeholder estimate from the file's +/- counts so the stacked
+  // scroll doesn't jump when this section mounts.
+  const lineH = Math.round(scaledEditorFontSize(settings.terminalFontSize, settings.uiScale) * 1.5)
+  const estimateHeight = Math.min(
+    1600,
+    Math.max(160, ((file.additions ?? 0) + (file.deletions ?? 0) + 8) * lineH)
+  )
+  const hostHeight = contentHeight > 0 ? contentHeight : estimateHeight
+
   return (
-    <div className="flex flex-col h-full">
+    <div
+      ref={rootRef}
+      className="flex flex-col"
+      onMouseEnter={() => {
+        isHoveredRef.current = true
+      }}
+      onMouseLeave={() => {
+        isHoveredRef.current = false
+      }}
+    >
       {/* File header */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-panel shrink-0">
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-panel sticky top-0 z-20">
         <Tooltip label={copiedPath ? 'Copied!' : 'Copy file path'}>
           <button
             onClick={() => {
@@ -1012,14 +1062,24 @@ export function ReviewDiffPane({
         )}
       </div>
 
-      {/* Diff with inline comments via view zones */}
-      <div className="flex-1 min-h-0 relative">
-        {loading && (
-          <div className="absolute inset-0 flex items-center justify-center text-faint text-sm z-10">
+      {/* Diff with inline comments via view zones. Auto-height: the editor
+          grows to its content and the stacked container owns the scroll. */}
+      <div className="relative" style={{ height: hostHeight }}>
+        {!hasBeenNear ? (
+          <div className="absolute inset-0" aria-hidden />
+        ) : loading ? (
+          <div className="absolute inset-0 flex items-center justify-center text-faint text-sm">
             Loading diff...
           </div>
-        )}
-        {!loading && sides && (
+        ) : sides?.error ? (
+          <div className="absolute inset-0 flex items-center justify-center text-danger text-sm">
+            {sides.error}
+          </div>
+        ) : sides?.modifiedBinary ? (
+          <div className="absolute inset-0 flex items-center justify-center text-faint text-sm">
+            Binary file — cannot display diff
+          </div>
+        ) : sides ? (
           <MonacoDiffEditor
             original={sides.original}
             modified={sides.modified}
@@ -1030,22 +1090,14 @@ export function ReviewDiffPane({
             fontFamily={settings.terminalFontFamily || undefined}
             fontSize={scaledEditorFontSize(settings.terminalFontSize, settings.uiScale)}
             wordWrap={wordWrap}
+            autoHeight
+            onContentHeight={setContentHeight}
             onReferenceLine={handleReferenceLine}
             onEditorMount={handleEditorMount}
             glyphClassName="comment-line-glyph"
             glyphHoverMessage="Add a comment on this line"
           />
-        )}
-        {!loading && sides?.error && (
-          <div className="absolute inset-0 flex items-center justify-center text-danger text-sm">
-            {sides.error}
-          </div>
-        )}
-        {!loading && sides?.modifiedBinary && (
-          <div className="absolute inset-0 flex items-center justify-center text-faint text-sm">
-            Binary file — cannot display diff
-          </div>
-        )}
+        ) : null}
       </div>
     </div>
   )

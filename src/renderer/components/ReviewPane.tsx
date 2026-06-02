@@ -63,6 +63,18 @@ export function ReviewPane({
   const [showPrDescription, setShowPrDescription] = useState(false)
   const [revealTarget, setRevealTarget] = useState<{ filePath: string; line: number; nonce: number } | null>(null)
   const revealNonceRef = useRef(0)
+  // Scroll container + per-file section elements for the stacked all-files
+  // view, so the file tree / comment list can scroll a file into view.
+  const stackScrollRef = useRef<HTMLDivElement | null>(null)
+  const sectionRefs = useRef(new Map<string, HTMLDivElement | null>())
+  const scrollToFile = useCallback((filePath: string) => {
+    sectionRefs.current.get(filePath)?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+  }, [])
+  // Scroll the stacked view to whichever file the comment list / file tree
+  // last asked to reveal.
+  useEffect(() => {
+    if (revealTarget) scrollToFile(revealTarget.filePath)
+  }, [revealTarget, scrollToFile])
   const [refreshKey, setRefreshKey] = useState(0)
   const [syncState, setSyncState] = useState<'idle' | 'syncing' | 'ok' | 'error'>('idle')
   const [syncDetail, setSyncDetail] = useState<string | null>(null)
@@ -167,16 +179,6 @@ export function ReviewPane({
     if (fileRequest) setSelectedFile(fileRequest.filePath)
   }, [fileRequest?.nonce, fileRequest?.filePath])
 
-  const selectedFileObj = useMemo(
-    () => files.find((f) => f.path === selectedFile) ?? null,
-    [files, selectedFile]
-  )
-
-  const fileComments = useMemo(
-    () => (selectedFile ? comments.filter((c) => c.filePath === selectedFile) : []),
-    [comments, selectedFile]
-  )
-
   const { totalAdditions, totalDeletions } = useMemo(() => {
     let add = 0
     let del = 0
@@ -209,20 +211,20 @@ export function ReviewPane({
   }, [])
 
   const handleAddComment = useCallback(
-    (lineNumber: number, body: string) => {
-      if (!selectedFile) return
+    (filePath: string, lineNumber: number, body: string) => {
+      if (!filePath) return
       setComments((prev) => [
         ...prev,
         {
           id: `comment-${++commentIdCounter}`,
-          filePath: selectedFile,
+          filePath,
           lineNumber,
           body,
           timestamp: Date.now()
         }
       ])
     },
-    [selectedFile]
+    []
   )
 
   const handleDeleteComment = useCallback((id: string) => {
@@ -595,7 +597,10 @@ export function ReviewPane({
             reviewedFiles={reviewedFiles}
             comments={comments}
             collapsedDirs={collapsedDirs}
-            onSelectFile={setSelectedFile}
+            onSelectFile={(fp) => {
+              setSelectedFile(fp)
+              scrollToFile(fp)
+            }}
             onToggleReviewed={handleToggleReviewed}
             onToggleDir={handleToggleDir}
             onSetSideBySide={setSideBySide}
@@ -609,35 +614,53 @@ export function ReviewPane({
 
         <ResizeHandle onDelta={handleFileTreeResize} />
 
-        {/* Diff pane */}
-        <div className="flex-1 min-w-0">
-          <ReviewDiffPane
-            worktreePath={worktreePath}
-            file={selectedFileObj}
-            mode="branch"
-            commitHash={isSingleCommit ? fromCommit : undefined}
-            commitRange={
-              !isWholeBranch && !isSingleCommit && fromCommit && toCommit
-                ? { fromHash: fromCommit, toHash: toCommit }
-                : undefined
-            }
-            reviewed={selectedFile ? reviewedFiles.has(selectedFile) : false}
-            comments={fileComments}
-            sideBySide={sideBySide}
-            ignoreTrimWhitespace={!showWhitespace}
-            active={active}
-            revealTarget={revealTarget}
-            onToggleReviewed={() => {
-              if (selectedFile) handleToggleReviewed(selectedFile)
-            }}
-            onAddComment={handleAddComment}
-            onDeleteComment={handleDeleteComment}
-            wordWrap={wordWrap}
-            onOpenEditor={onOpenEditor}
-            onAddReply={handleAddReply}
-            onResolveThread={handleResolveThread}
-            pendingResolve={pendingResolve}
-          />
+        {/* Stacked diff pane — every file's diff in one scroll, in listing
+            order. Each section lazy-mounts its Monaco editor as it nears the
+            viewport. */}
+        <div ref={stackScrollRef} className="flex-1 min-w-0 overflow-y-auto">
+          {files.length === 0 ? (
+            <div className="flex items-center justify-center h-full text-faint text-sm">
+              No changes to review
+            </div>
+          ) : (
+            files.map((f) => (
+              <div
+                key={f.path}
+                ref={(el) => {
+                  if (el) sectionRefs.current.set(f.path, el)
+                  else sectionRefs.current.delete(f.path)
+                }}
+                className="border-b border-border"
+              >
+                <ReviewDiffPane
+                  worktreePath={worktreePath}
+                  file={f}
+                  mode="branch"
+                  commitHash={isSingleCommit ? fromCommit : undefined}
+                  commitRange={
+                    !isWholeBranch && !isSingleCommit && fromCommit && toCommit
+                      ? { fromHash: fromCommit, toHash: toCommit }
+                      : undefined
+                  }
+                  reviewed={reviewedFiles.has(f.path)}
+                  comments={comments.filter((c) => c.filePath === f.path)}
+                  sideBySide={sideBySide}
+                  ignoreTrimWhitespace={!showWhitespace}
+                  active={active}
+                  scrollRoot={stackScrollRef}
+                  revealTarget={revealTarget}
+                  onToggleReviewed={() => handleToggleReviewed(f.path)}
+                  onAddComment={(line, body) => handleAddComment(f.path, line, body)}
+                  onDeleteComment={handleDeleteComment}
+                  wordWrap={wordWrap}
+                  onOpenEditor={onOpenEditor}
+                  onAddReply={handleAddReply}
+                  onResolveThread={handleResolveThread}
+                  pendingResolve={pendingResolve}
+                />
+              </div>
+            ))
+          )}
         </div>
       </div>
     </div>
