@@ -21,6 +21,11 @@ interface MonacoDiffEditorProps {
   onEditorMount?: (editor: monaco.editor.IStandaloneDiffEditor) => void
   glyphClassName?: string
   glyphHoverMessage?: string
+  /** When set, the editor grows to fit its content (no internal vertical
+   *  scroll) and reports its content height via onContentHeight, so it can be
+   *  embedded in an outer scroll container (the stacked all-files review). */
+  autoHeight?: boolean
+  onContentHeight?: (height: number) => void
 }
 
 export function MonacoDiffEditor({
@@ -38,7 +43,9 @@ export function MonacoDiffEditor({
   onReferenceLine,
   onEditorMount,
   glyphClassName = 'ref-line-glyph',
-  glyphHoverMessage = 'Reference this line in Claude'
+  glyphHoverMessage = 'Reference this line in Claude',
+  autoHeight = false,
+  onContentHeight
 }: MonacoDiffEditorProps): JSX.Element {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const editorRef = useRef<monaco.editor.IStandaloneDiffEditor | null>(null)
@@ -48,12 +55,16 @@ export function MonacoDiffEditor({
   const onMountRef = useRef(onEditorMount)
   const glyphClassRef = useRef(glyphClassName)
   const glyphHoverRef = useRef(glyphHoverMessage)
+  const onContentHeightRef = useRef(onContentHeight)
+  const renderSideBySideRef = useRef(renderSideBySide)
   onChangeRef.current = onModifiedChange
   onSaveRef.current = onSave
   onRefRef.current = onReferenceLine
   onMountRef.current = onEditorMount
   glyphClassRef.current = glyphClassName
   glyphHoverRef.current = glyphHoverMessage
+  onContentHeightRef.current = onContentHeight
+  renderSideBySideRef.current = renderSideBySide
 
   useEffect(() => {
     if (!hostRef.current) return
@@ -91,13 +102,41 @@ export function MonacoDiffEditor({
       scrollbar: {
         verticalScrollbarSize: 10,
         horizontalScrollbarSize: 10,
-        useShadows: false
+        useShadows: false,
+        // Auto-height mode: the editor grows to its content and the OUTER
+        // container scrolls, so hide the inner vertical scrollbar and let
+        // wheel events bubble up rather than being consumed here.
+        ...(autoHeight
+          ? { vertical: 'hidden' as const, handleMouseWheel: false, alwaysConsumeMouseWheel: false }
+          : {})
       }
     })
     editor.setModel({ original: originalModel, modified: modifiedModel })
     editorRef.current = editor
 
     onMountRef.current?.(editor)
+
+    // Auto-height: report the diff's content height (the taller side in
+    // side-by-side, else the modified editor — which in inline mode already
+    // includes deleted-line and comment view zones) so the host can size to
+    // fit and the outer container owns the scroll.
+    let heightSubs: monaco.IDisposable[] = []
+    if (autoHeight) {
+      const reportHeight = (): void => {
+        const mod = editor.getModifiedEditor()
+        const orig = editor.getOriginalEditor()
+        const h = renderSideBySideRef.current
+          ? Math.max(orig.getContentHeight(), mod.getContentHeight())
+          : mod.getContentHeight()
+        onContentHeightRef.current?.(h)
+      }
+      heightSubs = [
+        editor.getModifiedEditor().onDidContentSizeChange(reportHeight),
+        editor.getOriginalEditor().onDidContentSizeChange(reportHeight),
+        editor.onDidUpdateDiff(reportHeight)
+      ]
+      reportHeight()
+    }
 
     const changeSub = editor
       .getModifiedEditor()
@@ -149,6 +188,7 @@ export function MonacoDiffEditor({
       moveSub.dispose()
       leaveSub.dispose()
       downSub.dispose()
+      for (const s of heightSubs) s.dispose()
       glyphCollection.clear()
       // Dispose the editor before the models it holds. Disposing models
       // first fires "TextModel got disposed before DiffEditorWidget model
