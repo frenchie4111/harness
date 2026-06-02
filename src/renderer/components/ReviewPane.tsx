@@ -439,8 +439,6 @@ export function ReviewPane({
             onCommitClick={handleCommitClick}
             fromCommit={fromCommit}
             toCommit={toCommit}
-            totalAdditions={totalAdditions}
-            totalDeletions={totalDeletions}
           />
 
           <div className="flex items-center rounded border border-border overflow-hidden text-xs">
@@ -601,6 +599,13 @@ export function ReviewPane({
               {reviewedFiles.size} reviewed · {Math.max(0, files.length - reviewedFiles.size)} remaining
             </span>
           )}
+
+          {(totalAdditions > 0 || totalDeletions > 0) && (
+            <span className="font-mono tabular-nums shrink-0">
+              {totalAdditions > 0 && <span className="text-success">+{totalAdditions}</span>}
+              {totalDeletions > 0 && <span className="text-danger ml-1">−{totalDeletions}</span>}
+            </span>
+          )}
         </div>
 
         <div className="h-[2px] bg-border/50 relative">
@@ -680,8 +685,6 @@ interface CommitSelectorProps {
   selectionIndices: { fromIdx: number; toIdx: number } | null
   fromCommit?: string
   toCommit?: string
-  totalAdditions: number
-  totalDeletions: number
   onSelectAll: () => void
   onCommitClick: (idx: number, shift: boolean) => void
 }
@@ -692,8 +695,6 @@ function CommitSelector({
   selectionIndices,
   fromCommit,
   toCommit,
-  totalAdditions,
-  totalDeletions,
   onSelectAll,
   onCommitClick
 }: CommitSelectorProps): JSX.Element {
@@ -736,12 +737,6 @@ function CommitSelector({
       >
         <GitCommitHorizontal className="icon-xs text-faint shrink-0" />
         <span className="font-mono max-w-[10rem] truncate">{buttonLabel}</span>
-        {(totalAdditions > 0 || totalDeletions > 0) && (
-          <span className="font-mono tabular-nums shrink-0">
-            {totalAdditions > 0 && <span className="text-success">+{totalAdditions}</span>}
-            {totalDeletions > 0 && <span className="text-danger ml-1">−{totalDeletions}</span>}
-          </span>
-        )}
         <ChevronDown className="icon-2xs text-faint shrink-0" />
       </button>
       {open && (
