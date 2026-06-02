@@ -36,6 +36,9 @@ export type PRMetadata = PRSummary
 export interface ReviewSyncComment {
   filePath: string
   lineNumber: number
+  /** First line of a multi-line range (GitHub `start_line`). Undefined or
+   *  equal to lineNumber = single-line comment. */
+  startLine?: number
   body: string
   remoteId?: number
   author?: string

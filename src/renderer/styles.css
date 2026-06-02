@@ -743,6 +743,12 @@ button, [role="button"], a[href], [onclick] {
   opacity: 1;
 }
 
+/* Highlight the line span a (multi-line) review comment covers. */
+.monaco-editor .comment-range-line {
+  background-color: color-mix(in srgb, var(--color-info, #58a6ff) 12%, transparent);
+  box-shadow: inset 2px 0 0 0 var(--color-info, #58a6ff);
+}
+
 /* iOS/Safari auto-promotes ambiguous codepoints like U+23FA (⏺, which
  * Claude Code uses for tool-call markers) to color emoji via the system
  * Apple Color Emoji fallback, which is why those markers look like emoji

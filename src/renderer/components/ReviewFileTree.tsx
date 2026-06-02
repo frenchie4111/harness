@@ -5,7 +5,12 @@ import type { ChangedFile } from '../types'
 export interface ReviewComment {
   id: string
   filePath: string
+  /** End line of the comment range (1-based, modified side). 0 = file-level.
+   *  GitHub convention: this is `line` (the last line of a multi-line range). */
   lineNumber: number
+  /** First line of a multi-line range. Undefined/equal to lineNumber means a
+   *  single-line comment. Maps to GitHub's `start_line`. */
+  startLine?: number
   body: string
   timestamp: number
   /** GitHub review-comment id once pushed/fetched. Absent = local-only. */

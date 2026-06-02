@@ -1302,12 +1302,20 @@ export async function syncPRReview(
     if (pendingReviewNodeId) {
       // Existing pending review — add each comment as a thread.
       for (const c of toPush) {
+        const range = c.startLine !== undefined && c.startLine !== c.lineNumber
         const r = await ghGraphQL(
           token,
-          `mutation($rid:ID!,$path:String!,$line:Int!,$body:String!){
-             addPullRequestReviewThread(input:{pullRequestReviewId:$rid,path:$path,line:$line,side:RIGHT,body:$body}){ thread { id } }
+          `mutation($rid:ID!,$path:String!,$line:Int!,$startLine:Int,$startSide:DiffSide,$body:String!){
+             addPullRequestReviewThread(input:{pullRequestReviewId:$rid,path:$path,line:$line,startLine:$startLine,side:RIGHT,startSide:$startSide,body:$body}){ thread { id } }
            }`,
-          { rid: pendingReviewNodeId, path: c.filePath, line: c.lineNumber, body: c.body }
+          {
+            rid: pendingReviewNodeId,
+            path: c.filePath,
+            line: c.lineNumber,
+            startLine: range ? c.startLine : null,
+            startSide: range ? 'RIGHT' : null,
+            body: c.body
+          }
         )
         if (r.ok) pushed++
         else {
@@ -1317,12 +1325,16 @@ export async function syncPRReview(
       }
     } else {
       // No pending review yet — create one carrying all the threads.
-      const threads = toPush.map((c) => ({
-        path: c.filePath,
-        line: c.lineNumber,
-        side: 'RIGHT',
-        body: c.body
-      }))
+      const threads = toPush.map((c) => {
+        const range = c.startLine !== undefined && c.startLine !== c.lineNumber
+        return {
+          path: c.filePath,
+          line: c.lineNumber,
+          side: 'RIGHT',
+          ...(range ? { startLine: c.startLine, startSide: 'RIGHT' } : {}),
+          body: c.body
+        }
+      })
       const r = await ghGraphQL(
         token,
         `mutation($prId:ID!,$threads:[DraftPullRequestReviewThread!]){
@@ -1459,6 +1471,8 @@ export async function syncPRReview(
     path: string
     line?: number | null
     original_line?: number | null
+    start_line?: number | null
+    original_start_line?: number | null
     body?: string
     created_at?: string
     html_url?: string
@@ -1467,9 +1481,11 @@ export async function syncPRReview(
   }
   const collect = (arr: ApiComment[]): void => {
     for (const rc of arr) {
+      const start = rc.start_line ?? rc.original_start_line ?? undefined
       pulled.push({
         filePath: rc.path,
         lineNumber: rc.line ?? rc.original_line ?? 0,
+        startLine: start ?? undefined,
         body: rc.body ?? '',
         remoteId: rc.id,
         author: rc.user?.login,
@@ -1491,7 +1507,7 @@ export async function syncPRReview(
   // pull them via GraphQL where originalLine is populated.
   const draftQuery = await ghGraphQL(
     token,
-    'query($o:String!,$n:String!,$num:Int!){repository(owner:$o,name:$n){pullRequest(number:$num){reviews(first:20,states:[PENDING]){nodes{comments(first:100){nodes{databaseId path line originalLine body createdAt url replyTo{databaseId} author{login avatarUrl}}}}}}}}',
+    'query($o:String!,$n:String!,$num:Int!){repository(owner:$o,name:$n){pullRequest(number:$num){reviews(first:20,states:[PENDING]){nodes{comments(first:100){nodes{databaseId path line originalLine startLine originalStartLine body createdAt url replyTo{databaseId} author{login avatarUrl}}}}}}}}',
     { o: owner, n: repo, num: prNumber }
   )
   if (draftQuery.ok) {
@@ -1500,6 +1516,8 @@ export async function syncPRReview(
       path?: string
       line?: number | null
       originalLine?: number | null
+      startLine?: number | null
+      originalStartLine?: number | null
       body?: string
       createdAt?: string
       url?: string
@@ -1520,6 +1538,7 @@ export async function syncPRReview(
         pulled.push({
           filePath: c.path,
           lineNumber: c.line ?? c.originalLine ?? 0,
+          startLine: c.startLine ?? c.originalStartLine ?? undefined,
           body: c.body ?? '',
           remoteId: c.databaseId,
           author: c.author?.login,

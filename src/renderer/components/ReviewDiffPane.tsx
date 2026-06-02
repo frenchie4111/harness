@@ -42,7 +42,7 @@ interface ReviewDiffPaneProps {
   collapsed?: boolean
   onToggleCollapsed?: () => void
   onToggleReviewed: () => void
-  onAddComment: (lineNumber: number, body: string) => void
+  onAddComment: (lineNumber: number, body: string, startLine?: number) => void
   onDeleteComment: (id: string) => void
   wordWrap: boolean
   /** Open this file as an editable in-app file tab. Undefined hides the
@@ -188,6 +188,13 @@ function InlineComment({
         {comment.author && (
           <span style={{ fontWeight: 600, color: 'var(--color-fg)' }}>@{comment.author}</span>
         )}
+        {comment.startLine &&
+          comment.lineNumber > 0 &&
+          comment.startLine !== comment.lineNumber && (
+            <span style={{ fontSize: '10px', color: 'var(--color-faint)', fontFamily: 'monospace' }}>
+              L{comment.startLine}–{comment.lineNumber}
+            </span>
+          )}
         {timeStr &&
           (comment.htmlUrl ? (
             <a
@@ -469,10 +476,12 @@ function CommentThread({
 
 function InlineCommentInput({
   lineNumber,
+  startLine,
   onSubmit,
   onCancel
 }: {
   lineNumber: number
+  startLine?: number | null
   onSubmit: (body: string) => void
   onCancel: () => void
 }): JSX.Element {
@@ -498,7 +507,11 @@ function InlineCommentInput({
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ fontSize: '10px', color: 'var(--color-faint)', fontFamily: 'monospace' }}>
-          {lineNumber === 0 ? 'File comment' : `Line ${lineNumber}`}
+          {lineNumber === 0
+            ? 'File comment'
+            : startLine && startLine !== lineNumber
+              ? `Lines ${startLine}–${lineNumber}`
+              : `Line ${lineNumber}`}
         </span>
         <button
           onClick={onCancel}
@@ -619,7 +632,10 @@ export function ReviewDiffPane({
   const [revealed, setRevealed] = useState(false)
   const [sides, setSides] = useState<FileDiffSides | null>(null)
   const [loading, setLoading] = useState(false)
+  // The line a pending comment input is anchored to (its end line). A separate
+  // start line carries a multi-line selection; null start = single line.
   const [commentLine, setCommentLine] = useState<number | null>(null)
+  const [commentStartLine, setCommentStartLine] = useState<number | null>(null)
   const [expandAll, setExpandAll] = useState(false)
   const [copiedPath, setCopiedPath] = useState(false)
   // Bumped each time the diff editor (re)mounts so the view-zone effect
@@ -627,10 +643,14 @@ export function ReviewDiffPane({
   // file switch, and a ref alone wouldn't retrigger the effect.
   const [editorNonce, setEditorNonce] = useState(0)
   const editorRef = useRef<monaco.editor.IStandaloneDiffEditor | null>(null)
+  const decorationsRef = useRef<monaco.editor.IEditorDecorationsCollection | null>(null)
   const viewZonesRef = useRef<ViewZoneEntry[]>([])
   // Last diff line the mouse was over, for the `c` shortcut. null ⇒ not
   // over any line ⇒ file-level comment (line 0).
   const hoveredLineRef = useRef<number | null>(null)
+  // The modified editor's current multi-line selection (start/end lines), so
+  // `c` can anchor a comment to a range. null ⇒ no multi-line selection.
+  const selectionRef = useRef<{ start: number; end: number } | null>(null)
   // Comment ResizeObservers funnel their desired zone heights here; a single
   // rAF applies them all in one changeViewZones. Without batching, each
   // observer relayouts the editor, nudging other comment wrappers and firing
@@ -698,7 +718,34 @@ export function ReviewDiffPane({
     for (const z of viewZonesRef.current) queueMicrotask(() => z.root.unmount())
     viewZonesRef.current = []
     editorRef.current = null
+    decorationsRef.current = null
   }, [mounted])
+
+  // Highlight the line span each multi-line comment (and the pending input
+  // range) covers, so the reader sees what a range comment refers to.
+  useEffect(() => {
+    const editor = editorRef.current
+    if (!editor) return
+    const modEd = editor.getModifiedEditor()
+    if (!decorationsRef.current) decorationsRef.current = modEd.createDecorationsCollection()
+    const decos: monaco.editor.IModelDeltaDecoration[] = []
+    const addRange = (start: number, end: number): void => {
+      if (start < 1 || end < start) return
+      decos.push({
+        range: new monaco.Range(start, 1, end, 1),
+        options: { isWholeLine: true, className: 'comment-range-line' }
+      })
+    }
+    for (const c of comments) {
+      if (c.startLine && c.lineNumber > 0 && c.startLine !== c.lineNumber) {
+        addRange(Math.min(c.startLine, c.lineNumber), Math.max(c.startLine, c.lineNumber))
+      }
+    }
+    if (commentLine !== null && commentStartLine !== null && commentStartLine !== commentLine) {
+      addRange(Math.min(commentStartLine, commentLine), Math.max(commentStartLine, commentLine))
+    }
+    decorationsRef.current.set(decos)
+  }, [comments, commentLine, commentStartLine, editorNonce])
 
   useEffect(() => {
     if (!file || !hasBeenNear) {
@@ -851,11 +898,16 @@ export function ReviewDiffPane({
           root.render(
             <InlineCommentInput
               lineNumber={item.lineNumber}
+              startLine={commentStartLine}
               onSubmit={(body) => {
-                onAddComment(item.lineNumber, body)
+                onAddComment(item.lineNumber, body, commentStartLine ?? undefined)
                 setCommentLine(null)
+                setCommentStartLine(null)
               }}
-              onCancel={() => setCommentLine(null)}
+              onCancel={() => {
+                setCommentLine(null)
+                setCommentStartLine(null)
+              }}
             />
           )
         }
@@ -880,7 +932,7 @@ export function ReviewDiffPane({
     })
 
     viewZonesRef.current = newZones
-  }, [comments, commentLine, editorNonce, expandAll, clearViewZones, flushZoneLayout, onAddComment, onDeleteComment, onAddReply, onResolveThread, pendingResolve])
+  }, [comments, commentLine, commentStartLine, editorNonce, expandAll, clearViewZones, flushZoneLayout, onAddComment, onDeleteComment, onAddReply, onResolveThread, pendingResolve])
 
   // Clean up view zones on unmount
   useEffect(() => {
@@ -953,6 +1005,14 @@ export function ReviewDiffPane({
       modEd.onMouseLeave(() => {
         hoveredLineRef.current = null
       })
+      // Track a multi-line selection so `c` can anchor a comment to a range.
+      modEd.onDidChangeCursorSelection((e) => {
+        const s = e.selection
+        selectionRef.current =
+          s.startLineNumber !== s.endLineNumber
+            ? { start: Math.min(s.startLineNumber, s.endLineNumber), end: Math.max(s.startLineNumber, s.endLineNumber) }
+            : null
+      })
     },
     []
   )
@@ -972,7 +1032,17 @@ export function ReviewDiffPane({
       if (el instanceof HTMLInputElement) return
       if (el instanceof HTMLTextAreaElement && !el.classList.contains('inputarea')) return
       e.preventDefault()
-      setCommentLine(hoveredLineRef.current ?? 0)
+      // A multi-line text selection anchors a range comment (end line is the
+      // zone anchor, start line is remembered); otherwise the hovered line, or
+      // line 0 for a file-level comment.
+      const sel = selectionRef.current
+      if (sel) {
+        setCommentLine(sel.end)
+        setCommentStartLine(sel.start)
+      } else {
+        setCommentLine(hoveredLineRef.current ?? 0)
+        setCommentStartLine(null)
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)

@@ -242,7 +242,7 @@ export function ReviewPane({
   }, [])
 
   const handleAddComment = useCallback(
-    (filePath: string, lineNumber: number, body: string) => {
+    (filePath: string, lineNumber: number, body: string, startLine?: number) => {
       if (!filePath) return
       setComments((prev) => [
         ...prev,
@@ -250,6 +250,7 @@ export function ReviewPane({
           id: `comment-${++commentIdCounter}`,
           filePath,
           lineNumber,
+          startLine: startLine && startLine !== lineNumber ? startLine : undefined,
           body,
           timestamp: Date.now()
         }
@@ -338,6 +339,7 @@ export function ReviewPane({
           comments: comments.map((c) => ({
             filePath: c.filePath,
             lineNumber: c.lineNumber,
+            startLine: c.startLine,
             body: c.body,
             remoteId: c.remoteId,
             author: c.author,
@@ -358,6 +360,7 @@ export function ReviewPane({
             id: c.remoteId !== undefined ? `gh-${c.remoteId}` : `comment-${++commentIdCounter}`,
             filePath: c.filePath,
             lineNumber: c.lineNumber,
+            startLine: c.startLine,
             body: c.body,
             timestamp: Date.now(),
             remoteId: c.remoteId,
@@ -681,7 +684,9 @@ export function ReviewPane({
                   revealTarget={revealTarget}
                   onToggleReviewed={() => handleToggleReviewed(f.path)}
                   onToggleCollapsed={() => handleToggleCollapsed(f.path)}
-                  onAddComment={(line, body) => handleAddComment(f.path, line, body)}
+                  onAddComment={(line, body, startLine) =>
+                    handleAddComment(f.path, line, body, startLine)
+                  }
                   onDeleteComment={handleDeleteComment}
                   wordWrap={wordWrap}
                   onOpenEditor={onOpenEditor}
