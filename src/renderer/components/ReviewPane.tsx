@@ -51,9 +51,6 @@ export function ReviewPane({
   const [files, setFiles] = useState<ChangedFile[]>([])
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
   const [reviewedFiles, setReviewedFiles] = useState<Set<string>>(new Set())
-  // Files whose diff is collapsed in the stacked view. Marking a file viewed
-  // collapses it (GitHub-style); the chevron toggles collapse independently.
-  const [collapsedFiles, setCollapsedFiles] = useState<Set<string>>(new Set())
   const [comments, setComments] = useState<ReviewComment[]>([])
   const [collapsedDirs, setCollapsedDirs] = useState<Set<string>>(new Set())
   const [fileTreeWidth, setFileTreeWidth] = useState<number>(240)
@@ -76,21 +73,6 @@ export function ReviewPane({
   const findInputRef = useRef<HTMLInputElement | null>(null)
   const [revealTarget, setRevealTarget] = useState<{ filePath: string; line: number; nonce: number } | null>(null)
   const revealNonceRef = useRef(0)
-  // Scroll container + per-file section elements for the stacked all-files
-  // view, so the file tree / comment list can scroll a file into view.
-  const stackScrollRef = useRef<HTMLDivElement | null>(null)
-  const sectionRefs = useRef(new Map<string, HTMLDivElement | null>())
-  const scrollToFile = useCallback((filePath: string) => {
-    sectionRefs.current.get(filePath)?.scrollIntoView({ block: 'start', behavior: 'smooth' })
-  }, [])
-  // Bring the target file near the viewport instantly (so a virtualized-far
-  // section mounts); the section's own reveal effect then smooth-scrolls to
-  // the exact line.
-  useEffect(() => {
-    if (revealTarget) {
-      sectionRefs.current.get(revealTarget.filePath)?.scrollIntoView({ block: 'start' })
-    }
-  }, [revealTarget])
   const [refreshKey, setRefreshKey] = useState(0)
   const [syncState, setSyncState] = useState<'idle' | 'syncing' | 'ok' | 'error'>('idle')
   const [syncDetail, setSyncDetail] = useState<string | null>(null)
@@ -191,20 +173,9 @@ export function ReviewPane({
   // anyway; the file-load effect above preserves a still-valid selection
   // once the list arrives.
   const fileRequest = useReviewFileRequest(worktreePath)
-  const scrolledRequestRef = useRef(-1)
   useEffect(() => {
-    if (!fileRequest) return
-    setSelectedFile(fileRequest.filePath)
-    // Scroll the stacked view to the requested file. The request can arrive
-    // before the file list has rendered (review tab just opened), so the
-    // `files` dep re-runs this once the section element exists; the ref guard
-    // makes sure we only auto-scroll once per request, not on later refreshes.
-    if (scrolledRequestRef.current === fileRequest.nonce) return
-    if (!sectionRefs.current.has(fileRequest.filePath)) return
-    scrolledRequestRef.current = fileRequest.nonce
-    const id = requestAnimationFrame(() => scrollToFile(fileRequest.filePath))
-    return () => cancelAnimationFrame(id)
-  }, [fileRequest?.nonce, fileRequest?.filePath, files, scrollToFile])
+    if (fileRequest) setSelectedFile(fileRequest.filePath)
+  }, [fileRequest?.nonce, fileRequest?.filePath])
 
   const { totalAdditions, totalDeletions } = useMemo(() => {
     let add = 0
@@ -216,28 +187,18 @@ export function ReviewPane({
     return { totalAdditions: add, totalDeletions: del }
   }, [files])
 
-  const handleToggleReviewed = useCallback(
-    (path: string) => {
-      setReviewedFiles((prev) => {
-        const next = new Set(prev)
-        const nowReviewed = !next.has(path)
-        if (nowReviewed) next.add(path)
-        else next.delete(path)
-        // Collapse on view, expand on un-view.
-        setCollapsedFiles((c) => {
-          const cn = new Set(c)
-          if (nowReviewed) cn.add(path)
-          else cn.delete(path)
-          return cn
-        })
-        return next
-      })
-    },
-    []
+  const selectedFileObj = useMemo(
+    () => files.find((f) => f.path === selectedFile) ?? null,
+    [files, selectedFile]
   )
 
-  const handleToggleCollapsed = useCallback((path: string) => {
-    setCollapsedFiles((prev) => {
+  const fileComments = useMemo(
+    () => (selectedFile ? comments.filter((c) => c.filePath === selectedFile) : []),
+    [comments, selectedFile]
+  )
+
+  const handleToggleReviewed = useCallback((path: string) => {
+    setReviewedFiles((prev) => {
       const next = new Set(prev)
       if (next.has(path)) next.delete(path)
       else next.add(path)
@@ -388,13 +349,8 @@ export function ReviewPane({
           }))
         )
         // Reflect the merged viewed state (local ∪ GitHub) so files viewed
-        // on GitHub show as reviewed here too — and collapse those diffs.
+        // on GitHub show as reviewed here too.
         setReviewedFiles(new Set(result.reviewedFiles))
-        setCollapsedFiles((prev) => {
-          const next = new Set(prev)
-          for (const p of result.reviewedFiles) next.add(p)
-          return next
-        })
         // Resolve requests were sent; GitHub's resolved state is now in the
         // pulled comments, so clear the pending set.
         if (!pullOnly) setPendingResolve(new Set())
@@ -506,6 +462,8 @@ export function ReviewPane({
       const n = ((idx % cur.length) + cur.length) % cur.length
       setMatchIndex(n)
       const m = cur[n]
+      // Switch the single diff pane to the match's file, then reveal the line.
+      setSelectedFile(m.filePath)
       setRevealTarget({ filePath: m.filePath, line: m.line, nonce: ++revealNonceRef.current })
       return cur
     })
@@ -568,6 +526,7 @@ export function ReviewPane({
       setMatchIndex(0)
       setSearching(false)
       if (found.length > 0) {
+        setSelectedFile(found[0].filePath)
         setRevealTarget({ filePath: found[0].filePath, line: found[0].line, nonce: ++revealNonceRef.current })
       }
     }, 200)
@@ -788,10 +747,7 @@ export function ReviewPane({
               reviewedFiles={reviewedFiles}
               comments={comments}
               collapsedDirs={collapsedDirs}
-              onSelectFile={(fp) => {
-                setSelectedFile(fp)
-                scrollToFile(fp)
-              }}
+              onSelectFile={setSelectedFile}
               onToggleReviewed={handleToggleReviewed}
               onToggleDir={handleToggleDir}
               onSetSideBySide={setSideBySide}
@@ -806,57 +762,37 @@ export function ReviewPane({
 
         <ResizeHandle onDelta={handleFileTreeResize} />
 
-        {/* Stacked diff pane — every file's diff in one scroll, in listing
-            order. Each section lazy-mounts its Monaco editor as it nears the
-            viewport. */}
-        <div ref={stackScrollRef} className="flex-1 min-w-0 overflow-y-auto">
-          {files.length === 0 ? (
-            <div className="flex items-center justify-center h-full text-faint text-sm">
-              No changes to review
-            </div>
-          ) : (
-            files.map((f) => (
-              <div
-                key={f.path}
-                ref={(el) => {
-                  if (el) sectionRefs.current.set(f.path, el)
-                  else sectionRefs.current.delete(f.path)
-                }}
-                className="mb-2 border-b-4 border-border/70"
-              >
-                <ReviewDiffPane
-                  worktreePath={worktreePath}
-                  file={f}
-                  mode="branch"
-                  commitHash={isSingleCommit ? fromCommit : undefined}
-                  commitRange={
-                    !isWholeBranch && !isSingleCommit && fromCommit && toCommit
-                      ? { fromHash: fromCommit, toHash: toCommit }
-                      : undefined
-                  }
-                  reviewed={reviewedFiles.has(f.path)}
-                  collapsed={collapsedFiles.has(f.path)}
-                  comments={comments.filter((c) => c.filePath === f.path)}
-                  sideBySide={sideBySide}
-                  ignoreTrimWhitespace={!showWhitespace}
-                  active={active}
-                  scrollRoot={stackScrollRef}
-                  revealTarget={revealTarget}
-                  onToggleReviewed={() => handleToggleReviewed(f.path)}
-                  onToggleCollapsed={() => handleToggleCollapsed(f.path)}
-                  onAddComment={(line, body, startLine) =>
-                    handleAddComment(f.path, line, body, startLine)
-                  }
-                  onDeleteComment={handleDeleteComment}
-                  wordWrap={wordWrap}
-                  onOpenEditor={onOpenEditor}
-                  onAddReply={handleAddReply}
-                  onResolveThread={handleResolveThread}
-                  pendingResolve={pendingResolve}
-                />
-              </div>
-            ))
-          )}
+        {/* Diff pane — the selected file's diff, one Monaco editor at a time. */}
+        <div className="flex-1 min-w-0">
+          <ReviewDiffPane
+            worktreePath={worktreePath}
+            file={selectedFileObj}
+            mode="branch"
+            commitHash={isSingleCommit ? fromCommit : undefined}
+            commitRange={
+              !isWholeBranch && !isSingleCommit && fromCommit && toCommit
+                ? { fromHash: fromCommit, toHash: toCommit }
+                : undefined
+            }
+            reviewed={selectedFile ? reviewedFiles.has(selectedFile) : false}
+            comments={fileComments}
+            sideBySide={sideBySide}
+            ignoreTrimWhitespace={!showWhitespace}
+            active={active}
+            revealTarget={revealTarget}
+            onToggleReviewed={() => {
+              if (selectedFile) handleToggleReviewed(selectedFile)
+            }}
+            onAddComment={(line, body, startLine) => {
+              if (selectedFile) handleAddComment(selectedFile, line, body, startLine)
+            }}
+            onDeleteComment={handleDeleteComment}
+            wordWrap={wordWrap}
+            onOpenEditor={onOpenEditor}
+            onAddReply={handleAddReply}
+            onResolveThread={handleResolveThread}
+            pendingResolve={pendingResolve}
+          />
         </div>
       </div>
     </div>

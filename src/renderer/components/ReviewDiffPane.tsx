@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback, useRef, type RefObject } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import * as monaco from 'monaco-editor'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
 import rehypeSanitize from 'rehype-sanitize'
-import { Check, CheckCheck, ChevronDown, ChevronRight, Copy, FoldVertical, MessagesSquare, Pencil, Reply, UnfoldVertical } from 'lucide-react'
+import { Check, CheckCheck, Copy, FoldVertical, MessagesSquare, Pencil, Reply, UnfoldVertical } from 'lucide-react'
 import type { FileDiffSides, ChangedFile } from '../types'
 import type { ReviewComment } from './ReviewFileTree'
 import { MonacoDiffEditor } from './MonacoDiffEditor'
@@ -31,16 +31,9 @@ interface ReviewDiffPaneProps {
   ignoreTrimWhitespace: boolean
   /** True when the review tab is active/visible — gates the `c` shortcut. */
   active?: boolean
-  /** The scroll container that stacks all the file sections. Used as the
-   *  IntersectionObserver root so this section lazy-mounts its Monaco editor
-   *  only when it nears the viewport. */
-  scrollRoot?: RefObject<HTMLElement | null>
   /** Scroll the diff to this line when it matches the current file. Used by
-   *  the comment list to jump to a comment. */
+   *  the comment list / find to jump to a line. */
   revealTarget?: { filePath: string; line: number; nonce: number } | null
-  /** Collapsed sections render just the header (no diff editor). */
-  collapsed?: boolean
-  onToggleCollapsed?: () => void
   onToggleReviewed: () => void
   onAddComment: (lineNumber: number, body: string, startLine?: number) => void
   onDeleteComment: (id: string) => void
@@ -63,17 +56,6 @@ const STATUS_LABEL: Record<ChangedFile['status'], string> = {
   deleted: 'Deleted',
   renamed: 'Renamed',
   untracked: 'Untracked'
-}
-
-// Diffs with more than this many changed lines are withheld behind a
-// click-to-reveal placeholder so the stacked view stays light by default.
-const LARGE_DIFF_LINES = 600
-
-/** Why a file's diff is hidden by default (null = shown normally). */
-function withheldReason(file: ChangedFile): 'deleted' | 'large' | null {
-  if (file.status === 'deleted') return 'deleted'
-  if ((file.additions ?? 0) + (file.deletions ?? 0) > LARGE_DIFF_LINES) return 'large'
-  return null
 }
 
 const STATUS_COLOR: Record<ChangedFile['status'], string> = {
@@ -603,10 +585,7 @@ export function ReviewDiffPane({
   sideBySide,
   ignoreTrimWhitespace,
   active,
-  scrollRoot,
   revealTarget,
-  collapsed = false,
-  onToggleCollapsed,
   onToggleReviewed,
   onAddComment,
   onDeleteComment,
@@ -618,18 +597,6 @@ export function ReviewDiffPane({
 }: ReviewDiffPaneProps): JSX.Element {
   const backend = useBackend()
   const settings = useSettings()
-  // Lazy-mount: the Monaco editor is only constructed once this section has
-  // scrolled near the viewport (stays mounted afterwards). `contentHeight`
-  // is the editor's reported height in auto-height mode; before mount we show
-  // a placeholder sized from the file's +/- counts so scroll stays stable.
-  const rootRef = useRef<HTMLDivElement | null>(null)
-  const isHoveredRef = useRef(false)
-  const [hasBeenNear, setHasBeenNear] = useState(false)
-  const [mounted, setMounted] = useState(false)
-  const [contentHeight, setContentHeight] = useState(0)
-  // Deleted files and very large diffs default to a click-to-reveal
-  // placeholder rather than rendering the whole thing.
-  const [revealed, setRevealed] = useState(false)
   const [sides, setSides] = useState<FileDiffSides | null>(null)
   const [loading, setLoading] = useState(false)
   // The line a pending comment input is anchored to (its end line). A separate
@@ -677,50 +644,6 @@ export function ReviewDiffPane({
     })
   }, [])
 
-  // Virtualize: mount the Monaco editor when this section scrolls within
-  // ~800px of the viewport, unmount it once it's more than ~2000px away. The
-  // hysteresis band (800–2000px) keeps sections near the edge from
-  // thrash-cycling. `hasBeenNear` (latched) gates the one-time diff fetch so
-  // the cached sides survive unmount/remount; `mounted` toggles the editor.
-  useEffect(() => {
-    const el = rootRef.current
-    if (!el) return
-    const root = scrollRoot?.current ?? null
-    const mountIO = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((e) => e.isIntersecting)) {
-          setHasBeenNear(true)
-          setMounted(true)
-        }
-      },
-      { root, rootMargin: '800px 0px' }
-    )
-    const unmountIO = new IntersectionObserver(
-      (entries) => {
-        if (entries.every((e) => !e.isIntersecting)) setMounted(false)
-      },
-      { root, rootMargin: '2000px 0px' }
-    )
-    mountIO.observe(el)
-    unmountIO.observe(el)
-    return () => {
-      mountIO.disconnect()
-      unmountIO.disconnect()
-    }
-  }, [scrollRoot])
-
-  // When the editor is unmounted (scrolled far away), drop our handle and
-  // tear down the comment view-zone React roots so they don't leak; the
-  // measured height stays in `contentHeight` so the placeholder holds the
-  // scroll position. Comments re-render on remount via the view-zone effect.
-  useEffect(() => {
-    if (mounted) return
-    for (const z of viewZonesRef.current) queueMicrotask(() => z.root.unmount())
-    viewZonesRef.current = []
-    editorRef.current = null
-    decorationsRef.current = null
-  }, [mounted])
-
   // Highlight the line span each multi-line comment (and the pending input
   // range) covers, so the reader sees what a range comment refers to.
   useEffect(() => {
@@ -748,12 +671,10 @@ export function ReviewDiffPane({
   }, [comments, commentLine, commentStartLine, editorNonce])
 
   useEffect(() => {
-    if (!file || !hasBeenNear) {
-      if (!file) setSides(null)
+    if (!file) {
+      setSides(null)
       return
     }
-    // Don't fetch withheld (deleted / very large) diffs until the user opts in.
-    if (withheldReason(file) && !revealed) return
     let cancelled = false
     setLoading(true)
     setCommentLine(null)
@@ -786,7 +707,7 @@ export function ReviewDiffPane({
     return () => {
       cancelled = true
     }
-  }, [hasBeenNear, revealed, worktreePath, file?.path, file?.staged, mode, commitHash, commitRange?.fromHash, commitRange?.toHash])
+  }, [worktreePath, file?.path, file?.staged, mode, commitHash, commitRange?.fromHash, commitRange?.toHash])
 
   const clearViewZones = useCallback(() => {
     const editor = editorRef.current
@@ -947,31 +868,19 @@ export function ReviewDiffPane({
     }
   }, [])
 
-  // Reveal a specific line when the comment list / find navigates here. In
-  // the stacked auto-height view the editor owns no scroll, so we scroll the
-  // OUTER container to the line's pixel offset (getTopForLineNumber accounts
-  // for collapsed regions + view zones) and briefly flash the line. Keyed on
-  // the request nonce + editor mount so it fires once this file's editor is
-  // ready (it may have just mounted from the scroll).
+  // Reveal a specific line when the comment list / find navigates here. The
+  // editor owns its own scroll, so center the line and briefly flash it. Keyed
+  // on the request nonce + editor mount so it fires once this file's editor is
+  // ready (it may have just remounted from a file switch).
   useEffect(() => {
     if (!revealTarget || !file || revealTarget.filePath !== file.path) return
     const editor = editorRef.current
-    const container = scrollRoot?.current
     if (!editor) return
     const line = Math.max(1, revealTarget.line)
     const modEd = editor.getModifiedEditor()
     let flash: monaco.editor.IEditorDecorationsCollection | null = null
     const doReveal = (): void => {
-      if (container) {
-        const node = modEd.getDomNode()
-        if (node) {
-          const cRect = container.getBoundingClientRect()
-          const eRect = node.getBoundingClientRect()
-          const editorTop = eRect.top - cRect.top + container.scrollTop
-          const lineTop = modEd.getTopForLineNumber(line)
-          container.scrollTo({ top: Math.max(0, editorTop + lineTop - 96), behavior: 'smooth' })
-        }
-      }
+      modEd.revealLineInCenter(line)
       if (!flash) {
         flash = modEd.createDecorationsCollection([
           {
@@ -992,7 +901,7 @@ export function ReviewDiffPane({
       clearTimeout(clearT)
       flash?.clear()
     }
-  }, [revealTarget?.nonce, revealTarget?.filePath, editorNonce, file?.path, scrollRoot])
+  }, [revealTarget?.nonce, revealTarget?.filePath, editorNonce, file?.path])
 
   const handleReferenceLine = useCallback((lineNumber: number) => {
     setCommentLine(lineNumber)
@@ -1040,16 +949,14 @@ export function ReviewDiffPane({
   )
 
   // `c` opens a comment input on the hovered diff line, or a file-level
-  // comment (line 0) when the mouse isn't over a line. Every stacked section
-  // installs this listener, so it only acts when the mouse is over THIS
-  // section — otherwise N sections would all open an input at once. Bail only
-  // on a real form field (the inline comment box and the file filter), never
-  // on Monaco's own input.
+  // comment (line 0) when the mouse isn't over a line. Window listener so it
+  // works whether focus is in the diff or the file tree. Bail only on a real
+  // form field (the inline comment box and the file filter), never on Monaco's
+  // own input.
   useEffect(() => {
     if (!file || !active) return
     const onKey = (e: KeyboardEvent): void => {
       if (e.key !== 'c' || e.metaKey || e.ctrlKey || e.altKey) return
-      if (!isHoveredRef.current) return
       const el = e.target as HTMLElement | null
       if (el instanceof HTMLInputElement) return
       if (el instanceof HTMLTextAreaElement && !el.classList.contains('inputarea')) return
@@ -1078,42 +985,10 @@ export function ReviewDiffPane({
     )
   }
 
-  // Auto-height host: use the editor's reported content height once mounted,
-  // else a placeholder estimate from the file's +/- counts so the stacked
-  // scroll doesn't jump when this section mounts.
-  const lineH = Math.round(scaledEditorFontSize(settings.terminalFontSize, settings.uiScale) * 1.5)
-  const estimateHeight = Math.min(
-    1600,
-    Math.max(160, ((file.additions ?? 0) + (file.deletions ?? 0) + 8) * lineH)
-  )
-  const hostHeight = contentHeight > 0 ? contentHeight : estimateHeight
-  const reason = withheldReason(file)
-  const withheld = reason !== null && !revealed
-
   return (
-    <div
-      ref={rootRef}
-      className="flex flex-col"
-      onMouseEnter={() => {
-        isHoveredRef.current = true
-      }}
-      onMouseLeave={() => {
-        isHoveredRef.current = false
-      }}
-    >
+    <div className="flex flex-col h-full">
       {/* File header */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-panel sticky top-0 z-20">
-        {onToggleCollapsed && (
-          <button
-            onClick={onToggleCollapsed}
-            aria-label={collapsed ? 'Expand diff' : 'Collapse diff'}
-            aria-expanded={!collapsed}
-            className="shrink-0 text-faint hover:text-fg cursor-pointer"
-          >
-            {collapsed ? <ChevronRight className="icon-sm" /> : <ChevronDown className="icon-sm" />}
-          </button>
-        )}
-
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-panel shrink-0">
         <Tooltip label={copiedPath ? 'Copied!' : 'Copy file path'}>
           <button
             onClick={() => {
@@ -1216,26 +1091,10 @@ export function ReviewDiffPane({
         )}
       </div>
 
-      {/* Diff with inline comments via view zones. Auto-height: the editor
-          grows to its content and the stacked container owns the scroll.
-          Collapsed sections render just the header; deleted/large diffs are
-          withheld behind a click-to-reveal row. */}
-      {!collapsed && withheld && (
-        <button
-          onClick={() => setRevealed(true)}
-          className="w-full text-left px-3 py-4 text-sm text-faint hover:text-fg hover:bg-panel/40 transition-colors cursor-pointer"
-        >
-          {reason === 'deleted'
-            ? 'Diff not shown for deleted files by default'
-            : 'Large diffs are not shown by default'}
-          <span className="ml-2 text-dim">(click to show)</span>
-        </button>
-      )}
-      {!collapsed && !withheld && (
-      <div className="relative" style={{ height: hostHeight }}>
-        {!mounted ? (
-          <div className="absolute inset-0" aria-hidden />
-        ) : loading ? (
+      {/* Diff with inline comments via view zones. The editor fills the pane
+          and owns its own vertical scroll. */}
+      <div className="flex-1 min-h-0 relative">
+        {loading ? (
           <div className="absolute inset-0 flex items-center justify-center text-faint text-sm">
             Loading diff...
           </div>
@@ -1258,8 +1117,6 @@ export function ReviewDiffPane({
             fontFamily={settings.terminalFontFamily || undefined}
             fontSize={scaledEditorFontSize(settings.terminalFontSize, settings.uiScale)}
             wordWrap={wordWrap}
-            autoHeight
-            onContentHeight={setContentHeight}
             onReferenceLine={handleReferenceLine}
             onEditorMount={handleEditorMount}
             glyphClassName="comment-line-glyph"
@@ -1267,7 +1124,6 @@ export function ReviewDiffPane({
           />
         ) : null}
       </div>
-      )}
     </div>
   )
 }
