@@ -123,6 +123,17 @@ describe('settingsReducer', () => {
     expect(on.autoUpdateEnabled).toBe(true)
   })
 
+  it('warnBeforeQuittingChanged toggles the warn-before-quitting flag', () => {
+    expect(initialSettings.warnBeforeQuitting).toBe(true)
+    const off = apply(initialSettings, {
+      type: 'settings/warnBeforeQuittingChanged',
+      payload: false
+    })
+    expect(off.warnBeforeQuitting).toBe(false)
+    const on = apply(off, { type: 'settings/warnBeforeQuittingChanged', payload: true })
+    expect(on.warnBeforeQuitting).toBe(true)
+  })
+
   it('shareClaudeSettingsChanged toggles the share flag', () => {
     expect(initialSettings.shareClaudeSettings).toBe(true)
     const off = apply(initialSettings, {

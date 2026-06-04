@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect } from 'react'
-import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2, Moon, LifeBuoy, Bug, Lightbulb, FlaskConical, Copy, CopyCheck, ExternalLink, CalendarDays, FileText, FolderOpen, Search, ChevronDown, ChevronRight } from 'lucide-react'
+import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2, Moon, LifeBuoy, Bug, Lightbulb, FlaskConical, Copy, CopyCheck, ExternalLink, CalendarDays, FileText, FolderOpen, Search, ChevronDown, ChevronRight, SlidersHorizontal } from 'lucide-react'
 import { openReportIssue } from './ReportIssueScreen'
 import { HARNESS_ISSUES_URL, HARNESS_RELEASES_URL, harnessReleaseNotesUrl } from '../../shared/constants'
 import { useSettings, useUpdater, useRepoConfigs, useHooks } from '../store'
@@ -23,7 +23,7 @@ interface SettingsProps {
   initialSection?: SectionId
 }
 
-type SectionId = 'appearance' | 'agent' | 'worktrees' | 'editor' | 'github' | 'hotkeys' | 'updates' | 'support' | 'experimental'
+type SectionId = 'general' | 'appearance' | 'agent' | 'worktrees' | 'editor' | 'github' | 'hotkeys' | 'updates' | 'support' | 'experimental'
 type SubSectionId =
   | 'appearance-theme'
   | 'appearance-custom-themes'
@@ -57,6 +57,7 @@ interface Section {
 }
 
 const SECTIONS: Section[] = [
+  { id: 'general', label: 'General', icon: SlidersHorizontal },
   { id: 'appearance', label: 'Appearance', icon: Palette, children: [
     { id: 'appearance-theme', label: 'Theme' },
     { id: 'appearance-custom-themes', label: 'Custom themes' },
@@ -132,6 +133,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
   const sidebarRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const sectionRefs = useRef<Record<SectionId, HTMLElement | null>>({
+    general: null,
     appearance: null,
     agent: null,
     worktrees: null,
@@ -255,7 +257,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     const onScroll = (): void => {
       if (isProgrammaticScroll.current) return
       const scrollTop = container.scrollTop
-      let current: SectionId = 'appearance'
+      let current: SectionId = 'general'
       for (const section of SECTIONS) {
         const el = sectionRefs.current[section.id]
         if (el && el.offsetTop - 48 <= scrollTop) {
@@ -329,6 +331,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     worktreeScripts,
     shareClaudeSettings,
     autoUpdateEnabled,
+    warnBeforeQuitting,
     harnessSystemPromptEnabled,
     harnessSystemPrompt,
     harnessSystemPromptMain,
@@ -778,6 +781,10 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
   const handleToggleAutoUpdate = useCallback(async (enabled: boolean) => {
     await backend.setAutoUpdateEnabled(enabled)
+  }, [])
+
+  const handleToggleWarnBeforeQuitting = useCallback(async (enabled: boolean) => {
+    await backend.setWarnBeforeQuitting(enabled)
   }, [])
 
   const handleToggleWsTransport = useCallback(async (enabled: boolean) => {
@@ -1336,6 +1343,29 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
         {/* Main scrollable content */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto">
           <div className="max-w-2xl p-8 pb-[60vh] space-y-12">
+            {/* General section */}
+            <section ref={(el) => { sectionRefs.current.general = el }} id="general">
+              <h2 className="text-lg font-semibold text-fg-bright mb-1">General</h2>
+              <p className="text-sm text-dim mb-4">
+                App-wide behavior.
+              </p>
+              <label className="flex items-start gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={warnBeforeQuitting}
+                  onChange={(e) => handleToggleWarnBeforeQuitting(e.target.checked)}
+                  className="mt-0.5 cursor-pointer icon-base" />
+                <div className="flex-1">
+                  <div className="text-sm text-fg-bright">Warn before quitting (⌘Q)</div>
+                  <div className="text-xs text-dim mt-0.5">
+                    When enabled, you must hold ⌘Q briefly to quit — a tap shows a
+                    reminder and does nothing, so you don&apos;t lose running agents
+                    and terminals by accident. Disable to quit immediately on ⌘Q.
+                  </div>
+                </div>
+              </label>
+            </section>
+
             {/* Appearance section */}
             <section ref={(el) => { sectionRefs.current.appearance = el }} id="appearance">
               <h2 className="text-lg font-semibold text-fg-bright mb-1">Appearance</h2>

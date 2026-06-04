@@ -11,6 +11,7 @@ import { CheckCircle2, FolderOpen } from 'lucide-react'
 import { BUILT_IN_THEMES_BY_MODE } from './themes'
 import { SCALES, scaleSpec } from '../shared/state/settings'
 import { useActiveTheme } from './hooks/useActiveTheme'
+import { useHoldToQuit } from './hooks/useHoldToQuit'
 import { applyTheme, effectiveAppBg } from './theme-apply'
 import { getBackend } from './backend'
 import { HotkeysProvider, Tooltip } from './components/Tooltip'
@@ -22,6 +23,7 @@ import { CreatingWorktreeScreen } from './components/CreatingWorktreeScreen'
 import { DeletingWorktreeScreen } from './components/DeletingWorktreeScreen'
 import { QuestCard } from './components/QuestCard'
 import { WorkspaceView } from './components/WorkspaceView'
+import { QuakeTerminal } from './components/QuakeTerminal'
 import { RightColumn } from './components/RightColumn'
 import { CollapsedSidebar } from './components/CollapsedSidebar'
 import { CollapsedRightPanel } from './components/CollapsedRightPanel'
@@ -45,6 +47,7 @@ import { AddBackendModal } from './components/AddBackendModal'
 import { MonacoWorkerFailedBanner } from './components/MonacoWorkerFailedBanner'
 import iconUrl from '../../resources/icon.png'
 import { PerfMonitorHUD } from './components/PerfMonitorHUD'
+import { HoldToQuitOverlay } from './components/HoldToQuitOverlay'
 import { focusTerminalById } from './components/XTerminal'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { type GroupKey } from './worktree-sort'
@@ -255,6 +258,8 @@ function DesktopApp(): JSX.Element {
   const [commandPaletteMode, setCommandPaletteMode] = useState<'root' | 'files'>('root')
   const [showPerfMonitor, setShowPerfMonitor] = useState(false)
   const [showHotkeyCheatsheet, setShowHotkeyCheatsheet] = useState(false)
+  const holdToQuit = useHoldToQuit()
+  const [showQuakeTerminal, setShowQuakeTerminal] = useState(false)
   const [showNewProject, setShowNewProject] = useState(false)
   const [reportIssueState, setReportIssueState] = useState<OpenReportIssueDetail | null>(null)
   const [showAddBackend, setShowAddBackend] = useState(false)
@@ -682,6 +687,26 @@ const setQuestStep = useCallback((next: QuestStep) => {
     setActiveWorktreeId
   })
 
+  // True when the active worktree's workspace (and its tab bar) is actually on
+  // screen — i.e. no full-content view (new-worktree, activity, cleanup, command
+  // center, review, report-issue) is replacing it and the active worktree isn't
+  // pending/deleting. The Quake terminal only responds when this holds, so it
+  // never drops over a view that's hiding the tabs.
+  const workspaceVisible =
+    !showNewWorktree &&
+    !showActivity &&
+    !showCleanup &&
+    !showCommandCenter &&
+    reportIssueState === null &&
+    !!activeWorktreeId &&
+    !isPendingId(activeWorktreeId) &&
+    !pendingDeletionByPath[activeWorktreeId]
+
+  // Dismiss the Quake terminal if a view takes over and hides the tabs.
+  useEffect(() => {
+    if (!workspaceVisible && showQuakeTerminal) setShowQuakeTerminal(false)
+  }, [workspaceVisible, showQuakeTerminal])
+
   // Sidebar-aware hotkey handlers + the resolved binding map for tooltips.
   // The hook also subscribes to keystrokes via useHotkeys internally.
   const { hotkeyActions, resolvedHotkeys } = useHotkeyHandlers({
@@ -710,6 +735,8 @@ const setQuestStep = useCallback((next: QuestStep) => {
     setCommandPaletteMode,
     setShowPerfMonitor,
     setShowHotkeyCheatsheet,
+    setShowQuakeTerminal,
+    quakeTerminalAllowed: workspaceVisible,
     handleAddTerminalTab,
     handleCloseTab,
     handleSelectTab,
@@ -1364,7 +1391,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
         </div>
       )}
 
-      <div className="flex flex-1 min-h-0">
+      <div className="flex flex-1 min-h-0 relative">
         {!singleScreenMode && sidebarVisible && (
           <div className="shrink-0 flex flex-col"><div className="drag-region h-10 shrink-0" /><div className="flex-1 min-h-0 flex"><Sidebar
             worktrees={worktrees}
@@ -1662,6 +1689,14 @@ const setQuestStep = useCallback((next: QuestStep) => {
             }}
           /></div></div>
         )}
+        <QuakeTerminal
+          worktreePath={activeWorktreeId && !isPendingId(activeWorktreeId) ? activeWorktreeId : null}
+          open={showQuakeTerminal && workspaceVisible}
+          onClose={() => setShowQuakeTerminal(false)}
+          leftPx={singleScreenMode ? 0 : sidebarVisible ? sidebarWidth + 1 : 48}
+          rightPx={singleScreenMode ? 0 : rightColumnHidden ? 48 : rightPanelWidth + 1}
+          topPx={40}
+        />
       </div>
     </div>
     {settingsOverlay}
@@ -1708,6 +1743,9 @@ const setQuestStep = useCallback((next: QuestStep) => {
       isOpen={showAddBackend}
       onClose={() => setShowAddBackend(false)}
     />
+    {holdToQuit.phase !== 'idle' && (
+      <HoldToQuitOverlay key={holdToQuit.holdId} fading={holdToQuit.phase === 'fading'} />
+    )}
     </HotkeysProvider>
   )
 }

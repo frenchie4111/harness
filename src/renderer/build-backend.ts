@@ -268,6 +268,7 @@ export function buildBackend(
       req('config:setJsonModeDefaultPermissionMode', value),
     setAutoSleepMinutes: (value: number) => req('config:setAutoSleepMinutes', value),
     setAutoUpdateEnabled: (enabled: boolean) => req('config:setAutoUpdateEnabled', enabled),
+    setWarnBeforeQuitting: (enabled: boolean) => req('config:setWarnBeforeQuitting', enabled),
     setExpandedDiagnosticLoggingEnabled: (enabled: boolean) =>
       req('config:setExpandedDiagnosticLoggingEnabled', enabled),
     setShareClaudeSettings: (enabled: boolean) => req('config:setShareClaudeSettings', enabled),
@@ -438,6 +439,12 @@ export function buildBackend(
     // is active.
     onOpenSettings: (callback: () => void) =>
       onLocalSignal('app:openSettings', () => callback()),
+    // Hold-⌘Q-to-quit overlay, driven entirely by the main process (it
+    // owns the before-input-event detection + hold timer). Always local.
+    onHoldToQuitStart: (callback: () => void) =>
+      onLocalSignal('app:holdToQuitStart', () => callback()),
+    onHoldToQuitCancel: (callback: () => void) =>
+      onLocalSignal('app:holdToQuitCancel', () => callback()),
     onTogglePerfMonitor: (callback: () => void) =>
       onLocalSignal('app:togglePerfMonitor', () => callback()),
     onToggleSingleScreen: (callback: () => void) =>
@@ -589,7 +596,15 @@ export function buildBackend(
     connectionsSetLastConnected: (id: string, when?: number) =>
       reqLocal('connections:setLastConnected', id, when),
     connectionsGetToken: (id: string) => reqLocal('connections:getToken', id),
-    connectionsHasToken: (id: string) => reqLocal('connections:hasToken', id)
+    connectionsHasToken: (id: string) => reqLocal('connections:hasToken', id),
+
+    // SSH bootstrap helpers — always-local; only the local Electron
+    // backend bootstraps remote backends. See plans/remote-main.md §4.
+    sshListConfiguredHosts: () => reqLocal('ssh:listConfiguredHosts'),
+    sshBootstrap: (input: { bootstrapId: string; target: string; label: string }) =>
+      reqLocal('ssh:bootstrap', input),
+    sshReconnect: (input: { bootstrapId: string; connectionId: string }) =>
+      reqLocal('ssh:reconnect', input)
   }
 
   return api as ElectronAPI

@@ -468,13 +468,39 @@ export async function hydrateRemoteBackend(
   conn: BackendConnection,
   deps: {
     registry: BackendsRegistry
-    backend: Pick<import('./types').ElectronAPI, 'connectionsGetToken'>
+    backend: Pick<
+      import('./types').ElectronAPI,
+      'connectionsGetToken' | 'sshReconnect'
+    >
     WSCtor?: typeof WebSocketClientTransport
   }
 ): Promise<void> {
   const { registry: reg, backend, WSCtor = WebSocketClientTransport } = deps
   try {
-    const token = await backend.connectionsGetToken(conn.id)
+    // SSH backends: ask main to (re)establish the tunnel first so we
+    // get a live loopback URL+token. Main runs the bootstrap pre-warm
+    // on boot too — the IPC call here is idempotent and will return
+    // immediately if the tunnel is already up. We mint a fresh
+    // bootstrap id so the chip strip can subscribe to progress.
+    let url = conn.url
+    let token = await backend.connectionsGetToken(conn.id)
+    if (conn.ssh) {
+      try {
+        const bootstrapId = `hydrate-${conn.id}`
+        const result = await backend.sshReconnect({
+          bootstrapId,
+          connectionId: conn.id
+        })
+        url = result.url
+        token = result.token
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn(`[harness] ssh reconnect failed for backend ${conn.id}`, err)
+        // Fall through with cached url+token so the WS transport at
+        // least registers an entry; the chip will render greyed via
+        // the failed connect below.
+      }
+    }
     if (!token) {
       // eslint-disable-next-line no-console
       console.warn(`[harness] no token stored for backend ${conn.id} — skipping`)
@@ -492,7 +518,7 @@ export async function hydrateRemoteBackend(
     // when the user switches to it.
     if (reg.has(conn.id)) return
     const ws = new WSCtor({
-      url: conn.url,
+      url,
       token,
       onConnectionChange: (connected, reason) => {
         reg.setStatus(conn.id, {
@@ -606,6 +632,23 @@ export function useScratchpad(worktreePath: string | null): string {
     worktreePath ? s.scratchpad.byWorktreePath[worktreePath] ?? '' : ''
   )
 }
+
+/** Per-bootstrap progress for the AddBackendModal SSH tab. Returns null
+ *  when the bootstrap id is unknown (e.g. just cleared) so the modal can
+ *  render a fresh state without dereferencing undefined. */
+export function useSshBootstrap(bootstrapId: string | null) {
+  return useAppState((s) =>
+    bootstrapId ? (s.sshBootstrap.byId[bootstrapId] ?? null) : null
+  )
+}
+
+/** All in-flight + recently-finished SSH bootstrap entries. Used by the
+ *  chip strip when it wants to show "reconnecting…" on boot-time
+ *  reconnects (commit 4). */
+export function useSshBootstrapAll() {
+  return useAppState((s) => s.sshBootstrap.byId)
+}
+
 
 export function useBrowser() {
   return useAppState((s) => s.browser)

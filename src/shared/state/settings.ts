@@ -133,6 +133,10 @@ export interface SettingsState {
   viewerLogin: string | null
   harnessStarred: boolean | null
   autoUpdateEnabled: boolean
+  /** When true (default), ⌘Q must be held briefly to quit (Chrome-style
+   *  "Warn Before Quitting"); a tap shows a toast and does nothing. When
+   *  false, ⌘Q quits immediately. */
+  warnBeforeQuitting: boolean
   harnessSystemPromptEnabled: boolean
   harnessSystemPrompt: string
   harnessSystemPromptMain: string
@@ -242,6 +246,7 @@ export type SettingsEvent =
   | { type: 'settings/claudeModelChanged'; payload: string | null }
   | { type: 'settings/codexModelChanged'; payload: string | null }
   | { type: 'settings/autoUpdateEnabledChanged'; payload: boolean }
+  | { type: 'settings/warnBeforeQuittingChanged'; payload: boolean }
   | { type: 'settings/harnessSystemPromptEnabledChanged'; payload: boolean }
   | { type: 'settings/harnessSystemPromptChanged'; payload: string }
   | { type: 'settings/harnessSystemPromptMainChanged'; payload: string }
@@ -300,6 +305,7 @@ export const initialSettings: SettingsState = {
   viewerLogin: null,
   harnessStarred: null,
   autoUpdateEnabled: true,
+  warnBeforeQuitting: true,
   harnessSystemPromptEnabled: true,
   harnessSystemPrompt: '',
   harnessSystemPromptMain: '',
@@ -382,6 +388,8 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, codexModel: event.payload }
     case 'settings/autoUpdateEnabledChanged':
       return { ...state, autoUpdateEnabled: event.payload }
+    case 'settings/warnBeforeQuittingChanged':
+      return { ...state, warnBeforeQuitting: event.payload }
     case 'settings/harnessSystemPromptEnabledChanged':
       return { ...state, harnessSystemPromptEnabled: event.payload }
     case 'settings/harnessSystemPromptChanged':

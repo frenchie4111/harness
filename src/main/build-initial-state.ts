@@ -12,6 +12,7 @@ import { initialJsonClaude } from '../shared/state/json-claude'
 import { initialSnooze } from '../shared/state/snooze'
 import { initialAnnouncements } from '../shared/state/announcements'
 import { initialScratchpad } from '../shared/state/scratchpad'
+import { initialSshBootstrap } from '../shared/state/ssh-bootstrap'
 import {
   initialSettings,
   DEFAULT_LIGHT_THEME,
@@ -70,6 +71,7 @@ export function buildInitialAppState(
     snooze: config.snooze ? { byPath: { ...config.snooze } } : initialSnooze,
     announcements: initialAnnouncements,
     scratchpad: { byWorktreePath: flattenScratchpadNotes(config.scratchpadNotes) },
+    sshBootstrap: initialSshBootstrap,
     settings: {
       ...initialSettings,
       themeMode:
@@ -100,6 +102,7 @@ export function buildInitialAppState(
       codexModel: config.codexModel || null,
       hasGithubToken: opts.hasGithubToken,
       autoUpdateEnabled: config.autoUpdateEnabled !== false,
+      warnBeforeQuitting: config.warnBeforeQuitting !== false,
       shareClaudeSettings: config.shareClaudeSettings !== false,
       harnessSystemPromptEnabled: config.harnessSystemPromptEnabled !== false,
       harnessSystemPrompt: config.harnessSystemPrompt || DEFAULT_HARNESS_SYSTEM_PROMPT,

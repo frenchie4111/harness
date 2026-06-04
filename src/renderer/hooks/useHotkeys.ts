@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import type { Action } from '../hotkeys'
-import { matchesBinding, resolveHotkeys } from '../hotkeys'
+import { matchesBinding, resolveHotkeys, GESTURE_ACTIONS } from '../hotkeys'
 import type { HotkeyBinding } from '../hotkeys'
 
 type ActionMap = Partial<Record<Action, () => void>>
@@ -28,6 +28,7 @@ export function useHotkeys(actions: ActionMap, overrides?: Record<string, string
       const handlers = actionsRef.current
 
       for (const [action, binding] of Object.entries(bindings)) {
+        if (GESTURE_ACTIONS.has(action as Action)) continue
         const handler = handlers[action as Action]
         if (!handler) continue
 

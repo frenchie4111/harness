@@ -226,9 +226,14 @@ export function markTerminalClosing(id: string): void {
 // Read the bg/fg from CSS vars set by theme-apply.ts, then build the full
 // xterm theme object. ANSI colors stay hardcoded for now — themes only flow
 // in via --color-app / --color-fg-bright.
-function buildTerminalTheme(): NonNullable<ConstructorParameters<typeof Terminal>[0]>['theme'] {
+function buildTerminalTheme(
+  bgVar = '--color-app'
+): NonNullable<ConstructorParameters<typeof Terminal>[0]>['theme'] {
   const rootStyle = getComputedStyle(document.documentElement)
-  const bg = rootStyle.getPropertyValue('--color-app').trim() || '#0a0a0a'
+  const bg =
+    rootStyle.getPropertyValue(bgVar).trim() ||
+    rootStyle.getPropertyValue('--color-app').trim() ||
+    '#0a0a0a'
   const fg = rootStyle.getPropertyValue('--color-fg-bright').trim() || '#e5e5e5'
   return {
     background: bg,
@@ -274,13 +279,26 @@ interface XTerminalProps {
   /** Shell tabs only: directory to spawn in. Relative paths resolve against
    * `cwd` (the worktree root); absolute paths are used as-is. */
   shellCwd?: string
+  /** CSS custom-property name to source the terminal background from, so a
+   * host can tint it differently (e.g. the Quake overlay uses `--color-panel`
+   * to set itself apart from in-pane terminals). Defaults to `--color-app`. */
+  backgroundVar?: string
+  /** One-time text written straight to the xterm display at mount (visual
+   * only — never sent to the PTY), before history replay / PTY spawn so it
+   * lands above the shell's first prompt. The Quake overlay uses this for its
+   * first-open boot banner. */
+  preamble?: string
+  /** Skip the dim `── session restored ──` marker drawn after scrollback
+   * replay. The Quake overlay sets this — the marker is useful chrome for
+   * in-pane tabs but noise on the transient drop-down console. */
+  hideRestoreNotice?: boolean
   onRestartAgent?: () => void
   /** When provided AND this is a Claude agent tab, an overlay chip in
    *  the top-left invites the user to switch to the Chat interface. */
   onSwitchToChat?: () => void
 }
 
-export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionName, sessionId, initialPrompt, teleportSessionId, modelOverride, shellCommand, shellCwd, onRestartAgent, onSwitchToChat }: XTerminalProps): JSX.Element {
+export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionName, sessionId, initialPrompt, teleportSessionId, modelOverride, shellCommand, shellCwd, backgroundVar, preamble, hideRestoreNotice, onRestartAgent, onSwitchToChat }: XTerminalProps): JSX.Element {
   // Lazy font-cache init — fires once on first XTerminal mount. See
   // initFontCache() comment for why this is lazy rather than at module
   // top.
@@ -327,6 +345,8 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
   const [searchResults, setSearchResults] = useState<{ resultIndex: number; resultCount: number } | null>(null)
   const [loading, setLoading] = useState(type === 'agent')
   const visibleRef = useRef(visible)
+  const backgroundVarRef = useRef(backgroundVar)
+  backgroundVarRef.current = backgroundVar
   const initializedRef = useRef(false)
   const session = useTerminalSession(terminalId)
   // The controllerClientId is null in the very narrow window between
@@ -410,7 +430,7 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
         hover: (_event, uri) => setHoveredLink(uri),
         leave: () => setHoveredLink(null)
       },
-      theme: buildTerminalTheme()
+      theme: buildTerminalTheme(backgroundVarRef.current)
     })
 
     const fitAddon = new FitAddon()
@@ -563,6 +583,11 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
     terminalRegistry.set(terminalId, terminal)
     fitRegistry.set(terminalId, fitAddon)
 
+    // One-time host preamble (e.g. the Quake boot banner). Written here,
+    // before the history replay / PTY spawn below, so it always sits above
+    // the shell's first prompt. Purely visual — never echoed to the PTY.
+    if (preamble) terminal.write(preamble)
+
     // Restore scrollback (if any) before spawning the PTY so historical output
     // appears above the fresh shell's prompt.
     let cleanupData: (() => void) | null = null
@@ -697,7 +722,10 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
           '\x1b[?1003l' + // mouse all tracking
           '\x1b[?1006l' + // SGR mouse encoding
           '\x1b[?2004l'   // bracketed paste
-        terminal.write(RESET_MODES + '\r\n\x1b[2m── session restored ──\x1b[0m\r\n', () => {
+        const restoreTrailer = hideRestoreNotice
+          ? RESET_MODES
+          : RESET_MODES + '\r\n\x1b[2m── session restored ──\x1b[0m\r\n'
+        terminal.write(restoreTrailer, () => {
           if (disposed) return
           spawnPty()
         })
@@ -789,7 +817,7 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
     const observer = new MutationObserver(() => {
       const terminal = terminalRef.current
       if (!terminal) return
-      terminal.options.theme = buildTerminalTheme()
+      terminal.options.theme = buildTerminalTheme(backgroundVarRef.current)
     })
     observer.observe(document.documentElement, {
       attributes: true,
