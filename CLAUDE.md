@@ -303,14 +303,23 @@ when it spawns each tab), so sessions outside Harness no-op cleanly.
   A drift-detection test in `src/main/claude-plugin.test.ts` asserts the
   shipped `hooks.json` matches what `makeHookCommand()` would generate
   today so the two can't silently diverge.
-- **Codex** — still installed at user scope (`~/.codex/hooks.json`),
-  gated by the consent banner / Settings card. Codex has no plugin
-  system; users have to opt in once. The `hooks/consent` slice +
-  `hooks:accept|decline|uninstall` IPC handlers exist for this path
-  only. A one-shot boot migration (gated by
-  `config.hooksMigratedToPlugin`) strips any legacy Harness entries from
-  the old global Claude install + per-worktree
-  `.claude/settings.local.json` files.
+- **Codex** — Codex 0.133+ reads the **same** plugin tree as Claude.
+  No `--plugin-dir` flag exists for Codex, so we register the bundled
+  directory as a local marketplace via `codex plugin marketplace add
+  <bundled-root>` and enable the plugin with `codex plugin add
+  harness-status@harness`. Both commands write entries to
+  `~/.codex/config.toml`, which is why this path is still gated by the
+  consent banner / Settings card. The `hooks/consent` slice +
+  `hooks:accept|decline|uninstall` IPC handlers wire the user choice;
+  see `src/main/codex-plugin.ts` for the install / uninstall helpers.
+  Two one-shot boot migrations sweep dead state from prior installs:
+  `config.hooksMigratedToPlugin` strips legacy Claude entries from
+  `~/.claude/settings.json` + per-worktree `.claude/settings.local.json`;
+  `config.codexPluginMigrated` strips legacy Harness entries from
+  `~/.codex/hooks.json` + per-worktree `.codex/hooks.json`.
+  After acceptance, `installCodexPlugin()` runs on every boot —
+  idempotent, and the only way to force Codex's plugin cache to pick up
+  a new Harness release (the cache never refreshes automatically).
 
 ## How performance debugging works
 

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect } from 'react'
-import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2, Moon, LifeBuoy, Bug, Lightbulb, FlaskConical, Copy, CopyCheck, ExternalLink, CalendarDays, FileText, FolderOpen, Search, ChevronDown, ChevronRight, SlidersHorizontal } from 'lucide-react'
+import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2, Moon, LifeBuoy, Bug, Lightbulb, FlaskConical, Copy, CopyCheck, ExternalLink, CalendarDays, FileText, FolderOpen, Search, ChevronDown, ChevronRight, AlertTriangle, SlidersHorizontal } from 'lucide-react'
 import { openReportIssue } from './ReportIssueScreen'
 import { HARNESS_ISSUES_URL, HARNESS_RELEASES_URL, harnessReleaseNotesUrl } from '../../shared/constants'
 import { useSettings, useUpdater, useRepoConfigs, useHooks } from '../store'
@@ -388,6 +388,10 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
   const [codexCommandDraft, setCodexCommandDraft] = useState<string>(codexCommand)
   useEffect(() => { setCodexCommandDraft(codexCommand) }, [codexCommand])
+  const [codexMarketplaceRoot, setCodexMarketplaceRoot] = useState<string>('')
+  useEffect(() => {
+    void backend.getCodexMarketplaceRoot().then(setCodexMarketplaceRoot)
+  }, [])
   const [codexSaveResult, setCodexSaveResult] = useState<{ ok: boolean; message: string } | null>(null)
   const [codexEnvRows, setCodexEnvRows] = useState<{ key: string; value: string }[]>(() =>
     Object.entries(codexEnvVars).map(([key, value]) => ({ key, value }))
@@ -419,6 +423,22 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
   // Hooks consent — drives the copy in the "Status hooks" card below.
   const { consent: hooksConsent } = useHooks()
+  const [codexPluginVerification, setCodexPluginVerification] =
+    useState<import('../types').CodexPluginVerification | null>(null)
+  const refreshCodexPluginVerification = useCallback(async () => {
+    if (hooksConsent !== 'accepted') {
+      setCodexPluginVerification(null)
+      return
+    }
+    setCodexPluginVerification(await backend.verifyCodexPlugin())
+  }, [hooksConsent])
+  useEffect(() => {
+    void refreshCodexPluginVerification()
+  }, [refreshCodexPluginVerification])
+  const handleInstallCodexPlugin = useCallback(async () => {
+    const result = await backend.acceptHooks()
+    setCodexPluginVerification(result)
+  }, [])
 
   // WS transport: wsInfo reflects the live server (null when off or not
   // yet started after enabling — the server only binds at app launch).
@@ -1342,7 +1362,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
         {/* Main scrollable content */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto">
-          <div className="max-w-2xl p-8 pb-[60vh] space-y-12">
+          <div className="max-w-5xl p-8 pb-[60vh] space-y-12">
             {/* General section */}
             <section ref={(el) => { sectionRefs.current.general = el }} id="general">
               <h2 className="text-lg font-semibold text-fg-bright mb-1">General</h2>
@@ -1700,45 +1720,6 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 )}
               </div>
 
-              <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-3">
-                Codex status hooks
-              </h3>
-              <div className="bg-panel-raised border border-border rounded-lg p-4">
-                <p className="text-xs text-dim mb-3">
-                  Harness installs a small hook at{' '}
-                  <code className="bg-panel px-1 rounded">~/.codex/hooks.json</code> so it can
-                  detect when a Codex tab is processing, waiting, or awaiting approval.
-                  The hook only emits when <code className="bg-panel px-1 rounded">$HARNESS_TERMINAL_ID</code>{' '}
-                  is set — sessions you launch outside Harness are untouched.
-                  Claude tabs don't need this — their hooks ship bundled with Harness and load
-                  automatically via <code className="bg-panel px-1 rounded">--plugin-dir</code>.
-                </p>
-                <div className="flex items-center gap-2">
-                  {hooksConsent === 'accepted' ? (
-                    <>
-                      <span className="text-xs text-success flex items-center gap-1"><Check className="icon-xs" />Installed</span>
-                      <button
-                        onClick={() => void backend.uninstallHooks()}
-                        className="ml-auto px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer"
-                      >
-                        Remove hooks
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <span className="text-xs text-dim">
-                        {hooksConsent === 'declined' ? 'Declined' : 'Not installed'}
-                      </span>
-                      <button
-                        onClick={() => void backend.acceptHooks()}
-                        className="ml-auto px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer"
-                      >
-                        Install hooks
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
               </div>
 
               {/* ── Claude subsection ── */}
@@ -2061,6 +2042,102 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 Codex
                 {defaultAgent === 'codex' && <span className="text-xs font-normal text-dim bg-panel px-1.5 py-0.5 rounded">default</span>}
               </h3>
+
+              <div className="bg-panel-raised border border-border rounded-lg p-4 mb-4">
+                <label className="block text-sm font-medium text-fg mb-1">Harness status plugin</label>
+                <p className="text-xs text-dim mb-3">
+                  Register a plugin to integrate with Codex. This must be done to properly
+                  report agent status in Harness.
+                </p>
+                <div className="bg-panel border border-border rounded px-3 py-2 text-xs text-fg-bright font-mono break-all mb-3 whitespace-pre">
+                  {`${(codexCommand || 'codex')} plugin marketplace add ${codexMarketplaceRoot || '<bundled-plugin-root>'}\n${(codexCommand || 'codex')} plugin add harness-status@harness`}
+                </div>
+                <div className="flex items-center gap-2">
+                  {hooksConsent === 'accepted' ? (
+                    <>
+                      <span className="text-xs text-success flex items-center gap-1"><Check className="icon-xs" />Installed</span>
+                      <button
+                        onClick={() => void refreshCodexPluginVerification()}
+                        className="ml-auto flex items-center gap-1 px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer"
+                      >
+                        <RefreshCw className="icon-xs" />Re-check
+                      </button>
+                      <button
+                        onClick={() => {
+                          void backend.uninstallHooks()
+                          setCodexPluginVerification(null)
+                        }}
+                        className="px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer"
+                      >
+                        Remove plugin
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-xs text-warning flex items-center gap-1">
+                        <AlertTriangle className="icon-xs" />Not installed
+                      </span>
+                      <button
+                        onClick={() => void handleInstallCodexPlugin()}
+                        className="ml-auto px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer"
+                      >
+                        Install plugin
+                      </button>
+                    </>
+                  )}
+                </div>
+
+                {codexPluginVerification && (
+                  <div className="mt-3 pt-3 border-t border-border">
+                    <label className="block text-xs font-medium text-fg mb-2">Codex verification</label>
+                    <ul className="space-y-1 text-xs">
+                      {(
+                        [
+                          ['pluginEnabled', 'Plugin enabled in Codex'],
+                          ['hooksPresent', 'Hooks file present in cache']
+                        ] as const
+                      ).map(([key, label]) => {
+                        const passed = codexPluginVerification[key]
+                        return (
+                          <li key={key} className="flex items-center gap-1.5">
+                            {passed ? (
+                              <Check className="icon-xs text-success shrink-0" />
+                            ) : (
+                              <X className="icon-xs text-danger shrink-0" />
+                            )}
+                            <span className={passed ? 'text-fg' : 'text-danger'}>{label}</span>
+                          </li>
+                        )
+                      })}
+                      <li className="flex items-center gap-1.5">
+                        {codexPluginVerification.hooksTrusted ? (
+                          <Check className="icon-xs text-success shrink-0" />
+                        ) : (
+                          <AlertTriangle className="icon-xs text-warning shrink-0" />
+                        )}
+                        <span className={codexPluginVerification.hooksTrusted ? 'text-fg' : 'text-warning'}>
+                          Hooks trusted by Codex
+                        </span>
+                      </li>
+                    </ul>
+                    {!codexPluginVerification.hooksTrusted && (
+                      <p className="mt-2 text-xs text-dim">
+                        Codex skips plugin-bundled hooks until you trust them. There's no CLI
+                        command to grant trust — open a new Codex tab (or run{' '}
+                        <code className="bg-panel px-1 rounded">codex</code> in a terminal), accept
+                        the <span className="text-fg">"Hooks need review"</span> prompt by choosing{' '}
+                        <span className="text-fg">"Trust all and continue"</span>, then{' '}
+                        <span className="text-fg">Re-check</span>.
+                      </p>
+                    )}
+                    {codexPluginVerification.message && !codexPluginVerification.ok && (
+                      <p className="mt-2 text-xs text-danger font-mono break-all">
+                        {codexPluginVerification.message}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
 
               <div className="bg-panel-raised border border-border rounded-lg p-4 mb-4">
                 <label className="block text-sm font-medium text-fg mb-1">Model</label>

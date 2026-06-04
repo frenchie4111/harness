@@ -14,6 +14,22 @@ export interface AgentSpawnOpts {
   model?: string | null
   systemPrompt?: string
   tuiFullscreen?: boolean
+  /** Harness-control MCP bridge runtime info. The Codex agent injects
+   *  this as `-c mcp_servers.harness-control.*` overrides at spawn
+   *  time because Codex's `.mcp.json` does no interpolation (see
+   *  src/main/codex-plugin.ts:neutralizeCachedMcpJson). Claude consumes
+   *  the same data via the plugin's `.mcp.json` template; populated
+   *  for both agent kinds but only Codex reads it through this path. */
+  harnessControl?: {
+    execPath: string
+    bridgePath: string
+    port: number
+    token: string
+    terminalId: string
+    workspaceId?: string
+    repoRoot?: string
+    isMain?: boolean
+  }
 }
 
 export interface AgentModule {

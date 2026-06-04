@@ -16,6 +16,9 @@ export type { SessionCostSummary, ClaudeAuthInfo, SubscriptionTier }
 import type { AddRepoResult } from '../shared/repo-pick'
 export type { AddRepoResult }
 
+import type { CodexPluginVerification } from '../shared/codex-plugin'
+export type { CodexPluginVerification }
+
 /** Per-kind dirtiness flags for a worktree. `git` reflects
  *  uncommitted changes; `scratchpad` reflects a non-empty scratchpad
  *  note. The delete-worktree flow surfaces each kind separately so the
@@ -350,6 +353,7 @@ export interface ElectronAPI {
   setClaudeEnvVars(vars: Record<string, string>): Promise<boolean>
   setDefaultAgent(agent: string): Promise<boolean>
   setCodexCommand(command: string): Promise<boolean>
+  getCodexMarketplaceRoot(): Promise<string>
   setClaudeModel(model: string | null): Promise<boolean>
   setCodexModel(model: string | null): Promise<boolean>
   setCodexEnvVars(vars: Record<string, string>): Promise<boolean>
@@ -488,9 +492,10 @@ export interface ElectronAPI {
   onUiScaleDown(callback: () => void): () => void
   onUiScaleReset(callback: () => void): () => void
 
-  acceptHooks(): Promise<boolean>
+  acceptHooks(): Promise<CodexPluginVerification>
   declineHooks(): Promise<boolean>
   uninstallHooks(): Promise<boolean>
+  verifyCodexPlugin(): Promise<CodexPluginVerification>
 
   browserNavigate(tabId: string, url: string): Promise<boolean>
   browserBack(tabId: string): Promise<boolean>

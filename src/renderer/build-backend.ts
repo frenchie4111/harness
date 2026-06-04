@@ -237,6 +237,7 @@ export function buildBackend(
     setClaudeEnvVars: (vars: Record<string, string>) => req('config:setClaudeEnvVars', vars),
     setDefaultAgent: (agent: string) => req('config:setDefaultAgent', agent),
     setCodexCommand: (command: string) => req('config:setCodexCommand', command),
+    getCodexMarketplaceRoot: () => req('codex:getMarketplaceRoot'),
     setClaudeModel: (model: string | null) => req('config:setClaudeModel', model),
     setCodexModel: (model: string | null) => req('config:setCodexModel', model),
     setCodexEnvVars: (vars: Record<string, string>) => req('config:setCodexEnvVars', vars),
@@ -475,6 +476,7 @@ export function buildBackend(
     acceptHooks: () => req('hooks:accept'),
     declineHooks: () => req('hooks:decline'),
     uninstallHooks: () => req('hooks:uninstall'),
+    verifyCodexPlugin: () => req('hooks:verify'),
 
     browserNavigate: (tabId: string, url: string) => req('browser:navigate', tabId, url),
     browserBack: (tabId: string) => req('browser:back', tabId),

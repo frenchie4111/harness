@@ -565,10 +565,12 @@ const setQuestStep = useCallback((next: QuestStep) => {
   }, [activeWorktreeId, activeTabId])
 
   // When a worktree becomes active, refresh its PR status if stale.
-  // Pane initialization runs in main via WorktreesFSM. Claude hooks
-  // load via --plugin-dir on every spawn (see src/main/claude-plugin.ts);
-  // Codex hooks are installed at user scope once when consent is
-  // accepted (see the hooks:accept IPC handler in src/main/index.ts).
+  // Pane initialization runs in main via WorktreesFSM. Both Claude and
+  // Codex now read the same bundled plugin tree: Claude via
+  // --plugin-dir on every spawn, Codex via the `codex plugin
+  // marketplace add` + `codex plugin add` registered at consent time
+  // (see src/main/codex-plugin.ts and the hooks:accept IPC handler in
+  // src/main/index.ts).
   useEffect(() => {
     if (!activeWorktreeId) return
     if (isPendingId(activeWorktreeId)) return
@@ -934,14 +936,11 @@ const setQuestStep = useCallback((next: QuestStep) => {
   if (repoRoots.length === 0 || previewOnboarding) {
     const step1Complete = themeChosen
     const step2Complete = agentChosen
-    const step3Complete = hooksConsent !== 'pending'
-    const activeStep: 1 | 2 | 3 | 4 = !step1Complete
+    const activeStep: 1 | 2 | 3 = !step1Complete
       ? 1
       : !step2Complete
         ? 2
-        : !step3Complete
-          ? 3
-          : 4
+        : 3
     return (
       <HotkeysProvider bindings={resolvedHotkeys}>
       <div className="flex h-full flex-col">
@@ -1145,31 +1144,12 @@ const setQuestStep = useCallback((next: QuestStep) => {
                     />
                   </div>
                 )}
-              </div>
-
-              <div
-                className={`rounded-xl border bg-panel p-4 transition-colors ${
-                  activeStep === 3
-                    ? 'border-accent/50 ring-1 ring-accent/25'
-                    : 'border-border'
-                }`}
-              >
-                <div className="flex items-start gap-3 mb-3">
-                  {step3Complete ? (
-                    <CheckCircle2 className="icon-lg text-success shrink-0 mt-0.5" />
-                  ) : (
-                    <div
-                      className={`w-5 h-5 rounded-full border-2 text-[11px] font-bold flex items-center justify-center shrink-0 mt-0.5 ${
-                        activeStep === 3 ? 'border-accent text-accent' : 'border-border-strong text-dim'
-                      }`}
-                    >
-                      3
-                    </div>
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <div className="text-fg-bright text-sm font-medium">Install Codex status hooks</div>
-                    <div className="text-xs text-dim mt-0.5">
-                      Adds a small hook at <code className="bg-app/50 px-1 rounded">~/.codex/hooks.json</code> so Harness can tell when a Codex agent is{' '}
+                {agentChosen && defaultAgent === 'codex' && (
+                  <div className="ml-8 mt-4 pl-4 border-l-2 border-border">
+                    <div className="text-xs text-dim mb-2">
+                      Install Harness's status plugin for Codex? Registers one entry in{' '}
+                      <code className="bg-app/50 px-1 rounded">~/.codex/config.toml</code> so
+                      Harness can tell when a Codex agent is{' '}
                       <span className="inline-flex items-center gap-1 whitespace-nowrap">
                         <span className="w-1.5 h-1.5 rounded-full bg-success" />
                         <span className="text-fg">working</span>
@@ -1181,39 +1161,37 @@ const setQuestStep = useCallback((next: QuestStep) => {
                       <span className="inline-flex items-center gap-1 whitespace-nowrap">
                         <span className="w-1.5 h-1.5 rounded-full bg-danger" />
                         <span className="text-fg">asking for approval</span>
-                      </span>. Only fires for Codex sessions Harness launches; others are untouched. Skip if you don't use Codex.
+                      </span>.
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleAcceptHooks}
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                          hooksConsent === 'accepted'
+                            ? 'bg-surface text-fg-bright border border-fg'
+                            : 'bg-panel border border-border text-dim hover:text-fg hover:border-border-strong'
+                        }`}
+                      >
+                        Install plugin
+                      </button>
+                      <button
+                        onClick={handleDeclineHooks}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                          hooksConsent === 'declined'
+                            ? 'bg-surface text-fg-bright border border-fg'
+                            : 'bg-panel border border-border text-dim hover:text-fg hover:border-border-strong'
+                        }`}
+                      >
+                        Not now
+                      </button>
                     </div>
                   </div>
-                </div>
-                <div className="flex gap-2 ml-8">
-                  <button
-                    onClick={handleAcceptHooks}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
-                      hooksConsent === 'accepted'
-                        ? 'bg-surface text-fg-bright border border-fg'
-                        : activeStep === 3
-                          ? 'bg-accent/20 hover:bg-accent/30 text-fg-bright border border-accent/40'
-                          : 'bg-panel border border-border text-dim hover:text-fg hover:border-border-strong'
-                    }`}
-                  >
-                    Install hooks
-                  </button>
-                  <button
-                    onClick={handleDeclineHooks}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
-                      hooksConsent === 'declined'
-                        ? 'bg-surface text-fg-bright border border-fg'
-                        : 'bg-panel border border-border text-dim hover:text-fg hover:border-border-strong'
-                    }`}
-                  >
-                    Not now
-                  </button>
-                </div>
+                )}
               </div>
 
               <div
                 className={`rounded-xl border bg-panel p-4 transition-colors ${
-                  activeStep === 4
+                  activeStep === 3
                     ? 'border-accent/50 ring-1 ring-accent/25'
                     : 'border-border'
                 }`}
@@ -1221,10 +1199,10 @@ const setQuestStep = useCallback((next: QuestStep) => {
                 <div className="flex items-start gap-3 mb-3">
                   <div
                     className={`w-5 h-5 rounded-full border-2 text-[11px] font-bold flex items-center justify-center shrink-0 mt-0.5 ${
-                      activeStep === 4 ? 'border-accent text-accent' : 'border-border-strong text-dim'
+                      activeStep === 3 ? 'border-accent text-accent' : 'border-border-strong text-dim'
                     }`}
                   >
-                    4
+                    3
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-fg-bright text-sm font-medium">Open a git repository</div>
@@ -1420,32 +1398,10 @@ const setQuestStep = useCallback((next: QuestStep) => {
         </div>
       )}
 
-      {/* Hooks consent banner — one-time prompt for Codex status hook
-          install at ~/.codex/hooks.json. Claude rides along via a
-          bundled plugin (no consent needed). The hook command is gated
-          on $HARNESS_TERMINAL_ID so sessions spawned outside Harness
-          are unaffected. */}
-      {hooksConsent === 'pending' && (
-        <div className="bg-warning/15 border-b border-warning/30 pl-20 pr-4 py-2.5 drag-region flex items-center gap-3 shrink-0">
-          <span className="text-warning text-sm flex-1">
-            Harness can install status hooks at <code className="text-xs">~/.codex/hooks.json</code> to detect
-            Codex agent state (waiting, processing, needs approval). They only fire for Codex sessions you
-            launch inside Harness and can be removed at any time from Settings. Skip if you don't use Codex.
-          </span>
-          <button
-            onClick={handleAcceptHooks}
-            className="px-3 py-1 bg-warning/30 hover:bg-warning/40 rounded text-sm text-warning transition-colors shrink-0 cursor-pointer no-drag"
-          >
-            Enable
-          </button>
-          <button
-            onClick={handleDeclineHooks}
-            className="px-3 py-1 text-warning/80 hover:text-warning text-sm transition-colors shrink-0 cursor-pointer no-drag"
-          >
-            Skip
-          </button>
-        </div>
-      )}
+      {/* Codex plugin consent prompt now appears in-tab when the user
+          actually spawns a Codex agent (see XTerminal.tsx) rather than
+          as a top-of-app banner — most users never run Codex and the
+          banner was nagging them about a feature they don't use. */}
 
       <div className="flex flex-1 min-h-0 relative">
         {!singleScreenMode && sidebarVisible && (

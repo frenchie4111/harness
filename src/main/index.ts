@@ -76,8 +76,18 @@ import {
   DEFAULT_PR_REVIEW_PROMPT
 } from '../shared/state/settings'
 import { watchStatusDir } from './hooks'
-import { getAgent, type AgentKind } from './agents'
-import * as codexHooks from './agents/codex'
+import { getAgent, type AgentKind, type AgentSpawnOpts } from './agents'
+import * as codexAgent from './agents/codex'
+import {
+  installCodexPlugin,
+  uninstallCodexPlugin,
+  probeCodexPlugin,
+  stripHarnessEntriesFromHooksFile,
+  legacyGlobalHooksPath,
+  legacyWorktreeHooksPath,
+  type CodexPluginVerification
+} from './codex-plugin'
+import { harnessPluginDir, harnessPluginMarketplaceRoot } from './claude-plugin'
 import { stripGlobalHooks as stripGlobalClaudeHooks } from './agents/claude'
 import { buildClaudeLaunchSettings } from './claude-launch'
 import { HARNESS_REPO_OWNER, HARNESS_REPO_NAME } from '../shared/constants'
@@ -145,6 +155,17 @@ if (runtime === 'electron') {
 // Covers both Electron-from-Dock and headless-via-ssh/systemd, both of
 // which can start with a stripped PATH. No-op outside of macOS today;
 // see path-fix.ts.
+//
+// CODEX_HOME alignment: Codex (Rust binary) resolves `~` via the
+// system passwd database (getpwuid) rather than $HOME on macOS, so
+// our isolated $HOME doesn't propagate to it without an explicit
+// CODEX_HOME. Set it from $HOME unless the user already pinned a
+// different value — preserves explicit overrides, fixes isolation,
+// and is a no-op for everyone else (CODEX_HOME would resolve to the
+// same path Codex picks by default).
+if (!process.env.CODEX_HOME && process.env.HOME) {
+  process.env.CODEX_HOME = join(process.env.HOME, '.codex')
+}
 void fixPathFromLoginShell().then(bootLocal)
 
 // Wrap the entire local-mode boot in a function so the remote-mode
@@ -870,20 +891,20 @@ const activityDeriver = new ActivityDeriver(store)
 // drives panesFSM.sleepJsonClaudeTab.
 const autoSleepMonitor = new AutoSleepMonitor(store, panesFSM)
 
-/** Install Codex status hooks at ~/.codex/hooks.json. Called when the
- *  user accepts the hooks-consent prompt. Idempotent — installHooks()
- *  strips any existing Harness entries before writing a fresh one, so
- *  calling it unconditionally also collapses duplicate entries left by
- *  earlier buggy install passes. The hook command is env-gated on
- *  $HARNESS_TERMINAL_ID, so it no-ops for sessions started outside
- *  Harness. Claude hooks are not installed at user scope — they ship as
- *  a plugin loaded via --plugin-dir, see src/main/claude-plugin.ts. */
-function installCodexHooks(): void {
-  codexHooks.installHooks()
+/** Register + enable the bundled Harness plugin in the user's Codex
+ *  install. Codex (0.133+) has no --plugin-dir equivalent, so we
+ *  register a local marketplace and install the plugin from it via
+ *  the `codex plugin` subcommands. Both write to ~/.codex/config.toml
+ *  but are cleanly reversible. Idempotent — safe to call on every boot;
+ *  the plugin cache is re-materialized so a fresh Harness release picks
+ *  up the bundled changes immediately. See src/main/codex-plugin.ts
+ *  for the full rationale. */
+function installCodexPluginNow(): CodexPluginVerification {
+  return installCodexPlugin(config.codexCommand || codexAgent.defaultCommand)
 }
 
-function uninstallCodexHooks(): void {
-  codexHooks.uninstallHooks()
+function uninstallCodexPluginNow(): void {
+  uninstallCodexPlugin(config.codexCommand || codexAgent.defaultCommand)
 }
 
 /** One-shot boot migration: for every non-main worktree that has a real
@@ -1682,6 +1703,11 @@ function registerIpcHandlers(): void {
     return true
   })
 
+  transport.onRequest(
+    'codex:getMarketplaceRoot',
+    () => harnessPluginMarketplaceRoot()
+  )
+
   transport.onRequest('config:setCodexCommand', (_ctx, command: string) => {
     const trimmed = command.trim()
     if (!trimmed || trimmed === 'codex') {
@@ -2471,7 +2497,29 @@ function registerIpcHandlers(): void {
         model = override || config.codexModel || null
       }
 
-      return agent.buildSpawnArgs({ ...opts, command, model, systemPrompt, tuiFullscreen })
+      // Codex: assemble the harness-control MCP runtime info so the
+      // agent module can render `-c mcp_servers.harness-control.*`
+      // overrides. Claude doesn't need this — it consumes the plugin's
+      // .mcp.json directly via --plugin-dir.
+      let harnessControl: AgentSpawnOpts['harnessControl']
+      if (kind === 'codex' && config.harnessMcpEnabled !== false) {
+        const controlInfo = getControlServerInfo()
+        if (controlInfo) {
+          const scope = resolveCallerScope(opts.terminalId)
+          harnessControl = {
+            execPath: process.execPath,
+            bridgePath: join(harnessPluginDir(), 'servers', 'mcp-bridge.js'),
+            port: controlInfo.port,
+            token: controlInfo.token,
+            terminalId: opts.terminalId,
+            workspaceId: scope?.worktreePath,
+            repoRoot: scope?.repoRoot,
+            isMain: scope?.isMain
+          }
+        }
+      }
+
+      return agent.buildSpawnArgs({ ...opts, command, model, systemPrompt, tuiFullscreen, harnessControl })
     }
   )
 
@@ -2583,15 +2631,16 @@ function registerIpcHandlers(): void {
 
   // Hooks consent — scoped to Codex only. Claude hooks ride along via
   // --plugin-dir (see src/main/claude-plugin.ts), so no user file is
-  // touched and no consent is needed. The hook command for Codex is
-  // env-gated on $HARNESS_TERMINAL_ID so sessions spawned outside
-  // Harness are unaffected.
+  // touched and no consent is needed. Codex consumes the same bundled
+  // plugin tree but has to be registered via `codex plugin marketplace
+  // add` + `codex plugin add`, both of which write entries to
+  // ~/.codex/config.toml — hence the consent prompt.
   transport.onRequest('hooks:accept', (_ctx) => {
-    installCodexHooks()
+    const verification = installCodexPluginNow()
     config.hooksConsent = 'accepted'
     saveConfig(config)
     store.dispatch({ type: 'hooks/consentChanged', payload: 'accepted' })
-    return true
+    return verification
   })
 
   transport.onRequest('hooks:decline', (_ctx) => {
@@ -2602,11 +2651,17 @@ function registerIpcHandlers(): void {
   })
 
   transport.onRequest('hooks:uninstall', (_ctx) => {
-    uninstallCodexHooks()
+    uninstallCodexPluginNow()
     config.hooksConsent = 'pending'
     saveConfig(config)
     store.dispatch({ type: 'hooks/consentChanged', payload: 'pending' })
     return true
+  })
+
+  // Probe-only — used by the Settings card to refresh verification
+  // status without re-running the install.
+  transport.onRequest('hooks:verify', (_ctx) => {
+    return probeCodexPlugin(config.codexCommand || codexAgent.defaultCommand)
   })
 
   // shell:openExternal lives in desktop-shell.ts (Electron's `shell`
@@ -2697,12 +2752,13 @@ function registerIpcHandlers(): void {
       const userEnv = agentKind === 'claude' ? config.claudeEnvVars
         : agentKind === 'codex' ? config.codexEnvVars
         : undefined
-      // Claude xterm tabs load the bundled Harness plugin via --plugin-dir.
-      // The plugin's .mcp.json interpolates these env vars at launch so the
-      // bridge subprocess can dial back to the control server. Codex tabs
-      // don't get the plugin, so they don't need these — left undefined.
+      // Both Claude and Codex agent tabs load the same bundled Harness
+      // plugin (Claude via --plugin-dir, Codex via its plugin
+      // marketplace). The plugin's .mcp.json interpolates these env
+      // vars at launch so the bridge subprocess can dial back to the
+      // control server. Non-agent shell tabs don't need these.
       let controlEnv: Record<string, string> | undefined
-      if (agentKind === 'claude' && config.harnessMcpEnabled !== false) {
+      if (isAgent && config.harnessMcpEnabled !== false) {
         const controlInfo = getControlServerInfo()
         if (controlInfo) {
           controlEnv = buildHarnessControlEnv({
@@ -3569,17 +3625,27 @@ async function runBoot(): Promise<void> {
 
   // Boot-time hooks setup.
   //
-  // Claude: status hooks ship as a plugin bundled with Harness; every
-  // Claude spawn passes --plugin-dir, so there's no user-file install
-  // to consent to and nothing to seed at boot. The one-shot sweep below
-  // strips any legacy Harness entries from a prior user-scope install
-  // (~/.claude/settings.json) and from prior per-worktree installs
-  // (.claude/settings.local.json). Gated by hooksMigratedToPlugin so the
-  // sweep doesn't re-run.
+  // Both agents now consume the same bundled plugin tree under
+  // resources/plugins/harness-status/. Claude loads it via --plugin-dir
+  // on every spawn (no user-file install, no consent needed). Codex
+  // requires the marketplace to be registered with `codex plugin
+  // marketplace add` and the plugin enabled with `codex plugin add` —
+  // both write to ~/.codex/config.toml, hence the consent flow.
   //
-  // Codex: still installed at user scope (~/.codex/hooks.json), gated by
-  // hooksConsent. The flow mirrors what Harness did for both agents
-  // before the plugin switch — accept/decline IPC, banner, Settings.
+  // Three one-shot migration sweeps run if their corresponding
+  // *Migrated flag isn't set, then never again:
+  //   - hooksMigratedToPlugin: strips Harness entries from
+  //     ~/.claude/settings.json and per-worktree
+  //     .claude/settings.local.json files (Claude legacy).
+  //   - codexPluginMigrated: strips Harness entries from
+  //     ~/.codex/hooks.json and per-worktree .codex/hooks.json
+  //     (Codex legacy install path).
+  //
+  // After migration: if Codex consent is 'accepted', we re-run the
+  // plugin install on every boot (idempotent). Codex caches plugins
+  // and never auto-refreshes, so re-running on each boot is the
+  // cheapest way to guarantee a fresh Harness release picks up its
+  // updated plugin contents.
   void (async () => {
     const claudeAgent = getAgent('claude')
 
@@ -3596,33 +3662,41 @@ async function runBoot(): Promise<void> {
       saveConfig(config)
     }
 
-    // 2. Codex consent resolution. Explicit persisted value wins; else
-    //    infer 'accepted' from the presence of a global install (handles
-    //    users who consented before the plugin switch), or from legacy
-    //    per-worktree Codex hook entries; else 'pending'.
-    let consent: 'pending' | 'accepted' | 'declined' | undefined = config.hooksConsent
-    if (!consent) {
-      if (codexHooks.hooksInstalled()) {
-        consent = 'accepted'
-      } else {
-        let foundLegacy = false
-        for (const root of config.repoRoots || []) {
-          const trees = await listWorktrees(root).catch(() => [])
-          for (const wt of trees) {
-            if (codexHooks.stripHooksFromWorktree(wt.path)) foundLegacy = true
+    // 2. Codex consent resolution + legacy hooks.json sweep.
+    //    Explicit persisted value wins; else infer 'accepted' from the
+    //    presence of legacy global or per-worktree Codex hook entries
+    //    (handles users who consented before the plugin switch); else
+    //    'pending'. The legacy sweep is one-shot.
+    let foundLegacyCodexHooks = false
+    if (!config.codexPluginMigrated) {
+      if (stripHarnessEntriesFromHooksFile(legacyGlobalHooksPath())) {
+        foundLegacyCodexHooks = true
+      }
+      for (const root of config.repoRoots || []) {
+        const trees = await listWorktrees(root).catch(() => [])
+        for (const wt of trees) {
+          if (stripHarnessEntriesFromHooksFile(legacyWorktreeHooksPath(wt.path))) {
+            foundLegacyCodexHooks = true
           }
         }
-        consent = foundLegacy ? 'accepted' : 'pending'
       }
+      config.codexPluginMigrated = true
+      saveConfig(config)
+    }
+
+    let consent: 'pending' | 'accepted' | 'declined' | undefined = config.hooksConsent
+    if (!consent) {
+      consent = foundLegacyCodexHooks ? 'accepted' : 'pending'
       config.hooksConsent = consent
       saveConfig(config)
     }
 
-    // 3. If Codex was accepted but the global install is missing (fresh
-    //    upgrade or external edit), reinstall now so status tracking
-    //    keeps working.
-    if (consent === 'accepted' && !codexHooks.hooksInstalled()) {
-      installCodexHooks()
+    // 3. Always re-install the plugin when accepted. Idempotent;
+    //    Codex's plugin cache never auto-refreshes, so running on every
+    //    boot is how we guarantee a fresh Harness release lands the
+    //    updated plugin contents in ~/.codex/plugins/cache.
+    if (consent === 'accepted') {
+      installCodexPluginNow()
     }
 
     store.dispatch({ type: 'hooks/consentChanged', payload: consent })

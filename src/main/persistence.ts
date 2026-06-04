@@ -176,6 +176,13 @@ export interface Config {
   // Claude hooks now ship as a plugin; this sweep removes the dead
   // copies the user no longer needs. Prevents re-running on every boot.
   hooksMigratedToPlugin?: boolean
+  // One-shot migration flag: once true, we've swept the legacy Codex
+  // hook installs (~/.codex/hooks.json + per-worktree .codex/hooks.json)
+  // and stripped any Harness entries. Codex now consumes the same
+  // bundled plugin as Claude via `codex plugin marketplace add`. Set on
+  // first boot after the Codex-plugin migration so the strip doesn't
+  // re-run.
+  codexPluginMigrated?: boolean
   // Deprecated, kept for migration reads: the prior one-shot flag that
   // recorded the per-worktree → user-scope sweep. Once Harness has set
   // hooksMigratedToPlugin we no longer read this. Safe to remove after
