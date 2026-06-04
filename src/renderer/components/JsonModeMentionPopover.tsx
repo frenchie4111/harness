@@ -55,7 +55,7 @@ export function JsonModeMentionPopover({
   }, [selectedIdx])
 
   return (
-    <div className="absolute bottom-full left-0 right-0 mb-1 max-w-lg bg-surface border border-border rounded-md shadow-xl overflow-hidden z-30">
+    <div className="absolute bottom-full left-0 right-0 mb-1 bg-surface border border-border rounded-md shadow-xl overflow-hidden z-30">
       {header && (
         <div className="px-3 py-1.5 border-b border-border text-[10px] uppercase tracking-wider text-faint">
           {header}
