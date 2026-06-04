@@ -19,6 +19,7 @@ import { initialUpdater } from '../shared/state/updater'
 import { initialRepoConfigs } from '../shared/state/repo-configs'
 import { initialSettings } from '../shared/state/settings'
 import { initialScratchpad } from '../shared/state/scratchpad'
+import { initialConfigHealth } from '../shared/state/config-health'
 
 // The bug we're guarding against: a slice's `initial<Slice>` constant gains
 // a new field but the main-process Store seed in index.ts forgets to include
@@ -47,7 +48,8 @@ describe('buildInitialAppState', () => {
     updater: initialUpdater,
     repoConfigs: initialRepoConfigs,
     settings: initialSettings,
-    scratchpad: initialScratchpad
+    scratchpad: initialScratchpad,
+    configHealth: initialConfigHealth
   } as const
 
   for (const [name, initial] of Object.entries(slices)) {

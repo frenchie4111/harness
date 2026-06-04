@@ -393,6 +393,13 @@ export function buildBackend(
     openInEditor: (worktreePath: string, filePath?: string) =>
       req('editor:open', worktreePath, filePath),
 
+    // Corrupt-config recovery. Always-local: the broken config.json lives on
+    // the local Electron machine, and save-and-retry / reset relaunch it.
+    readRawConfig: () => reqLocal('config:readRawConfig'),
+    saveRawConfigAndRetry: (text: string) =>
+      reqLocal('config:saveRawConfigAndRetry', text),
+    resetConfigToDefaults: () => reqLocal('config:resetConfigToDefaults'),
+
     hasGithubToken: () => req('settings:hasGithubToken'),
     setGithubToken: (token: string) => req('settings:setGithubToken', token),
     clearGithubToken: () => req('settings:clearGithubToken'),

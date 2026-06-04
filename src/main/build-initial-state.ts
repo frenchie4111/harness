@@ -13,6 +13,7 @@ import { initialSnooze } from '../shared/state/snooze'
 import { initialAnnouncements } from '../shared/state/announcements'
 import { initialScratchpad } from '../shared/state/scratchpad'
 import { initialSshBootstrap } from '../shared/state/ssh-bootstrap'
+import { initialConfigHealth, type ConfigLoadError } from '../shared/state/config-health'
 import {
   initialSettings,
   DEFAULT_LIGHT_THEME,
@@ -52,10 +53,11 @@ function flattenScratchpadNotes(
 
 export function buildInitialAppState(
   config: Config,
-  opts: { hasGithubToken: boolean }
+  opts: { hasGithubToken: boolean; configLoadError?: ConfigLoadError | null }
 ): AppState {
   return {
     prs: initialPRs,
+    configHealth: { ...initialConfigHealth, loadError: opts.configLoadError ?? null },
     onboarding: {
       ...initialOnboarding,
       quest: config.onboarding?.quest ?? 'hidden'
