@@ -46,6 +46,8 @@ import {
   loadConfig,
   saveConfig,
   saveConfigSync,
+  getConfigLoadError,
+  discardCorruptConfigAndReset,
   DEFAULT_CLAUDE_COMMAND,
   AVAILABLE_THEMES,
   THEME_APP_BG,
@@ -298,7 +300,19 @@ const ptyManager = new PtyManager()
 let config = loadConfig()
 let stopWatchingStatus: (() => void) | null = null
 
-const store = new Store(buildInitialAppState(config, { hasGithubToken: hasSecret('githubToken') }))
+// Desktop surfaces a corrupt-config load via the recovery modal (configHealth
+// slice → InvalidConfigModal). Headless has no UI to drive the fix, so it
+// abandons the bad file and boots on defaults (the quarantine copy is kept).
+let configLoadError = getConfigLoadError()
+if (configLoadError && runtime !== 'electron') {
+  log('config', `corrupt config on headless boot, resetting: ${configLoadError.message}`)
+  config = discardCorruptConfigAndReset()
+  configLoadError = null
+}
+
+const store = new Store(
+  buildInitialAppState(config, { hasGithubToken: hasSecret('githubToken'), configLoadError })
+)
 
 // Scan for user-authored themes once the store exists. Done as a
 // dispatch (rather than seeding into buildInitialAppState) so the
@@ -3511,6 +3525,37 @@ const desktopHooks = {
   stopAutoUpdateChecks: (): void => {}
 }
 
+// Dev-only re-apply of a freshly-fixed config without relaunching (relaunch
+// blanks the screen under `electron-vite dev` — see desktop-shell). `config`
+// is mutated in place because desktop-shell and many IPC handlers hold it by
+// reference; reassigning would strand them on the stale object. The caller
+// reloads the window afterward so the renderer re-fetches the new snapshot.
+async function reapplyConfigFromDisk(): Promise<void> {
+  const fresh = loadConfig()
+  const mutable = config as unknown as Record<string, unknown>
+  for (const key of Object.keys(mutable)) {
+    delete mutable[key]
+  }
+  Object.assign(config, fresh)
+
+  store.replaceState(
+    buildInitialAppState(config, {
+      hasGithubToken: hasSecret('githubToken'),
+      configLoadError: getConfigLoadError()
+    })
+  )
+
+  const repoConfigsMap: Record<string, RepoConfig> = {}
+  for (const root of config.repoRoots || []) {
+    repoConfigsMap[root] = loadRepoConfig(root)
+  }
+  store.dispatch({ type: 'repoConfigs/loaded', payload: repoConfigsMap })
+
+  await panesFSM.restoreFromConfig(config.panes)
+  await worktreesFSM.refreshList()
+  void prPoller.refreshAll()
+}
+
 async function runBoot(): Promise<void> {
   log('app', `started, log file: ${getLogFilePath()}`)
 
@@ -3884,6 +3929,7 @@ if (desktopShellMod && desktopEarly) {
     worktreesFSM,
     config,
     runBoot,
+    reapplyConfigFromDisk,
     getStopWatchingStatus: () => stopWatchingStatus,
     setStopWatchingStatus: (next) => {
       stopWatchingStatus = next
