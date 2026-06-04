@@ -16,6 +16,15 @@ export type { SessionCostSummary, ClaudeAuthInfo, SubscriptionTier }
 import type { AddRepoResult } from '../shared/repo-pick'
 export type { AddRepoResult }
 
+/** Per-kind dirtiness flags for a worktree. `git` reflects
+ *  uncommitted changes; `scratchpad` reflects a non-empty scratchpad
+ *  note. The delete-worktree flow surfaces each kind separately so the
+ *  confirm dialog can name what would actually be lost. */
+export interface WorktreeDirtyStatus {
+  git: boolean
+  scratchpad: boolean
+}
+
 export interface FsEntry {
   name: string
   isDir: boolean
@@ -82,7 +91,7 @@ export type QuestStep = 'hidden' | 'spawn-second' | 'switch-between' | 'finale' 
 import type { UpdaterStatus } from '../shared/state/updater'
 export type { UpdaterStatus }
 
-export interface CommitDiff {
+export interface CommitMeta {
   hash: string
   shortHash: string
   author: string
@@ -90,6 +99,9 @@ export interface CommitDiff {
   date: string
   subject: string
   body: string
+}
+
+export interface CommitDiff extends CommitMeta {
   diff: string
 }
 
@@ -127,6 +139,8 @@ import type { JsonClaudeChatEntry } from '../shared/state/json-claude'
 export type { JsonClaudeChatEntry }
 
 export type MergeStrategy = 'squash' | 'merge-commit' | 'fast-forward'
+
+export type WorktreeDetail = 'diff' | 'age' | 'pr' | 'none'
 
 export type GitHubMergeMethod = 'merge' | 'squash' | 'rebase'
 
@@ -169,6 +183,10 @@ export interface ElectronAPI {
     branchName: string
     initialPrompt?: string
     teleportSessionId?: string
+    agentKind?: 'claude' | 'codex'
+    model?: string,
+    checkoutExisting?: boolean
+    baseRef?: string
   }): Promise<
     | { id: string; outcome: 'success'; createdPath: string }
     | { id: string; outcome: 'setup-failed'; createdPath: string }
@@ -178,6 +196,9 @@ export interface ElectronAPI {
     id: string
     repoRoot: string
     prNumber: number
+    initialPrompt?: string
+    agentKind?: 'claude' | 'codex'
+    model?: string
   }): Promise<
     | { id: string; outcome: 'success'; createdPath: string }
     | { id: string; outcome: 'setup-failed'; createdPath: string }
@@ -196,7 +217,7 @@ export interface ElectronAPI {
     newBranchName: string,
     baseBranch?: string
   ): Promise<{ worktree: Worktree; stashReapplied: boolean; stashConflict: boolean }>
-  isWorktreeDirty(path: string): Promise<boolean>
+  isWorktreeDirty(path: string): Promise<WorktreeDirtyStatus>
   removeWorktree(
     repoRoot: string,
     path: string,
@@ -233,18 +254,34 @@ export interface ElectronAPI {
   refreshPRsAllIfStale(): Promise<boolean>
   refreshPRsOne(worktreePath: string): Promise<boolean>
   refreshPRsOneIfStale(worktreePath: string): Promise<boolean>
+
+  refreshAnnouncements(): Promise<boolean>
+  dismissAnnouncement(id: string): Promise<boolean>
+  muteAnnouncements(muted: boolean): Promise<boolean>
   listRepoPRs(repoRoot: string): Promise<PRSummary[] | null>
   mergePR(
     worktreePath: string,
     method: GitHubMergeMethod
   ): Promise<MergePRResult>
+  approvePR(
+    worktreePath: string
+  ): Promise<{ ok: true } | { ok: false; error: string }>
 
   getWeeklyStats(): Promise<WeeklyStats>
   getBranchCommits(worktreePath: string): Promise<BranchCommit[]>
   getCommitDiff(worktreePath: string, hash: string): Promise<CommitDiff | null>
+  getCommitMeta(worktreePath: string, hash: string): Promise<CommitMeta | null>
   getCommitChangedFiles(worktreePath: string, hash: string): Promise<ChangedFile[]>
   getCommitFileDiffSides(worktreePath: string, hash: string, filePath: string): Promise<FileDiffSides>
+  getCommitRangeChangedFiles(worktreePath: string, fromHash: string, toHash: string): Promise<ChangedFile[]>
+  getCommitRangeFileDiffSides(
+    worktreePath: string,
+    fromHash: string,
+    toHash: string,
+    filePath: string
+  ): Promise<FileDiffSides>
   listAllFiles(worktreePath: string): Promise<string[]>
+  listRecentCommitShas(worktreePath: string): Promise<string[]>
   readWorktreeFile(worktreePath: string, filePath: string): Promise<FileReadResult>
   readWorktreeFileBinary(
     worktreePath: string,
@@ -290,18 +327,23 @@ export interface ElectronAPI {
   getLanAddresses(): Promise<Array<{ iface: string; address: string }>>
   setBrowserToolsEnabled(enabled: boolean): Promise<boolean>
   setBrowserToolsMode(mode: 'view' | 'full'): Promise<boolean>
-  setJsonModeClaudeTabs(enabled: boolean): Promise<boolean>
   setDefaultClaudeTabType(value: 'xterm' | 'json'): Promise<boolean>
+  setChatPromotionDismissed(value: boolean): Promise<boolean>
   setJsonModeChatDensity(value: 'compact' | 'comfy'): Promise<boolean>
+  setUiScale(value: 'x-small' | 'small' | 'medium' | 'large' | 'x-large'): Promise<boolean>
+  setJsonModeSendOnEnter(enabled: boolean): Promise<boolean>
   setJsonModeDefaultPermissionMode(
     value: 'default' | 'acceptEdits' | 'plan'
   ): Promise<boolean>
   setAutoSleepMinutes(value: number): Promise<boolean>
   setAutoUpdateEnabled(enabled: boolean): Promise<boolean>
+  setWarnBeforeQuitting(enabled: boolean): Promise<boolean>
+  setExpandedDiagnosticLoggingEnabled(enabled: boolean): Promise<boolean>
   setShareClaudeSettings(enabled: boolean): Promise<boolean>
   setHarnessSystemPromptEnabled(enabled: boolean): Promise<boolean>
   setHarnessSystemPrompt(prompt: string): Promise<boolean>
   setHarnessSystemPromptMain(prompt: string): Promise<boolean>
+  setPrReviewPrompt(prompt: string): Promise<boolean>
   prepareMcpForTerminal(terminalId: string): Promise<string | null>
   onWorktreesExternalCreate(
     callback: (payload: { repoRoot: string; worktree: Worktree; initialPrompt?: string }) => void
@@ -313,7 +355,17 @@ export interface ElectronAPI {
   setCodexModel(model: string | null): Promise<boolean>
   setCodexEnvVars(vars: Record<string, string>): Promise<boolean>
   setNameClaudeSessions(enabled: boolean): Promise<boolean>
-  setTheme(theme: string): Promise<boolean>
+  setThemeMode(mode: 'light' | 'dark' | 'system'): Promise<boolean>
+  setThemeLight(theme: string): Promise<boolean>
+  setThemeDark(theme: string): Promise<boolean>
+  setLastEffectiveAppBg(hex: string): void
+  /** Rescan `<userData>/themes/*.json` and update the slice. Returns
+   *  the new theme count. */
+  reloadCustomThemes(): Promise<number>
+  /** Reveal the themes directory in the OS file browser (Electron only).
+   *  Always returns the absolute directory path so the web client can
+   *  surface it manually. */
+  openThemesFolder(): Promise<{ ok: true; path: string } | { ok: false; path: string; message: string }>
   setCostsInterest(expanded: boolean): Promise<boolean>
   getAllSessionCosts(sinceMs?: number): Promise<SessionCostSummary[]>
   getClaudeAuthStatus(): Promise<ClaudeAuthInfo>
@@ -326,11 +378,13 @@ export interface ElectronAPI {
   setRepoConfig(repoRoot: string, next: Partial<RepoConfig>): Promise<RepoConfig | null>
   setWorktreeBase(mode: 'remote' | 'local'): Promise<boolean>
   setMergeStrategy(strategy: MergeStrategy): Promise<boolean>
+  setWorktreeDetail(detail: WorktreeDetail): Promise<boolean>
   setEditor(editorId: string): Promise<boolean>
   getAvailableEditors(): Promise<{ id: string; name: string }[]>
   snooze(path: string, wakeAt: number): Promise<boolean>
   unsnooze(path: string): Promise<boolean>
   setSnoozeDefaultDays(days: number): Promise<boolean>
+  setScratchpadText(worktreePath: string, text: string): Promise<boolean>
   openInEditor(worktreePath: string, filePath?: string): Promise<{ ok: true } | { ok: false; error: string }>
 
   panesAddTab(wtPath: string, tab: TerminalTab, paneId?: string): Promise<boolean>
@@ -348,6 +402,7 @@ export interface ElectronAPI {
     fromId: string,
     toId: string
   ): Promise<boolean>
+  panesRenameTab(wtPath: string, tabId: string, label: string): Promise<boolean>
   panesMoveTabToPane(
     wtPath: string,
     tabId: string,
@@ -368,6 +423,15 @@ export interface ElectronAPI {
   panesEnsureInitialized(wtPath: string): Promise<boolean>
   panesSleepTab(wtPath: string, tabId: string): Promise<boolean>
   panesWakeTab(wtPath: string, tabId: string): Promise<boolean>
+  panesOpenReview(wtPath: string): Promise<boolean>
+  panesOpenFile(wtPath: string, filePath: string, nearTabId?: string): Promise<boolean>
+  panesSetReviewSelection(
+    wtPath: string,
+    tabId: string,
+    fromCommit?: string,
+    toCommit?: string
+  ): Promise<boolean>
+  touchWorktreeLastActive(wtPath: string): Promise<boolean>
   getTerminalHistory(id: string): Promise<string>
   clearTerminalHistory(id: string): Promise<boolean>
   agentSessionFileExists(cwd: string, sessionId: string, agentKind?: AgentKind): Promise<boolean>
@@ -375,7 +439,7 @@ export interface ElectronAPI {
   buildAgentSpawnArgs(agentKind: string, opts: {
     terminalId: string; cwd: string; sessionId?: string;
     initialPrompt?: string; teleportSessionId?: string;
-    sessionName?: string
+    sessionName?: string; modelOverride?: string
   }): Promise<string>
 
   hasGithubToken(): Promise<boolean>
@@ -400,6 +464,7 @@ export interface ElectronAPI {
   ): Promise<boolean>
 
   openExternal(url: string): void
+  openPath(path: string): Promise<{ ok: true } | { ok: false; message: string }>
   openDebugLog(): Promise<{ ok: true } | { ok: false; message: string }>
   showDebugLogInFolder(): Promise<boolean>
   getFilePath(file: File): string
@@ -407,12 +472,22 @@ export interface ElectronAPI {
   windowToggleMaximize(): void
   windowClose(): void
   onOpenSettings(callback: () => void): () => void
+  onHoldToQuitStart(callback: () => void): () => void
+  onHoldToQuitCancel(callback: () => void): () => void
   onTogglePerfMonitor(callback: () => void): () => void
+  onToggleSingleScreen(callback: () => void): () => void
   onOpenKeyboardShortcuts(callback: () => void): () => void
+  onCloseFocusedTab(callback: () => void): () => void
+  onSplitPaneRight(callback: () => void): () => void
+  onSplitPaneDown(callback: () => void): () => void
   onOpenNewProject(callback: () => void): () => void
   onOpenReportIssue(callback: () => void): () => void
   onDebugCrashFocusedTab(callback: () => void): () => void
+  onDebugPreviewOnboarding(callback: () => void): () => void
   onOpenAddBackend(callback: () => void): () => void
+  onUiScaleUp(callback: () => void): () => void
+  onUiScaleDown(callback: () => void): () => void
+  onUiScaleReset(callback: () => void): () => void
 
   acceptHooks(): Promise<boolean>
   declineHooks(): Promise<boolean>
@@ -456,6 +531,7 @@ export interface ElectronAPI {
   joinTerminal(id: string): void
   leaveTerminal(id: string): void
   takeTerminalControl(id: string, cols: number, rows: number): void
+  setTerminalProgress(id: string, state: 0 | 1 | 2 | 3 | 4, value: number): void
   onTerminalData(callback: (id: string, data: string) => void): () => void
   onTerminalExit(callback: (id: string, exitCode: number) => void): () => void
 
@@ -489,6 +565,10 @@ export interface ElectronAPI {
   getJsonClaudeEntries(sessionId: string): Promise<JsonClaudeChatEntry[]>
   killJsonClaude(id: string): Promise<boolean>
   interruptJsonClaude(id: string): Promise<boolean>
+  rewindJsonClaudeTo(
+    id: string,
+    entryId: string
+  ): Promise<{ ok: boolean; reason?: string }>
   openJsonClaudeAuthLoginTab(
     worktreePath: string
   ): Promise<{ ok: true; tabId: string } | { ok: false; error: string }>
@@ -524,6 +604,37 @@ export interface ElectronAPI {
   connectionsSetLastConnected(id: string, when?: number): Promise<boolean>
   connectionsGetToken(id: string): Promise<string | null>
   connectionsHasToken(id: string): Promise<boolean>
+
+  // SSH bootstrap (remote-SSH backend flow). Always-local; the local
+  // Electron backend is the one that drives SSH. See plans/remote-main.md §4.
+  sshListConfiguredHosts(): Promise<ConfiguredHost[]>
+  /** Kick off a first-time SSH bootstrap. Progress events stream into
+   *  the sshBootstrap slice keyed by `bootstrapId` (mint a fresh uuid
+   *  v4 client-side BEFORE calling so you can subscribe to progress
+   *  via useSshBootstrap(bootstrapId)). Resolves with the persisted
+   *  connection id once the tunnel is live and the connection has been
+   *  added to `connections[]`. */
+  sshBootstrap(input: {
+    bootstrapId: string
+    target: string
+    label: string
+  }): Promise<{ connectionId: string }>
+  /** Reconnect an existing SSH backend. Idempotent — if a live tunnel
+   *  already exists, returns its URL/token without re-running SSH. */
+  sshReconnect(input: {
+    bootstrapId: string
+    connectionId: string
+  }): Promise<{ url: string; token: string; localPort: number }>
+}
+
+/** An SSH host parsed out of `~/.ssh/config`. Mirrors the main-process
+ *  `ConfiguredHost` shape in src/main/ssh-config.ts. */
+export interface ConfiguredHost {
+  alias: string
+  host: string
+  user?: string
+  port?: number
+  identityFile?: string
 }
 
 /** A configured backend (multi-backend UX). Kept in sync with the
@@ -537,6 +648,15 @@ export interface BackendConnection {
   lastConnectedAt?: number
   color?: string
   initials?: string
+  /** Set on remotes that were bootstrapped via SSH. The renderer uses
+   *  the presence of this field to decide between "edit URL/token" and
+   *  "edit SSH target" affordances. The actual reconnect machinery
+   *  lives in main; the renderer just kicks `ssh:reconnect` when the
+   *  user clicks a disconnected SSH chip. */
+  ssh?: {
+    target: string
+    tunnelLocalPort?: number
+  }
 }
 
 export type ActivityState = 'processing' | 'waiting' | 'needs-approval' | 'idle' | 'merged'

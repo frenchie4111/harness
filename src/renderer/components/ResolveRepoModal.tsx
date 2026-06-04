@@ -44,7 +44,7 @@ export function ResolveRepoModal({
       >
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-border">
           <div className="flex items-center gap-2">
-            <AlertTriangle size={14} className="text-warning" />
+            <AlertTriangle className="icon-sm text-warning" />
             <h2 className="text-sm font-semibold text-fg-bright">
               Folder isn't a git repository
             </h2>
@@ -54,7 +54,7 @@ export function ResolveRepoModal({
             title="Cancel (Esc)"
             className="text-dim hover:text-fg p-1 rounded transition-colors cursor-pointer"
           >
-            <X size={16} />
+            <X className="icon-base" />
           </button>
         </div>
 
@@ -66,17 +66,17 @@ export function ResolveRepoModal({
           </p>
 
           <div className="flex flex-col gap-2">
-            <div className="text-[11px] uppercase tracking-wide text-faint">You picked</div>
+            <div className="text-xs uppercase tracking-wide text-faint">You picked</div>
             <div className="flex items-start gap-2 bg-app/40 border border-border rounded px-2.5 py-2 font-mono text-xs text-dim break-all">
-              <FolderTree size={12} className="text-faint shrink-0 mt-0.5" />
+              <FolderTree className="icon-xs text-faint shrink-0 mt-0.5" />
               {picked}
             </div>
           </div>
 
           <div className="flex flex-col gap-2">
-            <div className="text-[11px] uppercase tracking-wide text-faint">Resolved repository</div>
+            <div className="text-xs uppercase tracking-wide text-faint">Resolved repository</div>
             <div className="flex items-start gap-2 bg-app/40 border border-accent/40 rounded px-2.5 py-2 font-mono text-xs text-fg-bright break-all">
-              <FolderTree size={12} className="text-accent shrink-0 mt-0.5" />
+              <FolderTree className="icon-xs text-accent shrink-0 mt-0.5" />
               {resolved}
             </div>
           </div>

@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { AtSign, Save } from 'lucide-react'
+import { ArrowRightFromLine, AtSign, Save, WrapText } from 'lucide-react'
 import type { CommitDiff, FileDiffSides } from '../types'
 import { Tooltip } from './Tooltip'
 import { detectLanguage, highlightLine } from '../syntax'
 import { MonacoDiffEditor } from './MonacoDiffEditor'
 import { useSettings } from '../store'
 import { useBackend } from '../backend'
+import { scaledEditorFontSize } from '../../shared/state/settings'
 
 interface DiffViewProps {
   worktreePath: string
@@ -40,6 +41,7 @@ function FileDiffView({
   const [modifiedValue, setModifiedValue] = useState('')
   const [savedValue, setSavedValue] = useState('')
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [wordWrap, setWordWrap] = useState(false)
 
   const valueRef = useRef(modifiedValue)
   const savedRef = useRef(savedValue)
@@ -59,6 +61,7 @@ function FileDiffView({
     setModifiedValue('')
     setSavedValue('')
     setSaveError(null)
+    setWordWrap(false)
     if (!filePath) return
     backend
       .getFileDiffSides(worktreePath, filePath, staged ?? false, branchDiff ? 'branch' : 'working')
@@ -156,6 +159,14 @@ function FileDiffView({
         {branchDiff && <span className="shrink-0 text-info">branch</span>}
         {!sides.originalExists && <span className="shrink-0 text-success">new file</span>}
         {!sides.modifiedExists && <span className="shrink-0 text-danger">deleted</span>}
+        <Tooltip label={wordWrap ? 'No wrap' : 'Word wrap'}>
+          <button
+            onClick={() => setWordWrap((v) => !v)}
+            className="shrink-0 text-faint hover:text-fg cursor-pointer"
+          >
+            {wordWrap ? <ArrowRightFromLine className="icon-xs" /> : <WrapText className="icon-xs" />}
+          </button>
+        </Tooltip>
         {editable && (
           <Tooltip label={dirty ? 'Save (⌘S)' : 'Saved'}>
             <button
@@ -163,7 +174,7 @@ function FileDiffView({
               disabled={!dirty}
               className="shrink-0 text-faint hover:text-fg disabled:opacity-40 disabled:hover:text-faint cursor-pointer disabled:cursor-default"
             >
-              <Save size={12} />
+              <Save className="icon-xs" />
             </button>
           </Tooltip>
         )}
@@ -173,13 +184,13 @@ function FileDiffView({
               onClick={() => onSendToAgent(`@${filePath} `)}
               className="shrink-0 text-faint hover:text-fg cursor-pointer"
             >
-              <AtSign size={12} />
+              <AtSign className="icon-xs" />
             </button>
           </Tooltip>
         )}
       </div>
       {readOnlyBanner && (
-        <div className="shrink-0 border-b border-border bg-info/10 px-4 py-1.5 text-[11px] text-info">
+        <div className="shrink-0 border-b border-border bg-info/10 px-4 py-1.5 text-xs text-info">
           {readOnlyBanner}
         </div>
       )}
@@ -190,7 +201,8 @@ function FileDiffView({
           filePath={filePath}
           readOnly={!editable}
           fontFamily={settings.terminalFontFamily || undefined}
-          fontSize={settings.terminalFontSize}
+          fontSize={scaledEditorFontSize(settings.terminalFontSize, settings.uiScale)}
+          wordWrap={wordWrap}
           onModifiedChange={editable ? setModifiedValue : undefined}
           onSave={editable ? save : undefined}
           onReferenceLine={
@@ -277,7 +289,7 @@ function CommitDiffView({
                       }}
                       className="opacity-0 group-hover/line:opacity-100 text-faint hover:text-fg transition-opacity cursor-pointer"
                     >
-                      <AtSign size={10} />
+                      <AtSign className="icon-2xs" />
                     </button>
                   </Tooltip>
                 )}
@@ -379,7 +391,7 @@ function CommitHeader({ commit }: { commit: CommitDiff }): JSX.Element {
   return (
     <div className="border-b border-border bg-panel px-5 py-4">
       <div className="flex items-center gap-2 mb-2">
-        <span className="font-mono text-[11px] text-info bg-info/10 px-2 py-0.5 rounded">
+        <span className="font-mono text-xs text-info bg-info/10 px-2 py-0.5 rounded">
           {commit.shortHash}
         </span>
         <span className="text-xs text-faint">{formatted}</span>

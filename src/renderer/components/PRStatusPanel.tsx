@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { ExternalLink, GitMerge, ChevronDown, Check, GitPullRequest, RefreshCw, Loader2 } from 'lucide-react'
+import { ExternalLink, GitMerge, GitMergeConflict, ChevronDown, Check, GitPullRequest, RefreshCw, Loader2, ArrowDown, CircleDot, CircleCheck } from 'lucide-react'
 import { useRepoConfigs, useSettings } from '../store'
 import { useBackend } from '../backend'
 import type {
@@ -212,7 +212,7 @@ function MergeLocallyBody({
                   title={hasConflict ? 'Resolve merge conflicts before merging' : undefined}
                   className="flex-1 text-xs bg-accent/20 hover:bg-accent/30 text-fg-bright px-2 py-1.5 rounded-l flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer border-r border-accent/40"
                 >
-                  <GitMerge size={12} />
+                  <GitMerge className="icon-xs" />
                   {busy === 'merging' ? 'Merging…' : STRATEGY_BUTTON_LABELS[strategy]}
                 </button>
                 <button
@@ -222,7 +222,7 @@ function MergeLocallyBody({
                   aria-label="Change merge strategy"
                   title="Change merge strategy"
                 >
-                  <ChevronDown size={12} />
+                  <ChevronDown className="icon-xs" />
                 </button>
               </div>
 
@@ -240,16 +240,14 @@ function MergeLocallyBody({
                           }`}
                         >
                           <Check
-                            size={12}
-                            className={`mt-0.5 shrink-0 ${
+                            className={`icon-xs mt-0.5 shrink-0 ${
                               active ? 'text-accent' : 'opacity-0'
-                            }`}
-                          />
+                            }`} />
                           <div className="min-w-0">
                             <div className="text-xs text-fg-bright">
                               {STRATEGY_MENU_LABELS[s]}
                             </div>
-                            <div className="text-[11px] text-faint leading-snug">
+                            <div className="text-xs text-faint leading-snug">
                               {STRATEGY_DESCRIPTIONS[s]}
                             </div>
                           </div>
@@ -262,7 +260,7 @@ function MergeLocallyBody({
             </div>
 
             {hasConflict && conflictPreview && (
-              <div className="text-[11px] text-danger leading-snug space-y-1">
+              <div className="text-xs text-danger leading-snug space-y-1">
                 <div>
                   Merge conflict
                   {conflictPreview.files.length > 0 && (
@@ -278,7 +276,7 @@ function MergeLocallyBody({
                   . Resolve before merging.
                 </div>
                 {conflictPreview.files.length > 1 && (
-                  <ul className="text-faint font-mono text-[10px] space-y-0.5 max-h-20 overflow-y-auto">
+                  <ul className="text-faint font-mono text-xs space-y-0.5 max-h-20 overflow-y-auto">
                     {conflictPreview.files.map((f) => (
                       <li key={f} className="truncate" style={{ direction: 'rtl', textAlign: 'left' }} title={f}>
                         <bdi>{f}</bdi>
@@ -290,7 +288,7 @@ function MergeLocallyBody({
             )}
 
             {needsFix && (
-              <div className="text-[11px] text-warning leading-snug space-y-1">
+              <div className="text-xs text-warning leading-snug space-y-1">
                 <div>
                   Main worktree isn't ready:
                   {mainStatus.isDirty && ' has uncommitted changes'}
@@ -320,7 +318,7 @@ function MergeLocallyBody({
             )}
 
             {error && (
-              <div className="text-[11px] text-danger leading-snug break-words">{error}</div>
+              <div className="text-xs text-danger leading-snug break-words">{error}</div>
             )}
           </>
         )}
@@ -360,9 +358,74 @@ const STATE_LABELS: Record<string, string> = {
 
 const STATE_COLORS: Record<string, string> = {
   open: 'text-success',
-  draft: 'text-muted',
+  draft: 'text-warning',
   merged: 'text-accent',
   closed: 'text-danger'
+}
+
+const STATE_PILL_COLORS: Record<string, string> = {
+  open: 'border-success text-success hover:bg-success/10',
+  draft: 'border-warning text-warning hover:bg-warning/10',
+  merged: 'border-accent text-accent hover:bg-accent/10',
+  closed: 'border-danger text-danger hover:bg-danger/10'
+}
+
+/** Pick a readable foreground for a GitHub label background.
+ *  GitHub uses the same algorithm — anything darker than mid-gray gets
+ *  white text, anything lighter gets near-black. Falls back to white if
+ *  the color string isn't 6-char hex. */
+function labelTextColor(hex: string): string {
+  if (!/^[0-9a-fA-F]{6}$/.test(hex)) return '#fff'
+  const r = parseInt(hex.slice(0, 2), 16)
+  const g = parseInt(hex.slice(2, 4), 16)
+  const b = parseInt(hex.slice(4, 6), 16)
+  // Relative luminance per WCAG (approximation good enough for label legibility).
+  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b
+  return lum > 140 ? '#1f2328' : '#ffffff'
+}
+
+function ordinalSuffix(n: number): string {
+  const mod100 = n % 100
+  if (mod100 >= 11 && mod100 <= 13) return 'th'
+  switch (n % 10) {
+    case 1:
+      return 'st'
+    case 2:
+      return 'nd'
+    case 3:
+      return 'rd'
+    default:
+      return 'th'
+  }
+}
+
+function formatEta(seconds: number): string {
+  if (seconds < 60) return '<1m'
+  if (seconds < 3600) return `~${Math.round(seconds / 60)}m`
+  const hours = Math.floor(seconds / 3600)
+  const mins = Math.round((seconds % 3600) / 60)
+  return mins === 0 ? `~${hours}h` : `~${hours}h${mins}m`
+}
+
+function queueBadgeLabel(position: number, etaSeconds?: number): string {
+  const eta = typeof etaSeconds === 'number' ? ` · ${formatEta(etaSeconds)}` : ''
+  if (position <= 1) return `Queued${eta}`
+  return `Queued (${position}${ordinalSuffix(position)}${eta})`
+}
+
+/** Decide which milestone affordance the PR pane should render:
+ *   - 'hidden'      → repo has no milestones at all; no slot at all
+ *   - 'pill'        → render the milestone name as a clickable pill
+ *   - 'placeholder' → render the muted "No milestone" placeholder
+ *
+ * hasMilestones === undefined is treated as "we don't know yet" so we
+ * keep showing the slot — older cached state pre-dates the field. */
+export type MilestoneDisplay = 'hidden' | 'pill' | 'placeholder'
+export function milestoneDisplay(
+  pr: Pick<PRStatus, 'hasMilestones' | 'milestone'>
+): MilestoneDisplay {
+  if (pr.hasMilestones === false) return 'hidden'
+  return pr.milestone ? 'pill' : 'placeholder'
 }
 
 const CHECK_ICONS: Record<CheckStatus['state'], { symbol: string; color: string }> = {
@@ -379,6 +442,31 @@ const OVERALL_COLORS: Record<string, string> = {
   failure: 'text-danger',
   pending: 'text-warning',
   none: 'text-dim'
+}
+
+// Failed/error checks are what the user has to act on, so they go first.
+// Then pending (in progress), then success, then non-actionable
+// neutral/skipped. Within each group, sort by startedAt ascending so the
+// order matches the actual run order on CI.
+const CHECK_STATE_PRIORITY: Record<CheckStatus['state'], number> = {
+  failure: 0,
+  error: 0,
+  pending: 1,
+  success: 2,
+  neutral: 3,
+  skipped: 4
+}
+
+function sortChecksForDisplay(checks: CheckStatus[]): CheckStatus[] {
+  return [...checks].sort((a, b) => {
+    const pa = CHECK_STATE_PRIORITY[a.state]
+    const pb = CHECK_STATE_PRIORITY[b.state]
+    if (pa !== pb) return pa - pb
+    const ta = a.startedAt ? Date.parse(a.startedAt) : Number.POSITIVE_INFINITY
+    const tb = b.startedAt ? Date.parse(b.startedAt) : Number.POSITIVE_INFINITY
+    if (ta !== tb) return ta - tb
+    return a.name.localeCompare(b.name)
+  })
 }
 
 const REVIEW_DECISION_LABELS: Record<PRStatus['reviewDecision'], { text: string; color: string }> = {
@@ -445,9 +533,7 @@ function ReviewSummary({
                 <span className="text-muted truncate">{review.user}</span>
                 <span className={`shrink-0 ${icon.color}`}>{icon.symbol}</span>
                 <ExternalLink
-                  size={10}
-                  className="shrink-0 text-faint opacity-0 group-hover:opacity-100 transition-opacity ml-auto"
-                />
+                  className="icon-2xs shrink-0 text-faint opacity-0 group-hover:opacity-100 transition-opacity ml-auto" />
               </div>
             )
           })}
@@ -467,18 +553,21 @@ const STRATEGY_TO_METHOD: Record<MergeStrategy, GitHubMergeMethod> = {
 }
 
 const METHOD_LABEL: Record<GitHubMergeMethod, string> = {
-  squash: 'squash',
-  merge: 'merge commit',
-  rebase: 'rebase'
+  squash: 'Squash',
+  merge: 'Merge',
+  rebase: 'Rebase'
 }
 
-interface PRActionsProps {
-  pr: PRStatus
-  worktree?: Worktree | null
+interface PRMergeAction {
+  button: JSX.Element | null
+  errorRow: JSX.Element | null
+}
+
+function usePRMergeAction(
+  pr: PRStatus | null | undefined,
+  worktree: Worktree | null | undefined,
   needsGithubToken: boolean
-}
-
-function PRActions({ pr, worktree, needsGithubToken }: PRActionsProps): JSX.Element {
+): PRMergeAction {
   const backend = useBackend()
   const repoConfigs = useRepoConfigs()
   const globalStrategy = useSettings().mergeStrategy
@@ -506,28 +595,7 @@ function PRActions({ pr, worktree, needsGithubToken }: PRActionsProps): JSX.Elem
     setError(null)
     setJustMerged(false)
     if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current)
-  }, [pr.number, pr.state])
-
-  const isTerminal = pr.state === 'merged' || pr.state === 'closed'
-
-  let disabledReason: string | null = null
-  if (needsGithubToken) disabledReason = 'Connect GitHub token to merge'
-  else if (!worktree) disabledReason = 'No active worktree'
-  else if (pr.state === 'merged') disabledReason = 'Already merged'
-  else if (pr.state === 'closed') disabledReason = 'PR is closed'
-  else if (pr.state === 'draft') disabledReason = "Draft PRs can't be merged"
-  else if (pr.hasConflict === true) disabledReason = 'PR has merge conflicts'
-  const canMerge = disabledReason === null && !merging
-
-  const startConfirm = (): void => {
-    setError(null)
-    setConfirming(true)
-    if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current)
-    confirmTimerRef.current = setTimeout(() => {
-      setConfirming(false)
-      confirmTimerRef.current = null
-    }, 5000)
-  }
+  }, [pr?.number, pr?.state])
 
   const performMerge = useCallback(async () => {
     if (!worktree) return
@@ -552,6 +620,29 @@ function PRActions({ pr, worktree, needsGithubToken }: PRActionsProps): JSX.Elem
     }
   }, [worktree, method, backend])
 
+  if (!pr) return { button: null, errorRow: null }
+
+  const isTerminal = pr.state === 'merged' || pr.state === 'closed'
+
+  let disabledReason: string | null = null
+  if (needsGithubToken) disabledReason = 'Connect GitHub token to merge'
+  else if (!worktree) disabledReason = 'No active worktree'
+  else if (pr.state === 'merged') disabledReason = 'Already merged'
+  else if (pr.state === 'closed') disabledReason = 'PR is closed'
+  else if (pr.state === 'draft') disabledReason = "Draft PRs can't be merged"
+  else if (pr.hasConflict === true) disabledReason = 'There are merge conflicts'
+  const canMerge = disabledReason === null && !merging
+
+  const startConfirm = (): void => {
+    setError(null)
+    setConfirming(true)
+    if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current)
+    confirmTimerRef.current = setTimeout(() => {
+      setConfirming(false)
+      confirmTimerRef.current = null
+    }, 5000)
+  }
+
   const onMergeClick = (): void => {
     if (!canMerge) return
     if (confirming) {
@@ -564,72 +655,157 @@ function PRActions({ pr, worktree, needsGithubToken }: PRActionsProps): JSX.Elem
   let mergeLabel: string
   if (merging) mergeLabel = 'Merging…'
   else if (justMerged) mergeLabel = 'Merged'
-  else if (confirming) mergeLabel = `Confirm ${methodLabel}`
-  else mergeLabel = 'Merge'
+  else if (confirming) mergeLabel = `Confirm merge into ${pr.baseBranch}`
+  else mergeLabel = methodLabel
 
-  const showMergeButton = !isTerminal
+  const showMergeButton = !isTerminal && !pr.queuePosition
 
   let mergeTooltip: string
   if (disabledReason) mergeTooltip = disabledReason
   else if (confirming) mergeTooltip = 'Click again to confirm'
-  else if (strategy === 'fast-forward')
-    mergeTooltip = 'Merge via GitHub using rebase (closest equivalent to fast-forward)'
-  else mergeTooltip = `Merge via GitHub using ${methodLabel}`
+  else mergeTooltip = 'Merge the pull request'
 
-  return (
-    <div className="flex items-center gap-1.5 flex-wrap mb-2">
-      <Tooltip label="Open PR in browser" action="openPR">
-        <button
-          onClick={() => backend.openExternal(pr.url)}
-          className="px-3 py-1.5 text-xs rounded bg-surface hover:bg-surface/60 text-fg transition-colors cursor-pointer flex items-center gap-1.5"
-        >
-          Open
-          <ExternalLink size={11} />
-        </button>
-      </Tooltip>
-      {showMergeButton && (
-        <Tooltip label={mergeTooltip}>
-          <button
-            onClick={onMergeClick}
-            disabled={!canMerge || justMerged}
-            className={`px-3 py-1.5 text-xs rounded transition-colors cursor-pointer flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed ${
-              confirming
-                ? 'bg-warning/30 hover:bg-warning/40 text-warning border border-warning/50'
-                : 'bg-success/20 hover:bg-success/30 text-success'
-            }`}
-          >
-            {merging ? (
-              <Loader2 size={11} className="animate-spin" />
-            ) : justMerged ? (
-              <Check size={11} />
-            ) : (
-              <GitMerge size={11} />
-            )}
-            {mergeLabel}
-          </button>
-        </Tooltip>
-      )}
-      {showMergeButton && !confirming && !merging && !justMerged && (
-        <span className="text-[10px] text-muted ml-auto">
-          via {methodLabel}
-        </span>
-      )}
-      {error && (
-        <div className="basis-full text-[11px] text-danger leading-snug break-words flex items-center gap-2">
-          <span className="flex-1">{error}</span>
-          <button
-            onClick={() => {
-              setError(null)
-              void performMerge()
-            }}
-            className="px-2 py-0.5 text-[11px] rounded bg-surface hover:bg-surface/60 text-fg transition-colors cursor-pointer shrink-0"
-          >
-            Retry
-          </button>
-        </div>
-      )}
+  const button = showMergeButton ? (
+    <Tooltip label={mergeTooltip}>
+      <button
+        onClick={onMergeClick}
+        disabled={!canMerge || justMerged}
+        className={`px-2 py-1 text-xs rounded transition-colors cursor-pointer flex items-center gap-1.5 disabled:cursor-not-allowed ${
+          pr.hasConflict === true ? '' : 'disabled:opacity-40'
+        } ${
+          pr.hasConflict === true
+            ? 'bg-danger/20 hover:bg-danger/20 text-danger'
+            : confirming
+              ? 'bg-warning/30 hover:bg-warning/40 text-warning border border-warning/50'
+              : 'bg-success/20 hover:bg-success/30 text-success'
+        }`}
+      >
+        {merging ? (
+          <Loader2 className="icon-xs animate-spin" />
+        ) : justMerged ? (
+          <Check className="icon-xs" />
+        ) : pr.hasConflict === true ? (
+          <GitMergeConflict className="icon-xs" />
+        ) : (
+          <GitMerge className="icon-xs" />
+        )}
+        {mergeLabel}
+      </button>
+    </Tooltip>
+  ) : null
+
+  const errorRow = error ? (
+    <div className="px-3 pt-2 text-xs text-danger leading-snug break-words flex items-center gap-2">
+      <span className="flex-1">{error}</span>
+      <button
+        onClick={() => {
+          setError(null)
+          void performMerge()
+        }}
+        className="px-2 py-0.5 text-xs rounded bg-surface hover:bg-surface/60 text-fg transition-colors cursor-pointer shrink-0"
+      >
+        Retry
+      </button>
     </div>
+  ) : null
+
+  return { button, errorRow }
+}
+
+interface PRApproveAction {
+  button: JSX.Element | null
+  errorRow: JSX.Element | null
+}
+
+/** Approve-button visibility heuristic — mirrors github.com's "Approve"
+ *  affordance on the Files/Review tab. The button shows only when the
+ *  viewer is plausibly a reviewer of someone else's PR: not the author,
+ *  hasn't already approved, and either the PR is still waiting for a
+ *  first review or the viewer's latest review was CHANGES_REQUESTED
+ *  (so they can flip to APPROVE). Returns null otherwise. */
+function usePRApproveAction(
+  pr: PRStatus | null | undefined,
+  worktree: Worktree | null | undefined,
+  viewerLogin: string | null,
+  needsGithubToken: boolean
+): PRApproveAction {
+  const backend = useBackend()
+  const [approving, setApproving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [justApproved, setJustApproved] = useState(false)
+
+  useEffect(() => {
+    setApproving(false)
+    setError(null)
+    setJustApproved(false)
+  }, [pr?.number])
+
+  const performApprove = useCallback(async () => {
+    if (!worktree) return
+    setApproving(true)
+    setError(null)
+    try {
+      const result = await backend.approvePR(worktree.path)
+      if (result.ok) setJustApproved(true)
+      else setError(result.error || 'Approval failed')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setApproving(false)
+    }
+  }, [worktree, backend])
+
+  if (!pr || !worktree || needsGithubToken) return { button: null, errorRow: null }
+  if (pr.state !== 'open') return { button: null, errorRow: null }
+  if (!viewerLogin) return { button: null, errorRow: null }
+  if (pr.author?.login === viewerLogin) return { button: null, errorRow: null }
+
+  let viewerLatest: PRReview | null = null
+  for (const r of pr.reviews) {
+    if (r.user !== viewerLogin) continue
+    if (!viewerLatest || r.submittedAt > viewerLatest.submittedAt) viewerLatest = r
+  }
+  if (viewerLatest?.state === 'APPROVED') return { button: null, errorRow: null }
+
+  const showApprove =
+    pr.reviewDecision === 'review_required' ||
+    viewerLatest?.state === 'CHANGES_REQUESTED'
+  if (!showApprove) return { button: null, errorRow: null }
+
+  const button = (
+    <Tooltip label={justApproved ? 'Approved' : 'Approve this pull request'}>
+      <button
+        onClick={() => void performApprove()}
+        disabled={approving || justApproved}
+        aria-label="Approve pull request"
+        className="px-2 py-1 text-xs rounded transition-colors cursor-pointer flex items-center gap-1.5 disabled:cursor-not-allowed disabled:opacity-40 bg-success/20 hover:bg-success/30 text-success"
+      >
+        {approving ? (
+          <Loader2 className="icon-xs animate-spin" />
+        ) : (
+          <Check className="icon-xs" />
+        )}
+        {justApproved ? 'Approved' : 'Approve'}
+      </button>
+    </Tooltip>
   )
+
+  const errorRow = error ? (
+    <div className="px-3 pt-2 text-xs text-danger leading-snug break-words flex items-center gap-2">
+      <span className="flex-1">{error}</span>
+      <button
+        onClick={() => {
+          setError(null)
+          void performApprove()
+        }}
+        className="px-2 py-0.5 text-xs rounded bg-surface hover:bg-surface/60 text-fg transition-colors cursor-pointer shrink-0"
+      >
+        Retry
+      </button>
+    </div>
+  ) : null
+
+  return { button, errorRow }
 }
 
 interface PRStatusPanelProps {
@@ -660,7 +836,11 @@ export function PRStatusPanel({
 
   const needsGithubToken = hasGithubToken === false
 
-  const actions = !needsGithubToken && onRefresh ? (
+  const settings = useSettings()
+  const mergeAction = usePRMergeAction(pr, worktree, needsGithubToken)
+  const approveAction = usePRApproveAction(pr, worktree, settings.viewerLogin, needsGithubToken)
+
+  const refreshButton = !needsGithubToken && onRefresh ? (
     <Tooltip label="Refresh PR status" side="left">
       <button
         onClick={(e) => {
@@ -671,9 +851,17 @@ export function PRStatusPanel({
         className="text-xs text-dim hover:text-fg flex items-center transition-colors cursor-pointer disabled:cursor-default"
         aria-label="Refresh PR status"
       >
-        <RefreshCw size={11} className={loading ? 'animate-spin' : ''} />
+        <RefreshCw className={`icon-xs ${loading ? 'animate-spin' : ''}`} />
       </button>
     </Tooltip>
+  ) : null
+
+  const actions = (approveAction.button || mergeAction.button || refreshButton) ? (
+    <div className="flex items-center gap-2">
+      {approveAction.button}
+      {mergeAction.button}
+      {refreshButton}
+    </div>
   ) : null
 
   return (
@@ -694,7 +882,7 @@ export function PRStatusPanel({
               onClick={onConnectGithub}
               className="w-full text-xs bg-info/25 hover:bg-info/35 text-info px-2 py-1.5 rounded flex items-center justify-center gap-1.5 cursor-pointer"
             >
-              <GitPullRequest size={12} />
+              <GitPullRequest className="icon-xs" />
               Connect GitHub
             </button>
           )}
@@ -709,34 +897,171 @@ export function PRStatusPanel({
         <div className="px-3 py-2 text-xs text-faint">Loading...</div>
       )}
 
+      {mergeAction.errorRow}
+      {approveAction.errorRow}
+
       {!needsGithubToken && pr && (
-        <div className="px-3 py-2">
-          {/* PR title and state */}
-          <div className="flex items-start gap-1.5 mb-1.5">
-            <span className={`text-xs font-medium shrink-0 ${STATE_COLORS[pr.state]}`}>
-              {STATE_LABELS[pr.state]}
-            </span>
-            <a
-              className="text-xs text-fg hover:text-fg-bright truncate cursor-pointer"
-              title={`#${pr.number}: ${pr.title}\n${pr.url}`}
-              onClick={() => setExpanded(!expanded)}
+        <div className="px-3 py-2 space-y-2">
+          {/* PR title row: #nnn pill + title */}
+          <div className="flex items-center gap-1.5 min-w-0">
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                backend.openExternal(pr.url)
+              }}
+              className={`px-1.5 py-0.5 rounded border text-xs font-medium transition-colors cursor-pointer shrink-0 ${
+                pr.queuePosition
+                  ? 'border-accent text-accent hover:bg-accent/10'
+                  : STATE_PILL_COLORS[pr.state]
+              }`}
+              aria-label="Open PR in browser"
+              title={pr.queuePosition ? queueBadgeLabel(pr.queuePosition, pr.queueEstimatedSeconds) : STATE_LABELS[pr.state]}
             >
-              #{pr.number} {pr.title}
-            </a>
+              #{pr.number}
+            </button>
+            <Tooltip label="Open PR in browser" action="openPR">
+              <a
+                className="flex-1 text-xs text-fg hover:text-fg-bright truncate cursor-pointer"
+                onClick={() => backend.openExternal(pr.url)}
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData('text/plain', pr.url)
+                  e.dataTransfer.effectAllowed = 'copy'
+                }}
+              >
+                {pr.title}
+              </a>
+            </Tooltip>
+          </div>
+
+          <div className="flex items-center gap-1.5 text-xs">
+            {pr.assignees.length > 0 && (
+              <div className="flex items-center shrink-0">
+                {pr.assignees.map((a, i) => (
+                  <img
+                    key={a.login}
+                    src={a.avatarUrl}
+                    alt={a.login}
+                    title={`Assigned to ${a.login}`}
+                    className={`w-4 h-4 rounded-full border border-panel ${i > 0 ? '-ml-1' : ''}`}
+                  />
+                ))}
+              </div>
+            )}
+            {pr.queuePosition && (
+              <span className="font-medium shrink-0 text-accent">
+                {queueBadgeLabel(pr.queuePosition, pr.queueEstimatedSeconds)}
+              </span>
+            )}
+            {(() => {
+              const display = milestoneDisplay(pr)
+              if (display === 'hidden') return null
+              if (display === 'pill' && pr.milestone) {
+                return (
+                  <a
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      backend.openExternal(pr.milestone!.url)
+                    }}
+                    className={`shrink-0 px-1.5 py-0.5 rounded-full text-xs font-medium cursor-pointer transition-colors truncate max-w-[140px] ${
+                      pr.milestone.state === 'closed'
+                        ? 'bg-surface text-dim hover:text-fg-bright'
+                        : 'bg-accent/20 text-accent hover:bg-accent/30'
+                    }`}
+                    title={`Milestone: ${pr.milestone.title}`}
+                  >
+                    {pr.milestone.title}
+                  </a>
+                )
+              }
+              return (
+                <span className="shrink-0 px-1.5 py-0.5 rounded-full text-xs font-medium bg-surface text-faint">
+                  No milestone
+                </span>
+              )
+            })()}
+            <span
+              className={`font-mono truncate shrink-0 ${pr.isDefaultBase ? 'text-dim' : 'text-warning'}`}
+              title={pr.isDefaultBase ? `Target: ${pr.baseBranch}` : `Target: ${pr.baseBranch} (not the default branch)`}
+            >
+              {pr.baseBranch}
+            </span>
+            {pr.state !== 'merged' && typeof pr.behindBy === 'number' && pr.behindBy > 0 && (
+              <span
+                className="flex items-center gap-0.5 text-warning shrink-0"
+                title={`${pr.behindBy} commit${pr.behindBy === 1 ? '' : 's'} behind ${pr.baseBranch}`}
+              >
+                <ArrowDown className="icon-xs" />
+                {pr.behindBy}
+              </span>
+            )}
+            {pr.state === 'merged' && (
+              <span
+                className={`font-mono truncate shrink-0 ${pr.firstReleaseTag ? 'text-accent' : 'text-faint italic'}`}
+                title={pr.firstReleaseTag ? `First released in ${pr.firstReleaseTag}` : 'Merged but not in any tag yet'}
+              >
+                {pr.firstReleaseTag ?? 'unreleased'}
+              </span>
+            )}
             {typeof pr.additions === 'number' && typeof pr.deletions === 'number' && (
-              <span className="text-xs font-mono shrink-0 ml-auto">
+              <span className="font-mono ml-auto shrink-0">
                 <span className="text-success">+{pr.additions}</span>
                 <span className="text-danger ml-1">−{pr.deletions}</span>
               </span>
             )}
           </div>
 
-          <PRActions pr={pr} worktree={worktree} needsGithubToken={needsGithubToken} />
+          {/* Labels */}
+          {pr.labels.length > 0 && (
+            <div className="flex items-center flex-wrap gap-1">
+              {pr.labels.map((label) => {
+                const fg = labelTextColor(label.color)
+                return (
+                  <span
+                    key={label.name}
+                    className="px-1.5 py-0.5 rounded-full text-xs font-medium leading-tight"
+                    style={{ backgroundColor: `#${label.color}`, color: fg }}
+                    title={label.description || label.name}
+                  >
+                    {label.name}
+                  </span>
+                )
+              })}
+            </div>
+          )}
 
-          {/* Merge conflict indicator — styled like the checks line */}
-          {pr.hasConflict === true && (
-            <div className="flex items-center gap-1.5 mb-1">
-              <span className="text-xs text-danger">Merge conflict</span>
+          {/* Linked issues (Closes #N / GitHub "Link an issue") */}
+          {pr.linkedIssues.length > 0 && (
+            <div className="flex flex-col gap-0.5">
+              <div className="text-xs uppercase tracking-wide text-faint">
+                {pr.linkedIssues.length === 1 ? 'Linked issue' : 'Linked issues'}
+              </div>
+              {pr.linkedIssues.map((iss) => (
+                <a
+                  key={iss.number}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    backend.openExternal(iss.url)
+                  }}
+                  className="flex items-center gap-1.5 text-xs cursor-pointer hover:text-fg-bright min-w-0"
+                  title={`${iss.title} (#${iss.number})`}
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData('text/plain', iss.url)
+                    e.dataTransfer.effectAllowed = 'copy'
+                  }}
+                >
+                  {iss.state === 'closed' ? (
+                    <CircleCheck className="icon-xs shrink-0 text-dim" />
+                  ) : (
+                    <CircleDot className="icon-xs shrink-0 text-success" />
+                  )}
+                  <span className="font-mono text-faint shrink-0">#{iss.number}</span>
+                  <span className={`truncate ${iss.state === 'closed' ? 'text-faint line-through' : 'text-fg'}`}>
+                    {iss.title}
+                  </span>
+                </a>
+              ))}
             </div>
           )}
 
@@ -764,10 +1089,11 @@ export function PRStatusPanel({
             )}
           </div>
 
-          {/* Expanded check list */}
+          {/* Expanded check list — sorted: failed → pending → success → neutral/skipped,
+              then by startedAt within each group. */}
           {expanded && pr.checks.length > 0 && (
             <div className="space-y-0.5 max-h-60 overflow-y-auto">
-              {pr.checks.map((check) => {
+              {sortChecksForDisplay(pr.checks).map((check) => {
                 const icon = CHECK_ICONS[check.state]
                 const isFailure = check.state === 'failure' || check.state === 'error'
                 const reason = isFailure
@@ -789,6 +1115,12 @@ export function PRStatusPanel({
                         ? `Open: ${check.detailsUrl}`
                         : check.description || check.name
                     }
+                    draggable={!!check.detailsUrl}
+                    onDragStart={(e) => {
+                      if (!check.detailsUrl) return
+                      e.dataTransfer.setData('text/plain', check.detailsUrl)
+                      e.dataTransfer.effectAllowed = 'copy'
+                    }}
                   >
                     <span className={`shrink-0 mt-0.5 ${icon.color}`}>{icon.symbol}</span>
                     <div className="min-w-0 flex-1">
@@ -800,13 +1132,11 @@ export function PRStatusPanel({
                         </span>
                         {clickable && (
                           <ExternalLink
-                            size={10}
-                            className="shrink-0 text-faint opacity-0 group-hover:opacity-100 transition-opacity"
-                          />
+                            className="icon-2xs shrink-0 text-faint opacity-0 group-hover:opacity-100 transition-opacity" />
                         )}
                       </div>
                       {reason && (
-                        <div className="text-faint text-[11px] leading-snug truncate">
+                        <div className="text-faint text-xs leading-snug truncate">
                           {reason}
                         </div>
                       )}

@@ -1,23 +1,30 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import * as monaco from 'monaco-editor'
-import { Check } from 'lucide-react'
+import { ArrowRightFromLine, Check, WrapText } from 'lucide-react'
 import type { FileDiffSides, ChangedFile } from '../types'
 import type { ReviewComment } from './ReviewFileTree'
 import { MonacoDiffEditor } from './MonacoDiffEditor'
+import { Tooltip } from './Tooltip'
 import { useSettings } from '../store'
 import { useBackend } from '../backend'
+import { scaledEditorFontSize } from '../../shared/state/settings'
 
 interface ReviewDiffPaneProps {
   worktreePath: string
   file: ChangedFile | null
   mode: 'working' | 'branch'
   commitHash?: string
+  /** When set, diffs the file across the commit range fromHash^..toHash.
+   *  Overrides commitHash and mode. */
+  commitRange?: { fromHash: string; toHash: string }
   reviewed: boolean
   comments: ReviewComment[]
   onToggleReviewed: () => void
   onAddComment: (lineNumber: number, body: string) => void
   onDeleteComment: (id: string) => void
+  wordWrap: boolean
+  onWordWrapChange: (next: boolean) => void
 }
 
 const STATUS_LABEL: Record<ChangedFile['status'], string> = {
@@ -48,12 +55,12 @@ function InlineComment({
       style={{
         display: 'flex',
         alignItems: 'flex-start',
-        gap: '8px',
-        padding: '6px 12px',
-        fontSize: '12px',
+        gap: '0.5rem',
+        padding: '0.375rem 0.75rem',
+        fontSize: '0.75rem',
         borderLeft: '3px solid var(--color-info, #58a6ff)',
         background: 'color-mix(in srgb, var(--color-info, #58a6ff) 8%, transparent)',
-        margin: '2px 8px'
+        margin: '0.125rem 0.5rem'
       }}
     >
       <span style={{ flex: 1, color: 'var(--color-fg)', whiteSpace: 'pre-wrap' }}>
@@ -67,8 +74,8 @@ function InlineComment({
           cursor: 'pointer',
           background: 'none',
           border: 'none',
-          fontSize: '11px',
-          padding: '0 2px'
+          fontSize: '0.6875rem',
+          padding: '0 0.125rem'
         }}
         onMouseOver={(e) => (e.currentTarget.style.color = 'var(--color-danger, #f85149)')}
         onMouseOut={(e) => (e.currentTarget.style.color = 'var(--color-faint)')}
@@ -100,16 +107,16 @@ function InlineCommentInput({
       style={{
         display: 'flex',
         flexDirection: 'column',
-        gap: '6px',
-        padding: '8px 12px',
-        margin: '2px 8px',
-        borderRadius: '4px',
+        gap: '0.375rem',
+        padding: '0.5rem 0.75rem',
+        margin: '0.125rem 0.5rem',
+        borderRadius: '0.25rem',
         border: '1px solid var(--color-border-strong)',
         background: 'var(--color-panel-raised)'
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontSize: '10px', color: 'var(--color-faint)', fontFamily: 'monospace' }}>
+        <span style={{ fontSize: '0.625rem', color: 'var(--color-faint)', fontFamily: 'monospace' }}>
           Line {lineNumber}
         </span>
         <button
@@ -119,7 +126,7 @@ function InlineCommentInput({
             cursor: 'pointer',
             background: 'none',
             border: 'none',
-            fontSize: '12px'
+            fontSize: '0.75rem'
           }}
         >
           ✕
@@ -146,26 +153,26 @@ function InlineCommentInput({
           width: '100%',
           background: 'var(--color-surface)',
           color: 'var(--color-fg)',
-          fontSize: '12px',
-          borderRadius: '4px',
+          fontSize: '0.75rem',
+          borderRadius: '0.25rem',
           border: '1px solid var(--color-border)',
-          padding: '6px 8px',
+          padding: '0.375rem 0.5rem',
           resize: 'none',
           outline: 'none',
           fontFamily: 'inherit'
         }}
       />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontSize: '10px', color: 'var(--color-faint)' }}>⌘Enter to submit</span>
+        <span style={{ fontSize: '0.625rem', color: 'var(--color-faint)' }}>⌘Enter to submit</span>
         <button
           onClick={() => {
             if (body.trim()) onSubmit(body.trim())
           }}
           disabled={!body.trim()}
           style={{
-            fontSize: '11px',
-            padding: '2px 8px',
-            borderRadius: '4px',
+            fontSize: '0.6875rem',
+            padding: '0.125rem 0.5rem',
+            borderRadius: '0.25rem',
             background: body.trim() ? 'var(--color-accent)' : 'var(--color-border)',
             color: 'var(--color-fg)',
             border: 'none',
@@ -192,11 +199,14 @@ export function ReviewDiffPane({
   file,
   mode,
   commitHash,
+  commitRange,
   reviewed,
   comments,
   onToggleReviewed,
   onAddComment,
-  onDeleteComment
+  onDeleteComment,
+  wordWrap,
+  onWordWrapChange
 }: ReviewDiffPaneProps): JSX.Element {
   const backend = useBackend()
   const settings = useSettings()
@@ -214,9 +224,16 @@ export function ReviewDiffPane({
     let cancelled = false
     setLoading(true)
     setCommentLine(null)
-    const promise = commitHash
-      ? backend.getCommitFileDiffSides(worktreePath, commitHash, file.path)
-      : backend.getFileDiffSides(worktreePath, file.path, file.staged, mode)
+    const promise = commitRange
+      ? backend.getCommitRangeFileDiffSides(
+          worktreePath,
+          commitRange.fromHash,
+          commitRange.toHash,
+          file.path
+        )
+      : commitHash
+        ? backend.getCommitFileDiffSides(worktreePath, commitHash, file.path)
+        : backend.getFileDiffSides(worktreePath, file.path, file.staged, mode)
     promise
       .then((result) => {
         if (!cancelled) setSides(result)
@@ -230,7 +247,7 @@ export function ReviewDiffPane({
     return () => {
       cancelled = true
     }
-  }, [worktreePath, file?.path, file?.staged, mode, commitHash])
+  }, [worktreePath, file?.path, file?.staged, mode, commitHash, commitRange?.fromHash, commitRange?.toHash])
 
   const clearViewZones = useCallback(() => {
     const editor = editorRef.current
@@ -365,25 +382,28 @@ export function ReviewDiffPane({
     <div className="flex flex-col h-full">
       {/* File header */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-panel shrink-0">
-        <button
-          onClick={onToggleReviewed}
-          className={`shrink-0 w-4 h-4 rounded border flex items-center justify-center transition-colors cursor-pointer ${
-            reviewed
-              ? 'bg-success/20 border-success text-success'
-              : 'border-border-strong text-transparent hover:border-faint'
-          }`}
-        >
-          {reviewed && <Check size={10} strokeWidth={3} />}
-        </button>
+        <Tooltip label={reviewed ? 'Mark as not viewed (r)' : 'Mark as viewed (r)'}>
+          <button
+            onClick={onToggleReviewed}
+            aria-label={reviewed ? 'Mark as not viewed' : 'Mark as viewed'}
+            className={`shrink-0 w-4 h-4 rounded border flex items-center justify-center transition-colors cursor-pointer ${
+              reviewed
+                ? 'bg-success/20 border-success text-success'
+                : 'border-border-strong text-transparent hover:border-faint'
+            }`}
+          >
+            {reviewed && <Check strokeWidth={3} className="icon-2xs" />}
+          </button>
+        </Tooltip>
 
         <span className="text-xs font-mono truncate flex-1">{file.path}</span>
 
-        <span className={`text-[10px] ${STATUS_COLOR[file.status]}`}>
+        <span className={`text-xs ${STATUS_COLOR[file.status]}`}>
           {STATUS_LABEL[file.status]}
         </span>
 
         {(file.additions !== undefined || file.deletions !== undefined) && (
-          <span className="text-[10px] font-mono tabular-nums">
+          <span className="text-xs font-mono tabular-nums">
             {file.additions !== undefined && file.additions > 0 && (
               <span className="text-success">+{file.additions}</span>
             )}
@@ -392,6 +412,15 @@ export function ReviewDiffPane({
             )}
           </span>
         )}
+
+        <Tooltip label={wordWrap ? 'No wrap' : 'Word wrap'}>
+          <button
+            onClick={() => onWordWrapChange(!wordWrap)}
+            className="shrink-0 text-faint hover:text-fg cursor-pointer"
+          >
+            {wordWrap ? <ArrowRightFromLine className="icon-xs" /> : <WrapText className="icon-xs" />}
+          </button>
+        </Tooltip>
       </div>
 
       {/* Diff with inline comments via view zones */}
@@ -408,7 +437,8 @@ export function ReviewDiffPane({
             filePath={file.path}
             readOnly
             fontFamily={settings.terminalFontFamily || undefined}
-            fontSize={settings.terminalFontSize}
+            fontSize={scaledEditorFontSize(settings.terminalFontSize, settings.uiScale)}
+            wordWrap={wordWrap}
             onReferenceLine={handleReferenceLine}
             onEditorMount={handleEditorMount}
             glyphClassName="comment-line-glyph"

@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync, existsSync, readdirSync, unlinkSync } from 'f
 import { join } from 'path'
 import { getControlServerInfo } from './control-server'
 import type { CallerScope } from './control-server'
-import { isPackaged, userDataDir } from './paths'
+import { resolveBundledMcpScript, userDataDir } from './paths'
 import { log } from './debug'
 
 function getConfigDir(): string {
@@ -12,10 +12,7 @@ function getConfigDir(): string {
 }
 
 export function getBridgeScriptPath(): string {
-  if (isPackaged()) {
-    return join(process.resourcesPath, 'mcp-bridge.js')
-  }
-  return join(__dirname, '../../resources/mcp-bridge.js')
+  return resolveBundledMcpScript('mcp-bridge.js')
 }
 
 function sanitize(id: string): string {

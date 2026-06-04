@@ -24,6 +24,11 @@ function stubPR(overrides: Partial<PRStatus> = {}): PRStatus {
     hasConflict: null,
     reviews: [],
     reviewDecision: 'none',
+    baseBranch: 'main',
+    isDefaultBase: true,
+    assignees: [],
+    linkedIssues: [],
+    labels: [],
     ...overrides
   }
 }

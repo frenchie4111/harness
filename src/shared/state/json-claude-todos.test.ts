@@ -12,6 +12,7 @@ function makeSession(
     exitCode: null,
     exitReason: null,
     entries,
+    entriesHydrated: true,
     busy: false,
     permissionMode: 'default',
     slashCommands: [],

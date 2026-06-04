@@ -20,7 +20,7 @@ export function JsonClaudeTodosPanel({
       id="todos"
       title="Todos"
       actions={
-        <span className="text-[10px] text-faint tabular-nums">
+        <span className="text-xs text-faint tabular-nums">
           {remaining}/{todos.length}
         </span>
       }

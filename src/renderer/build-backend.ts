@@ -101,11 +101,18 @@ export function buildBackend(
       branchName: string
       initialPrompt?: string
       teleportSessionId?: string
+      agentKind?: 'claude' | 'codex'
+      model?: string
+      checkoutExisting?: boolean
+      baseRef?: string
     }) => req('worktrees:runPending', params),
     runPendingPRWorktree: (params: {
       id: string
       repoRoot: string
       prNumber: number
+      initialPrompt?: string
+      agentKind?: 'claude' | 'codex'
+      model?: string
     }) => req('worktrees:runPendingPR', params),
     retryPendingWorktree: (id: string) => req('worktrees:retryPending', id),
     dismissPendingWorktree: (id: string) => req('worktrees:dismissPending', id),
@@ -145,6 +152,8 @@ export function buildBackend(
     resolveHome: () => req('fs:resolveHome'),
 
     listAllFiles: (worktreePath: string) => req('worktree:listFiles', worktreePath),
+    listRecentCommitShas: (worktreePath: string) =>
+      req('worktree:recentCommitShas', worktreePath),
     readWorktreeFile: (worktreePath: string, filePath: string) =>
       req('worktree:readFile', worktreePath, filePath),
     readWorktreeFileBinary: (worktreePath: string, filePath: string) =>
@@ -177,10 +186,20 @@ export function buildBackend(
     getBranchCommits: (worktreePath: string) => req('worktree:branchCommits', worktreePath),
     getCommitDiff: (worktreePath: string, hash: string) =>
       req('worktree:commitDiff', worktreePath, hash),
+    getCommitMeta: (worktreePath: string, hash: string) =>
+      req('worktree:commitMeta', worktreePath, hash),
     getCommitChangedFiles: (worktreePath: string, hash: string) =>
       req('worktree:commitChangedFiles', worktreePath, hash),
     getCommitFileDiffSides: (worktreePath: string, hash: string, filePath: string) =>
       req('worktree:commitFileDiffSides', worktreePath, hash, filePath),
+    getCommitRangeChangedFiles: (worktreePath: string, fromHash: string, toHash: string) =>
+      req('worktree:commitRangeChangedFiles', worktreePath, fromHash, toHash),
+    getCommitRangeFileDiffSides: (
+      worktreePath: string,
+      fromHash: string,
+      toHash: string,
+      filePath: string
+    ) => req('worktree:commitRangeFileDiffSides', worktreePath, fromHash, toHash, filePath),
     getMainWorktreeStatus: (repoRoot: string) => req('worktree:mainStatus', repoRoot),
     prepareMainForMerge: (repoRoot: string) => req('worktree:prepareMain', repoRoot),
     previewMergeConflicts: (repoRoot: string, sourceBranch: string, worktreePath?: string) =>
@@ -196,9 +215,14 @@ export function buildBackend(
     refreshPRsAllIfStale: () => req('prs:refreshAllIfStale'),
     refreshPRsOne: (worktreePath: string) => req('prs:refreshOne', worktreePath),
     refreshPRsOneIfStale: (worktreePath: string) => req('prs:refreshOneIfStale', worktreePath),
+
+    refreshAnnouncements: () => req('announcements:refresh'),
+    dismissAnnouncement: (id: string) => req('announcements:dismiss', id),
+    muteAnnouncements: (muted: boolean) => req('announcements:mute', muted),
     listRepoPRs: (repoRoot: string) => req('prs:listOpen', repoRoot),
     mergePR: (worktreePath: string, method: 'merge' | 'squash' | 'rebase') =>
       req('pr:merge', worktreePath, method),
+    approvePR: (worktreePath: string) => req('pr:approve', worktreePath),
 
     getWeeklyStats: () => req('stats:getWeekly'),
 
@@ -230,21 +254,30 @@ export function buildBackend(
     getLanAddresses: () => req('net:getLanAddresses'),
     setBrowserToolsEnabled: (enabled: boolean) => req('config:setBrowserToolsEnabled', enabled),
     setBrowserToolsMode: (mode: 'view' | 'full') => req('config:setBrowserToolsMode', mode),
-    setJsonModeClaudeTabs: (enabled: boolean) => req('config:setJsonModeClaudeTabs', enabled),
     setDefaultClaudeTabType: (value: 'xterm' | 'json') =>
       req('config:setDefaultClaudeTabType', value),
+    setChatPromotionDismissed: (value: boolean) =>
+      req('config:setChatPromotionDismissed', value),
     setJsonModeChatDensity: (value: 'compact' | 'comfy') =>
       req('config:setJsonModeChatDensity', value),
+    setUiScale: (value: 'x-small' | 'small' | 'medium' | 'large' | 'x-large') =>
+      req('config:setUiScale', value),
+    setJsonModeSendOnEnter: (enabled: boolean) =>
+      req('config:setJsonModeSendOnEnter', enabled),
     setJsonModeDefaultPermissionMode: (value: 'default' | 'acceptEdits' | 'plan') =>
       req('config:setJsonModeDefaultPermissionMode', value),
     setAutoSleepMinutes: (value: number) => req('config:setAutoSleepMinutes', value),
     setAutoUpdateEnabled: (enabled: boolean) => req('config:setAutoUpdateEnabled', enabled),
+    setWarnBeforeQuitting: (enabled: boolean) => req('config:setWarnBeforeQuitting', enabled),
+    setExpandedDiagnosticLoggingEnabled: (enabled: boolean) =>
+      req('config:setExpandedDiagnosticLoggingEnabled', enabled),
     setShareClaudeSettings: (enabled: boolean) => req('config:setShareClaudeSettings', enabled),
     setHarnessSystemPromptEnabled: (enabled: boolean) =>
       req('config:setHarnessSystemPromptEnabled', enabled),
     setHarnessSystemPrompt: (prompt: string) => req('config:setHarnessSystemPrompt', prompt),
     setHarnessSystemPromptMain: (prompt: string) =>
       req('config:setHarnessSystemPromptMain', prompt),
+    setPrReviewPrompt: (prompt: string) => req('config:setPrReviewPrompt', prompt),
     prepareMcpForTerminal: (terminalId: string) =>
       req('mcp:prepareForTerminal', terminalId),
     onWorktreesExternalCreate: (
@@ -254,7 +287,12 @@ export function buildBackend(
         callback(payload as { repoRoot: string; worktree: unknown; initialPrompt?: string })
       }),
     setNameClaudeSessions: (enabled: boolean) => req('config:setNameClaudeSessions', enabled),
-    setTheme: (theme: string) => req('config:setTheme', theme),
+    setThemeMode: (mode: 'light' | 'dark' | 'system') => req('config:setThemeMode', mode),
+    setThemeLight: (theme: string) => req('config:setThemeLight', theme),
+    setThemeDark: (theme: string) => req('config:setThemeDark', theme),
+    setLastEffectiveAppBg: (hex: string) => sig('config:setLastEffectiveAppBg', hex),
+    reloadCustomThemes: () => req('config:reloadCustomThemes'),
+    openThemesFolder: () => reqLocal('config:openThemesFolder'),
     setCostsInterest: (expanded: boolean) => req('costs:setInterest', expanded),
     getAllSessionCosts: (sinceMs?: number) => req('costs:getAllSessions', sinceMs),
     getClaudeAuthStatus: () => req('claude:getAuthStatus'),
@@ -278,6 +316,8 @@ export function buildBackend(
       req('panes:selectTab', wtPath, paneId, tabId),
     panesReorderTabs: (wtPath: string, paneId: string, fromId: string, toId: string) =>
       req('panes:reorderTabs', wtPath, paneId, fromId, toId),
+    panesRenameTab: (wtPath: string, tabId: string, label: string) =>
+      req('panes:renameTab', wtPath, tabId, label),
     panesMoveTabToPane: (wtPath: string, tabId: string, toPaneId: string, toIndex?: number) =>
       req('panes:moveTabToPane', wtPath, tabId, toPaneId, toIndex),
     panesSplitPane: (
@@ -291,6 +331,17 @@ export function buildBackend(
     panesEnsureInitialized: (wtPath: string) => req('panes:ensureInitialized', wtPath),
     panesSleepTab: (wtPath: string, tabId: string) => req('panes:sleepTab', wtPath, tabId),
     panesWakeTab: (wtPath: string, tabId: string) => req('panes:wakeTab', wtPath, tabId),
+    panesOpenReview: (wtPath: string) => req('panes:openReview', wtPath),
+    panesOpenFile: (wtPath: string, filePath: string, nearTabId?: string) =>
+      req('panes:openFile', wtPath, filePath, nearTabId),
+    panesSetReviewSelection: (
+      wtPath: string,
+      tabId: string,
+      fromCommit?: string,
+      toCommit?: string
+    ) => req('panes:setReviewSelection', wtPath, tabId, fromCommit, toCommit),
+    touchWorktreeLastActive: (wtPath: string) =>
+      req('terminals:touchLastActive', wtPath),
 
     getTerminalHistory: (id: string) => req('terminal:getHistory', id),
     clearTerminalHistory: (id: string) => req('terminal:forgetHistory', id),
@@ -307,6 +358,7 @@ export function buildBackend(
         initialPrompt?: string
         teleportSessionId?: string
         sessionName?: string
+        modelOverride?: string
       }
     ) => req('agent:buildSpawnArgs', agentKind, opts),
 
@@ -314,6 +366,8 @@ export function buildBackend(
     setWorktreeBase: (mode: 'remote' | 'local') => req('config:setWorktreeBase', mode),
     setMergeStrategy: (strategy: 'squash' | 'merge-commit' | 'fast-forward') =>
       req('config:setMergeStrategy', strategy),
+    setWorktreeDetail: (detail: 'diff' | 'age' | 'pr' | 'none') =>
+      req('config:setWorktreeDetail', detail),
 
     setEditor: (editorId: string) => req('config:setEditor', editorId),
     getAvailableEditors: () => req('config:getAvailableEditors'),
@@ -321,6 +375,9 @@ export function buildBackend(
     snooze: (path: string, wakeAt: number) => req('snooze:snooze', path, wakeAt),
     unsnooze: (path: string) => req('snooze:unsnooze', path),
     setSnoozeDefaultDays: (days: number) => req('config:setSnoozeDefaultDays', days),
+
+    setScratchpadText: (worktreePath: string, text: string) =>
+      req('scratchpad:setText', worktreePath, text),
 
     openInEditor: (worktreePath: string, filePath?: string) =>
       req('editor:open', worktreePath, filePath),
@@ -340,6 +397,7 @@ export function buildBackend(
     // Always-local: shell.openExternal opens on the local user's
     // machine, never on the remote backend. Same with debug log paths.
     openExternal: (url: string) => sigLocal('shell:openExternal', url),
+    openPath: (path: string) => reqLocal('shell:openPath', path),
     openDebugLog: () => reqLocal('debug:openLog'),
     showDebugLogInFolder: () => reqLocal('debug:showLogInFolder'),
 
@@ -381,18 +439,40 @@ export function buildBackend(
     // is active.
     onOpenSettings: (callback: () => void) =>
       onLocalSignal('app:openSettings', () => callback()),
+    // Hold-⌘Q-to-quit overlay, driven entirely by the main process (it
+    // owns the before-input-event detection + hold timer). Always local.
+    onHoldToQuitStart: (callback: () => void) =>
+      onLocalSignal('app:holdToQuitStart', () => callback()),
+    onHoldToQuitCancel: (callback: () => void) =>
+      onLocalSignal('app:holdToQuitCancel', () => callback()),
     onTogglePerfMonitor: (callback: () => void) =>
       onLocalSignal('app:togglePerfMonitor', () => callback()),
+    onToggleSingleScreen: (callback: () => void) =>
+      onLocalSignal('app:toggleSingleScreen', () => callback()),
     onOpenKeyboardShortcuts: (callback: () => void) =>
       onLocalSignal('app:openKeyboardShortcuts', () => callback()),
+    onCloseFocusedTab: (callback: () => void) =>
+      onLocalSignal('app:closeFocusedTab', () => callback()),
+    onSplitPaneRight: (callback: () => void) =>
+      onLocalSignal('app:splitPaneRight', () => callback()),
+    onSplitPaneDown: (callback: () => void) =>
+      onLocalSignal('app:splitPaneDown', () => callback()),
     onOpenNewProject: (callback: () => void) =>
       onLocalSignal('menu:newProject', () => callback()),
     onOpenReportIssue: (callback: () => void) =>
       onLocalSignal('app:openReportIssue', () => callback()),
     onDebugCrashFocusedTab: (callback: () => void) =>
       onLocalSignal('app:debugCrashFocusedTab', () => callback()),
+    onDebugPreviewOnboarding: (callback: () => void) =>
+      onLocalSignal('app:debugPreviewOnboarding', () => callback()),
     onOpenAddBackend: (callback: () => void) =>
       onLocalSignal('app:openAddBackend', () => callback()),
+    onUiScaleUp: (callback: () => void) =>
+      onLocalSignal('app:uiScaleUp', () => callback()),
+    onUiScaleDown: (callback: () => void) =>
+      onLocalSignal('app:uiScaleDown', () => callback()),
+    onUiScaleReset: (callback: () => void) =>
+      onLocalSignal('app:uiScaleReset', () => callback()),
 
     acceptHooks: () => req('hooks:accept'),
     declineHooks: () => req('hooks:decline'),
@@ -440,6 +520,8 @@ export function buildBackend(
     leaveTerminal: (id: string) => sig('terminal:leave', id),
     takeTerminalControl: (id: string, cols: number, rows: number) =>
       sig('terminal:takeControl', id, cols, rows),
+    setTerminalProgress: (id: string, state: 0 | 1 | 2 | 3 | 4, value: number) =>
+      sig('terminal:setProgress', id, state, value),
     onTerminalData: (callback: DataCallback) =>
       onActiveSignal('terminal:data', (id, data) => {
         callback(id as string, data as string)
@@ -480,6 +562,8 @@ export function buildBackend(
       req('jsonClaude:getEntries', sessionId),
     killJsonClaude: (id: string) => req('jsonClaude:kill', id),
     interruptJsonClaude: (id: string) => req('jsonClaude:interrupt', id),
+    rewindJsonClaudeTo: (id: string, entryId: string) =>
+      req('jsonClaude:rewindTo', id, entryId),
     openJsonClaudeAuthLoginTab: (worktreePath: string) =>
       req('jsonClaude:openAuthLoginTab', worktreePath),
     setJsonClaudePermissionMode: (
@@ -512,7 +596,15 @@ export function buildBackend(
     connectionsSetLastConnected: (id: string, when?: number) =>
       reqLocal('connections:setLastConnected', id, when),
     connectionsGetToken: (id: string) => reqLocal('connections:getToken', id),
-    connectionsHasToken: (id: string) => reqLocal('connections:hasToken', id)
+    connectionsHasToken: (id: string) => reqLocal('connections:hasToken', id),
+
+    // SSH bootstrap helpers — always-local; only the local Electron
+    // backend bootstraps remote backends. See plans/remote-main.md §4.
+    sshListConfiguredHosts: () => reqLocal('ssh:listConfiguredHosts'),
+    sshBootstrap: (input: { bootstrapId: string; target: string; label: string }) =>
+      reqLocal('ssh:bootstrap', input),
+    sshReconnect: (input: { bootstrapId: string; connectionId: string }) =>
+      reqLocal('ssh:reconnect', input)
   }
 
   return api as ElectronAPI

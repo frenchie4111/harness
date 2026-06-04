@@ -1,12 +1,13 @@
 import { listWorktrees, getBranchSha } from './worktree'
+import { isOnRealBranch } from './git-ops-state'
 import {
   getRepoContext,
-  listPullRequests,
-  loadPRStatusForItem,
-  type PRListItem,
+  fetchPRStatusesForRepo,
+  fetchPRStatusByNumber,
+  type PRStatusRequest,
   type RepoContext
 } from './github'
-import { log } from './debug'
+import { log, formatErr } from './debug'
 import type { Store } from './store'
 import type { PRStatus } from '../shared/state/prs'
 
@@ -20,47 +21,6 @@ interface PRPollerOptions {
   /** Called with a pruned map whenever stale entries are detected, so the
    * caller can persist the change. */
   setLocallyMerged: (next: Record<string, string>) => void
-}
-
-interface WorktreeForMatch {
-  path: string
-  branch: string
-  /** Current HEAD SHA — used as the disambiguator for fork PRs where
-   *  multiple PRs could share the same `head.ref`. */
-  head: string
-}
-
-/** Pick the best PR for a worktree from a list. Prefers SHA match
- *  (handles forks; survives renames), then falls back to (head.ref +
- *  same-repo head). Returns null if nothing matches. */
-export function pickPRForWorktree(
-  wt: WorktreeForMatch,
-  prs: PRListItem[],
-  baseRepoFullName: string
-): PRListItem | null {
-  if (!prs.length) return null
-  // SHA match is the strongest signal — distinguishes between same-named
-  // branches on different forks, and survives the "user named their own
-  // branch the same as a PR head" case.
-  if (wt.head) {
-    for (const pr of prs) {
-      if (pr.headSha && pr.headSha === wt.head) return pr
-    }
-  }
-  // Fall back to ref+repo match. Restricted to same-repo PRs because a
-  // fork PR's head.ref alone could collide (two forkers both having
-  // `feature/foo`); SHA above already covered the fork case.
-  if (wt.branch) {
-    for (const pr of prs) {
-      if (
-        pr.headRef === wt.branch &&
-        pr.headRepoFullName === baseRepoFullName
-      ) {
-        return pr
-      }
-    }
-  }
-  return null
 }
 
 /** Owns background PR-status polling and on-demand refresh. All writes go
@@ -94,16 +54,15 @@ export class PRPoller {
 
   /** Refresh every worktree across every known repo root.
    *
-   * One `listPullRequests` call per repo instead of one
-   * `pulls?head=…` call per worktree — fewer round-trips when worktrees
-   * outnumber PRs, and fork PRs become naturally findable because each
-   * list item carries `head.repo.full_name`.
+   * One batched GraphQL call per repo: aliased `pullRequests(headRefName)`
+   * sub-queries find each worktree's PR by branch — no 100-most-recent
+   * limit, and stale long-lived branches show up correctly.
    *
-   * Network-failure handling: per-repo and per-worktree fetches are tagged
-   * ok/failed. The new `byPath` map starts from the current snapshot
-   * (restricted to worktrees that still exist), then successful results
-   * overlay. Failed fetches preserve the previously-cached status — so a
-   * wifi blip doesn't flip every worktree into the "no PR" sidebar group. */
+   * Network-failure handling: per-repo fetches are tagged ok/failed. The
+   * new `byPath` map starts from the current snapshot (restricted to
+   * worktrees that still exist), then successful results overlay. Failed
+   * fetches preserve the previously-cached status — so a wifi blip
+   * doesn't flip every worktree into the "no PR" sidebar group. */
   async refreshAll(): Promise<void> {
     if (this.inFlightAll) return
     const roots = this.opts.getRepoRoots()
@@ -119,63 +78,33 @@ export class PRPoller {
       this.lastAllFetchAt = now
       for (const wt of allWorktrees) this.lastFetchAtByPath.set(wt.path, now)
 
-      // Per-repo: fetch the PR list + the repo context (origin + upstream)
-      // once. Both are stable for the lifetime of the refresh, so we cache
-      // them by repoRoot for the per-worktree match step below. ok=false
-      // means a transport failure — every worktree in that repo will be
-      // marked failed so its cached status is preserved.
-      const repoData = await Promise.all(
-        roots.map(async (root) => {
+      // Per-repo: resolve origin/upstream context, then make one GraphQL
+      // call carrying every worktree's branch. ok=false means a transport
+      // failure — every worktree in that repo will preserve its cached
+      // status.
+      type RepoBatch =
+        | { root: string; ok: true; statuses: Map<string, PRStatus | null> }
+        | { root: string; ok: false }
+      const repoBatches: RepoBatch[] = await Promise.all(
+        roots.map(async (root, idx): Promise<RepoBatch> => {
+          const wts = treesByRoot[idx]
           try {
-            const [ctx, prs] = await Promise.all([
-              getRepoContext(root),
-              listPullRequests(root)
-            ])
-            return { root, ctx, prs, ok: true as const }
-          } catch (err) {
-            log('pr-poller', `repo PR list failed for ${root}`, err instanceof Error ? err.message : err)
-            return {
-              root,
-              ctx: null as RepoContext | null,
-              prs: null as PRListItem[] | null,
-              ok: false as const
+            const ctx = await getRepoContext(root)
+            if (!ctx) {
+              const empty = new Map<string, PRStatus | null>()
+              for (const wt of wts) empty.set(wt.path, null)
+              return { root, ok: true, statuses: empty }
             }
-          }
-        })
-      )
-      const prsByRoot = new Map<
-        string,
-        { ctx: RepoContext | null; prs: PRListItem[] | null; ok: boolean }
-      >()
-      for (const r of repoData) {
-        prsByRoot.set(r.root, { ctx: r.ctx, prs: r.prs, ok: r.ok })
-      }
-
-      type StatusResult =
-        | { path: string; ok: true; status: PRStatus | null }
-        | { path: string; ok: false }
-
-      const statusResults: StatusResult[] = await Promise.all(
-        allWorktrees.map(async (wt): Promise<StatusResult> => {
-          const entry = prsByRoot.get(wt.repoRoot)
-          if (!entry) return { path: wt.path, ok: true, status: null }
-          if (!entry.ok) return { path: wt.path, ok: false }
-          if (!entry.ctx || !entry.prs) return { path: wt.path, ok: true, status: null }
-          // Match against origin (= fork) so fork PRs match by ref+repo;
-          // load details against upstream where the PR lives.
-          const baseFull = `${entry.ctx.origin.owner}/${entry.ctx.origin.repo}`
-          const item = pickPRForWorktree(
-            { path: wt.path, branch: wt.branch, head: wt.head },
-            entry.prs,
-            baseFull
-          )
-          if (!item) return { path: wt.path, ok: true, status: null }
-          try {
-            const status = await loadPRStatusForItem(wt.path, item, entry.ctx.upstream)
-            return { path: wt.path, ok: true, status }
+            const requests: PRStatusRequest[] = wts.map((wt) => ({
+              worktreePath: wt.path,
+              branch: wt.branch,
+              headSha: wt.head
+            }))
+            const statuses = await fetchPRStatusesForRepo(ctx, requests)
+            return { root, ok: true, statuses }
           } catch (err) {
-            log('pr-poller', `status fetch failed for ${wt.path}`, err instanceof Error ? err.message : err)
-            return { path: wt.path, ok: false }
+            log('pr-poller', `PR batch failed for ${root}`, formatErr(err))
+            return { root, ok: false }
           }
         })
       )
@@ -186,8 +115,61 @@ export class PRPoller {
       for (const path of Object.keys(currentByPath)) {
         if (allowedPaths.has(path)) newByPath[path] = currentByPath[path]
       }
-      for (const r of statusResults) {
-        if (r.ok) newByPath[r.path] = r.status
+      for (const batch of repoBatches) {
+        if (!batch.ok) continue
+        for (const [path, status] of batch.statuses) {
+          newByPath[path] = status
+        }
+      }
+
+      // Branch-name lookup goes blind on a PR whose head branch was
+      // deleted post-merge: the per-branch GraphQL hit returns nothing
+      // and the worktree would slide into "Active". Look those up by
+      // their previously-known PR number so the terminal state sticks.
+      type Followup = { path: string; root: string; branch: string; prNumber: number }
+      const followups: Followup[] = []
+      for (const wt of allWorktrees) {
+        const prev = currentByPath[wt.path]
+        const next = newByPath[wt.path]
+        if (
+          prev &&
+          next === null &&
+          prev.state !== 'merged' &&
+          prev.state !== 'closed'
+        ) {
+          followups.push({
+            path: wt.path,
+            root: wt.repoRoot,
+            branch: wt.branch,
+            prNumber: prev.number
+          })
+        }
+      }
+      if (followups.length > 0) {
+        const ctxByRoot = new Map<string, RepoContext | null>()
+        await Promise.all(
+          Array.from(new Set(followups.map((f) => f.root))).map(async (root) => {
+            ctxByRoot.set(root, await getRepoContext(root).catch(() => null))
+          })
+        )
+        const followupResults = await Promise.all(
+          followups.map(async (f) => {
+            const ctx = ctxByRoot.get(f.root)
+            if (!ctx) return { path: f.path, status: null as PRStatus | null }
+            try {
+              const status = await fetchPRStatusByNumber(ctx, f.prNumber, f.path, f.branch)
+              return { path: f.path, status }
+            } catch (err) {
+              log('pr-poller', `followup PR #${f.prNumber} failed for ${f.path}`, formatErr(err))
+              return { path: f.path, status: null }
+            }
+          })
+        )
+        for (const r of followupResults) {
+          if (r.status && (r.status.state === 'merged' || r.status.state === 'closed')) {
+            newByPath[r.path] = r.status
+          }
+        }
       }
       this.store.dispatch({
         type: 'prs/bulkStatusChanged',
@@ -195,29 +177,41 @@ export class PRPoller {
       })
 
       // Merged status per repo, then flatten. Stale branches get pruned from
-      // the persisted locallyMerged map.
+      // the persisted locallyMerged map. Two passes: collect the worktrees
+      // that need a `git rev-parse` lookup, fire them all in parallel, then
+      // walk results. The serial-await version stalled boot by ~30ms × N at
+      // typical worktree counts.
       const persisted = { ...this.opts.getLocallyMerged() }
       const mergedAll: Record<string, boolean> = {}
       let prunedAny = false
+      type ShaJob = { root: string; path: string; branch: string; recordedSha: string }
+      const shaJobs: ShaJob[] = []
       for (let i = 0; i < roots.length; i++) {
         const root = roots[i]
         const trees = treesByRoot[i]
         for (const wt of trees) {
           if (wt.isMain) continue
-          if (wt.branch === '(detached)') continue
+          if (!isOnRealBranch(wt.branch)) continue
           const recordedSha = persisted[wt.branch]
           if (!recordedSha) {
             mergedAll[wt.path] = false
             continue
           }
-          const branchSha = await getBranchSha(root, wt.branch).catch(() => null)
-          if (branchSha && branchSha === recordedSha) {
-            mergedAll[wt.path] = true
-          } else {
-            delete persisted[wt.branch]
-            prunedAny = true
-            mergedAll[wt.path] = false
-          }
+          shaJobs.push({ root, path: wt.path, branch: wt.branch, recordedSha })
+        }
+      }
+      const shaResults = await Promise.all(
+        shaJobs.map((j) => getBranchSha(j.root, j.branch).catch(() => null))
+      )
+      for (let k = 0; k < shaJobs.length; k++) {
+        const job = shaJobs[k]
+        const branchSha = shaResults[k]
+        if (branchSha && branchSha === job.recordedSha) {
+          mergedAll[job.path] = true
+        } else {
+          delete persisted[job.branch]
+          prunedAny = true
+          mergedAll[job.path] = false
         }
       }
       if (prunedAny) this.opts.setLocallyMerged(persisted)
@@ -232,29 +226,28 @@ export class PRPoller {
    * reaches the "waiting" state (likely just pushed) or when the user
    * activates a stale worktree.
    *
-   * Reads (or fetches) the repo's PR list, matches this worktree, and
-   * loads details. Cheaper than the per-worktree branch-filter call we
-   * used to make. */
+   * One GraphQL call against the worktree's branch — no list-then-match. */
   async refreshOne(wtPath: string): Promise<void> {
     try {
       const wt = this.store
         .getSnapshot()
         .state.worktrees.list.find((w) => w.path === wtPath)
       if (!wt) return
-      const [ctx, prs] = await Promise.all([
-        getRepoContext(wt.repoRoot),
-        listPullRequests(wt.repoRoot)
-      ])
+      const ctx = await getRepoContext(wt.repoRoot)
       let status: PRStatus | null = null
-      if (ctx && prs) {
-        const baseFull = `${ctx.origin.owner}/${ctx.origin.repo}`
-        const item = pickPRForWorktree(
-          { path: wt.path, branch: wt.branch, head: wt.head },
-          prs,
-          baseFull
-        )
-        if (item) {
-          status = await loadPRStatusForItem(wt.path, item, ctx.upstream)
+      if (ctx) {
+        const statuses = await fetchPRStatusesForRepo(ctx, [
+          { worktreePath: wt.path, branch: wt.branch, headSha: wt.head }
+        ])
+        status = statuses.get(wt.path) ?? null
+        if (!status) {
+          const prev = this.store.getSnapshot().state.prs.byPath[wtPath]
+          if (prev && prev.state !== 'merged' && prev.state !== 'closed') {
+            const followup = await fetchPRStatusByNumber(ctx, prev.number, wt.path, wt.branch).catch(() => null)
+            if (followup && (followup.state === 'merged' || followup.state === 'closed')) {
+              status = followup
+            }
+          }
         }
       }
       this.lastFetchAtByPath.set(wtPath, Date.now())
@@ -263,7 +256,7 @@ export class PRPoller {
         payload: { path: wtPath, status }
       })
     } catch (err) {
-      log('pr-poller', `refreshOne failed for ${wtPath}`, err instanceof Error ? err.message : err)
+      log('pr-poller', `refreshOne failed for ${wtPath}`, formatErr(err))
     }
   }
 

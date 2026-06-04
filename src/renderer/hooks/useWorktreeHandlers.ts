@@ -161,20 +161,28 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
       repoRoot: string,
       branchName: string,
       initialPrompt: string,
-      teleportSessionId?: string
+      teleportSessionId?: string,
+      agentKind?: 'claude' | 'codex',
+      model?: string,
+      checkoutExisting?: boolean,
+      baseRef?: string
     ) => {
       const id = `pending:${crypto.randomUUID()}`
       setActiveWorktreeId(id)
       setShowNewWorktree(false)
 
       // Main handles everything: addWorktree → setup script → ensureInitialized
-      // (with the prompt embedded in the new Claude tab) → outcome.
+      // (with the prompt embedded in the new agent tab) → outcome.
       const result = await backend.runPendingWorktree({
         id,
         repoRoot,
         branchName,
         initialPrompt: initialPrompt || undefined,
-        teleportSessionId
+        teleportSessionId,
+        agentKind,
+        model,
+        checkoutExisting,
+        baseRef
       })
 
       if (result.outcome === 'success') {
@@ -188,7 +196,13 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
   )
 
   const handleSubmitNewPRWorktree = useCallback(
-    async (repoRoot: string, prNumber: number) => {
+    async (
+      repoRoot: string,
+      prNumber: number,
+      initialPrompt: string,
+      agentKind?: 'claude' | 'codex',
+      model?: string
+    ) => {
       const id = `pending:${crypto.randomUUID()}`
       setActiveWorktreeId(id)
       setShowNewWorktree(false)
@@ -196,7 +210,10 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
       const result = await backend.runPendingPRWorktree({
         id,
         repoRoot,
-        prNumber
+        prNumber,
+        initialPrompt: initialPrompt || undefined,
+        agentKind,
+        model
       })
 
       if (result.outcome === 'success') {
@@ -254,11 +271,16 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
 
   const handleDeleteWorktree = useCallback(
     async (path: string) => {
-      // Check for dirty changes
+      // Check for dirty changes — git tracked + per-worktree scratchpad
+      // notes are reported separately so the dialog can name exactly
+      // what's about to be lost.
       const dirty = await backend.isWorktreeDirty(path)
-      if (dirty) {
+      if (dirty.git || dirty.scratchpad) {
+        const parts: string[] = []
+        if (dirty.git) parts.push('uncommitted changes')
+        if (dirty.scratchpad) parts.push('scratchpad notes')
         const confirmed = window.confirm(
-          'This worktree has uncommitted changes that will be lost. Delete anyway?'
+          `This worktree has ${parts.join(' and ')} that will be lost. Delete anyway?`
         )
         if (!confirmed) return
       }
@@ -284,10 +306,12 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
       const pr = prStatuses[path]
       const repoRoot = worktreeRepoByPath[path]
       if (!repoRoot) return
+      // Only git-tracked dirtiness needs `git worktree remove --force`;
+      // a scratchpad note is invisible to git.
       void backend.removeWorktree(
         repoRoot,
         path,
-        dirty,
+        dirty.git,
         pr ? { prNumber: pr.number, prState: pr.state } : undefined
       )
       if (path === activeWorktreeId) {

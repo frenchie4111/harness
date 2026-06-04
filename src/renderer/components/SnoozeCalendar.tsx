@@ -122,7 +122,7 @@ export function SnoozeCalendar({
           className="text-faint hover:text-fg disabled:opacity-40 cursor-pointer disabled:cursor-default p-0.5"
           aria-label="Previous month"
         >
-          <ChevronLeft size={14} />
+          <ChevronLeft className="icon-sm" />
         </button>
         <div className="text-xs font-semibold text-fg">
           {viewMonth.toLocaleString(undefined, { month: 'long', year: 'numeric' })}
@@ -133,11 +133,11 @@ export function SnoozeCalendar({
           className="text-faint hover:text-fg disabled:opacity-40 cursor-pointer disabled:cursor-default p-0.5"
           aria-label="Next month"
         >
-          <ChevronRight size={14} />
+          <ChevronRight className="icon-sm" />
         </button>
       </div>
 
-      <div className="grid grid-cols-7 gap-0.5 text-center text-[10px] text-faint mb-1">
+      <div className="grid grid-cols-7 gap-0.5 text-center text-xs text-faint mb-1">
         {WEEKDAY_LABELS.map((d, i) => (
           <div key={i}>{d}</div>
         ))}
@@ -172,7 +172,7 @@ export function SnoozeCalendar({
           <button
             key={p.label}
             onClick={() => onPick(Date.now() + p.days * DAY_MS)}
-            className={`flex-1 text-[10px] rounded px-1.5 py-1 transition-colors cursor-pointer ${
+            className={`flex-1 text-xs rounded px-1.5 py-1 transition-colors cursor-pointer ${
               p.highlight
                 ? 'bg-accent text-app font-semibold hover:opacity-90'
                 : 'text-dim hover:text-fg hover:bg-panel-raised'
@@ -183,7 +183,7 @@ export function SnoozeCalendar({
         ))}
         <button
           onClick={() => onPick(MAX_WAKE)}
-          className="flex-1 text-[10px] rounded px-1.5 py-1 text-dim hover:text-fg hover:bg-panel-raised transition-colors cursor-pointer"
+          className="flex-1 text-xs rounded px-1.5 py-1 text-dim hover:text-fg hover:bg-panel-raised transition-colors cursor-pointer"
         >
           Never
         </button>

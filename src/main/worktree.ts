@@ -15,6 +15,7 @@ import { readFile, writeFile } from 'fs/promises'
 import { log } from './debug'
 import { perfLog } from './perf-log'
 import { resolveUserShell, loginShellCommandArgs } from './user-shell'
+import { detectInProgressOp } from './git-ops-state'
 import type { Worktree } from '../shared/state/worktrees'
 
 const execFileAsync = promisify(execFile)
@@ -84,6 +85,15 @@ export async function listWorktrees(repoRoot: string): Promise<WorktreeInfo[]> {
     }
   }
 
+  const detached = worktrees.filter((w) => w.branch === '(detached)' && !w.isBare)
+  if (detached.length > 0) {
+    const ops = await Promise.all(detached.map((w) => detectInProgressOp(w.path).catch(() => null)))
+    detached.forEach((w, i) => {
+      const op = ops[i]
+      if (op) w.branch = op.label
+    })
+  }
+
   return worktrees
 }
 
@@ -145,9 +155,13 @@ export async function localBranchExists(repoRoot: string, branchName: string): P
 }
 
 export async function listBranches(repoRoot: string): Promise<string[]> {
+  // Local branches only. Remote-tracking refs (`origin/*`) are intentionally
+  // excluded — hundreds of remote branches make the picker UI unusable. Users
+  // who need a remote ref can type it into the Ref tab on the New worktree
+  // screen.
   const { stdout } = await execFileAsync(
     'git',
-    ['branch', '-a', '--format=%(refname:short)'],
+    ['branch', '--format=%(refname:short)'],
     { cwd: repoRoot }
   )
   return stdout.trim().split('\n').filter(Boolean)
@@ -659,7 +673,7 @@ async function getChangedFilesImpl(
   return result
 }
 
-export interface CommitDiff {
+export interface CommitMeta {
   hash: string
   shortHash: string
   author: string
@@ -667,14 +681,17 @@ export interface CommitDiff {
   date: string
   subject: string
   body: string
+}
+
+export interface CommitDiff extends CommitMeta {
   diff: string
 }
 
-/** Get a single commit's metadata + full diff. */
-export async function getCommitDiff(
+/** Get a single commit's metadata (no diff). Cheap — one `git show -s`. */
+export async function getCommitMeta(
   worktreePath: string,
   hash: string
-): Promise<CommitDiff | null> {
+): Promise<CommitMeta | null> {
   if (!/^[0-9a-fA-F]{4,64}$/.test(hash)) return null
   try {
     const sep = '\x1f'
@@ -686,23 +703,45 @@ export async function getCommitDiff(
     )
     const cleaned = meta.endsWith(end) ? meta.slice(0, -1) : meta
     const [fullHash, shortHash, author, authorEmail, date, subject, body = ''] = cleaned.split(sep)
+    return { hash: fullHash, shortHash, author, authorEmail, date, subject, body }
+  } catch {
+    return null
+  }
+}
+
+/** Get a single commit's metadata + full diff. */
+export async function getCommitDiff(
+  worktreePath: string,
+  hash: string
+): Promise<CommitDiff | null> {
+  const meta = await getCommitMeta(worktreePath, hash)
+  if (!meta) return null
+  try {
     const { stdout: diff } = await execFileAsync(
       'git',
       ['show', '--no-color', '--pretty=format:', hash],
       { cwd: worktreePath, maxBuffer: 32 * 1024 * 1024 }
     )
-    return {
-      hash: fullHash,
-      shortHash,
-      author,
-      authorEmail,
-      date,
-      subject,
-      body,
-      diff: diff.replace(/^\n+/, '')
-    }
+    return { ...meta, diff: diff.replace(/^\n+/, '') }
   } catch {
     return null
+  }
+}
+
+/** List full commit SHAs reachable from any ref, capped, for validating
+ *  commit-SHA tokens printed in terminal output. `--all` covers local
+ *  branches, tags, and remotes, so SHAs from `git log`, PR branches, etc.
+ *  resolve; the cap keeps the payload bounded on large repos. */
+export async function listRecentCommitShas(worktreePath: string): Promise<string[]> {
+  try {
+    const { stdout } = await execFileAsync(
+      'git',
+      ['rev-list', '--all', '--max-count=10000'],
+      { cwd: worktreePath, maxBuffer: 16 * 1024 * 1024 }
+    )
+    return stdout.split('\n').filter((l) => l.length > 0)
+  } catch {
+    return []
   }
 }
 
@@ -762,6 +801,84 @@ async function getCommitChangedFilesImpl(
 
   logGitOp('getCommitChangedFiles', { hash }, t0, walledExec, cumExec, outputBytes, execParts)
   return result
+}
+
+export async function getCommitRangeChangedFiles(
+  worktreePath: string,
+  fromHash: string,
+  toHash: string
+): Promise<ChangedFile[]> {
+  const t0 = performance.now()
+  if (
+    !/^[0-9a-fA-F]{4,64}$/.test(fromHash) ||
+    !/^[0-9a-fA-F]{4,64}$/.test(toHash)
+  ) {
+    return []
+  }
+  let walledExec = 0
+  let cumExec = 0
+  let outputBytes = 0
+  const execParts: number[] = []
+  let result: ChangedFile[] = []
+
+  const range = `${fromHash}^..${toHash}`
+  try {
+    const tA = performance.now()
+    const [nameStatus, ns] = await Promise.all([
+      tracedExec(['diff', '--name-status', range], {
+        cwd: worktreePath
+      }),
+      numstatExec(worktreePath, [range])
+    ])
+    walledExec += performance.now() - tA
+    cumExec += nameStatus.execMs + ns.execMs
+    execParts.push(nameStatus.execMs, ns.execMs)
+    outputBytes += nameStatus.outputBytes + ns.outputBytes
+
+    const counts = parseNumstatZ(ns.stdout)
+    for (const line of nameStatus.stdout.split('\n')) {
+      if (!line) continue
+      const parts = line.split('\t')
+      const code = parts[0]
+      const filePath = parts[parts.length - 1]
+      const file: ChangedFile = { path: filePath, status: mapNameStatus(code), staged: false }
+      applyCounts(file, counts.get(filePath))
+      result.push(file)
+    }
+  } catch {
+    result = []
+  }
+
+  logGitOp('getCommitRangeChangedFiles', { fromHash, toHash }, t0, walledExec, cumExec, outputBytes, execParts)
+  perfLog(
+    'changed-files',
+    `mode=range path=${basename(worktreePath)} took=${(performance.now() - t0).toFixed(0)}ms files=${result.length}`,
+    { worktreePath, mode: 'range', fromHash, toHash, ms: +(performance.now() - t0).toFixed(1), fileCount: result.length }
+  )
+  return result
+}
+
+export async function getCommitRangeFileDiffSides(
+  worktreePath: string,
+  fromHash: string,
+  toHash: string,
+  filePath: string
+): Promise<FileDiffSides> {
+  if (
+    !/^[0-9a-fA-F]{4,64}$/.test(fromHash) ||
+    !/^[0-9a-fA-F]{4,64}$/.test(toHash)
+  ) {
+    return { original: '', modified: '', originalExists: false, modifiedExists: false, modifiedBinary: false }
+  }
+  const original = await getFileAtRef(worktreePath, `${fromHash}^`, filePath)
+  const modified = await getFileAtRef(worktreePath, toHash, filePath)
+  return {
+    original: original ?? '',
+    modified: modified ?? '',
+    originalExists: original != null,
+    modifiedExists: modified != null,
+    modifiedBinary: false
+  }
 }
 
 export async function getCommitFileDiffSides(

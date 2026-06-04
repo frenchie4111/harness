@@ -12,7 +12,7 @@ export function GlobCard({ block, result, autoApproved, sessionAllowed }: ToolCa
       sessionAllowed={sessionAllowed}
     >
       {result && (
-        <pre className="px-2 py-1 text-[11px] font-mono whitespace-pre-wrap max-h-60 overflow-auto opacity-80">
+        <pre className="px-2 py-1 text-xs font-mono whitespace-pre-wrap max-h-60 overflow-auto opacity-80">
           {trunc(result.content, 2000)}
         </pre>
       )}

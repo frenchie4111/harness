@@ -59,6 +59,18 @@ export function RightPanel({
     onCollapsedChangeRef.current?.(collapsed)
   }, [id, collapsed])
 
+  // External nudge: the collapsed right-sidebar icons fire this event so
+  // clicking, say, the Commits icon expands both the column AND the
+  // matching section even if the section was previously collapsed.
+  useEffect(() => {
+    const handler = (e: Event): void => {
+      const ce = e as CustomEvent<{ id?: string }>
+      if (ce.detail?.id === id) setCollapsed(false)
+    }
+    window.addEventListener('harness:expand-right-panel', handler)
+    return () => window.removeEventListener('harness:expand-right-panel', handler)
+  }, [id])
+
   // On unmount, signal collapsed so consumers (e.g. CostPanel's interest
   // gate) treat the panel as no longer visible — otherwise tearing the
   // panel down via parent reconciliation would leak interest.
@@ -89,9 +101,7 @@ export function RightPanel({
           className="no-drag flex-1 flex items-center gap-1.5 px-3 hover:bg-panel-raised/40 cursor-pointer text-left min-w-0"
         >
           <ChevronRight
-            size={12}
-            className={`shrink-0 text-faint transition-transform ${collapsed ? '' : 'rotate-90'}`}
-          />
+            className={`icon-xs shrink-0 text-faint transition-transform ${collapsed ? '' : 'rotate-90'}`} />
           <span className="text-xs font-medium text-muted uppercase tracking-wide truncate">
             {title}
           </span>

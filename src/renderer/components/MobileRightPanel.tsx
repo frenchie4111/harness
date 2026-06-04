@@ -27,7 +27,7 @@ export function MobileRightPanel({
   const backend = useBackend()
   const repoConfigs = useRepoConfigs()
   const settings = useSettings()
-  const hasGithubToken = settings.hasGithubToken || settings.githubAuthSource === 'gh-cli'
+  const hasGithubToken = settings.hasGithubToken || !!settings.githubAuthSource
   const activeRepoConfig = activeWorktree ? repoConfigs[activeWorktree.repoRoot] ?? null : null
   void activeRepoConfig
 
@@ -70,7 +70,7 @@ export function MobileRightPanel({
           />
           <BranchCommitsPanel worktreePath={activeWorktree.path} />
           <CostPanel worktreePath={activeWorktree.path} />
-          <div className="px-4 py-3 text-[11px] text-dim">
+          <div className="px-4 py-3 text-xs text-dim">
             File diffs and commit review open only on desktop for now.
           </div>
         </>

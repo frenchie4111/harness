@@ -1,11 +1,28 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
+import { WebLinksAddon } from '@xterm/addon-web-links'
+import { ProgressAddon } from '@xterm/addon-progress'
+import { SearchAddon } from '@xterm/addon-search'
 import '@xterm/xterm/css/xterm.css'
 import type { StateEvent } from '../../shared/state'
-import { getClientId, useTerminalSession } from '../store'
+import { getClientId, subscribeActiveTransportReconnect, useSettings, useTerminalSession } from '../store'
 import { getBackend, useBackend } from '../backend'
-import { Eye } from 'lucide-react'
+import {
+  makeFileLinkProvider,
+  loadWorktreeFiles,
+  getCachedWorktreeFiles
+} from '../terminal-file-links'
+import {
+  makeCommitLinkProvider,
+  loadWorktreeCommits,
+  getCachedWorktreeCommits
+} from '../terminal-commit-links'
+import { scaledEditorFontSize, type UiScale } from '../../shared/state/settings'
+import { Eye, X, Sparkles } from 'lucide-react'
+import { Tooltip } from './Tooltip'
+import { CommitInfoModal } from './CommitInfoModal'
+import { CommitHoverCard } from './CommitHoverCard'
 
 function ClaudeLoader() {
   return (
@@ -41,10 +58,32 @@ const DEFAULT_TERMINAL_FONT_FAMILY =
   "'SF Mono', 'Monaco', 'Menlo', 'Courier New', monospace"
 const DEFAULT_TERMINAL_FONT_SIZE = 13
 
+const SEARCH_DECORATIONS = {
+  matchBackground: '#facc1540',
+  matchBorder: '#facc1580',
+  matchOverviewRuler: '#facc15',
+  activeMatchBackground: '#f59e0b',
+  activeMatchBorder: '#fbbf24',
+  activeMatchColorOverviewRuler: '#f59e0b'
+}
+
 /** Global registry so hotkeys can focus terminals without prop-drilling refs */
 const terminalRegistry = new Map<string, Terminal>()
 /** Fit addons keyed by terminal id, so font-change listeners can refit. */
 const fitRegistry = new Map<string, FitAddon>()
+
+// Matches an SGR mouse button press/release report (`ESC [ < btn ; col ; row M|m`).
+// Motion (bit 0x20) and wheel (bit 0x40) reports are excluded so hovering and
+// scrolling still reach a mouse-aware app — only an actual button click is
+// treated as one we may need to withhold from the PTY.
+// eslint-disable-next-line no-control-regex
+const SGR_MOUSE_REPORT = /^\x1b\[<(\d+);\d+;\d+[Mm]$/
+export function isMouseButtonReport(data: string): boolean {
+  const match = SGR_MOUSE_REPORT.exec(data)
+  if (!match) return false
+  const button = Number(match[1])
+  return (button & 0x20) === 0 && (button & 0x40) === 0
+}
 
 export function focusTerminalById(id: string): void {
   terminalRegistry.get(id)?.focus()
@@ -79,11 +118,23 @@ export function isTerminalAtBottom(id: string): boolean {
  * with the user's chosen values without any prop drilling. */
 let currentFontFamily = DEFAULT_TERMINAL_FONT_FAMILY
 let currentFontSize = DEFAULT_TERMINAL_FONT_SIZE
+// `currentFontSize` is the user-configured terminal size. The pixel size
+// we hand to xterm is shifted by the current scale's `terminalOffset` (see
+// SCALES in shared/state/settings.ts) so terminals stay in proportion with
+// the rest of the UI when the scale rung changes. Stored separately so the
+// user's terminalFontSize preference is never overwritten — the offset is
+// applied dynamically via `scaledEditorFontSize`, the same helper Monaco
+// editors use.
+let currentUiScale: UiScale = 'small'
+
+function effectiveTerminalFontSize(): number {
+  return scaledEditorFontSize(currentFontSize, currentUiScale)
+}
 
 function applyFontToAll(): void {
   for (const [id, term] of terminalRegistry) {
     term.options.fontFamily = currentFontFamily
-    term.options.fontSize = currentFontSize
+    term.options.fontSize = effectiveTerminalFontSize()
     const fit = fitRegistry.get(id)
     if (!fit) continue
     try {
@@ -114,6 +165,7 @@ function initFontCache(): void {
   void backend.getStateSnapshot().then(({ state }) => {
     currentFontFamily = state.settings.terminalFontFamily || DEFAULT_TERMINAL_FONT_FAMILY
     currentFontSize = state.settings.terminalFontSize || DEFAULT_TERMINAL_FONT_SIZE
+    currentUiScale = state.settings.uiScale
     applyFontToAll()
   })
   backend.onStateEvent((raw) => {
@@ -123,6 +175,9 @@ function initFontCache(): void {
       applyFontToAll()
     } else if (event.type === 'settings/terminalFontSizeChanged') {
       currentFontSize = event.payload || DEFAULT_TERMINAL_FONT_SIZE
+      applyFontToAll()
+    } else if (event.type === 'settings/uiScaleChanged') {
+      currentUiScale = event.payload as UiScale
       applyFontToAll()
     }
   })
@@ -168,6 +223,42 @@ export function markTerminalClosing(id: string): void {
   getBackend().clearTerminalHistory(id)
 }
 
+// Read the bg/fg from CSS vars set by theme-apply.ts, then build the full
+// xterm theme object. ANSI colors stay hardcoded for now — themes only flow
+// in via --color-app / --color-fg-bright.
+function buildTerminalTheme(
+  bgVar = '--color-app'
+): NonNullable<ConstructorParameters<typeof Terminal>[0]>['theme'] {
+  const rootStyle = getComputedStyle(document.documentElement)
+  const bg =
+    rootStyle.getPropertyValue(bgVar).trim() ||
+    rootStyle.getPropertyValue('--color-app').trim() ||
+    '#0a0a0a'
+  const fg = rootStyle.getPropertyValue('--color-fg-bright').trim() || '#e5e5e5'
+  return {
+    background: bg,
+    foreground: fg,
+    cursor: fg,
+    selectionBackground: '#33415580',
+    black: bg,
+    red: '#f87171',
+    green: '#4ade80',
+    yellow: '#facc15',
+    blue: '#60a5fa',
+    magenta: '#c084fc',
+    cyan: '#22d3ee',
+    white: fg,
+    brightBlack: '#525252',
+    brightRed: '#fca5a5',
+    brightGreen: '#86efac',
+    brightYellow: '#fde68a',
+    brightBlue: '#93c5fd',
+    brightMagenta: '#d8b4fe',
+    brightCyan: '#67e8f9',
+    brightWhite: '#fafafa'
+  }
+}
+
 import type { AgentKind } from '../../shared/state/terminals'
 import { agentDisplayName } from '../../shared/agent-registry'
 
@@ -181,27 +272,81 @@ interface XTerminalProps {
   sessionId?: string
   initialPrompt?: string
   teleportSessionId?: string
+  modelOverride?: string
   /** Shell tabs only: when set, spawn `<user-shell> -ilc <command>` instead
    * of an interactive login shell. Used for agent-spawned shells. */
   shellCommand?: string
   /** Shell tabs only: directory to spawn in. Relative paths resolve against
    * `cwd` (the worktree root); absolute paths are used as-is. */
   shellCwd?: string
+  /** CSS custom-property name to source the terminal background from, so a
+   * host can tint it differently (e.g. the Quake overlay uses `--color-panel`
+   * to set itself apart from in-pane terminals). Defaults to `--color-app`. */
+  backgroundVar?: string
+  /** One-time text written straight to the xterm display at mount (visual
+   * only — never sent to the PTY), before history replay / PTY spawn so it
+   * lands above the shell's first prompt. The Quake overlay uses this for its
+   * first-open boot banner. */
+  preamble?: string
+  /** Skip the dim `── session restored ──` marker drawn after scrollback
+   * replay. The Quake overlay sets this — the marker is useful chrome for
+   * in-pane tabs but noise on the transient drop-down console. */
+  hideRestoreNotice?: boolean
   onRestartAgent?: () => void
+  /** When provided AND this is a Claude agent tab, an overlay chip in
+   *  the top-left invites the user to switch to the Chat interface. */
+  onSwitchToChat?: () => void
 }
 
-export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionName, sessionId, initialPrompt, teleportSessionId, shellCommand, shellCwd, onRestartAgent }: XTerminalProps): JSX.Element {
+export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionName, sessionId, initialPrompt, teleportSessionId, modelOverride, shellCommand, shellCwd, backgroundVar, preamble, hideRestoreNotice, onRestartAgent, onSwitchToChat }: XTerminalProps): JSX.Element {
   // Lazy font-cache init — fires once on first XTerminal mount. See
   // initFontCache() comment for why this is lazy rather than at module
   // top.
   initFontCache()
   const backend = useBackend()
+  const chatPromotionDismissed = useSettings().chatPromotionDismissed
+
+  // Prime + refresh the worktree file list that validates file-path links.
+  // Shared across this worktree's tabs and rate-limited inside
+  // loadWorktreeFiles, so reloading when the tab becomes visible is cheap.
+  useEffect(() => {
+    if (!visible) return
+    void loadWorktreeFiles(cwd, (c) => backend.listAllFiles(c))
+  }, [cwd, visible, backend])
+
+  // Same priming for the commit-SHA set that validates commit links.
+  useEffect(() => {
+    if (!visible) return
+    void loadWorktreeCommits(cwd, (c) => backend.listRecentCommitShas(c))
+  }, [cwd, visible, backend])
+
+  // Commit popup state (null = closed): the full SHA plus the click
+  // coordinates so the popup can anchor next to the clicked SHA. Set by the
+  // commit-link provider; the popup renders below via a fixed-position layer
+  // so it escapes this terminal's pane.
+  const [commitPopup, setCommitPopup] = useState<{ sha: string; x: number; y: number } | null>(
+    null
+  )
+  // Blame-style hover card shown after a short hover-intent delay while the
+  // pointer rests on a commit SHA. The timer ref holds the pending show so a
+  // quick pass-over doesn't flash the card.
+  const [commitHover, setCommitHover] = useState<{ sha: string; x: number; y: number } | null>(
+    null
+  )
+  const commitHoverTimer = useRef<number | null>(null)
   const [exited, setExited] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
+  const searchAddonRef = useRef<SearchAddon | null>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<{ resultIndex: number; resultCount: number } | null>(null)
   const [loading, setLoading] = useState(type === 'agent')
   const visibleRef = useRef(visible)
+  const backgroundVarRef = useRef(backgroundVar)
+  backgroundVarRef.current = backgroundVar
   const initializedRef = useRef(false)
   const session = useTerminalSession(terminalId)
   // The controllerClientId is null in the very narrow window between
@@ -227,57 +372,159 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
     if (!containerRef.current || initializedRef.current) return
     initializedRef.current = true
 
-    // Pull background/foreground from the active app theme so the terminal
-    // blends into the panel it's embedded in. xterm.js only accepts literal
-    // color strings, so we read the resolved CSS variables at init time.
-    const rootStyle = getComputedStyle(document.documentElement)
-    const bg = rootStyle.getPropertyValue('--color-app').trim() || '#0a0a0a'
-    const fg = rootStyle.getPropertyValue('--color-fg-bright').trim() || '#e5e5e5'
+    const openUrlInBrowserTab = (uri: string): void => {
+      // Browser tabs live in panes alongside terminals; appending here
+      // bypasses the App-level handleAddBrowserTab so XTerminal stays
+      // self-contained. paneId is omitted — panesFSM falls back to the
+      // first leaf which is correct for the common single-pane case.
+      let label = 'Browser'
+      try {
+        label = new URL(uri).host || label
+      } catch {
+        // ignore; fall back to generic label
+      }
+      const id = `browser-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      void backend.panesAddTab(cwd, { id, type: 'browser', label, url: uri })
+    }
+
+    // Both link providers — xterm's core OSC 8 provider (via `linkHandler`)
+    // and the WebLinksAddon (plain-text URLs) — route through this one
+    // closure so the destination logic can't drift. Plain click → OS
+    // default browser; Cmd/Ctrl-click → in-app browser tab; mailto →
+    // external (the in-app browser can't open it).
+    const isWebUri = (uri: string): boolean =>
+      uri.startsWith('http://') || uri.startsWith('https://')
+    // Schemes we'll hand to the OS on a plain click. vnc:// resolves to the
+    // user's Screen Sharing / VNC client; mailto: to their mail client.
+    const isExternalUri = (uri: string): boolean =>
+      isWebUri(uri) || uri.startsWith('mailto:') || uri.startsWith('vnc://')
+    const activateUri = (event: { metaKey: boolean; ctrlKey: boolean }, uri: string): void => {
+      // Only web URLs can render in an in-app browser tab; vnc:// and mailto:
+      // are OS-handled schemes, so they always go external.
+      const inApp = (event.metaKey || event.ctrlKey) && isWebUri(uri)
+      if (inApp) {
+        openUrlInBrowserTab(uri)
+        return
+      }
+      if (isExternalUri(uri)) {
+        backend.openExternal(uri)
+      }
+    }
+
+    // Tracks the URL currently under the pointer (set/cleared by the link
+    // providers' hover/leave). Used to swallow a link click's mouse-report
+    // bytes before they reach the PTY — see the onData handler below.
+    let hoveredLinkUri: string | null = null
+    const setHoveredLink = (uri: string | null): void => {
+      hoveredLinkUri = uri
+    }
 
     const terminal = new Terminal({
-      fontSize: currentFontSize,
+      fontSize: effectiveTerminalFontSize(),
       fontFamily: currentFontFamily,
       cursorBlink: true,
       cursorStyle: 'bar',
       allowProposedApi: true,
-      // Route OSC 8 hyperlink clicks to the system browser. Without this,
-      // xterm's default handler shows a confirm prompt and then calls
-      // window.open, which Electron silently swallows.
       linkHandler: {
-        activate: (_event, uri) => {
-          if (uri.startsWith('http://') || uri.startsWith('https://') || uri.startsWith('mailto:')) {
-            backend.openExternal(uri)
-          }
-        },
-        hover: () => {},
-        leave: () => {}
+        activate: (event, uri) => activateUri(event, uri),
+        hover: (_event, uri) => setHoveredLink(uri),
+        leave: () => setHoveredLink(null)
       },
-      theme: {
-        background: bg,
-        foreground: fg,
-        cursor: fg,
-        selectionBackground: '#33415580',
-        black: bg,
-        red: '#f87171',
-        green: '#4ade80',
-        yellow: '#facc15',
-        blue: '#60a5fa',
-        magenta: '#c084fc',
-        cyan: '#22d3ee',
-        white: fg,
-        brightBlack: '#525252',
-        brightRed: '#fca5a5',
-        brightGreen: '#86efac',
-        brightYellow: '#fde68a',
-        brightBlue: '#93c5fd',
-        brightMagenta: '#d8b4fe',
-        brightCyan: '#67e8f9',
-        brightWhite: '#fafafa'
-      }
+      theme: buildTerminalTheme(backgroundVarRef.current)
     })
 
     const fitAddon = new FitAddon()
     terminal.loadAddon(fitAddon)
+
+    const webLinksAddon = new WebLinksAddon(
+      (event, uri) => {
+        event.preventDefault()
+        activateUri(event, uri)
+      },
+      {
+        hover: (_event, uri) => setHoveredLink(uri),
+        leave: () => setHoveredLink(null),
+        // Extend the addon's default scheme list (https?) to also match
+        // vnc:// so Screen Sharing links are clickable. Mirrors the upstream
+        // trailing-punctuation trimming so we don't eat a closing ) or .
+        urlRegex:
+          /(https?|HTTPS?|vnc|VNC):[/]{2}[^\s"'!*(){}|\\\^<>`]*[^\s"':,.!?{}|\\\^~\[\]`()<>]/
+      }
+    )
+    terminal.loadAddon(webLinksAddon)
+
+    const progressAddon = new ProgressAddon()
+    terminal.loadAddon(progressAddon)
+    // Only the controller dispatches — spectators parse the same OSC stream
+    // identically, so letting them all dispatch would 2x+ the IPC traffic
+    // and the reducer would dedup most of it anyway.
+    const progressSub = progressAddon.onChange((p) => {
+      if (!isControllerRef.current) return
+      backend.setTerminalProgress(terminalId, p.state, p.value)
+    })
+
+    const searchAddon = new SearchAddon()
+    terminal.loadAddon(searchAddon)
+    searchAddonRef.current = searchAddon
+    const searchResultsSub = searchAddon.onDidChangeResults((e) => {
+      setSearchResults({ resultIndex: e.resultIndex, resultCount: e.resultCount })
+    })
+
+    // File-path links: validate against the worktree's file list and make
+    // real, in-worktree paths clickable. Like URLs: plain click opens the
+    // file in the external editor; Cmd/Ctrl-click opens an in-app file tab.
+    const fileLinkProvider = terminal.registerLinkProvider(
+      makeFileLinkProvider({
+        terminal,
+        cwd,
+        getKnownFiles: () => getCachedWorktreeFiles(cwd),
+        openInApp: (rel) => {
+          void backend.panesOpenFile(cwd, rel, terminalId)
+        },
+        openInEditor: (rel) => {
+          void backend.openInEditor(cwd, rel)
+        },
+        onHoverChange: (hovering) => setHoveredLink(hovering ? 'file:' : null)
+      })
+    )
+
+    // Commit-SHA links: validate hex tokens against the worktree's commit
+    // set and make real commits clickable. Hover shows a blame-style card; a
+    // click opens a popup with the commit's metadata + changed files.
+    // Setting hoveredLink on hover feeds the same mouse-report withholding the
+    // URL providers use, so the click that opens the popup isn't also
+    // forwarded to a mouse-aware app (e.g. Claude Code).
+    const clearCommitHoverTimer = (): void => {
+      if (commitHoverTimer.current !== null) {
+        window.clearTimeout(commitHoverTimer.current)
+        commitHoverTimer.current = null
+      }
+    }
+    const commitLinkProvider = terminal.registerLinkProvider(
+      makeCommitLinkProvider({
+        terminal,
+        getKnownCommits: () => getCachedWorktreeCommits(cwd),
+        openCommit: (fullSha, event) => {
+          clearCommitHoverTimer()
+          setCommitHover(null)
+          setCommitPopup({ sha: fullSha, x: event.clientX, y: event.clientY })
+        },
+        onHover: (fullSha, event) => {
+          setHoveredLink('commit:')
+          const x = event.clientX
+          const y = event.clientY
+          clearCommitHoverTimer()
+          commitHoverTimer.current = window.setTimeout(() => {
+            setCommitHover({ sha: fullSha, x, y })
+          }, 280)
+        },
+        onLeave: () => {
+          setHoveredLink(null)
+          clearCommitHoverTimer()
+          setCommitHover(null)
+        }
+      })
+    )
 
     // Translate Shift+Enter into "backslash + Enter" (\\\r). By default xterm
     // sends bare \r for both Enter and Shift+Enter, so Claude Code can't tell
@@ -285,6 +532,24 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
     // matches Claude Code's documented line-continuation pattern and inserts
     // a newline regardless of cursor position.
     terminal.attachCustomKeyEventHandler((e) => {
+      // Intercept Cmd/Ctrl+F before any controller gating so spectators
+      // can search scrollback too.
+      if (
+        e.type === 'keydown' &&
+        (e.key === 'f' || e.key === 'F') &&
+        (e.metaKey || e.ctrlKey) &&
+        !e.altKey
+      ) {
+        e.preventDefault()
+        e.stopPropagation()
+        setSearchOpen(true)
+        // Defer focus until after React renders the input.
+        requestAnimationFrame(() => {
+          searchInputRef.current?.focus()
+          searchInputRef.current?.select()
+        })
+        return false
+      }
       if (!isControllerRef.current) {
         // Spectators shouldn't inject even our Shift+Enter escape;
         // main would drop the write too, but swallowing here keeps
@@ -318,6 +583,11 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
     terminalRegistry.set(terminalId, terminal)
     fitRegistry.set(terminalId, fitAddon)
 
+    // One-time host preamble (e.g. the Quake boot banner). Written here,
+    // before the history replay / PTY spawn below, so it always sits above
+    // the shell's first prompt. Purely visual — never echoed to the PTY.
+    if (preamble) terminal.write(preamble)
+
     // Restore scrollback (if any) before spawning the PTY so historical output
     // appears above the fresh shell's prompt.
     let cleanupData: (() => void) | null = null
@@ -337,7 +607,8 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
         sessionId,
         initialPrompt,
         teleportSessionId,
-        sessionName
+        sessionName,
+        modelOverride
       })
     }
 
@@ -393,6 +664,15 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
         // gating here avoids the round-trip + any suggestion the keystroke
         // "took" (we don't echo back since xterm's local echo is off).
         if (!isControllerRef.current) return
+        // When the pointer is over a link, withhold the click's mouse-report
+        // bytes from the PTY. A mouse-aware app (e.g. Claude Code, which
+        // enables mouse tracking) can't tell the click landed on one of its
+        // OSC 8 hyperlinks, so it would ALSO open the URL — a second browser
+        // tab on top of Harness's own link handling. Harness's linkHandler /
+        // WebLinksAddon still fire on the same click, so the link opens
+        // exactly once and honors the Cmd/Ctrl modifier. Non-link clicks
+        // pass through untouched so the app's mouse UI keeps working.
+        if (hoveredLinkUri && isMouseButtonReport(data)) return
         backend.writeTerminal(terminalId, data)
       })
 
@@ -442,7 +722,10 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
           '\x1b[?1003l' + // mouse all tracking
           '\x1b[?1006l' + // SGR mouse encoding
           '\x1b[?2004l'   // bracketed paste
-        terminal.write(RESET_MODES + '\r\n\x1b[2m── session restored ──\x1b[0m\r\n', () => {
+        const restoreTrailer = hideRestoreNotice
+          ? RESET_MODES
+          : RESET_MODES + '\r\n\x1b[2m── session restored ──\x1b[0m\r\n'
+        terminal.write(restoreTrailer, () => {
           if (disposed) return
           spawnPty()
         })
@@ -496,6 +779,12 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
       resizeObserver.disconnect()
       cleanupData?.()
       cleanupExit?.()
+      searchResultsSub.dispose()
+      progressSub.dispose()
+      fileLinkProvider.dispose()
+      commitLinkProvider.dispose()
+      clearCommitHoverTimer()
+      searchAddonRef.current = null
       terminal.dispose()
     }
   }, [terminalId, cwd, type])
@@ -507,6 +796,35 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
   useEffect(() => {
     backend.joinTerminal(terminalId)
   }, [terminalId])
+
+  // Re-fire terminal:join after a WS reconnect. The server cleared the
+  // session's controllerClientId when the old socket closed, and the
+  // renderer just got a fresh server-side clientId — without a re-join
+  // the session entry stays orphaned and pty:write is silently dropped
+  // by main's "controllerClientId !== ctx.clientId" gate.
+  useEffect(() => {
+    return subscribeActiveTransportReconnect(() => {
+      backend.joinTerminal(terminalId)
+    })
+  }, [terminalId, backend])
+
+  // Re-apply the xterm theme when the app theme changes. theme-apply.ts
+  // mutates `data-theme` and inline `style` on :root; observe both so we
+  // pick up built-in switches and custom-theme overrides alike. Using a
+  // MutationObserver (rather than keying on useActiveTheme) avoids a child-
+  // before-parent useEffect race where the child would read stale CSS vars.
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      const terminal = terminalRef.current
+      if (!terminal) return
+      terminal.options.theme = buildTerminalTheme(backgroundVarRef.current)
+    })
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-theme', 'style']
+    })
+    return () => observer.disconnect()
+  }, [])
 
   // Re-fit when the terminal becomes visible
   useEffect(() => {
@@ -553,28 +871,39 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
   }, [visible, terminalId])
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>): void => {
-    if (!e.dataTransfer.types.includes('Files')) return
+    const types = e.dataTransfer.types
+    if (!types.includes('Files') && !types.includes('text/plain')) return
     e.preventDefault()
     e.dataTransfer.dropEffect = 'copy'
   }
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>): void => {
     const files = Array.from(e.dataTransfer.files)
-    if (files.length === 0) return
+    if (files.length > 0) {
+      e.preventDefault()
+      const paths = files
+        .map((f) => backend.getFilePath(f))
+        .filter((p) => p && p.length > 0)
+      if (paths.length === 0) return
+      // Match iTerm2: shell-quote each path, join with spaces, wrap in
+      // bracketed-paste markers so Claude (and other readline-style prompts)
+      // treat it as a paste rather than per-keystroke input.
+      // Claude Code detects image paths in pasted text and renders them as
+      // attachments, but only when escaped iTerm2-style (backslash-escaped
+      // special chars, not POSIX single-quoting).
+      const escapeForDrop = (p: string): string => p.replace(/([ \t"'`$\\!?*()[\]{}|;<>&#])/g, '\\$1')
+      const text = paths.map(escapeForDrop).join(' ')
+      backend.writeTerminal(terminalId, '\x1b[200~' + text + '\x1b[201~')
+      terminalRef.current?.focus()
+      return
+    }
+    // In-app drag: panels set a text/plain payload (e.g. "@path/to/file ",
+    // a check URL, or a commit SHA). Pasted verbatim with bracketed-paste
+    // markers so the agent sees it as a single chunk.
+    const dragText = e.dataTransfer.getData('text/plain')
+    if (!dragText) return
     e.preventDefault()
-    const paths = files
-      .map((f) => backend.getFilePath(f))
-      .filter((p) => p && p.length > 0)
-    if (paths.length === 0) return
-    // Match iTerm2: shell-quote each path, join with spaces, wrap in
-    // bracketed-paste markers so Claude (and other readline-style prompts)
-    // treat it as a paste rather than per-keystroke input.
-    // Claude Code detects image paths in pasted text and renders them as
-    // attachments, but only when escaped iTerm2-style (backslash-escaped
-    // special chars, not POSIX single-quoting).
-    const escapeForDrop = (p: string): string => p.replace(/([ \t"'`$\\!?*()[\]{}|;<>&#])/g, '\\$1')
-    const text = paths.map(escapeForDrop).join(' ')
-    backend.writeTerminal(terminalId, '\x1b[200~' + text + '\x1b[201~')
+    backend.writeTerminal(terminalId, '\x1b[200~' + dragText + '\x1b[201~')
     terminalRef.current?.focus()
   }
 
@@ -601,6 +930,42 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
     }
   }
 
+  const closeSearch = (): void => {
+    setSearchOpen(false)
+    setSearchResults(null)
+    searchAddonRef.current?.clearDecorations()
+    terminalRef.current?.focus()
+  }
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>): void => {
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      closeSearch()
+      return
+    }
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      const addon = searchAddonRef.current
+      if (!addon || !searchQuery) return
+      const opts = { decorations: SEARCH_DECORATIONS }
+      if (e.shiftKey) addon.findPrevious(searchQuery, opts)
+      else addon.findNext(searchQuery, opts)
+    }
+  }
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
+    const value = e.target.value
+    setSearchQuery(value)
+    const addon = searchAddonRef.current
+    if (!addon) return
+    if (!value) {
+      addon.clearDecorations()
+      setSearchResults(null)
+      return
+    }
+    addon.findNext(value, { decorations: SEARCH_DECORATIONS, incremental: true })
+  }
+
   const showSpectatorOverlay = session !== null && session.controllerClientId !== null && session.controllerClientId !== myClientId
 
   // Diagnostic for the controller/spectator UI flow. Logs the overlay
@@ -620,6 +985,33 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
       onDrop={handleDrop}
     >
       <div ref={containerRef} className="w-full h-full" />
+      {searchOpen && (
+        <div className="absolute top-2 right-2 flex items-center gap-1 px-2 py-1 rounded-md bg-panel/95 border border-border shadow-lg z-10">
+          <input
+            ref={searchInputRef}
+            type="text"
+            value={searchQuery}
+            onChange={handleSearchChange}
+            onKeyDown={handleSearchKeyDown}
+            placeholder="Find"
+            className="bg-transparent text-xs text-fg-bright outline-none placeholder:text-dim w-40"
+          />
+          <span className="text-xs text-dim tabular-nums min-w-[3rem] text-right">
+            {searchQuery
+              ? searchResults && searchResults.resultCount > 0
+                ? `${searchResults.resultIndex + 1}/${searchResults.resultCount}`
+                : '0/0'
+              : ''}
+          </span>
+          <button
+            onClick={closeSearch}
+            className="p-0.5 rounded text-dim hover:text-fg-bright hover:bg-border transition-colors"
+            aria-label="Close search"
+          >
+            <X className="icon-xs" />
+          </button>
+        </div>
+      )}
       {loading && (
         <div className="absolute inset-0 flex items-center justify-center bg-app/70 pointer-events-none">
           <div className="flex flex-col items-center gap-3 text-dim text-sm">
@@ -638,7 +1030,7 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
       {showSpectatorOverlay && (
         <div className="absolute top-2 right-2 flex items-center gap-2 pointer-events-auto">
           <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-panel/90 border border-border text-xs text-dim">
-            <Eye size={12} />
+            <Eye className="icon-xs" />
             <span>Spectating</span>
           </div>
           <button
@@ -647,6 +1039,28 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
           >
             Take control
           </button>
+        </div>
+      )}
+      {!loading && !exited && onSwitchToChat && type === 'agent' && agentKind === 'claude' && !chatPromotionDismissed && (
+        <div className="absolute top-2 left-2 flex items-center gap-1 pointer-events-auto">
+          <Tooltip label="You can always switch modes by right-clicking the tab.">
+            <button
+              onClick={onSwitchToChat}
+              className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs bg-panel/90 border border-border text-fg-bright hover:bg-border transition-colors"
+            >
+              <Sparkles className="icon-xs text-accent" />
+              <span>Switch to the new Chat mode</span>
+            </button>
+          </Tooltip>
+          <Tooltip label="You can always switch modes by right-clicking the tab.">
+            <button
+              onClick={() => { void backend.setChatPromotionDismissed(true) }}
+              aria-label="Dismiss Chat mode promotion"
+              className="p-1 rounded-md bg-panel/90 border border-border text-dim hover:text-fg-bright transition-colors"
+            >
+              <X className="icon-xs" />
+            </button>
+          </Tooltip>
         </div>
       )}
       {exited && type === 'agent' && onRestartAgent && (
@@ -661,6 +1075,21 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
             </button>
           </div>
         </div>
+      )}
+      {commitHover && !commitPopup && (
+        <CommitHoverCard
+          worktreePath={cwd}
+          sha={commitHover.sha}
+          anchor={{ x: commitHover.x, y: commitHover.y }}
+        />
+      )}
+      {commitPopup && (
+        <CommitInfoModal
+          worktreePath={cwd}
+          sha={commitPopup.sha}
+          anchor={{ x: commitPopup.x, y: commitPopup.y }}
+          onClose={() => setCommitPopup(null)}
+        />
       )}
     </div>
   )

@@ -62,6 +62,20 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToAgent, onO
 
   const actions = (
     <>
+      {onOpenReview && branchFiles.length > 0 && (
+        <Tooltip label="Review changes" action="openReview">
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onOpenReview()
+            }}
+            className="flex items-center gap-1.5 px-2 py-1 rounded bg-accent text-app text-xs hover:bg-accent/80 transition-colors cursor-pointer"
+          >
+            <ClipboardCheck className="icon-xs" />
+            Review
+          </button>
+        </Tooltip>
+      )}
       <Tooltip label="Refresh">
         <button
           onClick={(e) => {
@@ -70,23 +84,9 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToAgent, onO
           }}
           className="text-faint hover:text-fg transition-colors cursor-pointer"
         >
-          <RefreshCw size={12} />
+          <RefreshCw className="icon-xs" />
         </button>
       </Tooltip>
-      {onOpenReview && branchFiles.length > 0 && (
-        <Tooltip label="Review changes" action="openReview">
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              onOpenReview()
-            }}
-            className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-accent text-fg text-[10px] font-medium hover:bg-accent/80 transition-colors cursor-pointer"
-          >
-            <ClipboardCheck size={10} />
-            Review
-          </button>
-        </Tooltip>
-      )}
     </>
   )
 
@@ -100,7 +100,7 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToAgent, onO
         {worktreePath && hasLoaded && (
           <>
             {/* Uncommitted section */}
-            <div className="px-3 py-1.5 text-[10px] font-medium text-dim uppercase tracking-wider bg-panel-raised/50">
+            <div className="px-3 py-1.5 text-xs font-medium text-dim uppercase tracking-wider bg-panel-raised/50">
               Uncommitted
             </div>
             {workingFiles.length === 0 ? (
@@ -108,7 +108,7 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToAgent, onO
             ) : (
               <>
                 {stagedFiles.length > 0 && unstagedFiles.length > 0 && (
-                  <div className="px-3 py-1 text-[9px] font-medium text-dim uppercase tracking-wider">
+                  <div className="px-3 py-1 text-xs font-medium text-dim uppercase tracking-wider">
                     Staged
                   </div>
                 )}
@@ -122,7 +122,7 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToAgent, onO
                   />
                 ))}
                 {stagedFiles.length > 0 && unstagedFiles.length > 0 && (
-                  <div className="px-3 py-1 text-[9px] font-medium text-dim uppercase tracking-wider">
+                  <div className="px-3 py-1 text-xs font-medium text-dim uppercase tracking-wider">
                     Unstaged
                   </div>
                 )}
@@ -139,7 +139,7 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToAgent, onO
             )}
 
             {/* Branch diff section */}
-            <div className="px-3 py-1.5 text-[10px] font-medium text-dim uppercase tracking-wider bg-panel-raised/50 mt-1">
+            <div className="px-3 py-1.5 text-xs font-medium text-dim uppercase tracking-wider bg-panel-raised/50 mt-1">
               Committed
             </div>
             {branchFiles.length === 0 ? (
@@ -160,7 +160,7 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToAgent, onO
       </div>
 
       {totalCount > 0 && (
-        <div className="px-3 py-1.5 border-t border-border text-[10px] text-faint shrink-0">
+        <div className="px-3 py-1.5 border-t border-border text-xs text-faint shrink-0">
           {workingFiles.length > 0 && <span>{workingFiles.length} uncommitted</span>}
           {workingFiles.length > 0 && branchFiles.length > 0 && <span> · </span>}
           {branchFiles.length > 0 && <span>{branchFiles.length} committed</span>}
@@ -187,7 +187,15 @@ function FileRow({
   const name = lastSlash >= 0 ? file.path.slice(lastSlash + 1) : file.path
 
   return (
-    <div className="flex items-center gap-2 px-3 py-1 hover:bg-panel-raised cursor-pointer group" onClick={onClick}>
+    <div
+      className="flex items-center gap-2 px-3 py-1 hover:bg-panel-raised cursor-pointer group"
+      onClick={onClick}
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData('text/plain', `@${file.path} `)
+        e.dataTransfer.effectAllowed = 'copy'
+      }}
+    >
       <span className={`shrink-0 w-3 font-mono ${STATUS_COLOR[file.status]}`}>
         {STATUS_LABEL[file.status]}
       </span>
@@ -200,7 +208,7 @@ function FileRow({
         </span>
       </Tooltip>
       {(file.additions !== undefined || file.deletions !== undefined) && (
-        <span className="shrink-0 font-mono text-[10px] tabular-nums">
+        <span className="shrink-0 font-mono text-xs tabular-nums">
           {file.additions !== undefined && file.additions > 0 && (
             <span className="text-success">+{file.additions}</span>
           )}
@@ -218,7 +226,7 @@ function FileRow({
             }}
             className="shrink-0 opacity-0 group-hover:opacity-100 text-faint hover:text-fg transition-all cursor-pointer"
           >
-            <AtSign size={11} />
+            <AtSign className="icon-xs" />
           </button>
         </Tooltip>
       )}
@@ -231,7 +239,7 @@ function FileRow({
             }}
             className="shrink-0 opacity-0 group-hover:opacity-100 text-faint hover:text-fg transition-all cursor-pointer"
           >
-            <Code2 size={11} />
+            <Code2 className="icon-xs" />
           </button>
         </Tooltip>
       )}

@@ -45,7 +45,7 @@ function Bar({
   const pct = total > 0 ? (row.cost / total) * 100 : 0
   const width = max > 0 ? (row.cost / max) * 100 : 0
   return (
-    <div className="flex items-center gap-2 text-[11px] leading-tight">
+    <div className="flex items-center gap-2 text-xs leading-tight">
       <span className="text-faint truncate w-20 shrink-0">{row.label}</span>
       <div className="flex-1 h-1.5 bg-panel-raised/40 rounded-sm overflow-hidden">
         <div
@@ -77,7 +77,7 @@ function Section({
   const max = nonZero[0].cost
   return (
     <div className="flex flex-col gap-1">
-      <div className="text-[10px] uppercase tracking-wide text-faint">{title}</div>
+      <div className="text-xs uppercase tracking-wide text-faint">{title}</div>
       {nonZero.map((r) => (
         <Bar key={r.label} row={r} max={max} total={total} />
       ))}
@@ -174,7 +174,7 @@ export function CostPanel({ worktreePath }: CostPanelProps): JSX.Element | null 
                 {formatCost(total.cost)}
               </span>
               {currentModel && (
-                <span className="text-[10px] text-faint truncate">
+                <span className="text-xs text-faint truncate">
                   {shortModel(currentModel)}
                 </span>
               )}
@@ -182,7 +182,7 @@ export function CostPanel({ worktreePath }: CostPanelProps): JSX.Element | null 
             <Section title="Output (produced)" rows={outputRows} total={total.cost} />
             <Section title="Input (context)" rows={inputRows} total={total.cost} />
             <div
-              className="text-[10px] text-faint italic"
+              className="text-xs text-faint italic"
               title="Per-block token counts aren't in the Anthropic usage field. Category splits are estimated by char-length proportion within each turn. The top-line total is exact."
             >
               breakdown is estimated

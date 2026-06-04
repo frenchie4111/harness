@@ -44,8 +44,8 @@
 
 Grab the latest release from the [releases page](https://github.com/frenchie4111/harness/releases/latest).
 
-- **Apple Silicon (M1/M2/M3/M4):** [Harness-2.8.2-arm64.dmg](https://github.com/frenchie4111/harness/releases/download/v2.8.2/Harness-2.8.2-arm64.dmg)
-- **Intel Mac:** [Harness-2.8.2.dmg](https://github.com/frenchie4111/harness/releases/download/v2.8.2/Harness-2.8.2.dmg)
+- **Apple Silicon (M1/M2/M3/M4):** [Harness-2.10.0-arm64.dmg](https://github.com/frenchie4111/harness/releases/download/v2.10.0/Harness-2.10.0-arm64.dmg)
+- **Intel Mac:** [Harness-2.10.0.dmg](https://github.com/frenchie4111/harness/releases/download/v2.10.0/Harness-2.10.0.dmg)
 
 ## Installation
 
@@ -181,6 +181,7 @@ Once added, the chip appears at the bottom of the sidebar. Click to switch — `
 - **Status at a glance** — sidebar dots show which agent is working, waiting, or needs approval (powered by Claude Code hooks)
 - **Command center** — bird's-eye grid of every worktree with mini activity timelines
 - **Tabs + vertical split panes** — Claude, shells, and editor/diff tabs scoped to each checkout, splittable side-by-side
+- **Existing-branch worktrees** — fork a new branch, pick a local branch from a typeahead, or check out any git ref (commit SHA, tag, or remote-tracking ref)
 - **9 themes** — dark, dracula, nord, gruvbox, tokyo night, catppuccin, one dark, solarized dark/light
 - **Configurable hotkeys** — ⌘1–⌘9 to jump between worktrees, all rebindable
 - **MCP: Claude controls Harness** — a built-in MCP server lets Claude create and list worktrees on its own
@@ -203,30 +204,9 @@ This app assumes that you are going to want to use worktrees (otherwise what's t
 
 It will create a worktree directory at `../<your repo folder>-worktree` and start making worktrees there. This directory will probably be changable at some point
 
-# "Roadmap"
+# Roadmap
 
-- [x] Initial functionality
-- [x] Proper packaging into an app and dmg for other mac users
-- [x] OTA Updates
-- [x] Settings, configurability, etc
-- [x] Better persistence (PTYs don't really stay if you kill the app, which can be a bit frustrating)
-- [x] Multi-repo support
-- [x] MCP server — Claude can create and manage worktrees itself
-- [x] Command center — bird's-eye view of all worktrees
-- [x] Activity tracking — visual timeline of agent status history
-- [x] Syntax-highlighted diffs
-- [x] 9 built-in themes
-- [x] Support other LLM CLI tools — Codex is now supported alongside Claude Code
-- [x] Per-agent model selection
-- [x] Vertical split panes
-- [x] Contextual system prompt injection so the agent knows it's inside Harness
-- [x] Shared permissions via symlinked Claude settings
-- [x] Release notes page inside the app
-- [ ] Browser panes — view localhost dev servers next to the terminal
-- [ ] Dev server management — start/stop/inspect dev servers per worktree
-- [ ] Notifications when claudes are ready for you (maybe peon noises?)
-- [ ] Mobile app
-- [ ] Whatever else people want — add a github issue or email me directly!
+The high-level roadmap has been moved here: https://github.com/frenchie4111/harness/issues/31
 
 # Setup, building, and running locally
 
@@ -265,4 +245,5 @@ xattr -cr release/mac-arm64/Harness.app
 
 # Contributing
 
-I mean if you want? I think you probably just want to tell claude to download it and make whatever changes you want
+We absolutely love contributors. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, PR conventions, and pointers into the architecture docs.
+

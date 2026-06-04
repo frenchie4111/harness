@@ -18,6 +18,7 @@ import { initialTerminals } from '../shared/state/terminals'
 import { initialUpdater } from '../shared/state/updater'
 import { initialRepoConfigs } from '../shared/state/repo-configs'
 import { initialSettings } from '../shared/state/settings'
+import { initialScratchpad } from '../shared/state/scratchpad'
 
 // The bug we're guarding against: a slice's `initial<Slice>` constant gains
 // a new field but the main-process Store seed in index.ts forgets to include
@@ -45,7 +46,8 @@ describe('buildInitialAppState', () => {
     terminals: initialTerminals,
     updater: initialUpdater,
     repoConfigs: initialRepoConfigs,
-    settings: initialSettings
+    settings: initialSettings,
+    scratchpad: initialScratchpad
   } as const
 
   for (const [name, initial] of Object.entries(slices)) {
@@ -59,10 +61,18 @@ describe('buildInitialAppState', () => {
 
   it('applies config overrides to settings', () => {
     const result = buildInitialAppState(
-      { ...emptyConfig, theme: 'solarized', repoRoots: ['/a', '/b'] },
+      {
+        ...emptyConfig,
+        themeMode: 'dark',
+        themeDark: 'dracula',
+        themeLight: 'solarized-light',
+        repoRoots: ['/a', '/b']
+      },
       { hasGithubToken: true }
     )
-    expect(result.settings.theme).toBe('solarized')
+    expect(result.settings.themeMode).toBe('dark')
+    expect(result.settings.themeDark).toBe('dracula')
+    expect(result.settings.themeLight).toBe('solarized-light')
     expect(result.settings.hasGithubToken).toBe(true)
     expect(result.worktrees.repoRoots).toEqual(['/a', '/b'])
   })

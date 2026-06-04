@@ -27,9 +27,11 @@
 import { useSyncExternalStore } from 'react'
 import {
   initialState,
+  mergeWireSnapshot,
   rootReducer,
   type AppState,
-  type StateEvent
+  type StateEvent,
+  type WireSnapshotState
 } from '../shared/state'
 import type { LocalTransportHandle, BackendConnection } from './types'
 import { WebSocketClientTransport } from '../shared/transport/transport-websocket'
@@ -53,12 +55,17 @@ class ClientStore {
     for (const l of this.listeners) l()
   }
 
-  setSnapshot(state: AppState): void {
-    // Merge with initialState so a remote backend on an older harness-server
-    // version (missing recently-added slices like snooze, repoConfigs, etc.)
-    // doesn't surface as renderer crashes on the first selector access of
-    // an undefined slice. New renderer + old server is the common skew.
-    this.state = { ...initialState, ...state }
+  setSnapshot(state: WireSnapshotState): void {
+    // Per-slice merge against initialState. This is the wire-side trust
+    // boundary: a remote `harness-server` on an older version may be
+    // missing entire slices (added after it shipped) AND/OR be missing
+    // individual fields inside slices it does send (e.g. v2.9.3 sends
+    // `settings` without `customThemes`, which 99262b2 added). A
+    // top-level shallow merge would only fix the first case; the
+    // per-slice merge fixes both. New renderer + old server is the
+    // common skew. The shared helper enforces — via the AppState return
+    // type — that future slice additions can't silently miss this list.
+    this.state = mergeWireSnapshot(state)
     for (const l of this.listeners) l()
   }
 
@@ -112,12 +119,22 @@ interface BackendEntry {
  *  reference-stable for missing entries. */
 const DEFAULT_BACKEND_STATUS: BackendStatus = { state: 'connected' }
 
-class BackendsRegistry {
+/** Subscribe to "this transport reconnected" events at the registry
+ *  level. Fires after each (re)connect (including the first), once the
+ *  registry's ClientStore has been seeded with the fresh server-side
+ *  clientId. XTerminal subscribes here to re-fire `terminal:join` after
+ *  a reconnect — the server's old `controllerClientId` was cleared when
+ *  the old socket closed, and the renderer's mount-only join effect
+ *  doesn't run again on its own. */
+type ReconnectSubscriber = (backendId: string, clientId: string) => void
+
+export class BackendsRegistry {
   private entries = new Map<string, BackendEntry>()
   private activeId: string = LOCAL_BACKEND_ID
   private activeIdListeners = new Set<() => void>()
   private listListeners = new Set<() => void>()
   private statusListeners = new Set<() => void>()
+  private reconnectListeners = new Set<ReconnectSubscriber>()
   // Cached return values for the read-only hooks. We rebuild the
   // cached array / status map ONLY when the underlying data changes;
   // useSyncExternalStore requires getSnapshot to be reference-stable
@@ -141,9 +158,33 @@ class BackendsRegistry {
       status: initialStatus
     })
     transport.onStateEvent((event, _seq) => store.applyEvent(event as StateEvent))
+    // The WS transport mints a fresh server-side clientId on every
+    // reconnect, so we keep the registry's ClientStore in sync and fan
+    // out to renderer subscribers (XTerminal re-fires terminal:join).
+    // The local Electron transport's onReconnect is a no-op, so this is
+    // a free wire on local backends.
+    transport.onReconnect((clientId) => {
+      store.setClientId(clientId)
+      // eslint-disable-next-line no-console
+      console.log(`[take-control] transport reconnect backend=${connection.id} clientId=${clientId}`)
+      for (const l of this.reconnectListeners) {
+        try {
+          l(connection.id, clientId)
+        } catch {
+          // swallow — a flaky subscriber mustn't kill the registry
+        }
+      }
+    })
     this.connectionsCache = null
     for (const l of this.listListeners) l()
     return store
+  }
+
+  subscribeReconnect(cb: ReconnectSubscriber): () => void {
+    this.reconnectListeners.add(cb)
+    return () => {
+      this.reconnectListeners.delete(cb)
+    }
   }
 
   setStatus(id: string, status: BackendStatus): void {
@@ -305,6 +346,24 @@ export function getClientId(): string | null {
   return registry.getActiveStore().getClientId()
 }
 
+/** Subscribe to "the active backend's transport reconnected" events.
+ *  Fires after each WS (re)connect with the fresh server-side clientId,
+ *  AFTER the registry's per-backend ClientStore has been updated. The
+ *  local Electron transport never reconnects, so this is a no-op for
+ *  the local backend.
+ *
+ *  XTerminal subscribes here to re-fire `terminal:join` — the server
+ *  cleared its old `controllerClientId` when the old socket closed, so
+ *  the renderer has to re-announce itself once it has a new id. */
+export function subscribeActiveTransportReconnect(
+  cb: (clientId: string) => void
+): () => void {
+  return registry.subscribeReconnect((backendId, clientId) => {
+    if (backendId !== registry.getActiveId()) return
+    cb(clientId)
+  })
+}
+
 export async function initStore(): Promise<void> {
   const localTransport = window.__harness_local_transport
   if (!localTransport) {
@@ -387,7 +446,7 @@ export async function initStore(): Promise<void> {
     const connections = await backend.connectionsList()
     for (const conn of connections) {
       if (conn.kind !== 'remote') continue
-      void hydrateRemoteBackend(conn)
+      void hydrateRemoteBackend(conn, { registry, backend })
     }
     const savedActive = await backend.connectionsGetActive()
     if (savedActive && registry.has(savedActive)) {
@@ -401,10 +460,47 @@ export async function initStore(): Promise<void> {
 
 /** Construct a WS transport for a saved remote, fetch its token from
  *  secrets, connect, and register the pair. Errors are logged but
- *  non-fatal — the user can retry from the chip strip. */
-async function hydrateRemoteBackend(conn: BackendConnection): Promise<void> {
+ *  non-fatal — the user can retry from the chip strip.
+ *
+ *  Exported (with dependency-injection) for tests. Production callers
+ *  pass the module-level `registry` and `backend`. */
+export async function hydrateRemoteBackend(
+  conn: BackendConnection,
+  deps: {
+    registry: BackendsRegistry
+    backend: Pick<
+      import('./types').ElectronAPI,
+      'connectionsGetToken' | 'sshReconnect'
+    >
+    WSCtor?: typeof WebSocketClientTransport
+  }
+): Promise<void> {
+  const { registry: reg, backend, WSCtor = WebSocketClientTransport } = deps
   try {
-    const token = await getBackend().connectionsGetToken(conn.id)
+    // SSH backends: ask main to (re)establish the tunnel first so we
+    // get a live loopback URL+token. Main runs the bootstrap pre-warm
+    // on boot too — the IPC call here is idempotent and will return
+    // immediately if the tunnel is already up. We mint a fresh
+    // bootstrap id so the chip strip can subscribe to progress.
+    let url = conn.url
+    let token = await backend.connectionsGetToken(conn.id)
+    if (conn.ssh) {
+      try {
+        const bootstrapId = `hydrate-${conn.id}`
+        const result = await backend.sshReconnect({
+          bootstrapId,
+          connectionId: conn.id
+        })
+        url = result.url
+        token = result.token
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn(`[harness] ssh reconnect failed for backend ${conn.id}`, err)
+        // Fall through with cached url+token so the WS transport at
+        // least registers an entry; the chip will render greyed via
+        // the failed connect below.
+      }
+    }
     if (!token) {
       // eslint-disable-next-line no-console
       console.warn(`[harness] no token stored for backend ${conn.id} — skipping`)
@@ -420,36 +516,42 @@ async function hydrateRemoteBackend(conn: BackendConnection): Promise<void> {
     // ClientStore with each fresh snapshot so an inactive backend that
     // briefly drops + reconnects in the background catches up cleanly
     // when the user switches to it.
-    const ws = new WebSocketClientTransport({
-      url: conn.url,
+    if (reg.has(conn.id)) return
+    const ws = new WSCtor({
+      url,
       token,
       onConnectionChange: (connected, reason) => {
-        registry.setStatus(conn.id, {
+        reg.setStatus(conn.id, {
           state: connected ? 'connected' : 'disconnected',
           reason
         })
       },
       onSnapshot: (snapshot) => {
-        const store = registry.getStore(conn.id)
+        const store = reg.getStore(conn.id)
         if (store) store.setSnapshot(snapshot.state)
       }
     })
+    // Register BEFORE connecting so the onSnapshot + onReconnect
+    // callbacks fire through the same path on first connect and on
+    // every subsequent reconnect. The store is seeded with initialState
+    // until the first snapshot arrives — a brief flash, gone in <100ms.
+    reg.add(conn, ws)
     await ws.connect()
-    if (registry.has(conn.id)) return
-    // Seed the new ClientStore with the initial snapshot + client id
-    // before registering so the user sees existing worktrees / panes
-    // the instant they switch backends, instead of the onboarding
-    // screen that fires off `initialState`'s empty repoRoots.
-    const [snapshot, clientId] = await Promise.all([
-      ws.getStateSnapshot(),
-      ws.getClientId()
-    ])
-    const store = registry.add(conn, ws)
-    store.setSnapshot(snapshot.state)
-    store.setClientId(clientId)
   } catch (err) {
     // eslint-disable-next-line no-console
     console.warn(`[harness] failed to connect to backend ${conn.id}`, err)
+    // Drop the half-registered entry so it can't poison active-backend
+    // selection. Without this, the outer hydration loop's
+    // `if (registry.has(savedActive)) setActive(savedActive)` would pin
+    // active at this never-connected remote, and the app would render
+    // the empty-state onboarding screen even though the local backend
+    // has the user's real repos. `remove` auto-falls-back to
+    // LOCAL_BACKEND_ID if the dropped entry was active.
+    try {
+      reg.remove(conn.id)
+    } catch {
+      /* not added or already gone — fine */
+    }
   }
 }
 
@@ -505,6 +607,10 @@ export function useUpdater() {
   return useAppState((s) => s.updater)
 }
 
+export function useAnnouncements() {
+  return useAppState((s) => s.announcements)
+}
+
 export function useRepoConfigs() {
   return useAppState((s) => s.repoConfigs.byRepo)
 }
@@ -517,6 +623,33 @@ export function useSnooze() {
   return useAppState((s) => s.snooze)
 }
 
+/** Scratchpad text for one worktree. Per-id selector — only re-renders
+ *  when this worktree's text changes (other worktrees' edits don't fan
+ *  out). Returns '' for unknown / null paths so the consumer doesn't
+ *  need a null check. */
+export function useScratchpad(worktreePath: string | null): string {
+  return useAppState((s) =>
+    worktreePath ? s.scratchpad.byWorktreePath[worktreePath] ?? '' : ''
+  )
+}
+
+/** Per-bootstrap progress for the AddBackendModal SSH tab. Returns null
+ *  when the bootstrap id is unknown (e.g. just cleared) so the modal can
+ *  render a fresh state without dereferencing undefined. */
+export function useSshBootstrap(bootstrapId: string | null) {
+  return useAppState((s) =>
+    bootstrapId ? (s.sshBootstrap.byId[bootstrapId] ?? null) : null
+  )
+}
+
+/** All in-flight + recently-finished SSH bootstrap entries. Used by the
+ *  chip strip when it wants to show "reconnecting…" on boot-time
+ *  reconnects (commit 4). */
+export function useSshBootstrapAll() {
+  return useAppState((s) => s.sshBootstrap.byId)
+}
+
+
 export function useBrowser() {
   return useAppState((s) => s.browser)
 }
@@ -527,6 +660,14 @@ export function useBrowser() {
  *  but before the XTerminal mount dispatches terminal:join). */
 export function useTerminalSession(terminalId: string) {
   return useAppState((s) => s.terminals.sessions[terminalId] ?? null)
+}
+
+/** Per-terminal OSC 9;4 progress. Narrow over `useTerminals()` so a
+ *  progress tick on terminal A doesn't re-render every tab subscribing
+ *  for terminals B/C/D — the reducer preserves per-key reference identity
+ *  for entries it didn't touch. */
+export function useTerminalProgress(terminalId: string) {
+  return useAppState((s) => s.terminals.progress[terminalId] ?? null)
 }
 
 export function useJsonClaude() {

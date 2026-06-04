@@ -6,23 +6,49 @@ import { initialWorktrees } from '../shared/state/worktrees'
 import { initialTerminals } from '../shared/state/terminals'
 import { initialUpdater } from '../shared/state/updater'
 import { initialRepoConfigs } from '../shared/state/repo-configs'
-import { initialCosts, type CostsState } from '../shared/state/costs'
+import { initialCosts } from '../shared/state/costs'
 import { initialBrowser } from '../shared/state/browser'
 import { initialJsonClaude } from '../shared/state/json-claude'
 import { initialSnooze } from '../shared/state/snooze'
-import { initialSettings } from '../shared/state/settings'
+import { initialAnnouncements } from '../shared/state/announcements'
+import { initialScratchpad } from '../shared/state/scratchpad'
+import { initialSshBootstrap } from '../shared/state/ssh-bootstrap'
+import {
+  initialSettings,
+  DEFAULT_LIGHT_THEME,
+  DEFAULT_DARK_THEME,
+  DEFAULT_PR_REVIEW_PROMPT
+} from '../shared/state/settings'
 import {
   DEFAULT_CLAUDE_COMMAND,
-  DEFAULT_THEME,
   DEFAULT_TERMINAL_FONT_FAMILY,
   DEFAULT_TERMINAL_FONT_SIZE,
   DEFAULT_WORKTREE_BASE,
   DEFAULT_MERGE_STRATEGY,
+  DEFAULT_WORKTREE_DETAIL,
   DEFAULT_HARNESS_SYSTEM_PROMPT,
   DEFAULT_HARNESS_SYSTEM_PROMPT_MAIN,
   type Config
 } from './persistence'
 import { DEFAULT_EDITOR_ID } from './editor'
+
+/** Flatten the nested `repoRoot → worktreePath → text` shape on disk
+ *  into the flat `worktreePath → text` map the slice carries in memory.
+ *  Two repos shouldn't have overlapping worktree paths in practice; if
+ *  they ever do, last-write-wins on iteration order. */
+function flattenScratchpadNotes(
+  nested: Record<string, Record<string, string>> | undefined
+): Record<string, string> {
+  if (!nested) return {}
+  const out: Record<string, string> = {}
+  for (const byPath of Object.values(nested)) {
+    if (!byPath) continue
+    for (const [worktreePath, text] of Object.entries(byPath)) {
+      if (typeof text === 'string' && text !== '') out[worktreePath] = text
+    }
+  }
+  return out
+}
 
 export function buildInitialAppState(
   config: Config,
@@ -43,9 +69,17 @@ export function buildInitialAppState(
     browser: initialBrowser,
     jsonClaude: initialJsonClaude,
     snooze: config.snooze ? { byPath: { ...config.snooze } } : initialSnooze,
+    announcements: initialAnnouncements,
+    scratchpad: { byWorktreePath: flattenScratchpadNotes(config.scratchpadNotes) },
+    sshBootstrap: initialSshBootstrap,
     settings: {
       ...initialSettings,
-      theme: config.theme || DEFAULT_THEME,
+      themeMode:
+        config.themeMode === 'light' || config.themeMode === 'dark'
+          ? config.themeMode
+          : 'system',
+      themeLight: config.themeLight || DEFAULT_LIGHT_THEME,
+      themeDark: config.themeDark || DEFAULT_DARK_THEME,
       hotkeys: config.hotkeys || null,
       defaultAgent: config.defaultAgent || 'claude',
       claudeCommand: config.claudeCommand || DEFAULT_CLAUDE_COMMAND,
@@ -63,10 +97,12 @@ export function buildInitialAppState(
       editor: config.editor || DEFAULT_EDITOR_ID,
       worktreeBase: config.worktreeBase || DEFAULT_WORKTREE_BASE,
       mergeStrategy: config.mergeStrategy || DEFAULT_MERGE_STRATEGY,
+      worktreeDetail: config.worktreeDetail || DEFAULT_WORKTREE_DETAIL,
       claudeModel: config.claudeModel || null,
       codexModel: config.codexModel || null,
       hasGithubToken: opts.hasGithubToken,
       autoUpdateEnabled: config.autoUpdateEnabled !== false,
+      warnBeforeQuitting: config.warnBeforeQuitting !== false,
       shareClaudeSettings: config.shareClaudeSettings !== false,
       harnessSystemPromptEnabled: config.harnessSystemPromptEnabled !== false,
       harnessSystemPrompt: config.harnessSystemPrompt || DEFAULT_HARNESS_SYSTEM_PROMPT,
@@ -77,12 +113,20 @@ export function buildInitialAppState(
       wsTransportHost: config.wsTransportHost ?? '127.0.0.1',
       browserToolsEnabled: config.browserToolsEnabled !== false,
       browserToolsMode: config.browserToolsMode === 'view' ? 'view' : 'full',
-      jsonModeClaudeTabs: config.jsonModeClaudeTabs === true,
       defaultClaudeTabType: config.defaultClaudeTabType === 'json' ? 'json' : 'xterm',
+      chatPromotionDismissed: config.chatPromotionDismissed === true,
       autoApprovePermissions: config.autoApprovePermissions === true,
       autoApproveSteerInstructions: config.autoApproveSteerInstructions || '',
       useSystemClaudeForJsonMode: config.useSystemClaudeForJsonMode === true,
       jsonModeChatDensity: config.jsonModeChatDensity === 'comfy' ? 'comfy' : 'compact',
+      uiScale:
+        config.uiScale === 'x-small' ||
+        config.uiScale === 'medium' ||
+        config.uiScale === 'large' ||
+        config.uiScale === 'x-large'
+          ? config.uiScale
+          : 'small',
+      jsonModeSendOnEnter: config.jsonModeSendOnEnter === true,
       jsonModeDefaultPermissionMode:
         config.jsonModeDefaultPermissionMode === 'default' ||
         config.jsonModeDefaultPermissionMode === 'plan'
@@ -94,7 +138,13 @@ export function buildInitialAppState(
         config.autoSleepMinutes >= 0
           ? Math.floor(config.autoSleepMinutes)
           : 30,
-      snoozeDefaultDays: Math.max(1, Math.floor(config.snoozeDefaultDays ?? 7))
+      snoozeDefaultDays: Math.max(1, Math.floor(config.snoozeDefaultDays ?? 7)),
+      expandedDiagnosticLoggingEnabled: config.expandedDiagnosticLoggingEnabled === true,
+      prReviewPrompt: config.prReviewPrompt || DEFAULT_PR_REVIEW_PROMPT,
+      dismissedAnnouncementIds: Array.isArray(config.dismissedAnnouncementIds)
+        ? config.dismissedAnnouncementIds.filter((x): x is string => typeof x === 'string')
+        : [],
+      announcementsMuted: config.announcementsMuted === true
     }
   }
 }

@@ -12,6 +12,19 @@ export interface PRSummary {
   updatedAt: string
   url: string
   draft: boolean
+  /** Users currently requested as reviewers (no review submitted yet). */
+  requestedReviewers: { login: string; avatarUrl: string }[]
+  /** Latest review per reviewer, deduped by login, most-recent state per user. */
+  reviewerStates: {
+    login: string
+    avatarUrl: string
+    state: 'APPROVED' | 'CHANGES_REQUESTED' | 'COMMENTED'
+  }[]
+  /** GitHub labels. Color is 6-char hex without '#'. */
+  labels: { name: string; color: string }[]
+  /** Overall check rollup. Undefined when we couldn't determine
+   *  (no rollup data on the head commit yet). */
+  checksOverall?: 'success' | 'failure' | 'pending' | 'none'
 }
 
 export type PRMetadata = PRSummary

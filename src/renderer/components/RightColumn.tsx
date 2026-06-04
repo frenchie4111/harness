@@ -11,6 +11,7 @@ import { ChangedFilesPanel } from './ChangedFilesPanel'
 import { AllFilesPanel } from './AllFilesPanel'
 import { CostPanel } from './CostPanel'
 import { JsonClaudeTodosPanel } from './JsonClaudeTodosPanel'
+import { ScratchpadPanel } from './ScratchpadPanel'
 import { RightColumnToolbar } from './RightColumnToolbar'
 import { useBackend } from '../backend'
 
@@ -34,7 +35,6 @@ interface RightColumnProps {
   onOpenGithubSettings: () => void
   onMerged: () => void
   onRemoveWorktree: (path: string) => void
-  onOpenCommitReview: (hash: string, shortHash: string, subject: string) => void
   onOpenDiff: ChangedFilesPanelProps['onOpenDiff']
   onOpenFile: AllFilesPanelProps['onOpenFile']
   onSendToAgent: (worktreePath: string, text: string) => void
@@ -56,7 +56,6 @@ export function RightColumn({
   onOpenGithubSettings,
   onMerged,
   onRemoveWorktree,
-  onOpenCommitReview,
   onOpenDiff,
   onOpenFile,
   onSendToAgent,
@@ -114,13 +113,7 @@ export function RightColumn({
       case 'todos':
         return <JsonClaudeTodosPanel key="todos" focusedTabId={focusedTabId} />
       case 'commits':
-        return (
-          <BranchCommitsPanel
-            key="commits"
-            worktreePath={activeWorktreeId}
-            onOpenCommitReview={onOpenCommitReview}
-          />
-        )
+        return <BranchCommitsPanel key="commits" worktreePath={activeWorktreeId} />
       case 'changedFiles':
         return (
           <ChangedFilesPanel
@@ -146,11 +139,14 @@ export function RightColumn({
         )
       case 'cost':
         return <CostPanel key="cost" worktreePath={activeWorktreeId} />
+      case 'scratchpad':
+        return <ScratchpadPanel key="scratchpad" worktreePath={activeWorktreeId} />
     }
   }
 
   return (
     <div
+      data-right-sidebar
       className="shrink-0 h-full flex flex-col bg-panel"
       style={{ width }}
     >

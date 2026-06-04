@@ -24,10 +24,9 @@ interface PanesFSMOptions {
   getRepoRootForWorktree: (worktreePath: string) => string | undefined
   getLatestClaudeSessionId: (worktreePath: string) => Promise<string | null>
   getDefaultAgentKind?: () => AgentKind
-  /** Read the JSON-mode Claude feature flag + default-tab-type setting.
-   *  When the flag is on AND default is 'json', a default Claude agent
-   *  tab gets spawned as a json-claude tab instead. Always returns
-   *  'xterm' (or undefined) when the feature flag is off. */
+  /** Read the default Claude interface setting. When this returns 'json',
+   *  a default Claude agent tab spawns as a json-claude tab instead of
+   *  an xterm-hosted one. */
   getDefaultClaudeTabType?: () => 'xterm' | 'json'
   /** Tear down the PTY backing a closed tab. Called for agent + shell
    *  tabs when they're removed from the tree (closeTab, restartAgentTab,
@@ -99,6 +98,19 @@ export class PanesFSM {
     return this.store.getSnapshot().state.terminals.panes[wtPath] || null
   }
 
+  /** Type of the tab at (wtPath, tabId), or null if not found. Lets the
+   *  panes:wakeTab IPC handler pick exactly one wake method instead of
+   *  fanning out to both and trusting each method's internal type guard
+   *  (which is brittle — any future unconditional side-effect added to
+   *  the wrong path silently fires on the wrong tab type). */
+  getTabType(wtPath: string, tabId: string): TerminalTab['type'] | null {
+    const tree = this.getTree(wtPath)
+    return (
+      (tree && findLeafByTabId(tree, tabId)?.tabs.find((t) => t.id === tabId)?.type) ??
+      null
+    )
+  }
+
   private getAllPanes(): Record<string, PaneNode> {
     return this.store.getSnapshot().state.terminals.panes
   }
@@ -165,12 +177,16 @@ export class PanesFSM {
         sessionId: t.sessionId,
         url: t.url,
         command: t.command,
-        cwd: t.cwd
+        cwd: t.cwd,
+        model: t.model,
+        ...(t.customLabel ? { customLabel: t.customLabel } : {})
       }
-      // Persisted json-claude tabs hydrate as 'asleep' so app launch
-      // doesn't spawn one subprocess per tab. The renderer wakes them
-      // on first focus via panes:wakeTab.
-      if (base.type === 'json-claude') {
+      // Persisted json-claude and shell tabs hydrate as 'asleep' so app
+      // launch doesn't construct an xterm + spawn a subprocess per tab
+      // across every restored worktree. The renderer wakes them on
+      // first focus via panes:wakeTab. (Agent tabs stay eager so
+      // background processing they're in the middle of resumes promptly.)
+      if (base.type === 'json-claude' || base.type === 'shell') {
         return { ...base, mode: 'asleep' }
       }
       if (base.type !== 'agent' || base.sessionId) return base
@@ -190,7 +206,12 @@ export class PanesFSM {
 
   ensureInitialized(
     wtPath: string,
-    opts?: { initialPrompt?: string; teleportSessionId?: string }
+    opts?: {
+      initialPrompt?: string
+      teleportSessionId?: string
+      agentKind?: AgentKind
+      model?: string
+    }
   ): PaneNode {
     const existing = this.getTree(wtPath)
     if (existing && hasAnyTabs(existing)) return existing
@@ -202,8 +223,9 @@ export class PanesFSM {
       return sleeping
     }
 
-    const agentKind = this.opts.getDefaultAgentKind?.() ?? 'claude'
+    const agentKind = opts?.agentKind ?? this.opts.getDefaultAgentKind?.() ?? 'claude'
     const agentInfo = getAgentInfo(agentKind)
+    const model = opts?.model && opts.model.trim() ? opts.model.trim() : undefined
     const shellTabId = `shell-${wtPath}-${Date.now()}`
     // Branch to a json-claude default tab when the user has opted in
     // and the kind is Claude. teleport sessions stay on xterm (json-
@@ -216,17 +238,18 @@ export class PanesFSM {
       this.opts.getDefaultClaudeTabType?.() === 'json' &&
       !opts?.teleportSessionId
     let agentTab: TerminalTab
-    let jsonClaudeKickoff: { sessionId: string; initialPrompt?: string } | null = null
+    let jsonClaudeKickoff: { sessionId: string; initialPrompt?: string; model?: string } | null = null
     if (wantsJson) {
       const sessionId = crypto.randomUUID()
       agentTab = {
         id: sessionId,
         type: 'json-claude',
-        label: 'Claude (JSON)',
+        label: 'Chat',
         sessionId,
-        mode: 'awake'
+        mode: 'awake',
+        model
       }
-      jsonClaudeKickoff = { sessionId, initialPrompt: opts?.initialPrompt }
+      jsonClaudeKickoff = { sessionId, initialPrompt: opts?.initialPrompt, model }
     } else {
       const agentTabId = `agent-${wtPath.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}`
       agentTab = {
@@ -236,7 +259,8 @@ export class PanesFSM {
         label: agentInfo.displayName,
         sessionId: agentInfo.assignsSessionId ? crypto.randomUUID() : undefined,
         initialPrompt: opts?.teleportSessionId ? undefined : opts?.initialPrompt,
-        teleportSessionId: opts?.teleportSessionId
+        teleportSessionId: opts?.teleportSessionId,
+        model
       }
     }
     const tabs: TerminalTab[] = [agentTab, { id: shellTabId, type: 'shell', label: 'Shell' }]
@@ -334,6 +358,24 @@ export class PanesFSM {
     this.opts.persist(this.buildPersistPayload())
   }
 
+  /** Flip a slept shell tab to awake. No subprocess spawn here — the
+   *  renderer's XTerminal mount path owns PTY creation; flipping mode
+   *  is what makes WorkspaceView render it in the first place. */
+  wakeShellTab(wtPath: string, tabId: string): void {
+    const tree = this.getTree(wtPath)
+    if (!tree) return
+    const leaf = findLeafByTabId(tree, tabId)
+    if (!leaf) return
+    const tab = leaf.tabs.find((t) => t.id === tabId)
+    if (!tab || tab.type !== 'shell') return
+    if ((tab.mode ?? 'awake') === 'awake') return
+    this.store.dispatch({
+      type: 'terminals/tabWoken',
+      payload: { worktreePath: wtPath, tabId }
+    })
+    this.opts.persist(this.buildPersistPayload())
+  }
+
   closeTab(wtPath: string, tabId: string): void {
     const tree = this.getTree(wtPath)
     if (!tree) return
@@ -409,7 +451,7 @@ export class PanesFSM {
       newType === 'json-claude'
         ? sessionId
         : `agent-${wtPath.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}`
-    const newLabel = newType === 'json-claude' ? 'Claude (JSON)' : agentDisplayName('claude')
+    const newLabel = newType === 'json-claude' ? 'Chat' : agentDisplayName('claude')
     this.store.dispatch({
       type: 'terminals/tabTypeChanged',
       payload: { worktreePath: wtPath, tabId, newId, newType, newLabel }
@@ -441,6 +483,103 @@ export class PanesFSM {
       leaf.id === paneId ? { ...leaf, activeTabId: tabId } : leaf
     )
     this.commit(wtPath, updated)
+  }
+
+  renameTab(wtPath: string, tabId: string, label: string): void {
+    const tree = this.getTree(wtPath)
+    if (!tree) return
+    const leaf = findLeafByTabId(tree, tabId)
+    if (!leaf) return
+    this.store.dispatch({
+      type: 'terminals/tabRenamed',
+      payload: { worktreePath: wtPath, tabId, label }
+    })
+    this.opts.persist(this.buildPersistPayload())
+  }
+
+  /** Activate the existing review tab for this worktree, or create one if
+   *  none exists. Only one review tab can live per worktree at a time —
+   *  every entry point in the renderer funnels through here. */
+  openReviewTab(wtPath: string): void {
+    const tree = this.getTree(wtPath)
+    if (tree) {
+      let existing: { paneId: string; tabId: string } | null = null
+      for (const leaf of getLeaves(tree)) {
+        for (const tab of leaf.tabs) {
+          if (tab.type === 'review') {
+            existing = { paneId: leaf.id, tabId: tab.id }
+            break
+          }
+        }
+        if (existing) break
+      }
+      if (existing) {
+        const updated = mapLeaves(tree, (leaf) =>
+          leaf.id === existing!.paneId ? { ...leaf, activeTabId: existing!.tabId } : leaf
+        )
+        this.commit(wtPath, updated)
+        return
+      }
+    }
+    const tab: TerminalTab = {
+      id: `review-${wtPath.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}`,
+      type: 'review',
+      label: 'Review'
+    }
+    this.addTab(wtPath, tab)
+  }
+
+  /** Open (or focus) a file viewer tab for `filePath` (worktree-relative).
+   *  Dedupes on filePath so opening the same file from the changed-files
+   *  panel or a clicked terminal file-link converges on one shared tab.
+   *  Uses the same `file-<path>` id scheme as the renderer's handleOpenFile.
+   *  When `nearTabId` is given (the terminal a file-link was clicked in), the
+   *  new tab opens in that terminal's pane so a split layout opens the file
+   *  where the click happened rather than always in the first pane. */
+  openFileTab(wtPath: string, filePath: string, nearTabId?: string): void {
+    const tree = this.getTree(wtPath)
+    if (tree) {
+      let existing: { paneId: string; tabId: string } | null = null
+      for (const leaf of getLeaves(tree)) {
+        for (const tab of leaf.tabs) {
+          if (tab.type === 'file' && tab.filePath === filePath) {
+            existing = { paneId: leaf.id, tabId: tab.id }
+            break
+          }
+        }
+        if (existing) break
+      }
+      if (existing) {
+        const updated = mapLeaves(tree, (leaf) =>
+          leaf.id === existing!.paneId ? { ...leaf, activeTabId: existing!.tabId } : leaf
+        )
+        this.commit(wtPath, updated)
+        return
+      }
+    }
+    const targetPaneId =
+      tree && nearTabId ? findLeafByTabId(tree, nearTabId)?.id : undefined
+    const tab: TerminalTab = {
+      id: `file-${filePath}`,
+      type: 'file',
+      label: filePath.split('/').pop() || filePath,
+      filePath
+    }
+    this.addTab(wtPath, tab, targetPaneId)
+  }
+
+  /** Update the commit range a review tab is showing. Called by the
+   *  in-view commit picker. Persists nothing (review tabs are ephemeral). */
+  setReviewSelection(
+    wtPath: string,
+    tabId: string,
+    fromCommit?: string,
+    toCommit?: string
+  ): void {
+    this.store.dispatch({
+      type: 'terminals/reviewSelectionChanged',
+      payload: { worktreePath: wtPath, tabId, fromCommit, toCommit }
+    })
   }
 
   reorderTabs(
@@ -537,6 +676,23 @@ export class PanesFSM {
     let tab: TerminalTab
     if (shouldShell) {
       tab = { id: `shell-${Date.now()}`, type: 'shell', label: 'Shell' }
+    } else if (sourceActive!.type === 'json-claude') {
+      // The Claude CLI requires --session-id to be a UUID, and for json-
+      // claude the tab id doubles as the session id (see main/index.ts's
+      // jsonClaude:start handler). Mint a fresh UUID so the split spawns
+      // a brand-new session with no existing jsonl on disk — that drives
+      // startJsonClaudeSession to use --session-id (new) rather than
+      // --resume. Carry over only fields that make sense for a fresh
+      // chat (label, model) — never copy initialPrompt/teleportSessionId.
+      const sessionId = crypto.randomUUID()
+      tab = {
+        id: sessionId,
+        type: 'json-claude',
+        label: sourceActive!.label,
+        sessionId,
+        mode: 'awake',
+        model: sourceActive!.model
+      }
     } else {
       tab = {
         ...sourceActive!,

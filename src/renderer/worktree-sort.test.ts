@@ -38,6 +38,11 @@ function stubPRStatus(overrides: Partial<PRStatus> = {}): PRStatus {
     hasConflict: false,
     reviews: [],
     reviewDecision: 'none',
+    baseBranch: 'main',
+    isDefaultBase: true,
+    assignees: [],
+    linkedIssues: [],
+    labels: [],
     ...overrides
   }
 }
@@ -63,6 +68,15 @@ describe('getGroupKey', () => {
   it('locallyMerged trumps everything', () => {
     expect(getGroupKey(stubWorktree(), stubPRStatus(), true)).toBe('merged')
     expect(getGroupKey(stubWorktree(), null, true)).toBe('merged')
+  })
+
+  it('a previously-known open PR that transitions to merged moves to "merged" not "no-pr"', () => {
+    const w = stubWorktree()
+    // Simulate the open → merged transition: same PR identity, terminal state.
+    expect(getGroupKey(w, stubPRStatus({ state: 'open' }))).toBe('active')
+    expect(getGroupKey(w, stubPRStatus({ state: 'merged' }))).toBe('merged')
+    // If the PR is closed without merging, same group.
+    expect(getGroupKey(w, stubPRStatus({ state: 'closed' }))).toBe('merged')
   })
 })
 
@@ -149,5 +163,27 @@ describe('worktree-sort snoozed group', () => {
 
   it('getGroupKey returns snoozed when isSnoozed regardless of merged', () => {
     expect(getGroupKey(wt('/a'), mergedPR, true, true)).toBe('snoozed')
+  })
+
+  it('no-pr group lists merge-point worktrees (PR bases) above feature worktrees', () => {
+    const main = stubWorktree({ path: '/main', branch: 'main', isMain: true, createdAt: 100 })
+    const develop = stubWorktree({ path: '/develop', branch: 'develop', createdAt: 50 })
+    const feature = stubWorktree({ path: '/feat', branch: 'feature/x', createdAt: 200 })
+    const featureWithPR = stubWorktree({ path: '/other', branch: 'feature/y', createdAt: 300 })
+    // Active PR targets develop — so develop counts as a base branch.
+    const groups = groupWorktrees(
+      [feature, develop, main, featureWithPR],
+      {
+        '/main': null,
+        '/develop': null,
+        '/feat': null,
+        '/other': stubPRStatus({ branch: 'feature/y', baseBranch: 'develop' })
+      },
+      {},
+      {}
+    )
+    const noPR = groups.find((g) => g.key === 'no-pr')!
+    // main pinned to top, then develop (a base branch), then features by createdAt desc.
+    expect(noPR.worktrees.map((w) => w.path)).toEqual(['/main', '/develop', '/feat'])
   })
 })

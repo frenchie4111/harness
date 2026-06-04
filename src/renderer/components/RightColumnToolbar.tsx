@@ -10,7 +10,8 @@ const LABELS: Record<RightPanelKey, string> = {
   commits: 'Branch Commits',
   changedFiles: 'Changed Files',
   allFiles: 'All Files',
-  cost: 'Cost'
+  cost: 'Cost',
+  scratchpad: 'Scratchpad'
 }
 
 interface RightColumnToolbarProps {
@@ -56,9 +57,9 @@ export function RightColumnToolbar({
 
   const togglePanel = (key: RightPanelKey): void => {
     const isHidden = !!hidden[key]
-    const next: HiddenRightPanels = { ...hidden }
-    if (isHidden) delete next[key]
-    else next[key] = true
+    // Always write explicit boolean (not delete) so the user's choice
+    // wins over any DEFAULT_HIDDEN_RIGHT_PANELS entry on next read.
+    const next: HiddenRightPanels = { ...hidden, [key]: !isHidden }
     onChangeHidden(next)
   }
 
@@ -72,24 +73,26 @@ export function RightColumnToolbar({
   }
 
   return (
-    <div className="drag-region flex items-center justify-end h-10 shrink-0 border-b border-border bg-panel px-2 gap-1">
-      <div className="no-drag relative" ref={menuRef}>
-        <Tooltip label="Panel visibility">
-          <button
-            onClick={() => canConfigure && setMenuOpen((v) => !v)}
-            disabled={!canConfigure}
-            className="flex items-center justify-center w-7 h-7 rounded text-muted hover:bg-panel-raised/40 hover:text-fg-bright disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-            aria-label="Panel visibility"
-          >
-            <SlidersHorizontal size={14} />
-          </button>
-        </Tooltip>
-        {menuOpen && (
-          <div
-            className="absolute right-0 top-9 z-50 min-w-[220px] rounded border border-border bg-panel-raised shadow-lg py-1"
-            role="menu"
-          >
-            <div className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-faint font-medium">
+    <div className="px-3 py-3 flex items-center gap-2 shrink-0">
+      <span className="text-xs font-medium text-dim">TOOLS</span>
+      <div className="ml-auto flex items-center gap-1">
+        <div className="no-drag relative" ref={menuRef}>
+          <Tooltip label="Panel visibility">
+            <button
+              onClick={() => canConfigure && setMenuOpen((v) => !v)}
+              disabled={!canConfigure}
+              className="text-dim hover:text-fg hover:bg-surface rounded p-0.5 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-dim"
+              aria-label="Panel visibility"
+            >
+              <SlidersHorizontal className="icon-xs" />
+            </button>
+          </Tooltip>
+          {menuOpen && (
+            <div
+              className="absolute right-0 top-7 z-50 min-w-[220px] rounded border border-border bg-panel-raised shadow-lg py-1"
+              role="menu"
+            >
+            <div className="px-3 py-1.5 text-xs uppercase tracking-wide text-faint font-medium">
               Panels
             </div>
             {order.map((key, index) => {
@@ -108,7 +111,7 @@ export function RightColumnToolbar({
                     aria-checked={visible}
                   >
                     <span className="w-3 h-3 flex items-center justify-center shrink-0">
-                      {visible && <Check size={12} className="text-accent" />}
+                      {visible && <Check className="icon-xs text-accent" />}
                     </span>
                     <span className="flex-1">{LABELS[key]}</span>
                   </button>
@@ -118,7 +121,7 @@ export function RightColumnToolbar({
                     className="flex items-center justify-center w-5 h-5 rounded text-muted hover:bg-panel/80 hover:text-fg-bright disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
                     aria-label={`Move ${LABELS[key]} up`}
                   >
-                    <ChevronUp size={12} />
+                    <ChevronUp className="icon-xs" />
                   </button>
                   <button
                     onClick={() => movePanel(index, 1)}
@@ -126,23 +129,24 @@ export function RightColumnToolbar({
                     className="flex items-center justify-center w-5 h-5 rounded text-muted hover:bg-panel/80 hover:text-fg-bright disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
                     aria-label={`Move ${LABELS[key]} down`}
                   >
-                    <ChevronDown size={12} />
+                    <ChevronDown className="icon-xs" />
                   </button>
                 </div>
               )
             })}
           </div>
         )}
+        </div>
+        <Tooltip label="Collapse sidebar" action="toggleRightColumn">
+          <button
+            onClick={onCollapse}
+            className="text-dim hover:text-fg hover:bg-surface rounded p-0.5 transition-colors cursor-pointer"
+            aria-label="Collapse right column"
+          >
+            <PanelRightClose className="icon-xs" />
+          </button>
+        </Tooltip>
       </div>
-      <Tooltip label="Hide right column" action="toggleRightColumn">
-        <button
-          onClick={onCollapse}
-          className="no-drag flex items-center justify-center w-7 h-7 rounded text-muted hover:bg-panel-raised/40 hover:text-fg-bright cursor-pointer"
-          aria-label="Hide right column"
-        >
-          <PanelRightClose size={14} />
-        </button>
-      </Tooltip>
     </div>
   )
 }

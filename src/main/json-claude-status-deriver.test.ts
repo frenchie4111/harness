@@ -24,6 +24,7 @@ function makeSession(
     exitCode: null,
     exitReason: null,
     entries: [],
+    entriesHydrated: false,
     busy: false,
     permissionMode: 'default',
     slashCommands: [],

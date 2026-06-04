@@ -33,6 +33,24 @@ export interface BackendConnection {
   lastConnectedAt?: number
   color?: string
   initials?: string
+  /** Present on remotes that were bootstrapped via SSH (vs. plain WS).
+   *  When set, `url` is treated as a cache of the last tunnel's
+   *  ephemeral loopback URL — the source of truth is `ssh.target`, and
+   *  on each connect we re-bootstrap a fresh tunnel and overwrite `url`
+   *  with the new localhost:<port>/?token=... string. See
+   *  plans/remote-main.md §4. */
+  ssh?: {
+    /** Either an alias from ~/.ssh/config (e.g. "build-box") or a
+     *  freeform "user@host[:port]" string. The bootstrap layer treats
+     *  both uniformly via parseSshTarget. */
+    target: string
+    /** Local loopback port we used last time, if any. Lets the next
+     *  reconnect prefer the same port — keeps the URL stable across
+     *  restarts so xterm.js terminal ids the renderer holds don't get
+     *  invalidated by a churning port. Best-effort; if it's taken on
+     *  the next boot we just pick another. */
+    tunnelLocalPort?: number
+  }
 }
 
 export const LOCAL_BACKEND_ID = 'local'
@@ -75,8 +93,22 @@ export interface Config {
   // Even older — migrated to `legacyPanes` then to `panes` on first load.
   terminalTabs?: Record<string, PersistedTab[]>
   activeTabId?: Record<string, string>
-  // Selected color theme id
-  theme?: string
+  // Theme mode — which of `themeLight` / `themeDark` is active, or whether
+  // to follow the OS color scheme. Default is 'system' (undefined treated
+  // as 'system'). Replaces the legacy single `theme` field; migration
+  // splits the old value into mode + matching slot.
+  themeMode?: 'light' | 'dark' | 'system'
+  // Theme id used when `themeMode` resolves to 'light'. Default
+  // 'solarized-light'.
+  themeLight?: string
+  // Theme id used when `themeMode` resolves to 'dark'. Default 'dark'.
+  themeDark?: string
+  // App-background hex the renderer last applied. Used at next boot to
+  // pick the BrowserWindow background color so the first paint doesn't
+  // flash. Written from the renderer via a fire-and-forget IPC after each
+  // theme apply. Phase 2 will start using this for custom themes whose
+  // hex main can't synchronously resolve at window-open time.
+  lastEffectiveAppBg?: string
   // Terminal font family (CSS font-family string, applied to xterm.js)
   terminalFontFamily?: string
   // Terminal font size in px
@@ -89,6 +121,10 @@ export interface Config {
   // Default strategy for "Merge locally" action. Auto-updates to whatever
   // was last used unless the user pinned one in Settings.
   mergeStrategy?: 'squash' | 'merge-commit' | 'fast-forward'
+  // Which "extra detail" to render next to each worktree row in the sidebar.
+  // Defaults to 'diff' (PR additions/deletions); other values trade that
+  // signal for worktree age, PR context (assignee/milestone/#), or nothing.
+  worktreeDetail?: 'diff' | 'age' | 'pr' | 'none'
   // Branches that have been merged locally via Harness, keyed by branch name.
   // Value is the branch-tip SHA at merge time — if the branch later advances
   // past this SHA, the flag is considered stale and the branch is no longer
@@ -121,6 +157,9 @@ export interface Config {
   // on its periodic timer. The manual "Check for updates" button in
   // Settings still works. Default is enabled (undefined/true).
   autoUpdateEnabled?: boolean
+  // When false, ⌘Q quits immediately. When true/undefined (default), ⌘Q
+  // must be held briefly to quit (Chrome-style "Warn Before Quitting").
+  warnBeforeQuitting?: boolean
   // When false, new worktrees don't symlink their .claude/settings.local.json
   // to the main worktree's copy, and the boot migration doesn't convert
   // existing regular files. Default is enabled (undefined/true).
@@ -137,6 +176,9 @@ export interface Config {
   harnessSystemPromptEnabled?: boolean
   harnessSystemPrompt?: string
   harnessSystemPromptMain?: string
+  // Default kickoff prompt for "Open PR as worktree" / MCP create_worktree
+  // with prNumber. Absent = use the bundled DEFAULT_PR_REVIEW_PROMPT.
+  prReviewPrompt?: string
   // When false, Claude sessions spawn without CLAUDE_CODE_NO_FLICKER=1, so they
   // use the inline (non-fullscreen) TUI mode. Default is enabled (undefined/true).
   claudeTuiFullscreen?: boolean
@@ -156,14 +198,12 @@ export interface Config {
   // 'view' = inspect tabs + spawn/navigate, but no clicking, typing, or
   // scrolling. 'full' = everything. Default 'full' (undefined treated as 'full').
   browserToolsMode?: 'view' | 'full'
-  // Experimental: enable the JSON-streamed React chat tab type as an
-  // alternative to xterm-hosted Claude tabs. Default off; gated by the
-  // jsonModeClaudeTabs setting in the renderer.
-  jsonModeClaudeTabs?: boolean
-  // When jsonModeClaudeTabs is on, controls whether the default Claude
-  // tab spawned by panes-fsm is the xterm TUI or the JSON-mode chat.
-  // Ignored when jsonModeClaudeTabs is off.
+  // Controls whether new Claude tabs spawn as the terminal-hosted TUI
+  // ('xterm') or the React chat interface ('json'). Default 'xterm'.
   defaultClaudeTabType?: 'xterm' | 'json'
+  // True once the user dismisses the "Switch to the new Chat mode"
+  // overlay shown on Terminal Claude tabs.
+  chatPromotionDismissed?: boolean
   // When true, JSON-mode tabs delegate per-tool approval decisions to a
   // Haiku oneshot for obviously-safe tool calls. Productivity feature
   // only — not a security boundary. Default off (undefined treated as
@@ -180,6 +220,14 @@ export interface Config {
   // historical look). 'comfy' bumps font sizes, padding, and corner
   // radius for newcomers / screen-sharing.
   jsonModeChatDensity?: 'compact' | 'comfy'
+  // Global UI density. Undefined = 'small' (the historical look at 16px
+  // root font-size). 'x-small' = 14px, 'medium' = 18px, 'large' = 20px,
+  // 'x-large' = 22px.
+  uiScale?: 'x-small' | 'small' | 'medium' | 'large' | 'x-large'
+  // When true, plain Enter sends a message in the JSON-mode chat
+  // composer (Shift+Enter inserts a newline). Default off — preserves
+  // the historical Cmd/Ctrl+Enter-to-send behavior.
+  jsonModeSendOnEnter?: boolean
   // Permission mode applied when a brand-new json-mode session spawns.
   // Existing sessions keep whatever mode they were last in. Default
   // 'acceptEdits' (auto-allow Edit/Write, still ask for Bash etc.).
@@ -200,12 +248,26 @@ export interface Config {
   snooze?: Record<string, SnoozeEntry>
   // Default duration (days) for plain-click snooze. Min 1, default 7.
   snoozeDefaultDays?: number
+  // When true, high-volume diagnostic log categories (currently
+  // [github-api] per-call lines) are written to debug.log. Default off.
+  expandedDiagnosticLoggingEnabled?: boolean
+  // Announcement ids the user dismissed via the banner's `×`. Stored
+  // append-only — entries fall out of the feed naturally on expiry, so
+  // we never need to garbage-collect this list.
+  dismissedAnnouncementIds?: string[]
+  // When true, all announcement banners are suppressed regardless of
+  // feed contents.
+  announcementsMuted?: boolean
+  // Per-worktree scratchpad notes, nested by repoRoot → worktreePath → text.
+  // Same nesting scheme as `panes` so two repos with identical worktree
+  // paths stay distinct. Absent / empty entries are pruned on write.
+  scratchpadNotes?: Record<string, Record<string, string>>
 }
 
 export const DEFAULT_WORKTREE_BASE: 'remote' | 'local' = 'remote'
 export const DEFAULT_MERGE_STRATEGY: 'squash' | 'merge-commit' | 'fast-forward' = 'squash'
+export const DEFAULT_WORKTREE_DETAIL: 'diff' | 'age' | 'pr' | 'none' = 'diff'
 
-export const DEFAULT_THEME = 'dark'
 export const AVAILABLE_THEMES = [
   'dark',
   'dracula',
@@ -215,7 +277,8 @@ export const AVAILABLE_THEMES = [
   'catppuccin-mocha',
   'one-dark',
   'solarized-dark',
-  'solarized-light'
+  'solarized-light',
+  'cyberfunk'
 ] as const
 
 /** App background hex for each theme — used for the Electron window backgroundColor
@@ -229,7 +292,8 @@ export const THEME_APP_BG: Record<string, string> = {
   'catppuccin-mocha': '#1e1e2e',
   'one-dark': '#282c34',
   'solarized-dark': '#002b36',
-  'solarized-light': '#fdf6e3'
+  'solarized-light': '#fdf6e3',
+  'cyberfunk': '#000000'
 }
 
 export const DEFAULT_CLAUDE_COMMAND = 'claude'

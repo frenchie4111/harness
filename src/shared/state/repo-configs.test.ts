@@ -62,14 +62,20 @@ describe('repoConfigsReducer', () => {
   })
 
   it('effectiveHiddenRightPanels migrates legacy hideMergePanel / hidePrPanel', () => {
-    expect(effectiveHiddenRightPanels({ hideMergePanel: true })).toEqual({ merge: true })
-    expect(effectiveHiddenRightPanels({ hidePrPanel: true })).toEqual({ pr: true })
+    expect(effectiveHiddenRightPanels({ hideMergePanel: true })).toEqual({
+      scratchpad: true,
+      merge: true
+    })
+    expect(effectiveHiddenRightPanels({ hidePrPanel: true })).toEqual({
+      scratchpad: true,
+      pr: true
+    })
     expect(
       effectiveHiddenRightPanels({
         hideMergePanel: true,
         hiddenRightPanels: { pr: true, commits: true }
       })
-    ).toEqual({ merge: true, pr: true, commits: true })
+    ).toEqual({ scratchpad: true, merge: true, pr: true, commits: true })
   })
 
   it('effectiveHiddenRightPanels prefers new field over legacy', () => {
@@ -80,7 +86,17 @@ describe('repoConfigsReducer', () => {
         hideMergePanel: true,
         hiddenRightPanels: { merge: false }
       })
-    ).toEqual({ merge: false })
+    ).toEqual({ scratchpad: true, merge: false })
+  })
+
+  it('effectiveHiddenRightPanels defaults scratchpad to hidden', () => {
+    expect(effectiveHiddenRightPanels({})).toEqual({ scratchpad: true })
+  })
+
+  it('effectiveHiddenRightPanels lets explicit scratchpad: false override default', () => {
+    expect(
+      effectiveHiddenRightPanels({ hiddenRightPanels: { scratchpad: false } })
+    ).toEqual({ scratchpad: false })
   })
 
   it('effectiveRightPanelOrder returns default when unset', () => {
@@ -92,9 +108,27 @@ describe('repoConfigsReducer', () => {
   it('effectiveRightPanelOrder honors saved order', () => {
     expect(
       effectiveRightPanelOrder({
-        rightPanelOrder: ['cost', 'pr', 'merge', 'todos', 'commits', 'changedFiles', 'allFiles']
+        rightPanelOrder: [
+          'cost',
+          'pr',
+          'merge',
+          'todos',
+          'commits',
+          'changedFiles',
+          'allFiles',
+          'scratchpad'
+        ]
       })
-    ).toEqual(['cost', 'pr', 'merge', 'todos', 'commits', 'changedFiles', 'allFiles'])
+    ).toEqual([
+      'cost',
+      'pr',
+      'merge',
+      'todos',
+      'commits',
+      'changedFiles',
+      'allFiles',
+      'scratchpad'
+    ])
   })
 
   it('effectiveRightPanelOrder fills in missing keys and drops unknown', () => {
@@ -105,8 +139,15 @@ describe('repoConfigsReducer', () => {
     expect(result[0]).toBe('cost')
     expect(result[1]).toBe('pr')
     // Remaining keys in canonical order
-    expect(result.slice(2)).toEqual(['merge', 'commits', 'changedFiles', 'allFiles', 'todos'])
-    expect(result).toHaveLength(7)
+    expect(result.slice(2)).toEqual([
+      'merge',
+      'commits',
+      'changedFiles',
+      'allFiles',
+      'todos',
+      'scratchpad'
+    ])
+    expect(result).toHaveLength(DEFAULT_RIGHT_PANEL_ORDER.length)
   })
 
   it('effectiveRightPanelOrder deduplicates repeated keys', () => {
@@ -114,13 +155,13 @@ describe('repoConfigsReducer', () => {
       rightPanelOrder: ['pr', 'pr', 'merge'] as never
     })
     expect(result.filter((k) => k === 'pr')).toHaveLength(1)
-    expect(result).toHaveLength(7)
+    expect(result).toHaveLength(DEFAULT_RIGHT_PANEL_ORDER.length)
   })
 
   it('effectiveHiddenRightPanels handles null/empty config', () => {
-    expect(effectiveHiddenRightPanels(null)).toEqual({})
-    expect(effectiveHiddenRightPanels(undefined)).toEqual({})
-    expect(effectiveHiddenRightPanels({})).toEqual({})
+    expect(effectiveHiddenRightPanels(null)).toEqual({ scratchpad: true })
+    expect(effectiveHiddenRightPanels(undefined)).toEqual({ scratchpad: true })
+    expect(effectiveHiddenRightPanels({})).toEqual({ scratchpad: true })
   })
 
   it('returns a new object reference on real changes', () => {

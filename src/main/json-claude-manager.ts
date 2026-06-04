@@ -18,11 +18,11 @@
 
 import { spawn, type ChildProcessWithoutNullStreams } from 'child_process'
 import { randomUUID } from 'crypto'
-import { existsSync, readFileSync } from 'fs'
+import { existsSync, readFileSync, renameSync, writeFileSync } from 'fs'
 import { createRequire } from 'module'
 import { homedir } from 'os'
 import { dirname, join, sep } from 'path'
-import { isPackaged } from './paths'
+import { isPackaged, resolveBundledMcpScript } from './paths'
 import type { Store } from './store'
 import type {
   JsonClaudeChatEntry,
@@ -120,20 +120,7 @@ export interface JsonClaudeManagerOptions {
    *  --name) at spawn time from the live config + worktree list. Same
    *  source of truth as the xterm spawn path; see buildClaudeLaunchSettings
    *  in claude-launch.ts. */
-  getLaunchSettings: (worktreePath: string) => ClaudeLaunchSettings
-}
-
-/** Path to the bundled stdio MCP server we point Claude's
- *  --permission-prompt-tool at. Mirrors src/main/mcp-config.ts: in dev
- *  the file lives in resources/ at the repo root; in packaged builds
- *  it's copied by electron-builder to process.resourcesPath. paths.ts's
- *  `isPackaged()` returns false outside Electron so the dev fallback
- *  path is what the headless build hits. */
-function permissionPromptScriptPath(): string {
-  if (isPackaged()) {
-    return join(process.resourcesPath, 'permission-prompt-mcp.js')
-  }
-  return join(__dirname, '..', '..', 'resources', 'permission-prompt-mcp.js')
+  getLaunchSettings: (worktreePath: string, modelOverride?: string) => ClaudeLaunchSettings
 }
 
 /** Resolves the bundled @anthropic-ai/claude-code native binary by going
@@ -194,6 +181,21 @@ export function bundledClaudeBinPath(): string {
 }
 
 
+function transcriptPathFor(sessionId: string, worktreePath: string): string {
+  return join(
+    homedir(),
+    '.claude',
+    'projects',
+    worktreePath.replace(/[^a-zA-Z0-9]/g, '-'),
+    `${sessionId}.jsonl`
+  )
+}
+
+export interface RewindOutcome {
+  ok: boolean
+  reason?: string
+}
+
 export class JsonClaudeManager {
   private instances = new Map<string, JsonClaudeInstance>()
   private store: Store
@@ -227,14 +229,31 @@ export class JsonClaudeManager {
       this.store.getSnapshot().state.jsonClaude.sessions[sessionId]
     if (session && session.entries.length > 0) return
 
-    const transcriptPath = join(
-      homedir(),
-      '.claude',
-      'projects',
-      worktreePath.replace(/[^a-zA-Z0-9]/g, '-'),
-      `${sessionId}.jsonl`
+    const seededEntries = this.parseTranscriptEntries(sessionId, worktreePath)
+    if (seededEntries.length === 0) return
+    const compactCount = seededEntries.filter((e) => e.kind === 'compact').length
+    log(
+      'json-claude',
+      `seed dispatch sessionId=${sessionId} total=${seededEntries.length} compact=${compactCount}`
     )
-    if (!existsSync(transcriptPath)) return
+    this.store.dispatch({
+      type: 'jsonClaude/entriesSeeded',
+      payload: { sessionId, entries: seededEntries }
+    })
+  }
+
+  /** Pure parser — reads the on-disk jsonl and returns the slice
+   *  entries it should produce. Used by `seedFromTranscript` and by
+   *  `rewindTo` (after truncating the jsonl, to force-reseed the slice
+   *  with the truncated transcript as the authoritative source). No
+   *  store interaction. Returns an empty array on read errors so the
+   *  caller can decide how to handle. */
+  private parseTranscriptEntries(
+    sessionId: string,
+    worktreePath: string
+  ): JsonClaudeChatEntry[] {
+    const transcriptPath = transcriptPathFor(sessionId, worktreePath)
+    if (!existsSync(transcriptPath)) return []
 
     let counter = 0
     let raw: string
@@ -243,10 +262,10 @@ export class JsonClaudeManager {
     } catch (err) {
       log(
         'json-claude',
-        `seed read failed sessionId=${sessionId}`,
+        `transcript read failed sessionId=${sessionId}`,
         err instanceof Error ? err.message : String(err)
       )
-      return
+      return []
     }
     const seededEntries: JsonClaudeChatEntry[] = []
     for (const line of raw.split('\n')) {
@@ -262,6 +281,8 @@ export class JsonClaudeManager {
       // The session jsonl contains the same user/assistant message
       // shapes the live stream emits, plus internal bookkeeping types
       // (queue-operation, attachment, ai-title, last-prompt) we ignore.
+      const transcriptUuid =
+        typeof parsed['uuid'] === 'string' ? (parsed['uuid'] as string) : undefined
       if (type === 'user') {
         // Skip SDK-synthetic user records that surround compactions and
         // slash-command invocations. Without this filter the seeded
@@ -288,7 +309,8 @@ export class JsonClaudeManager {
             kind: 'user',
             text: content,
             timestamp: Date.now(),
-            entryId: `${sessionId}-seed-u-${counter++}`
+            entryId: `${sessionId}-seed-u-${counter++}`,
+            ...(transcriptUuid ? { transcriptUuid } : {})
           })
         } else if (Array.isArray(content)) {
           for (const r of extractToolResultsFromArray(content)) {
@@ -296,6 +318,7 @@ export class JsonClaudeManager {
               entryId: `${sessionId}-tr-${r.toolUseId}-${seededEntries.length}`,
               kind: 'tool_result',
               timestamp: Date.now(),
+              ...(transcriptUuid ? { transcriptUuid } : {}),
               blocks: [
                 {
                   type: 'tool_result',
@@ -316,11 +339,18 @@ export class JsonClaudeManager {
           typeof parsed['parent_tool_use_id'] === 'string'
             ? (parsed['parent_tool_use_id'] as string)
             : undefined
+        const innerMessage = parsed['message'] as { id?: unknown } | undefined
+        const apiMessageId =
+          typeof innerMessage?.id === 'string'
+            ? (innerMessage.id as string)
+            : undefined
         seededEntries.push({
           kind: 'assistant',
           blocks,
           timestamp: Date.now(),
           entryId: `${sessionId}-seed-a-${counter++}`,
+          ...(transcriptUuid ? { transcriptUuid } : {}),
+          ...(apiMessageId ? { apiMessageId } : {}),
           ...(parentToolUseId ? { parentToolUseId } : {})
         })
       } else if (type === 'system' && parsed['subtype'] === 'compact_boundary') {
@@ -339,6 +369,7 @@ export class JsonClaudeManager {
           kind: 'compact',
           timestamp: Date.now(),
           entryId: `${sessionId}-seed-c-${counter++}`,
+          ...(transcriptUuid ? { transcriptUuid } : {}),
           ...(trigger ? { compactTrigger: trigger } : {}),
           ...(typeof preTokens === 'number'
             ? { compactPreTokens: preTokens }
@@ -349,22 +380,14 @@ export class JsonClaudeManager {
         })
       }
     }
-    if (seededEntries.length === 0) return
-    const compactCount = seededEntries.filter((e) => e.kind === 'compact').length
-    log(
-      'json-claude',
-      `seed dispatch sessionId=${sessionId} total=${seededEntries.length} compact=${compactCount}`
-    )
-    this.store.dispatch({
-      type: 'jsonClaude/entriesSeeded',
-      payload: { sessionId, entries: seededEntries }
-    })
+    return seededEntries
   }
 
   create(
     sessionId: string,
     worktreePath: string,
-    permissionMode: JsonClaudePermissionMode = 'default'
+    permissionMode: JsonClaudePermissionMode = 'default',
+    modelOverride?: string
   ): void {
     if (this.instances.has(sessionId)) {
       log('json-claude', `create no-op — already running sessionId=${sessionId}`)
@@ -388,7 +411,7 @@ export class JsonClaudeManager {
     > = {
       'harness-permissions': {
         command: process.execPath,
-        args: [permissionPromptScriptPath()],
+        args: [resolveBundledMcpScript('permission-prompt-mcp.js')],
         env: {
           ELECTRON_RUN_AS_NODE: '1',
           HARNESS_APPROVAL_SOCKET: socketPath,
@@ -425,14 +448,12 @@ export class JsonClaudeManager {
 
     const useSystemClaude = this.opts.getUseSystemClaude()
     const claudeCommand = this.opts.getClaudeCommand() || 'claude'
-    const existingSession = existsSync(
-      join(homedir(), '.claude', 'projects', worktreePath.replace(/[^a-zA-Z0-9]/g, '-'), `${sessionId}.jsonl`)
-    )
+    const existingSession = existsSync(transcriptPathFor(sessionId, worktreePath))
     const resumeOrSet = existingSession
       ? ['--resume', sessionId]
       : ['--session-id', sessionId]
 
-    const launchSettings = this.opts.getLaunchSettings(worktreePath)
+    const launchSettings = this.opts.getLaunchSettings(worktreePath, modelOverride)
     const args = [
       '-p',
       '--input-format',
@@ -817,6 +838,159 @@ export class JsonClaudeManager {
     for (const id of Array.from(this.instances.keys())) this.kill(id)
   }
 
+  /** Keeps the assistant message at `fromEntryId` and drops every
+   *  entry sequenced after it — "rewind to this message being the last
+   *  thing the agent said." The cut is keyed by the entry's
+   *  `apiMessageId` (the Anthropic Messages-API id), not by slice
+   *  position: one assistant turn can be one slice entry but several
+   *  on-disk jsonl lines (one per content block), so a position-based
+   *  cut would land too early. We find the LAST jsonl line carrying
+   *  the matching id and truncate everything after it.
+   *
+   *  The slice is then force-reseeded from the truncated transcript
+   *  so the in-memory view matches the canonical jsonl exactly.
+   *
+   *  Pre-cancellation (interrupt in-flight stream, deny pending
+   *  approvals) lives in the IPC handler — it needs to coordinate
+   *  with ApprovalBridge which the manager doesn't reach. By the time
+   *  we get here, busy must be false and pending approvals for this
+   *  session must be cleared.
+   *
+   *  Only callable on assistant entries; the renderer enforces this at
+   *  the menu level. */
+  rewindTo(sessionId: string, fromEntryId: string): RewindOutcome {
+    const session =
+      this.store.getSnapshot().state.jsonClaude.sessions[sessionId]
+    if (!session) return { ok: false, reason: 'unknown session' }
+    const entries = session.entries
+    const idx = entries.findIndex((e) => e.entryId === fromEntryId)
+    if (idx === -1) return { ok: false, reason: 'entry not in slice' }
+    const target = entries[idx]
+    if (target.kind !== 'assistant') {
+      return { ok: false, reason: 'rewind targets an assistant message' }
+    }
+    if (!target.apiMessageId) {
+      // Older entries from before this field was wired won't have it.
+      // Surface the failure rather than fall back to a position-based
+      // cut that would silently mis-truncate.
+      return { ok: false, reason: 'message lacks an API id' }
+    }
+    if (idx >= entries.length - 1) {
+      return { ok: false, reason: 'nothing after this message to drop' }
+    }
+
+    // Kill the subprocess first so it doesn't keep writing to the jsonl
+    // while we truncate. kill() removes from the instance map BEFORE
+    // SIGTERM so the exit handler's stale-instance guard bails on the
+    // delayed exit event — no synthetic subprocess-exit entry fires.
+    if (this.instances.has(sessionId)) this.kill(sessionId)
+
+    const truncResult = this.truncateTranscriptAfterMessage(
+      sessionId,
+      session.worktreePath,
+      target.apiMessageId
+    )
+    if (!truncResult.ok) {
+      return { ok: false, reason: truncResult.reason }
+    }
+
+    // Force-reseed the slice from the truncated transcript. The
+    // entriesSeeded event replaces entries wholesale, which is the
+    // right semantic here — the live slice may have grouped multi-block
+    // turns into single entries while the jsonl has separate lines, so
+    // a positional prune would leave the slice and the jsonl out of
+    // sync. Reseeding makes them agree.
+    const freshEntries = this.parseTranscriptEntries(
+      sessionId,
+      session.worktreePath
+    )
+    this.store.dispatch({
+      type: 'jsonClaude/entriesSeeded',
+      payload: { sessionId, entries: freshEntries }
+    })
+
+    return { ok: true }
+  }
+
+  /** Truncate the jsonl so it ends with the LAST line carrying
+   *  `apiMessageId` in its inner `message.id`. Everything sequenced
+   *  after that line is dropped. The original file is moved aside as
+   *  `<sessionId>.jsonl.rewind-<ts>.bak` (foundation for Phase 2 Undo)
+   *  and the kept prefix is written through a `.tmp` + rename so the
+   *  replacement is atomic from the subprocess's perspective. */
+  private truncateTranscriptAfterMessage(
+    sessionId: string,
+    worktreePath: string,
+    apiMessageId: string
+  ): { ok: boolean; reason?: string } {
+    const transcriptPath = transcriptPathFor(sessionId, worktreePath)
+    if (!existsSync(transcriptPath)) {
+      // No on-disk session yet — caller still re-seeds the (empty) slice.
+      return { ok: true }
+    }
+
+    let raw: string
+    try {
+      raw = readFileSync(transcriptPath, 'utf8')
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err)
+      log('json-claude', `rewind read failed sessionId=${sessionId}`, reason)
+      return { ok: false, reason }
+    }
+
+    const lines = raw.split('\n')
+    // Find the LAST line whose inner message.id matches. "Last" because
+    // a single assistant API turn can split into several jsonl lines
+    // (thinking, tool_use, text), all carrying the same message.id —
+    // we want to keep all of them, so we cut after the final one.
+    let lastMatchIdx = -1
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim()
+      if (!line) continue
+      let parsed: Record<string, unknown>
+      try {
+        parsed = JSON.parse(line)
+      } catch {
+        continue
+      }
+      if (parsed['type'] !== 'assistant') continue
+      const inner = parsed['message'] as { id?: unknown } | undefined
+      if (typeof inner?.id === 'string' && inner.id === apiMessageId) {
+        lastMatchIdx = i
+      }
+    }
+
+    if (lastMatchIdx === -1) {
+      log(
+        'json-claude',
+        `rewind: no jsonl line matched apiMessageId=${apiMessageId} sessionId=${sessionId}`
+      )
+      return { ok: false, reason: 'no matching jsonl record' }
+    }
+
+    // Keep lines [0..lastMatchIdx] inclusive; drop everything after.
+    const keptLines = lines.slice(0, lastMatchIdx + 1)
+    const keptBody = keptLines.length > 0 ? keptLines.join('\n') + '\n' : ''
+
+    const ts = Date.now()
+    const backupPath = `${transcriptPath}.rewind-${ts}.bak`
+    const tmpPath = `${transcriptPath}.rewind-${ts}.tmp`
+    try {
+      writeFileSync(tmpPath, keptBody, 'utf8')
+      renameSync(transcriptPath, backupPath)
+      renameSync(tmpPath, transcriptPath)
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err)
+      log('json-claude', `rewind write failed sessionId=${sessionId}`, reason)
+      return { ok: false, reason }
+    }
+    log(
+      'json-claude',
+      `rewind truncated sessionId=${sessionId} keptLines=${keptLines.length} backup=${backupPath}`
+    )
+    return { ok: true }
+  }
+
   /** Change --permission-mode mid-session via the SDK control_request
    *  protocol (subtype: 'set_permission_mode'). Same plumbing the TUI
    *  uses for shift+tab; works mid-turn so an in-flight tool chain
@@ -1124,6 +1298,7 @@ export class JsonClaudeManager {
             blocks,
             timestamp: Date.now(),
             entryId,
+            ...(messageId ? { apiMessageId: messageId } : {}),
             ...(parentToolUseId ? { parentToolUseId } : {})
           })
         }
@@ -1134,6 +1309,7 @@ export class JsonClaudeManager {
         blocks,
         timestamp: Date.now(),
         entryId: `${instance.sessionId}-a-${instance.entryCounter++}`,
+        ...(messageId ? { apiMessageId: messageId } : {}),
         ...(parentToolUseId ? { parentToolUseId } : {})
       })
       return
@@ -1350,6 +1526,7 @@ export class JsonClaudeManager {
           blocks: [newBlock],
           timestamp: Date.now(),
           entryId: instance.partial.entryId,
+          apiMessageId: instance.partial.messageId,
           isPartial: true,
           ...(instance.partial.parentToolUseId
             ? { parentToolUseId: instance.partial.parentToolUseId }
@@ -1404,6 +1581,7 @@ export class JsonClaudeManager {
       blocks: [{ type: 'text', text: '' }],
       timestamp: Date.now(),
       entryId: instance.partial.entryId,
+      apiMessageId: instance.partial.messageId,
       isPartial: true,
       ...(instance.partial.parentToolUseId
         ? { parentToolUseId: instance.partial.parentToolUseId }

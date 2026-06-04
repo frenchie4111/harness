@@ -19,6 +19,7 @@ import { DiffView } from './DiffView'
 import { FileView } from './FileView'
 import { BrowserPanel } from './BrowserPanel'
 import { JsonModeChat } from './JsonModeChat'
+import { ReviewPane } from './ReviewPane'
 import { ErrorBoundary } from './ErrorBoundary'
 import { useBackend } from '../backend'
 
@@ -33,28 +34,42 @@ interface WorkspaceViewProps {
   repoLabel: string
   branch: string
   onSelectTab: (worktreePath: string, paneId: string, tabId: string) => void
+  onFocusPane?: (worktreePath: string, paneId: string) => void
   onAddTab: (worktreePath: string, paneId?: string) => void
   defaultAgent: AgentKind
   onAddAgentTab: (worktreePath: string, agentKind?: AgentKind, paneId?: string) => void
   onAddBrowserTab: (worktreePath: string, paneId?: string) => void
-  /** Only defined when the jsonModeClaudeTabs feature flag is on. */
   onAddJsonClaudeTab?: (worktreePath: string, paneId?: string) => void
-  /** Convert a tab between xterm and JSON-mode in place. Only defined
-   *  when the jsonModeClaudeTabs feature flag is on. */
+  /** Convert a Claude tab between Terminal and Chat in place. */
   onConvertTabType?: (worktreePath: string, tabId: string, newType: 'agent' | 'json-claude') => void
-  /** Drives whether the Sparkles button's plain click spawns xterm
-   *  or json-claude (and which one the shift modifier flips to).
-   *  Only meaningful when `onAddJsonClaudeTab` is defined. */
+  /** Drives whether the Sparkles button's plain click spawns Terminal
+   *  ('xterm') or Chat ('json'), and which one the shift modifier flips
+   *  to. */
   defaultClaudeTabType?: 'xterm' | 'json'
   onSleepTab: (worktreePath: string, tabId: string) => void
   onCloseTab: (worktreePath: string, tabId: string) => void
   onRestartAgentTab: (worktreePath: string, tabId: string) => void
   onReorderTabs: (worktreePath: string, paneId: string, fromId: string, toId: string) => void
   onMoveTabToPane: (worktreePath: string, tabId: string, toPaneId: string, toIndex?: number) => void
-  onSplitPane: (worktreePath: string, fromPaneId: string, direction?: 'horizontal' | 'vertical') => void
   onSendToAgent?: (worktreePath: string, text: string) => void
-  rightColumnHidden: boolean
-  onShowRightColumn: () => void
+  /** Leading padding for the leftmost leaf's tab bar so it clears the macOS
+   *  traffic lights when no sidebar sits to the left of the workspace. */
+  topBarLeadingPx?: number
+  /** Negative-margin extension on the top-left leaf's tab bar so the tab
+   *  strip visually continues across the gap above the left sidebar (which
+   *  is offset 40px from the top so the tab bar can claim that row). */
+  topBarLeadingExtendPx?: number
+  /** Negative-margin extension on the top-right leaf's tab bar so the tab
+   *  strip visually continues across the gap above the right column (which
+   *  is offset 40px from the top so the tab bar can claim that row). */
+  topBarTrailingExtendPx?: number
+  /** Reports the window-x of the top-left leaf's "Harness" segment right edge
+   *  (just before the repo/branch label) so the host can cap the sidebar
+   *  width to line up there. */
+  onTitleBlockEdge?: (px: number) => void
+  /** Hide the "Harness" title block (single-screen mode) — the repo/branch
+   *  label still clears the traffic lights via the leading padding. */
+  hideAppTitle?: boolean
   crashedTabIds?: ReadonlySet<string>
 }
 
@@ -133,11 +148,16 @@ function SplitRenderer({
   nameAgentSessions,
   leafCount,
   isFirstLeaf,
+  topLeftLeafId,
   topRightLeafId,
-  showExpandRightColumn,
-  onShowRightColumn,
+  topBarLeadingPx,
+  topBarLeadingExtendPx,
+  topBarTrailingExtendPx,
+  onTitleBlockEdge,
+  hideAppTitle,
   registerSlot,
   onSelectTab,
+  onFocusPane,
   onAddTab,
   defaultAgent,
   onAddAgentTab,
@@ -147,8 +167,6 @@ function SplitRenderer({
   onConvertTabType,
   onSleepTab,
   onCloseTab,
-  onSplitRight,
-  onSplitDown,
   onResizeEnd
 }: {
   node: PaneNode
@@ -161,11 +179,16 @@ function SplitRenderer({
   nameAgentSessions: boolean
   leafCount: number
   isFirstLeaf: { value: boolean }
+  topLeftLeafId: string
   topRightLeafId: string
-  showExpandRightColumn: boolean
-  onShowRightColumn: () => void
+  topBarLeadingPx: number
+  topBarLeadingExtendPx: number
+  topBarTrailingExtendPx: number
+  onTitleBlockEdge?: (px: number) => void
+  hideAppTitle?: boolean
   registerSlot: (paneId: string, el: HTMLDivElement | null) => void
   onSelectTab: (tabId: string, paneId: string) => void
+  onFocusPane?: (paneId: string) => void
   onAddTab: (paneId: string) => void
   defaultAgent: AgentKind
   onAddAgentTab: (kind: AgentKind | undefined, paneId: string) => void
@@ -175,8 +198,6 @@ function SplitRenderer({
   onConvertTabType?: (tabId: string, newType: 'agent' | 'json-claude') => void
   onSleepTab: (tabId: string) => void
   onCloseTab: (tabId: string) => void
-  onSplitRight: (paneId: string) => void
-  onSplitDown: (paneId: string) => void
   onResizeEnd: (splitId: string, delta: number, containerSize: number) => void
 }): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -185,7 +206,10 @@ function SplitRenderer({
     const showLabel = isFirstLeaf.value
     if (isFirstLeaf.value) isFirstLeaf.value = false
     return (
-      <div className="flex-1 flex min-w-0 min-h-0">
+      <div
+        className="flex-1 flex min-w-0 min-h-0"
+        onMouseDownCapture={() => onFocusPane?.(node.id)}
+      >
         <TerminalPanel
           worktreePath={worktreePath}
           pane={node}
@@ -208,10 +232,11 @@ function SplitRenderer({
           onConvertTabType={onConvertTabType}
           onSleepTab={onSleepTab}
           onCloseTab={onCloseTab}
-          onSplitRight={() => onSplitRight(node.id)}
-          onSplitDown={() => onSplitDown(node.id)}
-          showExpandRightColumn={showExpandRightColumn && node.id === topRightLeafId}
-          onShowRightColumn={onShowRightColumn}
+          topBarLeadingPx={node.id === topLeftLeafId ? topBarLeadingPx : 0}
+          topBarLeadingExtendPx={node.id === topLeftLeafId ? topBarLeadingExtendPx : 0}
+          topBarTrailingExtendPx={node.id === topRightLeafId ? topBarTrailingExtendPx : 0}
+          showAppTitle={node.id === topLeftLeafId && !hideAppTitle}
+          onTitleBlockEdge={node.id === topLeftLeafId ? onTitleBlockEdge : undefined}
         />
       </div>
     )
@@ -242,11 +267,16 @@ function SplitRenderer({
           nameAgentSessions={nameAgentSessions}
           leafCount={leafCount}
           isFirstLeaf={isFirstLeaf}
+          topLeftLeafId={topLeftLeafId}
           topRightLeafId={topRightLeafId}
-          showExpandRightColumn={showExpandRightColumn}
-          onShowRightColumn={onShowRightColumn}
+          topBarLeadingPx={topBarLeadingPx}
+          topBarLeadingExtendPx={topBarLeadingExtendPx}
+          topBarTrailingExtendPx={topBarTrailingExtendPx}
+          onTitleBlockEdge={onTitleBlockEdge}
+          hideAppTitle={hideAppTitle}
           registerSlot={registerSlot}
           onSelectTab={onSelectTab}
+          onFocusPane={onFocusPane}
           onAddTab={onAddTab}
           defaultAgent={defaultAgent}
           onAddAgentTab={onAddAgentTab}
@@ -256,8 +286,6 @@ function SplitRenderer({
           onConvertTabType={onConvertTabType}
           onSleepTab={onSleepTab}
           onCloseTab={onCloseTab}
-          onSplitRight={onSplitRight}
-          onSplitDown={onSplitDown}
           onResizeEnd={onResizeEnd}
         />
       </div>
@@ -282,11 +310,16 @@ function SplitRenderer({
           nameAgentSessions={nameAgentSessions}
           leafCount={leafCount}
           isFirstLeaf={isFirstLeaf}
+          topLeftLeafId={topLeftLeafId}
           topRightLeafId={topRightLeafId}
-          showExpandRightColumn={showExpandRightColumn}
-          onShowRightColumn={onShowRightColumn}
+          topBarLeadingPx={topBarLeadingPx}
+          topBarLeadingExtendPx={topBarLeadingExtendPx}
+          topBarTrailingExtendPx={topBarTrailingExtendPx}
+          onTitleBlockEdge={onTitleBlockEdge}
+          hideAppTitle={hideAppTitle}
           registerSlot={registerSlot}
           onSelectTab={onSelectTab}
+          onFocusPane={onFocusPane}
           onAddTab={onAddTab}
           defaultAgent={defaultAgent}
           onAddAgentTab={onAddAgentTab}
@@ -296,8 +329,6 @@ function SplitRenderer({
           onConvertTabType={onConvertTabType}
           onSleepTab={onSleepTab}
           onCloseTab={onCloseTab}
-          onSplitRight={onSplitRight}
-          onSplitDown={onSplitDown}
           onResizeEnd={onResizeEnd}
         />
       </div>
@@ -314,6 +345,7 @@ export function WorkspaceView({
   visible,
   nameAgentSessions,
   onSelectTab,
+  onFocusPane,
   onAddTab,
   defaultAgent,
   onAddAgentTab,
@@ -326,12 +358,14 @@ export function WorkspaceView({
   onRestartAgentTab,
   onReorderTabs,
   onMoveTabToPane,
-  onSplitPane,
   onSendToAgent,
   repoLabel,
   branch,
-  rightColumnHidden,
-  onShowRightColumn,
+  topBarLeadingPx = 0,
+  topBarLeadingExtendPx = 0,
+  topBarTrailingExtendPx = 0,
+  onTitleBlockEdge,
+  hideAppTitle,
   crashedTabIds
 }: WorkspaceViewProps): JSX.Element {
   const backend = useBackend()
@@ -384,7 +418,7 @@ export function WorkspaceView({
       const active = leaf.tabs.find((t) => t.id === leaf.activeTabId)
       if (
         active &&
-        active.type === 'json-claude' &&
+        (active.type === 'json-claude' || active.type === 'shell') &&
         (active.mode ?? 'awake') === 'asleep'
       ) {
         void backend.panesWakeTab(worktreePath, active.id)
@@ -475,6 +509,7 @@ export function WorkspaceView({
   )
 
   const isFirstLeaf = { value: true }
+  const topLeftLeafId = findTopLeftLeaf(paneTree).id
   const topRightLeafId = findTopRightLeaf(paneTree).id
 
   return (
@@ -496,11 +531,16 @@ export function WorkspaceView({
           nameAgentSessions={nameAgentSessions}
           leafCount={leaves.length}
           isFirstLeaf={isFirstLeaf}
+          topLeftLeafId={topLeftLeafId}
           topRightLeafId={topRightLeafId}
-          showExpandRightColumn={rightColumnHidden}
-          onShowRightColumn={onShowRightColumn}
+          topBarLeadingPx={topBarLeadingPx}
+          topBarLeadingExtendPx={topBarLeadingExtendPx}
+          topBarTrailingExtendPx={topBarTrailingExtendPx}
+          onTitleBlockEdge={onTitleBlockEdge}
+          hideAppTitle={hideAppTitle}
           registerSlot={attachSlot}
           onSelectTab={(tabId, paneId) => onSelectTab(worktreePath, paneId, tabId)}
+          onFocusPane={onFocusPane ? (paneId) => onFocusPane(worktreePath, paneId) : undefined}
           onAddTab={(paneId) => onAddTab(worktreePath, paneId)}
           defaultAgent={defaultAgent}
           onAddAgentTab={(kind, paneId) => onAddAgentTab(worktreePath, kind, paneId)}
@@ -518,8 +558,6 @@ export function WorkspaceView({
           defaultClaudeTabType={defaultClaudeTabType}
           onSleepTab={(tabId) => onSleepTab(worktreePath, tabId)}
           onCloseTab={(tabId) => onCloseTab(worktreePath, tabId)}
-          onSplitRight={(paneId) => onSplitPane(worktreePath, paneId, 'horizontal')}
-          onSplitDown={(paneId) => onSplitPane(worktreePath, paneId, 'vertical')}
           onResizeEnd={handleResizeEnd}
         />
       </div>
@@ -531,7 +569,9 @@ export function WorkspaceView({
           return createPortal(
             <div
               className="absolute inset-0"
+              data-tab-content
               style={{ display: isActiveInPane ? 'block' : 'none' }}
+              onMouseDownCapture={() => onFocusPane?.(worktreePath, leaf.id)}
             >
               <ErrorBoundary label={`pane:${tab.type}:${tab.id}`}>
                 {crashedTabIds?.has(tab.id) ? (
@@ -571,6 +611,27 @@ export function WorkspaceView({
                     worktreePath={worktreePath}
                     mode={tab.mode ?? 'awake'}
                   />
+                ) : tab.type === 'shell' && (tab.mode ?? 'awake') === 'asleep' ? (
+                  // Skip XTerminal entirely while asleep — its mount
+                  // path constructs an xterm.js Terminal, loads a stack
+                  // of addons, calls getTerminalHistory, etc., even when
+                  // hidden. The rising-edge wake effect above fires
+                  // panesWakeTab when the worktree becomes visible AND
+                  // this is the active tab in its leaf, so the user
+                  // doesn't see the placeholder in practice.
+                  <div className="absolute inset-0 bg-app" />
+                ) : tab.type === 'review' ? (
+                  <ReviewPane
+                    tabId={tab.id}
+                    worktreePath={worktreePath}
+                    fromCommit={tab.reviewFromCommit}
+                    toCommit={tab.reviewToCommit}
+                    onSendToAgent={
+                      onSendToAgent
+                        ? (text) => onSendToAgent(worktreePath, text)
+                        : undefined
+                    }
+                  />
                 ) : (
                   <XTerminal
                     terminalId={tab.id}
@@ -582,11 +643,17 @@ export function WorkspaceView({
                     sessionId={tab.sessionId}
                     initialPrompt={tab.initialPrompt}
                     teleportSessionId={tab.teleportSessionId}
+                    modelOverride={tab.type === 'agent' ? tab.model : undefined}
                     shellCommand={tab.type === 'shell' ? tab.command : undefined}
                     shellCwd={tab.type === 'shell' ? tab.cwd : undefined}
                     onRestartAgent={
                       tab.type === 'agent'
                         ? (): void => onRestartAgentTab(worktreePath, tab.id)
+                        : undefined
+                    }
+                    onSwitchToChat={
+                      tab.type === 'agent' && tab.agentKind === 'claude' && onConvertTabType
+                        ? (): void => onConvertTabType(worktreePath, tab.id, 'json-claude')
                         : undefined
                     }
                   />
@@ -600,6 +667,11 @@ export function WorkspaceView({
       )}
     </DndContext>
   )
+}
+
+function findTopLeftLeaf(node: PaneNode): PaneLeaf {
+  if (node.type === 'leaf') return node
+  return findTopLeftLeaf(node.children[0])
 }
 
 function findTopRightLeaf(node: PaneNode): PaneLeaf {

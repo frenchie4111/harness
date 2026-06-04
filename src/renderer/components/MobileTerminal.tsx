@@ -271,9 +271,9 @@ export function MobileTerminal({ worktreePath, tab }: MobileTerminalProps): JSX.
 
   const quickActions = useMemo(
     () => [
-      { label: 'Cancel', icon: <X className="w-3 h-3" />, onPress: () => writeRaw('\x03') },
-      { label: 'Submit', icon: <Send className="w-3 h-3" />, onPress: () => writeRaw('\r') },
-      { label: 'Newline', icon: <CornerDownLeft className="w-3 h-3" />, onPress: () => writeRaw('\\\r') }
+      { label: 'Cancel', icon: <X className="icon-xs" />, onPress: () => writeRaw('\x03') },
+      { label: 'Submit', icon: <Send className="icon-xs" />, onPress: () => writeRaw('\r') },
+      { label: 'Newline', icon: <CornerDownLeft className="icon-xs" />, onPress: () => writeRaw('\\\r') }
     ],
     [writeRaw]
   )
@@ -306,6 +306,7 @@ export function MobileTerminal({ worktreePath, tab }: MobileTerminalProps): JSX.
           visible={true}
           sessionName={tab.label}
           sessionId={tab.sessionId}
+          modelOverride={tab.type === 'agent' ? tab.model : undefined}
         />
         {/* Hidden textarea — pointer-events:none so touch scrolling on the
             wrapper above isn't eaten; the wrapper's onClick focuses the
@@ -332,9 +333,9 @@ export function MobileTerminal({ worktreePath, tab }: MobileTerminalProps): JSX.
           <button
             onMouseDown={(e) => e.preventDefault()}
             onClick={handleJumpToBottom}
-            className="absolute right-3 bottom-3 z-10 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] bg-surface/90 text-fg-bright border border-border shadow-lg"
+            className="absolute right-3 bottom-3 z-10 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs bg-surface/90 text-fg-bright border border-border shadow-lg"
           >
-            <ArrowDownToLine className="w-3 h-3" />
+            <ArrowDownToLine className="icon-xs" />
             Jump to bottom
           </button>
         )}
@@ -347,7 +348,7 @@ export function MobileTerminal({ worktreePath, tab }: MobileTerminalProps): JSX.
               key={q.label}
               onMouseDown={(e) => e.preventDefault()}
               onClick={q.onPress}
-              className="shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] text-fg bg-panel border border-border hover:bg-surface"
+              className="shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded text-xs text-fg bg-panel border border-border hover:bg-surface"
             >
               {q.icon}
               {q.label}
@@ -357,9 +358,9 @@ export function MobileTerminal({ worktreePath, tab }: MobileTerminalProps): JSX.
             <button
               onMouseDown={(e) => e.preventDefault()}
               onClick={focusInput}
-              className="shrink-0 ml-auto inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] text-fg-bright bg-accent/20 border border-accent/40"
+              className="shrink-0 ml-auto inline-flex items-center gap-1 px-2 py-1 rounded text-xs text-fg-bright bg-accent/20 border border-accent/40"
             >
-              <Keyboard className="w-3 h-3" />
+              <Keyboard className="icon-xs" />
               Keyboard
             </button>
           )}
@@ -373,7 +374,7 @@ export function MobileTerminal({ worktreePath, tab }: MobileTerminalProps): JSX.
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={b.onPress}
                 className={
-                  'shrink-0 min-w-[44px] h-8 px-2 rounded text-[11px] font-mono border ' +
+                  'shrink-0 min-w-[44px] h-8 px-2 rounded text-xs font-mono border ' +
                   (isActive
                     ? 'bg-accent/30 text-fg-bright border-accent/50'
                     : 'bg-panel text-fg border-border hover:bg-surface')

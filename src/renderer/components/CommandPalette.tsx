@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Search, GitPullRequest, ArrowRight, FileText, Server } from 'lucide-react'
-import type { Worktree, PtyStatus, PRStatus } from '../types'
+import type { Worktree, PtyStatus, PRStatus, ChangedFile } from '../types'
 import type { Action, HotkeyBinding } from '../hotkeys'
 import { ACTION_LABELS, bindingToString } from '../hotkeys'
 import { groupWorktrees, GROUP_ORDER, GROUP_LABELS, type GroupKey } from '../worktree-sort'
@@ -8,6 +8,11 @@ import { repoNameColor } from './RepoIcon'
 import { fuzzyMatch } from '../fuzzy'
 import { useBackend } from '../backend'
 import { useSettings, useSnooze } from '../store'
+import {
+  CHANGED_STATUS_COLOR,
+  CHANGED_STATUS_LABEL,
+  useChangedFilesSet,
+} from '../hooks/useChangedFilesSet'
 
 export type PaletteMode = 'root' | 'files'
 
@@ -40,6 +45,7 @@ type FileItem = {
   path: string
   indices: number[]
   recent: boolean
+  changedStatus?: ChangedFile['status']
 }
 
 interface PaletteRecent {
@@ -56,6 +62,13 @@ const MAX_FILE_RESULTS = 100
 const RECENTS_LIMIT = 20
 const PALETTE_RECENTS_KEY = 'harness:commandPalette:recents'
 const PALETTE_RECENTS_LIMIT = 3
+const CHANGED_SECTION_LIMIT = 20
+/** Score multiplier applied to fuzzy matches that are also in the
+ *  current branch diff. Tuned by eyeballing 5–10 representative queries
+ *  — high enough to surface changed files above similarly-scored
+ *  unchanged ones, low enough that a clearly-better exact match still
+ *  wins. */
+const CHANGED_SCORE_BOOST = 1.4
 
 function recentsKey(worktreePath: string): string {
   return `file-picker-recents:${worktreePath}`
@@ -222,6 +235,7 @@ export function CommandPalette({
   onAddBackend,
 }: CommandPaletteProps): JSX.Element {
   const backend = useBackend()
+  const changedFiles = useChangedFilesSet(activeWorktreeId)
   const [mode, setMode] = useState<PaletteMode>(initialMode)
   const [query, setQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
@@ -293,31 +307,68 @@ export function CommandPalette({
     return items
   }, [resolvedHotkeys])
 
-  const fileItems = useMemo<FileItem[]>(() => {
-    if (mode !== 'files' || !activeWorktreeId) return []
+  const { items: fileItems, changedSectionCount } = useMemo<{
+    items: FileItem[]
+    changedSectionCount: number
+  }>(() => {
+    if (mode !== 'files' || !activeWorktreeId) return { items: [], changedSectionCount: 0 }
     const q = query.trim()
     const recents = loadRecents(activeWorktreeId)
     const recentSet = new Set(recents)
+    const changedByPath = changedFiles.byPath
+    const fileSet = new Set(files)
 
     if (q.length === 0) {
       const items: FileItem[] = []
+      const seen = new Set<string>()
+      // "Changed in this PR" section: preserve git's order (newest-
+      // touched first when the backend returns it that way), filtered
+      // through the all-files list so deleted entries don't appear as
+      // un-openable rows.
+      for (const cf of changedFiles.list) {
+        if (items.length >= CHANGED_SECTION_LIMIT) break
+        if (!fileSet.has(cf.path)) continue
+        items.push({
+          path: cf.path,
+          indices: [],
+          recent: recentSet.has(cf.path),
+          changedStatus: cf.status,
+        })
+        seen.add(cf.path)
+      }
+      const changedSectionCount = items.length
       for (const p of recents) {
-        if (files.includes(p)) items.push({ path: p, indices: [], recent: true })
+        if (seen.has(p)) continue
+        if (!fileSet.has(p)) continue
+        items.push({ path: p, indices: [], recent: true })
+        seen.add(p)
       }
       for (const p of files) {
-        if (items.length >= 50 + recents.length) break
-        if (!recentSet.has(p)) items.push({ path: p, indices: [], recent: false })
+        if (items.length >= CHANGED_SECTION_LIMIT + 50 + recents.length) break
+        if (seen.has(p)) continue
+        items.push({ path: p, indices: [], recent: false })
       }
-      return items
+      return { items, changedSectionCount }
     }
 
     const ranked = fuzzyMatch(q, files)
-    return ranked.slice(0, MAX_FILE_RESULTS).map((r) => ({
-      path: r.item,
-      indices: r.indices,
-      recent: recentSet.has(r.item),
-    }))
-  }, [mode, activeWorktreeId, query, files])
+    const boosted = ranked
+      .map((r) => ({
+        item: r.item,
+        indices: r.indices,
+        score: changedByPath.has(r.item) ? r.score * CHANGED_SCORE_BOOST : r.score,
+      }))
+      .sort((a, b) => b.score - a.score)
+    return {
+      items: boosted.slice(0, MAX_FILE_RESULTS).map((r) => ({
+        path: r.item,
+        indices: r.indices,
+        recent: recentSet.has(r.item),
+        changedStatus: changedByPath.get(r.item)?.status,
+      })),
+      changedSectionCount: 0,
+    }
+  }, [mode, activeWorktreeId, query, files, changedFiles])
 
   const { items: flatItems, selectableCount } = useMemo(() => {
     if (mode === 'files') {
@@ -539,10 +590,10 @@ export function CommandPalette({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
-          <Search size={16} className="text-dim shrink-0" />
+          <Search className="icon-base text-dim shrink-0" />
           {mode === 'files' && (
-            <span className="inline-flex items-center gap-1 text-[11px] bg-accent/15 text-accent px-1.5 py-0.5 rounded font-medium shrink-0">
-              <FileText size={11} />
+            <span className="inline-flex items-center gap-1 text-xs bg-accent/15 text-accent px-1.5 py-0.5 rounded font-medium shrink-0">
+              <FileText className="icon-xs" />
               Open File
             </span>
           )}
@@ -555,7 +606,7 @@ export function CommandPalette({
             placeholder={mode === 'files' ? 'Search files…' : 'Search worktrees and commands...'}
             className="flex-1 bg-transparent text-fg-bright text-sm outline-none placeholder:text-faint"
           />
-          <kbd className="text-[10px] text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono">ESC</kbd>
+          <kbd className="text-xs text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono">ESC</kbd>
         </div>
 
         <div ref={listRef} className="max-h-80 overflow-y-auto py-1">
@@ -572,29 +623,53 @@ export function CommandPalette({
               const dir = lastSlash >= 0 ? f.path.slice(0, lastSlash) : ''
               const name = lastSlash >= 0 ? f.path.slice(lastSlash + 1) : f.path
               const nameStart = lastSlash + 1
+              const showChangedHeading = !query && changedSectionCount > 0 && idx === 0
+              const showAllFilesHeading =
+                !query && changedSectionCount > 0 && idx === changedSectionCount &&
+                fileItems.length > changedSectionCount
               return (
-                <button
-                  key={f.path}
-                  data-idx={idx}
-                  className={`w-full flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer transition-colors ${
-                    isSelected ? 'bg-accent/15 text-fg-bright' : 'text-fg hover:bg-surface-hover'
-                  }`}
-                  onMouseEnter={() => setSelectedIndex(idx)}
-                  onClick={() => openFile(f.path)}
-                >
-                  <FileText size={13} className="text-dim shrink-0" />
-                  <span className="truncate text-left text-fg-bright">
-                    {highlightChars(name, f.indices, nameStart)}
-                  </span>
-                  {dir && (
-                    <span className="truncate text-left text-faint text-xs min-w-0 flex-1">
-                      {highlightChars(dir, f.indices, 0)}
+                <Fragment key={f.path}>
+                  {showChangedHeading && (
+                    <div className="px-3 pt-2 pb-1 text-xs font-semibold uppercase tracking-wider text-faint">
+                      Changed in this PR
+                    </div>
+                  )}
+                  {showAllFilesHeading && (
+                    <div className="px-3 pt-2 pb-1 text-xs font-semibold uppercase tracking-wider text-faint">
+                      All files
+                    </div>
+                  )}
+                  <button
+                    data-idx={idx}
+                    className={`w-full flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer transition-colors ${
+                      isSelected ? 'bg-accent/15 text-fg-bright' : 'text-fg hover:bg-surface-hover'
+                    }`}
+                    onMouseEnter={() => setSelectedIndex(idx)}
+                    onClick={() => openFile(f.path)}
+                  >
+                    {f.changedStatus ? (
+                      <span
+                        className={`shrink-0 w-3 font-mono text-center text-xs ${CHANGED_STATUS_COLOR[f.changedStatus]}`}
+                        title={`${f.changedStatus} in this PR`}
+                      >
+                        {CHANGED_STATUS_LABEL[f.changedStatus]}
+                      </span>
+                    ) : (
+                      <FileText className="icon-sm text-dim shrink-0" />
+                    )}
+                    <span className="truncate text-left text-fg-bright">
+                      {highlightChars(name, f.indices, nameStart)}
                     </span>
-                  )}
-                  {f.recent && !query && (
-                    <span className="text-[10px] text-faint shrink-0">recent</span>
-                  )}
-                </button>
+                    {dir && (
+                      <span className="truncate text-left text-faint text-xs min-w-0 flex-1">
+                        {highlightChars(dir, f.indices, 0)}
+                      </span>
+                    )}
+                    {f.recent && !query && !f.changedStatus && (
+                      <span className="text-xs text-faint shrink-0">recent</span>
+                    )}
+                  </button>
+                </Fragment>
               )
             })}
           {mode === 'root' && selectableCount === 0 && (
@@ -606,7 +681,7 @@ export function CommandPalette({
               return (
                 <div
                   key={`h-${flatIdx}`}
-                  className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-faint"
+                  className="px-3 pt-2 pb-1 text-xs font-semibold uppercase tracking-wider text-faint"
                 >
                   {item.label}
                 </div>
@@ -648,7 +723,7 @@ export function CommandPalette({
                     title={STATUS_LABELS[displayStatus]}
                   />
                   {pr && (
-                    <GitPullRequest size={13} className={`shrink-0 ${iconColor}`} />
+                    <GitPullRequest className={`icon-sm shrink-0 ${iconColor}`} />
                   )}
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-medium truncate text-left">{wt.branch}</div>
@@ -665,7 +740,7 @@ export function CommandPalette({
                     </div>
                   </div>
                   {isActive && (
-                    <span className="text-[10px] text-accent font-medium shrink-0">current</span>
+                    <span className="text-xs text-accent font-medium shrink-0">current</span>
                   )}
                 </button>
               )
@@ -685,7 +760,7 @@ export function CommandPalette({
                   onMouseEnter={() => setSelectedIndex(mySelectableIdx)}
                   onClick={() => execute(item)}
                 >
-                  <FileText size={13} className="text-dim shrink-0" />
+                  <FileText className="icon-sm text-dim shrink-0" />
                   <span className="truncate text-left text-fg-bright">{name}</span>
                   {dir && (
                     <span className="truncate text-left text-faint text-xs min-w-0 flex-1">
@@ -708,10 +783,10 @@ export function CommandPalette({
                   onMouseEnter={() => setSelectedIndex(mySelectableIdx)}
                   onClick={() => execute(item)}
                 >
-                  <FileText size={14} className="text-dim shrink-0" />
+                  <FileText className="icon-sm text-dim shrink-0" />
                   <span className="truncate flex-1 text-left">{item.label}</span>
                   {openBinding && (
-                    <kbd className="text-[10px] text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono shrink-0">
+                    <kbd className="text-xs text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono shrink-0">
                       {bindingToString(openBinding)}
                     </kbd>
                   )}
@@ -730,7 +805,7 @@ export function CommandPalette({
                   onMouseEnter={() => setSelectedIndex(mySelectableIdx)}
                   onClick={() => execute(item)}
                 >
-                  <Server size={14} className="text-dim shrink-0" />
+                  <Server className="icon-sm text-dim shrink-0" />
                   <span className="truncate flex-1 text-left">{item.label}</span>
                 </button>
               )
@@ -748,10 +823,10 @@ export function CommandPalette({
                 onMouseEnter={() => setSelectedIndex(mySelectableIdx)}
                 onClick={() => execute(item)}
               >
-                <ArrowRight size={14} className="text-dim shrink-0" />
+                <ArrowRight className="icon-sm text-dim shrink-0" />
                 <span className="truncate flex-1 text-left">{item.label}</span>
                 {item.hint && (
-                  <kbd className="text-[10px] text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono shrink-0">
+                  <kbd className="text-xs text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono shrink-0">
                     {item.hint}
                   </kbd>
                 )}
@@ -760,7 +835,7 @@ export function CommandPalette({
           })}
         </div>
         {mode === 'files' && files.length > 0 && (
-          <div className="px-3 py-1.5 border-t border-border text-[10px] text-faint flex items-center justify-between">
+          <div className="px-3 py-1.5 border-t border-border text-xs text-faint flex items-center justify-between">
             <span>{files.length} files · {fileItems.length} shown</span>
             <span className="font-mono">↵ open · esc back</span>
           </div>

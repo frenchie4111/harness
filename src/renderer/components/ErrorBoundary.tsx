@@ -112,7 +112,7 @@ export class ErrorBoundary extends Component<Props, State> {
       <div className="h-full w-full overflow-auto p-4 bg-app">
         <div className="max-w-3xl mx-auto rounded-lg border border-danger/40 bg-danger/10 text-fg">
           <div className="px-4 py-3 border-b border-danger/30 flex items-start gap-3">
-            <AlertTriangle className="w-5 h-5 text-danger shrink-0 mt-0.5" />
+            <AlertTriangle className="icon-lg text-danger shrink-0 mt-0.5" />
             <div className="flex-1 min-w-0">
               <div className="text-sm font-semibold text-fg-bright">
                 {error.name}: {error.message || '(no message)'}
@@ -128,7 +128,7 @@ export class ErrorBoundary extends Component<Props, State> {
               onClick={this.handleReset}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-panel border border-border text-fg-bright hover:border-border-strong transition-colors cursor-pointer"
             >
-              <RotateCcw className="w-3.5 h-3.5" />
+              <RotateCcw className="icon-sm" />
               Try again
             </button>
             {this.props.showReload && (
@@ -137,7 +137,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 onClick={this.handleReload}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-panel border border-border text-fg-bright hover:border-border-strong transition-colors cursor-pointer"
               >
-                <RefreshCw className="w-3.5 h-3.5" />
+                <RefreshCw className="icon-sm" />
                 Reload app
               </button>
             )}
@@ -146,7 +146,7 @@ export class ErrorBoundary extends Component<Props, State> {
               onClick={this.handleCopy}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-panel border border-border text-fg-bright hover:border-border-strong transition-colors cursor-pointer"
             >
-              {copied ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" />}
+              {copied ? <Check className="icon-sm text-success" /> : <Copy className="icon-sm" />}
               {copied ? 'Copied' : 'Copy error details'}
             </button>
             <button
@@ -154,7 +154,7 @@ export class ErrorBoundary extends Component<Props, State> {
               onClick={this.handleReport}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-panel border border-border text-fg-bright hover:border-border-strong transition-colors cursor-pointer"
             >
-              <MessageSquare className="w-3.5 h-3.5" />
+              <MessageSquare className="icon-sm" />
               Report error
             </button>
             <button
@@ -168,15 +168,15 @@ export class ErrorBoundary extends Component<Props, State> {
           {expanded && (
             <div className="px-4 pb-4 space-y-3">
               <div>
-                <div className="text-[11px] uppercase tracking-wide text-dim mb-1">Stack</div>
-                <pre className="text-[11px] font-mono bg-app/60 border border-border rounded p-2 overflow-auto max-h-64 whitespace-pre">
+                <div className="text-xs uppercase tracking-wide text-dim mb-1">Stack</div>
+                <pre className="text-xs font-mono bg-app/60 border border-border rounded p-2 overflow-auto max-h-64 whitespace-pre">
                   {error.stack ?? '(no stack)'}
                 </pre>
               </div>
               {info?.componentStack && (
                 <div>
-                  <div className="text-[11px] uppercase tracking-wide text-dim mb-1">Component stack</div>
-                  <pre className="text-[11px] font-mono bg-app/60 border border-border rounded p-2 overflow-auto max-h-64 whitespace-pre">
+                  <div className="text-xs uppercase tracking-wide text-dim mb-1">Component stack</div>
+                  <pre className="text-xs font-mono bg-app/60 border border-border rounded p-2 overflow-auto max-h-64 whitespace-pre">
                     {info.componentStack.trim()}
                   </pre>
                 </div>

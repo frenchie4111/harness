@@ -5,17 +5,31 @@
 # Usage: ./scripts/release.sh <version>
 # Example: ./scripts/release.sh 1.0.1
 #
-# Steps:
-#   1. Validate version arg, clean working tree, on main, env file present
-#   2. Bump package.json version, commit
-#   3. Build + sign + notarize for macOS (npm run dist:mac)
-#   4. Tag and push
-#   5. Generate release notes from commits since last tag
-#   6. Create GitHub release with all artifacts attached
+# Steps (all local — no build, no publish):
+#   1. Preflight (clean tree, on main, gh authed, claude CLI present)
+#   2. Bump package.json + package-lock.json
+#   3. Rewrite README download links
+#   4. Generate site/public/releases.html entry via Claude
+#   5. Write release-notes/v<ver>.md (read by the CI workflows)
+#   6. Interactive confirm
+#   7. Commit "Release v<ver>", tag, push main + tag
 #
-# Linux: this script does NOT build Linux. The .github/workflows/build-linux.yml
-# workflow runs on tag push, builds the AppImage on ubuntu-latest, and attaches
-# it to the same GitHub release this script creates. No action needed here.
+# That tag push triggers .github/workflows/release.yml, which runs one
+# `create-release` job (reading the body from release-notes/v<ver>.md
+# committed in step 5) followed by three parallel build jobs
+# (build-mac / build-linux / build-headless) that all depend on the
+# create. dmg/zip/blockmap/latest-mac.yml + AppImage/deb/latest-linux.yml
+# + harness-server tarballs all attach to the same release.
+#
+# Recovery if a build job fails after tag push:
+#   - Single job failed (e.g. flaky notarization)? Re-run that job from
+#     the Actions UI. create-release is idempotent on re-run (detects
+#     the existing release and skips), so a partial replay works.
+#   - Whole release is bad? Delete the tag + release:
+#        gh release delete v<ver> --cleanup-tag
+#        git tag -d v<ver>
+#      Fix the underlying issue, then re-run this script with the same
+#      version. Re-pushing the tag fires release.yml fresh.
 
 set -euo pipefail
 
@@ -77,14 +91,9 @@ if git ls-remote --tags origin "refs/tags/$TAG" | grep -q "$TAG"; then
 fi
 ok "Tag $TAG is available"
 
-# .env must exist with notarization creds
-if [ ! -f .env ]; then
-  fail ".env file is missing — needed for notarization"
-fi
-if ! grep -q "^APPLE_ID=." .env || ! grep -q "^APPLE_APP_SPECIFIC_PASSWORD=" .env || ! grep -q "^APPLE_TEAM_ID=." .env; then
-  fail ".env is missing one or more required vars: APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID"
-fi
-ok ".env has notarization credentials"
+# Notarization creds used to live in .env and be checked here — they
+# now live in GitHub Actions secrets (see .github/workflows/release.yml
+# header for the list). No local .env check anymore.
 
 # gh CLI must be authenticated
 if ! command -v gh >/dev/null 2>&1; then
@@ -95,27 +104,60 @@ if ! gh auth status >/dev/null 2>&1; then
 fi
 ok "gh CLI is authenticated"
 
+# gh needs a default repo set so the contributor lookup below resolves
+# PR numbers correctly.
+if ! gh repo set-default --view >/dev/null 2>&1; then
+  fail "gh has no default repo for this directory. Run: gh repo set-default frenchie4111/harness"
+fi
+ok "gh default repo is set"
+
 # claude CLI must be available (used for release notes generation)
 if ! command -v claude >/dev/null 2>&1; then
   fail "claude CLI is not installed. Install with: npm install -g @anthropic-ai/claude-code"
 fi
 ok "claude CLI is available"
 
-# Ensure deps are installed (electron-vite@5 + vite@7 peer range needs --legacy-peer-deps)
-npm install --legacy-peer-deps --silent
-ok "Dependencies installed"
-
 # Confirm before proceeding
 echo
-echo "${BOLD}Ready to release Harness v${VERSION}${RESET}"
+echo "${BOLD}Ready to prepare Harness v${VERSION}${RESET}"
 echo "  Commit: $(git rev-parse --short HEAD)"
 echo "  Tag:    $TAG"
+echo
+echo "This script will commit + push the tag. Build/sign/notarize/upload"
+echo "all happen in CI after the tag push. Watch the workflows at:"
+echo "  https://github.com/frenchie4111/harness/actions"
 echo
 read -r -p "Proceed? [y/N] " confirm
 if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
   echo "Aborted."
   exit 0
 fi
+
+# ---- Failure trap ----
+# All file edits (version bump, README, releases.html, release-notes
+# file) happen up front but the commit is deferred to the end. If we
+# exit non-zero before committing, restore the touched files + delete
+# the new notes file so a failed prepare leaves the tree exactly as it
+# started — no half-prepared "Release v..." commit sitting on main.
+#
+# Once COMMITTED=1 the trap becomes a no-op. If `git push` then fails
+# after a successful commit, the user recovers by `git reset --hard
+# origin/main` and re-running. If the tag push fails after main pushed,
+# they recover with `git push origin $TAG`. If CI fails after both
+# pushed, see the recovery procedure in the header comment.
+COMMITTED=0
+RELEASE_NOTES_FILE="release-notes/${TAG}.md"
+RELEASE_TOUCHED_FILES=(package.json package-lock.json README.md site/public/releases.html)
+restore_release_files() {
+  local exit_code=$?
+  if [ "$COMMITTED" = "0" ] && [ "$exit_code" != "0" ]; then
+    echo
+    warn "Release prep failed before commit — restoring working tree"
+    git checkout -- "${RELEASE_TOUCHED_FILES[@]}" 2>/dev/null || true
+    rm -f "$RELEASE_NOTES_FILE"
+  fi
+}
+trap restore_release_files EXIT
 
 # ---- Bump version ----
 step "Bumping package.json and package-lock.json to ${VERSION}"
@@ -153,9 +195,30 @@ for (const f of files) {
 "
 ok "Download links updated"
 
+# ---- Build contributors map ----
+# One line per PR authored by someone other than the release maintainer,
+# formatted "#NN @login". Used by both the Claude releases.html prompt
+# (for inline credits) and the release-notes file (for the trailing
+# Contributors section).
+PREV_TAG=$(git describe --tags --abbrev=0 HEAD 2>/dev/null || true)
+CONTRIBUTORS_FILE=$(mktemp)
+SELF_USER=$(gh api user --jq .login 2>/dev/null || echo "")
+if [ -n "$PREV_TAG" ]; then
+  for pr_num in $(git log --pretty=format:'%s' "${PREV_TAG}..HEAD" | grep -oE '#[0-9]+' | tr -d '#' | sort -u); do
+    pr_author=$(gh pr view "$pr_num" --json author --jq '.author.login' 2>/dev/null || true)
+    if [ -n "$pr_author" ] && [ "$pr_author" != "$SELF_USER" ]; then
+      echo "#${pr_num} @${pr_author}" >> "$CONTRIBUTORS_FILE"
+    fi
+  done
+fi
+if [ -s "$CONTRIBUTORS_FILE" ]; then
+  ok "External contributors: $(awk '{print $2}' "$CONTRIBUTORS_FILE" | sort -u | paste -sd ' ' -)"
+else
+  echo "  (no external contributors this release)"
+fi
+
 # ---- Generate release notes for site/public/releases.html ----
 step "Generating release notes with Claude"
-PREV_TAG=$(git describe --tags --abbrev=0 HEAD 2>/dev/null || true)
 if [ -z "$PREV_TAG" ]; then
   CHANGES=$(git log --pretty=format:'- %s' HEAD)
 else
@@ -171,9 +234,11 @@ claude -p "Add a release entry for ${TAG} (released ${RELEASE_DATE}) to site/pub
 
 The raw commit messages since the last release are in ${CHANGES_FILE} — read that file.
 
+External contributors for this release are in ${CONTRIBUTORS_FILE} — read that file too. Each line is '#NN @login' for a PR authored by someone other than the release maintainer. If the file is empty or missing, there are no external contributors and you should skip the credit instructions below.
+
 Read site/public/releases.html to understand the existing HTML structure and writing style,
 then insert the new entry at the top of the releases list (right after the <!-- Releases -->
-div opening, before the first existing release section).
+div opening, before the first existing release section). See the v2.9.3 entry for the canonical inline-credit and trailing-thanks pattern.
 
 Rules:
 - Match the exact HTML structure, CSS classes, and formatting of existing entries.
@@ -185,6 +250,8 @@ Rules:
 - A short 1-2 sentence headline summary in the <p> tag after the download link.
 - Date format: \"${RELEASE_DATE}\".
 - Download link points to: https://github.com/frenchie4111/harness/releases/tag/${TAG}
+- For any <li> whose change corresponds to a PR listed in the contributors file, append an inline credit at the end of the <li>: <em class=\"text-neutral-500\">(thanks <a href=\"https://github.com/LOGIN\" class=\"text-amber-400/80 hover:text-amber-300\">@LOGIN</a>, <a href=\"https://github.com/frenchie4111/harness/pull/NN\" class=\"text-amber-400/80 hover:text-amber-300\">#NN</a>)</em>. Match #NN to the PR number embedded in the original commit message.
+- If the contributors file has any entries, end the .note-body div with a trailing <p class=\"text-neutral-400 text-sm mt-6 leading-relaxed\"> that reads 'Huge thanks to @user1, @user2, and @userN for their contributions to this release.' — each @user wrapped in <a href=\"https://github.com/LOGIN\" class=\"text-amber-400/80 hover:text-amber-300\">@LOGIN</a>, ordered alphabetically, with Oxford-comma 'and' formatting.
 - Do NOT modify any existing release entries. Only add the new one." \
   --allowedTools Read,Edit --model sonnet \
   || warn "Claude failed to update release notes — continuing anyway"
@@ -197,69 +264,38 @@ else
   warn "Claude did not modify site/public/releases.html — continuing anyway"
 fi
 
-# ---- Commit version bump + release notes together ----
-git add package.json package-lock.json README.md site/public/releases.html
-git commit -m "Release v${VERSION}"
-ok "Committed version bump, download links, and release notes"
+# ---- Write release-notes/v<ver>.md ----
+# This file is committed alongside the version bump and read by
+# release.yml's create-release job as the GitHub Release body. Keeping
+# it as a committed file (rather than passing it through tag
+# annotations or a workflow_dispatch input) keeps the workflow trivially
+# simple — it just `--notes-file release-notes/${TAG}.md` — and gives
+# us an audit trail of every release's notes inside the repo.
+step "Writing ${RELEASE_NOTES_FILE}"
+mkdir -p release-notes
 
-# ---- Cross-arch claude binary ----
-# Bundled @anthropic-ai/claude-code ships per-arch native binaries via
-# optionalDependencies. npm install only pulls the host-arch one, so the
-# x64 dmg would otherwise ship without a claude binary on this arm64 host.
-# Force-install the missing arch (no save → package-lock untouched, next
-# plain `npm install` prunes it). electron-builder doesn't filter by the
-# subpackage's os/cpu, so both binaries land in both dmgs — accepted as
-# bloat for now (each dmg gets both binaries; switch to per-arch builder
-# passes if dmg size becomes a concern).
-step "Installing x64 mac claude binary for cross-arch dmg"
-CLAUDE_VERSION=$(node -e "console.log(require('./package.json').dependencies['@anthropic-ai/claude-code'])")
-npm install --no-save --ignore-scripts --legacy-peer-deps --force "@anthropic-ai/claude-code-darwin-x64@${CLAUDE_VERSION}" --silent
-ok "Installed @anthropic-ai/claude-code-darwin-x64@${CLAUDE_VERSION}"
-
-# ---- Build / sign / notarize ----
-step "Building, signing, and notarizing (this takes several minutes)"
-rm -rf release
-npm run dist:mac
-ok "Build complete"
-
-# Sanity check the artifacts exist
-DMG_ARM64="release/Harness-${VERSION}-arm64.dmg"
-DMG_X64="release/Harness-${VERSION}.dmg"
-ZIP_ARM64="release/Harness-${VERSION}-arm64-mac.zip"
-ZIP_X64="release/Harness-${VERSION}-mac.zip"
-LATEST_YML="release/latest-mac.yml"
-
-for f in "$DMG_ARM64" "$DMG_X64" "$ZIP_ARM64" "$ZIP_X64" "$LATEST_YML"; do
-  if [ ! -f "$f" ]; then
-    fail "Missing build artifact: $f"
-  fi
-done
-ok "All artifacts present"
-
-# ---- Tag and push ----
-step "Tagging and pushing"
-git tag "$TAG"
-git push origin main
-git push origin "$TAG"
-ok "Pushed main and $TAG"
-
-# ---- Generate release notes ----
-step "Generating release notes"
-PREV_TAG=$(git describe --tags --abbrev=0 "$TAG^" 2>/dev/null || true)
-if [ -z "$PREV_TAG" ]; then
-  warn "No previous tag found, using full history"
-  CHANGES=$(git log --pretty=format:'- %s' "$TAG")
-else
-  echo "Comparing $PREV_TAG..$TAG"
-  CHANGES=$(git log --pretty=format:'- %s' "${PREV_TAG}..${TAG}" | grep -v "^- Co-Authored-By:" || true)
+CONTRIBUTORS_SECTION=""
+if [ -s "$CONTRIBUTORS_FILE" ]; then
+  USERS_FORMATTED=$(awk '{print $2}' "$CONTRIBUTORS_FILE" | sort -u | awk '
+    { users[NR] = $0 }
+    END {
+      if (NR == 1) print users[1]
+      else if (NR == 2) print users[1] " and " users[2]
+      else {
+        out = ""
+        for (i = 1; i < NR; i++) out = out users[i] ", "
+        print out "and " users[NR]
+      }
+    }
+  ')
+  CONTRIBUTORS_SECTION=$(printf '\n### Contributors\n\nHuge thanks to %s for their contributions to this release.\n' "$USERS_FORMATTED")
 fi
 
-NOTES_FILE=$(mktemp)
-cat > "$NOTES_FILE" <<EOF
+cat > "$RELEASE_NOTES_FILE" <<EOF
 ## Harness ${TAG}
 
 ### Changes
-${CHANGES}
+${CHANGES}${CONTRIBUTORS_SECTION}
 
 ### Installing
 
@@ -269,26 +305,27 @@ ${CHANGES}
 Drag \`Harness.app\` to Applications, then launch it. Existing installs will auto-update.
 EOF
 
-ok "Release notes generated"
+rm -f "$CONTRIBUTORS_FILE"
+ok "Release notes written to ${RELEASE_NOTES_FILE}"
 
-# ---- Create GitHub release ----
-step "Creating GitHub release"
-gh release create "$TAG" \
-  "$DMG_ARM64" \
-  "$DMG_X64" \
-  "$ZIP_ARM64" \
-  "$ZIP_X64" \
-  "$LATEST_YML" \
-  release/Harness-${VERSION}-arm64.dmg.blockmap \
-  release/Harness-${VERSION}.dmg.blockmap \
-  release/Harness-${VERSION}-arm64-mac.zip.blockmap \
-  release/Harness-${VERSION}-mac.zip.blockmap \
-  --title "Harness ${TAG}" \
-  --notes-file "$NOTES_FILE"
+# ---- Commit version bump + release notes ----
+step "Committing release prep"
+git add package.json package-lock.json README.md site/public/releases.html "$RELEASE_NOTES_FILE"
+git commit -m "Release v${VERSION}"
+COMMITTED=1
+ok "Committed version bump, download links, releases.html entry, and release-notes file"
 
-rm -f "$NOTES_FILE"
+# ---- Tag and push ----
+# After this point release.yml takes over. If a build job fails, see
+# the recovery procedure in the header comment.
+step "Tagging and pushing"
+git tag "$TAG"
+git push origin main
+git push origin "$TAG"
+ok "Pushed main and $TAG"
 
-step "Done"
-RELEASE_URL=$(gh release view "$TAG" --json url --jq .url)
-ok "Released ${TAG}"
-echo "  ${RELEASE_URL}"
+step "Done — release.yml is now building"
+echo "  Watch the workflow at:"
+echo "    https://github.com/frenchie4111/harness/actions/workflows/release.yml"
+echo "  The GitHub release will appear at:"
+echo "    https://github.com/frenchie4111/harness/releases/tag/${TAG}"

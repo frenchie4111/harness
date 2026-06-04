@@ -1,19 +1,23 @@
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import { RefreshCw, ArrowUp } from 'lucide-react'
 import type { BranchCommit } from '../types'
 import { Tooltip } from './Tooltip'
 import { RightPanel } from './RightPanel'
+import { CommitInfoModal } from './CommitInfoModal'
 import { useWatchedQuery } from '../hooks/useWatchedQuery'
 import { useBackend } from '../backend'
 
 interface BranchCommitsPanelProps {
   worktreePath: string | null
-  onOpenCommitReview?: (hash: string, shortHash: string, subject: string) => void
 }
 
-export function BranchCommitsPanel({ worktreePath, onOpenCommitReview }: BranchCommitsPanelProps): JSX.Element | null {
+export function BranchCommitsPanel({ worktreePath }: BranchCommitsPanelProps): JSX.Element | null {
   const backend = useBackend()
   const fetcher = useCallback((path: string) => backend.getBranchCommits(path), [backend])
+  // Commit-info popover (reuses the terminal's CommitInfoModal). Tracks the
+  // selected commit by index so the up/down controls can walk the list; x is
+  // the sidebar's left edge (the popover flies out from there), y the row.
+  const [popover, setPopover] = useState<{ index: number; x: number; y: number } | null>(null)
 
   const { data, loading, refresh } = useWatchedQuery<BranchCommit[]>({
     worktreePath,
@@ -29,7 +33,7 @@ export function BranchCommitsPanel({ worktreePath, onOpenCommitReview }: BranchC
   const actions = (
     <>
       {commits.length > 0 && (
-        <span className="text-[10px] text-faint">{commits.length}</span>
+        <span className="text-xs text-faint">{commits.length}</span>
       )}
       <Tooltip label="Refresh">
         <button
@@ -39,13 +43,14 @@ export function BranchCommitsPanel({ worktreePath, onOpenCommitReview }: BranchC
           }}
           className="text-faint hover:text-fg transition-colors cursor-pointer"
         >
-          <RefreshCw size={12} />
+          <RefreshCw className="icon-xs" />
         </button>
       </Tooltip>
     </>
   )
 
   return (
+    <>
     <RightPanel id="commits" title="Commits" actions={actions} maxHeight="max-h-56">
       <div className="flex-1 overflow-y-auto min-h-0 text-xs py-1.5">
         {commits.length === 0 && hasLoaded && (
@@ -61,8 +66,19 @@ export function BranchCommitsPanel({ worktreePath, onOpenCommitReview }: BranchC
           return (
             <Tooltip key={c.hash} label={`${c.shortHash} · ${c.author} · ${c.relativeDate} · ${tipSuffix}`} side="left">
               <div
-                onClick={() => onOpenCommitReview?.(c.hash, c.shortHash, c.subject)}
                 className="group relative flex items-center gap-2.5 pl-4 pr-3 py-1.5 hover:bg-panel-raised cursor-pointer"
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData('text/plain', c.hash)
+                  e.dataTransfer.effectAllowed = 'copy'
+                }}
+                onClick={(e) => {
+                  const sidebar = (e.currentTarget as HTMLElement).closest(
+                    '[data-right-sidebar]'
+                  ) as HTMLElement | null
+                  const x = sidebar ? sidebar.getBoundingClientRect().left : e.clientX
+                  setPopover({ index: i, x, y: e.clientY })
+                }}
               >
                 {/* Tree line + dot */}
                 <div className="relative shrink-0 w-3 self-stretch flex justify-center">
@@ -72,10 +88,10 @@ export function BranchCommitsPanel({ worktreePath, onOpenCommitReview }: BranchC
                   />
                   <div className={`relative z-10 self-center w-2 h-2 rounded-full transition-colors ${dotClass}`} />
                 </div>
-                <span className={`shrink-0 font-mono text-[10px] ${c.pushed ? 'text-faint' : 'text-warning'}`}>{c.shortHash}</span>
+                <span className={`shrink-0 font-mono text-xs ${c.pushed ? 'text-faint' : 'text-warning'}`}>{c.shortHash}</span>
                 <span className={`truncate min-w-0 flex-1 ${c.pushed ? 'text-dim' : 'text-fg'}`}>{c.subject}</span>
                 {!c.pushed && (
-                  <ArrowUp size={10} className="shrink-0 text-warning" />
+                  <ArrowUp className="icon-2xs shrink-0 text-warning" />
                 )}
               </div>
             </Tooltip>
@@ -83,5 +99,25 @@ export function BranchCommitsPanel({ worktreePath, onOpenCommitReview }: BranchC
         })}
       </div>
     </RightPanel>
+    {popover && commits[popover.index] && (
+      <CommitInfoModal
+        worktreePath={worktreePath}
+        sha={commits[popover.index].hash}
+        anchor={{ x: popover.x, y: popover.y }}
+        placement="right-edge"
+        nav={{
+          onPrev: () =>
+            setPopover((p) => (p && p.index > 0 ? { ...p, index: p.index - 1 } : p)),
+          onNext: () =>
+            setPopover((p) =>
+              p && p.index < commits.length - 1 ? { ...p, index: p.index + 1 } : p
+            ),
+          hasPrev: popover.index > 0,
+          hasNext: popover.index < commits.length - 1
+        }}
+        onClose={() => setPopover(null)}
+      />
+    )}
+    </>
   )
 }

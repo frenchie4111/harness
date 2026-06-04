@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
-import { X, SquareTerminal, Sparkles, Code2, SplitSquareHorizontal, SplitSquareVertical, Loader2, PanelRightOpen, Globe, Users } from 'lucide-react'
+import { X, SquareTerminal, Sparkles, Loader2, Globe, Users, ChevronLeft, ChevronRight } from 'lucide-react'
 import {
   SortableContext,
   horizontalListSortingStrategy,
@@ -11,8 +11,10 @@ import type { WorkspacePane, TerminalTab, PtyStatus, AgentKind } from '../types'
 import { AGENT_REGISTRY, agentDisplayName } from '../../shared/agent-registry'
 import { Tooltip } from './Tooltip'
 import { repoNameColor } from './RepoIcon'
-import { getClientId, useTerminalSession } from '../store'
+import { AppTitleSegment } from './AppTitleSegment'
+import { getClientId, useTerminalProgress, useTerminalSession } from '../store'
 import { useBackend } from '../backend'
+import { useReviewProgress } from '../review-progress'
 
 /** Chip shown in the tab bar when other clients are attached to the
  *  active terminal. Click-through is intentional — taking/releasing
@@ -43,7 +45,7 @@ function SpectatorChip({ terminalId }: { terminalId: string }): JSX.Element | nu
   return (
     <Tooltip label={tip}>
       <div className="no-drag shrink-0 flex items-center gap-1 px-2 h-full text-xs text-dim">
-        <Users size={12} />
+        <Users className="icon-xs" />
         <span>{others.size}</span>
       </div>
     </Tooltip>
@@ -68,26 +70,37 @@ interface TerminalPanelProps {
   onAddTab: () => void
   onAddAgentTab: (agentKind?: AgentKind) => void
   onAddBrowserTab: () => void
-  /** Optional: when defined, alt-clicking the Sparkles button opens a
-   *  json-claude tab (experimental, gated by settings.jsonModeClaudeTabs). */
+  /** Shift-clicking the Sparkles button opens the non-default Claude
+   *  interface (Terminal if Chat is the default, Chat if Terminal is). */
   onAddJsonClaudeTab?: () => void
-  /** When the JSON-mode flag is on, controls which tab type is the
-   *  *default* (plain click) vs. the *modifier* (shift-click). Lets a
-   *  user who lives in JSON mode flip the button so plain click spawns
-   *  json-claude and shift forces the xterm TUI. Undefined when
-   *  `onAddJsonClaudeTab` is undefined (json-mode flag off). */
+  /** Controls which Claude interface plain-click on Sparkles spawns vs.
+   *  what shift-click flips to. Values are unchanged internal identifiers
+   *  — UI labels them "Terminal" and "Chat". */
   defaultClaudeTabType?: 'xterm' | 'json'
-  /** Optional: convert a tab between xterm Claude and JSON-mode Claude
-   *  in place. Only relevant when the json-mode feature flag is on; the
-   *  parent omits it otherwise so the per-tab right-click menu hides. */
+  /** Convert a Claude tab between Terminal and Chat in place. */
   onConvertTabType?: (tabId: string, newType: 'agent' | 'json-claude') => void
   defaultAgent: AgentKind
   onSleepTab: (tabId: string) => void
   onCloseTab: (tabId: string) => void
-  onSplitRight: () => void
-  onSplitDown: () => void
-  showExpandRightColumn: boolean
-  onShowRightColumn: () => void
+  /** Leading padding on the tab bar to clear the macOS traffic lights when
+   *  no sidebar sits to the left of this pane. Set per-leaf by WorkspaceView
+   *  to the leftmost leaf only. */
+  topBarLeadingPx?: number
+  /** Negative left margin on the tab bar so it visually extends across the
+   *  empty space above the left sidebar (which sits 40px down from the top).
+   *  Set per-leaf by WorkspaceView to the topmost-left leaf only. */
+  topBarLeadingExtendPx?: number
+  /** Negative right margin on the tab bar so it visually extends across the
+   *  empty space above the right column (which sits 40px down from the top).
+   *  Set per-leaf by WorkspaceView to the topmost-right leaf only. */
+  topBarTrailingExtendPx?: number
+  /** Render the "Harness" app title at the start of the tab bar. Set true
+   *  on the top-left leaf only so the title appears once per workspace. */
+  showAppTitle?: boolean
+  /** Reports the window-x of the "Harness" segment's right edge (the edge
+   *  just before the repo/branch label). The host uses it to cap the sidebar
+   *  width so the sidebar lines up with that edge. */
+  onTitleBlockEdge?: (px: number) => void
 }
 
 const TAB_STATUS_DOT: Record<PtyStatus, string> = {
@@ -105,18 +118,55 @@ interface SortableTabProps {
   showClose: boolean
   onSelect: () => void
   onClose: () => void
-  /** Optional: when provided, right-clicking the tab opens a small menu
-   *  to convert between xterm Claude and JSON-mode Claude. Only passed
-   *  in when the source tab is convertible (Claude agent or json-claude)
-   *  and the JSON-mode feature flag is on. */
+  /** When provided, right-clicking the tab opens a small menu to convert
+   *  between Terminal and Chat. Passed in only for Claude tabs (agent
+   *  with agentKind=claude, or json-claude). */
   onConvertTabType?: (newType: 'agent' | 'json-claude') => void
   /** Optional: when provided AND the tab is an awake json-claude tab,
    *  the right-click menu shows a "Sleep" item. Sleeping tears down
    *  the subprocess but leaves the tab record intact. */
   onSleepTab?: () => void
+  /** Commit a renamed label. Empty/whitespace clears the override. */
+  onRename: (label: string) => void
 }
 
-function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect, onClose, onConvertTabType, onSleepTab }: SortableTabProps): JSX.Element {
+// Interactive session tabs (Claude/agent terminals, raw shells, chat) and
+// browser tabs carry a user-meaningful name. The remaining content tabs
+// (diff/file/review) are driven by what they're showing, so renaming them
+// is disallowed.
+const RENAMEABLE_TAB_TYPES = new Set<TerminalTab['type']>(['agent', 'shell', 'json-claude', 'browser'])
+
+const PROGRESS_COLOR: Record<1 | 2 | 3 | 4, string> = {
+  1: 'bg-success',
+  2: 'bg-danger',
+  3: 'bg-fg-bright',
+  4: 'bg-warning'
+}
+
+function TabProgressBar({ terminalId }: { terminalId: string }): JSX.Element | null {
+  const progress = useTerminalProgress(terminalId)
+  if (!progress || progress.state === 0) return null
+  const color = PROGRESS_COLOR[progress.state]
+  // State 3 = indeterminate: full-width bar with a pulse animation.
+  if (progress.state === 3) {
+    return (
+      <div className="absolute left-0 right-0 bottom-0 h-[2px] pointer-events-none">
+        <div className={`h-full w-full ${color} animate-pulse`} />
+      </div>
+    )
+  }
+  const pct = Math.max(0, Math.min(100, progress.value))
+  return (
+    <div className="absolute left-0 right-0 bottom-0 h-[2px] pointer-events-none">
+      <div
+        className={`h-full ${color} transition-[width] duration-150`}
+        style={{ width: `${pct}%` }}
+      />
+    </div>
+  )
+}
+
+function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect, onClose, onConvertTabType, onSleepTab, onRename }: SortableTabProps): JSX.Element {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: tab.id
   })
@@ -149,41 +199,141 @@ function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect
       window.removeEventListener('blur', close)
     }
   }, [menu])
+
+  const canRename = RENAMEABLE_TAB_TYPES.has(tab.type)
+  const canSleep = !!onSleepTab && tab.type === 'json-claude' && (tab.mode ?? 'awake') === 'awake'
+  const canConvert = !!onConvertTabType && (tab.type === 'agent' || tab.type === 'json-claude')
+  const hasMenuItems = canRename || canSleep || canConvert
+  const reviewProgress = useReviewProgress(tab.type === 'review' ? tab.id : '')
+  const baseLabel = tab.customLabel ?? tab.label
+  const displayLabel =
+    tab.type === 'review' && reviewProgress && !tab.customLabel
+      ? `${tab.label} (${reviewProgress.reviewed}/${reviewProgress.total})`
+      : baseLabel
+  const [editing, setEditing] = useState(false)
+  const [editValue, setEditValue] = useState(displayLabel)
+  const inputRef = useRef<HTMLInputElement | null>(null)
+  const startEditing = useCallback(() => {
+    if (!canRename) return
+    setEditValue(displayLabel)
+    setEditing(true)
+  }, [canRename, displayLabel])
+  useEffect(() => {
+    if (editing) {
+      const el = inputRef.current
+      if (el) {
+        el.focus()
+        el.select()
+      }
+    }
+  }, [editing])
+  const commitEdit = useCallback(() => {
+    if (!editing) return
+    setEditing(false)
+    const next = editValue.trim()
+    const current = tab.customLabel ?? ''
+    if (next === current) return
+    // Typing the auto-label exactly is treated as clearing — otherwise we'd
+    // pin a customLabel that happens to match the default and look the same
+    // until the underlying label changes.
+    if (next === tab.label) {
+      if (current !== '') onRename('')
+      return
+    }
+    onRename(next)
+  }, [editing, editValue, tab.customLabel, tab.label, onRename])
+  const cancelEdit = useCallback(() => {
+    setEditing(false)
+    setEditValue(displayLabel)
+  }, [displayLabel])
+  // Cmd+L hotkey path: App-level handler dispatches a window CustomEvent
+  // naming the tabId; the matching SortableTab self-activates edit mode.
+  // A custom event keeps the editing state local to this component
+  // instead of threading another prop down through WorkspaceView.
+  useEffect(() => {
+    const handler = (e: Event): void => {
+      const ce = e as CustomEvent<{ tabId?: string }>
+      if (ce.detail?.tabId === tab.id) startEditing()
+    }
+    window.addEventListener('harness:rename-tab', handler)
+    return () => window.removeEventListener('harness:rename-tab', handler)
+  }, [tab.id, startEditing])
   return (
     <div
       ref={setRefs}
       style={style}
       {...attributes}
       {...listeners}
-      className={`no-drag shrink-0 flex items-center gap-1.5 px-3 h-full text-xs cursor-pointer border-b-2 whitespace-nowrap transition-colors ${
+      className={`no-drag relative shrink-0 flex items-center gap-1.5 px-3 h-full text-xs cursor-pointer border-b-2 border-l border-l-border [&:first-child]:border-l-0 whitespace-nowrap transition-colors ${
         isActive
-          ? 'border-muted text-fg-bright'
-          : 'border-transparent text-dim hover:text-fg'
+          ? 'border-b-muted text-fg-bright'
+          : 'border-b-transparent text-dim hover:text-fg'
       }`}
-      onClick={onSelect}
-      onContextMenu={
-        onConvertTabType || onSleepTab
-          ? (e) => {
-              e.preventDefault()
-              setMenu({ x: e.clientX, y: e.clientY })
-            }
-          : undefined
-      }
+      onClick={(e) => {
+        // dnd-kit's pointer sensor swallows the native dblclick event, so
+        // detect double-clicks via MouseEvent.detail instead.
+        if (e.detail >= 2) {
+          e.preventDefault()
+          e.stopPropagation()
+          startEditing()
+          return
+        }
+        onSelect()
+      }}
+      onMouseDown={(e) => {
+        if (e.button === 1) e.preventDefault()
+      }}
+      onAuxClick={(e) => {
+        if (e.button === 1 && showClose) {
+          e.preventDefault()
+          e.stopPropagation()
+          onClose()
+        }
+      }}
+      onContextMenu={(e) => {
+        e.preventDefault()
+        if (!hasMenuItems) return
+        setMenu({ x: e.clientX, y: e.clientY })
+      }}
     >
       {tab.type === 'shell' ? (
         shellActivity?.active ? (
           <Loader2
-            size={10}
-            className="animate-spin text-fg-bright"
-            aria-label={`Running: ${shellActivity.processName || '?'}`}
-          />
+            className="icon-2xs animate-spin text-fg-bright"
+            aria-label={`Running: ${shellActivity.processName || '?'}`} />
         ) : (
           <span className="w-1.5 h-1.5 rounded-full bg-faint" />
         )
-      ) : tab.type !== 'diff' && tab.type !== 'file' ? (
+      ) : tab.type !== 'diff' && tab.type !== 'file' && tab.type !== 'review' ? (
         <span className={`w-1.5 h-1.5 rounded-full ${TAB_STATUS_DOT[status]}`} />
       ) : null}
-      <span>{tab.label}</span>
+      {editing ? (
+        <input
+          ref={inputRef}
+          value={editValue}
+          onChange={(e) => setEditValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              commitEdit()
+            } else if (e.key === 'Escape') {
+              e.preventDefault()
+              cancelEdit()
+            }
+            e.stopPropagation()
+          }}
+          onBlur={commitEdit}
+          onClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => e.stopPropagation()}
+          className="bg-transparent outline-none border-b border-muted text-fg-bright px-0 w-24 min-w-0"
+          aria-label="Rename tab"
+        />
+      ) : (
+        <span>{displayLabel}</span>
+      )}
+      <TabProgressBar terminalId={tab.id} />
       {showClose && (
         <Tooltip label="Close tab" action="closeTab">
           <button
@@ -194,17 +344,41 @@ function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect
             }}
             className="ml-1 text-faint hover:text-fg transition-colors"
           >
-            <X size={10} />
+            <X className="icon-2xs" />
           </button>
         </Tooltip>
       )}
-      {menu && (onConvertTabType || onSleepTab) && (
+      {menu && (
         <div
           className="fixed z-50 bg-panel-raised border border-border-strong rounded shadow-lg text-xs py-1 min-w-[12rem]"
           style={{ left: menu.x, top: menu.y }}
           onMouseDown={(e) => e.stopPropagation()}
         >
-          {onSleepTab && tab.type === 'json-claude' && (tab.mode ?? 'awake') === 'awake' && (
+          {canRename && (
+            <button
+              className="block w-full text-left px-3 py-1.5 hover:bg-panel text-fg-bright cursor-pointer"
+              onClick={(e) => {
+                e.stopPropagation()
+                setMenu(null)
+                startEditing()
+              }}
+            >
+              Rename Tab
+            </button>
+          )}
+          {canRename && tab.customLabel !== undefined && (
+            <button
+              className="block w-full text-left px-3 py-1.5 hover:bg-panel text-fg-bright cursor-pointer"
+              onClick={(e) => {
+                e.stopPropagation()
+                setMenu(null)
+                onRename('')
+              }}
+            >
+              Reset Name
+            </button>
+          )}
+          {canSleep && (
             <button
               className="block w-full text-left px-3 py-1.5 hover:bg-panel text-fg-bright cursor-pointer"
               onClick={(e) => {
@@ -225,7 +399,7 @@ function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect
                 onConvertTabType('json-claude')
               }}
             >
-              Convert to JSON-mode chat
+              Switch to Chat mode
             </button>
           )}
           {onConvertTabType && tab.type === 'json-claude' && (
@@ -237,7 +411,7 @@ function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect
                 onConvertTabType('agent')
               }}
             >
-              Convert to terminal mode
+              Switch to Terminal mode
             </button>
           )}
         </div>
@@ -265,14 +439,13 @@ export function TerminalPanel({
   defaultAgent,
   onSleepTab,
   onCloseTab,
-  onSplitRight,
-  onSplitDown,
-  showExpandRightColumn,
-  onShowRightColumn
+  topBarLeadingPx = 0,
+  topBarLeadingExtendPx = 0,
+  topBarTrailingExtendPx = 0,
+  showAppTitle = false,
+  onTitleBlockEdge
 }: TerminalPanelProps): JSX.Element {
   const backend = useBackend()
-  // Droppable target for the pane itself — lets users drop a tab onto an
-  // empty pane or past the last tab.
   const { setNodeRef: setPaneDropRef } = useDroppable({ id: pane.id })
   const slotHostRef = useRef<HTMLDivElement | null>(null)
 
@@ -285,16 +458,54 @@ export function TerminalPanel({
   }, [pane.id, registerSlot])
 
   const activeTab = pane.tabs.find((t) => t.id === pane.activeTabId)
-  // Spectator chip only makes sense for xterm-backed tabs. JSON-mode
-  // agent tabs (when they land) re-render per client, so the controller/
-  // spectator concept doesn't apply.
+  // Spectator chip only makes sense for terminal-backed tabs. Chat tabs
+  // re-render per client, so the controller/spectator concept doesn't
+  // apply.
   const showSpectatorChip =
     !!activeTab && (activeTab.type === 'agent' || activeTab.type === 'shell')
 
+  const tabScrollRef = useRef<HTMLDivElement | null>(null)
+  const [canScrollLeft, setCanScrollLeft] = useState(false)
+  const [canScrollRight, setCanScrollRight] = useState(false)
+  const updateTabScroll = useCallback(() => {
+    const el = tabScrollRef.current
+    if (!el) return
+    setCanScrollLeft(el.scrollLeft > 1)
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 1)
+  }, [])
+  useEffect(() => {
+    updateTabScroll()
+  }, [pane.tabs.length, updateTabScroll])
+  useEffect(() => {
+    const el = tabScrollRef.current
+    if (!el) return
+    const ro = new ResizeObserver(updateTabScroll)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [updateTabScroll])
+  const scrollTabsBy = useCallback((dx: number) => {
+    tabScrollRef.current?.scrollBy({ left: dx, behavior: 'smooth' })
+  }, [])
+
   return (
     <div ref={setPaneDropRef} className="flex-1 flex flex-col min-w-0 bg-app">
-      {/* Tab bar */}
-      <div className="drag-region flex items-center border-b border-border bg-panel h-10 shrink-0">
+      {/* Tab bar — marginLeft extends the bar to the window's left edge;
+          paddingLeft is the absolute distance from that edge to first
+          content (set to clear the macOS traffic lights), so the title
+          stays pinned regardless of sidebar collapse state. */}
+      <div
+        className="drag-region flex items-center border-b border-border bg-panel h-10 shrink-0 relative z-10"
+        style={
+          topBarLeadingPx > 0 || topBarLeadingExtendPx > 0 || topBarTrailingExtendPx > 0
+            ? {
+                paddingLeft: topBarLeadingPx > 0 ? topBarLeadingPx : undefined,
+                marginLeft: topBarLeadingExtendPx > 0 ? -topBarLeadingExtendPx : undefined,
+                marginRight: topBarTrailingExtendPx > 0 ? -topBarTrailingExtendPx : undefined
+              }
+            : undefined
+        }
+      >
+        {showAppTitle && <AppTitleSegment onEdge={onTitleBlockEdge} />}
         {repoLabel && (
           <div
             className="no-drag shrink-0 flex items-baseline gap-1.5 px-3 h-full text-xs whitespace-nowrap"
@@ -306,7 +517,86 @@ export function TerminalPanel({
             <span className="text-fg-bright font-medium">{branch}</span>
           </div>
         )}
-        <div className="flex items-center h-full overflow-x-auto scrollbar-hidden pl-2 flex-1 min-w-0">
+        <div className="no-drag shrink-0 flex items-center h-full pl-2">
+          <Tooltip
+            label={(() => {
+              const chatIsDefault = !!onAddJsonClaudeTab && defaultClaudeTabType === 'json'
+              const plain = chatIsDefault
+                ? 'New Chat tab'
+                : `New ${agentDisplayName(defaultAgent)} tab`
+              const altPart =
+                AGENT_REGISTRY.length > 1
+                  ? ` · ⌥-click for ${agentDisplayName(AGENT_REGISTRY.find((a) => a.kind !== defaultAgent)?.kind)}`
+                  : ''
+              const shiftPart = onAddJsonClaudeTab
+                ? chatIsDefault
+                  ? ` · ⇧-click for Terminal mode`
+                  : ' · ⇧-click for Chat mode'
+                : ''
+              return plain + altPart + shiftPart
+            })()}
+          >
+            <button
+              onClick={(e) => {
+                // Modifier precedence:
+                //   alt → other registered agent (Codex when default is
+                //         Claude, vice versa) — independent of Chat/Terminal.
+                //   shift → "the other Claude interface" relative to the
+                //         user's defaultClaudeTabType setting.
+                //   plain → the default Claude interface.
+                const chatIsDefault =
+                  !!onAddJsonClaudeTab && defaultClaudeTabType === 'json'
+                if (e.altKey && AGENT_REGISTRY.length > 1) {
+                  const other = AGENT_REGISTRY.find((a) => a.kind !== defaultAgent)
+                  onAddAgentTab(other?.kind)
+                  return
+                }
+                if (e.shiftKey && onAddJsonClaudeTab) {
+                  if (chatIsDefault) onAddAgentTab('claude')
+                  else onAddJsonClaudeTab()
+                  return
+                }
+                if (chatIsDefault) onAddJsonClaudeTab!()
+                else onAddAgentTab(defaultAgent)
+              }}
+              className="no-drag shrink-0 px-2 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"
+            >
+              <Sparkles className="icon-xs" />
+            </button>
+          </Tooltip>
+          <Tooltip label="New shell tab" action="newShellTab">
+            <button
+              onClick={onAddTab}
+              className="no-drag shrink-0 px-2 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"
+            >
+              <SquareTerminal className="icon-xs" />
+            </button>
+          </Tooltip>
+          <Tooltip label="New browser tab">
+            <button
+              onClick={onAddBrowserTab}
+              className="no-drag shrink-0 px-2 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"
+            >
+              <Globe className="icon-xs" />
+            </button>
+          </Tooltip>
+        </div>
+        <div className="shrink-0 w-px h-4 bg-border-strong mx-1" />
+        {canScrollLeft && (
+          <button
+            type="button"
+            onClick={() => scrollTabsBy(-200)}
+            aria-label="Scroll tabs left"
+            className="no-drag shrink-0 px-1 h-full text-faint hover:text-fg transition-colors cursor-pointer"
+          >
+            <ChevronLeft className="icon-sm" />
+          </button>
+        )}
+        <div
+          ref={tabScrollRef}
+          onScroll={updateTabScroll}
+          className="flex items-center h-full overflow-x-auto scrollbar-hidden flex-1 min-w-0"
+        >
           <SortableContext items={pane.tabs.map((t) => t.id)} strategy={horizontalListSortingStrategy}>
             {pane.tabs.map((tab) => {
               const isClaudeAgent = tab.type === 'agent' && tab.agentKind === 'claude'
@@ -330,108 +620,25 @@ export function TerminalPanel({
                   onSleepTab={
                     isJsonClaude ? () => onSleepTab(tab.id) : undefined
                   }
+                  onRename={(label) => {
+                    void backend.panesRenameTab(worktreePath, tab.id, label)
+                  }}
                 />
               )
             })}
           </SortableContext>
-          <Tooltip
-            label={(() => {
-              const jsonIsDefault = !!onAddJsonClaudeTab && defaultClaudeTabType === 'json'
-              const plain = jsonIsDefault
-                ? 'New Claude (JSON) tab'
-                : `New ${agentDisplayName(defaultAgent)} tab`
-              const altPart =
-                AGENT_REGISTRY.length > 1
-                  ? ` · ⌥-click for ${agentDisplayName(AGENT_REGISTRY.find((a) => a.kind !== defaultAgent)?.kind)}`
-                  : ''
-              const shiftPart = onAddJsonClaudeTab
-                ? jsonIsDefault
-                  ? ` · ⇧-click for ${agentDisplayName('claude')} (xterm)`
-                  : ' · ⇧-click for Claude (JSON, experimental)'
-                : ''
-              return plain + altPart + shiftPart
-            })()}
-          >
-            <button
-              onClick={(e) => {
-                // Modifier precedence:
-                //   alt → other registered agent (Codex when default is
-                //         Claude, vice versa) — independent of json/xterm.
-                //   shift → "the other Claude tab type" relative to the
-                //         user's defaultClaudeTabType setting.
-                //   plain → the default Claude tab type.
-                const jsonIsDefault =
-                  !!onAddJsonClaudeTab && defaultClaudeTabType === 'json'
-                if (e.altKey && AGENT_REGISTRY.length > 1) {
-                  const other = AGENT_REGISTRY.find((a) => a.kind !== defaultAgent)
-                  onAddAgentTab(other?.kind)
-                  return
-                }
-                if (e.shiftKey && onAddJsonClaudeTab) {
-                  if (jsonIsDefault) onAddAgentTab('claude')
-                  else onAddJsonClaudeTab()
-                  return
-                }
-                if (jsonIsDefault) onAddJsonClaudeTab!()
-                else onAddAgentTab(defaultAgent)
-              }}
-              className="no-drag shrink-0 px-2 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"
-            >
-              <Sparkles size={12} />
-            </button>
-          </Tooltip>
-          <Tooltip label="New shell tab" action="newShellTab">
-            <button
-              onClick={onAddTab}
-              className="no-drag shrink-0 px-2 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"
-            >
-              <SquareTerminal size={12} />
-            </button>
-          </Tooltip>
-          <Tooltip label="New browser tab">
-            <button
-              onClick={onAddBrowserTab}
-              className="no-drag shrink-0 px-2 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"
-            >
-              <Globe size={12} />
-            </button>
-          </Tooltip>
-          <Tooltip label="Split pane right" action="splitPaneRight">
-            <button
-              onClick={onSplitRight}
-              className="no-drag shrink-0 px-2 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"
-            >
-              <SplitSquareHorizontal size={12} />
-            </button>
-          </Tooltip>
-          <Tooltip label="Split pane down" action="splitPaneDown">
-            <button
-              onClick={onSplitDown}
-              className="no-drag shrink-0 px-2 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"
-            >
-              <SplitSquareVertical size={12} />
-            </button>
-          </Tooltip>
-          {showSpectatorChip && activeTab && <SpectatorChip terminalId={activeTab.id} />}
         </div>
-        <Tooltip label="Open worktree in editor" action="openInEditor" side="left">
+        {canScrollRight && (
           <button
-            onClick={() => backend.openInEditor(worktreePath)}
-            className="no-drag shrink-0 px-3 h-full text-faint hover:text-fg transition-colors cursor-pointer"
+            type="button"
+            onClick={() => scrollTabsBy(200)}
+            aria-label="Scroll tabs right"
+            className="no-drag shrink-0 px-1 h-full text-faint hover:text-fg transition-colors cursor-pointer"
           >
-            <Code2 size={13} />
+            <ChevronRight className="icon-sm" />
           </button>
-        </Tooltip>
-        {showExpandRightColumn && (
-          <Tooltip label="Show right column" action="toggleRightColumn" side="left">
-            <button
-              onClick={onShowRightColumn}
-              className="no-drag shrink-0 pr-3 h-full text-faint hover:text-fg transition-colors cursor-pointer"
-            >
-              <PanelRightOpen size={13} />
-            </button>
-          </Tooltip>
         )}
+        {showSpectatorChip && activeTab && <SpectatorChip terminalId={activeTab.id} />}
       </div>
 
       {/* Content slot host — WorkspaceView imperatively appends a stable

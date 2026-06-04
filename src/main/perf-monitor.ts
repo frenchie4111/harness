@@ -25,6 +25,14 @@ export class PerfMonitor {
   private ipcMessageCount = 0
   private ipcMessagesPerSec = 0
 
+  private githubApiCallCount = 0
+  private githubApiCallsPerSec = 0
+  // 60 one-minute buckets. Current write position rotates as wall-clock
+  // minutes elapse; sum across all 60 = calls in the last hour.
+  private githubApiCallsByMinute: number[] = new Array(60).fill(0)
+  private githubMinuteIndex = 0
+  private githubLastMinuteAt = 0
+
   private terminalBytes: Record<string, number> = {}
   private terminalBytesPerSec: Record<string, number> = {}
   private totalTerminalBytesPerSec = 0
@@ -49,6 +57,7 @@ export class PerfMonitor {
   start(store: Store, getActivePtyCount: () => number): void {
     this.activePtyCountFn = getActivePtyCount
     this.startTime = Date.now()
+    this.githubLastMinuteAt = Date.now()
 
     this.unsubscribe = store.subscribe((event) => {
       this.storeEventCount++
@@ -61,6 +70,7 @@ export class PerfMonitor {
     this.rateTimer = setInterval(() => {
       this.storeEventsPerSec = this.storeEventCount
       this.ipcMessagesPerSec = this.ipcMessageCount
+      this.githubApiCallsPerSec = this.githubApiCallCount
 
       let total = 0
       const tSnapshot: Record<string, number> = {}
@@ -76,6 +86,7 @@ export class PerfMonitor {
         t: Date.now(),
         storeEventsPerSec: this.storeEventsPerSec,
         ipcMessagesPerSec: this.ipcMessagesPerSec,
+        githubApiCallsPerSec: this.githubApiCallsPerSec,
         totalTerminalBytesPerSec: total,
         eventLoopLagMs: this.eventLoopLagMs,
         memoryRssMB: Math.round(mem.rss / 1024 / 1024),
@@ -87,6 +98,7 @@ export class PerfMonitor {
 
       this.storeEventCount = 0
       this.ipcMessageCount = 0
+      this.githubApiCallCount = 0
       this.terminalBytes = {}
       this.eventTypeCountsCurrent = {}
     }, 1000)
@@ -133,10 +145,11 @@ export class PerfMonitor {
       .slice(0, 5)
     perfLog(
       'snapshot',
-      `store=${this.storeEventsPerSec}/s ipc=${this.ipcMessagesPerSec}/s term=${formatBytes(this.totalTerminalBytesPerSec)}/s lag=${this.eventLoopLagMs}ms rss=${rssMB}MB ptys=${ptys}`,
+      `store=${this.storeEventsPerSec}/s ipc=${this.ipcMessagesPerSec}/s gh=${this.githubApiCallsPerSec}/s term=${formatBytes(this.totalTerminalBytesPerSec)}/s lag=${this.eventLoopLagMs}ms rss=${rssMB}MB ptys=${ptys}`,
       {
         storeEventsPerSec: this.storeEventsPerSec,
         ipcMessagesPerSec: this.ipcMessagesPerSec,
+        githubApiCallsPerSec: this.githubApiCallsPerSec,
         totalTerminalBytesPerSec: this.totalTerminalBytesPerSec,
         eventLoopLagMs: this.eventLoopLagMs,
         memoryRssMB: rssMB,
@@ -151,6 +164,32 @@ export class PerfMonitor {
     this.ipcMessageCount++
   }
 
+  recordGitHubApiCall(): void {
+    this.advanceGithubMinuteIfNeeded()
+    this.githubApiCallCount++
+    this.githubApiCallsByMinute[this.githubMinuteIndex]++
+  }
+
+  private advanceGithubMinuteIfNeeded(): void {
+    const now = Date.now()
+    const elapsed = now - this.githubLastMinuteAt
+    if (elapsed < 60_000) return
+    let minutesElapsed = Math.floor(elapsed / 60_000)
+    if (minutesElapsed > 60) minutesElapsed = 60
+    for (let i = 0; i < minutesElapsed; i++) {
+      this.githubMinuteIndex = (this.githubMinuteIndex + 1) % 60
+      this.githubApiCallsByMinute[this.githubMinuteIndex] = 0
+    }
+    this.githubLastMinuteAt = now - (elapsed % 60_000)
+  }
+
+  private getGithubApiCallsLastHour(): number {
+    this.advanceGithubMinuteIfNeeded()
+    let sum = 0
+    for (const c of this.githubApiCallsByMinute) sum += c
+    return sum
+  }
+
   recordTerminalBytes(id: string, byteCount: number): void {
     this.terminalBytes[id] = (this.terminalBytes[id] || 0) + byteCount
   }
@@ -160,6 +199,8 @@ export class PerfMonitor {
     return {
       storeEventsPerSec: this.storeEventsPerSec,
       ipcMessagesPerSec: this.ipcMessagesPerSec,
+      githubApiCallsPerSec: this.githubApiCallsPerSec,
+      githubApiCallsLastHour: this.getGithubApiCallsLastHour(),
       terminalBytesPerSec: { ...this.terminalBytesPerSec },
       totalTerminalBytesPerSec: this.totalTerminalBytesPerSec,
       activePtyCount: this.activePtyCountFn?.() ?? 0,

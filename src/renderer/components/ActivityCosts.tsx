@@ -235,7 +235,7 @@ export function ActivityCosts(): JSX.Element {
           className="w-9 h-9 rounded-xl brand-glow-amber shrink-0"
         />
         <div className="flex-1 min-w-0">
-          <div className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.18em] text-dim">
+          <div className="text-xs sm:text-xs font-semibold uppercase tracking-[0.18em] text-dim">
             Costs
           </div>
           <div className="text-sm text-fg-bright font-medium truncate">
@@ -263,10 +263,10 @@ export function ActivityCosts(): JSX.Element {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <div className="bg-app/50 border border-border rounded-xl p-6 md:col-span-1">
-          <div className="text-[10px] uppercase tracking-wider text-dim mb-2">Total</div>
+          <div className="text-xs uppercase tracking-wider text-dim mb-2">Total</div>
           {loading ? (
             <div className="flex items-center gap-2 text-muted">
-              <Loader2 size={16} className="animate-spin" />
+              <Loader2 className="icon-base animate-spin" />
               <span className="text-sm">Parsing session history…</span>
             </div>
           ) : (
@@ -284,12 +284,12 @@ export function ActivityCosts(): JSX.Element {
         </div>
 
         <div className="bg-app/50 border border-border rounded-xl p-6 md:col-span-2">
-          <div className="text-[10px] uppercase tracking-wider text-dim mb-3">
+          <div className="text-xs uppercase tracking-wider text-dim mb-3">
             Cost by type
           </div>
           {loading ? (
             <div className="flex items-center gap-2 text-muted">
-              <Loader2 size={16} className="animate-spin" />
+              <Loader2 className="icon-base animate-spin" />
               <span className="text-sm">Computing breakdown…</span>
             </div>
           ) : total > 0 ? (
@@ -302,13 +302,13 @@ export function ActivityCosts(): JSX.Element {
 
       {!loading && repos.length === 0 && (
         <div className="text-sm text-dim py-12 text-center">
-          No json-mode sessions in the selected period.
+          No Chat sessions in the selected period.
         </div>
       )}
 
       {!loading && repos.length > 0 && (
         <div className="bg-app/50 border border-border rounded-xl overflow-hidden">
-          <div className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-4 px-3 py-2 border-b border-border bg-surface/40 text-[10px] uppercase tracking-wider text-dim">
+          <div className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-4 px-3 py-2 border-b border-border bg-surface/40 text-xs uppercase tracking-wider text-dim">
             <span>Repository / worktree</span>
             <span className="text-right w-24">Cost</span>
             <span className="text-right w-24">Last active</span>
@@ -332,12 +332,12 @@ export function ActivityCosts(): JSX.Element {
             >
               {showAllRepos ? (
                 <>
-                  <ChevronUp size={12} />
+                  <ChevronUp className="icon-xs" />
                   Show top {DEFAULT_VISIBLE_REPOS}
                 </>
               ) : (
                 <>
-                  <ChevronDown size={12} />
+                  <ChevronDown className="icon-xs" />
                   Show {hiddenRepos} more {hiddenRepos === 1 ? 'repo' : 'repos'}
                 </>
               )}
@@ -347,8 +347,8 @@ export function ActivityCosts(): JSX.Element {
       )}
 
       <div className="text-center mt-6">
-        <div className="inline-flex items-center gap-1.5 text-[11px] text-dim">
-          <Sparkles size={11} className="text-amber-400/70" />
+        <div className="inline-flex items-center gap-1.5 text-xs text-dim">
+          <Sparkles className="icon-xs text-amber-400/70" />
           <span>
             Tracked locally by Harness{' '}
             <span className="text-faint">– https://harness.mikelyons.org/</span>
@@ -430,9 +430,9 @@ function RepoRow({
       >
         <div className="flex items-center gap-2 min-w-0">
           {isExpanded ? (
-            <ChevronDown size={14} className="text-muted shrink-0" />
+            <ChevronDown className="icon-sm text-muted shrink-0" />
           ) : (
-            <ChevronRight size={14} className="text-muted shrink-0" />
+            <ChevronRight className="icon-sm text-muted shrink-0" />
           )}
           <span
             className="text-fg-bright font-medium truncate"
@@ -440,7 +440,7 @@ function RepoRow({
           >
             {repoLabel}
           </span>
-          <span className="text-[10px] text-dim shrink-0">
+          <span className="text-xs text-dim shrink-0">
             {wtCount} {wtCount === 1 ? 'worktree' : 'worktrees'}
           </span>
         </div>
@@ -488,11 +488,11 @@ function WorktreeRow({
     >
       <div className="flex items-center gap-2 min-w-0">
         <span className="text-muted font-mono text-xs truncate">{label}</span>
-        <span className="text-[10px] text-dim shrink-0">
+        <span className="text-xs text-dim shrink-0">
           {sessionCount} {sessionCount === 1 ? 'session' : 'sessions'}
         </span>
         {worktree.models.size === 1 && (
-          <span className="text-[10px] text-dim/70 font-mono shrink-0">
+          <span className="text-xs text-dim/70 font-mono shrink-0">
             {modelLabel}
           </span>
         )}
@@ -609,16 +609,16 @@ function BreakdownPanel({
       {hidden > 0 && (
         <button
           onClick={() => setShowAll((s) => !s)}
-          className="self-start text-[10px] text-muted hover:text-fg-bright cursor-pointer flex items-center gap-1 transition-colors"
+          className="self-start text-xs text-muted hover:text-fg-bright cursor-pointer flex items-center gap-1 transition-colors"
         >
           {showAll ? (
             <>
-              <ChevronUp size={10} />
+              <ChevronUp className="icon-2xs" />
               Show top {BREAKDOWN_VISIBLE_ROWS}
             </>
           ) : (
             <>
-              <ChevronDown size={10} />
+              <ChevronDown className="icon-2xs" />
               Show {hidden} more
             </>
           )}
@@ -641,7 +641,7 @@ function BreakdownBar({
   const width = max > 0 ? (row.cost / max) * 100 : 0
   const color = colorForLabel(row.label)
   return (
-    <div className="flex items-center gap-2 text-[11px] leading-tight">
+    <div className="flex items-center gap-2 text-xs leading-tight">
       <span className={`w-2 h-2 rounded-sm shrink-0 ${color}`} />
       <span className="text-muted truncate w-20 shrink-0" title={row.label}>
         {row.label}

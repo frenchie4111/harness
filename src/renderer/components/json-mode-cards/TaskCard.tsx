@@ -81,10 +81,10 @@ export function TaskCard({
           fontSize: 'var(--chat-chrome-text)'
         }}
       >
-        <span className="text-muted text-[9px] w-2 shrink-0 select-none">
+        <span className="text-muted text-xs w-2 shrink-0 select-none">
           {expanded ? '▾' : '▸'}
         </span>
-        <Sparkles size={11} className="text-muted shrink-0" />
+        <Sparkles className="icon-xs text-muted shrink-0" />
         <span
           className="text-muted shrink-0"
           style={{ fontFamily: 'var(--chat-tool-name-family)' }}
@@ -147,7 +147,7 @@ export function TaskCard({
       {expanded && (
         <div className="px-2">
           {subAgentChildCount === 0 ? (
-            <div className="px-1 py-2 text-[11px] text-muted italic">
+            <div className="px-1 py-2 text-xs text-muted italic">
               {taskInFlight
                 ? 'sub-agent is starting…'
                 : 'no sub-agent activity recorded'}
@@ -157,7 +157,7 @@ export function TaskCard({
           )}
           {result && (
             <pre
-              className={`my-1 px-2 py-1 text-[11px] font-mono whitespace-pre-wrap max-h-60 overflow-auto rounded bg-app/40 ${
+              className={`my-1 px-2 py-1 text-xs font-mono whitespace-pre-wrap max-h-60 overflow-auto rounded bg-app/40 ${
                 result.isError ? 'text-danger' : 'opacity-80'
               }`}
             >

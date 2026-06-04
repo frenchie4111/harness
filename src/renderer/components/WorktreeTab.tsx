@@ -1,8 +1,11 @@
-import { GitPullRequest, RotateCw, Trash2, Loader2, Moon } from 'lucide-react'
+import { GitPullRequest, RotateCw, Trash2, Loader2, Moon, TriangleAlert, AlarmClock } from 'lucide-react'
 import type { Worktree, PtyStatus, PendingTool, PRStatus } from '../types'
 import { isPRMerged } from '../../shared/state/prs'
 import { formatWakeAt } from '../../shared/state/snooze'
+import { useAppState } from '../store'
 import { Tooltip } from './Tooltip'
+import { formatWorktreeAge } from './worktree-detail'
+import { useWorktreeDetailOverride } from '../worktree-detail-override'
 import { repoNameColor } from './RepoIcon'
 import { formatPendingTool } from '../pending-tool'
 import { HotkeyBadge } from './HotkeyBadge'
@@ -63,6 +66,18 @@ const PR_ICON_COLOR: Record<string, string> = {
   none: 'text-dim'
 }
 
+const DETACHED_LIKE_PREFIXES = ['rebasing', 'bisecting', 'cherry-picking']
+
+function detachedLikeTooltip(branch: string): string | null {
+  if (branch === '(detached)') return 'Detached HEAD'
+  for (const prefix of DETACHED_LIKE_PREFIXES) {
+    if (branch === prefix || branch.startsWith(`${prefix} `) || branch.startsWith(`${prefix}(`)) {
+      return `In progress: ${branch}`
+    }
+  }
+  return null
+}
+
 const PR_STATE_COLOR: Record<string, string> = {
   open: 'text-success',
   draft: 'text-dim',
@@ -72,6 +87,9 @@ const PR_STATE_COLOR: Record<string, string> = {
 
 export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActive, prStatus, isMerged, repoLabel, cmdOrdinal, deleting, isSnoozed, snoozeWakeAt, onClick, onDelete, onContinue, onSnooze, onUnsnooze }: WorktreeTabProps): JSX.Element {
   const metaHeld = useMetaHeld()
+  const configuredWorktreeDetail = useAppState((s) => s.settings.worktreeDetail)
+  const worktreeDetailOverride = useWorktreeDetailOverride()
+  const worktreeDetail = worktreeDetailOverride ?? configuredWorktreeDetail
   const displayStatus: PtyStatus | 'merged' = isMerged ? 'merged' : status
   const showPendingTool = displayStatus === 'needs-approval' && pendingTool
   const canContinue = !!onContinue && isPRMerged(prStatus)
@@ -105,10 +123,8 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
     >
       {deleting ? (
         <Loader2
-          size={11}
-          className="animate-spin text-danger shrink-0"
-          aria-label="Deleting worktree"
-        />
+          className="icon-xs animate-spin text-danger shrink-0"
+          aria-label="Deleting worktree" />
       ) : (
         <span
           className={`w-2 h-2 rounded-full shrink-0 ${STATUS_COLORS[displayStatus]}`}
@@ -117,17 +133,15 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
       )}
       {shellActive && (
         <Loader2
-          size={11}
-          className="animate-spin text-fg-bright shrink-0"
-          aria-label="Shell activity"
-        />
+          className="icon-xs animate-spin text-fg-bright shrink-0"
+          aria-label="Shell activity" />
       )}
       {prStatus && (
         <span
           className="relative shrink-0"
           title={`PR #${prStatus.number}${prStatus.checksOverall !== 'none' ? ` \u2014 checks ${prStatus.checksOverall}` : ''}${iconTitleSuffix}${prStatus.reviewDecision === 'approved' ? ' \u2014 approved' : prStatus.reviewDecision === 'changes_requested' ? ' \u2014 changes requested' : ''}`}
         >
-          <GitPullRequest size={13} className={iconColor} />
+          <GitPullRequest className={`icon-sm ${iconColor}`} />
           {prStatus.reviewDecision === 'approved' && (
             <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-success ring-1 ring-panel" />
           )}
@@ -137,7 +151,17 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
         </span>
       )}
       <div className="min-w-0 flex-1">
-        <div className="text-sm font-medium truncate">{worktree.branch}</div>
+        <div className="text-sm font-medium truncate flex items-center gap-1">
+          {(() => {
+            const tip = detachedLikeTooltip(worktree.branch)
+            return tip ? (
+              <span className="shrink-0 inline-flex" title={tip} aria-label={tip}>
+                <TriangleAlert className="icon-xs text-warning" />
+              </span>
+            ) : null
+          })()}
+          <span className="truncate">{worktree.branch}</span>
+        </div>
         {showPendingTool ? (
           <div className="text-xs text-danger truncate font-mono" title={formatPendingTool(pendingTool!)}>
             {formatPendingTool(pendingTool!)}
@@ -165,17 +189,51 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
             }}
             className="hidden group-hover:flex text-faint hover:text-accent transition-colors shrink-0 cursor-pointer"
           >
-            <RotateCw size={12} />
+            <RotateCw className="icon-xs" />
           </button>
         </Tooltip>
       )}
-      {prStatus && typeof prStatus.additions === 'number' && typeof prStatus.deletions === 'number' && (
+      {worktreeDetail === 'diff' && prStatus && typeof prStatus.additions === 'number' && typeof prStatus.deletions === 'number' && (
         <span
-          className="text-[10px] font-mono shrink-0 leading-none group-hover:hidden"
+          className="text-xs font-mono shrink-0 leading-none group-hover:hidden"
           title={`+${prStatus.additions} additions, −${prStatus.deletions} deletions`}
         >
           <span className="text-success">+{prStatus.additions}</span>
           <span className="text-danger ml-0.5">−{prStatus.deletions}</span>
+        </span>
+      )}
+      {worktreeDetail === 'age' && (
+        <span
+          className="text-xs font-mono shrink-0 leading-none text-dim group-hover:hidden"
+          title={worktree.createdAt ? `Created ${new Date(worktree.createdAt).toLocaleString()}` : 'Creation time unknown'}
+        >
+          {formatWorktreeAge(worktree.createdAt)}
+        </span>
+      )}
+      {worktreeDetail === 'pr' && prStatus && (
+        <span className="inline-flex items-center gap-1.5 shrink-0 group-hover:hidden">
+          {prStatus.milestone && (
+            <span
+              className="text-xs text-dim truncate max-w-[6rem]"
+              title={`Milestone: ${prStatus.milestone.title}`}
+            >
+              {prStatus.milestone.title}
+            </span>
+          )}
+          <span
+            className="text-xs font-mono leading-none px-1.5 py-0.5 rounded-full bg-panel border border-border-strong text-fg-bright"
+            title={`PR #${prStatus.number}`}
+          >
+            #{prStatus.number}
+          </span>
+          {prStatus.assignees[0] && (
+            <img
+              src={prStatus.assignees[0].avatarUrl}
+              alt=""
+              title={`Assignee: ${prStatus.assignees[0].login}${prStatus.assignees.length > 1 ? ` (+${prStatus.assignees.length - 1})` : ''}`}
+              className="w-3.5 h-3.5 rounded-full shrink-0"
+            />
+          )}
         </span>
       )}
       {(onSnooze || onUnsnooze) && !worktree.isMain && (
@@ -200,7 +258,7 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
             }}
             className="hidden group-hover:flex text-faint hover:text-accent transition-colors shrink-0 cursor-pointer"
           >
-            <Moon size={12} />
+            {isSnoozed ? <AlarmClock className="icon-xs" /> : <Moon className="icon-xs" />}
           </button>
         </Tooltip>
       )}
@@ -213,7 +271,7 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
             }}
             className="hidden group-hover:flex text-faint hover:text-danger transition-colors shrink-0 cursor-pointer"
           >
-            <Trash2 size={12} />
+            <Trash2 className="icon-xs" />
           </button>
         </Tooltip>
       )}

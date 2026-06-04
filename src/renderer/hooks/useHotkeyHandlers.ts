@@ -3,10 +3,13 @@ import type { Worktree, PRStatus, PaneNode, TerminalTab } from '../types'
 import { getLeaves, findLeaf } from '../../shared/state/terminals'
 import { resolveHotkeys, type Action, type HotkeyBinding } from '../hotkeys'
 import { useHotkeys } from './useHotkeys'
+import { useDoubleTapShift } from './useDoubleTapShift'
 import { groupWorktrees, getGroupKey, type GroupKey } from '../worktree-sort'
 import { focusTerminalById } from '../components/XTerminal'
 import { useConnections, getBackendsRegistry, useSettings, useSnooze } from '../store'
 import { useBackend } from '../backend'
+import { SCALES } from '../../shared/state/settings'
+import { cycleWorktreeDetail } from '../worktree-detail-override'
 
 interface UseHotkeyHandlersArgs {
   worktrees: Worktree[]
@@ -27,13 +30,17 @@ interface UseHotkeyHandlersArgs {
   hotkeyOverrides: Record<string, string> | undefined
   setSidebarVisible: React.Dispatch<React.SetStateAction<boolean>>
   setRightColumnHidden: React.Dispatch<React.SetStateAction<boolean>>
+  setSingleScreenMode: React.Dispatch<React.SetStateAction<boolean>>
   setShowNewWorktree: React.Dispatch<React.SetStateAction<boolean>>
   setShowCommandCenter: React.Dispatch<React.SetStateAction<boolean>>
   setShowCommandPalette: React.Dispatch<React.SetStateAction<boolean>>
   setCommandPaletteMode: React.Dispatch<React.SetStateAction<'root' | 'files'>>
   setShowPerfMonitor: React.Dispatch<React.SetStateAction<boolean>>
   setShowHotkeyCheatsheet: React.Dispatch<React.SetStateAction<boolean>>
-  setShowReview: React.Dispatch<React.SetStateAction<boolean>>
+  setShowQuakeTerminal: React.Dispatch<React.SetStateAction<boolean>>
+  /** False when a full-content view is hiding the workspace tab bar; the Quake
+   * terminal toggle is a no-op then. */
+  quakeTerminalAllowed: boolean
   // Imperative hooks into other handlers — passed in to avoid this hook
   // depending on useTabHandlers + useWorktreeHandlers directly.
   handleAddTerminalTab: (worktreePath: string, paneId?: string) => void
@@ -41,6 +48,7 @@ interface UseHotkeyHandlersArgs {
   handleSelectTab: (worktreePath: string, paneId: string, tabId: string) => void
   handleSplitPane: (worktreePath: string, fromPaneId: string, direction?: 'horizontal' | 'vertical') => void
   handleRefreshWorktrees: () => void
+  setShowSettings: React.Dispatch<React.SetStateAction<boolean>>
 }
 
 /** Sidebar-aware hotkey handler block. Computes the visible/ordered
@@ -70,23 +78,29 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
     hotkeyOverrides,
     setSidebarVisible,
     setRightColumnHidden,
+    setSingleScreenMode,
     setShowNewWorktree,
     setShowCommandCenter,
     setShowCommandPalette,
     setCommandPaletteMode,
     setShowPerfMonitor,
     setShowHotkeyCheatsheet,
-    setShowReview,
+    setShowQuakeTerminal,
+    quakeTerminalAllowed,
     handleAddTerminalTab,
     handleCloseTab,
     handleSelectTab,
     handleSplitPane,
-    handleRefreshWorktrees
+    handleRefreshWorktrees,
+    setShowSettings
   } = args
 
   // Mirror the sidebar's grouping/rendering order so hotkey navigation
   // matches what's on screen.
-  const viewerLogin = useSettings().viewerLogin
+  const allSettings = useSettings()
+  const viewerLogin = allSettings.viewerLogin
+  const uiScale = allSettings.uiScale
+  const configuredWorktreeDetail = allSettings.worktreeDetail
   const snoozeByPath = useSnooze().byPath
   const snoozedPaths = useMemo(() => {
     const m: Record<string, true> = {}
@@ -247,6 +261,14 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       },
       nextTab: () => cycleTab(1),
       prevTab: () => cycleTab(-1),
+      renameTab: () => {
+        if (!activeWorktreeId) return
+        const tabId = activeTabId[activeWorktreeId]
+        if (!tabId) return
+        window.dispatchEvent(
+          new CustomEvent('harness:rename-tab', { detail: { tabId } })
+        )
+      },
       newWorktree: () => setShowNewWorktree(true),
       refreshWorktrees: handleRefreshWorktrees,
       focusTerminal: () => {
@@ -256,6 +278,8 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       },
       toggleSidebar: () => setSidebarVisible((v) => !v),
       toggleRightColumn: () => setRightColumnHidden((v) => !v),
+      openSettings: () => setShowSettings((v) => !v),
+      toggleSingleScreen: () => setSingleScreenMode((v) => !v),
       openPR: () => {
         if (!activeWorktreeId) return
         const pr = prStatuses[activeWorktreeId]
@@ -282,7 +306,8 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
         if (!tree) return
         const leaves = getLeaves(tree)
         if (leaves.length === 0) return
-        const fromPaneId = activePaneId[activeWorktreeId] || leaves[leaves.length - 1].id
+        const stored = activePaneId[activeWorktreeId]
+        const fromPaneId = leaves.some((l) => l.id === stored) ? stored : leaves[leaves.length - 1].id
         handleSplitPane(activeWorktreeId, fromPaneId, 'horizontal')
       },
       splitPaneDown: () => {
@@ -291,12 +316,37 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
         if (!tree) return
         const leaves = getLeaves(tree)
         if (leaves.length === 0) return
-        const fromPaneId = activePaneId[activeWorktreeId] || leaves[leaves.length - 1].id
+        const stored = activePaneId[activeWorktreeId]
+        const fromPaneId = leaves.some((l) => l.id === stored) ? stored : leaves[leaves.length - 1].id
         handleSplitPane(activeWorktreeId, fromPaneId, 'vertical')
       },
       togglePerfMonitor: () => setShowPerfMonitor((v) => !v),
       hotkeyCheatsheet: () => setShowHotkeyCheatsheet((v) => !v),
-      openReview: () => setShowReview(true)
+      openReview: () => {
+        if (activeWorktreeId) void backend.panesOpenReview(activeWorktreeId)
+      },
+      toggleQuakeTerminal: () => {
+        // Read live keyboard focus: only open when it's inside a workspace
+        // tab/agent (xterm terminal or Chat) — not the sidebar, panels, or
+        // other chrome. Closing is always allowed (the open overlay itself
+        // holds focus, which isn't a workspace tab).
+        const inTab = !!document.activeElement?.closest('[data-tab-content]')
+        setShowQuakeTerminal((open) => (open ? false : quakeTerminalAllowed && inTab))
+      },
+      uiScaleUp: () => {
+        const i = SCALES.findIndex((s) => s.id === uiScale)
+        const next = SCALES[Math.min(i < 0 ? 0 : i + 1, SCALES.length - 1)]
+        if (next && next.id !== uiScale) void backend.setUiScale(next.id)
+      },
+      uiScaleDown: () => {
+        const i = SCALES.findIndex((s) => s.id === uiScale)
+        const next = SCALES[Math.max(i < 0 ? 0 : i - 1, 0)]
+        if (next && next.id !== uiScale) void backend.setUiScale(next.id)
+      },
+      uiScaleReset: () => {
+        if (uiScale !== 'small') void backend.setUiScale('small')
+      },
+      cycleWorktreeDetail: () => cycleWorktreeDetail(configuredWorktreeDetail)
     }),
     [
       cycleWorktree,
@@ -315,18 +365,43 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       handleSplitPane,
       setSidebarVisible,
       setRightColumnHidden,
+      setSingleScreenMode,
       setShowNewWorktree,
       setShowCommandCenter,
       setShowCommandPalette,
       setCommandPaletteMode,
       setShowPerfMonitor,
       setShowHotkeyCheatsheet,
-      setShowReview,
-      backend
+      setShowQuakeTerminal,
+      quakeTerminalAllowed,
+      setShowSettings,
+      backend,
+      uiScale,
+      configuredWorktreeDetail
     ]
   )
 
   useHotkeys(hotkeyActions, hotkeyOverrides)
+
+  // focusTerminal is a gesture, not a key chord: double-tap Shift to jump
+  // focus to the active worktree's current tab. Skip when focus is in an
+  // editable field (palette search, rename input, settings, …) so the gesture
+  // doesn't yank focus mid-typing — xterm's own hidden textarea counts as
+  // editable too, but firing there is a harmless no-op (already focused).
+  useDoubleTapShift(
+    useCallback(() => {
+      const el = document.activeElement as HTMLElement | null
+      if (
+        el &&
+        (el.isContentEditable ||
+          el.tagName === 'INPUT' ||
+          el.tagName === 'TEXTAREA' ||
+          el.tagName === 'SELECT')
+      )
+        return
+      hotkeyActions.focusTerminal?.()
+    }, [hotkeyActions])
+  )
 
   const resolvedHotkeys = useMemo(() => resolveHotkeys(hotkeyOverrides), [hotkeyOverrides])
 

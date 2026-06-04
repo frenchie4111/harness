@@ -106,6 +106,25 @@ export interface JsonClaudeChatEntry {
   /** For kind === 'error' with errorKind === 'subprocess-exit'. Whether the
    *  exit was clean (user closed the tab) or unexpected (crash). */
   exitWasClean?: boolean
+  /** On-disk transcript uuid for this entry — the `uuid` field on the
+   *  matching line of `~/.claude/projects/<cwd-encoded>/<sessionId>.jsonl`.
+   *  Only known for entries that were seeded from the transcript on
+   *  resume (live-stream entries don't carry it because the jsonl uuid
+   *  is minted server-side after the line is written). Not currently
+   *  used at rewind time — see apiMessageId below — but kept around as
+   *  a stable per-line key for future per-block operations. */
+  transcriptUuid?: string
+  /** Anthropic Messages-API id for the assistant message this entry
+   *  belongs to. Stable across live + seeded representations: live
+   *  entries get it from `message_start`, seeded entries from
+   *  `parsed.message.id`. Critical for rewind: a single assistant turn
+   *  is one API call but the on-disk jsonl writes one line per content
+   *  block (thinking, tool_use, text), so multiple slice entries —
+   *  whether live (one consolidated) or seeded (multiple split) — all
+   *  share the same apiMessageId. Truncation cuts AFTER the last
+   *  jsonl line carrying this id, which is the natural end of the
+   *  assistant's turn. */
+  apiMessageId?: string
   /** For errorKind === 'rate-limit-warning' | 'rate-limit-error'.
    *  Structured detail sourced from the SDK's `rate_limit_info`
    *  payload. All fields optional because the wire shape is sparse —
@@ -132,6 +151,14 @@ export interface JsonClaudeSession {
   /** Buffered chat history for this session. Kept in the store so a
    *  reloading renderer doesn't lose the scrollback. */
   entries: JsonClaudeChatEntry[]
+  /** True once `entries` reflects the authoritative server-side history
+   *  for this session. The wire snapshot ships sessions with stripped
+   *  entries (see `stripJsonClaudeEntries`) and `entriesHydrated: false`,
+   *  so the renderer can distinguish "haven't lazy-fetched entries yet"
+   *  from "session is genuinely empty" — and suppress the empty-state
+   *  flash during the fetch window. The reducer flips this true on
+   *  `entriesSeeded`. Server-side it's always true. */
+  entriesHydrated: boolean
   /** Last text of the most recent user submission; used by the renderer to
    *  pair the echo against the user-card it just rendered optimistically. */
   busy: boolean
@@ -311,6 +338,10 @@ export type JsonClaudeEvent =
       payload: { sessionId: string; entryId: string }
     }
   | {
+      type: 'jsonClaude/entriesTruncated'
+      payload: { sessionId: string; fromEntryId: string }
+    }
+  | {
       type: 'jsonClaude/slashCommandsChanged'
       payload: { sessionId: string; slashCommands: string[] }
     }
@@ -358,7 +389,15 @@ export const initialJsonClaude: JsonClaudeState = {
 export function stripJsonClaudeEntries(state: JsonClaudeState): JsonClaudeState {
   const sessions: Record<string, JsonClaudeSession> = {}
   for (const [id, session] of Object.entries(state.sessions)) {
-    sessions[id] = session.entries.length === 0 ? session : { ...session, entries: [] }
+    // Server-side sessions are always hydrated; renderer-side they may
+    // not be. Either case where stripping would actually change the
+    // session shape (non-empty entries OR a true hydrated flag) requires
+    // a new object — otherwise return the existing reference so
+    // downstream identity checks don't trip.
+    const needsStrip = session.entries.length > 0 || session.entriesHydrated
+    sessions[id] = needsStrip
+      ? { ...session, entries: [], entriesHydrated: false }
+      : session
   }
   return { ...state, sessions }
 }
@@ -446,6 +485,7 @@ export function jsonClaudeReducer(
             exitCode: null,
             exitReason: null,
             entries: existing?.entries ?? [],
+            entriesHydrated: existing?.entriesHydrated ?? false,
             busy: false,
             permissionMode:
               existing?.permissionMode ??
@@ -497,7 +537,11 @@ export function jsonClaudeReducer(
         ...state,
         sessions: {
           ...state.sessions,
-          [session.sessionId]: { ...session, entries: event.payload.entries }
+          [session.sessionId]: {
+            ...session,
+            entries: event.payload.entries,
+            entriesHydrated: true
+          }
         }
       }
     }
@@ -710,6 +754,24 @@ export function jsonClaudeReducer(
         sessions: {
           ...state.sessions,
           [session.sessionId]: { ...session, entries: next }
+        }
+      }
+    }
+    case 'jsonClaude/entriesTruncated': {
+      const session = state.sessions[event.payload.sessionId]
+      if (!session) return state
+      const idx = session.entries.findIndex(
+        (e) => e.entryId === event.payload.fromEntryId
+      )
+      if (idx === -1) return state
+      return {
+        ...state,
+        sessions: {
+          ...state.sessions,
+          [session.sessionId]: {
+            ...session,
+            entries: session.entries.slice(0, idx)
+          }
         }
       }
     }

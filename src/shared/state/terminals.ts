@@ -10,20 +10,38 @@ export interface ShellActivity {
   processName?: string
 }
 
+/** OSC 9;4 progress state, mirrored from @xterm/addon-progress.
+ *  state: 0 = none, 1 = normal, 2 = error, 3 = indeterminate, 4 = paused/warning. */
+export interface TerminalProgress {
+  state: 0 | 1 | 2 | 3 | 4
+  value: number
+}
+
 export type AgentKind = 'claude' | 'codex'
 
 export interface TerminalTab {
   id: string
-  type: 'agent' | 'shell' | 'diff' | 'file' | 'browser' | 'json-claude'
+  type: 'agent' | 'shell' | 'diff' | 'file' | 'browser' | 'json-claude' | 'review'
   label: string
-  /** Only meaningful for json-claude tabs. 'asleep' means no live
+  /** User-defined override for `label`. When set (non-empty after trim),
+   *  the tab renders this instead of the auto-derived label. Cleared
+   *  with an empty string via terminals/tabRenamed — the reducer drops
+   *  the field rather than persisting "". */
+  customLabel?: string
+  /** Meaningful for json-claude and shell tabs. 'asleep' means no live
    *  subprocess; the tab still exists in the tree and its session
-   *  history (in the jsonClaude slice + on-disk jsonl) is intact.
-   *  Persisted json-claude tabs hydrate as 'asleep' so app launch
-   *  doesn't spawn one subprocess per tab; they wake on first focus. */
+   *  history (in the jsonClaude slice + on-disk jsonl for json-claude,
+   *  scrollback file for shell) is intact. Persisted tabs of both types
+   *  hydrate as 'asleep' so app launch doesn't construct an xterm or
+   *  spawn a subprocess per tab; they wake on first focus. */
   mode?: 'awake' | 'asleep'
   /** For agent tabs: which CLI agent this tab runs. */
   agentKind?: AgentKind
+  /** For agent + json-claude tabs: override the model resolved from
+   *  settings (claudeModel/codexModel). Set when a worktree was spawned
+   *  with a one-shot pick (New Worktree screen "Model" field or the MCP
+   *  create_worktree `model` param). Empty/undefined = use settings. */
+  model?: string
   /** For diff/file tabs: the file path */
   filePath?: string
   /** For diff tabs: whether the diff is for staged changes */
@@ -46,6 +64,12 @@ export interface TerminalTab {
   /** For shell tabs: directory to run in. Relative paths resolve against the
    * worktree root; absolute paths are used as-is. */
   cwd?: string
+  /** For review tabs: which commits the review is showing. When both
+   *  reviewFromCommit and reviewToCommit are undefined, the review shows the
+   *  whole branch (uncommitted + all commits ahead of base). When set, they
+   *  bound a contiguous range; equal values = a single commit. */
+  reviewFromCommit?: string
+  reviewToCommit?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -171,6 +195,9 @@ export interface TerminalsState {
   pendingTools: Record<string, PendingTool | null>
   /** Per-terminal foreground-process indicator for shell tabs. */
   shellActivity: Record<string, ShellActivity>
+  /** Per-terminal OSC 9;4 progress, dispatched from the controller's
+   *  ProgressAddon. Absent entries mean no active progress. */
+  progress: Record<string, TerminalProgress>
   /** Pane layout tree per worktree path. Authored entirely in main via the
    * panes-fsm methods. */
   panes: Record<string, PaneNode>
@@ -193,6 +220,10 @@ export type TerminalsEvent =
   | {
       type: 'terminals/shellActivityChanged'
       payload: { id: string; active: boolean; processName?: string }
+    }
+  | {
+      type: 'terminals/progressChanged'
+      payload: { id: string; state: 0 | 1 | 2 | 3 | 4; value: number }
     }
   | { type: 'terminals/removed'; payload: string }
   | {
@@ -257,11 +288,25 @@ export type TerminalsEvent =
       type: 'terminals/tabWoken'
       payload: { worktreePath: string; tabId: string }
     }
+  | {
+      type: 'terminals/tabRenamed'
+      payload: { worktreePath: string; tabId: string; label: string }
+    }
+  | {
+      type: 'terminals/reviewSelectionChanged'
+      payload: {
+        worktreePath: string
+        tabId: string
+        fromCommit?: string
+        toCommit?: string
+      }
+    }
 
 export const initialTerminals: TerminalsState = {
   statuses: {},
   pendingTools: {},
   shellActivity: {},
+  progress: {},
   panes: {},
   lastActive: {},
   sessions: {}
@@ -293,12 +338,30 @@ export function terminalsReducer(
         }
       }
     }
+    case 'terminals/progressChanged': {
+      const { id, state: pstate, value } = event.payload
+      const prev = state.progress[id]
+      // state 0 = no progress: drop the entry to reset cleanly.
+      if (pstate === 0) {
+        if (!prev) return state
+        const { [id]: _dropped, ...rest } = state.progress
+        void _dropped
+        return { ...state, progress: rest }
+      }
+      // Dedup identical updates so high-frequency OSC streams don't fan out.
+      if (prev && prev.state === pstate && prev.value === value) return state
+      return {
+        ...state,
+        progress: { ...state.progress, [id]: { state: pstate, value } }
+      }
+    }
     case 'terminals/removed': {
       const id = event.payload
       if (
         !(id in state.statuses) &&
         !(id in state.pendingTools) &&
         !(id in state.shellActivity) &&
+        !(id in state.progress) &&
         !(id in state.sessions)
       ) {
         return state
@@ -306,16 +369,19 @@ export function terminalsReducer(
       const { [id]: _s, ...restStatuses } = state.statuses
       const { [id]: _p, ...restPending } = state.pendingTools
       const { [id]: _a, ...restActivity } = state.shellActivity
+      const { [id]: _pg, ...restProgress } = state.progress
       const { [id]: _session, ...restSessions } = state.sessions
       void _s
       void _p
       void _a
+      void _pg
       void _session
       return {
         ...state,
         statuses: restStatuses,
         pendingTools: restPending,
         shellActivity: restActivity,
+        progress: restProgress,
         sessions: restSessions
       }
     }
@@ -542,7 +608,7 @@ export function terminalsReducer(
         const i = leaf.tabs.findIndex((t) => t.id === tabId)
         if (i === -1) return leaf
         const tab = leaf.tabs[i]
-        if (tab.type !== 'json-claude') return leaf
+        if (tab.type !== 'json-claude' && tab.type !== 'shell') return leaf
         if ((tab.mode ?? 'awake') === target) return leaf
         const patched: TerminalTab = { ...tab, mode: target }
         const nextTabs = [
@@ -552,6 +618,66 @@ export function terminalsReducer(
         ]
         mutated = true
         return { ...leaf, tabs: nextTabs }
+      })
+      if (!mutated) return state
+      return { ...state, panes: { ...state.panes, [worktreePath]: updated } }
+    }
+    case 'terminals/tabRenamed': {
+      const { worktreePath, tabId, label } = event.payload
+      const tree = state.panes[worktreePath]
+      if (!tree) return state
+      const trimmed = label.trim()
+      let mutated = false
+      const updated = mapLeaves(tree, (leaf) => {
+        const i = leaf.tabs.findIndex((t) => t.id === tabId)
+        if (i === -1) return leaf
+        const tab = leaf.tabs[i]
+        const current = tab.customLabel
+        if (trimmed === '') {
+          if (current === undefined) return leaf
+          const { customLabel: _dropped, ...rest } = tab
+          void _dropped
+          mutated = true
+          return {
+            ...leaf,
+            tabs: [...leaf.tabs.slice(0, i), rest as TerminalTab, ...leaf.tabs.slice(i + 1)]
+          }
+        }
+        if (current === trimmed) return leaf
+        mutated = true
+        return {
+          ...leaf,
+          tabs: [
+            ...leaf.tabs.slice(0, i),
+            { ...tab, customLabel: trimmed },
+            ...leaf.tabs.slice(i + 1)
+          ]
+        }
+      })
+      if (!mutated) return state
+      return { ...state, panes: { ...state.panes, [worktreePath]: updated } }
+    }
+    case 'terminals/reviewSelectionChanged': {
+      const { worktreePath, tabId, fromCommit, toCommit } = event.payload
+      const tree = state.panes[worktreePath]
+      if (!tree) return state
+      let mutated = false
+      const updated = mapLeaves(tree, (leaf) => {
+        const i = leaf.tabs.findIndex((t) => t.id === tabId)
+        if (i === -1) return leaf
+        const tab = leaf.tabs[i]
+        if (tab.type !== 'review') return leaf
+        if (tab.reviewFromCommit === fromCommit && tab.reviewToCommit === toCommit) return leaf
+        mutated = true
+        const next: TerminalTab = { ...tab }
+        if (fromCommit === undefined) delete next.reviewFromCommit
+        else next.reviewFromCommit = fromCommit
+        if (toCommit === undefined) delete next.reviewToCommit
+        else next.reviewToCommit = toCommit
+        return {
+          ...leaf,
+          tabs: [...leaf.tabs.slice(0, i), next, ...leaf.tabs.slice(i + 1)]
+        }
       })
       if (!mutated) return state
       return { ...state, panes: { ...state.panes, [worktreePath]: updated } }

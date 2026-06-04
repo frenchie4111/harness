@@ -76,21 +76,21 @@ describe('WebSocketServerTransport', () => {
       const snap = (await nextFrame(ws, (f) => f.t === 'snapres' && f.id === '1')) as unknown as {
         t: 'snapres'
         ok: boolean
-        snapshot: { seq: number; state: { settings: { theme: string } } }
+        snapshot: { seq: number; state: { settings: { themeDark: string } } }
       }
       expect(snap.ok).toBe(true)
       expect(snap.snapshot.seq).toBe(0)
-      expect(snap.snapshot.state.settings.theme).toBe('dark')
+      expect(snap.snapshot.state.settings.themeDark).toBe('dark')
 
       // State event push
       const eventPromise = nextFrame(ws, (f) => f.t === 'state')
-      store.dispatch({ type: 'settings/themeChanged', payload: 'solarized' })
+      store.dispatch({ type: 'settings/themeDarkChanged', payload: 'solarized-dark' })
       const ev = (await eventPromise) as unknown as {
         event: { type: string; payload: string }
         seq: number
       }
-      expect(ev.event.type).toBe('settings/themeChanged')
-      expect(ev.event.payload).toBe('solarized')
+      expect(ev.event.type).toBe('settings/themeDarkChanged')
+      expect(ev.event.payload).toBe('solarized-dark')
       expect(ev.seq).toBe(1)
 
       // RPC round-trip

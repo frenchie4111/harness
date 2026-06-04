@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  pull_request:
+  merge_group:
+  push:
+    branches: [main]
+
+# Cancel an in-flight CI run when a new commit lands on the same branch.
+# Saves CI minutes during rapid pushes; the latest commit is what matters.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # --legacy-peer-deps because electron-vite@5 declares a peer range
+      # that npm's strict resolver rejects against the installed vite@7.
+      # Matches the developer-facing install instructions.
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      # electron-vite build does NOT run tsc on its own — so typecheck
+      # is a separate, required gate.
+      - name: Typecheck
+        run: npm run typecheck
+
+      # Catches missing imports, asset resolution errors, and other
+      # bundler-level issues that tsc alone misses.
+      - name: Build
+        run: npx electron-vite build
+
+      - name: Tests
+        run: npx vitest run
+
+      # The headless server bundle is built separately from the Electron
+      # build above (different vite config, different output dir). Builds
+      # both `dist-headless/main` and `dist-headless/web-client`.
+      - name: Build headless server
+        run: npm run build:headless
+
+      # End-to-end smoke test: launches the freshly-built headless server
+      # on an ephemeral port, verifies it serves the web client, rejects
+      # unauthenticated requests, accepts a WebSocket client with the
+      # token, and exits cleanly on SIGTERM. Catches the class of bugs
+      # where the tarball's module layout / chunk resolution / auth gate
+      # is broken — bugs that previously only surfaced after a tag-push
+      # release. Logic lives in scripts/smoke-headless.sh so it's
+      # runnable locally and not buried in YAML.
+      - name: Headless smoke test
+        run: bash scripts/smoke-headless.sh

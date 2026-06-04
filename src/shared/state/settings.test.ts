@@ -11,9 +11,48 @@ function apply(state: SettingsState, event: SettingsEvent): SettingsState {
 }
 
 describe('settingsReducer', () => {
-  it('themeChanged sets theme', () => {
-    const next = apply(initialSettings, { type: 'settings/themeChanged', payload: 'solarized' })
-    expect(next.theme).toBe('solarized')
+  it('themeModeChanged sets the mode', () => {
+    expect(initialSettings.themeMode).toBe('system')
+    const dark = apply(initialSettings, { type: 'settings/themeModeChanged', payload: 'dark' })
+    expect(dark.themeMode).toBe('dark')
+    const light = apply(dark, { type: 'settings/themeModeChanged', payload: 'light' })
+    expect(light.themeMode).toBe('light')
+    const sys = apply(light, { type: 'settings/themeModeChanged', payload: 'system' })
+    expect(sys.themeMode).toBe('system')
+  })
+
+  it('themeLightChanged sets the light theme id', () => {
+    expect(initialSettings.themeLight).toBe('solarized-light')
+    const next = apply(initialSettings, {
+      type: 'settings/themeLightChanged',
+      payload: 'solarized-light'
+    })
+    expect(next.themeLight).toBe('solarized-light')
+    const changed = apply(next, {
+      type: 'settings/themeLightChanged',
+      payload: 'custom-light'
+    })
+    expect(changed.themeLight).toBe('custom-light')
+  })
+
+  it('themeDarkChanged sets the dark theme id', () => {
+    expect(initialSettings.themeDark).toBe('dark')
+    const next = apply(initialSettings, { type: 'settings/themeDarkChanged', payload: 'dracula' })
+    expect(next.themeDark).toBe('dracula')
+  })
+
+  it('customThemesChanged replaces the array', () => {
+    expect(initialSettings.customThemes).toEqual([])
+    const next = apply(initialSettings, {
+      type: 'settings/customThemesChanged',
+      payload: [
+        { id: 'midnight', name: 'Midnight', mode: 'dark', colors: { app: '#000' } }
+      ]
+    })
+    expect(next.customThemes).toHaveLength(1)
+    expect(next.customThemes[0].id).toBe('midnight')
+    const cleared = apply(next, { type: 'settings/customThemesChanged', payload: [] })
+    expect(cleared.customThemes).toEqual([])
   })
 
   it('hotkeysChanged replaces the map (including null)', () => {
@@ -50,6 +89,29 @@ describe('settingsReducer', () => {
     expect(next.claudeEnvVars).toEqual({ FOO: 'bar', BAZ: 'qux' })
   })
 
+  it('expandedDiagnosticLoggingEnabledChanged toggles the flag', () => {
+    expect(initialSettings.expandedDiagnosticLoggingEnabled).toBe(false)
+    const on = apply(initialSettings, {
+      type: 'settings/expandedDiagnosticLoggingEnabledChanged',
+      payload: true
+    })
+    expect(on.expandedDiagnosticLoggingEnabled).toBe(true)
+    const off = apply(on, {
+      type: 'settings/expandedDiagnosticLoggingEnabledChanged',
+      payload: false
+    })
+    expect(off.expandedDiagnosticLoggingEnabled).toBe(false)
+  })
+
+  it('prReviewPromptChanged overrides the default review prompt', () => {
+    expect(initialSettings.prReviewPrompt.length).toBeGreaterThan(0)
+    const next = apply(initialSettings, {
+      type: 'settings/prReviewPromptChanged',
+      payload: 'Focus on security issues only.'
+    })
+    expect(next.prReviewPrompt).toBe('Focus on security issues only.')
+  })
+
   it('autoUpdateEnabledChanged toggles auto-update flag', () => {
     expect(initialSettings.autoUpdateEnabled).toBe(true)
     const off = apply(initialSettings, {
@@ -59,6 +121,17 @@ describe('settingsReducer', () => {
     expect(off.autoUpdateEnabled).toBe(false)
     const on = apply(off, { type: 'settings/autoUpdateEnabledChanged', payload: true })
     expect(on.autoUpdateEnabled).toBe(true)
+  })
+
+  it('warnBeforeQuittingChanged toggles the warn-before-quitting flag', () => {
+    expect(initialSettings.warnBeforeQuitting).toBe(true)
+    const off = apply(initialSettings, {
+      type: 'settings/warnBeforeQuittingChanged',
+      payload: false
+    })
+    expect(off.warnBeforeQuitting).toBe(false)
+    const on = apply(off, { type: 'settings/warnBeforeQuittingChanged', payload: true })
+    expect(on.warnBeforeQuitting).toBe(true)
   })
 
   it('shareClaudeSettingsChanged toggles the share flag', () => {
@@ -125,6 +198,19 @@ describe('settingsReducer', () => {
       payload: 'fast-forward'
     })
     expect(next.mergeStrategy).toBe('fast-forward')
+  })
+
+  it('worktreeDetailChanged switches the sidebar detail mode', () => {
+    expect(initialSettings.worktreeDetail).toBe('diff')
+    const age = apply(initialSettings, {
+      type: 'settings/worktreeDetailChanged',
+      payload: 'age'
+    })
+    expect(age.worktreeDetail).toBe('age')
+    const none = apply(age, { type: 'settings/worktreeDetailChanged', payload: 'none' })
+    expect(none.worktreeDetail).toBe('none')
+    const diff = apply(none, { type: 'settings/worktreeDetailChanged', payload: 'diff' })
+    expect(diff.worktreeDetail).toBe('diff')
   })
 
   it('hasGithubTokenChanged flips the presence flag', () => {
@@ -293,18 +379,18 @@ describe('settingsReducer', () => {
     expect(full.browserToolsMode).toBe('full')
   })
 
-  it('jsonModeClaudeTabsChanged toggles the experimental tab type', () => {
-    expect(initialSettings.jsonModeClaudeTabs).toBe(false)
+  it('chatPromotionDismissedChanged toggles the flag', () => {
+    expect(initialSettings.chatPromotionDismissed).toBe(false)
     const on = apply(initialSettings, {
-      type: 'settings/jsonModeClaudeTabsChanged',
+      type: 'settings/chatPromotionDismissedChanged',
       payload: true
     })
-    expect(on.jsonModeClaudeTabs).toBe(true)
+    expect(on.chatPromotionDismissed).toBe(true)
     const off = apply(on, {
-      type: 'settings/jsonModeClaudeTabsChanged',
+      type: 'settings/chatPromotionDismissedChanged',
       payload: false
     })
-    expect(off.jsonModeClaudeTabs).toBe(false)
+    expect(off.chatPromotionDismissed).toBe(false)
   })
 
   it('defaultClaudeTabTypeChanged switches between xterm and json', () => {
@@ -365,12 +451,49 @@ describe('settingsReducer', () => {
     expect(compact.jsonModeChatDensity).toBe('compact')
   })
 
+  it('uiScaleChanged walks through every step', () => {
+    expect(initialSettings.uiScale).toBe('small')
+    const medium = apply(initialSettings, {
+      type: 'settings/uiScaleChanged',
+      payload: 'medium'
+    })
+    expect(medium.uiScale).toBe('medium')
+    const large = apply(medium, {
+      type: 'settings/uiScaleChanged',
+      payload: 'large'
+    })
+    expect(large.uiScale).toBe('large')
+    const xl = apply(large, {
+      type: 'settings/uiScaleChanged',
+      payload: 'x-large'
+    })
+    expect(xl.uiScale).toBe('x-large')
+    const back = apply(xl, {
+      type: 'settings/uiScaleChanged',
+      payload: 'small'
+    })
+    expect(back.uiScale).toBe('small')
+  })
+
+  it('jsonModeSendOnEnterChanged toggles the send-on-enter flag', () => {
+    expect(initialSettings.jsonModeSendOnEnter).toBe(false)
+    const on = apply(initialSettings, {
+      type: 'settings/jsonModeSendOnEnterChanged',
+      payload: true
+    })
+    expect(on.jsonModeSendOnEnter).toBe(true)
+    const off = apply(on, {
+      type: 'settings/jsonModeSendOnEnterChanged',
+      payload: false
+    })
+    expect(off.jsonModeSendOnEnter).toBe(false)
+  })
+
   it('jsonModeDefaultPermissionModeChanged sets the default and preserves other settings', () => {
     expect(initialSettings.jsonModeDefaultPermissionMode).toBe('acceptEdits')
     const start: SettingsState = {
       ...initialSettings,
-      claudeCommand: 'pre-existing',
-      jsonModeClaudeTabs: true
+      claudeCommand: 'pre-existing'
     }
     const planned = apply(start, {
       type: 'settings/jsonModeDefaultPermissionModeChanged',
@@ -378,7 +501,6 @@ describe('settingsReducer', () => {
     })
     expect(planned.jsonModeDefaultPermissionMode).toBe('plan')
     expect(planned.claudeCommand).toBe('pre-existing')
-    expect(planned.jsonModeClaudeTabs).toBe(true)
     const back = apply(planned, {
       type: 'settings/jsonModeDefaultPermissionModeChanged',
       payload: 'default'
@@ -419,10 +541,44 @@ describe('settingsReducer', () => {
     expect(next.snoozeDefaultDays).toBe(3)
   })
 
+  it('announcementDismissed appends the id and dedups', () => {
+    expect(initialSettings.dismissedAnnouncementIds).toEqual([])
+    const once = apply(initialSettings, {
+      type: 'settings/announcementDismissed',
+      payload: 'release-1.2'
+    })
+    expect(once.dismissedAnnouncementIds).toEqual(['release-1.2'])
+    const twice = apply(once, {
+      type: 'settings/announcementDismissed',
+      payload: 'release-1.2'
+    })
+    expect(twice.dismissedAnnouncementIds).toEqual(['release-1.2'])
+    expect(twice).toBe(once)
+    const second = apply(twice, {
+      type: 'settings/announcementDismissed',
+      payload: 'hn-front-page'
+    })
+    expect(second.dismissedAnnouncementIds).toEqual(['release-1.2', 'hn-front-page'])
+  })
+
+  it('announcementsMutedChanged toggles the mute flag', () => {
+    expect(initialSettings.announcementsMuted).toBe(false)
+    const on = apply(initialSettings, {
+      type: 'settings/announcementsMutedChanged',
+      payload: true
+    })
+    expect(on.announcementsMuted).toBe(true)
+    const off = apply(on, {
+      type: 'settings/announcementsMutedChanged',
+      payload: false
+    })
+    expect(off.announcementsMuted).toBe(false)
+  })
+
   it('returns a new object reference (no mutation)', () => {
-    const next = apply(initialSettings, { type: 'settings/themeChanged', payload: 'x' })
+    const next = apply(initialSettings, { type: 'settings/themeDarkChanged', payload: 'dracula' })
     expect(next).not.toBe(initialSettings)
-    expect(initialSettings.theme).not.toBe('x')
+    expect(initialSettings.themeDark).not.toBe('dracula')
   })
 
   it('leaves unrelated fields untouched', () => {
@@ -431,7 +587,7 @@ describe('settingsReducer', () => {
       claudeCommand: 'pre-existing',
       nameClaudeSessions: true
     }
-    const next = apply(start, { type: 'settings/themeChanged', payload: 'other' })
+    const next = apply(start, { type: 'settings/themeDarkChanged', payload: 'nord' })
     expect(next.claudeCommand).toBe('pre-existing')
     expect(next.nameClaudeSessions).toBe(true)
   })

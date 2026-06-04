@@ -42,7 +42,7 @@ export function ScriptLogViewer({ log }: { log: string }): JSX.Element {
   return (
     <pre
       ref={ref}
-      className="text-[11px] leading-snug text-muted bg-app border border-border rounded p-3 whitespace-pre-wrap break-words max-h-72 overflow-auto font-mono"
+      className="text-xs leading-snug text-muted bg-app border border-border rounded p-3 whitespace-pre-wrap break-words max-h-72 overflow-auto font-mono"
     >
       {log || <span className="text-faint">Waiting for output…</span>}
     </pre>

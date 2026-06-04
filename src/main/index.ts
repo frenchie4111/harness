@@ -25,6 +25,7 @@ import { parseCliFlags, USAGE, type CliFlags } from './cli-args'
 import { PlaywrightBrowserManager } from './browser-manager-playwright'
 import type { BrowserManagerLike } from './browser-manager-types'
 import { PerfMonitor } from './perf-monitor'
+import { setGitHubApiRecorder, setGitHubApiLoggingEnabled } from './github-recorder'
 import { PRPoller } from './pr-poller'
 import { WorktreesFSM } from './worktrees-fsm'
 import { WorktreeDeletionFSM } from './worktree-deletion-fsm'
@@ -36,8 +37,8 @@ import { SnoozeTimer } from './snooze-timer'
 import { getWeeklyStats } from './weekly-stats'
 import type { TerminalTab, PaneNode, PaneLeaf } from '../shared/state/terminals'
 import { getLeaves, mapLeaves } from '../shared/state/terminals'
-import { listWorktrees, listBranches, continueWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getCommitChangedFiles, getCommitFileDiffSides, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, readWorktreeFile, readWorktreeFileBinary, writeWorktreeFile, getFileDiffSides, getCurrentBranch, symlinkClaudeSettings, type MergeStrategy } from './worktree'
-import { listOpenPRs, testToken, starRepo, unstarRepo, isRepoStarred, mergePR, getRepoInfo, type GitHubMergeMethod, type MergePRResult } from './github'
+import { listWorktrees, listBranches, continueWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getCommitMeta, getCommitChangedFiles, getCommitFileDiffSides, getCommitRangeChangedFiles, getCommitRangeFileDiffSides, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, listRecentCommitShas, readWorktreeFile, readWorktreeFileBinary, writeWorktreeFile, getFileDiffSides, getCurrentBranch, symlinkClaudeSettings, type MergeStrategy } from './worktree'
+import { listOpenPRs, testToken, starRepo, unstarRepo, isRepoStarred, mergePR, approvePR, getRepoInfo, type GitHubMergeMethod, type MergePRResult } from './github'
 import { AVAILABLE_EDITORS, DEFAULT_EDITOR_ID, openInEditor } from './editor'
 import { setSecret, getSecret, hasSecret, deleteSecret } from './secrets'
 import { resolveGitHubToken, getTokenSource, invalidateTokenCache, getCachedToken } from './github-auth'
@@ -46,13 +47,13 @@ import {
   saveConfig,
   saveConfigSync,
   DEFAULT_CLAUDE_COMMAND,
-  DEFAULT_THEME,
   AVAILABLE_THEMES,
   THEME_APP_BG,
   DEFAULT_TERMINAL_FONT_FAMILY,
   DEFAULT_TERMINAL_FONT_SIZE,
   DEFAULT_WORKTREE_BASE,
   DEFAULT_MERGE_STRATEGY,
+  DEFAULT_WORKTREE_DETAIL,
   DEFAULT_HARNESS_SYSTEM_PROMPT,
   DEFAULT_HARNESS_SYSTEM_PROMPT_MAIN,
   pruneTerminalHistory,
@@ -68,6 +69,12 @@ import { registerRepoRoot } from './repo-roots'
 import type { AddRepoResult } from '../shared/repo-pick'
 import { isWorktreeMerged } from '../shared/state/prs'
 import { MAX_WAKE } from '../shared/state/snooze'
+import { hasScratchpadNote } from '../shared/state/scratchpad'
+import {
+  DEFAULT_LIGHT_THEME,
+  DEFAULT_DARK_THEME,
+  DEFAULT_PR_REVIEW_PROMPT
+} from '../shared/state/settings'
 import { watchStatusDir } from './hooks'
 import { getAgent, type AgentKind } from './agents'
 import { buildClaudeLaunchSettings } from './claude-launch'
@@ -77,17 +84,36 @@ import { CostTracker } from './cost-tracker'
 import { getAllSessionCosts } from './cost-aggregator'
 import { getClaudeAuthStatus } from './claude-auth'
 import { listDir as fsListDir, resolveHome as fsResolveHome } from './fs-listing'
+import { listConfiguredHosts } from './ssh-config'
+import { SshTunnelManager } from './ssh-tunnel-manager'
 import { startControlServer } from './control-server'
 import { writeMcpConfigForTerminal, pruneMcpConfigs, getBridgeScriptPath } from './mcp-config'
 import { getControlServerInfo } from './control-server'
 import { recordActivity, getActivityLog, clearAllActivity, clearActivityForWorktree, sealAllActive, touchActivityMeta, finalizeActivity, type ActivityState, type PRState } from './activity'
 import { log, getLogFilePath } from './debug'
+import { loadCustomThemes } from './themes-loader'
 import { perfLog } from './perf-log'
 import { buildInitialAppState } from './build-initial-state'
+import { AnnouncementsPoller } from './announcements-poller'
 
 function toAgentKind(value: string | undefined): AgentKind {
   return value === 'codex' ? 'codex' : 'claude'
 }
+
+// Dev-restart resilience: electron-vite closes our stdout/stderr pipe on
+// stop/restart; an in-flight console write then fails with EIO/EPIPE. These
+// are benign during teardown — swallow only the pipe-write codes, rethrow
+// everything else. Covers both the sync throw (uncaughtException) and the
+// async error-event path (stream 'error').
+const isBenignPipeError = (e: unknown): boolean =>
+  !!e && typeof e === 'object' && ['EIO', 'EPIPE'].includes((e as NodeJS.ErrnoException).code ?? '')
+
+process.stdout.on('error', (e) => { if (!isBenignPipeError(e)) throw e })
+process.stderr.on('error', (e) => { if (!isBenignPipeError(e)) throw e })
+process.on('uncaughtException', (e) => {
+  if (isBenignPipeError(e)) return
+  throw e
+})
 
 // Runtime detection — Electron sets process.versions.electron, plain
 // Node leaves it undefined. The mode picks itself; there's no env-var
@@ -273,6 +299,15 @@ let config = loadConfig()
 let stopWatchingStatus: (() => void) | null = null
 
 const store = new Store(buildInitialAppState(config, { hasGithubToken: hasSecret('githubToken') }))
+
+// Scan for user-authored themes once the store exists. Done as a
+// dispatch (rather than seeding into buildInitialAppState) so the
+// reload IPC follows the same code path.
+try {
+  store.dispatch({ type: 'settings/customThemesChanged', payload: loadCustomThemes() })
+} catch (err) {
+  log('themes', `initial scan failed: ${(err as Error).message}`)
+}
 const approvalBridge = new ApprovalBridge(store, {
   getClaudeCommand: () =>
     store.getSnapshot().state.settings.claudeCommand || DEFAULT_CLAUDE_COMMAND,
@@ -303,14 +338,24 @@ const jsonClaudeManager = new JsonClaudeManager(store, {
       isMain: scope.isMain
     }
   },
-  getLaunchSettings: (worktreePath) =>
+  getLaunchSettings: (worktreePath, modelOverride) =>
     buildClaudeLaunchSettings({
       cwd: worktreePath,
       worktrees: store.getSnapshot().state.worktrees.list,
-      config
+      config,
+      modelOverride
     })
 })
 const perfMonitor = new PerfMonitor()
+setGitHubApiRecorder(() => perfMonitor.recordGitHubApiCall())
+setGitHubApiLoggingEnabled(config.expandedDiagnosticLoggingEnabled === true)
+
+// Active SSH tunnels keyed by backend id. Populated by the
+// ssh:bootstrap / ssh:reconnect handlers; entries are torn down on
+// connections:remove and on app quit. The remote `harness-server` is
+// intentionally NOT killed on unregister — it stays alive for future
+// reconnects + other Harnesses. See plans/remote-main.md §4.
+const sshTunnelManager = new SshTunnelManager()
 
 // In Electron mode createDesktopShell applies the dev-mode userData
 // override (must run before anything reads paths) and constructs the
@@ -402,16 +447,20 @@ if (webHttpServer && wsTransport) {
   })
   webHttpServer.listen(wsPort, wsHost, () => {
     const displayHost = wsHost === '0.0.0.0' ? getLanHost() : wsHost
+    // Resolve the actual listening port — when wsPort is 0 (ephemeral),
+    // address() is the only place the real port surfaces.
+    const addr = webHttpServer.address()
+    const boundPort = addr && typeof addr === 'object' ? addr.port : wsPort
     // Log to stdout so the user can paste the URL into another browser
     // without digging through the debug log. TODO(production): expose
     // through a Settings UI screen with a copy button + regenerate action.
     // eslint-disable-next-line no-console
     console.log(
-      `[ws-transport] enabled on ws://${displayHost}:${wsPort}?token=${wsTransport.getToken()} (bind=${wsHost})`
+      `[ws-transport] enabled on ws://${displayHost}:${boundPort}?token=${wsTransport.getToken()} (bind=${wsHost})`
     )
     // eslint-disable-next-line no-console
     console.log(
-      `[web-client] open http://${displayHost}:${wsPort}/?token=${wsTransport.getToken()}`
+      `[web-client] open http://${displayHost}:${boundPort}/?token=${wsTransport.getToken()}`
     )
   })
 }
@@ -562,6 +611,8 @@ const prPoller = new PRPoller(store, {
   }
 })
 
+const announcementsPoller = new AnnouncementsPoller(store)
+
 ptyManager.setStore(store)
 ptyManager.setSendSignal((channel, ...args) => transport.sendSignal(channel, ...args))
 ptyManager.setPerfMonitor(perfMonitor)
@@ -675,7 +726,9 @@ function treeToPersistedNode(node: PaneNode): PersistedPaneNode | null {
           sessionId: stripped.sessionId,
           url: liveUrl || stripped.url,
           command: stripped.command,
-          cwd: stripped.cwd
+          cwd: stripped.cwd,
+          model: stripped.model,
+          ...(stripped.customLabel ? { customLabel: stripped.customLabel } : {})
         }
       })
     if (tabs.length === 0) return null
@@ -728,9 +781,6 @@ const panesFSM = new PanesFSM(store, {
   getDefaultAgentKind: () => toAgentKind(store.getSnapshot().state.settings.defaultAgent),
   getDefaultClaudeTabType: () => {
     const s = store.getSnapshot().state.settings
-    // The json-mode flag gates everything — when it's off, behave as if
-    // the default is xterm regardless of the per-type setting.
-    if (!s.jsonModeClaudeTabs) return 'xterm'
     return s.defaultClaudeTabType === 'json' ? 'json' : 'xterm'
   },
   // Authoritative PTY teardown when tabs leave the tree. The renderer
@@ -750,6 +800,24 @@ const panesFSM = new PanesFSM(store, {
     startJsonClaudeSession(sessionId, worktreePath)
   }
 })
+
+/** Look up a json-claude tab's persisted `model` override by sessionId
+ *  (which is also the tab id for json-claude tabs). Returned to the
+ *  json-claude manager so resume/kickoff/wake all respect a per-tab pin
+ *  that was set when the worktree was created. */
+function findJsonClaudeTabModel(sessionId: string): string | undefined {
+  const panes = store.getSnapshot().state.terminals.panes
+  for (const tree of Object.values(panes)) {
+    for (const leaf of getLeaves(tree)) {
+      for (const tab of leaf.tabs) {
+        if (tab.id === sessionId && tab.type === 'json-claude') {
+          return tab.model && tab.model.trim() ? tab.model.trim() : undefined
+        }
+      }
+    }
+  }
+  return undefined
+}
 
 /** Single source of truth for "spin up the json-claude subprocess for
  *  this sessionId". Used by the jsonClaude:start IPC handler, the
@@ -772,16 +840,16 @@ function startJsonClaudeSession(sessionId: string, worktreePath: string): void {
   const permMode =
     store.getSnapshot().state.jsonClaude.sessions[sessionId]?.permissionMode ||
     'default'
-  jsonClaudeManager.create(sessionId, worktreePath, permMode)
+  jsonClaudeManager.create(sessionId, worktreePath, permMode, findJsonClaudeTabModel(sessionId))
 }
 
 const worktreesFSM = new WorktreesFSM(store, {
   getRepoRoots: () => config.repoRoots || [],
   getWorktreeSetupCmd: () => config.worktreeSetupCommand || '',
   getWorktreeBaseMode: () => config.worktreeBase || DEFAULT_WORKTREE_BASE,
-  onWorktreeCreated: ({ createdPath, initialPrompt, teleportSessionId }) => {
+  onWorktreeCreated: ({ createdPath, initialPrompt, teleportSessionId, agentKind, model }) => {
     void prPoller.refreshAll()
-    panesFSM.ensureInitialized(createdPath, { initialPrompt, teleportSessionId })
+    panesFSM.ensureInitialized(createdPath, { initialPrompt, teleportSessionId, agentKind, model })
     if (teleportSessionId) {
       setTimeout(() => void worktreesFSM.refreshList(), 10_000)
     }
@@ -805,8 +873,11 @@ const autoSleepMonitor = new AutoSleepMonitor(store, panesFSM)
  *  hook command is env-gated on $HARNESS_TERMINAL_ID, so it no-ops for
  *  sessions started outside Harness. */
 function installHooksGlobally(): void {
+  // installHooks() is idempotent — it strips any existing Harness entries
+  // before writing a fresh one — so calling it unconditionally also
+  // collapses duplicate entries left by earlier buggy install passes.
   for (const agent of [getAgent('claude'), getAgent('codex')]) {
-    if (!agent.hooksInstalled()) agent.installHooks()
+    agent.installHooks()
   }
 }
 
@@ -876,7 +947,13 @@ let bootDrained = false
 const pendingBootInit = new Set<string>()
 let bootTimer: NodeJS.Timeout | null = null
 
-function drainBootInit(force: boolean): void {
+// Yield to the event loop every N inits so 30+ ensureInitialized
+// dispatches (each followed by a renderer state-event broadcast and a
+// JSON persist write) don't run as one synchronous block. Without this,
+// boot freezes the UI for seconds while the renderer can't paint
+// between dispatches.
+const BOOT_INIT_BATCH_SIZE = 3
+async function drainBootInit(force: boolean): Promise<void> {
   if (bootDrained) return
   bootDrained = true
   if (bootTimer) {
@@ -884,12 +961,17 @@ function drainBootInit(force: boolean): void {
     bootTimer = null
   }
   const state = store.getSnapshot().state
-  for (const path of pendingBootInit) {
+  const paths = [...pendingBootInit]
+  pendingBootInit.clear()
+  for (let i = 0; i < paths.length; i++) {
+    const path = paths[i]
     if (force || !isWorktreeMerged(state.prs, path)) {
       panesFSM.ensureInitialized(path)
     }
+    if (i + 1 < paths.length && (i + 1) % BOOT_INIT_BATCH_SIZE === 0) {
+      await new Promise<void>((resolve) => setImmediate(resolve))
+    }
   }
-  pendingBootInit.clear()
 }
 
 store.subscribe((event) => {
@@ -901,12 +983,14 @@ store.subscribe((event) => {
     }
     for (const wt of list) pendingBootInit.add(wt.path)
     if (!bootTimer) {
-      bootTimer = setTimeout(() => drainBootInit(true), BOOT_INIT_TIMEOUT_MS)
+      bootTimer = setTimeout(() => {
+        drainBootInit(true).catch((err) => log('boot', 'drainBootInit (timeout) failed', err))
+      }, BOOT_INIT_TIMEOUT_MS)
     }
     return
   }
   if (event.type === 'prs/mergedChanged' && !bootDrained) {
-    drainBootInit(false)
+    drainBootInit(false).catch((err) => log('boot', 'drainBootInit (merged) failed', err))
   }
 })
 
@@ -923,8 +1007,162 @@ store.subscribe((event) => {
   }
 })
 
+// Same idea for scratchpad notes: drop slice entries for removed
+// worktrees, and prune them from the on-disk config so the file
+// doesn't accumulate orphan paths.
+store.subscribe((event) => {
+  if (event.type !== 'worktrees/listChanged') return
+  const live = new Set(store.getSnapshot().state.worktrees.list.map((w) => w.path))
+  const byPath = store.getSnapshot().state.scratchpad.byWorktreePath
+  let prunedDisk = false
+  for (const path of Object.keys(byPath)) {
+    if (live.has(path)) continue
+    store.dispatch({ type: 'scratchpad/worktreeRemoved', payload: path })
+    if (config.scratchpadNotes) {
+      for (const repoRoot of Object.keys(config.scratchpadNotes)) {
+        const repoMap = config.scratchpadNotes[repoRoot]
+        if (repoMap && path in repoMap) {
+          delete repoMap[path]
+          if (Object.keys(repoMap).length === 0) {
+            delete config.scratchpadNotes[repoRoot]
+          }
+          prunedDisk = true
+        }
+      }
+    }
+  }
+  if (prunedDisk) {
+    if (config.scratchpadNotes && Object.keys(config.scratchpadNotes).length === 0) {
+      delete config.scratchpadNotes
+    }
+    saveConfig(config)
+  }
+})
+
 const snoozeTimer = new SnoozeTimer(store)
 snoozeTimer.start()
+
+// Toggle "Warn Before Quitting". Shared by the Settings IPC handler and the
+// app-menu checkbox (wired into the desktop shell), so both stay in sync.
+// Persists only the off state (default-on, like autoUpdateEnabled).
+function setWarnBeforeQuitting(enabled: boolean): void {
+  if (enabled) {
+    delete config.warnBeforeQuitting
+  } else {
+    config.warnBeforeQuitting = false
+  }
+  saveConfig(config)
+  store.dispatch({
+    type: 'settings/warnBeforeQuittingChanged',
+    payload: config.warnBeforeQuitting !== false
+  })
+}
+
+/** Re-establish (or reuse) the SSH tunnel for an existing SSH backend.
+ *  Shared between the `ssh:reconnect` IPC handler and the boot-time
+ *  pre-warm loop in runBoot(). Idempotent: if a tunnel for this
+ *  backend is already live, returns its URL+token without re-running
+ *  the SSH handshake. */
+async function runSshReconnect(input: {
+  bootstrapId: string
+  connectionId: string
+}): Promise<{ url: string; token: string; localPort: number }> {
+  if (!input || typeof input.connectionId !== 'string') {
+    throw new Error('connectionId is required')
+  }
+  if (typeof input.bootstrapId !== 'string' || !input.bootstrapId) {
+    throw new Error('bootstrapId is required')
+  }
+  const conn = (config.connections ?? []).find((c) => c.id === input.connectionId)
+  if (!conn) throw new Error(`unknown backend ${input.connectionId}`)
+  if (!conn.ssh) throw new Error(`backend ${input.connectionId} is not an SSH backend`)
+
+  const existing = sshTunnelManager.get(input.connectionId)
+  if (existing) {
+    const url = sshTunnelManager.buildLocalUrl(input.connectionId)!
+    return { url, token: existing.token, localPort: existing.localPort }
+  }
+
+  const { parseSshTarget, bootstrapRemote } = await import('./ssh-bootstrap')
+  const target = parseSshTarget(conn.ssh.target)
+  store.dispatch({
+    type: 'sshBootstrap/started',
+    payload: {
+      bootstrapId: input.bootstrapId,
+      label: conn.label,
+      target: target.raw,
+      now: Date.now()
+    }
+  })
+  store.dispatch({
+    type: 'sshBootstrap/connectionLinked',
+    payload: { bootstrapId: input.bootstrapId, connectionId: conn.id }
+  })
+
+  try {
+    const result = await bootstrapRemote(
+      target,
+      {
+        onPhase: (phase) => {
+          store.dispatch({
+            type: 'sshBootstrap/phaseChanged',
+            payload: { bootstrapId: input.bootstrapId, phase, now: Date.now() }
+          })
+        },
+        onLine: (line) => {
+          store.dispatch({
+            type: 'sshBootstrap/lineLogged',
+            payload: { bootstrapId: input.bootstrapId, line, now: Date.now() }
+          })
+        }
+      },
+      {
+        preferredLocalPort: conn.ssh.tunnelLocalPort,
+        skipInstallIfRunning: true
+      }
+    )
+    sshTunnelManager.register({
+      backendId: conn.id,
+      localPort: result.localPort,
+      remotePort: result.remotePort,
+      token: result.token,
+      ssh: result.ssh,
+      tunnelServer: result.tunnelServer
+    })
+    // ws:// not http:// — WebSocketClientTransport calls `new WebSocket(url)`
+    // which throws on http schemes.
+    const url = `ws://127.0.0.1:${result.localPort}/?token=${result.token}`
+    const idx = (config.connections ?? []).findIndex((c) => c.id === conn.id)
+    if (idx >= 0) {
+      const next = config.connections!.slice()
+      next[idx] = {
+        ...next[idx],
+        url,
+        ssh: { target: target.raw, tunnelLocalPort: result.localPort }
+      }
+      config.connections = next
+      setSecret(`backend-token:${conn.id}`, result.token)
+      saveConfig(config)
+    }
+    store.dispatch({
+      type: 'sshBootstrap/phaseChanged',
+      payload: { bootstrapId: input.bootstrapId, phase: 'connected', now: Date.now() }
+    })
+    return { url, token: result.token, localPort: result.localPort }
+  } catch (err) {
+    const bootstrapErr =
+      (err as { bootstrapError?: import('../shared/state/ssh-bootstrap').BootstrapError })
+        .bootstrapError ?? {
+        code: 'unknown' as const,
+        message: err instanceof Error ? err.message : String(err)
+      }
+    store.dispatch({
+      type: 'sshBootstrap/errored',
+      payload: { bootstrapId: input.bootstrapId, error: bootstrapErr, now: Date.now() }
+    })
+    throw err
+  }
+}
 
 function registerIpcHandlers(): void {
   // Worktree handlers — every call takes an explicit repoRoot, since a single
@@ -954,13 +1192,27 @@ function registerIpcHandlers(): void {
       branchName: string
       initialPrompt?: string
       teleportSessionId?: string
+      agentKind?: 'claude' | 'codex'
+      model?: string
+      checkoutExisting?: boolean
+      baseRef?: string
     }) => {
       return worktreesFSM.runPending(params)
     }
   )
   transport.onRequest(
     'worktrees:runPendingPR',
-    async (_ctx, params: { id: string; repoRoot: string; prNumber: number }) => {
+    async (
+      _ctx,
+      params: {
+        id: string
+        repoRoot: string
+        prNumber: number
+        initialPrompt?: string
+        agentKind?: 'claude' | 'codex'
+        model?: string
+      }
+    ) => {
       return worktreesFSM.runPendingPR(params)
     }
   )
@@ -989,7 +1241,9 @@ function registerIpcHandlers(): void {
   )
 
   transport.onRequest('worktree:isDirty', async (_ctx, path: string) => {
-    return isWorktreeDirty(path)
+    const git = await isWorktreeDirty(path)
+    const scratchpad = hasScratchpadNote(store.getSnapshot().state.scratchpad, path)
+    return { git, scratchpad }
   })
 
   transport.onRequest('worktree:remove', async (_ctx, 
@@ -1146,6 +1400,10 @@ function registerIpcHandlers(): void {
     return listAllFiles(worktreePath)
   })
 
+  transport.onRequest('worktree:recentCommitShas', async (_ctx, worktreePath: string) => {
+    return listRecentCommitShas(worktreePath)
+  })
+
   transport.onRequest('worktree:readFile', async (_ctx, worktreePath: string, filePath: string) => {
     return readWorktreeFile(worktreePath, filePath)
   })
@@ -1184,6 +1442,10 @@ function registerIpcHandlers(): void {
     return getCommitDiff(worktreePath, hash)
   })
 
+  transport.onRequest('worktree:commitMeta', async (_ctx, worktreePath: string, hash: string) => {
+    return getCommitMeta(worktreePath, hash)
+  })
+
   transport.onRequest('worktree:commitChangedFiles', async (_ctx, worktreePath: string, hash: string) => {
     return getCommitChangedFiles(worktreePath, hash)
   })
@@ -1192,6 +1454,20 @@ function registerIpcHandlers(): void {
     'worktree:commitFileDiffSides',
     async (_ctx, worktreePath: string, hash: string, filePath: string) => {
       return getCommitFileDiffSides(worktreePath, hash, filePath)
+    }
+  )
+
+  transport.onRequest(
+    'worktree:commitRangeChangedFiles',
+    async (_ctx, worktreePath: string, fromHash: string, toHash: string) => {
+      return getCommitRangeChangedFiles(worktreePath, fromHash, toHash)
+    }
+  )
+
+  transport.onRequest(
+    'worktree:commitRangeFileDiffSides',
+    async (_ctx, worktreePath: string, fromHash: string, toHash: string, filePath: string) => {
+      return getCommitRangeFileDiffSides(worktreePath, fromHash, toHash, filePath)
     }
   )
 
@@ -1213,6 +1489,31 @@ function registerIpcHandlers(): void {
   })
   transport.onRequest('prs:refreshOneIfStale', (_ctx, worktreePath: string) => {
     prPoller.refreshOneIfStale(worktreePath)
+    return true
+  })
+
+  transport.onRequest('announcements:refresh', async (_ctx) => {
+    await announcementsPoller.refresh()
+    return true
+  })
+  transport.onRequest('announcements:dismiss', (_ctx, id: string) => {
+    if (typeof id !== 'string' || !id) return false
+    const existing = config.dismissedAnnouncementIds || []
+    if (!existing.includes(id)) {
+      config.dismissedAnnouncementIds = [...existing, id]
+      saveConfig(config)
+    }
+    store.dispatch({ type: 'settings/announcementDismissed', payload: id })
+    return true
+  })
+  transport.onRequest('announcements:mute', (_ctx, muted: boolean) => {
+    if (muted) {
+      config.announcementsMuted = true
+    } else {
+      delete config.announcementsMuted
+    }
+    saveConfig(config)
+    store.dispatch({ type: 'settings/announcementsMutedChanged', payload: muted === true })
     return true
   })
 
@@ -1261,6 +1562,26 @@ function registerIpcHandlers(): void {
         }
       }
       const result = await mergePR(token, repoInfo.owner, repoInfo.repo, prNumber, method)
+      if (result.ok) {
+        void prPoller.refreshOne(worktreePath)
+      }
+      return result
+    }
+  )
+
+  transport.onRequest(
+    'pr:approve',
+    async (_ctx, worktreePath: string): Promise<{ ok: true } | { ok: false; error: string }> => {
+      const cached = store.getSnapshot().state.prs.byPath[worktreePath]
+      let prNumber = cached?.number
+      if (typeof prNumber !== 'number') {
+        await prPoller.refreshOne(worktreePath)
+        prNumber = store.getSnapshot().state.prs.byPath[worktreePath]?.number
+      }
+      if (typeof prNumber !== 'number') {
+        return { ok: false, error: 'No pull request found for this worktree' }
+      }
+      const result = await approvePR(worktreePath, prNumber)
       if (result.ok) {
         void prPoller.refreshOne(worktreePath)
       }
@@ -1501,6 +1822,26 @@ function registerIpcHandlers(): void {
     return true
   })
 
+  transport.onRequest('config:setWarnBeforeQuitting', (_ctx, enabled: boolean) => {
+    setWarnBeforeQuitting(enabled)
+    return true
+  })
+
+  transport.onRequest('config:setExpandedDiagnosticLoggingEnabled', (_ctx, enabled: boolean) => {
+    if (enabled) {
+      config.expandedDiagnosticLoggingEnabled = true
+    } else {
+      delete config.expandedDiagnosticLoggingEnabled
+    }
+    saveConfig(config)
+    setGitHubApiLoggingEnabled(enabled)
+    store.dispatch({
+      type: 'settings/expandedDiagnosticLoggingEnabledChanged',
+      payload: enabled
+    })
+    return true
+  })
+
   transport.onRequest('config:setHarnessSystemPromptEnabled', (_ctx, enabled: boolean) => {
     if (enabled) {
       delete config.harnessSystemPromptEnabled
@@ -1541,6 +1882,21 @@ function registerIpcHandlers(): void {
     store.dispatch({
       type: 'settings/harnessSystemPromptMainChanged',
       payload: config.harnessSystemPromptMain || DEFAULT_HARNESS_SYSTEM_PROMPT_MAIN
+    })
+    return true
+  })
+
+  transport.onRequest('config:setPrReviewPrompt', (_ctx, prompt: string) => {
+    const trimmed = prompt.trim()
+    if (!trimmed || trimmed === DEFAULT_PR_REVIEW_PROMPT) {
+      delete config.prReviewPrompt
+    } else {
+      config.prReviewPrompt = prompt
+    }
+    saveConfig(config)
+    store.dispatch({
+      type: 'settings/prReviewPromptChanged',
+      payload: config.prReviewPrompt || DEFAULT_PR_REVIEW_PROMPT
     })
     return true
   })
@@ -1715,19 +2071,83 @@ function registerIpcHandlers(): void {
     })
     return true
   })
-  transport.onRequest('config:setTheme', (_ctx, theme: string) => {
-    if (!AVAILABLE_THEMES.includes(theme as (typeof AVAILABLE_THEMES)[number])) {
-      return false
-    }
-    if (theme === DEFAULT_THEME) {
-      delete config.theme
+  transport.onRequest('config:setThemeMode', (_ctx, mode: string) => {
+    if (mode !== 'light' && mode !== 'dark' && mode !== 'system') return false
+    if (mode === 'system') {
+      delete config.themeMode
     } else {
-      config.theme = theme
+      config.themeMode = mode
     }
     saveConfig(config)
-    store.dispatch({ type: 'settings/themeChanged', payload: theme })
+    store.dispatch({ type: 'settings/themeModeChanged', payload: mode })
     return true
   })
+
+  // Accept built-in IDs (validated against AVAILABLE_THEMES) and any
+  // currently-loaded custom theme id of the matching mode. Custom IDs
+  // are filename-derived and not statically known, so the live slice is
+  // the source of truth.
+  const isKnownLightTheme = (id: string): boolean => {
+    if (AVAILABLE_THEMES.includes(id as (typeof AVAILABLE_THEMES)[number])) return true
+    return store.getSnapshot().state.settings.customThemes.some(
+      (t) => t.id === id && t.mode === 'light'
+    )
+  }
+  const isKnownDarkTheme = (id: string): boolean => {
+    if (AVAILABLE_THEMES.includes(id as (typeof AVAILABLE_THEMES)[number])) return true
+    return store.getSnapshot().state.settings.customThemes.some(
+      (t) => t.id === id && t.mode === 'dark'
+    )
+  }
+
+  transport.onRequest('config:setThemeLight', (_ctx, theme: string) => {
+    if (typeof theme !== 'string' || !isKnownLightTheme(theme)) {
+      return false
+    }
+    if (theme === DEFAULT_LIGHT_THEME) {
+      delete config.themeLight
+    } else {
+      config.themeLight = theme
+    }
+    saveConfig(config)
+    store.dispatch({ type: 'settings/themeLightChanged', payload: theme })
+    return true
+  })
+
+  transport.onRequest('config:setThemeDark', (_ctx, theme: string) => {
+    if (typeof theme !== 'string' || !isKnownDarkTheme(theme)) {
+      return false
+    }
+    if (theme === DEFAULT_DARK_THEME) {
+      delete config.themeDark
+    } else {
+      config.themeDark = theme
+    }
+    saveConfig(config)
+    store.dispatch({ type: 'settings/themeDarkChanged', payload: theme })
+    return true
+  })
+
+  // Fire-and-forget: the renderer reports the hex it just applied so we can
+  // use it as the BrowserWindow backgroundColor on the next launch. No
+  // dispatch — this never needs to be reflected in slice state.
+  transport.onSignal('config:setLastEffectiveAppBg', (_ctx, hex: unknown) => {
+    if (typeof hex !== 'string' || !hex) return
+    if (hex === config.lastEffectiveAppBg) return
+    config.lastEffectiveAppBg = hex
+    saveConfig(config)
+  })
+
+  transport.onRequest('config:reloadCustomThemes', (_ctx) => {
+    const themes = loadCustomThemes()
+    store.dispatch({ type: 'settings/customThemesChanged', payload: themes })
+    return themes.length
+  })
+
+  // `config:openThemesFolder` lives in desktop-shell.ts so it only spawns
+  // a window-manager file-browser on the local Electron host. Headless
+  // backends don't register it; the renderer falls back to displaying
+  // the path string.
 
   transport.onRequest('config:setTerminalFontFamily', (_ctx, fontFamily: string) => {
     const trimmed = (fontFamily || '').trim()
@@ -1813,6 +2233,28 @@ function registerIpcHandlers(): void {
     }
   )
 
+  transport.onRequest(
+    'config:setWorktreeDetail',
+    (_ctx, detail: 'diff' | 'age' | 'pr' | 'none') => {
+      if (
+        detail !== 'diff' &&
+        detail !== 'age' &&
+        detail !== 'pr' &&
+        detail !== 'none'
+      ) {
+        return false
+      }
+      if (detail === DEFAULT_WORKTREE_DETAIL) {
+        delete config.worktreeDetail
+      } else {
+        config.worktreeDetail = detail
+      }
+      saveConfig(config)
+      store.dispatch({ type: 'settings/worktreeDetailChanged', payload: detail })
+      return true
+    }
+  )
+
   transport.onRequest('config:getAvailableThemes', (_ctx) => {
     return AVAILABLE_THEMES
   })
@@ -1867,6 +2309,13 @@ function registerIpcHandlers(): void {
     }
   )
   transport.onRequest(
+    'panes:renameTab',
+    (_ctx, wtPath: string, tabId: string, label: string) => {
+      panesFSM.renameTab(wtPath, tabId, label)
+      return true
+    }
+  )
+  transport.onRequest(
     'panes:reorderTabs',
     (_ctx, wtPath: string, paneId: string, fromId: string, toId: string) => {
       panesFSM.reorderTabs(wtPath, paneId, fromId, toId)
@@ -1882,6 +2331,24 @@ function registerIpcHandlers(): void {
       toIndex?: number
     ) => {
       panesFSM.moveTabToPane(wtPath, tabId, toPaneId, toIndex)
+      return true
+    }
+  )
+  transport.onRequest('panes:openReview', (_ctx, wtPath: string) => {
+    panesFSM.openReviewTab(wtPath)
+    return true
+  })
+  transport.onRequest(
+    'panes:openFile',
+    (_ctx, wtPath: string, filePath: string, nearTabId?: string) => {
+      panesFSM.openFileTab(wtPath, filePath, nearTabId)
+      return true
+    }
+  )
+  transport.onRequest(
+    'panes:setReviewSelection',
+    (_ctx, wtPath: string, tabId: string, fromCommit?: string, toCommit?: string) => {
+      panesFSM.setReviewSelection(wtPath, tabId, fromCommit, toCommit)
       return true
     }
   )
@@ -1907,7 +2374,26 @@ function registerIpcHandlers(): void {
     return true
   })
   transport.onRequest('panes:wakeTab', (_ctx, wtPath: string, tabId: string) => {
-    panesFSM.wakeJsonClaudeTab(wtPath, tabId)
+    // Route by tab type. json-claude needs its subprocess spawned;
+    // shell only flips mode (XTerminal owns the PTY spawn). Dispatch by
+    // type here rather than fanning out to both methods so any future
+    // unconditional side-effect added to either wake path can't silently
+    // fire on the wrong tab type.
+    const type = panesFSM.getTabType(wtPath, tabId)
+    if (type === 'json-claude') panesFSM.wakeJsonClaudeTab(wtPath, tabId)
+    else if (type === 'shell') panesFSM.wakeShellTab(wtPath, tabId)
+    return true
+  })
+  // Renderer-driven lastActive bump. The composer fires this while the
+  // user is typing so the auto-sleep monitor can't re-sleep a tab mid-
+  // composition — ActivityDeriver only bumps lastActive on status
+  // transitions (and only after a 30s debounce), so typing into an
+  // already-'waiting' tab leaves the timestamp stale otherwise.
+  transport.onRequest('terminals:touchLastActive', (_ctx, wtPath: string) => {
+    store.dispatch({
+      type: 'terminals/lastActiveChanged',
+      payload: { worktreePath: wtPath, ts: Date.now() }
+    })
     return true
   })
   // Wake-on-activation. Renderer fires this whenever the user focuses a
@@ -1965,7 +2451,8 @@ function registerIpcHandlers(): void {
     (_ctx, agentKind: string, opts: {
       terminalId: string; cwd: string; sessionId?: string;
       initialPrompt?: string; teleportSessionId?: string;
-      sessionName?: string
+      sessionName?: string;
+      modelOverride?: string
     }): string => {
       const kind = toAgentKind(agentKind)
       const agent = getAgent(kind)
@@ -1977,6 +2464,7 @@ function registerIpcHandlers(): void {
         resolveCallerScope(opts.terminalId)
       )
 
+      const override = opts.modelOverride && opts.modelOverride.trim() ? opts.modelOverride.trim() : undefined
       let systemPrompt: string | undefined
       let tuiFullscreen: boolean | undefined
       let model: string | null
@@ -1984,13 +2472,14 @@ function registerIpcHandlers(): void {
         const launch = buildClaudeLaunchSettings({
           cwd: opts.cwd,
           worktrees: store.getSnapshot().state.worktrees.list,
-          config
+          config,
+          modelOverride: override
         })
         systemPrompt = launch.systemPrompt
         tuiFullscreen = launch.tuiFullscreen
         model = launch.model ?? null
       } else {
-        model = config.codexModel || null
+        model = override || config.codexModel || null
       }
 
       return agent.buildSpawnArgs({ ...opts, command, mcpConfigPath, model, systemPrompt, tuiFullscreen })
@@ -2341,6 +2830,64 @@ function registerIpcHandlers(): void {
     jsonClaudeManager.interrupt(sessionId)
     return true
   })
+
+  // Rewind to a clicked assistant message. Orchestrates: interrupt
+  // in-flight stream (if any) → await `result` boundary (≤1500ms) so
+  // the jsonl is quiesced → deny pending approvals for the session →
+  // manager.rewindTo (truncate jsonl + kill + slice prune) → respawn
+  // via --resume. The renderer restricts the menu to assistant rows,
+  // so the manager validates the same invariant defensively.
+  transport.onRequest(
+    'jsonClaude:rewindTo',
+    async (
+      _ctx,
+      sessionId: string,
+      entryId: string
+    ): Promise<{ ok: boolean; reason?: string }> => {
+      if (!sessionId || !entryId) return { ok: false, reason: 'missing args' }
+      const startSession = store.getSnapshot().state.jsonClaude.sessions[sessionId]
+      if (!startSession) return { ok: false, reason: 'unknown session' }
+
+      // Quiesce in-flight stream. Subscribe first, then send the
+      // interrupt so we can't miss the resulting busy=false dispatch.
+      if (startSession.busy) {
+        await new Promise<void>((resolve) => {
+          let done = false
+          const finish = (): void => {
+            if (done) return
+            done = true
+            unsub()
+            clearTimeout(timer)
+            resolve()
+          }
+          const unsub = store.subscribe((event) => {
+            if (
+              event.type === 'jsonClaude/busyChanged' &&
+              event.payload.sessionId === sessionId &&
+              event.payload.busy === false
+            ) {
+              finish()
+            }
+          })
+          const timer = setTimeout(finish, 1500)
+          jsonClaudeManager.interrupt(sessionId)
+        })
+      }
+
+      approvalBridge.cancelPendingForSession(sessionId)
+
+      const outcome = jsonClaudeManager.rewindTo(sessionId, entryId)
+      if (!outcome.ok) return { ok: false, reason: outcome.reason }
+
+      // Respawn so --resume re-seeds the slice from the truncated jsonl
+      // (authoritative — our optimistic dispatch in rewindTo is the
+      // pre-respawn fallback).
+      startJsonClaudeSession(sessionId, startSession.worktreePath)
+
+      return { ok: true }
+    }
+  )
+
   transport.onRequest(
     'jsonClaude:openAuthLoginTab',
     (_ctx, worktreePath: string): { ok: true; tabId: string } | { ok: false; error: string } => {
@@ -2400,7 +2947,11 @@ function registerIpcHandlers(): void {
       if (!sessionId) return []
       const session = store.getSnapshot().state.jsonClaude.sessions[sessionId]
       const entries = session?.entries ?? []
-      if (session && entries.length > 0) {
+      // Always dispatch when the session exists — even with empty entries,
+      // so the slice flips `entriesHydrated: true`. The renderer uses that
+      // flag to distinguish "haven't fetched yet" (render blank) from
+      // "truly empty session" (render the empty-state card).
+      if (session) {
         store.dispatch({
           type: 'jsonClaude/entriesSeeded',
           payload: { sessionId, entries }
@@ -2455,20 +3006,6 @@ function registerIpcHandlers(): void {
     }
   )
 
-  transport.onRequest('config:setJsonModeClaudeTabs', (_ctx, enabled: boolean) => {
-    if (enabled) {
-      config.jsonModeClaudeTabs = true
-    } else {
-      delete config.jsonModeClaudeTabs
-    }
-    saveConfig(config)
-    store.dispatch({
-      type: 'settings/jsonModeClaudeTabsChanged',
-      payload: enabled
-    })
-    return true
-  })
-
   transport.onRequest(
     'config:setDefaultClaudeTabType',
     (_ctx, value: 'xterm' | 'json') => {
@@ -2488,6 +3025,23 @@ function registerIpcHandlers(): void {
   )
 
   transport.onRequest(
+    'config:setChatPromotionDismissed',
+    (_ctx, value: boolean) => {
+      if (value) {
+        config.chatPromotionDismissed = true
+      } else {
+        delete config.chatPromotionDismissed
+      }
+      saveConfig(config)
+      store.dispatch({
+        type: 'settings/chatPromotionDismissedChanged',
+        payload: value
+      })
+      return true
+    }
+  )
+
+  transport.onRequest(
     'config:setJsonModeChatDensity',
     (_ctx, value: 'compact' | 'comfy') => {
       const next: 'compact' | 'comfy' = value === 'comfy' ? 'comfy' : 'compact'
@@ -2499,6 +3053,45 @@ function registerIpcHandlers(): void {
       saveConfig(config)
       store.dispatch({
         type: 'settings/jsonModeChatDensityChanged',
+        payload: next
+      })
+      return true
+    }
+  )
+
+  transport.onRequest(
+    'config:setUiScale',
+    (_ctx, value: 'x-small' | 'small' | 'medium' | 'large' | 'x-large') => {
+      const next: 'x-small' | 'small' | 'medium' | 'large' | 'x-large' =
+        value === 'x-small' ||
+        value === 'medium' ||
+        value === 'large' ||
+        value === 'x-large'
+          ? value
+          : 'small'
+      if (next === 'small') {
+        delete config.uiScale
+      } else {
+        config.uiScale = next
+      }
+      saveConfig(config)
+      store.dispatch({ type: 'settings/uiScaleChanged', payload: next })
+      return true
+    }
+  )
+
+  transport.onRequest(
+    'config:setJsonModeSendOnEnter',
+    (_ctx, value: boolean) => {
+      const next = value === true
+      if (!next) {
+        delete config.jsonModeSendOnEnter
+      } else {
+        config.jsonModeSendOnEnter = true
+      }
+      saveConfig(config)
+      store.dispatch({
+        type: 'settings/jsonModeSendOnEnterChanged',
         payload: next
       })
       return true
@@ -2559,7 +3152,14 @@ function registerIpcHandlers(): void {
     'connections:add',
     (
       _ctx,
-      input: { label: string; url: string; kind: 'remote'; color?: string; initials?: string },
+      input: {
+        label: string
+        url: string
+        kind: 'remote'
+        color?: string
+        initials?: string
+        ssh?: { target: string; tunnelLocalPort?: number }
+      },
       token: string
     ) => {
       if (!input || input.kind !== 'remote') throw new Error('connections:add only accepts remote connections')
@@ -2574,7 +3174,17 @@ function registerIpcHandlers(): void {
         kind: 'remote',
         addedAt: Date.now(),
         ...(input.color ? { color: input.color } : {}),
-        ...(input.initials ? { initials: input.initials } : {})
+        ...(input.initials ? { initials: input.initials } : {}),
+        ...(input.ssh && typeof input.ssh.target === 'string' && input.ssh.target
+          ? {
+              ssh: {
+                target: input.ssh.target,
+                ...(typeof input.ssh.tunnelLocalPort === 'number'
+                  ? { tunnelLocalPort: input.ssh.tunnelLocalPort }
+                  : {})
+              }
+            }
+          : {})
       }
       const list = (config.connections ?? []).slice()
       list.push(conn)
@@ -2593,6 +3203,10 @@ function registerIpcHandlers(): void {
     config.connections = next
     if (config.activeBackendId === id) config.activeBackendId = LOCAL_BACKEND_ID
     deleteSecret(`backend-token:${id}`)
+    // Tear the local tunnel down for this backend. The remote
+    // harness-server is intentionally left running — see
+    // plans/remote-main.md §4 "Things to NOT do".
+    sshTunnelManager.unregister(id)
     saveConfig(config)
     return true
   })
@@ -2642,6 +3256,128 @@ function registerIpcHandlers(): void {
     return hasSecret(`backend-token:${id}`)
   })
 
+  // ---- SSH bootstrap helpers (Tier 1 remote-SSH backend flow) -------
+  // Renderer-shell-owned, like the connections list above. Only the local
+  // Electron backend exposes these — remote backends don't bootstrap other
+  // backends. See plans/remote-main.md §4.
+  transport.onRequest('ssh:listConfiguredHosts', () => {
+    return listConfiguredHosts()
+  })
+
+  // First-time SSH bootstrap: SSH in, install (if missing), start the
+  // server detached, set up the tunnel, and add the connection.
+  // Returns { connectionId } once the connection is persisted; progress
+  // events stream into the sshBootstrap slice (subscribe via the
+  // sshBootstrap.byId[bootstrapId] hook in the renderer) so the modal
+  // can show live progress.
+  //
+  // Caller MUST pass `bootstrapId` (uuid v4) so it can subscribe to
+  // progress events that fire BEFORE this handler returns. Lazy-imported
+  // because node-ssh + ssh2 ship native bindings that aren't in the
+  // headless tarball.
+  transport.onRequest(
+    'ssh:bootstrap',
+    async (
+      _ctx,
+      input: { bootstrapId: string; target: string; label: string }
+    ): Promise<{ connectionId: string }> => {
+      if (!input || typeof input.target !== 'string' || !input.target.trim()) {
+        throw new Error('target is required')
+      }
+      if (typeof input.bootstrapId !== 'string' || !input.bootstrapId) {
+        throw new Error('bootstrapId is required')
+      }
+      const label = (input.label || '').trim() || input.target.trim()
+      const { parseSshTarget, bootstrapRemote } = await import('./ssh-bootstrap')
+      const target = parseSshTarget(input.target)
+
+      store.dispatch({
+        type: 'sshBootstrap/started',
+        payload: { bootstrapId: input.bootstrapId, label, target: target.raw, now: Date.now() }
+      })
+
+      try {
+        const result = await bootstrapRemote(target, {
+          onPhase: (phase) => {
+            store.dispatch({
+              type: 'sshBootstrap/phaseChanged',
+              payload: { bootstrapId: input.bootstrapId, phase, now: Date.now() }
+            })
+          },
+          onLine: (line) => {
+            store.dispatch({
+              type: 'sshBootstrap/lineLogged',
+              payload: { bootstrapId: input.bootstrapId, line, now: Date.now() }
+            })
+          }
+        })
+
+        // Mint the BackendConnection + persist + register tunnel. The
+        // URL is the ephemeral loopback we just opened; on next launch
+        // we'll re-derive it after re-running the bootstrap.
+        // ws:// not http:// — WebSocketClientTransport calls `new WebSocket(url)`
+    // which throws on http schemes.
+    const url = `ws://127.0.0.1:${result.localPort}/?token=${result.token}`
+        const id = randomUUID()
+        const conn: BackendConnection = {
+          id,
+          label,
+          url,
+          kind: 'remote',
+          addedAt: Date.now(),
+          ssh: { target: target.raw, tunnelLocalPort: result.localPort }
+        }
+        const list = (config.connections ?? []).slice()
+        list.push(conn)
+        config.connections = list
+        setSecret(`backend-token:${id}`, result.token)
+        saveConfig(config)
+        sshTunnelManager.register({
+          backendId: id,
+          localPort: result.localPort,
+          remotePort: result.remotePort,
+          token: result.token,
+          ssh: result.ssh,
+          tunnelServer: result.tunnelServer
+        })
+
+        store.dispatch({
+          type: 'sshBootstrap/connectionLinked',
+          payload: { bootstrapId: input.bootstrapId, connectionId: id }
+        })
+        store.dispatch({
+          type: 'sshBootstrap/phaseChanged',
+          payload: { bootstrapId: input.bootstrapId, phase: 'connected', now: Date.now() }
+        })
+        return { connectionId: id }
+      } catch (err) {
+        const bootstrapErr = (err as { bootstrapError?: import('../shared/state/ssh-bootstrap').BootstrapError })
+          .bootstrapError ?? {
+          code: 'unknown' as const,
+          message: err instanceof Error ? err.message : String(err)
+        }
+        store.dispatch({
+          type: 'sshBootstrap/errored',
+          payload: { bootstrapId: input.bootstrapId, error: bootstrapErr, now: Date.now() }
+        })
+        throw err
+      }
+    }
+  )
+
+  // Reconnect an existing SSH backend: re-runs the bootstrap (skipping
+  // install if the server is already running) and reopens the tunnel.
+  // Returns { url, token } so the renderer can build a fresh WS
+  // transport pointing at the new loopback port.
+  //
+  // Idempotent: if a live tunnel for this backend already exists, just
+  // return its URL + token without re-running SSH.
+  transport.onRequest(
+    'ssh:reconnect',
+    (_ctx, input: { bootstrapId: string; connectionId: string }) =>
+      runSshReconnect(input)
+  )
+
   transport.onSignal('terminal:join', (ctx, id: string) => {
     store.dispatch({
       type: 'terminals/clientJoined',
@@ -2677,6 +3413,18 @@ function registerIpcHandlers(): void {
     ptyManager.resize(id, cols, rows)
   })
 
+  transport.onSignal('terminal:setProgress', (_ctx, id: string, state: number, value: number) => {
+    // OSC 9;4 progress, mirrored from the controller's xterm ProgressAddon.
+    // Reducer dedups identical updates so we don't fan out per token.
+    if (typeof id !== 'string' || !id) return
+    if (state !== 0 && state !== 1 && state !== 2 && state !== 3 && state !== 4) return
+    const v = Number(value)
+    store.dispatch({
+      type: 'terminals/progressChanged',
+      payload: { id, state, value: Number.isFinite(v) ? v : 0 }
+    })
+  })
+
   transport.onRequest('snooze:snooze', (_ctx, path: string, wakeAt: number) => {
     if (typeof path !== 'string' || !path) return false
     const wake = Number(wakeAt)
@@ -2697,6 +3445,44 @@ function registerIpcHandlers(): void {
     store.dispatch({ type: 'snooze/clear', payload: path })
     return true
   })
+
+  transport.onRequest(
+    'scratchpad:setText',
+    (_ctx, worktreePath: string, text: string) => {
+      if (typeof worktreePath !== 'string' || !worktreePath) return false
+      if (typeof text !== 'string') return false
+      const wt = store
+        .getSnapshot()
+        .state.worktrees.list.find((w) => w.path === worktreePath)
+      const repoRoot = wt?.repoRoot
+      if (repoRoot) {
+        const notes = config.scratchpadNotes || {}
+        const repoMap = notes[repoRoot] ? { ...notes[repoRoot] } : {}
+        if (text === '') {
+          delete repoMap[worktreePath]
+        } else {
+          repoMap[worktreePath] = text
+        }
+        const nextNotes = { ...notes }
+        if (Object.keys(repoMap).length === 0) {
+          delete nextNotes[repoRoot]
+        } else {
+          nextNotes[repoRoot] = repoMap
+        }
+        if (Object.keys(nextNotes).length === 0) {
+          delete config.scratchpadNotes
+        } else {
+          config.scratchpadNotes = nextNotes
+        }
+        saveConfig(config)
+      }
+      store.dispatch({
+        type: 'scratchpad/textChanged',
+        payload: { worktreePath, text }
+      })
+      return true
+    }
+  )
 
   transport.onRequest('config:setSnoozeDefaultDays', (_ctx, days: number) => {
     const n = Number(days)
@@ -2767,6 +3553,8 @@ async function runBoot(): Promise<void> {
 
     await refreshHarnessStarState()
   })()
+
+  announcementsPoller.start()
 
   // Seed hooks.consent from disk and migrate legacy per-worktree hooks
   // to a single user-scope install. Runs once per app install; migrated
@@ -2854,6 +3642,7 @@ async function runBoot(): Promise<void> {
   startControlServer({
     getRepoRoots: () => config.repoRoots,
     getWorktreeBase: () => config.worktreeBase || DEFAULT_WORKTREE_BASE,
+    getPrReviewPrompt: () => config.prReviewPrompt || DEFAULT_PR_REVIEW_PROMPT,
     resolveCallerScope,
     getBrowserPerms: () => ({
       enabled: config.browserToolsEnabled !== false,
@@ -2992,6 +3781,37 @@ async function runBoot(): Promise<void> {
       }
     },
     runWorktreeSetup: (ctx) => worktreesFSM.runWorktreeSetup(ctx),
+    runPendingPRWorktree: async (params) => {
+      // The FSM already handles ensureInitialized (with the prompt) + PR poller
+      // refresh via onWorktreeCreated. We just look up the resolved branch
+      // from the freshly-refreshed store list and emit the focus broadcast
+      // directly so the heavy ensureInitialized/refreshList work doesn't
+      // run a second time through the broadcast path.
+      // 'setup-failed' still means the worktree exists on disk — surface
+      // it to the MCP caller as success so the agent can recover.
+      const outcome = await worktreesFSM.runPendingPR(params)
+      if (outcome.outcome === 'error') {
+        return { ok: false, error: outcome.error }
+      }
+      const found = store
+        .getSnapshot()
+        .state.worktrees.list.find((w) => w.path === outcome.createdPath)
+      if (!found) {
+        return { ok: false, error: `created worktree at ${outcome.createdPath} but couldn't resolve its branch` }
+      }
+      // agentKind + model are already applied via the FSM's onWorktreeCreated
+      // path; we still ship them in the broadcast payload so its shape stays
+      // in sync with the new-branch path through deps.broadcast — keeps
+      // future refactors that consolidate the two from silently losing data.
+      broadcastToAllWindows('worktrees:externalCreate', {
+        repoRoot: params.repoRoot,
+        worktree: found,
+        initialPrompt: params.initialPrompt,
+        agentKind: params.agentKind,
+        model: params.model
+      })
+      return { ok: true, path: found.path, branch: found.branch }
+    },
     broadcast: (channel, payload) => {
       if (channel === 'worktrees:externalCreate') {
         // Seed panes with the initial prompt BEFORE refreshList — the
@@ -3004,9 +3824,13 @@ async function runBoot(): Promise<void> {
           repoRoot: string
           worktree: { path: string }
           initialPrompt?: string
+          agentKind?: 'claude' | 'codex'
+          model?: string
         }
         panesFSM.ensureInitialized(p.worktree.path, {
-          initialPrompt: p.initialPrompt
+          initialPrompt: p.initialPrompt,
+          agentKind: p.agentKind,
+          model: p.model
         })
         void worktreesFSM.refreshList().then(() => {
           broadcastToAllWindows(channel, payload)
@@ -3022,6 +3846,24 @@ async function runBoot(): Promise<void> {
   // dispatches on the store, which the state transport fans out to all
   // clients.
   stopWatchingStatus = watchStatusDir(store)
+
+  // Pre-warm SSH tunnels for every saved SSH backend so the tunnel is
+  // up by the time the renderer's hydrate-remote loop calls
+  // `ssh:reconnect` to fetch the URL. We don't await — boot must not
+  // block on a flaky network. Errors flow through the sshBootstrap
+  // slice's `errored` event so the chip strip can render a tooltip
+  // (renderer-side wiring lands in commit 6). Skipped in headless mode
+  // (no SSH bootstrap there per design).
+  if (runtime === 'electron') {
+    for (const conn of config.connections ?? []) {
+      if (conn.kind !== 'remote' || !conn.ssh) continue
+      const bootstrapId = `boot-${conn.id}`
+      void runSshReconnect({ bootstrapId, connectionId: conn.id }).catch((err) => {
+        log('ssh-bootstrap', `pre-warm failed for ${conn.id}: ${(err as Error).message}`)
+      })
+    }
+  }
+
   // Opening the first window + spinning up the auto-updater is the
   // desktop shell's job — see desktop-shell.ts. Headless mode skips
   // both; clients connect via the WS server already listening below.
@@ -3052,7 +3894,11 @@ if (desktopShellMod && desktopEarly) {
     onBeforeQuit: () => {
       jsonClaudeManager.killAll()
       approvalBridge.stopAll()
-    }
+      // Close local tunnel ends — the remote `harness-server` is left
+      // running (intentional; see plans/remote-main.md §4).
+      sshTunnelManager.closeAll()
+    },
+    setWarnBeforeQuitting
   })
   desktopHooks.startAutoUpdateChecks = handle.startAutoUpdateChecks
   desktopHooks.stopAutoUpdateChecks = handle.stopAutoUpdateChecks
@@ -3072,6 +3918,7 @@ if (desktopShellMod && desktopEarly) {
     jsonClaudeManager.killAll()
     approvalBridge.stopAll()
     browserManager.destroyAll()
+    sshTunnelManager.closeAll()
     sealAllActive()
     saveConfigSync(config)
     process.exit(0)

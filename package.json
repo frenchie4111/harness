@@ -1,6 +1,6 @@
 {
   "name": "harness",
-  "version": "2.8.2",
+  "version": "2.10.0",
   "main": "./out/main/index.js",
   "author": {
     "name": "Mike Lyons",
@@ -11,8 +11,8 @@
   "scripts": {
     "dev": "ELECTRON_DISABLE_SANDBOX=1 electron-vite dev",
     "dev:debug": "sh -c 'trap \"kill 0\" EXIT; tail -F \"$HOME/Library/Application Support/Harness (Dev)/debug.log\" & ELECTRON_DISABLE_SANDBOX=1 electron-vite dev'",
-    "log": "tail -f ~/Library/Application\\ Support/harness/debug.log",
-    "log:clear": "rm -f ~/Library/Application\\ Support/harness/debug.log",
+    "log": "tail -F ~/Library/Application\\ Support/harness/debug.log",
+    "log:clear": "rm -f ~/Library/Application\\ Support/harness/debug.log ~/Library/Application\\ Support/harness/debug.log.1",
     "log:perf": "tail -f ~/Library/Application\\ Support/harness/perf.log",
     "log:perf:clear": "rm -f ~/Library/Application\\ Support/harness/perf.log",
     "build": "electron-vite build && vite build --config vite.web.config.ts",
@@ -145,7 +145,10 @@
     "@radix-ui/react-tooltip": "^1.2.8",
     "@types/diff": "^7.0.2",
     "@xterm/addon-fit": "^0.11.0",
+    "@xterm/addon-progress": "^0.2.0",
+    "@xterm/addon-search": "^0.16.0",
     "@xterm/addon-serialize": "^0.14.0",
+    "@xterm/addon-web-links": "^0.12.0",
     "@xterm/addon-webgl": "^0.19.0",
     "@xterm/xterm": "^6.0.0",
     "diff": "^9.0.0",
@@ -155,6 +158,7 @@
     "lucide-react": "^1.8.0",
     "monaco-editor": "^0.55.1",
     "node-pty": "^1.1.0",
+    "node-ssh": "^13.2.1",
     "playwright-core": "^1.59.1",
     "qrcode.react": "^4.2.0",
     "react": "^19.2.5",
@@ -162,11 +166,11 @@
     "react-markdown": "^10.1.0",
     "rehype-highlight": "^7.0.2",
     "remark-gfm": "^4.0.1",
+    "ssh-config": "^5.1.0",
     "ws": "^8.20.0"
   },
   "devDependencies": {
     "@electron/rebuild": "^3.7.2",
-    "tar": "^7.4.3",
     "@tailwindcss/vite": "^4.2.2",
     "@types/node": "^25.5.2",
     "@types/react": "^19.2.14",
@@ -178,6 +182,7 @@
     "electron-builder": "^26.8.1",
     "electron-vite": "^5.0.0",
     "tailwindcss": "^4.2.2",
+    "tar": "^7.4.3",
     "typescript": "^6.0.2",
     "vite": "^8.0.8",
     "vitest": "^4.1.4"

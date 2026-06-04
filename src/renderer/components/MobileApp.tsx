@@ -46,7 +46,6 @@ export function MobileApp(): JSX.Element {
   const panes = usePanes()
   const terminals = useTerminals()
   const prs = usePrs()
-  const settings = useSettings()
   const snoozeState = useSnooze()
   const snoozedPaths = useMemo(() => {
     const m: Record<string, true> = {}
@@ -157,7 +156,7 @@ export function MobileApp(): JSX.Element {
         pickerOpen={pickerOpen}
         onTogglePicker={() => setPickerOpen((v) => !v)}
         onSelectTab={handleSelectTab}
-        onConvertTabType={settings.jsonModeClaudeTabs ? handleConvertTabType : undefined}
+        onConvertTabType={handleConvertTabType}
         rightPanelOpen={rightPanelOpen}
         onToggleRightPanel={activeWorktree ? () => setRightPanelOpen((v) => !v) : undefined}
       />
@@ -253,8 +252,7 @@ interface HeaderProps {
   pickerOpen: boolean
   onTogglePicker: () => void
   onSelectTab: (tabId: string) => void
-  /** Optional convert callback. Defined only when JSON-mode is on; if
-   *  set, tapping the *active* tab opens a swap menu. */
+  /** Tap the active tab to open a Terminal/Chat swap menu. */
   onConvertTabType?: (tabId: string, newType: 'agent' | 'json-claude') => void
   rightPanelOpen: boolean
   onToggleRightPanel?: () => void
@@ -275,17 +273,17 @@ function Header({ worktree, tabs, selectedTabId, statuses, shellActivity, picker
         {worktree ? (
           <>
             <span className="min-w-0 flex flex-col leading-tight">
-              <span className="text-[10px] uppercase tracking-wider text-dim truncate">{repoLabel}</span>
+              <span className="text-xs uppercase tracking-wider text-dim truncate">{repoLabel}</span>
               <span className="text-xs font-medium text-fg-bright truncate">
                 {worktree.branch || worktree.path.split('/').pop()}
               </span>
             </span>
-            <ChevronDown className={'w-3.5 h-3.5 text-dim shrink-0 transition-transform ' + (pickerOpen ? 'rotate-180' : '')} />
+            <ChevronDown className={'icon-sm text-dim shrink-0 transition-transform ' + (pickerOpen ? 'rotate-180' : '')} />
           </>
         ) : (
           <span className="inline-flex items-center gap-1 text-sm text-fg">
             Select a worktree
-            <ChevronDown className="w-3.5 h-3.5" />
+            <ChevronDown className="icon-sm" />
           </span>
         )}
       </button>
@@ -320,7 +318,7 @@ function Header({ worktree, tabs, selectedTabId, statuses, shellActivity, picker
           }
           aria-label={rightPanelOpen ? 'Close worktree details' : 'Worktree details'}
         >
-          {rightPanelOpen ? <PanelRightClose className="w-4 h-4" /> : <PanelRightOpen className="w-4 h-4" />}
+          {rightPanelOpen ? <PanelRightClose className="icon-base" /> : <PanelRightOpen className="icon-base" />}
         </button>
       )}
     </header>
@@ -333,8 +331,8 @@ interface TabChipProps {
   status: PtyStatus
   shellActivity?: { active: boolean; processName?: string }
   onSelect: () => void
-  /** Optional: when defined, tapping the active tab opens a swap menu
-   *  to convert between xterm Claude and JSON-mode Claude. */
+  /** Tapping the active tab opens a swap menu to convert between
+   *  Terminal and Chat. */
   onConvertTabType?: (newType: 'agent' | 'json-claude') => void
 }
 
@@ -391,7 +389,7 @@ function TabChip({ tab, active, status, shellActivity, onSelect, onConvertTabTyp
                 onConvertTabType('json-claude')
               }}
             >
-              Convert to JSON-mode chat
+              Switch to Chat mode
             </button>
           ) : (
             <button
@@ -402,7 +400,7 @@ function TabChip({ tab, active, status, shellActivity, onSelect, onConvertTabTyp
                 onConvertTabType('agent')
               }}
             >
-              Convert to terminal mode
+              Switch to Terminal mode
             </button>
           )}
         </div>
@@ -415,29 +413,29 @@ function TabIcon({ tab, shellActivity, status }: { tab: TerminalTab; shellActivi
   if (tab.type === 'agent') {
     return (
       <span className="inline-flex items-center gap-1">
-        <AgentIcon kind={tab.agentKind ?? 'claude'} size={11} />
+        <AgentIcon kind={tab.agentKind ?? 'claude'} className="icon-xs" />
         <span className={'w-1.5 h-1.5 rounded-full ' + STATUS_DOT[status]} />
       </span>
     )
   }
   if (tab.type === 'shell') {
     return shellActivity?.active ? (
-      <Loader2 size={11} className="animate-spin text-fg-bright" />
+      <Loader2 className="icon-xs animate-spin text-fg-bright" />
     ) : (
-      <SquareTerminal size={11} className="text-dim" />
+      <SquareTerminal className="icon-xs text-dim" />
     )
   }
   if (tab.type === 'json-claude') {
     return (
       <span className="inline-flex items-center gap-1">
-        <AgentIcon kind="claude" size={11} />
+        <AgentIcon kind="claude" className="icon-xs" />
         <span className="w-1.5 h-1.5 rounded-full bg-accent" />
       </span>
     )
   }
-  if (tab.type === 'diff') return <FileDiff size={11} className="text-dim" />
-  if (tab.type === 'file') return <FileText size={11} className="text-dim" />
-  if (tab.type === 'browser') return <Globe size={11} className="text-dim" />
+  if (tab.type === 'diff') return <FileDiff className="icon-xs text-dim" />
+  if (tab.type === 'file') return <FileText className="icon-xs text-dim" />
+  if (tab.type === 'browser') return <Globe className="icon-xs text-dim" />
   return <span />
 }
 
@@ -475,14 +473,14 @@ function WorktreePickerSheet({ worktrees, prStatuses, mergedPaths, snoozedPaths,
             className="inline-flex items-center justify-center w-8 h-8 rounded text-dim hover:text-fg hover:bg-surface"
             aria-label="Refresh"
           >
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+            {loading ? <Loader2 className="icon-base animate-spin" /> : <RefreshCw className="icon-base" />}
           </button>
           <button
             onClick={onClose}
             className="inline-flex items-center justify-center w-8 h-8 rounded text-dim hover:text-fg hover:bg-surface"
             aria-label="Close"
           >
-            <X className="w-4 h-4" />
+            <X className="icon-base" />
           </button>
         </div>
       </div>
@@ -494,7 +492,7 @@ function WorktreePickerSheet({ worktrees, prStatuses, mergedPaths, snoozedPaths,
         )}
         {groups.map((group) => (
           <section key={group.key}>
-            <h2 className="sticky top-0 z-10 px-4 py-1.5 text-[10px] uppercase tracking-wider text-dim font-semibold bg-app/95 backdrop-blur border-b border-border">
+            <h2 className="sticky top-0 z-10 px-4 py-1.5 text-xs uppercase tracking-wider text-dim font-semibold bg-app/95 backdrop-blur border-b border-border">
               {group.label}
             </h2>
             <ul className="divide-y divide-border">
@@ -518,14 +516,14 @@ function WorktreePickerSheet({ worktrees, prStatuses, mergedPaths, snoozedPaths,
                             {wt.branch || wt.path.split('/').pop()}
                           </span>
                           {wt.isMain && (
-                            <span className="text-[10px] uppercase tracking-wider text-dim">main</span>
+                            <span className="text-xs uppercase tracking-wider text-dim">main</span>
                           )}
                         </div>
                         <div className="flex items-center gap-2 mt-0.5 text-xs text-dim">
                           <span className="truncate">{wt.repoRoot.split('/').pop()}</span>
                           {pr && (
                             <span className="inline-flex items-center gap-1 shrink-0">
-                              <GitPullRequest className="w-3 h-3" />
+                              <GitPullRequest className="icon-xs" />
                               #{pr.number}
                             </span>
                           )}
@@ -567,7 +565,7 @@ function NonRunnableTabPlaceholder({ tab }: { tab: TerminalTab }): JSX.Element {
           rel="noopener noreferrer"
           className="inline-flex items-center gap-1 text-xs text-accent underline"
         >
-          <ExternalLink className="w-3 h-3" /> Open URL in browser
+          <ExternalLink className="icon-xs" /> Open URL in browser
         </a>
       )}
     </div>

@@ -65,11 +65,16 @@ export function useTabHandlers({
   )
 
   const handleAddBrowserTab = useCallback(
-    (worktreePath: string, paneId?: string) => {
+    (worktreePath: string, paneId?: string, initialUrl?: string) => {
       const id = `browser-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
       appendTabToPane(
         worktreePath,
-        { id, type: 'browser', label: 'Browser', url: 'about:blank' },
+        {
+          id,
+          type: 'browser',
+          label: 'Browser',
+          url: initialUrl && initialUrl.trim() ? initialUrl : 'about:blank'
+        },
         paneId
       )
     },
@@ -78,8 +83,8 @@ export function useTabHandlers({
 
   const handleAddJsonClaudeTab = useCallback(
     (worktreePath: string, paneId?: string) => {
-      // JSON-mode Claude tabs use a UUID for both tab id and session id —
-      // the manager passes it to `claude --session-id` directly so the
+      // Chat (json-claude) tabs use a UUID for both tab id and session id
+      // — the manager passes it to `claude --session-id` directly so the
       // session jsonl reuses the same identifier and survives a reload.
       const sessionId = crypto.randomUUID()
       appendTabToPane(
@@ -87,7 +92,7 @@ export function useTabHandlers({
         {
           id: sessionId,
           type: 'json-claude',
-          label: 'Claude (JSON)',
+          label: 'Chat',
           sessionId
         },
         paneId

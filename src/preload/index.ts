@@ -41,7 +41,8 @@ const localTransportHandle: LocalTransportHandle = {
   request: (name, ...args) => transport.request(name, ...args),
   send: (name, ...args) => transport.send(name, ...args),
   onSignal: (name, handler) => transport.onSignal(name, handler),
-  getClientId: () => transport.getClientId()
+  getClientId: () => transport.getClientId(),
+  onReconnect: (cb) => transport.onReconnect(cb)
 }
 contextBridge.exposeInMainWorld('__harness_local_transport', localTransportHandle)
 

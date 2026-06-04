@@ -62,6 +62,8 @@ interface WorktreesFSMOptions {
     createdPath: string
     initialPrompt?: string
     teleportSessionId?: string
+    agentKind?: 'claude' | 'codex'
+    model?: string
   }) => void
 }
 
@@ -111,8 +113,20 @@ export class WorktreesFSM {
     branchName: string
     initialPrompt?: string
     teleportSessionId?: string
+    agentKind?: 'claude' | 'codex'
+    model?: string
+    /** When set, check out an existing branch instead of creating one
+     * with `-b`. Used when the user picks from the existing-branches
+     * dropdown — git resolves names like `origin/foo` to a local
+     * tracking branch correctly, whereas `-b origin/foo` would create
+     * a literally-named local branch. */
+    checkoutExisting?: boolean
+    /** When set (the "Any Git Ref" tab), the new branch `branchName` is
+     * forked from this ref via `git worktree add -b <branchName> <baseRef>`
+     * instead of from the repo's default base. */
+    baseRef?: string
   }): Promise<PendingOutcome> {
-    const { id, repoRoot, branchName, initialPrompt, teleportSessionId } = params
+    const { id, repoRoot, branchName, initialPrompt, teleportSessionId, agentKind, model, checkoutExisting, baseRef } = params
     const pending: PendingWorktree = {
       id,
       repoRoot,
@@ -127,14 +141,20 @@ export class WorktreesFSM {
       const wtDir = defaultWorktreeDir(repoRoot)
       const mode = this.opts.getWorktreeBaseMode()
       const created = await addWorktree(repoRoot, wtDir, branchName, {
-        fetchRemote: mode === 'remote'
+        // An explicit baseRef (Ref tab) wins over default-base resolution,
+        // so skip the remote fetch when one is supplied.
+        fetchRemote: mode === 'remote' && !baseRef,
+        checkoutExisting,
+        baseBranch: baseRef
       })
       return await this.finishCreate({
         id,
         repoRoot,
         created,
         initialPrompt,
-        teleportSessionId
+        teleportSessionId,
+        agentKind,
+        model
       })
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -154,15 +174,19 @@ export class WorktreesFSM {
     id: string
     repoRoot: string
     prNumber: number
+    initialPrompt?: string
+    agentKind?: 'claude' | 'codex'
+    model?: string
   }): Promise<PendingOutcome> {
-    const { id, repoRoot, prNumber } = params
+    const { id, repoRoot, prNumber, initialPrompt, agentKind, model } = params
     // Show *something* while we go ask GitHub for the head ref name.
     let branchName = `pr-${prNumber}`
     const pending: PendingWorktree = {
       id,
       repoRoot,
       branchName,
-      status: 'creating'
+      status: 'creating',
+      initialPrompt
     }
     this.store.dispatch({ type: 'worktrees/pendingAdded', payload: pending })
 
@@ -188,7 +212,10 @@ export class WorktreesFSM {
       return await this.finishCreate({
         id,
         repoRoot,
-        created
+        created,
+        initialPrompt,
+        agentKind,
+        model
       })
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -208,8 +235,10 @@ export class WorktreesFSM {
     created: WorktreeInfo
     initialPrompt?: string
     teleportSessionId?: string
+    agentKind?: 'claude' | 'codex'
+    model?: string
   }): Promise<PendingOutcome> {
-    const { id, repoRoot, created, initialPrompt, teleportSessionId } = args
+    const { id, repoRoot, created, initialPrompt, teleportSessionId, agentKind, model } = args
 
     const setupCmd = this.resolveSetupCmd(repoRoot)
     let setupFailed = false
@@ -243,7 +272,9 @@ export class WorktreesFSM {
     this.opts.onWorktreeCreated({
       createdPath: created.path,
       initialPrompt,
-      teleportSessionId
+      teleportSessionId,
+      agentKind,
+      model
     })
     await this.refreshList()
 

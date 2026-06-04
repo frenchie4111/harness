@@ -28,6 +28,11 @@ export interface PersistedTab {
   command?: string
   /** For shell tabs: cwd (absolute or relative to worktree root). */
   cwd?: string
+  /** For agent + json-claude tabs: per-tab model pin. Wins over the
+   *  global claudeModel/codexModel setting at spawn time. */
+  model?: string
+  /** User-defined label override. Empty/undefined falls back to `label`. */
+  customLabel?: string
 }
 
 export interface PersistedPane {
@@ -170,6 +175,25 @@ export const migrations: Migration[] = [
   // the version so future shape changes can rely on a stable starting point.
   (_c) => {
     // no-op
+  },
+
+  // v6 → v7: legacy `theme: string` → `themeMode` + `themeLight` / `themeDark`.
+  // Sets `themeMode` to the *legacy* theme's mode (not 'system'), preserving
+  // the user's explicit choice; users who want auto-switching can opt in via
+  // Settings. The matching slot gets the legacy id; the other slot is left
+  // unset so the runtime default applies.
+  (c) => {
+    const legacy = c.theme
+    if (typeof legacy !== 'string') return
+    const isLight = legacy === 'solarized-light'
+    if (isLight) {
+      c.themeMode = 'light'
+      c.themeLight = legacy
+    } else {
+      c.themeMode = 'dark'
+      c.themeDark = legacy
+    }
+    delete c.theme
   }
 ]
 

@@ -208,11 +208,12 @@ describe('terminalsReducer', () => {
     expect(next.shellActivity['term-1']).toEqual({ active: true, processName: 'vim' })
   })
 
-  it('removed clears all three maps for that id', () => {
+  it('removed clears all maps for that id', () => {
     const start: TerminalsState = {
       statuses: { 'term-1': 'processing', 'term-2': 'idle' },
       pendingTools: { 'term-1': { name: 'Bash', input: {} } },
       shellActivity: { 'term-1': { active: true } },
+      progress: { 'term-1': { state: 1, value: 50 } },
       panes: {},
       lastActive: {},
       sessions: {}
@@ -221,6 +222,7 @@ describe('terminalsReducer', () => {
     expect(next.statuses).toEqual({ 'term-2': 'idle' })
     expect(next.pendingTools).toEqual({})
     expect(next.shellActivity).toEqual({})
+    expect(next.progress).toEqual({})
   })
 
   it('removed on an unknown id is a no-op (returns same reference)', () => {
@@ -228,11 +230,44 @@ describe('terminalsReducer', () => {
       statuses: { 'term-1': 'idle' },
       pendingTools: {},
       shellActivity: {},
+      progress: {},
       panes: {},
       lastActive: {},
       sessions: {}
     }
     const next = apply(start, { type: 'terminals/removed', payload: 'missing' })
+    expect(next).toBe(start)
+  })
+
+  it('progressChanged stores normal progress', () => {
+    const next = apply(initialTerminals, {
+      type: 'terminals/progressChanged',
+      payload: { id: 'term-1', state: 1, value: 42 }
+    })
+    expect(next.progress['term-1']).toEqual({ state: 1, value: 42 })
+  })
+
+  it('progressChanged with state 0 drops the entry', () => {
+    const start = apply(initialTerminals, {
+      type: 'terminals/progressChanged',
+      payload: { id: 'term-1', state: 1, value: 80 }
+    })
+    const next = apply(start, {
+      type: 'terminals/progressChanged',
+      payload: { id: 'term-1', state: 0, value: 0 }
+    })
+    expect(next.progress).toEqual({})
+  })
+
+  it('progressChanged dedups identical updates (returns same reference)', () => {
+    const start = apply(initialTerminals, {
+      type: 'terminals/progressChanged',
+      payload: { id: 'term-1', state: 1, value: 25 }
+    })
+    const next = apply(start, {
+      type: 'terminals/progressChanged',
+      payload: { id: 'term-1', state: 1, value: 25 }
+    })
     expect(next).toBe(start)
   })
 
@@ -525,7 +560,7 @@ describe('terminalsReducer', () => {
         tabId: 'agent-1',
         newId: 'sess-1',
         newType: 'json-claude',
-        newLabel: 'Claude (JSON)'
+        newLabel: 'Chat'
       }
     })
     const leaves = getLeaves(next.panes['/wt/a'])
@@ -533,7 +568,7 @@ describe('terminalsReducer', () => {
     expect(tab.type).toBe('json-claude')
     expect(tab.id).toBe('sess-1')
     expect(tab.sessionId).toBe('sess-1')
-    expect(tab.label).toBe('Claude (JSON)')
+    expect(tab.label).toBe('Chat')
     expect(leaves[0].activeTabId).toBe('sess-1')
     // Other tabs untouched.
     expect(leaves[0].tabs[1].id).toBe('shell-1')
@@ -543,7 +578,7 @@ describe('terminalsReducer', () => {
     const tree: PaneNode = {
       type: 'leaf',
       id: 'p1',
-      tabs: [{ id: 'sess-1', type: 'json-claude', label: 'Claude (JSON)', sessionId: 'sess-1' }],
+      tabs: [{ id: 'sess-1', type: 'json-claude', label: 'Chat', sessionId: 'sess-1' }],
       activeTabId: 'sess-1'
     }
     const start: TerminalsState = { ...initialTerminals, panes: { '/wt/a': tree } }
@@ -582,7 +617,7 @@ describe('terminalsReducer', () => {
         tabId: 'agent-1',
         newId: 'sess-1',
         newType: 'json-claude',
-        newLabel: 'Claude (JSON)'
+        newLabel: 'Chat'
       }
     })
     const tab = getLeaves(next.panes['/wt/a'])[0].tabs[0]
@@ -595,8 +630,8 @@ describe('terminalsReducer', () => {
       type: 'leaf',
       id: 'p1',
       tabs: [
-        { id: 'sess-1', type: 'json-claude', label: 'Claude (JSON)', sessionId: 'sess-1', mode: 'awake' },
-        { id: 'sess-2', type: 'json-claude', label: 'Claude (JSON)', sessionId: 'sess-2', mode: 'awake' }
+        { id: 'sess-1', type: 'json-claude', label: 'Chat', sessionId: 'sess-1', mode: 'awake' },
+        { id: 'sess-2', type: 'json-claude', label: 'Chat', sessionId: 'sess-2', mode: 'awake' }
       ],
       activeTabId: 'sess-1'
     }
@@ -616,7 +651,7 @@ describe('terminalsReducer', () => {
     const tree: PaneNode = {
       type: 'leaf',
       id: 'p1',
-      tabs: [{ id: 'sess-1', type: 'json-claude', label: 'Claude (JSON)', sessionId: 'sess-1', mode: 'asleep' }],
+      tabs: [{ id: 'sess-1', type: 'json-claude', label: 'Chat', sessionId: 'sess-1', mode: 'asleep' }],
       activeTabId: 'sess-1'
     }
     const start: TerminalsState = { ...initialTerminals, panes: { '/wt/a': tree } }
@@ -637,7 +672,7 @@ describe('terminalsReducer', () => {
     expect(alreadyAsleep).toBe(start)
   })
 
-  it('tabSlept refuses non-json-claude tabs', () => {
+  it('tabSlept refuses agent tabs (sleepable types are json-claude and shell only)', () => {
     const tree: PaneNode = {
       type: 'leaf',
       id: 'p1',
@@ -652,11 +687,41 @@ describe('terminalsReducer', () => {
     expect(next).toBe(start)
   })
 
+  it('tabSlept flips a shell tab to mode asleep', () => {
+    const tree: PaneNode = {
+      type: 'leaf',
+      id: 'p1',
+      tabs: [{ id: 'sh-1', type: 'shell', label: 'Shell' }],
+      activeTabId: 'sh-1'
+    }
+    const start: TerminalsState = { ...initialTerminals, panes: { '/wt/a': tree } }
+    const next = apply(start, {
+      type: 'terminals/tabSlept',
+      payload: { worktreePath: '/wt/a', tabId: 'sh-1' }
+    })
+    expect(getLeaves(next.panes['/wt/a'])[0].tabs[0].mode).toBe('asleep')
+  })
+
+  it('tabWoken flips a shell tab to mode awake', () => {
+    const tree: PaneNode = {
+      type: 'leaf',
+      id: 'p1',
+      tabs: [{ id: 'sh-1', type: 'shell', label: 'Shell', mode: 'asleep' }],
+      activeTabId: 'sh-1'
+    }
+    const start: TerminalsState = { ...initialTerminals, panes: { '/wt/a': tree } }
+    const next = apply(start, {
+      type: 'terminals/tabWoken',
+      payload: { worktreePath: '/wt/a', tabId: 'sh-1' }
+    })
+    expect(getLeaves(next.panes['/wt/a'])[0].tabs[0].mode).toBe('awake')
+  })
+
   it('tabWoken flips a json-claude tab to mode awake', () => {
     const tree: PaneNode = {
       type: 'leaf',
       id: 'p1',
-      tabs: [{ id: 'sess-1', type: 'json-claude', label: 'Claude (JSON)', sessionId: 'sess-1', mode: 'asleep' }],
+      tabs: [{ id: 'sess-1', type: 'json-claude', label: 'Chat', sessionId: 'sess-1', mode: 'asleep' }],
       activeTabId: 'sess-1'
     }
     const start: TerminalsState = { ...initialTerminals, panes: { '/wt/a': tree } }
@@ -671,7 +736,7 @@ describe('terminalsReducer', () => {
     const tree: PaneNode = {
       type: 'leaf',
       id: 'p1',
-      tabs: [{ id: 'sess-1', type: 'json-claude', label: 'Claude (JSON)', sessionId: 'sess-1', mode: 'awake' }],
+      tabs: [{ id: 'sess-1', type: 'json-claude', label: 'Chat', sessionId: 'sess-1', mode: 'awake' }],
       activeTabId: 'sess-1'
     }
     const start: TerminalsState = { ...initialTerminals, panes: { '/wt/a': tree } }
@@ -680,6 +745,84 @@ describe('terminalsReducer', () => {
       payload: { worktreePath: '/wt/a', tabId: 'sess-1' }
     })
     expect(next).toBe(start)
+  })
+
+  it('tabRenamed sets a customLabel on the matching tab', () => {
+    const tree: PaneNode = {
+      type: 'leaf',
+      id: 'p1',
+      tabs: [
+        { id: 't1', type: 'shell', label: 'Shell' },
+        { id: 't2', type: 'shell', label: 'Shell' }
+      ],
+      activeTabId: 't1'
+    }
+    const start: TerminalsState = { ...initialTerminals, panes: { '/wt/a': tree } }
+    const next = apply(start, {
+      type: 'terminals/tabRenamed',
+      payload: { worktreePath: '/wt/a', tabId: 't1', label: 'Build' }
+    })
+    const tabs = getLeaves(next.panes['/wt/a'])[0].tabs
+    expect(tabs[0].customLabel).toBe('Build')
+    expect(tabs[1]).toBe(getLeaves(start.panes['/wt/a'])[0].tabs[1])
+  })
+
+  it('tabRenamed trims the label before storing', () => {
+    const tree: PaneNode = {
+      type: 'leaf',
+      id: 'p1',
+      tabs: [{ id: 't1', type: 'shell', label: 'Shell' }],
+      activeTabId: 't1'
+    }
+    const start: TerminalsState = { ...initialTerminals, panes: { '/wt/a': tree } }
+    const next = apply(start, {
+      type: 'terminals/tabRenamed',
+      payload: { worktreePath: '/wt/a', tabId: 't1', label: '  Build  ' }
+    })
+    expect(getLeaves(next.panes['/wt/a'])[0].tabs[0].customLabel).toBe('Build')
+  })
+
+  it('tabRenamed clears customLabel when given an empty/whitespace label', () => {
+    const tree: PaneNode = {
+      type: 'leaf',
+      id: 'p1',
+      tabs: [{ id: 't1', type: 'shell', label: 'Shell', customLabel: 'Build' }],
+      activeTabId: 't1'
+    }
+    const start: TerminalsState = { ...initialTerminals, panes: { '/wt/a': tree } }
+    const next = apply(start, {
+      type: 'terminals/tabRenamed',
+      payload: { worktreePath: '/wt/a', tabId: 't1', label: '   ' }
+    })
+    const tab = getLeaves(next.panes['/wt/a'])[0].tabs[0]
+    expect('customLabel' in tab).toBe(false)
+  })
+
+  it('tabRenamed is a no-op when the worktree, tab, or value is unchanged', () => {
+    const tree: PaneNode = {
+      type: 'leaf',
+      id: 'p1',
+      tabs: [{ id: 't1', type: 'shell', label: 'Shell', customLabel: 'Build' }],
+      activeTabId: 't1'
+    }
+    const start: TerminalsState = { ...initialTerminals, panes: { '/wt/a': tree } }
+    expect(
+      apply(start, { type: 'terminals/tabRenamed', payload: { worktreePath: '/wt/missing', tabId: 't1', label: 'X' } })
+    ).toBe(start)
+    expect(
+      apply(start, { type: 'terminals/tabRenamed', payload: { worktreePath: '/wt/a', tabId: 'missing', label: 'X' } })
+    ).toBe(start)
+    expect(
+      apply(start, { type: 'terminals/tabRenamed', payload: { worktreePath: '/wt/a', tabId: 't1', label: 'Build' } })
+    ).toBe(start)
+    // Clear-on-already-clear: empty label against a tab without customLabel.
+    const noLabel: TerminalsState = {
+      ...initialTerminals,
+      panes: { '/wt/a': { type: 'leaf', id: 'p1', tabs: [{ id: 't1', type: 'shell', label: 'Shell' }], activeTabId: 't1' } }
+    }
+    expect(
+      apply(noLabel, { type: 'terminals/tabRenamed', payload: { worktreePath: '/wt/a', tabId: 't1', label: '' } })
+    ).toBe(noLabel)
   })
 
   it('tabTypeChanged is a no-op when the worktree or tab is missing', () => {
@@ -706,6 +849,76 @@ describe('terminalsReducer', () => {
       }
     })
     expect(noTab).toBe(start)
+  })
+
+  it('reviewSelectionChanged updates a review tab\'s commit range', () => {
+    const tree: PaneNode = {
+      type: 'leaf',
+      id: 'p1',
+      tabs: [
+        { id: 'r1', type: 'review', label: 'Review' },
+        { id: 't2', type: 'shell', label: 'Shell' }
+      ],
+      activeTabId: 'r1'
+    }
+    const start: TerminalsState = { ...initialTerminals, panes: { '/wt/a': tree } }
+    const next = apply(start, {
+      type: 'terminals/reviewSelectionChanged',
+      payload: { worktreePath: '/wt/a', tabId: 'r1', fromCommit: 'abc', toCommit: 'def' }
+    })
+    const tabs = getLeaves(next.panes['/wt/a'])[0].tabs
+    expect(tabs[0].reviewFromCommit).toBe('abc')
+    expect(tabs[0].reviewToCommit).toBe('def')
+    // Shell tab next to it should not be cloned.
+    expect(tabs[1]).toBe(getLeaves(start.panes['/wt/a'])[0].tabs[1])
+  })
+
+  it('reviewSelectionChanged clears commit range when both fields are undefined', () => {
+    const tree: PaneNode = {
+      type: 'leaf',
+      id: 'p1',
+      tabs: [{ id: 'r1', type: 'review', label: 'Review', reviewFromCommit: 'a', reviewToCommit: 'b' }],
+      activeTabId: 'r1'
+    }
+    const start: TerminalsState = { ...initialTerminals, panes: { '/wt/a': tree } }
+    const next = apply(start, {
+      type: 'terminals/reviewSelectionChanged',
+      payload: { worktreePath: '/wt/a', tabId: 'r1' }
+    })
+    const tab = getLeaves(next.panes['/wt/a'])[0].tabs[0]
+    expect('reviewFromCommit' in tab).toBe(false)
+    expect('reviewToCommit' in tab).toBe(false)
+  })
+
+  it('reviewSelectionChanged is a no-op for non-review tabs and unchanged values', () => {
+    const tree: PaneNode = {
+      type: 'leaf',
+      id: 'p1',
+      tabs: [
+        { id: 'r1', type: 'review', label: 'Review', reviewFromCommit: 'a', reviewToCommit: 'b' },
+        { id: 's1', type: 'shell', label: 'Shell' }
+      ],
+      activeTabId: 'r1'
+    }
+    const start: TerminalsState = { ...initialTerminals, panes: { '/wt/a': tree } }
+    expect(
+      apply(start, {
+        type: 'terminals/reviewSelectionChanged',
+        payload: { worktreePath: '/wt/missing', tabId: 'r1', fromCommit: 'x' }
+      })
+    ).toBe(start)
+    expect(
+      apply(start, {
+        type: 'terminals/reviewSelectionChanged',
+        payload: { worktreePath: '/wt/a', tabId: 's1', fromCommit: 'x' }
+      })
+    ).toBe(start)
+    expect(
+      apply(start, {
+        type: 'terminals/reviewSelectionChanged',
+        payload: { worktreePath: '/wt/a', tabId: 'r1', fromCommit: 'a', toCommit: 'b' }
+      })
+    ).toBe(start)
   })
 
   it('sessionIdDiscovered backfills a session id in pane tree', () => {

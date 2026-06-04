@@ -110,7 +110,7 @@ export function NewProjectScreen({ onCancel, onCreated }: NewProjectScreenProps)
           disabled={submitting}
           className="no-drag text-dim hover:text-fg p-1.5 rounded transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          <X size={16} />
+          <X className="icon-base" />
         </button>
       </div>
 
@@ -122,7 +122,7 @@ export function NewProjectScreen({ onCancel, onCreated }: NewProjectScreenProps)
               alt="Harness"
               className="w-20 h-20 mx-auto rounded-3xl mb-5 brand-glow-amber"
             />
-            <h1 className="text-5xl font-extrabold tracking-tight mb-2">
+            <h1 className="text-3xl font-extrabold tracking-tight mb-2">
               New <span className="brand-gradient-text">project</span>
             </h1>
             <p className="text-muted text-base">
@@ -133,7 +133,7 @@ export function NewProjectScreen({ onCancel, onCreated }: NewProjectScreenProps)
           <div className="bg-panel/80 backdrop-blur border border-border rounded-2xl p-6 shadow-xl">
             <label className="block">
               <div className="mb-2">
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-dim">
+                <span className="text-xs font-semibold uppercase tracking-wider text-dim">
                   Project name
                 </span>
               </div>
@@ -146,21 +146,20 @@ export function NewProjectScreen({ onCancel, onCreated }: NewProjectScreenProps)
                 disabled={submitting}
                 autoComplete="off"
                 spellCheck={false}
-                style={{ fontSize: '13px' }}
-                className={`w-full bg-app border-2 rounded-lg px-3 py-2.5 font-mono text-fg-bright placeholder-faint outline-none transition-colors ${
+                className={`w-full bg-app border-2 rounded-lg px-3 py-2.5 font-mono text-sm text-fg-bright placeholder-faint outline-none transition-colors ${
                   nameError
                     ? 'border-danger focus:border-danger'
                     : 'border-border-strong focus:border-accent'
                 }`}
               />
               {nameError && (
-                <div className="mt-2 text-[11px] text-danger">{nameError}</div>
+                <div className="mt-2 text-xs text-danger">{nameError}</div>
               )}
             </label>
 
             <div className="mt-5">
               <div className="mb-2">
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-dim">
+                <span className="text-xs font-semibold uppercase tracking-wider text-dim">
                   Parent folder
                 </span>
               </div>
@@ -174,12 +173,12 @@ export function NewProjectScreen({ onCancel, onCreated }: NewProjectScreenProps)
                   disabled={submitting}
                   className="flex items-center gap-1.5 px-3 py-2.5 rounded-lg border-2 border-border-strong bg-app hover:border-accent text-sm text-fg transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  <FolderOpen size={14} />
+                  <FolderOpen className="icon-sm" />
                   Browse…
                 </button>
               </div>
               {fullPath && !nameError && (
-                <div className="mt-2 text-[11px] text-dim leading-snug">
+                <div className="mt-2 text-xs text-dim leading-snug">
                   Will create: <span className="font-mono text-fg">{fullPath}</span>
                 </div>
               )}
@@ -191,9 +190,8 @@ export function NewProjectScreen({ onCancel, onCreated }: NewProjectScreenProps)
                 type="checkbox"
                 checked={includeReadme}
                 onChange={(e) => setIncludeReadme(e.target.checked)}
-                className="accent-accent w-4 h-4 cursor-pointer"
-                disabled={submitting}
-              />
+                className="accent-accent icon-base cursor-pointer"
+                disabled={submitting} />
               <label htmlFor="include-readme" className="text-sm text-fg cursor-pointer">
                 Include <code className="text-xs text-fg-bright font-mono">README.md</code>
               </label>
@@ -201,7 +199,7 @@ export function NewProjectScreen({ onCancel, onCreated }: NewProjectScreenProps)
 
             <div className="mt-5">
               <div className="mb-2">
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-dim">
+                <span className="text-xs font-semibold uppercase tracking-wider text-dim">
                   Gitignore preset
                 </span>
               </div>
@@ -221,7 +219,7 @@ export function NewProjectScreen({ onCancel, onCreated }: NewProjectScreenProps)
                       }`}
                     >
                       <div className="text-xs font-semibold">{opt.label}</div>
-                      <div className="text-[10px] text-dim mt-0.5 truncate">{opt.hint}</div>
+                      <div className="text-xs text-dim mt-0.5 truncate">{opt.hint}</div>
                     </button>
                   )
                 })}
@@ -235,7 +233,7 @@ export function NewProjectScreen({ onCancel, onCreated }: NewProjectScreenProps)
             )}
 
             <div className="flex items-center justify-between mt-6 gap-3">
-              <div className="text-[11px] text-faint">
+              <div className="text-xs text-faint">
                 <span className="font-mono">⌘⏎</span> to create ·{' '}
                 <span className="font-mono">Esc</span> to cancel
               </div>
@@ -254,12 +252,12 @@ export function NewProjectScreen({ onCancel, onCreated }: NewProjectScreenProps)
                 >
                   {submitting ? (
                     <>
-                      <Loader2 size={14} className="animate-spin" />
+                      <Loader2 className="icon-sm animate-spin" />
                       Creating…
                     </>
                   ) : (
                     <>
-                      <Sparkles size={14} />
+                      <Sparkles className="icon-sm" />
                       Create project
                     </>
                   )}

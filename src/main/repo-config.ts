@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'fs'
 import { join } from 'path'
 import { log } from './debug'
-import type { RepoConfig } from '../shared/state/repo-configs'
+import { DEFAULT_HIDDEN_RIGHT_PANELS, type RepoConfig } from '../shared/state/repo-configs'
 
 export type { RepoConfig }
 
@@ -45,8 +45,13 @@ export function saveRepoConfig(repoRoot: string, next: RepoConfig): RepoConfig {
   const hidden: Record<string, boolean> = { ...(next.hiddenRightPanels || {}) }
   if (next.hideMergePanel && hidden.merge === undefined) hidden.merge = true
   if (next.hidePrPanel && hidden.pr === undefined) hidden.pr = true
+  // Compact: drop `false` entries that match the default visibility
+  // (i.e. NOT in DEFAULT_HIDDEN_RIGHT_PANELS). For keys that default to
+  // hidden, `false` is a meaningful opt-in signal — keep it.
   for (const k of Object.keys(hidden)) {
-    if (!hidden[k]) delete hidden[k]
+    if (hidden[k] === false && !DEFAULT_HIDDEN_RIGHT_PANELS[k as keyof typeof DEFAULT_HIDDEN_RIGHT_PANELS]) {
+      delete hidden[k]
+    }
   }
   if (Object.keys(hidden).length > 0) cleaned.hiddenRightPanels = hidden
   if (Array.isArray(next.rightPanelOrder) && next.rightPanelOrder.length > 0) {

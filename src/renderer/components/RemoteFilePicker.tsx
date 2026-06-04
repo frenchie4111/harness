@@ -135,7 +135,7 @@ export function RemoteFilePicker({
             title="Close (Esc)"
             className="text-dim hover:text-fg p-1 rounded transition-colors cursor-pointer"
           >
-            <X size={16} />
+            <X className="icon-base" />
           </button>
         </div>
 
@@ -147,7 +147,7 @@ export function RemoteFilePicker({
               title="Parent directory"
               className="flex items-center justify-center px-2.5 rounded-md border border-border-strong bg-app hover:border-accent text-dim hover:text-fg transition-colors cursor-pointer"
             >
-              <ChevronUp size={14} />
+              <ChevronUp className="icon-sm" />
             </button>
             <input
               type="text"
@@ -159,13 +159,12 @@ export function RemoteFilePicker({
               className="flex-1 min-w-0 bg-app border border-border-strong rounded-md px-2.5 py-1.5 font-mono text-xs text-fg-bright placeholder-faint outline-none focus:border-accent transition-colors"
             />
           </form>
-          <label className="flex items-center gap-2 text-[11px] text-dim cursor-pointer w-fit">
+          <label className="flex items-center gap-2 text-xs text-dim cursor-pointer w-fit">
             <input
               type="checkbox"
               checked={showHidden}
               onChange={(e) => setShowHidden(e.target.checked)}
-              className="accent-accent w-3.5 h-3.5 cursor-pointer"
-            />
+              className="accent-accent icon-base cursor-pointer" />
             Show hidden files
           </label>
         </div>
@@ -173,7 +172,7 @@ export function RemoteFilePicker({
         <div className="flex-1 min-h-0 overflow-y-auto">
           {loading && (
             <div className="flex items-center justify-center py-10 text-dim text-sm gap-2">
-              <Loader2 size={14} className="animate-spin" />
+              <Loader2 className="icon-sm animate-spin" />
               Loading…
             </div>
           )}
@@ -194,7 +193,7 @@ export function RemoteFilePicker({
                   return (
                     <li
                       key="__truncated__"
-                      className="px-4 py-1.5 text-[11px] text-faint italic"
+                      className="px-4 py-1.5 text-xs text-faint italic"
                     >
                       {entry.name}
                     </li>
@@ -209,17 +208,17 @@ export function RemoteFilePicker({
                       className="w-full text-left flex items-center gap-2.5 px-4 py-1.5 hover:bg-panel/60 transition-colors cursor-pointer group"
                     >
                       {entry.isGitRepo ? (
-                        <FolderOpen size={14} className="text-accent shrink-0" />
+                        <FolderOpen className="icon-sm text-accent shrink-0" />
                       ) : (
-                        <Folder size={14} className="text-dim shrink-0" />
+                        <Folder className="icon-sm text-dim shrink-0" />
                       )}
                       <span className="flex-1 text-sm text-fg truncate">{entry.name}</span>
                       {entry.isGitRepo && (
                         <span
-                          className="flex items-center gap-1 text-[10px] font-medium text-success shrink-0"
+                          className="flex items-center gap-1 text-xs font-medium text-success shrink-0"
                           title="Git repository"
                         >
-                          <GitBranch size={10} />
+                          <GitBranch className="icon-2xs" />
                           git
                         </span>
                       )}
@@ -232,7 +231,7 @@ export function RemoteFilePicker({
         </div>
 
         <div className="px-5 py-3 border-t border-border flex items-center justify-between gap-3">
-          <div className="text-[11px] text-faint truncate min-w-0 flex-1 font-mono">
+          <div className="text-xs text-faint truncate min-w-0 flex-1 font-mono">
             {currentPath}
           </div>
           <div className="flex items-center gap-2 shrink-0">

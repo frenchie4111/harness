@@ -30,13 +30,13 @@ export function MultiEditCard({
       autoApproved={autoApproved}
       sessionAllowed={sessionAllowed}
     >
-      {fp && <div className="px-2 py-1 text-[10px] text-muted truncate font-mono">{fp}</div>}
+      {fp && <div className="px-2 py-1 text-xs text-muted truncate font-mono">{fp}</div>}
       {edits.length === 0 ? (
-        <div className="px-2 py-1 text-[11px] text-muted italic">No edits.</div>
+        <div className="px-2 py-1 text-xs text-muted italic">No edits.</div>
       ) : (
         edits.map((e, i) => (
           <div key={i}>
-            <div className="px-2 py-0.5 text-[10px] text-muted bg-app/30 border-y border-border/30">
+            <div className="px-2 py-0.5 text-xs text-muted bg-app/30 border-y border-border/30">
               Edit {i + 1} of {edits.length}
             </div>
             <UnifiedDiff oldStr={e.oldStr} newStr={e.newStr} filePath={fp} />
@@ -44,7 +44,7 @@ export function MultiEditCard({
         ))
       )}
       {result && result.isError && (
-        <pre className="px-2 py-1 text-[11px] font-mono text-danger whitespace-pre-wrap">
+        <pre className="px-2 py-1 text-xs font-mono text-danger whitespace-pre-wrap">
           {trunc(result.content, 1000)}
         </pre>
       )}

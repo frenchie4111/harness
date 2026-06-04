@@ -1,31 +1,113 @@
-import { useState, useMemo, useCallback } from 'react'
-import { X, Loader2, Server } from 'lucide-react'
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
+import { X, Loader2, Server, Globe, Terminal } from 'lucide-react'
 import {
   parseConnectionUrl,
   suggestLabelFromUrl
 } from '../../shared/transport/parse-connection-url'
 import { WebSocketClientTransport } from '../../shared/transport/transport-websocket'
-import { getBackendsRegistry } from '../store'
+import { getBackendsRegistry, hydrateRemoteBackend } from '../store'
 import { useBackend } from '../backend'
+import { useSshBootstrap } from '../store'
 import type { StateSnapshot } from '../../shared/state'
-import type { BackendConnection } from '../types'
+import type { BackendConnection, ConfiguredHost } from '../types'
 
 interface AddBackendModalProps {
   isOpen: boolean
   onClose: () => void
 }
 
-/** Modal for adding a remote `harness-server` to the chip strip. The
- *  user pastes the link Settings displays on the host machine
- *  (`http://host:port/?token=...`); we parse, validate the connection
- *  by opening a WebSocket and fetching a snapshot, persist via main,
- *  and add the live transport to the renderer's registry as the new
- *  active backend. Per design §B/§I.
+type Tab = 'url' | 'ssh'
+
+/** Modal for adding a remote backend to the chip strip.
  *
- *  The `Test & save` flow keeps the WS transport that was used for
- *  validation — it's the same instance we then register, so the user
- *  doesn't pay a second connect roundtrip on first activation. */
+ *  Two tabs:
+ *  - **URL + token** (the original): paste the link Settings displays
+ *    (`http://host:port/?token=...`), validates by opening a WS test
+ *    connection, registers the live transport on success.
+ *  - **SSH host** (new): pick a Host from `~/.ssh/config` (or type a
+ *    freeform `user@host[:port]`), Harness SSHes in, installs
+ *    `harness-server` if missing, starts it detached, opens a local
+ *    port forward, and persists the BackendConnection. Progress is
+ *    streamed live via the sshBootstrap slice.
+ *
+ *  Both end at the same place: a new entry in the chip strip, ready
+ *  to drive worktrees + terminals. */
 export function AddBackendModal({ isOpen, onClose }: AddBackendModalProps): JSX.Element | null {
+  const [tab, setTab] = useState<Tab>('url')
+
+  if (!isOpen) return null
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-app/80 backdrop-blur-sm">
+      <div className="bg-panel border border-border rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-border">
+          <div className="flex items-center gap-2">
+            <Server className="icon-sm text-accent" />
+            <h2 className="text-sm font-semibold text-fg-bright">Add backend</h2>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-dim hover:text-fg transition-colors cursor-pointer"
+            aria-label="Close"
+          >
+            <X className="icon-sm" />
+          </button>
+        </div>
+
+        <div className="flex border-b border-border">
+          <TabButton
+            active={tab === 'url'}
+            onClick={() => setTab('url')}
+            icon={<Globe className="icon-xs" />}
+            label="URL + token"
+          />
+          <TabButton
+            active={tab === 'ssh'}
+            onClick={() => setTab('ssh')}
+            icon={<Terminal className="icon-xs" />}
+            label="SSH host"
+          />
+        </div>
+
+        {tab === 'url' ? <UrlTab onClose={onClose} /> : <SshTab onClose={onClose} />}
+      </div>
+    </div>
+  )
+}
+
+function TabButton({
+  active,
+  onClick,
+  icon,
+  label
+}: {
+  active: boolean
+  onClick: () => void
+  icon: React.ReactNode
+  label: string
+}): JSX.Element {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors cursor-pointer ${
+        active
+          ? 'text-fg-bright border-b-2 border-accent -mb-px'
+          : 'text-dim hover:text-fg border-b-2 border-transparent -mb-px'
+      }`}
+    >
+      {icon}
+      {label}
+    </button>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// URL + token tab — the original modal body, lightly reshuffled into
+// its own component so the new tab strip can switch between this and
+// the SSH tab without ceremony.
+// ─────────────────────────────────────────────────────────────────────
+
+function UrlTab({ onClose }: { onClose: () => void }): JSX.Element {
   const backend = useBackend()
   const [urlInput, setUrlInput] = useState('')
   const [labelInput, setLabelInput] = useState('')
@@ -43,8 +125,6 @@ export function AddBackendModal({ isOpen, onClose }: AddBackendModalProps): JSX.
     return suggestLabelFromUrl(parseResult.parsed)
   }, [parseResult])
 
-  // Autofill the label from the URL until the user types something
-  // explicit. Once they edit, we stop overwriting their input.
   const effectiveLabel = labelEdited ? labelInput : suggestedLabel
 
   const handleClose = useCallback(() => {
@@ -67,10 +147,6 @@ export function AddBackendModal({ isOpen, onClose }: AddBackendModalProps): JSX.
     let ws: WebSocketClientTransport | null = null
     try {
       const registry = getBackendsRegistry()
-      // The onConnectionChange callback closes over a mutable savedId
-      // that gets populated AFTER connections:add returns. Until then
-      // it's a no-op — events from the test handshake don't update
-      // status because there's nothing to set status on yet.
       let savedId: string | null = null
       ws = new WebSocketClientTransport({
         url: parseResult.parsed.wsUrl,
@@ -84,13 +160,6 @@ export function AddBackendModal({ isOpen, onClose }: AddBackendModalProps): JSX.
         }
       })
       await ws.connect()
-      // A successful getStateSnapshot proves auth + protocol parity —
-      // anything beyond a couple seconds is almost certainly a bad
-      // token or wrong port, so we cap the round-trip with our own
-      // timer rather than waiting on the WS layer's reconnect logic.
-      // We keep the snapshot to seed the new backend's mirror right
-      // below — without it the renderer would see an empty store and
-      // bounce the user to the onboarding screen.
       const snapshot = (await Promise.race<unknown>([
         ws.getStateSnapshot(),
         new Promise((_, reject) =>
@@ -98,9 +167,6 @@ export function AddBackendModal({ isOpen, onClose }: AddBackendModalProps): JSX.
         )
       ])) as StateSnapshot
       const clientId = await ws.getClientId()
-
-      // Persist via main. The returned BackendConnection has the new
-      // uuid + addedAt and is what we store in the registry.
       const saved: BackendConnection = await backend.connectionsAdd(
         {
           label,
@@ -109,125 +175,330 @@ export function AddBackendModal({ isOpen, onClose }: AddBackendModalProps): JSX.
         },
         parseResult.parsed.token
       )
-
-      // Hand the already-connected transport to the registry — no need
-      // to re-handshake. Seed the new backend's ClientStore with the
-      // snapshot we just fetched so existing worktrees / panes / sessions
-      // are visible immediately on switch (otherwise the renderer reads
-      // initialState and shows the onboarding screen). Then make the
-      // new backend active so subsequent backend.X calls route here.
       const store = registry.add(saved, ws)
       store.setSnapshot(snapshot.state)
       store.setClientId(clientId)
-      savedId = saved.id  // unblocks the onConnectionChange callback
+      savedId = saved.id
       registry.setActive(saved.id)
       void backend.connectionsSetActive(saved.id)
       void backend.connectionsSetLastConnected(saved.id)
-      ws = null  // ownership transferred — don't disconnect on cleanup
+      ws = null
       handleClose()
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       setError(`Connection failed: ${message}`)
-      // Tear the test transport down so we don't leak a dangling socket
-      // when the user retries with corrected input.
-      try {
-        ws?.close()
-      } catch {
-        // ignore
-      }
+      try { ws?.close() } catch { /* ignore */ }
     } finally {
       setBusy(false)
     }
   }, [parseResult, effectiveLabel, suggestedLabel, handleClose, backend])
 
-  if (!isOpen) return null
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-app/80 backdrop-blur-sm">
-      <div className="bg-panel border border-border rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-3 border-b border-border">
-          <div className="flex items-center gap-2">
-            <Server size={14} className="text-accent" />
-            <h2 className="text-sm font-semibold text-fg-bright">Add backend</h2>
-          </div>
-          <button
-            onClick={handleClose}
+    <>
+      <div className="px-5 py-4 space-y-4">
+        <p className="text-xs text-dim leading-relaxed">
+          Paste the connection link the host machine shows under{' '}
+          <span className="text-fg">Settings → Server</span>, or the URL{' '}
+          <code className="bg-app/40 px-1 rounded text-xs">harness-server</code>{' '}
+          prints on startup.
+        </p>
+
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-dim uppercase tracking-wider">
+            Connection URL
+          </label>
+          <textarea
+            value={urlInput}
+            onChange={(e) => setUrlInput(e.target.value)}
+            placeholder="http://build-box.local:37291/?token=..."
+            rows={2}
+            spellCheck={false}
+            autoFocus
             disabled={busy}
-            className="text-dim hover:text-fg disabled:opacity-50 transition-colors cursor-pointer"
-            aria-label="Close"
-          >
-            <X size={14} />
-          </button>
-        </div>
-
-        <div className="px-5 py-4 space-y-4">
-          <p className="text-xs text-dim leading-relaxed">
-            Paste the connection link the host machine shows under{' '}
-            <span className="text-fg">Settings → Server</span>, or the URL{' '}
-            <code className="bg-app/40 px-1 rounded text-[11px]">harness-server</code>{' '}
-            prints on startup.
-          </p>
-
-          <div className="space-y-1.5">
-            <label className="text-[11px] font-medium text-dim uppercase tracking-wider">
-              Connection URL
-            </label>
-            <textarea
-              value={urlInput}
-              onChange={(e) => setUrlInput(e.target.value)}
-              placeholder="http://build-box.local:37291/?token=..."
-              rows={2}
-              spellCheck={false}
-              autoFocus
-              disabled={busy}
-              className="w-full bg-app/40 border border-border rounded px-2.5 py-1.5 text-xs font-mono text-fg-bright placeholder:text-faint focus:outline-none focus:border-accent disabled:opacity-50 resize-none"
-            />
-            {parseResult && !parseResult.ok && urlInput.trim() && (
-              <div className="text-[11px] text-warning">{parseResult.error}</div>
-            )}
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-[11px] font-medium text-dim uppercase tracking-wider">
-              Label (optional)
-            </label>
-            <input
-              value={effectiveLabel}
-              onChange={(e) => {
-                setLabelInput(e.target.value)
-                setLabelEdited(true)
-              }}
-              placeholder={suggestedLabel || 'Backend'}
-              disabled={busy}
-              className="w-full bg-app/40 border border-border rounded px-2.5 py-1.5 text-xs text-fg-bright placeholder:text-faint focus:outline-none focus:border-accent disabled:opacity-50"
-            />
-          </div>
-
-          {error && (
-            <div className="text-[11px] text-danger bg-danger/10 border border-danger/30 rounded px-2.5 py-2">
-              {error}
-            </div>
+            className="w-full bg-app/40 border border-border rounded px-2.5 py-1.5 text-xs font-mono text-fg-bright placeholder:text-faint focus:outline-none focus:border-accent disabled:opacity-50 resize-none"
+          />
+          {parseResult && !parseResult.ok && urlInput.trim() && (
+            <div className="text-xs text-warning">{parseResult.error}</div>
           )}
         </div>
 
-        <div className="px-5 py-3 border-t border-border flex items-center justify-end gap-2">
-          <button
-            onClick={handleClose}
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-dim uppercase tracking-wider">
+            Label (optional)
+          </label>
+          <input
+            value={effectiveLabel}
+            onChange={(e) => {
+              setLabelInput(e.target.value)
+              setLabelEdited(true)
+            }}
+            placeholder={suggestedLabel || 'Backend'}
             disabled={busy}
-            className="px-3 py-1.5 text-xs text-dim hover:text-fg disabled:opacity-50 cursor-pointer transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => void handleSubmit()}
-            disabled={busy || !urlInput.trim() || (parseResult ? !parseResult.ok : false)}
-            className="px-4 py-1.5 text-xs font-medium rounded bg-accent/20 hover:bg-accent/30 text-fg-bright border border-accent/40 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors flex items-center gap-2"
-          >
-            {busy && <Loader2 size={11} className="animate-spin" />}
-            {busy ? 'Testing…' : 'Test & save'}
-          </button>
+            className="w-full bg-app/40 border border-border rounded px-2.5 py-1.5 text-xs text-fg-bright placeholder:text-faint focus:outline-none focus:border-accent disabled:opacity-50"
+          />
         </div>
+
+        {error && (
+          <div className="text-xs text-danger bg-danger/10 border border-danger/30 rounded px-2.5 py-2">
+            {error}
+          </div>
+        )}
       </div>
-    </div>
+
+      <div className="px-5 py-3 border-t border-border flex items-center justify-end gap-2">
+        <button
+          onClick={handleClose}
+          disabled={busy}
+          className="px-3 py-1.5 text-xs text-dim hover:text-fg disabled:opacity-50 cursor-pointer transition-colors"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={() => void handleSubmit()}
+          disabled={busy || !urlInput.trim() || (parseResult ? !parseResult.ok : false)}
+          className="px-4 py-1.5 text-xs font-medium rounded bg-accent/20 hover:bg-accent/30 text-fg-bright border border-accent/40 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors flex items-center gap-2"
+        >
+          {busy && <Loader2 className="icon-xs animate-spin" />}
+          {busy ? 'Testing…' : 'Test & save'}
+        </button>
+      </div>
+    </>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// SSH host tab — pick an alias from ~/.ssh/config (or type a freeform
+// target), kick off ssh:bootstrap, render live progress from the slice.
+// ─────────────────────────────────────────────────────────────────────
+
+const CUSTOM_HOST = '__custom__'
+
+function SshTab({ onClose }: { onClose: () => void }): JSX.Element {
+  const backend = useBackend()
+  const [hosts, setHosts] = useState<ConfiguredHost[]>([])
+  const [hostsLoaded, setHostsLoaded] = useState(false)
+  const [selectedAlias, setSelectedAlias] = useState<string>('')
+  const [customTarget, setCustomTarget] = useState('')
+  const [labelInput, setLabelInput] = useState('')
+  const [labelEdited, setLabelEdited] = useState(false)
+  const [bootstrapId, setBootstrapId] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const logScrollRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    void backend.sshListConfiguredHosts().then((list) => {
+      setHosts(list)
+      setHostsLoaded(true)
+      if (list.length > 0) {
+        setSelectedAlias(list[0].alias)
+      } else {
+        setSelectedAlias(CUSTOM_HOST)
+      }
+    })
+  }, [backend])
+
+  const progress = useSshBootstrap(bootstrapId)
+  useEffect(() => {
+    if (logScrollRef.current) {
+      logScrollRef.current.scrollTop = logScrollRef.current.scrollHeight
+    }
+  }, [progress?.lines.length])
+
+  const targetString = selectedAlias === CUSTOM_HOST
+    ? customTarget.trim()
+    : selectedAlias
+
+  const suggestedLabel = useMemo(() => {
+    if (!targetString) return ''
+    const m = /^(?:[^@]+@)?([^:]+)/.exec(targetString)
+    return m?.[1] || targetString
+  }, [targetString])
+  const effectiveLabel = labelEdited ? labelInput : suggestedLabel
+
+  const phaseLabel = progress?.phase
+  const canSubmit = !!targetString && !busy
+
+  const handleSubmit = useCallback(async () => {
+    setSubmitError(null)
+    if (!targetString) {
+      setSubmitError('Pick or type an SSH host first.')
+      return
+    }
+    const id = crypto.randomUUID()
+    setBootstrapId(id)
+    setBusy(true)
+    try {
+      const result = await backend.sshBootstrap({
+        bootstrapId: id,
+        target: targetString,
+        label: effectiveLabel.trim() || suggestedLabel || targetString
+      })
+      // Bootstrap succeeded — tunnel is live + connection is persisted.
+      // Hand the new BackendConnection to the registry's hydrate path:
+      // it calls sshReconnect (idempotent fast-path returns the
+      // already-live URL+token) and opens a WS transport pointing at
+      // the loopback. Then mark the new backend active so the user
+      // lands on it immediately on modal close.
+      const all = await backend.connectionsList()
+      const fresh = all.find((c) => c.id === result.connectionId)
+      if (!fresh) {
+        throw new Error(`connections list missing freshly-added id ${result.connectionId}`)
+      }
+      const registry = getBackendsRegistry()
+      await hydrateRemoteBackend(fresh, { registry, backend })
+      registry.setActive(result.connectionId)
+      void backend.connectionsSetActive(result.connectionId)
+      void backend.connectionsSetLastConnected(result.connectionId)
+      onClose()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      setSubmitError(msg)
+    } finally {
+      setBusy(false)
+    }
+  }, [backend, targetString, effectiveLabel, suggestedLabel, onClose])
+
+  const handleClose = useCallback(() => {
+    if (busy) return
+    setBootstrapId(null)
+    setSubmitError(null)
+    onClose()
+  }, [busy, onClose])
+
+  return (
+    <>
+      <div className="px-5 py-4 space-y-4">
+        <p className="text-xs text-dim leading-relaxed">
+          Pick a host from your <code className="bg-app/40 px-1 rounded text-xs">~/.ssh/config</code>, or
+          type one. Harness will SSH in, install{' '}
+          <code className="bg-app/40 px-1 rounded text-xs">harness-server</code> if it's not
+          there, and open a local tunnel.
+        </p>
+
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-dim uppercase tracking-wider">
+            SSH host
+          </label>
+          <select
+            value={selectedAlias}
+            onChange={(e) => setSelectedAlias(e.target.value)}
+            disabled={busy}
+            className="w-full bg-app/40 border border-border rounded px-2.5 py-1.5 text-xs text-fg-bright focus:outline-none focus:border-accent disabled:opacity-50"
+          >
+            {/* Custom host… at the top so the freeform input is the
+                first thing users see — gets it in front of people who
+                don't have ~/.ssh/config entries set up yet, or who'd
+                rather type a one-off than pick. */}
+            <option value={CUSTOM_HOST}>
+              {hostsLoaded && hosts.length === 0
+                ? 'No hosts in ~/.ssh/config — use Custom…'
+                : 'Custom host…'}
+            </option>
+            {hosts.map((h) => (
+              <option key={h.alias} value={h.alias}>
+                {h.alias}
+                {h.user || h.port
+                  ? ` (${h.user ? `${h.user}@` : ''}${h.host}${h.port ? `:${h.port}` : ''})`
+                  : ` (${h.host})`}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {selectedAlias === CUSTOM_HOST && (
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-dim uppercase tracking-wider">
+              Target
+            </label>
+            <input
+              value={customTarget}
+              onChange={(e) => setCustomTarget(e.target.value)}
+              placeholder="user@host or user@host:port"
+              spellCheck={false}
+              autoFocus
+              disabled={busy}
+              className="w-full bg-app/40 border border-border rounded px-2.5 py-1.5 text-xs font-mono text-fg-bright placeholder:text-faint focus:outline-none focus:border-accent disabled:opacity-50"
+            />
+          </div>
+        )}
+
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-dim uppercase tracking-wider">
+            Label (optional)
+          </label>
+          <input
+            value={effectiveLabel}
+            onChange={(e) => {
+              setLabelInput(e.target.value)
+              setLabelEdited(true)
+            }}
+            placeholder={suggestedLabel || 'Backend'}
+            disabled={busy}
+            className="w-full bg-app/40 border border-border rounded px-2.5 py-1.5 text-xs text-fg-bright placeholder:text-faint focus:outline-none focus:border-accent disabled:opacity-50"
+          />
+        </div>
+
+        {(progress || submitError) && (
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-medium text-dim uppercase tracking-wider">
+                Progress
+              </label>
+              {phaseLabel && (
+                <span
+                  className={`text-xs font-medium ${
+                    phaseLabel === 'error'
+                      ? 'text-danger'
+                      : phaseLabel === 'connected'
+                        ? 'text-success'
+                        : 'text-accent'
+                  }`}
+                >
+                  {phaseLabel}
+                </span>
+              )}
+            </div>
+            <div
+              ref={logScrollRef}
+              className="bg-app/40 border border-border rounded px-2 py-1.5 text-xs font-mono text-fg max-h-40 overflow-auto whitespace-pre-wrap"
+            >
+              {progress?.lines.map((line, i) => (
+                <div key={i} className="leading-tight">{line}</div>
+              ))}
+              {progress?.phase === 'error' && progress.error && (
+                <div className="mt-1 text-danger">
+                  {progress.error.message}
+                  {progress.error.detail && (
+                    <div className="text-dim mt-1">{progress.error.detail}</div>
+                  )}
+                </div>
+              )}
+              {submitError && (
+                <div className="mt-1 text-danger">{submitError}</div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="px-5 py-3 border-t border-border flex items-center justify-end gap-2">
+        <button
+          onClick={handleClose}
+          disabled={busy}
+          className="px-3 py-1.5 text-xs text-dim hover:text-fg disabled:opacity-50 cursor-pointer transition-colors"
+        >
+          {progress?.phase === 'connected' ? 'Done' : 'Cancel'}
+        </button>
+        <button
+          onClick={() => void handleSubmit()}
+          disabled={!canSubmit}
+          className="px-4 py-1.5 text-xs font-medium rounded bg-accent/20 hover:bg-accent/30 text-fg-bright border border-accent/40 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors flex items-center gap-2"
+        >
+          {busy && <Loader2 className="icon-xs animate-spin" />}
+          {busy ? 'Connecting…' : 'Connect'}
+        </button>
+      </div>
+    </>
   )
 }

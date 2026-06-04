@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode
 } from 'react'
 import ReactMarkdown from 'react-markdown'
@@ -22,12 +23,14 @@ import {
   X,
   Layers,
   RotateCcw,
-  ShieldAlert
+  ShieldAlert,
+  Sparkles
 } from 'lucide-react'
 import { useJsonClaudeSession, useSettings } from '../store'
 import { useBackend } from '../backend'
 import { useJsonClaudeApprovals } from '../hooks/useJsonClaudeApprovals'
 import { JsonClaudeApprovalCard } from './JsonClaudeApprovalCard'
+import { Tooltip } from './Tooltip'
 import { dispatchToolCard, ToolCardChrome } from './json-mode-cards'
 import { ToolGroup } from './json-mode-cards/ToolGroup'
 import { TaskCard } from './json-mode-cards/TaskCard'
@@ -81,6 +84,12 @@ interface RenderedRow {
   key: string
   node: ReactNode
   type: 'text' | 'tool'
+  /** Slice entry that produced this row. One assistant entry can emit
+   *  multiple rows (text + thinking + tool_use); they all carry the same
+   *  entryId so a context-menu rewind on any sub-row targets the parent
+   *  entry. Undefined only for rows synthesized outside of an entry
+   *  (none today; reserved). */
+  entryId?: string
   toolName?: string
   hasError?: boolean
   hasPendingApproval?: boolean
@@ -128,10 +137,10 @@ function ThinkingCard({
           fontSize: 'var(--chat-chrome-text)'
         }}
       >
-        <span className="text-muted text-[9px] w-2 shrink-0 select-none">
+        <span className="text-muted text-xs w-2 shrink-0 select-none">
           {expanded ? '▾' : '▸'}
         </span>
-        <Brain size={11} className="text-muted shrink-0" />
+        <Brain className="icon-xs text-muted shrink-0" />
         <span
           className="text-muted shrink-0"
           style={{ fontFamily: 'var(--chat-tool-name-family)' }}
@@ -210,10 +219,10 @@ function CompactCard({
           fontSize: 'var(--chat-chrome-text)'
         }}
       >
-        <span className="text-info/70 text-[9px] w-2 shrink-0 select-none">
+        <span className="text-info/70 text-xs w-2 shrink-0 select-none">
           {expanded ? '▾' : '▸'}
         </span>
-        <Layers size={11} className="text-info shrink-0" />
+        <Layers className="icon-xs text-info shrink-0" />
         <span
           className="font-semibold shrink-0 text-info"
           style={{ fontFamily: 'var(--chat-tool-name-family)' }}
@@ -231,14 +240,14 @@ function CompactCard({
         )}
       </button>
       {expanded && (
-        <div className="px-3 py-2 text-[11px] text-muted space-y-1">
+        <div className="px-3 py-2 text-xs text-muted space-y-1">
           <div>
             Earlier conversation history was summarized to free up context.
             New messages continue from the summary.
           </div>
           {(typeof preTokens === 'number' ||
             typeof postTokens === 'number') && (
-            <div className="font-mono text-[10px] text-faint">
+            <div className="font-mono text-xs text-faint">
               {typeof preTokens === 'number' && (
                 <span>before: {preTokens.toLocaleString()} tokens</span>
               )}
@@ -281,7 +290,7 @@ function SubprocessExitCard({
           fontSize: 'var(--chat-chrome-text)'
         }}
       >
-        <RotateCcw size={11} className="text-danger shrink-0" />
+        <RotateCcw className="icon-xs text-danger shrink-0" />
         <span
           className="font-semibold shrink-0 text-danger"
           style={{ fontFamily: 'var(--chat-tool-name-family)' }}
@@ -291,7 +300,7 @@ function SubprocessExitCard({
         <span className="opacity-70 truncate flex-1 min-w-0">{detail}</span>
       </div>
       <div className="px-3 py-2 space-y-2">
-        <pre className="text-[11px] text-muted font-mono whitespace-pre-wrap break-words m-0">
+        <pre className="text-xs text-muted font-mono whitespace-pre-wrap break-words m-0">
           {detail}
         </pre>
         {isExited ? (
@@ -305,11 +314,11 @@ function SubprocessExitCard({
               })()
             }}
           >
-            <RotateCcw size={12} />
+            <RotateCcw className="icon-xs" />
             <span>Restart session</span>
           </button>
         ) : (
-          <span className="text-[11px] text-muted italic">
+          <span className="text-xs text-muted italic">
             session restarted
           </span>
         )}
@@ -340,7 +349,7 @@ function AuthFailureCard({
           fontSize: 'var(--chat-chrome-text)'
         }}
       >
-        <ShieldAlert size={11} className="text-danger shrink-0" />
+        <ShieldAlert className="icon-xs text-danger shrink-0" />
         <span
           className="font-semibold shrink-0 text-danger"
           style={{ fontFamily: 'var(--chat-tool-name-family)' }}
@@ -348,9 +357,9 @@ function AuthFailureCard({
           Authentication failed
         </span>
       </div>
-      <div className="px-3 py-2 text-[11px] text-fg space-y-2">
+      <div className="px-3 py-2 text-xs text-fg space-y-2">
         {message && (
-          <pre className="whitespace-pre-wrap break-words font-mono text-[10px] text-muted bg-app/40 border border-border/40 rounded px-2 py-1 max-h-32 overflow-auto">
+          <pre className="whitespace-pre-wrap break-words font-mono text-xs text-muted bg-app/40 border border-border/40 rounded px-2 py-1 max-h-32 overflow-auto">
             {message}
           </pre>
         )}
@@ -428,7 +437,7 @@ function RateLimitWarningCard({
           fontSize: 'var(--chat-chrome-text)'
         }}
       >
-        <AlertTriangle size={11} className="text-warning shrink-0" />
+        <AlertTriangle className="icon-xs text-warning shrink-0" />
         <span
           className="font-semibold shrink-0 text-warning"
           style={{ fontFamily: 'var(--chat-tool-name-family)' }}
@@ -488,7 +497,7 @@ function RateLimitErrorCard({
           fontSize: 'var(--chat-chrome-text)'
         }}
       >
-        <AlertOctagon size={11} className="text-danger shrink-0" />
+        <AlertOctagon className="icon-xs text-danger shrink-0" />
         <span
           className="font-semibold shrink-0 text-danger"
           style={{ fontFamily: 'var(--chat-tool-name-family)' }}
@@ -496,7 +505,7 @@ function RateLimitErrorCard({
           Rate limit reached
         </span>
       </div>
-      <div className="px-3 py-2 text-[11px] text-muted space-y-1">
+      <div className="px-3 py-2 text-xs text-muted space-y-1">
         <div className="text-fg/80">{message}</div>
         {resetText && (
           <div className="text-faint">
@@ -544,6 +553,7 @@ function renderEntries(
       const queued = !!entry.isQueued
       rows.push({
         key: entry.entryId,
+        entryId: entry.entryId,
         type: 'text',
         node: queued ? (
           <div className="flex justify-end">
@@ -573,7 +583,7 @@ function renderEntries(
                   title="Cancel queued message"
                   aria-label="Cancel queued message"
                 >
-                  <X size={12} />
+                  <X className="icon-xs" />
                 </button>
               </div>
             </div>
@@ -609,6 +619,7 @@ function renderEntries(
     if (entry.kind === 'compact') {
       rows.push({
         key: entry.entryId,
+        entryId: entry.entryId,
         type: 'tool',
         node: (
           <CompactCard
@@ -623,6 +634,7 @@ function renderEntries(
     if (entry.kind === 'error' && entry.errorKind === 'subprocess-exit') {
       rows.push({
         key: entry.entryId,
+        entryId: entry.entryId,
         type: 'text',
         node: (
           <SubprocessExitCard
@@ -638,6 +650,7 @@ function renderEntries(
     if (entry.kind === 'error' && entry.errorKind === 'auth-failure') {
       rows.push({
         key: entry.entryId,
+        entryId: entry.entryId,
         type: 'tool',
         node: (
           <AuthFailureCard
@@ -652,6 +665,7 @@ function renderEntries(
     if (entry.kind === 'system' && entry.errorKind === 'rate-limit-warning') {
       rows.push({
         key: entry.entryId,
+        entryId: entry.entryId,
         type: 'tool',
         node: (
           <RateLimitWarningCard
@@ -665,6 +679,7 @@ function renderEntries(
     if (entry.kind === 'error' && entry.errorKind === 'rate-limit-error') {
       rows.push({
         key: entry.entryId,
+        entryId: entry.entryId,
         type: 'tool',
         node: (
           <RateLimitErrorCard
@@ -682,6 +697,7 @@ function renderEntries(
           const idx = thinkingIdx++
           rows.push({
             key: `${entry.entryId}-th-${idx}`,
+            entryId: entry.entryId,
             type: 'tool',
             isThinking: true,
             node: (
@@ -694,6 +710,7 @@ function renderEntries(
         } else if (block.type === 'text' && (block.text || entry.isPartial)) {
           rows.push({
             key: `${entry.entryId}-t`,
+            entryId: entry.entryId,
             type: 'text',
             node: (
               <div
@@ -753,6 +770,7 @@ function renderEntries(
           }
           rows.push({
             key: `${entry.entryId}-${block.id || 'tu'}`,
+            entryId: entry.entryId,
             type: 'tool',
             toolName: block.name,
             hasError: !!result?.isError,
@@ -767,7 +785,7 @@ function renderEntries(
                     subtitle="preparing call…"
                     variant="info"
                   >
-                    <div className="px-2 py-1.5 text-[11px] text-muted italic flex items-center gap-2">
+                    <div className="px-2 py-1.5 text-xs text-muted italic flex items-center gap-2">
                       <span className="json-claude-cursor" />
                       <span>waiting for input</span>
                     </div>
@@ -856,7 +874,30 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
   const backend = useBackend()
   const session = useJsonClaudeSession(sessionId)
   const { pending, resolve } = useJsonClaudeApprovals(sessionId)
-  const density = useSettings().jsonModeChatDensity
+  const {
+    jsonModeChatDensity: density,
+    jsonModeSendOnEnter: sendOnEnter,
+    defaultClaudeTabType
+  } = useSettings()
+  const cameFromTerminalDefault = defaultClaudeTabType === 'xterm'
+  const isMac =
+    typeof window !== 'undefined' &&
+    (window.__HARNESS_PLATFORM__
+      ? window.__HARNESS_PLATFORM__ === 'darwin'
+      : /Mac|iPhone|iPad/.test(navigator.platform || ''))
+  const modKeySymbol = isMac ? '⌘' : 'Ctrl+'
+  const modKeyWord = isMac ? 'Cmd' : 'Ctrl'
+  const sendHotkeyLabel = sendOnEnter
+    ? isMac
+      ? '↵'
+      : 'Enter'
+    : isMac
+      ? `${modKeySymbol}↵`
+      : `${modKeySymbol}Enter`
+  const sendHotkeyAria = sendOnEnter ? 'Enter' : `${modKeyWord}+Enter`
+  const composerPlaceholder = sendOnEnter
+    ? 'Message Claude — Enter to send, Shift+Enter for newline'
+    : `Message Claude — ${modKeyWord}+Enter to send`
   const [draft, setDraft] = useState('')
   // Mention/popover state. `dismissed` carries the draft text at which
   // the user pressed Escape — comparing against the live draft is how we
@@ -892,6 +933,25 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
     ta.style.height = 'auto'
     ta.style.height = `${ta.scrollHeight}px`
   }, [draft])
+  // Wake-on-typing: first keystroke into a slept tab fires the wake IPC;
+  // subsequent keystrokes only refresh lastActive (debounced 5s) so the
+  // auto-sleep monitor can't re-sleep this worktree mid-composition.
+  const wakeRequestedRef = useRef(false)
+  const lastTouchAtRef = useRef(0)
+  useEffect(() => {
+    if (mode === 'asleep') wakeRequestedRef.current = false
+  }, [mode])
+  const handleComposerActivity = useCallback((): void => {
+    if (mode === 'asleep' && !wakeRequestedRef.current) {
+      wakeRequestedRef.current = true
+      void backend.panesWakeTab(worktreePath, sessionId)
+    }
+    const now = Date.now()
+    if (now - lastTouchAtRef.current >= 5000) {
+      lastTouchAtRef.current = now
+      void backend.touchWorktreeLastActive(worktreePath)
+    }
+  }, [backend, mode, sessionId, worktreePath])
   const scrollRef = useRef<HTMLDivElement | null>(null)
   // dragenter fires for every child element entered, dragleave for every
   // child exited — so a naive boolean flickers as the cursor moves over
@@ -1116,6 +1176,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
   // delta — the visible cost is that streaming text lags the actual data
   // by a frame or two, which is invisible to the user.
   const entries = session?.entries ?? []
+  const entriesHydrated = session?.entriesHydrated ?? false
   const deferredEntries = useDeferredValue(entries)
   const rows = useMemo(() => {
     // Sub-agent nesting pre-pass: split the flat entries array into a
@@ -1187,6 +1248,82 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
   ])
 
   const groupedItems = useMemo(() => groupConsecutiveToolRows(rows), [rows])
+
+  // Right-click "Rewind to here" state. Only available on assistant
+  // rows — right-clicking a user bubble or any other row does nothing
+  // (browser default fires). The menu is a positioned <div> a la
+  // TerminalPanel — no reusable ContextMenu primitive yet. Even on
+  // assistant rows the action is disabled when:
+  //   - the row is from a sub-agent (parentToolUseId set) — can't
+  //     usefully rewind in isolation; parent Task's tool_result depends
+  //     on the full run
+  //   - it sits before any compact_boundary — claude won't see those
+  //     raw turns again on --resume so truncating into them doesn't help
+  //   - the session is exited — no subprocess to respawn against
+  const [rewindMenu, setRewindMenu] = useState<
+    | { entryId: string; x: number; y: number; disabledReason: string | null }
+    | null
+  >(null)
+  const lastCompactIdx = useMemo(() => {
+    let last = -1
+    for (let i = 0; i < entries.length; i++) {
+      if (entries[i].kind === 'compact') last = i
+    }
+    return last
+  }, [entries])
+  const entryIndexById = useMemo(() => {
+    const m = new Map<string, number>()
+    for (let i = 0; i < entries.length; i++) m.set(entries[i].entryId, i)
+    return m
+  }, [entries])
+  const rewindDisabledReason = useCallback(
+    (entryId: string): string | null => {
+      const idx = entryIndexById.get(entryId)
+      if (idx === undefined) return 'message not found'
+      const e = entries[idx]
+      if (e.kind !== 'assistant') return 'only assistant messages can be rewound'
+      if (session?.state === 'exited') return 'session is not running'
+      if (e.parentToolUseId) return 'sub-agent steps can’t be rewound individually'
+      if (idx <= lastCompactIdx) {
+        return 'rewinding across a /compact boundary isn’t supported'
+      }
+      if (idx >= entries.length - 1) return 'nothing after this message yet'
+      return null
+    },
+    [entries, entryIndexById, lastCompactIdx, session?.state]
+  )
+  const openRewindMenu = useCallback(
+    (entryId: string, e: ReactMouseEvent): void => {
+      e.preventDefault()
+      e.stopPropagation()
+      setRewindMenu({
+        entryId,
+        x: e.clientX,
+        y: e.clientY,
+        disabledReason: rewindDisabledReason(entryId)
+      })
+    },
+    [rewindDisabledReason]
+  )
+  const performRewind = useCallback(
+    async (entryId: string) => {
+      setRewindMenu(null)
+      await backend.rewindJsonClaudeTo(sessionId, entryId)
+    },
+    [backend, sessionId]
+  )
+  useEffect(() => {
+    if (!rewindMenu) return
+    const onAway = (): void => setRewindMenu(null)
+    window.addEventListener('mousedown', onAway)
+    window.addEventListener('scroll', onAway, true)
+    window.addEventListener('keydown', onAway)
+    return () => {
+      window.removeEventListener('mousedown', onAway)
+      window.removeEventListener('scroll', onAway, true)
+      window.removeEventListener('keydown', onAway)
+    }
+  }, [rewindMenu])
 
   // tool_use ids present in chat history. Cheap one-pass scan over
   // entries, used to detect orphaned approvals without depending on the
@@ -1294,7 +1431,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
         label: `/${r.name}`,
         labelMatchIndices: r.indices?.map((i) => i + 1), // shift past leading '/'
         description: BUILTIN_DESCRIPTIONS[r.name],
-        icon: <Terminal size={12} />
+        icon: <Terminal className="icon-xs" />
       }))
     }
     if (mentionTrigger !== null && files.length > 0) {
@@ -1311,7 +1448,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
         key: r.item,
         label: r.item,
         labelMatchIndices: r.indices,
-        icon: <FileText size={12} />
+        icon: <FileText className="icon-xs" />
       }))
     }
     return []
@@ -1562,11 +1699,63 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
       }}
       onDrop={(e) => void handleDrop(e)}
     >
+      {rewindMenu && (
+        <div
+          className="fixed z-50 bg-panel-raised border border-border-strong rounded shadow-lg text-xs py-1 min-w-[14rem]"
+          style={{ left: rewindMenu.x, top: rewindMenu.y }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            disabled={rewindMenu.disabledReason !== null}
+            onClick={(e) => {
+              e.stopPropagation()
+              if (rewindMenu.disabledReason !== null) return
+              void performRewind(rewindMenu.entryId)
+            }}
+            className={`flex w-full items-center gap-2 px-3 py-1.5 text-left ${
+              rewindMenu.disabledReason
+                ? 'text-muted cursor-not-allowed opacity-60'
+                : 'text-danger hover:bg-panel cursor-pointer'
+            }`}
+          >
+            <RotateCcw className="icon-xs shrink-0" />
+            <div className="flex flex-col">
+              <span>Rewind to here</span>
+              <span className="text-xs text-muted">
+                {rewindMenu.disabledReason ?? 'drops everything after this'}
+              </span>
+            </div>
+          </button>
+        </div>
+      )}
       {isDragOver && (
         <div className="absolute inset-0 z-40 bg-accent/10 border-2 border-dashed border-accent rounded flex items-center justify-center pointer-events-none">
           <div className="bg-panel-raised border border-border-strong rounded px-4 py-2 text-fg-bright shadow-lg">
             Drop image to attach
           </div>
+        </div>
+      )}
+      {cameFromTerminalDefault && (
+        <div className="absolute top-2 left-2 z-30 flex items-center gap-1 pointer-events-auto">
+          <Tooltip label="You can always switch modes by right-clicking the tab.">
+            <button
+              onClick={() => {
+                void backend.panesConvertTabType(worktreePath, sessionId, 'agent')
+              }}
+              className="px-2 py-1 rounded-md text-xs bg-panel/90 border border-border text-fg-bright hover:bg-border transition-colors"
+            >
+              Switch back to Terminal mode
+            </button>
+          </Tooltip>
+          <Tooltip label="You can change the default any time in Settings → Agent → Interface.">
+            <button
+              onClick={() => { void backend.setDefaultClaudeTabType('json') }}
+              className="px-2 py-1 rounded-md text-xs bg-panel/90 border border-border text-fg-bright hover:bg-border transition-colors"
+            >
+              Make Chat mode default
+            </button>
+          </Tooltip>
         </div>
       )}
       <div className="relative flex-1 min-h-0 flex flex-col">
@@ -1577,14 +1766,66 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
           className="flex-1 overflow-y-auto overflow-x-hidden outline-none"
           style={{ overflowAnchor: 'none' }}
         >
+          {/* Stable wrapper so the auto-scroll ResizeObserver (mounted once
+              with empty deps) always has a firstElementChild to observe.
+              Without it, a fresh chat mounts with entriesHydrated=false and
+              the empty-state ternary returns null, leaving the scroll
+              container childless — the RO is never attached and streaming
+              tokens after entries hydrate don't snap to bottom. */}
+          <div className="min-h-full flex flex-col">
+          {entries.length === 0 && orphanApprovals.length === 0 && !busy ? (
+            // Empty-state is only safe to show once we've confirmed there's
+            // nothing to display. The wire snapshot ships entries stripped
+            // (entriesHydrated=false) and the lazy-fetch above seeds them
+            // shortly after mount — rendering the bright sparkle card in
+            // that window flashes loudly on tabs that actually have history.
+            // Render blank during the fetch; a spinner's appear-then-
+            // disappear would itself be a flash.
+            entriesHydrated ? (
+              <div className="flex-1 flex flex-col items-center justify-center text-center px-4 select-none">
+                <div className="relative mb-6">
+                  <div
+                    className="absolute inset-0 rounded-full blur-2xl opacity-30 brand-gradient-bg"
+                    aria-hidden
+                  />
+                  <div className="relative w-16 h-16 rounded-full brand-gradient-bg flex items-center justify-center shadow-lg">
+                    <Sparkles className="w-[1.625rem] h-[1.625rem] text-white" />
+                  </div>
+                </div>
+                <h2 className="text-lg font-semibold brand-gradient-text">
+                  What are we going to build today?
+                </h2>
+                <p className="mt-2 text-xs text-muted">
+                  Send a message to get started.
+                </p>
+              </div>
+            ) : null
+          ) : (
           <div className="px-4 py-3 space-y-3">
-            {groupedItems.map((g) =>
-              g.kind === 'single' ? (
-                <div key={g.key}>{g.rows[0].node}</div>
+            {groupedItems.map((g) => {
+              // Rewind is only meaningful on assistant rows — right-
+              // clicking a user bubble or any other kind of row falls
+              // through to the browser default. For ToolGroup the
+              // target is the first tool's parent assistant entry,
+              // which is exactly the entry to rewind to.
+              const targetEntryId = g.rows[0]?.entryId
+              const targetEntry = targetEntryId
+                ? entries[entryIndexById.get(targetEntryId) ?? -1]
+                : undefined
+              const onContextMenu =
+                targetEntryId && targetEntry?.kind === 'assistant'
+                  ? (e: ReactMouseEvent): void => openRewindMenu(targetEntryId, e)
+                  : undefined
+              return g.kind === 'single' ? (
+                <div key={g.key} onContextMenu={onContextMenu}>
+                  {g.rows[0].node}
+                </div>
               ) : (
-                <ToolGroup key={g.key} rows={g.rows} />
+                <div key={g.key} onContextMenu={onContextMenu}>
+                  <ToolGroup rows={g.rows} />
+                </div>
               )
-            )}
+            })}
             {orphanApprovals.map((a) => (
               <JsonClaudeApprovalCard
                 key={a.requestId}
@@ -1615,12 +1856,14 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
                 (lastBlock?.type === 'text' || lastBlock?.type === 'tool_use')
               if (showWhileStreaming) return null
               return (
-                <div className="flex items-center gap-2 px-2 py-1 text-[11px] text-muted italic">
+                <div className="flex items-center gap-2 px-2 py-1 text-xs text-muted italic">
                   <span className="json-claude-spinner" aria-label="working" />
                   <span>thinking…</span>
                 </div>
               )
             })()}
+          </div>
+          )}
           </div>
         </div>
         {showJumpToBottom && (
@@ -1629,13 +1872,13 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
             className="absolute right-4 bottom-4 z-10 px-3 py-1.5 rounded-full bg-accent text-white text-xs shadow-lg hover:bg-accent/90 cursor-pointer flex items-center gap-1.5"
             title="Jump to bottom"
           >
-            <ChevronDown size={12} />
+            <ChevronDown className="icon-xs" />
             <span>Jump to bottom</span>
           </button>
         )}
       </div>
       {session && session.sessionToolApprovals.length > 0 && (
-        <div className="shrink-0 border-t border-border bg-panel/40 px-3 py-1 flex items-center gap-2 text-[10px] text-muted">
+        <div className="shrink-0 border-t border-border bg-panel/40 px-3 py-1 flex items-center gap-2 text-xs text-muted">
           <span className="opacity-70">auto-allowing:</span>
           <span className="font-mono truncate">
             {session.sessionToolApprovals.join(', ')}
@@ -1648,12 +1891,12 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
             title="Clear session auto-allow set"
             aria-label="Clear session auto-allow set"
           >
-            <X size={10} />
+            <X className="icon-2xs" />
           </button>
         </div>
       )}
-      <div className="shrink-0 border-t border-border p-2 flex gap-2 items-end">
-        <div className="flex-1 relative rounded">
+      <div className="shrink-0 border-t border-border p-2">
+        <div className="relative rounded-md border border-border bg-panel focus-within:border-accent transition-colors">
           {mentionItems.length > 0 && (
             <JsonModeMentionPopover
               items={mentionItems}
@@ -1663,7 +1906,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
             />
           )}
           {attachments.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mb-1.5">
+            <div className="flex flex-wrap gap-1.5 px-2 pt-2">
               {attachments.map((a) => {
                 const shortPath = a.path
                   ? a.path.startsWith(worktreePath + '/')
@@ -1673,7 +1916,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
                 return (
                   <div
                     key={a.id}
-                    className="relative inline-flex items-center gap-2 bg-panel border border-border rounded overflow-hidden pr-2"
+                    className="relative inline-flex items-center gap-2 bg-app/40 border border-border rounded overflow-hidden pr-2"
                     title={a.path || a.name}
                   >
                     <img
@@ -1682,7 +1925,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
                       className="h-12 w-12 object-cover shrink-0"
                     />
                     {shortPath && (
-                      <span className="text-[10px] text-faint font-mono max-w-[180px] truncate">
+                      <span className="text-xs text-faint font-mono max-w-[180px] truncate">
                         {shortPath}
                       </span>
                     )}
@@ -1693,7 +1936,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
                       className="absolute top-0.5 right-0.5 bg-app/80 hover:bg-app text-fg-bright rounded-full p-0.5 cursor-pointer"
                       aria-label={`Remove ${a.name}`}
                     >
-                      <X size={10} />
+                      <X className="icon-2xs" />
                     </button>
                   </div>
                 )
@@ -1708,6 +1951,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
               setCursorPos(e.target.selectionStart ?? e.target.value.length)
               // Any text change re-arms a previously dismissed popover.
               setMentionDismissed(null)
+              handleComposerActivity()
             }}
             onSelect={(e) => {
               setCursorPos(e.currentTarget.selectionStart ?? 0)
@@ -1755,53 +1999,76 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
                   return
                 }
               }
-              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                e.preventDefault()
-                send()
+              if (e.key === 'Enter') {
+                // IME composition guard — don't send while composing
+                // CJK input.
+                if (e.nativeEvent.isComposing || e.keyCode === 229) return
+                const wantsSend = sendOnEnter
+                  ? !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey
+                  : e.metaKey || e.ctrlKey
+                if (wantsSend) {
+                  e.preventDefault()
+                  send()
+                  return
+                }
+                // sendOnEnter && Shift+Enter → fall through so the
+                // textarea inserts a newline as usual.
               }
             }}
-            placeholder="Message Claude — Cmd/Ctrl+Enter to send"
+            placeholder={
+              mode === 'asleep'
+                ? 'Type to wake this session…'
+                : composerPlaceholder
+            }
             // text-base (16px) below sm: prevents iOS Safari from zooming
             // the viewport when the textarea takes focus. text-sm on
             // desktop keeps the chat dense.
-            className="w-full bg-panel border border-border rounded px-2 py-1.5 text-base sm:text-sm resize-none outline-none focus:border-accent min-h-[60px] max-h-[200px]"
+            className="block w-full bg-transparent border-0 px-2.5 pt-2 pb-1 text-base sm:text-sm resize-none outline-none placeholder:text-faint min-h-[60px] max-h-[200px]"
             rows={2}
-            disabled={state === 'exited'}
+            // Never disabled — sleep kills the subprocess and dispatches
+            // state='exited', and the wake transition arrives as separate
+            // tabWoken + state='running' IPC events. Toggling disabled on
+            // either of those races would briefly blur the focused
+            // textarea, kicking the user out mid-keystroke. send() guards
+            // the actual "no live subprocess" case.
           />
+          <div className="flex items-center gap-2 px-2 pb-1.5 pt-0.5">
+            <div
+              className="flex items-center gap-1.5 text-xs text-muted"
+              title={`session ${state}`}
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${stateDot}`} />
+              <span>{state}</span>
+            </div>
+            <button
+              onClick={cyclePermissionMode}
+              className={`px-1.5 py-0.5 rounded border text-xs cursor-pointer hover:opacity-80 transition-opacity ${modeBadgeStyle}`}
+              title="Click to cycle permission mode. Applies mid-turn — no restart."
+            >
+              {modeBadgeLabel}
+            </button>
+            <div className="flex-1" />
+            {busy && (
+              <button
+                onClick={interrupt}
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-xs text-danger hover:bg-danger/10 cursor-pointer"
+                title="Interrupt the current model turn"
+              >
+                <Square fill="currentColor" className="icon-2xs" /> interrupt
+              </button>
+            )}
+            <button
+              onClick={() => send()}
+              disabled={!draft.trim() && attachments.length === 0}
+              aria-label={`Send (${sendHotkeyAria})`}
+              title={`Send (${sendHotkeyAria})`}
+              className="px-2.5 py-0.5 bg-accent text-white rounded text-xs font-medium disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
+            >
+              <span>Send</span>
+              <span className="opacity-60 ml-1">{sendHotkeyLabel}</span>
+            </button>
+          </div>
         </div>
-        <button
-          onClick={() => send()}
-          disabled={
-            (!draft.trim() && attachments.length === 0) ||
-            state === 'exited'
-          }
-          className="px-3 py-1.5 bg-accent text-white rounded text-sm disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
-        >
-          Send
-        </button>
-      </div>
-      <div className="shrink-0 border-t border-border bg-panel/40 px-3 h-6 flex items-center gap-3 text-[10px] text-muted">
-        <div className="flex items-center gap-1.5" title={`session ${state}`}>
-          <span className={`w-1.5 h-1.5 rounded-full ${stateDot}`} />
-          <span>{state}</span>
-        </div>
-        <div className="flex-1" />
-        {busy && (
-          <button
-            onClick={interrupt}
-            className="flex items-center gap-1 text-danger hover:text-danger/80 cursor-pointer"
-            title="Interrupt the current model turn"
-          >
-            <Square size={9} fill="currentColor" /> interrupt
-          </button>
-        )}
-        <button
-          onClick={cyclePermissionMode}
-          className={`px-1.5 py-0.5 rounded border cursor-pointer hover:opacity-80 transition-opacity ${modeBadgeStyle}`}
-          title="Click to cycle permission mode. Applies mid-turn — no restart."
-        >
-          {modeBadgeLabel}
-        </button>
       </div>
     </div>
   )

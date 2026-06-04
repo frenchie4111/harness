@@ -2,9 +2,15 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { RefreshCw, AtSign, Code2, ChevronRight, Folder, FolderOpen, FileText } from 'lucide-react'
 import { Tooltip } from './Tooltip'
 import { RightPanel } from './RightPanel'
-import { useSettings } from '../store'
+import { useActiveBackend, useSettings } from '../store'
 import { useBackend } from '../backend'
 import { bindingToString, formatBindingGlyphs, resolveHotkeys } from '../hotkeys'
+import type { ChangedFile } from '../types'
+import {
+  CHANGED_STATUS_COLOR,
+  CHANGED_STATUS_LABEL,
+  useChangedFilesSet,
+} from '../hooks/useChangedFilesSet'
 
 interface AllFilesPanelProps {
   worktreePath: string | null
@@ -52,12 +58,35 @@ function sortChildren(node: TreeNode): TreeNode[] {
   })
 }
 
+/** When the user has a filter typed, surface changed files above
+ *  unchanged ones within the filtered list. Stable tiebreak by the
+ *  original alphabetical order from sortChildren. */
+function sortChildrenChangedFirst(
+  node: TreeNode,
+  changedByPath: Map<string, ChangedFile>,
+  changedFolders: Set<string>
+): TreeNode[] {
+  const base = sortChildren(node)
+  if (changedByPath.size === 0) return base
+  const isChanged = (n: TreeNode): boolean =>
+    n.isFile ? changedByPath.has(n.path) : changedFolders.has(n.path)
+  return base
+    .map((n, i) => ({ n, i, changed: isChanged(n) }))
+    .sort((a, b) => {
+      if (a.n.isFile !== b.n.isFile) return a.n.isFile ? 1 : -1
+      if (a.changed !== b.changed) return a.changed ? -1 : 1
+      return a.i - b.i
+    })
+    .map((e) => e.n)
+}
+
 export function AllFilesPanel({
   worktreePath,
   onOpenFile,
   onSendToAgent
 }: AllFilesPanelProps): JSX.Element {
   const backend = useBackend()
+  const activeBackend = useActiveBackend()
   const [files, setFiles] = useState<string[]>([])
   const [hasLoaded, setHasLoaded] = useState(false)
   const [filter, setFilter] = useState('')
@@ -67,6 +96,7 @@ export function AllFilesPanel({
     const binding = resolveHotkeys(settings.hotkeys ?? undefined).fileQuickOpen
     return formatBindingGlyphs(bindingToString(binding))
   }, [settings.hotkeys])
+  const changed = useChangedFilesSet(worktreePath)
 
   const refresh = useCallback(async () => {
     if (!worktreePath) return
@@ -111,17 +141,45 @@ export function AllFilesPanel({
   }, [])
 
   const actions = (
-    <Tooltip label="Refresh">
-      <button
-        onClick={(e) => {
-          e.stopPropagation()
-          refresh()
-        }}
-        className="text-faint hover:text-fg transition-colors cursor-pointer"
-      >
-        <RefreshCw size={12} />
-      </button>
-    </Tooltip>
+    <>
+      {worktreePath && (
+        <Tooltip label="Open worktree in editor" action="openInEditor">
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              backend.openInEditor(worktreePath)
+            }}
+            className="text-faint hover:text-fg transition-colors cursor-pointer"
+          >
+            <Code2 className="icon-xs" />
+          </button>
+        </Tooltip>
+      )}
+      {worktreePath && activeBackend.kind === 'local' && (
+        <Tooltip label="Reveal in Finder">
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              backend.openPath(worktreePath)
+            }}
+            className="text-faint hover:text-fg transition-colors cursor-pointer"
+          >
+            <FolderOpen className="icon-xs" />
+          </button>
+        </Tooltip>
+      )}
+      <Tooltip label="Refresh">
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            refresh()
+          }}
+          className="text-faint hover:text-fg transition-colors cursor-pointer"
+        >
+          <RefreshCw className="icon-xs" />
+        </button>
+      </Tooltip>
+    </>
   )
 
   return (
@@ -153,11 +211,14 @@ export function AllFilesPanel({
             onToggle={toggle}
             onOpenFile={onOpenFile}
             onSendToAgent={onSendToAgent}
+            changedByPath={changed.byPath}
+            changedFolders={changed.folders}
+            changedFirst={filtering}
           />
         )}
       </div>
       {files.length > 0 && (
-        <div className="px-3 py-1.5 border-t border-border text-[10px] text-faint shrink-0 flex items-center justify-between">
+        <div className="px-3 py-1.5 border-t border-border text-xs text-faint shrink-0 flex items-center justify-between">
           <span>
             {filtering ? `${filtered.length} / ${files.length}` : files.length} file
             {files.length !== 1 ? 's' : ''}
@@ -178,6 +239,9 @@ interface TreeBranchProps {
   onToggle: (path: string) => void
   onOpenFile: (filePath: string) => void
   onSendToAgent?: (text: string) => void
+  changedByPath: Map<string, ChangedFile>
+  changedFolders: Set<string>
+  changedFirst: boolean
 }
 
 function TreeBranch({
@@ -188,9 +252,14 @@ function TreeBranch({
   worktreePath,
   onToggle,
   onOpenFile,
-  onSendToAgent
+  onSendToAgent,
+  changedByPath,
+  changedFolders,
+  changedFirst
 }: TreeBranchProps): JSX.Element {
-  const children = sortChildren(node)
+  const children = changedFirst
+    ? sortChildrenChangedFirst(node, changedByPath, changedFolders)
+    : sortChildren(node)
   return (
     <>
       {children.map((child) => {
@@ -204,6 +273,7 @@ function TreeBranch({
               worktreePath={worktreePath}
               onOpenFile={onOpenFile}
               onSendToAgent={onSendToAgent}
+              changedStatus={changedByPath.get(child.path)?.status}
             />
           )
         }
@@ -216,6 +286,7 @@ function TreeBranch({
               depth={depth}
               open={isOpen}
               onToggle={() => onToggle(child.path)}
+              hasChangedDescendant={changedFolders.has(child.path)}
             />
             {isOpen && (
               <TreeBranch
@@ -227,6 +298,9 @@ function TreeBranch({
                 onToggle={onToggle}
                 onOpenFile={onOpenFile}
                 onSendToAgent={onSendToAgent}
+                changedByPath={changedByPath}
+                changedFolders={changedFolders}
+                changedFirst={changedFirst}
               />
             )}
           </div>
@@ -240,13 +314,15 @@ function DirRow({
   name,
   depth,
   open,
-  onToggle
+  onToggle,
+  hasChangedDescendant
 }: {
   name: string
   path: string
   depth: number
   open: boolean
   onToggle: () => void
+  hasChangedDescendant: boolean
 }): JSX.Element {
   return (
     <div
@@ -255,15 +331,20 @@ function DirRow({
       style={{ paddingLeft: 8 + depth * 12 }}
     >
       <ChevronRight
-        size={10}
-        className={`shrink-0 text-faint transition-transform ${open ? 'rotate-90' : ''}`}
-      />
+        className={`icon-2xs shrink-0 text-faint transition-transform ${open ? 'rotate-90' : ''}`} />
       {open ? (
-        <FolderOpen size={11} className="shrink-0 text-info" />
+        <FolderOpen className="icon-xs shrink-0 text-info" />
       ) : (
-        <Folder size={11} className="shrink-0 text-info" />
+        <Folder className="icon-xs shrink-0 text-info" />
       )}
       <span className="truncate text-fg">{name}</span>
+      {hasChangedDescendant && (
+        <span
+          className="w-1 h-1 rounded-full bg-accent/50 shrink-0 ml-1"
+          title="Contains changes in this PR"
+          aria-hidden="true"
+        />
+      )}
     </div>
   )
 }
@@ -274,7 +355,8 @@ function FileRow({
   depth,
   worktreePath,
   onOpenFile,
-  onSendToAgent
+  onSendToAgent,
+  changedStatus
 }: {
   name: string
   path: string
@@ -282,6 +364,7 @@ function FileRow({
   worktreePath: string
   onOpenFile: (filePath: string) => void
   onSendToAgent?: (text: string) => void
+  changedStatus?: ChangedFile['status']
 }): JSX.Element {
   const backend = useBackend()
   return (
@@ -289,8 +372,22 @@ function FileRow({
       className="flex items-center gap-1 px-2 py-0.5 hover:bg-panel-raised cursor-pointer group"
       style={{ paddingLeft: 8 + depth * 12 + 10 }}
       onClick={() => onOpenFile(path)}
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData('text/plain', `@${path} `)
+        e.dataTransfer.effectAllowed = 'copy'
+      }}
     >
-      <FileText size={11} className="shrink-0 text-faint" />
+      {changedStatus ? (
+        <span
+          className={`shrink-0 w-3 font-mono text-center ${CHANGED_STATUS_COLOR[changedStatus]}`}
+          title={`${changedStatus} in this PR`}
+        >
+          {CHANGED_STATUS_LABEL[changedStatus]}
+        </span>
+      ) : (
+        <FileText className="icon-xs shrink-0 text-faint" />
+      )}
       <span className="truncate min-w-0 flex-1 text-fg">{name}</span>
       {onSendToAgent && (
         <Tooltip label="Reference in Claude" side="left">
@@ -301,7 +398,7 @@ function FileRow({
             }}
             className="shrink-0 opacity-0 group-hover:opacity-100 text-faint hover:text-fg transition-all cursor-pointer"
           >
-            <AtSign size={11} />
+            <AtSign className="icon-xs" />
           </button>
         </Tooltip>
       )}
@@ -313,7 +410,7 @@ function FileRow({
           }}
           className="shrink-0 opacity-0 group-hover:opacity-100 text-faint hover:text-fg transition-all cursor-pointer"
         >
-          <Code2 size={11} />
+          <Code2 className="icon-xs" />
         </button>
       </Tooltip>
     </div>

@@ -20,7 +20,7 @@ navigation.
 - **lucide-react** v1.x for icons (note: brand icons like `Github` are NOT exported in this version — use `GitPullRequest` etc.)
 - **electron-builder** for packaging, signed with the user's personal Developer ID, notarized
 - **electron-updater** for OTA updates from GitHub releases
-- **`@anthropic-ai/claude-code`** is bundled as a dep (pinned native binary) and used by json-mode tabs only. xterm Claude tabs continue to spawn the user's PATH `claude` so power users on bleeding-edge / beta builds keep that experience. Both share `~/.claude/` for auth + MCP config.
+- **`@anthropic-ai/claude-code`** is bundled as a dep (pinned native binary) and used by Chat tabs (internally `json-mode`) only. Terminal tabs (internally xterm-hosted) continue to spawn the user's PATH `claude` so power users on bleeding-edge / beta builds keep that experience. Both share `~/.claude/` for auth + MCP config.
 
 ## Architecture (read this before touching state)
 
@@ -298,8 +298,12 @@ which the PtyManager sets when spawning each terminal.
 
 Two log files in `userData`:
 
-- **`debug.log`** — categorical events. Cleared on startup. Tail with
-  `npm run log`.
+- **`debug.log`** — categorical events. **Append-only across sessions**
+  (same persistence model as `perf.log`) so crash forensics from before
+  the most recent restart are still inspectable. Rotated at 10MB into
+  `debug.log.1` (one archive only). Tail with `npm run log` (uses
+  `tail -F` so it survives rotation). Manual clear via `npm run log:clear`
+  (removes both `debug.log` and `debug.log.1`).
 - **`perf.log`** — perf trace. **Append-only across sessions** so lag
   that happened earlier (possibly before the most recent restart) is
   still inspectable. Tail with `npm run log:perf`. Clear before a fresh
@@ -425,10 +429,10 @@ hard dependency on `gh`.
   happens via the chip strip's `+` button (or `File → Add Backend…`
   if/when wired). Tokens encrypted in `secrets.enc` keyed
   `backend-token:<id>`; connections list lives in `userData/config.json`.
-- **Dual-claude model** — Harness ships two Claude Code binaries. **xterm
-  Claude tabs** spawn `/bin/zsh -ilc claude` so the user's PATH `claude`
-  is what runs (lets bleeding-edge / beta testers stay on their own
-  build). **json-mode tabs** spawn the bundled
+- **Dual-claude model** — Harness ships two Claude Code binaries. **Terminal
+  tabs** (internally xterm-hosted) spawn `/bin/zsh -ilc claude` so the user's
+  PATH `claude` is what runs (lets bleeding-edge / beta testers stay on their
+  own build). **Chat tabs** (internally `json-mode`) spawn the bundled
   `@anthropic-ai/claude-code` native binary directly — pinned per Harness
   release so the `--permission-prompt-tool` round trip and stream-json
   schema can't drift between npm publishes. Both share `~/.claude/` for
@@ -463,6 +467,9 @@ These are how the user wants Claude to behave when working on this repo:
    - `npx electron-vite build` — catches missing imports, asset resolution,
      and other bundler-level issues.
    Run `npx vitest run` too if the change could affect reducer/FSM behavior.
+   PR-time CI (`.github/workflows/ci.yml`) runs all three on every PR as a
+   safety net, but the local pre-commit ritual still catches issues before
+   you push.
 
 4. **Don't add comments unless asked.** Code should explain itself; comments
    are reserved for non-obvious "why" notes. The exception is the comment
@@ -486,6 +493,147 @@ These are how the user wants Claude to behave when working on this repo:
    in chat (often via .env reminders the harness sends), warn them once
    that it's now in conversation history and tell them to rotate.
 
+8. **Don't put boxes around screenshots on the marketing site.** No
+   `border`, no `border-radius` wrapper, no glow `box-shadow` framing.
+   The dark background on `site/public/*.html` is already the frame;
+   adding a border to an `<img>` makes it look enclosed in a card it
+   isn't part of. Plain `<img>` (width 100%, `display: block`) is the
+   right default. The user has had to undo this on multiple sessions —
+   if a task brief asks for a border around a screenshot, push back
+   before shipping it.
+
+9. **GitHub comments use a standard signature.** You're authorized to leave
+   comments on issues and PRs (via the `gh` CLI or the GitHub REST/GraphQL
+   API) without re-confirming each time, provided the comment ends with a
+   one-line signature so readers know the comment came from an agent acting
+   on the user's behalf, not the user themselves:
+
+   ```
+   _Comment left on behalf of @<github-username> by <agent-name> via [Harness](https://github.com/frenchie4111/harness)._
+   ```
+
+   - `<github-username>` is the user's GitHub login — run
+     `gh api user --jq .login` if you don't already know it from context.
+   - `<agent-name>` is the agent identity from the harness session (Claude,
+     Codex, etc.).
+   - Markdown italics (`_..._`) so the signature renders subtly without
+     dominating the comment body.
+
+   This authorization covers commenting and reacting. **Destructive GitHub
+   actions still need confirmation**: closing/reopening issues, merging or
+   closing PRs, force-pushing, deleting branches or releases, etc. When in
+   doubt, ask.
+
+10. **When reviewing a PR from a contributor's fork inside a Harness
+    PR-review worktree, push cleanup commits back to THEIR branch — not
+    to upstream `origin` and not to a new branch on the reviewer's fork.**
+    `CONTRIBUTING.md` promises contributors that the reviewer's agent
+    will handle small nitpicks and styling fixes during review. For that
+    promise to hold, the commits must land on the contributor's PR
+    branch so the PR itself updates.
+
+    **The trap.** When Harness opens a PR for review, it fetches
+    `refs/pull/<N>/head` from `origin` (the upstream repo) into a local
+    branch named after the PR's head ref. It does **not** add the
+    contributor's fork as a remote, and the local branch has **no
+    upstream configured**. That means:
+
+    - `git push` with no args fails ("no upstream") — fine, it just
+      makes you stop and think.
+    - `git push -u origin <branch>` *silently succeeds* by creating a
+      new branch on the **upstream repo** (e.g. `frenchie4111/harness`),
+      because the reviewer has write access there. The PR — which
+      references `contributor:<branch>`, not `frenchie4111:<branch>` —
+      does **not** update. This is the most common failure mode.
+    - Creating a new branch like `review-fix/foo` on the reviewer's own
+      fork and opening a parallel PR is also wrong: fragments the
+      change history, confuses the contributor, forces manual
+      cherry-picking.
+
+    **The fix.** Inside the Harness-created worktree, run
+    `gh pr checkout <num>` once before pushing. `gh` is idempotent on a
+    branch that already exists at the right SHA — it just adds the
+    contributor's fork as a remote (named after the fork owner) and
+    sets the branch's upstream to point at it. After that, plain
+    `git push` does the right thing:
+
+    ```sh
+    # inside the Harness PR-review worktree
+    gh pr checkout <num>   # patches up remote + upstream config;
+                           # safe no-op on the existing local branch
+    # …make the fix, commit…
+    git push               # pushes to the contributor's fork; PR updates
+    ```
+
+    Then leave a PR comment with the standard signature (§9) noting
+    what you cleaned up, so the contributor isn't surprised by the new
+    commit.
+
+    **Fallback when `git push` fails with a permissions error.** The
+    contributor disabled "Allow edits by maintainers" on their PR
+    (default is ON, but it can be turned off). In that case post a PR
+    comment with the suggested diff as a code block — do **not** open
+    a parallel PR.
+
+    **Tripwire.** If you find yourself about to run
+    `git checkout -b review-fix/...`, `git push -u origin <branch>`,
+    or `gh pr create` against a PR you're reviewing, stop. You're on
+    the wrong path — go back and `gh pr checkout <num>` first.
+
+11. **Use the canonical text and icon sizes so the UI scales together.**
+    The renderer's root `html` font-size is driven by the `uiScale`
+    setting, so every `rem`-based size (Tailwind `text-*` and the `w-N` /
+    `h-N` grid) shifts in lockstep. Inline pixel sizes do NOT scale and
+    will look wrong at the larger rungs.
+
+    **Text — pick from this set only:**
+    `text-xs`, `text-sm`, `text-base`, `text-lg`, `text-2xl`, `text-3xl`.
+    No `text-[Npx]`, no inline `style={{ fontSize: ... }}`, no `text-xl` /
+    `text-4xl` / `text-5xl`. If the design seems to call for an
+    in-between size, snap to the nearest canonical step — the per-px
+    hierarchy doesn't earn its keep against the visual noise.
+
+    **Icons — use the `icon-*` aliases, not the lucide `size={N}` prop
+    or raw `w-N h-N` classes.** The lucide `size` prop bakes pixel
+    literals into the SVG `width` / `height` attributes, so icons stay
+    fixed regardless of root font-size. `icon-*` is a rem-based alias
+    defined in `src/renderer/styles.css` via Tailwind v4's `@utility`,
+    and mirrors the `text-*` ladder. Pick from this set only:
+
+    | utility    | px   |
+    |---         |---   |
+    | `icon-2xs` | 10px |
+    | `icon-xs`  | 12px |
+    | `icon-sm`  | 14px |
+    | `icon-base`| 16px |
+    | `icon-lg`  | 20px |
+    | `icon-xl`  | 32px |
+
+    Example: `<Loader2 className="icon-sm animate-spin" />`. If a
+    design genuinely wants 18px or 26px (one-offs), use
+    `w-[1.125rem] h-[1.125rem]` / `w-[1.625rem] h-[1.625rem]`. If the
+    rung you need would be the third callsite of that one-off, add a
+    new `@utility` entry in `styles.css` and use that instead.
+
+    Note: `w-N h-N` literals are still correct for *non-icon* fixed-size
+    boxes that the design doesn't want growing with `uiScale` — color
+    swatches, decorative dots, avatar circles. Checkboxes are NOT in
+    this set; treat them as icons (use `icon-base`) so the hit target
+    scales with the rest of the UI.
+
+    Exceptions where pixel literals are correct (because the consumer
+    isn't part of the rem grid): Monaco/XTerminal font sizes, the
+    PerfMonitor HUD's SVG numerics, JsonModeChat's
+    `--chat-{body,chrome,meta}-text` CSS variable system, and non-icon
+    components that legitimately take a pixel size (e.g.
+    `<QRCodeSVG size={128} />`).
+
+    Note: ReviewDiffPane's inline-styled comment widgets render into
+    Monaco view zones via `createRoot`, but they're still in the same
+    document, so `rem` resolves against the scaled root `<html>` —
+    they use `rem` (not px) so they scale with `uiScale` like the rest
+    of the UI. Don't reintroduce px font sizes there.
+
 ## Releasing
 
 End-to-end release is automated via `npm run release <version>`:
@@ -502,6 +650,19 @@ build/sign/notarize, tag/push, release notes from `git log`, and
 Linux release builds now produce both `.deb` (Ubuntu/Debian) and
 `.AppImage` (every distro) — both attached to the GitHub release
 automatically by `.github/workflows/build-linux.yml` on tag push.
+
+### Headless smoke test on every PR
+
+PR CI (`.github/workflows/ci.yml`) runs `scripts/smoke-headless.sh`
+after the typecheck / build / tests block. The script launches
+`dist-headless/main/index.js` on an ephemeral port, parses the
+`[web-client] open ...` URL out of its stdout, delegates HTTP
+validation to `scripts/web-smoke.mjs` (auth gate + HTML + asset
+reach) and WS validation to `scripts/ws-smoke.mjs` (upgrade +
+snapshot round-trip), then SIGTERMs and confirms clean shutdown.
+Catches tarball-layout / module-resolution / boot-time regressions
+before they ride a tag push to release. Run locally:
+`npm run build:headless && bash scripts/smoke-headless.sh`.
 
 ### Headless tarballs
 

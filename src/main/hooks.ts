@@ -12,6 +12,11 @@ import type { PtyStatus } from './pty-manager'
 import type { Store } from './store'
 import { log } from './debug'
 
+// This path is also the signature we use to recognize Harness-installed
+// hook entries when deduping at install time. If you change it, update
+// HARNESS_HOOK_COMMAND_SIGNATURE in src/main/agents/{claude,codex}.ts
+// to match, or older installed entries become unrecognizable and
+// re-installs will append duplicates.
 const STATUS_DIR = '/tmp/harness-status'
 
 export interface PendingTool {
@@ -147,7 +152,10 @@ function emitStopIfRelevant(terminalId: string, ev: HookEvent): void {
   }
 }
 
-function tailLog(terminalId: string, store: Store): void {
+// Exported for testing. Reads newly-appended NDJSON records and dispatches
+// the derived status transitions. See the first-touch comment below for the
+// boot-replay guard this function encodes.
+export function tailLog(terminalId: string, store: Store): void {
   const path = join(STATUS_DIR, `${terminalId}.ndjson`)
   let fd: number
   try {
@@ -157,6 +165,13 @@ function tailLog(terminalId: string, store: Store): void {
   }
   try {
     const { size } = fstatSync(fd)
+    // First touch of this terminal in this process. The .ndjson survives app
+    // restarts in /tmp but `offsets` does not, so a naive read from 0 would
+    // replay the terminal's entire hook history (thousands of events) and
+    // dispatch a status change per record — a synchronous boot-time store
+    // storm. We only ever need the *current* status, which the last record
+    // already encodes, so on first touch we skip straight to the tail.
+    const firstTouch = !offsets.has(terminalId)
     let off = offsets.get(terminalId) ?? 0
     if (size < off) {
       // File was truncated or replaced — start over.
@@ -170,11 +185,15 @@ function tailLog(terminalId: string, store: Store): void {
     offsets.set(terminalId, size)
 
     const text = (residual.get(terminalId) ?? '') + buf.toString('utf-8')
-    const lines = text.split('\n')
+    const allLines = text.split('\n')
     // Last chunk may be a partial line; stash it for next read.
-    const tail = lines.pop() ?? ''
+    const tail = allLines.pop() ?? ''
     if (tail) residual.set(terminalId, tail)
     else residual.delete(terminalId)
+
+    // On first touch, process only the final complete record (current
+    // status); on subsequent tails, process every newly-appended line.
+    const lines = firstTouch ? allLines.slice(-1) : allLines
 
     for (const line of lines) {
       if (!line.trim()) continue

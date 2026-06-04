@@ -14,10 +14,10 @@ export function QuestCard({ step, onDismiss, onFinish }: QuestCardProps): JSX.El
   const content = (() => {
     if (step === 'spawn-second') {
       return {
-        icon: <Zap size={16} className="text-accent" />,
+        icon: <Zap className="icon-base text-accent" />,
         eyebrow: 'Step 1 of 2',
-        title: 'One agent running. Don\u2019t wait \u2014 spawn another.',
-        body: 'The whole point of Harness is that you don\u2019t have to sit and watch. While this one works, fork a second worktree and give it a different task.',
+        title: 'One agent running. Don’t wait — spawn another.',
+        body: 'The whole point of Harness is that you don’t have to sit and watch. While this one works, fork a second worktree and give it a different task.',
         hint: (
           <>
             Hit <HotkeyBadge action="newWorktree" variant="strong" /> or use the sidebar to create another.
@@ -27,7 +27,7 @@ export function QuestCard({ step, onDismiss, onFinish }: QuestCardProps): JSX.El
     }
     if (step === 'switch-between') {
       return {
-        icon: <Sparkles size={16} className="text-accent" />,
+        icon: <Sparkles className="icon-base text-accent" />,
         eyebrow: 'Step 2 of 2',
         title: 'Two agents in flight. Now learn to juggle.',
         body: 'Jump between running agents with number hotkeys so you can keep an eye on both without losing your place.',
@@ -41,10 +41,10 @@ export function QuestCard({ step, onDismiss, onFinish }: QuestCardProps): JSX.El
     }
     // finale
     return {
-      icon: <PartyPopper size={16} className="text-accent" />,
+      icon: <PartyPopper className="icon-base text-accent" />,
       eyebrow: 'Harnessed up',
       title: 'You just ran two agents in parallel.',
-      body: 'Do it with ten next time. Harness is happiest when it has a lot to juggle \u2014 the status dots keep you honest so nothing slips.',
+      body: 'Do it with ten next time. Harness is happiest when it has a lot to juggle — the status dots keep you honest so nothing slips.',
       hint: null
     }
   })()
@@ -57,7 +57,7 @@ export function QuestCard({ step, onDismiss, onFinish }: QuestCardProps): JSX.El
           <div className="flex items-start justify-between mb-2">
             <div className="flex items-center gap-2">
               {content.icon}
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-dim">
+              <span className="text-xs font-semibold uppercase tracking-wider text-dim">
                 {content.eyebrow}
               </span>
             </div>
@@ -66,10 +66,10 @@ export function QuestCard({ step, onDismiss, onFinish }: QuestCardProps): JSX.El
               title="Dismiss quest"
               className="text-faint hover:text-fg p-0.5 rounded transition-colors cursor-pointer -mt-1 -mr-1"
             >
-              <X size={14} />
+              <X className="icon-sm" />
             </button>
           </div>
-          <div className="text-[15px] font-semibold text-fg-bright leading-snug mb-2">
+          <div className="text-sm font-semibold text-fg-bright leading-snug mb-2">
             {content.title}
           </div>
           <div className="text-xs text-muted leading-relaxed">{content.body}</div>

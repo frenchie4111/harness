@@ -1,15 +1,19 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2, LifeBuoy, Bug, Lightbulb, FlaskConical, Copy, ExternalLink, CalendarDays, FileText, FolderOpen } from 'lucide-react'
+import { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect } from 'react'
+import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2, Moon, LifeBuoy, Bug, Lightbulb, FlaskConical, Copy, CopyCheck, ExternalLink, CalendarDays, FileText, FolderOpen, Search, ChevronDown, ChevronRight, SlidersHorizontal } from 'lucide-react'
 import { openReportIssue } from './ReportIssueScreen'
 import { HARNESS_ISSUES_URL, HARNESS_RELEASES_URL, harnessReleaseNotesUrl } from '../../shared/constants'
 import { useSettings, useUpdater, useRepoConfigs, useHooks } from '../store'
 import { useBackend } from '../backend'
-import type { UpdaterStatus, MergeStrategy, RepoConfig } from '../types'
-import { DEFAULT_HOTKEYS, ACTION_LABELS, bindingToString, eventToBinding, resolveHotkeys, type Action, type HotkeyBinding } from '../hotkeys'
+import type { UpdaterStatus, MergeStrategy, RepoConfig, WorktreeDetail } from '../types'
+import { DEFAULT_HOTKEYS, ACTION_LABELS, ACTION_CATEGORIES, bindingToString, eventToBinding, formatBindingGlyphs, resolveHotkeys, type Action, type HotkeyBinding } from '../hotkeys'
 import { Tooltip } from './Tooltip'
 import { AGENT_REGISTRY, agentDisplayName, CLAUDE_MODELS, CODEX_MODELS } from '../../shared/agent-registry'
 import { AgentIcon } from './AgentIcon'
-import { THEME_OPTIONS } from '../themes'
+import { InterfaceToggle } from './InterfaceToggle'
+import { BUILT_IN_THEMES_BY_MODE, type ThemeOption } from '../themes'
+import { SEMANTIC_KEYS } from '../theme-apply'
+import type { CustomTheme, UiScale } from '../../shared/state/settings'
+import { SCALES, scaleSpec } from '../../shared/state/settings'
 import { QRCodeSVG } from 'qrcode.react'
 
 interface SettingsProps {
@@ -19,8 +23,26 @@ interface SettingsProps {
   initialSection?: SectionId
 }
 
-type SectionId = 'appearance' | 'agent' | 'worktrees' | 'editor' | 'github' | 'hotkeys' | 'updates' | 'support' | 'experimental'
-type SubSectionId = 'agent-general' | 'agent-claude' | 'agent-codex'
+type SectionId = 'general' | 'appearance' | 'agent' | 'worktrees' | 'editor' | 'github' | 'hotkeys' | 'updates' | 'support' | 'experimental'
+type SubSectionId =
+  | 'appearance-theme'
+  | 'appearance-custom-themes'
+  | 'appearance-ui-size'
+  | 'appearance-terminal-font'
+  | 'agent-general'
+  | 'agent-claude'
+  | 'agent-codex'
+  | 'hotkeys-navigation'
+  | 'hotkeys-backends'
+  | 'hotkeys-worktree-mgmt'
+  | 'hotkeys-tabs'
+  | 'hotkeys-layout'
+  | 'hotkeys-commands'
+  | 'hotkeys-overlays'
+  | 'hotkeys-external'
+  | 'experimental-browser-control'
+  | 'experimental-auto-approve'
+  | 'experimental-web-mobile'
 
 interface SubSection {
   id: SubSectionId
@@ -35,7 +57,13 @@ interface Section {
 }
 
 const SECTIONS: Section[] = [
-  { id: 'appearance', label: 'Appearance', icon: Palette },
+  { id: 'general', label: 'General', icon: SlidersHorizontal },
+  { id: 'appearance', label: 'Appearance', icon: Palette, children: [
+    { id: 'appearance-theme', label: 'Theme' },
+    { id: 'appearance-custom-themes', label: 'Custom themes' },
+    { id: 'appearance-ui-size', label: 'UI size' },
+    { id: 'appearance-terminal-font', label: 'Terminal font' }
+  ]},
   { id: 'agent', label: 'Agent', icon: TerminalIcon, children: [
     { id: 'agent-general', label: 'General' },
     { id: 'agent-claude', label: 'Claude' },
@@ -44,18 +72,68 @@ const SECTIONS: Section[] = [
   { id: 'worktrees', label: 'Worktrees', icon: GitBranch },
   { id: 'editor', label: 'Editor', icon: Code2 },
   { id: 'github', label: 'GitHub', icon: GitPullRequest },
-  { id: 'hotkeys', label: 'Hotkeys', icon: Keyboard },
+  { id: 'hotkeys', label: 'Hotkeys', icon: Keyboard, children: [
+    { id: 'hotkeys-navigation', label: 'Worktree navigation' },
+    { id: 'hotkeys-backends', label: 'Backends' },
+    { id: 'hotkeys-worktree-mgmt', label: 'Worktree management' },
+    { id: 'hotkeys-tabs', label: 'Tabs & panes' },
+    { id: 'hotkeys-layout', label: 'Window layout' },
+    { id: 'hotkeys-commands', label: 'Search & commands' },
+    { id: 'hotkeys-overlays', label: 'App overlays' },
+    { id: 'hotkeys-external', label: 'External actions' }
+  ]},
   { id: 'updates', label: 'Updates', icon: DownloadCloud },
   { id: 'support', label: 'Support', icon: LifeBuoy },
-  { id: 'experimental', label: 'Experimental', icon: FlaskConical }
+  { id: 'experimental', label: 'Experimental', icon: FlaskConical, children: [
+    { id: 'experimental-browser-control', label: 'Browser control' },
+    { id: 'experimental-auto-approve', label: 'Auto-approve' },
+    { id: 'experimental-web-mobile', label: 'Web & mobile' }
+  ]}
 ]
+
+interface SearchItem {
+  /** Stable per render — `${sectionId}:${kind}:${index}`. */
+  key: string
+  sectionId: SectionId
+  /** Display text — the heading or label text. */
+  title: string
+  /** Section label, shown as secondary context in results. */
+  context: string
+  element: HTMLElement
+}
+
+function cleanText(el: Element): string {
+  return (el.textContent ?? '').replace(/\s+/g, ' ').trim()
+}
+
+function highlightMatch(text: string, query: string): React.ReactNode {
+  if (!query) return text
+  const lower = text.toLowerCase()
+  const q = query.toLowerCase()
+  const idx = lower.indexOf(q)
+  if (idx < 0) return text
+  return (
+    <>
+      {text.slice(0, idx)}
+      <mark className="bg-accent/30 text-fg-bright rounded px-0.5">
+        {text.slice(idx, idx + query.length)}
+      </mark>
+      {text.slice(idx + query.length)}
+    </>
+  )
+}
 
 export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }: SettingsProps): JSX.Element {
   const backend = useBackend()
   const [activeSection, setActiveSection] = useState<SectionId>(initialSection ?? 'appearance')
   const [activeSubSection, setActiveSubSection] = useState<SubSectionId | null>(null)
+  const [sectionSearch, setSectionSearch] = useState('')
+  const [searchIndex, setSearchIndex] = useState<SearchItem[]>([])
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const sidebarRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const sectionRefs = useRef<Record<SectionId, HTMLElement | null>>({
+    general: null,
     appearance: null,
     agent: null,
     worktrees: null,
@@ -67,9 +145,24 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     experimental: null
   })
   const subSectionRefs = useRef<Record<SubSectionId, HTMLElement | null>>({
+    'appearance-theme': null,
+    'appearance-custom-themes': null,
+    'appearance-ui-size': null,
+    'appearance-terminal-font': null,
     'agent-general': null,
     'agent-claude': null,
-    'agent-codex': null
+    'agent-codex': null,
+    'hotkeys-navigation': null,
+    'hotkeys-backends': null,
+    'hotkeys-worktree-mgmt': null,
+    'hotkeys-tabs': null,
+    'hotkeys-layout': null,
+    'hotkeys-commands': null,
+    'hotkeys-overlays': null,
+    'hotkeys-external': null,
+    'experimental-browser-control': null,
+    'experimental-auto-approve': null,
+    'experimental-web-mobile': null
   })
   const isProgrammaticScroll = useRef(false)
 
@@ -103,6 +196,58 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Build the searchable index from the actual rendered DOM. We use a
+  // layout effect so the headings/labels exist before we read them; the
+  // empty dep array is intentional — the section structure is static,
+  // and dynamic content (theme list, custom themes) doesn't add new
+  // searchable headings. If that changes, gate this on a version bump.
+  useLayoutEffect(() => {
+    const items: SearchItem[] = []
+    for (const section of SECTIONS) {
+      const sectionEl = sectionRefs.current[section.id]
+      if (!sectionEl) continue
+      // h2 — the section heading itself. Drop it if it duplicates the
+      // sidebar label (always does, but cheap to keep for ranking).
+      const h2 = sectionEl.querySelector('h2')
+      if (h2) {
+        items.push({
+          key: `${section.id}:h2`,
+          sectionId: section.id,
+          title: cleanText(h2),
+          context: section.label,
+          element: h2
+        })
+      }
+      // h3 — sub-headings inside the section.
+      sectionEl.querySelectorAll('h3').forEach((h3, i) => {
+        const text = cleanText(h3)
+        if (!text) return
+        items.push({
+          key: `${section.id}:h3:${i}`,
+          sectionId: section.id,
+          title: text,
+          context: section.label,
+          element: h3 as HTMLElement
+        })
+      })
+      // labels — typically the title of a single setting/toggle. Skip
+      // ones that wrap inputs whose label text is itself a control
+      // (very long blocks) by capping length.
+      sectionEl.querySelectorAll('label').forEach((label, i) => {
+        const text = cleanText(label).split('\n')[0]
+        if (!text || text.length > 90) return
+        items.push({
+          key: `${section.id}:label:${i}`,
+          sectionId: section.id,
+          title: text,
+          context: section.label,
+          element: label as HTMLElement
+        })
+      })
+    }
+    setSearchIndex(items)
+  }, [])
+
   useEffect(() => {
     const container = scrollRef.current
     if (!container) return
@@ -112,7 +257,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     const onScroll = (): void => {
       if (isProgrammaticScroll.current) return
       const scrollTop = container.scrollTop
-      let current: SectionId = 'appearance'
+      let current: SectionId = 'general'
       for (const section of SECTIONS) {
         const el = sectionRefs.current[section.id]
         if (el && el.offsetTop - 48 <= scrollTop) {
@@ -160,7 +305,10 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
   // re-renders Settings whenever any client updates any of them.
   const settings = useSettings()
   const {
-    theme,
+    themeMode,
+    themeLight,
+    themeDark,
+    customThemes,
     hotkeys: hotkeyOverrides,
     defaultAgent,
     claudeCommand,
@@ -176,34 +324,40 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     editor: editorId,
     worktreeBase,
     mergeStrategy,
+    worktreeDetail,
     hasGithubToken: settingsHasToken,
     githubAuthSource: authSource,
     harnessStarred,
     worktreeScripts,
     shareClaudeSettings,
     autoUpdateEnabled,
+    warnBeforeQuitting,
     harnessSystemPromptEnabled,
     harnessSystemPrompt,
     harnessSystemPromptMain,
+    prReviewPrompt,
     claudeTuiFullscreen,
     browserToolsEnabled,
     browserToolsMode,
     wsTransportEnabled,
     wsTransportPort,
     wsTransportHost,
-    jsonModeClaudeTabs,
     defaultClaudeTabType,
     jsonModeChatDensity,
+    uiScale,
+    jsonModeSendOnEnter,
     jsonModeDefaultPermissionMode,
     autoSleepMinutes,
     autoApprovePermissions,
     autoApproveSteerInstructions,
-    snoozeDefaultDays
+    snoozeDefaultDays,
+    expandedDiagnosticLoggingEnabled
   } = settings
   const setupScript = worktreeScripts.setup
   const teardownScript = worktreeScripts.teardown
 
   const [rebindingAction, setRebindingAction] = useState<Action | null>(null)
+  const [expandedFamilies, setExpandedFamilies] = useState<Set<string>>(new Set())
   const [defaultClaudeCommand, setDefaultClaudeCommand] = useState<string>('')
   const [claudeSaveResult, setClaudeSaveResult] = useState<{ ok: boolean; message: string } | null>(null)
   // Alias settings.hasGithubToken to the legacy local name so existing JSX
@@ -246,6 +400,10 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
   const [systemPromptMainDraft, setSystemPromptMainDraft] = useState<string>(harnessSystemPromptMain)
   useEffect(() => { setSystemPromptMainDraft(harnessSystemPromptMain) }, [harnessSystemPromptMain])
   const [systemPromptSaveResult, setSystemPromptSaveResult] = useState<{ ok: boolean; message: string } | null>(null)
+
+  const [prReviewPromptDraft, setPrReviewPromptDraft] = useState<string>(prReviewPrompt)
+  useEffect(() => { setPrReviewPromptDraft(prReviewPrompt) }, [prReviewPrompt])
+  const [prReviewPromptSaveResult, setPrReviewPromptSaveResult] = useState<{ ok: boolean; message: string } | null>(null)
 
   const [defaultTerminalFontFamily, setDefaultTerminalFontFamily] = useState<string>('')
   const [availableEditors, setAvailableEditors] = useState<{ id: string; name: string }[]>([])
@@ -334,9 +492,57 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     setClaudeCommandDraft(claudeCommand)
   }, [claudeCommand])
 
-  const handleSelectTheme = useCallback(async (id: string) => {
-    await backend.setTheme(id)
+  const handleSelectThemeMode = useCallback((mode: 'light' | 'dark' | 'system') => {
+    void backend.setThemeMode(mode)
+  }, [backend])
+
+  // UI scale draft. A live slider that resized the whole app on each drag
+  // tick would be disorienting; instead we hold a local draft and a small
+  // scoped preview (below) shows what the chosen rung looks like. Save
+  // commits via IPC; closing Settings without saving drops the draft.
+  const [draftUiScale, setDraftUiScale] = useState<UiScale>(uiScale)
+  // Resync if the persisted value changes from another client or the
+  // Cmd+= / Cmd+- hotkeys while Settings is open.
+  useEffect(() => { setDraftUiScale(uiScale) }, [uiScale])
+  const uiScaleDirty = draftUiScale !== uiScale
+  const draftScaleSpec = scaleSpec(draftUiScale)
+  const handleSelectUiScale = useCallback((value: UiScale) => {
+    setDraftUiScale(value)
   }, [])
+  const handleSaveUiScale = useCallback(() => {
+    void backend.setUiScale(draftUiScale)
+  }, [backend, draftUiScale])
+  const handleRevertUiScale = useCallback(() => {
+    setDraftUiScale(uiScale)
+  }, [uiScale])
+
+  // When the persisted uiScale changes the root font-size shifts and the
+  // whole Settings page reflows — the user's scroll position no longer
+  // points at the section they were reading. Re-anchor to the active
+  // subsection (or section, if no subsection is active) on the next
+  // frame after App.tsx's font-size effect runs.
+  const activeSectionRef = useRef(activeSection)
+  useEffect(() => { activeSectionRef.current = activeSection }, [activeSection])
+  const activeSubSectionRef = useRef(activeSubSection)
+  useEffect(() => { activeSubSectionRef.current = activeSubSection }, [activeSubSection])
+  const prevUiScaleRef = useRef(uiScale)
+  useEffect(() => {
+    if (uiScale === prevUiScaleRef.current) return
+    prevUiScaleRef.current = uiScale
+    requestAnimationFrame(() => {
+      const sub = activeSubSectionRef.current
+      if (sub) scrollToSubSection(sub)
+      else scrollToSection(activeSectionRef.current)
+    })
+  }, [uiScale, scrollToSection, scrollToSubSection])
+
+  const handleSelectLightTheme = useCallback((id: string) => {
+    void backend.setThemeLight(id)
+  }, [backend])
+
+  const handleSelectDarkTheme = useCallback((id: string) => {
+    void backend.setThemeDark(id)
+  }, [backend])
 
   const handleTerminalFontFamilyChange = useCallback((value: string) => {
     void backend.setTerminalFontFamily(value)
@@ -390,6 +596,10 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     },
     [scopeRepoRoot, updateRepoConfig]
   )
+
+  const handleSelectWorktreeDetail = useCallback(async (detail: WorktreeDetail) => {
+    await backend.setWorktreeDetail(detail)
+  }, [])
 
   // Resolve what each control should display for the active scope.
   const scopedRepoCfg = scopeRepoRoot ? repoConfigs[scopeRepoRoot] || {} : null
@@ -573,6 +783,10 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     await backend.setAutoUpdateEnabled(enabled)
   }, [])
 
+  const handleToggleWarnBeforeQuitting = useCallback(async (enabled: boolean) => {
+    await backend.setWarnBeforeQuitting(enabled)
+  }, [])
+
   const handleToggleWsTransport = useCallback(async (enabled: boolean) => {
     await backend.setWsTransportEnabled(enabled)
   }, [])
@@ -651,6 +865,18 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     await backend.setHarnessSystemPromptMain('')
     setSystemPromptSaveResult({ ok: true, message: 'Reset to defaults' })
     setTimeout(() => setSystemPromptSaveResult(null), 2000)
+  }, [])
+
+  const handleSavePrReviewPrompt = useCallback(async () => {
+    await backend.setPrReviewPrompt(prReviewPromptDraft)
+    setPrReviewPromptSaveResult({ ok: true, message: 'Saved' })
+    setTimeout(() => setPrReviewPromptSaveResult(null), 2000)
+  }, [prReviewPromptDraft])
+
+  const handleResetPrReviewPrompt = useCallback(async () => {
+    await backend.setPrReviewPrompt('')
+    setPrReviewPromptSaveResult({ ok: true, message: 'Reset to default' })
+    setTimeout(() => setPrReviewPromptSaveResult(null), 2000)
   }, [])
 
   const effectiveClaudeCommand = claudeCommandDraft.trim() || defaultClaudeCommand
@@ -818,21 +1044,21 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
       case 'checking':
         return (
           <div className="flex items-center gap-2 text-xs text-muted">
-            <RefreshCw size={12} className="animate-spin" />
+            <RefreshCw className="icon-xs animate-spin" />
             Checking for updates...
           </div>
         )
       case 'not-available':
         return (
           <div className="flex items-center gap-2 text-xs text-success">
-            <Check size={12} />
+            <Check className="icon-xs" />
             You&apos;re up to date
           </div>
         )
       case 'available':
         return (
           <div className="flex items-center gap-2 text-xs text-warning">
-            <Download size={12} />
+            <Download className="icon-xs" />
             <span>
               <a
                 onClick={() => backend.openExternal(harnessReleaseNotesUrl(updaterStatus.version))}
@@ -847,7 +1073,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
       case 'downloading':
         return (
           <div className="flex items-center gap-2 text-xs text-warning">
-            <Download size={12} />
+            <Download className="icon-xs" />
             <span>
               Downloading{' '}
               <a
@@ -864,7 +1090,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
         return (
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2 text-xs text-success">
-              <Check size={12} />
+              <Check className="icon-xs" />
               <span>
                 <a
                   onClick={() => backend.openExternal(harnessReleaseNotesUrl(updaterStatus.version))}
@@ -879,7 +1105,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               onClick={handleRestart}
               className="self-start flex items-center gap-1.5 px-3 py-1.5 bg-success/20 hover:bg-success/30 rounded text-xs text-success transition-colors cursor-pointer"
             >
-              <RotateCw size={12} />
+              <RotateCw className="icon-xs" />
               Restart &amp; install
             </button>
           </div>
@@ -887,12 +1113,62 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
       case 'error':
         return (
           <div className="flex items-center gap-2 text-xs text-danger">
-            <X size={12} />
+            <X className="icon-xs" />
             {updaterStatus.error}
           </div>
         )
     }
   }
+
+  const sectionQuery = sectionSearch.trim().toLowerCase()
+  const searchResults = useMemo(() => {
+    if (!sectionQuery) return [] as SearchItem[]
+    const out: { item: SearchItem; score: number }[] = []
+    for (const item of searchIndex) {
+      const titleHit = item.title.toLowerCase().indexOf(sectionQuery)
+      const contextHit = item.context.toLowerCase().indexOf(sectionQuery)
+      if (titleHit < 0 && contextHit < 0) continue
+      // Lower is better: title hits beat context hits, earlier positions
+      // beat later ones. Adding the title-position lets `Diagnostics`
+      // sort above a `Diagnostic logging` paragraph match.
+      const score = titleHit >= 0 ? titleHit : 1000 + contextHit
+      out.push({ item, score })
+    }
+    out.sort((a, b) => a.score - b.score)
+    return out.slice(0, 50).map((r) => r.item)
+  }, [sectionQuery, searchIndex])
+
+  const focusNavItemByOffset = useCallback((current: HTMLElement | null, dir: 1 | -1) => {
+    if (!sidebarRef.current) return
+    const items = Array.from(
+      sidebarRef.current.querySelectorAll<HTMLElement>('[data-nav]')
+    )
+    if (items.length === 0) return
+    const idx = current ? items.indexOf(current) : -1
+    let next = idx + dir
+    if (next < 0) {
+      // Moving up off the top item — return to the search input so the
+      // user can keep typing without grabbing the mouse.
+      searchInputRef.current?.focus()
+      return
+    }
+    if (next >= items.length) next = items.length - 1
+    items[next]?.focus()
+  }, [])
+
+  const handleSearchResultClick = useCallback((item: SearchItem) => {
+    const el = item.element
+    if (!el.isConnected) return
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    // Brief highlight ring so the user can spot the destination after
+    // the scroll lands. Toggled via a class — animation lives in
+    // styles.css (see `.harness-settings-flash`).
+    el.classList.remove('harness-settings-flash')
+    // Force reflow so re-adding the class restarts the animation.
+    void el.offsetHeight
+    el.classList.add('harness-settings-flash')
+    window.setTimeout(() => el.classList.remove('harness-settings-flash'), 1600)
+  }, [])
 
   return (
     <div className="flex flex-col h-full bg-panel">
@@ -902,9 +1178,9 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
           onClick={onClose}
           className="no-drag absolute left-20 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-xs text-muted hover:text-fg-bright transition-colors cursor-pointer"
         >
-          <ArrowLeft size={14} />
+          <ArrowLeft className="icon-sm" />
           Back
-          <kbd className="text-[10px] text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono">ESC</kbd>
+          <kbd className="text-xs text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono">ESC</kbd>
         </button>
         <span className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 text-sm font-medium text-fg pointer-events-none">
           Settings
@@ -913,11 +1189,82 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
       <div className="flex flex-1 min-h-0">
         {/* Left sidebar */}
-        <div className="w-56 border-r border-border bg-panel flex flex-col shrink-0">
-          <div className="px-3 py-2">
+        <div
+          ref={sidebarRef}
+          onKeyDown={(e) => {
+            if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+            const target = e.target as HTMLElement
+            if (!target.hasAttribute('data-nav')) return
+            e.preventDefault()
+            focusNavItemByOffset(target, e.key === 'ArrowDown' ? 1 : -1)
+          }}
+          className="w-56 border-r border-border bg-panel flex flex-col shrink-0"
+        >
+          <div className="px-3 py-2 flex items-center justify-between">
             <span className="text-xs font-medium text-dim">SECTIONS</span>
           </div>
-          {SECTIONS.map((section) => {
+          <div className="px-3 pb-2">
+            <div className="relative">
+              <Search
+                className="icon-xs absolute left-2 top-1/2 -translate-y-1/2 text-faint pointer-events-none"
+              />
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={sectionSearch}
+                onChange={(e) => setSectionSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    // Keep the global Settings-Escape handler from closing the
+                    // panel: a search-focused Escape should clear the query
+                    // (or blur if already empty), not bounce out of Settings.
+                    e.preventDefault()
+                    e.stopPropagation()
+                    if (sectionSearch) setSectionSearch('')
+                    else e.currentTarget.blur()
+                    return
+                  }
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault()
+                    const first = sidebarRef.current?.querySelector<HTMLElement>('[data-nav]')
+                    first?.focus()
+                  }
+                }}
+                placeholder="Search settings…"
+                className="w-full bg-app border border-border rounded pl-7 pr-6 py-1 text-xs text-fg-bright placeholder-faint outline-none focus:border-accent"
+              />
+              {sectionSearch && (
+                <button
+                  onClick={() => setSectionSearch('')}
+                  aria-label="Clear search"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 text-faint hover:text-fg cursor-pointer"
+                >
+                  <X className="icon-2xs" />
+                </button>
+              )}
+            </div>
+          </div>
+          {sectionQuery ? (
+            <div className="overflow-y-auto flex-1">
+              {searchResults.length === 0 && (
+                <div className="px-3 py-2 text-xs text-faint">No matches</div>
+              )}
+              {searchResults.map((item) => (
+                <button
+                  key={item.key}
+                  data-nav=""
+                  onClick={() => handleSearchResultClick(item)}
+                  className="w-full px-3 py-1.5 text-left text-xs text-muted hover:bg-panel-raised hover:text-fg-bright transition-colors cursor-pointer flex flex-col gap-0.5 focus:bg-surface focus:text-fg-bright outline-none"
+                >
+                  <span className="text-fg-bright truncate">
+                    {highlightMatch(item.title, sectionQuery)}
+                  </span>
+                  <span className="text-faint text-xs truncate">{item.context}</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            SECTIONS.map((section) => {
             const Icon = section.icon
             const isActive = activeSection === section.id
             const needsAttention = section.id === 'github' && !hasToken && authSource !== 'gh-cli'
@@ -933,10 +1280,11 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
             return (
               <div key={section.id}>
                 <button
+                  data-nav=""
                   onClick={() => scrollToSection(section.id)}
-                  className={`w-full ${className}`}
+                  className={`w-full ${className} focus:bg-surface outline-none`}
                 >
-                  <Icon size={14} className="shrink-0" />
+                  <Icon className="icon-sm shrink-0" />
                   <span>{section.label}</span>
                 </button>
                 {section.children && (
@@ -952,8 +1300,12 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                       return (
                         <button
                           key={child.id}
+                          // Only navigable when the parent is expanded —
+                          // hidden subsections shouldn't trap arrow focus.
+                          data-nav={isActive ? '' : undefined}
+                          tabIndex={isActive ? 0 : -1}
                           onClick={() => scrollToSubSection(child.id)}
-                          className={`w-full pl-9 pr-3 py-1.5 text-left text-xs transition-colors cursor-pointer ${
+                          className={`w-full pl-9 pr-3 py-1.5 text-left text-xs transition-colors cursor-pointer focus:bg-surface focus:text-fg-bright outline-none ${
                             isSubActive
                               ? 'text-fg-bright bg-surface/60'
                               : 'text-muted hover:text-fg-bright hover:bg-panel-raised'
@@ -967,7 +1319,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 )}
               </div>
             )
-          })}
+          }))}
 
           <div className="mt-auto border-t border-border px-3 py-2">
             <span className="text-xs font-medium text-dim">HELP</span>
@@ -976,58 +1328,270 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
             onClick={onOpenGuide}
             className="flex items-center gap-2 px-3 py-2 text-left text-sm text-muted hover:bg-panel-raised hover:text-fg-bright transition-colors cursor-pointer"
           >
-            <BookOpen size={14} className="shrink-0" />
+            <BookOpen className="icon-sm shrink-0" />
             <span>Worktree Guide</span>
           </button>
           <button
             onClick={onOpenMyWeek}
             className="flex items-center gap-2 px-3 py-2 text-left text-sm text-muted hover:bg-panel-raised hover:text-fg-bright transition-colors cursor-pointer"
           >
-            <CalendarDays size={14} className="shrink-0" />
+            <CalendarDays className="icon-sm shrink-0" />
             <span>My week</span>
           </button>
         </div>
 
         {/* Main scrollable content */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto">
-          <div className="max-w-2xl p-8 space-y-12">
+          <div className="max-w-2xl p-8 pb-[60vh] space-y-12">
+            {/* General section */}
+            <section ref={(el) => { sectionRefs.current.general = el }} id="general">
+              <h2 className="text-lg font-semibold text-fg-bright mb-1">General</h2>
+              <p className="text-sm text-dim mb-4">
+                App-wide behavior.
+              </p>
+              <label className="flex items-start gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={warnBeforeQuitting}
+                  onChange={(e) => handleToggleWarnBeforeQuitting(e.target.checked)}
+                  className="mt-0.5 cursor-pointer icon-base" />
+                <div className="flex-1">
+                  <div className="text-sm text-fg-bright">Warn before quitting (⌘Q)</div>
+                  <div className="text-xs text-dim mt-0.5">
+                    When enabled, you must hold ⌘Q briefly to quit — a tap shows a
+                    reminder and does nothing, so you don&apos;t lose running agents
+                    and terminals by accident. Disable to quit immediately on ⌘Q.
+                  </div>
+                </div>
+              </label>
+            </section>
+
             {/* Appearance section */}
             <section ref={(el) => { sectionRefs.current.appearance = el }} id="appearance">
               <h2 className="text-lg font-semibold text-fg-bright mb-1">Appearance</h2>
               <p className="text-sm text-dim mb-4">
-                Pick a color theme for the major panels. Takes effect immediately.
+                Size, theme, and terminal font for the whole app.
               </p>
 
-              <div className="bg-panel-raised border border-border rounded-lg divide-y divide-border">
-                {THEME_OPTIONS.map((opt) => {
-                  const isActive = theme === opt.id
-                  return (
-                    <button
-                      key={opt.id}
-                      onClick={() => handleSelectTheme(opt.id)}
-                      className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors cursor-pointer ${
-                        isActive ? 'bg-surface' : 'hover:bg-surface/60'
-                      }`}
-                    >
-                      <div className="flex gap-1 shrink-0">
-                        {opt.swatches.map((c) => (
-                          <span
-                            key={c}
-                            className="w-4 h-4 rounded border border-border-strong"
-                            style={{ backgroundColor: c }}
-                          />
-                        ))}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm text-fg">{opt.label}</div>
-                        <div className="text-xs text-dim truncate">{opt.description}</div>
-                      </div>
-                      {isActive && <Check size={14} className="text-success shrink-0" />}
-                    </button>
-                  )
-                })}
+              <div ref={(el) => { subSectionRefs.current['appearance-theme'] = el }} id="appearance-theme" />
+              {/* Mode picker — native radio inputs styled as a segmented
+                   control. Radios give us proper keyboard semantics for free
+                   (arrow keys move focus, space activates) */}
+              <fieldset className="mb-6">
+                <legend className="text-sm font-semibold text-fg-bright mb-2">Mode</legend>
+                <div className="grid grid-cols-3 gap-2">
+                  {([
+                    { id: 'light', label: 'Light' },
+                    { id: 'dark', label: 'Dark' },
+                    { id: 'system', label: 'Follow system' }
+                  ] as const).map((opt) => {
+                    const isActive = themeMode === opt.id
+                    return (
+                      <label
+                        key={opt.id}
+                        className={`px-3 py-2 rounded-lg border text-sm text-center cursor-pointer transition-colors ${
+                          isActive
+                            ? 'bg-surface text-fg-bright border-fg'
+                            : 'bg-panel-raised text-muted border-border hover:text-fg hover:border-border-strong'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="theme-mode"
+                          value={opt.id}
+                          checked={isActive}
+                          onChange={() => handleSelectThemeMode(opt.id)}
+                          className="sr-only"
+                        />
+                        {opt.label}
+                      </label>
+                    )
+                  })}
+                </div>
+              </fieldset>
+
+              <ThemeModePicker
+                title="Light theme"
+                hint="Used when mode is Light, or when System resolves to light."
+                builtIns={BUILT_IN_THEMES_BY_MODE.light}
+                customs={customThemes.filter((t) => t.mode === 'light')}
+                activeId={themeLight}
+                disabled={themeMode === 'dark'}
+                onSelect={handleSelectLightTheme}
+              />
+
+              <div className="mt-6" />
+
+              <ThemeModePicker
+                title="Dark theme"
+                hint="Used when mode is Dark, or when System resolves to dark."
+                builtIns={BUILT_IN_THEMES_BY_MODE.dark}
+                customs={customThemes.filter((t) => t.mode === 'dark')}
+                activeId={themeDark}
+                disabled={themeMode === 'light'}
+                onSelect={handleSelectDarkTheme}
+              />
+
+              <div ref={(el) => { subSectionRefs.current['appearance-custom-themes'] = el }} id="appearance-custom-themes" className="mt-8">
+                <h3 className="text-sm font-semibold text-fg-bright mb-1">Custom themes</h3>
+                <p className="text-xs text-dim mb-3">
+                  Drop <code className="text-fg">{'<name>.json'}</code> files into your themes folder. They show up in the pickers above, filtered by their <code className="text-fg">mode</code>. {customThemes.length === 0 ? 'None loaded yet.' : `${customThemes.length} loaded.`}
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={async () => { await backend.openThemesFolder() }}
+                    className="px-3 py-1.5 rounded-md border border-border text-sm text-fg bg-panel-raised hover:bg-surface cursor-pointer"
+                  >
+                    Open themes folder
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => { await backend.reloadCustomThemes() }}
+                    className="px-3 py-1.5 rounded-md border border-border text-sm text-fg bg-panel-raised hover:bg-surface cursor-pointer"
+                  >
+                    Reload from disk
+                  </button>
+                </div>
               </div>
 
+              <div ref={(el) => { subSectionRefs.current['appearance-ui-size'] = el }} id="appearance-ui-size" />
+              {/* UI scale — drives the root html font-size, so every rem
+                  unit (text-xs/sm/base/lg, w-N/h-N icons, padding-*, gap-*)
+                  scales in lockstep. Native range gives free keyboard
+                  semantics; the four notches are also clickable labels.
+                  Drag is staged in draftUiScale so the whole app doesn't
+                  reflow on every tick — Save commits, Cancel reverts,
+                  and closing Settings without saving drops the draft. */}
+              <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">UI size</h3>
+              <p className="text-xs text-dim mb-3">
+                Scales the entire app — affects sidebar, panels, dialogs.
+                Larger sizes are friendlier for screen-sharing; small packs
+                more on screen.
+              </p>
+              {(() => {
+                const idx = SCALES.findIndex((s) => s.id === draftUiScale)
+                return (
+                  <>
+                    <input
+                      type="range"
+                      min={0}
+                      max={SCALES.length - 1}
+                      step={1}
+                      value={idx < 0 ? 0 : idx}
+                      onChange={(e) => {
+                        const v = Number(e.target.value)
+                        const next = SCALES[v]
+                        if (next) handleSelectUiScale(next.id)
+                      }}
+                      aria-label="UI size"
+                      className="w-full accent-accent cursor-pointer"
+                    />
+                    <div className="mt-1 flex justify-between text-xs text-dim select-none">
+                      {SCALES.map((s) => (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onClick={() => handleSelectUiScale(s.id)}
+                          className={`cursor-pointer transition-colors ${
+                            draftUiScale === s.id ? 'text-fg-bright' : 'hover:text-fg'
+                          }`}
+                        >
+                          {s.label}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )
+              })()}
+
+              {/* Scoped preview — inline em-based sizes anchored to the
+                  draft rung, so dragging only resizes this box. The real
+                  UI shifts on Save (App.tsx watches settings.uiScale). */}
+              <div
+                className="mt-3 rounded border border-border bg-panel/60"
+                style={{
+                  fontSize: `${draftScaleSpec.rootPx}px`,
+                  padding: '0.75em',
+                  lineHeight: 1.4
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: '0.625em',
+                    color: 'var(--color-dim)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em',
+                    fontWeight: 500
+                  }}
+                >
+                  Preview · {draftScaleSpec.label} ({draftScaleSpec.rootPx}px)
+                </div>
+                <div
+                  style={{
+                    marginTop: '0.5em',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5em'
+                  }}
+                >
+                  <span
+                    style={{
+                      width: '0.5em',
+                      height: '0.5em',
+                      borderRadius: '50%',
+                      background: 'var(--color-success)',
+                      flexShrink: 0
+                    }}
+                  />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '0.875em', color: 'var(--color-fg-bright)' }}>
+                      my-branch
+                    </div>
+                    <div style={{ fontSize: '0.6875em', color: 'var(--color-faint)' }}>
+                      last touched 3m ago
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    style={{
+                      fontSize: '0.6875em',
+                      padding: '0.25em 0.5em',
+                      borderRadius: '0.25em',
+                      background:
+                        'color-mix(in srgb, var(--color-accent) 20%, transparent)',
+                      color: 'var(--color-fg-bright)',
+                      border:
+                        '1px solid color-mix(in srgb, var(--color-accent) 40%, transparent)',
+                      cursor: 'default'
+                    }}
+                  >
+                    Action
+                  </button>
+                </div>
+              </div>
+
+              {uiScaleDirty && (
+                <div className="mt-3 flex items-center justify-end gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={handleSaveUiScale}
+                    className="px-2.5 py-1 rounded bg-accent/20 hover:bg-accent/30 text-fg-bright border border-accent/40 cursor-pointer transition-colors"
+                  >
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleRevertUiScale}
+                    className="px-2.5 py-1 rounded text-dim hover:text-fg cursor-pointer transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+
+              <div ref={(el) => { subSectionRefs.current['appearance-terminal-font'] = el }} id="appearance-terminal-font" />
               <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">Terminal font</h3>
               <p className="text-xs text-dim mb-3">
                 Used by every Claude and shell tab. Provide any CSS font-family value
@@ -1054,7 +1618,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                       onClick={handleResetTerminalFontFamily}
                       className="mt-2 flex items-center gap-1 px-2 py-1 text-xs text-dim hover:text-fg transition-colors cursor-pointer"
                     >
-                      <RotateCcw size={11} />
+                      <RotateCcw className="icon-xs" />
                       Reset to default
                     </button>
                   )}
@@ -1086,6 +1650,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   the quick brown fox 0123 =&gt; != &lt;= -&gt;
                 </div>
               </div>
+
             </section>
 
             {/* Agent section */}
@@ -1110,7 +1675,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                           : 'bg-panel border border-border text-dim hover:text-fg hover:border-border-strong'
                       }`}
                     >
-                      <AgentIcon kind={agent.kind} size={14} />
+                      <AgentIcon kind={agent.kind} className="icon-sm" />
                       {agent.displayName}
                     </button>
                   ))}
@@ -1118,6 +1683,21 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 <p className="mt-2 text-xs text-faint">
                   New agent tabs will use the selected default. Existing tabs are unaffected.
                 </p>
+
+                {defaultAgent === 'claude' && (
+                  <div className="mt-4 pt-4 border-t border-border pl-4 border-l-2 border-l-border ml-1">
+                    <label className="block text-sm font-medium text-fg mb-2">Interface</label>
+                    <p className="text-xs text-dim mb-3">
+                      Which interface new Claude tabs spawn in. Switch any
+                      existing tab from its right-click menu or the chip in
+                      the tab header.
+                    </p>
+                    <InterfaceToggle
+                      value={defaultClaudeTabType}
+                      onChange={(value) => { void backend.setDefaultClaudeTabType(value) }}
+                    />
+                  </div>
+                )}
               </div>
 
               <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-3">
@@ -1135,7 +1715,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 <div className="flex items-center gap-2">
                   {hooksConsent === 'accepted' ? (
                     <>
-                      <span className="text-xs text-success flex items-center gap-1"><Check size={12} />Installed</span>
+                      <span className="text-xs text-success flex items-center gap-1"><Check className="icon-xs" />Installed</span>
                       <button
                         onClick={() => void backend.uninstallHooks()}
                         className="ml-auto px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer"
@@ -1164,7 +1744,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               <div ref={(el) => { subSectionRefs.current['agent-claude'] = el }} id="agent-claude" className="mt-8">
               <h3 className="text-sm font-semibold text-fg-bright mb-3 flex items-center gap-2">
                 Claude Code
-                {defaultAgent === 'claude' && <span className="text-[10px] font-normal text-dim bg-panel px-1.5 py-0.5 rounded">default</span>}
+                {defaultAgent === 'claude' && <span className="text-xs font-normal text-dim bg-panel px-1.5 py-0.5 rounded">default</span>}
               </h3>
 
               <div className="bg-panel-raised border border-border rounded-lg p-4 mb-4">
@@ -1207,28 +1787,28 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 <div className="flex items-center gap-2 mt-3">
                   <button onClick={handleSaveClaudeCommand} disabled={!claudeCommandDraft.trim()} className="px-3 py-1.5 bg-surface hover:bg-surface-hover disabled:opacity-40 rounded text-sm text-fg-bright transition-colors cursor-pointer">Save</button>
                   {claudeCommandDraft !== defaultClaudeCommand && defaultClaudeCommand && (
-                    <button onClick={handleResetClaudeCommand} className="flex items-center gap-1 px-3 py-1.5 text-sm text-dim hover:text-fg transition-colors cursor-pointer"><RotateCcw size={12} />Reset</button>
+                    <button onClick={handleResetClaudeCommand} className="flex items-center gap-1 px-3 py-1.5 text-sm text-dim hover:text-fg transition-colors cursor-pointer"><RotateCcw className="icon-xs" />Reset</button>
                   )}
                 </div>
                 {claudeSaveResult && (
                   <div className={`mt-3 text-xs flex items-center gap-1.5 ${claudeSaveResult.ok ? 'text-success' : 'text-danger'}`}>
-                    {claudeSaveResult.ok ? <Check size={12} /> : <X size={12} />}{claudeSaveResult.message}
+                    {claudeSaveResult.ok ? <Check className="icon-xs" /> : <X className="icon-xs" />}{claudeSaveResult.message}
                   </div>
                 )}
 
                 <div className="mt-4 pt-3 border-t border-border">
                   <label className="block text-xs font-medium text-fg mb-1">Full command preview</label>
-                  <div className="bg-panel border border-border rounded px-3 py-2 text-[11px] text-fg-bright font-mono break-all">{commandPreview}</div>
-                  <p className="text-[10px] text-dim mt-1">where <code className="bg-panel px-1 rounded">{`<shell>`}</code> is your <code className="bg-panel px-1 rounded">$SHELL</code> (typically <code className="bg-panel px-1 rounded">/bin/bash</code> or <code className="bg-panel px-1 rounded">/bin/zsh</code>).</p>
+                  <div className="bg-panel border border-border rounded px-3 py-2 text-xs text-fg-bright font-mono break-all">{commandPreview}</div>
+                  <p className="text-xs text-dim mt-1">where <code className="bg-panel px-1 rounded">{`<shell>`}</code> is your <code className="bg-panel px-1 rounded">$SHELL</code> (typically <code className="bg-panel px-1 rounded">/bin/bash</code> or <code className="bg-panel px-1 rounded">/bin/zsh</code>).</p>
                 </div>
 
                 <div className="mt-4 pt-3 border-t border-border">
                   <label className="flex items-start gap-2 cursor-pointer">
-                    <input type="checkbox" checked={harnessMcpEnabled} onChange={(e) => handleToggleHarnessMcp(e.target.checked)} className="mt-0.5 cursor-pointer" />
+                    <input type="checkbox" checked={harnessMcpEnabled} onChange={(e) => handleToggleHarnessMcp(e.target.checked)} className="mt-0.5 cursor-pointer icon-base" />
                     <div className="flex-1">
                       <div className="text-sm text-fg-bright">Enable Harness MCP</div>
                       <div className="text-xs text-dim mt-0.5">
-                        Injects <code className="bg-panel px-1 rounded text-[10px]">harness-control</code> MCP server via <code className="bg-panel px-1 rounded text-[10px]">--mcp-config</code>.
+                        Injects <code className="bg-panel px-1 rounded text-xs">harness-control</code> MCP server via <code className="bg-panel px-1 rounded text-xs">--mcp-config</code>.
                       </div>
                     </div>
                   </label>
@@ -1237,7 +1817,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
                 <div className="mt-4 pt-3 border-t border-border">
                   <label className="flex items-center gap-3 cursor-pointer">
-                    <input type="checkbox" checked={nameClaudeSessions} onChange={(e) => { void backend.setNameClaudeSessions(e.target.checked) }} className="accent-current w-4 h-4 cursor-pointer" />
+                    <input type="checkbox" checked={nameClaudeSessions} onChange={(e) => { void backend.setNameClaudeSessions(e.target.checked) }} className="accent-current icon-base cursor-pointer" />
                     <div>
                       <span className="text-sm font-medium text-fg">Name sessions by worktree</span>
                       <p className="text-xs text-dim mt-0.5">Passes <code className="bg-panel px-1 rounded">--name &quot;repo/branch&quot;</code> to Claude.</p>
@@ -1247,11 +1827,11 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
                 <div className="mt-4 pt-3 border-t border-border">
                   <label className="flex items-start gap-2 cursor-pointer">
-                    <input type="checkbox" checked={claudeTuiFullscreen} onChange={(e) => { void backend.setClaudeTuiFullscreen(e.target.checked) }} className="mt-0.5 cursor-pointer" />
+                    <input type="checkbox" checked={claudeTuiFullscreen} onChange={(e) => { void backend.setClaudeTuiFullscreen(e.target.checked) }} className="mt-0.5 cursor-pointer icon-base" />
                     <div className="flex-1">
                       <div className="text-sm text-fg-bright">Fullscreen TUI by default</div>
                       <div className="text-xs text-dim mt-0.5">
-                        Sets <code className="bg-panel px-1 rounded text-[10px]">CLAUDE_CODE_NO_FLICKER=1</code> so Claude runs in fullscreen TUI mode instead of taking over your scrollback.
+                        Sets <code className="bg-panel px-1 rounded text-xs">CLAUDE_CODE_NO_FLICKER=1</code> so Claude runs in fullscreen TUI mode instead of taking over your scrollback.
                       </div>
                     </div>
                   </label>
@@ -1265,7 +1845,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 </p>
                 <div className="space-y-2">
                   <div>
-                    <label className="block text-[11px] font-medium text-dim mb-1">Base URL</label>
+                    <label className="block text-xs font-medium text-dim mb-1">Base URL</label>
                     <input
                       type="text"
                       value={litellmBaseUrl}
@@ -1276,7 +1856,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-medium text-dim mb-1">Auth token <span className="text-faint">(optional)</span></label>
+                    <label className="block text-xs font-medium text-dim mb-1">Auth token <span className="text-faint">(optional)</span></label>
                     <div className="flex items-center gap-2">
                       <input
                         type={litellmAuthRevealed ? 'text' : 'password'}
@@ -1288,7 +1868,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                       />
                       <Tooltip label={litellmAuthRevealed ? 'Hide token' : 'Reveal token'}>
                         <button onClick={() => setLitellmAuthRevealed((v) => !v)} className="p-1.5 text-dim hover:text-fg transition-colors cursor-pointer">
-                          {litellmAuthRevealed ? <EyeOff size={14} /> : <Eye size={14} />}
+                          {litellmAuthRevealed ? <EyeOff className="icon-sm" /> : <Eye className="icon-sm" />}
                         </button>
                       </Tooltip>
                     </div>
@@ -1302,7 +1882,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 </div>
                 {litellmSaveResult && (
                   <div className={`mt-3 text-xs flex items-center gap-1.5 ${litellmSaveResult.ok ? 'text-success' : 'text-danger'}`}>
-                    {litellmSaveResult.ok ? <Check size={12} /> : <X size={12} />}{litellmSaveResult.message}
+                    {litellmSaveResult.ok ? <Check className="icon-xs" /> : <X className="icon-xs" />}{litellmSaveResult.message}
                   </div>
                 )}
               </div>
@@ -1321,22 +1901,155 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                           <input type="text" value={row.key} onChange={(e) => handleUpdateEnvRow(index, 'key', e.target.value)} placeholder="NAME" spellCheck={false} className="w-44 bg-panel border border-border-strong rounded px-2 py-1.5 text-xs text-fg-bright placeholder-faint outline-none focus:border-fg font-mono" />
                           <span className="text-dim text-xs">=</span>
                           <input type={revealed ? 'text' : 'password'} value={row.value} onChange={(e) => handleUpdateEnvRow(index, 'value', e.target.value)} placeholder="value" spellCheck={false} className="flex-1 bg-panel border border-border-strong rounded px-2 py-1.5 text-xs text-fg-bright placeholder-faint outline-none focus:border-fg font-mono" />
-                          <Tooltip label={revealed ? 'Hide value' : 'Reveal value'}><button onClick={() => handleToggleRevealEnvRow(index)} className="p-1.5 text-dim hover:text-fg transition-colors cursor-pointer">{revealed ? <EyeOff size={14} /> : <Eye size={14} />}</button></Tooltip>
-                          <Tooltip label="Remove"><button onClick={() => handleRemoveEnvRow(index)} className="p-1.5 text-dim hover:text-danger transition-colors cursor-pointer"><Trash2 size={14} /></button></Tooltip>
+                          <Tooltip label={revealed ? 'Hide value' : 'Reveal value'}><button onClick={() => handleToggleRevealEnvRow(index)} className="p-1.5 text-dim hover:text-fg transition-colors cursor-pointer">{revealed ? <EyeOff className="icon-sm" /> : <Eye className="icon-sm" />}</button></Tooltip>
+                          <Tooltip label="Remove"><button onClick={() => handleRemoveEnvRow(index)} className="p-1.5 text-dim hover:text-danger transition-colors cursor-pointer"><Trash2 className="icon-sm" /></button></Tooltip>
                         </div>
                       )
                     })}
                   </div>
                 )}
                 <div className="flex items-center gap-2">
-                  <button onClick={handleAddEnvRow} className="flex items-center gap-1 px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer"><Plus size={12} />Add variable</button>
+                  <button onClick={handleAddEnvRow} className="flex items-center gap-1 px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer"><Plus className="icon-xs" />Add variable</button>
                   <button onClick={handleSaveClaudeEnvVars} className="px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer">Save</button>
                 </div>
                 {envSaveResult && (
                   <div className={`mt-3 text-xs flex items-center gap-1.5 ${envSaveResult.ok ? 'text-success' : 'text-danger'}`}>
-                    {envSaveResult.ok ? <Check size={12} /> : <X size={12} />}{envSaveResult.message}
+                    {envSaveResult.ok ? <Check className="icon-xs" /> : <X className="icon-xs" />}{envSaveResult.message}
                   </div>
                 )}
+              </div>
+
+              {/* Chat interface settings — only relevant when running
+                  Chat tabs, but always visible so the controls are findable. */}
+              <div className="mt-4 bg-panel-raised border border-border rounded-lg p-4">
+                <label className="block text-sm font-medium text-fg mb-1">Chat interface</label>
+                <p className="text-xs text-dim mb-3">
+                  Behavior for Claude tabs running the Chat interface
+                  (inline tool cards, approval flows). No effect on
+                  Terminal tabs.
+                </p>
+
+                <div className="pt-3 border-t border-border">
+                  <label className="block text-xs font-medium text-fg mb-1">
+                    Default permission mode for new chats
+                  </label>
+                  <div className="text-xs text-dim mb-2">
+                    New Chat tabs start in this mode. Change per-chat
+                    anytime via the statusline picker.
+                  </div>
+                  <select
+                    value={jsonModeDefaultPermissionMode}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      void backend.setJsonModeDefaultPermissionMode(
+                        v === 'default' || v === 'plan' ? v : 'acceptEdits'
+                      )
+                    }}
+                    className="bg-panel border border-border-strong rounded px-2 py-1 text-xs text-fg-bright outline-none focus:border-fg cursor-pointer"
+                  >
+                    <option value="acceptEdits">
+                      Accept edits — auto-allow Edit/Write, ask for Bash and other tools
+                    </option>
+                    <option value="default">
+                      Ask every time — surface every tool call for approval
+                    </option>
+                    <option value="plan">
+                      Plan mode — read-only, the agent proposes but doesn't act
+                    </option>
+                  </select>
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-border">
+                  <label className="block text-xs font-medium text-fg mb-1">
+                    Auto-sleep idle chats after
+                  </label>
+                  <div className="text-xs text-dim mb-2">
+                    A Chat tab waiting for your reply for this long
+                    (yellow dot) gets its subprocess torn down to free
+                    RAM. Click the tab to wake — history is intact. Set
+                    to 0 to disable.
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={0}
+                      max={24 * 60}
+                      step={1}
+                      value={autoSleepDraft}
+                      onChange={(e) => setAutoSleepDraft(e.target.value)}
+                      onBlur={commitAutoSleepMinutes}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.currentTarget.blur()
+                        }
+                      }}
+                      className="bg-panel border border-border-strong rounded px-2 py-1 text-xs text-fg-bright outline-none focus:border-fg w-24"
+                    />
+                    <span className="text-xs text-dim">minutes</span>
+                  </div>
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-border">
+                  <label className="block text-xs font-medium text-fg mb-1">
+                    Chat density
+                  </label>
+                  <div
+                    className="text-xs text-dim mb-2"
+                    title="Larger text and padding, intended for new users or screen-sharing."
+                  >
+                    Larger text and padding for new users or
+                    screen-sharing.
+                  </div>
+                  <div className="inline-flex rounded border border-border-strong overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void backend.setJsonModeChatDensity('compact')
+                      }}
+                      className={`px-3 py-1 text-xs cursor-pointer transition-colors ${
+                        jsonModeChatDensity === 'compact'
+                          ? 'bg-accent/20 text-fg-bright'
+                          : 'bg-panel text-muted hover:bg-panel-raised'
+                      }`}
+                    >
+                      Compact
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void backend.setJsonModeChatDensity('comfy')
+                      }}
+                      className={`px-3 py-1 text-xs cursor-pointer transition-colors border-l border-border-strong ${
+                        jsonModeChatDensity === 'comfy'
+                          ? 'bg-accent/20 text-fg-bright'
+                          : 'bg-panel text-muted hover:bg-panel-raised'
+                      }`}
+                    >
+                      Comfy
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-border">
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={jsonModeSendOnEnter}
+                      onChange={(e) => {
+                        void backend.setJsonModeSendOnEnter(e.target.checked)
+                      }}
+                      className="mt-0.5 cursor-pointer icon-base" />
+                    <div className="flex-1">
+                      <div className="text-sm text-fg-bright">
+                        Send messages with Enter
+                      </div>
+                      <div className="text-xs text-dim mt-0.5">
+                        Plain Enter sends; Shift+Enter inserts a newline. When
+                        off, Cmd/Ctrl+Enter sends.
+                      </div>
+                    </div>
+                  </label>
+                </div>
               </div>
 
               </div>
@@ -1345,7 +2058,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               <div ref={(el) => { subSectionRefs.current['agent-codex'] = el }} id="agent-codex" className="mt-8">
               <h3 className="text-sm font-semibold text-fg-bright mb-3 flex items-center gap-2">
                 Codex
-                {defaultAgent === 'codex' && <span className="text-[10px] font-normal text-dim bg-panel px-1.5 py-0.5 rounded">default</span>}
+                {defaultAgent === 'codex' && <span className="text-xs font-normal text-dim bg-panel px-1.5 py-0.5 rounded">default</span>}
               </h3>
 
               <div className="bg-panel-raised border border-border rounded-lg p-4 mb-4">
@@ -1388,12 +2101,12 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 <div className="flex items-center gap-2 mt-3">
                   <button onClick={handleSaveCodexCommand} disabled={!codexCommandDraft.trim()} className="px-3 py-1.5 bg-surface hover:bg-surface-hover disabled:opacity-40 rounded text-sm text-fg-bright transition-colors cursor-pointer">Save</button>
                   {codexCommandDraft !== 'codex' && (
-                    <button onClick={handleResetCodexCommand} className="flex items-center gap-1 px-3 py-1.5 text-sm text-dim hover:text-fg transition-colors cursor-pointer"><RotateCcw size={12} />Reset</button>
+                    <button onClick={handleResetCodexCommand} className="flex items-center gap-1 px-3 py-1.5 text-sm text-dim hover:text-fg transition-colors cursor-pointer"><RotateCcw className="icon-xs" />Reset</button>
                   )}
                 </div>
                 {codexSaveResult && (
                   <div className={`mt-3 text-xs flex items-center gap-1.5 ${codexSaveResult.ok ? 'text-success' : 'text-danger'}`}>
-                    {codexSaveResult.ok ? <Check size={12} /> : <X size={12} />}{codexSaveResult.message}
+                    {codexSaveResult.ok ? <Check className="icon-xs" /> : <X className="icon-xs" />}{codexSaveResult.message}
                   </div>
                 )}
                 {(() => {
@@ -1403,8 +2116,8 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   return (
                     <div className="mt-4 pt-3 border-t border-border">
                       <label className="block text-xs font-medium text-fg mb-1">Full command preview</label>
-                      <div className="bg-panel border border-border rounded px-3 py-2 text-[11px] text-fg-bright font-mono break-all">{`<shell> -ilc "${codexPreviewInner}"`}</div>
-                      <p className="text-[10px] text-dim mt-1">where <code className="bg-panel px-1 rounded">{`<shell>`}</code> is your <code className="bg-panel px-1 rounded">$SHELL</code> (typically <code className="bg-panel px-1 rounded">/bin/bash</code> or <code className="bg-panel px-1 rounded">/bin/zsh</code>).</p>
+                      <div className="bg-panel border border-border rounded px-3 py-2 text-xs text-fg-bright font-mono break-all">{`<shell> -ilc "${codexPreviewInner}"`}</div>
+                      <p className="text-xs text-dim mt-1">where <code className="bg-panel px-1 rounded">{`<shell>`}</code> is your <code className="bg-panel px-1 rounded">$SHELL</code> (typically <code className="bg-panel px-1 rounded">/bin/bash</code> or <code className="bg-panel px-1 rounded">/bin/zsh</code>).</p>
                     </div>
                   )
                 })()}
@@ -1424,20 +2137,20 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                           <input type="text" value={row.key} onChange={(e) => { setCodexEnvRows((prev) => prev.map((r, i) => (i === index ? { ...r, key: e.target.value } : r))); setCodexEnvSaveResult(null) }} placeholder="NAME" spellCheck={false} className="w-44 bg-panel border border-border-strong rounded px-2 py-1.5 text-xs text-fg-bright placeholder-faint outline-none focus:border-fg font-mono" />
                           <span className="text-dim text-xs">=</span>
                           <input type={revealed ? 'text' : 'password'} value={row.value} onChange={(e) => { setCodexEnvRows((prev) => prev.map((r, i) => (i === index ? { ...r, value: e.target.value } : r))); setCodexEnvSaveResult(null) }} placeholder="value" spellCheck={false} className="flex-1 bg-panel border border-border-strong rounded px-2 py-1.5 text-xs text-fg-bright placeholder-faint outline-none focus:border-fg font-mono" />
-                          <Tooltip label={revealed ? 'Hide value' : 'Reveal value'}><button onClick={() => setCodexRevealedEnvRows((prev) => { const next = new Set(prev); if (next.has(index)) next.delete(index); else next.add(index); return next })} className="p-1.5 text-dim hover:text-fg transition-colors cursor-pointer">{revealed ? <EyeOff size={14} /> : <Eye size={14} />}</button></Tooltip>
-                          <Tooltip label="Remove"><button onClick={() => { setCodexEnvRows((prev) => prev.filter((_, i) => i !== index)); setCodexEnvSaveResult(null) }} className="p-1.5 text-dim hover:text-danger transition-colors cursor-pointer"><Trash2 size={14} /></button></Tooltip>
+                          <Tooltip label={revealed ? 'Hide value' : 'Reveal value'}><button onClick={() => setCodexRevealedEnvRows((prev) => { const next = new Set(prev); if (next.has(index)) next.delete(index); else next.add(index); return next })} className="p-1.5 text-dim hover:text-fg transition-colors cursor-pointer">{revealed ? <EyeOff className="icon-sm" /> : <Eye className="icon-sm" />}</button></Tooltip>
+                          <Tooltip label="Remove"><button onClick={() => { setCodexEnvRows((prev) => prev.filter((_, i) => i !== index)); setCodexEnvSaveResult(null) }} className="p-1.5 text-dim hover:text-danger transition-colors cursor-pointer"><Trash2 className="icon-sm" /></button></Tooltip>
                         </div>
                       )
                     })}
                   </div>
                 )}
                 <div className="flex items-center gap-2">
-                  <button onClick={() => { setCodexEnvRows((prev) => [...prev, { key: '', value: '' }]); setCodexEnvSaveResult(null) }} className="flex items-center gap-1 px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer"><Plus size={12} />Add variable</button>
+                  <button onClick={() => { setCodexEnvRows((prev) => [...prev, { key: '', value: '' }]); setCodexEnvSaveResult(null) }} className="flex items-center gap-1 px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer"><Plus className="icon-xs" />Add variable</button>
                   <button onClick={handleSaveCodexEnvVars} className="px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer">Save</button>
                 </div>
                 {codexEnvSaveResult && (
                   <div className={`mt-3 text-xs flex items-center gap-1.5 ${codexEnvSaveResult.ok ? 'text-success' : 'text-danger'}`}>
-                    {codexEnvSaveResult.ok ? <Check size={12} /> : <X size={12} />}{codexEnvSaveResult.message}
+                    {codexEnvSaveResult.ok ? <Check className="icon-xs" /> : <X className="icon-xs" />}{codexEnvSaveResult.message}
                   </div>
                 )}
               </div>
@@ -1453,12 +2166,11 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     type="checkbox"
                     checked={harnessSystemPromptEnabled}
                     onChange={(e) => { void backend.setHarnessSystemPromptEnabled(e.target.checked) }}
-                    className="mt-0.5 cursor-pointer"
-                  />
+                    className="mt-0.5 cursor-pointer icon-base" />
                   <div className="flex-1">
                     <div className="text-sm text-fg-bright">Inject Harness context into Claude sessions</div>
                     <div className="text-xs text-dim mt-0.5">
-                      Appends <code className="bg-panel px-1 rounded text-[10px]">--append-system-prompt</code> with context about Harness and MCP tools.
+                      Appends <code className="bg-panel px-1 rounded text-xs">--append-system-prompt</code> with context about Harness and MCP tools.
                     </div>
                   </div>
                 </label>
@@ -1467,7 +2179,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   <>
                     <div className="mb-4">
                       <label className="block text-xs font-medium text-fg mb-1">Base prompt</label>
-                      <p className="text-[11px] text-dim mb-2">Sent to every Claude session.</p>
+                      <p className="text-xs text-dim mb-2">Sent to every Claude session.</p>
                       <textarea
                         value={systemPromptDraft}
                         onChange={(e) => setSystemPromptDraft(e.target.value)}
@@ -1479,7 +2191,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
                     <div className="mb-4">
                       <label className="block text-xs font-medium text-fg mb-1">Main worktree addition</label>
-                      <p className="text-[11px] text-dim mb-2">Appended when Claude is running on the main/primary worktree.</p>
+                      <p className="text-xs text-dim mb-2">Appended when Claude is running on the main/primary worktree.</p>
                       <textarea
                         value={systemPromptMainDraft}
                         onChange={(e) => setSystemPromptMainDraft(e.target.value)}
@@ -1500,16 +2212,16 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                         onClick={handleResetSystemPrompt}
                         className="flex items-center gap-1 px-3 py-1.5 text-sm text-dim hover:text-fg transition-colors cursor-pointer"
                       >
-                        <RotateCcw size={12} />
+                        <RotateCcw className="icon-xs" />
                         Reset to defaults
                       </button>
                     </div>
                     {systemPromptSaveResult && (
                       <div className={`mt-3 text-xs flex items-center gap-1.5 ${systemPromptSaveResult.ok ? 'text-success' : 'text-danger'}`}>
-                        {systemPromptSaveResult.ok ? <Check size={12} /> : <X size={12} />}{systemPromptSaveResult.message}
+                        {systemPromptSaveResult.ok ? <Check className="icon-xs" /> : <X className="icon-xs" />}{systemPromptSaveResult.message}
                       </div>
                     )}
-                    <p className="mt-3 text-[11px] text-faint">Changes apply to new sessions only.</p>
+                    <p className="mt-3 text-xs text-faint">Changes apply to new sessions only.</p>
                   </>
                 )}
               </div>
@@ -1524,7 +2236,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
               {repoList.length > 0 && (
                 <div className="mb-4">
-                  <div className="flex items-center gap-1 text-[11px] text-faint mb-1.5 uppercase tracking-wide">
+                  <div className="flex items-center gap-1 text-xs text-faint mb-1.5 uppercase tracking-wide">
                     Scope
                   </div>
                   <div className="flex flex-wrap gap-1 bg-panel-raised border border-border rounded p-1">
@@ -1553,7 +2265,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                       </button>
                     ))}
                   </div>
-                  <p className="text-[11px] text-faint mt-1.5">
+                  <p className="text-xs text-faint mt-1.5">
                     {scopeRepoRoot
                       ? <>Editing <code className="bg-panel-raised px-1 rounded">.harness.json</code> in <span className="font-mono">{repoBasename(scopeRepoRoot)}</span>. Unset fields inherit from global. You can commit this file to share settings with teammates.</>
                       : 'Editing global settings. Individual repos can override these values via their .harness.json file.'}
@@ -1607,14 +2319,14 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               <div className="flex items-center justify-between mt-6 mb-1">
                 <h3 className="text-sm font-semibold text-fg-bright">Default merge strategy</h3>
                 {scopeRepoRoot === null && reposOverridingKey('mergeStrategy').length > 0 && (
-                  <span className="text-[10px] text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
+                  <span className="text-xs text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
                     Overridden in {reposOverridingKey('mergeStrategy').map(repoBasename).join(', ')}
                   </span>
                 )}
                 {scopeRepoRoot !== null && scopedMergeStrategyIsOverride && (
                   <button
                     onClick={handleResetMergeStrategyToGlobal}
-                    className="text-[10px] text-dim hover:text-fg underline cursor-pointer"
+                    className="text-xs text-dim hover:text-fg underline cursor-pointer"
                   >
                     Reset to global
                   </button>
@@ -1676,27 +2388,27 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">Setup & teardown scripts</h3>
               <p className="text-xs text-dim mb-3">
                 Optional shell commands run via a login shell
-                (<code className="bg-panel-raised px-1 rounded text-[10px]">zsh -ilc</code>) with
-                the worktree as <code className="bg-panel-raised px-1 rounded text-[10px]">cwd</code>.
+                (<code className="bg-panel-raised px-1 rounded text-xs">zsh -ilc</code>) with
+                the worktree as <code className="bg-panel-raised px-1 rounded text-xs">cwd</code>.
                 Setup runs after a worktree is created; teardown runs before it's removed.
                 The env vars{' '}
-                <code className="bg-panel-raised px-1 rounded text-[10px]">HARNESS_WORKTREE_PATH</code>,{' '}
-                <code className="bg-panel-raised px-1 rounded text-[10px]">HARNESS_BRANCH</code>, and{' '}
-                <code className="bg-panel-raised px-1 rounded text-[10px]">HARNESS_REPO_ROOT</code>{' '}
+                <code className="bg-panel-raised px-1 rounded text-xs">HARNESS_WORKTREE_PATH</code>,{' '}
+                <code className="bg-panel-raised px-1 rounded text-xs">HARNESS_BRANCH</code>, and{' '}
+                <code className="bg-panel-raised px-1 rounded text-xs">HARNESS_REPO_ROOT</code>{' '}
                 are available to the command.
               </p>
 
               <div className="flex items-center justify-between mb-1">
                 <label className="block text-xs text-dim">Setup command</label>
                 {scopeRepoRoot === null && reposOverridingKey('setupCommand').length > 0 && (
-                  <span className="text-[10px] text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
+                  <span className="text-xs text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
                     Overridden in {reposOverridingKey('setupCommand').map(repoBasename).join(', ')}
                   </span>
                 )}
                 {scopeRepoRoot !== null && scopedSetupIsOverride && (
                   <button
                     onClick={handleResetSetupToGlobal}
-                    className="text-[10px] text-dim hover:text-fg underline cursor-pointer"
+                    className="text-xs text-dim hover:text-fg underline cursor-pointer"
                   >
                     Reset to global
                   </button>
@@ -1717,14 +2429,14 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               <div className="flex items-center justify-between mt-3 mb-1">
                 <label className="block text-xs text-dim">Teardown command</label>
                 {scopeRepoRoot === null && reposOverridingKey('teardownCommand').length > 0 && (
-                  <span className="text-[10px] text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
+                  <span className="text-xs text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
                     Overridden in {reposOverridingKey('teardownCommand').map(repoBasename).join(', ')}
                   </span>
                 )}
                 {scopeRepoRoot !== null && scopedTeardownIsOverride && (
                   <button
                     onClick={handleResetTeardownToGlobal}
-                    className="text-[10px] text-dim hover:text-fg underline cursor-pointer"
+                    className="text-xs text-dim hover:text-fg underline cursor-pointer"
                   >
                     Reset to global
                   </button>
@@ -1751,14 +2463,116 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 </button>
                 {scriptsSaveResult && (
                   <span className={`text-xs flex items-center gap-1.5 ${scriptsSaveResult.ok ? 'text-success' : 'text-danger'}`}>
-                    {scriptsSaveResult.ok ? <Check size={12} /> : <X size={12} />}
+                    {scriptsSaveResult.ok ? <Check className="icon-xs" /> : <X className="icon-xs" />}
                     {scriptsSaveResult.message}
                   </span>
                 )}
               </div>
-              <p className="mt-2 text-[11px] text-faint">
+              <p className="mt-2 text-xs text-faint">
                 Failures are logged but don't block the worktree operation. Leave blank to disable.
               </p>
+
+              {scopeRepoRoot === null && (
+                <>
+                  <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">Worktree details</h3>
+                  <p className="text-xs text-dim mb-3">
+                    What to show next to each worktree row in the sidebar. The
+                    detail hides on hover; row action buttons appear in its place.
+                  </p>
+                  <div className="mb-3 p-2 bg-panel-raised border border-border rounded">
+                    <div className="text-xs text-faint mb-1.5 uppercase tracking-wide">Preview</div>
+                    <div className="group flex items-center gap-2 px-3 py-2 bg-surface rounded">
+                      <span
+                        className="w-2 h-2 rounded-full shrink-0 bg-success"
+                        title="Working..."
+                      />
+                      <GitPullRequest className="icon-xs text-success shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-medium text-fg-bright truncate">feature/example-branch</div>
+                        <div className="text-xs text-faint truncate">harness/feature-example-branch</div>
+                      </div>
+                      {worktreeDetail === 'diff' && (
+                        <span className="text-xs font-mono shrink-0 leading-none group-hover:hidden" title="+42 additions, −7 deletions">
+                          <span className="text-success">+42</span>
+                          <span className="text-danger ml-0.5">−7</span>
+                        </span>
+                      )}
+                      {worktreeDetail === 'age' && (
+                        <span className="text-xs font-mono shrink-0 leading-none text-dim group-hover:hidden" title="Created 5 days ago">
+                          5d
+                        </span>
+                      )}
+                      {worktreeDetail === 'pr' && (
+                        <span className="inline-flex items-center gap-1.5 shrink-0 group-hover:hidden">
+                          <span className="text-xs text-dim truncate max-w-[6rem]" title="Milestone: v2.10">v2.10</span>
+                          <span className="text-xs font-mono leading-none px-1.5 py-0.5 rounded-full bg-panel border border-border-strong text-fg-bright">
+                            #123
+                          </span>
+                          <span
+                            className="w-3.5 h-3.5 rounded-full bg-accent/40 border border-border-strong shrink-0"
+                            title="Assignee: octocat"
+                          />
+                        </span>
+                      )}
+                      <span className="hidden group-hover:flex text-faint shrink-0" title="Snooze">
+                        <Moon className="icon-xs" />
+                      </span>
+                      <span className="hidden group-hover:flex text-faint shrink-0" title="Remove worktree">
+                        <Trash2 className="icon-xs" />
+                      </span>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    {(
+                      [
+                        {
+                          id: 'diff' as const,
+                          label: 'Diff stat',
+                          description: 'Show added/removed line counts from the PR'
+                        },
+                        {
+                          id: 'age' as const,
+                          label: 'Age',
+                          description: 'Show how long the worktree has existed'
+                        },
+                        {
+                          id: 'pr' as const,
+                          label: 'Pull Request',
+                          description: 'Show assignee avatar, milestone, and PR number'
+                        },
+                        {
+                          id: 'none' as const,
+                          label: 'Nothing',
+                          description: 'Hide the extra detail'
+                        }
+                      ]
+                    ).map((opt) => {
+                      const isActive = worktreeDetail === opt.id
+                      return (
+                        <button
+                          key={opt.id}
+                          onClick={() => handleSelectWorktreeDetail(opt.id)}
+                          className={`w-full text-left rounded border px-3 py-2 transition-colors cursor-pointer ${
+                            isActive
+                              ? 'border-accent bg-panel-raised'
+                              : 'border-border hover:border-border-strong'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <div
+                              className={`w-3 h-3 rounded-full border ${
+                                isActive ? 'border-accent bg-accent' : 'border-border-strong'
+                              }`}
+                            />
+                            <span className="text-sm text-fg-bright">{opt.label}</span>
+                          </div>
+                          <p className="text-xs text-dim mt-1 ml-5">{opt.description}</p>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </>
+              )}
 
               {scopeRepoRoot === null && (
                 <>
@@ -1785,7 +2599,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">Share Claude Code permissions</h3>
                   <p className="text-xs text-dim mb-3">
                     Symlink each worktree's{' '}
-                    <code className="bg-panel-raised px-1 rounded text-[10px]">.claude/settings.local.json</code>{' '}
+                    <code className="bg-panel-raised px-1 rounded text-xs">.claude/settings.local.json</code>{' '}
                     to the main worktree's copy so "Don't ask again"
                     permissions granted in any worktree apply everywhere.
                     Only takes effect for worktrees created while enabled
@@ -1796,12 +2610,46 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                       type="checkbox"
                       checked={shareClaudeSettings}
                       onChange={(e) => { void backend.setShareClaudeSettings(e.target.checked) }}
-                      className="accent-current w-4 h-4 cursor-pointer"
-                    />
+                      className="accent-current icon-base cursor-pointer" />
                     <span className="text-sm text-fg">
                       Share settings.local.json across worktrees
                     </span>
                   </label>
+
+                  <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">PR review prompt</h3>
+                  <p className="text-xs text-dim mb-3">
+                    Default kickoff prompt sent to Claude when you open a PR as a worktree (or when the MCP{' '}
+                    <code className="bg-panel-raised px-1 rounded text-xs">create_worktree</code> tool is invoked
+                    with <code className="bg-panel-raised px-1 rounded text-xs">prNumber</code> and no explicit
+                    prompt). You can edit the prompt per-PR from the New Worktree screen.
+                  </p>
+                  <textarea
+                    value={prReviewPromptDraft}
+                    onChange={(e) => setPrReviewPromptDraft(e.target.value)}
+                    rows={5}
+                    spellCheck={false}
+                    className="w-full bg-panel border border-border-strong rounded px-3 py-2 text-xs text-fg-bright placeholder-faint outline-none focus:border-fg font-mono resize-y"
+                  />
+                  <div className="flex items-center gap-2 mt-3">
+                    <button
+                      onClick={handleSavePrReviewPrompt}
+                      className="px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={handleResetPrReviewPrompt}
+                      className="flex items-center gap-1 px-3 py-1.5 text-sm text-dim hover:text-fg transition-colors cursor-pointer"
+                    >
+                      <RotateCcw className="icon-xs" />
+                      Reset to default
+                    </button>
+                  </div>
+                  {prReviewPromptSaveResult && (
+                    <div className={`mt-3 text-xs flex items-center gap-1.5 ${prReviewPromptSaveResult.ok ? 'text-success' : 'text-danger'}`}>
+                      {prReviewPromptSaveResult.ok ? <Check className="icon-xs" /> : <X className="icon-xs" />}{prReviewPromptSaveResult.message}
+                    </div>
+                  )}
                 </>
               )}
 
@@ -1837,19 +2685,19 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                           : 'border-border hover:border-border-strong text-muted hover:text-fg'
                       }`}
                     >
-                      <Code2 size={14} className={isActive ? 'text-accent' : 'text-faint'} />
+                      <Code2 className={`icon-sm ${isActive ? 'text-accent' : 'text-faint'}`} />
                       <span className="flex-1">{ed.name}</span>
-                      {isActive && <Check size={12} className="text-accent" />}
+                      {isActive && <Check className="icon-xs text-accent" />}
                     </button>
                   )
                 })}
               </div>
-              <p className="text-[11px] text-faint">
-                Harness spawns the editor via a login shell (<code className="bg-panel-raised px-1 rounded text-[10px]">zsh -ilc</code>)
+              <p className="text-xs text-faint">
+                Harness spawns the editor via a login shell (<code className="bg-panel-raised px-1 rounded text-xs">zsh -ilc</code>)
                 so homebrew and nvm paths are picked up automatically. If nothing
                 happens when you click "Open in editor", check that the selected
                 editor's CLI is installed (e.g. VS Code's{' '}
-                <code className="bg-panel-raised px-1 rounded text-[10px]">code</code> command,
+                <code className="bg-panel-raised px-1 rounded text-xs">code</code> command,
                 installed via <em>Shell Command: Install 'code' command in PATH</em> from
                 the command palette).
               </p>
@@ -1875,12 +2723,9 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     type="checkbox"
                     checked={harnessStarred}
                     onChange={(e) => { void backend.setHarnessStarred(e.target.checked) }}
-                    className="w-3.5 h-3.5 accent-warning cursor-pointer"
-                  />
+                    className="icon-base accent-warning cursor-pointer" />
                   <Star
-                    size={14}
-                    className={harnessStarred ? 'text-warning fill-warning shrink-0' : 'text-warning shrink-0'}
-                  />
+                    className={`icon-sm ${harnessStarred ? 'text-warning fill-warning shrink-0' : 'text-warning shrink-0'}`} />
                   <span className="text-sm text-fg group-hover:text-fg-bright transition-colors">
                     Star Harness on GitHub
                   </span>
@@ -1890,7 +2735,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               {authSource === 'gh-cli' && !hasToken && (
                 <div className="mb-4 rounded-lg p-4 border bg-success/10 border-success/30">
                   <div className="flex items-center gap-2 text-sm text-success">
-                    <Check size={14} />
+                    <Check className="icon-sm" />
                     <span>Using <code className="bg-panel-raised px-1 rounded">gh</code> CLI token (auto-detected)</span>
                   </div>
                   {!showPatForm && (
@@ -1912,7 +2757,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
                 {hasToken && (
                   <div className="flex items-center gap-2 mb-3 text-xs text-success">
-                    <Check size={14} />
+                    <Check className="icon-sm" />
                     <span>A token is currently saved {authSource === 'pat' ? '(in use)' : ''}</span>
                   </div>
                 )}
@@ -1929,7 +2774,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     onClick={() => setShowToken(!showToken)}
                     className="absolute right-2 top-1/2 -translate-y-1/2 text-dim hover:text-fg transition-colors cursor-pointer"
                   >
-                    {showToken ? <EyeOff size={14} /> : <Eye size={14} />}
+                    {showToken ? <EyeOff className="icon-sm" /> : <Eye className="icon-sm" />}
                   </button>
                 </div>
 
@@ -1953,7 +2798,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
                 {tokenResult && (
                   <div className={`mt-3 text-xs flex items-center gap-1.5 ${tokenResult.ok ? 'text-success' : 'text-danger'}`}>
-                    {tokenResult.ok ? <Check size={12} /> : <X size={12} />}
+                    {tokenResult.ok ? <Check className="icon-xs" /> : <X className="icon-xs" />}
                     {tokenResult.message}
                   </div>
                 )}
@@ -1985,6 +2830,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 </p>
               </div>
               )}
+
               </>
                 )
               })()}
@@ -1999,23 +2845,22 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     onClick={handleResetAllHotkeys}
                     className="flex items-center gap-1 text-xs text-dim hover:text-fg transition-colors cursor-pointer"
                   >
-                    <RotateCcw size={11} />
+                    <RotateCcw className="icon-xs" />
                     Reset all to defaults
                   </button>
                 )}
               </div>
               <p className="text-sm text-dim mb-4">
-                Click a shortcut to rebind it. Press <kbd className="bg-panel-raised px-1 rounded text-[10px]">Esc</kbd> to cancel.
+                Click a shortcut to rebind it. Press <kbd className="bg-panel-raised px-1 rounded text-xs">Esc</kbd> to cancel.
               </p>
 
-              <div className="bg-panel-raised border border-border rounded-lg divide-y divide-border">
-                {(Object.keys(DEFAULT_HOTKEYS) as Action[]).map((action) => {
+              {(() => {
+                const renderRow = (action: Action, indent = false): JSX.Element => {
                   const binding: HotkeyBinding = resolvedHotkeys[action]
                   const isRebinding = rebindingAction === action
                   const overridden = isOverridden(action)
-
                   return (
-                    <div key={action} className="flex items-center justify-between px-3 py-2">
+                    <div key={action} className={`flex items-center justify-between px-3 py-2 ${indent ? 'pl-9' : ''}`}>
                       <span className="text-sm text-fg">{ACTION_LABELS[action]}</span>
                       <div className="flex items-center gap-2">
                         {overridden && (
@@ -2024,25 +2869,74 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                               onClick={() => handleResetHotkey(action)}
                               className="text-xs text-dim hover:text-fg transition-colors cursor-pointer"
                             >
-                              <RotateCcw size={11} />
+                              <RotateCcw className="icon-xs" />
                             </button>
                           </Tooltip>
                         )}
                         <button
                           onClick={() => setRebindingAction(isRebinding ? null : action)}
-                          className={`min-w-[100px] px-2.5 py-1 rounded text-xs font-mono transition-colors cursor-pointer ${
+                          className={`min-w-[100px] px-2.5 py-1 rounded text-xs transition-colors cursor-pointer ${
                             isRebinding
                               ? 'bg-warning/20 text-warning border border-warning/50 animate-pulse'
                               : 'bg-panel text-fg border border-border-strong hover:border-fg'
                           }`}
                         >
-                          {isRebinding ? 'Press keys...' : bindingToString(binding)}
+                          {isRebinding ? 'Press keys...' : formatBindingGlyphs(bindingToString(binding))}
                         </button>
                       </div>
                     </div>
                   )
-                })}
-              </div>
+                }
+
+                return (
+                  <div className="space-y-6">
+                    {ACTION_CATEGORIES.map((cat) => {
+                      const subId = `hotkeys-${cat.id}` as SubSectionId
+                      return (
+                        <div
+                          key={cat.id}
+                          ref={(el) => { subSectionRefs.current[subId] = el }}
+                          id={subId}
+                        >
+                          <h3 className="text-xs font-medium uppercase tracking-wide text-dim mb-2">{cat.label}</h3>
+                          <div className="bg-panel-raised border border-border rounded-lg divide-y divide-border">
+                            {cat.actions.map((a) => renderRow(a))}
+                            {cat.families?.map((family) => {
+                              const familyKey = `${cat.id}:${family.label}`
+                              const expanded = expandedFamilies.has(familyKey)
+                              return (
+                                <div key={familyKey}>
+                                  <button
+                                    onClick={() => {
+                                      setExpandedFamilies((prev) => {
+                                        const next = new Set(prev)
+                                        if (next.has(familyKey)) next.delete(familyKey)
+                                        else next.add(familyKey)
+                                        return next
+                                      })
+                                    }}
+                                    className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-panel cursor-pointer"
+                                  >
+                                    <span className="flex items-center gap-1.5 text-sm text-fg">
+                                      {expanded ? <ChevronDown className="icon-xs text-dim" /> : <ChevronRight className="icon-xs text-dim" />}
+                                      {family.label}
+                                      <span className="text-xs text-faint">({family.actions.length})</span>
+                                    </span>
+                                    <span className="min-w-[100px] px-2.5 py-1 text-xs text-dim text-center">
+                                      {family.summary}
+                                    </span>
+                                  </button>
+                                  {expanded && family.actions.map((a) => renderRow(a, true))}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })()}
             </section>
 
             {/* Updates section */}
@@ -2076,7 +2970,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     disabled={checking || updaterStatus?.state === 'checking' || updaterStatus?.state === 'downloading'}
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-surface hover:bg-surface-hover disabled:opacity-40 rounded text-sm text-fg-bright transition-colors cursor-pointer"
                   >
-                    <RefreshCw size={12} className={checking ? 'animate-spin' : ''} />
+                    <RefreshCw className={`icon-xs ${checking ? 'animate-spin' : ''}`} />
                     Check for updates
                   </button>
                 </div>
@@ -2089,7 +2983,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
                 {import.meta.env.DEV && (
                   <div className="mt-3 pt-3 border-t border-border">
-                    <div className="text-[10px] uppercase tracking-wide text-faint mb-1.5">
+                    <div className="text-xs uppercase tracking-wide text-faint mb-1.5">
                       Dev: simulate updater state
                     </div>
                     <div className="flex gap-1.5">
@@ -2097,7 +2991,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                         <button
                           key={s}
                           onClick={() => backend.devSimulateUpdate(s)}
-                          className="px-2 py-1 bg-surface hover:bg-surface-hover rounded text-[11px] text-fg transition-colors cursor-pointer"
+                          className="px-2 py-1 bg-surface hover:bg-surface-hover rounded text-xs text-fg transition-colors cursor-pointer"
                         >
                           {s}
                         </button>
@@ -2112,8 +3006,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                       type="checkbox"
                       checked={autoUpdateEnabled}
                       onChange={(e) => handleToggleAutoUpdate(e.target.checked)}
-                      className="mt-0.5 cursor-pointer"
-                    />
+                      className="mt-0.5 cursor-pointer icon-base" />
                     <div className="flex-1">
                       <div className="text-sm text-fg-bright">Check for updates automatically</div>
                       <div className="text-xs text-dim mt-0.5">
@@ -2148,7 +3041,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   onClick={() => openReportIssue({ kind: 'bug' })}
                   className="flex items-center gap-2 px-3 py-2 bg-panel-raised border border-border rounded-lg text-sm text-fg-bright hover:bg-surface transition-colors cursor-pointer"
                 >
-                  <Bug size={14} />
+                  <Bug className="icon-sm" />
                   Report a bug
                 </button>
                 <button
@@ -2156,7 +3049,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   onClick={() => openReportIssue({ kind: 'feature' })}
                   className="flex items-center gap-2 px-3 py-2 bg-panel-raised border border-border rounded-lg text-sm text-fg-bright hover:bg-surface transition-colors cursor-pointer"
                 >
-                  <Lightbulb size={14} />
+                  <Lightbulb className="icon-sm" />
                   Request a feature
                 </button>
               </div>
@@ -2181,7 +3074,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     }}
                     className="flex items-center gap-2 px-3 py-2 bg-panel border border-border rounded-lg text-sm text-fg-bright hover:bg-surface transition-colors cursor-pointer"
                   >
-                    <FileText size={14} />
+                    <FileText className="icon-sm" />
                     Open debug log
                   </button>
                   <button
@@ -2192,20 +3085,37 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     }}
                     className="flex items-center gap-2 px-3 py-2 bg-panel border border-border rounded-lg text-sm text-fg-bright hover:bg-surface transition-colors cursor-pointer"
                   >
-                    <FolderOpen size={14} />
+                    <FolderOpen className="icon-sm" />
                     Show in Finder
                   </button>
                 </div>
                 {debugLogError && (
                   <p className="mt-2 text-xs text-danger">{debugLogError}</p>
                 )}
+
+                <label className="mt-4 pt-3 border-t border-border flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={expandedDiagnosticLoggingEnabled}
+                    onChange={(e) => { void backend.setExpandedDiagnosticLoggingEnabled(e.target.checked) }}
+                    className="mt-0.5 cursor-pointer icon-base" />
+                  <div className="flex-1">
+                    <div className="text-sm text-fg-bright">Expanded diagnostic logging</div>
+                    <div className="text-xs text-dim mt-0.5">
+                      Writes a <code className="bg-panel px-1 rounded">[github-api]</code> line to{' '}
+                      <code className="bg-panel px-1 rounded">debug.log</code> for every GitHub API call
+                      (URL, method, status, duration). Off by default — the per-call volume is high
+                      during PR-refresh bursts. The HUD's "GH API" rate metric is always on regardless.
+                    </div>
+                  </div>
+                </label>
               </div>
             </section>
 
             {/* Experimental section */}
             <section ref={(el) => { sectionRefs.current.experimental = el }} id="experimental">
               <h2 className="text-lg font-semibold text-fg-bright mb-1 flex items-center gap-2">
-                <FlaskConical size={18} className="text-warning" />
+                <FlaskConical className="w-[1.125rem] h-[1.125rem] text-warning" />
                 Experimental
               </h2>
               <p className="text-sm text-dim mb-4">
@@ -2221,10 +3131,14 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               </p>
 
               {/* Browser control sub-card */}
-              <div className="bg-panel-raised border border-warning/30 rounded-lg p-4 mb-4">
+              <div
+                ref={(el) => { subSectionRefs.current['experimental-browser-control'] = el }}
+                id="experimental-browser-control"
+                className="bg-panel-raised border border-warning/30 rounded-lg p-4 mb-4"
+              >
                 <div className="flex items-center gap-2 mb-1">
                   <h3 className="text-sm font-semibold text-fg-bright">Browser control</h3>
-                  <span className="text-[10px] font-medium text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
+                  <span className="text-xs font-medium text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
                     Experimental
                   </span>
                 </div>
@@ -2240,12 +3154,11 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     id="browser-tools-enabled"
                     checked={browserToolsEnabled}
                     onChange={(e) => { void backend.setBrowserToolsEnabled(e.target.checked) }}
-                    className="mt-0.5 cursor-pointer"
-                  />
+                    className="mt-0.5 cursor-pointer icon-base" />
                   <div className="flex-1">
                     <label htmlFor="browser-tools-enabled" className="text-sm text-fg-bright cursor-pointer">Enable browser tools</label>
                     <div className="text-xs text-dim mt-0.5 mb-2">
-                      Exposes <code className="bg-panel px-1 rounded text-[10px]">harness-control</code> MCP browser_* tools to the agent.
+                      Exposes <code className="bg-panel px-1 rounded text-xs">harness-control</code> MCP browser_* tools to the agent.
                     </div>
                     <select
                       value={browserToolsMode}
@@ -2260,176 +3173,20 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 </div>
               </div>
 
-              {/* JSON-mode Claude tabs sub-card */}
-              <div className="bg-panel-raised border border-warning/30 rounded-lg p-4 mb-4">
-                <div className="flex items-center gap-2 mb-1">
-                  <h3 className="text-sm font-semibold text-fg-bright">JSON-mode Claude tabs</h3>
-                  <span className="text-[10px] font-medium text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
-                    Experimental
-                  </span>
-                </div>
-                <p className="text-xs text-dim mb-3">
-                  Adds a second Claude tab type that runs{' '}
-                  <code className="bg-panel px-1 rounded text-[10px]">claude -p --output-format stream-json</code>{' '}
-                  and renders the conversation in React — native textarea, real
-                  text selection, markdown, syntax highlighting, per-tool cards.
-                  When enabled, <kbd className="bg-panel px-1 rounded text-[10px]">⇧</kbd>-click the
-                  Sparkles button on a worktree's tab bar to spawn one.
-                  Many TUI features are still missing — see{' '}
-                  <code className="bg-panel px-1 rounded text-[10px]">plans/json-mode-native-chat.md</code>.
-                </p>
-
-                <label className="flex items-start gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={jsonModeClaudeTabs}
-                    onChange={(e) => { void backend.setJsonModeClaudeTabs(e.target.checked) }}
-                    className="mt-0.5 cursor-pointer"
-                  />
-                  <div className="flex-1">
-                    <div className="text-sm text-fg-bright">Enable JSON-mode Claude tabs</div>
-                    <div className="text-xs text-dim mt-0.5">
-                      Existing xterm-based Claude tabs are unaffected.
-                    </div>
-                  </div>
-                </label>
-
-                <div className="mt-4 pt-3 border-t border-border">
-                  <label className="block text-xs font-medium text-fg mb-1">
-                    Default Claude tab type
-                  </label>
-                  <div className="text-xs text-dim mb-2">
-                    Which mode new Claude tabs spawn in. Per-tab swap is
-                    available from the tab's right-click menu.
-                  </div>
-                  <select
-                    value={defaultClaudeTabType}
-                    onChange={(e) => {
-                      void backend.setDefaultClaudeTabType(
-                        e.target.value === 'json' ? 'json' : 'xterm'
-                      )
-                    }}
-                    disabled={!jsonModeClaudeTabs}
-                    className="bg-panel border border-border-strong rounded px-2 py-1 text-xs text-fg-bright outline-none focus:border-fg cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    <option value="xterm">xterm (Claude TUI)</option>
-                    <option value="json">JSON-mode (React chat)</option>
-                  </select>
-                </div>
-
-                <div className="mt-4 pt-3 border-t border-border">
-                  <label className="block text-xs font-medium text-fg mb-1">
-                    Default permission mode for new chats
-                  </label>
-                  <div className="text-xs text-dim mb-2">
-                    New json-mode chats start in this mode. Change per-chat
-                    anytime via the statusline picker.
-                  </div>
-                  <select
-                    value={jsonModeDefaultPermissionMode}
-                    onChange={(e) => {
-                      const v = e.target.value
-                      void backend.setJsonModeDefaultPermissionMode(
-                        v === 'default' || v === 'plan' ? v : 'acceptEdits'
-                      )
-                    }}
-                    disabled={!jsonModeClaudeTabs}
-                    className="bg-panel border border-border-strong rounded px-2 py-1 text-xs text-fg-bright outline-none focus:border-fg cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    <option value="acceptEdits">
-                      Accept edits — auto-allow Edit/Write, ask for Bash and other tools
-                    </option>
-                    <option value="default">
-                      Ask every time — surface every tool call for approval
-                    </option>
-                    <option value="plan">
-                      Plan mode — read-only, the agent proposes but doesn't act
-                    </option>
-                  </select>
-                </div>
-
-                <div className="mt-4 pt-3 border-t border-border">
-                  <label className="block text-xs font-medium text-fg mb-1">
-                    Auto-sleep idle chats after
-                  </label>
-                  <div className="text-xs text-dim mb-2">
-                    A json-mode tab waiting for your reply for this long (yellow
-                    dot) gets its subprocess torn down to free RAM. Click the tab
-                    to wake — history is intact. Set to 0 to disable.
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      min={0}
-                      max={24 * 60}
-                      step={1}
-                      value={autoSleepDraft}
-                      onChange={(e) => setAutoSleepDraft(e.target.value)}
-                      onBlur={commitAutoSleepMinutes}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.currentTarget.blur()
-                        }
-                      }}
-                      disabled={!jsonModeClaudeTabs}
-                      className="bg-panel border border-border-strong rounded px-2 py-1 text-xs text-fg-bright outline-none focus:border-fg w-24 disabled:opacity-40 disabled:cursor-not-allowed"
-                    />
-                    <span className="text-xs text-dim">minutes</span>
-                  </div>
-                </div>
-
-                <div className="mt-4 pt-3 border-t border-border">
-                  <label className="block text-xs font-medium text-fg mb-1">
-                    Chat density
-                  </label>
-                  <div
-                    className="text-xs text-dim mb-2"
-                    title="Larger text and padding, intended for new users or screen-sharing."
-                  >
-                    Larger text and padding for new users or screen-sharing. Has
-                    no effect on xterm Claude tabs.
-                  </div>
-                  <div className="inline-flex rounded border border-border-strong overflow-hidden">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void backend.setJsonModeChatDensity('compact')
-                      }}
-                      className={`px-3 py-1 text-xs cursor-pointer transition-colors ${
-                        jsonModeChatDensity === 'compact'
-                          ? 'bg-accent/20 text-fg-bright'
-                          : 'bg-panel text-muted hover:bg-panel-raised'
-                      }`}
-                    >
-                      Compact
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void backend.setJsonModeChatDensity('comfy')
-                      }}
-                      className={`px-3 py-1 text-xs cursor-pointer transition-colors border-l border-border-strong ${
-                        jsonModeChatDensity === 'comfy'
-                          ? 'bg-accent/20 text-fg-bright'
-                          : 'bg-panel text-muted hover:bg-panel-raised'
-                      }`}
-                    >
-                      Comfy
-                    </button>
-                  </div>
-                </div>
-              </div>
-
               {/* Auto-approve safe tool calls sub-card */}
-              <div className="bg-panel-raised border border-warning/30 rounded-lg p-4 mb-4">
+              <div
+                ref={(el) => { subSectionRefs.current['experimental-auto-approve'] = el }}
+                id="experimental-auto-approve"
+                className="bg-panel-raised border border-warning/30 rounded-lg p-4 mb-4"
+              >
                 <div className="flex items-center gap-2 mb-1">
                   <h3 className="text-sm font-semibold text-fg-bright">Auto-approve safe tool calls</h3>
-                  <span className="text-[10px] font-medium text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
+                  <span className="text-xs font-medium text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
                     Experimental
                   </span>
                 </div>
                 <p className="text-xs text-dim mb-3">
-                  In JSON-mode tabs, spawns a Haiku oneshot to approve obviously-safe tool calls (Read, Grep, Edit, …) instead of prompting you. A hardcoded deny-list catches risky calls (<code className="bg-panel px-1 rounded text-[10px]">rm -rf</code>, <code className="bg-panel px-1 rounded text-[10px]">git push</code>, <code className="bg-panel px-1 rounded text-[10px]">WebFetch</code>, …) before Haiku is consulted. Productivity feature only — an LLM judging another LLM is not a security boundary. Has no effect on xterm Claude tabs.
+                  In Chat tabs, spawns a Haiku oneshot to approve obviously-safe tool calls (Read, Grep, Edit, …) instead of prompting you. A hardcoded deny-list catches risky calls (<code className="bg-panel px-1 rounded text-xs">rm -rf</code>, <code className="bg-panel px-1 rounded text-xs">git push</code>, <code className="bg-panel px-1 rounded text-xs">WebFetch</code>, …) before Haiku is consulted. Productivity feature only — an LLM judging another LLM is not a security boundary. Has no effect on Terminal tabs.
                 </p>
 
                 <label className="flex items-start gap-3 cursor-pointer">
@@ -2437,8 +3194,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     type="checkbox"
                     checked={autoApprovePermissions}
                     onChange={(e) => handleToggleAutoApprovePermissions(e.target.checked)}
-                    className="mt-0.5 cursor-pointer"
-                  />
+                    className="mt-0.5 cursor-pointer icon-base" />
                   <div className="flex-1">
                     <div className="text-sm text-fg-bright">Enable auto-approve</div>
                     <div className="text-xs text-dim mt-0.5">
@@ -2452,8 +3208,8 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     <label className="block text-xs font-medium text-fg mb-1">
                       Project-specific guidance <span className="text-faint font-normal">(optional)</span>
                     </label>
-                    <p className="text-[11px] text-dim mb-2">
-                      Free-text instructions appended to the reviewer's policy prompt. Use to add carve-outs (e.g. <em>&quot;approve <code className="bg-panel px-1 rounded text-[10px]">npm install</code> for this project&quot;</em>) or extra strictness (e.g. <em>&quot;deny any Bash that writes outside src/&quot;</em>). The hardcoded safety bullets always run first; this is purely additive guidance. You can also edit + re-review from any rejected approval card.
+                    <p className="text-xs text-dim mb-2">
+                      Free-text instructions appended to the reviewer's policy prompt. Use to add carve-outs (e.g. <em>&quot;approve <code className="bg-panel px-1 rounded text-xs">npm install</code> for this project&quot;</em>) or extra strictness (e.g. <em>&quot;deny any Bash that writes outside src/&quot;</em>). The hardcoded safety bullets always run first; this is purely additive guidance. You can also edit + re-review from any rejected approval card.
                     </p>
                     <textarea
                       value={autoApproveSteerDraft}
@@ -2472,9 +3228,9 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                       </button>
                       {autoApproveSteerSaveResult && (
                         <span
-                          className={`text-[11px] flex items-center gap-1 ${autoApproveSteerSaveResult.ok ? 'text-success' : 'text-danger'}`}
+                          className={`text-xs flex items-center gap-1 ${autoApproveSteerSaveResult.ok ? 'text-success' : 'text-danger'}`}
                         >
-                          {autoApproveSteerSaveResult.ok ? <Check size={11} /> : <X size={11} />}
+                          {autoApproveSteerSaveResult.ok ? <Check className="icon-xs" /> : <X className="icon-xs" />}
                           {autoApproveSteerSaveResult.message}
                         </span>
                       )}
@@ -2484,10 +3240,14 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               </div>
 
               {/* Web / mobile client sub-card */}
-              <div className="bg-panel-raised border border-warning/30 rounded-lg p-4">
+              <div
+                ref={(el) => { subSectionRefs.current['experimental-web-mobile'] = el }}
+                id="experimental-web-mobile"
+                className="bg-panel-raised border border-warning/30 rounded-lg p-4"
+              >
                 <div className="flex items-center gap-2 mb-1">
                   <h3 className="text-sm font-semibold text-fg-bright">Web &amp; mobile client</h3>
-                  <span className="text-[10px] font-medium text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
+                  <span className="text-xs font-medium text-warning bg-warning/10 border border-warning/30 rounded px-1.5 py-0.5">
                     Experimental
                   </span>
                 </div>
@@ -2503,8 +3263,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     type="checkbox"
                     checked={wsTransportEnabled}
                     onChange={(e) => { void handleToggleWsTransport(e.target.checked) }}
-                    className="mt-0.5 cursor-pointer"
-                  />
+                    className="mt-0.5 cursor-pointer icon-base" />
                   <div className="flex-1">
                     <div className="text-sm text-fg-bright">Enable web / mobile client</div>
                     <div className="text-xs text-dim mt-0.5">
@@ -2528,7 +3287,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                             onBlur={handleSaveWsPort}
                             className="w-28 bg-panel border border-border-strong rounded px-2 py-1 text-xs text-fg-bright outline-none focus:border-fg font-mono"
                           />
-                          <span className="text-[11px] text-faint">default 37291</span>
+                          <span className="text-xs text-faint">default 37291</span>
                         </div>
                       </div>
                       <div>
@@ -2547,7 +3306,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     <div className="mt-4 pt-3 border-t border-border">
                       <label className="block text-xs font-medium text-fg mb-1">Connection URL</label>
                       <div className="flex items-center gap-2">
-                        <code className="flex-1 bg-panel border border-border rounded px-2 py-1.5 text-[11px] text-fg-bright font-mono truncate">
+                        <code className="flex-1 bg-panel border border-border rounded px-2 py-1.5 text-xs text-fg-bright font-mono truncate">
                           {showWsToken ? wsUrl : wsUrlMasked}
                         </code>
                         <Tooltip label={showWsToken ? 'Hide token' : 'Show token'}>
@@ -2556,7 +3315,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                             disabled={!wsInfo}
                             className="p-1.5 text-dim hover:text-fg transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                           >
-                            {showWsToken ? <EyeOff size={14} /> : <Eye size={14} />}
+                            {showWsToken ? <EyeOff className="icon-sm" /> : <Eye className="icon-sm" />}
                           </button>
                         </Tooltip>
                         <Tooltip label={wsUrlCopied ? 'Copied' : 'Copy URL'}>
@@ -2565,7 +3324,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                             disabled={!wsInfo}
                             className="p-1.5 text-dim hover:text-fg transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                           >
-                            {wsUrlCopied ? <Check size={14} className="text-success" /> : <Copy size={14} />}
+                            {wsUrlCopied ? <Check className="icon-sm text-success" /> : <Copy className="icon-sm" />}
                           </button>
                         </Tooltip>
                         <Tooltip label="Open in browser">
@@ -2574,7 +3333,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                             disabled={!wsInfo}
                             className="p-1.5 text-dim hover:text-fg transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                           >
-                            <ExternalLink size={14} />
+                            <ExternalLink className="icon-sm" />
                           </button>
                         </Tooltip>
                         <Tooltip label="Rotate token (invalidates existing URLs)">
@@ -2583,7 +3342,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                             disabled={!wsInfo}
                             className="p-1.5 text-dim hover:text-warning transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                           >
-                            <RotateCcw size={14} />
+                            <RotateCcw className="icon-sm" />
                           </button>
                         </Tooltip>
                       </div>
@@ -2611,11 +3370,11 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                               </p>
                               {lanAddresses.length > 1 && (
                                 <div>
-                                  <label className="block text-[11px] font-medium text-fg mb-1">Interface</label>
+                                  <label className="block text-xs font-medium text-fg mb-1">Interface</label>
                                   <select
                                     value={selectedLanAddress ?? ''}
                                     onChange={(e) => setSelectedLanAddress(e.target.value)}
-                                    className="w-full bg-panel border border-border-strong rounded px-2 py-1 text-[11px] text-fg-bright outline-none focus:border-fg cursor-pointer font-mono"
+                                    className="w-full bg-panel border border-border-strong rounded px-2 py-1 text-xs text-fg-bright outline-none focus:border-fg cursor-pointer font-mono"
                                   >
                                     {lanAddresses.map((a) => (
                                       <option key={a.iface + a.address} value={a.address}>
@@ -2625,7 +3384,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                                   </select>
                                 </div>
                               )}
-                              <p className="font-mono text-[10px] break-all text-fg">
+                              <p className="font-mono text-xs break-all text-fg">
                                 http://{selectedLanAddress}:{wsInfo?.port}/
                               </p>
                             </div>
@@ -2647,7 +3406,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
                 {wsNeedsRestart && (
                   <div className="mt-4 pt-3 border-t border-border flex items-center gap-2">
-                    <RefreshCw size={12} className="text-warning shrink-0" />
+                    <RefreshCw className="icon-xs text-warning shrink-0" />
                     <p className="text-xs text-warning">{wsNeedsRestart}</p>
                   </div>
                 )}
@@ -2655,6 +3414,191 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
             </section>
           </div>
         </div>
+      </div>
+    </div>
+  )
+}
+
+interface ThemeModePickerProps {
+  title: string
+  hint: string
+  builtIns: ThemeOption[]
+  customs: CustomTheme[]
+  activeId: string
+  disabled: boolean
+  onSelect: (id: string) => void
+}
+
+/** A swatch carrying a stable identifier — used as the React key so
+ *  duplicate hexes (e.g. when a theme has the same color for two roles)
+ *  don't collide, and reordering can't shuffle component state. */
+interface Swatch {
+  /** Stable semantic role: 'app' | 'surface' | 'fg' | 'accent' for
+   *  built-ins; arbitrary semantic color key for customs. */
+  role: string
+  color: string
+}
+
+/** Roles shown in the small swatch row next to each theme name. Stable
+ *  across themes so a reorder doesn't shuffle keys. */
+const SWATCH_ROLES = ['app', 'surface', 'fg', 'accent'] as const
+
+function builtInSwatches(opt: ThemeOption): Swatch[] {
+  // THEME_OPTIONS.swatches is positional: [app, surface, fg, accent].
+  const out: Swatch[] = []
+  SWATCH_ROLES.forEach((role, i) => {
+    const color = opt.swatches[i]
+    if (typeof color === 'string') out.push({ role, color })
+  })
+  return out
+}
+
+function customSwatches(c: CustomTheme): Swatch[] {
+  const out: Swatch[] = []
+  for (const role of SWATCH_ROLES) {
+    const v = c.colors[role]
+    if (typeof v === 'string') out.push({ role, color: v })
+  }
+  return out
+}
+
+function readBuiltInThemeJson(opt: ThemeOption): string {
+  const probe = document.createElement('div')
+  probe.dataset.theme = opt.id
+  probe.style.display = 'none'
+  document.body.appendChild(probe)
+  try {
+    const cs = getComputedStyle(probe)
+    const colors: Record<string, string> = {}
+    for (const key of SEMANTIC_KEYS) {
+      const v = cs.getPropertyValue(`--color-${key}`).trim()
+      if (v) colors[key] = v
+    }
+    return JSON.stringify({ name: opt.label, mode: opt.mode, colors }, null, 2) + '\n'
+  } finally {
+    probe.remove()
+  }
+}
+
+function ThemeRow({
+  id,
+  label,
+  description,
+  swatches,
+  isActive,
+  onSelect,
+  onCopy,
+  copied
+}: {
+  id: string
+  label: string
+  description: string
+  swatches: Swatch[]
+  isActive: boolean
+  onSelect: (id: string) => void
+  onCopy?: () => void
+  copied?: boolean
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(id)}
+      className={`group w-full flex items-center gap-3 px-4 py-3 text-left transition-colors cursor-pointer ${
+        isActive ? 'bg-surface' : 'hover:bg-surface/60'
+      }`}
+    >
+      <div className="flex gap-1 shrink-0">
+        {swatches.length === 0 ? (
+          <span className="w-4 h-4 rounded border border-border-strong bg-panel" />
+        ) : (
+          swatches.map((s) => (
+            <span
+              key={s.role}
+              className="w-4 h-4 rounded border border-border-strong"
+              style={{ backgroundColor: s.color }}
+            />
+          ))
+        )}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="text-sm text-fg">{label}</div>
+        <div className="text-xs text-dim truncate">{description}</div>
+      </div>
+      {onCopy && (
+        <Tooltip label={copied ? 'Copied!' : 'Copy as JSON'} side="left">
+          <span
+            role="button"
+            tabIndex={0}
+            onClick={(e) => { e.stopPropagation(); onCopy() }}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onCopy() } }}
+            className={`shrink-0 text-dim hover:text-fg transition-opacity cursor-pointer p-1 ${
+              copied ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus:opacity-100'
+            }`}
+          >
+            {copied ? <CopyCheck className="icon-sm" /> : <Copy className="icon-sm" />}
+          </span>
+        </Tooltip>
+      )}
+      {isActive && <Check className="icon-sm text-success shrink-0" />}
+    </button>
+  )
+}
+
+function ThemeModePicker({
+  title,
+  hint,
+  builtIns,
+  customs,
+  activeId,
+  disabled,
+  onSelect
+}: ThemeModePickerProps): JSX.Element {
+  const [copiedId, setCopiedId] = useState<string | null>(null)
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    return () => {
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current)
+    }
+  }, [])
+  const handleCopy = (opt: ThemeOption): void => {
+    const json = readBuiltInThemeJson(opt)
+    void navigator.clipboard.writeText(json)
+    if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current)
+    setCopiedId(opt.id)
+    copiedTimerRef.current = setTimeout(() => {
+      setCopiedId(null)
+      copiedTimerRef.current = null
+    }, 1500)
+  }
+  return (
+    <div className={disabled ? 'opacity-50' : ''}>
+      <h3 className="text-sm font-semibold text-fg-bright mb-1">{title}</h3>
+      <p className="text-xs text-dim mb-2">{hint}</p>
+      <div className="bg-panel-raised border border-border rounded-lg divide-y divide-border">
+        {builtIns.map((opt) => (
+          <ThemeRow
+            key={opt.id}
+            id={opt.id}
+            label={opt.label}
+            description={opt.description}
+            swatches={builtInSwatches(opt)}
+            isActive={activeId === opt.id}
+            onSelect={onSelect}
+            onCopy={() => handleCopy(opt)}
+            copied={copiedId === opt.id}
+          />
+        ))}
+        {customs.map((c) => (
+          <ThemeRow
+            key={c.id}
+            id={c.id}
+            label={c.name}
+            description={`Custom theme · ${c.id}`}
+            swatches={customSwatches(c)}
+            isActive={activeId === c.id}
+            onSelect={onSelect}
+          />
+        ))}
       </div>
     </div>
   )

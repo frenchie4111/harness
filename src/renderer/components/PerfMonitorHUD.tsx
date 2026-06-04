@@ -10,6 +10,7 @@ const COLOR_ERROR = '#f87171'
 const LINE_COLORS = {
   storeEvents: '#60a5fa',
   ipcMessages: '#c084fc',
+  githubApi: '#a78bfa',
   terminalBytes: '#34d399',
   eventLoopLag: '#fbbf24',
   memory: '#f472b6',
@@ -89,6 +90,7 @@ function downsample(samples: CombinedSample[], bucketSize: number): CombinedSamp
     const merged: Record<string, number> = {}
     let ss = 0,
       is = 0,
+      ga = 0,
       ts = 0,
       ls = 0,
       rs = 0,
@@ -100,6 +102,7 @@ function downsample(samples: CombinedSample[], bucketSize: number): CombinedSamp
     for (const s of bucket) {
       ss += s.storeEventsPerSec
       is += s.ipcMessagesPerSec
+      ga += s.githubApiCallsPerSec
       ts += s.totalTerminalBytesPerSec
       ls += s.eventLoopLagMs
       rs += s.memoryRssMB
@@ -118,6 +121,7 @@ function downsample(samples: CombinedSample[], bucketSize: number): CombinedSamp
       t: bucket[bucket.length - 1].t,
       storeEventsPerSec: ss / n,
       ipcMessagesPerSec: is / n,
+      githubApiCallsPerSec: ga / n,
       totalTerminalBytesPerSec: ts / n,
       eventLoopLagMs: ls / n,
       memoryRssMB: rs / n,
@@ -158,7 +162,7 @@ function aggregateEventTypes(
     .sort((a, b) => b.perSec - a.perSec)
 }
 
-const CHART_WIDTH = 500
+const CHART_WIDTH = 560
 const LINE_H = 120
 const BAR_H = 60
 const GAP = 6
@@ -198,6 +202,7 @@ function Chart({
   const series: Record<MetricKey, number[]> = {
     storeEvents: samples.map((s) => s.storeEventsPerSec),
     ipcMessages: samples.map((s) => s.ipcMessagesPerSec),
+    githubApi: samples.map((s) => s.githubApiCallsPerSec),
     terminalBytes: samples.map((s) => s.totalTerminalBytesPerSec),
     eventLoopLag: samples.map((s) => s.eventLoopLagMs),
     memory: samples.map((s) => s.memoryRssMB),
@@ -295,7 +300,7 @@ interface Props {
   onClose: () => void
 }
 
-const HUD_WIDTH = 520
+const HUD_WIDTH = 580
 
 export function PerfMonitorHUD({ onClose }: Props): JSX.Element {
   const backend = useBackend()
@@ -312,6 +317,7 @@ export function PerfMonitorHUD({ onClose }: Props): JSX.Element {
       new Set<MetricKey>([
         'storeEvents',
         'ipcMessages',
+        'githubApi',
         'terminalBytes',
         'eventLoopLag',
         'memory',
@@ -423,6 +429,12 @@ export function PerfMonitorHUD({ onClose }: Props): JSX.Element {
           valueClassName: statusClass(metrics.ipcMessagesPerSec, 30, 150),
         },
         {
+          key: 'githubApi',
+          label: 'GH API',
+          value: formatPerSec(metrics.githubApiCallsPerSec),
+          valueClassName: statusClass(metrics.githubApiCallsPerSec, 1, 5),
+        },
+        {
           key: 'terminalBytes',
           label: 'Terminal data',
           value: formatBytes(metrics.totalTerminalBytesPerSec),
@@ -513,6 +525,11 @@ export function PerfMonitorHUD({ onClose }: Props): JSX.Element {
           label="Max commit"
           value={`${renderLatest.maxDurationMs.toFixed(1)}ms`}
           className={statusClass(renderLatest.maxDurationMs, 8, 16)}
+        />
+        <Scalar
+          label="GH (1h)"
+          value={metrics ? String(metrics.githubApiCallsLastHour) : '—'}
+          className={metrics ? statusClass(metrics.githubApiCallsLastHour, 500, 2000) : undefined}
         />
       </div>
 

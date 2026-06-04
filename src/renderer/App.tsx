@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { useSettings, usePrs, useOnboarding, useHooks, useWorktrees, useTerminals, usePanes, useLastActive, useUpdater, useRepoConfigs, useSnooze } from './store'
+import { useSettings, usePrs, useOnboarding, useHooks, useWorktrees, useTerminals, usePanes, useLastActive, useUpdater, useRepoConfigs, useSnooze, useAnnouncements } from './store'
 import { useBackend } from './backend'
 import { useTailLineBuffer } from './hooks/useTailLineBuffer'
 import { useTabHandlers } from './hooks/useTabHandlers'
@@ -8,25 +8,34 @@ import { useWorktreeHandlers } from './hooks/useWorktreeHandlers'
 import type { Worktree, TerminalTab, PtyStatus, PendingTool, QuestStep, PendingWorktree, UpdaterStatus, RepoConfig, PaneNode } from './types'
 import { getLeaves, findLeaf } from '../shared/state/terminals'
 import { CheckCircle2, FolderOpen } from 'lucide-react'
-import { THEME_OPTIONS } from './themes'
+import { BUILT_IN_THEMES_BY_MODE } from './themes'
+import { SCALES, scaleSpec } from '../shared/state/settings'
+import { useActiveTheme } from './hooks/useActiveTheme'
+import { useHoldToQuit } from './hooks/useHoldToQuit'
+import { applyTheme, effectiveAppBg } from './theme-apply'
+import { getBackend } from './backend'
 import { HotkeysProvider, Tooltip } from './components/Tooltip'
 import { Sidebar } from './components/Sidebar'
 import { ResizeHandle } from './components/ResizeHandle'
+import { AppTitleSegment } from './components/AppTitleSegment'
 import { NewWorktreeScreen } from './components/NewWorktreeScreen'
 import { CreatingWorktreeScreen } from './components/CreatingWorktreeScreen'
 import { DeletingWorktreeScreen } from './components/DeletingWorktreeScreen'
 import { QuestCard } from './components/QuestCard'
 import { WorkspaceView } from './components/WorkspaceView'
+import { QuakeTerminal } from './components/QuakeTerminal'
 import { RightColumn } from './components/RightColumn'
+import { CollapsedSidebar } from './components/CollapsedSidebar'
+import { CollapsedRightPanel } from './components/CollapsedRightPanel'
 import { Settings } from './components/Settings'
 import { WeeklyWrappedScreen } from './components/WeeklyWrappedScreen'
 import { Guide } from './components/Guide'
 import { AGENT_REGISTRY } from '../shared/agent-registry'
 import { AgentIcon } from './components/AgentIcon'
+import { InterfaceToggle } from './components/InterfaceToggle'
 import { Activity } from './components/Activity'
 import { Cleanup } from './components/Cleanup'
 import { CommandCenter } from './components/CommandCenter'
-import { ReviewScreen } from './components/ReviewScreen'
 import { CommandPalette } from './components/CommandPalette'
 import { HotkeyCheatsheet } from './components/HotkeyCheatsheet'
 import { NewProjectScreen } from './components/NewProjectScreen'
@@ -35,8 +44,11 @@ import { ResolveRepoModal } from './components/ResolveRepoModal'
 import { RepoAddErrorModal } from './components/RepoAddErrorModal'
 import { ReportIssueScreen, onOpenReportIssue, type OpenReportIssueDetail } from './components/ReportIssueScreen'
 import { AddBackendModal } from './components/AddBackendModal'
+import { MonacoWorkerFailedBanner } from './components/MonacoWorkerFailedBanner'
 import iconUrl from '../../resources/icon.png'
 import { PerfMonitorHUD } from './components/PerfMonitorHUD'
+import { HoldToQuitOverlay } from './components/HoldToQuitOverlay'
+import { ConfirmCloseTabModal } from './components/ConfirmCloseTabModal'
 import { focusTerminalById } from './components/XTerminal'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { type GroupKey } from './worktree-sort'
@@ -48,6 +60,11 @@ function isPendingId(id: string | null | undefined): id is string {
   return typeof id === 'string' && id.startsWith('pending:')
 }
 
+// Distance from the window's left edge to the start of the workspace
+// top-bar content — clears the macOS traffic lights. Also the left edge of
+// the "Harness" title segment, so the sidebar's max width is derived from it.
+const TITLE_LEADING_PX = 80
+
 // Top-level dispatcher. The desktop tree is large and stateful — we keep
 // it isolated in `DesktopApp` so a viewport flip (mobile↔desktop) doesn't
 // change React's hook order on this outer component. Theme application
@@ -56,10 +73,11 @@ function isPendingId(id: string | null | undefined): id is string {
 // main, so we only need one subscriber.
 export default function App(): JSX.Element {
   const { isMobile } = useViewport()
-  const theme = useSettings().theme
+  const active = useActiveTheme()
   useEffect(() => {
-    document.documentElement.dataset.theme = theme
-  }, [theme])
+    applyTheme(active)
+    getBackend().setLastEffectiveAppBg(effectiveAppBg(active))
+  }, [active])
   if (isMobile) return <MobileApp />
   return <DesktopApp />
 }
@@ -151,11 +169,27 @@ function DesktopApp(): JSX.Element {
   const updaterStatus = useUpdater().status
   const [updateBannerDismissed, setUpdateBannerDismissed] = useState(false)
   const [manualUpdateBannerDismissed, setManualUpdateBannerDismissed] = useState(false)
+  const announcements = useAnnouncements()
+  const [announcementsMenuOpen, setAnnouncementsMenuOpen] = useState(false)
   const [sidebarVisible, setSidebarVisible] = useState(true)
+  const [singleScreenMode, setSingleScreenMode] = useState(false)
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
     const saved = Number(localStorage.getItem('harness:sidebarWidth'))
     return Number.isFinite(saved) && saved > 0 ? saved : 224
   })
+  // The sidebar is capped to line up with the edge just before the workspace
+  // top bar's repo/branch label — i.e. the right edge of the "Harness"
+  // segment. WorkspaceView measures that edge and reports it here. The
+  // segment is branch-independent, so the value only moves with uiScale;
+  // defaults to leading clearance (80) + the segment's min-width (17.46rem ≈
+  // 279) for the no-worktree state, where nothing measures the live segment.
+  const [sidebarMaxPx, setSidebarMaxPx] = useState(359)
+  const handleTitleBlockEdge = useCallback((px: number) => {
+    // Inset by the 1px resize handle + 1px segment border so the sidebar's
+    // visible right edge lands on the title divider rather than a couple
+    // pixels past it.
+    setSidebarMaxPx(Math.max(160, Math.round(px) - 2))
+  }, [])
   const [rightPanelWidth, setRightPanelWidth] = useState<number>(() => {
     const saved = Number(localStorage.getItem('harness:rightPanelWidth'))
     return Number.isFinite(saved) && saved > 0 ? saved : 256
@@ -201,12 +235,16 @@ function DesktopApp(): JSX.Element {
     setCollapsedRepos((prev) => ({ ...prev, [repoRoot]: !prev[repoRoot] }))
   }, [])
   const handleSidebarResize = useCallback((delta: number) => {
-    setSidebarWidth((w) => Math.max(160, Math.min(500, w + delta)))
-  }, [])
+    setSidebarWidth((w) => Math.max(160, Math.min(sidebarMaxPx, w + delta)))
+  }, [sidebarMaxPx])
   const handleRightPanelResize = useCallback((delta: number) => {
     setRightPanelWidth((w) => Math.max(180, Math.min(600, w - delta)))
   }, [])
+  // A stored width from before the cap (or a smaller uiScale) is clamped down
+  // here so the rendered sidebar never exceeds the title-segment edge.
+  const effectiveSidebarWidth = Math.min(sidebarWidth, sidebarMaxPx)
   const [showNewWorktree, setShowNewWorktree] = useState(false)
+  const [newWorktreeRepo, setNewWorktreeRepo] = useState<string | undefined>(undefined)
   // Worktrees whose git creation is still running (or has errored). They
   // show in the sidebar immediately on submit so the user sees the new entry
   // right away instead of waiting on the modal.
@@ -217,16 +255,20 @@ function DesktopApp(): JSX.Element {
   const [showActivity, setShowActivity] = useState(false)
   const [showCleanup, setShowCleanup] = useState(false)
   const [showCommandCenter, setShowCommandCenter] = useState(false)
-  const [showReview, setShowReview] = useState(false)
-  const [reviewMode, setReviewMode] = useState<'working' | 'branch'>('branch')
-  const [reviewCommit, setReviewCommit] = useState<{ hash: string; shortHash: string; subject: string } | undefined>(undefined)
   const [showCommandPalette, setShowCommandPalette] = useState(false)
   const [commandPaletteMode, setCommandPaletteMode] = useState<'root' | 'files'>('root')
   const [showPerfMonitor, setShowPerfMonitor] = useState(false)
   const [showHotkeyCheatsheet, setShowHotkeyCheatsheet] = useState(false)
+  const holdToQuit = useHoldToQuit()
+  const [showQuakeTerminal, setShowQuakeTerminal] = useState(false)
   const [showNewProject, setShowNewProject] = useState(false)
   const [reportIssueState, setReportIssueState] = useState<OpenReportIssueDetail | null>(null)
   const [showAddBackend, setShowAddBackend] = useState(false)
+  // Dev-only: forces the welcome / onboarding form to render even when
+  // the user already has repos added, so the layout can be inspected
+  // without wiping `userData/config.json`. Toggled from Help → Debug:
+  // Preview Onboarding (gated `!app.isPackaged`).
+  const [previewOnboarding, setPreviewOnboarding] = useState(false)
   const [crashedTabIds, setCrashedTabIds] = useState<ReadonlySet<string>>(() => new Set())
   // `theme` and `defaultAgent` are both seeded at init, so we track
   // explicit confirmation separately for the onboarding step checkmarks.
@@ -237,9 +279,36 @@ function DesktopApp(): JSX.Element {
   // nobody is currently looking at.
   const tailLines = useTailLineBuffer(showCommandCenter)
   const settings = useSettings()
-  const { hasGithubToken: hasGithubPat, githubAuthSource, nameClaudeSessions, defaultAgent, theme: activeTheme } = settings
+  const { hasGithubToken: hasGithubPat, githubAuthSource, nameClaudeSessions, defaultAgent } = settings
+  // Apply the persisted UI scale to the root html element so every
+  // rem-based size (text-xs/sm/base/lg, w-N/h-N icons, padding-*) shifts
+  // in lockstep. See SCALES in shared/state/settings.ts for the table.
+  useEffect(() => {
+    const px = scaleSpec(settings.uiScale).rootPx
+    document.documentElement.style.fontSize = `${px}px`
+    return () => {
+      document.documentElement.style.fontSize = ''
+    }
+  }, [settings.uiScale])
+  // Transient "Resize: <label>" toast in the upper center whenever the UI
+  // scale changes. Per-client ephemeral UI, so local state — not a slice.
+  // prevUiScaleRef seeds to the current value so we don't toast on mount.
+  const [resizeToast, setResizeToast] = useState<string | null>(null)
+  const resizeToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const prevUiScaleRef = useRef(settings.uiScale)
+  useEffect(() => {
+    if (settings.uiScale === prevUiScaleRef.current) return
+    prevUiScaleRef.current = settings.uiScale
+    setResizeToast(scaleSpec(settings.uiScale).label)
+    if (resizeToastTimer.current) clearTimeout(resizeToastTimer.current)
+    resizeToastTimer.current = setTimeout(() => setResizeToast(null), 1200)
+    return () => {
+      if (resizeToastTimer.current) clearTimeout(resizeToastTimer.current)
+    }
+  }, [settings.uiScale])
+  const activeTheme = useActiveTheme()
   const nameAgentSessions = nameClaudeSessions
-  const hasGithubToken = hasGithubPat || githubAuthSource === 'gh-cli'
+  const hasGithubToken = hasGithubPat || !!githubAuthSource
   const hotkeyOverrides = settings.hotkeys ?? undefined
   // Onboarding parallelism quest — see QuestCard.tsx for the steps.
   // Quest state lives in the main-process store; its value is seeded from
@@ -253,6 +322,24 @@ function DesktopApp(): JSX.Element {
     () => worktrees.filter((w) => !w.isMain).length,
     [worktrees]
   )
+
+  const activeAnnouncement = useMemo(() => {
+    if (settings.announcementsMuted) return null
+    const dismissed = new Set(settings.dismissedAnnouncementIds)
+    const now = Date.now()
+    const eligible = announcements.items.filter((a) => {
+      if (dismissed.has(a.id)) return false
+      if (a.expiresAt) {
+        const exp = Date.parse(a.expiresAt)
+        if (Number.isFinite(exp) && exp < now) return false
+      }
+      return true
+    })
+    if (eligible.length === 0) return null
+    return eligible.reduce((best, cur) =>
+      Date.parse(cur.publishedAt) > Date.parse(best.publishedAt) ? cur : best
+    )
+  }, [announcements.items, settings.announcementsMuted, settings.dismissedAnnouncementIds])
   // Track which worktrees already have hooks installed so we only prompt once
 
 const setQuestStep = useCallback((next: QuestStep) => {
@@ -287,10 +374,6 @@ const setQuestStep = useCallback((next: QuestStep) => {
     void backend.refreshWorktreesList()
   }, [])
 
-  useEffect(() => {
-    document.documentElement.dataset.theme = settings.theme
-  }, [settings.theme])
-
   // Open Settings from the menu (Cmd+,)
   useEffect(() => {
     const cleanup = backend.onOpenSettings(() => setShowSettings(true))
@@ -300,6 +383,33 @@ const setQuestStep = useCallback((next: QuestStep) => {
   // Toggle perf monitor from the menu (Cmd+Shift+D)
   useEffect(() => {
     const cleanup = backend.onTogglePerfMonitor(() => setShowPerfMonitor((v) => !v))
+    return cleanup
+  }, [])
+
+  // UI size — View menu items (Cmd+= / Cmd+- / Cmd+0). Read the current
+  // rung from the slice on each fire (a useEffect snapshot would stale-
+  // close over the value) and step through SCALES.
+  useEffect(() => {
+    const step = (delta: number): void => {
+      const cur = settings.uiScale
+      const i = SCALES.findIndex((s) => s.id === cur)
+      const idx = i < 0 ? 0 : i
+      const target = SCALES[Math.max(0, Math.min(SCALES.length - 1, idx + delta))]
+      if (target && target.id !== cur) void backend.setUiScale(target.id)
+    }
+    const cleanups = [
+      backend.onUiScaleUp(() => step(1)),
+      backend.onUiScaleDown(() => step(-1)),
+      backend.onUiScaleReset(() => {
+        if (settings.uiScale !== 'small') void backend.setUiScale('small')
+      })
+    ]
+    return () => { for (const c of cleanups) c() }
+  }, [settings.uiScale])
+
+  // Toggle single-screen mode from the menu (F12)
+  useEffect(() => {
+    const cleanup = backend.onToggleSingleScreen(() => setSingleScreenMode((v) => !v))
     return cleanup
   }, [])
 
@@ -363,6 +473,16 @@ const setQuestStep = useCallback((next: QuestStep) => {
     })
   }, [activeWorktreeId, panes, activePaneId])
 
+  // Debug: Preview Onboarding (dev-only Help menu entry). Toggles a
+  // renderer-local override that forces the welcome / onboarding form
+  // to render regardless of repo count — handy for inspecting the
+  // layout without wiping userData.
+  useEffect(() => {
+    return backend.onDebugPreviewOnboarding(() => {
+      setPreviewOnboarding((v) => !v)
+    })
+  }, [])
+
   // Trigger a full PR refresh in main. Used by the sidebar refresh button
   // and after worktree creation/removal.
   const fetchAllPRStatuses = useCallback(() => {
@@ -398,10 +518,12 @@ const setQuestStep = useCallback((next: QuestStep) => {
   }, [])
 
   // On window focus, ask main for a stale-only bulk refresh. Main dedups
-  // against its own lastAllFetchAt clock.
+  // against its own lastAllFetchAt clock. Announcements piggyback on the
+  // same trigger — the poller is the dedup boundary on that side too.
   useEffect(() => {
     const onFocus = (): void => {
       void backend.refreshPRsAllIfStale()
+      void backend.refreshAnnouncements()
     }
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
@@ -566,6 +688,78 @@ const setQuestStep = useCallback((next: QuestStep) => {
     setActiveWorktreeId
   })
 
+  // True when the active worktree's workspace (and its tab bar) is actually on
+  // screen — i.e. no full-content view (new-worktree, activity, cleanup, command
+  // center, review, report-issue) is replacing it and the active worktree isn't
+  // pending/deleting. The Quake terminal only responds when this holds, so it
+  // never drops over a view that's hiding the tabs.
+  const workspaceVisible =
+    !showNewWorktree &&
+    !showActivity &&
+    !showCleanup &&
+    !showCommandCenter &&
+    reportIssueState === null &&
+    !!activeWorktreeId &&
+    !isPendingId(activeWorktreeId) &&
+    !pendingDeletionByPath[activeWorktreeId]
+
+  // Dismiss the Quake terminal if a view takes over and hides the tabs.
+  useEffect(() => {
+    if (!workspaceVisible && showQuakeTerminal) setShowQuakeTerminal(false)
+  }, [workspaceVisible, showQuakeTerminal])
+
+  // Guard accidental closes of a still-running tab (the common ⌘W-meant-for-⌘Q
+  // fat-finger). Every close path — the ⌘W hotkey, the File→Close Tab menu
+  // accelerator, and a tab's × button — funnels through requestCloseTab, so
+  // the guard is enforced in one place. A tab counts as running when its
+  // agent status is processing/waiting/needs-approval or a shell has a live
+  // process; anything else closes immediately.
+  const [closeTabConfirm, setCloseTabConfirm] = useState<{
+    worktreePath: string
+    tabId: string
+    label: string
+    reason: string
+  } | null>(null)
+  const requestCloseTab = useCallback(
+    (worktreePath: string, tabId: string) => {
+      // A second ⌘W (or menu Close Tab) while the guard is already up for this
+      // same tab confirms the close — repeating the gesture that opened it.
+      if (
+        closeTabConfirm &&
+        closeTabConfirm.worktreePath === worktreePath &&
+        closeTabConfirm.tabId === tabId
+      ) {
+        handleCloseTab(worktreePath, tabId)
+        setCloseTabConfirm(null)
+        return
+      }
+      const tab = (terminalTabs[worktreePath] || []).find((t) => t.id === tabId)
+      const status = statuses[tabId]
+      const agentBusy =
+        status === 'processing' || status === 'waiting' || status === 'needs-approval'
+      const shellBusy = !!shellActivity[tabId]?.active
+      if (tab && (agentBusy || shellBusy)) {
+        const reason = shellBusy
+          ? 'running a process'
+          : status === 'needs-approval'
+            ? 'waiting for your approval'
+            : status === 'waiting'
+              ? 'waiting for your input'
+              : 'still working'
+        setCloseTabConfirm({ worktreePath, tabId, label: tab.label || 'This tab', reason })
+        return
+      }
+      handleCloseTab(worktreePath, tabId)
+    },
+    [terminalTabs, statuses, shellActivity, handleCloseTab, closeTabConfirm]
+  )
+  const confirmCloseTab = useCallback(() => {
+    if (!closeTabConfirm) return
+    handleCloseTab(closeTabConfirm.worktreePath, closeTabConfirm.tabId)
+    setCloseTabConfirm(null)
+  }, [closeTabConfirm, handleCloseTab])
+  const cancelCloseTab = useCallback(() => setCloseTabConfirm(null), [])
+
   // Sidebar-aware hotkey handlers + the resolved binding map for tooltips.
   // The hook also subscribes to keystrokes via useHotkeys internally.
   const { hotkeyActions, resolvedHotkeys } = useHotkeyHandlers({
@@ -587,19 +781,46 @@ const setQuestStep = useCallback((next: QuestStep) => {
     hotkeyOverrides,
     setSidebarVisible,
     setRightColumnHidden,
+    setSingleScreenMode,
     setShowNewWorktree,
     setShowCommandCenter,
     setShowCommandPalette,
     setCommandPaletteMode,
     setShowPerfMonitor,
     setShowHotkeyCheatsheet,
-    setShowReview,
+    setShowQuakeTerminal,
+    quakeTerminalAllowed: workspaceVisible,
     handleAddTerminalTab,
-    handleCloseTab,
+    handleCloseTab: requestCloseTab,
     handleSelectTab,
     handleSplitPane,
-    handleRefreshWorktrees
+    handleRefreshWorktrees,
+    setShowSettings
   })
+
+  // File → Close Tab (Cmd+W). The accelerator lives on the menu item
+  // so it fires even when focus is inside a WebContentsView (browser
+  // tab). Closes the currently active tab in the active worktree.
+  useEffect(() => {
+    const cleanup = backend.onCloseFocusedTab(() => {
+      if (!activeWorktreeId) return
+      const tabId = activeTabId[activeWorktreeId]
+      if (tabId) requestCloseTab(activeWorktreeId, tabId)
+    })
+    return cleanup
+  }, [backend, activeWorktreeId, activeTabId, requestCloseTab])
+
+  // Window → Split Pane Right / Down — accelerators on the menu so they
+  // fire from any focus context (browser tab, etc.). Delegates to the
+  // same handler the renderer-side hotkey binding uses.
+  useEffect(() => {
+    const a = backend.onSplitPaneRight(() => hotkeyActions.splitPaneRight?.())
+    const b = backend.onSplitPaneDown(() => hotkeyActions.splitPaneDown?.())
+    return () => {
+      a()
+      b()
+    }
+  }, [backend, hotkeyActions])
 
   // Compute aggregate status per worktree (worst status wins)
   const worktreeStatuses: Record<string, PtyStatus> = {}
@@ -708,7 +929,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
     ) : null
 
 
-  if (repoRoots.length === 0) {
+  if (repoRoots.length === 0 || previewOnboarding) {
     const step1Complete = themeChosen
     const step2Complete = agentChosen
     const step3Complete = hooksConsent !== 'pending'
@@ -722,7 +943,22 @@ const setQuestStep = useCallback((next: QuestStep) => {
     return (
       <HotkeysProvider bindings={resolvedHotkeys}>
       <div className="flex h-full flex-col">
-        <div className="drag-region h-10 shrink-0" />
+        <div className="drag-region h-10 shrink-0 flex items-stretch pl-20">
+          <AppTitleSegment />
+        </div>
+        {previewOnboarding && repoRoots.length > 0 && (
+          <div className="shrink-0 px-4 py-1.5 bg-warning/10 border-b border-warning/30 text-xs text-fg-bright flex items-center justify-between gap-3">
+            <span>
+              <strong className="font-semibold">Preview mode</strong> — viewing onboarding with {repoRoots.length} repo{repoRoots.length === 1 ? '' : 's'} already added.
+            </span>
+            <button
+              onClick={() => setPreviewOnboarding(false)}
+              className="px-2 py-0.5 rounded bg-panel border border-border hover:border-border-strong cursor-pointer"
+            >
+              Exit preview
+            </button>
+          </div>
+        )}
         <div className="flex-1 overflow-y-auto">
           <div className="mx-auto max-w-xl w-full px-6 py-6">
             <div className="text-center mb-6">
@@ -804,7 +1040,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
               >
                 <div className="flex items-start gap-3 mb-3">
                   {step1Complete ? (
-                    <CheckCircle2 className="w-5 h-5 text-success shrink-0 mt-0.5" />
+                    <CheckCircle2 className="icon-lg text-success shrink-0 mt-0.5" />
                   ) : (
                     <div
                       className={`w-5 h-5 rounded-full border-2 text-[11px] font-bold flex items-center justify-center shrink-0 mt-0.5 ${
@@ -815,18 +1051,19 @@ const setQuestStep = useCallback((next: QuestStep) => {
                     </div>
                   )}
                   <div className="flex-1 min-w-0">
-                    <div className="text-fg-bright text-sm font-medium">Pick a theme</div>
-                    <div className="text-xs text-dim mt-0.5">Obviously the most important step. And for the love of god don't pick a light theme.</div>
+                    <div className="text-fg-bright text-sm font-medium">Pick your dark theme</div>
+                    <div className="text-xs text-dim mt-0.5">You can configure a light one and auto-switch with the OS from Settings later.</div>
                   </div>
                 </div>
                 <div className="grid grid-cols-3 gap-1.5 ml-8">
-                  {THEME_OPTIONS.map((opt) => {
-                    const isActive = activeTheme === opt.id && themeChosen
+                  {BUILT_IN_THEMES_BY_MODE.dark.map((opt) => {
+                    const isActive = activeTheme.id === opt.id && themeChosen
                     return (
                       <button
                         key={opt.id}
+                        type="button"
                         onClick={() => {
-                          backend.setTheme(opt.id)
+                          backend.setThemeDark(opt.id)
                           setThemeChosen(true)
                         }}
                         className={`flex items-center gap-2 px-2 py-1.5 rounded-lg border transition-colors cursor-pointer ${
@@ -860,7 +1097,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
               >
                 <div className="flex items-start gap-3 mb-3">
                   {step2Complete ? (
-                    <CheckCircle2 className="w-5 h-5 text-success shrink-0 mt-0.5" />
+                    <CheckCircle2 className="icon-lg text-success shrink-0 mt-0.5" />
                   ) : (
                     <div
                       className={`w-5 h-5 rounded-full border-2 text-[11px] font-bold flex items-center justify-center shrink-0 mt-0.5 ${
@@ -889,11 +1126,23 @@ const setQuestStep = useCallback((next: QuestStep) => {
                           : 'bg-panel border border-border text-dim hover:text-fg hover:border-border-strong'
                       }`}
                     >
-                      <AgentIcon kind={agent.kind} size={14} />
+                      <AgentIcon kind={agent.kind} className="icon-sm" />
                       {agent.displayName}
                     </button>
                   ))}
                 </div>
+                {agentChosen && defaultAgent === 'claude' && (
+                  <div className="ml-8 mt-4 pl-4 border-l-2 border-border">
+                    <div className="text-xs text-dim mb-2">
+                      Which interface should new Claude tabs use?
+                    </div>
+                    <InterfaceToggle
+                      value={settings.defaultClaudeTabType}
+                      onChange={(value) => { void backend.setDefaultClaudeTabType(value) }}
+                      size="compact"
+                    />
+                  </div>
+                )}
               </div>
 
               <div
@@ -905,7 +1154,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
               >
                 <div className="flex items-start gap-3 mb-3">
                   {step3Complete ? (
-                    <CheckCircle2 className="w-5 h-5 text-success shrink-0 mt-0.5" />
+                    <CheckCircle2 className="icon-lg text-success shrink-0 mt-0.5" />
                   ) : (
                     <div
                       className={`w-5 h-5 rounded-full border-2 text-[11px] font-bold flex items-center justify-center shrink-0 mt-0.5 ${
@@ -985,7 +1234,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
                     onClick={handleAddRepo}
                     className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer bg-fg-bright text-app hover:bg-fg border border-fg-bright"
                   >
-                    <FolderOpen className="w-4 h-4" />
+                    <FolderOpen className="icon-base" />
                     Open Repository
                   </button>
                   <span className="text-xs text-dim">
@@ -1020,9 +1269,45 @@ const setQuestStep = useCallback((next: QuestStep) => {
     )
   }
 
+  // True when a real WorkspaceView is on screen for the active worktree —
+  // mirrors the render guards in the worktrees.map below (exists, not
+  // pending/deleting, has at least one tab). When false and no overlay is
+  // up, the center shows a fallback so the draggable Harness title bar is
+  // always present (no repos, no worktrees, or panes still initializing).
+  const activeWorkspaceVisible =
+    !!activeWorktreeId &&
+    !isPendingId(activeWorktreeId) &&
+    !pendingDeletionByPath[activeWorktreeId] &&
+    worktrees.some((w) => w.path === activeWorktreeId) &&
+    (() => {
+      const tree = panes[activeWorktreeId]
+      return !!tree && getLeaves(tree).some((l) => l.tabs.length > 0)
+    })()
+  const inContentOverlay =
+    showNewWorktree || showActivity || showCleanup || showCommandCenter || reportIssueState !== null
+  const activeIsPending =
+    isPendingId(activeWorktreeId) && pendingWorktrees.some((p) => p.id === activeWorktreeId)
+  const activeIsDeleting = !!activeWorktreeId && !!pendingDeletionByPath[activeWorktreeId]
+  const showCenterFallback =
+    !inContentOverlay && !activeWorkspaceVisible && !activeIsPending && !activeIsDeleting
+  // The fallback title bar lives in the center column but must visually span
+  // the full width like the workspace top bar — extend it left/right over the
+  // side columns' drag strips (same negative-margin trick), so the Harness
+  // title pins to the top-left instead of floating mid-bar.
+  const fallbackLeadingExtend = singleScreenMode ? 0 : sidebarVisible ? effectiveSidebarWidth + 1 : 48
+  const fallbackTrailingExtend = singleScreenMode ? 0 : rightColumnHidden ? 48 : rightPanelWidth + 1
+
   return (
     <HotkeysProvider bindings={resolvedHotkeys}>
     <div className="flex h-full flex-col">
+      <MonacoWorkerFailedBanner />
+      {resizeToast && (
+        <div className="pointer-events-none fixed top-12 left-1/2 -translate-x-1/2 z-[60]">
+          <div className="rounded-md border border-border-strong bg-panel/95 px-3 py-1.5 text-sm text-fg-bright shadow-lg backdrop-blur">
+            Resize: {resizeToast}
+          </div>
+        </div>
+      )}
       {/* Update-ready banner */}
       {updaterStatus?.state === 'downloaded' && !updateBannerDismissed && (
         <div className="bg-success/15 border-b border-success/30 pl-20 pr-4 py-2.5 drag-region flex items-center gap-3 shrink-0">
@@ -1077,6 +1362,62 @@ const setQuestStep = useCallback((next: QuestStep) => {
           </div>
         )}
 
+      {/* Remote announcements banner — fetched in main from
+          harness.mikelyons.org/announcements.json, filtered down to the
+          single newest entry the user hasn't dismissed and that hasn't
+          expired. Muted globally via the kebab menu. */}
+      {activeAnnouncement && (
+        <div className="bg-accent/15 border-b border-accent/30 pl-20 pr-4 py-2.5 drag-region flex items-center gap-3 shrink-0">
+          <span className="text-accent text-sm flex-1">
+            <a
+              onClick={() => backend.openExternal(activeAnnouncement.href)}
+              className="font-semibold underline hover:text-accent cursor-pointer no-drag"
+            >
+              {activeAnnouncement.title}
+            </a>
+            {activeAnnouncement.summary && (
+              <span className="text-accent/80 ml-2">— {activeAnnouncement.summary}</span>
+            )}
+          </span>
+          <div className="relative no-drag self-stretch flex items-center">
+            <button
+              aria-label="More announcement options"
+              onClick={() => setAnnouncementsMenuOpen((v) => !v)}
+              className="px-2 py-1 text-accent/80 hover:text-accent text-sm transition-colors shrink-0 cursor-pointer"
+            >
+              &#x22EF;
+            </button>
+            {announcementsMenuOpen && (
+              <div
+                role="menu"
+                className="no-drag absolute right-0 top-full mt-1 z-20 min-w-[180px] rounded border border-accent/30 bg-app shadow-md text-sm"
+              >
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setAnnouncementsMenuOpen(false)
+                    void backend.muteAnnouncements(true)
+                  }}
+                  className="no-drag block w-full text-left px-3 py-2 hover:bg-accent/10 cursor-pointer"
+                >
+                  Hide all announcements
+                </button>
+              </div>
+            )}
+          </div>
+          <button
+            aria-label="Dismiss announcement"
+            onClick={() => {
+              setAnnouncementsMenuOpen(false)
+              void backend.dismissAnnouncement(activeAnnouncement.id)
+            }}
+            className="px-2 py-1 text-accent/80 hover:text-accent text-sm transition-colors shrink-0 cursor-pointer no-drag"
+          >
+            &times;
+          </button>
+        </div>
+      )}
+
       {/* Hooks consent banner — one-time prompt at first launch. Harness
           installs agent status hooks at ~/.claude/settings.json (+ Codex
           equivalent). The hook command is gated on $HARNESS_TERMINAL_ID
@@ -1103,9 +1444,9 @@ const setQuestStep = useCallback((next: QuestStep) => {
         </div>
       )}
 
-      <div className="flex flex-1 min-h-0">
-        {sidebarVisible && (
-          <Sidebar
+      <div className="flex flex-1 min-h-0 relative">
+        {!singleScreenMode && sidebarVisible && (
+          <div className="shrink-0 flex flex-col"><div className="drag-region h-10 shrink-0" /><div className="flex-1 min-h-0 flex"><Sidebar
             worktrees={worktrees}
             pendingWorktrees={pendingWorktrees}
             pendingDeletions={pendingDeletions}
@@ -1129,7 +1470,10 @@ const setQuestStep = useCallback((next: QuestStep) => {
               setActiveWorktreeId(path)
             }}
             onDismissPendingWorktree={handleDismissPendingWorktree}
-            onNewWorktree={() => setShowNewWorktree(true)}
+            onNewWorktree={(repoRoot) => {
+              setNewWorktreeRepo(repoRoot)
+              setShowNewWorktree(true)
+            }}
             onContinueWorktree={handleContinueWorktree}
             onDeleteWorktree={handleDeleteWorktree}
             onRefresh={handleRefreshWorktrees}
@@ -1147,8 +1491,9 @@ const setQuestStep = useCallback((next: QuestStep) => {
               setShowCleanup(false)
               setShowCommandCenter(true)
             }}
-            commandCenterActive={showCommandCenter}
-            width={sidebarWidth}
+            onOpenNewProject={() => setShowNewProject(true)}
+            onOpenMyWeek={() => setShowMyWeek(true)}
+            width={effectiveSidebarWidth}
             collapsedGroups={collapsedGroups}
             onToggleGroup={toggleGroup}
             isGroupCollapsed={isGroupCollapsed}
@@ -1156,16 +1501,41 @@ const setQuestStep = useCallback((next: QuestStep) => {
             onToggleRepo={toggleRepo}
             unifiedRepos={unifiedRepos}
             onToggleUnifiedRepos={() => setUnifiedRepos((v) => !v)}
-          />
+            onCollapseSidebar={() => setSidebarVisible(false)}
+          /></div></div>
         )}
-        {sidebarVisible && <ResizeHandle onDelta={handleSidebarResize} />}
+        {!singleScreenMode && !sidebarVisible && (
+          <div className="shrink-0 flex flex-col"><div className="drag-region h-10 shrink-0" /><div className="flex-1 min-h-0 flex"><CollapsedSidebar
+            onExpand={() => setSidebarVisible(true)}
+            onAddRepo={handleAddRepo}
+            onNewWorktree={() => {
+              setNewWorktreeRepo(undefined)
+              setShowNewWorktree(true)
+            }}
+            onOpenCleanup={() => setShowCleanup(true)}
+            onOpenCommandCenter={() => {
+              setShowNewWorktree(false)
+              setShowActivity(false)
+              setShowCleanup(false)
+              setShowCommandCenter(true)
+            }}
+            onOpenNewProject={() => setShowNewProject(true)}
+            onOpenActivity={() => setShowActivity(true)}
+            onOpenMyWeek={() => setShowMyWeek(true)}
+            onOpenHotkeyCheatsheet={() => setShowHotkeyCheatsheet(true)}
+            onOpenSettings={() => setShowSettings(true)}
+          /></div></div>
+        )}
+        {!singleScreenMode && sidebarVisible && (
+          <div className="shrink-0 flex flex-col"><div className="drag-region h-10 shrink-0" /><div className="flex-1 min-h-0 flex"><ResizeHandle onDelta={handleSidebarResize} /></div></div>
+        )}
         {/* Render ALL worktrees' terminals to keep PTYs alive across switches */}
         {worktrees.map((wt) => {
           const paneTree = panes[wt.path]
           if (!paneTree) return null
           const leaves = getLeaves(paneTree)
           if (leaves.length === 0 || !leaves.some((l) => l.tabs.length > 0)) return null
-          const isVisible = !showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && reportIssueState === null && wt.path === activeWorktreeId && !pendingDeletionByPath[wt.path]
+          const isVisible = !showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && reportIssueState === null && wt.path === activeWorktreeId && !pendingDeletionByPath[wt.path]
           return (
             <div
               key={wt.path}
@@ -1185,28 +1555,33 @@ const setQuestStep = useCallback((next: QuestStep) => {
                   crashedTabIds={crashedTabIds}
                   nameAgentSessions={nameAgentSessions}
                   onSelectTab={handleSelectTab}
+                  onFocusPane={(wtPath, paneId) => setActivePaneId((prev) => prev[wtPath] === paneId ? prev : { ...prev, [wtPath]: paneId })}
                   onAddTab={handleAddTerminalTab}
                   defaultAgent={defaultAgent ?? 'claude'}
                   onAddAgentTab={(wt, kind, paneId) => handleAddAgentTab(wt, kind ?? defaultAgent ?? 'claude', paneId)}
                   onAddBrowserTab={handleAddBrowserTab}
-                  onAddJsonClaudeTab={
-                    settings.jsonModeClaudeTabs ? handleAddJsonClaudeTab : undefined
-                  }
-                  onConvertTabType={
-                    settings.jsonModeClaudeTabs ? handleConvertTabType : undefined
-                  }
-                  defaultClaudeTabType={
-                    settings.jsonModeClaudeTabs ? settings.defaultClaudeTabType : undefined
-                  }
+                  onAddJsonClaudeTab={handleAddJsonClaudeTab}
+                  onConvertTabType={handleConvertTabType}
+                  defaultClaudeTabType={settings.defaultClaudeTabType}
                   onSleepTab={handleSleepTab}
-                  onCloseTab={handleCloseTab}
+                  onCloseTab={requestCloseTab}
                   onRestartAgentTab={handleRestartAgentTab}
                   onReorderTabs={handleReorderTabs}
                   onMoveTabToPane={handleMoveTabToPane}
-                  onSplitPane={handleSplitPane}
                   onSendToAgent={handleSendToAgent}
-                  rightColumnHidden={rightColumnHidden}
-                  onShowRightColumn={() => setRightColumnHidden(false)}
+                  topBarLeadingPx={TITLE_LEADING_PX}
+                  hideAppTitle={singleScreenMode}
+                  onTitleBlockEdge={isVisible ? handleTitleBlockEdge : undefined}
+                  topBarLeadingExtendPx={
+                    singleScreenMode ? 0 : sidebarVisible ? effectiveSidebarWidth + 1 : 48
+                  }
+                  topBarTrailingExtendPx={
+                    !singleScreenMode && !showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && reportIssueState === null
+                      ? rightColumnHidden
+                        ? 48
+                        : rightPanelWidth + 1
+                      : 0
+                  }
                 />
               </ErrorBoundary>
             </div>
@@ -1218,7 +1593,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
             onPRSubmit={handleSubmitNewPRWorktree}
             onCancel={() => setShowNewWorktree(false)}
             repoRoots={repoRoots}
-            defaultRepoRoot={activeWorktreeId ? worktreeRepoByPath[activeWorktreeId] : undefined}
+            defaultRepoRoot={newWorktreeRepo ?? (activeWorktreeId ? worktreeRepoByPath[activeWorktreeId] : undefined)}
           />
         )}
         {reportIssueState !== null && (
@@ -1276,31 +1651,24 @@ const setQuestStep = useCallback((next: QuestStep) => {
             }}
           />
         )}
-        {showReview && activeWorktreeId && (() => {
-          const reviewWt = worktrees.find((w) => w.path === activeWorktreeId)
-          return (
-            <div className="flex-1 min-w-0 flex">
-              <ReviewScreen
-                worktreePath={activeWorktreeId}
-                branchName={reviewWt?.branch ?? 'unknown'}
-                repoLabel={reviewWt ? (reviewWt.repoRoot.split('/').pop() || reviewWt.repoRoot) : ''}
-                mode={reviewMode}
-                commit={reviewCommit}
-                onClose={() => {
-                  setShowReview(false)
-                  setReviewCommit(undefined)
-                }}
-                onSendToAgent={handleSendToAgent}
-              />
+        {showCenterFallback && (
+          <div className="flex-1 min-w-0 flex flex-col">
+            <div
+              className="drag-region h-10 shrink-0 border-b border-border bg-panel flex items-stretch relative z-10"
+              style={{
+                paddingLeft: TITLE_LEADING_PX,
+                marginLeft: fallbackLeadingExtend ? -fallbackLeadingExtend : undefined,
+                marginRight: fallbackTrailingExtend ? -fallbackTrailingExtend : undefined
+              }}
+            >
+              <AppTitleSegment onEdge={handleTitleBlockEdge} />
             </div>
-          )
-        })()}
-        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && reportIssueState === null && !activeWorktreeId && worktrees.length > 0 && (
-          <div className="flex-1 flex items-center justify-center text-dim">
-            Select a worktree to begin
+            <div className="flex-1 flex items-center justify-center text-dim">
+              {worktrees.length === 0 ? 'Create a worktree to get started' : 'Select a worktree to begin'}
+            </div>
           </div>
         )}
-        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && reportIssueState === null && isPendingId(activeWorktreeId) && (() => {
+        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && reportIssueState === null && isPendingId(activeWorktreeId) && (() => {
           const pending = pendingWorktrees.find((p) => p.id === activeWorktreeId)
           if (!pending) return null
           return (
@@ -1312,7 +1680,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
             />
           )
         })()}
-        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && reportIssueState === null && activeWorktreeId && pendingDeletionByPath[activeWorktreeId] && (
+        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && reportIssueState === null && activeWorktreeId && pendingDeletionByPath[activeWorktreeId] && (
           <DeletingWorktreeScreen
             deletion={pendingDeletionByPath[activeWorktreeId]}
             onDismiss={handleDismissPendingDeletion}
@@ -1323,12 +1691,18 @@ const setQuestStep = useCallback((next: QuestStep) => {
           onDismiss={() => setQuestStep('done')}
           onFinish={() => setQuestStep('done')}
         />
-        {/* Right panel — hidden on the new-worktree screen so the form gets the full width */}
-        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && reportIssueState === null && !rightColumnHidden && (
-          <ResizeHandle onDelta={handleRightPanelResize} />
+        {/* Right panel — hidden on the new-worktree screen so the form gets the full width.
+            Pushed down 40px so the workspace tab bar can extend across the top, full width.
+            The 40px top spacers are deliberately NOT drag regions: the tab bar's trailing
+            extension already paints a drag region over this strip with `no-drag` tabs punched
+            out. macOS app-region rects are union/diff'd in DOM order (last wins per pixel), so a
+            `drag-region` here — rendered after the tab bar — would re-mark the tab pixels as
+            draggable and swallow clicks on tabs that overflow above the right column. */}
+        {!singleScreenMode && !showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && reportIssueState === null && !rightColumnHidden && (
+          <div className="shrink-0 flex flex-col"><div className="h-10 shrink-0" /><div className="flex-1 min-h-0 flex"><ResizeHandle onDelta={handleRightPanelResize} /></div></div>
         )}
-        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && !showReview && reportIssueState === null && !rightColumnHidden && (
-          <RightColumn
+        {!singleScreenMode && !showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && reportIssueState === null && !rightColumnHidden && (
+          <div className="shrink-0 flex flex-col"><div className="h-10 shrink-0" /><div className="flex-1 min-h-0 flex"><RightColumn
             width={rightPanelWidth}
             activeWorktreeId={activeWorktreeId}
             activeRepoRoot={activeRepoRoot}
@@ -1349,18 +1723,33 @@ const setQuestStep = useCallback((next: QuestStep) => {
             onOpenFile={handleOpenFile}
             onSendToAgent={handleSendToAgent}
             onOpenReview={() => {
-              setReviewMode('branch')
-              setReviewCommit(undefined)
-              setShowReview(true)
-            }}
-            onOpenCommitReview={(hash, shortHash, subject) => {
-              setReviewMode('branch')
-              setReviewCommit({ hash, shortHash, subject })
-              setShowReview(true)
+              if (activeWorktreeId) void backend.panesOpenReview(activeWorktreeId)
             }}
             onCollapse={() => setRightColumnHidden(true)}
-          />
+          /></div></div>
         )}
+        {!singleScreenMode && !showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && reportIssueState === null && rightColumnHidden && (
+          <div className="shrink-0 flex flex-col"><div className="h-10 shrink-0" /><div className="flex-1 min-h-0 flex"><CollapsedRightPanel
+            worktreePath={activeWorktreeId}
+            onExpand={() => setRightColumnHidden(false)}
+            onReview={() => {
+              if (activeWorktreeId) void backend.panesOpenReview(activeWorktreeId)
+            }}
+            onFileQuickOpen={() => {
+              setShowHotkeyCheatsheet(false)
+              setCommandPaletteMode('files')
+              setShowCommandPalette(true)
+            }}
+          /></div></div>
+        )}
+        <QuakeTerminal
+          worktreePath={activeWorktreeId && !isPendingId(activeWorktreeId) ? activeWorktreeId : null}
+          open={showQuakeTerminal && workspaceVisible}
+          onClose={() => setShowQuakeTerminal(false)}
+          leftPx={singleScreenMode ? 0 : sidebarVisible ? sidebarWidth + 1 : 48}
+          rightPx={singleScreenMode ? 0 : rightColumnHidden ? 48 : rightPanelWidth + 1}
+          topPx={40}
+        />
       </div>
     </div>
     {settingsOverlay}
@@ -1407,6 +1796,17 @@ const setQuestStep = useCallback((next: QuestStep) => {
       isOpen={showAddBackend}
       onClose={() => setShowAddBackend(false)}
     />
+    {holdToQuit.phase !== 'idle' && (
+      <HoldToQuitOverlay key={holdToQuit.holdId} fading={holdToQuit.phase === 'fading'} />
+    )}
+    {closeTabConfirm && (
+      <ConfirmCloseTabModal
+        tabLabel={closeTabConfirm.label}
+        reason={closeTabConfirm.reason}
+        onConfirm={confirmCloseTab}
+        onCancel={cancelCloseTab}
+      />
+    )}
     </HotkeysProvider>
   )
 }

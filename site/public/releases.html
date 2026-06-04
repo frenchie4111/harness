@@ -26,6 +26,7 @@
   <meta name="twitter:image:alt" content="Screenshot of Harness showing the worktree sidebar, terminal tabs, and changed-files panel." />
 
   <link rel="icon" type="image/png" href="icon.png" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
 
@@ -55,16 +56,35 @@
 <body class="min-h-screen grid-bg">
 
   <!-- Nav -->
-  <nav class="max-w-6xl mx-auto px-6 py-6 flex items-center justify-between">
+  <nav class="max-w-6xl mx-auto px-6 py-6 flex items-center justify-between relative z-30">
     <a href="/" class="flex items-center gap-3">
       <img src="icon.png" alt="Harness icon" class="w-9 h-9 rounded-lg" />
       <span class="text-xl font-bold">Harness</span>
     </a>
-    <div class="flex items-center gap-4 sm:gap-6 text-sm text-neutral-400">
-      <a href="/#features" class="hidden sm:inline hover:text-neutral-100 transition-colors">Features</a>
+    <div class="hidden sm:flex items-center gap-4 sm:gap-6 text-sm text-neutral-400">
+      <a href="/#features" class="hover:text-neutral-100 transition-colors">Features</a>
       <a href="guide.html" class="hover:text-neutral-100 transition-colors">Guide</a>
       <a href="/#install" class="hover:text-neutral-100 transition-colors">Install</a>
       <a href="https://github.com/frenchie4111/harness" class="hover:text-neutral-100 transition-colors">GitHub</a>
+    </div>
+    <button
+      id="mobile-menu-toggle"
+      type="button"
+      aria-label="Open menu"
+      aria-expanded="false"
+      aria-controls="mobile-menu"
+      class="sm:hidden p-2 -mr-2 text-neutral-400 hover:text-neutral-100 transition-colors"
+    ></button>
+    <div
+      id="mobile-menu"
+      class="hidden sm:hidden absolute top-full left-0 right-0 mx-4 mt-1 bg-[#0a0a0a]/95 backdrop-blur border border-neutral-800 rounded-lg shadow-xl overflow-hidden"
+    >
+      <nav class="flex flex-col py-2 text-sm text-neutral-400">
+        <a href="/#features" class="px-4 py-3 hover:bg-neutral-800/50 hover:text-neutral-100 transition-colors">Features</a>
+        <a href="guide.html" class="px-4 py-3 hover:bg-neutral-800/50 hover:text-neutral-100 transition-colors">Guide</a>
+        <a href="/#install" class="px-4 py-3 hover:bg-neutral-800/50 hover:text-neutral-100 transition-colors">Install</a>
+        <a href="https://github.com/frenchie4111/harness" class="px-4 py-3 hover:bg-neutral-800/50 hover:text-neutral-100 transition-colors">GitHub</a>
+      </nav>
     </div>
   </nav>
 
@@ -81,6 +101,109 @@
 
   <!-- Releases -->
   <div class="max-w-3xl mx-auto px-6 pb-24">
+
+    <!-- v2.10.0 -->
+    <section id="v2.10.0" class="release-section py-10">
+      <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
+        <h2 class="text-3xl font-bold tracking-tight"><a href="#v2.10.0" class="release-anchor">v2.10.0<span class="anchor-icon">🔗</span></a></h2>
+        <span class="text-sm text-neutral-500">May 25, 2026</span>
+      </div>
+      <a href="https://github.com/frenchie4111/harness/releases/tag/v2.10.0" class="text-sm text-amber-400/80 hover:text-amber-300 transition-colors">Download &rarr;</a>
+      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">Chat mode is promoted to a first-class Claude interface, terminals gain clickable URLs, progress bars, and in-tab search, and a new system-aware theme engine lets you load custom themes from disk — alongside a wave of community-contributed improvements.</p>
+      <div class="note-body">
+        <h4>New features</h4>
+        <ul>
+          <li><strong>Chat mode is now first-class</strong> — the interface formerly known as "JSON mode" is relaunched as Chat and promoted to a primary Claude interface, with an in-app announcements banner that surfaces release news and updates from within the app.</li>
+          <li><strong>Send on Enter in Chat</strong> — a new setting lets you send messages with Enter; the active hotkey is shown on the Send button and in the compose placeholder so you always know what to press.</li>
+          <li><strong>Clickable URLs, progress bars, and Cmd+F search in terminals</strong> — URLs in terminal output are now clickable, OSC 9;4 progress events display a progress bar in the tab, and <code>Cmd+F</code> opens an in-terminal search overlay. <em class="text-neutral-500">(thanks <a href="https://github.com/big-guy" class="text-amber-400/80 hover:text-amber-300">@big-guy</a>, <a href="https://github.com/frenchie4111/harness/pull/58" class="text-amber-400/80 hover:text-amber-300">#58</a>)</em></li>
+          <li><strong>System theme + custom themes from disk</strong> — Harness now follows your system light/dark preference automatically, and you can load fully custom themes from a JSON file on disk. <em class="text-neutral-500">(thanks <a href="https://github.com/pgodschalk" class="text-amber-400/80 hover:text-amber-300">@pgodschalk</a>, <a href="https://github.com/frenchie4111/harness/pull/47" class="text-amber-400/80 hover:text-amber-300">#47</a>)</em></li>
+          <li><strong>MCP <code>create_worktree</code> parity</strong> — the MCP tool for creating worktrees now supports the same options as the UI: PR creation, kickoff prompts, agent selection, and model choice.</li>
+          <li><strong>Reveal in Finder from the All Files panel</strong> — a new button lets you open any file in Finder without leaving the app. <em class="text-neutral-500">(thanks <a href="https://github.com/big-guy" class="text-amber-400/80 hover:text-amber-300">@big-guy</a>, <a href="https://github.com/frenchie4111/harness/pull/51" class="text-amber-400/80 hover:text-amber-300">#51</a>)</em></li>
+          <li><strong>Copy as JSON for built-in themes</strong> — built-in theme rows now have a Copy as JSON button, making it easy to use them as a starting point for a custom theme. <em class="text-neutral-500">(thanks <a href="https://github.com/big-guy" class="text-amber-400/80 hover:text-amber-300">@big-guy</a>, <a href="https://github.com/frenchie4111/harness/pull/55" class="text-amber-400/80 hover:text-amber-300">#55</a>)</em></li>
+        </ul>
+        <h4>Improvements</h4>
+        <ul>
+          <li><strong>Unified Chat composer</strong> — the chat compose area is now a single card for a cleaner, less cluttered look.</li>
+          <li><strong>In-progress git ops shown in the sidebar</strong> — detached worktrees now display what git operation is running so you know why they're busy. <em class="text-neutral-500">(thanks <a href="https://github.com/big-guy" class="text-amber-400/80 hover:text-amber-300">@big-guy</a>, <a href="https://github.com/frenchie4111/harness/pull/63" class="text-amber-400/80 hover:text-amber-300">#63</a>)</em></li>
+          <li><strong>GitHub API diagnostics</strong> — each GitHub API call now writes a line to the debug log and contributes to a HUD rate metric, making it easier to diagnose slow or failing PR fetches. <em class="text-neutral-500">(thanks <a href="https://github.com/big-guy" class="text-amber-400/80 hover:text-amber-300">@big-guy</a>, <a href="https://github.com/frenchie4111/harness/pull/54" class="text-amber-400/80 hover:text-amber-300">#54</a>)</em></li>
+          <li><strong>PR panel information layout</strong> — information in the PR right pane has been reorganized for easier scanning. <em class="text-neutral-500">(thanks <a href="https://github.com/big-guy" class="text-amber-400/80 hover:text-amber-300">@big-guy</a>, <a href="https://github.com/frenchie4111/harness/pull/34" class="text-amber-400/80 hover:text-amber-300">#34</a>)</em></li>
+          <li><strong>Improved <code>gh</code> CLI integration</strong> — GitHub auth via the <code>gh</code> CLI is more reliable across different shell setups. <em class="text-neutral-500">(thanks <a href="https://github.com/ljacomet" class="text-amber-400/80 hover:text-amber-300">@ljacomet</a>, <a href="https://github.com/frenchie4111/harness/pull/46" class="text-amber-400/80 hover:text-amber-300">#46</a>)</em></li>
+          <li><strong>Persistent debug log</strong> — the debug log is now append-only across sessions and rotates at 10 MB, so crash forensics from before the most recent restart remain inspectable.</li>
+          <li><strong>Git branch in the sidebar title bar</strong> — dev builds now show the active git branch in the sidebar title for quick orientation. <em class="text-neutral-500">(thanks <a href="https://github.com/big-guy" class="text-amber-400/80 hover:text-amber-300">@big-guy</a>, <a href="https://github.com/frenchie4111/harness/pull/67" class="text-amber-400/80 hover:text-amber-300">#67</a>)</em></li>
+          <li><strong>Monaco recovery banner</strong> — if the built-in editor's language worker fails to initialize, Harness now logs a diagnostic and shows a recovery banner instead of silently degrading.</li>
+        </ul>
+        <h4>Fixes</h4>
+        <ul>
+          <li>Chat mode auto-scroll is restored — the view now reliably follows streaming output and scrolls back down after you send a message.</li>
+          <li>The empty-state flash in Chat is suppressed while conversation history is loading, so the panel no longer blinks on open.</li>
+          <li>Long branch names in the sidebar title bar no longer overflow the sidebar edge.</li>
+          <li>Multi-backend snapshot merging now handles per-slice state correctly, preventing stale data after reconnecting.</li>
+          <li>Failed remote backends are now dropped from the registry so the saved-active backend falls back to local automatically.</li>
+          <li>WebSocket reconnects now refresh the client ID and re-join all open terminals, restoring output delivery without a manual reload.</li>
+          <li>Cross-fork pull requests are now correctly detected via SHA search, fixing missing PR status for upstream forks. <em class="text-neutral-500">(thanks <a href="https://github.com/big-guy" class="text-amber-400/80 hover:text-amber-300">@big-guy</a>, <a href="https://github.com/frenchie4111/harness/pull/68" class="text-amber-400/80 hover:text-amber-300">#68</a>)</em></li>
+          <li>The terminal theme is now re-applied when you change the app theme, so terminal colors stay in sync. <em class="text-neutral-500">(thanks <a href="https://github.com/big-guy" class="text-amber-400/80 hover:text-amber-300">@big-guy</a>, <a href="https://github.com/frenchie4111/harness/pull/62" class="text-amber-400/80 hover:text-amber-300">#62</a>)</em></li>
+          <li>The headless tarball now ships the correct platform-specific Claude binary so chat mode spawns correctly on all platforms.</li>
+          <li>Sleeping chat tabs now wake correctly when you start typing and no longer re-sleep immediately after waking.</li>
+        </ul>
+        <p class="text-neutral-400 text-sm mt-6 leading-relaxed">Huge thanks to <a href="https://github.com/big-guy" class="text-amber-400/80 hover:text-amber-300">@big-guy</a>, <a href="https://github.com/ljacomet" class="text-amber-400/80 hover:text-amber-300">@ljacomet</a>, and <a href="https://github.com/pgodschalk" class="text-amber-400/80 hover:text-amber-300">@pgodschalk</a> for their contributions to this release.</p>
+      </div>
+    </section>
+
+    <!-- v2.9.3 -->
+    <section id="v2.9.3" class="release-section py-10">
+      <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
+        <h2 class="text-3xl font-bold tracking-tight"><a href="#v2.9.3" class="release-anchor">v2.9.3<span class="anchor-icon">🔗</span></a></h2>
+        <span class="text-sm text-neutral-500">May 21, 2026</span>
+      </div>
+      <a href="https://github.com/frenchie4111/harness/releases/tag/v2.9.3" class="text-sm text-amber-400/80 hover:text-amber-300 transition-colors">Download &rarr;</a>
+      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">A major feature release — snooze worktrees, open any GitHub PR directly as a worktree, connect to multiple backends from a single window, and merge PRs without leaving the app. Includes API cost tracking per activity, reliable PR status for upstream forks, and deep links from the in-app updater to the relevant changelog section.</p>
+      <p class="text-neutral-500 text-sm mb-4 leading-relaxed"><em>Note: v2.9.0 and v2.9.1 failed to publish — all of their changes are rolled into this release.</em></p>
+      <div class="note-body">
+        <h4>New features</h4>
+        <ul>
+          <li><strong>Snooze</strong> — snooze a worktree to keep it out of the way until you're ready to return to it. <em class="text-neutral-500">(thanks <a href="https://github.com/big-guy" class="text-amber-400/80 hover:text-amber-300">@big-guy</a>, <a href="https://github.com/frenchie4111/harness/pull/28" class="text-amber-400/80 hover:text-amber-300">#28</a>)</em></li>
+          <li><strong>Open PR as worktree</strong> — open any existing GitHub pull request directly as a new worktree, so you can pick up where another session left off without manual branch setup.</li>
+          <li><strong>Multi-backend support</strong> — connect a single Harness window to multiple backends — your local instance plus any number of remote Harness servers — and switch between them using the chip strip at the bottom of the sidebar.</li>
+          <li><strong>Merge button in the PR panel</strong> — merge your pull request directly from the Harness PR panel without switching to GitHub.</li>
+          <li><strong>Activity costs tab</strong> — view accumulated API costs broken down by activity directly in the activity panel.</li>
+          <li><strong>PR status for upstream forks</strong> — Harness now correctly tracks PR status when the pull request originates from an upstream fork, not just same-repo branches. <em class="text-neutral-500">(thanks <a href="https://github.com/big-guy" class="text-amber-400/80 hover:text-amber-300">@big-guy</a>, <a href="https://github.com/frenchie4111/harness/pull/33" class="text-amber-400/80 hover:text-amber-300">#33</a>)</em></li>
+          <li><strong>Release notes deep links in the updater</strong> — the in-app update notification now links directly to the relevant changelog section for each release. <em class="text-neutral-500">(thanks <a href="https://github.com/big-guy" class="text-amber-400/80 hover:text-amber-300">@big-guy</a>, <a href="https://github.com/frenchie4111/harness/pull/35" class="text-amber-400/80 hover:text-amber-300">#35</a>)</em></li>
+        </ul>
+        <h4>Improvements</h4>
+        <ul>
+          <li><strong>Middle-click to close tabs</strong> — middle-clicking a terminal tab now closes it, matching familiar browser behavior. <em class="text-neutral-500">(thanks <a href="https://github.com/tresat" class="text-amber-400/80 hover:text-amber-300">@tresat</a>, <a href="https://github.com/frenchie4111/harness/pull/40" class="text-amber-400/80 hover:text-amber-300">#40</a>)</em></li>
+          <li><strong>Improved repository selection</strong> — the repository picker flow is smoother and easier to navigate. <em class="text-neutral-500">(thanks <a href="https://github.com/ljacomet" class="text-amber-400/80 hover:text-amber-300">@ljacomet</a>, <a href="https://github.com/frenchie4111/harness/pull/37" class="text-amber-400/80 hover:text-amber-300">#37</a>)</em></li>
+          <li><strong>Hotkey badge readability</strong> — hotkey badges in tooltips and the onboarding quest card are easier to read. <em class="text-neutral-500">(thanks <a href="https://github.com/big-guy" class="text-amber-400/80 hover:text-amber-300">@big-guy</a>, <a href="https://github.com/frenchie4111/harness/pull/29" class="text-amber-400/80 hover:text-amber-300">#29</a>)</em></li>
+        </ul>
+        <h4>Fixes</h4>
+        <ul>
+          <li>Duplicate Claude and Codex hook entries are no longer created when hooks are re-installed — existing entries are now matched by command substring before adding a new one. <em class="text-neutral-500">(thanks <a href="https://github.com/big-guy" class="text-amber-400/80 hover:text-amber-300">@big-guy</a>, <a href="https://github.com/frenchie4111/harness/pull/43" class="text-amber-400/80 hover:text-amber-300">#43</a>)</em></li>
+          <li>Fixed the MCP worktree setup script failing in certain configurations. <em class="text-neutral-500">(thanks <a href="https://github.com/ljacomet" class="text-amber-400/80 hover:text-amber-300">@ljacomet</a>, <a href="https://github.com/frenchie4111/harness/pull/39" class="text-amber-400/80 hover:text-amber-300">#39</a>)</em></li>
+          <li>PR status is now preserved from cache when a GitHub API fetch fails, preventing status flickers. <em class="text-neutral-500">(thanks <a href="https://github.com/big-guy" class="text-amber-400/80 hover:text-amber-300">@big-guy</a>, <a href="https://github.com/frenchie4111/harness/pull/32" class="text-amber-400/80 hover:text-amber-300">#32</a>)</em></li>
+          <li>Harness no longer errors when a remote snapshot contains state slices it doesn't recognise, making mixed-version setups more resilient during rolling updates.</li>
+          <li>Fixed snooze not routing correctly to the backend in multi-backend setups.</li>
+        </ul>
+        <p class="text-neutral-400 text-sm mt-6 leading-relaxed">Huge thanks to <a href="https://github.com/big-guy" class="text-amber-400/80 hover:text-amber-300">@big-guy</a>, <a href="https://github.com/ljacomet" class="text-amber-400/80 hover:text-amber-300">@ljacomet</a>, and <a href="https://github.com/tresat" class="text-amber-400/80 hover:text-amber-300">@tresat</a> for their contributions to this release.</p>
+      </div>
+    </section>
+
+    <!-- v2.9.1 -->
+    <section id="v2.9.1" class="release-section py-10">
+      <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
+        <h2 class="text-3xl font-bold tracking-tight"><a href="#v2.9.1" class="release-anchor">v2.9.1<span class="anchor-icon">🔗</span></a></h2>
+        <span class="text-sm text-neutral-500">May 20, 2026</span>
+      </div>
+      <p class="text-neutral-400 mt-4 leading-relaxed"><span class="text-amber-400/90">This release failed to publish.</span> All of its changes are rolled into <a href="#v2.9.3" class="text-amber-400/80 hover:text-amber-300 transition-colors">v2.9.3</a>.</p>
+    </section>
+
+    <!-- v2.9.0 -->
+    <section id="v2.9.0" class="release-section py-10">
+      <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
+        <h2 class="text-3xl font-bold tracking-tight"><a href="#v2.9.0" class="release-anchor">v2.9.0<span class="anchor-icon">🔗</span></a></h2>
+        <span class="text-sm text-neutral-500">May 20, 2026</span>
+      </div>
+      <p class="text-neutral-400 mt-4 leading-relaxed"><span class="text-amber-400/90">This release failed to publish.</span> All of its changes are rolled into <a href="#v2.9.3" class="text-amber-400/80 hover:text-amber-300 transition-colors">v2.9.3</a>.</p>
+    </section>
 
     <!-- v2.8.2 -->
     <section id="v2.8.2" class="release-section py-10">
@@ -739,5 +862,36 @@
       </div>
     </div>
   </footer>
+
+  <script>
+    (function () {
+      var btn = document.getElementById('mobile-menu-toggle');
+      var menu = document.getElementById('mobile-menu');
+      if (!btn || !menu) return;
+      var iconMenu = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>';
+      var iconX = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M6 18L18 6"/></svg>';
+      btn.innerHTML = iconMenu;
+      var open = false;
+      function setOpen(next) {
+        open = next;
+        menu.classList.toggle('hidden', !open);
+        btn.innerHTML = open ? iconX : iconMenu;
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        btn.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+        document.body.classList.toggle('overflow-hidden', open);
+      }
+      btn.addEventListener('click', function (e) { e.stopPropagation(); setOpen(!open); });
+      document.addEventListener('mousedown', function (e) {
+        if (!open) return;
+        if (!menu.contains(e.target) && !btn.contains(e.target)) setOpen(false);
+      });
+      document.addEventListener('keydown', function (e) {
+        if (open && e.key === 'Escape') setOpen(false);
+      });
+      menu.querySelectorAll('a').forEach(function (a) {
+        a.addEventListener('click', function () { setOpen(false); });
+      });
+    })();
+  </script>
 </body>
 </html>

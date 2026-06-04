@@ -21,6 +21,7 @@ export type Action =
   | 'backend9'
   | 'newShellTab'
   | 'closeTab'
+  | 'renameTab'
   | 'nextTab'
   | 'prevTab'
   | 'newWorktree'
@@ -35,9 +36,16 @@ export type Action =
   | 'splitPaneRight'
   | 'splitPaneDown'
   | 'toggleRightColumn'
+  | 'toggleSingleScreen'
   | 'togglePerfMonitor'
   | 'hotkeyCheatsheet'
   | 'openReview'
+  | 'toggleQuakeTerminal'
+  | 'openSettings'
+  | 'uiScaleUp'
+  | 'uiScaleDown'
+  | 'uiScaleReset'
+  | 'cycleWorktreeDetail'
 
 export interface Modifiers {
   cmd?: boolean
@@ -65,7 +73,7 @@ export const DEFAULT_HOTKEYS: Record<Action, HotkeyBinding> = {
   worktree9: { key: '9', modifiers: { cmd: true } },
   // Backend switcher hotkeys (multi-backend Tier 1, design §F).
   // Cmd+Shift+1..9 to avoid colliding with worktree1..9. The cycle
-  // hotkey from the design (Cmd+`) is already taken by `focusTerminal`,
+  // hotkey from the design (Cmd+`) is the macOS "next window" shortcut,
   // so cycle is deferred — index switching is enough for v1's expected
   // 2-3 backend usage.
   backend1: { key: '1', modifiers: { cmd: true, shift: true } },
@@ -79,11 +87,16 @@ export const DEFAULT_HOTKEYS: Record<Action, HotkeyBinding> = {
   backend9: { key: '9', modifiers: { cmd: true, shift: true } },
   newShellTab: { key: 't', modifiers: { cmd: true } },
   closeTab: { key: 'w', modifiers: { cmd: true } },
+  renameTab: { key: 'l', modifiers: { cmd: true } },
   nextTab: { key: 'Tab', modifiers: { ctrl: true } },
   prevTab: { key: 'Tab', modifiers: { ctrl: true, shift: true } },
   newWorktree: { key: 'n', modifiers: { cmd: true } },
   refreshWorktrees: { key: 'r', modifiers: { cmd: true, shift: true } },
-  focusTerminal: { key: '`', modifiers: { cmd: true } },
+  // Gesture-driven: focusTerminal fires on a double-tap of Shift (see
+  // GESTURE_ACTIONS / useDoubleTapShift), not this binding. The entry stays so
+  // the action remains a valid member of the binding map; the key matcher in
+  // useHotkeys skips it.
+  focusTerminal: { key: '`', modifiers: { ctrl: true, shift: true } },
   toggleSidebar: { key: 'b', modifiers: { cmd: true } },
   openPR: { key: 'g', modifiers: { cmd: true, shift: true } },
   openInEditor: { key: 'e', modifiers: { cmd: true, shift: true } },
@@ -91,12 +104,25 @@ export const DEFAULT_HOTKEYS: Record<Action, HotkeyBinding> = {
   commandPalette: { key: 'k', modifiers: { cmd: true } },
   fileQuickOpen: { key: 'p', modifiers: { cmd: true } },
   splitPaneRight: { key: 'd', modifiers: { cmd: true } },
-  splitPaneDown: { key: 'd', modifiers: { cmd: true, alt: true } },
-  toggleRightColumn: { key: 'b', modifiers: { cmd: true, alt: true } },
-  togglePerfMonitor: { key: 'd', modifiers: { cmd: true, shift: true } },
+  splitPaneDown: { key: 'd', modifiers: { cmd: true, shift: true } },
+  toggleRightColumn: { key: 'b', modifiers: { cmd: true, shift: true } },
+  toggleSingleScreen: { key: 'F12', modifiers: {} },
+  togglePerfMonitor: { key: 'p', modifiers: { cmd: true, alt: true } },
   hotkeyCheatsheet: { key: '/', modifiers: { cmd: true, shift: true } },
   openReview: { key: 'r', modifiers: { cmd: true, alt: true } },
+  // Quake-style drop-down terminal on Ctrl+backtick (classic Quake's backtick).
+  toggleQuakeTerminal: { key: '`', modifiers: { ctrl: true } },
+  openSettings: { key: ',', modifiers: { cmd: true } },
+  uiScaleUp: { key: '+', modifiers: { cmd: true, shift: true } },
+  uiScaleDown: { key: '-', modifiers: { cmd: true } },
+  uiScaleReset: { key: '=', modifiers: { cmd: true } },
+  cycleWorktreeDetail: { key: 'i', modifiers: { cmd: true } },
 }
+
+/** Actions triggered by a gesture (e.g. double-tap Shift) rather than a
+ * modifier+key chord. The key matcher in useHotkeys skips these, and the
+ * Settings rebind UI omits them — they have no editable binding. */
+export const GESTURE_ACTIONS: ReadonlySet<Action> = new Set<Action>(['focusTerminal'])
 
 /** Check if a KeyboardEvent matches a hotkey binding */
 export function matchesBinding(e: KeyboardEvent, binding: HotkeyBinding): boolean {
@@ -154,7 +180,7 @@ export function formatBindingGlyphs(binding: string, separator = ' '): string {
       if (part === 'ArrowLeft') return '\u2190'
       if (part === 'ArrowRight') return '\u2192'
       if (part === 'Enter') return '\u23CE'
-      if (part === 'Tab') return '\u21E5'
+      if (part === 'Tab') return 'Tab'
       if (part === 'Escape') return 'Esc'
       return part
     })
@@ -196,6 +222,7 @@ export const ACTION_LABELS: Record<Action, string> = {
   backend9: 'Switch to backend 9',
   newShellTab: 'New shell tab',
   closeTab: 'Close tab',
+  renameTab: 'Rename tab',
   nextTab: 'Next tab',
   prevTab: 'Previous tab',
   newWorktree: 'New worktree',
@@ -210,10 +237,91 @@ export const ACTION_LABELS: Record<Action, string> = {
   splitPaneRight: 'Split pane right',
   splitPaneDown: 'Split pane down',
   toggleRightColumn: 'Toggle right column',
+  toggleSingleScreen: 'Toggle single screen mode',
   togglePerfMonitor: 'Performance monitor',
   hotkeyCheatsheet: 'Keyboard shortcuts',
-  openReview: 'Review changes'
+  openReview: 'Review changes',
+  toggleQuakeTerminal: 'Toggle drop-down terminal',
+  openSettings: 'Open settings',
+  uiScaleUp: 'Increase UI size',
+  uiScaleDown: 'Decrease UI size',
+  uiScaleReset: 'Reset UI size',
+  cycleWorktreeDetail: 'Cycle worktree detail (sidebar)'
 }
+
+export type CategoryId =
+  | 'navigation'
+  | 'backends'
+  | 'worktree-mgmt'
+  | 'tabs'
+  | 'layout'
+  | 'commands'
+  | 'overlays'
+  | 'external'
+
+export interface HotkeyCategory {
+  id: CategoryId
+  label: string
+  actions: Action[]
+  /** Optional groups within the category whose members should render as a
+   *  single collapsed "family" row by default (e.g. worktree1..9). The
+   *  `summary` is what shows on the collapsed row; expand reveals the
+   *  individual actions for rebinding. */
+  families?: { label: string; summary: string; actions: Action[] }[]
+}
+
+export const ACTION_CATEGORIES: HotkeyCategory[] = [
+  {
+    id: 'navigation',
+    label: 'Worktree navigation',
+    actions: ['nextWorktree', 'prevWorktree'],
+    families: [{
+      label: 'Switch to worktree N',
+      summary: '⌘ 1 … ⌘ 9',
+      actions: ['worktree1', 'worktree2', 'worktree3', 'worktree4', 'worktree5', 'worktree6', 'worktree7', 'worktree8', 'worktree9']
+    }]
+  },
+  {
+    id: 'backends',
+    label: 'Backends',
+    actions: [],
+    families: [{
+      label: 'Switch to backend N',
+      summary: '⌘ ⇧ 1 … ⌘ ⇧ 9',
+      actions: ['backend1', 'backend2', 'backend3', 'backend4', 'backend5', 'backend6', 'backend7', 'backend8', 'backend9']
+    }]
+  },
+  {
+    id: 'worktree-mgmt',
+    label: 'Worktree management',
+    actions: ['newWorktree', 'refreshWorktrees']
+  },
+  {
+    id: 'tabs',
+    label: 'Tabs & panes',
+    actions: ['newShellTab', 'closeTab', 'nextTab', 'prevTab', 'splitPaneRight', 'splitPaneDown']
+  },
+  {
+    id: 'layout',
+    label: 'Window layout',
+    actions: ['toggleSidebar', 'toggleRightColumn', 'uiScaleUp', 'uiScaleDown', 'uiScaleReset', 'cycleWorktreeDetail']
+  },
+  {
+    id: 'commands',
+    label: 'Search & commands',
+    actions: ['commandPalette', 'fileQuickOpen', 'toggleCommandCenter', 'hotkeyCheatsheet']
+  },
+  {
+    id: 'overlays',
+    label: 'App overlays',
+    actions: ['openSettings', 'openReview', 'togglePerfMonitor', 'toggleQuakeTerminal']
+  },
+  {
+    id: 'external',
+    label: 'External actions',
+    actions: ['openPR', 'openInEditor']
+  }
+]
 
 /** Capture a KeyboardEvent into a HotkeyBinding (for the rebind UI) */
 export function eventToBinding(e: KeyboardEvent): HotkeyBinding | null {

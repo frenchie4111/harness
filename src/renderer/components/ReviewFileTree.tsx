@@ -1,5 +1,5 @@
-import { useEffect, useRef, useCallback } from 'react'
-import { ChevronRight, Check } from 'lucide-react'
+import { useEffect, useRef, useCallback, useMemo, useState } from 'react'
+import { ChevronRight, Folder, FolderOpen, FileText } from 'lucide-react'
 import type { ChangedFile } from '../types'
 
 export interface ReviewComment {
@@ -15,6 +15,9 @@ interface ReviewFileTreeProps {
   selectedFile: string | null
   reviewedFiles: Set<string>
   comments: ReviewComment[]
+  /** Folder paths the user has explicitly collapsed. All other folders
+   *  render expanded by default — reviews are small enough that "open
+   *  everything" is the right starting state. */
   collapsedDirs: Set<string>
   onSelectFile: (path: string) => void
   onToggleReviewed: (path: string) => void
@@ -37,73 +40,106 @@ const STATUS_COLOR: Record<ChangedFile['status'], string> = {
   untracked: 'text-dim'
 }
 
-interface FileGroup {
-  dir: string
-  files: ChangedFile[]
+interface DirNode {
+  kind: 'dir'
+  name: string
+  path: string
+  children: TreeNode[]
 }
+interface FileNode {
+  kind: 'file'
+  name: string
+  path: string
+  file: ChangedFile
+}
+type TreeNode = DirNode | FileNode
 
-function groupAndSortFiles(files: ChangedFile[]): FileGroup[] {
-  const groups = new Map<string, ChangedFile[]>()
+const EMPTY_SET: Set<string> = new Set()
+
+function buildTree(files: ChangedFile[]): DirNode {
+  const root: DirNode = { kind: 'dir', name: '', path: '', children: [] }
   for (const file of files) {
-    const lastSlash = file.path.lastIndexOf('/')
-    const dir = lastSlash >= 0 ? file.path.slice(0, lastSlash + 1) : ''
-    const list = groups.get(dir) || []
-    list.push(file)
-    groups.set(dir, list)
-  }
-
-  const result: FileGroup[] = []
-  for (const [dir, dirFiles] of groups) {
-    dirFiles.sort((a, b) => {
-      const statusOrder = (s: ChangedFile['status']): number => {
-        if (s === 'deleted') return 0
-        if (s === 'modified') return 1
-        return 2
+    const parts = file.path.split('/')
+    let node: DirNode = root
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i]
+      const isLast = i === parts.length - 1
+      if (isLast) {
+        node.children.push({
+          kind: 'file',
+          name: part,
+          path: file.path,
+          file
+        })
+      } else {
+        const subPath = parts.slice(0, i + 1).join('/')
+        let dir = node.children.find(
+          (c): c is DirNode => c.kind === 'dir' && c.name === part
+        )
+        if (!dir) {
+          dir = { kind: 'dir', name: part, path: subPath, children: [] }
+          node.children.push(dir)
+        }
+        node = dir
       }
-      const oa = statusOrder(a.status)
-      const ob = statusOrder(b.status)
-      if (oa !== ob) return oa - ob
-      const sizeA = (a.additions ?? 0) + (a.deletions ?? 0)
-      const sizeB = (b.additions ?? 0) + (b.deletions ?? 0)
-      if (sizeA !== sizeB) return sizeB - sizeA
-      return a.path.localeCompare(b.path)
-    })
-    result.push({ dir, files: dirFiles })
-  }
-  result.sort((a, b) => a.dir.localeCompare(b.dir))
-  return result
-}
-
-function flatFileList(groups: FileGroup[], collapsedDirs: Set<string>): ChangedFile[] {
-  const result: ChangedFile[] = []
-  for (const group of groups) {
-    if (!collapsedDirs.has(group.dir)) {
-      result.push(...group.files)
     }
   }
-  return result
+  sortTree(root)
+  return root
 }
 
-const MAX_STAT_BLOCKS = 5
+function sortTree(node: DirNode): void {
+  node.children.sort((a, b) => {
+    if (a.kind !== b.kind) return a.kind === 'dir' ? -1 : 1
+    return a.name.localeCompare(b.name)
+  })
+  for (const c of node.children) {
+    if (c.kind === 'dir') sortTree(c)
+  }
+}
 
-function DiffStatBar({ additions, deletions }: { additions: number; deletions: number }): JSX.Element {
-  const total = additions + deletions
-  if (total === 0) return <span className="shrink-0 w-[50px]" />
-  const addBlocks = Math.round((additions / total) * MAX_STAT_BLOCKS)
-  const delBlocks = MAX_STAT_BLOCKS - addBlocks
-  return (
-    <span className="shrink-0 flex items-center gap-1">
-      <span className="font-mono text-[10px] tabular-nums text-faint">{total}</span>
-      <span className="flex gap-px">
-        {Array.from({ length: addBlocks }, (_, i) => (
-          <span key={`a${i}`} className="w-[6px] h-[6px] rounded-[1px] bg-success" />
-        ))}
-        {Array.from({ length: delBlocks }, (_, i) => (
-          <span key={`d${i}`} className="w-[6px] h-[6px] rounded-[1px] bg-danger" />
-        ))}
-      </span>
-    </span>
-  )
+interface DirChain {
+  /** Path of the deepest dir in the collapsed chain. Doubles as the
+   *  collapse-state key — toggling collapses/expands the whole chain. */
+  path: string
+  /** Slash-joined display name: "a/b/c" for a chain of three. */
+  displayName: string
+  /** Children render under the deepest dir's children. */
+  inner: DirNode
+}
+
+/** Walk down a directory chain while each dir has exactly one dir-child.
+ *  The chain stops at: a dir with multiple children, a dir with a file
+ *  child, or a leaf. File-child dirs do NOT collapse — matches VS Code's
+ *  "Compact Folders" behavior. */
+function resolveChain(node: DirNode): DirChain {
+  let cur = node
+  const names = [cur.name]
+  while (cur.children.length === 1 && cur.children[0].kind === 'dir') {
+    cur = cur.children[0]
+    names.push(cur.name)
+  }
+  return { path: cur.path, displayName: names.join('/'), inner: cur }
+}
+
+/** Walk the tree in render order, emitting only files whose ancestor
+ *  folders are all expanded. Used by j/k keyboard nav so it matches what
+ *  the user actually sees. Mirrors the render-time chain collapse so
+ *  collapse keys line up with rendered rows. */
+function visibleFiles(root: DirNode, collapsed: Set<string>): ChangedFile[] {
+  const out: ChangedFile[] = []
+  const walk = (node: DirNode): void => {
+    for (const child of node.children) {
+      if (child.kind === 'file') {
+        out.push(child.file)
+      } else {
+        const chain = resolveChain(child)
+        if (!collapsed.has(chain.path)) walk(chain.inner)
+      }
+    }
+  }
+  walk(root)
+  return out
 }
 
 export function ReviewFileTree({
@@ -117,8 +153,21 @@ export function ReviewFileTree({
   onToggleDir
 }: ReviewFileTreeProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null)
-  const groups = groupAndSortFiles(files)
-  const navigableFiles = flatFileList(groups, collapsedDirs)
+  const [filter, setFilter] = useState('')
+  const filtered = useMemo(() => {
+    const q = filter.trim().toLowerCase()
+    if (!q) return files
+    return files.filter((f) => f.path.toLowerCase().includes(q))
+  }, [files, filter])
+  const filtering = filter.trim().length > 0
+  const tree = useMemo(() => buildTree(filtered), [filtered])
+  // While filtering, every directory expands so matches under collapsed
+  // folders aren't hidden — same trick AllFilesPanel uses.
+  const effectiveCollapsed = filtering ? EMPTY_SET : collapsedDirs
+  const navigableFiles = useMemo(
+    () => visibleFiles(tree, effectiveCollapsed),
+    [tree, effectiveCollapsed]
+  )
 
   const commentCountByFile = new Map<string, number>()
   for (const c of comments) {
@@ -182,7 +231,6 @@ export function ReviewFileTree({
           const wasReviewed = reviewedFiles.has(selectedFile)
           onToggleReviewed(selectedFile)
           if (!wasReviewed) {
-            // Auto-advance to next unreviewed file
             const unreviewed = navigableFiles.filter(
               (f) => !reviewedFiles.has(f.path) && f.path !== selectedFile
             )
@@ -199,77 +247,181 @@ export function ReviewFileTree({
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [navigateFile, navigateUnreviewed, selectedFile, onToggleReviewed])
+  }, [navigateFile, navigateUnreviewed, selectedFile, navigableFiles, reviewedFiles, onSelectFile, onToggleReviewed])
 
   return (
-    <div ref={containerRef} className="flex flex-col h-full overflow-y-auto text-xs select-none">
-      {groups.map((group) => {
-        const isCollapsed = collapsedDirs.has(group.dir)
+    <div ref={containerRef} className="flex flex-col h-full text-xs select-none">
+      <div className="shrink-0 p-2 border-b border-border">
+        <input
+          type="text"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          placeholder="Filter files..."
+          className="w-full bg-panel-raised border border-border rounded px-2 py-1 text-xs text-fg placeholder:text-faint focus:outline-none focus:border-border-strong"
+        />
+      </div>
+      <div className="flex-1 overflow-y-auto min-h-0">
+        {filtering && navigableFiles.length === 0 && (
+          <div className="px-3 py-2 text-faint">No matches</div>
+        )}
+        <TreeBranch
+          node={tree}
+          depth={0}
+          collapsedDirs={effectiveCollapsed}
+          selectedFile={selectedFile}
+          reviewedFiles={reviewedFiles}
+          commentCountByFile={commentCountByFile}
+          onSelectFile={onSelectFile}
+          onToggleReviewed={onToggleReviewed}
+          onToggleDir={onToggleDir}
+        />
+      </div>
+    </div>
+  )
+}
+
+interface TreeBranchProps {
+  node: DirNode
+  depth: number
+  collapsedDirs: Set<string>
+  selectedFile: string | null
+  reviewedFiles: Set<string>
+  commentCountByFile: Map<string, number>
+  onSelectFile: (path: string) => void
+  onToggleReviewed: (path: string) => void
+  onToggleDir: (dir: string) => void
+}
+
+function TreeBranch({
+  node,
+  depth,
+  collapsedDirs,
+  selectedFile,
+  reviewedFiles,
+  commentCountByFile,
+  onSelectFile,
+  onToggleReviewed,
+  onToggleDir
+}: TreeBranchProps): JSX.Element {
+  return (
+    <>
+      {node.children.map((child) => {
+        if (child.kind === 'file') {
+          return (
+            <FileRow
+              key={child.path}
+              file={child.file}
+              name={child.name}
+              depth={depth}
+              selected={child.path === selectedFile}
+              reviewed={reviewedFiles.has(child.path)}
+              commentCount={commentCountByFile.get(child.path) ?? 0}
+              onSelect={() => onSelectFile(child.path)}
+              onToggleReviewed={() => onToggleReviewed(child.path)}
+            />
+          )
+        }
+        const chain = resolveChain(child)
+        const isOpen = !collapsedDirs.has(chain.path)
         return (
-          <div key={group.dir}>
-            {group.dir && (
-              <button
-                onClick={() => onToggleDir(group.dir)}
-                className="w-full flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-dim uppercase tracking-wider bg-panel-raised/50 hover:bg-panel-raised cursor-pointer"
-              >
-                <ChevronRight
-                  size={10}
-                  className={`transition-transform ${isCollapsed ? '' : 'rotate-90'}`}
-                />
-                {group.dir}
-              </button>
+          <div key={chain.path}>
+            <DirRow
+              name={chain.displayName}
+              depth={depth}
+              open={isOpen}
+              onToggle={() => onToggleDir(chain.path)}
+            />
+            {isOpen && (
+              <TreeBranch
+                node={chain.inner}
+                depth={depth + 1}
+                collapsedDirs={collapsedDirs}
+                selectedFile={selectedFile}
+                reviewedFiles={reviewedFiles}
+                commentCountByFile={commentCountByFile}
+                onSelectFile={onSelectFile}
+                onToggleReviewed={onToggleReviewed}
+                onToggleDir={onToggleDir}
+              />
             )}
-            {!isCollapsed &&
-              group.files.map((file) => {
-                const name = file.path.slice(group.dir.length)
-                const isSelected = file.path === selectedFile
-                const isReviewed = reviewedFiles.has(file.path)
-                const commentCount = commentCountByFile.get(file.path) ?? 0
-                return (
-                  <div
-                    key={file.path}
-                    onClick={() => onSelectFile(file.path)}
-                    className={`flex items-center gap-1.5 px-2 py-1 cursor-pointer transition-colors ${
-                      isSelected
-                        ? 'bg-accent/15 border-l-2 border-accent'
-                        : 'border-l-2 border-transparent hover:bg-panel-raised'
-                    } ${isReviewed ? 'opacity-50' : ''}`}
-                  >
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onToggleReviewed(file.path)
-                      }}
-                      className={`shrink-0 w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors cursor-pointer ${
-                        isReviewed
-                          ? 'bg-success/20 border-success text-success'
-                          : 'border-border-strong text-transparent hover:border-faint'
-                      }`}
-                    >
-                      {isReviewed && <Check size={9} strokeWidth={3} />}
-                    </button>
-
-                    <span className={`shrink-0 w-3 font-mono text-[10px] ${STATUS_COLOR[file.status]}`}>
-                      {STATUS_LABEL[file.status]}
-                    </span>
-
-                    <span className="truncate flex-1 text-fg">{name}</span>
-
-                    {(file.additions !== undefined || file.deletions !== undefined) && (
-                      <DiffStatBar additions={file.additions ?? 0} deletions={file.deletions ?? 0} />
-                    )}
-
-                    {commentCount > 0 && (
-                      <span className="shrink-0 text-[9px] bg-info/20 text-info px-1 rounded-full tabular-nums">
-                        {commentCount}
-                      </span>
-                    )}
-                  </div>
-                )
-              })}
           </div>
         )
       })}
+    </>
+  )
+}
+
+function DirRow({
+  name,
+  depth,
+  open,
+  onToggle
+}: {
+  name: string
+  depth: number
+  open: boolean
+  onToggle: () => void
+}): JSX.Element {
+  return (
+    <div
+      onClick={onToggle}
+      className="flex items-center gap-1 px-2 py-0.5 hover:bg-panel-raised cursor-pointer select-none"
+      style={{ paddingLeft: 8 + depth * 12 }}
+    >
+      <ChevronRight
+        className={`icon-2xs shrink-0 text-faint transition-transform ${open ? 'rotate-90' : ''}`}
+      />
+      {open ? (
+        <FolderOpen className="icon-xs shrink-0 text-info" />
+      ) : (
+        <Folder className="icon-xs shrink-0 text-info" />
+      )}
+      <span className="truncate text-fg">{name}</span>
+    </div>
+  )
+}
+
+function FileRow({
+  file,
+  name,
+  depth,
+  selected,
+  reviewed,
+  commentCount,
+  onSelect
+}: {
+  file: ChangedFile
+  name: string
+  depth: number
+  selected: boolean
+  reviewed: boolean
+  commentCount: number
+  onSelect: () => void
+  onToggleReviewed: () => void
+}): JSX.Element {
+  return (
+    <div
+      onClick={onSelect}
+      className={`flex items-center gap-1.5 py-0.5 pr-2 cursor-pointer transition-colors ${
+        selected
+          ? 'bg-accent/15 border-l-2 border-accent'
+          : 'border-l-2 border-transparent hover:bg-panel-raised'
+      } ${reviewed ? 'opacity-50' : ''}`}
+      style={{ paddingLeft: 8 + depth * 12 + 10 }}
+    >
+      <FileText className="icon-xs shrink-0 text-faint" />
+
+      <span className={`shrink-0 w-3 font-mono text-xs ${STATUS_COLOR[file.status]}`}>
+        {STATUS_LABEL[file.status]}
+      </span>
+
+      <span className="truncate flex-1 text-fg">{name}</span>
+
+      {commentCount > 0 && (
+        <span className="shrink-0 text-xs bg-info/20 text-info px-1 rounded-full tabular-nums">
+          {commentCount}
+        </span>
+      )}
     </div>
   )
 }

@@ -6,8 +6,10 @@ import { makeHookCommand } from '../hooks'
 import { shellQuote } from '../shell-quote'
 import type { AgentSpawnOpts } from './index'
 
-const HARNESS_HOOK_MARKER = '__claude_harness__'
-const HARNESS_HOOK_VERSION = 8
+// Claude Code strips unknown fields when it normalizes settings.json,
+// so dedup recognizes our entries by the status-dir path baked into
+// the hook command instead of a sidecar marker.
+const HARNESS_HOOK_COMMAND_SIGNATURE = '/tmp/harness-status'
 
 export const defaultCommand = 'claude'
 export const assignsSessionId = true
@@ -22,7 +24,7 @@ export const hookEvents = [
 
 interface HookEntry {
   matcher?: string
-  hooks: { type: string; command: string; timeout?: number; _marker?: string }[]
+  hooks: { type: string; command: string; timeout?: number }[]
 }
 
 interface SettingsFile {
@@ -54,25 +56,18 @@ function writeSettings(path: string, settings: SettingsFile): void {
 
 function makeHarnessHookEntry(command: string): HookEntry {
   return {
-    hooks: [
-      {
-        type: 'command',
-        command,
-        timeout: 5,
-        _marker: HARNESS_HOOK_MARKER,
-        _version: HARNESS_HOOK_VERSION
-      } as HookEntry['hooks'][number]
-    ]
+    hooks: [{ type: 'command', command, timeout: 5 }]
   }
 }
 
+function isHarnessHookEntry(entry: HookEntry): boolean {
+  return !!entry.hooks?.some(
+    (h) => typeof h.command === 'string' && h.command.includes(HARNESS_HOOK_COMMAND_SIGNATURE)
+  )
+}
+
 function removeOldHarnessEntries(entries: HookEntry[]): HookEntry[] {
-  return entries.filter((entry) => {
-    const hasOurMarker = entry.hooks?.some(
-      (h) => (h as Record<string, unknown>)._marker === HARNESS_HOOK_MARKER
-    )
-    return !hasOurMarker
-  })
+  return entries.filter((entry) => !isHarnessHookEntry(entry))
 }
 
 export function hooksInstalled(): boolean {
@@ -81,10 +76,7 @@ export function hooksInstalled(): boolean {
   if (!hooks) return false
   for (const entries of Object.values(hooks)) {
     for (const entry of entries) {
-      for (const h of entry.hooks || []) {
-        const rec = h as Record<string, unknown>
-        if (rec._marker === HARNESS_HOOK_MARKER && rec._version === HARNESS_HOOK_VERSION) return true
-      }
+      if (isHarnessHookEntry(entry)) return true
     }
   }
   return false

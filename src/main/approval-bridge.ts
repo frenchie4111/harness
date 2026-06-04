@@ -152,6 +152,26 @@ export class ApprovalBridge {
     for (const id of Array.from(this.sessions.keys())) this.stopSession(id)
   }
 
+  /** Deny every pending approval attached to `sessionId` and drop them
+   *  from the slice. Unlike stopSession, the per-session server keeps
+   *  listening — the caller is doing a kill+respawn (rewind) and a
+   *  fresh MCP connection will land on the same socket after respawn.
+   *  Mirrors the deny loop in stopSession. */
+  cancelPendingForSession(sessionId: string): void {
+    for (const [id, pending] of Array.from(this.pendingResponses.entries())) {
+      if (pending.sessionId !== sessionId) continue
+      this.writeResponse(pending.socket, id, {
+        behavior: 'deny',
+        message: 'session rewound'
+      })
+      this.pendingResponses.delete(id)
+      this.store.dispatch({
+        type: 'jsonClaude/approvalResolved',
+        payload: { requestId: id }
+      })
+    }
+  }
+
   /** Dispatched from the renderer-facing IPC handler. Push the user's
    *  chosen PermissionResult back out over the waiting socket. */
   resolveApproval(requestId: string, result: ApprovalResult): boolean {
