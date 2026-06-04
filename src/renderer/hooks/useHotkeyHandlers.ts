@@ -3,6 +3,7 @@ import type { Worktree, PRStatus, PaneNode, TerminalTab } from '../types'
 import { getLeaves, findLeaf } from '../../shared/state/terminals'
 import { resolveHotkeys, type Action, type HotkeyBinding } from '../hotkeys'
 import { useHotkeys } from './useHotkeys'
+import { useDoubleTapShift } from './useDoubleTapShift'
 import { groupWorktrees, getGroupKey, type GroupKey } from '../worktree-sort'
 import { focusTerminalById } from '../components/XTerminal'
 import { useConnections, getBackendsRegistry, useSettings, useSnooze } from '../store'
@@ -36,6 +37,10 @@ interface UseHotkeyHandlersArgs {
   setCommandPaletteMode: React.Dispatch<React.SetStateAction<'root' | 'files'>>
   setShowPerfMonitor: React.Dispatch<React.SetStateAction<boolean>>
   setShowHotkeyCheatsheet: React.Dispatch<React.SetStateAction<boolean>>
+  setShowQuakeTerminal: React.Dispatch<React.SetStateAction<boolean>>
+  /** False when a full-content view is hiding the workspace tab bar; the Quake
+   * terminal toggle is a no-op then. */
+  quakeTerminalAllowed: boolean
   // Imperative hooks into other handlers — passed in to avoid this hook
   // depending on useTabHandlers + useWorktreeHandlers directly.
   handleAddTerminalTab: (worktreePath: string, paneId?: string) => void
@@ -80,6 +85,8 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
     setCommandPaletteMode,
     setShowPerfMonitor,
     setShowHotkeyCheatsheet,
+    setShowQuakeTerminal,
+    quakeTerminalAllowed,
     handleAddTerminalTab,
     handleCloseTab,
     handleSelectTab,
@@ -318,6 +325,14 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       openReview: () => {
         if (activeWorktreeId) void backend.panesOpenReview(activeWorktreeId)
       },
+      toggleQuakeTerminal: () => {
+        // Read live keyboard focus: only open when it's inside a workspace
+        // tab/agent (xterm terminal or Chat) — not the sidebar, panels, or
+        // other chrome. Closing is always allowed (the open overlay itself
+        // holds focus, which isn't a workspace tab).
+        const inTab = !!document.activeElement?.closest('[data-tab-content]')
+        setShowQuakeTerminal((open) => (open ? false : quakeTerminalAllowed && inTab))
+      },
       uiScaleUp: () => {
         const i = SCALES.findIndex((s) => s.id === uiScale)
         const next = SCALES[Math.min(i < 0 ? 0 : i + 1, SCALES.length - 1)]
@@ -357,6 +372,8 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       setCommandPaletteMode,
       setShowPerfMonitor,
       setShowHotkeyCheatsheet,
+      setShowQuakeTerminal,
+      quakeTerminalAllowed,
       setShowSettings,
       backend,
       uiScale,
@@ -365,6 +382,26 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
   )
 
   useHotkeys(hotkeyActions, hotkeyOverrides)
+
+  // focusTerminal is a gesture, not a key chord: double-tap Shift to jump
+  // focus to the active worktree's current tab. Skip when focus is in an
+  // editable field (palette search, rename input, settings, …) so the gesture
+  // doesn't yank focus mid-typing — xterm's own hidden textarea counts as
+  // editable too, but firing there is a harmless no-op (already focused).
+  useDoubleTapShift(
+    useCallback(() => {
+      const el = document.activeElement as HTMLElement | null
+      if (
+        el &&
+        (el.isContentEditable ||
+          el.tagName === 'INPUT' ||
+          el.tagName === 'TEXTAREA' ||
+          el.tagName === 'SELECT')
+      )
+        return
+      hotkeyActions.focusTerminal?.()
+    }, [hotkeyActions])
+  )
 
   const resolvedHotkeys = useMemo(() => resolveHotkeys(hotkeyOverrides), [hotkeyOverrides])
 

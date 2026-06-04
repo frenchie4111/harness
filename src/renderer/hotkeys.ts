@@ -40,6 +40,7 @@ export type Action =
   | 'togglePerfMonitor'
   | 'hotkeyCheatsheet'
   | 'openReview'
+  | 'toggleQuakeTerminal'
   | 'openSettings'
   | 'uiScaleUp'
   | 'uiScaleDown'
@@ -72,7 +73,7 @@ export const DEFAULT_HOTKEYS: Record<Action, HotkeyBinding> = {
   worktree9: { key: '9', modifiers: { cmd: true } },
   // Backend switcher hotkeys (multi-backend Tier 1, design §F).
   // Cmd+Shift+1..9 to avoid colliding with worktree1..9. The cycle
-  // hotkey from the design (Cmd+`) is already taken by `focusTerminal`,
+  // hotkey from the design (Cmd+`) is the macOS "next window" shortcut,
   // so cycle is deferred — index switching is enough for v1's expected
   // 2-3 backend usage.
   backend1: { key: '1', modifiers: { cmd: true, shift: true } },
@@ -91,7 +92,11 @@ export const DEFAULT_HOTKEYS: Record<Action, HotkeyBinding> = {
   prevTab: { key: 'Tab', modifiers: { ctrl: true, shift: true } },
   newWorktree: { key: 'n', modifiers: { cmd: true } },
   refreshWorktrees: { key: 'r', modifiers: { cmd: true, shift: true } },
-  focusTerminal: { key: '`', modifiers: { cmd: true } },
+  // Gesture-driven: focusTerminal fires on a double-tap of Shift (see
+  // GESTURE_ACTIONS / useDoubleTapShift), not this binding. The entry stays so
+  // the action remains a valid member of the binding map; the key matcher in
+  // useHotkeys skips it.
+  focusTerminal: { key: '`', modifiers: { ctrl: true, shift: true } },
   toggleSidebar: { key: 'b', modifiers: { cmd: true } },
   openPR: { key: 'g', modifiers: { cmd: true, shift: true } },
   openInEditor: { key: 'e', modifiers: { cmd: true, shift: true } },
@@ -105,12 +110,19 @@ export const DEFAULT_HOTKEYS: Record<Action, HotkeyBinding> = {
   togglePerfMonitor: { key: 'p', modifiers: { cmd: true, alt: true } },
   hotkeyCheatsheet: { key: '/', modifiers: { cmd: true, shift: true } },
   openReview: { key: 'r', modifiers: { cmd: true, alt: true } },
+  // Quake-style drop-down terminal on Ctrl+backtick (classic Quake's backtick).
+  toggleQuakeTerminal: { key: '`', modifiers: { ctrl: true } },
   openSettings: { key: ',', modifiers: { cmd: true } },
   uiScaleUp: { key: '+', modifiers: { cmd: true, shift: true } },
   uiScaleDown: { key: '-', modifiers: { cmd: true } },
   uiScaleReset: { key: '=', modifiers: { cmd: true } },
   cycleWorktreeDetail: { key: 'i', modifiers: { cmd: true } },
 }
+
+/** Actions triggered by a gesture (e.g. double-tap Shift) rather than a
+ * modifier+key chord. The key matcher in useHotkeys skips these, and the
+ * Settings rebind UI omits them — they have no editable binding. */
+export const GESTURE_ACTIONS: ReadonlySet<Action> = new Set<Action>(['focusTerminal'])
 
 /** Check if a KeyboardEvent matches a hotkey binding */
 export function matchesBinding(e: KeyboardEvent, binding: HotkeyBinding): boolean {
@@ -229,6 +241,7 @@ export const ACTION_LABELS: Record<Action, string> = {
   togglePerfMonitor: 'Performance monitor',
   hotkeyCheatsheet: 'Keyboard shortcuts',
   openReview: 'Review changes',
+  toggleQuakeTerminal: 'Toggle drop-down terminal',
   openSettings: 'Open settings',
   uiScaleUp: 'Increase UI size',
   uiScaleDown: 'Decrease UI size',
@@ -286,7 +299,7 @@ export const ACTION_CATEGORIES: HotkeyCategory[] = [
   {
     id: 'tabs',
     label: 'Tabs & panes',
-    actions: ['newShellTab', 'closeTab', 'nextTab', 'prevTab', 'focusTerminal', 'splitPaneRight', 'splitPaneDown']
+    actions: ['newShellTab', 'closeTab', 'nextTab', 'prevTab', 'splitPaneRight', 'splitPaneDown']
   },
   {
     id: 'layout',
@@ -301,7 +314,7 @@ export const ACTION_CATEGORIES: HotkeyCategory[] = [
   {
     id: 'overlays',
     label: 'App overlays',
-    actions: ['openSettings', 'openReview', 'togglePerfMonitor']
+    actions: ['openSettings', 'openReview', 'togglePerfMonitor', 'toggleQuakeTerminal']
   },
   {
     id: 'external',
