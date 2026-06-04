@@ -12,6 +12,7 @@ import { AgentIcon } from './AgentIcon'
 import { InterfaceToggle } from './InterfaceToggle'
 import { BUILT_IN_THEMES_BY_MODE, type ThemeOption } from '../themes'
 import { SEMANTIC_KEYS } from '../theme-apply'
+import { normalizeThemeColor } from '../theme-color'
 import type { CustomTheme, UiScale } from '../../shared/state/settings'
 import { SCALES, scaleSpec } from '../../shared/state/settings'
 import { QRCodeSVG } from 'qrcode.react'
@@ -3478,7 +3479,10 @@ function readBuiltInThemeJson(opt: ThemeOption): string {
     const colors: Record<string, string> = {}
     for (const key of SEMANTIC_KEYS) {
       const v = cs.getPropertyValue(`--color-${key}`).trim()
-      if (v) colors[key] = v
+      // Emit canonical long-form hex so the copied theme round-trips cleanly:
+      // the CSS pipeline minifies `#ffffff` to `#fff`, but a copied theme
+      // should read as the author wrote it. Non-hex values pass through as-is.
+      if (v) colors[key] = normalizeThemeColor(v, v)
     }
     return JSON.stringify({ name: opt.label, mode: opt.mode, colors }, null, 2) + '\n'
   } finally {

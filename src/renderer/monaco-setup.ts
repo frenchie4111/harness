@@ -3,6 +3,7 @@
 // standalone chunk and returns a Worker constructor.
 import * as monaco from 'monaco-editor'
 import { DEFAULT_LIGHT_THEME, DEFAULT_DARK_THEME } from '../shared/state/settings'
+import { normalizeThemeColor } from './theme-color'
 import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
 import JsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker'
 import CssWorker from 'monaco-editor/esm/vs/language/css/css.worker?worker'
@@ -131,8 +132,10 @@ configureTypescriptDefaults()
 // Pull current Tailwind theme tokens from a source element and build a Monaco
 // theme that tracks them. Called once at boot and on theme changes.
 function readVar(source: HTMLElement, name: string, fallback: string): string {
-  const v = getComputedStyle(source).getPropertyValue(name).trim()
-  return v || fallback
+  const v = getComputedStyle(source).getPropertyValue(name)
+  // Normalize to canonical hex: the value may be minified shorthand (`#fff`)
+  // that Monaco's strict token color parser would throw on. See theme-color.ts.
+  return normalizeThemeColor(v, fallback)
 }
 
 /** Resolve a CSS color (hex/oklch/named/var) to its luminance and decide if

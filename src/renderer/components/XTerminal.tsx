@@ -8,6 +8,7 @@ import '@xterm/xterm/css/xterm.css'
 import type { StateEvent } from '../../shared/state'
 import { getClientId, subscribeActiveTransportReconnect, useSettings, useTerminalSession } from '../store'
 import { getBackend, useBackend } from '../backend'
+import { normalizeThemeColor } from '../theme-color'
 import {
   makeFileLinkProvider,
   loadWorktreeFiles,
@@ -230,11 +231,14 @@ function buildTerminalTheme(
   bgVar = '--color-app'
 ): NonNullable<ConstructorParameters<typeof Terminal>[0]>['theme'] {
   const rootStyle = getComputedStyle(document.documentElement)
-  const bg =
-    rootStyle.getPropertyValue(bgVar).trim() ||
-    rootStyle.getPropertyValue('--color-app').trim() ||
+  // Normalize theme-derived colors: minified shorthand like `#fff` is valid
+  // for xterm, but keeping every theme-derived color canonical avoids surprises
+  // and matches the Monaco path. See theme-color.ts.
+  const bg = normalizeThemeColor(
+    rootStyle.getPropertyValue(bgVar).trim() || rootStyle.getPropertyValue('--color-app'),
     '#0a0a0a'
-  const fg = rootStyle.getPropertyValue('--color-fg-bright').trim() || '#e5e5e5'
+  )
+  const fg = normalizeThemeColor(rootStyle.getPropertyValue('--color-fg-bright'), '#e5e5e5')
   return {
     background: bg,
     foreground: fg,
