@@ -158,6 +158,7 @@ describe('stripGlobalHooks (legacy migration)', () => {
 describe('hookEvents', () => {
   it('exports the events the bundled plugin must register', () => {
     expect(hookEvents).toEqual([
+      'SessionStart',
       'UserPromptSubmit',
       'PreToolUse',
       'PostToolUse',

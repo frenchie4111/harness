@@ -10,6 +10,7 @@ import { join } from 'path'
 import { makeHookCommand } from './hooks'
 
 const HOOK_EVENTS = [
+  'SessionStart',
   'UserPromptSubmit',
   'PreToolUse',
   'PostToolUse',

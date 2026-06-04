@@ -79,6 +79,11 @@ function readPendingTool(p: Record<string, unknown> | null): PendingTool | null 
 
 function deriveStatus(terminalId: string, ev: HookEvent): StatusUpdate | null {
   switch (ev.event) {
+    case 'SessionStart':
+      // Fires when a session starts or resumes. Nothing is running yet, so
+      // the tab is idle. Its payload also carries session_id, which the
+      // generic discovery in tailLog picks up before the first prompt.
+      return { status: 'waiting', pendingTool: null }
     case 'PreToolUse': {
       const tool = readPendingTool(ev.payload)
       if (tool) lastPreTool.set(terminalId, tool)
