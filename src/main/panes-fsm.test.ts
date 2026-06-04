@@ -210,3 +210,77 @@ describe('PanesFSM.restoreFromConfig', () => {
     expect(chatTab?.mode).toBe('asleep')
   })
 })
+
+describe('PanesFSM.openFileTab', () => {
+  it('appends a file tab with the file-<path> id and basename label', () => {
+    const { fsm, store } = buildFSM()
+    const wtPath = '/wt/files'
+    seedLeaf(store, wtPath, {
+      type: 'leaf',
+      id: 'pane-1',
+      tabs: [{ id: 'sh-1', type: 'shell', label: 'Shell' }],
+      activeTabId: 'sh-1'
+    })
+
+    fsm.openFileTab(wtPath, 'src/main/index.ts')
+
+    const leaf = store.getSnapshot().state.terminals.panes[wtPath] as PaneLeaf
+    const fileTab = leaf.tabs.find((t) => t.type === 'file')
+    expect(fileTab?.id).toBe('file-src/main/index.ts')
+    expect(fileTab?.filePath).toBe('src/main/index.ts')
+    expect(fileTab?.label).toBe('index.ts')
+    // newly added tab becomes active in its pane
+    expect(leaf.activeTabId).toBe('file-src/main/index.ts')
+  })
+
+  it('opens the file in the pane containing nearTabId (split layout)', () => {
+    const { fsm, store } = buildFSM()
+    const wtPath = '/wt/split'
+    const split: PaneNode = {
+      type: 'split',
+      id: 'split-1',
+      direction: 'horizontal',
+      ratio: 0.5,
+      children: [
+        { type: 'leaf', id: 'pane-left', tabs: [{ id: 'agent-1', type: 'agent', label: 'Claude' }], activeTabId: 'agent-1' },
+        { type: 'leaf', id: 'pane-right', tabs: [{ id: 'sh-1', type: 'shell', label: 'Shell' }], activeTabId: 'sh-1' }
+      ]
+    }
+    store.dispatch({
+      type: 'terminals/panesForWorktreeChanged',
+      payload: { worktreePath: wtPath, panes: split }
+    })
+
+    // Clicked a file link in the right pane's shell.
+    fsm.openFileTab(wtPath, 'src/x.ts', 'sh-1')
+
+    const tree = store.getSnapshot().state.terminals.panes[wtPath] as PaneNode
+    const right = (tree as { children: PaneLeaf[] }).children[1]
+    expect(right.id).toBe('pane-right')
+    expect(right.tabs.some((t) => t.id === 'file-src/x.ts')).toBe(true)
+    expect(right.activeTabId).toBe('file-src/x.ts')
+    // left pane untouched
+    const left = (tree as { children: PaneLeaf[] }).children[0]
+    expect(left.tabs.every((t) => t.type !== 'file')).toBe(true)
+  })
+
+  it('focuses an existing file tab for the same path instead of duplicating', () => {
+    const { fsm, store } = buildFSM()
+    const wtPath = '/wt/files2'
+    seedLeaf(store, wtPath, {
+      type: 'leaf',
+      id: 'pane-1',
+      tabs: [
+        { id: 'file-src/a.ts', type: 'file', label: 'a.ts', filePath: 'src/a.ts' },
+        { id: 'sh-1', type: 'shell', label: 'Shell' }
+      ],
+      activeTabId: 'sh-1'
+    })
+
+    fsm.openFileTab(wtPath, 'src/a.ts')
+
+    const leaf = store.getSnapshot().state.terminals.panes[wtPath] as PaneLeaf
+    expect(leaf.tabs.filter((t) => t.type === 'file')).toHaveLength(1)
+    expect(leaf.activeTabId).toBe('file-src/a.ts')
+  })
+})

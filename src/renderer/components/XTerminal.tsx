@@ -8,9 +8,21 @@ import '@xterm/xterm/css/xterm.css'
 import type { StateEvent } from '../../shared/state'
 import { getClientId, subscribeActiveTransportReconnect, useSettings, useTerminalSession } from '../store'
 import { getBackend, useBackend } from '../backend'
+import {
+  makeFileLinkProvider,
+  loadWorktreeFiles,
+  getCachedWorktreeFiles
+} from '../terminal-file-links'
+import {
+  makeCommitLinkProvider,
+  loadWorktreeCommits,
+  getCachedWorktreeCommits
+} from '../terminal-commit-links'
 import { scaledEditorFontSize, type UiScale } from '../../shared/state/settings'
 import { Eye, X, Sparkles } from 'lucide-react'
 import { Tooltip } from './Tooltip'
+import { CommitInfoModal } from './CommitInfoModal'
+import { CommitHoverCard } from './CommitHoverCard'
 
 function ClaudeLoader() {
   return (
@@ -293,6 +305,35 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
   initFontCache()
   const backend = useBackend()
   const chatPromotionDismissed = useSettings().chatPromotionDismissed
+
+  // Prime + refresh the worktree file list that validates file-path links.
+  // Shared across this worktree's tabs and rate-limited inside
+  // loadWorktreeFiles, so reloading when the tab becomes visible is cheap.
+  useEffect(() => {
+    if (!visible) return
+    void loadWorktreeFiles(cwd, (c) => backend.listAllFiles(c))
+  }, [cwd, visible, backend])
+
+  // Same priming for the commit-SHA set that validates commit links.
+  useEffect(() => {
+    if (!visible) return
+    void loadWorktreeCommits(cwd, (c) => backend.listRecentCommitShas(c))
+  }, [cwd, visible, backend])
+
+  // Commit popup state (null = closed): the full SHA plus the click
+  // coordinates so the popup can anchor next to the clicked SHA. Set by the
+  // commit-link provider; the popup renders below via a fixed-position layer
+  // so it escapes this terminal's pane.
+  const [commitPopup, setCommitPopup] = useState<{ sha: string; x: number; y: number } | null>(
+    null
+  )
+  // Blame-style hover card shown after a short hover-intent delay while the
+  // pointer rests on a commit SHA. The timer ref holds the pending show so a
+  // quick pass-over doesn't flash the card.
+  const [commitHover, setCommitHover] = useState<{ sha: string; x: number; y: number } | null>(
+    null
+  )
+  const commitHoverTimer = useRef<number | null>(null)
   const [exited, setExited] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
@@ -351,15 +392,21 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
     // closure so the destination logic can't drift. Plain click → OS
     // default browser; Cmd/Ctrl-click → in-app browser tab; mailto →
     // external (the in-app browser can't open it).
+    const isWebUri = (uri: string): boolean =>
+      uri.startsWith('http://') || uri.startsWith('https://')
+    // Schemes we'll hand to the OS on a plain click. vnc:// resolves to the
+    // user's Screen Sharing / VNC client; mailto: to their mail client.
+    const isExternalUri = (uri: string): boolean =>
+      isWebUri(uri) || uri.startsWith('mailto:') || uri.startsWith('vnc://')
     const activateUri = (event: { metaKey: boolean; ctrlKey: boolean }, uri: string): void => {
-      const inApp = (event.metaKey || event.ctrlKey) && !uri.startsWith('mailto:')
+      // Only web URLs can render in an in-app browser tab; vnc:// and mailto:
+      // are OS-handled schemes, so they always go external.
+      const inApp = (event.metaKey || event.ctrlKey) && isWebUri(uri)
       if (inApp) {
-        if (uri.startsWith('http://') || uri.startsWith('https://')) {
-          openUrlInBrowserTab(uri)
-        }
+        openUrlInBrowserTab(uri)
         return
       }
-      if (uri.startsWith('http://') || uri.startsWith('https://') || uri.startsWith('mailto:')) {
+      if (isExternalUri(uri)) {
         backend.openExternal(uri)
       }
     }
@@ -396,7 +443,12 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
       },
       {
         hover: (_event, uri) => setHoveredLink(uri),
-        leave: () => setHoveredLink(null)
+        leave: () => setHoveredLink(null),
+        // Extend the addon's default scheme list (https?) to also match
+        // vnc:// so Screen Sharing links are clickable. Mirrors the upstream
+        // trailing-punctuation trimming so we don't eat a closing ) or .
+        urlRegex:
+          /(https?|HTTPS?|vnc|VNC):[/]{2}[^\s"'!*(){}|\\\^<>`]*[^\s"':,.!?{}|\\\^~\[\]`()<>]/
       }
     )
     terminal.loadAddon(webLinksAddon)
@@ -417,6 +469,62 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
     const searchResultsSub = searchAddon.onDidChangeResults((e) => {
       setSearchResults({ resultIndex: e.resultIndex, resultCount: e.resultCount })
     })
+
+    // File-path links: validate against the worktree's file list and make
+    // real, in-worktree paths clickable. Like URLs: plain click opens the
+    // file in the external editor; Cmd/Ctrl-click opens an in-app file tab.
+    const fileLinkProvider = terminal.registerLinkProvider(
+      makeFileLinkProvider({
+        terminal,
+        cwd,
+        getKnownFiles: () => getCachedWorktreeFiles(cwd),
+        openInApp: (rel) => {
+          void backend.panesOpenFile(cwd, rel, terminalId)
+        },
+        openInEditor: (rel) => {
+          void backend.openInEditor(cwd, rel)
+        },
+        onHoverChange: (hovering) => setHoveredLink(hovering ? 'file:' : null)
+      })
+    )
+
+    // Commit-SHA links: validate hex tokens against the worktree's commit
+    // set and make real commits clickable. Hover shows a blame-style card; a
+    // click opens a popup with the commit's metadata + changed files.
+    // Setting hoveredLink on hover feeds the same mouse-report withholding the
+    // URL providers use, so the click that opens the popup isn't also
+    // forwarded to a mouse-aware app (e.g. Claude Code).
+    const clearCommitHoverTimer = (): void => {
+      if (commitHoverTimer.current !== null) {
+        window.clearTimeout(commitHoverTimer.current)
+        commitHoverTimer.current = null
+      }
+    }
+    const commitLinkProvider = terminal.registerLinkProvider(
+      makeCommitLinkProvider({
+        terminal,
+        getKnownCommits: () => getCachedWorktreeCommits(cwd),
+        openCommit: (fullSha, event) => {
+          clearCommitHoverTimer()
+          setCommitHover(null)
+          setCommitPopup({ sha: fullSha, x: event.clientX, y: event.clientY })
+        },
+        onHover: (fullSha, event) => {
+          setHoveredLink('commit:')
+          const x = event.clientX
+          const y = event.clientY
+          clearCommitHoverTimer()
+          commitHoverTimer.current = window.setTimeout(() => {
+            setCommitHover({ sha: fullSha, x, y })
+          }, 280)
+        },
+        onLeave: () => {
+          setHoveredLink(null)
+          clearCommitHoverTimer()
+          setCommitHover(null)
+        }
+      })
+    )
 
     // Translate Shift+Enter into "backslash + Enter" (\\\r). By default xterm
     // sends bare \r for both Enter and Shift+Enter, so Claude Code can't tell
@@ -673,6 +781,9 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
       cleanupExit?.()
       searchResultsSub.dispose()
       progressSub.dispose()
+      fileLinkProvider.dispose()
+      commitLinkProvider.dispose()
+      clearCommitHoverTimer()
       searchAddonRef.current = null
       terminal.dispose()
     }
@@ -964,6 +1075,21 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
             </button>
           </div>
         </div>
+      )}
+      {commitHover && !commitPopup && (
+        <CommitHoverCard
+          worktreePath={cwd}
+          sha={commitHover.sha}
+          anchor={{ x: commitHover.x, y: commitHover.y }}
+        />
+      )}
+      {commitPopup && (
+        <CommitInfoModal
+          worktreePath={cwd}
+          sha={commitPopup.sha}
+          anchor={{ x: commitPopup.x, y: commitPopup.y }}
+          onClose={() => setCommitPopup(null)}
+        />
       )}
     </div>
   )

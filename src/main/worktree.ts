@@ -673,7 +673,7 @@ async function getChangedFilesImpl(
   return result
 }
 
-export interface CommitDiff {
+export interface CommitMeta {
   hash: string
   shortHash: string
   author: string
@@ -681,14 +681,17 @@ export interface CommitDiff {
   date: string
   subject: string
   body: string
+}
+
+export interface CommitDiff extends CommitMeta {
   diff: string
 }
 
-/** Get a single commit's metadata + full diff. */
-export async function getCommitDiff(
+/** Get a single commit's metadata (no diff). Cheap — one `git show -s`. */
+export async function getCommitMeta(
   worktreePath: string,
   hash: string
-): Promise<CommitDiff | null> {
+): Promise<CommitMeta | null> {
   if (!/^[0-9a-fA-F]{4,64}$/.test(hash)) return null
   try {
     const sep = '\x1f'
@@ -700,23 +703,45 @@ export async function getCommitDiff(
     )
     const cleaned = meta.endsWith(end) ? meta.slice(0, -1) : meta
     const [fullHash, shortHash, author, authorEmail, date, subject, body = ''] = cleaned.split(sep)
+    return { hash: fullHash, shortHash, author, authorEmail, date, subject, body }
+  } catch {
+    return null
+  }
+}
+
+/** Get a single commit's metadata + full diff. */
+export async function getCommitDiff(
+  worktreePath: string,
+  hash: string
+): Promise<CommitDiff | null> {
+  const meta = await getCommitMeta(worktreePath, hash)
+  if (!meta) return null
+  try {
     const { stdout: diff } = await execFileAsync(
       'git',
       ['show', '--no-color', '--pretty=format:', hash],
       { cwd: worktreePath, maxBuffer: 32 * 1024 * 1024 }
     )
-    return {
-      hash: fullHash,
-      shortHash,
-      author,
-      authorEmail,
-      date,
-      subject,
-      body,
-      diff: diff.replace(/^\n+/, '')
-    }
+    return { ...meta, diff: diff.replace(/^\n+/, '') }
   } catch {
     return null
+  }
+}
+
+/** List full commit SHAs reachable from any ref, capped, for validating
+ *  commit-SHA tokens printed in terminal output. `--all` covers local
+ *  branches, tags, and remotes, so SHAs from `git log`, PR branches, etc.
+ *  resolve; the cap keeps the payload bounded on large repos. */
+export async function listRecentCommitShas(worktreePath: string): Promise<string[]> {
+  try {
+    const { stdout } = await execFileAsync(
+      'git',
+      ['rev-list', '--all', '--max-count=10000'],
+      { cwd: worktreePath, maxBuffer: 16 * 1024 * 1024 }
+    )
+    return stdout.split('\n').filter((l) => l.length > 0)
+  } catch {
+    return []
   }
 }
 
