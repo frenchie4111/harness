@@ -48,6 +48,7 @@ import { MonacoWorkerFailedBanner } from './components/MonacoWorkerFailedBanner'
 import iconUrl from '../../resources/icon.png'
 import { PerfMonitorHUD } from './components/PerfMonitorHUD'
 import { HoldToQuitOverlay } from './components/HoldToQuitOverlay'
+import { ConfirmCloseTabModal } from './components/ConfirmCloseTabModal'
 import { focusTerminalById } from './components/XTerminal'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { type GroupKey } from './worktree-sort'
@@ -707,6 +708,58 @@ const setQuestStep = useCallback((next: QuestStep) => {
     if (!workspaceVisible && showQuakeTerminal) setShowQuakeTerminal(false)
   }, [workspaceVisible, showQuakeTerminal])
 
+  // Guard accidental closes of a still-running tab (the common ⌘W-meant-for-⌘Q
+  // fat-finger). Every close path — the ⌘W hotkey, the File→Close Tab menu
+  // accelerator, and a tab's × button — funnels through requestCloseTab, so
+  // the guard is enforced in one place. A tab counts as running when its
+  // agent status is processing/waiting/needs-approval or a shell has a live
+  // process; anything else closes immediately.
+  const [closeTabConfirm, setCloseTabConfirm] = useState<{
+    worktreePath: string
+    tabId: string
+    label: string
+    reason: string
+  } | null>(null)
+  const requestCloseTab = useCallback(
+    (worktreePath: string, tabId: string) => {
+      // A second ⌘W (or menu Close Tab) while the guard is already up for this
+      // same tab confirms the close — repeating the gesture that opened it.
+      if (
+        closeTabConfirm &&
+        closeTabConfirm.worktreePath === worktreePath &&
+        closeTabConfirm.tabId === tabId
+      ) {
+        handleCloseTab(worktreePath, tabId)
+        setCloseTabConfirm(null)
+        return
+      }
+      const tab = (terminalTabs[worktreePath] || []).find((t) => t.id === tabId)
+      const status = statuses[tabId]
+      const agentBusy =
+        status === 'processing' || status === 'waiting' || status === 'needs-approval'
+      const shellBusy = !!shellActivity[tabId]?.active
+      if (tab && (agentBusy || shellBusy)) {
+        const reason = shellBusy
+          ? 'running a process'
+          : status === 'needs-approval'
+            ? 'waiting for your approval'
+            : status === 'waiting'
+              ? 'waiting for your input'
+              : 'still working'
+        setCloseTabConfirm({ worktreePath, tabId, label: tab.label || 'This tab', reason })
+        return
+      }
+      handleCloseTab(worktreePath, tabId)
+    },
+    [terminalTabs, statuses, shellActivity, handleCloseTab, closeTabConfirm]
+  )
+  const confirmCloseTab = useCallback(() => {
+    if (!closeTabConfirm) return
+    handleCloseTab(closeTabConfirm.worktreePath, closeTabConfirm.tabId)
+    setCloseTabConfirm(null)
+  }, [closeTabConfirm, handleCloseTab])
+  const cancelCloseTab = useCallback(() => setCloseTabConfirm(null), [])
+
   // Sidebar-aware hotkey handlers + the resolved binding map for tooltips.
   // The hook also subscribes to keystrokes via useHotkeys internally.
   const { hotkeyActions, resolvedHotkeys } = useHotkeyHandlers({
@@ -738,7 +791,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
     setShowQuakeTerminal,
     quakeTerminalAllowed: workspaceVisible,
     handleAddTerminalTab,
-    handleCloseTab,
+    handleCloseTab: requestCloseTab,
     handleSelectTab,
     handleSplitPane,
     handleRefreshWorktrees,
@@ -752,10 +805,10 @@ const setQuestStep = useCallback((next: QuestStep) => {
     const cleanup = backend.onCloseFocusedTab(() => {
       if (!activeWorktreeId) return
       const tabId = activeTabId[activeWorktreeId]
-      if (tabId) handleCloseTab(activeWorktreeId, tabId)
+      if (tabId) requestCloseTab(activeWorktreeId, tabId)
     })
     return cleanup
-  }, [backend, activeWorktreeId, activeTabId, handleCloseTab])
+  }, [backend, activeWorktreeId, activeTabId, requestCloseTab])
 
   // Window → Split Pane Right / Down — accelerators on the menu so they
   // fire from any focus context (browser tab, etc.). Delegates to the
@@ -1511,7 +1564,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
                   onConvertTabType={handleConvertTabType}
                   defaultClaudeTabType={settings.defaultClaudeTabType}
                   onSleepTab={handleSleepTab}
-                  onCloseTab={handleCloseTab}
+                  onCloseTab={requestCloseTab}
                   onRestartAgentTab={handleRestartAgentTab}
                   onReorderTabs={handleReorderTabs}
                   onMoveTabToPane={handleMoveTabToPane}
@@ -1745,6 +1798,14 @@ const setQuestStep = useCallback((next: QuestStep) => {
     />
     {holdToQuit.phase !== 'idle' && (
       <HoldToQuitOverlay key={holdToQuit.holdId} fading={holdToQuit.phase === 'fading'} />
+    )}
+    {closeTabConfirm && (
+      <ConfirmCloseTabModal
+        tabLabel={closeTabConfirm.label}
+        reason={closeTabConfirm.reason}
+        onConfirm={confirmCloseTab}
+        onCancel={cancelCloseTab}
+      />
     )}
     </HotkeysProvider>
   )
