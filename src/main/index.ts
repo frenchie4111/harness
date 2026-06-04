@@ -84,6 +84,8 @@ import { CostTracker } from './cost-tracker'
 import { getAllSessionCosts } from './cost-aggregator'
 import { getClaudeAuthStatus } from './claude-auth'
 import { listDir as fsListDir, resolveHome as fsResolveHome } from './fs-listing'
+import { listConfiguredHosts } from './ssh-config'
+import { SshTunnelManager } from './ssh-tunnel-manager'
 import { startControlServer } from './control-server'
 import { writeMcpConfigForTerminal, pruneMcpConfigs, getBridgeScriptPath } from './mcp-config'
 import { getControlServerInfo } from './control-server'
@@ -347,6 +349,13 @@ const jsonClaudeManager = new JsonClaudeManager(store, {
 const perfMonitor = new PerfMonitor()
 setGitHubApiRecorder(() => perfMonitor.recordGitHubApiCall())
 setGitHubApiLoggingEnabled(config.expandedDiagnosticLoggingEnabled === true)
+
+// Active SSH tunnels keyed by backend id. Populated by the
+// ssh:bootstrap / ssh:reconnect handlers; entries are torn down on
+// connections:remove and on app quit. The remote `harness-server` is
+// intentionally NOT killed on unregister — it stays alive for future
+// reconnects + other Harnesses. See plans/remote-main.md §4.
+const sshTunnelManager = new SshTunnelManager()
 
 // In Electron mode createDesktopShell applies the dev-mode userData
 // override (must run before anything reads paths) and constructs the
@@ -1047,6 +1056,112 @@ function setWarnBeforeQuitting(enabled: boolean): void {
     type: 'settings/warnBeforeQuittingChanged',
     payload: config.warnBeforeQuitting !== false
   })
+}
+
+/** Re-establish (or reuse) the SSH tunnel for an existing SSH backend.
+ *  Shared between the `ssh:reconnect` IPC handler and the boot-time
+ *  pre-warm loop in runBoot(). Idempotent: if a tunnel for this
+ *  backend is already live, returns its URL+token without re-running
+ *  the SSH handshake. */
+async function runSshReconnect(input: {
+  bootstrapId: string
+  connectionId: string
+}): Promise<{ url: string; token: string; localPort: number }> {
+  if (!input || typeof input.connectionId !== 'string') {
+    throw new Error('connectionId is required')
+  }
+  if (typeof input.bootstrapId !== 'string' || !input.bootstrapId) {
+    throw new Error('bootstrapId is required')
+  }
+  const conn = (config.connections ?? []).find((c) => c.id === input.connectionId)
+  if (!conn) throw new Error(`unknown backend ${input.connectionId}`)
+  if (!conn.ssh) throw new Error(`backend ${input.connectionId} is not an SSH backend`)
+
+  const existing = sshTunnelManager.get(input.connectionId)
+  if (existing) {
+    const url = sshTunnelManager.buildLocalUrl(input.connectionId)!
+    return { url, token: existing.token, localPort: existing.localPort }
+  }
+
+  const { parseSshTarget, bootstrapRemote } = await import('./ssh-bootstrap')
+  const target = parseSshTarget(conn.ssh.target)
+  store.dispatch({
+    type: 'sshBootstrap/started',
+    payload: {
+      bootstrapId: input.bootstrapId,
+      label: conn.label,
+      target: target.raw,
+      now: Date.now()
+    }
+  })
+  store.dispatch({
+    type: 'sshBootstrap/connectionLinked',
+    payload: { bootstrapId: input.bootstrapId, connectionId: conn.id }
+  })
+
+  try {
+    const result = await bootstrapRemote(
+      target,
+      {
+        onPhase: (phase) => {
+          store.dispatch({
+            type: 'sshBootstrap/phaseChanged',
+            payload: { bootstrapId: input.bootstrapId, phase, now: Date.now() }
+          })
+        },
+        onLine: (line) => {
+          store.dispatch({
+            type: 'sshBootstrap/lineLogged',
+            payload: { bootstrapId: input.bootstrapId, line, now: Date.now() }
+          })
+        }
+      },
+      {
+        preferredLocalPort: conn.ssh.tunnelLocalPort,
+        skipInstallIfRunning: true
+      }
+    )
+    sshTunnelManager.register({
+      backendId: conn.id,
+      localPort: result.localPort,
+      remotePort: result.remotePort,
+      token: result.token,
+      ssh: result.ssh,
+      tunnelServer: result.tunnelServer
+    })
+    // ws:// not http:// — WebSocketClientTransport calls `new WebSocket(url)`
+    // which throws on http schemes.
+    const url = `ws://127.0.0.1:${result.localPort}/?token=${result.token}`
+    const idx = (config.connections ?? []).findIndex((c) => c.id === conn.id)
+    if (idx >= 0) {
+      const next = config.connections!.slice()
+      next[idx] = {
+        ...next[idx],
+        url,
+        ssh: { target: target.raw, tunnelLocalPort: result.localPort }
+      }
+      config.connections = next
+      setSecret(`backend-token:${conn.id}`, result.token)
+      saveConfig(config)
+    }
+    store.dispatch({
+      type: 'sshBootstrap/phaseChanged',
+      payload: { bootstrapId: input.bootstrapId, phase: 'connected', now: Date.now() }
+    })
+    return { url, token: result.token, localPort: result.localPort }
+  } catch (err) {
+    const bootstrapErr =
+      (err as { bootstrapError?: import('../shared/state/ssh-bootstrap').BootstrapError })
+        .bootstrapError ?? {
+        code: 'unknown' as const,
+        message: err instanceof Error ? err.message : String(err)
+      }
+    store.dispatch({
+      type: 'sshBootstrap/errored',
+      payload: { bootstrapId: input.bootstrapId, error: bootstrapErr, now: Date.now() }
+    })
+    throw err
+  }
 }
 
 function registerIpcHandlers(): void {
@@ -3022,7 +3137,14 @@ function registerIpcHandlers(): void {
     'connections:add',
     (
       _ctx,
-      input: { label: string; url: string; kind: 'remote'; color?: string; initials?: string },
+      input: {
+        label: string
+        url: string
+        kind: 'remote'
+        color?: string
+        initials?: string
+        ssh?: { target: string; tunnelLocalPort?: number }
+      },
       token: string
     ) => {
       if (!input || input.kind !== 'remote') throw new Error('connections:add only accepts remote connections')
@@ -3037,7 +3159,17 @@ function registerIpcHandlers(): void {
         kind: 'remote',
         addedAt: Date.now(),
         ...(input.color ? { color: input.color } : {}),
-        ...(input.initials ? { initials: input.initials } : {})
+        ...(input.initials ? { initials: input.initials } : {}),
+        ...(input.ssh && typeof input.ssh.target === 'string' && input.ssh.target
+          ? {
+              ssh: {
+                target: input.ssh.target,
+                ...(typeof input.ssh.tunnelLocalPort === 'number'
+                  ? { tunnelLocalPort: input.ssh.tunnelLocalPort }
+                  : {})
+              }
+            }
+          : {})
       }
       const list = (config.connections ?? []).slice()
       list.push(conn)
@@ -3056,6 +3188,10 @@ function registerIpcHandlers(): void {
     config.connections = next
     if (config.activeBackendId === id) config.activeBackendId = LOCAL_BACKEND_ID
     deleteSecret(`backend-token:${id}`)
+    // Tear the local tunnel down for this backend. The remote
+    // harness-server is intentionally left running — see
+    // plans/remote-main.md §4 "Things to NOT do".
+    sshTunnelManager.unregister(id)
     saveConfig(config)
     return true
   })
@@ -3104,6 +3240,128 @@ function registerIpcHandlers(): void {
     if (id === LOCAL_BACKEND_ID) return false
     return hasSecret(`backend-token:${id}`)
   })
+
+  // ---- SSH bootstrap helpers (Tier 1 remote-SSH backend flow) -------
+  // Renderer-shell-owned, like the connections list above. Only the local
+  // Electron backend exposes these — remote backends don't bootstrap other
+  // backends. See plans/remote-main.md §4.
+  transport.onRequest('ssh:listConfiguredHosts', () => {
+    return listConfiguredHosts()
+  })
+
+  // First-time SSH bootstrap: SSH in, install (if missing), start the
+  // server detached, set up the tunnel, and add the connection.
+  // Returns { connectionId } once the connection is persisted; progress
+  // events stream into the sshBootstrap slice (subscribe via the
+  // sshBootstrap.byId[bootstrapId] hook in the renderer) so the modal
+  // can show live progress.
+  //
+  // Caller MUST pass `bootstrapId` (uuid v4) so it can subscribe to
+  // progress events that fire BEFORE this handler returns. Lazy-imported
+  // because node-ssh + ssh2 ship native bindings that aren't in the
+  // headless tarball.
+  transport.onRequest(
+    'ssh:bootstrap',
+    async (
+      _ctx,
+      input: { bootstrapId: string; target: string; label: string }
+    ): Promise<{ connectionId: string }> => {
+      if (!input || typeof input.target !== 'string' || !input.target.trim()) {
+        throw new Error('target is required')
+      }
+      if (typeof input.bootstrapId !== 'string' || !input.bootstrapId) {
+        throw new Error('bootstrapId is required')
+      }
+      const label = (input.label || '').trim() || input.target.trim()
+      const { parseSshTarget, bootstrapRemote } = await import('./ssh-bootstrap')
+      const target = parseSshTarget(input.target)
+
+      store.dispatch({
+        type: 'sshBootstrap/started',
+        payload: { bootstrapId: input.bootstrapId, label, target: target.raw, now: Date.now() }
+      })
+
+      try {
+        const result = await bootstrapRemote(target, {
+          onPhase: (phase) => {
+            store.dispatch({
+              type: 'sshBootstrap/phaseChanged',
+              payload: { bootstrapId: input.bootstrapId, phase, now: Date.now() }
+            })
+          },
+          onLine: (line) => {
+            store.dispatch({
+              type: 'sshBootstrap/lineLogged',
+              payload: { bootstrapId: input.bootstrapId, line, now: Date.now() }
+            })
+          }
+        })
+
+        // Mint the BackendConnection + persist + register tunnel. The
+        // URL is the ephemeral loopback we just opened; on next launch
+        // we'll re-derive it after re-running the bootstrap.
+        // ws:// not http:// — WebSocketClientTransport calls `new WebSocket(url)`
+    // which throws on http schemes.
+    const url = `ws://127.0.0.1:${result.localPort}/?token=${result.token}`
+        const id = randomUUID()
+        const conn: BackendConnection = {
+          id,
+          label,
+          url,
+          kind: 'remote',
+          addedAt: Date.now(),
+          ssh: { target: target.raw, tunnelLocalPort: result.localPort }
+        }
+        const list = (config.connections ?? []).slice()
+        list.push(conn)
+        config.connections = list
+        setSecret(`backend-token:${id}`, result.token)
+        saveConfig(config)
+        sshTunnelManager.register({
+          backendId: id,
+          localPort: result.localPort,
+          remotePort: result.remotePort,
+          token: result.token,
+          ssh: result.ssh,
+          tunnelServer: result.tunnelServer
+        })
+
+        store.dispatch({
+          type: 'sshBootstrap/connectionLinked',
+          payload: { bootstrapId: input.bootstrapId, connectionId: id }
+        })
+        store.dispatch({
+          type: 'sshBootstrap/phaseChanged',
+          payload: { bootstrapId: input.bootstrapId, phase: 'connected', now: Date.now() }
+        })
+        return { connectionId: id }
+      } catch (err) {
+        const bootstrapErr = (err as { bootstrapError?: import('../shared/state/ssh-bootstrap').BootstrapError })
+          .bootstrapError ?? {
+          code: 'unknown' as const,
+          message: err instanceof Error ? err.message : String(err)
+        }
+        store.dispatch({
+          type: 'sshBootstrap/errored',
+          payload: { bootstrapId: input.bootstrapId, error: bootstrapErr, now: Date.now() }
+        })
+        throw err
+      }
+    }
+  )
+
+  // Reconnect an existing SSH backend: re-runs the bootstrap (skipping
+  // install if the server is already running) and reopens the tunnel.
+  // Returns { url, token } so the renderer can build a fresh WS
+  // transport pointing at the new loopback port.
+  //
+  // Idempotent: if a live tunnel for this backend already exists, just
+  // return its URL + token without re-running SSH.
+  transport.onRequest(
+    'ssh:reconnect',
+    (_ctx, input: { bootstrapId: string; connectionId: string }) =>
+      runSshReconnect(input)
+  )
 
   transport.onSignal('terminal:join', (ctx, id: string) => {
     store.dispatch({
@@ -3573,6 +3831,24 @@ async function runBoot(): Promise<void> {
   // dispatches on the store, which the state transport fans out to all
   // clients.
   stopWatchingStatus = watchStatusDir(store)
+
+  // Pre-warm SSH tunnels for every saved SSH backend so the tunnel is
+  // up by the time the renderer's hydrate-remote loop calls
+  // `ssh:reconnect` to fetch the URL. We don't await — boot must not
+  // block on a flaky network. Errors flow through the sshBootstrap
+  // slice's `errored` event so the chip strip can render a tooltip
+  // (renderer-side wiring lands in commit 6). Skipped in headless mode
+  // (no SSH bootstrap there per design).
+  if (runtime === 'electron') {
+    for (const conn of config.connections ?? []) {
+      if (conn.kind !== 'remote' || !conn.ssh) continue
+      const bootstrapId = `boot-${conn.id}`
+      void runSshReconnect({ bootstrapId, connectionId: conn.id }).catch((err) => {
+        log('ssh-bootstrap', `pre-warm failed for ${conn.id}: ${(err as Error).message}`)
+      })
+    }
+  }
+
   // Opening the first window + spinning up the auto-updater is the
   // desktop shell's job — see desktop-shell.ts. Headless mode skips
   // both; clients connect via the WS server already listening below.
@@ -3603,6 +3879,9 @@ if (desktopShellMod && desktopEarly) {
     onBeforeQuit: () => {
       jsonClaudeManager.killAll()
       approvalBridge.stopAll()
+      // Close local tunnel ends — the remote `harness-server` is left
+      // running (intentional; see plans/remote-main.md §4).
+      sshTunnelManager.closeAll()
     },
     setWarnBeforeQuitting
   })
@@ -3624,6 +3903,7 @@ if (desktopShellMod && desktopEarly) {
     jsonClaudeManager.killAll()
     approvalBridge.stopAll()
     browserManager.destroyAll()
+    sshTunnelManager.closeAll()
     sealAllActive()
     saveConfigSync(config)
     process.exit(0)

@@ -598,6 +598,37 @@ export interface ElectronAPI {
   connectionsSetLastConnected(id: string, when?: number): Promise<boolean>
   connectionsGetToken(id: string): Promise<string | null>
   connectionsHasToken(id: string): Promise<boolean>
+
+  // SSH bootstrap (remote-SSH backend flow). Always-local; the local
+  // Electron backend is the one that drives SSH. See plans/remote-main.md §4.
+  sshListConfiguredHosts(): Promise<ConfiguredHost[]>
+  /** Kick off a first-time SSH bootstrap. Progress events stream into
+   *  the sshBootstrap slice keyed by `bootstrapId` (mint a fresh uuid
+   *  v4 client-side BEFORE calling so you can subscribe to progress
+   *  via useSshBootstrap(bootstrapId)). Resolves with the persisted
+   *  connection id once the tunnel is live and the connection has been
+   *  added to `connections[]`. */
+  sshBootstrap(input: {
+    bootstrapId: string
+    target: string
+    label: string
+  }): Promise<{ connectionId: string }>
+  /** Reconnect an existing SSH backend. Idempotent — if a live tunnel
+   *  already exists, returns its URL/token without re-running SSH. */
+  sshReconnect(input: {
+    bootstrapId: string
+    connectionId: string
+  }): Promise<{ url: string; token: string; localPort: number }>
+}
+
+/** An SSH host parsed out of `~/.ssh/config`. Mirrors the main-process
+ *  `ConfiguredHost` shape in src/main/ssh-config.ts. */
+export interface ConfiguredHost {
+  alias: string
+  host: string
+  user?: string
+  port?: number
+  identityFile?: string
 }
 
 /** A configured backend (multi-backend UX). Kept in sync with the
@@ -611,6 +642,15 @@ export interface BackendConnection {
   lastConnectedAt?: number
   color?: string
   initials?: string
+  /** Set on remotes that were bootstrapped via SSH. The renderer uses
+   *  the presence of this field to decide between "edit URL/token" and
+   *  "edit SSH target" affordances. The actual reconnect machinery
+   *  lives in main; the renderer just kicks `ssh:reconnect` when the
+   *  user clicks a disconnected SSH chip. */
+  ssh?: {
+    target: string
+    tunnelLocalPort?: number
+  }
 }
 
 export type ActivityState = 'processing' | 'waiting' | 'needs-approval' | 'idle' | 'merged'

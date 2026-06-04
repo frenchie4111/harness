@@ -138,7 +138,15 @@ describe('hydrateRemoteBackend on failed connect', () => {
 
       await hydrateRemoteBackend(remote, {
         registry,
-        backend: { connectionsGetToken: async () => 'tok' },
+        backend: {
+          connectionsGetToken: async () => 'tok',
+          // Non-SSH path — the hydrator only calls sshReconnect when
+          // `conn.ssh` is set, which it isn't for these tests. Stub
+          // throws so a regression flagging the wrong path would fail loudly.
+          sshReconnect: async () => {
+            throw new Error('should not be called for non-SSH backend')
+          }
+        },
         WSCtor: WSWithNode
       })
 
@@ -178,7 +186,15 @@ describe('hydrateRemoteBackend on failed connect', () => {
 
       const hydratePromise = hydrateRemoteBackend(remote, {
         registry,
-        backend: { connectionsGetToken: async () => 'tok' },
+        backend: {
+          connectionsGetToken: async () => 'tok',
+          // Non-SSH path — the hydrator only calls sshReconnect when
+          // `conn.ssh` is set, which it isn't for these tests. Stub
+          // throws so a regression flagging the wrong path would fail loudly.
+          sshReconnect: async () => {
+            throw new Error('should not be called for non-SSH backend')
+          }
+        },
         WSCtor: WSWithNode
       })
 

@@ -53,7 +53,16 @@ export default defineConfig({
       ],
       output: {
         format: 'cjs',
-        entryFileNames: 'index.js'
+        entryFileNames: 'index.js',
+        // Inline every dynamic import into the single index.js. Without
+        // this, vite emits separate chunks (one per `await import()` call
+        // site), but `scripts/pack-headless.mjs` only ships `index.js`
+        // into the tarball — the chunks land in dist-headless/main/ and
+        // never reach the user's remote. Inlining matches the
+        // tarball-layout assumption and removes a foot-gun where adding
+        // a single `await import('./foo')` in main code silently breaks
+        // every released `harness-server`.
+        inlineDynamicImports: true
       }
     }
   },

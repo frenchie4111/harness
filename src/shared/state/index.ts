@@ -96,6 +96,12 @@ import {
   type ScratchpadEvent,
   type ScratchpadState
 } from './scratchpad'
+import {
+  initialSshBootstrap,
+  sshBootstrapReducer,
+  type SshBootstrapEvent,
+  type SshBootstrapState
+} from './ssh-bootstrap'
 
 export type { SettingsState, SettingsEvent }
 export type { UpdaterState, UpdaterEvent, UpdaterStatus } from './updater'
@@ -169,6 +175,13 @@ export type {
   Announcement
 } from './announcements'
 export type { ScratchpadState, ScratchpadEvent } from './scratchpad'
+export type {
+  SshBootstrapState,
+  SshBootstrapEvent,
+  BootstrapPhase,
+  BootstrapProgress,
+  BootstrapError
+} from './ssh-bootstrap'
 
 export interface AppState {
   settings: SettingsState
@@ -185,6 +198,7 @@ export interface AppState {
   snooze: SnoozeState
   announcements: AnnouncementsState
   scratchpad: ScratchpadState
+  sshBootstrap: SshBootstrapState
 }
 
 export type StateEvent =
@@ -202,6 +216,7 @@ export type StateEvent =
   | SnoozeEvent
   | AnnouncementsEvent
   | ScratchpadEvent
+  | SshBootstrapEvent
 
 export const initialState: AppState = {
   settings: initialSettings,
@@ -217,7 +232,8 @@ export const initialState: AppState = {
   jsonClaude: initialJsonClaude,
   snooze: initialSnooze,
   announcements: initialAnnouncements,
-  scratchpad: initialScratchpad
+  scratchpad: initialScratchpad,
+  sshBootstrap: initialSshBootstrap
 }
 
 export function rootReducer(state: AppState, event: StateEvent): AppState {
@@ -290,6 +306,12 @@ export function rootReducer(state: AppState, event: StateEvent): AppState {
       scratchpad: scratchpadReducer(state.scratchpad, event as ScratchpadEvent)
     }
   }
+  if (event.type.startsWith('sshBootstrap/')) {
+    return {
+      ...state,
+      sshBootstrap: sshBootstrapReducer(state.sshBootstrap, event as SshBootstrapEvent)
+    }
+  }
   return state
 }
 
@@ -334,7 +356,8 @@ export function mergeWireSnapshot(state: WireSnapshotState): AppState {
     jsonClaude: { ...initialState.jsonClaude, ...state.jsonClaude },
     snooze: { ...initialState.snooze, ...state.snooze },
     announcements: { ...initialState.announcements, ...state.announcements },
-    scratchpad: { ...initialState.scratchpad, ...state.scratchpad }
+    scratchpad: { ...initialState.scratchpad, ...state.scratchpad },
+    sshBootstrap: { ...initialState.sshBootstrap, ...state.sshBootstrap }
   }
 }
 
