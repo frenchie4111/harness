@@ -178,6 +178,20 @@ export function ReviewPane({
     if (fileRequest) setSelectedFile(fileRequest.filePath)
   }, [fileRequest?.nonce, fileRequest?.filePath])
 
+  // When this review tab becomes active, pull keyboard focus into its root so
+  // tab-scoped hotkeys (e.g. the Quake terminal on Ctrl+`) fire immediately —
+  // without this, focus sits on <body> until the user clicks into the Monaco
+  // editor, and the Quake check (`activeElement` inside [data-tab-content])
+  // fails. Skip if focus already landed somewhere inside the tab.
+  const rootRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    if (!active) return
+    const root = rootRef.current
+    if (!root) return
+    if (root.contains(document.activeElement)) return
+    root.focus({ preventScroll: true })
+  }, [active])
+
   const { totalAdditions, totalDeletions } = useMemo(() => {
     let add = 0
     let del = 0
@@ -541,7 +555,7 @@ export function ReviewPane({
   const progress = files.length > 0 ? reviewedFiles.size / files.length : 0
 
   return (
-    <div className="relative flex flex-col h-full w-full bg-bg">
+    <div ref={rootRef} tabIndex={-1} className="relative flex flex-col h-full w-full bg-bg outline-none">
       {showShortcuts && <ReviewShortcutsPopup onClose={() => setShowShortcuts(false)} />}
       {showPrDescription && pr && (
         <PrDescriptionPanel

@@ -109,7 +109,7 @@ export const DEFAULT_HOTKEYS: Record<Action, HotkeyBinding> = {
   toggleSingleScreen: { key: 'F12', modifiers: {} },
   togglePerfMonitor: { key: 'p', modifiers: { cmd: true, alt: true } },
   hotkeyCheatsheet: { key: '/', modifiers: { cmd: true, shift: true } },
-  openReview: { key: 'r', modifiers: { cmd: true, alt: true } },
+  openReview: { key: 'F6', modifiers: {} },
   // Quake-style drop-down terminal on Ctrl+backtick (classic Quake's backtick).
   toggleQuakeTerminal: { key: '`', modifiers: { ctrl: true } },
   openSettings: { key: ',', modifiers: { cmd: true } },

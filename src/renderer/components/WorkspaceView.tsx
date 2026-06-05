@@ -572,10 +572,20 @@ export function WorkspaceView({
           const isActiveInPane = leaf.activeTabId === tab.id
           return createPortal(
             <div
-              className="absolute inset-0"
+              className="absolute inset-0 outline-none"
               data-tab-content
+              tabIndex={-1}
               style={{ display: isActiveInPane ? 'block' : 'none' }}
-              onMouseDownCapture={() => onFocusPane?.(worktreePath, leaf.id)}
+              onMouseDownCapture={(e) => {
+                onFocusPane?.(worktreePath, leaf.id)
+                // Keep keyboard focus inside the tab content so tab-scoped
+                // hotkeys (e.g. the Quake terminal) fire even when the click
+                // lands on a non-focusable element — the review file list,
+                // a diff gutter, empty toolbar space. Focusable targets
+                // (Monaco, inputs, buttons) still grab focus via the click's
+                // default action, which runs after this capture handler.
+                e.currentTarget.focus({ preventScroll: true })
+              }}
             >
               <ErrorBoundary label={`pane:${tab.type}:${tab.id}`}>
                 {crashedTabIds?.has(tab.id) ? (
