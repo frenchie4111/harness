@@ -171,6 +171,16 @@ export function buildBackend(
       onActiveSignal('worktree:changedFilesInvalidated', (path) => {
         callback(path as string)
       }),
+    watchFile: (worktreePath: string, relativePath: string) =>
+      sig('file:watchSubscribe', worktreePath, relativePath),
+    unwatchFile: (worktreePath: string, relativePath: string) =>
+      sig('file:watchUnsubscribe', worktreePath, relativePath),
+    onFileContentChanged: (
+      callback: (worktreePath: string, relativePath: string) => void
+    ) =>
+      onActiveSignal('file:contentChanged', (worktreePath, relativePath) => {
+        callback(worktreePath as string, relativePath as string)
+      }),
     getFileDiff: (
       worktreePath: string,
       filePath: string,

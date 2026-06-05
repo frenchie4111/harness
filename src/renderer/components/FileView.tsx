@@ -8,6 +8,7 @@ import { Tooltip } from './Tooltip'
 import { MonacoEditor } from './MonacoEditor'
 import { useSettings } from '../store'
 import { useBackend } from '../backend'
+import { useFileContentChange } from '../hooks/useFileContentChange'
 import { scaledEditorFontSize } from '../../shared/state/settings'
 import 'highlight.js/styles/github-dark.css'
 
@@ -60,6 +61,7 @@ export function FileView({ worktreePath, filePath, onSendToAgent }: FileViewProp
   const [wordWrap, setWordWrap] = useState(false)
   const [binary, setBinary] = useState<{ url: string; size: number; mime: string } | null>(null)
   const [binaryError, setBinaryError] = useState<string | null>(null)
+  const [staleOnDisk, setStaleOnDisk] = useState(false)
 
   const valueRef = useRef(value)
   const savedRef = useRef(savedValue)
@@ -74,8 +76,68 @@ export function FileView({ worktreePath, filePath, onSendToAgent }: FileViewProp
   )
   const needsBinary = mode === 'image' || mode === 'pdf'
 
+  // Loads (or re-loads) the file. Returns a `cancel` that prevents the
+  // in-flight read from updating state — caller's responsibility to
+  // call it on cleanup. `dirtyAware`:
+  //   - false (initial open / explicit reload): unconditionally replaces
+  //     `value` and `savedValue` with the disk contents.
+  //   - true (background disk-change refresh): only updates `value` when
+  //     the buffer is clean (no in-flight edits). When dirty, updates
+  //     `savedValue` so the dirty marker reflects "differs from disk"
+  //     and sets `staleOnDisk` so the banner renders.
+  const loadFromDisk = useCallback(
+    (dirtyAware: boolean): (() => void) => {
+      let cancelled = false
+      if (!filePath) return () => {}
+      if (needsBinary) {
+        backend
+          .readWorktreeFileBinary(worktreePath, filePath)
+          .then((r: FileBinaryReadResult) => {
+            if (cancelled) return
+            if (!r.ok) {
+              setBinaryError(r.error)
+              setBinary(null)
+              setLoading(false)
+              return
+            }
+            const blob = new Blob([base64ToArrayBuffer(r.base64)], { type: r.mime })
+            const url = URL.createObjectURL(blob)
+            setBinaryError(null)
+            setBinary({ url, size: r.size, mime: r.mime })
+            setLoading(false)
+          })
+      } else {
+        backend.readWorktreeFile(worktreePath, filePath).then((r) => {
+          if (cancelled) return
+          setResult(r)
+          const content = r.content ?? ''
+          if (!dirtyAware) {
+            setValue(content)
+            setSavedValue(content)
+            setStaleOnDisk(false)
+          } else if (valueRef.current === savedRef.current) {
+            // Clean buffer — adopt disk contents silently.
+            setValue(content)
+            setSavedValue(content)
+            setStaleOnDisk(false)
+          } else {
+            // Dirty buffer — keep the user's edits, but update
+            // savedValue so the dirty marker compares against the
+            // latest disk content. Surface the banner.
+            setSavedValue(content)
+            setStaleOnDisk(true)
+          }
+          setLoading(false)
+        })
+      }
+      return () => {
+        cancelled = true
+      }
+    },
+    [worktreePath, filePath, needsBinary, backend]
+  )
+
   useEffect(() => {
-    let cancelled = false
     setLoading(true)
     setResult(null)
     setValue('')
@@ -85,37 +147,25 @@ export function FileView({ worktreePath, filePath, onSendToAgent }: FileViewProp
     setBinaryError(null)
     setMarkdownAsCode(false)
     setWordWrap(false)
+    setStaleOnDisk(false)
     if (!filePath) {
       setLoading(false)
       return
     }
-    if (needsBinary) {
-      backend.readWorktreeFileBinary(worktreePath, filePath).then((r: FileBinaryReadResult) => {
-        if (cancelled) return
-        if (!r.ok) {
-          setBinaryError(r.error)
-          setLoading(false)
-          return
-        }
-        const blob = new Blob([base64ToArrayBuffer(r.base64)], { type: r.mime })
-        const url = URL.createObjectURL(blob)
-        setBinary({ url, size: r.size, mime: r.mime })
-        setLoading(false)
-      })
-    } else {
-      backend.readWorktreeFile(worktreePath, filePath).then((r) => {
-        if (cancelled) return
-        setResult(r)
-        const content = r.content ?? ''
-        setValue(content)
-        setSavedValue(content)
-        setLoading(false)
-      })
-    }
-    return () => {
-      cancelled = true
-    }
-  }, [worktreePath, filePath, needsBinary])
+    return loadFromDisk(false)
+  }, [worktreePath, filePath, needsBinary, loadFromDisk])
+
+  useFileContentChange(worktreePath, filePath, () => {
+    loadFromDisk(true)
+  })
+
+  const reloadFromDisk = useCallback(() => {
+    loadFromDisk(false)
+  }, [loadFromDisk])
+
+  const dismissStaleBanner = useCallback(() => {
+    setStaleOnDisk(false)
+  }, [])
 
   // Revoke the blob URL when the loaded binary changes or the component
   // unmounts — otherwise large image/PDF blobs leak across file switches.
@@ -253,6 +303,9 @@ export function FileView({ worktreePath, filePath, onSendToAgent }: FileViewProp
         toggleControl={toggleControl}
         wrapToggleControl={wrapToggleControl}
       />
+      {staleOnDisk && (
+        <StaleOnDiskBanner onReload={reloadFromDisk} onDismiss={dismissStaleBanner} />
+      )}
       <div className="flex-1 min-h-0">
         {result.binary ? (
           <div className="p-4 text-faint text-sm">Binary file — not shown.</div>
@@ -368,6 +421,34 @@ function FileHeader({
           <Code2 className="icon-xs" />
         </button>
       </Tooltip>
+    </div>
+  )
+}
+
+function StaleOnDiskBanner({
+  onReload,
+  onDismiss
+}: {
+  onReload: () => void
+  onDismiss: () => void
+}): JSX.Element {
+  return (
+    <div className="shrink-0 flex items-center gap-3 border-b border-border bg-warning/10 px-4 py-2 text-xs">
+      <span className="text-fg flex-1 min-w-0">
+        File changed on disk — your edits have not been replaced.
+      </span>
+      <button
+        onClick={onReload}
+        className="shrink-0 text-fg hover:text-warning cursor-pointer underline-offset-2 hover:underline"
+      >
+        Reload
+      </button>
+      <button
+        onClick={onDismiss}
+        className="shrink-0 text-faint hover:text-fg cursor-pointer underline-offset-2 hover:underline"
+      >
+        Keep editing
+      </button>
     </div>
   )
 }
