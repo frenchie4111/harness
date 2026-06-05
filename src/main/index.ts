@@ -33,6 +33,7 @@ import { PanesFSM, stripTransientTabFields } from './panes-fsm'
 import { ActivityDeriver } from './activity-deriver'
 import { AutoSleepMonitor } from './auto-sleep-monitor'
 import { WorktreeWatcher } from './worktree-watcher'
+import { FileContentWatcher } from './file-content-watcher'
 import { SnoozeTimer } from './snooze-timer'
 import { getWeeklyStats } from './weekly-stats'
 import type { TerminalTab, PaneNode, PaneLeaf } from '../shared/state/terminals'
@@ -640,11 +641,24 @@ perfMonitor.start(store, () => ptyManager.getActivePtyCount())
 const worktreeWatcher = new WorktreeWatcher()
 const worktreeWatchSubs = new Map<string, Map<string, () => void>>()
 
+// Watches individual files for content changes (FileView + working-tree
+// ReviewDiffPane refresh-on-disk-edit). Refcounted per absolute path; one
+// fs.watch handle per file regardless of how many clients are open.
+// Subs are keyed by clientId so a window close releases everything.
+const fileContentWatcher = new FileContentWatcher()
+const fileContentWatchSubs = new Map<string, Map<string, () => void>>()
+
 function unsubscribeAllForClient(clientId: string): void {
-  const subs = worktreeWatchSubs.get(clientId)
-  if (!subs) return
-  for (const off of subs.values()) off()
-  worktreeWatchSubs.delete(clientId)
+  const wtSubs = worktreeWatchSubs.get(clientId)
+  if (wtSubs) {
+    for (const off of wtSubs.values()) off()
+    worktreeWatchSubs.delete(clientId)
+  }
+  const fileSubs = fileContentWatchSubs.get(clientId)
+  if (fileSubs) {
+    for (const off of fileSubs.values()) off()
+    fileContentWatchSubs.delete(clientId)
+  }
 }
 
 transport.onClientDisconnect((clientId) => unsubscribeAllForClient(clientId))
@@ -1405,6 +1419,43 @@ function registerIpcHandlers(): void {
     subs!.delete(worktreePath)
     if (subs!.size === 0) worktreeWatchSubs.delete(ctx.clientId)
   })
+
+  // Per-file content watcher — fires 'file:contentChanged' on the
+  // (worktreePath, relativePath) tuple when the absolute file changes on
+  // disk. Used by FileView and working-tree ReviewDiffPane to refresh
+  // when an agent (or any external tool) edits the same file.
+  transport.onSignal(
+    'file:watchSubscribe',
+    (ctx, worktreePath: string, relativePath: string) => {
+      if (!worktreePath || !relativePath) return
+      const key = `${worktreePath} ${relativePath}`
+      let subs = fileContentWatchSubs.get(ctx.clientId)
+      if (!subs) {
+        subs = new Map()
+        fileContentWatchSubs.set(ctx.clientId, subs)
+      }
+      if (subs.has(key)) return
+      const absolutePath = join(worktreePath, relativePath)
+      const off = fileContentWatcher.subscribe(absolutePath, () => {
+        transport.sendSignal('file:contentChanged', worktreePath, relativePath)
+      })
+      subs.set(key, off)
+    }
+  )
+
+  transport.onSignal(
+    'file:watchUnsubscribe',
+    (ctx, worktreePath: string, relativePath: string) => {
+      if (!worktreePath || !relativePath) return
+      const key = `${worktreePath} ${relativePath}`
+      const subs = fileContentWatchSubs.get(ctx.clientId)
+      const off = subs?.get(key)
+      if (!off) return
+      off()
+      subs!.delete(key)
+      if (subs!.size === 0) fileContentWatchSubs.delete(ctx.clientId)
+    }
+  )
 
   transport.onRequest(
     'worktree:fileDiff',
