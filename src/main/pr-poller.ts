@@ -1,5 +1,6 @@
 import { listWorktrees, getBranchSha } from './worktree'
 import { isOnRealBranch } from './git-ops-state'
+import { worktreeListsEqual } from '../shared/state/worktrees'
 import {
   getRepoContext,
   fetchPRStatusesForRepo,
@@ -77,6 +78,18 @@ export class PRPoller {
       const now = Date.now()
       this.lastAllFetchAt = now
       for (const wt of allWorktrees) this.lastFetchAtByPath.set(wt.path, now)
+
+      // Coarse safety-net re-derive of the worktree branch list. listWorktrees
+      // is a live `git worktree list --porcelain` read, so this picks up any
+      // branch switch / rename / detached-HEAD / finished-rebase that happened
+      // in a terminal since the last refresh — none of which fire the existing
+      // refresh triggers. The branch-sync watcher handles the prompt updates;
+      // this tick guarantees convergence even if a watcher failed to attach.
+      // Deduped so an unchanged list doesn't churn the array reference.
+      const currentList = this.store.getSnapshot().state.worktrees.list
+      if (!worktreeListsEqual(currentList, allWorktrees)) {
+        this.store.dispatch({ type: 'worktrees/listChanged', payload: allWorktrees })
+      }
 
       // Per-repo: resolve origin/upstream context, then make one GraphQL
       // call carrying every worktree's branch. ok=false means a transport

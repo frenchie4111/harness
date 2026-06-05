@@ -10,6 +10,34 @@ export interface Worktree {
   repoRoot: string
 }
 
+/** Structural equality over a flat worktree list, so high-frequency
+ * re-derivers (the PR poller tick, the branch-sync watcher) can skip the
+ * `worktrees/listChanged` dispatch when nothing actually changed. Without
+ * this guard, blindly dispatching would churn the array reference on every
+ * tick and re-render every consumer (CLAUDE.md slice anti-pattern #3).
+ * Order-sensitive — every producer builds the list by iterating repoRoots
+ * in the same order, so positional compare is sound. */
+export function worktreeListsEqual(a: Worktree[], b: Worktree[]): boolean {
+  if (a === b) return true
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i]
+    const y = b[i]
+    if (
+      x.path !== y.path ||
+      x.branch !== y.branch ||
+      x.head !== y.head ||
+      x.isBare !== y.isBare ||
+      x.isMain !== y.isMain ||
+      x.createdAt !== y.createdAt ||
+      x.repoRoot !== y.repoRoot
+    ) {
+      return false
+    }
+  }
+  return true
+}
+
 export type PendingStatus = 'creating' | 'setup' | 'setup-failed' | 'error'
 
 export interface PendingWorktree {
