@@ -164,14 +164,29 @@ export interface Config {
   // to the main worktree's copy, and the boot migration doesn't convert
   // existing regular files. Default is enabled (undefined/true).
   shareClaudeSettings?: boolean
-  // User's choice for installing agent status hooks at user scope
-  // (~/.claude/settings.json, ~/.codex/hooks.json). Persisted so a
-  // declined user doesn't see the banner again on next launch.
+  // User's choice for installing Codex status hooks at user scope
+  // (~/.codex/hooks.json). Claude no longer asks — its hooks ship as a
+  // bundled plugin loaded via --plugin-dir, so nothing is written to
+  // user files. Persisted so a declined user doesn't see the banner
+  // again on next launch.
   hooksConsent?: 'pending' | 'accepted' | 'declined'
-  // One-shot migration flag: once true, we've swept all known worktrees'
-  // per-worktree .claude/settings.local.json + .codex/hooks.json files
-  // and stripped any legacy Harness entries. Prevents re-running the
-  // migration on every boot.
+  // One-shot migration flag: once true, we've swept the legacy Claude
+  // hook installs (~/.claude/settings.json global entries + per-worktree
+  // .claude/settings.local.json) and stripped any Harness entries.
+  // Claude hooks now ship as a plugin; this sweep removes the dead
+  // copies the user no longer needs. Prevents re-running on every boot.
+  hooksMigratedToPlugin?: boolean
+  // One-shot migration flag: once true, we've swept the legacy Codex
+  // hook installs (~/.codex/hooks.json + per-worktree .codex/hooks.json)
+  // and stripped any Harness entries. Codex now consumes the same
+  // bundled plugin as Claude via `codex plugin marketplace add`. Set on
+  // first boot after the Codex-plugin migration so the strip doesn't
+  // re-run.
+  codexPluginMigrated?: boolean
+  // Deprecated, kept for migration reads: the prior one-shot flag that
+  // recorded the per-worktree → user-scope sweep. Once Harness has set
+  // hooksMigratedToPlugin we no longer read this. Safe to remove after
+  // 2026-08.
   hooksMigratedToGlobal?: boolean
   harnessSystemPromptEnabled?: boolean
   harnessSystemPrompt?: string
@@ -298,36 +313,18 @@ export const THEME_APP_BG: Record<string, string> = {
 
 export const DEFAULT_CLAUDE_COMMAND = 'claude'
 
-export const DEFAULT_HARNESS_SYSTEM_PROMPT = `You are running inside Harness, a desktop app that manages multiple Claude Code sessions across git worktrees. You have access to harness-control MCP tools:
+// Foundational identity prompt — keeps the agent aware it's running
+// inside Harness without enumerating every tool or workflow. Detailed
+// guidance lives in plugin-shipped skills (harness-browser,
+// harness-shell, harness-worktree under
+// resources/plugins/harness-status/skills/) which Claude Code
+// auto-discovers via the same --plugin-dir flag that loads our hooks
+// + MCP server. The skills carry the workflow content that used to
+// bloat this string; the per-tool MCP descriptions cover the "what
+// does each tool do" surface.
+export const DEFAULT_HARNESS_SYSTEM_PROMPT = `You are running inside Harness, a desktop app that manages multiple Claude Code sessions across git worktrees. You have harness-control MCP tools for worktree management, embedded browser tabs, and shell tabs for long-running processes. Workflow guidance is available via the harness-browser, harness-shell, and harness-worktree skills — invoke whichever fits the task at hand.`
 
-- mcp__harness-control__create_worktree: Create a new worktree with its own Claude session. Always provide a detailed initialPrompt so the new session has full context.
-- mcp__harness-control__list_worktrees: List all active worktrees.
-
-When the user wants to start a new task, fix, or investigation that would benefit from isolation, suggest creating a worktree for it rather than doing everything inline. Each worktree is an independent git branch with its own terminal and Claude session.
-
-Harness also exposes embedded browser tabs — you can open a browser alongside the terminal and see and drive what's in it via the harness-control browser tools (scoped to this worktree only):
-
-- create_browser_tab: open a new browser tab in this worktree (optionally navigating to a URL).
-- list_browser_tabs, get_tab_url, get_tab_dom, get_tab_console_logs: inspect what's in the tab.
-- navigate_tab, back_tab, forward_tab, reload_tab: drive the tab.
-- get_tab_clickables: returns a compact JSON snapshot of in-viewport interactive elements (buttons, links, inputs, [role=button|link|tab|menuitem|checkbox|radio|switch|option|combobox|searchbox|textbox], [tabindex], [contenteditable], [onclick]) — including elements inside open shadow roots. Each entry is {role, name, cx, cy, w, h} with the click center already computed.
-- click_tab, type_tab, scroll_tab, show_cursor: interact with the page — click at (x, y), type into the focused field, scroll, or just move the visible cursor overlay so the user can see what you're about to do.
-- screenshot_tab: visual verification only. Returns JPEG quality 70 by default for context-efficiency; ask for format:'png' only when lossless matters. Screenshot dimensions match the CSS viewport, so coords observed in a screenshot can be passed straight to click_tab.
-
-Click targeting workflow: **prefer get_tab_clickables → match by role + name → call click_tab(cx, cy) for anything you want to click**. It's far cheaper than a screenshot + vision and far more reliable for real DOM targets. Reserve screenshot_tab for confirming a click had the visual effect you wanted, or for targets without accessible names (canvas/SVG/images). The clickables snapshot is in-viewport only and capped at 500 items — if the target isn't there, scroll_tab first, then re-snapshot. To type into a field: click_tab on it first to focus, then type_tab. type_tab also accepts a \`key\` argument (Enter, Tab, Backspace, ArrowDown, …) for submitting forms or navigating menus.
-
-Prefer these over blind curl/fetch — or shelling out to \`open <url>\`, which launches the user's default browser outside Harness where you can't see the result — when you need to verify rendered UI, inspect a dev server, debug a page the user is looking at, or confirm your changes actually work in the browser.
-
-Harness also exposes shell tabs for long-running processes — anything that wouldn't naturally exit within a few seconds (dev servers, watchers, \`tail -f\`, REPL-style tools, long builds). Drive them via the harness-control shell tools (scoped to this worktree only):
-
-- create_shell: spawn a shell tab, optionally with a command to run (\`zsh -ilc <command>\`). Returns an id — keep it for later reads.
-- list_shells: enumerate existing shell tabs (id, label, command, alive). Check here before spawning — don't start a second \`npm run dev\` if one is already running.
-- read_shell_output: read a shell's output, optionally with a \`match\` regex + \`context\` lines to scan a long log for errors/warnings without pulling back megabytes.
-- kill_shell: terminate the process AND close the tab. For natural exits (process finishes on its own), the tab stays open for inspection — kill_shell is explicit cleanup.
-
-Prefer these over running long-running commands via Bash — Bash either blocks until the process exits or loses the output stream when backgrounded, whereas a Harness shell tab keeps streaming, stays readable via read_shell_output after the fact, and is visible to the user in the Harness UI. Short one-shots (\`npm test\`, \`tsc --noEmit\`, \`git status\`) still belong on Bash.`
-
-export const DEFAULT_HARNESS_SYSTEM_PROMPT_MAIN = `You are on the main worktree. This is the primary checkout — avoid making direct changes here unless the user explicitly asks. Instead, use this session to plan, review, and coordinate work across worktrees. When the user describes a task, create a new worktree for it with a thorough initialPrompt that gives the new Claude session all the context it needs to work independently. If you need to run a dev server, watcher, or other long-running process here, use the harness-control shell tools (create_shell / list_shells / read_shell_output / kill_shell) rather than Bash, so the output keeps streaming and stays readable.`
+export const DEFAULT_HARNESS_SYSTEM_PROMPT_MAIN = `You are on the main worktree. This is the primary checkout — avoid making direct changes here unless the user explicitly asks. Use this session to plan, review, and coordinate work across worktrees; when the user describes a task, prefer spinning off a new worktree (the harness-worktree skill covers how) rather than working inline.`
 
 export const DEFAULT_TERMINAL_FONT_FAMILY =
   "'SF Mono', 'Monaco', 'Menlo', 'Courier New', monospace"

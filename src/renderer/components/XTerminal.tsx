@@ -6,7 +6,7 @@ import { ProgressAddon } from '@xterm/addon-progress'
 import { SearchAddon } from '@xterm/addon-search'
 import '@xterm/xterm/css/xterm.css'
 import type { StateEvent } from '../../shared/state'
-import { getClientId, subscribeActiveTransportReconnect, useSettings, useTerminalSession } from '../store'
+import { getClientId, subscribeActiveTransportReconnect, useHooks, useSettings, useTerminalSession } from '../store'
 import { getBackend, useBackend } from '../backend'
 import {
   makeFileLinkProvider,
@@ -305,6 +305,7 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
   initFontCache()
   const backend = useBackend()
   const chatPromotionDismissed = useSettings().chatPromotionDismissed
+  const codexHooksConsent = useHooks().consent
 
   // Prime + refresh the worktree file list that validates file-path links.
   // Shared across this worktree's tabs and rate-limited inside
@@ -1056,6 +1057,28 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
             <button
               onClick={() => { void backend.setChatPromotionDismissed(true) }}
               aria-label="Dismiss Chat mode promotion"
+              className="p-1 rounded-md bg-panel/90 border border-border text-dim hover:text-fg-bright transition-colors"
+            >
+              <X className="icon-xs" />
+            </button>
+          </Tooltip>
+        </div>
+      )}
+      {!loading && !exited && type === 'agent' && agentKind === 'codex' && codexHooksConsent === 'pending' && (
+        <div className="absolute top-2 left-2 flex items-center gap-1 pointer-events-auto">
+          <Tooltip label="Registers Harness's plugin with Codex (one entry in ~/.codex/config.toml) so Harness can detect agent state.">
+            <button
+              onClick={() => { void backend.acceptHooks() }}
+              className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs bg-panel/90 border border-border text-fg-bright hover:bg-border transition-colors"
+            >
+              <Sparkles className="icon-xs text-accent" />
+              <span>Install Harness status plugin</span>
+            </button>
+          </Tooltip>
+          <Tooltip label="You can install it later from Settings → Codex.">
+            <button
+              onClick={() => { void backend.declineHooks() }}
+              aria-label="Dismiss Codex plugin prompt"
               className="p-1 rounded-md bg-panel/90 border border-border text-dim hover:text-fg-bright transition-colors"
             >
               <X className="icon-xs" />

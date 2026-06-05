@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSy
 import { join } from 'path'
 import { homedir } from 'os'
 import { log } from '../debug'
-import { makeHookCommand } from '../hooks'
+import { harnessPluginDir } from '../claude-plugin'
 import { shellQuote } from '../shell-quote'
 import type { AgentSpawnOpts } from './index'
 
@@ -15,6 +15,7 @@ export const defaultCommand = 'claude'
 export const assignsSessionId = true
 
 export const hookEvents = [
+  'SessionStart',
   'UserPromptSubmit',
   'PreToolUse',
   'PostToolUse',
@@ -54,12 +55,6 @@ function writeSettings(path: string, settings: SettingsFile): void {
   writeFileSync(path, JSON.stringify(settings, null, 2))
 }
 
-function makeHarnessHookEntry(command: string): HookEntry {
-  return {
-    hooks: [{ type: 'command', command, timeout: 5 }]
-  }
-}
-
 function isHarnessHookEntry(entry: HookEntry): boolean {
   return !!entry.hooks?.some(
     (h) => typeof h.command === 'string' && h.command.includes(HARNESS_HOOK_COMMAND_SIGNATURE)
@@ -70,50 +65,27 @@ function removeOldHarnessEntries(entries: HookEntry[]): HookEntry[] {
   return entries.filter((entry) => !isHarnessHookEntry(entry))
 }
 
-export function hooksInstalled(): boolean {
-  const settings = readSettings(globalSettingsPath())
-  const hooks = settings.hooks
-  if (!hooks) return false
-  for (const entries of Object.values(hooks)) {
-    for (const entry of entries) {
-      if (isHarnessHookEntry(entry)) return true
-    }
-  }
-  return false
-}
-
-export function installHooks(): void {
+/** One-shot migration: strip any legacy Harness entries from
+ *  ~/.claude/settings.json. Harness used to install hooks there; we now
+ *  ship them as a plugin loaded via --plugin-dir, so the user-scope copy
+ *  is dead weight. Returns true if the file was modified. */
+export function stripGlobalHooks(): boolean {
   const path = globalSettingsPath()
-  log('hooks', `installing Claude hooks into ${path}`)
+  if (!existsSync(path)) return false
   const settings = readSettings(path)
-  if (!settings.hooks) settings.hooks = {}
-
+  if (!settings.hooks) return false
+  let changed = false
   for (const event of Object.keys(settings.hooks)) {
+    const before = settings.hooks[event].length
     settings.hooks[event] = removeOldHarnessEntries(settings.hooks[event])
-  }
-
-  for (const event of hookEvents) {
-    if (!settings.hooks[event]) settings.hooks[event] = []
-    settings.hooks[event].push(makeHarnessHookEntry(makeHookCommand(event)))
-  }
-
-  writeSettings(path, settings)
-}
-
-/** Remove our entries from ~/.claude/settings.json but leave any user-authored
- *  hooks + unrelated keys intact. No-op if we're not installed. */
-export function uninstallHooks(): void {
-  const path = globalSettingsPath()
-  if (!existsSync(path)) return
-  const settings = readSettings(path)
-  if (!settings.hooks) return
-  for (const event of Object.keys(settings.hooks)) {
-    settings.hooks[event] = removeOldHarnessEntries(settings.hooks[event])
+    if (settings.hooks[event].length !== before) changed = true
     if (settings.hooks[event].length === 0) delete settings.hooks[event]
   }
+  if (!changed) return false
   if (Object.keys(settings.hooks).length === 0) delete settings.hooks
   writeSettings(path, settings)
-  log('hooks', `uninstalled Claude hooks from ${path}`)
+  log('hooks', `stripped legacy Harness entries from ${path}`)
+  return true
 }
 
 /** Strip any legacy Harness entries from a worktree's .claude/settings.local.json.
@@ -168,12 +140,18 @@ export function latestSessionId(cwd: string): string | null {
 }
 
 export function buildSpawnArgs(opts: AgentSpawnOpts): string {
+  // No --mcp-config flag: the bundled Harness plugin ships its own
+  // .mcp.json defining the harness-control bridge, loaded via the
+  // --plugin-dir flag below. The bridge's per-session env (port,
+  // token, terminal id, scope) is injected onto the PTY's env in
+  // pty:create (src/main/index.ts) so the plugin's ${...} placeholders
+  // resolve at Claude launch time.
   const modelFlag = opts.model && !opts.command.includes('--model') ? ` --model ${shellQuote(opts.model)}` : ''
-  const mcpFlag = opts.mcpConfigPath ? ` --mcp-config ${shellQuote(opts.mcpConfigPath)}` : ''
   const nameFlag = opts.sessionName ? ` --name ${shellQuote(opts.sessionName)}` : ''
   const systemPromptFlag = opts.systemPrompt ? ` --append-system-prompt ${shellQuote(opts.systemPrompt)}` : ''
+  const pluginFlag = ` --plugin-dir ${shellQuote(harnessPluginDir())}`
   const tuiPrefix = opts.tuiFullscreen ? 'CLAUDE_CODE_NO_FLICKER=1 ' : ''
-  const cmd = `${tuiPrefix}${opts.command}${modelFlag}${mcpFlag}${nameFlag}${systemPromptFlag}`
+  const cmd = `${tuiPrefix}${opts.command}${modelFlag}${nameFlag}${systemPromptFlag}${pluginFlag}`
 
   if (opts.teleportSessionId && opts.sessionId) {
     const exists = sessionFileExists(opts.cwd, opts.sessionId)

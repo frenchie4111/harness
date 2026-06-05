@@ -82,7 +82,6 @@ describe('JsonClaudeManager', () => {
       closeApprovalSession: vi.fn(),
       getClaudeEnvVars: () => ({}),
       getControlServer: () => null,
-      getControlBridgeScriptPath: () => '/tmp/bridge.js',
       isHarnessMcpEnabled: () => false,
       getCallerScope: () => null,
       getLaunchSettings: () => launchSettings

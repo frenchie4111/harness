@@ -1,0 +1,5 @@
+{
+  "name": "harness-status",
+  "version": "1.0.0",
+  "description": "Integrate with Harness for up-to-date status"
+}

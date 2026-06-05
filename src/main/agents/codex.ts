@@ -1,22 +1,21 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSync, appendFileSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
-import { log } from '../debug'
-import { makeHookCommand } from '../hooks'
+import { readdirSync, statSync } from 'fs'
+import { stripHarnessEntriesFromHooksFile, legacyWorktreeHooksPath } from '../codex-plugin'
 import type { AgentSpawnOpts } from './index'
 
 function shellQuote(s: string): string {
   return "'" + s.replace(/'/g, "'\\''") + "'"
 }
 
-// Codex strips unknown fields when it normalizes hooks.json, so dedup
-// recognizes our entries by the status-dir path baked into the hook
-// command instead of a sidecar marker.
-const HARNESS_HOOK_COMMAND_SIGNATURE = '/tmp/harness-status'
-
 export const defaultCommand = 'codex'
 export const assignsSessionId = false
 
+// Codex's hook event names — used by AgentModule for parity with
+// Claude's. Codex hooks now ship inside the bundled plugin (see
+// resources/plugins/harness-status/hooks/hooks.json), so this list
+// exists only to satisfy the interface; nothing in the install path
+// reads it anymore.
 export const hookEvents = [
   'SessionStart',
   'PreToolUse',
@@ -25,136 +24,18 @@ export const hookEvents = [
   'Stop'
 ]
 
-interface CodexHookEntry {
-  matcher?: string
-  hooks: { type: string; command: string; timeout?: number }[]
-}
-
-interface CodexHooksFile {
-  hooks?: Record<string, CodexHookEntry[]>
-}
-
-function globalHooksPath(): string {
-  return join(homedir(), '.codex', 'hooks.json')
-}
-
-function worktreeHooksPath(worktreePath: string): string {
-  return join(worktreePath, '.codex', 'hooks.json')
-}
-
-function readHooksFile(path: string): CodexHooksFile {
-  try {
-    return JSON.parse(readFileSync(path, 'utf-8'))
-  } catch {
-    return {}
-  }
-}
-
-function writeHooksFile(path: string, data: CodexHooksFile): void {
-  const dir = join(path, '..')
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-  writeFileSync(path, JSON.stringify(data, null, 2))
-}
-
-function makeHarnessHookEntry(command: string): CodexHookEntry {
-  return {
-    hooks: [{ type: 'command', command, timeout: 5 }]
-  }
-}
-
-function isHarnessHookEntry(entry: CodexHookEntry): boolean {
-  return !!entry.hooks?.some(
-    (h) => typeof h.command === 'string' && h.command.includes(HARNESS_HOOK_COMMAND_SIGNATURE)
-  )
-}
-
-function removeOldHarnessEntries(entries: CodexHookEntry[]): CodexHookEntry[] {
-  return entries.filter((entry) => !isHarnessHookEntry(entry))
-}
-
-function ensureCodexHooksEnabled(): void {
-  const configPath = join(homedir(), '.codex', 'config.toml')
-  try {
-    const content = existsSync(configPath) ? readFileSync(configPath, 'utf-8') : ''
-    if (content.includes('codex_hooks')) return
-    const section = content.includes('[features]') ? '' : '\n[features]\n'
-    const line = 'codex_hooks = true\n'
-    appendFileSync(configPath, section + line)
-    log('hooks', 'enabled codex_hooks in ~/.codex/config.toml')
-  } catch (err) {
-    log('hooks', 'failed to enable codex_hooks', err instanceof Error ? err.message : err)
-  }
-}
-
-export function hooksInstalled(): boolean {
-  const data = readHooksFile(globalHooksPath())
-  const hooks = data.hooks
-  if (!hooks) return false
-  for (const entries of Object.values(hooks)) {
-    for (const entry of entries) {
-      if (isHarnessHookEntry(entry)) return true
-    }
-  }
-  return false
-}
-
-export function installHooks(): void {
-  const path = globalHooksPath()
-  log('hooks', `installing Codex hooks into ${path}`)
-
-  ensureCodexHooksEnabled()
-
-  const data = readHooksFile(path)
-  if (!data.hooks) data.hooks = {}
-
-  for (const event of Object.keys(data.hooks)) {
-    data.hooks[event] = removeOldHarnessEntries(data.hooks[event])
-  }
-
-  for (const event of hookEvents) {
-    if (!data.hooks[event]) data.hooks[event] = []
-    data.hooks[event].push(makeHarnessHookEntry(makeHookCommand(event)))
-  }
-
-  writeHooksFile(path, data)
-}
-
-export function uninstallHooks(): void {
-  const path = globalHooksPath()
-  if (!existsSync(path)) return
-  const data = readHooksFile(path)
-  if (!data.hooks) return
-  for (const event of Object.keys(data.hooks)) {
-    data.hooks[event] = removeOldHarnessEntries(data.hooks[event])
-    if (data.hooks[event].length === 0) delete data.hooks[event]
-  }
-  if (Object.keys(data.hooks).length === 0) delete data.hooks
-  writeHooksFile(path, data)
-  log('hooks', `uninstalled Codex hooks from ${path}`)
-}
-
+/** Legacy one-shot strip — removes Harness entries from a worktree's
+ *  .codex/hooks.json (the old install location, pre-plugin). Boot-time
+ *  migration sweeps this for every worktree; the AgentModule contract
+ *  also exposes it for the panes FSM's per-worktree initialization
+ *  callback. After migration completes, both paths become no-ops. */
 export function stripHooksFromWorktree(worktreePath: string): boolean {
-  const path = worktreeHooksPath(worktreePath)
-  if (!existsSync(path)) return false
-  const data = readHooksFile(path)
-  if (!data.hooks) return false
-  let changed = false
-  for (const event of Object.keys(data.hooks)) {
-    const before = data.hooks[event].length
-    data.hooks[event] = removeOldHarnessEntries(data.hooks[event])
-    if (data.hooks[event].length !== before) changed = true
-    if (data.hooks[event].length === 0) delete data.hooks[event]
-  }
-  if (!changed) return false
-  if (Object.keys(data.hooks).length === 0) delete data.hooks
-  writeHooksFile(path, data)
-  log('hooks', `stripped legacy Harness Codex entries from ${path}`)
-  return true
+  return stripHarnessEntriesFromHooksFile(legacyWorktreeHooksPath(worktreePath))
 }
 
 export function sessionFileExists(_cwd: string, sessionId: string): boolean {
   try {
-    const sessionsDir = join(homedir(), '.codex', 'sessions')
+    const sessionsDir = join(process.env.CODEX_HOME || join(homedir(), '.codex'), 'sessions')
     const walkDir = (dir: string): boolean => {
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
         if (entry.isDirectory()) {
@@ -173,7 +54,7 @@ export function sessionFileExists(_cwd: string, sessionId: string): boolean {
 
 export function latestSessionId(_cwd: string): string | null {
   try {
-    const sessionsDir = join(homedir(), '.codex', 'sessions')
+    const sessionsDir = join(process.env.CODEX_HOME || join(homedir(), '.codex'), 'sessions')
     let bestId: string | null = null
     let bestMtime = -Infinity
     const walkDir = (dir: string): void => {
@@ -200,10 +81,43 @@ export function latestSessionId(_cwd: string): string | null {
 }
 
 export function buildSpawnArgs(opts: AgentSpawnOpts): string {
-  // Codex MCP is configured globally via ~/.codex/config.toml, not per-terminal
-  // flags. The mcpConfigPath is unused here but the MCP server was already
-  // registered by the prepareMcpForTerminal IPC call.
+  // The bundled plugin's static .mcp.json uses `${HARNESS_NODE_EXEC}`
+  // and friends, which Codex does NOT interpolate (verified against
+  // 0.133: Codex passes the literal templates to execve and strips
+  // most of the inherited env when spawning MCP subprocesses).
+  // codex-plugin.ts:neutralizeCachedMcpJson erases the harness-control
+  // entry from Codex's cached plugin copy so it doesn't try to spawn
+  // a process named `${HARNESS_NODE_EXEC}` and fail with ENOENT;
+  // instead we register the MCP server per-spawn via `-c` overrides
+  // with all values as literals.
+  //
+  // Plugin hooks require interactive trust before they fire — Codex
+  // shows a TUI "Hooks need review / Trust all and continue" prompt
+  // on first launch after a new/changed plugin install, then
+  // persists per-event trust hashes in ~/.codex/config.toml under
+  // [hooks.state]. There's no CLI flag or subcommand to drive this
+  // non-interactively. The Settings card surfaces guidance when the
+  // verification probe detects untrusted hooks.
   let cmd = opts.command
+
+  if (opts.harnessControl) {
+    const hc = opts.harnessControl
+    // -c values must be valid TOML; strings need embedded quotes.
+    cmd += ` -c ${shellQuote(`mcp_servers.harness-control.command=${JSON.stringify(hc.execPath)}`)}`
+    cmd += ` -c ${shellQuote(`mcp_servers.harness-control.args=${JSON.stringify([hc.bridgePath])}`)}`
+    const envEntries = [
+      `ELECTRON_RUN_AS_NODE="1"`,
+      `HARNESS_PORT=${JSON.stringify(String(hc.port))}`,
+      `HARNESS_TOKEN=${JSON.stringify(hc.token)}`,
+      `HARNESS_TERMINAL_ID=${JSON.stringify(hc.terminalId)}`,
+      `HARNESS_SESSION_ID=${JSON.stringify(hc.terminalId)}`
+    ]
+    if (hc.workspaceId) envEntries.push(`HARNESS_WORKTREE_ID=${JSON.stringify(hc.workspaceId)}`)
+    if (hc.repoRoot) envEntries.push(`HARNESS_REPO_ROOT=${JSON.stringify(hc.repoRoot)}`)
+    if (hc.isMain) envEntries.push(`HARNESS_IS_MAIN="1"`)
+    cmd += ` -c ${shellQuote(`mcp_servers.harness-control.env={${envEntries.join(',')}}`)}`
+  }
+
   if (opts.model && !opts.command.includes('--model') && !opts.command.includes('-m ')) {
     cmd += ` --model ${shellQuote(opts.model)}`
   }
