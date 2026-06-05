@@ -16,6 +16,9 @@ export type { SessionCostSummary, ClaudeAuthInfo, SubscriptionTier }
 import type { AddRepoResult } from '../shared/repo-pick'
 export type { AddRepoResult }
 
+import type { PreventSleepMode } from '../shared/state/settings'
+export type { PreventSleepMode }
+
 /** Per-kind dirtiness flags for a worktree. `git` reflects
  *  uncommitted changes; `scratchpad` reflects a non-empty scratchpad
  *  note. The delete-worktree flow surfaces each kind separately so the
@@ -336,6 +339,8 @@ export interface ElectronAPI {
     value: 'default' | 'acceptEdits' | 'plan'
   ): Promise<boolean>
   setAutoSleepMinutes(value: number): Promise<boolean>
+  setPreventSleepMode(value: PreventSleepMode): Promise<boolean>
+  setPreventSleepUntil(value: number | null): Promise<boolean>
   setAutoUpdateEnabled(enabled: boolean): Promise<boolean>
   setWarnBeforeQuitting(enabled: boolean): Promise<boolean>
   setExpandedDiagnosticLoggingEnabled(enabled: boolean): Promise<boolean>

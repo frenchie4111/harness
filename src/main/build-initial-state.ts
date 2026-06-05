@@ -17,7 +17,8 @@ import {
   initialSettings,
   DEFAULT_LIGHT_THEME,
   DEFAULT_DARK_THEME,
-  DEFAULT_PR_REVIEW_PROMPT
+  DEFAULT_PR_REVIEW_PROMPT,
+  type PreventSleepMode
 } from '../shared/state/settings'
 import {
   DEFAULT_CLAUDE_COMMAND,
@@ -49,6 +50,8 @@ function flattenScratchpadNotes(
   }
   return out
 }
+
+const PREVENT_SLEEP_MODES: PreventSleepMode[] = ['off', 'while-agents-running', 'always']
 
 export function buildInitialAppState(
   config: Config,
@@ -144,7 +147,12 @@ export function buildInitialAppState(
       dismissedAnnouncementIds: Array.isArray(config.dismissedAnnouncementIds)
         ? config.dismissedAnnouncementIds.filter((x): x is string => typeof x === 'string')
         : [],
-      announcementsMuted: config.announcementsMuted === true
+      announcementsMuted: config.announcementsMuted === true,
+      preventSleepMode: PREVENT_SLEEP_MODES.includes(config.preventSleepMode as PreventSleepMode)
+        ? (config.preventSleepMode as PreventSleepMode)
+        : 'off',
+      // The temporary "+1h" timer never survives a relaunch — always seed null.
+      preventSleepUntil: null
     }
   }
 }
