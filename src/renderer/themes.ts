@@ -73,6 +73,13 @@ export const THEME_OPTIONS: ThemeOption[] = [
     mode: 'light'
   },
   {
+    id: 'hub-delight',
+    label: 'Hub Delight',
+    description: 'Crisp white, classic blue, recognizable.',
+    swatches: ['#ffffff', '#eaeef2', '#24292e', '#0366d6'],
+    mode: 'light'
+  },
+  {
     id: 'cyberfunk',
     label: 'Cyberfunk',
     description: 'Pitch-black neon — magenta wiring, orange sparks.',

@@ -13,6 +13,10 @@ interface ChangedFilesPanelProps {
   onOpenDiff: (filePath: string, staged: boolean, mode: Mode) => void
   onSendToAgent?: (text: string) => void
   onOpenReview?: () => void
+  /** Open the worktree's Review tab focused on this committed file. */
+  onOpenReviewFile?: (filePath: string) => void
+  /** Open a file in the in-Harness editor tab (⌘-click on the editor icon). */
+  onOpenFile?: (filePath: string) => void
 }
 
 const STATUS_LABEL: Record<ChangedFile['status'], string> = {
@@ -36,7 +40,7 @@ interface ChangedFilesData {
   branch: ChangedFile[]
 }
 
-export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToAgent, onOpenReview }: ChangedFilesPanelProps): JSX.Element {
+export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToAgent, onOpenReview, onOpenReviewFile, onOpenFile }: ChangedFilesPanelProps): JSX.Element {
   const backend = useBackend()
   const fetcher = useCallback(async (path: string): Promise<ChangedFilesData> => {
     const [working, branch] = await Promise.all([
@@ -58,7 +62,6 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToAgent, onO
 
   const stagedFiles = workingFiles.filter((f) => f.staged)
   const unstagedFiles = workingFiles.filter((f) => !f.staged)
-  const totalCount = workingFiles.length + branchFiles.length
 
   const actions = (
     <>
@@ -100,8 +103,11 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToAgent, onO
         {worktreePath && hasLoaded && (
           <>
             {/* Uncommitted section */}
-            <div className="px-3 py-1.5 text-xs font-medium text-dim uppercase tracking-wider bg-panel-raised/50">
-              Uncommitted
+            <div className="flex items-center justify-between px-3 py-1.5 text-xs font-medium text-dim uppercase tracking-wider bg-panel-raised/50">
+              <span>Uncommitted</span>
+              {workingFiles.length > 0 && (
+                <span className="tabular-nums normal-case">{workingFiles.length}</span>
+              )}
             </div>
             {workingFiles.length === 0 ? (
               <div className="px-3 py-2 text-faint italic">No changes</div>
@@ -119,6 +125,7 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToAgent, onO
                     worktreePath={worktreePath}
                     onClick={() => onOpenDiff(file.path, true, 'working')}
                     onSendToAgent={onSendToAgent}
+                    onOpenFile={onOpenFile}
                   />
                 ))}
                 {stagedFiles.length > 0 && unstagedFiles.length > 0 && (
@@ -133,14 +140,18 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToAgent, onO
                     worktreePath={worktreePath}
                     onClick={() => onOpenDiff(file.path, false, 'working')}
                     onSendToAgent={onSendToAgent}
+                    onOpenFile={onOpenFile}
                   />
                 ))}
               </>
             )}
 
             {/* Branch diff section */}
-            <div className="px-3 py-1.5 text-xs font-medium text-dim uppercase tracking-wider bg-panel-raised/50 mt-1">
-              Committed
+            <div className="flex items-center justify-between px-3 py-1.5 text-xs font-medium text-dim uppercase tracking-wider bg-panel-raised/50 mt-1">
+              <span>Committed</span>
+              {branchFiles.length > 0 && (
+                <span className="tabular-nums normal-case">{branchFiles.length}</span>
+              )}
             </div>
             {branchFiles.length === 0 ? (
               <div className="px-3 py-2 text-faint italic">No commits on this branch yet</div>
@@ -150,8 +161,13 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToAgent, onO
                   key={`branch-${file.path}`}
                   file={file}
                   worktreePath={worktreePath}
-                  onClick={() => onOpenDiff(file.path, false, 'branch')}
+                  onClick={() =>
+                    onOpenReviewFile
+                      ? onOpenReviewFile(file.path)
+                      : onOpenDiff(file.path, false, 'branch')
+                  }
                   onSendToAgent={onSendToAgent}
+                  onOpenFile={onOpenFile}
                 />
               ))
             )}
@@ -159,13 +175,6 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToAgent, onO
         )}
       </div>
 
-      {totalCount > 0 && (
-        <div className="px-3 py-1.5 border-t border-border text-xs text-faint shrink-0">
-          {workingFiles.length > 0 && <span>{workingFiles.length} uncommitted</span>}
-          {workingFiles.length > 0 && branchFiles.length > 0 && <span> · </span>}
-          {branchFiles.length > 0 && <span>{branchFiles.length} committed</span>}
-        </div>
-      )}
     </RightPanel>
   )
 }
@@ -174,12 +183,14 @@ function FileRow({
   file,
   worktreePath,
   onClick,
-  onSendToAgent
+  onSendToAgent,
+  onOpenFile
 }: {
   file: ChangedFile
   worktreePath: string | null
   onClick: () => void
   onSendToAgent?: (text: string) => void
+  onOpenFile?: (filePath: string) => void
 }): JSX.Element {
   const backend = useBackend()
   const lastSlash = file.path.lastIndexOf('/')
@@ -231,11 +242,12 @@ function FileRow({
         </Tooltip>
       )}
       {worktreePath && (
-        <Tooltip label="Open file in editor" side="left">
+        <Tooltip label="Open file in external editor (⌘-click for in-app editor)" side="left">
           <button
             onClick={(e) => {
               e.stopPropagation()
-              backend.openInEditor(worktreePath, file.path)
+              if (e.metaKey && onOpenFile) onOpenFile(file.path)
+              else backend.openInEditor(worktreePath, file.path)
             }}
             className="shrink-0 opacity-0 group-hover:opacity-100 text-faint hover:text-fg transition-all cursor-pointer"
           >

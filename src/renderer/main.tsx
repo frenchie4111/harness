@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client'
 import App from './App'
 import { initStore } from './store'
 import { getBackend } from './backend'
-import { defineHarnessTheme } from './monaco-setup'
+import { defineHarnessTheme, watchHarnessTheme } from './monaco-setup'
 import { renderMetrics } from './render-metrics'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { LinuxWindowControls } from './components/LinuxWindowControls'
@@ -21,6 +21,7 @@ const onRender: ProfilerOnRenderCallback = (id, phase, actualDuration) => {
 initStore()
   .then(() => {
     defineHarnessTheme()
+    watchHarnessTheme()
     createRoot(document.getElementById('root')!).render(
       <ErrorBoundary label="app:root" showReload>
         <Profiler id="app" onRender={onRender}>

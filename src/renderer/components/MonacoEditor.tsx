@@ -68,10 +68,15 @@ export function MonacoEditor({
       onChangeRef.current?.(editor.getValue())
     })
 
-    // Cmd-S / Ctrl-S → onSave. Using addCommand lets Monaco own the
-    // keybinding scope so it doesn't fire while focus is elsewhere.
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
-      onSaveRef.current?.()
+    // Cmd-S / Ctrl-S → onSave. onKeyDown fires reliably while the editor
+    // is focused; addCommand's keybinding was being swallowed before
+    // reaching the handler. preventDefault stops the browser save dialog.
+    const saveKeySub = editor.onKeyDown((e) => {
+      if ((e.metaKey || e.ctrlKey) && e.keyCode === monaco.KeyCode.KeyS) {
+        e.preventDefault()
+        e.stopPropagation()
+        onSaveRef.current?.()
+      }
     })
 
     // Hover-tracked glyph-margin button for "reference line in Claude".
@@ -106,6 +111,7 @@ export function MonacoEditor({
 
     return () => {
       changeSub.dispose()
+      saveKeySub.dispose()
       moveSub.dispose()
       leaveSub.dispose()
       downSub.dispose()

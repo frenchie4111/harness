@@ -39,6 +39,7 @@ interface RightColumnProps {
   onOpenFile: AllFilesPanelProps['onOpenFile']
   onSendToAgent: (worktreePath: string, text: string) => void
   onOpenReview: () => void
+  onOpenReviewFile: ChangedFilesPanelProps['onOpenReviewFile']
   onCollapse: () => void
 }
 
@@ -60,6 +61,7 @@ export function RightColumn({
   onOpenFile,
   onSendToAgent,
   onOpenReview,
+  onOpenReviewFile,
   onCollapse
 }: RightColumnProps): JSX.Element {
   const backend = useBackend()
@@ -124,6 +126,8 @@ export function RightColumn({
               activeWorktreeId ? (text) => onSendToAgent(activeWorktreeId, text) : undefined
             }
             onOpenReview={onOpenReview}
+            onOpenReviewFile={onOpenReviewFile}
+            onOpenFile={onOpenFile}
           />
         )
       case 'allFiles':

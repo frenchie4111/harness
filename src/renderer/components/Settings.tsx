@@ -12,6 +12,7 @@ import { AgentIcon } from './AgentIcon'
 import { InterfaceToggle } from './InterfaceToggle'
 import { BUILT_IN_THEMES_BY_MODE, type ThemeOption } from '../themes'
 import { SEMANTIC_KEYS } from '../theme-apply'
+import { normalizeThemeColor } from '../theme-color'
 import type { CustomTheme, UiScale } from '../../shared/state/settings'
 import { SCALES, scaleSpec } from '../../shared/state/settings'
 import { QRCodeSVG } from 'qrcode.react'
@@ -536,13 +537,19 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     })
   }, [uiScale, scrollToSection, scrollToSubSection])
 
+  // Picking a theme also switches the mode to that theme's mode when we're
+  // in the opposite mode, so a click always takes effect (otherwise picking
+  // a light theme while in Dark just sets a preference and looks like a
+  // no-op). System mode is left alone — that's an explicit OS-follows choice.
   const handleSelectLightTheme = useCallback((id: string) => {
     void backend.setThemeLight(id)
-  }, [backend])
+    if (themeMode === 'dark') void backend.setThemeMode('light')
+  }, [backend, themeMode])
 
   const handleSelectDarkTheme = useCallback((id: string) => {
     void backend.setThemeDark(id)
-  }, [backend])
+    if (themeMode === 'light') void backend.setThemeMode('dark')
+  }, [backend, themeMode])
 
   const handleTerminalFontFamilyChange = useCallback((value: string) => {
     void backend.setTerminalFontFamily(value)
@@ -3472,7 +3479,10 @@ function readBuiltInThemeJson(opt: ThemeOption): string {
     const colors: Record<string, string> = {}
     for (const key of SEMANTIC_KEYS) {
       const v = cs.getPropertyValue(`--color-${key}`).trim()
-      if (v) colors[key] = v
+      // Emit canonical long-form hex so the copied theme round-trips cleanly:
+      // the CSS pipeline minifies `#ffffff` to `#fff`, but a copied theme
+      // should read as the author wrote it. Non-hex values pass through as-is.
+      if (v) colors[key] = normalizeThemeColor(v, v)
     }
     return JSON.stringify({ name: opt.label, mode: opt.mode, colors }, null, 2) + '\n'
   } finally {

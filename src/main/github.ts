@@ -4,7 +4,13 @@ import { log, formatErr } from './debug'
 import { getCachedToken, invalidateTokenCache, resolveGitHubToken } from './github-auth'
 import { trackedFetch } from './github-recorder'
 import type { CheckStatus, PRReview, PRStatus } from '../shared/state/prs'
-import type { PRSummary, PRMetadata } from '../shared/github-types'
+import type {
+  PRSummary,
+  PRMetadata,
+  ReviewSyncComment,
+  ReviewSyncInput,
+  ReviewSyncResult
+} from '../shared/github-types'
 
 export type { CheckStatus, PRReview, PRStatus, PRSummary, PRMetadata }
 
@@ -193,6 +199,7 @@ interface GraphQLActor {
 interface GraphQLPR {
   number: number
   title: string
+  body: string
   state: 'OPEN' | 'CLOSED' | 'MERGED'
   isDraft: boolean
   url: string
@@ -322,7 +329,7 @@ function gqlStatusState(s: Extract<GraphQLCheckContext, { __typename: 'StatusCon
 }
 
 const PR_FRAGMENT = `fragment PR on PullRequest {
-  number title state isDraft url mergedAt mergeable additions deletions
+  number title body state isDraft url mergedAt mergeable additions deletions
   baseRefName
   baseRepository { defaultBranchRef { name } }
   headRefOid
@@ -623,6 +630,7 @@ function buildPRStatus(
   return {
     number: pr.number,
     title: pr.title,
+    body: pr.body || '',
     state,
     url: pr.url,
     branch: branchName,
@@ -1170,6 +1178,431 @@ export async function getPRMetadata(
   } catch (err) {
     log('github', `getPRMetadata failed for ${owner}/${repo}#${prNumber}`, formatErr(err))
     return null
+  }
+}
+
+// --- Review sync -----------------------------------------------------------
+
+async function ghRequest(
+  token: string,
+  url: string,
+  method: string,
+  body?: unknown
+): Promise<{ ok: boolean; status: number; json: unknown }> {
+  const headers: Record<string, string> = {
+    Accept: 'application/vnd.github+json',
+    'User-Agent': 'Harness',
+    'X-GitHub-Api-Version': '2022-11-28',
+    Authorization: `Bearer ${token}`
+  }
+  if (body !== undefined) headers['Content-Type'] = 'application/json'
+  const res = await trackedFetch(url, {
+    method,
+    headers,
+    body: body !== undefined ? JSON.stringify(body) : undefined
+  })
+  let json: unknown = null
+  try {
+    json = await res.json()
+  } catch {
+    /* empty body */
+  }
+  return { ok: res.ok, status: res.status, json }
+}
+
+async function ghGraphQL(
+  token: string,
+  query: string,
+  variables: Record<string, unknown>
+): Promise<{ ok: boolean; data?: unknown; error?: string }> {
+  const res = await trackedFetch('https://api.github.com/graphql', {
+    method: 'POST',
+    headers: {
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'Harness',
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ query, variables })
+  })
+  if (!res.ok) return { ok: false, error: `HTTP ${res.status}` }
+  const json = (await res.json()) as { data?: unknown; errors?: { message: string }[] }
+  if (json.errors && json.errors.length > 0) {
+    return { ok: false, data: json.data, error: json.errors.map((e) => e.message).join('; ') }
+  }
+  return { ok: true, data: json.data }
+}
+
+/** Push local review comments (as a DRAFT/pending review) + per-file viewed
+ *  state to a GitHub PR, then pull the canonical comment set back.
+ *
+ *  Comments are added to the viewer's pending review so they stay unpublished
+ *  until the user submits the review on GitHub. A user can only have one
+ *  pending review per PR, so we reuse an existing one (adding threads to it)
+ *  or create a fresh one. Line comments use the RIGHT side; file-level
+ *  (line 0) comments aren't supported as drafts and are left local.
+ *
+ *  Best-effort: a comment GitHub rejects (e.g. a line outside the diff) is
+ *  counted as failed and kept locally rather than aborting the sync.
+ *  Comments already carrying a remoteId are assumed pushed and not re-sent. */
+export async function syncPRReview(
+  token: string,
+  owner: string,
+  repo: string,
+  prNumber: number,
+  input: ReviewSyncInput
+): Promise<ReviewSyncResult> {
+  const base = `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}`
+  const passthrough = {
+    comments: input.comments,
+    reviewedFiles: input.reviewedFiles,
+    pushed: 0,
+    failed: 0
+  }
+
+  // 1. PR node id (for the draft-review + viewed-state GraphQL APIs).
+  let nodeId = ''
+  try {
+    const pr = await ghRequest(token, base, 'GET')
+    if (!pr.ok) {
+      return { ok: false, error: `Could not load PR #${prNumber} (HTTP ${pr.status})`, ...passthrough }
+    }
+    nodeId = (pr.json as { node_id?: string }).node_id ?? ''
+  } catch (err) {
+    return { ok: false, error: formatErr(err), ...passthrough }
+  }
+  if (!nodeId) return { ok: false, error: 'Could not resolve PR node id', ...passthrough }
+
+  // 2. Find the viewer's existing pending review, if any. Pending reviews are
+  //    only returned to their author, so any PENDING entry here is ours.
+  let pendingReviewNodeId = ''
+  try {
+    const res = await ghRequest(token, `${base}/reviews?per_page=100`, 'GET')
+    if (res.ok && Array.isArray(res.json)) {
+      const pending = (res.json as Array<{ id: number; node_id: string; state: string }>).find(
+        (r) => r.state === 'PENDING'
+      )
+      if (pending) {
+        pendingReviewNodeId = pending.node_id
+      }
+    }
+  } catch (err) {
+    log('github', 'list reviews failed', formatErr(err))
+  }
+
+  // 3. Push un-synced line comments as drafts on the pending review.
+  const toPush = input.pullOnly
+    ? []
+    : input.comments.filter(
+        (c) => c.remoteId === undefined && c.lineNumber > 0 && c.inReplyToId === undefined
+      )
+  let pushed = 0
+  let failed = 0
+  if (toPush.length > 0) {
+    if (pendingReviewNodeId) {
+      // Existing pending review — add each comment as a thread.
+      for (const c of toPush) {
+        const range = c.startLine !== undefined && c.startLine !== c.lineNumber
+        const r = await ghGraphQL(
+          token,
+          `mutation($rid:ID!,$path:String!,$line:Int!,$startLine:Int,$startSide:DiffSide,$body:String!){
+             addPullRequestReviewThread(input:{pullRequestReviewId:$rid,path:$path,line:$line,startLine:$startLine,side:RIGHT,startSide:$startSide,body:$body}){ thread { id } }
+           }`,
+          {
+            rid: pendingReviewNodeId,
+            path: c.filePath,
+            line: c.lineNumber,
+            startLine: range ? c.startLine : null,
+            startSide: range ? 'RIGHT' : null,
+            body: c.body
+          }
+        )
+        if (r.ok) pushed++
+        else {
+          failed++
+          log('github', `draft thread rejected ${c.filePath}:${c.lineNumber}: ${r.error}`)
+        }
+      }
+    } else {
+      // No pending review yet — create one carrying all the threads.
+      const threads = toPush.map((c) => {
+        const range = c.startLine !== undefined && c.startLine !== c.lineNumber
+        return {
+          path: c.filePath,
+          line: c.lineNumber,
+          side: 'RIGHT',
+          ...(range ? { startLine: c.startLine, startSide: 'RIGHT' } : {}),
+          body: c.body
+        }
+      })
+      const r = await ghGraphQL(
+        token,
+        `mutation($prId:ID!,$threads:[DraftPullRequestReviewThread!]){
+           addPullRequestReview(input:{pullRequestId:$prId,threads:$threads}){ pullRequestReview { databaseId } }
+         }`,
+        { prId: nodeId, threads }
+      )
+      if (r.ok) {
+        pushed += toPush.length
+      } else {
+        failed += toPush.length
+        log('github', `create draft review failed: ${r.error}`)
+      }
+    }
+  }
+
+  // 3b. Push replies. A reply targets an existing comment (its inReplyToId),
+  //     so it posts directly via REST in_reply_to (published immediately).
+  if (!input.pullOnly) {
+    const replies = input.comments.filter(
+      (c) => c.remoteId === undefined && c.inReplyToId !== undefined
+    )
+    for (const r of replies) {
+      try {
+        const res = await ghRequest(token, `${base}/comments`, 'POST', {
+          body: r.body,
+          in_reply_to: r.inReplyToId
+        })
+        if (res.ok) pushed++
+        else {
+          failed++
+          const msg = (res.json as { message?: string } | null)?.message ?? ''
+          log('github', `reply rejected (in_reply_to ${r.inReplyToId}) HTTP ${res.status} ${msg}`)
+        }
+      } catch (err) {
+        failed++
+        log('github', 'reply post error', formatErr(err))
+      }
+    }
+  }
+
+  // 3c. Resolve threads the user asked to resolve. Never unresolve.
+  if (!input.pullOnly && input.resolveThreadIds && input.resolveThreadIds.length > 0) {
+    for (const threadId of input.resolveThreadIds) {
+      const r = await ghGraphQL(
+        token,
+        'mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{id}}}',
+        { id: threadId }
+      )
+      if (!r.ok) log('github', `resolve thread failed ${threadId}: ${r.error}`)
+    }
+  }
+
+  // 4. Push viewed state — only MARK locally-reviewed files. Never unmark:
+  //    a file viewed on GitHub (but not locally) must not get cleared.
+  //    Skipped on a pull-only sync.
+  const reviewedSet = new Set(input.reviewedFiles)
+  if (!input.pullOnly) {
+    for (const path of input.files) {
+      if (!reviewedSet.has(path)) continue
+      const r = await ghGraphQL(
+        token,
+        'mutation($id:ID!,$p:String!){markFileAsViewed(input:{pullRequestId:$id,path:$p}){clientMutationId}}',
+        { id: nodeId, p: path }
+      )
+      if (!r.ok) log('github', `mark viewed failed for ${path}: ${r.error}`)
+    }
+  }
+
+  // 4c. Pull review threads → thread node id + resolved state per comment.
+  const threadInfo = new Map<number, { threadId: string; resolved: boolean }>()
+  const threadsQuery = await ghGraphQL(
+    token,
+    'query($o:String!,$n:String!,$num:Int!){repository(owner:$o,name:$n){pullRequest(number:$num){reviewThreads(first:100){nodes{id isResolved comments(first:100){nodes{databaseId}}}}}}}',
+    { o: owner, n: repo, num: prNumber }
+  )
+  if (threadsQuery.ok) {
+    const nodes =
+      (
+        threadsQuery.data as {
+          repository?: {
+            pullRequest?: {
+              reviewThreads?: {
+                nodes?: Array<{
+                  id: string
+                  isResolved: boolean
+                  comments?: { nodes?: Array<{ databaseId?: number }> }
+                }>
+              }
+            }
+          }
+        }
+      )?.repository?.pullRequest?.reviewThreads?.nodes ?? []
+    for (const t of nodes) {
+      for (const c of t.comments?.nodes ?? []) {
+        if (typeof c.databaseId === 'number') {
+          threadInfo.set(c.databaseId, { threadId: t.id, resolved: t.isResolved })
+        }
+      }
+    }
+  } else {
+    log('github', `review threads query failed: ${threadsQuery.error}`)
+  }
+
+  // 4b. Pull GitHub's viewed state and union it with the local set, so files
+  //     viewed on GitHub stay viewed (and vice-versa). Viewed state is
+  //     additive — un-viewing isn't propagated.
+  const ghViewed = new Set<string>()
+  const viewedQuery = await ghGraphQL(
+    token,
+    'query($o:String!,$n:String!,$num:Int!){repository(owner:$o,name:$n){pullRequest(number:$num){files(first:100){nodes{path viewerViewedState}}}}}',
+    { o: owner, n: repo, num: prNumber }
+  )
+  if (viewedQuery.ok) {
+    const nodes =
+      (
+        viewedQuery.data as {
+          repository?: {
+            pullRequest?: { files?: { nodes?: Array<{ path: string; viewerViewedState?: string }> } }
+          }
+        }
+      )?.repository?.pullRequest?.files?.nodes ?? []
+    for (const f of nodes) if (f.viewerViewedState === 'VIEWED') ghViewed.add(f.path)
+  } else {
+    log('github', `viewed-state query failed: ${viewedQuery.error}`)
+  }
+  const mergedReviewed = [...new Set([...input.reviewedFiles, ...ghViewed])]
+
+  // 5. Pull the canonical comment set: published comments + our pending
+  //    review's drafts (so freshly-pushed drafts get an id and don't re-post).
+  const pulled: ReviewSyncComment[] = []
+  type ApiComment = {
+    id: number
+    path: string
+    line?: number | null
+    original_line?: number | null
+    start_line?: number | null
+    original_start_line?: number | null
+    body?: string
+    created_at?: string
+    html_url?: string
+    in_reply_to_id?: number
+    user?: { login?: string; avatar_url?: string }
+  }
+  const collect = (arr: ApiComment[]): void => {
+    for (const rc of arr) {
+      const start = rc.start_line ?? rc.original_start_line ?? undefined
+      pulled.push({
+        filePath: rc.path,
+        lineNumber: rc.line ?? rc.original_line ?? 0,
+        startLine: start ?? undefined,
+        body: rc.body ?? '',
+        remoteId: rc.id,
+        author: rc.user?.login,
+        authorAvatarUrl: rc.user?.avatar_url,
+        createdAt: rc.created_at,
+        htmlUrl: rc.html_url,
+        draft: false,
+        inReplyToId: rc.in_reply_to_id
+      })
+    }
+  }
+  try {
+    const published = await ghRequest(token, `${base}/comments?per_page=100`, 'GET')
+    if (published.ok && Array.isArray(published.json)) collect(published.json as ApiComment[])
+  } catch (err) {
+    log('github', 'list review comments error', formatErr(err))
+  }
+  // Pending (draft) review comments come back from REST with a null line, so
+  // pull them via GraphQL where originalLine is populated.
+  const draftQuery = await ghGraphQL(
+    token,
+    'query($o:String!,$n:String!,$num:Int!){repository(owner:$o,name:$n){pullRequest(number:$num){reviews(first:20,states:[PENDING]){nodes{comments(first:100){nodes{databaseId path line originalLine startLine originalStartLine body createdAt url replyTo{databaseId} author{login avatarUrl}}}}}}}}',
+    { o: owner, n: repo, num: prNumber }
+  )
+  if (draftQuery.ok) {
+    type GqlComment = {
+      databaseId?: number
+      path?: string
+      line?: number | null
+      originalLine?: number | null
+      startLine?: number | null
+      originalStartLine?: number | null
+      body?: string
+      createdAt?: string
+      url?: string
+      replyTo?: { databaseId?: number }
+      author?: { login?: string; avatarUrl?: string }
+    }
+    const reviews =
+      (
+        draftQuery.data as {
+          repository?: {
+            pullRequest?: { reviews?: { nodes?: Array<{ comments?: { nodes?: GqlComment[] } }> } }
+          }
+        }
+      )?.repository?.pullRequest?.reviews?.nodes ?? []
+    for (const rev of reviews) {
+      for (const c of rev?.comments?.nodes ?? []) {
+        if (typeof c.databaseId !== 'number' || !c.path) continue
+        pulled.push({
+          filePath: c.path,
+          lineNumber: c.line ?? c.originalLine ?? 0,
+          startLine: c.startLine ?? c.originalStartLine ?? undefined,
+          body: c.body ?? '',
+          remoteId: c.databaseId,
+          author: c.author?.login,
+          authorAvatarUrl: c.author?.avatarUrl,
+          createdAt: c.createdAt,
+          htmlUrl: c.url,
+          draft: true,
+          inReplyToId: c.replyTo?.databaseId
+        })
+      }
+    }
+  } else {
+    log('github', `pending review comments query failed: ${draftQuery.error}`)
+  }
+
+  // Drafts pulled from a pending review can come back with a null/0 line.
+  // Recover it from the matching local comment (same file + body) so the
+  // pulled copy renders at the right line AND dedupes against the local one
+  // — otherwise it lands at the top and the local copy is kept too.
+  for (const p of pulled) {
+    if (p.lineNumber === 0) {
+      const local = input.comments.find(
+        (c) => c.filePath === p.filePath && c.body === p.body && c.lineNumber > 0
+      )
+      if (local) p.lineNumber = local.lineNumber
+    }
+  }
+
+  // Attach thread node id + resolved state to each pulled comment.
+  for (const p of pulled) {
+    if (p.remoteId !== undefined) {
+      const ti = threadInfo.get(p.remoteId)
+      if (ti) {
+        p.threadId = ti.threadId
+        p.resolved = ti.resolved
+      }
+    }
+  }
+
+  // Collapse identical duplicates (e.g. drafts accidentally pushed twice by
+  // earlier syncs) so they don't pile up. Keyed on file+line+body+author so
+  // distinct reviewers' identical text isn't merged.
+  const seen = new Set<string>()
+  const dedupedPulled = pulled.filter((c) => {
+    const k = `${c.filePath}:${c.lineNumber}:${c.body}:${c.author ?? ''}`
+    if (seen.has(k)) return false
+    seen.add(k)
+    return true
+  })
+
+  // Keep local comments not represented in the pulled set — file-level
+  // comments (no draft support) and any that failed to push — so they're
+  // not lost and can retry next sync.
+  const pulledKey = new Set(dedupedPulled.map((c) => `${c.filePath}:${c.lineNumber}:${c.body}`))
+  const keptLocal = input.comments.filter(
+    (c) => c.remoteId === undefined && !pulledKey.has(`${c.filePath}:${c.lineNumber}:${c.body}`)
+  )
+
+  return {
+    ok: true,
+    comments: [...dedupedPulled, ...keptLocal],
+    reviewedFiles: mergedReviewed,
+    pushed,
+    failed
   }
 }
 

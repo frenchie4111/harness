@@ -1,5 +1,6 @@
 import { DEFAULT_LIGHT_THEME, DEFAULT_DARK_THEME } from '../shared/state/settings'
 import type { ResolvedTheme } from './hooks/useActiveTheme'
+import { normalizeThemeColor } from './theme-color'
 
 // Tracks which `--color-*` properties we set inline on the documentElement
 // during the previous apply, so the next apply can clear leftovers
@@ -66,9 +67,10 @@ export function applyTheme(theme: ResolvedTheme): void {
  *  Used as `lastEffectiveAppBg` so main can choose a matching window
  *  background on the next boot. */
 export function effectiveAppBg(theme: ResolvedTheme): string {
+  const fallback = theme.mode === 'dark' ? '#0a0a0a' : '#fdf6e3'
   if (theme.kind === 'custom') {
-    return theme.colors.app ?? (theme.mode === 'dark' ? '#0a0a0a' : '#fdf6e3')
+    return normalizeThemeColor(theme.colors.app ?? fallback, fallback)
   }
   // First swatch on every built-in is its app background hex.
-  return theme.swatches[0]
+  return normalizeThemeColor(theme.swatches[0] ?? fallback, fallback)
 }

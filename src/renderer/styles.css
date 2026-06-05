@@ -104,6 +104,27 @@
   --color-accent: #6c71c4;
 }
 
+/* GitHub Light ("Hub delight") */
+[data-theme="hub-delight"] {
+  --color-app: #ffffff;
+  --color-panel: #f6f8fa;
+  --color-panel-raised: #eaeef2;
+  --color-surface: #f6f8fa;
+  --color-surface-hover: #e7ecf0;
+  --color-border: #d0d7de;
+  --color-border-strong: #afb8c1;
+  --color-fg: #24292e;
+  --color-fg-bright: #1b1f24;
+  --color-muted: #57606a;
+  --color-dim: #6e7781;
+  --color-faint: #8c959f;
+  --color-success: #1a7f37;
+  --color-warning: #9a6700;
+  --color-danger: #d73a49;
+  --color-info: #0366d6;
+  --color-accent: #0366d6;
+}
+
 [data-theme="dracula"] {
   --color-app: #282a36;
   --color-panel: #2f3142;
@@ -720,6 +741,26 @@ button, [role="button"], a[href], [onclick] {
 }
 .monaco-editor .comment-line-glyph:hover {
   opacity: 1;
+}
+
+/* Highlight the line span a (multi-line) review comment covers. */
+.monaco-editor .comment-range-line {
+  background-color: color-mix(in srgb, var(--color-info, #58a6ff) 12%, transparent);
+  box-shadow: inset 2px 0 0 0 var(--color-info, #58a6ff);
+}
+
+/* Brief flash when a comment-jump / find navigates to a line. */
+.monaco-editor .reveal-flash-line {
+  background-color: color-mix(in srgb, var(--color-warning, #d29922) 30%, transparent);
+  animation: reveal-flash 1.4s ease-out forwards;
+}
+@keyframes reveal-flash {
+  0% {
+    background-color: color-mix(in srgb, var(--color-warning, #d29922) 45%, transparent);
+  }
+  100% {
+    background-color: transparent;
+  }
 }
 
 /* iOS/Safari auto-promotes ambiguous codepoints like U+23FA (⏺, which

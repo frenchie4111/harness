@@ -23,6 +23,9 @@ export interface PRReview {
 export interface PRStatus {
   number: number
   title: string
+  /** PR description body (GitHub-flavored markdown). Empty when the PR has
+   *  no description or pre-body-fetch cached data. */
+  body: string
   state: 'open' | 'draft' | 'merged' | 'closed'
   url: string
   branch: string

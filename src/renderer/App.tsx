@@ -13,6 +13,7 @@ import { SCALES, scaleSpec } from '../shared/state/settings'
 import { useActiveTheme } from './hooks/useActiveTheme'
 import { useHoldToQuit } from './hooks/useHoldToQuit'
 import { applyTheme, effectiveAppBg } from './theme-apply'
+import { setReviewDiffMode } from './monaco-setup'
 import { getBackend } from './backend'
 import { HotkeysProvider, Tooltip } from './components/Tooltip'
 import { Sidebar } from './components/Sidebar'
@@ -25,6 +26,7 @@ import { QuestCard } from './components/QuestCard'
 import { WorkspaceView } from './components/WorkspaceView'
 import { QuakeTerminal } from './components/QuakeTerminal'
 import { RightColumn } from './components/RightColumn'
+import { requestReviewFile } from './review-open-file'
 import { CollapsedSidebar } from './components/CollapsedSidebar'
 import { CollapsedRightPanel } from './components/CollapsedRightPanel'
 import { Settings } from './components/Settings'
@@ -74,10 +76,16 @@ const TITLE_LEADING_PX = 80
 export default function App(): JSX.Element {
   const { isMobile } = useViewport()
   const active = useActiveTheme()
+  const { reviewDiffMode, themeLight, themeDark } = useSettings()
   useEffect(() => {
     applyTheme(active)
     getBackend().setLastEffectiveAppBg(effectiveAppBg(active))
   }, [active])
+  // Push the review-diff appearance override into Monaco. Runs after
+  // applyTheme so the 'match' path reads the freshly-applied :root palette.
+  useEffect(() => {
+    setReviewDiffMode(reviewDiffMode, themeLight, themeDark)
+  }, [reviewDiffMode, themeLight, themeDark, active])
   if (isMobile) return <MobileApp />
   return <DesktopApp />
 }
@@ -1569,6 +1577,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
                   onReorderTabs={handleReorderTabs}
                   onMoveTabToPane={handleMoveTabToPane}
                   onSendToAgent={handleSendToAgent}
+                  onOpenFile={(_wtPath, filePath) => handleOpenFile(filePath)}
                   topBarLeadingPx={TITLE_LEADING_PX}
                   hideAppTitle={singleScreenMode}
                   onTitleBlockEdge={isVisible ? handleTitleBlockEdge : undefined}
@@ -1724,6 +1733,11 @@ const setQuestStep = useCallback((next: QuestStep) => {
             onSendToAgent={handleSendToAgent}
             onOpenReview={() => {
               if (activeWorktreeId) void backend.panesOpenReview(activeWorktreeId)
+            }}
+            onOpenReviewFile={(filePath) => {
+              if (!activeWorktreeId) return
+              requestReviewFile(activeWorktreeId, filePath)
+              void backend.panesOpenReview(activeWorktreeId)
             }}
             onCollapse={() => setRightColumnHidden(true)}
           /></div></div>

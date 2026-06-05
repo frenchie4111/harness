@@ -103,6 +103,9 @@ export interface Config {
   themeLight?: string
   // Theme id used when `themeMode` resolves to 'dark'. Default 'dark'.
   themeDark?: string
+  // Appearance override for the review tab's code editors. Default 'match'
+  // (follow the app theme); 'light'/'dark' pin the diffs to that palette.
+  reviewDiffMode?: 'match' | 'light' | 'dark'
   // App-background hex the renderer last applied. Used at next boot to
   // pick the BrowserWindow background color so the first paint doesn't
   // flash. Written from the renderer via a fire-and-forget IPC after each
@@ -278,6 +281,7 @@ export const AVAILABLE_THEMES = [
   'one-dark',
   'solarized-dark',
   'solarized-light',
+  'hub-delight',
   'cyberfunk'
 ] as const
 
@@ -293,6 +297,7 @@ export const THEME_APP_BG: Record<string, string> = {
   'one-dark': '#282c34',
   'solarized-dark': '#002b36',
   'solarized-light': '#fdf6e3',
+  'hub-delight': '#ffffff',
   'cyberfunk': '#000000'
 }
 

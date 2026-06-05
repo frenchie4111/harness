@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowRightFromLine, AtSign, Save, WrapText } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { ArrowRightFromLine, AtSign, Code2, Pencil, Pilcrow, WrapText } from 'lucide-react'
 import type { CommitDiff, FileDiffSides } from '../types'
 import { Tooltip } from './Tooltip'
 import { detectLanguage, highlightLine } from '../syntax'
 import { MonacoDiffEditor } from './MonacoDiffEditor'
+import { MonacoEditor } from './MonacoEditor'
 import { useSettings } from '../store'
 import { useBackend } from '../backend'
 import { scaledEditorFontSize } from '../../shared/state/settings'
@@ -14,8 +15,19 @@ interface DiffViewProps {
   staged?: boolean
   branchDiff?: boolean
   commitHash?: string
+  /** True when this diff tab is the active/visible tab in its pane.
+   *  Gates the d/f/s view-mode keyboard shortcuts so background tabs
+   *  don't react to them. */
+  active?: boolean
+  /** Open the dedicated editor (file) tab for this path. The diff tab is
+   *  view-only; the Edit action routes here so a file is only ever
+   *  editable in one place — never two tabs writing the same file. */
+  onOpenEditor?: (filePath: string) => void
   onSendToAgent?: (text: string) => void
 }
+
+/** Diff-tab view modes for a single file. */
+type FileViewMode = 'unified' | 'split' | 'full'
 
 export function DiffView(props: DiffViewProps): JSX.Element {
   if (props.commitHash) return <CommitDiffView {...props} />
@@ -32,35 +44,48 @@ function FileDiffView({
   filePath,
   staged,
   branchDiff,
+  active,
+  onOpenEditor,
   onSendToAgent
 }: DiffViewProps): JSX.Element {
   const backend = useBackend()
   const settings = useSettings()
   const [sides, setSides] = useState<FileDiffSides | null>(null)
   const [loading, setLoading] = useState(true)
-  const [modifiedValue, setModifiedValue] = useState('')
-  const [savedValue, setSavedValue] = useState('')
-  const [saveError, setSaveError] = useState<string | null>(null)
+  const [viewMode, setViewMode] = useState<FileViewMode>('unified')
+  const [showWhitespace, setShowWhitespace] = useState(false)
   const [wordWrap, setWordWrap] = useState(false)
 
-  const valueRef = useRef(modifiedValue)
-  const savedRef = useRef(savedValue)
-  valueRef.current = modifiedValue
-  savedRef.current = savedValue
-
-  // Only unstaged working diffs have a modified side that IS the working
-  // tree — the only place edits can meaningfully land. Everything else
-  // (staged / branch) is read-only.
-  const editable = !staged && !branchDiff
-  const dirty = editable && modifiedValue !== savedValue
+  // The diff tab is view-only. Editing happens in the dedicated editor
+  // (file) tab via onOpenEditor, so a file is never writable from two
+  // tabs at once. d / f / s swap the view in place. Honor Monaco focus:
+  // a read-only editor lets these bubble, but a real form field shouldn't.
+  useEffect(() => {
+    if (!active) return
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return
+      const t = e.target as HTMLElement | null
+      const inMonaco = !!t?.closest?.('.monaco-editor')
+      if (!inMonaco && (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement)) return
+      if (e.key === 'd') {
+        e.preventDefault()
+        setViewMode('unified')
+      } else if (e.key === 's') {
+        e.preventDefault()
+        setViewMode('split')
+      } else if (e.key === 'f') {
+        e.preventDefault()
+        setViewMode('full')
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [active])
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
     setSides(null)
-    setModifiedValue('')
-    setSavedValue('')
-    setSaveError(null)
     setWordWrap(false)
     if (!filePath) return
     backend
@@ -68,38 +93,12 @@ function FileDiffView({
       .then((r) => {
         if (cancelled) return
         setSides(r)
-        setModifiedValue(r.modified)
-        setSavedValue(r.modified)
         setLoading(false)
       })
     return () => {
       cancelled = true
     }
   }, [worktreePath, filePath, staged, branchDiff])
-
-  const save = useCallback(async () => {
-    if (!filePath || !editable) return
-    const current = valueRef.current
-    if (current === savedRef.current) return
-    setSaveError(null)
-    const r = await backend.writeWorktreeFile(worktreePath, filePath, current)
-    if (r.ok) {
-      setSavedValue(current)
-    } else {
-      setSaveError(r.error || 'Save failed')
-    }
-  }, [worktreePath, filePath, editable])
-
-  useEffect(() => {
-    const handler = (e: BeforeUnloadEvent): void => {
-      if (valueRef.current !== savedRef.current) {
-        e.preventDefault()
-        e.returnValue = ''
-      }
-    }
-    window.addEventListener('beforeunload', handler)
-    return () => window.removeEventListener('beforeunload', handler)
-  }, [])
 
   if (loading) {
     return (
@@ -125,7 +124,7 @@ function FileDiffView({
     )
   }
 
-  if (!dirty && sides.original === sides.modified) {
+  if (sides.original === sides.modified) {
     return (
       <div className="flex items-center justify-center h-full text-faint text-sm">
         No changes
@@ -133,28 +132,40 @@ function FileDiffView({
     )
   }
 
-  const readOnlyBanner = branchDiff
-    ? 'Viewing branch diff (base…HEAD) — read-only.'
-    : staged
-      ? 'Viewing staged diff — read-only. Unstage the file to edit here.'
-      : null
+  const referenceLine =
+    onSendToAgent && filePath ? (ln: number) => onSendToAgent(`@${filePath}:${ln} `) : undefined
 
   return (
     <div className="h-full flex flex-col bg-app">
       <div className="shrink-0 flex items-center gap-3 border-b border-border bg-panel px-4 py-2 text-xs">
+        <div className="shrink-0 flex items-center rounded border border-border overflow-hidden">
+          <ModeButton active={viewMode === 'split'} label="Split" hint="s" onClick={() => setViewMode('split')} />
+          <ModeButton active={viewMode === 'unified'} label="Unified" hint="d" onClick={() => setViewMode('unified')} />
+          <ModeButton active={viewMode === 'full'} label="Full" hint="f" onClick={() => setViewMode('full')} />
+        </div>
+
+        {viewMode !== 'full' && (
+          <Tooltip label={showWhitespace ? 'Showing whitespace changes' : 'Ignoring whitespace changes'}>
+            <button
+              onClick={() => setShowWhitespace((v) => !v)}
+              aria-pressed={showWhitespace}
+              className={`flex items-center shrink-0 px-1.5 py-1 rounded border text-xs cursor-pointer transition-colors ${
+                showWhitespace ? 'border-accent text-accent' : 'border-border text-faint hover:text-fg'
+              }`}
+            >
+              <Pilcrow className="icon-xs" />
+            </button>
+          </Tooltip>
+        )}
+
         <span
           className="font-mono text-fg truncate flex-1 min-w-0"
           style={{ direction: 'rtl', textAlign: 'left' }}
           title={filePath}
         >
           <bdi>{filePath}</bdi>
-          {dirty && <span className="text-warning ml-1">●</span>}
         </span>
-        {saveError && (
-          <span className="shrink-0 text-danger truncate max-w-[40%]" title={saveError}>
-            {saveError}
-          </span>
-        )}
+        {!branchDiff && <span className="shrink-0 text-info">Uncommitted</span>}
         {staged && !branchDiff && <span className="shrink-0 text-info">staged</span>}
         {branchDiff && <span className="shrink-0 text-info">branch</span>}
         {!sides.originalExists && <span className="shrink-0 text-success">new file</span>}
@@ -167,14 +178,14 @@ function FileDiffView({
             {wordWrap ? <ArrowRightFromLine className="icon-xs" /> : <WrapText className="icon-xs" />}
           </button>
         </Tooltip>
-        {editable && (
-          <Tooltip label={dirty ? 'Save (⌘S)' : 'Saved'}>
+
+        {onOpenEditor && filePath && sides.modifiedExists && (
+          <Tooltip label="Open in editor">
             <button
-              onClick={save}
-              disabled={!dirty}
-              className="shrink-0 text-faint hover:text-fg disabled:opacity-40 disabled:hover:text-faint cursor-pointer disabled:cursor-default"
+              onClick={() => onOpenEditor(filePath)}
+              className="shrink-0 text-faint hover:text-fg cursor-pointer"
             >
-              <Save className="icon-xs" />
+              <Pencil className="icon-xs" />
             </button>
           </Tooltip>
         )}
@@ -188,31 +199,69 @@ function FileDiffView({
             </button>
           </Tooltip>
         )}
+        {filePath && (
+          <Tooltip label="Open in external editor">
+            <button
+              onClick={() => backend.openInEditor(worktreePath, filePath)}
+              className="shrink-0 text-faint hover:text-fg cursor-pointer"
+            >
+              <Code2 className="icon-xs" />
+            </button>
+          </Tooltip>
+        )}
       </div>
-      {readOnlyBanner && (
-        <div className="shrink-0 border-b border-border bg-info/10 px-4 py-1.5 text-xs text-info">
-          {readOnlyBanner}
-        </div>
-      )}
       <div className="flex-1 min-h-0">
-        <MonacoDiffEditor
-          original={sides.original}
-          modified={editable ? modifiedValue : sides.modified}
-          filePath={filePath}
-          readOnly={!editable}
-          fontFamily={settings.terminalFontFamily || undefined}
-          fontSize={scaledEditorFontSize(settings.terminalFontSize, settings.uiScale)}
-          wordWrap={wordWrap}
-          onModifiedChange={editable ? setModifiedValue : undefined}
-          onSave={editable ? save : undefined}
-          onReferenceLine={
-            onSendToAgent && filePath
-              ? (ln) => onSendToAgent(`@${filePath}:${ln} `)
-              : undefined
-          }
-        />
+        {viewMode === 'full' ? (
+          <MonacoEditor
+            value={sides.modified}
+            filePath={filePath}
+            readOnly
+            fontFamily={settings.terminalFontFamily || undefined}
+            fontSize={scaledEditorFontSize(settings.terminalFontSize, settings.uiScale)}
+            wordWrap={wordWrap}
+            onReferenceLine={referenceLine}
+          />
+        ) : (
+          <MonacoDiffEditor
+            original={sides.original}
+            modified={sides.modified}
+            filePath={filePath}
+            readOnly
+            renderSideBySide={viewMode === 'split'}
+            ignoreTrimWhitespace={!showWhitespace}
+            fontFamily={settings.terminalFontFamily || undefined}
+            fontSize={scaledEditorFontSize(settings.terminalFontSize, settings.uiScale)}
+            wordWrap={wordWrap}
+            onReferenceLine={referenceLine}
+          />
+        )}
       </div>
     </div>
+  )
+}
+
+export function ModeButton({
+  active,
+  label,
+  hint,
+  onClick
+}: {
+  active: boolean
+  label: string
+  hint?: string
+  onClick: () => void
+}): JSX.Element {
+  return (
+    <Tooltip label={hint ? `${label} (${hint})` : label}>
+      <button
+        onClick={onClick}
+        className={`px-2 py-0.5 cursor-pointer transition-colors ${
+          active ? 'bg-accent text-app' : 'text-faint hover:text-fg hover:bg-panel-raised'
+        }`}
+      >
+        {label}
+      </button>
+    </Tooltip>
   )
 }
 

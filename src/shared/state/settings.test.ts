@@ -41,6 +41,16 @@ describe('settingsReducer', () => {
     expect(next.themeDark).toBe('dracula')
   })
 
+  it('reviewDiffModeChanged sets the review diff appearance', () => {
+    expect(initialSettings.reviewDiffMode).toBe('match')
+    const light = apply(initialSettings, { type: 'settings/reviewDiffModeChanged', payload: 'light' })
+    expect(light.reviewDiffMode).toBe('light')
+    const dark = apply(light, { type: 'settings/reviewDiffModeChanged', payload: 'dark' })
+    expect(dark.reviewDiffMode).toBe('dark')
+    const match = apply(dark, { type: 'settings/reviewDiffModeChanged', payload: 'match' })
+    expect(match.reviewDiffMode).toBe('match')
+  })
+
   it('customThemesChanged replaces the array', () => {
     expect(initialSettings.customThemes).toEqual([])
     const next = apply(initialSettings, {

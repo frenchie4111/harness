@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowRightFromLine, AtSign, Code2, Eye, Save, WrapText } from 'lucide-react'
+import { ArrowRightFromLine, AtSign, Code2, FileInput, FileOutput, Save, WrapText } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import rehypeHighlight from 'rehype-highlight'
 import remarkGfm from 'remark-gfm'
@@ -9,9 +9,11 @@ import { MonacoEditor } from './MonacoEditor'
 import { useSettings } from '../store'
 import { useBackend } from '../backend'
 import { scaledEditorFontSize } from '../../shared/state/settings'
+import { setTabDirty, clearTabDirty } from '../dirty-tabs'
 import 'highlight.js/styles/github-dark.css'
 
 interface FileViewProps {
+  tabId: string
   worktreePath: string
   filePath?: string
   onSendToAgent?: (text: string) => void
@@ -48,7 +50,7 @@ function formatBytes(n: number): string {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`
 }
 
-export function FileView({ worktreePath, filePath, onSendToAgent }: FileViewProps): JSX.Element {
+export function FileView({ tabId, worktreePath, filePath, onSendToAgent }: FileViewProps): JSX.Element {
   const backend = useBackend()
   const settings = useSettings()
   const [result, setResult] = useState<FileReadResult | null>(null)
@@ -67,6 +69,15 @@ export function FileView({ worktreePath, filePath, onSendToAgent }: FileViewProp
   savedRef.current = savedValue
 
   const dirty = value !== savedValue
+
+  // Publish unsaved state so handleCloseTab can warn before closing this
+  // tab; clear the entry when the tab unmounts.
+  useEffect(() => {
+    setTabDirty(tabId, dirty)
+  }, [tabId, dirty])
+  useEffect(() => {
+    return () => clearTabDirty(tabId)
+  }, [tabId])
 
   const mode: ViewerMode = useMemo(
     () => (filePath ? detectViewerMode(filePath) : 'text'),
@@ -221,7 +232,7 @@ export function FileView({ worktreePath, filePath, onSendToAgent }: FileViewProp
           onClick={() => setMarkdownAsCode((v) => !v)}
           className="shrink-0 text-faint hover:text-fg cursor-pointer"
         >
-          {markdownAsCode ? <Eye className="icon-xs" /> : <Code2 className="icon-xs" />}
+          {markdownAsCode ? <FileOutput className="icon-xs" /> : <FileInput className="icon-xs" />}
         </button>
       </Tooltip>
     ) : null
@@ -322,13 +333,29 @@ function FileHeader({
   const backend = useBackend()
   return (
     <div className="shrink-0 flex items-center gap-3 border-b border-border bg-panel px-4 py-2 text-xs">
+      {showSave && (
+        <Tooltip label={dirty ? 'Unsaved changes — Save (⌘S)' : 'Saved'}>
+          <button
+            onClick={onSave}
+            disabled={saveDisabled}
+            className="relative shrink-0 text-faint hover:text-fg disabled:hover:text-faint cursor-pointer disabled:cursor-default"
+          >
+            <Save className={`icon-xs ${dirty ? 'text-warning' : 'opacity-40'}`} />
+            {dirty && (
+              <span
+                className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-warning"
+                aria-hidden
+              />
+            )}
+          </button>
+        </Tooltip>
+      )}
       <span
         className="font-mono text-fg truncate flex-1 min-w-0"
         style={{ direction: 'rtl', textAlign: 'left' }}
         title={filePath}
       >
         <bdi>{filePath}</bdi>
-        {dirty && <span className="text-warning ml-1">●</span>}
       </span>
       {saveError && (
         <span className="shrink-0 text-danger truncate max-w-[40%]" title={saveError}>
@@ -339,17 +366,6 @@ function FileHeader({
       {truncated && <span className="shrink-0 text-warning">truncated</span>}
       {wrapToggleControl}
       {toggleControl}
-      {showSave && (
-        <Tooltip label={dirty ? 'Save (⌘S)' : 'Saved'}>
-          <button
-            onClick={onSave}
-            disabled={saveDisabled}
-            className="shrink-0 text-faint hover:text-fg disabled:opacity-40 disabled:hover:text-faint cursor-pointer disabled:cursor-default"
-          >
-            <Save className="icon-xs" />
-          </button>
-        </Tooltip>
-      )}
       {onSendToAgent && (
         <Tooltip label="Reference file in Claude">
           <button
