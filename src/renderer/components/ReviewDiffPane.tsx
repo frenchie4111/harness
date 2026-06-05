@@ -904,7 +904,15 @@ export function ReviewDiffPane({
   }, [revealTarget?.nonce, revealTarget?.filePath, editorNonce, file?.path])
 
   const handleReferenceLine = useCallback((lineNumber: number) => {
+    setCommentStartLine(null)
     setCommentLine(lineNumber)
+  }, [])
+
+  // Drag-selecting the gutter `+` anchors a range comment: end line is the
+  // input's anchor, start line is remembered (same shape as the `c` shortcut).
+  const handleReferenceRange = useCallback((startLine: number, endLine: number) => {
+    setCommentStartLine(startLine)
+    setCommentLine(endLine)
   }, [])
 
   const jumpToFirstComment = useCallback(() => {
@@ -1118,9 +1126,10 @@ export function ReviewDiffPane({
             fontSize={scaledEditorFontSize(settings.terminalFontSize, settings.uiScale)}
             wordWrap={wordWrap}
             onReferenceLine={handleReferenceLine}
+            onReferenceRange={handleReferenceRange}
             onEditorMount={handleEditorMount}
             glyphClassName="comment-line-glyph"
-            glyphHoverMessage="Add a comment on this line"
+            glyphHoverMessage="Add a comment on this line — drag to select a range"
           />
         ) : null}
       </div>

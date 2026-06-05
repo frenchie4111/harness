@@ -18,6 +18,10 @@ interface MonacoDiffEditorProps {
   onModifiedChange?: (value: string) => void
   onSave?: () => void
   onReferenceLine?: (lineNumber: number) => void
+  /** Fired when the user drag-selects a span of lines across the glyph
+   *  margin (mousedown on the `+`, drag, release). A single-line drag falls
+   *  back to onReferenceLine. When unset, the glyph is click-only. */
+  onReferenceRange?: (startLine: number, endLine: number) => void
   onEditorMount?: (editor: monaco.editor.IStandaloneDiffEditor) => void
   glyphClassName?: string
   glyphHoverMessage?: string
@@ -41,6 +45,7 @@ export function MonacoDiffEditor({
   onModifiedChange,
   onSave,
   onReferenceLine,
+  onReferenceRange,
   onEditorMount,
   glyphClassName = 'ref-line-glyph',
   glyphHoverMessage = 'Reference this line in Claude',
@@ -52,6 +57,7 @@ export function MonacoDiffEditor({
   const onChangeRef = useRef(onModifiedChange)
   const onSaveRef = useRef(onSave)
   const onRefRef = useRef(onReferenceLine)
+  const onRefRangeRef = useRef(onReferenceRange)
   const onMountRef = useRef(onEditorMount)
   const glyphClassRef = useRef(glyphClassName)
   const glyphHoverRef = useRef(glyphHoverMessage)
@@ -60,6 +66,7 @@ export function MonacoDiffEditor({
   onChangeRef.current = onModifiedChange
   onSaveRef.current = onSave
   onRefRef.current = onReferenceLine
+  onRefRangeRef.current = onReferenceRange
   onMountRef.current = onEditorMount
   glyphClassRef.current = glyphClassName
   glyphHoverRef.current = glyphHoverMessage
@@ -187,8 +194,9 @@ export function MonacoDiffEditor({
     // we hook onto it for hover/click.
     const modifiedEd = editor.getModifiedEditor()
     const glyphCollection = modifiedEd.createDecorationsCollection()
+    const hasGlyph = (): boolean => !!onRefRef.current || !!onRefRangeRef.current
     const setHoverLine = (lineNumber: number | null): void => {
-      if (!onRefRef.current || lineNumber == null) {
+      if (!hasGlyph() || lineNumber == null) {
         glyphCollection.clear()
         return
       }
@@ -202,23 +210,78 @@ export function MonacoDiffEditor({
         }
       ])
     }
+
+    // Drag-select across the glyph margin to comment on a span of lines:
+    // mousedown on the `+` starts a drag, moving over lines extends it, and
+    // the window-level mouseup finalizes it (single line → onReferenceLine,
+    // a span → onReferenceRange). Because the drag starts on the glyph margin
+    // — not on content — Monaco never begins a text selection, so the gutter
+    // gesture stays independent of the editor's own selection.
+    let dragStart: number | null = null
+    let dragEnd: number | null = null
+    const paintDrag = (): void => {
+      if (dragStart == null || dragEnd == null) {
+        glyphCollection.clear()
+        return
+      }
+      const lo = Math.min(dragStart, dragEnd)
+      const hi = Math.max(dragStart, dragEnd)
+      const decos: monaco.editor.IModelDeltaDecoration[] = []
+      for (let ln = lo; ln <= hi; ln++) {
+        decos.push({
+          range: new monaco.Range(ln, 1, ln, 1),
+          options: {
+            isWholeLine: true,
+            className: 'comment-range-line',
+            glyphMarginClassName: glyphClassRef.current
+          }
+        })
+      }
+      glyphCollection.set(decos)
+    }
+
     const moveSub = modifiedEd.onMouseMove((e) => {
-      if (!onRefRef.current) return
-      setHoverLine(e.target.position?.lineNumber ?? null)
+      if (!hasGlyph()) return
+      const ln = e.target.position?.lineNumber ?? null
+      if (dragStart != null) {
+        if (ln != null) {
+          dragEnd = ln
+          paintDrag()
+        }
+        return
+      }
+      setHoverLine(ln)
     })
-    const leaveSub = modifiedEd.onMouseLeave(() => setHoverLine(null))
+    const leaveSub = modifiedEd.onMouseLeave(() => {
+      if (dragStart == null) setHoverLine(null)
+    })
     const downSub = modifiedEd.onMouseDown((e) => {
-      if (!onRefRef.current) return
+      if (!hasGlyph()) return
       if (e.target.type !== monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) return
       const ln = e.target.position?.lineNumber
-      if (ln != null) onRefRef.current(ln)
+      if (ln == null) return
+      dragStart = ln
+      dragEnd = ln
+      paintDrag()
     })
+    const onWindowUp = (): void => {
+      if (dragStart == null) return
+      const lo = Math.min(dragStart, dragEnd ?? dragStart)
+      const hi = Math.max(dragStart, dragEnd ?? dragStart)
+      dragStart = null
+      dragEnd = null
+      glyphCollection.clear()
+      if (lo !== hi && onRefRangeRef.current) onRefRangeRef.current(lo, hi)
+      else onRefRef.current?.(hi)
+    }
+    window.addEventListener('mouseup', onWindowUp)
 
     return () => {
       changeSub.dispose()
       moveSub.dispose()
       leaveSub.dispose()
       downSub.dispose()
+      window.removeEventListener('mouseup', onWindowUp)
       for (const s of heightSubs) s.dispose()
       if (revealTimer) clearTimeout(revealTimer)
       glyphCollection.clear()
