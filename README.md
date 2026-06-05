@@ -44,8 +44,8 @@
 
 Grab the latest release from the [releases page](https://github.com/frenchie4111/harness/releases/latest).
 
-- **Apple Silicon (M1/M2/M3/M4):** [Harness-2.10.0-arm64.dmg](https://github.com/frenchie4111/harness/releases/download/v2.10.0/Harness-2.10.0-arm64.dmg)
-- **Intel Mac:** [Harness-2.10.0.dmg](https://github.com/frenchie4111/harness/releases/download/v2.10.0/Harness-2.10.0.dmg)
+- **Apple Silicon (M1/M2/M3/M4):** [Harness-2.11.0-arm64.dmg](https://github.com/frenchie4111/harness/releases/download/v2.11.0/Harness-2.11.0-arm64.dmg)
+- **Intel Mac:** [Harness-2.11.0.dmg](https://github.com/frenchie4111/harness/releases/download/v2.11.0/Harness-2.11.0.dmg)
 
 ## Installation
 
