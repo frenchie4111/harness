@@ -276,10 +276,10 @@ export function ReviewFileTree({
       ) {
         return
       }
-      if (e.key === 'n' && !e.metaKey && !e.ctrlKey) {
+      if (e.key === 'u' && !e.metaKey && !e.ctrlKey) {
         e.preventDefault()
         navigateUnreviewed(1)
-      } else if (e.key === 'm' && !e.metaKey && !e.ctrlKey) {
+      } else if (e.key === 'i' && !e.metaKey && !e.ctrlKey) {
         e.preventDefault()
         navigateUnreviewed(-1)
       } else if (!e.shiftKey && (e.key === 'j' || (e.key === 'ArrowDown' && !e.metaKey))) {

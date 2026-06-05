@@ -1355,8 +1355,8 @@ function CommentDropdown({
 const REVIEW_SHORTCUTS: [string, string][] = [
   ['j / ↓', 'Next file'],
   ['k / ↑', 'Previous file'],
-  ['n', 'Next unreviewed file'],
-  ['m', 'Previous unreviewed file'],
+  ['u', 'Next unreviewed file'],
+  ['i', 'Previous unreviewed file'],
   ['] / [', 'Next / previous comment in file'],
   ['a', 'Comment list (↑/↓ then Enter)'],
   ['r', 'Mark file viewed / unviewed'],
