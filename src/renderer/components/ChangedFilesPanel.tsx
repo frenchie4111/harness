@@ -107,7 +107,7 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToAgent, onO
               <div className="px-3 py-2 text-faint italic">No changes</div>
             ) : (
               <>
-                {stagedFiles.length > 0 && unstagedFiles.length > 0 && (
+                {stagedFiles.length > 0 && (
                   <div className="px-3 py-1 text-xs font-medium text-dim uppercase tracking-wider">
                     Staged
                   </div>
@@ -121,7 +121,7 @@ export function ChangedFilesPanel({ worktreePath, onOpenDiff, onSendToAgent, onO
                     onSendToAgent={onSendToAgent}
                   />
                 ))}
-                {stagedFiles.length > 0 && unstagedFiles.length > 0 && (
+                {unstagedFiles.length > 0 && (
                   <div className="px-3 py-1 text-xs font-medium text-dim uppercase tracking-wider">
                     Unstaged
                   </div>
