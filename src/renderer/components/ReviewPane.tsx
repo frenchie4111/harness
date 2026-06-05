@@ -317,32 +317,15 @@ export function ReviewPane({
     if (text) navigator.clipboard.writeText(text)
   }, [formatComments])
 
-  // One-click "Approve" (CheckCheck button) — only offered once every file is
-  // reviewed. Errors surface in the button's tooltip.
   const [approving, setApproving] = useState(false)
   const [approveError, setApproveError] = useState<string | null>(null)
-  const handleApprove = useCallback(async () => {
-    if (approving) return
-    setApproving(true)
-    setApproveError(null)
-    const res = await backend.approvePR(worktreePath)
-    setApproving(false)
-    if (!res.ok) setApproveError(res.error)
-  }, [approving, backend, worktreePath])
-
-  // "Submit…" menu — APPROVE / REQUEST_CHANGES / COMMENT with a top-level body.
-  const handleSubmitReview = useCallback(
-    (event: 'APPROVE' | 'REQUEST_CHANGES' | 'COMMENT', body: string) =>
-      backend.submitPRReview(worktreePath, event, body),
-    [backend, worktreePath]
-  )
 
   // Push local comments + viewed state to the PR and pull the canonical
   // comment set back. Replaces the local comment list with the reconciled
   // result so synced comments carry their GitHub ids (and don't re-post).
   const runSync = useCallback(
-    async (pullOnly: boolean) => {
-      if (syncing || !prNumber || !isWholeBranch) return
+    async (pullOnly: boolean): Promise<boolean> => {
+      if (syncing || !prNumber || !isWholeBranch) return false
       setSyncState('syncing')
       setSyncDetail(pullOnly ? 'Loading PR comments…' : 'Syncing…')
       try {
@@ -364,7 +347,7 @@ export function ReviewPane({
         if (!result.ok) {
           setSyncState('error')
           setSyncDetail(result.error ?? 'Sync failed')
-          return
+          return false
         }
         setComments(
           result.comments.map((c) => ({
@@ -399,15 +382,56 @@ export function ReviewPane({
                 result.failed > 0 ? ` · ${result.failed} failed` : ''
               }`
         )
+        return result.failed === 0
       } catch (err) {
         setSyncState('error')
         setSyncDetail(err instanceof Error ? err.message : 'Sync failed')
+        return false
       }
     },
     [syncing, prNumber, isWholeBranch, backend, worktreePath, comments, reviewedFiles, files, pendingResolve]
   )
 
   const handleSync = useCallback(() => void runSync(false), [runSync])
+
+  // Flush staged draft comments + viewed state to the PR before submitting a
+  // review, so the review lands with the line comments rather than after them.
+  // Only whole-branch reviews have a sync path; other selections just submit.
+  const flushDrafts = useCallback(async (): Promise<boolean> => {
+    if (!prNumber || !isWholeBranch) return true
+    return runSync(false)
+  }, [prNumber, isWholeBranch, runSync])
+
+  const FLUSH_FAILED = 'Could not push draft comments — resolve the Sync error and retry'
+
+  // One-click "Approve" (CheckCheck button) — only offered once every file is
+  // reviewed. Pushes drafts first; errors surface in the button's tooltip.
+  const handleApprove = useCallback(async () => {
+    if (approving) return
+    setApproving(true)
+    setApproveError(null)
+    if (!(await flushDrafts())) {
+      setApproving(false)
+      setApproveError(FLUSH_FAILED)
+      return
+    }
+    const res = await backend.approvePR(worktreePath)
+    setApproving(false)
+    if (!res.ok) setApproveError(res.error)
+  }, [approving, flushDrafts, backend, worktreePath])
+
+  // "Submit…" menu — APPROVE / REQUEST_CHANGES / COMMENT with a top-level body.
+  // Pushes drafts first, then submits the review event.
+  const handleSubmitReview = useCallback(
+    async (
+      event: 'APPROVE' | 'REQUEST_CHANGES' | 'COMMENT',
+      body: string
+    ): Promise<{ ok: true } | { ok: false; error: string }> => {
+      if (!(await flushDrafts())) return { ok: false, error: FLUSH_FAILED }
+      return backend.submitPRReview(worktreePath, event, body)
+    },
+    [flushDrafts, backend, worktreePath]
+  )
 
   // Auto-sync (pull-only) once when the review opens with a PR, so existing
   // PR comments show up without a manual Sync. Pull-only can't clobber
