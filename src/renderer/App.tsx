@@ -244,7 +244,12 @@ function DesktopApp(): JSX.Element {
   // here so the rendered sidebar never exceeds the title-segment edge.
   const effectiveSidebarWidth = Math.min(sidebarWidth, sidebarMaxPx)
   const [showNewWorktree, setShowNewWorktree] = useState(false)
+  // Set by the sidebar "+" to pre-pick a repo; transient — cleared on close so
+  // the next open (e.g. cmd+N) defaults to the active worktree's repo instead.
   const [newWorktreeRepo, setNewWorktreeRepo] = useState<string | undefined>(undefined)
+  useEffect(() => {
+    if (!showNewWorktree) setNewWorktreeRepo(undefined)
+  }, [showNewWorktree])
   // Worktrees whose git creation is still running (or has errored). They
   // show in the sidebar immediately on submit so the user sees the new entry
   // right away instead of waiting on the modal.
