@@ -503,6 +503,21 @@ export function ReviewPane({
     return () => window.removeEventListener('keydown', onKey, true)
   }, [active])
 
+  // `f` toggles the file browser. Handled here (not in ReviewFileTree) since
+  // that component is unmounted while collapsed and couldn't bring itself back.
+  useEffect(() => {
+    if (!active) return
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== 'f' || e.metaKey || e.ctrlKey || e.altKey) return
+      const el = e.target as HTMLElement | null
+      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) return
+      e.preventDefault()
+      setFileTreeCollapsed((v) => !v)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [active])
+
   // Run the search (debounced). Fetches + caches each file's modified content
   // on first use, then matches case-insensitively across every file.
   useEffect(() => {
@@ -1244,10 +1259,11 @@ function CommentDropdown({
 const REVIEW_SHORTCUTS: [string, string][] = [
   ['j / ↓', 'Next file'],
   ['k / ↑', 'Previous file'],
-  ['⇧J / ⇧↓', 'Next unreviewed file'],
-  ['⇧K / ⇧↑', 'Previous unreviewed file'],
+  ['n', 'Next unreviewed file'],
+  ['m', 'Previous unreviewed file'],
   ['] / [', 'Next / previous comment in file'],
   ['r', 'Mark file viewed / unviewed'],
+  ['f', 'Hide / show file browser'],
   ['s / d', 'Side-by-side / unified diff'],
   ['c', 'Comment on hovered line (or file)'],
   ['?', 'Toggle this help']
