@@ -637,6 +637,30 @@ export function ReviewDiffPane({
   // their observers — an N×N cascade that freezes the renderer.
   const pendingZoneHeightsRef = useRef(new Map<string, { zone: monaco.editor.IViewZone; h: number }>())
   const layoutRafRef = useRef(0)
+  // Last comment width applied to every sticky wrapper. Comments size to the
+  // editor's visible content width, so widening the diff (collapsing the file
+  // browser, resizing the window) widens the comments too. Guarded on this ref
+  // so layout events that don't change the content width are no-ops — see
+  // applyZoneWidths.
+  const lastZoneWidthRef = useRef(0)
+  // Compute the current comment width from the editor's content area, then push
+  // it to every live comment wrapper — but ONLY when it actually changed. The
+  // no-op guard is what makes this safe to call from onDidLayoutChange: writing
+  // the same px string doesn't resize the wrapper, so the per-zone height
+  // ResizeObserver never fires, so there's no observer → changeViewZones →
+  // layout → applyZoneWidths feedback loop. contentWidth reserves the vertical
+  // scrollbar regardless of visibility, so it's stable across zone-height
+  // changes and only moves on a real editor resize.
+  const applyZoneWidths = useCallback(() => {
+    const editor = editorRef.current
+    if (!editor) return
+    const w = editor.getModifiedEditor().getLayoutInfo().contentWidth
+    if (w <= 0 || w === lastZoneWidthRef.current) return
+    lastZoneWidthRef.current = w
+    for (const z of viewZonesRef.current) {
+      z.stickyWrapper.style.width = `${w}px`
+    }
+  }, [])
   const flushZoneLayout = useCallback(() => {
     if (layoutRafRef.current) return
     layoutRafRef.current = requestAnimationFrame(() => {
@@ -792,6 +816,7 @@ export function ReviewDiffPane({
     if (items.length === 0) return
 
     const contentWidth = modifiedEd.getLayoutInfo().contentWidth
+    lastZoneWidthRef.current = contentWidth
 
     modifiedEd.changeViewZones((accessor) => {
       for (const item of items) {
@@ -944,12 +969,12 @@ export function ReviewDiffPane({
       editorRef.current = editor
       setEditorNonce((n) => n + 1)
       const modEd = editor.getModifiedEditor()
-      // NOTE: do NOT rewrite sticky-wrapper widths on layout change. Each
-      // comment zone has a ResizeObserver watching its wrapper; mutating the
-      // wrapper here would retrigger that observer → changeViewZones → layout
-      // change → loop (a renderer-freezing feedback storm). The comment is
-      // capped at 760px and left-pinned, so a fixed width set at creation is
-      // fine.
+      // Keep comment widths in sync with the editor's content area so they grow
+      // when more of the diff becomes visible (file browser collapsed, window
+      // resized). applyZoneWidths is a no-op unless contentWidth actually
+      // changed, which is what keeps this off the observer feedback loop the old
+      // code avoided by never resizing — see applyZoneWidths.
+      modEd.onDidLayoutChange(() => applyZoneWidths())
       // Track the hovered line so `c` can target it.
       modEd.onMouseMove((e) => {
         hoveredLineRef.current = e.target.position?.lineNumber ?? null
@@ -966,7 +991,7 @@ export function ReviewDiffPane({
             : null
       })
     },
-    []
+    [applyZoneWidths]
   )
 
   // `c` opens a comment input on the hovered diff line, or a file-level
