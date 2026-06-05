@@ -1,6 +1,16 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync, readdirSync } from 'fs'
+import {
+  readFileSync,
+  writeFileSync,
+  mkdirSync,
+  existsSync,
+  unlinkSync,
+  readdirSync,
+  copyFileSync,
+  renameSync
+} from 'fs'
 import { join } from 'path'
 import { userDataDir } from './paths'
+import type { ConfigLoadError } from '../shared/state/config-health'
 import {
   runMigrations,
   SCHEMA_VERSION,
@@ -343,17 +353,112 @@ function getConfigPath(): string {
   return join(userDataDir(), 'config.json')
 }
 
+// When config.json can't be parsed we must not overwrite it with defaults
+// (that would destroy the user's only copy). loadConfig instead records the
+// error here, quarantines a copy, and SUSPENDS writes so the broken original
+// survives for the user to hand-edit via the recovery modal.
+let configLoadError: ConfigLoadError | null = null
+let writesSuspended = false
+
+export function getConfigLoadError(): ConfigLoadError | null {
+  return configLoadError
+}
+
+/** Copy the unparseable config to a timestamped sibling before any reset, so
+ *  nothing is lost. Null if the original couldn't be copied. */
+function quarantineCorruptConfig(): string | null {
+  const src = getConfigPath()
+  if (!existsSync(src)) return null
+  const backup = join(userDataDir(), `config.corrupt-${Date.now()}.json`)
+  try {
+    copyFileSync(src, backup)
+    return backup
+  } catch (e) {
+    console.error('Failed to quarantine corrupt config:', e)
+    return null
+  }
+}
+
+function defaultConfig(): Config {
+  return applyConnectionDefaults({ ...DEFAULT_CONFIG, schemaVersion: SCHEMA_VERSION })
+}
+
 export function loadConfig(): Config {
-  let config: Config
+  try {
+    const parsed = JSON.parse(readFileSync(getConfigPath(), 'utf-8')) as AnyConfig
+    runMigrations(parsed)
+    configLoadError = null
+    writesSuspended = false
+    return applyConnectionDefaults({
+      ...DEFAULT_CONFIG,
+      ...(parsed as Partial<Config>),
+      schemaVersion: SCHEMA_VERSION
+    })
+  } catch (e) {
+    // A missing file is the normal first-run case — nothing to preserve,
+    // nothing the user broke, so just load defaults. Anything else (bad
+    // JSON, unreadable) is corruption: quarantine the file and suspend
+    // writes so the broken original survives for the user to hand-edit.
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') {
+      configLoadError = null
+      writesSuspended = false
+    } else {
+      configLoadError = {
+        message: e instanceof Error ? e.message : String(e),
+        configPath: getConfigPath(),
+        backupPath: quarantineCorruptConfig()
+      }
+      writesSuspended = true
+      console.error('Failed to load config (quarantined, writes suspended):', e)
+    }
+    return defaultConfig()
+  }
+}
+
+/** Raw bytes of config.json for the in-app recovery editor; '' if unreadable. */
+export function readRawConfigText(): string {
+  try {
+    return readFileSync(getConfigPath(), 'utf-8')
+  } catch {
+    return ''
+  }
+}
+
+/** Write the user's hand-edited text to config.json, bypassing the
+ *  write-suspend guard (it's the explicit recovery fix, not a structured
+ *  save), then report whether it now parses. */
+export function saveRawConfigText(
+  text: string
+): { ok: true } | { ok: false; error: string } {
+  try {
+    writeFileAtomic(text)
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) }
+  }
+  return validateConfigFile()
+}
+
+/** Whether the on-disk config.json parses + migrates cleanly, without
+ *  applying it — lets the recovery flow check a hand-edit before relaunching. */
+export function validateConfigFile(): { ok: true } | { ok: false; error: string } {
   try {
     const data = readFileSync(getConfigPath(), 'utf-8')
     const parsed = JSON.parse(data) as AnyConfig
     runMigrations(parsed)
-    config = { ...DEFAULT_CONFIG, ...(parsed as Partial<Config>), schemaVersion: SCHEMA_VERSION }
-  } catch {
-    config = { ...DEFAULT_CONFIG, schemaVersion: SCHEMA_VERSION }
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) }
   }
-  return applyConnectionDefaults(config)
+}
+
+/** Abandon the corrupt config: re-enable writes and persist fresh defaults
+ *  over the bad file (the quarantine copy is kept). */
+export function discardCorruptConfigAndReset(): Config {
+  writesSuspended = false
+  configLoadError = null
+  const fresh = defaultConfig()
+  saveConfigSync(fresh)
+  return fresh
 }
 
 /** Auto-seed the Local backend if `connections` is missing or empty, and
@@ -384,11 +489,27 @@ export function applyConnectionDefaults(config: Config, now: number = Date.now()
 
 let saveTimeout: ReturnType<typeof setTimeout> | null = null
 
+/** Write config.json atomically: write to a `.tmp` sibling, then rename over
+ *  the target. rename is atomic on the same filesystem, so a crash or power
+ *  loss mid-write can't leave a half-written (and thus unparseable) file. */
+function writeFileAtomic(contents: string): void {
+  const target = getConfigPath()
+  const tmp = `${target}.tmp`
+  writeFileSync(tmp, contents)
+  renameSync(tmp, target)
+}
+
+function writeConfigAtomic(config: Config): void {
+  writeFileAtomic(JSON.stringify(config, null, 2))
+}
+
 export function saveConfig(config: Config): void {
+  if (writesSuspended) return
   if (saveTimeout) clearTimeout(saveTimeout)
   saveTimeout = setTimeout(() => {
+    if (writesSuspended) return
     try {
-      writeFileSync(getConfigPath(), JSON.stringify(config, null, 2))
+      writeConfigAtomic(config)
     } catch (e) {
       console.error('Failed to save config:', e)
     }
@@ -396,8 +517,9 @@ export function saveConfig(config: Config): void {
 }
 
 export function saveConfigSync(config: Config): void {
+  if (writesSuspended) return
   try {
-    writeFileSync(getConfigPath(), JSON.stringify(config, null, 2))
+    writeConfigAtomic(config)
   } catch (e) {
     console.error('Failed to save config:', e)
   }

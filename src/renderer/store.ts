@@ -654,6 +654,12 @@ export function useBrowser() {
   return useAppState((s) => s.browser)
 }
 
+/** The boot-time config.json load error, or null on a healthy load.
+ *  Drives InvalidConfigModal. */
+export function useConfigLoadError() {
+  return useAppState((s) => s.configHealth.loadError)
+}
+
 /** Session roster (controller + spectators) for a given terminal id.
  *  Re-renders only when that terminal's entry changes. Returns null if
  *  the terminal hasn't been joined yet (e.g. right after pane create

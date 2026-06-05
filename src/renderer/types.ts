@@ -387,6 +387,12 @@ export interface ElectronAPI {
   setScratchpadText(worktreePath: string, text: string): Promise<boolean>
   openInEditor(worktreePath: string, filePath?: string): Promise<{ ok: true } | { ok: false; error: string }>
 
+  // Corrupt-config recovery (InvalidConfigModal). save/reset re-apply on
+  // success (relaunch in prod), so their result only resolves on failure.
+  readRawConfig(): Promise<{ text: string }>
+  saveRawConfigAndRetry(text: string): Promise<{ ok: true } | { ok: false; error: string }>
+  resetConfigToDefaults(): Promise<{ ok: true } | { ok: false; error: string }>
+
   panesAddTab(wtPath: string, tab: TerminalTab, paneId?: string): Promise<boolean>
   panesCloseTab(wtPath: string, tabId: string): Promise<boolean>
   panesRestartAgentTab(wtPath: string, tabId: string, newId: string): Promise<boolean>
