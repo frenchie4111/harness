@@ -46,6 +46,16 @@ function getCreatedAt(path: string): number {
   }
 }
 
+/** Fetch every remote for a repo — the equivalent of `git fetch --all`.
+ *  Run from the repo root so all of its worktrees see the updated remote
+ *  refs. Failures (offline, auth) throw; the background poller swallows
+ *  them per-repo so one bad remote doesn't stop the others. */
+export async function fetchAllRemotes(repoRoot: string): Promise<void> {
+  const t0 = performance.now()
+  await execFileAsync('git', ['fetch', '--all', '--quiet'], { cwd: repoRoot })
+  perfLog('git-op', `fetchAllRemotes ${repoRoot} ${Math.round(performance.now() - t0)}ms`)
+}
+
 /** Get a sensible default directory for worktrees: <repo>-worktrees/ alongside the repo */
 export function defaultWorktreeDir(repoRoot: string): string {
   const repoName = basename(repoRoot)

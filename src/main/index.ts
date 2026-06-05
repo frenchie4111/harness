@@ -27,6 +27,7 @@ import type { BrowserManagerLike } from './browser-manager-types'
 import { PerfMonitor } from './perf-monitor'
 import { setGitHubApiRecorder, setGitHubApiLoggingEnabled } from './github-recorder'
 import { PRPoller } from './pr-poller'
+import { FetchPoller } from './fetch-poller'
 import { WorktreesFSM } from './worktrees-fsm'
 import { WorktreeDeletionFSM } from './worktree-deletion-fsm'
 import { PanesFSM, stripTransientTabFields } from './panes-fsm'
@@ -609,6 +610,11 @@ const prPoller = new PRPoller(store, {
     }
     saveConfig(config)
   }
+})
+
+const fetchPoller = new FetchPoller({
+  getRepoRoots: () => config.repoRoots || [],
+  isEnabled: () => config.autoFetchEnabled !== false
 })
 
 const announcementsPoller = new AnnouncementsPoller(store)
@@ -1800,6 +1806,23 @@ function registerIpcHandlers(): void {
       type: 'settings/shareClaudeSettingsChanged',
       payload: config.shareClaudeSettings !== false
     })
+    return true
+  })
+
+  transport.onRequest('config:setAutoFetchEnabled', (_ctx, enabled: boolean) => {
+    if (enabled) {
+      delete config.autoFetchEnabled
+    } else {
+      config.autoFetchEnabled = false
+    }
+    saveConfig(config)
+    store.dispatch({
+      type: 'settings/autoFetchEnabledChanged',
+      payload: config.autoFetchEnabled !== false
+    })
+    // Re-enabling shouldn't wait up to 3m for the next tick — fetch now.
+    // fetchAll() itself no-ops while disabled, so this is safe either way.
+    void fetchPoller.fetchAll()
     return true
   })
 
@@ -3555,6 +3578,12 @@ async function runBoot(): Promise<void> {
   })()
 
   announcementsPoller.start()
+
+  // Background `git fetch --all` across all repos every few minutes. The
+  // timer always runs; each tick no-ops when the setting is disabled. Kick
+  // an initial sweep at boot so worktrees start current.
+  fetchPoller.start()
+  void fetchPoller.fetchAll()
 
   // Seed hooks.consent from disk and migrate legacy per-worktree hooks
   // to a single user-scope install. Runs once per app install; migrated
