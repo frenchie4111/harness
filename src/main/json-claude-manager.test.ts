@@ -57,8 +57,81 @@ vi.mock('fs', async () => {
 })
 
 import { Store } from './store'
-import { JsonClaudeManager } from './json-claude-manager'
+import {
+  JsonClaudeManager,
+  detectScheduledFireNotification
+} from './json-claude-manager'
 import type { ClaudeLaunchSettings } from './claude-launch'
+
+describe('detectScheduledFireNotification', () => {
+  it('classifies the autonomous-loop sentinel re-injection', () => {
+    const fired = detectScheduledFireNotification({
+      type: 'user',
+      isMeta: true,
+      message: {
+        role: 'user',
+        content: [
+          {
+            type: 'text',
+            text: '# Autonomous loop check\n\nYou are being invoked on a timer …'
+          }
+        ]
+      }
+    })
+    expect(fired).toEqual({ subtype: 'autonomous_loop_wake', content: '' })
+  })
+
+  it('classifies /loop skill body re-injection and extracts the original prompt', () => {
+    const fired = detectScheduledFireNotification({
+      type: 'user',
+      isMeta: true,
+      message: {
+        role: 'user',
+        content: [
+          {
+            type: 'text',
+            text:
+              '# /loop — schedule a recurring or self-paced prompt\n\n…\n\n## Input\n\nWake me up in 120 seconds, say "hi" once, then end the loop.'
+          }
+        ]
+      }
+    })
+    expect(fired).toEqual({
+      subtype: 'loop_schedule_fire',
+      content: 'Wake me up in 120 seconds, say "hi" once, then end the loop.'
+    })
+  })
+
+  it('returns null for regular user-typed text', () => {
+    const fired = detectScheduledFireNotification({
+      type: 'user',
+      isMeta: false,
+      message: { role: 'user', content: [{ type: 'text', text: 'hello' }] }
+    })
+    expect(fired).toBeNull()
+  })
+
+  it('returns null for unrecognized isMeta payloads (e.g. local-command-caveat)', () => {
+    const fired = detectScheduledFireNotification({
+      type: 'user',
+      isMeta: true,
+      message: {
+        role: 'user',
+        content: [{ type: 'text', text: '<local-command-caveat>foo</local-command-caveat>' }]
+      }
+    })
+    expect(fired).toBeNull()
+  })
+
+  it('returns null for non-user records even when they look meta-ish', () => {
+    const fired = detectScheduledFireNotification({
+      type: 'assistant',
+      isMeta: true,
+      message: { role: 'assistant', content: [{ type: 'text', text: '# Autonomous loop check' }] }
+    })
+    expect(fired).toBeNull()
+  })
+})
 
 describe('JsonClaudeManager', () => {
   beforeEach(() => {

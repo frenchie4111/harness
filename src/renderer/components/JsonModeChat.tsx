@@ -15,6 +15,7 @@ import remarkGfm from 'remark-gfm'
 import {
   AlertOctagon,
   AlertTriangle,
+  Bell,
   Brain,
   ChevronDown,
   Square,
@@ -259,6 +260,44 @@ function CompactCard({
             </div>
           )}
         </div>
+      )}
+    </div>
+  )
+}
+
+function NotificationCard({
+  subtype,
+  content
+}: {
+  subtype?: string
+  content?: string
+}): JSX.Element {
+  const label =
+    subtype === 'autonomous_loop_wake'
+      ? 'Autonomous loop wake'
+      : subtype === 'loop_schedule_fire'
+        ? 'Loop schedule fired'
+        : subtype === 'scheduled_task_fire'
+          ? 'Scheduled task fired'
+          : 'Notification'
+  return (
+    <div
+      className="my-2 flex items-center gap-2 text-muted"
+      style={{
+        paddingInline: 'var(--chat-chrome-px)',
+        paddingBlock: 'var(--chat-chrome-py)',
+        fontSize: 'var(--chat-chrome-text)'
+      }}
+    >
+      <Bell size={11} className="shrink-0 opacity-70" />
+      <span
+        className="font-semibold shrink-0"
+        style={{ fontFamily: 'var(--chat-tool-name-family)' }}
+      >
+        {label}
+      </span>
+      {content && (
+        <span className="opacity-70 truncate flex-1 min-w-0">{content}</span>
       )}
     </div>
   )
@@ -626,6 +665,19 @@ function renderEntries(
             trigger={entry.compactTrigger}
             preTokens={entry.compactPreTokens}
             postTokens={entry.compactPostTokens}
+          />
+        )
+      })
+      continue
+    }
+    if (entry.kind === 'notification') {
+      rows.push({
+        key: entry.entryId,
+        type: 'tool',
+        node: (
+          <NotificationCard
+            subtype={entry.notificationSubtype}
+            content={entry.notificationContent}
           />
         )
       })

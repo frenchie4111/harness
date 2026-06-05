@@ -912,6 +912,59 @@ describe('jsonClaudeReducer', () => {
     expect(next).toBe(initialJsonClaude)
   })
 
+  it('notificationReceived appends a notification entry with subtype + content', () => {
+    let state = seedSession(initialJsonClaude)
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/notificationReceived',
+      payload: {
+        sessionId: SID,
+        entryId: 'n1',
+        subtype: 'scheduled_task_fire',
+        content: 'wake up and say hi',
+        timestamp: 7
+      }
+    })
+    expect(state.sessions[SID].entries).toEqual([
+      {
+        entryId: 'n1',
+        kind: 'notification',
+        timestamp: 7,
+        notificationSubtype: 'scheduled_task_fire',
+        notificationContent: 'wake up and say hi'
+      }
+    ])
+  })
+
+  it('notificationReceived omits notificationContent when absent', () => {
+    let state = seedSession(initialJsonClaude)
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/notificationReceived',
+      payload: {
+        sessionId: SID,
+        entryId: 'n1',
+        subtype: 'scheduled_task_fire',
+        timestamp: 7
+      }
+    })
+    const entry = state.sessions[SID].entries[0]
+    expect(entry.kind).toBe('notification')
+    expect(entry.notificationSubtype).toBe('scheduled_task_fire')
+    expect(entry.notificationContent).toBeUndefined()
+  })
+
+  it('notificationReceived is a no-op for unknown session', () => {
+    const next = jsonClaudeReducer(initialJsonClaude, {
+      type: 'jsonClaude/notificationReceived',
+      payload: {
+        sessionId: 'missing',
+        entryId: 'n1',
+        subtype: 'scheduled_task_fire',
+        timestamp: 1
+      }
+    })
+    expect(next).toBe(initialJsonClaude)
+  })
+
   it('sessionStarted seeds empty sessionToolApprovals + sessionAllowedDecisions', () => {
     const state = seedSession(initialJsonClaude)
     expect(state.sessions[SID].sessionToolApprovals).toEqual([])

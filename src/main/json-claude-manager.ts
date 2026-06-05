@@ -295,12 +295,25 @@ export class JsonClaudeManager {
         // ('<command-name>' / '<local-command-stdout>') which arrive
         // without isMeta but are equally not user-typed input.
         if (parsed['isCompactSummary'] === true) continue
-        if (parsed['isMeta'] === true) continue
+        if (parsed['isMeta'] === true) {
+          const fired = detectScheduledFireNotification(parsed)
+          if (fired) {
+            seededEntries.push({
+              kind: 'notification',
+              timestamp: Date.now(),
+              entryId: `${sessionId}-seed-n-${counter++}`,
+              notificationSubtype: fired.subtype,
+              notificationContent: fired.content
+            })
+          }
+          continue
+        }
         const message = parsed['message'] as { content?: unknown } | undefined
         const content = message?.content
         if (typeof content === 'string') {
           if (
             content.startsWith('<command-name>') ||
+            content.startsWith('<command-message>') ||
             content.startsWith('<local-command-stdout>')
           ) {
             continue
@@ -352,6 +365,18 @@ export class JsonClaudeManager {
           ...(transcriptUuid ? { transcriptUuid } : {}),
           ...(apiMessageId ? { apiMessageId } : {}),
           ...(parentToolUseId ? { parentToolUseId } : {})
+        })
+      } else if (type === 'system' && parsed['subtype'] === 'scheduled_task_fire') {
+        const content =
+          typeof parsed['content'] === 'string'
+            ? (parsed['content'] as string)
+            : undefined
+        seededEntries.push({
+          kind: 'notification',
+          timestamp: Date.now(),
+          entryId: `${sessionId}-seed-n-${counter++}`,
+          notificationSubtype: 'scheduled_task_fire',
+          ...(content ? { notificationContent: content } : {})
         })
       } else if (type === 'system' && parsed['subtype'] === 'compact_boundary') {
         const meta = parsed['compactMetadata'] as
@@ -1232,6 +1257,33 @@ export class JsonClaudeManager {
       })
       return
     }
+    if (type === 'system' && subtype === 'scheduled_task_fire') {
+      // Fires when a wakeup/schedule the model registered for itself
+      // triggers and the SDK is about to inject the scheduled prompt
+      // into the next turn. Without surfacing this the user sees a
+      // fresh assistant bubble appear with no breadcrumb explaining
+      // why. Wire shape:
+      //   { type: 'system', subtype: 'scheduled_task_fire',
+      //     content: <prompt or label>, uuid, timestamp }
+      const content =
+        typeof parsed['content'] === 'string'
+          ? (parsed['content'] as string)
+          : undefined
+      const uuid = typeof parsed['uuid'] === 'string' ? parsed['uuid'] : null
+      this.store.dispatch({
+        type: 'jsonClaude/notificationReceived',
+        payload: {
+          sessionId: instance.sessionId,
+          entryId: uuid
+            ? `${instance.sessionId}-n-${uuid}`
+            : `${instance.sessionId}-n-${instance.entryCounter++}`,
+          subtype: 'scheduled_task_fire',
+          ...(content ? { content } : {}),
+          timestamp: Date.now()
+        }
+      })
+      return
+    }
     if (type === 'system' && subtype === 'init') {
       // Session id is already known (we pinned it via --session-id), but
       // the init payload includes the canonical slash_commands list — keep
@@ -1324,6 +1376,22 @@ export class JsonClaudeManager {
             toolUseId: r.toolUseId,
             content: r.content,
             isError: r.isError
+          }
+        })
+      }
+      const fired = detectScheduledFireNotification(parsed)
+      if (fired) {
+        const uuid = typeof parsed['uuid'] === 'string' ? parsed['uuid'] : null
+        this.store.dispatch({
+          type: 'jsonClaude/notificationReceived',
+          payload: {
+            sessionId: instance.sessionId,
+            entryId: uuid
+              ? `${instance.sessionId}-n-${uuid}`
+              : `${instance.sessionId}-n-${instance.entryCounter++}`,
+            subtype: fired.subtype,
+            content: fired.content,
+            timestamp: Date.now()
           }
         })
       }
@@ -1892,6 +1960,54 @@ function extractToolResultsFromArray(
     })
   }
   return out
+}
+
+/** Pull the first text block (if any) out of a user-record's content
+ *  array. Used to classify isMeta=true user injections as notifications. */
+function extractFirstUserText(parsed: Record<string, unknown>): string | null {
+  const message = parsed['message'] as { content?: unknown } | undefined
+  const content = message?.content
+  if (typeof content === 'string') return content
+  if (!Array.isArray(content)) return null
+  for (const raw of content) {
+    if (!raw || typeof raw !== 'object') continue
+    const b = raw as Record<string, unknown>
+    if (b['type'] === 'text' && typeof b['text'] === 'string') {
+      return b['text'] as string
+    }
+  }
+  return null
+}
+
+/** When the SDK fires a ScheduleWakeup or a `/loop` re-entry in
+ *  stream-json mode, it injects the resolved prompt as a `type: user`
+ *  message with `isMeta: true` and a text block — there's no dedicated
+ *  notification frame the way TUI mode emits one. Without surfacing
+ *  these the next assistant turn appears unexplained between two
+ *  consecutive bubbles.
+ *
+ *  Recognized prefixes are the two SDK-orchestrated sentinels:
+ *  `<<autonomous-loop-dynamic>>` resolves to `# Autonomous loop check`,
+ *  and the /loop skill body header is `# /loop —`. Other isMeta=true
+ *  payloads (`<local-command-caveat>` and friends) are left to the
+ *  existing filters — we don't want to surface every internal echo
+ *  as a breadcrumb. */
+export function detectScheduledFireNotification(
+  parsed: Record<string, unknown>
+): { subtype: string; content: string } | null {
+  if (parsed['isMeta'] !== true) return null
+  if (parsed['type'] !== 'user') return null
+  const text = extractFirstUserText(parsed)
+  if (!text) return null
+  if (text.startsWith('# Autonomous loop check')) {
+    return { subtype: 'autonomous_loop_wake', content: '' }
+  }
+  if (text.startsWith('# /loop')) {
+    const m = text.match(/##\s*Input\s*\n+([^\n]+)/)
+    const prompt = m ? m[1].trim() : ''
+    return { subtype: 'loop_schedule_fire', content: prompt }
+  }
+  return null
 }
 
 /** Heuristic detector for auth failures surfaced via stream-json `result`
