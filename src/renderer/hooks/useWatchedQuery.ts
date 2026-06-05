@@ -57,7 +57,7 @@ export interface UseWatchedQueryResult<T> {
 export function useWatchedQuery<T>(
   opts: UseWatchedQueryOptions<T>
 ): UseWatchedQueryResult<T> {
-  const { worktreePath, cacheKey, fetcher, fallbackPollMs = 60000 } = opts
+  const { worktreePath, cacheKey, fetcher, fallbackPollMs = 30000 } = opts
   const backend = useBackend()
 
   const [data, setData] = useState<T | null>(() =>
