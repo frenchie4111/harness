@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { Send, Clipboard, MessageSquare, GitCommitHorizontal, ArrowUp, ChevronDown, ChevronUp, Pilcrow, X, Keyboard, CloudSync, Loader2, WrapText, GitPullRequest, Menu, Search } from 'lucide-react'
+import { Send, Clipboard, MessageSquare, GitCommitHorizontal, ArrowUp, ChevronDown, ChevronUp, Pilcrow, X, Keyboard, CloudSync, Loader2, WrapText, GitPullRequest, Menu, Search, ListTree } from 'lucide-react'
 import type { ChangedFile, BranchCommit } from '../types'
 import type { PRReview } from '../../shared/state/prs'
 import type { ReviewComment } from './ReviewFileTree'
@@ -54,6 +54,7 @@ export function ReviewPane({
   const [comments, setComments] = useState<ReviewComment[]>([])
   const [collapsedDirs, setCollapsedDirs] = useState<Set<string>>(new Set())
   const [fileTreeWidth, setFileTreeWidth] = useState<number>(240)
+  const [fileTreeCollapsed, setFileTreeCollapsed] = useState(false)
   // Hoisted above ReviewDiffPane so the choice persists as the reviewer
   // clicks through files in the same review session.
   const [wordWrap, setWordWrap] = useState(false)
@@ -634,6 +635,19 @@ export function ReviewPane({
             }}
           />
 
+          <Tooltip label={fileTreeCollapsed ? 'Show file browser' : 'Hide file browser'}>
+            <button
+              onClick={() => setFileTreeCollapsed((v) => !v)}
+              aria-pressed={fileTreeCollapsed}
+              aria-label="Toggle file browser"
+              className={`flex items-center shrink-0 px-1.5 py-1 rounded border transition-colors cursor-pointer ${
+                fileTreeCollapsed ? 'border-accent text-accent' : 'border-border text-faint hover:text-fg'
+              }`}
+            >
+              <ListTree className="icon-xs" />
+            </button>
+          </Tooltip>
+
           {pr && <ReviewerStatus reviews={pr.reviews} />}
 
           <ReviewViewMenu
@@ -725,6 +739,7 @@ export function ReviewPane({
 
       <div className="flex flex-1 min-h-0">
         {/* File tree column — commit selector scopes the file list below it */}
+        {!fileTreeCollapsed && (
         <div
           className="shrink-0 flex flex-col min-h-0"
           style={{ width: fileTreeWidth }}
@@ -759,8 +774,9 @@ export function ReviewPane({
             />
           </div>
         </div>
+        )}
 
-        <ResizeHandle onDelta={handleFileTreeResize} />
+        {!fileTreeCollapsed && <ResizeHandle onDelta={handleFileTreeResize} />}
 
         {/* Diff pane — the selected file's diff, one Monaco editor at a time. */}
         <div className="flex-1 min-w-0">
@@ -1162,7 +1178,7 @@ function CommentDropdown({
       <button
         onClick={() => setOpen((v) => !v)}
         disabled={comments.length === 0}
-        className="flex items-center gap-1 text-info hover:text-info/70 transition-colors cursor-pointer disabled:text-faint disabled:cursor-default"
+        className="flex items-center gap-1 text-xs text-info hover:text-info/70 transition-colors cursor-pointer disabled:text-faint disabled:cursor-default"
       >
         <MessageSquare className="icon-xs" />
         {comments.length}
