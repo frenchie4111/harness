@@ -171,32 +171,43 @@ export function sessionFileExists(_cwd: string, sessionId: string): boolean {
   }
 }
 
-export function latestSessionId(_cwd: string): string | null {
+export function listSessions(
+  _cwd: string
+): Array<{ sessionId: string; mtimeMs: number }> {
   try {
     const sessionsDir = join(homedir(), '.codex', 'sessions')
-    let bestId: string | null = null
-    let bestMtime = -Infinity
+    const out: Array<{ sessionId: string; mtimeMs: number }> = []
     const walkDir = (dir: string): void => {
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
         const full = join(dir, entry.name)
         if (entry.isDirectory()) {
           walkDir(full)
         } else if (entry.name.endsWith('.jsonl')) {
-          const mtime = statSync(full).mtimeMs
-          if (mtime > bestMtime) {
-            bestMtime = mtime
+          try {
             const stem = entry.name.replace(/\.jsonl$/, '')
+            // Codex prefixes the file with a timestamp; the session id is the
+            // trailing uuid.
             const uuidMatch = stem.match(/([0-9a-f]{4,}-[0-9a-f-]+)$/)
-            bestId = uuidMatch ? uuidMatch[1] : stem
+            out.push({
+              sessionId: uuidMatch ? uuidMatch[1] : stem,
+              mtimeMs: statSync(full).mtimeMs
+            })
+          } catch {
+            // Raced unlink between readdir and stat — skip.
           }
         }
       }
     }
     walkDir(sessionsDir)
-    return bestId
+    out.sort((a, b) => b.mtimeMs - a.mtimeMs)
+    return out
   } catch {
-    return null
+    return []
   }
+}
+
+export function latestSessionId(_cwd: string): string | null {
+  return listSessions(_cwd)[0]?.sessionId ?? null
 }
 
 export function buildSpawnArgs(opts: AgentSpawnOpts): string {
@@ -206,6 +217,12 @@ export function buildSpawnArgs(opts: AgentSpawnOpts): string {
   let cmd = opts.command
   if (opts.model && !opts.command.includes('--model') && !opts.command.includes('-m ')) {
     cmd += ` --model ${shellQuote(opts.model)}`
+  }
+
+  // Fork: `codex fork <id>` branches the source into a new session. Codex
+  // mints the new id and we discover it from the first hook event.
+  if (opts.forkFromSessionId) {
+    return `${cmd} fork ${opts.forkFromSessionId}`
   }
 
   if (!opts.sessionId) {

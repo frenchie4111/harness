@@ -306,6 +306,7 @@ export function MobileTerminal({ worktreePath, tab }: MobileTerminalProps): JSX.
           visible={true}
           sessionName={tab.label}
           sessionId={tab.sessionId}
+          forkFromSessionId={tab.forkFromSessionId}
           modelOverride={tab.type === 'agent' ? tab.model : undefined}
         />
         {/* Hidden textarea — pointer-events:none so touch scrolling on the

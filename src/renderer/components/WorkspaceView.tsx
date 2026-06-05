@@ -641,6 +641,7 @@ export function WorkspaceView({
                     visible={visible && isActiveInPane}
                     sessionName={tab.type === 'agent' && nameAgentSessions ? `${repoLabel}/${branch}` : undefined}
                     sessionId={tab.sessionId}
+                    forkFromSessionId={tab.forkFromSessionId}
                     initialPrompt={tab.initialPrompt}
                     teleportSessionId={tab.teleportSessionId}
                     modelOverride={tab.type === 'agent' ? tab.model : undefined}

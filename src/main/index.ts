@@ -5,6 +5,14 @@ import { join } from 'path'
 import { PtyManager } from './pty-manager'
 import { ApprovalBridge } from './approval-bridge'
 import { JsonClaudeManager, bundledClaudeBinPath } from './json-claude-manager'
+import {
+  deriveSpawnSpec,
+  resolveTabBirth,
+  newestResumableSession,
+  type SessionSpawnSpec,
+  type SessionBirthDeps
+} from './session-birth'
+import { getAgentInfo } from '../shared/agent-registry'
 import { shellQuote } from './shell-quote'
 import {
   readAttachmentImage,
@@ -798,35 +806,68 @@ const panesFSM = new PanesFSM(store, {
   },
   startJsonClaude: (sessionId, worktreePath) => {
     startJsonClaudeSession(sessionId, worktreePath)
-  }
+  },
+  getResumeSessionForNewSession: (worktreePath, agentKind) =>
+    newestResumableSession(worktreePath, [], birthDeps(agentKind))
 })
 
-/** Look up a json-claude tab's persisted `model` override by sessionId
- *  (which is also the tab id for json-claude tabs). Returned to the
- *  json-claude manager so resume/kickoff/wake all respect a per-tab pin
- *  that was set when the worktree was created. */
-function findJsonClaudeTabModel(sessionId: string): string | undefined {
+/** Find a json-claude tab anywhere in the pane tree by its tab id. */
+function findJsonClaudeTab(tabId: string): TerminalTab | undefined {
   const panes = store.getSnapshot().state.terminals.panes
   for (const tree of Object.values(panes)) {
     for (const leaf of getLeaves(tree)) {
       for (const tab of leaf.tabs) {
-        if (tab.id === sessionId && tab.type === 'json-claude') {
-          return tab.model && tab.model.trim() ? tab.model.trim() : undefined
-        }
+        if (tab.id === tabId && tab.type === 'json-claude') return tab
       }
     }
   }
   return undefined
 }
 
+/** Look up a json-claude tab's persisted `model` override by tab id.
+ *  Returned to the json-claude manager so resume/kickoff/wake all respect
+ *  a per-tab pin that was set when the worktree was created. */
+function findJsonClaudeTabModel(tabId: string): string | undefined {
+  const tab = findJsonClaudeTab(tabId)
+  return tab?.model && tab.model.trim() ? tab.model.trim() : undefined
+}
+
+/** Injected disk facts for the pure birth decision logic (session-birth.ts),
+ *  per agent kind. Claude's session store (`~/.claude/projects`) is shared by
+ *  chat (json-claude) and xterm Claude tabs, so both resolve through the same
+ *  deps; Codex reads `~/.codex/sessions`. Kept thin so the module stays
+ *  unit-testable. */
+function birthDeps(kind: AgentKind): SessionBirthDeps {
+  const agent = getAgent(kind)
+  return {
+    hasTranscript: (id, wt) => agent.sessionFileExists(wt, id),
+    listSessions: (wt) => agent.listSessions(wt)
+  }
+}
+
 /** Single source of truth for "spin up the json-claude subprocess for
- *  this sessionId". Used by the jsonClaude:start IPC handler, the
- *  panesFSM's startJsonClaudeWithPrompt + startJsonClaude options
- *  (kickoff + wake), so all paths produce the same dispatch + seed +
- *  create order. Idempotent — JsonClaudeManager.create() short-circuits
- *  if the instance is already running. */
-function startJsonClaudeSession(sessionId: string, worktreePath: string): void {
+ *  this tab". Used by the jsonClaude:start IPC handler, the panesFSM's
+ *  startJsonClaudeWithPrompt + startJsonClaude options (kickoff + wake),
+ *  and createChatTab's fork pre-spawn, so all paths produce the same
+ *  dispatch + seed + create order. The slice + manager instance are keyed
+ *  by the stable tab id; `spec` (explicit, or derived from the tab) only
+ *  controls which on-disk claude session the subprocess attaches to.
+ *  Idempotent — JsonClaudeManager.create() short-circuits if the instance
+ *  is already running. */
+function startJsonClaudeSession(
+  sessionId: string,
+  worktreePath: string,
+  spec?: SessionSpawnSpec
+): void {
   if (jsonClaudeManager.hasSession(sessionId)) return
+  const resolved =
+    spec ??
+    deriveSpawnSpec(
+      sessionId,
+      store.getSnapshot().state.terminals.panes[worktreePath],
+      worktreePath,
+      birthDeps('claude')
+    )
   store.dispatch({
     type: 'jsonClaude/sessionStarted',
     payload: {
@@ -836,11 +877,104 @@ function startJsonClaudeSession(sessionId: string, worktreePath: string): void {
         store.getSnapshot().state.settings.jsonModeDefaultPermissionMode
     }
   })
-  jsonClaudeManager.seedFromTranscript(sessionId, worktreePath)
+  // Seed the slice from whichever transcript this spawn attaches to so the
+  // renderer shows prior history immediately. A fork seeds from the SOURCE
+  // session (claude won't re-stream the inherited turns); a resume from the
+  // resumed id; a blank has no transcript yet (no-op).
+  const transcriptId =
+    resolved.kind === 'resume'
+      ? resolved.resumeSessionId
+      : resolved.kind === 'fork'
+        ? resolved.srcSessionId
+        : sessionId
+  jsonClaudeManager.seedFromTranscript(sessionId, worktreePath, transcriptId)
   const permMode =
     store.getSnapshot().state.jsonClaude.sessions[sessionId]?.permissionMode ||
     'default'
-  jsonClaudeManager.create(sessionId, worktreePath, permMode, findJsonClaudeTabModel(sessionId))
+  jsonClaudeManager.create(
+    sessionId,
+    worktreePath,
+    permMode,
+    findJsonClaudeTabModel(sessionId),
+    resolved
+  )
+}
+
+/** Create a new chat (json-claude) tab in a worktree, applying the
+ *  implicit fork/resume/blank rule (resolveTabBirth). Returns the new
+ *  tab id. A fork pre-spawns immediately because its source session id
+ *  can't be recovered from the tab afterward (the tab's sessionId starts
+ *  unset and is filled in once claude reveals the forked id); blank and
+ *  resume defer to the renderer's mount-time start, which re-derives the
+ *  spec from the tab's persisted sessionId. */
+/** Apply the implicit fork/resume/blank rule for a new tab of `kind`. */
+function resolveBirth(
+  worktreePath: string,
+  kind: AgentKind,
+  paneId?: string
+): SessionSpawnSpec {
+  return resolveTabBirth(
+    store.getSnapshot().state.terminals.panes[worktreePath],
+    worktreePath,
+    kind,
+    birthDeps(kind),
+    paneId
+  )
+}
+
+function createChatTab(worktreePath: string, paneId?: string): string {
+  const spec = resolveBirth(worktreePath, 'claude', paneId)
+  const tabId = randomUUID()
+  const sessionId =
+    spec.kind === 'resume'
+      ? spec.resumeSessionId
+      : spec.kind === 'fork'
+        ? undefined
+        : tabId
+  panesFSM.addTab(
+    worktreePath,
+    { id: tabId, type: 'json-claude', label: 'Chat', sessionId, mode: 'awake' },
+    paneId
+  )
+  if (spec.kind === 'fork') {
+    startJsonClaudeSession(tabId, worktreePath, spec)
+  }
+  return tabId
+}
+
+/** Create a new xterm agent (Claude/Codex) tab, applying the same implicit
+ *  fork/resume/blank rule (resolveTabBirth) scoped to the agent's own kind.
+ *  Returns the new tab id. Unlike chat, the subprocess is spawned by the
+ *  renderer when XTerminal mounts (via buildAgentSpawnArgs), so there's no
+ *  pre-spawn: a fork rides on the transient `forkFromSessionId` (consumed on
+ *  first spawn, after which the agent-minted id is discovered onto sessionId
+ *  via terminals/sessionIdDiscovered); resume sets sessionId so buildSpawnArgs
+ *  --resumes it; blank assigns a fresh id (Claude) or lets the agent self-id
+ *  (Codex). */
+function createAgentTab(
+  worktreePath: string,
+  agentKind: AgentKind,
+  paneId?: string
+): string {
+  const spec = resolveBirth(worktreePath, agentKind, paneId)
+  const info = getAgentInfo(agentKind)
+  const tabId = `agent-${worktreePath.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}`
+  const base = {
+    id: tabId,
+    type: 'agent' as const,
+    agentKind,
+    label: info.displayName
+  }
+  let tab: TerminalTab
+  if (spec.kind === 'fork') {
+    tab = { ...base, sessionId: undefined, forkFromSessionId: spec.srcSessionId }
+  } else if (spec.kind === 'resume') {
+    tab = { ...base, sessionId: spec.resumeSessionId }
+  } else {
+    tab = { ...base, sessionId: info.assignsSessionId ? randomUUID() : undefined }
+  }
+  panesFSM.addTab(worktreePath, tab, paneId)
+  return tabId
 }
 
 const worktreesFSM = new WorktreesFSM(store, {
@@ -2450,6 +2584,7 @@ function registerIpcHandlers(): void {
     'agent:buildSpawnArgs',
     (_ctx, agentKind: string, opts: {
       terminalId: string; cwd: string; sessionId?: string;
+      forkFromSessionId?: string;
       initialPrompt?: string; teleportSessionId?: string;
       sessionName?: string;
       modelOverride?: string
@@ -2805,6 +2940,28 @@ function registerIpcHandlers(): void {
     startJsonClaudeSession(sessionId, cwd)
     return true
   })
+  transport.onRequest(
+    'jsonClaude:addChatTab',
+    (_ctx, worktreePath: string, paneId?: string) => {
+      if (!worktreePath) return null
+      // The fork/resume/blank decision needs disk + pane-tree state, so it
+      // lives in main. Returns the new tab id; the renderer focuses it.
+      const tabId = createChatTab(worktreePath, paneId)
+      log('json-claude', `IPC addChatTab worktree=${worktreePath} → ${tabId}`)
+      return tabId
+    }
+  )
+  transport.onRequest(
+    'agent:addTab',
+    (_ctx, worktreePath: string, agentKind: string, paneId?: string) => {
+      if (!worktreePath) return null
+      // Same implicit fork/resume/blank decision as chat, for xterm agent
+      // tabs. Returns the new tab id; the renderer focuses it.
+      const tabId = createAgentTab(worktreePath, toAgentKind(agentKind), paneId)
+      log('panes', `IPC agent:addTab worktree=${worktreePath} kind=${agentKind} → ${tabId}`)
+      return tabId
+    }
+  )
   transport.onSignal(
     'jsonClaude:send',
     (

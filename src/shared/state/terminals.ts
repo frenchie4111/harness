@@ -56,6 +56,12 @@ export interface TerminalTab {
   initialPrompt?: string
   /** For agent tabs: one-shot teleport session id. In-memory only — main strips it before persistence. */
   teleportSessionId?: string
+  /** For agent + json-claude tabs: one-shot "fork from this session" source
+   *  id. Set when a tab is born as a fork; consumed on first spawn (claude
+   *  `--fork-session`, codex `fork <id>`), after which the agent mints a new
+   *  session id we discover and write onto `sessionId`. In-memory only —
+   *  stripped before persistence (by reload, `sessionId` is set). */
+  forkFromSessionId?: string
   /** For browser tabs: the URL currently loaded (restored on reload). */
   url?: string
   /** For shell tabs: command to run via `zsh -ilc <command>` instead of

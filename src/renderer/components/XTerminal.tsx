@@ -270,6 +270,9 @@ interface XTerminalProps {
   visible: boolean
   sessionName?: string
   sessionId?: string
+  /** Agent tabs only: one-shot "fork from this session" source id. Passed to
+   *  buildSpawnArgs on first spawn (Claude --fork-session / Codex fork). */
+  forkFromSessionId?: string
   initialPrompt?: string
   teleportSessionId?: string
   modelOverride?: string
@@ -298,7 +301,7 @@ interface XTerminalProps {
   onSwitchToChat?: () => void
 }
 
-export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionName, sessionId, initialPrompt, teleportSessionId, modelOverride, shellCommand, shellCwd, backgroundVar, preamble, hideRestoreNotice, onRestartAgent, onSwitchToChat }: XTerminalProps): JSX.Element {
+export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionName, sessionId, forkFromSessionId, initialPrompt, teleportSessionId, modelOverride, shellCommand, shellCwd, backgroundVar, preamble, hideRestoreNotice, onRestartAgent, onSwitchToChat }: XTerminalProps): JSX.Element {
   // Lazy font-cache init — fires once on first XTerminal mount. See
   // initFontCache() comment for why this is lazy rather than at module
   // top.
@@ -340,6 +343,17 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
   const fitAddonRef = useRef<FitAddon | null>(null)
   const searchAddonRef = useRef<SearchAddon | null>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
+  const restartButtonRef = useRef<HTMLButtonElement>(null)
+
+  // When the agent-exited overlay appears on the visible pane, focus the
+  // "Start a new session" button so Enter/Space confirms it (a focused
+  // native <button> activates on both keys). Gating on `visible` keeps
+  // hidden tabs' overlays from stealing focus.
+  useEffect(() => {
+    if (exited && visible && type === 'agent' && onRestartAgent) {
+      restartButtonRef.current?.focus()
+    }
+  }, [exited, visible, type, onRestartAgent])
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<{ resultIndex: number; resultCount: number } | null>(null)
@@ -605,6 +619,7 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
         terminalId,
         cwd,
         sessionId,
+        forkFromSessionId,
         initialPrompt,
         teleportSessionId,
         sessionName,
@@ -1068,6 +1083,7 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
           <div className="flex flex-col items-center gap-3 text-sm">
             <div className="text-dim">{agentDisplayName(agentKind)} exited.</div>
             <button
+              ref={restartButtonRef}
               onClick={onRestartAgent}
               className="px-3 py-1.5 rounded border border-border bg-panel text-fg-bright hover:bg-border transition-colors"
             >

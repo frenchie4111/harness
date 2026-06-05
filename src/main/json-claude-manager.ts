@@ -31,6 +31,7 @@ import type {
   JsonClaudeSessionState
 } from '../shared/state/json-claude'
 import type { ClaudeLaunchSettings } from './claude-launch'
+import type { SessionSpawnSpec } from './session-birth'
 import { log } from './debug'
 import { shellQuote } from './shell-quote'
 import { resolveUserShell, loginShellCommandArgs } from './user-shell'
@@ -39,6 +40,13 @@ interface JsonClaudeInstance {
   proc: ChildProcessWithoutNullStreams
   sessionId: string
   worktreePath: string
+  /** The on-disk `claude` session id this subprocess reads/writes —
+   *  i.e. the `<id>.jsonl` basename. Equals `sessionId` (the tab id) for
+   *  blank tabs, the resumed id for resume tabs, and is null for a fork
+   *  until the init event reveals the freshly-minted id. Used for every
+   *  transcript-path operation (seed, rewind) so they target the right
+   *  file when the tab id and session id diverge. */
+  claudeSessionId: string | null
   buf: string
   /** Monotonically increasing counter used to build stable chat entry ids. */
   entryCounter: number
@@ -224,12 +232,19 @@ export class JsonClaudeManager {
    *  the renderer's chat scrollback is empty after a full app restart.
    *  No-op if the jsonl doesn't exist yet (first turn) or the session
    *  already has entries (renderer reload — main's slice survived). */
-  seedFromTranscript(sessionId: string, worktreePath: string): void {
+  seedFromTranscript(
+    sessionId: string,
+    worktreePath: string,
+    transcriptSessionId: string = sessionId
+  ): void {
     const session =
       this.store.getSnapshot().state.jsonClaude.sessions[sessionId]
     if (session && session.entries.length > 0) return
 
-    const seededEntries = this.parseTranscriptEntries(sessionId, worktreePath)
+    const seededEntries = this.parseTranscriptEntries(
+      transcriptSessionId,
+      worktreePath
+    )
     if (seededEntries.length === 0) return
     const compactCount = seededEntries.filter((e) => e.kind === 'compact').length
     log(
@@ -387,13 +402,17 @@ export class JsonClaudeManager {
     sessionId: string,
     worktreePath: string,
     permissionMode: JsonClaudePermissionMode = 'default',
-    modelOverride?: string
+    modelOverride?: string,
+    spec: SessionSpawnSpec = { kind: 'blank' }
   ): void {
     if (this.instances.has(sessionId)) {
       log('json-claude', `create no-op — already running sessionId=${sessionId}`)
       return
     }
-    log('json-claude', `create begin sessionId=${sessionId} mode=${permissionMode}`)
+    log(
+      'json-claude',
+      `create begin sessionId=${sessionId} mode=${permissionMode} spec=${spec.kind}`
+    )
     const socketPath = this.opts.getApprovalSocketPath(sessionId)
 
     // MCP config — two stdio servers, both spawned via
@@ -448,10 +467,21 @@ export class JsonClaudeManager {
 
     const useSystemClaude = this.opts.getUseSystemClaude()
     const claudeCommand = this.opts.getClaudeCommand() || 'claude'
-    const existingSession = existsSync(transcriptPathFor(sessionId, worktreePath))
-    const resumeOrSet = existingSession
-      ? ['--resume', sessionId]
-      : ['--session-id', sessionId]
+    // Resolve the spawn flags + the on-disk session id this subprocess
+    // will own. For a fork we don't know the minted id yet — claude
+    // generates it and we learn it from the init event (see handleStreamLine).
+    let claudeSessionId: string | null
+    let resumeOrSet: string[]
+    if (spec.kind === 'resume') {
+      claudeSessionId = spec.resumeSessionId
+      resumeOrSet = ['--resume', spec.resumeSessionId]
+    } else if (spec.kind === 'fork') {
+      claudeSessionId = null
+      resumeOrSet = ['--resume', spec.srcSessionId, '--fork-session']
+    } else {
+      claudeSessionId = sessionId
+      resumeOrSet = ['--session-id', sessionId]
+    }
 
     const launchSettings = this.opts.getLaunchSettings(worktreePath, modelOverride)
     const args = [
@@ -553,6 +583,7 @@ export class JsonClaudeManager {
       proc,
       sessionId,
       worktreePath,
+      claudeSessionId,
       buf: '',
       entryCounter: 0,
       partial: null,
@@ -879,6 +910,13 @@ export class JsonClaudeManager {
       return { ok: false, reason: 'nothing after this message to drop' }
     }
 
+    // Resolve the on-disk transcript id BEFORE kill() drops the instance —
+    // a resumed/forked tab's transcript lives under claudeSessionId, not
+    // the tab id. Falls back to the tab id for blank tabs (and the rare
+    // case the session id was never discovered).
+    const transcriptSessionId =
+      this.instances.get(sessionId)?.claudeSessionId ?? sessionId
+
     // Kill the subprocess first so it doesn't keep writing to the jsonl
     // while we truncate. kill() removes from the instance map BEFORE
     // SIGTERM so the exit handler's stale-instance guard bails on the
@@ -886,7 +924,7 @@ export class JsonClaudeManager {
     if (this.instances.has(sessionId)) this.kill(sessionId)
 
     const truncResult = this.truncateTranscriptAfterMessage(
-      sessionId,
+      transcriptSessionId,
       session.worktreePath,
       target.apiMessageId
     )
@@ -901,7 +939,7 @@ export class JsonClaudeManager {
     // a positional prune would leave the slice and the jsonl out of
     // sync. Reseeding makes them agree.
     const freshEntries = this.parseTranscriptEntries(
-      sessionId,
+      transcriptSessionId,
       session.worktreePath
     )
     this.store.dispatch({
@@ -1233,8 +1271,27 @@ export class JsonClaudeManager {
       return
     }
     if (type === 'system' && subtype === 'init') {
-      // Session id is already known (we pinned it via --session-id), but
-      // the init payload includes the canonical slash_commands list — keep
+      // Fork tabs spawn with `--fork-session` and no pinned id, so claude
+      // mints the session id itself. The init payload is the first place
+      // we see it. Bind it to the tab (terminals/sessionIdDiscovered writes
+      // it onto TerminalTab.sessionId, which is persisted) so a later
+      // reload resumes the forked session, and record it on the instance
+      // so transcript-path ops (rewind) target the right file.
+      if (instance.claudeSessionId === null) {
+        const sid = parsed['session_id']
+        if (typeof sid === 'string' && sid) {
+          instance.claudeSessionId = sid
+          log(
+            'json-claude',
+            `fork session id discovered tab=${instance.sessionId} → ${sid}`
+          )
+          this.store.dispatch({
+            type: 'terminals/sessionIdDiscovered',
+            payload: { terminalId: instance.sessionId, sessionId: sid }
+          })
+        }
+      }
+      // The init payload includes the canonical slash_commands list — keep
       // it as a freshness signal in case anything's been installed since
       // the per-cwd probe ran. (Init only fires once a real user message
       // arrives — see probeSlashCommands for why we also probe up-front.)

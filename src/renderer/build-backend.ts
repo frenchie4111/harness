@@ -304,6 +304,10 @@ export function buildBackend(
 
     panesAddTab: (wtPath: string, tab: unknown, paneId?: string) =>
       req('panes:addTab', wtPath, tab, paneId),
+    addChatTab: (wtPath: string, paneId?: string) =>
+      req('jsonClaude:addChatTab', wtPath, paneId),
+    addAgentTab: (wtPath: string, agentKind: string, paneId?: string) =>
+      req('agent:addTab', wtPath, agentKind, paneId),
     panesCloseTab: (wtPath: string, tabId: string) => req('panes:closeTab', wtPath, tabId),
     panesRestartAgentTab: (wtPath: string, tabId: string, newId: string) =>
       req('panes:restartAgentTab', wtPath, tabId, newId),
@@ -355,6 +359,7 @@ export function buildBackend(
         terminalId: string
         cwd: string
         sessionId?: string
+        forkFromSessionId?: string
         initialPrompt?: string
         teleportSessionId?: string
         sessionName?: string

@@ -388,6 +388,14 @@ export interface ElectronAPI {
   openInEditor(worktreePath: string, filePath?: string): Promise<{ ok: true } | { ok: false; error: string }>
 
   panesAddTab(wtPath: string, tab: TerminalTab, paneId?: string): Promise<boolean>
+  /** Create a new chat (json-claude) tab in a worktree. Main applies the
+   *  implicit fork/resume/blank rule and returns the new tab id (or null
+   *  on bad input). */
+  addChatTab(wtPath: string, paneId?: string): Promise<string | null>
+  /** Create a new xterm agent tab in a worktree. Main applies the implicit
+   *  fork/resume/blank rule (scoped to the agent kind) and returns the new
+   *  tab id (or null on bad input). */
+  addAgentTab(wtPath: string, agentKind: string, paneId?: string): Promise<string | null>
   panesCloseTab(wtPath: string, tabId: string): Promise<boolean>
   panesRestartAgentTab(wtPath: string, tabId: string, newId: string): Promise<boolean>
   panesConvertTabType(
@@ -438,6 +446,7 @@ export interface ElectronAPI {
   getLatestAgentSessionId(cwd: string, agentKind?: AgentKind): Promise<string | null>
   buildAgentSpawnArgs(agentKind: string, opts: {
     terminalId: string; cwd: string; sessionId?: string;
+    forkFromSessionId?: string;
     initialPrompt?: string; teleportSessionId?: string;
     sessionName?: string; modelOverride?: string
   }): Promise<string>

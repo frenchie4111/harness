@@ -391,4 +391,119 @@ describe('JsonClaudeManager', () => {
     proc.emit('exit', 1, null)
     expect(store.getSnapshot().state.jsonClaude.sessions[sessionId]?.state).toBe('exited')
   })
+
+  // --- spawn spec → CLI flags --------------------------------------------
+
+  function startWithSpec(
+    spec?: Parameters<JsonClaudeManager['create']>[4]
+  ): string {
+    const store = new Store()
+    const mgr = makeManager(store)
+    const sessionId = 'tab-x'
+    const cwd = '/tmp/wt'
+    store.dispatch({
+      type: 'jsonClaude/sessionStarted',
+      payload: { sessionId, worktreePath: cwd }
+    })
+    mgr.create(sessionId, cwd, 'default', undefined, spec)
+    return lastSpawnCmdLine()
+  }
+
+  it('blank spec (and the default) spawns with --session-id, not --resume', () => {
+    for (const cmd of [startWithSpec(), startWithSpec({ kind: 'blank' })]) {
+      expect(cmd).toContain('--session-id tab-x')
+      expect(cmd).not.toContain('--resume')
+      expect(cmd).not.toContain('--fork-session')
+    }
+  })
+
+  it('resume spec spawns with --resume <id>, never --session-id or --fork-session', () => {
+    const cmd = startWithSpec({ kind: 'resume', resumeSessionId: 'old-sid' })
+    expect(cmd).toContain('--resume old-sid')
+    expect(cmd).not.toContain('--session-id')
+    expect(cmd).not.toContain('--fork-session')
+  })
+
+  it('fork spec spawns with --resume <src> --fork-session, never --session-id', () => {
+    const cmd = startWithSpec({ kind: 'fork', srcSessionId: 'src-sid' })
+    expect(cmd).toContain('--resume src-sid')
+    expect(cmd).toContain('--fork-session')
+    expect(cmd).not.toContain('--session-id')
+  })
+
+  // --- fork session-id discovery from the init event ---------------------
+
+  function seedChatTab(store: Store, wt: string, tabId: string): void {
+    store.dispatch({
+      type: 'terminals/panesForWorktreeChanged',
+      payload: {
+        worktreePath: wt,
+        panes: {
+          type: 'leaf',
+          id: 'p1',
+          tabs: [{ id: tabId, type: 'json-claude', label: 'Chat', mode: 'awake' }],
+          activeTabId: tabId
+        }
+      }
+    })
+  }
+  function tabSessionId(store: Store, wt: string, tabId: string): string | undefined {
+    const tree = store.getSnapshot().state.terminals.panes[wt]
+    if (tree?.type !== 'leaf') return undefined
+    return tree.tabs.find((t) => t.id === tabId)?.sessionId
+  }
+  function fireInit(proc: ReturnType<typeof makeFakeProc>, sessionId?: string): void {
+    proc.stdout.emit(
+      'data',
+      Buffer.from(
+        JSON.stringify({ type: 'system', subtype: 'init', session_id: sessionId }) + '\n'
+      )
+    )
+  }
+
+  it('fork: binds the claude-minted session id from init onto the tab (not the tab id)', () => {
+    const store = new Store()
+    const mgr = makeManager(store)
+    const wt = '/tmp/wt'
+    const tabId = 'tab-fork'
+    seedChatTab(store, wt, tabId)
+    store.dispatch({ type: 'jsonClaude/sessionStarted', payload: { sessionId: tabId, worktreePath: wt } })
+    mgr.create(tabId, wt, 'default', undefined, { kind: 'fork', srcSessionId: 'src-sid' })
+
+    fireInit(sessionProcs()[sessionProcs().length - 1], 'minted-xyz')
+
+    expect(tabSessionId(store, wt, tabId)).toBe('minted-xyz')
+  })
+
+  it('fork: a second init does not overwrite the already-discovered id', () => {
+    const store = new Store()
+    const mgr = makeManager(store)
+    const wt = '/tmp/wt'
+    const tabId = 'tab-fork2'
+    seedChatTab(store, wt, tabId)
+    store.dispatch({ type: 'jsonClaude/sessionStarted', payload: { sessionId: tabId, worktreePath: wt } })
+    mgr.create(tabId, wt, 'default', undefined, { kind: 'fork', srcSessionId: 'src-sid' })
+    const proc = sessionProcs()[sessionProcs().length - 1]
+
+    fireInit(proc, 'first-id')
+    fireInit(proc, 'second-id')
+
+    expect(tabSessionId(store, wt, tabId)).toBe('first-id')
+  })
+
+  it('blank: init does not rebind the tab session id', () => {
+    const store = new Store()
+    const mgr = makeManager(store)
+    const wt = '/tmp/wt'
+    const tabId = 'tab-blank'
+    seedChatTab(store, wt, tabId)
+    store.dispatch({ type: 'jsonClaude/sessionStarted', payload: { sessionId: tabId, worktreePath: wt } })
+    // Blank pins --session-id <tabId>, so claudeSessionId is known up front
+    // and the init session_id must be ignored for binding.
+    mgr.create(tabId, wt, 'default', undefined, { kind: 'blank' })
+
+    fireInit(sessionProcs()[sessionProcs().length - 1], 'should-be-ignored')
+
+    expect(tabSessionId(store, wt, tabId)).toBeUndefined()
+  })
 })
