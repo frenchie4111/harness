@@ -331,6 +331,8 @@ export function buildBackend(
     panesEnsureInitialized: (wtPath: string) => req('panes:ensureInitialized', wtPath),
     panesSleepTab: (wtPath: string, tabId: string) => req('panes:sleepTab', wtPath, tabId),
     panesWakeTab: (wtPath: string, tabId: string) => req('panes:wakeTab', wtPath, tabId),
+    panesSetShellCloseDelay: (wtPath: string, tabId: string, delay: number | null) =>
+      req('panes:setShellCloseDelay', wtPath, tabId, delay),
     panesOpenReview: (wtPath: string) => req('panes:openReview', wtPath),
     panesOpenFile: (wtPath: string, filePath: string, nearTabId?: string) =>
       req('panes:openFile', wtPath, filePath, nearTabId),

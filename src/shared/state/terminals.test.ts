@@ -941,4 +941,56 @@ describe('terminalsReducer', () => {
     const agentTab = leaves[0].tabs[0]
     expect(agentTab.sessionId).toBe('sess-abc')
   })
+
+  it('tabCloseDelayChanged arms a delay on the matching shell tab', () => {
+    const tree: PaneNode = {
+      type: 'leaf',
+      id: 'p1',
+      tabs: [
+        { id: 't1', type: 'shell', label: 'Shell' },
+        { id: 't2', type: 'shell', label: 'Shell' }
+      ],
+      activeTabId: 't1'
+    }
+    const start: TerminalsState = { ...initialTerminals, panes: { '/wt/a': tree } }
+    const next = apply(start, {
+      type: 'terminals/tabCloseDelayChanged',
+      payload: { worktreePath: '/wt/a', tabId: 't1', closeDelay: 30 }
+    })
+    const tabs = getLeaves(next.panes['/wt/a'])[0].tabs
+    expect(tabs[0].closeDelay).toBe(30)
+    // untouched tab keeps its reference identity
+    expect(tabs[1]).toBe(getLeaves(start.panes['/wt/a'])[0].tabs[1])
+  })
+
+  it('tabCloseDelayChanged with null disarms (deletes) the delay', () => {
+    const tree: PaneNode = {
+      type: 'leaf',
+      id: 'p1',
+      tabs: [{ id: 't1', type: 'shell', label: 'Shell', closeDelay: 30 }],
+      activeTabId: 't1'
+    }
+    const start: TerminalsState = { ...initialTerminals, panes: { '/wt/a': tree } }
+    const next = apply(start, {
+      type: 'terminals/tabCloseDelayChanged',
+      payload: { worktreePath: '/wt/a', tabId: 't1', closeDelay: null }
+    })
+    const tab = getLeaves(next.panes['/wt/a'])[0].tabs[0]
+    expect('closeDelay' in tab).toBe(false)
+  })
+
+  it('tabCloseDelayChanged is a no-op when the value is unchanged', () => {
+    const tree: PaneNode = {
+      type: 'leaf',
+      id: 'p1',
+      tabs: [{ id: 't1', type: 'shell', label: 'Shell', closeDelay: 30 }],
+      activeTabId: 't1'
+    }
+    const start: TerminalsState = { ...initialTerminals, panes: { '/wt/a': tree } }
+    const next = apply(start, {
+      type: 'terminals/tabCloseDelayChanged',
+      payload: { worktreePath: '/wt/a', tabId: 't1', closeDelay: 30 }
+    })
+    expect(next).toBe(start)
+  })
 })
