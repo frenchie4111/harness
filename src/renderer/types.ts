@@ -297,6 +297,11 @@ export interface ElectronAPI {
   watchChangedFiles(worktreePath: string): void
   unwatchChangedFiles(worktreePath: string): void
   onChangedFilesInvalidated(callback: (worktreePath: string) => void): () => void
+  watchFile(worktreePath: string, relativePath: string): void
+  unwatchFile(worktreePath: string, relativePath: string): void
+  onFileContentChanged(
+    callback: (worktreePath: string, relativePath: string) => void
+  ): () => void
   getFileDiff(
     worktreePath: string,
     filePath: string,
