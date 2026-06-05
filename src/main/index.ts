@@ -1821,8 +1821,8 @@ function registerIpcHandlers(): void {
       payload: config.autoFetchEnabled !== false
     })
     // Re-enabling shouldn't wait up to 3m for the next tick — fetch now.
-    // The poller's timer keeps running either way; disabled ticks no-op.
-    if (config.autoFetchEnabled !== false) void fetchPoller.fetchAll()
+    // fetchAll() itself no-ops while disabled, so this is safe either way.
+    void fetchPoller.fetchAll()
     return true
   })
 

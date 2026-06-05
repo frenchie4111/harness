@@ -2317,6 +2317,29 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               </div>
               )}
 
+              {scopeRepoRoot === null && (
+                <>
+                  <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">Auto-fetch remotes</h3>
+                  <p className="text-xs text-dim mb-3">
+                    Runs{' '}
+                    <code className="bg-panel-raised px-1 rounded text-xs">git fetch --all</code>{' '}
+                    on every repo every 3 minutes in the background so your
+                    worktrees stay current with their remotes without a manual
+                    fetch. Applies to all repos.
+                  </p>
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={autoFetchEnabled}
+                      onChange={(e) => { void backend.setAutoFetchEnabled(e.target.checked) }}
+                      className="accent-current icon-base cursor-pointer" />
+                    <span className="text-sm text-fg">
+                      Periodically fetch all repos in the background
+                    </span>
+                  </label>
+                </>
+              )}
+
               <div className="flex items-center justify-between mt-6 mb-1">
                 <h3 className="text-sm font-semibold text-fg-bright">Default merge strategy</h3>
                 {scopeRepoRoot === null && reposOverridingKey('mergeStrategy').length > 0 && (
@@ -2614,25 +2637,6 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                       className="accent-current icon-base cursor-pointer" />
                     <span className="text-sm text-fg">
                       Share settings.local.json across worktrees
-                    </span>
-                  </label>
-
-                  <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">Auto-fetch remotes</h3>
-                  <p className="text-xs text-dim mb-3">
-                    Runs{' '}
-                    <code className="bg-panel-raised px-1 rounded text-xs">git fetch --all</code>{' '}
-                    on every repo every 3 minutes in the background so your
-                    worktrees stay current with their remotes without a manual
-                    fetch. Applies to all repos.
-                  </p>
-                  <label className="flex items-center gap-3 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={autoFetchEnabled}
-                      onChange={(e) => { void backend.setAutoFetchEnabled(e.target.checked) }}
-                      className="accent-current icon-base cursor-pointer" />
-                    <span className="text-sm text-fg">
-                      Periodically fetch all repos in the background
                     </span>
                   </label>
 
