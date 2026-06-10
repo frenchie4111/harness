@@ -366,6 +366,37 @@ export interface BranchCommit {
   pushed: boolean
 }
 
+const COMMIT_FIELD_SEP = '\x1f'
+const COMMIT_RECORD_SEP = '\x1e'
+
+export const BRANCH_COMMIT_PRETTY_FORMAT =
+  `format:%H${COMMIT_FIELD_SEP}%h${COMMIT_FIELD_SEP}%s${COMMIT_FIELD_SEP}%an${COMMIT_FIELD_SEP}%ar${COMMIT_FIELD_SEP}%at${COMMIT_RECORD_SEP}`
+
+export function parseBranchCommitLog(
+  stdout: string,
+  unpushed: Set<string> | null
+): BranchCommit[] {
+  const result: BranchCommit[] = []
+  for (const record of stdout.split(COMMIT_RECORD_SEP)) {
+    const line = record.trim()
+    if (!line) continue
+    const parts = line.split(COMMIT_FIELD_SEP)
+    if (parts.length < 6) continue
+    const [hash, shortHash, subject, author, relativeDate, ts] = parts
+    const pushed = unpushed === null ? false : !unpushed.has(hash)
+    result.push({
+      hash,
+      shortHash,
+      subject,
+      author,
+      relativeDate,
+      timestamp: Number(ts) || 0,
+      pushed
+    })
+  }
+  return result
+}
+
 /** Hashes of commits on this branch not yet reachable from origin/<branch>.
  * Empty set if the branch has no remote tracking ref (all commits are local). */
 async function getUnpushedHashes(worktreePath: string): Promise<Set<string> | null> {
@@ -409,14 +440,13 @@ export async function getBranchCommits(worktreePath: string): Promise<BranchComm
 
   if (base !== 'HEAD') {
     try {
-      const sep = '\x1f'
       const tA = performance.now()
       const [logRes, unpushed] = await Promise.all([
         tracedExec(
           [
             'log',
             `${base}..HEAD`,
-            `--pretty=format:%H${sep}%h${sep}%s${sep}%an${sep}%ar${sep}%at`,
+            `--pretty=${BRANCH_COMMIT_PRETTY_FORMAT}`,
             '--max-count=200'
           ],
           { cwd: worktreePath }
@@ -428,20 +458,7 @@ export async function getBranchCommits(worktreePath: string): Promise<BranchComm
       execParts.push(logRes.execMs)
       outputBytes += logRes.outputBytes
 
-      for (const line of logRes.stdout.split('\n')) {
-        if (!line) continue
-        const [hash, shortHash, subject, author, relativeDate, ts] = line.split(sep)
-        const pushed = unpushed === null ? false : !unpushed.has(hash)
-        result.push({
-          hash,
-          shortHash,
-          subject,
-          author,
-          relativeDate,
-          timestamp: Number(ts) || 0,
-          pushed
-        })
-      }
+      result = parseBranchCommitLog(logRes.stdout, unpushed)
     } catch {
       result = []
     }
