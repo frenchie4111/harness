@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Brain } from 'lucide-react'
-import { isHarnessControl, prettyToolName } from './index'
+import { getToolDisplay, isHarnessControl } from './index'
 
 export interface ToolGroupRow {
   key: string
@@ -40,10 +40,26 @@ export function ToolGroup({ rows }: { rows: ToolGroupRow[] }): JSX.Element {
   const toolRows = rows.filter((r) => !r.isThinking)
   const thinkingCount = rows.length - toolRows.length
 
-  const names = toolRows.map((r) => prettyToolName(r.toolName))
-  const visible = names.slice(0, 6).join(' · ')
-  const moreCount = names.length - 6
-  const summary = moreCount > 0 ? `${visible} · +${moreCount} more` : visible
+  const displays = toolRows.map((r) => getToolDisplay(r.toolName))
+  const visibleDisplays = displays.slice(0, 6)
+  const moreCount = displays.length - 6
+  const summary = (
+    <>
+      {visibleDisplays.map((d, i) => (
+        <Fragment key={i}>
+          {i > 0 && <span className="opacity-40">·</span>}
+          {d.icon && <d.icon className="icon-xs shrink-0" />}
+          <span>{d.label}</span>
+        </Fragment>
+      ))}
+      {moreCount > 0 && (
+        <>
+          <span className="opacity-40">·</span>
+          <span>+{moreCount} more</span>
+        </>
+      )}
+    </>
+  )
 
   // Count label: "3 tool calls", "2 thoughts", or "2 thoughts · 3 tools"
   // when mixed. Singular gets singular ("1 thought", "1 tool call").
@@ -89,7 +105,7 @@ export function ToolGroup({ rows }: { rows: ToolGroupRow[] }): JSX.Element {
           {countLabel}
         </span>
         <span
-          className="opacity-60 truncate flex-1 min-w-0"
+          className="opacity-60 truncate flex-1 min-w-0 flex items-center gap-1.5"
           style={{ fontFamily: 'var(--chat-tool-name-family)' }}
         >
           {summary}

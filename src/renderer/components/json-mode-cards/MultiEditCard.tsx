@@ -1,4 +1,5 @@
 import { ToolCardChrome, basename, trunc, type ToolCardProps } from './index'
+import { EditIcon } from './tool-icons'
 import { UnifiedDiff } from './UnifiedDiff'
 
 interface RawEdit {
@@ -26,6 +27,7 @@ export function MultiEditCard({
       name="MultiEdit"
       subtitle={`${basename(fp)} (${edits.length} edit${edits.length === 1 ? '' : 's'})`}
       variant="warn"
+      icon={EditIcon}
       isError={result?.isError}
       autoApproved={autoApproved}
       sessionAllowed={sessionAllowed}

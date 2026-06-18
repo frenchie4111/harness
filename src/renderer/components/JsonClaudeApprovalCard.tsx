@@ -4,6 +4,7 @@ import {
   type JsonClaudePendingApproval
 } from '../../shared/state/json-claude'
 import { formatPendingTool } from '../pending-tool'
+import { prettyToolName } from './json-mode-cards/tool-display'
 import { useJsonClaudeSession, useSettings } from '../store'
 import { useBackend } from '../backend'
 import {
@@ -90,7 +91,7 @@ export function JsonClaudeApprovalCard({
   )
   const sessionGrantLabel = isEditTool
     ? 'Allow edits this session'
-    : `Allow ${approval.toolName} this session`
+    : `Allow ${prettyToolName(approval.toolName)} this session`
   // For edit-class tools the button flips permissionMode instead of
   // adding to the per-tool allow set — claude is killed+respawned with
   // --permission-mode acceptEdits and edits stop hitting the bridge

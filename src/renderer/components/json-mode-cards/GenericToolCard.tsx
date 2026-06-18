@@ -1,7 +1,7 @@
 import {
   ToolCardChrome,
+  getToolDisplay,
   isHarnessControl,
-  prettyToolName,
   trunc,
   type ToolCardProps
 } from './index'
@@ -9,13 +9,15 @@ import {
 export function GenericToolCard({ block, result, autoApproved, sessionAllowed }: ToolCardProps): JSX.Element {
   const summary = block.input ? trunc(JSON.stringify(block.input), 100) : ''
   const brand = isHarnessControl(block.name)
+  const display = getToolDisplay(block.name)
   return (
     <ToolCardChrome
-      name={prettyToolName(block.name)}
+      name={display.label}
       subtitle={summary}
       variant="info"
       isError={result?.isError}
       brand={brand}
+      icon={display.icon}
       autoApproved={autoApproved}
       sessionAllowed={sessionAllowed}
     >

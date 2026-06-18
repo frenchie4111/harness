@@ -1,4 +1,5 @@
 import { ToolCardChrome, basename, trunc, type ToolCardProps } from './index'
+import { WriteIcon } from './tool-icons'
 
 export function WriteCard({ block, result, autoApproved, sessionAllowed }: ToolCardProps): JSX.Element {
   const fp = String(block.input?.file_path ?? '')
@@ -8,6 +9,7 @@ export function WriteCard({ block, result, autoApproved, sessionAllowed }: ToolC
       name="Write"
       subtitle={basename(fp)}
       variant="warn"
+      icon={WriteIcon}
       isError={result?.isError}
       autoApproved={autoApproved}
       sessionAllowed={sessionAllowed}

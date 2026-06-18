@@ -9,6 +9,10 @@
 
 import { useState, type ReactNode } from 'react'
 import type { JsonClaudeMessageBlock } from '../../../shared/state/json-claude'
+import { getToolDisplay, isHarnessControl, prettyToolName } from './tool-display'
+import type { ToolIcon } from './tool-icons'
+
+export { getToolDisplay, isHarnessControl, prettyToolName }
 
 export interface ToolCardProps {
   block: JsonClaudeMessageBlock
@@ -31,29 +35,13 @@ export function trunc(s: string, n: number): string {
   return s.length > n ? s.slice(0, n) + '…' : s
 }
 
-const HARNESS_CONTROL_PREFIX = 'mcp__harness-control__'
-
-export function isHarnessControl(name: string | undefined): boolean {
-  return !!name && name.startsWith(HARNESS_CONTROL_PREFIX)
-}
-
-/** Strip the `mcp__harness-control__` prefix so `create_worktree` shows
- *  instead of the full mangled name. The brand gradient already conveys
- *  "this is a harness tool", so the prefix is redundant in the chrome. */
-export function prettyToolName(name: string | undefined): string {
-  if (!name) return 'Tool'
-  if (name.startsWith(HARNESS_CONTROL_PREFIX)) {
-    return name.slice(HARNESS_CONTROL_PREFIX.length)
-  }
-  return name
-}
-
 export function ToolCardChrome({
   name,
   subtitle,
   variant,
   isError,
   brand,
+  icon: Icon,
   autoApproved,
   sessionAllowed,
   children
@@ -63,6 +51,7 @@ export function ToolCardChrome({
   variant: 'info' | 'warn'
   isError?: boolean
   brand?: boolean
+  icon?: ToolIcon | null
   autoApproved?: { model: string; reason: string; timestamp: number }
   sessionAllowed?: { toolName: string; timestamp: number }
   children: ReactNode
@@ -108,6 +97,7 @@ export function ToolCardChrome({
         <span className="text-muted text-xs w-2 shrink-0 select-none">
           {expanded ? '▾' : '▸'}
         </span>
+        {Icon && <Icon className="icon-sm shrink-0" />}
         <span
           className={`font-semibold shrink-0 ${nameClass}`}
           style={{ fontFamily: 'var(--chat-tool-name-family)' }}
