@@ -186,7 +186,9 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
       })
 
       if (result.outcome === 'success') {
+        // Focus the real path BEFORE dismissing pending — see #164.
         setActiveWorktreeId((prev) => (prev === id ? result.createdPath : prev))
+        void backend.dismissPendingWorktree(id)
       }
       // On 'setup-failed' we stay on the pending id; the user can click
       // "Continue anyway" which transitions to result.createdPath.
@@ -218,6 +220,7 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
 
       if (result.outcome === 'success') {
         setActiveWorktreeId((prev) => (prev === id ? result.createdPath : prev))
+        void backend.dismissPendingWorktree(id)
       }
     },
     [setActiveWorktreeId, setShowNewWorktree]

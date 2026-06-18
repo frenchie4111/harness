@@ -85,6 +85,23 @@ describe('worktreesReducer', () => {
     expect(b?.status).toBe('creating')
   })
 
+  it('pendingUpdated can transition a pending entry to the success status', () => {
+    const start: WorktreesState = {
+      ...initialWorktrees,
+      pending: [stubPending({ id: 'pending:a', status: 'setup' })]
+    }
+    const next = apply(start, {
+      type: 'worktrees/pendingUpdated',
+      payload: {
+        id: 'pending:a',
+        patch: { status: 'success', createdPath: '/tmp/wt/a' }
+      }
+    })
+    const a = next.pending.find((p) => p.id === 'pending:a')
+    expect(a?.status).toBe('success')
+    expect(a?.createdPath).toBe('/tmp/wt/a')
+  })
+
   it('pendingUpdated on an unknown id is a no-op', () => {
     const start: WorktreesState = {
       ...initialWorktrees,

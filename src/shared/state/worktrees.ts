@@ -10,7 +10,7 @@ export interface Worktree {
   repoRoot: string
 }
 
-export type PendingStatus = 'creating' | 'setup' | 'setup-failed' | 'error'
+export type PendingStatus = 'creating' | 'setup' | 'success' | 'setup-failed' | 'error'
 
 export interface PendingWorktree {
   /** Prefixed id like `pending:<uuid>` so the renderer can use it as an

@@ -286,7 +286,13 @@ export class WorktreesFSM {
       return { id, outcome: 'setup-failed', createdPath: created.path }
     }
 
-    this.store.dispatch({ type: 'worktrees/pendingRemoved', payload: id })
+    // Keep the pending entry alive — the renderer dismisses it after
+    // routing focus to createdPath, so the auto-route effect can't steal
+    // focus on the pendingRemoved event that arrives before the IPC reply.
+    this.store.dispatch({
+      type: 'worktrees/pendingUpdated',
+      payload: { id, patch: { status: 'success', createdPath: created.path } }
+    })
     return { id, outcome: 'success', createdPath: created.path }
   }
 
