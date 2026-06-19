@@ -13,6 +13,8 @@ import { initialSnooze } from '../shared/state/snooze'
 import { initialAnnouncements } from '../shared/state/announcements'
 import { initialScratchpad } from '../shared/state/scratchpad'
 import { initialSshBootstrap } from '../shared/state/ssh-bootstrap'
+import { initialTicketProviders } from '../shared/state/ticket-providers'
+import { initialTickets } from '../shared/state/tickets'
 import {
   initialSettings,
   DEFAULT_LIGHT_THEME,
@@ -72,6 +74,10 @@ export function buildInitialAppState(
     announcements: initialAnnouncements,
     scratchpad: { byWorktreePath: flattenScratchpadNotes(config.scratchpadNotes) },
     sshBootstrap: initialSshBootstrap,
+    ticketProviders: config.ticketProviders
+      ? { byId: { ...config.ticketProviders } }
+      : initialTicketProviders,
+    tickets: initialTickets,
     settings: {
       ...initialSettings,
       themeMode:

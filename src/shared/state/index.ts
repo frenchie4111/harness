@@ -102,6 +102,18 @@ import {
   type SshBootstrapEvent,
   type SshBootstrapState
 } from './ssh-bootstrap'
+import {
+  initialTicketProviders,
+  ticketProvidersReducer,
+  type TicketProvidersEvent,
+  type TicketProvidersState
+} from './ticket-providers'
+import {
+  initialTickets,
+  ticketsReducer,
+  type TicketsEvent,
+  type TicketsState
+} from './tickets'
 
 export type { SettingsState, SettingsEvent }
 export type { UpdaterState, UpdaterEvent, UpdaterStatus } from './updater'
@@ -182,6 +194,12 @@ export type {
   BootstrapProgress,
   BootstrapError
 } from './ssh-bootstrap'
+export type { TicketProvidersState, TicketProvidersEvent } from './ticket-providers'
+export type {
+  TicketsState,
+  TicketsEvent,
+  TicketProviderCache
+} from './tickets'
 
 export interface AppState {
   settings: SettingsState
@@ -199,6 +217,8 @@ export interface AppState {
   announcements: AnnouncementsState
   scratchpad: ScratchpadState
   sshBootstrap: SshBootstrapState
+  ticketProviders: TicketProvidersState
+  tickets: TicketsState
 }
 
 export type StateEvent =
@@ -217,6 +237,8 @@ export type StateEvent =
   | AnnouncementsEvent
   | ScratchpadEvent
   | SshBootstrapEvent
+  | TicketProvidersEvent
+  | TicketsEvent
 
 export const initialState: AppState = {
   settings: initialSettings,
@@ -233,7 +255,9 @@ export const initialState: AppState = {
   snooze: initialSnooze,
   announcements: initialAnnouncements,
   scratchpad: initialScratchpad,
-  sshBootstrap: initialSshBootstrap
+  sshBootstrap: initialSshBootstrap,
+  ticketProviders: initialTicketProviders,
+  tickets: initialTickets
 }
 
 export function rootReducer(state: AppState, event: StateEvent): AppState {
@@ -312,6 +336,21 @@ export function rootReducer(state: AppState, event: StateEvent): AppState {
       sshBootstrap: sshBootstrapReducer(state.sshBootstrap, event as SshBootstrapEvent)
     }
   }
+  if (event.type.startsWith('ticketProviders/')) {
+    return {
+      ...state,
+      ticketProviders: ticketProvidersReducer(
+        state.ticketProviders,
+        event as TicketProvidersEvent
+      )
+    }
+  }
+  if (event.type.startsWith('tickets/')) {
+    return {
+      ...state,
+      tickets: ticketsReducer(state.tickets, event as TicketsEvent)
+    }
+  }
   return state
 }
 
@@ -357,7 +396,12 @@ export function mergeWireSnapshot(state: WireSnapshotState): AppState {
     snooze: { ...initialState.snooze, ...state.snooze },
     announcements: { ...initialState.announcements, ...state.announcements },
     scratchpad: { ...initialState.scratchpad, ...state.scratchpad },
-    sshBootstrap: { ...initialState.sshBootstrap, ...state.sshBootstrap }
+    sshBootstrap: { ...initialState.sshBootstrap, ...state.sshBootstrap },
+    ticketProviders: {
+      ...initialState.ticketProviders,
+      ...state.ticketProviders
+    },
+    tickets: { ...initialState.tickets, ...state.tickets }
   }
 }
 

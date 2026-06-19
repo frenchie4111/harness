@@ -7,6 +7,23 @@ export type { Worktree, PendingWorktree, PendingDeletion }
 import type { RepoConfig } from '../shared/state/repo-configs'
 export type { RepoConfig }
 
+import type {
+  Ticket,
+  TicketProviderConfig,
+  TicketProviderType,
+  GithubIssuesConfig,
+  NotionConfig,
+  WorktreeTicketLink
+} from '../shared/tickets'
+export type {
+  Ticket,
+  TicketProviderConfig,
+  TicketProviderType,
+  GithubIssuesConfig,
+  NotionConfig,
+  WorktreeTicketLink
+}
+
 import type { WeeklyStats, TopWorktree } from '../shared/weekly-stats'
 export type { WeeklyStats, TopWorktree }
 
@@ -187,6 +204,7 @@ export interface ElectronAPI {
     model?: string,
     checkoutExisting?: boolean
     baseRef?: string
+    linkedTicket?: WorktreeTicketLink
   }): Promise<
     | { id: string; outcome: 'success'; createdPath: string }
     | { id: string; outcome: 'setup-failed'; createdPath: string }
@@ -199,6 +217,7 @@ export interface ElectronAPI {
     initialPrompt?: string
     agentKind?: 'claude' | 'codex'
     model?: string
+    linkedTicket?: WorktreeTicketLink
   }): Promise<
     | { id: string; outcome: 'success'; createdPath: string }
     | { id: string; outcome: 'setup-failed'; createdPath: string }
@@ -604,6 +623,24 @@ export interface ElectronAPI {
   connectionsSetLastConnected(id: string, when?: number): Promise<boolean>
   connectionsGetToken(id: string): Promise<string | null>
   connectionsHasToken(id: string): Promise<boolean>
+
+  // Ticket providers + tickets (first-party ticket-system integration).
+  // See src/shared/tickets.ts for the contract.
+  ticketsListProviders(): Promise<TicketProviderConfig[]>
+  ticketsAddProvider(
+    config: Omit<TicketProviderConfig, 'id'>,
+    token?: string
+  ): Promise<TicketProviderConfig>
+  ticketsUpdateProvider(
+    id: string,
+    patch: Partial<Omit<TicketProviderConfig, 'id'>>,
+    token?: string | null
+  ): Promise<TicketProviderConfig | null>
+  ticketsRemoveProvider(id: string): Promise<boolean>
+  ticketsList(providerId: string, query?: string): Promise<Ticket[]>
+  ticketsGet(providerId: string, externalId: string): Promise<Ticket | null>
+  ticketsLinkRepoProvider(repoRoot: string, providerId: string): Promise<boolean>
+  ticketsUnlinkRepoProvider(repoRoot: string, providerId: string): Promise<boolean>
 
   // SSH bootstrap (remote-SSH backend flow). Always-local; the local
   // Electron backend is the one that drives SSH. See plans/remote-main.md §4.
