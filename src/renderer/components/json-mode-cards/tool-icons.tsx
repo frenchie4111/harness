@@ -189,20 +189,38 @@ export const XIcon = brand(SiX)
 export const BlueskyIcon = brand(SiBluesky, '#0285FF')
 export const CloudinaryIcon = brand(SiCloudinary, '#3448C5')
 
-// Harness mark — 3×3 dot grid on a dark rounded-square, gray→amber→green
-// gradient direction mirrors resources/icon.png.
+// Harness mark — 3×3 dot grid, Simple-Icons-style silhouette (no
+// background rect) so it sits next to the other brand logos without
+// reading as a miniature app icon. Dots share one diagonal gradient
+// (amber → red → purple) that mirrors the brand-gradient chrome
+// already applied to the tool-card name for harness-control tools.
 export const HarnessIcon: ToolIcon = ({ className }) => (
   <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
-    <rect width="24" height="24" rx="4" fill="#0A0A0A" />
-    <circle cx="6" cy="6" r="2" fill="#6B7280" />
-    <circle cx="12" cy="6" r="2" fill="#6B7280" />
-    <circle cx="18" cy="6" r="2" fill="#F59E0B" />
-    <circle cx="6" cy="12" r="2" fill="#6B7280" />
-    <circle cx="12" cy="12" r="2" fill="#F59E0B" />
-    <circle cx="18" cy="12" r="2" fill="#10B981" />
-    <circle cx="6" cy="18" r="2" fill="#F59E0B" />
-    <circle cx="12" cy="18" r="2" fill="#10B981" />
-    <circle cx="18" cy="18" r="2" fill="#10B981" />
+    <defs>
+      <linearGradient
+        id="harness-mark-grad"
+        x1="2"
+        y1="2"
+        x2="22"
+        y2="22"
+        gradientUnits="userSpaceOnUse"
+      >
+        <stop offset="0%" stopColor="#f59e0b" />
+        <stop offset="50%" stopColor="#ef4444" />
+        <stop offset="100%" stopColor="#a855f7" />
+      </linearGradient>
+    </defs>
+    <g fill="url(#harness-mark-grad)">
+      <circle cx="5" cy="5" r="2.3" />
+      <circle cx="12" cy="5" r="2.3" />
+      <circle cx="19" cy="5" r="2.3" />
+      <circle cx="5" cy="12" r="2.3" />
+      <circle cx="12" cy="12" r="2.3" />
+      <circle cx="19" cy="12" r="2.3" />
+      <circle cx="5" cy="19" r="2.3" />
+      <circle cx="12" cy="19" r="2.3" />
+      <circle cx="19" cy="19" r="2.3" />
+    </g>
   </svg>
 )
 
