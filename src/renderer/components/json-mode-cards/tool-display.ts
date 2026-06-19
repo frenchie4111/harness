@@ -318,3 +318,50 @@ export function getToolDisplay(name: string | undefined): ToolDisplay {
 export function prettyToolName(name: string | undefined): string {
   return getToolDisplay(name).label
 }
+
+export interface ArgEntry {
+  key: string
+  /** Stringified value: strings as-is, scalars via String(), null as
+   *  "null", objects/arrays via JSON.stringify. */
+  value: string
+  /** True when the expanded-view renderer should treat this as a
+   *  multi-line block (use a <pre>) rather than inline text — either
+   *  because the value contains a newline or because it's long enough
+   *  to want wrapping. */
+  multiline: boolean
+}
+
+/** Flatten a tool's `input` blob into an ordered list of key/value
+ *  pairs for display. Top-level keys only — nested objects/arrays
+ *  collapse to a single inline JSON string. Returns [] for anything
+ *  that isn't a plain object. */
+export function extractArgs(input: unknown): ArgEntry[] {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return []
+  const out: ArgEntry[] = []
+  for (const [key, raw] of Object.entries(input as Record<string, unknown>)) {
+    let value: string
+    if (typeof raw === 'string') {
+      value = raw
+    } else if (
+      typeof raw === 'number' ||
+      typeof raw === 'boolean' ||
+      typeof raw === 'bigint'
+    ) {
+      value = String(raw)
+    } else if (raw === null || raw === undefined) {
+      value = String(raw)
+    } else {
+      try {
+        value = JSON.stringify(raw)
+      } catch {
+        value = String(raw)
+      }
+    }
+    out.push({
+      key,
+      value,
+      multiline: value.includes('\n') || value.length > 80
+    })
+  }
+  return out
+}

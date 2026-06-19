@@ -9,10 +9,17 @@
 
 import { useState, type ReactNode } from 'react'
 import type { JsonClaudeMessageBlock } from '../../../shared/state/json-claude'
-import { getToolDisplay, isHarnessControl, prettyToolName } from './tool-display'
+import {
+  extractArgs,
+  getToolDisplay,
+  isHarnessControl,
+  prettyToolName,
+  type ArgEntry
+} from './tool-display'
 import type { ToolIcon } from './tool-icons'
 
-export { getToolDisplay, isHarnessControl, prettyToolName }
+export { extractArgs, getToolDisplay, isHarnessControl, prettyToolName }
+export type { ArgEntry }
 
 export interface ToolCardProps {
   block: JsonClaudeMessageBlock
@@ -47,7 +54,7 @@ export function ToolCardChrome({
   children
 }: {
   name: string
-  subtitle: string
+  subtitle: ReactNode
   variant: 'info' | 'warn'
   isError?: boolean
   brand?: boolean

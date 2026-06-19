@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  extractArgs,
   getToolDisplay,
   isHarnessControl,
   normalizeServerName,
@@ -206,6 +207,50 @@ describe('expanded brand registry', () => {
       const d = getToolDisplay(`mcp__${b}__do_thing`)
       expect(d.icon, `${b} should have an icon`).not.toBeNull()
     }
+  })
+})
+
+describe('extractArgs', () => {
+  it('returns [] for non-object inputs', () => {
+    expect(extractArgs(undefined)).toEqual([])
+    expect(extractArgs(null)).toEqual([])
+    expect(extractArgs('hi')).toEqual([])
+    expect(extractArgs(42)).toEqual([])
+    expect(extractArgs([1, 2])).toEqual([])
+  })
+
+  it('returns an entry per top-level key, preserving order', () => {
+    const args = extractArgs({ branchName: 'feat-x', count: 3 })
+    expect(args).toEqual([
+      { key: 'branchName', value: 'feat-x', multiline: false },
+      { key: 'count', value: '3', multiline: false }
+    ])
+  })
+
+  it('stringifies nested objects and arrays as JSON', () => {
+    const args = extractArgs({ rules: [{ a: 1 }], opts: { x: true } })
+    expect(args[0].value).toBe('[{"a":1}]')
+    expect(args[1].value).toBe('{"x":true}')
+  })
+
+  it('marks long or multi-line values as multiline', () => {
+    const long = 'a'.repeat(120)
+    const args = extractArgs({
+      short: 'hi',
+      long,
+      hasNewline: 'one\ntwo'
+    })
+    expect(args[0].multiline).toBe(false)
+    expect(args[1].multiline).toBe(true)
+    expect(args[2].multiline).toBe(true)
+  })
+
+  it('handles null and booleans as scalars, not multiline', () => {
+    const args = extractArgs({ enabled: true, missing: null })
+    expect(args).toEqual([
+      { key: 'enabled', value: 'true', multiline: false },
+      { key: 'missing', value: 'null', multiline: false }
+    ])
   })
 })
 
