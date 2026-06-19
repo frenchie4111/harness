@@ -5,7 +5,7 @@ import { useTailLineBuffer } from './hooks/useTailLineBuffer'
 import { useTabHandlers } from './hooks/useTabHandlers'
 import { useHotkeyHandlers } from './hooks/useHotkeyHandlers'
 import { useWorktreeHandlers } from './hooks/useWorktreeHandlers'
-import type { Worktree, TerminalTab, PtyStatus, PendingTool, QuestStep, PendingWorktree, UpdaterStatus, RepoConfig, PaneNode } from './types'
+import type { Worktree, TerminalTab, PtyStatus, PendingTool, QuestStep, PendingWorktree, UpdaterStatus, RepoConfig, PaneNode, LiveQueueEntry } from './types'
 import { getLeaves, findLeaf } from '../shared/state/terminals'
 import { CheckCircle2, FolderOpen } from 'lucide-react'
 import { BUILT_IN_THEMES_BY_MODE } from './themes'
@@ -140,6 +140,7 @@ function DesktopApp(): JSX.Element {
   const terminals = useTerminals()
   const statuses = terminals.statuses
   const pendingTools = terminals.pendingTools
+  const pendingSince = terminals.pendingSince
   const shellActivity = terminals.shellActivity
   // PR state lives in the main-process store (see src/main/pr-poller.ts).
   // Polling, on-focus refresh, and stale dedup all live there.
@@ -264,6 +265,10 @@ function DesktopApp(): JSX.Element {
   const [showNewProject, setShowNewProject] = useState(false)
   const [reportIssueState, setReportIssueState] = useState<OpenReportIssueDetail | null>(null)
   const [showAddBackend, setShowAddBackend] = useState(false)
+  // Live Mode: when on, the UI auto-jumps to whichever tab is at the
+  // head of the permission-request queue. Session-only (no persistence
+  // across reload) — intentionally a plain `useState`, not a slice.
+  const [liveMode, setLiveMode] = useState(false)
   // Dev-only: forces the welcome / onboarding form to render even when
   // the user already has repos added, so the layout can be inspected
   // without wiping `userData/config.json`. Toggled from Help → Debug:
@@ -850,6 +855,65 @@ const setQuestStep = useCallback((next: QuestStep) => {
       (tab) => tab.type === 'shell' && shellActivity[tab.id]?.active
     )
   }
+
+  // Live Mode queue: every tab currently sitting on a permission request,
+  // ordered FIFO by when it entered needs-approval. The sidebar renders
+  // this list; the auto-jump effect below follows its head.
+  const liveModeQueue = useMemo<LiveQueueEntry[]>(() => {
+    const entries: LiveQueueEntry[] = []
+    for (const wt of worktrees) {
+      const tree = panes[wt.path]
+      if (!tree) continue
+      for (const leaf of getLeaves(tree)) {
+        for (const tab of leaf.tabs) {
+          if (statuses[tab.id] !== 'needs-approval') continue
+          const tool = pendingTools[tab.id]
+          if (!tool) continue
+          entries.push({
+            worktreePath: wt.path,
+            worktreeBranch: wt.branch,
+            terminalId: tab.id,
+            paneId: leaf.id,
+            tabLabel: tab.customLabel ?? tab.label,
+            tool,
+            since: pendingSince[tab.id] ?? 0
+          })
+        }
+      }
+    }
+    entries.sort((a, b) => a.since - b.since)
+    return entries
+  }, [worktrees, panes, statuses, pendingTools, pendingSince])
+
+  // Auto-jump effect: when Live Mode is on, snap focus to the head of
+  // the queue. We only depend on the head's identity so the effect
+  // doesn't refire on every queue mutation.
+  const queueHead = liveModeQueue[0] ?? null
+  const queueHeadKey = queueHead
+    ? `${queueHead.worktreePath}|${queueHead.paneId}|${queueHead.terminalId}`
+    : null
+  useEffect(() => {
+    if (!liveMode || !queueHead) return
+    setActiveWorktreeId(queueHead.worktreePath)
+    setActivePaneId((prev) =>
+      prev[queueHead.worktreePath] === queueHead.paneId
+        ? prev
+        : { ...prev, [queueHead.worktreePath]: queueHead.paneId }
+    )
+    void backend.panesSelectTab(
+      queueHead.worktreePath,
+      queueHead.paneId,
+      queueHead.terminalId
+    )
+    // Close the worktree-management overlays so the user lands on the
+    // workspace pane directly — same as clicking a worktree manually.
+    setShowNewWorktree(false)
+    setShowActivity(false)
+    setShowCleanup(false)
+    setShowCommandCenter(false)
+    // queueHeadKey is the identity dep; queueHead provides the values.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveMode, queueHeadKey, backend])
 
   // Activity-log transitions are recorded by main's activity-deriver
   // (see src/main/activity-deriver.ts). The renderer no longer pings
@@ -1462,6 +1526,26 @@ const setQuestStep = useCallback((next: QuestStep) => {
             snoozeDefaultDays={settings.snoozeDefaultDays}
             prLoading={prLoading}
             agentCount={agentWorktreeCount}
+            liveMode={liveMode}
+            onToggleLiveMode={() => setLiveMode((v) => !v)}
+            liveModeQueue={liveModeQueue}
+            onSelectLiveQueueEntry={(entry) => {
+              setShowNewWorktree(false)
+              setShowActivity(false)
+              setShowCleanup(false)
+              setShowCommandCenter(false)
+              setActiveWorktreeId(entry.worktreePath)
+              setActivePaneId((prev) =>
+                prev[entry.worktreePath] === entry.paneId
+                  ? prev
+                  : { ...prev, [entry.worktreePath]: entry.paneId }
+              )
+              void backend.panesSelectTab(
+                entry.worktreePath,
+                entry.paneId,
+                entry.terminalId
+              )
+            }}
             onSelectWorktree={(path) => {
               setShowNewWorktree(false)
               setShowActivity(false)

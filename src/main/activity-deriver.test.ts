@@ -219,7 +219,7 @@ describe('ActivityDeriver auto-unsnooze', () => {
 
     store.dispatch({
       type: 'terminals/statusChanged',
-      payload: { id: 'ta1', status: 'processing', pendingTool: null }
+      payload: { id: 'ta1', status: 'processing', pendingTool: null, ts: 0 }
     })
 
     expect(cleared).toEqual([A])
@@ -234,11 +234,11 @@ describe('ActivityDeriver auto-unsnooze', () => {
 
     store.dispatch({
       type: 'terminals/statusChanged',
-      payload: { id: 'ta1', status: 'waiting', pendingTool: null }
+      payload: { id: 'ta1', status: 'waiting', pendingTool: null, ts: 0 }
     })
     store.dispatch({
       type: 'terminals/statusChanged',
-      payload: { id: 'ta1', status: 'idle', pendingTool: null }
+      payload: { id: 'ta1', status: 'idle', pendingTool: null, ts: 0 }
     })
 
     expect(cleared).toEqual([])
@@ -253,7 +253,7 @@ describe('ActivityDeriver auto-unsnooze', () => {
 
     store.dispatch({
       type: 'terminals/statusChanged',
-      payload: { id: 'ta1', status: 'processing', pendingTool: null }
+      payload: { id: 'ta1', status: 'processing', pendingTool: null, ts: 0 }
     })
 
     expect(cleared).toEqual([])

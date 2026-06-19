@@ -193,6 +193,13 @@ export interface TerminalsState {
   statuses: Record<string, PtyStatus>
   /** Only meaningful when status is 'needs-approval'; null otherwise. */
   pendingTools: Record<string, PendingTool | null>
+  /** ms-since-epoch when each pending terminal first entered the
+   *  'needs-approval' state. Used as a FIFO key for the Live Mode queue
+   *  so we always jump to the oldest unresolved approval next. The entry
+   *  is preserved as long as the terminal stays in needs-approval (we
+   *  only stamp it on the transition INTO that state), and dropped on
+   *  the transition out or on terminal removal. */
+  pendingSince: Record<string, number>
   /** Per-terminal foreground-process indicator for shell tabs. */
   shellActivity: Record<string, ShellActivity>
   /** Per-terminal OSC 9;4 progress, dispatched from the controller's
@@ -215,7 +222,15 @@ export interface TerminalsState {
 export type TerminalsEvent =
   | {
       type: 'terminals/statusChanged'
-      payload: { id: string; status: PtyStatus; pendingTool: PendingTool | null }
+      payload: {
+        id: string
+        status: PtyStatus
+        pendingTool: PendingTool | null
+        /** ms-since-epoch the dispatcher observed this transition. The
+         *  reducer only consumes it on the entry into needs-approval,
+         *  to stamp pendingSince[id]. Other transitions ignore it. */
+        ts: number
+      }
     }
   | {
       type: 'terminals/shellActivityChanged'
@@ -305,6 +320,7 @@ export type TerminalsEvent =
 export const initialTerminals: TerminalsState = {
   statuses: {},
   pendingTools: {},
+  pendingSince: {},
   shellActivity: {},
   progress: {},
   panes: {},
@@ -318,14 +334,27 @@ export function terminalsReducer(
 ): TerminalsState {
   switch (event.type) {
     case 'terminals/statusChanged': {
-      const { id, status, pendingTool } = event.payload
+      const { id, status, pendingTool, ts } = event.payload
       // pendingTool only matters when the status is needs-approval; null it
       // otherwise so the renderer doesn't flash stale approval UI.
       const nextPending = status === 'needs-approval' ? pendingTool : null
+      // Stamp pendingSince only on the transition INTO needs-approval. If
+      // the terminal was already needs-approval we keep the original ts so
+      // the queue's FIFO order doesn't shift when the hook re-fires.
+      const wasPending = state.statuses[id] === 'needs-approval'
+      let nextSince = state.pendingSince
+      if (status === 'needs-approval' && !wasPending) {
+        nextSince = { ...state.pendingSince, [id]: ts }
+      } else if (status !== 'needs-approval' && id in state.pendingSince) {
+        const { [id]: _dropped, ...rest } = state.pendingSince
+        void _dropped
+        nextSince = rest
+      }
       return {
         ...state,
         statuses: { ...state.statuses, [id]: status },
-        pendingTools: { ...state.pendingTools, [id]: nextPending }
+        pendingTools: { ...state.pendingTools, [id]: nextPending },
+        pendingSince: nextSince
       }
     }
     case 'terminals/shellActivityChanged': {
@@ -360,6 +389,7 @@ export function terminalsReducer(
       if (
         !(id in state.statuses) &&
         !(id in state.pendingTools) &&
+        !(id in state.pendingSince) &&
         !(id in state.shellActivity) &&
         !(id in state.progress) &&
         !(id in state.sessions)
@@ -368,11 +398,13 @@ export function terminalsReducer(
       }
       const { [id]: _s, ...restStatuses } = state.statuses
       const { [id]: _p, ...restPending } = state.pendingTools
+      const { [id]: _ps, ...restSince } = state.pendingSince
       const { [id]: _a, ...restActivity } = state.shellActivity
       const { [id]: _pg, ...restProgress } = state.progress
       const { [id]: _session, ...restSessions } = state.sessions
       void _s
       void _p
+      void _ps
       void _a
       void _pg
       void _session
@@ -380,6 +412,7 @@ export function terminalsReducer(
         ...state,
         statuses: restStatuses,
         pendingTools: restPending,
+        pendingSince: restSince,
         shellActivity: restActivity,
         progress: restProgress,
         sessions: restSessions

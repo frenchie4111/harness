@@ -158,7 +158,7 @@ describe('terminalsReducer', () => {
   it('statusChanged sets status and clears pendingTool when not needs-approval', () => {
     const next = apply(initialTerminals, {
       type: 'terminals/statusChanged',
-      payload: { id: 'term-1', status: 'processing', pendingTool: null }
+      payload: { id: 'term-1', status: 'processing', pendingTool: null, ts: 1 }
     })
     expect(next.statuses['term-1']).toBe('processing')
     expect(next.pendingTools['term-1']).toBeNull()
@@ -168,7 +168,7 @@ describe('terminalsReducer', () => {
     const tool = { name: 'Bash', input: { command: 'rm -rf /tmp/x' } }
     const next = apply(initialTerminals, {
       type: 'terminals/statusChanged',
-      payload: { id: 'term-1', status: 'needs-approval', pendingTool: tool }
+      payload: { id: 'term-1', status: 'needs-approval', pendingTool: tool, ts: 5 }
     })
     expect(next.statuses['term-1']).toBe('needs-approval')
     expect(next.pendingTools['term-1']).toEqual(tool)
@@ -178,12 +178,12 @@ describe('terminalsReducer', () => {
     const tool = { name: 'Bash', input: {} }
     const s1 = apply(initialTerminals, {
       type: 'terminals/statusChanged',
-      payload: { id: 'term-1', status: 'needs-approval', pendingTool: tool }
+      payload: { id: 'term-1', status: 'needs-approval', pendingTool: tool, ts: 1 }
     })
     expect(s1.pendingTools['term-1']).toEqual(tool)
     const s2 = apply(s1, {
       type: 'terminals/statusChanged',
-      payload: { id: 'term-1', status: 'processing', pendingTool: null }
+      payload: { id: 'term-1', status: 'processing', pendingTool: null, ts: 2 }
     })
     expect(s2.pendingTools['term-1']).toBeNull()
   })
@@ -191,13 +191,49 @@ describe('terminalsReducer', () => {
   it('statusChanged on one terminal leaves others alone', () => {
     const s1 = apply(initialTerminals, {
       type: 'terminals/statusChanged',
-      payload: { id: 'term-a', status: 'processing', pendingTool: null }
+      payload: { id: 'term-a', status: 'processing', pendingTool: null, ts: 1 }
     })
     const s2 = apply(s1, {
       type: 'terminals/statusChanged',
-      payload: { id: 'term-b', status: 'idle', pendingTool: null }
+      payload: { id: 'term-b', status: 'idle', pendingTool: null, ts: 2 }
     })
     expect(s2.statuses).toEqual({ 'term-a': 'processing', 'term-b': 'idle' })
+  })
+
+  it('statusChanged stamps pendingSince only on entry into needs-approval', () => {
+    const tool = { name: 'Bash', input: {} }
+    // Entry: not yet needs-approval → needs-approval. Stamp.
+    const s1 = apply(initialTerminals, {
+      type: 'terminals/statusChanged',
+      payload: { id: 'term-1', status: 'needs-approval', pendingTool: tool, ts: 100 }
+    })
+    expect(s1.pendingSince['term-1']).toBe(100)
+    // Re-dispatch while already needs-approval (e.g. tool details refreshed).
+    // Preserve the original stamp so FIFO order is stable.
+    const s2 = apply(s1, {
+      type: 'terminals/statusChanged',
+      payload: { id: 'term-1', status: 'needs-approval', pendingTool: tool, ts: 200 }
+    })
+    expect(s2.pendingSince['term-1']).toBe(100)
+    // Exit: drop the entry.
+    const s3 = apply(s2, {
+      type: 'terminals/statusChanged',
+      payload: { id: 'term-1', status: 'processing', pendingTool: null, ts: 300 }
+    })
+    expect(s3.pendingSince).toEqual({})
+  })
+
+  it('statusChanged keeps pendingSince FIFO across multiple terminals', () => {
+    const tool = { name: 'Edit', input: {} }
+    const s1 = apply(initialTerminals, {
+      type: 'terminals/statusChanged',
+      payload: { id: 'term-a', status: 'needs-approval', pendingTool: tool, ts: 10 }
+    })
+    const s2 = apply(s1, {
+      type: 'terminals/statusChanged',
+      payload: { id: 'term-b', status: 'needs-approval', pendingTool: tool, ts: 20 }
+    })
+    expect(s2.pendingSince).toEqual({ 'term-a': 10, 'term-b': 20 })
   })
 
   it('shellActivityChanged sets the active flag and process name', () => {
@@ -212,6 +248,7 @@ describe('terminalsReducer', () => {
     const start: TerminalsState = {
       statuses: { 'term-1': 'processing', 'term-2': 'idle' },
       pendingTools: { 'term-1': { name: 'Bash', input: {} } },
+      pendingSince: { 'term-1': 42 },
       shellActivity: { 'term-1': { active: true } },
       progress: { 'term-1': { state: 1, value: 50 } },
       panes: {},
@@ -221,6 +258,7 @@ describe('terminalsReducer', () => {
     const next = apply(start, { type: 'terminals/removed', payload: 'term-1' })
     expect(next.statuses).toEqual({ 'term-2': 'idle' })
     expect(next.pendingTools).toEqual({})
+    expect(next.pendingSince).toEqual({})
     expect(next.shellActivity).toEqual({})
     expect(next.progress).toEqual({})
   })
@@ -229,6 +267,7 @@ describe('terminalsReducer', () => {
     const start: TerminalsState = {
       statuses: { 'term-1': 'idle' },
       pendingTools: {},
+      pendingSince: {},
       shellActivity: {},
       progress: {},
       panes: {},
@@ -274,7 +313,7 @@ describe('terminalsReducer', () => {
   it('returns a new object reference on real changes', () => {
     const next = apply(initialTerminals, {
       type: 'terminals/statusChanged',
-      payload: { id: 'term-1', status: 'idle', pendingTool: null }
+      payload: { id: 'term-1', status: 'idle', pendingTool: null, ts: 0 }
     })
     expect(next).not.toBe(initialTerminals)
   })

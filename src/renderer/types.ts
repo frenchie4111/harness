@@ -72,6 +72,19 @@ import type {
 } from '../shared/state/terminals'
 export type { AgentKind, PtyStatus, PendingTool, SplitDirection, TerminalTab, WorkspacePane, PaneNode, PaneLeaf, PaneSplit }
 
+/** One row in the Live Mode queue — a single agent tab currently
+ *  blocked on a permission request. Sorted FIFO by `since` (oldest first)
+ *  so the auto-jump effect follows whoever has been waiting longest. */
+export interface LiveQueueEntry {
+  worktreePath: string
+  worktreeBranch: string
+  terminalId: string
+  paneId: string
+  tabLabel: string
+  tool: PendingTool
+  since: number
+}
+
 export interface PersistedTab {
   id: string
   type: 'agent' | 'shell'

@@ -168,7 +168,7 @@ export class PtyManager {
       this.sendSignal?.('terminal:data', id, msg)
       this.store?.dispatch({
         type: 'terminals/statusChanged',
-        payload: { id, status: 'idle', pendingTool: null }
+        payload: { id, status: 'idle', pendingTool: null, ts: Date.now() }
       })
       return
     }
@@ -219,7 +219,7 @@ export class PtyManager {
       log('pty', `exit id=${id} code=${exitCode}`)
       this.store?.dispatch({
         type: 'terminals/statusChanged',
-        payload: { id, status: 'idle', pendingTool: null }
+        payload: { id, status: 'idle', pendingTool: null, ts: Date.now() }
       })
       this.store?.dispatch({ type: 'terminals/removed', payload: id })
       this.sendSignal?.('terminal:exit', id, exitCode)

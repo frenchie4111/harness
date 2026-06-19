@@ -84,7 +84,8 @@ describe('JsonClaudeStatusDeriver', () => {
     expect(events.statusChanged[0]).toEqual({
       id: 'A',
       status: 'waiting',
-      pendingTool: null
+      pendingTool: null,
+      ts: expect.any(Number)
     })
   })
 
@@ -123,7 +124,8 @@ describe('JsonClaudeStatusDeriver', () => {
     expect(events.statusChanged[0]).toEqual({
       id: 'A',
       status: 'processing',
-      pendingTool: null
+      pendingTool: null,
+      ts: expect.any(Number)
     })
 
     store.dispatch({
@@ -151,7 +153,8 @@ describe('JsonClaudeStatusDeriver', () => {
     expect(events.statusChanged[0]).toEqual({
       id: 'B',
       status: 'waiting',
-      pendingTool: null
+      pendingTool: null,
+      ts: expect.any(Number)
     })
 
     store.dispatch({
@@ -169,7 +172,8 @@ describe('JsonClaudeStatusDeriver', () => {
     expect(events.statusChanged[1]).toEqual({
       id: 'A',
       status: 'needs-approval',
-      pendingTool: { name: 'Bash', input: { command: 'ls' } }
+      pendingTool: { name: 'Bash', input: { command: 'ls' } },
+      ts: expect.any(Number)
     })
 
     store.dispatch({
@@ -182,7 +186,8 @@ describe('JsonClaudeStatusDeriver', () => {
     expect(events.statusChanged[2]).toEqual({
       id: 'A',
       status: 'waiting',
-      pendingTool: null
+      pendingTool: null,
+      ts: expect.any(Number)
     })
     expect(events.statusChanged.filter((e) => e.id === 'B')).toHaveLength(1)
   })

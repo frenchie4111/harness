@@ -1,9 +1,10 @@
-import { useState, useCallback, useMemo } from 'react'
-import { ChevronDown, ChevronRight, Plus, FolderOpen, Loader2, Settings as SettingsIcon, Sparkles, BarChart3, Trash2, LayoutGrid, X, Layers, Rows3, AlertCircle, Keyboard, MessageSquareHeart, PanelLeftClose, FilePlus, CalendarDays, RefreshCw } from 'lucide-react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
+import { ChevronDown, ChevronRight, Plus, FolderOpen, Loader2, Settings as SettingsIcon, Sparkles, BarChart3, Trash2, LayoutGrid, X, Layers, Rows3, AlertCircle, Keyboard, MessageSquareHeart, PanelLeftClose, FilePlus, CalendarDays, RefreshCw, Radio } from 'lucide-react'
 import { openReportIssue } from './ReportIssueScreen'
 import { Tooltip } from './Tooltip'
 import { HotkeyBadge } from './HotkeyBadge'
-import type { Worktree, PtyStatus, PendingTool, PRStatus, PendingWorktree, PendingDeletion } from '../types'
+import { formatPendingTool } from '../pending-tool'
+import type { Worktree, PtyStatus, PendingTool, PRStatus, PendingWorktree, PendingDeletion, LiveQueueEntry } from '../types'
 import type { SnoozeEntry } from '../../shared/state'
 import type { GroupKey } from '../worktree-sort'
 import { groupWorktrees } from '../worktree-sort'
@@ -32,6 +33,12 @@ interface SidebarProps {
   prLoading: boolean
   /** Non-main worktrees. Used to decide whether to show the "spawn your first agent" nudge. */
   agentCount: number
+  /** Live Mode (session-only, not persisted): when on, the UI auto-jumps
+   *  to whichever tab is at the head of the permission-request queue. */
+  liveMode: boolean
+  onToggleLiveMode: () => void
+  liveModeQueue: LiveQueueEntry[]
+  onSelectLiveQueueEntry: (entry: LiveQueueEntry) => void
   onSelectWorktree: (path: string) => void
   onDismissPendingWorktree: (id: string) => void
   onNewWorktree: (repoRoot?: string) => void
@@ -76,6 +83,10 @@ export function Sidebar({
   snoozeDefaultDays,
   prLoading,
   agentCount,
+  liveMode,
+  onToggleLiveMode,
+  liveModeQueue,
+  onSelectLiveQueueEntry,
   onSelectWorktree,
   onDismissPendingWorktree,
   onNewWorktree,
@@ -499,6 +510,14 @@ export function Sidebar({
         )}
       </div>
 
+      {liveMode && (
+        <LiveModePanel
+          onToggleLiveMode={onToggleLiveMode}
+          queue={liveModeQueue}
+          onSelectEntry={onSelectLiveQueueEntry}
+        />
+      )}
+
       {/* Backend chip strip — multi-backend UX (Tier 1). Auto-hides
           when there's only one backend in the registry; renders one
           row of avatar+label chips above the bottom icon row when
@@ -509,6 +528,27 @@ export function Sidebar({
       {/* Bottom actions — overlay launchers (worktree-management buttons
           live in the WORKTREES header now). */}
       <div className="border-t border-border p-2 flex justify-center items-center gap-1 shrink-0 flex-wrap">
+        <Tooltip
+          label={liveMode ? 'Live Mode — auto-jumping to permission requests' : 'Live Mode — auto-jump to permission requests'}
+          side="top"
+        >
+          <button
+            onClick={onToggleLiveMode}
+            className={`relative rounded p-1.5 transition-colors cursor-pointer ${
+              liveMode
+                ? 'text-accent hover:bg-accent/15'
+                : 'text-dim hover:text-fg hover:bg-surface'
+            }`}
+            aria-pressed={liveMode}
+          >
+            <Radio className="icon-sm" />
+            {!liveMode && liveModeQueue.length > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 min-w-3 h-3 px-1 rounded-full bg-warning text-app text-[9px] font-bold leading-3 flex items-center justify-center">
+                {liveModeQueue.length}
+              </span>
+            )}
+          </button>
+        </Tooltip>
         <Tooltip label="Command Center" action="toggleCommandCenter" side="top">
           <button
             onClick={onOpenCommandCenter}
@@ -584,6 +624,117 @@ export function Sidebar({
       )}
     </div>
   )
+}
+
+interface LiveModePanelProps {
+  onToggleLiveMode: () => void
+  queue: LiveQueueEntry[]
+  onSelectEntry: (entry: LiveQueueEntry) => void
+}
+
+function LiveModePanel({
+  onToggleLiveMode,
+  queue,
+  onSelectEntry
+}: LiveModePanelProps): JSX.Element {
+  // Tick once a second only when something is queued so each row's
+  // "age" label refreshes without re-rendering the sidebar on every
+  // status event.
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (queue.length === 0) return
+    const t = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [queue.length])
+
+  return (
+    <div className="border-t border-border shrink-0 flex flex-col min-h-0">
+      <button
+        onClick={onToggleLiveMode}
+        className="w-full flex items-center gap-2 px-3 py-2 bg-accent/15 text-fg-bright hover:bg-accent/20 transition-colors cursor-pointer"
+        title="Live Mode is on — click to turn off"
+      >
+        <span className="relative flex items-center justify-center text-accent">
+          <span className="absolute inset-0 rounded-full bg-accent/40 animate-ping" />
+          <Radio className="icon-sm relative" />
+        </span>
+        <span className="text-xs font-semibold uppercase tracking-wider">
+          Live Mode
+        </span>
+        <span className="ml-auto text-xs font-mono px-1.5 py-0.5 rounded bg-accent text-app">
+          ON
+        </span>
+      </button>
+      {queue.length > 0 ? (
+        <div className="max-h-48 overflow-y-auto">
+          <div className="px-3 pt-1.5 pb-0.5 flex items-center gap-1">
+            <span className="text-xs font-medium uppercase tracking-wider text-dim">
+              Waiting on you
+            </span>
+            <span className="ml-auto text-xs text-faint">{queue.length}</span>
+          </div>
+          {queue.map((entry, i) => (
+            <LiveQueueRow
+              key={`${entry.worktreePath}|${entry.terminalId}`}
+              entry={entry}
+              isHead={i === 0}
+              now={now}
+              onClick={() => onSelectEntry(entry)}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="px-3 py-2 text-xs text-faint">
+          Nothing waiting — the next permission request will land here.
+        </div>
+      )}
+    </div>
+  )
+}
+
+interface LiveQueueRowProps {
+  entry: LiveQueueEntry
+  isHead: boolean
+  now: number
+  onClick: () => void
+}
+
+function LiveQueueRow({ entry, isHead, now, onClick }: LiveQueueRowProps): JSX.Element {
+  const branchLabel = entry.worktreeBranch.split('/').pop() || entry.worktreeBranch
+  const toolLabel = formatPendingTool(entry.tool)
+  const age = formatAge(now - entry.since)
+  return (
+    <button
+      onClick={onClick}
+      className={`group w-full text-left px-3 py-1.5 flex items-center gap-2 transition-colors cursor-pointer ${
+        isHead
+          ? 'bg-surface text-fg-bright'
+          : 'text-muted hover:bg-panel-raised hover:text-fg'
+      }`}
+      title={`${entry.worktreeBranch} · ${toolLabel}`}
+    >
+      <span
+        className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+          isHead ? 'bg-accent' : 'bg-warning'
+        }`}
+      />
+      <div className="min-w-0 flex-1">
+        <div className="text-xs font-medium truncate">{branchLabel}</div>
+        <div className="text-xs text-faint truncate">{toolLabel}</div>
+      </div>
+      <span className="text-xs text-faint shrink-0 tabular-nums">{age}</span>
+    </button>
+  )
+}
+
+function formatAge(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return '0s'
+  const s = Math.floor(ms / 1000)
+  if (s < 60) return `${s}s`
+  const m = Math.floor(s / 60)
+  if (m < 60) return `${m}m`
+  const h = Math.floor(m / 60)
+  return `${h}h`
 }
 
 interface PendingWorktreeRowProps {
