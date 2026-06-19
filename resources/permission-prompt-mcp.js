@@ -21,27 +21,23 @@
 //       {type: 'response', id, result: PermissionResult}
 //     where PermissionResult is the `--permission-prompt-tool` contract
 //     in plans/json-mode-native-chat.md.
+//
+// To debug issue #167: tail /tmp/harness-permission-mcp.log while spawning
+// new chat tabs in dev mode. If a tab fails with "MCP tool not found", check:
+//   * No "started" line at all → script never ran
+//   * "started" but no "initialize received" → claude dropped the stdio pipe
+//   * "initialize received" + "tools/list received" + exit → claude exited the
+//     child intentionally after handshake; "tool not found" is then a
+//     separate issue (config wasn't actually passed to claude's MCP discovery).
 
 const readline = require('node:readline')
 const net = require('node:net')
 const crypto = require('node:crypto')
-
-const SOCKET_PATH = process.env.HARNESS_APPROVAL_SOCKET
-const SESSION_ID = process.env.HARNESS_JSON_CLAUDE_SESSION_ID || ''
-
-if (!SOCKET_PATH) {
-  process.stderr.write('[harness-approval-mcp] HARNESS_APPROVAL_SOCKET not set\n')
-  process.exit(1)
-}
-
-function send(msg) {
-  process.stdout.write(JSON.stringify(msg) + '\n')
-}
-
-// Claude swallows MCP-server stderr unless --mcp-debug is on, so also
-// append to a fixed log file we can tail to verify the protocol.
-//   $ tail -f /tmp/harness-permission-mcp.log
 const fs = require('node:fs')
+
+// Logger has to be defined BEFORE the env-var check so we can still record
+// "the script started but env was empty" — otherwise that case looks
+// identical to "the script never ran" in /tmp/harness-permission-mcp.log.
 const LOG_PATH = process.env.HARNESS_PERMISSION_MCP_LOG || '/tmp/harness-permission-mcp.log'
 function logErr(...parts) {
   const line = '[harness-approval-mcp] ' + parts.join(' ') + '\n'
@@ -51,6 +47,34 @@ function logErr(...parts) {
   } catch {
     /* ignore */
   }
+}
+
+// Issue #167 debug. Logs BEFORE env-var validation so the line fires even
+// when claude spawns us with a missing socket path. The "started" line is
+// the canary for "did claude even attempt to launch this script."
+logErr(
+  'started pid=' + process.pid +
+  ' sessionId=' + (process.env.HARNESS_JSON_CLAUDE_SESSION_ID || '') +
+  ' socketPath=' + (process.env.HARNESS_APPROVAL_SOCKET || '') +
+  ' argv=[' + process.argv.map((a) => a.split('/').pop()).join(',') + ']' +
+  ' nodeVersion=' + process.version +
+  ' electronAsNode=' + (process.env.ELECTRON_RUN_AS_NODE || '') +
+  ' execPath=' + process.execPath
+)
+process.on('exit', (code) => logErr('exit code=' + code))
+process.on('uncaughtException', (err) => logErr('uncaught', err && err.stack || String(err)))
+process.on('unhandledRejection', (err) => logErr('unhandledRejection', err && err.stack || String(err)))
+
+const SOCKET_PATH = process.env.HARNESS_APPROVAL_SOCKET
+const SESSION_ID = process.env.HARNESS_JSON_CLAUDE_SESSION_ID || ''
+
+if (!SOCKET_PATH) {
+  logErr('HARNESS_APPROVAL_SOCKET not set — exiting')
+  process.exit(1)
+}
+
+function send(msg) {
+  process.stdout.write(JSON.stringify(msg) + '\n')
 }
 
 const APPROVE_TOOL = {
@@ -152,6 +176,7 @@ rl.on('line', (line) => {
   const method = msg.method
 
   if (method === 'initialize') {
+    logErr('initialize received')
     reply(id, {
       protocolVersion: '2024-11-05',
       capabilities: { tools: {} },
@@ -161,6 +186,7 @@ rl.on('line', (line) => {
   }
   if (method === 'notifications/initialized') return
   if (method === 'tools/list') {
+    logErr('tools/list received')
     reply(id, { tools: [APPROVE_TOOL] })
     return
   }
@@ -176,6 +202,7 @@ rl.on('line', (line) => {
     const params = msg.params || {}
     const name = params.name
     const args = params.arguments || {}
+    logErr('tools/call received name=' + name)
     if (name !== 'approve') {
       replyError(id, -32601, `unknown tool: ${name}`)
       return

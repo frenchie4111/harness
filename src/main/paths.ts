@@ -45,7 +45,11 @@ function ensureDir(dir: string, mode = 0o700): string {
   return dir
 }
 
-function loadElectronApp(): { getPath: (name: string) => string; isPackaged: boolean } {
+function loadElectronApp(): {
+  getPath: (name: string) => string
+  isPackaged: boolean
+  getAppPath: () => string
+} {
   const dynamicRequire = createRequire(__filename)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (dynamicRequire('electron') as any).app
@@ -83,12 +87,19 @@ export function resetPathsForTests(): void {
  *  - Packaged Electron: electron-builder copies scripts to process.resourcesPath.
  *  - Headless tarball (scripts/pack-headless.mjs): bundle is at lib/main/,
  *    scripts are in sibling lib/mcp/.
- *  - Dev (Electron unpackaged): __dirname is out/main/, scripts live in
- *    resources/ at the repo root.
+ *  - Dev (Electron unpackaged): scripts live in resources/ at the repo root.
+ *
+ *  Anchoring on __dirname is fragile here: rollup may chunk this function
+ *  out of out/main/index.js into out/main/chunks/<chunk>.js, off-by-one
+ *  on the `..` count and yielding out/resources/... — a non-existent path
+ *  that claude silently drops, leaving --permission-prompt-tool unfindable
+ *  (issue #167). app.getAppPath() returns the project root in dev
+ *  regardless of which chunk we're called from, so use that instead.
+ *
  *  Lives here (not mcp-config.ts) so callers don't pick up control-server's
  *  transitive worktree.ts → git-ops-state.ts import chain. */
 export function resolveBundledMcpScript(name: string): string {
   if (isPackaged()) return join(process.resourcesPath, name)
   if (detectRuntime() === 'node') return join(__dirname, '..', 'mcp', name)
-  return join(__dirname, '..', '..', 'resources', name)
+  return join(loadElectronApp().getAppPath(), 'resources', name)
 }

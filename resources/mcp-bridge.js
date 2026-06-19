@@ -2,9 +2,51 @@
 // Harness MCP bridge — minimal MCP stdio server that forwards tool calls
 // to the Harness control HTTP server running inside the Electron main process.
 // Spawned by Claude Code via `ELECTRON_RUN_AS_NODE=1 <electron-binary> <this>`.
+//
+// To debug issue #167: tail /tmp/harness-control-bridge.log while spawning
+// new chat tabs in dev mode. If a tab fails with "MCP tool not found", check:
+//   * No "started" line at all → script never ran
+//   * "started" but no "initialize received" → claude dropped the stdio pipe
+//   * "initialize received" + "tools/list received" + exit → claude exited the
+//     child intentionally after handshake; "tool not found" is then a
+//     separate issue (config wasn't actually passed to claude's MCP discovery).
 
 const http = require('http')
 const readline = require('readline')
+const fs = require('fs')
+
+// Logger has to be defined BEFORE the env-var check so we can still record
+// "the script started but env was empty" — otherwise that case looks
+// identical to "the script never ran" in /tmp/harness-control-bridge.log.
+const LOG_PATH = process.env.HARNESS_CONTROL_BRIDGE_LOG || '/tmp/harness-control-bridge.log'
+function logErr(...args) {
+  const line = '[harness-mcp] ' + args.join(' ') + '\n'
+  process.stderr.write(line)
+  try {
+    fs.appendFileSync(LOG_PATH, new Date().toISOString() + ' ' + line)
+  } catch {
+    /* ignore */
+  }
+}
+
+// Issue #167 debug. Logs BEFORE env-var validation so the line fires even
+// when claude spawns us with missing env. The "started" line is the canary
+// for "did claude even attempt to launch this script."
+logErr(
+  'started pid=' + process.pid +
+  ' terminalId=' + (process.env.HARNESS_TERMINAL_ID || '') +
+  ' sessionId=' + (process.env.HARNESS_SESSION_ID || '') +
+  ' port=' + (process.env.HARNESS_PORT || '') +
+  ' worktreeId=' + (process.env.HARNESS_WORKTREE_ID || '') +
+  ' isMain=' + (process.env.HARNESS_IS_MAIN === '1' ? '1' : '0') +
+  ' argv=[' + process.argv.map((a) => a.split('/').pop()).join(',') + ']' +
+  ' nodeVersion=' + process.version +
+  ' electronAsNode=' + (process.env.ELECTRON_RUN_AS_NODE || '') +
+  ' execPath=' + process.execPath
+)
+process.on('exit', (code) => logErr('exit code=' + code))
+process.on('uncaughtException', (err) => logErr('uncaught', err && err.stack || String(err)))
+process.on('unhandledRejection', (err) => logErr('unhandledRejection', err && err.stack || String(err)))
 
 const PORT = process.env.HARNESS_PORT
 const TOKEN = process.env.HARNESS_TOKEN
@@ -21,16 +63,12 @@ const SCOPE = {
 }
 
 if (!PORT || !TOKEN) {
-  process.stderr.write('harness-mcp: HARNESS_PORT and HARNESS_TOKEN required\n')
+  logErr('HARNESS_PORT and HARNESS_TOKEN required — exiting')
   process.exit(1)
 }
 
 function send(msg) {
   process.stdout.write(JSON.stringify(msg) + '\n')
-}
-
-function logErr(...args) {
-  process.stderr.write('[harness-mcp] ' + args.join(' ') + '\n')
 }
 
 function callControl(method, path, body) {
@@ -670,6 +708,7 @@ async function handle(msg) {
   const { id, method, params } = msg
   try {
     if (method === 'initialize') {
+      logErr('initialize received')
       return {
         jsonrpc: '2.0',
         id,
@@ -684,10 +723,12 @@ async function handle(msg) {
       return null
     }
     if (method === 'tools/list') {
+      logErr('tools/list received')
       const perms = await getBrowserPerms()
       return { jsonrpc: '2.0', id, result: { tools: filterToolsByPerms(TOOLS, perms) } }
     }
     if (method === 'tools/call') {
+      logErr('tools/call received name=' + (params && params.name))
       const result = await handleToolCall(
         params && params.name,
         (params && params.arguments) || {}

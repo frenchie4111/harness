@@ -562,6 +562,16 @@ export class JsonClaudeManager {
     log('json-claude', `create spawned sessionId=${sessionId} pid=${proc.pid ?? '?'} → running`)
     this.dispatchState(sessionId, 'running')
 
+    // Debug for issue #167: distinguish "spawn() returned a pid but execv
+    // failed" (error event) from "child actually started executing"
+    // (spawn event). Without this we only log the pre-spawn pid.
+    proc.once('spawn', () => {
+      log('json-claude', `claude spawn complete sessionId=${sessionId} pid=${proc.pid ?? '?'}`)
+    })
+    proc.once('error', (err) => {
+      log('json-claude', `claude spawn error sessionId=${sessionId}`, err.message)
+    })
+
     // Kick a slash-command probe in the background. Result populates the
     // slice so the autocomplete popover can render before the user sends
     // their first turn (the real session's init won't fire until then).
@@ -588,9 +598,18 @@ export class JsonClaudeManager {
       }
     })
 
+    // Line-buffered stderr so each --mcp-debug message lands intact in
+    // debug.log. The prior per-chunk 200-char slice cut MCP debug lines
+    // in half (issue #167 instrumentation).
+    let stderrBuf = ''
     proc.stderr.on('data', (chunk: Buffer) => {
-      const text = chunk.toString('utf8')
-      log('json-claude', `stderr sessionId=${sessionId}: ${text.slice(0, 200)}`)
+      stderrBuf += chunk.toString('utf8')
+      let idx: number
+      while ((idx = stderrBuf.indexOf('\n')) >= 0) {
+        const line = stderrBuf.slice(0, idx).replace(/\r$/, '')
+        stderrBuf = stderrBuf.slice(idx + 1)
+        if (line) log('json-claude', `stderr sessionId=${sessionId}: ${line}`)
+      }
     })
 
     proc.on('exit', (code, signal) => {
