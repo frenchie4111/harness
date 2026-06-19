@@ -18,8 +18,8 @@ function CompactSubtitle({ args }: { args: ArgEntry[] }): JSX.Element {
       {args.map((a, i) => (
         <Fragment key={i}>
           {i > 0 && ' '}
-          <span className="font-semibold">{a.key}</span>{' '}
-          <span>{a.value.replace(/\s+/g, ' ')}</span>
+          <span className="font-semibold text-fg-bright">{a.key}</span>{' '}
+          <span className="text-muted">{a.value.replace(/\s+/g, ' ')}</span>
         </Fragment>
       ))}
     </>
@@ -31,13 +31,13 @@ function ParsedArgs({ args }: { args: ArgEntry[] }): JSX.Element {
     <dl className="px-3 py-2 text-xs space-y-2">
       {args.map((a, i) => (
         <div key={i} className="flex flex-col gap-0.5">
-          <dt className="font-semibold text-xs">{a.key}</dt>
+          <dt className="font-semibold text-xs text-fg-bright">{a.key}</dt>
           {a.multiline ? (
-            <dd className="font-mono whitespace-pre-wrap bg-app/40 rounded px-2 py-1 max-h-60 overflow-auto">
+            <dd className="font-mono whitespace-pre-wrap bg-app/40 rounded px-2 py-1 max-h-60 overflow-auto text-muted">
               {a.value}
             </dd>
           ) : (
-            <dd className="break-words">{a.value}</dd>
+            <dd className="break-words text-muted">{a.value}</dd>
           )}
         </div>
       ))}
