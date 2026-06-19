@@ -71,48 +71,48 @@ describe('getToolDisplay', () => {
     })
   })
 
-  it('drops the Harness label for harness-control (gradient implies it)', () => {
+  it('formats harness-control as "Harness · Title Cased Action"', () => {
     const display = getToolDisplay('mcp__harness-control__create_worktree')
-    expect(display.label).toBe('create worktree')
+    expect(display.label).toBe('Harness · Create Worktree')
     expect(display.icon).not.toBeNull()
   })
 
-  it('formats Notion tools as "Notion · action" and strips notion- prefix', () => {
+  it('formats Notion tools as "Notion · Action" and strips notion- prefix', () => {
     expect(getToolDisplay('mcp__claude_ai_Notion__notion-get-users').label).toBe(
-      'Notion · get users'
+      'Notion · Get Users'
     )
     expect(getToolDisplay('mcp__notion__authenticate').label).toBe(
-      'Notion · authenticate'
+      'Notion · Authenticate'
     )
   })
 
-  it('formats Slack tools as "Slack · action" and strips slack_ prefix', () => {
+  it('formats Slack tools as "Slack · Action" and strips slack_ prefix', () => {
     expect(
       getToolDisplay('mcp__claude_ai_Slack__slack_send_message').label
-    ).toBe('Slack · send message')
+    ).toBe('Slack · Send Message')
   })
 
   it('formats Google Drive tools with the multi-word label', () => {
     expect(
       getToolDisplay('mcp__claude_ai_Google_Drive__list_recent_files').label
-    ).toBe('Google Drive · list recent files')
+    ).toBe('Google Drive · List Recent Files')
   })
 
   it('formats Google Calendar tools with the multi-word label', () => {
     expect(
       getToolDisplay('mcp__claude_ai_Google_Calendar__create_event').label
-    ).toBe('Google Calendar · create event')
+    ).toBe('Google Calendar · Create Event')
   })
 
   it('formats Gmail tools', () => {
     expect(getToolDisplay('mcp__claude_ai_Gmail__create_draft').label).toBe(
-      'Gmail · create draft'
+      'Gmail · Create Draft'
     )
   })
 
   it('falls back to title-cased server + generic icon for unknown brands', () => {
     const display = getToolDisplay('mcp__foo_bar__do_thing')
-    expect(display.label).toBe('foo bar · do thing')
+    expect(display.label).toBe('foo bar · Do Thing')
     expect(display.icon).not.toBeNull()
   })
 
@@ -124,7 +124,7 @@ describe('getToolDisplay', () => {
 describe('prettyToolName back-compat', () => {
   it('returns the same label as getToolDisplay', () => {
     expect(prettyToolName('mcp__harness-control__create_worktree')).toBe(
-      'create worktree'
+      'Harness · Create Worktree'
     )
     expect(prettyToolName('Read')).toBe('Read')
   })
@@ -144,46 +144,46 @@ describe('normalizeServerName', () => {
 describe('expanded brand registry', () => {
   it('matches GitHub regardless of spelling', () => {
     expect(getToolDisplay('mcp__github__create_issue').label).toBe(
-      'GitHub · create issue'
+      'GitHub · Create Issue'
     )
     expect(getToolDisplay('mcp__GitHub__create_issue').label).toBe(
-      'GitHub · create issue'
+      'GitHub · Create Issue'
     )
     expect(getToolDisplay('mcp__claude_ai_GitHub__create_issue').label).toBe(
-      'GitHub · create issue'
+      'GitHub · Create Issue'
     )
   })
 
   it('strips the brand prefix from tool names with hyphen or underscore', () => {
     expect(getToolDisplay('mcp__github__github-list-pull-requests').label).toBe(
-      'GitHub · list pull requests'
+      'GitHub · List Pull Requests'
     )
     expect(getToolDisplay('mcp__stripe__stripe_create_customer').label).toBe(
-      'Stripe · create customer'
+      'Stripe · Create Customer'
     )
   })
 
   it('handles common dev/data/comms brands', () => {
     expect(getToolDisplay('mcp__linear__create_issue').label).toBe(
-      'Linear · create issue'
+      'Linear · Create Issue'
     )
-    expect(getToolDisplay('mcp__postgres__query').label).toBe('Postgres · query')
+    expect(getToolDisplay('mcp__postgres__query').label).toBe('Postgres · Query')
     expect(getToolDisplay('mcp__postgresql__query').label).toBe(
-      'Postgres · query'
+      'Postgres · Query'
     )
     expect(getToolDisplay('mcp__discord__send_message').label).toBe(
-      'Discord · send message'
+      'Discord · Send Message'
     )
     expect(getToolDisplay('mcp__figma__get_file').label).toBe(
-      'Figma · get file'
+      'Figma · Get File'
     )
   })
 
   it('treats Twitter as X (rename)', () => {
     expect(getToolDisplay('mcp__twitter__post_tweet').label).toBe(
-      'X · post tweet'
+      'X · Post Tweet'
     )
-    expect(getToolDisplay('mcp__x__post_tweet').label).toBe('X · post tweet')
+    expect(getToolDisplay('mcp__x__post_tweet').label).toBe('X · Post Tweet')
   })
 
   it('returns an icon for every known brand', () => {

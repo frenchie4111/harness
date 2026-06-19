@@ -2,11 +2,7 @@
 // fixed labels and lucide icons; MCP tools (mcp__<server>__<tool>) are
 // parsed, server name normalized (strip claude_ai_ prefix, lowercase,
 // drop separators), then matched against the brand registry to render
-// as "Brand · action" with a brand icon when we have one.
-//
-// Harness-control is special-cased — the brand-gradient chrome already
-// implies "this is a Harness tool", so we drop the "Harness" prefix
-// from the label.
+// as "Brand · Title Cased Action" with a brand icon when we have one.
 
 import {
   AlarmIcon,
@@ -262,7 +258,12 @@ function humanizeAction(tool: string, prefixes: string[]): string {
       break
     }
   }
-  return cleaned.replace(/[_-]+/g, ' ').trim()
+  return cleaned
+    .replace(/[_-]+/g, ' ')
+    .trim()
+    .split(' ')
+    .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w))
+    .join(' ')
 }
 
 function titleCaseServer(server: string): string {
@@ -290,10 +291,7 @@ export function getToolDisplay(name: string | undefined): ToolDisplay {
       normalized,
       parsed.server.toLowerCase()
     ])
-    // For harness-control the brand-gradient chrome already says
-    // "Harness", so dropping the label removes the redundancy.
-    const label = normalized === 'harnesscontrol' ? action : `${brand.label} · ${action}`
-    return { label, icon: brand.icon }
+    return { label: `${brand.label} · ${action}`, icon: brand.icon }
   }
 
   const serverLabel = titleCaseServer(parsed.server)
