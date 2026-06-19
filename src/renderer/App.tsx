@@ -178,6 +178,9 @@ function DesktopApp(): JSX.Element {
   const [announcementsMenuOpen, setAnnouncementsMenuOpen] = useState(false)
   const [sidebarVisible, setSidebarVisible] = useState(true)
   const [singleScreenMode, setSingleScreenMode] = useState(false)
+  // macOS hides the traffic lights in native fullscreen — main pushes the
+  // boolean so we can drop the 80px Harness-header leading clearance.
+  const [isFullscreen, setIsFullscreen] = useState(false)
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
     const saved = Number(localStorage.getItem('harness:sidebarWidth'))
     return Number.isFinite(saved) && saved > 0 ? saved : 224
@@ -404,6 +407,15 @@ const setQuestStep = useCallback((next: QuestStep) => {
     const cleanup = backend.onToggleSingleScreen(() => setSingleScreenMode((v) => !v))
     return cleanup
   }, [])
+
+  useEffect(() => {
+    const cleanup = backend.onFullscreenChanged((next) => setIsFullscreen(next))
+    return cleanup
+  }, [])
+
+  useEffect(() => {
+    document.documentElement.dataset.fullscreen = isFullscreen ? 'true' : 'false'
+  }, [isFullscreen])
 
   // Open Keyboard Shortcuts from the menu
   useEffect(() => {
@@ -1577,7 +1589,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
                   onSendToAgent={handleSendToAgent}
                   topBarLeadingPx={
                     singleScreenMode
-                      ? TITLE_LEADING_PX
+                      ? isFullscreen ? 0 : TITLE_LEADING_PX
                       : sidebarVisible
                         ? 0
                         : effectiveSidebarWidth + 1
@@ -1668,7 +1680,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
               className="drag-region h-10 shrink-0 border-b border-border bg-panel flex items-stretch relative z-10"
               style={{
                 paddingLeft: singleScreenMode
-                  ? TITLE_LEADING_PX
+                  ? isFullscreen ? undefined : TITLE_LEADING_PX
                   : sidebarVisible
                     ? undefined
                     : effectiveSidebarWidth + 1,

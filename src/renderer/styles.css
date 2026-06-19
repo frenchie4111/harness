@@ -511,6 +511,13 @@ button, [role="button"], a[href], [onclick] {
   -webkit-app-region: no-drag;
 }
 
+/* macOS native fullscreen hides the traffic lights, so the 80px leading
+ * clearance used on every top-of-window drag bar collapses to 0. Scoped
+ * to .drag-region.pl-20 so unrelated pl-20 uses are untouched. */
+:root[data-fullscreen="true"] .drag-region.pl-20 {
+  padding-left: 0;
+}
+
 /* Brand accents — mirrors harness.mikelyons.org hero styling */
 .brand-grid-bg {
   background-image:

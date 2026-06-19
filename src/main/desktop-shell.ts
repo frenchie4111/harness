@@ -316,6 +316,16 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
     win.on('resize', saveBounds)
     win.on('move', saveBounds)
 
+    // macOS hides the traffic lights in native fullscreen, so the renderer
+    // shouldn't reserve the 80px leading clearance for them. Notify on
+    // transition and on initial paint so first render matches reality.
+    const sendFullscreen = (): void => {
+      transport.sendSignal('window:fullscreenChanged', win.isFullScreen())
+    }
+    win.on('enter-full-screen', sendFullscreen)
+    win.on('leave-full-screen', sendFullscreen)
+    win.webContents.once('did-finish-load', sendFullscreen)
+
     if (process.env['ELECTRON_RENDERER_URL']) {
       win.loadURL(process.env['ELECTRON_RENDERER_URL'])
     } else {
