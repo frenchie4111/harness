@@ -28,11 +28,58 @@ import {
   Zap
 } from 'lucide-react'
 import {
+  SiAnthropic,
+  SiAsana,
+  SiBitbucket,
+  SiBluesky,
+  SiBrave,
+  SiClickup,
+  SiCloudflare,
+  SiCloudinary,
+  SiConfluence,
+  SiDiscord,
+  SiElasticsearch,
+  SiFigma,
+  SiFirebase,
+  SiGithub,
+  SiGitlab,
   SiGmail,
   SiGooglecalendar,
   SiGoogledrive,
+  SiHuggingface,
+  SiHubspot,
+  SiIntercom,
+  SiJira,
+  SiLinear,
+  SiMailchimp,
+  SiMongodb,
+  SiMysql,
+  SiNetlify,
   SiNotion,
-  SiSlack
+  SiOpenai,
+  SiPaypal,
+  SiPerplexity,
+  SiPostgresql,
+  SiReddit,
+  SiRedis,
+  SiSalesforce,
+  SiSentry,
+  SiShopify,
+  SiSlack,
+  SiSnowflake,
+  SiSpotify,
+  SiSqlite,
+  SiStripe,
+  SiSupabase,
+  SiTelegram,
+  SiTrello,
+  SiTwilio,
+  SiVercel,
+  SiWhatsapp,
+  SiX,
+  SiYoutube,
+  SiZendesk,
+  SiZoom
 } from 'react-icons/si'
 
 export type ToolIcon = ComponentType<{ className?: string }>
@@ -80,6 +127,67 @@ export const SlackIcon = brand(SiSlack, '#E01E5A')
 export const GmailIcon = brand(SiGmail, '#EA4335')
 export const DriveIcon = brand(SiGoogledrive, '#34A853')
 export const CalendarIcon = brand(SiGooglecalendar, '#4285F4')
+
+// Dev & code
+export const GithubIcon = brand(SiGithub)
+export const GitlabIcon = brand(SiGitlab, '#FC6D26')
+export const BitbucketIcon = brand(SiBitbucket, '#2684FF')
+export const LinearIcon = brand(SiLinear, '#5E6AD2')
+export const JiraIcon = brand(SiJira, '#2684FF')
+export const ConfluenceIcon = brand(SiConfluence, '#2684FF')
+export const SentryIcon = brand(SiSentry, '#B14A7C')
+export const VercelIcon = brand(SiVercel)
+export const NetlifyIcon = brand(SiNetlify, '#00C7B7')
+export const CloudflareIcon = brand(SiCloudflare, '#F38020')
+export const SupabaseIcon = brand(SiSupabase, '#3FCF8E')
+export const FirebaseIcon = brand(SiFirebase, '#FFCA28')
+
+// Databases
+export const PostgresIcon = brand(SiPostgresql, '#4169E1')
+export const MysqlIcon = brand(SiMysql, '#00758F')
+export const MongoIcon = brand(SiMongodb, '#47A248')
+export const RedisIcon = brand(SiRedis, '#DC382D')
+export const SqliteIcon = brand(SiSqlite)
+export const SnowflakeIcon = brand(SiSnowflake, '#29B5E8')
+export const ElasticIcon = brand(SiElasticsearch, '#00BFB3')
+
+// Communication
+export const DiscordIcon = brand(SiDiscord, '#5865F2')
+export const TelegramIcon = brand(SiTelegram, '#26A5E4')
+export const WhatsappIcon = brand(SiWhatsapp, '#25D366')
+export const ZoomIcon = brand(SiZoom, '#2D8CFF')
+export const MailchimpIcon = brand(SiMailchimp, '#FFE01B')
+export const TwilioIcon = brand(SiTwilio, '#F22F46')
+export const IntercomIcon = brand(SiIntercom, '#1F8DED')
+
+// Productivity
+export const AsanaIcon = brand(SiAsana, '#F06A6A')
+export const TrelloIcon = brand(SiTrello, '#2684FF')
+export const ClickupIcon = brand(SiClickup, '#7B68EE')
+
+// Commerce & finance
+export const StripeIcon = brand(SiStripe, '#635BFF')
+export const PaypalIcon = brand(SiPaypal, '#0070BA')
+export const ShopifyIcon = brand(SiShopify, '#7AB55C')
+export const HubspotIcon = brand(SiHubspot, '#FF7A59')
+export const SalesforceIcon = brand(SiSalesforce, '#00A1E0')
+export const ZendeskIcon = brand(SiZendesk)
+
+// AI & search
+export const OpenaiIcon = brand(SiOpenai)
+export const HuggingfaceIcon = brand(SiHuggingface, '#FFD21E')
+export const PerplexityIcon = brand(SiPerplexity, '#20A8B0')
+export const BraveIcon = brand(SiBrave, '#FB542B')
+export const AnthropicIcon = brand(SiAnthropic)
+
+// Media & social
+export const FigmaIcon = brand(SiFigma, '#F24E1E')
+export const SpotifyIcon = brand(SiSpotify, '#1DB954')
+export const YoutubeIcon = brand(SiYoutube, '#FF0000')
+export const RedditIcon = brand(SiReddit, '#FF4500')
+export const XIcon = brand(SiX)
+export const BlueskyIcon = brand(SiBluesky, '#0285FF')
+export const CloudinaryIcon = brand(SiCloudinary, '#3448C5')
 
 // Harness mark — 3×3 dot grid on a dark rounded-square, gray→amber→green
 // gradient direction mirrors resources/icon.png.

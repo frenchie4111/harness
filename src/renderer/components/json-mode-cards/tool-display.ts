@@ -1,39 +1,89 @@
 // Tool-name pretty-printing + icon lookup. Built-in Claude tools get
 // fixed labels and lucide icons; MCP tools (mcp__<server>__<tool>) are
-// parsed and rendered as "Server · action" with a brand icon when we
-// have one. Harness-control is special-cased — the brand-gradient
-// chrome already implies "this is a Harness tool", so we drop the
-// "Harness" prefix from the label.
+// parsed, server name normalized (strip claude_ai_ prefix, lowercase,
+// drop separators), then matched against the brand registry to render
+// as "Brand · action" with a brand icon when we have one.
+//
+// Harness-control is special-cased — the brand-gradient chrome already
+// implies "this is a Harness tool", so we drop the "Harness" prefix
+// from the label.
 
 import {
   AlarmIcon,
+  AnthropicIcon,
+  AsanaIcon,
   AskIcon,
   BashIcon,
   BellIcon,
+  BitbucketIcon,
+  BlueskyIcon,
+  BraveIcon,
   CalendarIcon,
+  ClickupIcon,
+  CloudflareIcon,
+  CloudinaryIcon,
+  ConfluenceIcon,
   CronIcon,
+  DiscordIcon,
   DriveIcon,
   EditIcon,
+  ElasticIcon,
+  FigmaIcon,
+  FirebaseIcon,
+  GithubIcon,
+  GitlabIcon,
   GlobIcon,
   GmailIcon,
   GrepIcon,
   HarnessIcon,
+  HubspotIcon,
+  HuggingfaceIcon,
+  IntercomIcon,
+  JiraIcon,
+  LinearIcon,
+  MailchimpIcon,
   McpGenericIcon,
   McpResourceIcon,
+  MongoIcon,
+  MysqlIcon,
+  NetlifyIcon,
   NotebookIcon,
   NotionIcon,
+  OpenaiIcon,
+  PaypalIcon,
+  PerplexityIcon,
+  PostgresIcon,
   ReadIcon,
+  RedditIcon,
+  RedisIcon,
+  SalesforceIcon,
+  SentryIcon,
+  ShopifyIcon,
   SkillIcon,
   SlackIcon,
+  SnowflakeIcon,
+  SpotifyIcon,
+  SqliteIcon,
+  StripeIcon,
+  SupabaseIcon,
   TaskIcon,
   TaskOutputIcon,
   TaskStopIcon,
+  TelegramIcon,
   TodoIcon,
   ToolSearchIcon,
+  TrelloIcon,
   TriggerIcon,
+  TwilioIcon,
+  VercelIcon,
   WebIcon,
+  WhatsappIcon,
   WorktreeIcon,
   WriteIcon,
+  XIcon,
+  YoutubeIcon,
+  ZendeskIcon,
+  ZoomIcon,
   type ToolIcon
 } from './tool-icons'
 
@@ -83,46 +133,95 @@ const BUILTIN_ICONS: Record<string, ToolIcon> = {
 interface McpBrand {
   label: string
   icon: ToolIcon
-  /** Optional alternate prefixes the tool name might carry that should
-   *  be stripped (e.g. notion-get-users → get users). */
-  toolPrefixes?: string[]
 }
 
+// Keyed by normalized server name (see `normalizeServerName`). Same
+// brand can appear under multiple MCP server names depending on who
+// packaged it (e.g. `github`, `claude_ai_GitHub`, `gh`), and the
+// normalization step collapses those to one key so we don't have to
+// list each spelling.
 const MCP_BRANDS: Record<string, McpBrand> = {
-  'claude_ai_Notion': {
-    label: 'Notion',
-    icon: NotionIcon,
-    toolPrefixes: ['notion']
-  },
-  notion: {
-    label: 'Notion',
-    icon: NotionIcon,
-    toolPrefixes: ['notion']
-  },
-  'claude_ai_Slack': {
-    label: 'Slack',
-    icon: SlackIcon,
-    toolPrefixes: ['slack']
-  },
-  'claude_ai_Gmail': {
-    label: 'Gmail',
-    icon: GmailIcon,
-    toolPrefixes: ['gmail']
-  },
-  'claude_ai_Google_Drive': {
-    label: 'Google Drive',
-    icon: DriveIcon,
-    toolPrefixes: ['drive', 'google_drive']
-  },
-  'claude_ai_Google_Calendar': {
-    label: 'Google Calendar',
-    icon: CalendarIcon,
-    toolPrefixes: ['calendar', 'google_calendar']
-  },
-  'harness-control': {
-    label: 'Harness',
-    icon: HarnessIcon
-  }
+  // Harness — kept here for completeness even though it's special-cased
+  // (brand gradient implies it, so the label drops the "Harness · " bit).
+  harnesscontrol: { label: 'Harness', icon: HarnessIcon },
+
+  // Anthropic-hosted / first-party
+  notion: { label: 'Notion', icon: NotionIcon },
+  slack: { label: 'Slack', icon: SlackIcon },
+  gmail: { label: 'Gmail', icon: GmailIcon },
+  googledrive: { label: 'Google Drive', icon: DriveIcon },
+  drive: { label: 'Google Drive', icon: DriveIcon },
+  googlecalendar: { label: 'Google Calendar', icon: CalendarIcon },
+  calendar: { label: 'Google Calendar', icon: CalendarIcon },
+
+  // Dev & code
+  github: { label: 'GitHub', icon: GithubIcon },
+  gh: { label: 'GitHub', icon: GithubIcon },
+  gitlab: { label: 'GitLab', icon: GitlabIcon },
+  bitbucket: { label: 'Bitbucket', icon: BitbucketIcon },
+  linear: { label: 'Linear', icon: LinearIcon },
+  jira: { label: 'Jira', icon: JiraIcon },
+  atlassian: { label: 'Atlassian', icon: JiraIcon },
+  confluence: { label: 'Confluence', icon: ConfluenceIcon },
+  sentry: { label: 'Sentry', icon: SentryIcon },
+  vercel: { label: 'Vercel', icon: VercelIcon },
+  netlify: { label: 'Netlify', icon: NetlifyIcon },
+  cloudflare: { label: 'Cloudflare', icon: CloudflareIcon },
+  supabase: { label: 'Supabase', icon: SupabaseIcon },
+  firebase: { label: 'Firebase', icon: FirebaseIcon },
+
+  // Databases
+  postgres: { label: 'Postgres', icon: PostgresIcon },
+  postgresql: { label: 'Postgres', icon: PostgresIcon },
+  mysql: { label: 'MySQL', icon: MysqlIcon },
+  mongo: { label: 'MongoDB', icon: MongoIcon },
+  mongodb: { label: 'MongoDB', icon: MongoIcon },
+  redis: { label: 'Redis', icon: RedisIcon },
+  sqlite: { label: 'SQLite', icon: SqliteIcon },
+  snowflake: { label: 'Snowflake', icon: SnowflakeIcon },
+  elasticsearch: { label: 'Elasticsearch', icon: ElasticIcon },
+  elastic: { label: 'Elasticsearch', icon: ElasticIcon },
+
+  // Communication
+  discord: { label: 'Discord', icon: DiscordIcon },
+  telegram: { label: 'Telegram', icon: TelegramIcon },
+  whatsapp: { label: 'WhatsApp', icon: WhatsappIcon },
+  zoom: { label: 'Zoom', icon: ZoomIcon },
+  mailchimp: { label: 'Mailchimp', icon: MailchimpIcon },
+  twilio: { label: 'Twilio', icon: TwilioIcon },
+  intercom: { label: 'Intercom', icon: IntercomIcon },
+
+  // Productivity
+  asana: { label: 'Asana', icon: AsanaIcon },
+  trello: { label: 'Trello', icon: TrelloIcon },
+  clickup: { label: 'ClickUp', icon: ClickupIcon },
+
+  // Commerce & finance
+  stripe: { label: 'Stripe', icon: StripeIcon },
+  paypal: { label: 'PayPal', icon: PaypalIcon },
+  shopify: { label: 'Shopify', icon: ShopifyIcon },
+  hubspot: { label: 'HubSpot', icon: HubspotIcon },
+  salesforce: { label: 'Salesforce', icon: SalesforceIcon },
+  zendesk: { label: 'Zendesk', icon: ZendeskIcon },
+
+  // AI & search
+  openai: { label: 'OpenAI', icon: OpenaiIcon },
+  huggingface: { label: 'Hugging Face', icon: HuggingfaceIcon },
+  hf: { label: 'Hugging Face', icon: HuggingfaceIcon },
+  perplexity: { label: 'Perplexity', icon: PerplexityIcon },
+  brave: { label: 'Brave', icon: BraveIcon },
+  bravesearch: { label: 'Brave Search', icon: BraveIcon },
+  anthropic: { label: 'Anthropic', icon: AnthropicIcon },
+
+  // Media & social
+  figma: { label: 'Figma', icon: FigmaIcon },
+  spotify: { label: 'Spotify', icon: SpotifyIcon },
+  youtube: { label: 'YouTube', icon: YoutubeIcon },
+  reddit: { label: 'Reddit', icon: RedditIcon },
+  x: { label: 'X', icon: XIcon },
+  twitter: { label: 'X', icon: XIcon },
+  bluesky: { label: 'Bluesky', icon: BlueskyIcon },
+  cloudinary: { label: 'Cloudinary', icon: CloudinaryIcon }
 }
 
 interface ParsedMcp {
@@ -142,10 +241,22 @@ export function isHarnessControl(name: string | undefined): boolean {
   return !!name && name.startsWith(HARNESS_CONTROL_PREFIX)
 }
 
+/** Collapse the many spellings the same brand can ship under (e.g.
+ *  `GitHub`, `github`, `claude_ai_GitHub`) into one registry key. Drops
+ *  the `claude_ai_` prefix Anthropic uses for hosted connectors,
+ *  lowercases, and strips underscores/dashes/spaces. */
+export function normalizeServerName(server: string): string {
+  return server
+    .replace(/^claude_ai_/i, '')
+    .toLowerCase()
+    .replace(/[_\-\s]+/g, '')
+}
+
 function humanizeAction(tool: string, prefixes: string[]): string {
   let cleaned = tool
   const lower = cleaned.toLowerCase()
   for (const p of prefixes) {
+    if (!p) continue
     if (lower.startsWith(p + '-') || lower.startsWith(p + '_')) {
       cleaned = cleaned.slice(p.length + 1)
       break
@@ -169,13 +280,19 @@ export function getToolDisplay(name: string | undefined): ToolDisplay {
     return { label: name, icon: BUILTIN_ICONS[name] ?? null }
   }
 
-  const brand = MCP_BRANDS[parsed.server]
+  const normalized = normalizeServerName(parsed.server)
+  const brand = MCP_BRANDS[normalized]
   if (brand) {
-    const action = humanizeAction(parsed.tool, brand.toolPrefixes ?? [])
+    // Strip both the normalized brand key and the raw server name as
+    // tool prefixes (many MCP authors namespace their tools, e.g.
+    // `notion-get-users`, `slack_send_message`, `github-create-issue`).
+    const action = humanizeAction(parsed.tool, [
+      normalized,
+      parsed.server.toLowerCase()
+    ])
     // For harness-control the brand-gradient chrome already says
     // "Harness", so dropping the label removes the redundancy.
-    const label =
-      parsed.server === 'harness-control' ? action : `${brand.label} · ${action}`
+    const label = normalized === 'harnesscontrol' ? action : `${brand.label} · ${action}`
     return { label, icon: brand.icon }
   }
 

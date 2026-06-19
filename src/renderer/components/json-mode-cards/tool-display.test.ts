@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   getToolDisplay,
   isHarnessControl,
+  normalizeServerName,
   parseMcpToolName,
   prettyToolName
 } from './tool-display'
@@ -126,5 +127,79 @@ describe('prettyToolName back-compat', () => {
       'create worktree'
     )
     expect(prettyToolName('Read')).toBe('Read')
+  })
+})
+
+describe('normalizeServerName', () => {
+  it('collapses spellings of the same brand to one key', () => {
+    expect(normalizeServerName('GitHub')).toBe('github')
+    expect(normalizeServerName('github')).toBe('github')
+    expect(normalizeServerName('claude_ai_GitHub')).toBe('github')
+    expect(normalizeServerName('Google_Drive')).toBe('googledrive')
+    expect(normalizeServerName('claude_ai_Google_Drive')).toBe('googledrive')
+    expect(normalizeServerName('harness-control')).toBe('harnesscontrol')
+  })
+})
+
+describe('expanded brand registry', () => {
+  it('matches GitHub regardless of spelling', () => {
+    expect(getToolDisplay('mcp__github__create_issue').label).toBe(
+      'GitHub · create issue'
+    )
+    expect(getToolDisplay('mcp__GitHub__create_issue').label).toBe(
+      'GitHub · create issue'
+    )
+    expect(getToolDisplay('mcp__claude_ai_GitHub__create_issue').label).toBe(
+      'GitHub · create issue'
+    )
+  })
+
+  it('strips the brand prefix from tool names with hyphen or underscore', () => {
+    expect(getToolDisplay('mcp__github__github-list-pull-requests').label).toBe(
+      'GitHub · list pull requests'
+    )
+    expect(getToolDisplay('mcp__stripe__stripe_create_customer').label).toBe(
+      'Stripe · create customer'
+    )
+  })
+
+  it('handles common dev/data/comms brands', () => {
+    expect(getToolDisplay('mcp__linear__create_issue').label).toBe(
+      'Linear · create issue'
+    )
+    expect(getToolDisplay('mcp__postgres__query').label).toBe('Postgres · query')
+    expect(getToolDisplay('mcp__postgresql__query').label).toBe(
+      'Postgres · query'
+    )
+    expect(getToolDisplay('mcp__discord__send_message').label).toBe(
+      'Discord · send message'
+    )
+    expect(getToolDisplay('mcp__figma__get_file').label).toBe(
+      'Figma · get file'
+    )
+  })
+
+  it('treats Twitter as X (rename)', () => {
+    expect(getToolDisplay('mcp__twitter__post_tweet').label).toBe(
+      'X · post tweet'
+    )
+    expect(getToolDisplay('mcp__x__post_tweet').label).toBe('X · post tweet')
+  })
+
+  it('returns an icon for every known brand', () => {
+    const brands = [
+      'github', 'gitlab', 'bitbucket', 'linear', 'jira', 'sentry', 'vercel',
+      'netlify', 'cloudflare', 'supabase', 'firebase', 'postgres', 'mysql',
+      'mongodb', 'redis', 'sqlite', 'snowflake', 'elasticsearch', 'discord',
+      'telegram', 'whatsapp', 'zoom', 'mailchimp', 'twilio', 'intercom',
+      'asana', 'trello', 'clickup', 'confluence', 'stripe', 'paypal',
+      'shopify', 'hubspot', 'salesforce', 'zendesk', 'openai', 'huggingface',
+      'perplexity', 'brave', 'anthropic', 'figma', 'spotify', 'youtube',
+      'reddit', 'x', 'bluesky', 'cloudinary'
+    ]
+    for (const b of brands) {
+      const d = getToolDisplay(`mcp__${b}__do_thing`)
+      expect(d.icon, `${b} should have an icon`).not.toBeNull()
+    }
   })
 })
