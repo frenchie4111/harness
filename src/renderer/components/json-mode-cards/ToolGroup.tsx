@@ -49,7 +49,7 @@ export function ToolGroup({ rows }: { rows: ToolGroupRow[] }): JSX.Element {
         <Fragment key={i}>
           {i > 0 && <span className="opacity-40">·</span>}
           {d.icon && <d.icon className="icon-xs shrink-0" />}
-          <span>{d.label}</span>
+          <span>{d.compactLabel}</span>
         </Fragment>
       ))}
       {moreCount > 0 && (

@@ -67,6 +67,7 @@ describe('getToolDisplay', () => {
   it('returns name only (no icon) for unknown built-ins', () => {
     expect(getToolDisplay('SomeNewBuiltin')).toEqual({
       label: 'SomeNewBuiltin',
+      compactLabel: 'SomeNewBuiltin',
       icon: null
     })
   })
@@ -117,7 +118,11 @@ describe('getToolDisplay', () => {
   })
 
   it('handles undefined gracefully', () => {
-    expect(getToolDisplay(undefined)).toEqual({ label: 'Tool', icon: null })
+    expect(getToolDisplay(undefined)).toEqual({
+      label: 'Tool',
+      compactLabel: 'Tool',
+      icon: null
+    })
   })
 })
 
@@ -201,5 +206,35 @@ describe('expanded brand registry', () => {
       const d = getToolDisplay(`mcp__${b}__do_thing`)
       expect(d.icon, `${b} should have an icon`).not.toBeNull()
     }
+  })
+})
+
+describe('compactLabel', () => {
+  it('drops the brand prefix for known MCP brands (icon conveys it)', () => {
+    expect(getToolDisplay('mcp__github__create_issue').compactLabel).toBe(
+      'Create Issue'
+    )
+    expect(
+      getToolDisplay('mcp__harness-control__create_worktree').compactLabel
+    ).toBe('Create Worktree')
+    expect(
+      getToolDisplay('mcp__claude_ai_Google_Drive__list_recent_files').compactLabel
+    ).toBe('List Recent Files')
+  })
+
+  it('matches label for built-ins (no prefix to drop)', () => {
+    const read = getToolDisplay('Read')
+    expect(read.compactLabel).toBe(read.label)
+    expect(read.compactLabel).toBe('Read')
+  })
+
+  it('matches label for unknown MCPs (generic plug icon has no brand cue)', () => {
+    const d = getToolDisplay('mcp__foo_bar__do_thing')
+    expect(d.compactLabel).toBe(d.label)
+    expect(d.compactLabel).toBe('foo bar · Do Thing')
+  })
+
+  it('handles undefined gracefully', () => {
+    expect(getToolDisplay(undefined).compactLabel).toBe('Tool')
   })
 })

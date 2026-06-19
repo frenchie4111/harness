@@ -87,8 +87,14 @@ const HARNESS_CONTROL_PREFIX = 'mcp__harness-control__'
 const MCP_PREFIX = 'mcp__'
 
 export interface ToolDisplay {
-  /** Pretty label for the card header (or group summary). */
+  /** Full "Brand · Action" label for the per-card chrome. */
   label: string
+  /** Just "Action" for known MCP brands — the icon already conveys
+   *  the brand in the collapsed ToolGroup summary, so dropping the
+   *  redundant prefix buys horizontal room for more tool names. For
+   *  built-ins and unknown MCPs (generic plug icon — no brand cue),
+   *  this is identical to `label`. */
+  compactLabel: string
   /** Brand/category icon, or null for built-ins without one. */
   icon: ToolIcon | null
 }
@@ -274,11 +280,11 @@ function titleCaseServer(server: string): string {
 }
 
 export function getToolDisplay(name: string | undefined): ToolDisplay {
-  if (!name) return { label: 'Tool', icon: null }
+  if (!name) return { label: 'Tool', compactLabel: 'Tool', icon: null }
 
   const parsed = parseMcpToolName(name)
   if (!parsed) {
-    return { label: name, icon: BUILTIN_ICONS[name] ?? null }
+    return { label: name, compactLabel: name, icon: BUILTIN_ICONS[name] ?? null }
   }
 
   const normalized = normalizeServerName(parsed.server)
@@ -291,12 +297,19 @@ export function getToolDisplay(name: string | undefined): ToolDisplay {
       normalized,
       parsed.server.toLowerCase()
     ])
-    return { label: `${brand.label} · ${action}`, icon: brand.icon }
+    return {
+      label: `${brand.label} · ${action}`,
+      compactLabel: action,
+      icon: brand.icon
+    }
   }
 
   const serverLabel = titleCaseServer(parsed.server)
   const action = humanizeAction(parsed.tool, [parsed.server])
-  return { label: `${serverLabel} · ${action}`, icon: McpGenericIcon }
+  const full = `${serverLabel} · ${action}`
+  // Unknown MCP: the generic plug icon doesn't say which server it is,
+  // so keep the server prefix even in compact form.
+  return { label: full, compactLabel: full, icon: McpGenericIcon }
 }
 
 // Back-compat shim — earlier code called prettyToolName(name) to get
