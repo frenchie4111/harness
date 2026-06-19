@@ -40,6 +40,21 @@ describe('parseMcpToolName', () => {
     expect(parseMcpToolName('mcp____tool')).toBeNull()
     expect(parseMcpToolName('mcp__server__')).toBeNull()
   })
+
+  it('returns null for undefined / empty inputs', () => {
+    expect(parseMcpToolName(undefined)).toBeNull()
+    expect(parseMcpToolName('')).toBeNull()
+  })
+
+  it('keeps the tool half intact when it contains __', () => {
+    // Some MCP authors use double underscores inside tool names; the
+    // server boundary is the FIRST __ after mcp__, so the tool half
+    // gets everything after that.
+    expect(parseMcpToolName('mcp__server__tool__with__more')).toEqual({
+      server: 'server',
+      tool: 'tool__with__more'
+    })
+  })
 })
 
 describe('isHarnessControl', () => {
@@ -145,6 +160,23 @@ describe('normalizeServerName', () => {
     expect(normalizeServerName('claude_ai_Google_Drive')).toBe('googledrive')
     expect(normalizeServerName('harness-control')).toBe('harnesscontrol')
   })
+
+  it('handles empty / separator-only strings', () => {
+    expect(normalizeServerName('')).toBe('')
+    expect(normalizeServerName('___')).toBe('')
+    expect(normalizeServerName('---')).toBe('')
+  })
+
+  it('collapses runs of mixed separators', () => {
+    expect(normalizeServerName('foo__-_-bar')).toBe('foobar')
+    expect(normalizeServerName(' foo bar ')).toBe('foobar')
+  })
+
+  it('only strips the claude_ai_ prefix when it leads the name', () => {
+    // Mid-string occurrence stays put (still collapsed by separator
+    // stripping, just not treated as the prefix).
+    expect(normalizeServerName('foo_claude_ai_bar')).toBe('fooclaudeaibar')
+  })
 })
 
 describe('expanded brand registry', () => {
@@ -167,6 +199,24 @@ describe('expanded brand registry', () => {
     expect(getToolDisplay('mcp__stripe__stripe_create_customer').label).toBe(
       'Stripe · Create Customer'
     )
+  })
+
+  it('does NOT strip a substring that happens to match the brand prefix', () => {
+    // "githubbed_something" must not have "github" lopped off — the
+    // prefix-stripping requires a separator (- or _) after the brand
+    // name, so substring false-positives are blocked.
+    expect(getToolDisplay('mcp__github__githubbed_action').label).toBe(
+      'GitHub · Githubbed Action'
+    )
+  })
+
+  it('handles tool names that are exactly the brand prefix', () => {
+    // After stripping "github-" the tool is empty; should not crash
+    // and label should fall back gracefully.
+    const display = getToolDisplay('mcp__github__github')
+    // No separator suffix on bare "github", so the prefix doesn't
+    // strip — we read it as the action.
+    expect(display.label).toBe('GitHub · Github')
   })
 
   it('handles common dev/data/comms brands', () => {
@@ -251,6 +301,46 @@ describe('extractArgs', () => {
       { key: 'enabled', value: 'true', multiline: false },
       { key: 'missing', value: 'null', multiline: false }
     ])
+  })
+
+  it('handles undefined values as the literal "undefined"', () => {
+    const args = extractArgs({ explicit: undefined })
+    expect(args).toEqual([
+      { key: 'explicit', value: 'undefined', multiline: false }
+    ])
+  })
+
+  it('returns [] for empty objects', () => {
+    expect(extractArgs({})).toEqual([])
+  })
+
+  it('does not crash on circular references', () => {
+    const circular: Record<string, unknown> = { a: 1 }
+    circular.self = circular
+    const args = extractArgs(circular)
+    expect(args.length).toBe(2)
+    expect(args[0]).toEqual({ key: 'a', value: '1', multiline: false })
+    // JSON.stringify throws on cycles; the catch falls back to
+    // String(value) which is "[object Object]" — not pretty but won't
+    // bring the renderer down.
+    expect(args[1].key).toBe('self')
+    expect(typeof args[1].value).toBe('string')
+  })
+
+  it('serialises bigint via the scalar branch', () => {
+    // JSON.stringify(bigint) throws, so we must handle bigint
+    // explicitly (otherwise the catch falls back to String() which
+    // works but only by accident).
+    const args = extractArgs({ big: 9007199254740993n })
+    expect(args).toEqual([
+      { key: 'big', value: '9007199254740993', multiline: false }
+    ])
+  })
+
+  it('serialises Date via JSON.toJSON (ISO string)', () => {
+    const d = new Date('2026-06-19T12:00:00Z')
+    const args = extractArgs({ when: d })
+    expect(args[0].value).toBe('"2026-06-19T12:00:00.000Z"')
   })
 })
 
