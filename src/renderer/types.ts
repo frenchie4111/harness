@@ -1,6 +1,58 @@
 import type { StateEvent, StateSnapshot } from '../shared/state'
 export type { StateEvent, StateSnapshot }
 
+import type {
+  GithubIssuesConfig,
+  NotionConfig,
+  Ticket,
+  TicketProviderConfig,
+  TicketProviderType,
+  WorktreeTicketLink
+} from '../shared/tickets'
+export type {
+  GithubIssuesConfig,
+  NotionConfig,
+  Ticket,
+  TicketProviderConfig,
+  TicketProviderType,
+  WorktreeTicketLink
+}
+
+/** IPC surface for the ticket providers + ticket fetches. Owned by the
+ *  ticket-data workstream; the ticket-UI workstream calls these via
+ *  `window.api.tickets.*` / `useBackend().tickets.*`. Until the data
+ *  workstream lands, an in-renderer stub at
+ *  `src/renderer/tickets-stub.ts` services these calls so the UI is
+ *  testable end-to-end. */
+export interface TicketsAPI {
+  listProviders(): Promise<TicketProviderConfig[]>
+  addProvider(
+    input: {
+      label: string
+      type: TicketProviderType
+      config: GithubIssuesConfig | NotionConfig
+      appliesToRepoRoots?: string[]
+    },
+    token?: string
+  ): Promise<TicketProviderConfig>
+  updateProvider(
+    id: string,
+    patch: {
+      label?: string
+      config?: GithubIssuesConfig | NotionConfig
+      appliesToRepoRoots?: string[]
+    },
+    token?: string
+  ): Promise<TicketProviderConfig | null>
+  removeProvider(id: string): Promise<boolean>
+  hasProviderToken(id: string): Promise<boolean>
+  setProviderToken(id: string, token: string): Promise<boolean>
+  list(providerId: string, query?: string): Promise<Ticket[]>
+  get(providerId: string, externalId: string): Promise<Ticket | null>
+  linkWorktree(worktreePath: string, link: WorktreeTicketLink): Promise<boolean>
+  unlinkWorktree(worktreePath: string): Promise<boolean>
+}
+
 import type { Worktree, PendingWorktree, PendingDeletion } from '../shared/state/worktrees'
 export type { Worktree, PendingWorktree, PendingDeletion }
 
@@ -344,6 +396,7 @@ export interface ElectronAPI {
   setHarnessSystemPrompt(prompt: string): Promise<boolean>
   setHarnessSystemPromptMain(prompt: string): Promise<boolean>
   setPrReviewPrompt(prompt: string): Promise<boolean>
+  setTicketWorktreePromptTemplate(template: string): Promise<boolean>
   prepareMcpForTerminal(terminalId: string): Promise<string | null>
   onWorktreesExternalCreate(
     callback: (payload: { repoRoot: string; worktree: Worktree; initialPrompt?: string }) => void
@@ -604,6 +657,12 @@ export interface ElectronAPI {
   connectionsSetLastConnected(id: string, when?: number): Promise<boolean>
   connectionsGetToken(id: string): Promise<string | null>
   connectionsHasToken(id: string): Promise<boolean>
+
+  // Ticket providers (issues / Notion / etc). See TicketsAPI above for
+  // the contract. UI talks to these via `window.api.tickets.*`. Backed
+  // by an in-renderer stub at src/renderer/tickets-stub.ts until the
+  // ticket-data workstream lands real `tickets:*` IPC handlers.
+  tickets: TicketsAPI
 
   // SSH bootstrap (remote-SSH backend flow). Always-local; the local
   // Electron backend is the one that drives SSH. See plans/remote-main.md §4.

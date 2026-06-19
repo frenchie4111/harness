@@ -39,6 +39,7 @@ import type {
   StateEventListener
 } from '../shared/transport/transport'
 import type { ElectronAPI } from './types'
+import { ticketsStub } from './tickets-stub'
 
 export type { ElectronOnlyHelpers }
 
@@ -278,6 +279,13 @@ export function buildBackend(
     setHarnessSystemPromptMain: (prompt: string) =>
       req('config:setHarnessSystemPromptMain', prompt),
     setPrReviewPrompt: (prompt: string) => req('config:setPrReviewPrompt', prompt),
+    // Ticket worktree prompt template — the ticket-data workstream will
+    // land the `config:setTicketWorktreePromptTemplate` IPC handler. Until
+    // then we route through the same handler name; if main doesn't
+    // recognize it the request will reject and the textarea will surface
+    // the error. Once the data PR lands this becomes a real round-trip.
+    setTicketWorktreePromptTemplate: (template: string) =>
+      req('config:setTicketWorktreePromptTemplate', template),
     prepareMcpForTerminal: (terminalId: string) =>
       req('mcp:prepareForTerminal', terminalId),
     onWorktreesExternalCreate: (
@@ -604,7 +612,15 @@ export function buildBackend(
     sshBootstrap: (input: { bootstrapId: string; target: string; label: string }) =>
       reqLocal('ssh:bootstrap', input),
     sshReconnect: (input: { bootstrapId: string; connectionId: string }) =>
-      reqLocal('ssh:reconnect', input)
+      reqLocal('ssh:reconnect', input),
+
+    // Ticket providers — STUB. Routes to an in-renderer store that
+    // services the same ContractAPI shape the data workstream will
+    // land via real `tickets:*` IPC handlers. The whole `tickets`
+    // namespace below collapses to a few `req(...)` lines at merge
+    // time; the stub file (`src/renderer/tickets-stub.ts`) gets
+    // deleted entirely. See the contract in `src/shared/tickets.ts`.
+    tickets: ticketsStub
   }
 
   return api as ElectronAPI

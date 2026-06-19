@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect } from 'react'
-import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2, Moon, LifeBuoy, Bug, Lightbulb, FlaskConical, Copy, CopyCheck, ExternalLink, CalendarDays, FileText, FolderOpen, Search, ChevronDown, ChevronRight, SlidersHorizontal } from 'lucide-react'
+import { ArrowLeft, Check, X, Eye, EyeOff, Star, RefreshCw, Download, RotateCw, GitPullRequest, DownloadCloud, Keyboard, RotateCcw, Terminal as TerminalIcon, Palette, BookOpen, Code2, GitBranch, Plus, Trash2, Moon, LifeBuoy, Bug, Lightbulb, FlaskConical, Copy, CopyCheck, ExternalLink, CalendarDays, FileText, FolderOpen, Search, ChevronDown, ChevronRight, SlidersHorizontal, Ticket as TicketIcon } from 'lucide-react'
 import { openReportIssue } from './ReportIssueScreen'
 import { HARNESS_ISSUES_URL, HARNESS_RELEASES_URL, harnessReleaseNotesUrl } from '../../shared/constants'
 import { useSettings, useUpdater, useRepoConfigs, useHooks } from '../store'
@@ -14,6 +14,7 @@ import { BUILT_IN_THEMES_BY_MODE, type ThemeOption } from '../themes'
 import { SEMANTIC_KEYS } from '../theme-apply'
 import type { CustomTheme, UiScale } from '../../shared/state/settings'
 import { SCALES, scaleSpec } from '../../shared/state/settings'
+import { TicketProvidersSettingsSection } from './TicketProvidersSettings'
 import { QRCodeSVG } from 'qrcode.react'
 
 interface SettingsProps {
@@ -23,7 +24,7 @@ interface SettingsProps {
   initialSection?: SectionId
 }
 
-type SectionId = 'general' | 'appearance' | 'agent' | 'worktrees' | 'editor' | 'github' | 'hotkeys' | 'updates' | 'support' | 'experimental'
+type SectionId = 'general' | 'appearance' | 'agent' | 'worktrees' | 'tickets' | 'editor' | 'github' | 'hotkeys' | 'updates' | 'support' | 'experimental'
 type SubSectionId =
   | 'appearance-theme'
   | 'appearance-custom-themes'
@@ -70,6 +71,7 @@ const SECTIONS: Section[] = [
     { id: 'agent-codex', label: 'Codex' }
   ]},
   { id: 'worktrees', label: 'Worktrees', icon: GitBranch },
+  { id: 'tickets', label: 'Ticket Providers', icon: TicketIcon },
   { id: 'editor', label: 'Editor', icon: Code2 },
   { id: 'github', label: 'GitHub', icon: GitPullRequest },
   { id: 'hotkeys', label: 'Hotkeys', icon: Keyboard, children: [
@@ -137,6 +139,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     appearance: null,
     agent: null,
     worktrees: null,
+    tickets: null,
     editor: null,
     github: null,
     hotkeys: null,
@@ -336,6 +339,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     harnessSystemPrompt,
     harnessSystemPromptMain,
     prReviewPrompt,
+    ticketWorktreePromptTemplate,
     claudeTuiFullscreen,
     browserToolsEnabled,
     browserToolsMode,
@@ -404,6 +408,10 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
   const [prReviewPromptDraft, setPrReviewPromptDraft] = useState<string>(prReviewPrompt)
   useEffect(() => { setPrReviewPromptDraft(prReviewPrompt) }, [prReviewPrompt])
   const [prReviewPromptSaveResult, setPrReviewPromptSaveResult] = useState<{ ok: boolean; message: string } | null>(null)
+
+  const [ticketPromptDraft, setTicketPromptDraft] = useState<string>(ticketWorktreePromptTemplate)
+  useEffect(() => { setTicketPromptDraft(ticketWorktreePromptTemplate) }, [ticketWorktreePromptTemplate])
+  const [ticketPromptSaveResult, setTicketPromptSaveResult] = useState<{ ok: boolean; message: string } | null>(null)
 
   const [defaultTerminalFontFamily, setDefaultTerminalFontFamily] = useState<string>('')
   const [availableEditors, setAvailableEditors] = useState<{ id: string; name: string }[]>([])
@@ -877,6 +885,18 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     await backend.setPrReviewPrompt('')
     setPrReviewPromptSaveResult({ ok: true, message: 'Reset to default' })
     setTimeout(() => setPrReviewPromptSaveResult(null), 2000)
+  }, [])
+
+  const handleSaveTicketPrompt = useCallback(async () => {
+    await backend.setTicketWorktreePromptTemplate(ticketPromptDraft)
+    setTicketPromptSaveResult({ ok: true, message: 'Saved' })
+    setTimeout(() => setTicketPromptSaveResult(null), 2000)
+  }, [ticketPromptDraft])
+
+  const handleResetTicketPrompt = useCallback(async () => {
+    await backend.setTicketWorktreePromptTemplate('')
+    setTicketPromptSaveResult({ ok: true, message: 'Reset to default' })
+    setTimeout(() => setTicketPromptSaveResult(null), 2000)
   }, [])
 
   const effectiveClaudeCommand = claudeCommandDraft.trim() || defaultClaudeCommand
@@ -2650,6 +2670,48 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                       {prReviewPromptSaveResult.ok ? <Check className="icon-xs" /> : <X className="icon-xs" />}{prReviewPromptSaveResult.message}
                     </div>
                   )}
+
+                  <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">Ticket worktree prompt template</h3>
+                  <p className="text-xs text-dim mb-2">
+                    Default kickoff prompt rendered when you spawn a worktree from a ticket.
+                    The picker fills it in with the chosen ticket's data and you can still
+                    tweak it on the New Worktree screen before submitting.
+                  </p>
+                  <div className="text-xs text-faint mb-2">
+                    Available variables:{' '}
+                    <code className="bg-panel-raised px-1 rounded">{'{title}'}</code>{' '}
+                    <code className="bg-panel-raised px-1 rounded">{'{description}'}</code>{' '}
+                    <code className="bg-panel-raised px-1 rounded">{'{url}'}</code>{' '}
+                    <code className="bg-panel-raised px-1 rounded">{'{externalId}'}</code>{' '}
+                    <code className="bg-panel-raised px-1 rounded">{'{providerType}'}</code>
+                  </div>
+                  <textarea
+                    value={ticketPromptDraft}
+                    onChange={(e) => setTicketPromptDraft(e.target.value)}
+                    rows={6}
+                    spellCheck={false}
+                    className="w-full bg-panel border border-border-strong rounded px-3 py-2 text-xs text-fg-bright placeholder-faint outline-none focus:border-fg font-mono resize-y"
+                  />
+                  <div className="flex items-center gap-2 mt-3">
+                    <button
+                      onClick={handleSaveTicketPrompt}
+                      className="px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={handleResetTicketPrompt}
+                      className="flex items-center gap-1 px-3 py-1.5 text-sm text-dim hover:text-fg transition-colors cursor-pointer"
+                    >
+                      <RotateCcw className="icon-xs" />
+                      Reset to default
+                    </button>
+                  </div>
+                  {ticketPromptSaveResult && (
+                    <div className={`mt-3 text-xs flex items-center gap-1.5 ${ticketPromptSaveResult.ok ? 'text-success' : 'text-danger'}`}>
+                      {ticketPromptSaveResult.ok ? <Check className="icon-xs" /> : <X className="icon-xs" />}{ticketPromptSaveResult.message}
+                    </div>
+                  )}
                 </>
               )}
 
@@ -2661,6 +2723,11 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   </p>
                 </div>
               )}
+            </section>
+
+            {/* Ticket Providers section */}
+            <section ref={(el) => { sectionRefs.current.tickets = el }} id="tickets">
+              <TicketProvidersSettingsSection />
             </section>
 
             {/* Editor section */}

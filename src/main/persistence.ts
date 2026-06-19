@@ -179,6 +179,11 @@ export interface Config {
   // Default kickoff prompt for "Open PR as worktree" / MCP create_worktree
   // with prNumber. Absent = use the bundled DEFAULT_PR_REVIEW_PROMPT.
   prReviewPrompt?: string
+  // Template used when spawning a worktree from a ticket. Supports
+  // {title} / {description} / {url} / {externalId} / {providerType}
+  // placeholders. Absent = use the bundled
+  // DEFAULT_TICKET_WORKTREE_PROMPT_TEMPLATE.
+  ticketWorktreePromptTemplate?: string
   // When false, Claude sessions spawn without CLAUDE_CODE_NO_FLICKER=1, so they
   // use the inline (non-fullscreen) TUI mode. Default is enabled (undefined/true).
   claudeTuiFullscreen?: boolean

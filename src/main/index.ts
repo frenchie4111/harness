@@ -73,7 +73,8 @@ import { hasScratchpadNote } from '../shared/state/scratchpad'
 import {
   DEFAULT_LIGHT_THEME,
   DEFAULT_DARK_THEME,
-  DEFAULT_PR_REVIEW_PROMPT
+  DEFAULT_PR_REVIEW_PROMPT,
+  DEFAULT_TICKET_WORKTREE_PROMPT_TEMPLATE
 } from '../shared/state/settings'
 import { watchStatusDir } from './hooks'
 import { getAgent, type AgentKind } from './agents'
@@ -1897,6 +1898,22 @@ function registerIpcHandlers(): void {
     store.dispatch({
       type: 'settings/prReviewPromptChanged',
       payload: config.prReviewPrompt || DEFAULT_PR_REVIEW_PROMPT
+    })
+    return true
+  })
+
+  transport.onRequest('config:setTicketWorktreePromptTemplate', (_ctx, template: string) => {
+    const trimmed = template.trim()
+    if (!trimmed || trimmed === DEFAULT_TICKET_WORKTREE_PROMPT_TEMPLATE) {
+      delete config.ticketWorktreePromptTemplate
+    } else {
+      config.ticketWorktreePromptTemplate = template
+    }
+    saveConfig(config)
+    store.dispatch({
+      type: 'settings/ticketWorktreePromptTemplateChanged',
+      payload:
+        config.ticketWorktreePromptTemplate || DEFAULT_TICKET_WORKTREE_PROMPT_TEMPLATE
     })
     return true
   })

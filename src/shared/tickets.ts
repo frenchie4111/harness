@@ -64,14 +64,27 @@ export interface NotionConfig {
 
 /** A user-configured provider instance. Auth tokens live in
  *  `secrets.enc` keyed `ticket-provider-token:<id>`, NOT here. The `id`
- *  is a stable Harness-internal handle (uuid) referenced from
- *  `.harness.json` (per-repo M2M link) and from worktrees that were
- *  spawned from one of this provider's tickets. */
+ *  is a stable Harness-internal handle (uuid) referenced from worktrees
+ *  that were spawned from one of this provider's tickets.
+ *
+ *  The provider carries its own project membership list
+ *  (`appliesToRepoRoots`). The picker in repo X surfaces every provider
+ *  whose `appliesToRepoRoots` contains X. This is the opposite of the
+ *  classic per-repo `.harness.json` M2M map — a single provider that
+ *  spans several local repos under one logical project just adds each
+ *  repo's path to its own list, instead of editing N `.harness.json`
+ *  files. The list is empty/undefined when the provider hasn't been
+ *  assigned anywhere yet. */
 export interface TicketProviderConfig {
   id: string
   label: string
   type: TicketProviderType
   config: GithubIssuesConfig | NotionConfig
+  /** Repo roots (filesystem paths) this provider's tickets should be
+   *  surfaced in. Empty/undefined = unassigned, no picker surfaces it
+   *  yet. Editing the list lives on the provider form, not on each
+   *  repo's settings, so a multi-repo project is one tick per repo. */
+  appliesToRepoRoots?: string[]
 }
 
 /** Runtime interface implemented by each provider. Implementations live

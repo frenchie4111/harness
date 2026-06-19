@@ -165,7 +165,8 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
       agentKind?: 'claude' | 'codex',
       model?: string,
       checkoutExisting?: boolean,
-      baseRef?: string
+      baseRef?: string,
+      linkedTicket?: import('../../shared/tickets').WorktreeTicketLink
     ) => {
       const id = `pending:${crypto.randomUUID()}`
       setActiveWorktreeId(id)
@@ -187,9 +188,19 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
 
       if (result.outcome === 'success') {
         setActiveWorktreeId((prev) => (prev === id ? result.createdPath : prev))
+        // Record the ticket link against the now-known worktree path.
+        // The data workstream will replace this with a `linkedTicket`
+        // field on `runPendingWorktree` that flows through the FSM and
+        // lands on the worktrees slice directly — at which point this
+        // post-hoc call goes away.
+        if (linkedTicket) {
+          void backend.tickets.linkWorktree(result.createdPath, linkedTicket)
+        }
+      } else if (linkedTicket && result.outcome === 'setup-failed' && 'createdPath' in result) {
+        // Same as success path — the worktree exists on disk even though
+        // the setup script failed, so the link still applies.
+        void backend.tickets.linkWorktree(result.createdPath, linkedTicket)
       }
-      // On 'setup-failed' we stay on the pending id; the user can click
-      // "Continue anyway" which transitions to result.createdPath.
       // On 'error' we stay on the pending id so the error screen shows.
     },
     [setActiveWorktreeId, setShowNewWorktree]
