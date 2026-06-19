@@ -191,36 +191,30 @@ export const CloudinaryIcon = brand(SiCloudinary, '#3448C5')
 
 // Harness mark — 3×3 dot grid, Simple-Icons-style silhouette (no
 // background rect) so it sits next to the other brand logos without
-// reading as a miniature app icon. Dots share one diagonal gradient
-// (amber → red → purple) that mirrors the brand-gradient chrome
-// already applied to the tool-card name for harness-control tools.
+// reading as a miniature app icon. Pre-sampled diagonal interpolation
+// of the brand-gradient stops (amber → red → purple) — five solid
+// fills mapped across the 3×3 grid. The earlier <linearGradient> +
+// url(#id) version rendered blank in packaged Electron builds because
+// Chromium resolves SVG fragment refs against the document base URI,
+// which differs between dev (http://localhost) and prod (file://) and
+// can fail silently.
+const H_AMBER = '#f59e0b'
+const H_AMBER_RED = '#f27128'
+const H_RED = '#ef4444'
+const H_RED_PURPLE = '#cb4c9e'
+const H_PURPLE = '#a855f7'
+
 export const HarnessIcon: ToolIcon = ({ className }) => (
   <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
-    <defs>
-      <linearGradient
-        id="harness-mark-grad"
-        x1="2"
-        y1="2"
-        x2="22"
-        y2="22"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop offset="0%" stopColor="#f59e0b" />
-        <stop offset="50%" stopColor="#ef4444" />
-        <stop offset="100%" stopColor="#a855f7" />
-      </linearGradient>
-    </defs>
-    <g fill="url(#harness-mark-grad)">
-      <circle cx="5" cy="5" r="2.3" />
-      <circle cx="12" cy="5" r="2.3" />
-      <circle cx="19" cy="5" r="2.3" />
-      <circle cx="5" cy="12" r="2.3" />
-      <circle cx="12" cy="12" r="2.3" />
-      <circle cx="19" cy="12" r="2.3" />
-      <circle cx="5" cy="19" r="2.3" />
-      <circle cx="12" cy="19" r="2.3" />
-      <circle cx="19" cy="19" r="2.3" />
-    </g>
+    <circle cx="5" cy="5" r="2.3" fill={H_AMBER} />
+    <circle cx="12" cy="5" r="2.3" fill={H_AMBER_RED} />
+    <circle cx="19" cy="5" r="2.3" fill={H_RED} />
+    <circle cx="5" cy="12" r="2.3" fill={H_AMBER_RED} />
+    <circle cx="12" cy="12" r="2.3" fill={H_RED} />
+    <circle cx="19" cy="12" r="2.3" fill={H_RED_PURPLE} />
+    <circle cx="5" cy="19" r="2.3" fill={H_RED} />
+    <circle cx="12" cy="19" r="2.3" fill={H_RED_PURPLE} />
+    <circle cx="19" cy="19" r="2.3" fill={H_PURPLE} />
   </svg>
 )
 
