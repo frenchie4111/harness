@@ -106,6 +106,7 @@ export function buildBackend(
       model?: string
       checkoutExisting?: boolean
       baseRef?: string
+      linkedTicket?: import('../shared/tickets').WorktreeTicketLink
     }) => req('worktrees:runPending', params),
     runPendingPRWorktree: (params: {
       id: string
@@ -114,6 +115,7 @@ export function buildBackend(
       initialPrompt?: string
       agentKind?: 'claude' | 'codex'
       model?: string
+      linkedTicket?: import('../shared/tickets').WorktreeTicketLink
     }) => req('worktrees:runPendingPR', params),
     retryPendingWorktree: (id: string) => req('worktrees:retryPending', id),
     dismissPendingWorktree: (id: string) => req('worktrees:dismissPending', id),
@@ -614,12 +616,18 @@ export function buildBackend(
     sshReconnect: (input: { bootstrapId: string; connectionId: string }) =>
       reqLocal('ssh:reconnect', input),
 
-    // Ticket providers — STUB. Routes to an in-renderer store that
-    // services the same ContractAPI shape the data workstream will
-    // land via real `tickets:*` IPC handlers. The whole `tickets`
-    // namespace below collapses to a few `req(...)` lines at merge
-    // time; the stub file (`src/renderer/tickets-stub.ts`) gets
-    // deleted entirely. See the contract in `src/shared/tickets.ts`.
+    // Ticket providers — UI consumer routes through a nested namespace
+    // (`backend.tickets.list(...)`) for ergonomic call sites. Currently
+    // served by the in-renderer stub so the UI keeps working end-to-end
+    // after merging the data PR (#172): that PR's `tickets:*` IPC + slice
+    // model the per-repo M2M link (`linkRepoProvider`/`unlinkRepoProvider`),
+    // while the UI here drives the inverted "provider owns its project
+    // membership list" (`appliesToRepoRoots`) model the user landed on
+    // during review. Reconciling the two — extending the data slice to
+    // carry `appliesToRepoRoots` and dropping the M2M side-table — is
+    // tracked as a follow-up; once that lands, this whole namespace
+    // becomes a few `req('tickets:*', ...)` lines and the stub gets
+    // deleted. See `src/shared/tickets.ts` for the contract.
     tickets: ticketsStub
   }
 

@@ -239,6 +239,7 @@ export interface ElectronAPI {
     model?: string,
     checkoutExisting?: boolean
     baseRef?: string
+    linkedTicket?: WorktreeTicketLink
   }): Promise<
     | { id: string; outcome: 'success'; createdPath: string }
     | { id: string; outcome: 'setup-failed'; createdPath: string }
@@ -251,6 +252,7 @@ export interface ElectronAPI {
     initialPrompt?: string
     agentKind?: 'claude' | 'codex'
     model?: string
+    linkedTicket?: WorktreeTicketLink
   }): Promise<
     | { id: string; outcome: 'success'; createdPath: string }
     | { id: string; outcome: 'setup-failed'; createdPath: string }
@@ -658,10 +660,12 @@ export interface ElectronAPI {
   connectionsGetToken(id: string): Promise<string | null>
   connectionsHasToken(id: string): Promise<boolean>
 
-  // Ticket providers (issues / Notion / etc). See TicketsAPI above for
-  // the contract. UI talks to these via `window.api.tickets.*`. Backed
-  // by an in-renderer stub at src/renderer/tickets-stub.ts until the
-  // ticket-data workstream lands real `tickets:*` IPC handlers.
+  // Ticket providers (issues / Notion / etc). UI consumers go through
+  // the nested namespace; see `TicketsAPI` above for the shape. Backed
+  // by an in-renderer stub during the data-model reconciliation noted
+  // in build-backend.ts, which adapts the data PR's
+  // `linkRepoProvider`/`unlinkRepoProvider` IPC + per-repo M2M to the
+  // provider-owned `appliesToRepoRoots` model the UI consumes.
   tickets: TicketsAPI
 
   // SSH bootstrap (remote-SSH backend flow). Always-local; the local
