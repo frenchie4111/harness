@@ -206,7 +206,17 @@ function DesktopApp(): JSX.Element {
   useEffect(() => {
     localStorage.setItem('harness:rightPanelWidth', String(rightPanelWidth))
   }, [rightPanelWidth])
-  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({})
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem('harness:collapsedGroups')
+      return saved ? JSON.parse(saved) : {}
+    } catch {
+      return {}
+    }
+  })
+  useEffect(() => {
+    localStorage.setItem('harness:collapsedGroups', JSON.stringify(collapsedGroups))
+  }, [collapsedGroups])
   const [collapsedRepos, setCollapsedRepos] = useState<Record<string, boolean>>({})
   const [unifiedRepos, setUnifiedRepos] = useState<boolean>(() => {
     const saved = localStorage.getItem('harness:unifiedRepos')
@@ -1649,6 +1659,8 @@ const setQuestStep = useCallback((next: QuestStep) => {
               setShowCleanup(false)
               setActiveWorktreeId(path)
             }}
+            isGroupCollapsed={isGroupCollapsed}
+            onToggleGroup={toggleGroup}
           />
         )}
         {showCenterFallback && (
