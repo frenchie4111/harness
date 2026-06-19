@@ -97,10 +97,6 @@ interface TerminalPanelProps {
   /** Render the "Harness" app title at the start of the tab bar. Set true
    *  on the top-left leaf only so the title appears once per workspace. */
   showAppTitle?: boolean
-  /** Reports the window-x of the "Harness" segment's right edge (the edge
-   *  just before the repo/branch label). The host uses it to cap the sidebar
-   *  width so the sidebar lines up with that edge. */
-  onTitleBlockEdge?: (px: number) => void
 }
 
 const TAB_STATUS_DOT: Record<PtyStatus, string> = {
@@ -442,8 +438,7 @@ export function TerminalPanel({
   topBarLeadingPx = 0,
   topBarLeadingExtendPx = 0,
   topBarTrailingExtendPx = 0,
-  showAppTitle = false,
-  onTitleBlockEdge
+  showAppTitle = false
 }: TerminalPanelProps): JSX.Element {
   const backend = useBackend()
   const { setNodeRef: setPaneDropRef } = useDroppable({ id: pane.id })
@@ -505,7 +500,7 @@ export function TerminalPanel({
             : undefined
         }
       >
-        {showAppTitle && <AppTitleSegment onEdge={onTitleBlockEdge} />}
+        {showAppTitle && <AppTitleSegment />}
         {repoLabel && (
           <div
             className="no-drag shrink-0 flex items-baseline gap-1.5 px-3 h-full text-xs whitespace-nowrap"

@@ -62,8 +62,13 @@ function isPendingId(id: string | null | undefined): id is string {
 
 // Distance from the window's left edge to the start of the workspace
 // top-bar content — clears the macOS traffic lights. Also the left edge of
-// the "Harness" title segment, so the sidebar's max width is derived from it.
+// the "Harness" title segment when it sits above the sidebar.
 const TITLE_LEADING_PX = 80
+
+// Static cap for the sidebar's resizable width. The title segment above the
+// sidebar fills whatever width is chosen, so the cap is a pure UX choice,
+// not an architectural one.
+const SIDEBAR_MAX_PX = 400
 
 // Top-level dispatcher. The desktop tree is large and stateful — we keep
 // it isolated in `DesktopApp` so a viewport flip (mobile↔desktop) doesn't
@@ -177,19 +182,6 @@ function DesktopApp(): JSX.Element {
     const saved = Number(localStorage.getItem('harness:sidebarWidth'))
     return Number.isFinite(saved) && saved > 0 ? saved : 224
   })
-  // The sidebar is capped to line up with the edge just before the workspace
-  // top bar's repo/branch label — i.e. the right edge of the "Harness"
-  // segment. WorkspaceView measures that edge and reports it here. The
-  // segment is branch-independent, so the value only moves with uiScale;
-  // defaults to leading clearance (80) + the segment's min-width (17.46rem ≈
-  // 279) for the no-worktree state, where nothing measures the live segment.
-  const [sidebarMaxPx, setSidebarMaxPx] = useState(359)
-  const handleTitleBlockEdge = useCallback((px: number) => {
-    // Inset by the 1px resize handle + 1px segment border so the sidebar's
-    // visible right edge lands on the title divider rather than a couple
-    // pixels past it.
-    setSidebarMaxPx(Math.max(160, Math.round(px) - 2))
-  }, [])
   const [rightPanelWidth, setRightPanelWidth] = useState<number>(() => {
     const saved = Number(localStorage.getItem('harness:rightPanelWidth'))
     return Number.isFinite(saved) && saved > 0 ? saved : 256
@@ -235,14 +227,14 @@ function DesktopApp(): JSX.Element {
     setCollapsedRepos((prev) => ({ ...prev, [repoRoot]: !prev[repoRoot] }))
   }, [])
   const handleSidebarResize = useCallback((delta: number) => {
-    setSidebarWidth((w) => Math.max(160, Math.min(sidebarMaxPx, w + delta)))
-  }, [sidebarMaxPx])
+    setSidebarWidth((w) => Math.max(160, Math.min(SIDEBAR_MAX_PX, w + delta)))
+  }, [])
   const handleRightPanelResize = useCallback((delta: number) => {
     setRightPanelWidth((w) => Math.max(180, Math.min(600, w - delta)))
   }, [])
-  // A stored width from before the cap (or a smaller uiScale) is clamped down
-  // here so the rendered sidebar never exceeds the title-segment edge.
-  const effectiveSidebarWidth = Math.min(sidebarWidth, sidebarMaxPx)
+  // A stored width from before the static cap is clamped down here so the
+  // rendered sidebar respects the current max.
+  const effectiveSidebarWidth = Math.min(sidebarWidth, SIDEBAR_MAX_PX)
   const [showNewWorktree, setShowNewWorktree] = useState(false)
   const [newWorktreeRepo, setNewWorktreeRepo] = useState<string | undefined>(undefined)
   // Worktrees whose git creation is still running (or has errored). They
@@ -1290,11 +1282,10 @@ const setQuestStep = useCallback((next: QuestStep) => {
   const activeIsDeleting = !!activeWorktreeId && !!pendingDeletionByPath[activeWorktreeId]
   const showCenterFallback =
     !inContentOverlay && !activeWorkspaceVisible && !activeIsPending && !activeIsDeleting
-  // The fallback title bar lives in the center column but must visually span
-  // the full width like the workspace top bar — extend it left/right over the
-  // side columns' drag strips (same negative-margin trick), so the Harness
-  // title pins to the top-left instead of floating mid-bar.
-  const fallbackLeadingExtend = singleScreenMode ? 0 : sidebarVisible ? effectiveSidebarWidth + 1 : 48
+  // Trailing-side extension lets the fallback's top bar visually span across
+  // the right column's drag strip. The leading side is no longer extended:
+  // the left chrome column hosts its own Harness header now, so reaching
+  // over it would cover that header.
   const fallbackTrailingExtend = singleScreenMode ? 0 : rightColumnHidden ? 48 : rightPanelWidth + 1
 
   return (
@@ -1445,8 +1436,23 @@ const setQuestStep = useCallback((next: QuestStep) => {
       )}
 
       <div className="flex flex-1 min-h-0 relative">
+        {/* Collapsed-sidebar mode keeps the Harness header pinned at its
+            full sidebar width above the 48px CollapsedSidebar — the
+            workspace top bar pushes its content right of this overlay,
+            and the workspace content area extends underneath. */}
+        {!singleScreenMode && !sidebarVisible && (
+          <div
+            className="absolute top-0 left-0 h-10 z-20 drag-region flex items-stretch border-b border-border-strong bg-panel pl-20"
+            style={{ width: effectiveSidebarWidth + 1 }}
+          >
+            <div className="flex-1 min-w-0 flex items-stretch overflow-hidden">
+              <AppTitleSegment fillParent />
+            </div>
+            <ResizeHandle onDelta={handleSidebarResize} />
+          </div>
+        )}
         {!singleScreenMode && sidebarVisible && (
-          <div className="shrink-0 flex flex-col"><div className="drag-region h-10 shrink-0" /><div className="flex-1 min-h-0 flex"><Sidebar
+          <div className="shrink-0 flex flex-col overflow-hidden" style={{ width: effectiveSidebarWidth }}><div className="drag-region h-10 shrink-0 flex items-stretch border-b border-border-strong bg-panel pl-20"><AppTitleSegment fillParent /></div><div className="flex-1 min-h-0 flex"><Sidebar
             worktrees={worktrees}
             pendingWorktrees={pendingWorktrees}
             pendingDeletions={pendingDeletions}
@@ -1527,7 +1533,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
           /></div></div>
         )}
         {!singleScreenMode && sidebarVisible && (
-          <div className="shrink-0 flex flex-col"><div className="drag-region h-10 shrink-0" /><div className="flex-1 min-h-0 flex"><ResizeHandle onDelta={handleSidebarResize} /></div></div>
+          <div className="shrink-0 flex flex-col"><div className="flex-1 min-h-0 flex"><ResizeHandle onDelta={handleSidebarResize} /></div></div>
         )}
         {/* Render ALL worktrees' terminals to keep PTYs alive across switches */}
         {worktrees.map((wt) => {
@@ -1569,11 +1575,16 @@ const setQuestStep = useCallback((next: QuestStep) => {
                   onReorderTabs={handleReorderTabs}
                   onMoveTabToPane={handleMoveTabToPane}
                   onSendToAgent={handleSendToAgent}
-                  topBarLeadingPx={TITLE_LEADING_PX}
-                  hideAppTitle={singleScreenMode}
-                  onTitleBlockEdge={isVisible ? handleTitleBlockEdge : undefined}
+                  topBarLeadingPx={
+                    singleScreenMode
+                      ? TITLE_LEADING_PX
+                      : sidebarVisible
+                        ? 0
+                        : effectiveSidebarWidth + 1
+                  }
+                  hideAppTitle
                   topBarLeadingExtendPx={
-                    singleScreenMode ? 0 : sidebarVisible ? effectiveSidebarWidth + 1 : 48
+                    singleScreenMode || sidebarVisible ? 0 : 48
                   }
                   topBarTrailingExtendPx={
                     !singleScreenMode && !showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && reportIssueState === null
@@ -1656,12 +1667,16 @@ const setQuestStep = useCallback((next: QuestStep) => {
             <div
               className="drag-region h-10 shrink-0 border-b border-border bg-panel flex items-stretch relative z-10"
               style={{
-                paddingLeft: TITLE_LEADING_PX,
-                marginLeft: fallbackLeadingExtend ? -fallbackLeadingExtend : undefined,
+                paddingLeft: singleScreenMode
+                  ? TITLE_LEADING_PX
+                  : sidebarVisible
+                    ? undefined
+                    : effectiveSidebarWidth + 1,
+                marginLeft: !singleScreenMode && !sidebarVisible ? -48 : undefined,
                 marginRight: fallbackTrailingExtend ? -fallbackTrailingExtend : undefined
               }}
             >
-              <AppTitleSegment onEdge={handleTitleBlockEdge} />
+              {singleScreenMode && <AppTitleSegment />}
             </div>
             <div className="flex-1 flex items-center justify-center text-dim">
               {worktrees.length === 0 ? 'Create a worktree to get started' : 'Select a worktree to begin'}
@@ -1746,7 +1761,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
           worktreePath={activeWorktreeId && !isPendingId(activeWorktreeId) ? activeWorktreeId : null}
           open={showQuakeTerminal && workspaceVisible}
           onClose={() => setShowQuakeTerminal(false)}
-          leftPx={singleScreenMode ? 0 : sidebarVisible ? sidebarWidth + 1 : 48}
+          leftPx={singleScreenMode ? 0 : sidebarVisible ? effectiveSidebarWidth + 1 : 48}
           rightPx={singleScreenMode ? 0 : rightColumnHidden ? 48 : rightPanelWidth + 1}
           topPx={40}
         />
