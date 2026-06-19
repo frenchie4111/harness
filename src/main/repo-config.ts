@@ -57,6 +57,16 @@ export function saveRepoConfig(repoRoot: string, next: RepoConfig): RepoConfig {
   if (Array.isArray(next.rightPanelOrder) && next.rightPanelOrder.length > 0) {
     cleaned.rightPanelOrder = [...next.rightPanelOrder]
   }
+  if (Array.isArray(next.ticketProviderIds) && next.ticketProviderIds.length > 0) {
+    const seen = new Set<string>()
+    const ids: string[] = []
+    for (const id of next.ticketProviderIds) {
+      if (typeof id !== 'string' || !id || seen.has(id)) continue
+      seen.add(id)
+      ids.push(id)
+    }
+    if (ids.length > 0) cleaned.ticketProviderIds = ids
+  }
 
   const hasAny = Object.keys(cleaned).some((k) => k !== 'version')
   const path = configPath(repoRoot)

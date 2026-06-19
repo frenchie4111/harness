@@ -3,6 +3,7 @@ import {
   DEFAULT_RIGHT_PANEL_ORDER,
   effectiveHiddenRightPanels,
   effectiveRightPanelOrder,
+  effectiveTicketProviderIds,
   initialRepoConfigs,
   repoConfigsReducer,
   type RepoConfig,
@@ -162,6 +163,15 @@ describe('repoConfigsReducer', () => {
     expect(effectiveHiddenRightPanels(null)).toEqual({ scratchpad: true })
     expect(effectiveHiddenRightPanels(undefined)).toEqual({ scratchpad: true })
     expect(effectiveHiddenRightPanels({})).toEqual({ scratchpad: true })
+  })
+
+  it('effectiveTicketProviderIds dedupes and skips empties', () => {
+    expect(effectiveTicketProviderIds(null)).toEqual([])
+    expect(effectiveTicketProviderIds({})).toEqual([])
+    expect(effectiveTicketProviderIds({ ticketProviderIds: [] })).toEqual([])
+    expect(
+      effectiveTicketProviderIds({ ticketProviderIds: ['a', 'b', 'a', '', 'c'] })
+    ).toEqual(['a', 'b', 'c'])
   })
 
   it('returns a new object reference on real changes', () => {

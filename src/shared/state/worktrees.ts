@@ -1,3 +1,7 @@
+import type { WorktreeTicketLink } from '../tickets'
+
+export type { WorktreeTicketLink }
+
 export interface Worktree {
   path: string
   branch: string
@@ -8,6 +12,10 @@ export interface Worktree {
   createdAt: number
   /** Repo this worktree belongs to. Set after a cross-repo listWorktrees merge. */
   repoRoot: string
+  /** When set, this worktree was spawned from a ticket. The cached
+   *  title/url etc. is looked up on demand from the tickets slice — only
+   *  the (providerId, externalId) tuple is persisted on the worktree. */
+  linkedTicket?: WorktreeTicketLink
 }
 
 export type PendingStatus = 'creating' | 'setup' | 'setup-failed' | 'error'
@@ -32,6 +40,11 @@ export interface PendingWorktree {
   initialPrompt?: string
   /** One-shot teleport session id for the new Claude tab. In-memory only. */
   teleportSessionId?: string
+  /** When set, the new worktree was spawned from a ticket — rides along
+   *  on addWorktree and is persisted onto the resulting Worktree once
+   *  creation succeeds. Only the (providerId, externalId) tuple lives
+   *  here; the title/url is looked up on demand from the tickets slice. */
+  linkedTicket?: WorktreeTicketLink
 }
 
 export type PendingDeletionPhase =

@@ -63,6 +63,15 @@ import {
   type QuestStep
 } from './persistence'
 import { loadRepoConfig, saveRepoConfig, type RepoConfig } from './repo-config'
+import { effectiveTicketProviderIds } from '../shared/state/repo-configs'
+import { createTicketProvider } from './tickets/provider-registry'
+import type {
+  Ticket,
+  TicketProviderConfig,
+  TicketProviderType,
+  GithubIssuesConfig,
+  NotionConfig
+} from '../shared/tickets'
 import { createNewProject, type GitignorePreset } from './repo-create'
 import { resolveRepoPath } from './repo-resolve'
 import { registerRepoRoot } from './repo-roots'
@@ -847,6 +856,21 @@ const worktreesFSM = new WorktreesFSM(store, {
   getRepoRoots: () => config.repoRoots || [],
   getWorktreeSetupCmd: () => config.worktreeSetupCommand || '',
   getWorktreeBaseMode: () => config.worktreeBase || DEFAULT_WORKTREE_BASE,
+  getWorktreeTicketLinks: () => config.worktreeTicketLinks || {},
+  setWorktreeTicketLink: (worktreePath, link) => {
+    const links = { ...(config.worktreeTicketLinks || {}) }
+    if (link) {
+      links[worktreePath] = link
+    } else {
+      delete links[worktreePath]
+    }
+    if (Object.keys(links).length === 0) {
+      delete config.worktreeTicketLinks
+    } else {
+      config.worktreeTicketLinks = links
+    }
+    saveConfig(config)
+  },
   onWorktreeCreated: ({ createdPath, initialPrompt, teleportSessionId, agentKind, model }) => {
     void prPoller.refreshAll()
     panesFSM.ensureInitialized(createdPath, { initialPrompt, teleportSessionId, agentKind, model })
@@ -1196,6 +1220,7 @@ function registerIpcHandlers(): void {
       model?: string
       checkoutExisting?: boolean
       baseRef?: string
+      linkedTicket?: import('../shared/tickets').WorktreeTicketLink
     }) => {
       return worktreesFSM.runPending(params)
     }
@@ -1211,6 +1236,7 @@ function registerIpcHandlers(): void {
         initialPrompt?: string
         agentKind?: 'claude' | 'codex'
         model?: string
+        linkedTicket?: import('../shared/tickets').WorktreeTicketLink
       }
     ) => {
       return worktreesFSM.runPendingPR(params)
@@ -1270,6 +1296,15 @@ function registerIpcHandlers(): void {
       prNumber: removeMeta?.prNumber,
       prState: removeMeta?.prState
     })
+    // Drop any ticket link for this worktree — the worktree is going
+    // away, so the side-table entry would just dangle.
+    if (config.worktreeTicketLinks && config.worktreeTicketLinks[path]) {
+      const links = { ...config.worktreeTicketLinks }
+      delete links[path]
+      if (Object.keys(links).length === 0) delete config.worktreeTicketLinks
+      else config.worktreeTicketLinks = links
+      saveConfig(config)
+    }
     // Fire-and-forget: the WorktreeDeletionFSM runs the teardown script
     // and git worktree remove in the background, streaming progress
     // through the store. Returns immediately so the renderer can animate
@@ -3497,6 +3532,190 @@ function registerIpcHandlers(): void {
     store.dispatch({ type: 'settings/snoozeDefaultDaysChanged', payload: clamped })
     return true
   })
+
+  // Tickets: providers + per-provider list/get. See src/shared/tickets.ts
+  // for the contract. Tokens are stored in secrets.enc keyed
+  // `ticket-provider-token:<id>` and never travel over IPC.
+  transport.onRequest('tickets:listProviders', () => {
+    const map = config.ticketProviders || {}
+    return Object.values(map)
+  })
+
+  transport.onRequest(
+    'tickets:addProvider',
+    (
+      _ctx,
+      input: Omit<TicketProviderConfig, 'id'>,
+      token?: string
+    ): TicketProviderConfig | null => {
+      if (!input || typeof input !== 'object') return null
+      const type = input.type as TicketProviderType
+      if (type !== 'github-issues' && type !== 'notion') return null
+      const id = randomUUID()
+      const next: TicketProviderConfig = {
+        id,
+        label: String(input.label || '').trim() || 'Untitled provider',
+        type,
+        config:
+          type === 'github-issues'
+            ? (input.config as GithubIssuesConfig)
+            : (input.config as NotionConfig)
+      }
+      const providers = { ...(config.ticketProviders || {}) }
+      providers[id] = next
+      config.ticketProviders = providers
+      saveConfig(config)
+      if (typeof token === 'string' && token.length > 0) {
+        setSecret(`ticket-provider-token:${id}`, token)
+      }
+      store.dispatch({ type: 'ticketProviders/added', payload: next })
+      return next
+    }
+  )
+
+  transport.onRequest(
+    'tickets:updateProvider',
+    (
+      _ctx,
+      id: string,
+      patch: Partial<Omit<TicketProviderConfig, 'id'>>,
+      token?: string | null
+    ): TicketProviderConfig | null => {
+      if (!id || typeof id !== 'string') return null
+      const existing = (config.ticketProviders || {})[id]
+      if (!existing) return null
+      const updated: TicketProviderConfig = {
+        ...existing,
+        ...(patch || {}),
+        id: existing.id,
+        // Preserve type if not explicitly changed — switching type with a
+        // type-mismatched config payload would corrupt the runtime.
+        type: (patch?.type ?? existing.type) as TicketProviderType
+      }
+      const providers = { ...(config.ticketProviders || {}) }
+      providers[id] = updated
+      config.ticketProviders = providers
+      saveConfig(config)
+      if (typeof token === 'string' && token.length > 0) {
+        setSecret(`ticket-provider-token:${id}`, token)
+      } else if (token === null) {
+        deleteSecret(`ticket-provider-token:${id}`)
+      }
+      store.dispatch({
+        type: 'ticketProviders/updated',
+        payload: { id, patch: { label: updated.label, type: updated.type, config: updated.config } }
+      })
+      return updated
+    }
+  )
+
+  transport.onRequest('tickets:removeProvider', (_ctx, id: string): boolean => {
+    if (!id || typeof id !== 'string') return false
+    const providers = { ...(config.ticketProviders || {}) }
+    if (!(id in providers)) return false
+    delete providers[id]
+    if (Object.keys(providers).length === 0) {
+      delete config.ticketProviders
+    } else {
+      config.ticketProviders = providers
+    }
+    saveConfig(config)
+    deleteSecret(`ticket-provider-token:${id}`)
+    // Also strip the id from any repo's ticketProviderIds so we don't
+    // leave dangling references behind.
+    for (const repoRoot of Object.keys(store.getSnapshot().state.repoConfigs.byRepo)) {
+      const cfg = loadRepoConfig(repoRoot)
+      const ids = effectiveTicketProviderIds(cfg)
+      if (!ids.includes(id)) continue
+      const nextIds = ids.filter((x) => x !== id)
+      const saved = saveRepoConfig(repoRoot, { ...cfg, ticketProviderIds: nextIds })
+      store.dispatch({
+        type: 'repoConfigs/changed',
+        payload: { repoRoot, config: saved }
+      })
+    }
+    store.dispatch({ type: 'ticketProviders/removed', payload: id })
+    return true
+  })
+
+  transport.onRequest(
+    'tickets:list',
+    async (_ctx, providerId: string, query?: string): Promise<Ticket[]> => {
+      if (!providerId || typeof providerId !== 'string') return []
+      const cfg = (config.ticketProviders || {})[providerId]
+      if (!cfg) return []
+      store.dispatch({
+        type: 'tickets/fetchStarted',
+        payload: { providerId }
+      })
+      try {
+        const provider = createTicketProvider(cfg)
+        const tickets = await provider.list(query)
+        store.dispatch({
+          type: 'tickets/fetchSucceeded',
+          payload: { providerId, tickets, at: Date.now() }
+        })
+        return tickets
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        store.dispatch({
+          type: 'tickets/fetchFailed',
+          payload: { providerId, error: message, at: Date.now() }
+        })
+        return []
+      }
+    }
+  )
+
+  transport.onRequest(
+    'tickets:get',
+    async (_ctx, providerId: string, externalId: string): Promise<Ticket | null> => {
+      if (!providerId || !externalId) return null
+      const cfg = (config.ticketProviders || {})[providerId]
+      if (!cfg) return null
+      try {
+        const provider = createTicketProvider(cfg)
+        return await provider.get(externalId)
+      } catch (err) {
+        log('tickets', `get failed for ${providerId}:${externalId}`, err instanceof Error ? err.message : err)
+        return null
+      }
+    }
+  )
+
+  transport.onRequest(
+    'tickets:linkRepoProvider',
+    (_ctx, repoRoot: string, providerId: string): boolean => {
+      if (!repoRoot || !providerId) return false
+      const cfg = loadRepoConfig(repoRoot)
+      const ids = effectiveTicketProviderIds(cfg)
+      if (ids.includes(providerId)) return true
+      const nextIds = [...ids, providerId]
+      const saved = saveRepoConfig(repoRoot, { ...cfg, ticketProviderIds: nextIds })
+      store.dispatch({
+        type: 'repoConfigs/changed',
+        payload: { repoRoot, config: saved }
+      })
+      return true
+    }
+  )
+
+  transport.onRequest(
+    'tickets:unlinkRepoProvider',
+    (_ctx, repoRoot: string, providerId: string): boolean => {
+      if (!repoRoot || !providerId) return false
+      const cfg = loadRepoConfig(repoRoot)
+      const ids = effectiveTicketProviderIds(cfg)
+      if (!ids.includes(providerId)) return false
+      const nextIds = ids.filter((x) => x !== providerId)
+      const saved = saveRepoConfig(repoRoot, { ...cfg, ticketProviderIds: nextIds })
+      store.dispatch({
+        type: 'repoConfigs/changed',
+        payload: { repoRoot, config: saved }
+      })
+      return true
+    }
+  )
 }
 
 function broadcastToAllWindows(channel: string, ...args: unknown[]): void {

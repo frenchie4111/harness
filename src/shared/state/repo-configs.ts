@@ -43,6 +43,30 @@ export interface RepoConfig {
    * DEFAULT_RIGHT_PANEL_ORDER (any key absent from the saved order is
    * appended to the end in canonical order). */
   rightPanelOrder?: RightPanelKey[]
+  /** Ticket-provider ids (from the ticketProviders slice) linked to this
+   *  repo. M2M — a repo can pull tickets from several providers, and one
+   *  provider can serve several repos. Order is preserved so the
+   *  ticket-picker can render groups in a stable sequence. */
+  ticketProviderIds?: string[]
+}
+
+/** Read the linked ticket-provider ids for a repo, deduped + safe to
+ *  iterate. The renderer's ticket-picker uses this to know which
+ *  providers to list against. */
+export function effectiveTicketProviderIds(
+  config: RepoConfig | null | undefined
+): string[] {
+  const ids = config?.ticketProviderIds
+  if (!ids || ids.length === 0) return []
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const id of ids) {
+    if (typeof id !== 'string' || !id) continue
+    if (seen.has(id)) continue
+    seen.add(id)
+    out.push(id)
+  }
+  return out
 }
 
 /** Read an effective panel order, filling in any keys missing from the
