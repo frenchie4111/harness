@@ -8,7 +8,10 @@
 // surfaces the title and Claude takes it from there at runtime.
 
 import { log, formatErr } from '../debug'
-import { trackedFetch } from '../github-recorder'
+// trackedFetch is named for its GitHub use but is really a generic
+// instrumented fetch. Aliased so the Notion calls don't read as
+// GitHub-recorder calls in stack traces.
+import { trackedFetch as recordedFetch } from '../github-recorder'
 import { getSecret } from '../secrets'
 import type {
   NotionConfig,
@@ -66,7 +69,7 @@ async function notionFetch(
     'User-Agent': 'Harness'
   }
   if (init?.body) headers['Content-Type'] = 'application/json'
-  const res = await trackedFetch(url, { ...init, headers })
+  const res = await recordedFetch(url, { ...init, headers })
   if (!res.ok) {
     throw new Error(`Notion API ${res.status} ${res.statusText} for ${path}`)
   }
@@ -138,7 +141,7 @@ export function createNotionProvider(
     async list(query) {
       const token = readToken()
       const body: Record<string, unknown> = { page_size: 50 }
-      if (query && config.titleProperty !== undefined) {
+      if (query) {
         body.filter = {
           property: config.titleProperty || 'Name',
           title: { contains: query }

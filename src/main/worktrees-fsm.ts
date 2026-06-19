@@ -62,6 +62,11 @@ interface WorktreesFSMOptions {
   /** Persist a single worktree's link (or drop it, if `link` is undefined).
    *  Called from the create FSM when a `linkedTicket` is supplied. */
   setWorktreeTicketLink?: (worktreePath: string, link: WorktreeTicketLink | undefined) => void
+  /** Drop side-table entries for any worktree path NOT in `livePaths`.
+   *  Called from refreshList so orphaned links — left behind by a
+   *  setup-failure cleanup, a manual `git worktree remove`, or an older
+   *  Harness version's deletion path — get garbage-collected. */
+  pruneWorktreeTicketLinks?: (livePaths: Set<string>) => void
   /** Called after a worktree has been created on disk (and its setup
    * script has run, regardless of script outcome). The host wires this
    * to (a) PR poller refresh and (b) PanesFSM.ensureInitialized so the
@@ -101,6 +106,9 @@ export class WorktreesFSM {
       )
     )
     const flat = results.flat()
+    // Sweep orphaned side-table entries before decorating, so the next
+    // boot doesn't keep dragging them around.
+    this.opts.pruneWorktreeTicketLinks?.(new Set(flat.map((wt) => wt.path)))
     const links = this.opts.getWorktreeTicketLinks?.() ?? null
     const decorated = links
       ? flat.map((wt) => {

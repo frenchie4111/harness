@@ -64,13 +64,14 @@ import {
 } from './persistence'
 import { loadRepoConfig, saveRepoConfig, type RepoConfig } from './repo-config'
 import { effectiveTicketProviderIds } from '../shared/state/repo-configs'
-import { createTicketProvider } from './tickets/provider-registry'
+import {
+  createTicketProvider,
+  validateProviderConfig
+} from './tickets/provider-registry'
 import type {
   Ticket,
   TicketProviderConfig,
-  TicketProviderType,
-  GithubIssuesConfig,
-  NotionConfig
+  TicketProviderType
 } from '../shared/tickets'
 import { createNewProject, type GitignorePreset } from './repo-create'
 import { resolveRepoPath } from './repo-resolve'
@@ -852,23 +853,41 @@ function startJsonClaudeSession(sessionId: string, worktreePath: string): void {
   jsonClaudeManager.create(sessionId, worktreePath, permMode, findJsonClaudeTabModel(sessionId))
 }
 
+function setWorktreeTicketLink(
+  worktreePath: string,
+  link: import('../shared/tickets').WorktreeTicketLink | undefined
+): void {
+  const existing = config.worktreeTicketLinks || {}
+  if (!link && !(worktreePath in existing)) return
+  const links = { ...existing }
+  if (link) links[worktreePath] = link
+  else delete links[worktreePath]
+  if (Object.keys(links).length === 0) {
+    delete config.worktreeTicketLinks
+  } else {
+    config.worktreeTicketLinks = links
+  }
+  saveConfig(config)
+}
+
 const worktreesFSM = new WorktreesFSM(store, {
   getRepoRoots: () => config.repoRoots || [],
   getWorktreeSetupCmd: () => config.worktreeSetupCommand || '',
   getWorktreeBaseMode: () => config.worktreeBase || DEFAULT_WORKTREE_BASE,
   getWorktreeTicketLinks: () => config.worktreeTicketLinks || {},
-  setWorktreeTicketLink: (worktreePath, link) => {
-    const links = { ...(config.worktreeTicketLinks || {}) }
-    if (link) {
-      links[worktreePath] = link
-    } else {
-      delete links[worktreePath]
+  setWorktreeTicketLink,
+  pruneWorktreeTicketLinks: (livePaths) => {
+    const existing = config.worktreeTicketLinks
+    if (!existing) return
+    let dirty = false
+    const next: Record<string, import('../shared/tickets').WorktreeTicketLink> = {}
+    for (const [path, link] of Object.entries(existing)) {
+      if (livePaths.has(path)) next[path] = link
+      else dirty = true
     }
-    if (Object.keys(links).length === 0) {
-      delete config.worktreeTicketLinks
-    } else {
-      config.worktreeTicketLinks = links
-    }
+    if (!dirty) return
+    if (Object.keys(next).length === 0) delete config.worktreeTicketLinks
+    else config.worktreeTicketLinks = next
     saveConfig(config)
   },
   onWorktreeCreated: ({ createdPath, initialPrompt, teleportSessionId, agentKind, model }) => {
@@ -1298,13 +1317,7 @@ function registerIpcHandlers(): void {
     })
     // Drop any ticket link for this worktree — the worktree is going
     // away, so the side-table entry would just dangle.
-    if (config.worktreeTicketLinks && config.worktreeTicketLinks[path]) {
-      const links = { ...config.worktreeTicketLinks }
-      delete links[path]
-      if (Object.keys(links).length === 0) delete config.worktreeTicketLinks
-      else config.worktreeTicketLinks = links
-      saveConfig(config)
-    }
+    setWorktreeTicketLink(path, undefined)
     // Fire-and-forget: the WorktreeDeletionFSM runs the teardown script
     // and git worktree remove in the background, streaming progress
     // through the store. Returns immediately so the renderer can animate
@@ -3536,9 +3549,12 @@ function registerIpcHandlers(): void {
   // Tickets: providers + per-provider list/get. See src/shared/tickets.ts
   // for the contract. Tokens are stored in secrets.enc keyed
   // `ticket-provider-token:<id>` and never travel over IPC.
+  //
+  // GitHub providers reuse the shared GitHub token (PAT → gh CLI). The
+  // per-provider token slot is only used for Notion. The renderer-side
+  // add-provider form should hide the token input when type === 'github-issues'.
   transport.onRequest('tickets:listProviders', () => {
-    const map = config.ticketProviders || {}
-    return Object.values(map)
+    return Object.values(store.getSnapshot().state.ticketProviders.byId)
   })
 
   transport.onRequest(
@@ -3551,21 +3567,23 @@ function registerIpcHandlers(): void {
       if (!input || typeof input !== 'object') return null
       const type = input.type as TicketProviderType
       if (type !== 'github-issues' && type !== 'notion') return null
+      const validatedConfig = validateProviderConfig(type, input.config)
+      if (!validatedConfig) return null
       const id = randomUUID()
       const next: TicketProviderConfig = {
         id,
         label: String(input.label || '').trim() || 'Untitled provider',
         type,
-        config:
-          type === 'github-issues'
-            ? (input.config as GithubIssuesConfig)
-            : (input.config as NotionConfig)
+        config: validatedConfig
       }
       const providers = { ...(config.ticketProviders || {}) }
       providers[id] = next
       config.ticketProviders = providers
       saveConfig(config)
-      if (typeof token === 'string' && token.length > 0) {
+      // GitHub providers reuse the shared GitHub token. Any token passed
+      // for type=github-issues is dead weight — drop it silently to keep
+      // the renderer surface simple.
+      if (type === 'notion' && typeof token === 'string' && token.length > 0) {
         setSecret(`ticket-provider-token:${id}`, token)
       }
       store.dispatch({ type: 'ticketProviders/added', payload: next })
@@ -3584,22 +3602,37 @@ function registerIpcHandlers(): void {
       if (!id || typeof id !== 'string') return null
       const existing = (config.ticketProviders || {})[id]
       if (!existing) return null
+      // Type changes aren't supported via update — the discriminated
+      // `config` payload would have to be revalidated against a new
+      // type, and the existing token slot may or may not still apply.
+      // Callers should removeProvider + addProvider instead.
+      if (patch?.type && patch.type !== existing.type) return null
+      let nextConfig = existing.config
+      if (patch?.config !== undefined) {
+        const validated = validateProviderConfig(existing.type, patch.config)
+        if (!validated) return null
+        nextConfig = validated
+      }
       const updated: TicketProviderConfig = {
-        ...existing,
-        ...(patch || {}),
         id: existing.id,
-        // Preserve type if not explicitly changed — switching type with a
-        // type-mismatched config payload would corrupt the runtime.
-        type: (patch?.type ?? existing.type) as TicketProviderType
+        type: existing.type,
+        label:
+          typeof patch?.label === 'string' && patch.label.trim().length > 0
+            ? patch.label.trim()
+            : existing.label,
+        config: nextConfig
       }
       const providers = { ...(config.ticketProviders || {}) }
       providers[id] = updated
       config.ticketProviders = providers
       saveConfig(config)
-      if (typeof token === 'string' && token.length > 0) {
-        setSecret(`ticket-provider-token:${id}`, token)
-      } else if (token === null) {
-        deleteSecret(`ticket-provider-token:${id}`)
+      // Only Notion uses the per-provider token slot — see addProvider above.
+      if (existing.type === 'notion') {
+        if (typeof token === 'string' && token.length > 0) {
+          setSecret(`ticket-provider-token:${id}`, token)
+        } else if (token === null) {
+          deleteSecret(`ticket-provider-token:${id}`)
+        }
       }
       store.dispatch({
         type: 'ticketProviders/updated',
@@ -3619,6 +3652,22 @@ function registerIpcHandlers(): void {
     } else {
       config.ticketProviders = providers
     }
+    // Drop any worktree-ticket links pointing at this provider so the
+    // sidebar chip doesn't try to resolve a dead reference.
+    if (config.worktreeTicketLinks) {
+      const links = { ...config.worktreeTicketLinks }
+      let dirty = false
+      for (const [path, link] of Object.entries(links)) {
+        if (link.providerId === id) {
+          delete links[path]
+          dirty = true
+        }
+      }
+      if (dirty) {
+        if (Object.keys(links).length === 0) delete config.worktreeTicketLinks
+        else config.worktreeTicketLinks = links
+      }
+    }
     saveConfig(config)
     deleteSecret(`ticket-provider-token:${id}`)
     // Also strip the id from any repo's ticketProviderIds so we don't
@@ -3635,6 +3684,9 @@ function registerIpcHandlers(): void {
       })
     }
     store.dispatch({ type: 'ticketProviders/removed', payload: id })
+    // Refresh the worktree list so any decorated linkedTicket disappears
+    // from the renderer's view.
+    void worktreesFSM.refreshList()
     return true
   })
 
@@ -3642,7 +3694,7 @@ function registerIpcHandlers(): void {
     'tickets:list',
     async (_ctx, providerId: string, query?: string): Promise<Ticket[]> => {
       if (!providerId || typeof providerId !== 'string') return []
-      const cfg = (config.ticketProviders || {})[providerId]
+      const cfg = store.getSnapshot().state.ticketProviders.byId[providerId]
       if (!cfg) return []
       store.dispatch({
         type: 'tickets/fetchStarted',
@@ -3671,7 +3723,7 @@ function registerIpcHandlers(): void {
     'tickets:get',
     async (_ctx, providerId: string, externalId: string): Promise<Ticket | null> => {
       if (!providerId || !externalId) return null
-      const cfg = (config.ticketProviders || {})[providerId]
+      const cfg = store.getSnapshot().state.ticketProviders.byId[providerId]
       if (!cfg) return null
       try {
         const provider = createTicketProvider(cfg)
