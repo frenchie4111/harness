@@ -44,13 +44,19 @@ import type { JsonClaudeChatEntry } from '../../shared/state/json-claude'
 const REMARK_PLUGINS = [remarkGfm]
 const REHYPE_PLUGINS = [rehypeHighlight, rehypeColorHex]
 
-// #RGBA / #RRGGBB / #RRGGBBAA. The 3-hex shorthand (#fff) is omitted
-// on purpose — PR / issue refs like #158, #165, #170 are all valid
-// 3-hex and dominate dev-chat false-positive volume. Negative
-// lookbehind avoids URL fragments (`/#abc`) and double-hash; `\b`
-// after the hex run avoids matching prefixes of longer tokens.
-const HEX_COLOR_RE =
-  /(?<![\w#/])#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4})\b/g
+// Matches color literals we want to swatch:
+//   - #RRGGBB and #RRGGBBAA hex. 3-hex (#fff) and 4-hex (#ffff) are
+//     omitted on purpose — they collide with GitHub PR / issue refs
+//     like #158, #1234 which dominate dev-chat false-positive volume.
+//   - rgb() / rgba() CSS functions, modern and legacy syntax
+//     (commas, spaces, slash-alpha, percentages). The character class
+//     is loose-but-bounded — the browser's CSS parser does the real
+//     validation when we set the inline background-color, and the
+//     class excludes injection vectors (no quotes, semicolons, etc.).
+// Negative lookbehind on the hex branch avoids URL fragments
+// (`/#abc`) and double-hash; `\b` before `rgb` avoids `srgb(`.
+const COLOR_RE =
+  /(?<![\w#/])#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6})\b|\brgba?\(\s*[\d.,%\s/]+\s*\)/gi
 
 type HastNode = {
   type: string
@@ -73,7 +79,7 @@ function rehypeColorHex() {
     for (const child of node.children) {
       const childInPre = inPre || child.tagName === 'pre'
       if (child.type === 'text' && !inPre && typeof child.value === 'string') {
-        const split = splitHexText(child.value)
+        const split = splitColorText(child.value)
         if (split) {
           out.push(...split)
           continue
@@ -85,31 +91,31 @@ function rehypeColorHex() {
     }
     node.children = out
   }
-  function splitHexText(text: string): HastNode[] | null {
-    HEX_COLOR_RE.lastIndex = 0
-    if (!HEX_COLOR_RE.test(text)) return null
-    HEX_COLOR_RE.lastIndex = 0
+  function splitColorText(text: string): HastNode[] | null {
+    COLOR_RE.lastIndex = 0
+    if (!COLOR_RE.test(text)) return null
+    COLOR_RE.lastIndex = 0
     const parts: HastNode[] = []
     let last = 0
     let m: RegExpExecArray | null
-    while ((m = HEX_COLOR_RE.exec(text))) {
-      const hex = m[0]
+    while ((m = COLOR_RE.exec(text))) {
+      const color = m[0]
       if (m.index > last) {
         parts.push({ type: 'text', value: text.slice(last, m.index) })
       }
-      parts.push({ type: 'text', value: hex })
+      parts.push({ type: 'text', value: color })
       parts.push({
         type: 'element',
         tagName: 'span',
         properties: {
           className: ['hex-color-swatch'],
-          style: `background-color: ${hex}`,
-          title: hex,
+          style: `background-color: ${color}`,
+          title: color,
           ariaHidden: 'true'
         },
         children: []
       })
-      last = m.index + hex.length
+      last = m.index + color.length
     }
     if (last < text.length) {
       parts.push({ type: 'text', value: text.slice(last) })
