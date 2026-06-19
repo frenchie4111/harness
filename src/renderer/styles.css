@@ -284,6 +284,12 @@
   height: 2rem;
 }
 
+/* Tab whose contents haven't been viewed yet (e.g. a background shell
+   spawned via the MCP create_shell with background:true, until selected). */
+@utility tab-unviewed {
+  font-style: italic;
+}
+
 @layer base {
   * {
     margin: 0;

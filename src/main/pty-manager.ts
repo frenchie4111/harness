@@ -92,6 +92,15 @@ export class PtyManager {
   private historyDirty = new Set<string>()
   private historyFlushTimer: NodeJS.Timeout | null = null
   private perfMonitor: PerfMonitor | null = null
+  private exitListeners = new Set<(id: string, exitCode: number) => void>()
+
+  /** Subscribe to PTY exits with their exit code. Used by the shell
+   * auto-close monitor, which needs the code (the store's terminals/removed
+   * event carries only the id). Returns an unsubscribe fn. */
+  addExitListener(fn: (id: string, exitCode: number) => void): () => void {
+    this.exitListeners.add(fn)
+    return () => this.exitListeners.delete(fn)
+  }
 
   /** Wire the authoritative store after it's constructed. PTY status,
    * shell activity, and cleanup events dispatch through it. */
@@ -225,6 +234,13 @@ export class PtyManager {
       this.sendSignal?.('terminal:exit', id, exitCode)
       this.ptys.delete(id)
       cleanupTerminalLog(id)
+      for (const fn of this.exitListeners) {
+        try {
+          fn(id, exitCode)
+        } catch {
+          // a listener throwing must not abort the others' cleanup
+        }
+      }
     })
 
     this.ptys.set(id, instance)
