@@ -44,11 +44,13 @@ import type { JsonClaudeChatEntry } from '../../shared/state/json-claude'
 const REMARK_PLUGINS = [remarkGfm]
 const REHYPE_PLUGINS = [rehypeHighlight, rehypeColorHex]
 
-// #RGB / #RGBA / #RRGGBB / #RRGGBBAA. Negative lookbehind avoids URL
-// fragments (`/#abc`) and double-hash; `\b` after the hex run avoids
-// matching prefixes of longer alphanumeric tokens.
+// #RGBA / #RRGGBB / #RRGGBBAA. The 3-hex shorthand (#fff) is omitted
+// on purpose — PR / issue refs like #158, #165, #170 are all valid
+// 3-hex and dominate dev-chat false-positive volume. Negative
+// lookbehind avoids URL fragments (`/#abc`) and double-hash; `\b`
+// after the hex run avoids matching prefixes of longer tokens.
 const HEX_COLOR_RE =
-  /(?<![\w#/])#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})\b/g
+  /(?<![\w#/])#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4})\b/g
 
 type HastNode = {
   type: string
