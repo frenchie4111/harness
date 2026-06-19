@@ -30,12 +30,29 @@ vi.mock('../hooks', () => ({
 
 import { homedir } from 'os'
 import { join } from 'path'
-import { hooksInstalled, installHooks, hookEvents, uninstallHooks } from './codex'
+import { buildSpawnArgs, hooksInstalled, installHooks, hookEvents, uninstallHooks } from './codex'
 
 const HOOKS_PATH = join(homedir(), '.codex', 'hooks.json')
 
 beforeEach(() => {
   fsState.files.clear()
+})
+
+describe('codex buildSpawnArgs', () => {
+  const base = { command: 'codex', cwd: '/tmp/test' }
+
+  it('blank: no resume/fork when the session id has no recorded file', () => {
+    // readdirSync is mocked to [], so sessionFileExists is false.
+    const result = buildSpawnArgs({ ...base, sessionId: 'fresh-id' })
+    expect(result).not.toContain('resume')
+    expect(result).not.toContain('fork')
+  })
+
+  it('fork: `codex fork <src>`, ignoring any sessionId', () => {
+    const result = buildSpawnArgs({ ...base, sessionId: 'tab-id', forkFromSessionId: 'src-id' })
+    expect(result).toContain('fork src-id')
+    expect(result).not.toContain('resume')
+  })
 })
 
 describe('codex hook install / dedup', () => {

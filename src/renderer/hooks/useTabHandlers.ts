@@ -1,7 +1,6 @@
 import { useCallback } from 'react'
 import type { AgentKind, TerminalTab, PaneNode } from '../types'
 import { getLeaves, findLeaf, findLeafByTabId } from '../../shared/state/terminals'
-import { agentDisplayName, getAgentInfo } from '../../shared/agent-registry'
 import { focusTerminalById, markTerminalClosing } from '../components/XTerminal'
 import { useBackend } from '../backend'
 
@@ -29,17 +28,26 @@ export function useTabHandlers({
   setActiveWorktreeId
 }: UseTabHandlersArgs) {
   const backend = useBackend()
-  const appendTabToPane = useCallback(
-    (worktreePath: string, tab: TerminalTab, paneId?: string) => {
+  // Resolve the pane a new tab should land in (explicit → active → first)
+  // and focus it. Returns the id so callers can pass it to the relevant
+  // add-tab IPC.
+  const targetPaneForNewTab = useCallback(
+    (worktreePath: string, paneId?: string): string | undefined => {
       const tree = panes[worktreePath]
       const leaves = tree ? getLeaves(tree) : []
       const targetId = paneId || activePaneId[worktreePath] || leaves[0]?.id
-      void backend.panesAddTab(worktreePath, tab, targetId)
       if (targetId) {
         setActivePaneId((prev) => ({ ...prev, [worktreePath]: targetId }))
       }
+      return targetId
     },
     [activePaneId, panes, setActivePaneId]
+  )
+  const appendTabToPane = useCallback(
+    (worktreePath: string, tab: TerminalTab, paneId?: string) => {
+      void backend.panesAddTab(worktreePath, tab, targetPaneForNewTab(worktreePath, paneId))
+    },
+    [backend, targetPaneForNewTab]
   )
 
   const handleAddTerminalTab = useCallback(
@@ -52,16 +60,13 @@ export function useTabHandlers({
 
   const handleAddAgentTab = useCallback(
     (worktreePath: string, agentKind: AgentKind = 'claude', paneId?: string) => {
-      const label = agentDisplayName(agentKind)
-      const info = getAgentInfo(agentKind)
-      const id = `${makeTerminalId('agent', worktreePath)}-${Date.now()}`
-      appendTabToPane(
-        worktreePath,
-        { id, type: 'agent', agentKind, label, sessionId: info.assignsSessionId ? crypto.randomUUID() : undefined },
-        paneId
-      )
+      // Agent/chat tab creation runs in main so the implicit fork/resume/blank
+      // decision (scoped to the agent kind) can read disk + pane state the
+      // renderer doesn't own (see resolveTabBirth). Main mints the tab id and
+      // dispatches the panes addTab; here we just resolve the target pane.
+      void backend.addAgentTab(worktreePath, agentKind, targetPaneForNewTab(worktreePath, paneId))
     },
-    [appendTabToPane]
+    [backend, targetPaneForNewTab]
   )
 
   const handleAddBrowserTab = useCallback(
@@ -83,22 +88,10 @@ export function useTabHandlers({
 
   const handleAddJsonClaudeTab = useCallback(
     (worktreePath: string, paneId?: string) => {
-      // Chat (json-claude) tabs use a UUID for both tab id and session id
-      // — the manager passes it to `claude --session-id` directly so the
-      // session jsonl reuses the same identifier and survives a reload.
-      const sessionId = crypto.randomUUID()
-      appendTabToPane(
-        worktreePath,
-        {
-          id: sessionId,
-          type: 'json-claude',
-          label: 'Chat',
-          sessionId
-        },
-        paneId
-      )
+      // Same main-owned birth decision as handleAddAgentTab, for chat tabs.
+      void backend.addChatTab(worktreePath, targetPaneForNewTab(worktreePath, paneId))
     },
-    [appendTabToPane]
+    [backend, targetPaneForNewTab]
   )
 
   const handleCloseTab = useCallback(

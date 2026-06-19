@@ -62,6 +62,30 @@ describe('buildSpawnArgs', () => {
     expect(result).toContain('--append-system-prompt')
     expect(result).toContain("'\\''")
   })
+
+  const sessionPath = (cwd: string, id: string): string =>
+    join(homedir(), '.claude', 'projects', cwd.replace(/[^a-zA-Z0-9]/g, '-'), `${id}.jsonl`)
+
+  it('blank: --session-id when no transcript exists for the session id', () => {
+    const result = buildSpawnArgs({ ...base, sessionId: 'fresh-id' })
+    expect(result).toContain('--session-id fresh-id')
+    expect(result).not.toContain('--resume')
+    expect(result).not.toContain('--fork-session')
+  })
+
+  it('resume: --resume when a transcript exists for the session id', () => {
+    fsState.files.set(sessionPath(base.cwd, 'old-id'), '{}')
+    const result = buildSpawnArgs({ ...base, sessionId: 'old-id' })
+    expect(result).toContain('--resume old-id')
+    expect(result).not.toContain('--session-id')
+  })
+
+  it('fork: --resume <src> --fork-session, never --session-id (even if sessionId set)', () => {
+    const result = buildSpawnArgs({ ...base, sessionId: 'tab-id', forkFromSessionId: 'src-id' })
+    expect(result).toContain('--resume src-id')
+    expect(result).toContain('--fork-session')
+    expect(result).not.toContain('--session-id')
+  })
 })
 
 describe('hook install / dedup', () => {

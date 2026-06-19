@@ -62,6 +62,16 @@ interface PanesFSMOptions {
    *  fresh subprocess. Idempotent: a no-op if the session is already
    *  running. */
   startJsonClaude?: (sessionId: string, worktreePath: string) => void
+  /** When the first agent tab (chat or xterm) opens into a worktree
+   *  (ensureInitialized), return the on-disk session id to resume for the
+   *  given agent kind — the newest prior session in this worktree — or
+   *  undefined to start fresh. Lets a reopened worktree pick up its last
+   *  conversation instead of a blank one. Bypassed when the launch carries
+   *  an initialPrompt (a deliberate new task wants a fresh session). */
+  getResumeSessionForNewSession?: (
+    worktreePath: string,
+    agentKind: AgentKind
+  ) => string | undefined
 }
 
 function newPaneId(): string {
@@ -73,10 +83,18 @@ function newSplitId(): string {
 }
 
 function stripTransientTabFields(tab: TerminalTab): TerminalTab {
-  if (!tab.initialPrompt && !tab.teleportSessionId) return tab
-  const { initialPrompt: _ip, teleportSessionId: _ts, ...rest } = tab
+  if (!tab.initialPrompt && !tab.teleportSessionId && !tab.forkFromSessionId) {
+    return tab
+  }
+  const {
+    initialPrompt: _ip,
+    teleportSessionId: _ts,
+    forkFromSessionId: _ff,
+    ...rest
+  } = tab
   void _ip
   void _ts
+  void _ff
   return rest
 }
 
@@ -239,17 +257,26 @@ export class PanesFSM {
       !opts?.teleportSessionId
     let agentTab: TerminalTab
     let jsonClaudeKickoff: { sessionId: string; initialPrompt?: string; model?: string } | null = null
+    // Resume the worktree's last known session when opening a prompt-less
+    // tab; a prompted launch starts fresh. The tab id stays the stable
+    // slice/instance key — only sessionId (the --resume target) points at
+    // the prior session. The renderer's mount-time start (chat) /
+    // buildSpawnArgs (xterm) --resumes it.
+    const resumeId =
+      opts?.initialPrompt || opts?.teleportSessionId
+        ? undefined
+        : this.opts.getResumeSessionForNewSession?.(wtPath, agentKind)
     if (wantsJson) {
-      const sessionId = crypto.randomUUID()
+      const tabId = crypto.randomUUID()
       agentTab = {
-        id: sessionId,
+        id: tabId,
         type: 'json-claude',
         label: 'Chat',
-        sessionId,
+        sessionId: resumeId ?? tabId,
         mode: 'awake',
         model
       }
-      jsonClaudeKickoff = { sessionId, initialPrompt: opts?.initialPrompt, model }
+      jsonClaudeKickoff = { sessionId: tabId, initialPrompt: opts?.initialPrompt, model }
     } else {
       const agentTabId = `agent-${wtPath.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}`
       agentTab = {
@@ -257,7 +284,8 @@ export class PanesFSM {
         type: 'agent',
         agentKind,
         label: agentInfo.displayName,
-        sessionId: agentInfo.assignsSessionId ? crypto.randomUUID() : undefined,
+        sessionId:
+          resumeId ?? (agentInfo.assignsSessionId ? crypto.randomUUID() : undefined),
         initialPrompt: opts?.teleportSessionId ? undefined : opts?.initialPrompt,
         teleportSessionId: opts?.teleportSessionId,
         model
