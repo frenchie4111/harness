@@ -407,6 +407,85 @@ describe('JsonClaudeManager', () => {
     expect(errs[0].errorMessage).toContain('429')
   })
 
+  // Regression for the auth-card-no-longer-firing bug introduced by
+  // a073810: that commit added an `is_error` gate to the auth detector
+  // (correct) but also stripped the `result`/`message` fallbacks out of
+  // pickErrorString. Real auth failures often arrive as
+  // {type:'result', is_error:true, result:'Failed to authenticate ...'}
+  // — with the strip, the detector returned null and no card surfaced.
+  // The fix re-broadens to result/message inside the post-is_error
+  // branch (the gate still defends against the original false-positive).
+  describe('auth-failure detection from result events', () => {
+    function feedResult(payload: Record<string, unknown>): Array<{
+      kind?: string
+      errorKind?: string
+      errorMessage?: string
+    }> {
+      const store = new Store()
+      const mgr = makeManager(store)
+      const sessionId = 'sess-auth'
+      const cwd = '/tmp/wt'
+      store.dispatch({
+        type: 'jsonClaude/sessionStarted',
+        payload: { sessionId, worktreePath: cwd }
+      })
+      mgr.create(sessionId, cwd)
+      const proc = sessionProcs()[0]
+      proc.stdout.emit(
+        'data',
+        Buffer.from(JSON.stringify({ type: 'result', ...payload }) + '\n')
+      )
+      const entries =
+        store.getSnapshot().state.jsonClaude.sessions[sessionId]?.entries ?? []
+      return entries.filter((e) => e.errorKind === 'auth-failure')
+    }
+
+    it('is_error:true with auth message in result emits the auth card', () => {
+      const cards = feedResult({
+        is_error: true,
+        result: 'Failed to authenticate. API Error: 401 Unauthorized'
+      })
+      expect(cards).toHaveLength(1)
+      expect(cards[0].kind).toBe('error')
+      expect(cards[0].errorMessage).toContain('401')
+    })
+
+    it('is_error:true with auth message in message emits the auth card', () => {
+      const cards = feedResult({
+        is_error: true,
+        message: 'Please run /login to refresh your credentials'
+      })
+      expect(cards).toHaveLength(1)
+      expect(cards[0].errorMessage).toContain('/login')
+    })
+
+    it('is_error:true with auth message in error still emits the card (strict path)', () => {
+      const cards = feedResult({
+        is_error: true,
+        error: '401 unauthorized'
+      })
+      expect(cards).toHaveLength(1)
+      expect(cards[0].errorMessage).toContain('401')
+    })
+
+    it('is_error:false with auth-keyword content in result does NOT emit a card', () => {
+      const cards = feedResult({
+        is_error: false,
+        result:
+          'Sure, here is how to configure authentication for your API: ...'
+      })
+      expect(cards).toHaveLength(0)
+    })
+
+    it('is_error:true but message has no auth keyword does NOT emit a card', () => {
+      const cards = feedResult({
+        is_error: true,
+        result: 'Build succeeded'
+      })
+      expect(cards).toHaveLength(0)
+    })
+  })
+
   it("new proc's own exit event still updates state (guard doesn't block legitimate exits)", () => {
     const store = new Store()
     const mgr = makeManager(store)
