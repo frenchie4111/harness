@@ -14,6 +14,7 @@ import { initialState } from '../shared/state'
 import { WebSocketClientTransport } from '../shared/transport/transport-websocket'
 
 interface StubFrameHandler {
+  onSnapReq?: (id: string, ws: WSType) => void
   onReq?: (id: string, name: string, args: unknown[], ws: WSType) => void
   onSend?: (name: string, args: unknown[]) => void
   onConnection?: (ws: WSType) => void
@@ -56,6 +57,10 @@ function startStubServer(
             args?: unknown[]
           }
           if (frame.t === 'snapreq' && frame.id) {
+            if (handlers.onSnapReq) {
+              handlers.onSnapReq(frame.id, ws as unknown as WSType)
+              return
+            }
             const snap: StateSnapshot = { state: initialState, seq: 0 }
             ws.send(JSON.stringify({ t: 'snapres', id: frame.id, ok: true, snapshot: snap }))
             return
@@ -84,7 +89,9 @@ describe('WebSocketClientTransport', () => {
     const { port, server } = await startStubServer(token, {
       onSend: onSendSpy,
       onReq: (id, name, args, ws) => {
-        if (name === 'double') {
+        if (name === 'transport:getClientId') {
+          ws.send(JSON.stringify({ t: 'res', id, ok: true, value: 'client-1' }))
+        } else if (name === 'double') {
           const n = (args[0] as number) * 2
           ws.send(JSON.stringify({ t: 'res', id, ok: true, value: n }))
         } else {
@@ -208,6 +215,68 @@ describe('WebSocketClientTransport', () => {
       expect(seenIds.length).toBeGreaterThanOrEqual(2)
       expect(seenIds[1]).toBe('client-2')
       expect(seenIds[1]).not.toBe(seenIds[0])
+    } finally {
+      client.close()
+      await new Promise<void>((r) => server.close(() => r()))
+    }
+  })
+
+  it('applies the reconnect snapshot before notifying reconnect subscribers', async () => {
+    const token = 'test-token'
+    let nextId = 1
+    let nextSeq = 1
+    const idsByWs = new WeakMap<WSType, string>()
+    let serverSocket: WSType | null = null
+    const { port, server } = await startStubServer(token, {
+      onSnapReq: (id, ws) => {
+        const seq = nextSeq++
+        setTimeout(() => {
+          const snap: StateSnapshot = { state: initialState, seq }
+          ws.send(JSON.stringify({ t: 'snapres', id, ok: true, snapshot: snap }))
+        }, 50)
+      },
+      onReq: (id, name, _args, ws) => {
+        if (name === 'transport:getClientId') {
+          let assigned = idsByWs.get(ws)
+          if (!assigned) {
+            assigned = `client-${nextId++}`
+            idsByWs.set(ws, assigned)
+          }
+          ws.send(JSON.stringify({ t: 'res', id, ok: true, value: assigned }))
+          return
+        }
+        ws.send(JSON.stringify({ t: 'res', id, ok: false, error: 'unknown' }))
+      },
+      onConnection: (ws) => {
+        serverSocket = ws
+      }
+    })
+
+    const order: string[] = []
+    const client = new WebSocketClientTransport({
+      url: `ws://127.0.0.1:${port}`,
+      token,
+      initialBackoffMs: 25,
+      onSnapshot: (snap) => {
+        order.push(`snapshot:${snap.seq}`)
+      },
+      WebSocketCtor: WSClient as unknown as typeof WebSocket
+    })
+    client.onReconnect((id) => {
+      order.push(`reconnect:${id}`)
+    })
+
+    try {
+      await client.connect()
+      await new Promise((r) => setTimeout(r, 100))
+      expect(order).toEqual(['snapshot:1', 'reconnect:client-1'])
+
+      order.length = 0
+      serverSocket!.close()
+      serverSocket = null
+      await new Promise((r) => setTimeout(r, 200))
+
+      expect(order).toEqual(['snapshot:2', 'reconnect:client-2'])
     } finally {
       client.close()
       await new Promise<void>((r) => server.close(() => r()))
