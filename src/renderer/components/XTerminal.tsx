@@ -425,6 +425,14 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
       cursorBlink: true,
       cursorStyle: 'bar',
       allowProposedApi: true,
+      // Hold ⌥ (Option) while dragging to force a local xterm selection even
+      // when the app owns the mouse. Agents (Claude/Codex) enable mouse
+      // tracking, and a remote session wrapped in tmux with `mouse on` grabs
+      // the drag for its own copy buffer — in both cases a plain drag never
+      // becomes a browser selection, so ⌘C has nothing to copy. With this,
+      // ⌥-drag selects locally and ⌘C copies to the system clipboard, while
+      // a plain drag still reaches the app. Mirrors iTerm2's Option-drag.
+      macOptionClickForcesSelection: true,
       linkHandler: {
         activate: (event, uri) => activateUri(event, uri),
         hover: (_event, uri) => setHoveredLink(uri),
