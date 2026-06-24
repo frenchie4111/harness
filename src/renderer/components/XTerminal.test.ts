@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isMouseButtonReport } from './XTerminal'
+import { canFitContainer, isMouseButtonReport } from './XTerminal'
 
 // SGR mouse report shape: ESC [ < btn ; col ; row (M=press, m=release).
 // Button-flag bits: 0x20 = motion, 0x40 = wheel. A plain button click has
@@ -53,5 +53,40 @@ describe('isMouseButtonReport', () => {
 
   it('rejects the legacy X10 mouse encoding (only SGR is handled)', () => {
     expect(isMouseButtonReport('\x1b[M !!')).toBe(false)
+  })
+})
+
+// Gate for spawning a PTY and (critically) for replaying saved scrollback.
+// A hidden tab's container measures 0×0, and a tab mid-switch can briefly
+// report a near-zero box; replaying cursor-addressed scrollback into the
+// tiny grid xterm falls back to permanently mangles an alt-screen TUI
+// (alt buffers never reflow). Only fit/replay once the box is real.
+describe('canFitContainer', () => {
+  it('accepts a real, full-size container', () => {
+    expect(canFitContainer({ width: 2154, height: 1370 })).toBe(true)
+  })
+
+  it('rejects a hidden (display:none) container measuring 0×0', () => {
+    expect(canFitContainer({ width: 0, height: 0 })).toBe(false)
+  })
+
+  it('rejects a near-zero transient box mid-switch', () => {
+    expect(canFitContainer({ width: 4, height: 2 })).toBe(false)
+  })
+
+  it('rejects when only one dimension has collapsed', () => {
+    expect(canFitContainer({ width: 2154, height: 0 })).toBe(false)
+    expect(canFitContainer({ width: 0, height: 1370 })).toBe(false)
+  })
+
+  it('accepts exactly at the minimum threshold and rejects just below', () => {
+    expect(canFitContainer({ width: 20, height: 20 })).toBe(true)
+    expect(canFitContainer({ width: 19, height: 20 })).toBe(false)
+    expect(canFitContainer({ width: 20, height: 19 })).toBe(false)
+  })
+
+  it('rejects a missing rect (getBoundingClientRect on a detached ref)', () => {
+    expect(canFitContainer(null)).toBe(false)
+    expect(canFitContainer(undefined)).toBe(false)
   })
 })

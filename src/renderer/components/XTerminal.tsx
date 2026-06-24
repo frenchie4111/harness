@@ -85,6 +85,22 @@ export function isMouseButtonReport(data: string): boolean {
   return (button & 0x20) === 0 && (button & 0x40) === 0
 }
 
+// A terminal can only be measured (and thus fitted) once its container has
+// real layout. While the tab is hidden (display:none → 0×0, or a transient
+// near-zero box mid-switch) FitAddon can't propose dimensions and xterm
+// falls back to a tiny grid. That's fine for spawning — but replaying saved
+// scrollback into such a grid is destructive: the dump is full of
+// cursor-addressed escapes, every one lands at the wrong column, and
+// alt-screen buffers (Claude/Codex) never reflow, so a later resize can't
+// repair it. We gate both spawn and replay on this so neither happens until
+// the container is big enough to fit against.
+const MIN_FIT_PX = 20
+export function canFitContainer(
+  rect: { width: number; height: number } | null | undefined
+): boolean {
+  return !!rect && rect.width >= MIN_FIT_PX && rect.height >= MIN_FIT_PX
+}
+
 export function focusTerminalById(id: string): void {
   terminalRegistry.get(id)?.focus()
 }
@@ -621,7 +637,7 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
       // of output before the first resize IPC would paint at the wrong
       // column, producing a visible "flash" when the worktree is opened.
       const rect = containerRef.current?.getBoundingClientRect()
-      if (!rect || rect.width < 20 || rect.height < 20) {
+      if (!canFitContainer(rect)) {
         pendingSpawnRef.current = () => { void spawnPty() }
         return
       }
@@ -702,34 +718,62 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
       }
       // A non-empty history means main already has a live PTY for this id
       // — the agent isn't "starting," we're attaching to a running one.
-      // Clear the loading overlay so the restored scrollback is visible
-      // without waiting for new bytes (which may never come if the agent
-      // is idle at its prompt).
-      setLoading(false)
-      // Replay raw scrollback. Wait for xterm to finish parsing before
-      // attaching onData, otherwise any response sequences xterm generates
-      // mid-parse (e.g. focus reports from CSI ?1004h in the saved history)
-      // get sent to the freshly spawned PTY — which is how a stray "O" was
-      // leaking into Claude on session resume (focus-out = ESC [ O).
-      terminal.write(sanitizeTerminalData(history), () => {
+      //
+      // The scrollback must be replayed into a grid that's the size the PTY
+      // was when it produced those bytes. If we write it while the tab is
+      // hidden (FitAddon can't measure → xterm falls back to a tiny grid),
+      // every cursor-addressed escape in the dump lands at the wrong column
+      // and an alt-screen TUI (Claude/Codex) is mangled for good — alt
+      // buffers never reflow, so the later visible-fit can't repair it, and
+      // only a manual window resize (a fresh SIGWINCH that makes the agent
+      // repaint) recovered it. So defer the whole replay until the tab is
+      // visible and fittable, exactly like spawnPty defers: the visible
+      // effect's doFit fits the grid and then runs this pending fn.
+      const replayThenSpawn = (): void => {
         if (disposed) return
-        // Reset any reporting modes the restored session may have left on, so
-        // the fresh process starts in a clean state.
-        const RESET_MODES =
-          '\x1b[?1004l' + // focus reporting
-          '\x1b[?1000l' + // mouse click tracking
-          '\x1b[?1002l' + // mouse cell tracking
-          '\x1b[?1003l' + // mouse all tracking
-          '\x1b[?1006l' + // SGR mouse encoding
-          '\x1b[?2004l'   // bracketed paste
-        const restoreTrailer = hideRestoreNotice
-          ? RESET_MODES
-          : RESET_MODES + '\r\n\x1b[2m── session restored ──\x1b[0m\r\n'
-        terminal.write(restoreTrailer, () => {
+        const rect = containerRef.current?.getBoundingClientRect()
+        if (!canFitContainer(rect)) {
+          pendingSpawnRef.current = replayThenSpawn
+          return
+        }
+        pendingSpawnRef.current = null
+        // Fit so the grid matches the visible width before a byte is parsed.
+        try {
+          fitAddon.fit()
+        } catch {
+          // not measurable yet — fall back to the deferred path next tick
+          pendingSpawnRef.current = replayThenSpawn
+          return
+        }
+        // Clear the loading overlay now that the restored scrollback is about
+        // to paint (new bytes may never come if the agent is idle).
+        setLoading(false)
+        // Replay raw scrollback. Wait for xterm to finish parsing before
+        // attaching onData, otherwise any response sequences xterm generates
+        // mid-parse (e.g. focus reports from CSI ?1004h in the saved history)
+        // get sent to the freshly spawned PTY — which is how a stray "O" was
+        // leaking into Claude on session resume (focus-out = ESC [ O).
+        terminal.write(sanitizeTerminalData(history), () => {
           if (disposed) return
-          spawnPty()
+          // Reset any reporting modes the restored session may have left on,
+          // so the fresh process starts in a clean state.
+          const RESET_MODES =
+            '\x1b[?1004l' + // focus reporting
+            '\x1b[?1000l' + // mouse click tracking
+            '\x1b[?1002l' + // mouse cell tracking
+            '\x1b[?1003l' + // mouse all tracking
+            '\x1b[?1006l' + // SGR mouse encoding
+            '\x1b[?2004l'   // bracketed paste
+          const restoreTrailer = hideRestoreNotice
+            ? RESET_MODES
+            : RESET_MODES + '\r\n\x1b[2m── session restored ──\x1b[0m\r\n'
+          terminal.write(restoreTrailer, () => {
+            if (disposed) return
+            spawnPty()
+          })
         })
-      })
+      }
+      replayThenSpawn()
     }).catch(() => {
       spawnPty()
     })
