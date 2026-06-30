@@ -25,6 +25,16 @@ export interface PRSummary {
   /** Overall check rollup. Undefined when we couldn't determine
    *  (no rollup data on the head commit yet). */
   checksOverall?: 'success' | 'failure' | 'pending' | 'none'
+  /** Open/closed/merged. Only populated by the single-PR lookup
+   *  (getOpenPRByNumber); list/poller producers leave it undefined. */
+  state?: 'open' | 'closed' | 'merged'
 }
 
 export type PRMetadata = PRSummary
+
+/** Result of looking up a single PR by number for the add-worktree flow.
+ *  Discriminated so the UI can distinguish a missing PR / missing token
+ *  from a generic failure. Mirrors MergePRResult's shape. */
+export type PRLookupResult =
+  | { ok: true; pr: PRSummary }
+  | { ok: false; reason: 'not-found' | 'no-token' | 'error'; message?: string }

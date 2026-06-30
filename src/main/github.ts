@@ -4,9 +4,9 @@ import { log, formatErr } from './debug'
 import { getCachedToken, invalidateTokenCache, resolveGitHubToken } from './github-auth'
 import { trackedFetch } from './github-recorder'
 import type { CheckStatus, PRReview, PRStatus } from '../shared/state/prs'
-import type { PRSummary, PRMetadata } from '../shared/github-types'
+import type { PRSummary, PRMetadata, PRLookupResult } from '../shared/github-types'
 
-export type { CheckStatus, PRReview, PRStatus, PRSummary, PRMetadata }
+export type { CheckStatus, PRReview, PRStatus, PRSummary, PRMetadata, PRLookupResult }
 
 const execFileAsync = promisify(execFile)
 
@@ -1170,6 +1170,41 @@ export async function getPRMetadata(
   } catch (err) {
     log('github', `getPRMetadata failed for ${owner}/${repo}#${prNumber}`, formatErr(err))
     return null
+  }
+}
+
+/** Look up a single PR by number for the add-worktree flow. Resolves against
+ *  the UPSTREAM repo (same as listOpenPRs) so a typed number matches the PRs
+ *  the list shows even on forks. Returns a discriminated result so the UI can
+ *  tell a missing PR / missing token apart from a generic failure. Unlike the
+ *  open-PR list, this allows closed/merged PRs (state is populated for the
+ *  caller to show a notice). */
+export async function getOpenPRByNumber(
+  repoRoot: string,
+  prNumber: number
+): Promise<PRLookupResult> {
+  const ctx = await getRepoContext(repoRoot)
+  if (!ctx) return { ok: false, reason: 'error', message: 'No GitHub remote found' }
+  const token = getCachedToken()
+  if (!token) return { ok: false, reason: 'no-token' }
+  const { owner, repo } = ctx.upstream
+  try {
+    const res = await doFetch(
+      `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}`,
+      token
+    )
+    if (res.status === 404) return { ok: false, reason: 'not-found' }
+    if (!res.ok) {
+      return { ok: false, reason: 'error', message: `${res.status} ${res.statusText}` }
+    }
+    const pr = (await res.json()) as ApiPRListItem & { merged?: boolean }
+    if (!pr || typeof pr.number !== 'number') return { ok: false, reason: 'not-found' }
+    const summary = toPRSummary(pr)
+    summary.state = (pr.merged ?? pr.merged_at != null) ? 'merged' : pr.state
+    return { ok: true, pr: summary }
+  } catch (err) {
+    log('github', `getOpenPRByNumber failed for ${owner}/${repo}#${prNumber}`, formatErr(err))
+    return { ok: false, reason: 'error', message: formatErr(err) }
   }
 }
 

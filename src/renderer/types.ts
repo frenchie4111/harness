@@ -129,8 +129,8 @@ export type { PerfMetrics, PerfSample }
 import type { CheckStatus, PRReview, PRStatus } from '../shared/state/prs'
 export type { CheckStatus, PRReview, PRStatus }
 
-import type { PRSummary, PRMetadata } from '../shared/github-types'
-export type { PRSummary, PRMetadata }
+import type { PRSummary, PRMetadata, PRLookupResult } from '../shared/github-types'
+export type { PRSummary, PRMetadata, PRLookupResult }
 
 import type { BrowserState, BrowserTabState } from '../shared/state/browser'
 export type { BrowserState, BrowserTabState }
@@ -259,6 +259,7 @@ export interface ElectronAPI {
   dismissAnnouncement(id: string): Promise<boolean>
   muteAnnouncements(muted: boolean): Promise<boolean>
   listRepoPRs(repoRoot: string): Promise<PRSummary[] | null>
+  getPRByNumber(repoRoot: string, prNumber: number): Promise<PRLookupResult>
   mergePR(
     worktreePath: string,
     method: GitHubMergeMethod
