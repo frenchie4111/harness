@@ -23,7 +23,8 @@ vi.mock('child_process', async () => {
   return { execFile }
 })
 
-import { getRepoContext, fetchPRStatusesForRepo, mergePR } from './github'
+import { getRepoContext, fetchPRStatusesForRepo, mergePR, getOpenPRByNumber } from './github'
+import { getCachedToken } from './github-auth'
 
 function mockResponse(status: number, body: unknown): Response {
   return {
@@ -561,5 +562,121 @@ describe('fetchPRStatusesForRepo matcher', () => {
       [{ worktreePath: '/wt', branch: 'feature', headSha: sha }]
     )
     expect(result.get('/wt')?.number).toBe(42)
+  })
+})
+
+describe('getOpenPRByNumber', () => {
+  const fetchSpy = vi.spyOn(globalThis, 'fetch')
+
+  // forkParentCache is module-level and persists across tests, so each test
+  // uses a unique origin owner/repo to avoid cache collisions. Every call
+  // first hits getRepoContext (fork detection) and then the pulls endpoint,
+  // so mock two responses in sequence.
+  beforeEach(() => {
+    fetchSpy.mockReset()
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(getCachedToken).mockReturnValue('fake-token')
+  })
+
+  function pullBody(over: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      number: 182,
+      title: 'Allow adding worktree from PR by number',
+      state: 'open',
+      draft: false,
+      merged: false,
+      merged_at: null,
+      html_url: 'https://github.com/o/r/pull/182',
+      user: { login: 'ghale', avatar_url: 'https://avatars/ghale' },
+      base: { ref: 'main', repo: { full_name: 'o/r' } },
+      head: { ref: 'feature/x', sha: 'abc123', repo: { full_name: 'o/r' } },
+      updated_at: '2026-06-30T00:00:00Z',
+      ...over
+    }
+  }
+
+  function pullsCall(): [string, RequestInit] | undefined {
+    return fetchSpy.mock.calls.find((c) => String(c[0]).includes('/pulls/')) as
+      | [string, RequestInit]
+      | undefined
+  }
+
+  it('returns ok with state open and targets origin/repo for a non-fork', async () => {
+    mocks.originUrl = 'git@github.com:o1/r1.git\n'
+    fetchSpy.mockResolvedValueOnce(mockResponse(200, { fork: false }))
+    fetchSpy.mockResolvedValueOnce(mockResponse(200, pullBody({ number: 182 })))
+    const res = await getOpenPRByNumber('/wt', 182)
+    expect(res.ok).toBe(true)
+    if (res.ok) {
+      expect(res.pr.number).toBe(182)
+      expect(res.pr.state).toBe('open')
+      expect(res.pr.headBranch).toBe('feature/x')
+    }
+    const call = pullsCall()
+    expect(call?.[0]).toBe('https://api.github.com/repos/o1/r1/pulls/182')
+    expect((call?.[1].headers as Record<string, string>).Authorization).toBe('Bearer fake-token')
+  })
+
+  it('resolves against upstream when origin is a fork', async () => {
+    mocks.originUrl = 'git@github.com:forkerA/proj.git\n'
+    fetchSpy.mockResolvedValueOnce(
+      mockResponse(200, { fork: true, parent: { owner: { login: 'upstreamA' }, name: 'proj' } })
+    )
+    fetchSpy.mockResolvedValueOnce(mockResponse(200, pullBody({ number: 5 })))
+    const res = await getOpenPRByNumber('/wt', 5)
+    expect(res.ok).toBe(true)
+    expect(pullsCall()?.[0]).toBe('https://api.github.com/repos/upstreamA/proj/pulls/5')
+  })
+
+  it('reports state closed for a closed-but-not-merged PR', async () => {
+    mocks.originUrl = 'git@github.com:o2/r2.git\n'
+    fetchSpy.mockResolvedValueOnce(mockResponse(200, { fork: false }))
+    fetchSpy.mockResolvedValueOnce(
+      mockResponse(200, pullBody({ state: 'closed', merged: false, merged_at: null }))
+    )
+    const res = await getOpenPRByNumber('/wt', 182)
+    expect(res.ok).toBe(true)
+    if (res.ok) expect(res.pr.state).toBe('closed')
+  })
+
+  it('reports state merged for a merged PR', async () => {
+    mocks.originUrl = 'git@github.com:o3/r3.git\n'
+    fetchSpy.mockResolvedValueOnce(mockResponse(200, { fork: false }))
+    fetchSpy.mockResolvedValueOnce(
+      mockResponse(200, pullBody({ state: 'closed', merged: true, merged_at: '2026-01-01T00:00:00Z' }))
+    )
+    const res = await getOpenPRByNumber('/wt', 182)
+    expect(res.ok).toBe(true)
+    if (res.ok) expect(res.pr.state).toBe('merged')
+  })
+
+  it('returns not-found on 404', async () => {
+    mocks.originUrl = 'git@github.com:o4/r4.git\n'
+    fetchSpy.mockResolvedValueOnce(mockResponse(200, { fork: false }))
+    fetchSpy.mockResolvedValueOnce(mockResponse(404, { message: 'Not Found' }))
+    const res = await getOpenPRByNumber('/wt', 999)
+    expect(res).toEqual({ ok: false, reason: 'not-found' })
+  })
+
+  it('returns no-token without hitting the pulls endpoint', async () => {
+    mocks.originUrl = 'git@github.com:o5/r5.git\n'
+    vi.mocked(getCachedToken).mockReturnValue(null)
+    // getRepoContext still fires its fork-detection fetch before the token check.
+    fetchSpy.mockResolvedValueOnce(mockResponse(200, { fork: false }))
+    const res = await getOpenPRByNumber('/wt', 182)
+    expect(res).toEqual({ ok: false, reason: 'no-token' })
+    expect(pullsCall()).toBeUndefined()
+  })
+
+  it('returns error on a non-404 failure', async () => {
+    mocks.originUrl = 'git@github.com:o6/r6.git\n'
+    fetchSpy.mockResolvedValueOnce(mockResponse(200, { fork: false }))
+    fetchSpy.mockResolvedValueOnce(mockResponse(500, { message: 'oops' }))
+    const res = await getOpenPRByNumber('/wt', 182)
+    expect(res.ok).toBe(false)
+    if (!res.ok) expect(res.reason).toBe('error')
   })
 })

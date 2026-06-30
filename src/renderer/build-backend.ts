@@ -220,6 +220,8 @@ export function buildBackend(
     dismissAnnouncement: (id: string) => req('announcements:dismiss', id),
     muteAnnouncements: (muted: boolean) => req('announcements:mute', muted),
     listRepoPRs: (repoRoot: string) => req('prs:listOpen', repoRoot),
+    getPRByNumber: (repoRoot: string, prNumber: number) =>
+      req('prs:getByNumber', repoRoot, prNumber),
     mergePR: (worktreePath: string, method: 'merge' | 'squash' | 'rebase') =>
       req('pr:merge', worktreePath, method),
     approvePR: (worktreePath: string) => req('pr:approve', worktreePath),

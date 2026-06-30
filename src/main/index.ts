@@ -38,7 +38,7 @@ import { getWeeklyStats } from './weekly-stats'
 import type { TerminalTab, PaneNode, PaneLeaf } from '../shared/state/terminals'
 import { getLeaves, mapLeaves } from '../shared/state/terminals'
 import { listWorktrees, listBranches, continueWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getCommitMeta, getCommitChangedFiles, getCommitFileDiffSides, getCommitRangeChangedFiles, getCommitRangeFileDiffSides, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, listRecentCommitShas, readWorktreeFile, readWorktreeFileBinary, writeWorktreeFile, getFileDiffSides, getCurrentBranch, symlinkClaudeSettings, type MergeStrategy } from './worktree'
-import { listOpenPRs, testToken, starRepo, unstarRepo, isRepoStarred, mergePR, approvePR, getRepoInfo, type GitHubMergeMethod, type MergePRResult } from './github'
+import { listOpenPRs, getOpenPRByNumber, testToken, starRepo, unstarRepo, isRepoStarred, mergePR, approvePR, getRepoInfo, type GitHubMergeMethod, type MergePRResult, type PRLookupResult } from './github'
 import { AVAILABLE_EDITORS, DEFAULT_EDITOR_ID, openInEditor } from './editor'
 import { setSecret, getSecret, hasSecret, deleteSecret } from './secrets'
 import { resolveGitHubToken, getTokenSource, invalidateTokenCache, getCachedToken } from './github-auth'
@@ -1524,6 +1524,19 @@ function registerIpcHandlers(): void {
     if (!repoRoot) return null
     return listOpenPRs(repoRoot)
   })
+
+  // Used by the "Open PR" tab in New Worktree to resolve a typed PR number
+  // on demand (works even for PRs not in the fetched list). Resolves against
+  // the upstream repo like prs:listOpen.
+  transport.onRequest(
+    'prs:getByNumber',
+    async (_ctx, repoRoot: string, prNumber: number): Promise<PRLookupResult> => {
+      if (!repoRoot || !Number.isInteger(prNumber) || prNumber <= 0) {
+        return { ok: false, reason: 'error', message: 'Invalid PR number' }
+      }
+      return getOpenPRByNumber(repoRoot, prNumber)
+    }
+  )
 
   transport.onRequest(
     'pr:merge',
