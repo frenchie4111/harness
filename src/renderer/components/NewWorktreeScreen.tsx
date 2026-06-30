@@ -759,6 +759,9 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
                     </div>
                   )}
                 </div>
+                <div className="text-xs font-semibold uppercase tracking-wider text-dim mt-6">
+                  Open PRs
+                </div>
                 <PRPickerList
                   prs={prsByRepo[selectedRepo]}
                   loading={prsLoadingRepo === selectedRepo}
