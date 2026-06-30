@@ -38,7 +38,7 @@ import type {
   LocalTransportHandle,
   StateEventListener
 } from '../shared/transport/transport'
-import type { ElectronAPI } from './types'
+import type { ElectronAPI, AgentKind } from './types'
 
 export type { ElectronOnlyHelpers }
 
@@ -101,7 +101,7 @@ export function buildBackend(
       branchName: string
       initialPrompt?: string
       teleportSessionId?: string
-      agentKind?: 'claude' | 'codex'
+      agentKind?: AgentKind
       model?: string
       checkoutExisting?: boolean
       baseRef?: string
@@ -111,7 +111,7 @@ export function buildBackend(
       repoRoot: string
       prNumber: number
       initialPrompt?: string
-      agentKind?: 'claude' | 'codex'
+      agentKind?: AgentKind
       model?: string
     }) => req('worktrees:runPendingPR', params),
     retryPendingWorktree: (id: string) => req('worktrees:retryPending', id),
@@ -237,9 +237,12 @@ export function buildBackend(
     setClaudeEnvVars: (vars: Record<string, string>) => req('config:setClaudeEnvVars', vars),
     setDefaultAgent: (agent: string) => req('config:setDefaultAgent', agent),
     setCodexCommand: (command: string) => req('config:setCodexCommand', command),
+    setCursorCommand: (command: string) => req('config:setCursorCommand', command),
     setClaudeModel: (model: string | null) => req('config:setClaudeModel', model),
     setCodexModel: (model: string | null) => req('config:setCodexModel', model),
+    setCursorModel: (model: string | null) => req('config:setCursorModel', model),
     setCodexEnvVars: (vars: Record<string, string>) => req('config:setCodexEnvVars', vars),
+    setCursorEnvVars: (vars: Record<string, string>) => req('config:setCursorEnvVars', vars),
     setHarnessMcpEnabled: (enabled: boolean) => req('config:setHarnessMcpEnabled', enabled),
     setAutoApprovePermissions: (enabled: boolean) =>
       req('config:setAutoApprovePermissions', enabled),

@@ -1,5 +1,5 @@
-import { useEffect, useRef, useCallback, useState } from 'react'
-import { X, SquareTerminal, Sparkles, Loader2, Globe, Users, ChevronLeft, ChevronRight } from 'lucide-react'
+import { useEffect, useRef, useCallback, useState, useMemo } from 'react'
+import { X, SquareTerminal, Sparkles, Loader2, Globe, Users, ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react'
 import {
   SortableContext,
   horizontalListSortingStrategy,
@@ -10,6 +10,7 @@ import { CSS } from '@dnd-kit/utilities'
 import type { WorkspacePane, TerminalTab, PtyStatus, AgentKind } from '../types'
 import { AGENT_REGISTRY, agentDisplayName } from '../../shared/agent-registry'
 import { Tooltip } from './Tooltip'
+import { AgentIcon } from './AgentIcon'
 import { repoNameColor } from './RepoIcon'
 import { AppTitleSegment } from './AppTitleSegment'
 import { getClientId, useTerminalProgress, useTerminalSession } from '../store'
@@ -420,6 +421,115 @@ function SortableTab({ tab, isActive, status, shellActivity, showClose, onSelect
   )
 }
 
+function AgentNewTabControls({
+  defaultAgent,
+  defaultClaudeTabType,
+  onAddAgentTab,
+  onAddJsonClaudeTab
+}: {
+  defaultAgent: AgentKind
+  defaultClaudeTabType?: 'xterm' | 'json'
+  onAddAgentTab: (agentKind?: AgentKind) => void
+  onAddJsonClaudeTab?: () => void
+}): JSX.Element {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement | null>(null)
+  const chatIsDefault = !!onAddJsonClaudeTab && defaultClaudeTabType === 'json'
+
+  const agentsInMenu = useMemo(() => {
+    const rest = AGENT_REGISTRY.filter((a) => a.kind !== defaultAgent)
+    const first = AGENT_REGISTRY.find((a) => a.kind === defaultAgent)
+    return first ? [first, ...rest] : AGENT_REGISTRY
+  }, [defaultAgent])
+
+  useEffect(() => {
+    if (!menuOpen) return
+    const onDocClick = (e: MouseEvent): void => {
+      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false)
+    }
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setMenuOpen(false)
+    }
+    document.addEventListener('mousedown', onDocClick)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDocClick)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [menuOpen])
+
+  const sparkleTip = (() => {
+    const plain = chatIsDefault
+      ? 'New Chat tab'
+      : `New ${agentDisplayName(defaultAgent)} tab`
+    const shiftPart = onAddJsonClaudeTab
+      ? chatIsDefault
+        ? ' · ⇧-click for Terminal mode'
+        : ' · ⇧-click for Chat mode'
+      : ''
+    return plain + shiftPart
+  })()
+
+  return (
+    <div className="no-drag relative flex items-center h-full shrink-0" ref={menuRef}>
+      <Tooltip label={sparkleTip}>
+        <button
+          type="button"
+          onClick={(e) => {
+            if (e.shiftKey && onAddJsonClaudeTab) {
+              if (chatIsDefault) onAddAgentTab('claude')
+              else onAddJsonClaudeTab()
+              return
+            }
+            if (chatIsDefault) onAddJsonClaudeTab!()
+            else onAddAgentTab(defaultAgent)
+          }}
+          className="shrink-0 pl-2 pr-1 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"
+        >
+          <Sparkles className="icon-xs" />
+        </button>
+      </Tooltip>
+      <Tooltip label="Choose agent">
+        <button
+          type="button"
+          onClick={() => setMenuOpen((v) => !v)}
+          aria-expanded={menuOpen}
+          aria-haspopup="menu"
+          aria-label="Choose agent"
+          className="shrink-0 pl-0.5 pr-1.5 h-full text-faint hover:text-fg transition-colors cursor-pointer"
+        >
+          <ChevronDown className={'icon-2xs transition-transform ' + (menuOpen ? 'rotate-180' : '')} />
+        </button>
+      </Tooltip>
+      {menuOpen && (
+        <div
+          className="absolute left-0 top-full z-50 min-w-[11rem] rounded border border-border bg-panel-raised shadow-lg py-1"
+          role="menu"
+        >
+          {agentsInMenu.map((agent) => (
+            <button
+              key={agent.kind}
+              type="button"
+              role="menuitem"
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-fg-bright hover:bg-panel cursor-pointer text-left"
+              onClick={() => {
+                onAddAgentTab(agent.kind)
+                setMenuOpen(false)
+              }}
+            >
+              <AgentIcon kind={agent.kind} className="icon-xs shrink-0" />
+              <span className="flex-1">{agent.displayName}</span>
+              {agent.kind === defaultAgent && !chatIsDefault && (
+                <span className="text-faint shrink-0">default</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function TerminalPanel({
   worktreePath,
   pane,
@@ -518,52 +628,12 @@ export function TerminalPanel({
           </div>
         )}
         <div className="no-drag shrink-0 flex items-center h-full pl-2">
-          <Tooltip
-            label={(() => {
-              const chatIsDefault = !!onAddJsonClaudeTab && defaultClaudeTabType === 'json'
-              const plain = chatIsDefault
-                ? 'New Chat tab'
-                : `New ${agentDisplayName(defaultAgent)} tab`
-              const altPart =
-                AGENT_REGISTRY.length > 1
-                  ? ` · ⌥-click for ${agentDisplayName(AGENT_REGISTRY.find((a) => a.kind !== defaultAgent)?.kind)}`
-                  : ''
-              const shiftPart = onAddJsonClaudeTab
-                ? chatIsDefault
-                  ? ` · ⇧-click for Terminal mode`
-                  : ' · ⇧-click for Chat mode'
-                : ''
-              return plain + altPart + shiftPart
-            })()}
-          >
-            <button
-              onClick={(e) => {
-                // Modifier precedence:
-                //   alt → other registered agent (Codex when default is
-                //         Claude, vice versa) — independent of Chat/Terminal.
-                //   shift → "the other Claude interface" relative to the
-                //         user's defaultClaudeTabType setting.
-                //   plain → the default Claude interface.
-                const chatIsDefault =
-                  !!onAddJsonClaudeTab && defaultClaudeTabType === 'json'
-                if (e.altKey && AGENT_REGISTRY.length > 1) {
-                  const other = AGENT_REGISTRY.find((a) => a.kind !== defaultAgent)
-                  onAddAgentTab(other?.kind)
-                  return
-                }
-                if (e.shiftKey && onAddJsonClaudeTab) {
-                  if (chatIsDefault) onAddAgentTab('claude')
-                  else onAddJsonClaudeTab()
-                  return
-                }
-                if (chatIsDefault) onAddJsonClaudeTab!()
-                else onAddAgentTab(defaultAgent)
-              }}
-              className="no-drag shrink-0 px-2 h-full text-faint hover:text-fg text-sm transition-colors cursor-pointer"
-            >
-              <Sparkles className="icon-xs" />
-            </button>
-          </Tooltip>
+        <AgentNewTabControls
+          defaultAgent={defaultAgent}
+          defaultClaudeTabType={defaultClaudeTabType}
+          onAddAgentTab={onAddAgentTab}
+          onAddJsonClaudeTab={onAddJsonClaudeTab}
+        />
           <Tooltip label="New shell tab" action="newShellTab">
             <button
               onClick={onAddTab}

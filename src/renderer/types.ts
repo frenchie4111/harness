@@ -183,7 +183,7 @@ export interface ElectronAPI {
     branchName: string
     initialPrompt?: string
     teleportSessionId?: string
-    agentKind?: 'claude' | 'codex'
+    agentKind?: AgentKind
     model?: string,
     checkoutExisting?: boolean
     baseRef?: string
@@ -197,7 +197,7 @@ export interface ElectronAPI {
     repoRoot: string
     prNumber: number
     initialPrompt?: string
-    agentKind?: 'claude' | 'codex'
+    agentKind?: AgentKind
     model?: string
   }): Promise<
     | { id: string; outcome: 'success'; createdPath: string }
@@ -351,9 +351,12 @@ export interface ElectronAPI {
   setClaudeEnvVars(vars: Record<string, string>): Promise<boolean>
   setDefaultAgent(agent: string): Promise<boolean>
   setCodexCommand(command: string): Promise<boolean>
+  setCursorCommand(command: string): Promise<boolean>
   setClaudeModel(model: string | null): Promise<boolean>
   setCodexModel(model: string | null): Promise<boolean>
+  setCursorModel(model: string | null): Promise<boolean>
   setCodexEnvVars(vars: Record<string, string>): Promise<boolean>
+  setCursorEnvVars(vars: Record<string, string>): Promise<boolean>
   setNameClaudeSessions(enabled: boolean): Promise<boolean>
   setThemeMode(mode: 'light' | 'dark' | 'system'): Promise<boolean>
   setThemeLight(theme: string): Promise<boolean>

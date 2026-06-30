@@ -97,7 +97,9 @@ import { buildInitialAppState } from './build-initial-state'
 import { AnnouncementsPoller } from './announcements-poller'
 
 function toAgentKind(value: string | undefined): AgentKind {
-  return value === 'codex' ? 'codex' : 'claude'
+  if (value === 'codex') return 'codex'
+  if (value === 'cursor') return 'cursor'
+  return 'claude'
 }
 
 // Dev-restart resilience: electron-vite closes our stdout/stderr pipe on
@@ -876,13 +878,13 @@ function installHooksGlobally(): void {
   // installHooks() is idempotent — it strips any existing Harness entries
   // before writing a fresh one — so calling it unconditionally also
   // collapses duplicate entries left by earlier buggy install passes.
-  for (const agent of [getAgent('claude'), getAgent('codex')]) {
+  for (const agent of [getAgent('claude'), getAgent('codex'), getAgent('cursor')]) {
     agent.installHooks()
   }
 }
 
 function uninstallHooksGlobally(): void {
-  for (const agent of [getAgent('claude'), getAgent('codex')]) {
+  for (const agent of [getAgent('claude'), getAgent('codex'), getAgent('cursor')]) {
     agent.uninstallHooks()
   }
 }
@@ -1192,7 +1194,7 @@ function registerIpcHandlers(): void {
       branchName: string
       initialPrompt?: string
       teleportSessionId?: string
-      agentKind?: 'claude' | 'codex'
+      agentKind?: AgentKind
       model?: string
       checkoutExisting?: boolean
       baseRef?: string
@@ -1209,7 +1211,7 @@ function registerIpcHandlers(): void {
         repoRoot: string
         prNumber: number
         initialPrompt?: string
-        agentKind?: 'claude' | 'codex'
+        agentKind?: AgentKind
         model?: string
       }
     ) => {
@@ -1676,7 +1678,8 @@ function registerIpcHandlers(): void {
   })
 
   transport.onRequest('config:setDefaultAgent', (_ctx, agent: string) => {
-    const kind = agent === 'codex' ? 'codex' : 'claude'
+    const kind: AgentKind =
+      agent === 'codex' ? 'codex' : agent === 'cursor' ? 'cursor' : 'claude'
     config.defaultAgent = kind
     saveConfig(config)
     store.dispatch({ type: 'settings/defaultAgentChanged', payload: kind })
@@ -1694,6 +1697,21 @@ function registerIpcHandlers(): void {
     store.dispatch({
       type: 'settings/codexCommandChanged',
       payload: config.codexCommand || 'codex'
+    })
+    return true
+  })
+
+  transport.onRequest('config:setCursorCommand', (_ctx, command: string) => {
+    const trimmed = command.trim()
+    if (!trimmed || trimmed === 'agent') {
+      delete config.cursorCommand
+    } else {
+      config.cursorCommand = trimmed
+    }
+    saveConfig(config)
+    store.dispatch({
+      type: 'settings/cursorCommandChanged',
+      payload: config.cursorCommand || 'agent'
     })
     return true
   })
@@ -1720,6 +1738,17 @@ function registerIpcHandlers(): void {
     return true
   })
 
+  transport.onRequest('config:setCursorModel', (_ctx, model: string | null) => {
+    if (model) {
+      config.cursorModel = model
+    } else {
+      delete config.cursorModel
+    }
+    saveConfig(config)
+    store.dispatch({ type: 'settings/cursorModelChanged', payload: model })
+    return true
+  })
+
   transport.onRequest('config:setCodexEnvVars', (_ctx, vars: Record<string, string>) => {
     if (!vars || Object.keys(vars).length === 0) {
       delete config.codexEnvVars
@@ -1728,6 +1757,17 @@ function registerIpcHandlers(): void {
     }
     saveConfig(config)
     store.dispatch({ type: 'settings/codexEnvVarsChanged', payload: config.codexEnvVars || {} })
+    return true
+  })
+
+  transport.onRequest('config:setCursorEnvVars', (_ctx, vars: Record<string, string>) => {
+    if (!vars || Object.keys(vars).length === 0) {
+      delete config.cursorEnvVars
+    } else {
+      config.cursorEnvVars = vars
+    }
+    saveConfig(config)
+    store.dispatch({ type: 'settings/cursorEnvVarsChanged', payload: config.cursorEnvVars || {} })
     return true
   })
 
@@ -2456,9 +2496,12 @@ function registerIpcHandlers(): void {
     }): string => {
       const kind = toAgentKind(agentKind)
       const agent = getAgent(kind)
-      const command = kind === 'claude'
-        ? (config.claudeCommand || agent.defaultCommand)
-        : (config.codexCommand || agent.defaultCommand)
+      const command =
+        kind === 'claude'
+          ? (config.claudeCommand || agent.defaultCommand)
+          : kind === 'codex'
+            ? (config.codexCommand || agent.defaultCommand)
+            : (config.cursorCommand || agent.defaultCommand)
       const mcpConfigPath = writeMcpConfigForTerminal(
         opts.terminalId,
         resolveCallerScope(opts.terminalId)
@@ -2478,8 +2521,10 @@ function registerIpcHandlers(): void {
         systemPrompt = launch.systemPrompt
         tuiFullscreen = launch.tuiFullscreen
         model = launch.model ?? null
-      } else {
+      } else if (kind === 'codex') {
         model = override || config.codexModel || null
+      } else {
+        model = override || config.cursorModel || null
       }
 
       return agent.buildSpawnArgs({ ...opts, command, mcpConfigPath, model, systemPrompt, tuiFullscreen })
@@ -2705,6 +2750,7 @@ function registerIpcHandlers(): void {
       const isAgent = !!agentKind
       const extraEnv = agentKind === 'claude' ? config.claudeEnvVars
         : agentKind === 'codex' ? config.codexEnvVars
+        : agentKind === 'cursor' ? config.cursorEnvVars
         : undefined
       const existed = ptyManager.hasTerminal(id)
       ptyManager.create(id, cwd, cmd, args, extraEnv, !isAgent, cols, rows)
@@ -3562,6 +3608,7 @@ async function runBoot(): Promise<void> {
   void (async () => {
     const claudeAgent = getAgent('claude')
     const codexAgent = getAgent('codex')
+    const cursorAgent = getAgent('cursor')
 
     // 1. Decide what the user's previous consent was.
     //    - Explicit persisted value wins (including 'declined').
@@ -3570,7 +3617,7 @@ async function runBoot(): Promise<void> {
     //      legacy per-worktree markers as evidence of a prior accept.
     let consent: 'pending' | 'accepted' | 'declined' | undefined = config.hooksConsent
     if (!consent) {
-      if (claudeAgent.hooksInstalled() || codexAgent.hooksInstalled()) {
+      if (claudeAgent.hooksInstalled() || codexAgent.hooksInstalled() || cursorAgent.hooksInstalled()) {
         consent = 'accepted'
       } else {
         let foundLegacy = false
@@ -3583,6 +3630,7 @@ async function runBoot(): Promise<void> {
             // run the strip and treat the "changed" bit as evidence.
             if (claudeAgent.stripHooksFromWorktree(wt.path)) foundLegacy = true
             if (codexAgent.stripHooksFromWorktree(wt.path)) foundLegacy = true
+            if (cursorAgent.stripHooksFromWorktree(wt.path)) foundLegacy = true
           }
         }
         consent = foundLegacy ? 'accepted' : 'pending'
@@ -3611,6 +3659,7 @@ async function runBoot(): Promise<void> {
         for (const wt of trees) {
           claudeAgent.stripHooksFromWorktree(wt.path)
           codexAgent.stripHooksFromWorktree(wt.path)
+          cursorAgent.stripHooksFromWorktree(wt.path)
         }
       }
       config.hooksMigratedToGlobal = true
@@ -3824,7 +3873,7 @@ async function runBoot(): Promise<void> {
           repoRoot: string
           worktree: { path: string }
           initialPrompt?: string
-          agentKind?: 'claude' | 'codex'
+          agentKind?: AgentKind
           model?: string
         }
         panesFSM.ensureInitialized(p.worktree.path, {

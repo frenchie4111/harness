@@ -12,7 +12,8 @@ export interface AgentInfo {
 
 export const AGENT_REGISTRY: AgentInfo[] = [
   { kind: 'claude', displayName: 'Claude Code', vendor: 'Anthropic', assignsSessionId: true },
-  { kind: 'codex', displayName: 'Codex', vendor: 'OpenAI', assignsSessionId: false }
+  { kind: 'codex', displayName: 'Codex', vendor: 'OpenAI', assignsSessionId: false },
+  { kind: 'cursor', displayName: 'Cursor Agent', vendor: 'Cursor', assignsSessionId: false }
 ]
 
 export interface ModelOption {
@@ -50,6 +51,19 @@ export const CODEX_MODELS: ModelOption[] = [
   { id: 'o4-mini', displayName: 'o4-mini', tier: 'legacy' },
   { id: 'gpt-4.1', displayName: 'GPT-4.1', tier: 'legacy' },
   { id: 'gpt-4.1-mini', displayName: 'GPT-4.1 Mini', tier: 'legacy' },
+]
+
+export const CURSOR_MODELS: ModelOption[] = [
+  { id: 'composer-2.5', displayName: 'Composer 2.5 Fast', tier: 'current' },
+  { id: 'composer-2.5-fast', displayName: 'Composer 2.5 Fast (explicit)', tier: 'current' },
+  { id: 'gpt-5.3-codex', displayName: 'Codex 5.3', tier: 'current' },
+  { id: 'gpt-5.3-codex-high', displayName: 'Codex 5.3 High', tier: 'current' },
+  { id: 'gpt-5.4', displayName: 'GPT-5.4', tier: 'current' },
+  { id: 'claude-opus-4-8', displayName: 'Claude Opus 4.8', tier: 'current' },
+  { id: 'claude-sonnet-4-6', displayName: 'Claude Sonnet 4.6', tier: 'current' },
+  { id: 'auto', displayName: 'Auto', tier: 'current' },
+  { id: 'gpt-5.2', displayName: 'GPT-5.2', tier: 'legacy' },
+  { id: 'gpt-5.2-codex', displayName: 'Codex 5.2', tier: 'legacy' },
 ]
 
 export function getAgentInfo(kind: AgentKind): AgentInfo {

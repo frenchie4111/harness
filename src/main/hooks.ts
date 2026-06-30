@@ -14,7 +14,7 @@ import { log } from './debug'
 
 // This path is also the signature we use to recognize Harness-installed
 // hook entries when deduping at install time. If you change it, update
-// HARNESS_HOOK_COMMAND_SIGNATURE in src/main/agents/{claude,codex}.ts
+// HARNESS_HOOK_COMMAND_SIGNATURE in src/main/agents/{claude,codex,cursor}.ts
 // to match, or older installed entries become unrecognizable and
 // re-installs will append duplicates.
 const STATUS_DIR = '/tmp/harness-status'
@@ -67,9 +67,9 @@ interface StatusUpdate {
 
 function readPendingTool(p: Record<string, unknown> | null): PendingTool | null {
   if (!p) return null
-  const name = p.tool_name
+  const name = p.tool_name ?? p.toolName
   if (typeof name !== 'string' || !name) return null
-  const rawInput = p.tool_input
+  const rawInput = p.tool_input ?? p.toolInput
   const input =
     rawInput && typeof rawInput === 'object' && !Array.isArray(rawInput)
       ? (rawInput as Record<string, unknown>)
@@ -77,8 +77,25 @@ function readPendingTool(p: Record<string, unknown> | null): PendingTool | null 
   return { name, input }
 }
 
+function normalizeHookEvent(event: string): string {
+  switch (event) {
+    case 'preToolUse':
+      return 'PreToolUse'
+    case 'postToolUse':
+      return 'PostToolUse'
+    case 'beforeSubmitPrompt':
+      return 'UserPromptSubmit'
+    case 'stop':
+      return 'Stop'
+    case 'sessionStart':
+      return 'SessionStart'
+    default:
+      return event
+  }
+}
+
 function deriveStatus(terminalId: string, ev: HookEvent): StatusUpdate | null {
-  switch (ev.event) {
+  switch (normalizeHookEvent(ev.event)) {
     case 'PreToolUse': {
       const tool = readPendingTool(ev.payload)
       if (tool) lastPreTool.set(terminalId, tool)
@@ -209,7 +226,8 @@ export function tailLog(terminalId: string, store: Store): void {
       // that carries one. This is how Codex (and future agents that don't
       // let you set the session ID up front) get their ID stored on the tab.
       if (!sessionIdDiscovered.has(terminalId) && ev.payload) {
-        const sid = (ev.payload as Record<string, unknown>).session_id
+        const payload = ev.payload as Record<string, unknown>
+        const sid = payload.session_id ?? payload.conversation_id ?? payload.chat_id ?? payload.chatId
         if (typeof sid === 'string' && sid) {
           sessionIdDiscovered.add(terminalId)
           store.dispatch({
