@@ -639,6 +639,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
     handleContinueWorktree,
     handleDeleteWorktree,
     handleBulkDeleteWorktrees,
+    handlePruneWorktrees,
     handleDismissPendingDeletion,
     repoPickerOpen,
     handleRepoPickerSelect,
@@ -1476,6 +1477,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
             }}
             onContinueWorktree={handleContinueWorktree}
             onDeleteWorktree={handleDeleteWorktree}
+            onPruneWorktrees={handlePruneWorktrees}
             onRefresh={handleRefreshWorktrees}
             repoRoots={repoRoots}
             onAddRepo={handleAddRepo}

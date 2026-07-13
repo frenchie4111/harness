@@ -156,6 +156,10 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
     await backend.refreshWorktreesList()
   }, [])
 
+  const handlePruneWorktrees = useCallback(async (repoRoot: string) => {
+    await backend.pruneWorktrees(repoRoot)
+  }, [])
+
   const handleSubmitNewWorktree = useCallback(
     async (
       repoRoot: string,
@@ -399,6 +403,7 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
     handleAddRepo,
     handleRemoveRepo,
     handleRefreshWorktrees,
+    handlePruneWorktrees,
     handleSubmitNewWorktree,
     handleSubmitNewPRWorktree,
     handleRetryPendingWorktree,

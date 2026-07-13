@@ -52,14 +52,31 @@ export function defaultWorktreeDir(repoRoot: string): string {
   return join(repoRoot, '..', `${repoName}-worktrees`)
 }
 
-export async function listWorktrees(repoRoot: string): Promise<WorktreeInfo[]> {
-  const { stdout } = await execFileAsync('git', ['worktree', 'list', '--porcelain'], {
-    cwd: repoRoot
-  })
-
+/** Pure `git worktree list --porcelain` parser. Extracted from
+ *  listWorktrees so the prunable-handling logic can be unit-tested
+ *  without shelling out. See the porcelain format docs:
+ *  https://git-scm.com/docs/git-worktree#_porcelain_format. */
+export function parseWorktreeListPorcelain(
+  stdout: string,
+  repoRoot: string
+): WorktreeInfo[] {
   const worktrees: WorktreeInfo[] = []
   let current: Partial<WorktreeInfo> = {}
-
+  const flush = (): void => {
+    if (!current.path) return
+    worktrees.push({
+      path: current.path,
+      branch: current.branch || '(detached)',
+      head: current.head || '',
+      isBare: current.isBare || false,
+      isMain: current.path === repoRoot,
+      createdAt: getCreatedAt(current.path),
+      repoRoot,
+      ...(current.prunable ? { prunable: true } : {}),
+      ...(current.prunableReason ? { prunableReason: current.prunableReason } : {})
+    })
+    current = {}
+  }
   for (const line of stdout.split('\n')) {
     if (line.startsWith('worktree ')) {
       current.path = line.slice('worktree '.length)
@@ -69,21 +86,30 @@ export async function listWorktrees(repoRoot: string): Promise<WorktreeInfo[]> {
       current.branch = line.slice('branch '.length).replace('refs/heads/', '')
     } else if (line === 'bare') {
       current.isBare = true
+    } else if (line === 'prunable' || line.startsWith('prunable ')) {
+      // `prunable` marks entries whose on-disk directory was deleted
+      // without a subsequent `git worktree prune`. Value form is
+      // `prunable <reason>` (e.g. "gitdir file points to non-existent
+      // location"); bare `prunable` also occurs.
+      current.prunable = true
+      const rest = line.slice('prunable'.length).trim()
+      if (rest) current.prunableReason = rest
     } else if (line === '') {
-      if (current.path) {
-        worktrees.push({
-          path: current.path,
-          branch: current.branch || '(detached)',
-          head: current.head || '',
-          isBare: current.isBare || false,
-          isMain: current.path === repoRoot,
-          createdAt: getCreatedAt(current.path),
-          repoRoot
-        })
-      }
-      current = {}
+      flush()
     }
   }
+  // Trailing entry without a blank line — git doesn't always emit a
+  // terminal blank on the last record.
+  flush()
+  return worktrees
+}
+
+export async function listWorktrees(repoRoot: string): Promise<WorktreeInfo[]> {
+  const { stdout } = await execFileAsync('git', ['worktree', 'list', '--porcelain'], {
+    cwd: repoRoot
+  })
+
+  const worktrees = parseWorktreeListPorcelain(stdout, repoRoot)
 
   const detached = worktrees.filter((w) => w.branch === '(detached)' && !w.isBare)
   if (detached.length > 0) {
@@ -1681,4 +1707,12 @@ export async function removeWorktree(repoRoot: string, path: string, force?: boo
   const args = ['worktree', 'remove', path]
   if (force) args.push('--force')
   await execFileAsync('git', args, { cwd: repoRoot })
+}
+
+/** Drop `.git/worktrees/<name>` entries whose on-disk directory no
+ *  longer exists. Same as running `git worktree prune` by hand — this
+ *  is the recovery action wired to the "Stale" badge in the sidebar. */
+export async function pruneWorktrees(repoRoot: string): Promise<void> {
+  log('worktree', `pruning stale worktrees at repoRoot=${repoRoot}`)
+  await execFileAsync('git', ['worktree', 'prune'], { cwd: repoRoot })
 }

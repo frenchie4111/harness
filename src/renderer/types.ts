@@ -225,6 +225,7 @@ export interface ElectronAPI {
     removeMeta?: { prNumber?: number; prState?: PRStatus['state'] }
   ): Promise<{ queued: true }>
   dismissPendingDeletion(path: string): Promise<boolean>
+  pruneWorktrees(repoRoot: string): Promise<boolean>
   getWorktreeDir(repoRoot: string): Promise<string>
   listRepos(): Promise<string[]>
   addRepo(): Promise<AddRepoResult>
