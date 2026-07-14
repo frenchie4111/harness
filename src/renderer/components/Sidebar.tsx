@@ -37,6 +37,7 @@ interface SidebarProps {
   onNewWorktree: (repoRoot?: string) => void
   onContinueWorktree: (worktreePath: string, newBranchName: string) => Promise<void>
   onDeleteWorktree: (path: string) => Promise<void>
+  onPruneWorktrees: (repoRoot: string) => Promise<void>
   onRefresh: () => void
   repoRoots: string[]
   onAddRepo: () => void
@@ -81,6 +82,7 @@ export function Sidebar({
   onNewWorktree,
   onContinueWorktree,
   onDeleteWorktree,
+  onPruneWorktrees,
   onRefresh,
   repoRoots,
   onAddRepo,
@@ -379,6 +381,7 @@ export function Sidebar({
                   deleting={deletingPaths.has(wt.path)}
                   onClick={() => onSelectWorktree(wt.path)}
                   onDelete={wt.isMain || deletingPaths.has(wt.path) ? undefined : () => onDeleteWorktree(wt.path)}
+                  onPrune={wt.prunable ? () => onPruneWorktrees(wt.repoRoot) : undefined}
                   onContinue={wt.isMain || deletingPaths.has(wt.path) ? undefined : () => beginContinue(wt.path, wt.branch)}
                   onSnooze={wt.isMain || deletingPaths.has(wt.path) ? undefined : (e) => onSnoozeRow(wt.path, e)}
                   onUnsnooze={wt.isMain || deletingPaths.has(wt.path) ? undefined : () => onUnsnoozeRow(wt.path)}

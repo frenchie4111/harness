@@ -51,7 +51,14 @@ vi.mock('fs', async () => {
   const actual = await vi.importActual<typeof import('fs')>('fs')
   return {
     ...actual,
-    existsSync: () => false,
+    // The manager checks existsSync for two things: (1) the pre-flight
+    // worktree-cwd guard added for issue #185 (needs true so tests
+    // can spawn a session), and (2) the transcript-file existence
+    // check that decides --resume vs --session-id (needs false so
+    // tests spawn fresh sessions). Discriminate on the transcript
+    // path shape — paths under ~/.claude/projects/ are transcripts.
+    existsSync: (p: string) =>
+      typeof p === 'string' && !p.includes('.claude/projects') && !p.endsWith('.jsonl'),
     readFileSync: () => ''
   }
 })
@@ -104,6 +111,31 @@ describe('JsonClaudeManager', () => {
     }
     return call.args.join(' ')
   }
+
+  it('pre-flight cwd guard: missing worktree dir short-circuits + dispatches spawn-failed (issue #185)', () => {
+    const store = new Store()
+    const mgr = makeManager(store)
+    const sessionId = 'sess-cwd-missing'
+    const cwd = '/tmp/gone/.claude/projects/fake-missing-cwd'
+    // Path shape matches the transcript-blacklist in the fs mock so
+    // existsSync returns false — same as a real missing worktree.
+    store.dispatch({
+      type: 'jsonClaude/sessionStarted',
+      payload: { sessionId, worktreePath: cwd }
+    })
+
+    mgr.create(sessionId, cwd)
+
+    // No spawn attempted — pre-flight guard fired.
+    expect(sessionProcs().length).toBe(0)
+    const session = store.getSnapshot().state.jsonClaude.sessions[sessionId]
+    expect(session?.state).toBe('exited')
+    const errorEntry = session?.entries.find(
+      (e) => e.kind === 'error' && e.errorKind === 'spawn-failed'
+    )
+    expect(errorEntry).toBeDefined()
+    expect(errorEntry?.errorMessage).toContain('no longer exists')
+  })
 
   it("kill+create cycle: late exit from killed proc doesn't clobber the new instance", () => {
     const store = new Store()

@@ -211,6 +211,63 @@ describe('PanesFSM.restoreFromConfig', () => {
   })
 })
 
+describe('PanesFSM.ensureInitialized', () => {
+  it('skips creating tabs for a prunable worktree (issue #185)', () => {
+    const { fsm, store } = buildFSM()
+    const wtPath = '/tmp/gone'
+    // Seed the store with a prunable entry so ensureInitialized's
+    // guard can find it.
+    store.dispatch({
+      type: 'worktrees/listChanged',
+      payload: [
+        {
+          path: wtPath,
+          branch: 'gh-pages',
+          head: '',
+          isBare: false,
+          isMain: false,
+          createdAt: 0,
+          repoRoot: '/tmp/repo',
+          prunable: true,
+          prunableReason: 'gitdir file points to non-existent location'
+        }
+      ]
+    })
+
+    fsm.ensureInitialized(wtPath)
+
+    // No pane committed to the store — no spawn ever fires for prunable
+    // entries. If the caller wants to observe them they can look at the
+    // worktrees slice directly.
+    expect(store.getSnapshot().state.terminals.panes[wtPath]).toBeUndefined()
+  })
+
+  it('still creates tabs when the worktree is not prunable', () => {
+    const { fsm, store } = buildFSM()
+    const wtPath = '/tmp/live'
+    store.dispatch({
+      type: 'worktrees/listChanged',
+      payload: [
+        {
+          path: wtPath,
+          branch: 'main',
+          head: '',
+          isBare: false,
+          isMain: true,
+          createdAt: 0,
+          repoRoot: '/tmp/live'
+        }
+      ]
+    })
+
+    fsm.ensureInitialized(wtPath)
+
+    const tree = store.getSnapshot().state.terminals.panes[wtPath] as PaneLeaf
+    expect(tree).toBeDefined()
+    expect(tree.tabs.length).toBeGreaterThan(0)
+  })
+})
+
 describe('PanesFSM.openFileTab', () => {
   it('appends a file tab with the file-<path> id and basename label', () => {
     const { fsm, store } = buildFSM()

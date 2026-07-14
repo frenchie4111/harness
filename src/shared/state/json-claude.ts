@@ -96,6 +96,7 @@ export interface JsonClaudeChatEntry {
    *  rate-limit-warning / rate-limit-error from rate-limit display. */
   errorKind?:
     | 'subprocess-exit'
+    | 'spawn-failed'
     | 'rate-limit'
     | 'rate-limit-warning'
     | 'rate-limit-error'

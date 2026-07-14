@@ -631,14 +631,22 @@ function renderEntries(
       })
       continue
     }
-    if (entry.kind === 'error' && entry.errorKind === 'subprocess-exit') {
+    if (
+      entry.kind === 'error' &&
+      (entry.errorKind === 'subprocess-exit' ||
+        entry.errorKind === 'spawn-failed')
+    ) {
+      const defaultMsg =
+        entry.errorKind === 'spawn-failed'
+          ? "Couldn't launch Claude"
+          : 'Session ended unexpectedly'
       rows.push({
         key: entry.entryId,
         entryId: entry.entryId,
         type: 'text',
         node: (
           <SubprocessExitCard
-            message={entry.errorMessage ?? 'Session ended unexpectedly'}
+            message={entry.errorMessage ?? defaultMsg}
             sessionId={ctx.sessionId}
             worktreePath={ctx.worktreePath}
             isExited={ctx.isExited}

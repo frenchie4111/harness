@@ -37,7 +37,7 @@ import { SnoozeTimer } from './snooze-timer'
 import { getWeeklyStats } from './weekly-stats'
 import type { TerminalTab, PaneNode, PaneLeaf } from '../shared/state/terminals'
 import { getLeaves, mapLeaves } from '../shared/state/terminals'
-import { listWorktrees, listBranches, continueWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getCommitMeta, getCommitChangedFiles, getCommitFileDiffSides, getCommitRangeChangedFiles, getCommitRangeFileDiffSides, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, listRecentCommitShas, readWorktreeFile, readWorktreeFileBinary, writeWorktreeFile, getFileDiffSides, getCurrentBranch, symlinkClaudeSettings, type MergeStrategy } from './worktree'
+import { listWorktrees, listBranches, continueWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getCommitMeta, getCommitChangedFiles, getCommitFileDiffSides, getCommitRangeChangedFiles, getCommitRangeFileDiffSides, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, listRecentCommitShas, readWorktreeFile, readWorktreeFileBinary, writeWorktreeFile, getFileDiffSides, getCurrentBranch, symlinkClaudeSettings, pruneWorktrees, type MergeStrategy } from './worktree'
 import { listOpenPRs, testToken, starRepo, unstarRepo, isRepoStarred, mergePR, approvePR, getRepoInfo, type GitHubMergeMethod, type MergePRResult } from './github'
 import { AVAILABLE_EDITORS, DEFAULT_EDITOR_ID, openInEditor } from './editor'
 import { setSecret, getSecret, hasSecret, deleteSecret } from './secrets'
@@ -110,9 +110,24 @@ const isBenignPipeError = (e: unknown): boolean =>
 
 process.stdout.on('error', (e) => { if (!isBenignPipeError(e)) throw e })
 process.stderr.on('error', (e) => { if (!isBenignPipeError(e)) throw e })
+// Log-and-continue for uncaught main-process errors (issue #185). A single
+// unhandled throw from any code path — a stray child_process 'error' event,
+// a broken slice dispatch, a rejected background promise — used to take
+// down the whole app and every open Claude tab with it. That's disastrous
+// relative to the underlying bug: we'd rather keep the window alive with
+// one broken session than lose the user's other agents' state.
+// The log line is the load-bearing part — crash forensics need it to
+// figure out which subsystem misbehaved.
 process.on('uncaughtException', (e) => {
   if (isBenignPipeError(e)) return
-  throw e
+  log('main', 'uncaughtException', e instanceof Error ? (e.stack ?? e.message) : String(e))
+})
+process.on('unhandledRejection', (reason) => {
+  log(
+    'main',
+    'unhandledRejection',
+    reason instanceof Error ? (reason.stack ?? reason.message) : String(reason)
+  )
 })
 
 // Runtime detection — Electron sets process.versions.electron, plain
@@ -1285,6 +1300,13 @@ function registerIpcHandlers(): void {
 
   transport.onRequest('worktree:dismissPendingDeletion', (_ctx, path: string) => {
     worktreeDeletionFSM.dismiss(path)
+    return true
+  })
+
+  transport.onRequest('worktrees:prune', async (_ctx, repoRoot: string) => {
+    if (!repoRoot) throw new Error('No repo root provided')
+    await pruneWorktrees(repoRoot)
+    await worktreesFSM.refreshList()
     return true
   })
 

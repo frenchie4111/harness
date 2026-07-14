@@ -216,6 +216,22 @@ export class PanesFSM {
     const existing = this.getTree(wtPath)
     if (existing && hasAnyTabs(existing)) return existing
 
+    // Belt-and-suspenders for issue #185: a prunable worktree points at a
+    // directory that no longer exists on disk. Spawning a default agent
+    // tab against it would fire an ENOENT from child_process.spawn. Fix 1
+    // catches the crash in the manager, but we shouldn't get that far in
+    // the first place — the sidebar surfaces the stale entry with a
+    // prune action so the user can clean it up.
+    const wt = this.store.getSnapshot().state.worktrees.list.find((w) => w.path === wtPath)
+    if (wt?.prunable) {
+      log('panes-fsm', `ensureInitialized skipped — prunable worktree wtPath=${wtPath}`)
+      // Callers don't use the returned node for prunable worktrees (the
+      // sidebar tab won't be clicked), so an empty leaf is fine. Don't
+      // commit — leaving the state clean means a later prune + refresh
+      // will lazy-init on click without a stale entry lingering.
+      return existing ?? { type: 'leaf', id: newPaneId(), tabs: [], activeTabId: '' }
+    }
+
     const sleeping = this.sleepingPanes.get(wtPath)
     if (sleeping && hasAnyTabs(sleeping)) {
       this.sleepingPanes.delete(wtPath)

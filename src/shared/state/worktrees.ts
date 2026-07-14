@@ -8,6 +8,19 @@ export interface Worktree {
   createdAt: number
   /** Repo this worktree belongs to. Set after a cross-repo listWorktrees merge. */
   repoRoot: string
+  /** True when `git worktree list --porcelain` marked this entry
+   *  prunable — i.e. the on-disk directory has been deleted but the
+   *  worktree ref is still registered in the parent repo's `.git/worktrees/`.
+   *  Kept in the list (rather than filtered out) so the sidebar can
+   *  surface a "stale, click to prune" affordance instead of the entry
+   *  silently ghosting until the user runs `git worktree prune` manually.
+   *  Skips downstream spawn paths (PanesFSM.ensureInitialized) so we don't
+   *  spawn a Claude tab against a missing cwd — see issue #185. */
+  prunable?: boolean
+  /** Reason git reports for the prunable state (e.g. "gitdir file
+   *  points to non-existent location"). Optional — shown as a tooltip
+   *  next to the stale badge. */
+  prunableReason?: string
 }
 
 export type PendingStatus = 'creating' | 'setup' | 'setup-failed' | 'error'

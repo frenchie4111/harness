@@ -1,4 +1,4 @@
-import { GitPullRequest, RotateCw, Trash2, Loader2, Moon, TriangleAlert, AlarmClock } from 'lucide-react'
+import { GitPullRequest, RotateCw, Trash2, Loader2, Moon, TriangleAlert, AlarmClock, Ghost } from 'lucide-react'
 import type { Worktree, PtyStatus, PendingTool, PRStatus } from '../types'
 import { isPRMerged } from '../../shared/state/prs'
 import { formatWakeAt } from '../../shared/state/snooze'
@@ -41,6 +41,9 @@ interface WorktreeTabProps {
    *  caller can decide based on altKey. */
   onSnooze?: (e: React.MouseEvent) => void
   onUnsnooze?: () => void
+  /** Only present when `worktree.prunable === true`. Invokes
+   *  `git worktree prune` at the repo root and refreshes the list. */
+  onPrune?: () => void
 }
 
 const STATUS_COLORS: Record<PtyStatus | 'merged', string> = {
@@ -85,7 +88,7 @@ const PR_STATE_COLOR: Record<string, string> = {
   closed: 'text-danger'
 }
 
-export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActive, prStatus, isMerged, repoLabel, cmdOrdinal, deleting, isSnoozed, snoozeWakeAt, onClick, onDelete, onContinue, onSnooze, onUnsnooze }: WorktreeTabProps): JSX.Element {
+export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActive, prStatus, isMerged, repoLabel, cmdOrdinal, deleting, isSnoozed, snoozeWakeAt, onClick, onDelete, onContinue, onSnooze, onUnsnooze, onPrune }: WorktreeTabProps): JSX.Element {
   const metaHeld = useMetaHeld()
   const configuredWorktreeDetail = useAppState((s) => s.settings.worktreeDetail)
   const worktreeDetailOverride = useWorktreeDetailOverride()
@@ -160,7 +163,18 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
               </span>
             ) : null
           })()}
-          <span className="truncate">{worktree.branch}</span>
+          <span className={`truncate ${worktree.prunable ? 'line-through text-dim' : ''}`}>
+            {worktree.branch}
+          </span>
+          {worktree.prunable && (
+            <span
+              className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm bg-warning/15 text-warning text-[10px] uppercase tracking-wide"
+              title={worktree.prunableReason || 'On-disk directory missing — click the ghost icon to run `git worktree prune`.'}
+            >
+              <Ghost className="icon-2xs" />
+              stale
+            </span>
+          )}
         </div>
         {showPendingTool ? (
           <div className="text-xs text-danger truncate font-mono" title={formatPendingTool(pendingTool!)}>
@@ -262,7 +276,20 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
           </button>
         </Tooltip>
       )}
-      {onDelete && (
+      {onPrune && worktree.prunable && (
+        <Tooltip label="Prune stale worktree (git worktree prune)" side="left">
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onPrune()
+            }}
+            className="hidden group-hover:flex text-warning hover:text-fg-bright transition-colors shrink-0 cursor-pointer"
+          >
+            <Trash2 className="icon-xs" />
+          </button>
+        </Tooltip>
+      )}
+      {onDelete && !worktree.prunable && (
         <Tooltip label="Remove worktree" side="left">
           <button
             onClick={(e) => {
