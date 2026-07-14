@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   EDIT_TOOL_NAMES,
   type JsonClaudePendingApproval
@@ -11,6 +11,12 @@ import {
   isFileToolCrossCwd,
   type PermissionPatternSuggestion
 } from '../../shared/permission-patterns'
+import {
+  CREATE_WORKTREE_TOOL_NAME,
+  assembleCreateWorktreeInput,
+  hasPrNumber,
+  readCreateWorktreeForm
+} from './create-worktree-approval'
 
 interface JsonClaudeApprovalCardProps {
   approval: JsonClaudePendingApproval
@@ -286,66 +292,78 @@ export function JsonClaudeApprovalCard({
         </div>
       )}
 
-      {mode === 'summary' && (
-        <div className="px-3 py-2 space-y-2">
-          {approval.toolName === 'Bash' &&
-          typeof approval.input?.command === 'string' ? (
-            <>
+      {mode === 'summary' &&
+        approval.toolName === CREATE_WORKTREE_TOOL_NAME && (
+          <CreateWorktreeForm
+            approval={approval}
+            onCreate={(updatedInput) =>
+              onResolve({ behavior: 'allow', updatedInput })
+            }
+            onDeny={() => setMode('deny')}
+          />
+        )}
+
+      {mode === 'summary' &&
+        approval.toolName !== CREATE_WORKTREE_TOOL_NAME && (
+          <div className="px-3 py-2 space-y-2">
+            {approval.toolName === 'Bash' &&
+            typeof approval.input?.command === 'string' ? (
+              <>
+                <pre className="text-xs font-mono bg-app/40 rounded p-2 overflow-x-auto max-h-48 whitespace-pre-wrap">
+                  {String(approval.input.command)}
+                </pre>
+                {typeof approval.input?.description === 'string' &&
+                  approval.input.description.trim() && (
+                    <div className="text-xs text-muted italic">
+                      {String(approval.input.description)}
+                    </div>
+                  )}
+              </>
+            ) : (
               <pre className="text-xs font-mono bg-app/40 rounded p-2 overflow-x-auto max-h-48 whitespace-pre-wrap">
-                {String(approval.input.command)}
+                {tryFormatInput(approval.input)}
               </pre>
-              {typeof approval.input?.description === 'string' &&
-                approval.input.description.trim() && (
-                  <div className="text-xs text-muted italic">
-                    {String(approval.input.description)}
-                  </div>
-                )}
-            </>
-          ) : (
-            <pre className="text-xs font-mono bg-app/40 rounded p-2 overflow-x-auto max-h-48 whitespace-pre-wrap">
-              {tryFormatInput(approval.input)}
-            </pre>
-          )}
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <button
-              onClick={allow}
-              className="px-2.5 py-1 text-xs rounded bg-success/20 hover:bg-success/30 text-success transition-colors cursor-pointer"
-            >
-              Allow once
-            </button>
-            {!alreadyGranted && (
-              <button
-                onClick={() => {
-                  void allowThisSession()
-                }}
-                title="Allow this tool for the rest of the session — future calls of this tool skip the prompt. Cleared when the app quits."
-                className="px-3 py-1 text-xs font-semibold rounded bg-success/30 hover:bg-success/40 text-success border border-success/50 transition-colors cursor-pointer"
-              >
-                {sessionGrantLabel}
-              </button>
             )}
-            <button
-              onClick={() => setMode('edit')}
-              className="px-2.5 py-1 text-xs rounded bg-surface hover:bg-surface/60 text-fg transition-colors cursor-pointer"
-            >
-              Allow with edits
-            </button>
-            <button
-              onClick={() => setMode('always')}
-              title="Persist a rule to .claude/settings.local.json so future matching tool calls in this worktree skip the prompt — across sessions and app restarts."
-              className="px-2.5 py-1 text-xs rounded bg-surface hover:bg-surface/60 text-fg transition-colors cursor-pointer"
-            >
-              Always allow…
-            </button>
-            <button
-              onClick={() => setMode('deny')}
-              className="px-2.5 py-1 text-xs rounded bg-danger/20 hover:bg-danger/30 text-danger transition-colors cursor-pointer"
-            >
-              Deny
-            </button>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <button
+                onClick={allow}
+                className="px-2.5 py-1 text-xs rounded bg-success/20 hover:bg-success/30 text-success transition-colors cursor-pointer"
+              >
+                Allow once
+              </button>
+              {!alreadyGranted && (
+                <button
+                  onClick={() => {
+                    void allowThisSession()
+                  }}
+                  title="Allow this tool for the rest of the session — future calls of this tool skip the prompt. Cleared when the app quits."
+                  className="px-3 py-1 text-xs font-semibold rounded bg-success/30 hover:bg-success/40 text-success border border-success/50 transition-colors cursor-pointer"
+                >
+                  {sessionGrantLabel}
+                </button>
+              )}
+              <button
+                onClick={() => setMode('edit')}
+                className="px-2.5 py-1 text-xs rounded bg-surface hover:bg-surface/60 text-fg transition-colors cursor-pointer"
+              >
+                Allow with edits
+              </button>
+              <button
+                onClick={() => setMode('always')}
+                title="Persist a rule to .claude/settings.local.json so future matching tool calls in this worktree skip the prompt — across sessions and app restarts."
+                className="px-2.5 py-1 text-xs rounded bg-surface hover:bg-surface/60 text-fg transition-colors cursor-pointer"
+              >
+                Always allow…
+              </button>
+              <button
+                onClick={() => setMode('deny')}
+                className="px-2.5 py-1 text-xs rounded bg-danger/20 hover:bg-danger/30 text-danger transition-colors cursor-pointer"
+              >
+                Deny
+              </button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
       {mode === 'always' && (
         <div className="px-3 py-2 space-y-2">
@@ -472,6 +490,197 @@ export function JsonClaudeApprovalCard({
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+function truncateMiddle(s: string, max = 60): string {
+  if (s.length <= max) return s
+  const half = Math.floor((max - 1) / 2)
+  return `${s.slice(0, half)}…${s.slice(s.length - (max - 1 - half))}`
+}
+
+interface CreateWorktreeFormProps {
+  approval: JsonClaudePendingApproval
+  onCreate: (updatedInput: Record<string, unknown>) => void
+  onDeny: () => void
+}
+
+function CreateWorktreeForm({
+  approval,
+  onCreate,
+  onDeny
+}: CreateWorktreeFormProps): JSX.Element {
+  const [form, setForm] = useState(() => readCreateWorktreeForm(approval.input))
+  const [showAdvanced, setShowAdvanced] = useState<boolean>(
+    () => !!form.baseBranch
+  )
+  const prMode = hasPrNumber(approval.input)
+  const prNumber = prMode ? (approval.input.prNumber as number) : null
+  const repoRoot =
+    typeof approval.input.repoRoot === 'string' ? approval.input.repoRoot : ''
+
+  const promptRef = useRef<HTMLTextAreaElement>(null)
+  useLayoutEffect(() => {
+    const el = promptRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 500)}px`
+  }, [form.initialPrompt])
+
+  const canCreate = prMode || form.branchName.trim().length > 0
+
+  function update<K extends keyof typeof form>(
+    key: K,
+    value: (typeof form)[K]
+  ): void {
+    setForm((prev) => ({ ...prev, [key]: value }))
+  }
+
+  function handleCreate(): void {
+    onCreate(assembleCreateWorktreeInput(approval.input, form))
+  }
+
+  return (
+    <div className="px-3 py-2 space-y-3">
+      {prMode && (
+        <div className="text-xs text-muted bg-app/40 border border-border/60 rounded px-2 py-1.5">
+          Reviewing PR #{prNumber} — branch is chosen automatically when the
+          worktree is created.
+        </div>
+      )}
+
+      <label className="block">
+        <div className="text-xs font-semibold uppercase tracking-wider text-dim mb-1">
+          Initial prompt
+        </div>
+        <textarea
+          ref={promptRef}
+          value={form.initialPrompt}
+          onChange={(e) => update('initialPrompt', e.target.value)}
+          placeholder={
+            prMode
+              ? 'Leave blank to use the configured PR review prompt.'
+              : "What should the new agent start on?"
+          }
+          spellCheck={false}
+          className="w-full bg-app/40 border border-border rounded p-2 text-xs font-mono outline-none focus:border-accent min-h-[200px] max-h-[500px] overflow-y-auto resize-y"
+        />
+      </label>
+
+      {!prMode && (
+        <label className="block">
+          <div className="text-xs font-semibold uppercase tracking-wider text-dim mb-1">
+            Branch name
+          </div>
+          <input
+            type="text"
+            value={form.branchName}
+            onChange={(e) => update('branchName', e.target.value)}
+            placeholder="feat/my-new-thing"
+            autoComplete="off"
+            spellCheck={false}
+            className="w-full bg-app/40 border border-border rounded px-2 py-1.5 text-xs font-mono text-fg-bright outline-none focus:border-accent"
+          />
+        </label>
+      )}
+
+      <div className="grid grid-cols-2 gap-3">
+        <label className="block">
+          <div className="text-xs font-semibold uppercase tracking-wider text-dim mb-1">
+            Agent
+          </div>
+          <select
+            value={form.agentKind}
+            onChange={(e) =>
+              update(
+                'agentKind',
+                e.target.value === 'claude' || e.target.value === 'codex'
+                  ? e.target.value
+                  : ''
+              )
+            }
+            className="w-full bg-app/40 border border-border rounded px-2 py-1.5 text-xs text-fg-bright outline-none focus:border-accent cursor-pointer"
+          >
+            <option value="">Default</option>
+            <option value="claude">Claude</option>
+            <option value="codex">Codex</option>
+          </select>
+        </label>
+
+        <label className="block">
+          <div className="text-xs font-semibold uppercase tracking-wider text-dim mb-1">
+            Model
+          </div>
+          <input
+            type="text"
+            value={form.model}
+            onChange={(e) => update('model', e.target.value)}
+            placeholder="default"
+            autoComplete="off"
+            spellCheck={false}
+            className="w-full bg-app/40 border border-border rounded px-2 py-1.5 text-xs font-mono text-fg-bright outline-none focus:border-accent"
+          />
+        </label>
+      </div>
+
+      {repoRoot && (
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-wider text-dim mb-1">
+            Repo
+          </div>
+          <div
+            className="text-xs font-mono text-muted truncate"
+            title={repoRoot}
+          >
+            {truncateMiddle(repoRoot, 80)}
+          </div>
+        </div>
+      )}
+
+      {!prMode && (
+        <div>
+          <button
+            type="button"
+            onClick={() => setShowAdvanced((v) => !v)}
+            className="text-xs text-muted hover:text-fg transition-colors cursor-pointer"
+          >
+            {showAdvanced ? '▾' : '▸'} Advanced
+          </button>
+          {showAdvanced && (
+            <label className="block mt-2">
+              <div className="text-xs font-semibold uppercase tracking-wider text-dim mb-1">
+                Base branch
+              </div>
+              <input
+                type="text"
+                value={form.baseBranch}
+                onChange={(e) => update('baseBranch', e.target.value)}
+                placeholder="repo default"
+                autoComplete="off"
+                spellCheck={false}
+                className="w-full bg-app/40 border border-border rounded px-2 py-1.5 text-xs font-mono text-fg-bright outline-none focus:border-accent"
+              />
+            </label>
+          )}
+        </div>
+      )}
+
+      <div className="flex items-center gap-1.5 flex-wrap pt-1">
+        <button
+          onClick={handleCreate}
+          disabled={!canCreate}
+          className="px-3 py-1 text-xs font-semibold rounded bg-success/30 hover:bg-success/40 text-success border border-success/50 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          Create worktree
+        </button>
+        <button
+          onClick={onDeny}
+          className="px-2.5 py-1 text-xs rounded bg-danger/20 hover:bg-danger/30 text-danger transition-colors cursor-pointer"
+        >
+          Deny
+        </button>
+      </div>
     </div>
   )
 }
