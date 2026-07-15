@@ -1,6 +1,6 @@
 import { listWorktrees, getBranchSha, type WorktreeInfo } from './worktree'
 import { isOnRealBranch } from './git-ops-state'
-import { worktreeListsEqual } from '../shared/state/worktrees'
+import { mergeWorktreesPreservingFailures, worktreeListsEqual } from '../shared/state/worktrees'
 import {
   getRepoContext,
   fetchPRStatusesForRepo,
@@ -90,9 +90,13 @@ export class PRPoller {
     this.inFlightAll = true
     this.store.dispatch({ type: 'prs/loadingChanged', payload: true })
     try {
-      const treesByRoot = await Promise.all(
-        roots.map((r) => listWorktrees(r).catch(() => []))
+      // Two-phase: raw (with null on per-repo failure) drives the
+      // preserve-prior-on-failure merge for the store dispatch; the []-
+      // normalized view is what the PR batch loop below consumes.
+      const treesByRootRaw = await Promise.all(
+        roots.map((r) => listWorktrees(r).catch(() => null))
       )
+      const treesByRoot = treesByRootRaw.map((t) => t ?? [])
       const allWorktrees = treesByRoot.flat()
       const now = Date.now()
       this.lastAllFetchAt = now
@@ -105,16 +109,22 @@ export class PRPoller {
       // refresh triggers. The branch-sync watcher handles the prompt updates;
       // this tick guarantees convergence even if a watcher failed to attach.
       // Deduped so an unchanged list doesn't churn the array reference.
+      // A repo whose lookup threw preserves its previously-known worktrees
+      // so a transient error doesn't blank the UI.
       const currentList = this.store.getSnapshot().state.worktrees.list
-      if (!worktreeListsEqual(currentList, allWorktrees)) {
-        this.store.dispatch({ type: 'worktrees/listChanged', payload: allWorktrees })
+      const nextList = mergeWorktreesPreservingFailures(roots, treesByRootRaw, currentList)
+      if (!worktreeListsEqual(currentList, nextList)) {
+        this.store.dispatch({ type: 'worktrees/listChanged', payload: nextList })
       }
 
       // Kick off both branches in parallel. Each branch is self-contained
       // (own try/catch, own dispatch) so if one hangs or throws the other
       // still updates the store.
       await Promise.all([
-        this.refreshGraphQLBranch(allWorktrees).catch((err) => {
+        // Pass the preserved-failures list, not `allWorktrees`, so a repo
+        // whose listWorktrees threw keeps its worktrees (and their cached
+        // PR status) instead of being pruned on a transient error.
+        this.refreshGraphQLBranch(nextList).catch((err) => {
           log('pr-poller', 'GraphQL branch failed', formatErr(err))
         }),
         this.refreshMergedShaBranch(roots, treesByRoot).catch((err) => {

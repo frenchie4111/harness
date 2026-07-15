@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   initialWorktrees,
+  mergeWorktreesPreservingFailures,
   worktreesReducer,
   worktreeListsEqual,
   type PendingDeletion,
@@ -69,6 +70,45 @@ describe('worktreeListsEqual', () => {
     const a = [stubWorktree({ path: '/a' }), stubWorktree({ path: '/b' })]
     const b = [stubWorktree({ path: '/b' }), stubWorktree({ path: '/a' })]
     expect(worktreeListsEqual(a, b)).toBe(false)
+  })
+})
+
+describe('mergeWorktreesPreservingFailures', () => {
+  it('replaces each repo\'s slice with its successful result', () => {
+    const roots = ['/repo/a', '/repo/b']
+    const perRoot = [
+      [stubWorktree({ path: '/a/1', repoRoot: '/repo/a' })],
+      [stubWorktree({ path: '/b/1', repoRoot: '/repo/b' })]
+    ]
+    const previous = [stubWorktree({ path: '/a/old', repoRoot: '/repo/a' })]
+    const out = mergeWorktreesPreservingFailures(roots, perRoot, previous)
+    expect(out.map((w) => w.path)).toEqual(['/a/1', '/b/1'])
+  })
+
+  it('preserves the prior slice for a repo whose lookup returned null', () => {
+    const roots = ['/repo/a', '/repo/b']
+    const perRoot = [
+      null,
+      [stubWorktree({ path: '/b/1', repoRoot: '/repo/b' })]
+    ]
+    const previous = [
+      stubWorktree({ path: '/a/1', repoRoot: '/repo/a' }),
+      stubWorktree({ path: '/a/2', repoRoot: '/repo/a' }),
+      stubWorktree({ path: '/b/old', repoRoot: '/repo/b' })
+    ]
+    const out = mergeWorktreesPreservingFailures(roots, perRoot, previous)
+    expect(out.map((w) => w.path)).toEqual(['/a/1', '/a/2', '/b/1'])
+  })
+
+  it('drops a failed repo entirely if it had no prior entries', () => {
+    const out = mergeWorktreesPreservingFailures(['/repo/a'], [null], [])
+    expect(out).toEqual([])
+  })
+
+  it('empty successful result deletes that repo (deletions still propagate)', () => {
+    const previous = [stubWorktree({ path: '/a/1', repoRoot: '/repo/a' })]
+    const out = mergeWorktreesPreservingFailures(['/repo/a'], [[]], previous)
+    expect(out).toEqual([])
   })
 })
 
