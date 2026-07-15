@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { GitPullRequest, RotateCw, Trash2, Loader2, Moon, TriangleAlert, AlarmClock, Ghost } from 'lucide-react'
 import type { Worktree, PtyStatus, PendingTool, PRStatus } from '../types'
 import { isPRMerged } from '../../shared/state/prs'
@@ -11,6 +12,10 @@ import { formatPendingTool } from '../pending-tool'
 import { HotkeyBadge } from './HotkeyBadge'
 import { useMetaHeld } from '../hooks/useMetaHeld'
 import type { Action } from '../hotkeys'
+import { TicketProviderIcon } from './TicketProvidersSettings'
+import { useCachedTicket, useTicketProviders, useWorktreeLinkedTicket } from '../store'
+import { useBackend } from '../backend'
+import type { WorktreeTicketLink } from '../../shared/tickets'
 
 interface WorktreeTabProps {
   worktree: Worktree
@@ -175,6 +180,7 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
               stale
             </span>
           )}
+          <LinkedTicketChip worktreePath={worktree.path} />
         </div>
         {showPendingTool ? (
           <div className="text-xs text-danger truncate font-mono" title={formatPendingTool(pendingTool!)}>
@@ -310,5 +316,66 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
         />
       )}
     </div>
+  )
+}
+
+interface LinkedTicketChipProps {
+  worktreePath: string
+}
+
+/** Inline chip rendered next to the worktree's branch name when the
+ *  worktree was spawned from a ticket. Clicking opens the ticket in its
+ *  native UI via the OS browser. Hovers shows the full title + provider
+ *  + external id; while the ticket cache is cold we still show the
+ *  external id so the chip isn't empty. */
+function LinkedTicketChip({ worktreePath }: LinkedTicketChipProps): JSX.Element | null {
+  const link = useWorktreeLinkedTicket(worktreePath)
+  const cached = useCachedTicket(link)
+  const providers = useTicketProviders()
+  const backend = useBackend()
+
+  // Fetch the ticket lazily if we have a link but no cache entry yet.
+  // This populates the cache the first time the row mounts, regardless
+  // of whether the picker primed it on creation. Re-runs only when the
+  // link target changes — re-renders that don't change `link` no-op
+  // because the link object reference comes from the stub's per-key
+  // selector.
+  useEffect(() => {
+    if (link && !cached) {
+      void backend.ticketsGet(link.providerId, link.externalId)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [link])
+
+  if (!link) return null
+  const provider = providers.find((p) => p.id === link.providerId) ?? null
+  const title = cached?.title ?? `#${link.externalId}`
+  const tooltipBody = cached
+    ? `${cached.title} (${link.externalId}${provider ? ` · ${provider.label}` : ''})`
+    : `${link.externalId}${provider ? ` · ${provider.label}` : ''}`
+
+  const handleClick = (e: React.MouseEvent): void => {
+    e.stopPropagation()
+    // Prefer the cached url; fall back to the external id only as a
+    // last resort — without a url we can't do much, so just no-op.
+    if (cached?.url) backend.openExternal(cached.url)
+  }
+
+  return (
+    <Tooltip label={tooltipBody} side="bottom">
+      <button
+        type="button"
+        onClick={handleClick}
+        className="ml-1 inline-flex items-center gap-1 max-w-[8rem] shrink min-w-0 rounded-full px-1.5 py-0.5 text-xs bg-panel-raised border border-border-strong text-dim hover:text-fg hover:border-accent transition-colors cursor-pointer"
+        aria-label={`Linked ticket: ${tooltipBody}`}
+      >
+        {provider ? (
+          <TicketProviderIcon type={provider.type} className="icon-2xs shrink-0" />
+        ) : (
+          <span className="w-2 h-2 rounded-full bg-dim shrink-0" />
+        )}
+        <span className="truncate">{title}</span>
+      </button>
+    </Tooltip>
   )
 }

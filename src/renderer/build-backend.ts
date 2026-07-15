@@ -105,6 +105,7 @@ export function buildBackend(
       model?: string
       checkoutExisting?: boolean
       baseRef?: string
+      linkedTicket?: import('../shared/tickets').WorktreeTicketLink
     }) => req('worktrees:runPending', params),
     runPendingPRWorktree: (params: {
       id: string
@@ -113,6 +114,7 @@ export function buildBackend(
       initialPrompt?: string
       agentKind?: 'claude' | 'codex'
       model?: string
+      linkedTicket?: import('../shared/tickets').WorktreeTicketLink
     }) => req('worktrees:runPendingPR', params),
     retryPendingWorktree: (id: string) => req('worktrees:retryPending', id),
     dismissPendingWorktree: (id: string) => req('worktrees:dismissPending', id),
@@ -289,6 +291,13 @@ export function buildBackend(
     setHarnessSystemPromptMain: (prompt: string) =>
       req('config:setHarnessSystemPromptMain', prompt),
     setPrReviewPrompt: (prompt: string) => req('config:setPrReviewPrompt', prompt),
+    // Ticket worktree prompt template — the ticket-data workstream will
+    // land the `config:setTicketWorktreePromptTemplate` IPC handler. Until
+    // then we route through the same handler name; if main doesn't
+    // recognize it the request will reject and the textarea will surface
+    // the error. Once the data PR lands this becomes a real round-trip.
+    setTicketWorktreePromptTemplate: (template: string) =>
+      req('config:setTicketWorktreePromptTemplate', template),
     prepareMcpForTerminal: (terminalId: string) =>
       req('mcp:prepareForTerminal', terminalId),
     onWorktreesExternalCreate: (
@@ -615,7 +624,29 @@ export function buildBackend(
     sshBootstrap: (input: { bootstrapId: string; target: string; label: string }) =>
       reqLocal('ssh:bootstrap', input),
     sshReconnect: (input: { bootstrapId: string; connectionId: string }) =>
-      reqLocal('ssh:reconnect', input)
+      reqLocal('ssh:reconnect', input),
+
+    // Ticket providers + tickets. Routed through the active backend so a
+    // remote Harness can serve its own providers + token store.
+    ticketsListProviders: () => req('tickets:listProviders'),
+    ticketsAddProvider: (
+      config: Omit<import('../shared/tickets').TicketProviderConfig, 'id'>,
+      token?: string
+    ) => req('tickets:addProvider', config, token),
+    ticketsUpdateProvider: (
+      id: string,
+      patch: Partial<Omit<import('../shared/tickets').TicketProviderConfig, 'id'>>,
+      token?: string | null
+    ) => req('tickets:updateProvider', id, patch, token),
+    ticketsRemoveProvider: (id: string) => req('tickets:removeProvider', id),
+    ticketsList: (providerId: string, query?: string) =>
+      req('tickets:list', providerId, query),
+    ticketsGet: (providerId: string, externalId: string) =>
+      req('tickets:get', providerId, externalId),
+    ticketsSetProviderAppliesTo: (providerId: string, repoRoots: string[]) =>
+      req('tickets:setProviderAppliesTo', providerId, repoRoots),
+    ticketsHasProviderToken: (providerId: string) =>
+      req('tickets:hasProviderToken', providerId)
   }
 
   return api as ElectronAPI

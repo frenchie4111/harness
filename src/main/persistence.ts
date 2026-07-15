@@ -11,6 +11,10 @@ import {
 } from './persistence-migrations'
 import type { CostsState } from '../shared/state/costs'
 import type { SnoozeEntry } from '../shared/state/snooze'
+import type {
+  TicketProviderConfig,
+  WorktreeTicketLink
+} from '../shared/tickets'
 
 export type { PersistedPane, PersistedPaneNode, PersistedTab }
 
@@ -179,6 +183,11 @@ export interface Config {
   // Default kickoff prompt for "Open PR as worktree" / MCP create_worktree
   // with prNumber. Absent = use the bundled DEFAULT_PR_REVIEW_PROMPT.
   prReviewPrompt?: string
+  // Template used when spawning a worktree from a ticket. Supports
+  // {title} / {description} / {url} / {externalId} / {providerType}
+  // placeholders. Absent = use the bundled
+  // DEFAULT_TICKET_WORKTREE_PROMPT_TEMPLATE.
+  ticketWorktreePromptTemplate?: string
   // When false, Claude sessions spawn without CLAUDE_CODE_NO_FLICKER=1, so they
   // use the inline (non-fullscreen) TUI mode. Default is enabled (undefined/true).
   claudeTuiFullscreen?: boolean
@@ -262,6 +271,17 @@ export interface Config {
   // Same nesting scheme as `panes` so two repos with identical worktree
   // paths stay distinct. Absent / empty entries are pruned on write.
   scratchpadNotes?: Record<string, Record<string, string>>
+  // Configured ticket providers, keyed by stable Harness-internal uuid.
+  // Auth tokens for each provider live in secrets.enc under
+  // `ticket-provider-token:<id>`, NEVER inline. The renderer reads via
+  // the `ticketProviders` slice; this field is the disk representation.
+  ticketProviders?: Record<string, TicketProviderConfig>
+  // Side-table keyed by worktree absolute path → linked-ticket tuple.
+  // The Worktree itself is reconstructed from git on every list, which
+  // can't carry Harness-only metadata, so the link lives here and is
+  // merged into the Worktree records by WorktreesFSM.refreshList.
+  // Entries are pruned when the worktree is removed.
+  worktreeTicketLinks?: Record<string, WorktreeTicketLink>
 }
 
 export const DEFAULT_WORKTREE_BASE: 'remote' | 'local' = 'remote'
