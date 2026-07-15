@@ -135,8 +135,12 @@ export class WorktreeWatcher {
         branchDebounce: null
       }
       this.entries.set(worktreePath, entry)
-      this.openWatcher(worktreePath, entry)
     }
+    // Retry the watch on every ensure() when we don't have one yet — the
+    // first attempt can lose a race against `git worktree add` populating the
+    // gitdir, and without this the entry would stay watcher-less for the rest
+    // of the session (subscribes short-circuit on the existing entry).
+    if (!entry.watcher) this.openWatcher(worktreePath, entry)
     return entry
   }
 

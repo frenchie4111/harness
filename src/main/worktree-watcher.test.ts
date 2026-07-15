@@ -179,6 +179,28 @@ describe('WorktreeWatcher — changed-files subscriptions', () => {
     vi.advanceTimersByTime(500)
     expect(listener).not.toHaveBeenCalled()
   })
+
+  it('retries fs.watch on a subsequent subscribe after the first attempt failed', () => {
+    ;(fs.watch as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+      throw new Error('ENOENT')
+    })
+
+    const watcher = new WorktreeWatcher()
+    const first = vi.fn()
+    watcher.subscribe('/wt/racy', first)
+    expect(activeWatchers(join('/wt/racy', '.git'))).toHaveLength(0)
+
+    // Second subscribe should retry the open — the gitdir race lost on the
+    // first attempt is a real production case (worktree just created).
+    const second = vi.fn()
+    watcher.subscribe('/wt/racy', second)
+    expect(activeWatchers(join('/wt/racy', '.git'))).toHaveLength(1)
+
+    fireFsEvent(join('/wt/racy', '.git'), 'index')
+    vi.advanceTimersByTime(200)
+    expect(first).toHaveBeenCalledTimes(1)
+    expect(second).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('WorktreeWatcher — branch-label sync', () => {
