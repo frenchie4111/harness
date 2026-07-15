@@ -1,4 +1,5 @@
 import type { PendingTool } from './types'
+import { prettyToolName } from './components/json-mode-cards/tool-display'
 
 const MAX_SUMMARY = 60
 
@@ -49,6 +50,6 @@ export function formatPendingTool(tool: PendingTool): string {
       return pattern ? `${tool.name} ${truncate(pattern)}` : tool.name
     }
     default:
-      return tool.name
+      return prettyToolName(tool.name)
   }
 }

@@ -1,29 +1,31 @@
 import {
   ToolCardChrome,
+  extractArgs,
+  getToolDisplay,
   isHarnessControl,
-  prettyToolName,
   trunc,
   type ToolCardProps
 } from './index'
+import { ArgsBlock, CompactArgs } from './ArgsDisplay'
 
 export function GenericToolCard({ block, result, autoApproved, sessionAllowed }: ToolCardProps): JSX.Element {
-  const summary = block.input ? trunc(JSON.stringify(block.input), 100) : ''
   const brand = isHarnessControl(block.name)
+  const display = getToolDisplay(block.name)
+  const args = extractArgs(block.input)
+  const hasArgs = args.length > 0
+
   return (
     <ToolCardChrome
-      name={prettyToolName(block.name)}
-      subtitle={summary}
+      name={display.label}
+      subtitle={hasArgs ? <CompactArgs args={args} /> : ''}
       variant="info"
       isError={result?.isError}
       brand={brand}
+      icon={display.icon}
       autoApproved={autoApproved}
       sessionAllowed={sessionAllowed}
     >
-      {block.input && (
-        <pre className="px-2 py-1 text-xs font-mono bg-app/40 whitespace-pre-wrap max-h-40 overflow-auto">
-          {JSON.stringify(block.input, null, 2)}
-        </pre>
-      )}
+      {hasArgs && <ArgsBlock args={args} rawInput={block.input} />}
       {result && (
         <pre
           className={`px-2 py-1 text-xs font-mono whitespace-pre-wrap max-h-60 overflow-auto ${

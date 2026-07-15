@@ -1,4 +1,5 @@
 import { ToolCardChrome, basename, trunc, type ToolCardProps } from './index'
+import { GrepIcon } from './tool-icons'
 
 export function GrepCard({ block, result, autoApproved, sessionAllowed }: ToolCardProps): JSX.Element {
   const pattern = String(block.input?.pattern ?? '')
@@ -8,6 +9,7 @@ export function GrepCard({ block, result, autoApproved, sessionAllowed }: ToolCa
       name="Grep"
       subtitle={`/${pattern}/${path ? ` in ${basename(path)}` : ''}`}
       variant="info"
+      icon={GrepIcon}
       isError={result?.isError}
       autoApproved={autoApproved}
       sessionAllowed={sessionAllowed}

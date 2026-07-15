@@ -1,4 +1,5 @@
 import { ToolCardChrome, type ToolCardProps } from './index'
+import { TodoIcon } from './tool-icons'
 import { extractTodos } from '../../../shared/state/json-claude-todos'
 
 export function TodoWriteCard({ block, autoApproved, sessionAllowed }: ToolCardProps): JSX.Element {
@@ -8,6 +9,7 @@ export function TodoWriteCard({ block, autoApproved, sessionAllowed }: ToolCardP
       name="TodoWrite"
       subtitle={`${todos.length} item${todos.length === 1 ? '' : 's'}`}
       variant="info"
+      icon={TodoIcon}
       autoApproved={autoApproved}
       sessionAllowed={sessionAllowed}
     >

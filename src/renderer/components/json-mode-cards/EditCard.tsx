@@ -1,4 +1,5 @@
 import { ToolCardChrome, basename, trunc, type ToolCardProps } from './index'
+import { EditIcon } from './tool-icons'
 import { UnifiedDiff } from './UnifiedDiff'
 
 export function EditCard({ block, result, autoApproved, sessionAllowed }: ToolCardProps): JSX.Element {
@@ -13,6 +14,7 @@ export function EditCard({ block, result, autoApproved, sessionAllowed }: ToolCa
       name="Edit"
       subtitle={`${basename(fp)}${diffSummary}`}
       variant="warn"
+      icon={EditIcon}
       isError={result?.isError}
       autoApproved={autoApproved}
       sessionAllowed={sessionAllowed}
