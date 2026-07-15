@@ -42,7 +42,87 @@ import 'highlight.js/styles/github-dark.css'
 import type { JsonClaudeChatEntry } from '../../shared/state/json-claude'
 
 const REMARK_PLUGINS = [remarkGfm]
-const REHYPE_PLUGINS = [rehypeHighlight]
+const REHYPE_PLUGINS = [rehypeHighlight, rehypeColorHex]
+
+// Matches color literals we want to swatch:
+//   - #RRGGBB and #RRGGBBAA hex. 3-hex (#fff) and 4-hex (#ffff) are
+//     omitted on purpose — they collide with GitHub PR / issue refs
+//     like #158, #1234 which dominate dev-chat false-positive volume.
+//   - rgb() / rgba() CSS functions, modern and legacy syntax
+//     (commas, spaces, slash-alpha, percentages). The character class
+//     is loose-but-bounded — the browser's CSS parser does the real
+//     validation when we set the inline background-color, and the
+//     class excludes injection vectors (no quotes, semicolons, etc.).
+// Negative lookbehind on the hex branch avoids URL fragments
+// (`/#abc`) and double-hash; `\b` before `rgb` avoids `srgb(`.
+const COLOR_RE =
+  /(?<![\w#/])#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6})\b|\brgba?\(\s*[\d.,%\s/]+\s*\)/gi
+
+type HastNode = {
+  type: string
+  tagName?: string
+  value?: string
+  properties?: Record<string, unknown>
+  children?: HastNode[]
+}
+
+function rehypeColorHex() {
+  return (tree: HastNode) => {
+    walk(tree, false)
+  }
+  // Skip the <pre> subtree so rehype-highlight's syntax-highlighted
+  // tokens stay intact. Inline <code> (outside of <pre>) is NOT skipped
+  // — Claude almost always backticks color literals like `#FF00AA`.
+  function walk(node: HastNode, inPre: boolean): void {
+    if (!node.children) return
+    const out: HastNode[] = []
+    for (const child of node.children) {
+      const childInPre = inPre || child.tagName === 'pre'
+      if (child.type === 'text' && !inPre && typeof child.value === 'string') {
+        const split = splitColorText(child.value)
+        if (split) {
+          out.push(...split)
+          continue
+        }
+      } else if (child.children) {
+        walk(child, childInPre)
+      }
+      out.push(child)
+    }
+    node.children = out
+  }
+  function splitColorText(text: string): HastNode[] | null {
+    COLOR_RE.lastIndex = 0
+    if (!COLOR_RE.test(text)) return null
+    COLOR_RE.lastIndex = 0
+    const parts: HastNode[] = []
+    let last = 0
+    let m: RegExpExecArray | null
+    while ((m = COLOR_RE.exec(text))) {
+      const color = m[0]
+      if (m.index > last) {
+        parts.push({ type: 'text', value: text.slice(last, m.index) })
+      }
+      parts.push({ type: 'text', value: color })
+      parts.push({
+        type: 'element',
+        tagName: 'span',
+        properties: {
+          className: ['hex-color-swatch'],
+          style: `background-color: ${color}`,
+          title: color,
+          ariaHidden: 'true'
+        },
+        children: []
+      })
+      last = m.index + color.length
+    }
+    if (last < text.length) {
+      parts.push({ type: 'text', value: text.slice(last) })
+    }
+    return parts
+  }
+}
 
 // Worktree file list cache. Same TTL/shape as CommandPalette uses — the
 // list rarely changes during a typing session, and listAllFiles shells
