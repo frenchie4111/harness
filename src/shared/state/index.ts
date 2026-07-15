@@ -102,6 +102,7 @@ import {
   type SshBootstrapEvent,
   type SshBootstrapState
 } from './ssh-bootstrap'
+import { initialConfigHealth, type ConfigHealthState } from './config-health'
 
 export type { SettingsState, SettingsEvent }
 export type { UpdaterState, UpdaterEvent, UpdaterStatus } from './updater'
@@ -182,6 +183,7 @@ export type {
   BootstrapProgress,
   BootstrapError
 } from './ssh-bootstrap'
+export type { ConfigHealthState, ConfigLoadError } from './config-health'
 
 export interface AppState {
   settings: SettingsState
@@ -199,6 +201,7 @@ export interface AppState {
   announcements: AnnouncementsState
   scratchpad: ScratchpadState
   sshBootstrap: SshBootstrapState
+  configHealth: ConfigHealthState
 }
 
 export type StateEvent =
@@ -233,7 +236,8 @@ export const initialState: AppState = {
   snooze: initialSnooze,
   announcements: initialAnnouncements,
   scratchpad: initialScratchpad,
-  sshBootstrap: initialSshBootstrap
+  sshBootstrap: initialSshBootstrap,
+  configHealth: initialConfigHealth
 }
 
 export function rootReducer(state: AppState, event: StateEvent): AppState {
@@ -312,6 +316,9 @@ export function rootReducer(state: AppState, event: StateEvent): AppState {
       sshBootstrap: sshBootstrapReducer(state.sshBootstrap, event as SshBootstrapEvent)
     }
   }
+  // configHealth has no events — it's seeded at construction only (see
+  // config-health.ts), so there's no reducer branch. The field flows through
+  // unchanged via the `...state` spreads above.
   return state
 }
 
@@ -357,7 +364,8 @@ export function mergeWireSnapshot(state: WireSnapshotState): AppState {
     snooze: { ...initialState.snooze, ...state.snooze },
     announcements: { ...initialState.announcements, ...state.announcements },
     scratchpad: { ...initialState.scratchpad, ...state.scratchpad },
-    sshBootstrap: { ...initialState.sshBootstrap, ...state.sshBootstrap }
+    sshBootstrap: { ...initialState.sshBootstrap, ...state.sshBootstrap },
+    configHealth: { ...initialState.configHealth, ...state.configHealth }
   }
 }
 

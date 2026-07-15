@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { useSettings, usePrs, useOnboarding, useHooks, useWorktrees, useTerminals, usePanes, useLastActive, useUpdater, useRepoConfigs, useSnooze, useAnnouncements } from './store'
+import { useSettings, usePrs, useOnboarding, useHooks, useWorktrees, useTerminals, usePanes, useLastActive, useUpdater, useRepoConfigs, useSnooze, useAnnouncements, useConfigLoadError } from './store'
 import { useBackend } from './backend'
 import { useTailLineBuffer } from './hooks/useTailLineBuffer'
 import { useTabHandlers } from './hooks/useTabHandlers'
@@ -44,6 +44,7 @@ import { ResolveRepoModal } from './components/ResolveRepoModal'
 import { RepoAddErrorModal } from './components/RepoAddErrorModal'
 import { ReportIssueScreen, onOpenReportIssue, type OpenReportIssueDetail } from './components/ReportIssueScreen'
 import { AddBackendModal } from './components/AddBackendModal'
+import { InvalidConfigModal } from './components/InvalidConfigModal'
 import { MonacoWorkerFailedBanner } from './components/MonacoWorkerFailedBanner'
 import iconUrl from '../../resources/icon.png'
 import { PerfMonitorHUD } from './components/PerfMonitorHUD'
@@ -315,6 +316,8 @@ function DesktopApp(): JSX.Element {
   // config on boot so it's already correct on first render.
   const { quest: questStep } = useOnboarding()
   const questVisitedRef = useRef<Set<string>>(new Set())
+
+  const configLoadError = useConfigLoadError()
 
   // Count of "real" worktrees the user has spawned — main repo doesn't count
   // as an agent. Used by empty state + quest advancement.
@@ -929,6 +932,23 @@ const setQuestStep = useCallback((next: QuestStep) => {
       <RepoAddErrorModal message={repoAddPrompt.message} onDismiss={handleDismissRepoPrompt} />
     ) : null
 
+
+  // A corrupt config preempts everything, including the onboarding screen
+  // below — a corrupt load lands on empty defaults, which would otherwise
+  // trigger first-run onboarding underneath the recovery modal.
+  if (configLoadError) {
+    return (
+      <HotkeysProvider bindings={resolvedHotkeys}>
+        <div className="flex h-full flex-col">
+          <div className="drag-region h-10 shrink-0 flex items-stretch pl-20">
+            <AppTitleSegment />
+          </div>
+          <div className="flex-1" />
+        </div>
+        <InvalidConfigModal />
+      </HotkeysProvider>
+    )
+  }
 
   if (repoRoots.length === 0 || previewOnboarding) {
     const step1Complete = themeChosen
