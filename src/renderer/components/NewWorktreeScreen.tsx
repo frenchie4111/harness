@@ -338,6 +338,11 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
       }
       if (e.key === 'Escape') {
         e.preventDefault()
+        // Mirror the Cancel button's disabled state — otherwise Esc during
+        // an in-flight create closes the modal, but the backend keeps
+        // running and its deferred focus/close effect can dismiss whatever
+        // the user reopens after.
+        if (submitting || prClickPending !== null) return
         onCancel()
       }
       if ((e.metaKey || e.ctrlKey) && e.key === '[') {
@@ -349,7 +354,7 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
         cycleRepo(1)
       }
     },
-    [mode, handlePRSubmit, handleSubmit, onCancel, cycleRepo]
+    [mode, handlePRSubmit, handleSubmit, onCancel, cycleRepo, submitting, prClickPending]
   )
 
   // Selection is per-(repo, PR-list) — switching repos invalidates it.
