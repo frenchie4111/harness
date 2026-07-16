@@ -143,6 +143,19 @@ export function matchesBinding(e: KeyboardEvent, binding: HotkeyBinding): boolea
   return eventKey === bindingKey
 }
 
+// Monaco's input surface is an EditContext-backed div (not a textarea, not
+// contenteditable), so it's matched by container class rather than tag.
+export function isEditableTarget(el: HTMLElement | null): boolean {
+  if (!el) return false
+  return (
+    el.tagName === 'INPUT' ||
+    el.tagName === 'TEXTAREA' ||
+    el.tagName === 'SELECT' ||
+    el.isContentEditable ||
+    el.closest('.monaco-editor, .xterm') !== null
+  )
+}
+
 /**
  * Parse a shortcut string like "Cmd+Shift+T" into a HotkeyBinding.
  * Recognized modifier tokens: Cmd, Ctrl, Shift, Alt.
