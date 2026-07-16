@@ -5,14 +5,24 @@
 # Usage: ./scripts/release.sh <version>
 # Example: ./scripts/release.sh 1.0.1
 #
-# Steps (all local — no build, no publish):
-#   1. Preflight (clean tree, on main, gh authed, claude CLI present)
+# Steps (all local edits, then a PR — no build, no publish happen
+# inside this script; build runs in CI on the tag push at the end):
+#   1. Preflight (clean tree, on main, gh authed, claude CLI present,
+#      tag + release branch both available, merge method allowed)
 #   2. Bump package.json + package-lock.json
 #   3. Rewrite README download links
 #   4. Generate site/public/releases.html entry via Claude
 #   5. Write release-notes/v<ver>.md (read by the CI workflows)
 #   6. Interactive confirm
-#   7. Commit "Release v<ver>", tag, push main + tag
+#   7. Create release/v<ver> branch, commit "Release v<ver>", push it
+#   8. Open PR against main with `gh pr create`
+#   9. Watch PR checks until CI is green (`gh pr checks --watch`)
+#  10. Merge PR — rebase by default, falling back to merge commit if
+#      rebase is disabled. We never squash, so the "Release v<ver>"
+#      subject is preserved on main and the prep commit stays
+#      reachable.
+#  11. Pull latest main, tag the new main HEAD (NOT the original prep
+#      commit — its SHA changes during rebase-merge), push the tag.
 #
 # That tag push triggers .github/workflows/release.yml, which runs one
 # `create-release` job (reading the body from release-notes/v<ver>.md
@@ -21,7 +31,30 @@
 # create. dmg/zip/blockmap/latest-mac.yml + AppImage/deb/latest-linux.yml
 # + harness-server tarballs all attach to the same release.
 #
-# Recovery if a build job fails after tag push:
+# Why a PR? main is protected by a ruleset that requires PRs + the
+# `ci` status check. Direct pushes to main are rejected, so the
+# version-bump commit has to land via a PR rather than a direct push.
+#
+# Recovery — the script is intentionally NOT idempotent across re-runs.
+# If anything fails mid-flight, clean up by hand and start over with
+# the same version. The script's trap handles the early windows
+# automatically; the later ones print the exact cleanup commands.
+#
+#   * Before the commit lands locally — the trap restores edited files
+#     automatically. No cleanup needed; just re-run.
+#   * After the local commit but before the branch is pushed — the
+#     trap returns you to main and deletes the local release branch.
+#   * After the branch is pushed but before merge — close the PR (if
+#     opened) and delete the branch on both sides:
+#        gh pr close <pr-number> --delete-branch || true
+#        git checkout main && git branch -D release/v<ver>
+#        git push origin :release/v<ver>
+#   * After merge but before the tag is pushed — the prep commit is
+#     already on main. Tag main HEAD and push it manually:
+#        git checkout main && git pull --ff-only origin main
+#        git tag v<ver> && git push origin v<ver>
+#
+# Recovery if a build job fails after the tag push:
 #   - Single job failed (e.g. flaky notarization)? Re-run that job from
 #     the Actions UI. create-release is idempotent on re-run (detects
 #     the existing release and skips), so a partial replay works.
@@ -48,6 +81,8 @@ if [[ "$VERSION" =~ ^v ]]; then
   VERSION="${VERSION#v}"
   TAG="v${VERSION}"
 fi
+
+RELEASE_BRANCH="release/${TAG}"
 
 # ---- Pretty output ----
 RED=$'\033[31m'
@@ -91,6 +126,18 @@ if git ls-remote --tags origin "refs/tags/$TAG" | grep -q "$TAG"; then
 fi
 ok "Tag $TAG is available"
 
+# Release branch must not already exist locally or on remote. The
+# script doesn't try to recover a partial run — if it failed mid-flight
+# you need to delete the leftover branch by hand before retrying. See
+# the recovery procedure in the header comment.
+if git show-ref --verify --quiet "refs/heads/${RELEASE_BRANCH}"; then
+  fail "Branch ${RELEASE_BRANCH} already exists locally. Delete it first: git branch -D ${RELEASE_BRANCH}"
+fi
+if git ls-remote --heads origin "refs/heads/${RELEASE_BRANCH}" | grep -q "${RELEASE_BRANCH}"; then
+  fail "Branch ${RELEASE_BRANCH} already exists on origin. Delete it (and close any matching PR) first: git push origin :${RELEASE_BRANCH}"
+fi
+ok "Branch ${RELEASE_BRANCH} is available"
+
 # Notarization creds used to live in .env and be checked here — they
 # now live in GitHub Actions secrets (see .github/workflows/release.yml
 # header for the list). No local .env check anymore.
@@ -117,14 +164,46 @@ if ! command -v claude >/dev/null 2>&1; then
 fi
 ok "claude CLI is available"
 
+# Pick the merge method we'll use for the PR. The repo's allowed-merge
+# settings tell us which are enabled — we never squash (we want the
+# "Release v<ver>" subject preserved on main with the prep commit
+# reachable), so the choice is rebase or merge-commit. Default to
+# rebase when enabled; if both are enabled the user gets a one-shot
+# override at confirm time.
+ALLOW_MERGE_COMMIT=$(gh repo view --json mergeCommitAllowed --jq '.mergeCommitAllowed')
+ALLOW_REBASE_MERGE=$(gh repo view --json rebaseMergeAllowed --jq '.rebaseMergeAllowed')
+if [ "$ALLOW_REBASE_MERGE" = "true" ]; then
+  MERGE_METHOD="rebase"
+elif [ "$ALLOW_MERGE_COMMIT" = "true" ]; then
+  MERGE_METHOD="merge"
+else
+  fail "Repo has neither rebase nor merge-commit enabled — this script never squashes. Enable one in Settings → General → Pull Requests."
+fi
+ok "Merge method: ${MERGE_METHOD} (default)"
+
+# Optional override when both methods are available
+if [ "$ALLOW_REBASE_MERGE" = "true" ] && [ "$ALLOW_MERGE_COMMIT" = "true" ]; then
+  echo
+  read -r -p "Merge method [rebase/merge] (default: rebase): " method_choice
+  case "$method_choice" in
+    ""|rebase) MERGE_METHOD="rebase" ;;
+    merge)     MERGE_METHOD="merge" ;;
+    *)         fail "Invalid merge method '${method_choice}' (expected 'rebase' or 'merge')." ;;
+  esac
+fi
+
 # Confirm before proceeding
 echo
 echo "${BOLD}Ready to prepare Harness v${VERSION}${RESET}"
 echo "  Commit: $(git rev-parse --short HEAD)"
 echo "  Tag:    $TAG"
+echo "  Branch: $RELEASE_BRANCH"
+echo "  Merge:  $MERGE_METHOD"
 echo
-echo "This script will commit + push the tag. Build/sign/notarize/upload"
-echo "all happen in CI after the tag push. Watch the workflows at:"
+echo "This script will commit on a release branch, open a PR against"
+echo "main, wait for CI to go green, merge, then tag the new main HEAD."
+echo "Build/sign/notarize/upload all happen in CI after the tag push."
+echo "Watch the workflows at:"
 echo "  https://github.com/frenchie4111/harness/actions"
 echo
 read -r -p "Proceed? [y/N] " confirm
@@ -134,30 +213,77 @@ if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
 fi
 
 # ---- Failure trap ----
-# All file edits (version bump, README, releases.html, release-notes
-# file) happen up front but the commit is deferred to the end. If we
-# exit non-zero before committing, restore the touched files + delete
-# the new notes file so a failed prepare leaves the tree exactly as it
-# started — no half-prepared "Release v..." commit sitting on main.
+# Window-by-window state machine. Each stage flips a flag so the trap
+# knows what to undo (and what to leave alone for manual recovery).
 #
-# Once COMMITTED=1 the trap becomes a no-op. If `git push` then fails
-# after a successful commit, the user recovers by `git reset --hard
-# origin/main` and re-running. If the tag push fails after main pushed,
-# they recover with `git push origin $TAG`. If CI fails after both
-# pushed, see the recovery procedure in the header comment.
-COMMITTED=0
+#   STAGE=files     (default)
+#     Edits made on main, nothing committed. Restore the touched files
+#     + delete the new notes file so the tree is exactly as it
+#     started.
+#   STAGE=committed
+#     Local commit on the release branch but not pushed. Check out
+#     main and delete the local release branch — the commit is
+#     unreachable but disk state is restored.
+#   STAGE=pushed
+#     Release branch is on origin (PR may or may not be open). Leave
+#     the branch and print the manual cleanup commands; we don't want
+#     to delete the PR / remote branch behind the user's back.
+#   STAGE=merged
+#     PR merged, prep commit is on main. Print instructions for
+#     tagging main HEAD by hand — no rollback, the commit's good.
+#   STAGE=tagged
+#     Tag pushed. Trap is a no-op.
+STAGE=files
 RELEASE_NOTES_FILE="release-notes/${TAG}.md"
 RELEASE_TOUCHED_FILES=(package.json package-lock.json README.md site/public/releases.html)
-restore_release_files() {
+PR_NUMBER=""
+recover_release() {
   local exit_code=$?
-  if [ "$COMMITTED" = "0" ] && [ "$exit_code" != "0" ]; then
-    echo
-    warn "Release prep failed before commit — restoring working tree"
-    git checkout -- "${RELEASE_TOUCHED_FILES[@]}" 2>/dev/null || true
-    rm -f "$RELEASE_NOTES_FILE"
+  if [ "$exit_code" = "0" ]; then
+    return
   fi
+  case "$STAGE" in
+    files)
+      echo
+      warn "Release prep failed before commit — restoring working tree"
+      git checkout -- "${RELEASE_TOUCHED_FILES[@]}" 2>/dev/null || true
+      rm -f "$RELEASE_NOTES_FILE"
+      # Tiny window: if we made it past `git checkout -b` but failed
+      # before `git commit`, the empty release branch exists but has
+      # no commit beyond main. Return to main and drop it. Safe
+      # no-op when we never created the branch.
+      if [ "$(git rev-parse --abbrev-ref HEAD 2>/dev/null)" = "$RELEASE_BRANCH" ]; then
+        git checkout main 2>/dev/null || true
+        git branch -D "${RELEASE_BRANCH}" 2>/dev/null || true
+      fi
+      ;;
+    committed)
+      echo
+      warn "Release prep failed after local commit — returning to main and dropping ${RELEASE_BRANCH}"
+      git checkout main 2>/dev/null || true
+      git branch -D "${RELEASE_BRANCH}" 2>/dev/null || true
+      ;;
+    pushed)
+      echo
+      warn "Release prep failed after pushing ${RELEASE_BRANCH} — manual cleanup needed:"
+      if [ -n "$PR_NUMBER" ]; then
+        echo "    gh pr close ${PR_NUMBER} --delete-branch || true"
+      else
+        echo "    git push origin :${RELEASE_BRANCH}"
+      fi
+      echo "    git checkout main && git branch -D ${RELEASE_BRANCH}"
+      ;;
+    merged)
+      echo
+      warn "Merged ${RELEASE_BRANCH} into main but tag push failed — tag main HEAD by hand:"
+      echo "    git checkout main && git pull --ff-only origin main"
+      echo "    git tag ${TAG} && git push origin ${TAG}"
+      ;;
+    tagged)
+      ;;
+  esac
 }
-trap restore_release_files EXIT
+trap recover_release EXIT
 
 # ---- Bump version ----
 step "Bumping package.json and package-lock.json to ${VERSION}"
@@ -197,9 +323,10 @@ ok "Download links updated"
 
 # ---- Build contributors map ----
 # One line per PR authored by someone other than the release maintainer,
-# formatted "#NN @login". Used by both the Claude releases.html prompt
-# (for inline credits) and the release-notes file (for the trailing
-# Contributors section).
+# formatted "#NN @login". Used by the Claude releases.html prompt (for
+# inline credits), the release-notes file (for the trailing Contributors
+# section), and the PR body below (for an at-a-glance contributor list
+# on the release PR itself).
 PREV_TAG=$(git describe --tags --abbrev=0 HEAD 2>/dev/null || true)
 CONTRIBUTORS_FILE=$(mktemp)
 SELF_USER=$(gh api user --jq .login 2>/dev/null || echo "")
@@ -215,6 +342,13 @@ if [ -s "$CONTRIBUTORS_FILE" ]; then
   ok "External contributors: $(awk '{print $2}' "$CONTRIBUTORS_FILE" | sort -u | paste -sd ' ' -)"
 else
   echo "  (no external contributors this release)"
+fi
+
+# Snapshot the contributor list for the PR body before the temp file
+# is removed at the end of release-notes generation below.
+CONTRIBUTORS_PR_LIST=""
+if [ -s "$CONTRIBUTORS_FILE" ]; then
+  CONTRIBUTORS_PR_LIST=$(awk '{print "- " $1 " " $2}' "$CONTRIBUTORS_FILE" | sort -u)
 fi
 
 # ---- Generate release notes for site/public/releases.html ----
@@ -308,21 +442,67 @@ EOF
 rm -f "$CONTRIBUTORS_FILE"
 ok "Release notes written to ${RELEASE_NOTES_FILE}"
 
-# ---- Commit version bump + release notes ----
-step "Committing release prep"
+# ---- Create release branch and commit ----
+step "Creating ${RELEASE_BRANCH} and committing release prep"
+git checkout -b "$RELEASE_BRANCH"
 git add package.json package-lock.json README.md site/public/releases.html "$RELEASE_NOTES_FILE"
 git commit -m "Release v${VERSION}"
-COMMITTED=1
-ok "Committed version bump, download links, releases.html entry, and release-notes file"
+STAGE=committed
+ok "Committed version bump, download links, releases.html entry, and release-notes file on ${RELEASE_BRANCH}"
 
-# ---- Tag and push ----
-# After this point release.yml takes over. If a build job fails, see
-# the recovery procedure in the header comment.
-step "Tagging and pushing"
+# ---- Push branch ----
+step "Pushing ${RELEASE_BRANCH} to origin"
+git push -u origin "$RELEASE_BRANCH"
+STAGE=pushed
+ok "Pushed ${RELEASE_BRANCH}"
+
+# ---- Open PR ----
+step "Opening pull request"
+PR_BODY=$(cat <<EOF
+Auto-generated by \`scripts/release.sh\` for Harness ${TAG}.
+
+This PR contains the version bump, README link updates, \`site/public/releases.html\` entry, and \`release-notes/${TAG}.md\` for the release. Once CI passes and this PR is merged, the script will tag the new \`main\` HEAD as \`${TAG}\`. The tag push then fires [\`release.yml\`](https://github.com/frenchie4111/harness/blob/main/.github/workflows/release.yml), which builds, signs, notarizes, and uploads artifacts to the GitHub release.
+
+The script is blocking on \`gh pr checks ${RELEASE_BRANCH} --watch\` and will merge automatically when CI is green — don't close or merge this PR by hand unless aborting the release.
+EOF
+)
+if [ -n "$CONTRIBUTORS_PR_LIST" ]; then
+  PR_BODY="${PR_BODY}
+
+### Contributors
+
+${CONTRIBUTORS_PR_LIST}"
+fi
+PR_URL=$(gh pr create --base main --head "$RELEASE_BRANCH" --title "Release ${TAG}" --body "$PR_BODY")
+PR_NUMBER=$(printf '%s' "$PR_URL" | awk -F/ '{print $NF}')
+ok "Opened PR #${PR_NUMBER}: $PR_URL"
+
+# ---- Wait for CI ----
+# `gh pr checks --watch` blocks until every required check completes
+# and exits non-zero if any failed. If it fails, the trap prints the
+# manual cleanup commands and exits — the user can push fixes to the
+# branch and finish by hand, or close the PR and start over.
+step "Waiting for CI on PR #${PR_NUMBER}"
+echo "  (gh pr checks ${PR_NUMBER} --watch — Ctrl-C to abort)"
+gh pr checks "$PR_NUMBER" --watch
+ok "CI passed"
+
+# ---- Merge ----
+step "Merging PR #${PR_NUMBER} with --${MERGE_METHOD}"
+gh pr merge "$PR_NUMBER" "--${MERGE_METHOD}" --delete-branch
+STAGE=merged
+ok "Merged"
+
+# ---- Pull main, tag, push ----
+# Tag main HEAD, not the local prep commit — rebase-merge rewrites the
+# SHA so the original commit's hash is no longer on any branch.
+step "Tagging new main HEAD"
+git checkout main
+git pull --ff-only origin main
 git tag "$TAG"
-git push origin main
 git push origin "$TAG"
-ok "Pushed main and $TAG"
+STAGE=tagged
+ok "Pushed ${TAG} (now $(git rev-parse --short "$TAG"))"
 
 step "Done — release.yml is now building"
 echo "  Watch the workflow at:"
