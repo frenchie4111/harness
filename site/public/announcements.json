@@ -1,6 +1,13 @@
 {
   "announcements": [
     {
+      "id": "remote-backends-2026-07",
+      "title": "Run your agents on any machine",
+      "href": "https://harness.mikelyons.org/announcements/remote-backends.html",
+      "publishedAt": "2026-07-16",
+      "summary": "Connect the Harness desktop app to a headless server on another machine. One-click SSH setup, switch backends with a keystroke, notifications from every machine."
+    },
+    {
       "id": "introducing-chat-mode-2026-05",
       "title": "Introducing Chat mode",
       "href": "https://harness.mikelyons.org/announcements/introducing-chat-mode.html",

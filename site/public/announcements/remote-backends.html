@@ -1,0 +1,506 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Run your agents on any machine | Harness</title>
+  <meta name="description" content="Connect the Harness desktop app to a headless server on another machine. One-click SSH setup, switch backends with a keystroke, notifications from every machine." />
+
+  <!-- Open Graph -->
+  <meta property="og:site_name" content="Harness" />
+  <meta property="og:title" content="Run your agents on any machine" />
+  <meta property="og:description" content="Connect the Harness desktop app to a headless server on another machine. One-click SSH setup, switch backends with a keystroke, notifications from every machine." />
+  <meta property="og:image" content="https://harness.mikelyons.org/og-image.png?v=remote-backends" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:type" content="image/png" />
+  <meta property="og:image:alt" content="Harness — manage multiple Claude Code sessions across git worktrees." />
+  <meta property="og:url" content="https://harness.mikelyons.org/announcements/remote-backends.html" />
+  <meta property="og:type" content="article" />
+  <meta property="article:published_time" content="2026-07-16" />
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Run your agents on any machine" />
+  <meta name="twitter:description" content="Connect the Harness desktop app to a headless server on another machine. One-click SSH setup, switch backends with a keystroke, notifications from every machine." />
+  <meta name="twitter:image" content="https://harness.mikelyons.org/og-image.png?v=remote-backends" />
+  <meta name="twitter:image:alt" content="Harness — manage multiple Claude Code sessions across git worktrees." />
+
+  <link rel="icon" type="image/png" href="/icon.png" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <style>
+    html, body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0a0a0a; color: #e5e5e5; }
+    code, pre { font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .gradient-text { background: linear-gradient(135deg, #f59e0b 0%, #ef4444 50%, #a855f7 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .grid-bg {
+      background-image:
+        radial-gradient(circle at 50% 0%, rgba(245, 158, 11, 0.08), transparent 50%),
+        radial-gradient(circle at 0% 100%, rgba(168, 85, 247, 0.06), transparent 50%);
+    }
+    .prose-custom p { color: #a3a3a3; line-height: 1.75; margin-bottom: 1rem; }
+    .prose-custom p strong { color: #f5f5f5; font-weight: 600; }
+    .prose-custom code { background: #1f1f1f; color: #f5f5f5; padding: 0.125rem 0.375rem; border-radius: 0.25rem; font-size: 0.875em; }
+    .prose-custom ul, .prose-custom ol { color: #a3a3a3; line-height: 1.75; margin-bottom: 1rem; padding-left: 1.5rem; }
+    .prose-custom ul { list-style: disc; }
+    .prose-custom ol { list-style: decimal; }
+    .prose-custom li { margin-bottom: 0.5rem; }
+    .prose-custom li strong { color: #f5f5f5; font-weight: 600; }
+    .prose-custom a { color: #fbbf24; }
+    .prose-custom a:hover { color: #fcd34d; }
+    /* Hero diagram: Harness app <-> harness-server <-> Claude agents.
+       Three nodes joined by links with animated packets flowing both
+       directions. Pure CSS animation; disabled under
+       prefers-reduced-motion. */
+    .hero-diagram {
+      display: flex;
+      align-items: center;
+      padding: 1.5rem 0 0.5rem;
+    }
+    .diagram-node {
+      flex: 0 0 auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.5rem;
+      background: rgba(10, 10, 10, 0.6);
+      border: 1px solid #262626;
+      border-radius: 0.75rem;
+      padding: 1.25rem 1.5rem;
+    }
+    .diagram-node svg { color: #f59e0b; display: block; }
+    .diagram-node--agents svg { color: #a855f7; }
+    .diagram-node-title { color: #f5f5f5; font-weight: 600; font-size: 0.875rem; white-space: nowrap; }
+    .diagram-node-sub { color: #737373; font-size: 0.75rem; white-space: nowrap; }
+    .diagram-link {
+      flex: 1 1 0;
+      min-width: 2.5rem;
+      height: 2px;
+      background: #262626;
+      position: relative;
+    }
+    .diagram-link-label {
+      position: absolute;
+      top: 0.625rem;
+      left: 50%;
+      transform: translateX(-50%);
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 0.6875rem;
+      color: #737373;
+      white-space: nowrap;
+    }
+    .packet {
+      position: absolute;
+      top: 50%;
+      width: 6px;
+      height: 6px;
+      margin-top: -3px;
+      border-radius: 999px;
+      background: #f59e0b;
+      box-shadow: 0 0 8px rgba(245, 158, 11, 0.8);
+      animation: packet-fwd 2.6s linear infinite;
+    }
+    .packet--rev {
+      background: #a855f7;
+      box-shadow: 0 0 8px rgba(168, 85, 247, 0.8);
+      animation-name: packet-rev;
+      animation-delay: 1.3s;
+    }
+    @keyframes packet-fwd {
+      0%   { left: 0; opacity: 0; }
+      12%  { opacity: 1; }
+      88%  { opacity: 1; }
+      100% { left: calc(100% - 6px); opacity: 0; }
+    }
+    @keyframes packet-rev {
+      0%   { left: calc(100% - 6px); opacity: 0; }
+      12%  { opacity: 1; }
+      88%  { opacity: 1; }
+      100% { left: 0; opacity: 0; }
+    }
+    @media (max-width: 640px) {
+      .hero-diagram { flex-direction: column; }
+      .diagram-node { width: 100%; }
+      .diagram-link { flex: none; min-width: 0; width: 2px; height: 3.5rem; }
+      .diagram-link-label {
+        top: 50%;
+        left: auto;
+        right: -0.625rem;
+        transform: translate(100%, -50%);
+      }
+      .packet { top: 0; left: 50%; margin-top: 0; margin-left: -3px; animation-name: packet-fwd-v; }
+      .packet--rev { animation-name: packet-rev-v; }
+      @keyframes packet-fwd-v {
+        0%   { top: 0; opacity: 0; }
+        12%  { opacity: 1; }
+        88%  { opacity: 1; }
+        100% { top: calc(100% - 6px); opacity: 0; }
+      }
+      @keyframes packet-rev-v {
+        0%   { top: calc(100% - 6px); opacity: 0; }
+        12%  { opacity: 1; }
+        88%  { opacity: 1; }
+        100% { top: 0; opacity: 0; }
+      }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .packet { animation: none; opacity: 0; }
+    }
+    .hero-hint {
+      margin-top: 0.75rem;
+      text-align: center;
+      font-size: 0.75rem;
+      color: #737373;
+    }
+    /* Manual-setup terminal panel: three-step flow rendered as a styled
+       pre. Same dark-panel aesthetic as .prose-custom code / .feature-card. */
+    .term-panel {
+      background: #111111;
+      border: 1px solid #262626;
+      border-radius: 0.75rem;
+      overflow: hidden;
+      margin-bottom: 1rem;
+    }
+    .term-panel-bar {
+      display: flex;
+      align-items: center;
+      gap: 0.375rem;
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid #1f1f1f;
+    }
+    .term-panel-bar span {
+      width: 0.75rem;
+      height: 0.75rem;
+      border-radius: 999px;
+      background: #262626;
+    }
+    .term-panel pre {
+      margin: 0;
+      padding: 1.25rem 1.5rem;
+      font-size: 0.8125rem;
+      line-height: 1.9;
+      overflow-x: auto;
+      color: #e5e5e5;
+    }
+    .term-panel .t-comment { color: #737373; }
+    .term-panel .t-prompt { color: #f59e0b; }
+    .term-panel .t-out { color: #a3a3a3; }
+    .term-panel .t-url { color: #fbbf24; }
+    .feature-card {
+      background: rgba(10, 10, 10, 0.6);
+      border: 1px solid #262626;
+      border-radius: 0.75rem;
+      padding: 1.25rem 1.5rem;
+    }
+    .feature-card h4 { color: #f5f5f5; font-weight: 600; margin-bottom: 0.25rem; font-size: 0.9375rem; }
+    .feature-card p { color: #737373; font-size: 0.875rem; line-height: 1.6; margin: 0; }
+    .feature-card code { background: #262626; color: #e5e5e5; padding: 0.0625rem 0.3125rem; border-radius: 0.25rem; font-size: 0.8125em; }
+  </style>
+</head>
+<body class="min-h-screen grid-bg">
+
+  <!-- Nav -->
+  <nav class="max-w-6xl mx-auto px-6 py-6 flex items-center justify-between relative z-30">
+    <a href="/" class="flex items-center gap-3">
+      <img src="/icon.png" alt="Harness icon" class="w-9 h-9 rounded-lg" />
+      <span class="text-xl font-bold">Harness</span>
+    </a>
+    <div class="hidden sm:flex items-center gap-4 sm:gap-6 text-sm text-neutral-400">
+      <a href="/#features" class="hover:text-neutral-100 transition-colors">Features</a>
+      <a href="/guide.html" class="hover:text-neutral-100 transition-colors">Guide</a>
+      <a href="/announcements.html" class="text-neutral-100 transition-colors">Announcements</a>
+      <a href="/#install" class="hover:text-neutral-100 transition-colors">Install</a>
+      <a href="https://github.com/frenchie4111/harness" class="hover:text-neutral-100 transition-colors">GitHub</a>
+    </div>
+    <button
+      id="mobile-menu-toggle"
+      type="button"
+      aria-label="Open menu"
+      aria-expanded="false"
+      aria-controls="mobile-menu"
+      class="sm:hidden p-2 -mr-2 text-neutral-400 hover:text-neutral-100 transition-colors"
+    ></button>
+    <div
+      id="mobile-menu"
+      class="hidden sm:hidden absolute top-full left-0 right-0 mx-4 mt-1 bg-[#0a0a0a]/95 backdrop-blur border border-neutral-800 rounded-lg shadow-xl overflow-hidden"
+    >
+      <nav class="flex flex-col py-2 text-sm text-neutral-400">
+        <a href="/#features" class="px-4 py-3 hover:bg-neutral-800/50 hover:text-neutral-100 transition-colors">Features</a>
+        <a href="/guide.html" class="px-4 py-3 hover:bg-neutral-800/50 hover:text-neutral-100 transition-colors">Guide</a>
+        <a href="/announcements.html" class="px-4 py-3 hover:bg-neutral-800/50 hover:text-neutral-100 transition-colors">Announcements</a>
+        <a href="/#install" class="px-4 py-3 hover:bg-neutral-800/50 hover:text-neutral-100 transition-colors">Install</a>
+        <a href="https://github.com/frenchie4111/harness" class="px-4 py-3 hover:bg-neutral-800/50 hover:text-neutral-100 transition-colors">GitHub</a>
+      </nav>
+    </div>
+  </nav>
+
+  <!-- Header -->
+  <section class="max-w-3xl mx-auto px-6 pt-12 pb-10">
+    <a href="/announcements.html" class="inline-flex items-center gap-1.5 text-sm text-neutral-500 hover:text-neutral-300 transition-colors mb-8">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+      Announcements
+    </a>
+    <div class="text-xs uppercase tracking-widest text-neutral-500 mb-4">
+      Announcement · July 16, 2026
+    </div>
+    <h1 class="text-5xl md:text-6xl font-extrabold tracking-tight mb-6 leading-tight">
+      Run your agents on <span class="gradient-text">any machine.</span>
+    </h1>
+    <p class="text-lg text-neutral-400 leading-relaxed">
+      Connect the Harness desktop app to headless servers on other
+      machines. Pick an SSH host, click Connect — Harness does the rest.
+    </p>
+  </section>
+
+  <!-- Hero: animated topology diagram -->
+  <section class="max-w-3xl mx-auto px-6 pb-4">
+    <div class="hero-diagram" role="img" aria-label="Diagram: the Harness app on your laptop talks over an SSH tunnel to harness-server on another machine, which runs your Claude agents.">
+      <div class="diagram-node">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="2" y="3" width="20" height="14" rx="2" />
+          <line x1="8" y1="21" x2="16" y2="21" />
+          <line x1="12" y1="17" x2="12" y2="21" />
+        </svg>
+        <div class="diagram-node-title">Harness app</div>
+        <div class="diagram-node-sub">your laptop</div>
+      </div>
+      <div class="diagram-link" aria-hidden="true">
+        <span class="packet"></span>
+        <span class="packet packet--rev"></span>
+        <span class="diagram-link-label">ssh tunnel</span>
+      </div>
+      <div class="diagram-node">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="2" y="2" width="20" height="8" rx="2" />
+          <rect x="2" y="14" width="20" height="8" rx="2" />
+          <line x1="6" y1="6" x2="6.01" y2="6" />
+          <line x1="6" y1="18" x2="6.01" y2="18" />
+        </svg>
+        <div class="diagram-node-title">harness-server</div>
+        <div class="diagram-node-sub">any machine</div>
+      </div>
+      <div class="diagram-link" aria-hidden="true">
+        <span class="packet"></span>
+        <span class="packet packet--rev"></span>
+        <span class="diagram-link-label">worktrees</span>
+      </div>
+      <div class="diagram-node diagram-node--agents">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
+          <path d="M20 3v4" />
+          <path d="M22 5h-4" />
+          <path d="M4 17v2" />
+          <path d="M5 18H3" />
+        </svg>
+        <div class="diagram-node-title">Claude agents</div>
+        <div class="diagram-node-sub">running while you sleep</div>
+      </div>
+    </div>
+    <p class="hero-hint">Your window, their compute. Close the laptop — the agents don't notice.</p>
+  </section>
+
+  <!-- Article -->
+  <article class="max-w-3xl mx-auto px-6 pb-24">
+
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-neutral-100 mb-4">Your laptop shouldn't be the bottleneck</h2>
+      <div class="prose-custom">
+        <p>
+          Agents run for hours now. Your laptop doesn't. Close the lid
+          and every session dies mid-task; keep it open and a big build
+          pins your fans while you're trying to do something else.
+        </p>
+        <p>
+          Harness can now connect to <strong>remote backends</strong> —
+          headless Harness servers running on any other machine: a desktop
+          in the other room, a Mac mini in a closet, a Linux box in the
+          cloud. Each backend has its own worktrees, terminals, browser
+          tabs, and settings, and they all show up in the same window as
+          chips at the bottom of the sidebar. The agents keep running
+          whether you're looking or not.
+        </p>
+      </div>
+    </section>
+
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-neutral-100 mb-4">Connect to a remote in one click</h2>
+      <div class="prose-custom">
+        <p>
+          If you can <code>ssh</code> to the machine, you're already
+          done with the hard part. Open the <code>+</code> on the
+          sidebar's backend chip strip (or <strong>File → Add
+          Backend…</strong>), switch to the <strong>SSH host</strong>
+          tab, and pick a host straight from your
+          <code>~/.ssh/config</code> — or type
+          <code>user@host</code>. Click <strong>Connect</strong>.
+        </p>
+        <p>
+          Harness handles everything else over that SSH connection:
+          probes for an existing install, runs the installer if the
+          server isn't there yet, starts <code>harness-server</code>
+          detached so it survives the disconnect, and opens a local
+          port forward. You watch each phase stream by — connecting,
+          probing, installing, starting, tunneling, connected — and
+          then the chip appears. You never open a terminal on the
+          remote machine.
+        </p>
+        <p>
+          The server binds to <code>127.0.0.1</code> on the remote box
+          and all traffic rides the SSH tunnel, so nothing new is
+          exposed on the network. Quit Harness and the server keeps
+          running; reopen it and the backend reconnects.
+        </p>
+      </div>
+    </section>
+
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-neutral-100 mb-4">What's different</h2>
+      <div class="grid sm:grid-cols-2 gap-4">
+        <div class="feature-card">
+          <h4>One-click SSH setup</h4>
+          <p>Pick a host from <code>~/.ssh/config</code>, click <strong>Connect</strong>. Harness installs the server, starts it, and tunnels to it — no terminal on the remote required.</p>
+        </div>
+        <div class="feature-card">
+          <h4>Switch with a keystroke</h4>
+          <p>Click a chip, or hit <code>⌘⇧1..9</code> to jump to the Nth backend. Local is always 1.</p>
+        </div>
+        <div class="feature-card">
+          <h4>Notifications from every machine</h4>
+          <p>Inactive backends keep streaming in the background. An agent waiting for approval on the box in the closet still pings you.</p>
+        </div>
+        <div class="feature-card">
+          <h4>Works from your phone</h4>
+          <p>Every server also serves a web client. Point any browser at the <code>http://</code> URL, pin it to your homescreen. Same UI, no install.</p>
+        </div>
+        <div class="feature-card">
+          <h4>Token-authed, localhost by default</h4>
+          <p>Bearer-token auth on every connection. Binds to <code>127.0.0.1</code> unless you explicitly opt into LAN. Tokens are encrypted at rest in the desktop app.</p>
+        </div>
+        <div class="feature-card">
+          <h4>Same UI everywhere</h4>
+          <p>Worktrees, terminals, chat, changed files, PR status — the full Harness surface, per backend. Even browser tabs work headlessly, via playwright-core driving system Chrome.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-neutral-100 mb-4">Prefer to set it up yourself?</h2>
+      <div class="prose-custom">
+        <p>
+          The SSH flow is a convenience wrapper around a server you can
+          run entirely by hand — useful when the machine isn't in your
+          SSH config, or you want to manage the process yourself.
+          Three steps:
+        </p>
+      </div>
+      <div class="term-panel">
+        <div class="term-panel-bar" aria-hidden="true">
+          <span></span><span></span><span></span>
+        </div>
+        <pre><span class="t-comment"># 1. Install on the remote box — no Node, no deps</span>
+<span class="t-prompt">$</span> curl -fsSL https://raw.githubusercontent.com/frenchie4111/harness/main/scripts/install-headless.sh | sh
+
+<span class="t-comment"># 2. Run it</span>
+<span class="t-prompt">$</span> harness-server --port 0
+<span class="t-out">[web-client] open <span class="t-url">http://127.0.0.1:53412/?token=…</span></span>
+<span class="t-out">[server] listening on <span class="t-url">ws://127.0.0.1:53412/?token=…</span></span>
+
+<span class="t-comment"># 3. In the desktop app: chip strip → + → paste the link</span>
+<span class="t-comment">#    → Test &amp; save. Done.</span></pre>
+      </div>
+      <div class="prose-custom">
+        <p>
+          The installer pulls the right tarball for the platform
+          (darwin-arm64, linux-x64, linux-arm64), verifies the sha256,
+          and extracts to <code>~/.harness-server/</code>. It's
+          self-contained: embedded Node, bundled claude binary, web
+          client, MCP bridge. The printed URLs have the auth token
+          embedded, and the token survives restarts — daemonize with
+          <code>nohup</code>, <code>tmux</code>, or
+          <code>screen</code> and paste the same link once.
+        </p>
+      </div>
+    </section>
+
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-neutral-100 mb-4">Try it</h2>
+      <div class="prose-custom">
+        <p>
+          The full setup — including LAN exposure, choosing a Chromium
+          for headless browser tabs, and daemonizing — is in the
+          <a href="https://github.com/frenchie4111/harness#headless-server">headless server section of the README</a>.
+          One macOS note: the tarballs aren't Apple-signed, so Gatekeeper
+          may quarantine the binary. Clear it with
+          <code>xattr -d com.apple.quarantine ~/.harness-server/bin/harness-server</code>.
+        </p>
+        <p>
+          If you don't see the chip strip yet, update from
+          <a href="/releases.html">the latest release</a>.
+        </p>
+      </div>
+    </section>
+
+    <!-- CTA -->
+    <div class="mt-20 p-8 bg-neutral-950 border border-neutral-800 rounded-2xl text-center">
+      <h3 class="text-2xl font-bold text-neutral-100 mb-3">Get the latest Harness</h3>
+      <p class="text-neutral-500 mb-6 max-w-md mx-auto">
+        Remote backends ship in the current release. Free, open source,
+        macOS for now.
+      </p>
+      <a href="/#install" class="inline-block px-8 py-3 bg-white text-black rounded-lg font-semibold hover:bg-neutral-200 transition-colors">
+        Download for macOS
+      </a>
+    </div>
+  </article>
+
+  <!-- Footer -->
+  <footer class="border-t border-neutral-900 mt-20">
+    <div class="max-w-6xl mx-auto px-6 py-10 flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-neutral-600">
+      <div class="flex items-center gap-2">
+        <img src="/icon.png" alt="" class="w-5 h-5 rounded" />
+        <span>Harness · Open source · MIT</span>
+      </div>
+      <div class="flex items-center gap-6">
+        <a href="/guide.html" class="hover:text-neutral-300 transition-colors">Guide</a>
+        <a href="/announcements.html" class="hover:text-neutral-300 transition-colors">Announcements</a>
+        <a href="https://github.com/frenchie4111/harness" class="hover:text-neutral-300 transition-colors">GitHub</a>
+        <a href="/releases.html" class="hover:text-neutral-300 transition-colors">Release notes</a>
+        <a href="https://github.com/frenchie4111/harness/releases" class="hover:text-neutral-300 transition-colors">Downloads</a>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    (function () {
+      var btn = document.getElementById('mobile-menu-toggle');
+      var menu = document.getElementById('mobile-menu');
+      if (!btn || !menu) return;
+      var iconMenu = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>';
+      var iconX = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M6 18L18 6"/></svg>';
+      btn.innerHTML = iconMenu;
+      var open = false;
+      function setOpen(next) {
+        open = next;
+        menu.classList.toggle('hidden', !open);
+        btn.innerHTML = open ? iconX : iconMenu;
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        btn.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+        document.body.classList.toggle('overflow-hidden', open);
+      }
+      btn.addEventListener('click', function (e) { e.stopPropagation(); setOpen(!open); });
+      document.addEventListener('mousedown', function (e) {
+        if (!open) return;
+        if (!menu.contains(e.target) && !btn.contains(e.target)) setOpen(false);
+      });
+      document.addEventListener('keydown', function (e) {
+        if (open && e.key === 'Escape') setOpen(false);
+      });
+      menu.querySelectorAll('a').forEach(function (a) {
+        a.addEventListener('click', function () { setOpen(false); });
+      });
+    })();
+  </script>
+</body>
+</html>
