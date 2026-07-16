@@ -59,6 +59,12 @@
       align-items: center;
       padding: 1.5rem 0 0.5rem;
     }
+    .diagram-stack {
+      flex: 0 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
     .diagram-node {
       flex: 0 0 auto;
       display: flex;
@@ -145,6 +151,7 @@
     }
     @media (max-width: 640px) {
       .hero-diagram { flex-direction: column; }
+      .diagram-stack { width: 100%; }
       .diagram-node { width: 100%; }
       .diagram-link { flex: none; min-width: 0; width: 2px; height: 3.5rem; }
       .diagram-link-label {
@@ -280,20 +287,30 @@
 
   <!-- Hero: animated topology diagram -->
   <section class="max-w-3xl mx-auto px-6 pb-4">
-    <div class="hero-diagram" role="img" aria-label="Diagram: the Harness app on your laptop talks over an SSH tunnel to harness-server on another machine, which runs your Claude agents.">
-      <div class="diagram-node">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <rect x="2" y="3" width="20" height="14" rx="2" />
-          <line x1="8" y1="21" x2="16" y2="21" />
-          <line x1="12" y1="17" x2="12" y2="21" />
-        </svg>
-        <div class="diagram-node-title">Harness app</div>
-        <div class="diagram-node-sub">your laptop</div>
+    <div class="hero-diagram" role="img" aria-label="Diagram: the Harness app on your laptop and the web client on your phone both talk to harness-server on another machine, which runs your Claude agents.">
+      <div class="diagram-stack">
+        <div class="diagram-node">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="2" y="3" width="20" height="14" rx="2" />
+            <line x1="8" y1="21" x2="16" y2="21" />
+            <line x1="12" y1="17" x2="12" y2="21" />
+          </svg>
+          <div class="diagram-node-title">Harness app</div>
+          <div class="diagram-node-sub">your laptop</div>
+        </div>
+        <div class="diagram-node">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="5" y="2" width="14" height="20" rx="2" />
+            <line x1="12" y1="18" x2="12.01" y2="18" />
+          </svg>
+          <div class="diagram-node-title">Web client</div>
+          <div class="diagram-node-sub">your phone</div>
+        </div>
       </div>
       <div class="diagram-link" aria-hidden="true">
         <span class="packet"></span>
         <span class="packet packet--rev"></span>
-        <span class="diagram-link-label">ssh tunnel</span>
+        <span class="diagram-link-label">ssh · http</span>
       </div>
       <div class="diagram-node">
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
