@@ -102,6 +102,40 @@
   <!-- Releases -->
   <div class="max-w-3xl mx-auto px-6 pb-24">
 
+    <!-- v2.12.0 -->
+    <section id="v2.12.0" class="release-section py-10">
+      <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
+        <h2 class="text-3xl font-bold tracking-tight"><a href="#v2.12.0" class="release-anchor">v2.12.0<span class="anchor-icon">🔗</span></a></h2>
+        <span class="text-sm text-neutral-500">July 16, 2026</span>
+      </div>
+      <a href="https://github.com/frenchie4111/harness/releases/tag/v2.12.0" class="text-sm text-amber-400/80 hover:text-amber-300 transition-colors">Download &rarr;</a>
+      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">Claude Fable 5 and Opus 4.8 land in the model picker, ⌥-drag brings copy-friendly text selection to mouse-aware terminals, the worktree creator gets smarter defaults, and Chat's tool cards get brand icons and richer argument rendering — plus a handful of important fixes.</p>
+      <div class="note-body">
+        <h4>New features</h4>
+        <ul>
+          <li><strong>⌥-drag for text selection in terminals</strong> — hold ⌥ and drag to force a local text selection in mouse-aware terminal apps, so ⌘C copies the selected text as expected. <em class="text-neutral-500">(thanks <a href="https://github.com/bz-canva" class="text-amber-400/80 hover:text-amber-300">@bz-canva</a>, <a href="https://github.com/frenchie4111/harness/pull/178" class="text-amber-400/80 hover:text-amber-300">#178</a>)</em></li>
+          <li><strong>Claude Fable 5 and Opus 4.8</strong> — both new models are now available in the model picker.</li>
+          <li><strong>Smarter new-worktree dialog</strong> — the worktree creator now defaults to the active repository, uses keycap-chip hotkey badges, and reliably focuses the input field on open. <em class="text-neutral-500">(thanks <a href="https://github.com/big-guy" class="text-amber-400/80 hover:text-amber-300">@big-guy</a>, <a href="https://github.com/frenchie4111/harness/pull/156" class="text-amber-400/80 hover:text-amber-300">#156</a>)</em></li>
+          <li><strong>Color swatches for hex literals in Chat</strong> — hex color codes in Chat responses now show a small color swatch inline, making it easier to see colors at a glance.</li>
+        </ul>
+        <h4>Improvements</h4>
+        <ul>
+          <li><strong>Live file and diff refresh</strong> — file tabs and review diffs now update automatically when the underlying files change on disk, so you always see the latest content without a manual reload.</li>
+          <li><strong>Brand icons and prettier tool cards in Chat</strong> — tool call cards now show recognizable brand icons and render arguments in a more readable format.</li>
+        </ul>
+        <h4>Fixes</h4>
+        <ul>
+          <li>Typing <code>r</code>, <code>j</code>, <code>k</code>, <code>[</code>, or <code>]</code> while editing in the Monaco editor no longer gets intercepted by review-tab hotkeys.</li>
+          <li>A corrupt <code>config.json</code> no longer silently resets all settings — Harness now recovers gracefully instead of losing your configuration. <em class="text-neutral-500">(thanks <a href="https://github.com/big-guy" class="text-amber-400/80 hover:text-amber-300">@big-guy</a>, <a href="https://github.com/frenchie4111/harness/pull/151" class="text-amber-400/80 hover:text-amber-300">#151</a>)</em></li>
+          <li>WebSocket reconnects now apply the server's latest state snapshot before signalling reconnect, preventing stale UI after a connection drop. <em class="text-neutral-500">(thanks <a href="https://github.com/blindpirate" class="text-amber-400/80 hover:text-amber-300">@blindpirate</a>, <a href="https://github.com/frenchie4111/harness/pull/175" class="text-amber-400/80 hover:text-amber-300">#175</a>)</em></li>
+          <li>Harness no longer crashes when spawning a terminal process fails with ENOENT, and handles stale prunable worktrees more gracefully.</li>
+          <li>The MCP dev-mode script path is now anchored to the app install location, fixing failures when Harness is launched from a non-standard working directory.</li>
+          <li>API cost estimates for Opus 4.5 and later models were reported 3× too high — this is now corrected.</li>
+        </ul>
+        <p class="text-neutral-400 text-sm mt-6 leading-relaxed">Huge thanks to <a href="https://github.com/big-guy" class="text-amber-400/80 hover:text-amber-300">@big-guy</a>, <a href="https://github.com/blindpirate" class="text-amber-400/80 hover:text-amber-300">@blindpirate</a>, and <a href="https://github.com/bz-canva" class="text-amber-400/80 hover:text-amber-300">@bz-canva</a> for their contributions to this release.</p>
+      </div>
+    </section>
+
     <!-- v2.11.0 -->
     <section id="v2.11.0" class="release-section py-10">
       <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
