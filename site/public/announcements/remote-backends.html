@@ -280,8 +280,8 @@
       Run your agents on <span class="gradient-text">any machine.</span>
     </h1>
     <p class="text-lg text-neutral-400 leading-relaxed">
-      Connect the Harness desktop app to headless servers on other
-      machines. Pick an SSH host, click Connect — Harness does the rest.
+      Harness makes it easy to run your agents on a remote dev box.
+      One click to connect &amp; bootstrap any machine you can SSH to.
     </p>
   </section>
 
@@ -337,21 +337,20 @@
         <div class="diagram-node-sub">running while you sleep</div>
       </div>
     </div>
-    <p class="hero-hint">Your window, their compute. Close the laptop — the agents don't notice.</p>
+    <p class="hero-hint">If you close your laptop, the agents still run.</p>
   </section>
 
   <!-- Article -->
   <article class="max-w-3xl mx-auto px-6 pb-24">
 
     <section class="mb-12">
-      <h2 class="text-2xl font-bold text-neutral-100 mb-4">Your laptop shouldn't be the bottleneck</h2>
+      <h2 class="text-2xl font-bold text-neutral-100 mb-4">Stop leaving your laptop open</h2>
       <div class="prose-custom">
         <p>
-          You've seen the reels: the laptop left cracked open on the
-          kitchen counter overnight, lid at exactly ten degrees — open
-          enough that the machine won't sleep and kill the agent four
-          hours into a refactor, closed enough to pretend you've
-          logged off for the night.
+          We built Harness from the ground up to solve a simple
+          problem that we all have with agentic coding these days:
+          the fact that you can't get any work done without leaving
+          your laptop running.
         </p>
       </div>
       <img
@@ -363,61 +362,48 @@
       />
       <div class="prose-custom">
         <p>
-          Agents run for hours now, and this is where we've landed as
-          an industry: wedging things into the hinge, checking
-          <em>Prevent sleep when display is off</em>, carrying a warm
-          backpack.
-        </p>
-        <p>
-          Here's the less silly fix. Harness can now connect to
-          <strong>remote backends</strong> — headless Harness servers
-          running on any other machine: a desktop in the other room, a
-          Mac mini in a closet, a Linux box in the cloud. Each backend
-          has its own worktrees, terminals, browser tabs, and settings,
-          and they all show up in the same window as chips at the
-          bottom of the sidebar. The agents keep running whether you're
-          looking or not. Close the lid. The little guy can retire.
-        </p>
-        <p>
-          This is also where Harness parts ways with the other tools
-          in the space: remote isn't a bolt-on. Harness has been
-          client/server from the ground up — the UI is a thin view
-          over a synced state store, and the local backend speaks the
-          exact same protocol as a remote one. So a remote backend
-          isn't a cut-down companion view or a notification relay.
-          It's the full workspace — every pane, every terminal, every
-          approval — just running on someone else's fans.
+          Harness is built to work just like VSCode's "Open a remote"
+          feature. If you can SSH into a machine, then Harness can
+          bootstrap its server there in one click. The UI keeps
+          running on your laptop, but the files &amp; agents are on
+          the server side.
         </p>
       </div>
     </section>
 
     <section class="mb-12">
-      <h2 class="text-2xl font-bold text-neutral-100 mb-4">Connect to a remote in one click</h2>
+      <h2 class="text-2xl font-bold text-neutral-100 mb-4">The one click process</h2>
       <div class="prose-custom">
         <p>
-          If you can <code>ssh</code> to the machine, you're already
-          done with the hard part. Open the <code>+</code> on the
-          sidebar's backend chip strip (or <strong>File → Add
-          Backend…</strong>), switch to the <strong>SSH host</strong>
-          tab, and pick a host straight from your
-          <code>~/.ssh/config</code> — or type
-          <code>user@host</code>. Click <strong>Connect</strong>.
+          Harness tries to make it as easy as possible to get set up
+          running remote machines. It's Bring Your Own Server so you
+          always know where the files &amp; agents are running.
+          Theoretically it works with any machine you can SSH into.
         </p>
+        <p>To run it either:</p>
+        <ul>
+          <li>Press the <code>+</code> button on the bottom-left menu</li>
+          <li>Go <strong>File → Add Backend…</strong></li>
+          <li><code>⌘K</code> → Add Backend</li>
+        </ul>
+      </div>
+      <img
+        src="/announcements/img/add-backend-ssh.webp"
+        alt="The Add backend dialog's SSH host tab, with a host picked from ~/.ssh/config, an optional label, and a Connect button."
+        width="806"
+        height="666"
+        class="block mx-auto my-6 w-full max-w-[403px]"
+      />
+      <div class="prose-custom">
         <p>
-          Harness handles everything else over that SSH connection:
-          probes for an existing install, runs the installer if the
-          server isn't there yet, starts <code>harness-server</code>
-          detached so it survives the disconnect, and opens a local
-          port forward. You watch each phase stream by — connecting,
-          probing, installing, starting, tunneling, connected — and
-          then the chip appears. You never open a terminal on the
-          remote machine.
-        </p>
-        <p>
-          The server binds to <code>127.0.0.1</code> on the remote box
-          and all traffic rides the SSH tunnel, so nothing new is
-          exposed on the network. Quit Harness and the server keeps
-          running; reopen it and the backend reconnects.
+          It loads whatever is in your <code>~/.ssh/config</code>, or
+          you can specify a new one easily. Once connected it will
+          install the latest <code>harness-server</code> binary on
+          your machine, start it up, and connect to a websocket that
+          is tunneled through the SSH connection.
+          <em>Theoretically it's as simple as that</em> (obviously if
+          you have any problems
+          <a href="https://github.com/frenchie4111/harness/issues">let us know on GitHub</a>).
         </p>
       </div>
     </section>
@@ -495,16 +481,12 @@
       <h2 class="text-2xl font-bold text-neutral-100 mb-4">Try it</h2>
       <div class="prose-custom">
         <p>
-          The full setup — including LAN exposure, choosing a Chromium
-          for headless browser tabs, and daemonizing — is in the
+          The full setup: LAN exposure, choosing a Chromium for
+          headless browser tabs, and daemonizing is in the
           <a href="https://github.com/frenchie4111/harness#headless-server">headless server section of the README</a>.
           One macOS note: the tarballs aren't Apple-signed, so Gatekeeper
           may quarantine the binary. Clear it with
           <code>xattr -d com.apple.quarantine ~/.harness-server/bin/harness-server</code>.
-        </p>
-        <p>
-          If you don't see the chip strip yet, update from
-          <a href="/releases.html">the latest release</a>.
         </p>
       </div>
     </section>
