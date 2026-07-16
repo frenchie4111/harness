@@ -71,7 +71,6 @@
       padding: 1.25rem 1.5rem;
     }
     .diagram-node svg { color: #f59e0b; display: block; }
-    .diagram-node--agents svg { color: #a855f7; }
     .diagram-node-title { color: #f5f5f5; font-weight: 600; font-size: 0.875rem; white-space: nowrap; }
     .diagram-node-sub { color: #737373; font-size: 0.75rem; white-space: nowrap; }
     .diagram-link {
@@ -107,6 +106,30 @@
       box-shadow: 0 0 8px rgba(168, 85, 247, 0.8);
       animation-name: packet-rev;
       animation-delay: 1.3s;
+    }
+    /* Worktree rows inside the agents node — same dot + mono-branch
+       pattern as the sidebar mock on the homepage. */
+    .agent-rows { display: flex; flex-direction: column; gap: 0.375rem; }
+    .agent-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: #1a1a1a;
+      border: 1px solid #262626;
+      border-radius: 0.375rem;
+      padding: 0.25rem 0.625rem;
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 0.6875rem;
+      color: #a3a3a3;
+      white-space: nowrap;
+    }
+    .agent-dot { width: 0.5rem; height: 0.5rem; border-radius: 999px; flex: none; }
+    .agent-dot--processing { background: #22c55e; animation: dot-pulse 1.6s ease-in-out infinite; }
+    .agent-dot--waiting { background: #fbbf24; }
+    .agent-dot--approval { background: #ef4444; animation: dot-pulse 1.6s ease-in-out infinite; animation-delay: 0.8s; }
+    @keyframes dot-pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.35; }
     }
     @keyframes packet-fwd {
       0%   { left: 0; opacity: 0; }
@@ -147,6 +170,7 @@
     }
     @media (prefers-reduced-motion: reduce) {
       .packet { animation: none; opacity: 0; }
+      .agent-dot--processing, .agent-dot--approval { animation: none; }
     }
     .hero-hint {
       margin-top: 0.75rem;
@@ -286,14 +310,12 @@
         <span class="packet packet--rev"></span>
         <span class="diagram-link-label">worktrees</span>
       </div>
-      <div class="diagram-node diagram-node--agents">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
-          <path d="M20 3v4" />
-          <path d="M22 5h-4" />
-          <path d="M4 17v2" />
-          <path d="M5 18H3" />
-        </svg>
+      <div class="diagram-node">
+        <div class="agent-rows" aria-hidden="true">
+          <div class="agent-row"><span class="agent-dot agent-dot--processing"></span>feat/onboarding</div>
+          <div class="agent-row"><span class="agent-dot agent-dot--approval"></span>fix/login-flash</div>
+          <div class="agent-row"><span class="agent-dot agent-dot--waiting"></span>refactor/auth</div>
+        </div>
         <div class="diagram-node-title">Claude agents</div>
         <div class="diagram-node-sub">running while you sleep</div>
       </div>
