@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from 'react'
 import type { Worktree, PRStatus, PaneNode, TerminalTab } from '../types'
 import { getLeaves, findLeaf } from '../../shared/state/terminals'
-import { resolveHotkeys, type Action, type HotkeyBinding } from '../hotkeys'
+import { resolveHotkeys, isEditableTarget, type Action, type HotkeyBinding } from '../hotkeys'
 import { useHotkeys } from './useHotkeys'
 import { useDoubleTapShift } from './useDoubleTapShift'
 import { groupWorktrees, getGroupKey, type GroupKey } from '../worktree-sort'
@@ -390,15 +390,7 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
   // editable too, but firing there is a harmless no-op (already focused).
   useDoubleTapShift(
     useCallback(() => {
-      const el = document.activeElement as HTMLElement | null
-      if (
-        el &&
-        (el.isContentEditable ||
-          el.tagName === 'INPUT' ||
-          el.tagName === 'TEXTAREA' ||
-          el.tagName === 'SELECT')
-      )
-        return
+      if (isEditableTarget(document.activeElement as HTMLElement | null)) return
       hotkeyActions.focusTerminal?.()
     }, [hotkeyActions])
   )
