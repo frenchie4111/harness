@@ -23,10 +23,22 @@ interface ModelRate {
 }
 
 const RATES: Record<string, ModelRate> = {
-  // Anthropic Claude
-  'claude-opus-4-6': { in: 15, out: 75 },
-  'claude-opus-4-5': { in: 15, out: 75 },
+  // Anthropic Claude. Opus pricing dropped from $15/$75 to $5/$25 at
+  // Opus 4.5 (Nov 24 2025), so 4-5 and later have explicit entries at
+  // the new rate while the bare 'claude-opus-4' key stays at the old
+  // rate as a catch-all for the 4-0 / 4-1 lineage only. Key order
+  // matters: rateFor's prefix fallback iterates in insertion order, so
+  // the specific opus keys must precede the bare 'claude-opus-4' or
+  // dated ids like claude-opus-4-8-20260527 would bill at old rates.
+  'claude-fable-5': { in: 10, out: 50 },
+  'claude-mythos-5': { in: 10, out: 50 },
+  'claude-opus-4-8': { in: 5, out: 25 },
+  'claude-opus-4-7': { in: 5, out: 25 },
+  'claude-opus-4-6': { in: 5, out: 25 },
+  'claude-opus-4-5': { in: 5, out: 25 },
   'claude-opus-4': { in: 15, out: 75 },
+  // Sonnet 5 introductory pricing through Aug 31 2026; $3/$15 from Sep 1 2026.
+  'claude-sonnet-5': { in: 2, out: 10 },
   'claude-sonnet-4-6': { in: 3, out: 15 },
   'claude-sonnet-4-5': { in: 3, out: 15 },
   'claude-sonnet-4': { in: 3, out: 15 },

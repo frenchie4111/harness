@@ -22,7 +22,10 @@ export interface ModelOption {
 }
 
 export const CLAUDE_MODELS: ModelOption[] = [
+  { id: 'claude-fable-5', displayName: 'Claude Fable 5', tier: 'current' },
+  { id: 'claude-opus-4-8', displayName: 'Claude Opus 4.8', tier: 'current' },
   { id: 'claude-opus-4-7', displayName: 'Claude Opus 4.7', tier: 'current' },
+  { id: 'claude-sonnet-5', displayName: 'Claude Sonnet 5', tier: 'current' },
   { id: 'claude-sonnet-4-6', displayName: 'Claude Sonnet 4.6', tier: 'current' },
   { id: 'claude-haiku-4-5', displayName: 'Claude Haiku 4.5', tier: 'current' },
   { id: 'claude-opus-4-6', displayName: 'Claude Opus 4.6', tier: 'legacy' },
