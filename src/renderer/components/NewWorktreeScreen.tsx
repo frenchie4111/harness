@@ -94,6 +94,12 @@ const STARTER_PROMPTS = [
   }
 ]
 
+// Inline keycap chips. KBD_CHIP is the app-wide neutral style (matches
+// ConfirmCloseTabModal / CommandPalette); KBD_CHIP_ON_ACCENT is the variant
+// for sitting inside the brand-gradient "Create" button.
+const KBD_CHIP = 'text-xs text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono'
+const KBD_CHIP_ON_ACCENT = 'text-xs text-white bg-white/20 px-1.5 py-0.5 rounded border border-white/30 font-mono'
+
 export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, defaultRepoRoot }: NewWorktreeScreenProps): JSX.Element {
   const [mode, setMode] = useState<'fresh' | 'teleport' | 'pr'>('fresh')
   const [selectedRepo, setSelectedRepo] = useState<string>(
@@ -332,6 +338,11 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
       }
       if (e.key === 'Escape') {
         e.preventDefault()
+        // Mirror the Cancel button's disabled state — otherwise Esc during
+        // an in-flight create closes the modal, but the backend keeps
+        // running and its deferred focus/close effect can dismiss whatever
+        // the user reopens after.
+        if (submitting || prClickPending !== null) return
         onCancel()
       }
       if ((e.metaKey || e.ctrlKey) && e.key === '[') {
@@ -343,7 +354,7 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
         cycleRepo(1)
       }
     },
-    [mode, handlePRSubmit, handleSubmit, onCancel, cycleRepo]
+    [mode, handlePRSubmit, handleSubmit, onCancel, cycleRepo, submitting, prClickPending]
   )
 
   // Selection is per-(repo, PR-list) — switching repos invalidates it.
@@ -357,6 +368,13 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
       promptRef.current?.focus()
     }
   }, [])
+
+  // The footer is identical across modes; only the submit handler, the
+  // in-flight flag, and the enabled check differ between PR and non-PR.
+  const isPRMode = mode === 'pr'
+  const footerBusy = isPRMode ? prClickPending !== null : submitting
+  const footerSubmit = isPRMode ? () => void handlePRSubmit() : handleSubmit
+  const footerEnabled = isPRMode ? selectedPRNumber !== null && prClickPending === null : canSubmit
 
   return (
     <div
@@ -444,8 +462,10 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
                   <span className="text-xs font-semibold uppercase tracking-wider text-dim">
                     Repository
                   </span>
-                  <span className="text-xs text-faint">
-                    <span className="font-mono">⌘[</span> <span className="font-mono">⌘]</span> to switch
+                  <span className="flex items-center gap-1 text-xs text-faint">
+                    <kbd className={KBD_CHIP}>⌘[</kbd>
+                    <kbd className={KBD_CHIP}>⌘]</kbd>
+                    to switch repo
                   </span>
                 </div>
                 <div className="flex p-1 bg-app border border-border-strong rounded-lg gap-1 flex-wrap">
@@ -691,75 +711,34 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
               </div>
             )}
 
-            {mode !== 'pr' && (
-              <div className="flex items-center justify-between mt-6 gap-3">
-                <div className="text-xs text-faint">
-                  <span className="font-mono">⌘⏎</span> to create ·{' '}
-                  <span className="font-mono">Esc</span> to cancel
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={onCancel}
-                    disabled={submitting}
-                    className="px-4 py-2 text-sm text-dim hover:text-fg transition-colors cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleSubmit}
-                    disabled={!canSubmit}
-                    className="brand-gradient-bg text-white font-semibold text-sm px-5 py-2.5 rounded-lg flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed hover:brightness-110 transition-all shadow-lg cursor-pointer"
-                  >
-                    {submitting ? (
-                      <>
-                        <Loader2 className="icon-sm animate-spin" />
-                        Creating…
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="icon-sm" />
-                        Create worktree
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {mode === 'pr' && (
-              <div className="flex items-center justify-between mt-6 gap-3">
-                <div className="text-xs text-faint">
-                  <span className="font-mono">⌘⏎</span> to create ·{' '}
-                  <span className="font-mono">Esc</span> to cancel
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={onCancel}
-                    disabled={prClickPending !== null}
-                    className="px-4 py-2 text-sm text-dim hover:text-fg transition-colors cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={() => void handlePRSubmit()}
-                    disabled={selectedPRNumber === null || prClickPending !== null}
-                    className="brand-gradient-bg text-white font-semibold text-sm px-5 py-2.5 rounded-lg flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed hover:brightness-110 transition-all shadow-lg cursor-pointer"
-                  >
-                    {prClickPending !== null ? (
-                      <>
-                        <Loader2 className="icon-sm animate-spin" />
-                        Creating…
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="icon-sm" />
-                        Create worktree
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-            )}
+            <div className="flex items-center justify-end mt-6 gap-2">
+              <button
+                onClick={onCancel}
+                disabled={footerBusy}
+                className="flex items-center gap-1.5 px-4 py-2 text-sm text-dim hover:text-fg transition-colors cursor-pointer"
+              >
+                Cancel
+                <kbd className={KBD_CHIP}>Esc</kbd>
+              </button>
+              <button
+                onClick={footerSubmit}
+                disabled={!footerEnabled}
+                className="brand-gradient-bg text-white font-semibold text-sm px-5 py-2.5 rounded-lg flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed hover:brightness-110 transition-all shadow-lg cursor-pointer"
+              >
+                {footerBusy ? (
+                  <>
+                    <Loader2 className="icon-sm animate-spin" />
+                    Creating…
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="icon-sm" />
+                    Create worktree
+                    <kbd className={KBD_CHIP_ON_ACCENT}>⌘↵</kbd>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
 
           {mode === 'fresh' && (

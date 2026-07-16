@@ -44,6 +44,21 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
   const activeBackend = useActiveBackend()
   const backend = useBackend()
 
+  // Path of a freshly-created worktree we want to focus once it appears in the
+  // worktrees list. Set on a successful create; the effect below switches to it
+  // and closes the New worktree modal. Keying off the list (rather than the
+  // create response) is deliberate: switching before the entry exists lets
+  // App.tsx's reroute effect bounce focus to worktrees[0]. We hold the modal
+  // open until then so the user lands directly on the ready worktree.
+  const [newWorktreeFocusPath, setNewWorktreeFocusPath] = useState<string | null>(null)
+  useEffect(() => {
+    if (!newWorktreeFocusPath) return
+    if (!worktrees.some((w) => w.path === newWorktreeFocusPath)) return
+    setActiveWorktreeId(newWorktreeFocusPath)
+    setShowNewWorktree(false)
+    setNewWorktreeFocusPath(null)
+  }, [newWorktreeFocusPath, worktrees, setActiveWorktreeId, setShowNewWorktree])
+
   const focusNewRepo = useCallback(
     (root: string) => {
       const added =
@@ -172,9 +187,11 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
       baseRef?: string
     ) => {
       const id = `pending:${crypto.randomUUID()}`
-      setActiveWorktreeId(id)
-      setShowNewWorktree(false)
 
+      // Keep the New worktree modal open while creation runs (the submit button
+      // shows a "Creating…" state). We don't focus the pending id — on success
+      // we switch straight to the real worktree once it lands in the list.
+      //
       // Main handles everything: addWorktree → setup script → ensureInitialized
       // (with the prompt embedded in the new agent tab) → outcome.
       const result = await backend.runPendingWorktree({
@@ -190,11 +207,15 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
       })
 
       if (result.outcome === 'success') {
-        setActiveWorktreeId((prev) => (prev === id ? result.createdPath : prev))
+        // Defer the switch to the effect above, which fires once createdPath is
+        // actually in the worktrees list — and closes the modal then.
+        setNewWorktreeFocusPath(result.createdPath)
+      } else {
+        // setup-failed / error: drop onto the pending entry's screen (setup log
+        // + "Continue anyway", or the error) and close the modal.
+        setActiveWorktreeId(id)
+        setShowNewWorktree(false)
       }
-      // On 'setup-failed' we stay on the pending id; the user can click
-      // "Continue anyway" which transitions to result.createdPath.
-      // On 'error' we stay on the pending id so the error screen shows.
     },
     [setActiveWorktreeId, setShowNewWorktree]
   )
@@ -208,9 +229,10 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
       model?: string
     ) => {
       const id = `pending:${crypto.randomUUID()}`
-      setActiveWorktreeId(id)
-      setShowNewWorktree(false)
 
+      // Same flow as handleSubmitNewWorktree: hold the modal open, switch to the
+      // real worktree once it's in the list (success) or to the pending entry's
+      // failure screen (otherwise).
       const result = await backend.runPendingPRWorktree({
         id,
         repoRoot,
@@ -221,7 +243,10 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
       })
 
       if (result.outcome === 'success') {
-        setActiveWorktreeId((prev) => (prev === id ? result.createdPath : prev))
+        setNewWorktreeFocusPath(result.createdPath)
+      } else {
+        setActiveWorktreeId(id)
+        setShowNewWorktree(false)
       }
     },
     [setActiveWorktreeId, setShowNewWorktree]
