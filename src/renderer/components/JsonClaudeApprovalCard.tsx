@@ -17,6 +17,7 @@ import {
   isFileToolCrossCwd,
   type PermissionPatternSuggestion
 } from '../../shared/permission-patterns'
+import { resolveHotkeys, bindingToString, formatBindingGlyphs } from '../hotkeys'
 
 interface JsonClaudeApprovalCardProps {
   approval: JsonClaudePendingApproval
@@ -50,6 +51,16 @@ export function JsonClaudeApprovalCard({
   const backend = useBackend()
   const settings = useSettings()
   const savedGuidance = settings.autoApproveSteerInstructions
+  const resolvedHotkeys = useMemo(
+    () => resolveHotkeys(settings.hotkeys ?? undefined),
+    [settings.hotkeys]
+  )
+  const approveHotkeyLabel = formatBindingGlyphs(
+    bindingToString(resolvedHotkeys.approveToolUse)
+  )
+  const denyHotkeyLabel = formatBindingGlyphs(
+    bindingToString(resolvedHotkeys.denyToolUse)
+  )
   const [mode, setMode] = useState<
     'summary' | 'edit' | 'deny' | 'edit-guidance' | 'always'
   >('summary')
@@ -201,7 +212,10 @@ export function JsonClaudeApprovalCard({
   const autoReview = approval.autoReview
 
   return (
-    <div className="rounded-md border border-danger/40 bg-danger/5 my-2 overflow-hidden">
+    <div
+      id={approval.requestId}
+      className="rounded-md border border-danger/40 bg-danger/5 my-2 overflow-hidden"
+    >
       <div className="flex items-center justify-between px-3 py-2 border-b border-danger/30 bg-danger/10">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-xs font-semibold uppercase tracking-wide text-danger shrink-0">
@@ -319,9 +333,11 @@ export function JsonClaudeApprovalCard({
           <div className="flex items-center gap-1.5 flex-wrap">
             <button
               onClick={allow}
+              title={`Allow once (${bindingToString(resolvedHotkeys.approveToolUse)})`}
               className="px-2.5 py-1 text-xs rounded bg-success/20 hover:bg-success/30 text-success transition-colors cursor-pointer"
             >
               Allow once
+              <span className="opacity-60 ml-1">{approveHotkeyLabel}</span>
             </button>
             {!alreadyGranted && (
               <button
@@ -349,9 +365,11 @@ export function JsonClaudeApprovalCard({
             </button>
             <button
               onClick={() => setMode('deny')}
+              title={`Deny (${bindingToString(resolvedHotkeys.denyToolUse)})`}
               className="px-2.5 py-1 text-xs rounded bg-danger/20 hover:bg-danger/30 text-danger transition-colors cursor-pointer"
             >
               Deny
+              <span className="opacity-60 ml-1">{denyHotkeyLabel}</span>
             </button>
           </div>
           </div>
