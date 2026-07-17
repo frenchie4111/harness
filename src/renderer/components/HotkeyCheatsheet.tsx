@@ -57,6 +57,13 @@ function buildGroups(hotkeys: Record<Action, HotkeyBinding>): ShortcutGroup[] {
         { label: 'Keyboard shortcuts', binding: b('hotkeyCheatsheet') },
       ],
     },
+    {
+      title: 'Chat (JSON mode)',
+      rows: [
+        { label: 'Approve pending tool use', binding: b('approveToolUse') },
+        { label: 'Deny pending tool use', binding: b('denyToolUse') },
+      ],
+    },
   ]
 }
 
