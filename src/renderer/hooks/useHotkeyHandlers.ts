@@ -6,7 +6,13 @@ import { useHotkeys } from './useHotkeys'
 import { useDoubleTapShift } from './useDoubleTapShift'
 import { groupWorktrees, getGroupKey, type GroupKey } from '../worktree-sort'
 import { focusTerminalById } from '../components/XTerminal'
-import { useConnections, getBackendsRegistry, useSettings, useSnooze } from '../store'
+import {
+  useConnections,
+  getBackendsRegistry,
+  useSettings,
+  useSnooze,
+  useJsonClaudePendingApprovals
+} from '../store'
 import { useBackend } from '../backend'
 import { SCALES } from '../../shared/state/settings'
 import { cycleWorktreeDetail } from '../worktree-detail-override'
@@ -204,6 +210,37 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
     [allOrderedWorktrees, activeWorktreeId, ensureWorktreeVisible, setActiveWorktreeId]
   )
 
+  // Head-of-queue pending approval for the *currently active* json-claude
+  // tab. Returns null when the active center pane isn't json-claude or
+  // when the session has no pending approvals — the hotkey handler is a
+  // silent no-op in either case. The map contains approvals for every
+  // json-claude session across all worktrees; we filter down to just this
+  // session and pick the oldest by arrival timestamp so repeated hotkeys
+  // walk the queue front-to-back.
+  const pendingApprovalsMap = useJsonClaudePendingApprovals()
+  const activeApproval = useMemo(() => {
+    if (!activeWorktreeId) return null
+    const tree = panes[activeWorktreeId]
+    if (!tree) return null
+    const leaves = getLeaves(tree)
+    if (leaves.length === 0) return null
+    const focusedId = activePaneId[activeWorktreeId] || leaves[0]?.id
+    const leaf = findLeaf(tree, focusedId) || leaves[0]
+    if (!leaf) return null
+    const currentTabId = leaf.activeTabId
+    if (!currentTabId) return null
+    const tab = leaf.tabs.find((t) => t.id === currentTabId)
+    if (tab?.type !== 'json-claude') return null
+    // For json-claude, tab.id is the session id.
+    const sessionId = tab.id
+    let head: typeof pendingApprovalsMap[string] | null = null
+    for (const a of Object.values(pendingApprovalsMap)) {
+      if (a.sessionId !== sessionId) continue
+      if (!head || a.timestamp < head.timestamp) head = a
+    }
+    return head
+  }, [activeWorktreeId, panes, activePaneId, pendingApprovalsMap])
+
   const cycleTab = useCallback(
     (delta: number) => {
       if (!activeWorktreeId) return
@@ -346,7 +383,30 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       uiScaleReset: () => {
         if (uiScale !== 'small') void backend.setUiScale('small')
       },
-      cycleWorktreeDetail: () => cycleWorktreeDetail(configuredWorktreeDetail)
+      cycleWorktreeDetail: () => cycleWorktreeDetail(configuredWorktreeDetail),
+      approveToolUse: () => {
+        if (!activeApproval) return
+        // Scroll first so the resolved card is visible for the split
+        // second it's still mounted — otherwise the state update drops
+        // it from the DOM before scrollIntoView can find the node.
+        document
+          .getElementById(activeApproval.requestId)
+          ?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+        void backend.resolveJsonClaudeApproval(activeApproval.requestId, {
+          behavior: 'allow',
+          updatedInput: activeApproval.input
+        })
+      },
+      denyToolUse: () => {
+        if (!activeApproval) return
+        document
+          .getElementById(activeApproval.requestId)
+          ?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+        void backend.resolveJsonClaudeApproval(activeApproval.requestId, {
+          behavior: 'deny',
+          message: 'user denied'
+        })
+      }
     }),
     [
       cycleWorktree,
@@ -377,7 +437,8 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       setShowSettings,
       backend,
       uiScale,
-      configuredWorktreeDetail
+      configuredWorktreeDetail,
+      activeApproval
     ]
   )
 
