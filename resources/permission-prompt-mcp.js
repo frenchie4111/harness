@@ -39,14 +39,37 @@ const fs = require('node:fs')
 // "the script started but env was empty" — otherwise that case looks
 // identical to "the script never ran" in /tmp/harness-permission-mcp.log.
 const LOG_PATH = process.env.HARNESS_PERMISSION_MCP_LOG || '/tmp/harness-permission-mcp.log'
+
+// Belt-and-suspenders cap against runaway growth (see issue #195). Truncate
+// on startup if the log is over 10 MB — same threshold debug.log rotates at.
+try {
+  const st = fs.statSync(LOG_PATH)
+  if (st.size > 10 * 1024 * 1024) {
+    fs.truncateSync(LOG_PATH, 0)
+  }
+} catch {
+  /* file doesn't exist yet, or unreadable — either is fine */
+}
+
+// Each I/O gets its own try/catch: a broken stderr must not propagate up
+// and must not stop the file append (or vice versa). Issue #195: previously
+// the stderr write was unguarded, so an EPIPE re-entered uncaughtException.
 function logErr(...parts) {
   const line = '[harness-approval-mcp] ' + parts.join(' ') + '\n'
-  process.stderr.write(line)
+  try { process.stderr.write(line) } catch { /* pipe gone */ }
+  try { fs.appendFileSync(LOG_PATH, new Date().toISOString() + ' ' + line) } catch { /* disk full / etc */ }
+}
+
+// Issue #195: the uncaught / unhandledRejection handlers MUST NOT call
+// logErr — logErr writes to stderr, and if stderr is what threw EPIPE we
+// loop forever. Direct file append only, with its own try/catch.
+function logFatal(kind, err) {
   try {
-    fs.appendFileSync(LOG_PATH, new Date().toISOString() + ' ' + line)
-  } catch {
-    /* ignore */
-  }
+    fs.appendFileSync(
+      LOG_PATH,
+      new Date().toISOString() + ' [harness-approval-mcp] ' + kind + ' ' + (err && err.stack || String(err)) + '\n'
+    )
+  } catch { /* disk full / permission / whatever — nothing safe left to do */ }
 }
 
 // Issue #167 debug. Logs BEFORE env-var validation so the line fires even
@@ -62,8 +85,8 @@ logErr(
   ' execPath=' + process.execPath
 )
 process.on('exit', (code) => logErr('exit code=' + code))
-process.on('uncaughtException', (err) => logErr('uncaught', err && err.stack || String(err)))
-process.on('unhandledRejection', (err) => logErr('unhandledRejection', err && err.stack || String(err)))
+process.on('uncaughtException', (err) => { logFatal('uncaught', err); process.exit(1) })
+process.on('unhandledRejection', (err) => { logFatal('unhandledRejection', err) })
 
 const SOCKET_PATH = process.env.HARNESS_APPROVAL_SOCKET
 const SESSION_ID = process.env.HARNESS_JSON_CLAUDE_SESSION_ID || ''
