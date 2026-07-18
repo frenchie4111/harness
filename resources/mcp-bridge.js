@@ -20,36 +20,27 @@ const fs = require('fs')
 // identical to "the script never ran" in /tmp/harness-control-bridge.log.
 const LOG_PATH = process.env.HARNESS_CONTROL_BRIDGE_LOG || '/tmp/harness-control-bridge.log'
 
-// Belt-and-suspenders cap against runaway growth (see issue #195). Truncate
-// on startup if the log is over 10 MB — same threshold debug.log rotates at.
 try {
   const st = fs.statSync(LOG_PATH)
   if (st.size > 10 * 1024 * 1024) {
     fs.truncateSync(LOG_PATH, 0)
   }
-} catch {
-  /* file doesn't exist yet, or unreadable — either is fine */
-}
+} catch { /* ignore */ }
 
-// Each I/O gets its own try/catch: a broken stderr must not propagate up
-// and must not stop the file append (or vice versa). Issue #195: previously
-// the stderr write was unguarded, so an EPIPE re-entered uncaughtException.
 function logErr(...args) {
   const line = '[harness-mcp] ' + args.join(' ') + '\n'
-  try { process.stderr.write(line) } catch { /* pipe gone */ }
-  try { fs.appendFileSync(LOG_PATH, new Date().toISOString() + ' ' + line) } catch { /* disk full / etc */ }
+  try { process.stderr.write(line) } catch { /* ignore */ }
+  try { fs.appendFileSync(LOG_PATH, new Date().toISOString() + ' ' + line) } catch { /* ignore */ }
 }
 
-// Issue #195: the uncaught / unhandledRejection handlers MUST NOT call
-// logErr — logErr writes to stderr, and if stderr is what threw EPIPE we
-// loop forever. Direct file append only, with its own try/catch.
+// Must not call logErr — a broken stderr would re-enter the handler.
 function logFatal(kind, err) {
   try {
     fs.appendFileSync(
       LOG_PATH,
       new Date().toISOString() + ' [harness-mcp] ' + kind + ' ' + (err && err.stack || String(err)) + '\n'
     )
-  } catch { /* disk full / permission / whatever — nothing safe left to do */ }
+  } catch { /* ignore */ }
 }
 
 // Issue #167 debug. Logs BEFORE env-var validation so the line fires even
