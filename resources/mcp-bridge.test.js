@@ -307,9 +307,6 @@ describe('mcp-bridge create_worktree', () => {
   })
 })
 
-// Regression guard for issue #195: an oversized log file (e.g. from a prior
-// runaway loop) is truncated on the next bridge boot instead of being
-// appended to forever.
 describe('mcp-bridge log-size cap on startup', () => {
   let tmpDir
 
@@ -323,13 +320,9 @@ describe('mcp-bridge log-size cap on startup', () => {
 
   it('truncates a log file that starts over 10 MB', async () => {
     const logPath = join(tmpDir, 'bridge.log')
-    // 15 MB — comfortably over the 10 MB threshold.
     writeFileSync(logPath, Buffer.alloc(15 * 1024 * 1024, 0x2e))
     expect(statSync(logPath).size).toBe(15 * 1024 * 1024)
 
-    // Spawn without HARNESS_PORT/TOKEN so the script exits fast (code 1)
-    // after running the startup truncate and writing the "started" and
-    // "required" lines.
     const proc = spawn(process.execPath, [BRIDGE], {
       env: {
         ...process.env,
@@ -341,17 +334,12 @@ describe('mcp-bridge log-size cap on startup', () => {
     })
     await new Promise((resolve) => proc.once('exit', resolve))
 
-    const size = statSync(logPath).size
-    // Startup lines are small (<1 KB total). Anything below the 10 MB cap
-    // proves the truncate ran; below 1 MB proves it truncated to zero
-    // before the two small startup appends.
-    expect(size).toBeLessThan(1024 * 1024)
+    expect(statSync(logPath).size).toBeLessThan(1024 * 1024)
   })
 
   it('leaves a small log file alone', async () => {
     const logPath = join(tmpDir, 'small.log')
-    const seed = 'prior boot line\n'
-    writeFileSync(logPath, seed)
+    writeFileSync(logPath, 'prior boot line\n')
     const seedSize = statSync(logPath).size
 
     const proc = spawn(process.execPath, [BRIDGE], {
@@ -365,7 +353,6 @@ describe('mcp-bridge log-size cap on startup', () => {
     })
     await new Promise((resolve) => proc.once('exit', resolve))
 
-    // The prior contents must survive; the script only appends.
     expect(statSync(logPath).size).toBeGreaterThan(seedSize)
   })
 })
