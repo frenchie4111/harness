@@ -283,6 +283,7 @@ export function buildBackend(
     setExpandedDiagnosticLoggingEnabled: (enabled: boolean) =>
       req('config:setExpandedDiagnosticLoggingEnabled', enabled),
     setShareClaudeSettings: (enabled: boolean) => req('config:setShareClaudeSettings', enabled),
+    setAutoFetchEnabled: (enabled: boolean) => req('config:setAutoFetchEnabled', enabled),
     setHarnessSystemPromptEnabled: (enabled: boolean) =>
       req('config:setHarnessSystemPromptEnabled', enabled),
     setHarnessSystemPrompt: (prompt: string) => req('config:setHarnessSystemPrompt', prompt),

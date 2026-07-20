@@ -216,6 +216,10 @@ export interface SettingsState {
    *  the feed contents. Set by the "Hide all announcements" action and
    *  cleared only by the user. */
   announcementsMuted: boolean
+  /** When true (default), a background task runs `git fetch --all` on
+   *  every known repo every few minutes so worktrees stay current with
+   *  their remotes without a manual fetch. Applies to all repos. */
+  autoFetchEnabled: boolean
 }
 
 export type SettingsEvent =
@@ -274,6 +278,7 @@ export type SettingsEvent =
   | { type: 'settings/prReviewPromptChanged'; payload: string }
   | { type: 'settings/announcementDismissed'; payload: string }
   | { type: 'settings/announcementsMutedChanged'; payload: boolean }
+  | { type: 'settings/autoFetchEnabledChanged'; payload: boolean }
 
 // Client-side placeholder. Real values are seeded in the main-process Store
 // constructor from the on-disk config and secrets.
@@ -329,7 +334,8 @@ export const initialSettings: SettingsState = {
   expandedDiagnosticLoggingEnabled: false,
   prReviewPrompt: DEFAULT_PR_REVIEW_PROMPT,
   dismissedAnnouncementIds: [],
-  announcementsMuted: false
+  announcementsMuted: false,
+  autoFetchEnabled: true
 }
 
 export function settingsReducer(state: SettingsState, event: SettingsEvent): SettingsState {
@@ -443,6 +449,8 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
     }
     case 'settings/announcementsMutedChanged':
       return { ...state, announcementsMuted: event.payload }
+    case 'settings/autoFetchEnabledChanged':
+      return { ...state, autoFetchEnabled: event.payload }
     default: {
       const _exhaustive: never = event
       void _exhaustive

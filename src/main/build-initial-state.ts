@@ -146,7 +146,8 @@ export function buildInitialAppState(
       dismissedAnnouncementIds: Array.isArray(config.dismissedAnnouncementIds)
         ? config.dismissedAnnouncementIds.filter((x): x is string => typeof x === 'string')
         : [],
-      announcementsMuted: config.announcementsMuted === true
+      announcementsMuted: config.announcementsMuted === true,
+      autoFetchEnabled: config.autoFetchEnabled !== false
     }
   }
 }
