@@ -351,7 +351,8 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     autoApprovePermissions,
     autoApproveSteerInstructions,
     snoozeDefaultDays,
-    expandedDiagnosticLoggingEnabled
+    expandedDiagnosticLoggingEnabled,
+    showAssignedPRs
   } = settings
   const setupScript = worktreeScripts.setup
   const teardownScript = worktreeScripts.teardown
@@ -785,6 +786,10 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
   const handleToggleWarnBeforeQuitting = useCallback(async (enabled: boolean) => {
     await backend.setWarnBeforeQuitting(enabled)
+  }, [])
+
+  const handleToggleShowAssignedPRs = useCallback(async (enabled: boolean) => {
+    await backend.setShowAssignedPRs(enabled)
   }, [])
 
   const handleToggleWsTransport = useCallback(async (enabled: boolean) => {
@@ -1361,6 +1366,22 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     When enabled, you must hold ⌘Q briefly to quit — a tap shows a
                     reminder and does nothing, so you don&apos;t lose running agents
                     and terminals by accident. Disable to quit immediately on ⌘Q.
+                  </div>
+                </div>
+              </label>
+              <label className="flex items-start gap-2 cursor-pointer mt-4">
+                <input
+                  type="checkbox"
+                  checked={showAssignedPRs}
+                  onChange={(e) => handleToggleShowAssignedPRs(e.target.checked)}
+                  className="mt-0.5 cursor-pointer icon-base" />
+                <div className="flex-1">
+                  <div className="text-sm text-fg-bright">Show PRs assigned to me for review</div>
+                  <div className="text-xs text-dim mt-0.5">
+                    Adds PRs where you&apos;re a requested reviewer (across every repo
+                    added to Harness) as phantom entries in the sidebar&apos;s
+                    Reviewing group. Click one to open the &ldquo;new worktree from PR&rdquo;
+                    screen with that PR pre-selected.
                   </div>
                 </div>
               </label>

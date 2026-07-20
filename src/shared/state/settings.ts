@@ -216,6 +216,12 @@ export interface SettingsState {
    *  the feed contents. Set by the "Hide all announcements" action and
    *  cleared only by the user. */
   announcementsMuted: boolean
+  /** When true, PRs that have you as a requested reviewer (across every
+   *  repo added to Harness) show up as phantom entries in the sidebar's
+   *  Reviewing group — click one and it opens the "new worktree from PR"
+   *  screen with that PR pre-selected. Off by default; opt-in via
+   *  Settings. */
+  showAssignedPRs: boolean
 }
 
 export type SettingsEvent =
@@ -274,6 +280,7 @@ export type SettingsEvent =
   | { type: 'settings/prReviewPromptChanged'; payload: string }
   | { type: 'settings/announcementDismissed'; payload: string }
   | { type: 'settings/announcementsMutedChanged'; payload: boolean }
+  | { type: 'settings/showAssignedPRsChanged'; payload: boolean }
 
 // Client-side placeholder. Real values are seeded in the main-process Store
 // constructor from the on-disk config and secrets.
@@ -329,7 +336,8 @@ export const initialSettings: SettingsState = {
   expandedDiagnosticLoggingEnabled: false,
   prReviewPrompt: DEFAULT_PR_REVIEW_PROMPT,
   dismissedAnnouncementIds: [],
-  announcementsMuted: false
+  announcementsMuted: false,
+  showAssignedPRs: false
 }
 
 export function settingsReducer(state: SettingsState, event: SettingsEvent): SettingsState {
@@ -443,6 +451,8 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
     }
     case 'settings/announcementsMutedChanged':
       return { ...state, announcementsMuted: event.payload }
+    case 'settings/showAssignedPRsChanged':
+      return { ...state, showAssignedPRs: event.payload }
     default: {
       const _exhaustive: never = event
       void _exhaustive

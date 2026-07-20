@@ -31,6 +31,10 @@ interface NewWorktreeScreenProps {
   repoRoots: string[]
   /** Repo to pre-select in the picker. Usually the repo of the currently active worktree. */
   defaultRepoRoot?: string
+  /** When set, the modal opens on the "Open PR" tab with this PR
+   *  pre-selected. Used by the sidebar's phantom review-requested rows to
+   *  jump straight into the review-worktree creation flow. */
+  initialPRNumber?: number
 }
 
 /** Sort + clean the local-branch list from the backend. The backend already
@@ -100,8 +104,8 @@ const STARTER_PROMPTS = [
 const KBD_CHIP = 'text-xs text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono'
 const KBD_CHIP_ON_ACCENT = 'text-xs text-white bg-white/20 px-1.5 py-0.5 rounded border border-white/30 font-mono'
 
-export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, defaultRepoRoot }: NewWorktreeScreenProps): JSX.Element {
-  const [mode, setMode] = useState<'fresh' | 'teleport' | 'pr'>('fresh')
+export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, defaultRepoRoot, initialPRNumber }: NewWorktreeScreenProps): JSX.Element {
+  const [mode, setMode] = useState<'fresh' | 'teleport' | 'pr'>(initialPRNumber ? 'pr' : 'fresh')
   const [selectedRepo, setSelectedRepo] = useState<string>(
     defaultRepoRoot && repoRoots.includes(defaultRepoRoot) ? defaultRepoRoot : repoRoots[0] || ''
   )
@@ -141,8 +145,10 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
   const [prsError, setPrsError] = useState<string | null>(null)
   const [prClickPending, setPrClickPending] = useState<number | null>(null)
   // PR mode is select-then-create — same pattern as the other modes. Clicking
-  // a row selects it; the footer "Create worktree" button submits.
-  const [selectedPRNumber, setSelectedPRNumber] = useState<number | null>(null)
+  // a row selects it; the footer "Create worktree" button submits. When
+  // `initialPRNumber` is provided (e.g. from a sidebar phantom entry) the
+  // selection is seeded so the modal opens on the pre-filled state.
+  const [selectedPRNumber, setSelectedPRNumber] = useState<number | null>(initialPRNumber ?? null)
 
   // Same pattern as prsByRepo: cache normalized branch lists per repo
   // for the lifetime of the modal. Reset when repo changes.

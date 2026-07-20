@@ -102,6 +102,12 @@ import {
   type SshBootstrapEvent,
   type SshBootstrapState
 } from './ssh-bootstrap'
+import {
+  initialAssignedPRs,
+  assignedPRsReducer,
+  type AssignedPRsEvent,
+  type AssignedPRsState
+} from './assigned-prs'
 import { initialConfigHealth, type ConfigHealthState } from './config-health'
 
 export type { SettingsState, SettingsEvent }
@@ -183,6 +189,7 @@ export type {
   BootstrapProgress,
   BootstrapError
 } from './ssh-bootstrap'
+export type { AssignedPRsState, AssignedPRsEvent, AssignedPR } from './assigned-prs'
 export type { ConfigHealthState, ConfigLoadError } from './config-health'
 
 export interface AppState {
@@ -201,6 +208,7 @@ export interface AppState {
   announcements: AnnouncementsState
   scratchpad: ScratchpadState
   sshBootstrap: SshBootstrapState
+  assignedPRs: AssignedPRsState
   configHealth: ConfigHealthState
 }
 
@@ -220,6 +228,7 @@ export type StateEvent =
   | AnnouncementsEvent
   | ScratchpadEvent
   | SshBootstrapEvent
+  | AssignedPRsEvent
 
 export const initialState: AppState = {
   settings: initialSettings,
@@ -237,6 +246,7 @@ export const initialState: AppState = {
   announcements: initialAnnouncements,
   scratchpad: initialScratchpad,
   sshBootstrap: initialSshBootstrap,
+  assignedPRs: initialAssignedPRs,
   configHealth: initialConfigHealth
 }
 
@@ -316,6 +326,12 @@ export function rootReducer(state: AppState, event: StateEvent): AppState {
       sshBootstrap: sshBootstrapReducer(state.sshBootstrap, event as SshBootstrapEvent)
     }
   }
+  if (event.type.startsWith('assignedPRs/')) {
+    return {
+      ...state,
+      assignedPRs: assignedPRsReducer(state.assignedPRs, event as AssignedPRsEvent)
+    }
+  }
   // configHealth has no events — it's seeded at construction only (see
   // config-health.ts), so there's no reducer branch. The field flows through
   // unchanged via the `...state` spreads above.
@@ -365,6 +381,7 @@ export function mergeWireSnapshot(state: WireSnapshotState): AppState {
     announcements: { ...initialState.announcements, ...state.announcements },
     scratchpad: { ...initialState.scratchpad, ...state.scratchpad },
     sshBootstrap: { ...initialState.sshBootstrap, ...state.sshBootstrap },
+    assignedPRs: { ...initialState.assignedPRs, ...state.assignedPRs },
     configHealth: { ...initialState.configHealth, ...state.configHealth }
   }
 }

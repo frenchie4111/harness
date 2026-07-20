@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { useSettings, usePrs, useOnboarding, useHooks, useWorktrees, useTerminals, usePanes, useLastActive, useUpdater, useRepoConfigs, useSnooze, useAnnouncements, useConfigLoadError } from './store'
+import { useSettings, usePrs, useOnboarding, useHooks, useWorktrees, useTerminals, usePanes, useLastActive, useUpdater, useRepoConfigs, useSnooze, useAnnouncements, useAssignedPRs, useConfigLoadError } from './store'
 import { useBackend } from './backend'
 import { useTailLineBuffer } from './hooks/useTailLineBuffer'
 import { useTabHandlers } from './hooks/useTabHandlers'
@@ -171,6 +171,7 @@ function DesktopApp(): JSX.Element {
   const [updateBannerDismissed, setUpdateBannerDismissed] = useState(false)
   const [manualUpdateBannerDismissed, setManualUpdateBannerDismissed] = useState(false)
   const announcements = useAnnouncements()
+  const assignedPRs = useAssignedPRs()
   const [announcementsMenuOpen, setAnnouncementsMenuOpen] = useState(false)
   const [sidebarVisible, setSidebarVisible] = useState(true)
   const [singleScreenMode, setSingleScreenMode] = useState(false)
@@ -248,9 +249,24 @@ function DesktopApp(): JSX.Element {
   // Set by the sidebar "+" to pre-pick a repo; transient — cleared on close so
   // the next open (e.g. cmd+N) defaults to the active worktree's repo instead.
   const [newWorktreeRepo, setNewWorktreeRepo] = useState<string | undefined>(undefined)
+  // Set by clicking a phantom "review-requested" entry in the sidebar so
+  // the "new worktree from PR" screen opens with that PR pre-selected.
+  // Cleared alongside the repo when the modal closes.
+  const [newWorktreeInitialPRNumber, setNewWorktreeInitialPRNumber] = useState<number | undefined>(undefined)
   useEffect(() => {
-    if (!showNewWorktree) setNewWorktreeRepo(undefined)
+    if (!showNewWorktree) {
+      setNewWorktreeRepo(undefined)
+      setNewWorktreeInitialPRNumber(undefined)
+    }
   }, [showNewWorktree])
+  const handleOpenAssignedPR = useCallback((repoRoot: string, prNumber: number) => {
+    setShowActivity(false)
+    setShowCleanup(false)
+    setShowCommandCenter(false)
+    setNewWorktreeRepo(repoRoot)
+    setNewWorktreeInitialPRNumber(prNumber)
+    setShowNewWorktree(true)
+  }, [])
   // Worktrees whose git creation is still running (or has errored). They
   // show in the sidebar immediately on submit so the user sees the new entry
   // right away instead of waiting on the modal.
@@ -1487,6 +1503,8 @@ const setQuestStep = useCallback((next: QuestStep) => {
             snoozeByPath={snoozeState.byPath}
             snoozeDefaultDays={settings.snoozeDefaultDays}
             prLoading={prLoading}
+            assignedPRsByRepo={assignedPRs.byRepo}
+            onOpenAssignedPR={handleOpenAssignedPR}
             agentCount={agentWorktreeCount}
             onSelectWorktree={(path) => {
               setShowNewWorktree(false)
@@ -1621,6 +1639,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
             onCancel={() => setShowNewWorktree(false)}
             repoRoots={repoRoots}
             defaultRepoRoot={newWorktreeRepo ?? (activeWorktreeId ? worktreeRepoByPath[activeWorktreeId] : undefined)}
+            initialPRNumber={newWorktreeInitialPRNumber}
           />
         )}
         {reportIssueState !== null && (
