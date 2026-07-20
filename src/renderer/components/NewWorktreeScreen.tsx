@@ -364,7 +364,15 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
   )
 
   // Selection is per-(repo, PR-list) — switching repos invalidates it.
+  // Skip the reset on the very first render so a caller-provided
+  // `initialPRNumber` (from clicking a sidebar phantom entry) survives
+  // the initial `selectedRepo` / `mode` "change" from undefined → real.
+  const isFirstPrResetRef = useRef(true)
   useEffect(() => {
+    if (isFirstPrResetRef.current) {
+      isFirstPrResetRef.current = false
+      return
+    }
     setSelectedPRNumber(null)
   }, [selectedRepo, mode])
 
