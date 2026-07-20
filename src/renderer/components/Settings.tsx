@@ -232,9 +232,13 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
       })
       // labels — typically the title of a single setting/toggle. Skip
       // ones that wrap inputs whose label text is itself a control
-      // (very long blocks) by capping length.
+      // (very long blocks) by capping length. Compound labels that pair
+      // a short title with a long description opt into indexing via
+      // `data-search-title` — otherwise the description bloats the label
+      // text past the 90-char cap and the setting is unfindable.
       sectionEl.querySelectorAll('label').forEach((label, i) => {
-        const text = cleanText(label).split('\n')[0]
+        const attrTitle = label.getAttribute('data-search-title')
+        const text = attrTitle || cleanText(label).split('\n')[0]
         if (!text || text.length > 90) return
         items.push({
           key: `${section.id}:label:${i}`,
@@ -1366,22 +1370,6 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     When enabled, you must hold ⌘Q briefly to quit — a tap shows a
                     reminder and does nothing, so you don&apos;t lose running agents
                     and terminals by accident. Disable to quit immediately on ⌘Q.
-                  </div>
-                </div>
-              </label>
-              <label className="flex items-start gap-2 cursor-pointer mt-4">
-                <input
-                  type="checkbox"
-                  checked={showAssignedPRs}
-                  onChange={(e) => handleToggleShowAssignedPRs(e.target.checked)}
-                  className="mt-0.5 cursor-pointer icon-base" />
-                <div className="flex-1">
-                  <div className="text-sm text-fg-bright">Show PRs assigned to me for review</div>
-                  <div className="text-xs text-dim mt-0.5">
-                    Adds PRs where you&apos;re a requested reviewer (across every repo
-                    added to Harness) as phantom entries in the sidebar&apos;s
-                    Reviewing group. Click one to open the &ldquo;new worktree from PR&rdquo;
-                    screen with that PR pre-selected.
                   </div>
                 </div>
               </label>
@@ -2851,6 +2839,26 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 </p>
               </div>
               )}
+
+              <label
+                className="mt-6 flex items-start gap-2 cursor-pointer"
+                data-search-title="Show PRs assigned to me for review"
+              >
+                <input
+                  type="checkbox"
+                  checked={showAssignedPRs}
+                  onChange={(e) => handleToggleShowAssignedPRs(e.target.checked)}
+                  className="mt-0.5 cursor-pointer icon-base" />
+                <div className="flex-1">
+                  <div className="text-sm text-fg-bright">Show PRs assigned to me for review</div>
+                  <div className="text-xs text-dim mt-0.5">
+                    Adds PRs where you&apos;re a requested reviewer (across every repo
+                    added to Harness) as phantom entries in the sidebar&apos;s
+                    Reviewing group. Click one to open the &ldquo;new worktree from PR&rdquo;
+                    screen with that PR pre-selected.
+                  </div>
+                </div>
+              </label>
 
               </>
                 )
