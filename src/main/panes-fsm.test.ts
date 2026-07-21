@@ -266,6 +266,39 @@ describe('PanesFSM.ensureInitialized', () => {
     expect(tree).toBeDefined()
     expect(tree.tabs.length).toBeGreaterThan(0)
   })
+
+  it('sanitizes path separators out of the shell tab id (issue #198)', () => {
+    // The shell tab id flows into $HARNESS_TERMINAL_ID which the Claude
+    // Code hooks use as a filename component under /tmp/harness-status.
+    // A raw wtPath left slashes in the id and bash's `>>` refused to
+    // create the intermediate dirs, surfacing a "hook error" per tool
+    // call. Match the agent/review sanitize pattern (see openReviewTab
+    // and the agent tab id in ensureInitialized).
+    const { fsm, store } = buildFSM()
+    const wtPath = '/Users/me/worktrees/branch-x'
+    store.dispatch({
+      type: 'worktrees/listChanged',
+      payload: [
+        {
+          path: wtPath,
+          branch: 'branch-x',
+          head: '',
+          isBare: false,
+          isMain: false,
+          createdAt: 0,
+          repoRoot: '/Users/me/repo'
+        }
+      ]
+    })
+
+    fsm.ensureInitialized(wtPath)
+
+    const tree = store.getSnapshot().state.terminals.panes[wtPath] as PaneLeaf
+    const shell = tree.tabs.find((t) => t.type === 'shell')
+    expect(shell).toBeDefined()
+    expect(shell!.id).not.toContain('/')
+    expect(shell!.id).toMatch(/^shell-/)
+  })
 })
 
 describe('PanesFSM.openFileTab', () => {
