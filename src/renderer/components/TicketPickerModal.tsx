@@ -190,32 +190,39 @@ interface TicketPickerRowProps {
 }
 
 function TicketPickerRow({ ticket, provider, onSelect }: TicketPickerRowProps): JSX.Element {
+  // Only surface the external id for providers where it's a short
+  // human-friendly reference (GitHub issue numbers). Notion page UUIDs
+  // are opaque and just steal space from the title.
+  const showExternalId = provider.type === 'github-issues'
   return (
     <button
       type="button"
       onClick={onSelect}
       className="text-left px-4 py-3 border-b border-border last:border-b-0 hover:bg-panel-raised transition-colors cursor-pointer"
+      title={ticket.title}
     >
-      <div className="flex items-baseline gap-2">
+      <div className="flex items-start gap-2">
         <TicketProviderIcon
           type={provider.type}
-          className="icon-xs text-dim self-center shrink-0"
+          className="icon-xs text-dim shrink-0 mt-0.5"
         />
-        <span className="text-sm text-fg-bright font-medium truncate flex-1 min-w-0">
+        {showExternalId && (
+          <span
+            className="text-xs font-mono text-faint shrink-0 mt-0.5"
+            title={`External id: ${ticket.externalId}`}
+          >
+            #{ticket.externalId}
+          </span>
+        )}
+        <span className="text-sm text-fg-bright font-medium flex-1 min-w-0 line-clamp-2 break-words">
           {ticket.title}
-        </span>
-        <span
-          className="text-xs font-mono text-faint shrink-0"
-          title={`External id: ${ticket.externalId}`}
-        >
-          {ticket.externalId}
         </span>
       </div>
       <div className="mt-0.5 flex items-center gap-1.5 text-xs text-dim">
-        <span className="text-faint">{provider.label}</span>
+        <span className="text-faint shrink-0">{provider.label}</span>
         {ticket.description && (
           <>
-            <span className="text-faint">·</span>
+            <span className="text-faint shrink-0">·</span>
             <span className="truncate">{ticket.description.split('\n')[0]}</span>
           </>
         )}
