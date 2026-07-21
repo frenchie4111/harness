@@ -91,13 +91,30 @@ function plainTextFromProperty(prop: NotionProperty | undefined): string {
   return ''
 }
 
+/** Every Notion database has exactly one property of type "title", but
+ *  its key depends on what the user named the column ("Name", "Title",
+ *  "Task", …) and is case-sensitive. Falling back to the first
+ *  title-typed property when the configured name doesn't match lets the
+ *  common case (a database with a normal title column of any name) work
+ *  with `titleProperty` blank, while still honoring an explicit override. */
+function findTitleValue(page: NotionPage, hint: string | undefined): string {
+  if (hint) {
+    const hinted = plainTextFromProperty(page.properties[hint])
+    if (hinted) return hinted
+  }
+  for (const key of Object.keys(page.properties)) {
+    const prop = page.properties[key]
+    if (prop?.type === 'title') return plainTextFromProperty(prop)
+  }
+  return ''
+}
+
 function toTicket(
   providerId: string,
   config: NotionConfig,
   page: NotionPage
 ): Ticket {
-  const titleProp = config.titleProperty || 'Name'
-  const title = plainTextFromProperty(page.properties[titleProp])
+  const title = findTitleValue(page, config.titleProperty)
   let description = ''
   if (config.descriptionProperty) {
     const descProp = page.properties[config.descriptionProperty]
@@ -141,9 +158,13 @@ export function createNotionProvider(
     async list(query) {
       const token = readToken()
       const body: Record<string, unknown> = { page_size: 50 }
-      if (query) {
+      // Server-side filter only when the user explicitly told us the title
+      // property key — otherwise we don't know what to `property` against.
+      // When it's unset we fall back to fetching unfiltered and filtering
+      // client-side by title (which findTitleValue resolves per-page).
+      if (query && config.titleProperty) {
         body.filter = {
-          property: config.titleProperty || 'Name',
+          property: config.titleProperty,
           title: { contains: query }
         }
       }
@@ -153,9 +174,14 @@ export function createNotionProvider(
           body: JSON.stringify(body)
         })) as NotionQueryResult
         const pages = data.results ?? []
-        return pages
+        const tickets = pages
           .filter((p) => !p.archived)
           .map((p) => toTicket(providerId, config, p))
+        if (query && !config.titleProperty) {
+          const q = query.toLowerCase()
+          return tickets.filter((t) => t.title.toLowerCase().includes(q))
+        }
+        return tickets
       } catch (err) {
         log('tickets-notion', `list failed for db ${config.databaseId}`, formatErr(err))
         throw err

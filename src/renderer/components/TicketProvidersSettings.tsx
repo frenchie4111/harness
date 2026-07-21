@@ -381,15 +381,18 @@ function TicketProviderForm({ initial, onSubmit, onCancel }: TicketProviderFormP
           <label className="block">
             <div className="text-xs font-semibold uppercase tracking-wider text-dim mb-1">
               Title property{' '}
-              <span className="text-faint normal-case font-normal">(default: "Name")</span>
+              <span className="text-faint normal-case font-normal">(optional)</span>
             </div>
             <input
               type="text"
               value={notionTitleProperty}
               onChange={(e) => setNotionTitleProperty(e.target.value)}
-              placeholder="Name"
+              placeholder="auto-detect"
               className="w-full bg-app border border-border-strong rounded px-2 py-1.5 text-sm text-fg-bright outline-none focus:border-accent font-mono"
             />
+            <p className="mt-1 text-xs text-faint">
+              Leave blank to use whatever column your database has of type "title" (there's always exactly one). Set it explicitly to enable server-side search filtering.
+            </p>
           </label>
           <label className="block">
             <div className="text-xs font-semibold uppercase tracking-wider text-dim mb-1">
