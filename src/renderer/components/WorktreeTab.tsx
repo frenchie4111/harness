@@ -171,28 +171,6 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
         </span>
       )}
       <div className="min-w-0 flex-1">
-        <div className="text-sm font-medium truncate flex items-center gap-1">
-          {(() => {
-            const tip = detachedLikeTooltip(worktree.branch)
-            return tip ? (
-              <span className="shrink-0 inline-flex" title={tip} aria-label={tip}>
-                <TriangleAlert className="icon-xs text-warning" />
-              </span>
-            ) : null
-          })()}
-          <span className={`truncate ${worktree.prunable ? 'line-through text-dim' : ''}`}>
-            {worktree.branch}
-          </span>
-          {worktree.prunable && (
-            <span
-              className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm bg-warning/15 text-warning text-[10px] uppercase tracking-wide"
-              title={worktree.prunableReason || 'On-disk directory missing — click the ghost icon to run `git worktree prune`.'}
-            >
-              <Ghost className="icon-2xs" />
-              stale
-            </span>
-          )}
-        </div>
         {isEditingAlias ? (
           <AliasEditor
             initialValue={currentAlias ?? ''}
@@ -207,7 +185,28 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
             label={currentAlias ? `${currentAlias} · ${worktree.branch}` : worktree.branch}
             side="right"
           >
-            <div className="text-sm font-medium truncate">{label}</div>
+            <div className="text-sm font-medium truncate flex items-center gap-1">
+              {(() => {
+                const tip = detachedLikeTooltip(worktree.branch)
+                return tip ? (
+                  <span className="shrink-0 inline-flex" title={tip} aria-label={tip}>
+                    <TriangleAlert className="icon-xs text-warning" />
+                  </span>
+                ) : null
+              })()}
+              <span className={`truncate ${worktree.prunable ? 'line-through text-dim' : ''}`}>
+                {label}
+              </span>
+              {worktree.prunable && (
+                <span
+                  className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm bg-warning/15 text-warning text-[10px] uppercase tracking-wide"
+                  title={worktree.prunableReason || 'On-disk directory missing — click the ghost icon to run `git worktree prune`.'}
+                >
+                  <Ghost className="icon-2xs" />
+                  stale
+                </span>
+              )}
+            </div>
           </Tooltip>
         )}
         {showPendingTool ? (

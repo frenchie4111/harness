@@ -114,6 +114,10 @@ export interface ControlServerDeps {
   getBrowserPerms: () => BrowserPerms
   browser: BrowserQueries
   shell: ShellQueries
+  /** Trim + 80-char clamp + dispatch. Matches the aliases:set IPC handler.
+   * Empty-after-trim routes to clearAlias — never stores an empty alias. */
+  setAlias: (worktreePath: string, alias: string) => void
+  clearAlias: (worktreePath: string) => void
 }
 
 const FULL_CONTROL_BROWSER_PATHS = new Set([
@@ -306,6 +310,31 @@ async function handleRequest(
       model
     })
     return sendJson(res, 200, created)
+  }
+
+  if ((req.method === 'POST' || req.method === 'DELETE') && path === '/aliases') {
+    const body = await readJson(req)
+    let worktreePath =
+      typeof body.worktreePath === 'string' ? body.worktreePath : undefined
+    if (!worktreePath) {
+      // Default to caller's current worktree — matches how create_worktree
+      // resolves repoRoot from scope, so an agent inside a worktree can
+      // alias itself without knowing its own absolute path.
+      const { scope } = resolveScope(req, deps)
+      if (scope) worktreePath = scope.worktreePath
+    }
+    if (!worktreePath) {
+      return sendJson(res, 400, {
+        error: 'worktreePath required when caller is not scoped to a worktree'
+      })
+    }
+    if (req.method === 'DELETE') {
+      deps.clearAlias(worktreePath)
+      return sendJson(res, 200, { worktreePath, cleared: true })
+    }
+    const alias = typeof body.alias === 'string' ? body.alias : ''
+    deps.setAlias(worktreePath, alias)
+    return sendJson(res, 200, { worktreePath, alias: alias.trim().slice(0, 80) })
   }
 
   // Browser MCP endpoints. Every call is scoped to the caller's worktree

@@ -508,15 +508,19 @@ export function TerminalPanel({
       >
         {showAppTitle && <AppTitleSegment onEdge={onTitleBlockEdge} />}
         {repoLabel && (
-          <div
-            className="no-drag shrink-0 flex items-baseline gap-1.5 px-3 h-full text-xs whitespace-nowrap"
-            title={alias ? `${repoLabel} / ${alias} · ${branch}` : `${repoLabel} / ${branch}`}
-            style={{ alignSelf: 'stretch', display: 'flex', alignItems: 'center' }}
+          <Tooltip
+            label={alias ? `${repoLabel} / ${alias} · ${branch}` : `${repoLabel} / ${branch}`}
+            side="bottom"
           >
-            <span className={`font-medium ${repoNameColor(repoLabel)}`}>{repoLabel}</span>
-            <span className="text-faint">/</span>
-            <span className="text-fg-bright font-medium">{alias ?? branch}</span>
-          </div>
+            <div
+              className="no-drag shrink-0 flex items-baseline gap-1.5 px-3 h-full text-xs whitespace-nowrap"
+              style={{ alignSelf: 'stretch', display: 'flex', alignItems: 'center' }}
+            >
+              <span className={`font-medium ${repoNameColor(repoLabel)}`}>{repoLabel}</span>
+              <span className="text-faint">/</span>
+              <span className="text-fg-bright font-medium">{alias ?? branch}</span>
+            </div>
+          </Tooltip>
         )}
         <div className="no-drag shrink-0 flex items-center h-full pl-2">
           <Tooltip

@@ -7,13 +7,12 @@ import { groupWorktrees, GROUP_ORDER, GROUP_LABELS, type GroupKey } from '../wor
 import { repoNameColor } from './RepoIcon'
 import { fuzzyMatch } from '../fuzzy'
 import { useBackend } from '../backend'
-import { useSettings, useSnooze } from '../store'
+import { useSettings, useSnooze, useAliases } from '../store'
 import {
   CHANGED_STATUS_COLOR,
   CHANGED_STATUS_LABEL,
   useChangedFilesSet,
 } from '../hooks/useChangedFilesSet'
-import { useSettings, useSnooze, useAliases } from '../store'
 
 export type PaletteMode = 'root' | 'files'
 
