@@ -15,11 +15,14 @@ import { initialScratchpad } from '../shared/state/scratchpad'
 import { initialSshBootstrap } from '../shared/state/ssh-bootstrap'
 import { initialAssignedPRs } from '../shared/state/assigned-prs'
 import { initialConfigHealth, type ConfigLoadError } from '../shared/state/config-health'
+import { initialTicketProviders } from '../shared/state/ticket-providers'
+import { initialTickets } from '../shared/state/tickets'
 import {
   initialSettings,
   DEFAULT_LIGHT_THEME,
   DEFAULT_DARK_THEME,
-  DEFAULT_PR_REVIEW_PROMPT
+  DEFAULT_PR_REVIEW_PROMPT,
+  DEFAULT_TICKET_WORKTREE_PROMPT_TEMPLATE
 } from '../shared/state/settings'
 import {
   DEFAULT_CLAUDE_COMMAND,
@@ -76,6 +79,10 @@ export function buildInitialAppState(
     scratchpad: { byWorktreePath: flattenScratchpadNotes(config.scratchpadNotes) },
     sshBootstrap: initialSshBootstrap,
     assignedPRs: initialAssignedPRs,
+    ticketProviders: config.ticketProviders
+      ? { byId: { ...config.ticketProviders } }
+      : initialTicketProviders,
+    tickets: initialTickets,
     settings: {
       ...initialSettings,
       themeMode:
@@ -145,6 +152,8 @@ export function buildInitialAppState(
       snoozeDefaultDays: Math.max(1, Math.floor(config.snoozeDefaultDays ?? 7)),
       expandedDiagnosticLoggingEnabled: config.expandedDiagnosticLoggingEnabled === true,
       prReviewPrompt: config.prReviewPrompt || DEFAULT_PR_REVIEW_PROMPT,
+      ticketWorktreePromptTemplate:
+        config.ticketWorktreePromptTemplate || DEFAULT_TICKET_WORKTREE_PROMPT_TEMPLATE,
       dismissedAnnouncementIds: Array.isArray(config.dismissedAnnouncementIds)
         ? config.dismissedAnnouncementIds.filter((x): x is string => typeof x === 'string')
         : [],

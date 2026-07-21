@@ -109,6 +109,18 @@ import {
   type AssignedPRsState
 } from './assigned-prs'
 import { initialConfigHealth, type ConfigHealthState } from './config-health'
+import {
+  initialTicketProviders,
+  ticketProvidersReducer,
+  type TicketProvidersEvent,
+  type TicketProvidersState
+} from './ticket-providers'
+import {
+  initialTickets,
+  ticketsReducer,
+  type TicketsEvent,
+  type TicketsState
+} from './tickets'
 
 export type { SettingsState, SettingsEvent }
 export type { UpdaterState, UpdaterEvent, UpdaterStatus } from './updater'
@@ -191,6 +203,12 @@ export type {
 } from './ssh-bootstrap'
 export type { AssignedPRsState, AssignedPRsEvent, AssignedPR } from './assigned-prs'
 export type { ConfigHealthState, ConfigLoadError } from './config-health'
+export type { TicketProvidersState, TicketProvidersEvent } from './ticket-providers'
+export type {
+  TicketsState,
+  TicketsEvent,
+  TicketProviderCache
+} from './tickets'
 
 export interface AppState {
   settings: SettingsState
@@ -210,6 +228,8 @@ export interface AppState {
   sshBootstrap: SshBootstrapState
   assignedPRs: AssignedPRsState
   configHealth: ConfigHealthState
+  ticketProviders: TicketProvidersState
+  tickets: TicketsState
 }
 
 export type StateEvent =
@@ -229,6 +249,8 @@ export type StateEvent =
   | ScratchpadEvent
   | SshBootstrapEvent
   | AssignedPRsEvent
+  | TicketProvidersEvent
+  | TicketsEvent
 
 export const initialState: AppState = {
   settings: initialSettings,
@@ -247,7 +269,9 @@ export const initialState: AppState = {
   scratchpad: initialScratchpad,
   sshBootstrap: initialSshBootstrap,
   assignedPRs: initialAssignedPRs,
-  configHealth: initialConfigHealth
+  configHealth: initialConfigHealth,
+  ticketProviders: initialTicketProviders,
+  tickets: initialTickets
 }
 
 export function rootReducer(state: AppState, event: StateEvent): AppState {
@@ -332,6 +356,21 @@ export function rootReducer(state: AppState, event: StateEvent): AppState {
       assignedPRs: assignedPRsReducer(state.assignedPRs, event as AssignedPRsEvent)
     }
   }
+  if (event.type.startsWith('ticketProviders/')) {
+    return {
+      ...state,
+      ticketProviders: ticketProvidersReducer(
+        state.ticketProviders,
+        event as TicketProvidersEvent
+      )
+    }
+  }
+  if (event.type.startsWith('tickets/')) {
+    return {
+      ...state,
+      tickets: ticketsReducer(state.tickets, event as TicketsEvent)
+    }
+  }
   // configHealth has no events — it's seeded at construction only (see
   // config-health.ts), so there's no reducer branch. The field flows through
   // unchanged via the `...state` spreads above.
@@ -382,7 +421,12 @@ export function mergeWireSnapshot(state: WireSnapshotState): AppState {
     scratchpad: { ...initialState.scratchpad, ...state.scratchpad },
     sshBootstrap: { ...initialState.sshBootstrap, ...state.sshBootstrap },
     assignedPRs: { ...initialState.assignedPRs, ...state.assignedPRs },
-    configHealth: { ...initialState.configHealth, ...state.configHealth }
+    configHealth: { ...initialState.configHealth, ...state.configHealth },
+    ticketProviders: {
+      ...initialState.ticketProviders,
+      ...state.ticketProviders
+    },
+    tickets: { ...initialState.tickets, ...state.tickets }
   }
 }
 

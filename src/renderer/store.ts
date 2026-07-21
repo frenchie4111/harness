@@ -24,7 +24,7 @@
 // per-backend store applies it, and any component reading via the
 // active backend's hooks re-renders.
 
-import { useSyncExternalStore } from 'react'
+import { useMemo, useSyncExternalStore } from 'react'
 import {
   initialState,
   mergeWireSnapshot,
@@ -33,6 +33,11 @@ import {
   type StateEvent,
   type WireSnapshotState
 } from '../shared/state'
+import type {
+  Ticket,
+  TicketProviderConfig,
+  WorktreeTicketLink
+} from '../shared/tickets'
 import type { LocalTransportHandle, BackendConnection } from './types'
 import { WebSocketClientTransport } from '../shared/transport/transport-websocket'
 import { initBackend, getBackend } from './backend'
@@ -662,6 +667,72 @@ export function useBrowser() {
  *  Drives InvalidConfigModal. */
 export function useConfigLoadError() {
   return useAppState((s) => s.configHealth.loadError)
+}
+
+/** All configured ticket providers, sorted by label. Reads only when the
+ *  providers map reference changes (any ticketProviders/* event). */
+export function useTicketProviders(): TicketProviderConfig[] {
+  const byId = useAppState((s) => s.ticketProviders.byId)
+  return useMemo(() => {
+    const out = Object.values(byId)
+    out.sort((a, b) => a.label.localeCompare(b.label))
+    return out
+  }, [byId])
+}
+
+/** One provider by id, or null. */
+export function useTicketProvider(
+  id: string | null | undefined
+): TicketProviderConfig | null {
+  return useAppState((s) =>
+    id ? (s.ticketProviders.byId[id] ?? null) : null
+  )
+}
+
+const EMPTY_PROVIDER_IDS: string[] = []
+
+/** Provider ids whose `appliesToRepoRoots` includes the given repo. The
+ *  picker in repo X surfaces every provider returned here. */
+export function useRepoLinkedProviderIds(
+  repoRoot: string | null | undefined
+): string[] {
+  const byId = useAppState((s) => s.ticketProviders.byId)
+  return useMemo(() => {
+    if (!repoRoot) return EMPTY_PROVIDER_IDS
+    const out: string[] = []
+    for (const id of Object.keys(byId)) {
+      const cfg = byId[id]
+      if (cfg.appliesToRepoRoots?.includes(repoRoot)) out.push(id)
+    }
+    return out.length === 0 ? EMPTY_PROVIDER_IDS : out
+  }, [byId, repoRoot])
+}
+
+/** Ticket link recorded for a worktree at creation time. Reads from the
+ *  worktree's own `linkedTicket` field — the worktreesFSM decorates the
+ *  list from the side-table on every refresh. */
+export function useWorktreeLinkedTicket(
+  worktreePath: string | null | undefined
+): WorktreeTicketLink | null {
+  return useAppState((s) => {
+    if (!worktreePath) return null
+    const wt = s.worktrees.list.find((w) => w.path === worktreePath)
+    return wt?.linkedTicket ?? null
+  })
+}
+
+/** Cached Ticket for a (providerId, externalId) pair, or null when the
+ *  cache hasn't been populated yet. Consumer can fire window.api.ticketsGet
+ *  to populate it asynchronously. */
+export function useCachedTicket(
+  link: WorktreeTicketLink | null | undefined
+): Ticket | null {
+  return useAppState((s) => {
+    if (!link) return null
+    const cache = s.tickets.byProvider[link.providerId]
+    if (!cache) return null
+    return cache.tickets.find((t) => t.externalId === link.externalId) ?? null
+  })
 }
 
 /** Session roster (controller + spectators) for a given terminal id.

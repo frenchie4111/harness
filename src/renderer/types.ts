@@ -7,6 +7,27 @@ export type { Worktree, PendingWorktree, PendingDeletion }
 import type { RepoConfig } from '../shared/state/repo-configs'
 export type { RepoConfig }
 
+import type {
+  Ticket,
+  TicketProviderConfig,
+  TicketProviderType,
+  GithubIssuesConfig,
+  NotionConfig,
+  NotionDatabaseSchema,
+  NotionDatabaseSummary,
+  WorktreeTicketLink
+} from '../shared/tickets'
+export type {
+  Ticket,
+  TicketProviderConfig,
+  TicketProviderType,
+  GithubIssuesConfig,
+  NotionConfig,
+  NotionDatabaseSchema,
+  NotionDatabaseSummary,
+  WorktreeTicketLink
+}
+
 import type { WeeklyStats, TopWorktree } from '../shared/weekly-stats'
 export type { WeeklyStats, TopWorktree }
 
@@ -187,6 +208,7 @@ export interface ElectronAPI {
     model?: string,
     checkoutExisting?: boolean
     baseRef?: string
+    linkedTicket?: WorktreeTicketLink
   }): Promise<
     | { id: string; outcome: 'success'; createdPath: string }
     | { id: string; outcome: 'setup-failed'; createdPath: string }
@@ -199,6 +221,7 @@ export interface ElectronAPI {
     initialPrompt?: string
     agentKind?: 'claude' | 'codex'
     model?: string
+    linkedTicket?: WorktreeTicketLink
   }): Promise<
     | { id: string; outcome: 'success'; createdPath: string }
     | { id: string; outcome: 'setup-failed'; createdPath: string }
@@ -352,6 +375,7 @@ export interface ElectronAPI {
   setHarnessSystemPrompt(prompt: string): Promise<boolean>
   setHarnessSystemPromptMain(prompt: string): Promise<boolean>
   setPrReviewPrompt(prompt: string): Promise<boolean>
+  setTicketWorktreePromptTemplate(template: string): Promise<boolean>
   prepareMcpForTerminal(terminalId: string): Promise<string | null>
   onWorktreesExternalCreate(
     callback: (payload: { repoRoot: string; worktree: Worktree; initialPrompt?: string }) => void
@@ -619,6 +643,40 @@ export interface ElectronAPI {
   connectionsSetLastConnected(id: string, when?: number): Promise<boolean>
   connectionsGetToken(id: string): Promise<string | null>
   connectionsHasToken(id: string): Promise<boolean>
+
+  // Ticket providers + tickets (first-party ticket-system integration).
+  // See src/shared/tickets.ts for the contract. The M2M is provider-owned:
+  // each provider carries its own `appliesToRepoRoots` list; the picker in
+  // repo X surfaces every provider whose list contains X.
+  ticketsListProviders(): Promise<TicketProviderConfig[]>
+  ticketsAddProvider(
+    config: Omit<TicketProviderConfig, 'id'>,
+    token?: string
+  ): Promise<TicketProviderConfig>
+  ticketsUpdateProvider(
+    id: string,
+    patch: Partial<Omit<TicketProviderConfig, 'id'>>,
+    token?: string | null
+  ): Promise<TicketProviderConfig | null>
+  ticketsRemoveProvider(id: string): Promise<boolean>
+  ticketsList(providerId: string, query?: string): Promise<Ticket[]>
+  ticketsGet(providerId: string, externalId: string): Promise<Ticket | null>
+  ticketsSetProviderAppliesTo(
+    providerId: string,
+    repoRoots: string[]
+  ): Promise<TicketProviderConfig | null>
+  ticketsHasProviderToken(providerId: string): Promise<boolean>
+  /** Setup-time Notion discovery. Takes an ephemeral token that is
+   *  passed with every call and NEVER persisted — the token only lands
+   *  in `secrets.enc` if the user completes ticketsAddProvider. */
+  ticketsNotionListDatabases(
+    token: string,
+    query?: string
+  ): Promise<NotionDatabaseSummary[]>
+  ticketsNotionDescribeDatabase(
+    token: string,
+    databaseId: string
+  ): Promise<NotionDatabaseSchema | null>
 
   // SSH bootstrap (remote-SSH backend flow). Always-local; the local
   // Electron backend is the one that drives SSH. See plans/remote-main.md §4.

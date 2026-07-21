@@ -112,6 +112,22 @@ describe('settingsReducer', () => {
     expect(next.prReviewPrompt).toBe('Focus on security issues only.')
   })
 
+  it('ticketWorktreePromptTemplateChanged replaces the template string', () => {
+    expect(initialSettings.ticketWorktreePromptTemplate.length).toBeGreaterThan(0)
+    expect(initialSettings.ticketWorktreePromptTemplate).toContain('{title}')
+    const custom = 'Ticket: {title}\n{description}'
+    const next = apply(initialSettings, {
+      type: 'settings/ticketWorktreePromptTemplateChanged',
+      payload: custom
+    })
+    expect(next.ticketWorktreePromptTemplate).toBe(custom)
+    const cleared = apply(next, {
+      type: 'settings/ticketWorktreePromptTemplateChanged',
+      payload: ''
+    })
+    expect(cleared.ticketWorktreePromptTemplate).toBe('')
+  })
+
   it('autoUpdateEnabledChanged toggles auto-update flag', () => {
     expect(initialSettings.autoUpdateEnabled).toBe(true)
     const off = apply(initialSettings, {

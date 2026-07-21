@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { Sparkles, Loader2, X, Map as MapIcon, ListChecks, BookOpen, Radio, GitPullRequest, ChevronRight, ChevronDown, Check } from 'lucide-react'
+import { Sparkles, Loader2, X, Map as MapIcon, ListChecks, BookOpen, Radio, GitPullRequest, ChevronRight, ChevronDown, Check, Ticket as TicketLucide } from 'lucide-react'
 import iconUrl from '../../../resources/icon.png'
 import { sanitizeBranchInput, isValidBranchName } from '../branch-name'
 import { RepoIcon } from './RepoIcon'
@@ -7,6 +7,15 @@ import { useBackend } from '../backend'
 import { useSettings } from '../store'
 import { CLAUDE_MODELS, CODEX_MODELS } from '../../shared/agent-registry'
 import type { PRSummary } from '../types'
+import type {
+  Ticket as TicketType,
+  TicketProviderConfig,
+  WorktreeTicketLink
+} from '../../shared/tickets'
+import { TicketPickerModal } from './TicketPickerModal'
+import { TicketProviderIcon } from './TicketProvidersSettings'
+import { renderTicketPrompt, suggestedBranchName, toWorktreeTicketLink } from '../ticket-prompt'
+import { useRepoLinkedProviderIds } from '../store'
 
 interface NewWorktreeScreenProps {
   onSubmit: (
@@ -17,7 +26,8 @@ interface NewWorktreeScreenProps {
     agentKind?: 'claude' | 'codex',
     model?: string,
     checkoutExisting?: boolean,
-    baseRef?: string
+    baseRef?: string,
+    linkedTicket?: WorktreeTicketLink
   ) => Promise<void>
   onPRSubmit: (
     repoRoot: string,
@@ -136,6 +146,21 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
   const branchRef = useRef<HTMLInputElement>(null)
   const promptRef = useRef<HTMLTextAreaElement>(null)
   const teleportRef = useRef<HTMLInputElement>(null)
+
+  // From-ticket flow. When `selectedTicket` is non-null we render a chip
+  // above the branch input and the submit will include the link. The
+  // picker opens via `showTicketPicker`; closing it via X / Esc / outside
+  // click leaves selection untouched.
+  const [selectedTicket, setSelectedTicket] = useState<{
+    ticket: TicketType
+    provider: TicketProviderConfig
+  } | null>(null)
+  const [showTicketPicker, setShowTicketPicker] = useState(false)
+  const repoLinkedProviderIds = useRepoLinkedProviderIds(selectedRepo)
+  // True when the current repo has any provider linked. Used to show the
+  // "From ticket" affordance only where it would actually return tickets,
+  // and to gate the empty-state copy when it wouldn't.
+  const repoHasTicketProviders = repoLinkedProviderIds.length > 0
 
   const backend = useBackend()
   // Cache PR-list fetch results per repo so flipping back to the tab
@@ -320,13 +345,35 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
         effectiveAgent,
         modelOverride.trim() || undefined,
         checkoutExisting,
-        baseRef
+        baseRef,
+        selectedTicket ? toWorktreeTicketLink(selectedTicket.ticket) : undefined
       )
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create worktree')
       setSubmitting(false)
     }
-  }, [effectiveBranch, prompt, canSubmit, onSubmit, parsedTeleport, selectedRepo, mode, agentKindOverride, modelOverride, branchTab, baseRef])
+  }, [effectiveBranch, prompt, canSubmit, onSubmit, parsedTeleport, selectedRepo, mode, agentKindOverride, modelOverride, branchTab, baseRef, selectedTicket])
+
+  const handlePickTicket = useCallback(
+    (ticket: TicketType, provider: TicketProviderConfig) => {
+      setSelectedTicket({ ticket, provider })
+      setShowTicketPicker(false)
+      // Prime branch + prompt unless the user already typed something.
+      // Once a user has hand-edited either field, we trust they want to
+      // keep their version — the picker still records the link so the
+      // submit attaches it, just doesn't overwrite their text.
+      switchBranchTab('new')
+      if (!branch.trim()) setBranch(suggestedBranchName(ticket, provider.type))
+      if (!prompt.trim()) {
+        setPrompt(renderTicketPrompt(settings.ticketWorktreePromptTemplate, ticket, provider.type))
+      }
+    },
+    [branch, prompt, settings.ticketWorktreePromptTemplate, switchBranchTab]
+  )
+
+  const handleClearTicket = useCallback(() => {
+    setSelectedTicket(null)
+  }, [])
 
   const cycleRepo = useCallback((direction: 1 | -1) => {
     if (repoRoots.length <= 1) return
@@ -505,6 +552,61 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
 
             {mode === 'fresh' && (
               <div>
+                {/* From-ticket affordance. Shows the picked ticket as a
+                    pinned chip when one is selected; otherwise a "Pick
+                    a ticket" button when the repo has providers linked,
+                    or a hint-link to settings when it doesn't. */}
+                <div className="mb-3">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-dim">
+                      From ticket
+                    </span>
+                    <span className="text-xs text-faint">optional</span>
+                  </div>
+                  {selectedTicket ? (
+                    <div className="flex items-center gap-2 rounded-lg border-2 border-accent bg-accent/10 px-3 py-2">
+                      <TicketProviderIcon
+                        type={selectedTicket.provider.type}
+                        className="icon-sm text-accent shrink-0"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm text-fg-bright truncate">
+                          {selectedTicket.ticket.title}
+                        </div>
+                        <div className="text-xs text-dim truncate">
+                          {selectedTicket.provider.label} ·{' '}
+                          <span className="font-mono">{selectedTicket.ticket.externalId}</span>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleClearTicket}
+                        disabled={submitting}
+                        className="text-faint hover:text-fg p-1 rounded cursor-pointer shrink-0"
+                        title="Remove ticket link"
+                      >
+                        <X className="icon-xs" />
+                      </button>
+                    </div>
+                  ) : repoHasTicketProviders ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowTicketPicker(true)}
+                      disabled={submitting || !selectedRepo}
+                      className="w-full flex items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-border-strong px-3 py-2 text-sm text-dim hover:text-fg hover:border-accent transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      <TicketLucide className="icon-sm" />
+                      Pick a ticket
+                    </button>
+                  ) : (
+                    <div className="rounded-lg border border-dashed border-border-strong bg-panel-raised/40 px-3 py-2 text-xs text-faint">
+                      No ticket providers apply to this project. Tick this project in a
+                      provider's "Apply to projects" list in{' '}
+                      <span className="font-medium text-dim">Settings → Ticket Providers</span>.
+                    </div>
+                  )}
+                </div>
+
                 <div className="flex p-1 bg-app border border-border-strong rounded-lg mb-3">
                   <button
                     type="button"
@@ -790,6 +892,13 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
           )}
         </div>
       </div>
+      {showTicketPicker && (
+        <TicketPickerModal
+          repoRoot={selectedRepo || null}
+          onClose={() => setShowTicketPicker(false)}
+          onSelect={handlePickTicket}
+        />
+      )}
     </div>
   )
 }

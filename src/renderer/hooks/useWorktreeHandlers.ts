@@ -184,7 +184,8 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
       agentKind?: 'claude' | 'codex',
       model?: string,
       checkoutExisting?: boolean,
-      baseRef?: string
+      baseRef?: string,
+      linkedTicket?: import('../../shared/tickets').WorktreeTicketLink
     ) => {
       const id = `pending:${crypto.randomUUID()}`
 
@@ -193,7 +194,9 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
       // we switch straight to the real worktree once it lands in the list.
       //
       // Main handles everything: addWorktree → setup script → ensureInitialized
-      // (with the prompt embedded in the new agent tab) → outcome.
+      // (with the prompt embedded in the new agent tab) → outcome. The
+      // FSM carries linkedTicket through and persists it onto the worktree
+      // via the side-table — no post-hoc renderer call needed.
       const result = await backend.runPendingWorktree({
         id,
         repoRoot,
@@ -203,7 +206,8 @@ export function useWorktreeHandlers(args: UseWorktreeHandlersArgs) {
         agentKind,
         model,
         checkoutExisting,
-        baseRef
+        baseRef,
+        linkedTicket
       })
 
       if (result.outcome === 'success') {
