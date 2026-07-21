@@ -391,6 +391,8 @@ export interface ElectronAPI {
   unsnooze(path: string): Promise<boolean>
   setSnoozeDefaultDays(days: number): Promise<boolean>
   setScratchpadText(worktreePath: string, text: string): Promise<boolean>
+  setAlias(path: string, alias: string): Promise<boolean>
+  clearAlias(path: string): Promise<boolean>
   openInEditor(worktreePath: string, filePath?: string): Promise<{ ok: true } | { ok: false; error: string }>
 
   // Corrupt-config recovery (InvalidConfigModal). save/reset re-apply on

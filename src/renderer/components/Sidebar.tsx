@@ -59,6 +59,9 @@ interface SidebarProps {
   unifiedRepos: boolean
   onToggleUnifiedRepos: () => void
   onCollapseSidebar: () => void
+  editingAliasPath: string | null
+  onStartAliasEdit: (path: string) => void
+  onEndAliasEdit: () => void
 }
 
 export function Sidebar({
@@ -103,7 +106,10 @@ export function Sidebar({
   onToggleRepo,
   unifiedRepos,
   onToggleUnifiedRepos,
-  onCollapseSidebar
+  onCollapseSidebar,
+  editingAliasPath,
+  onStartAliasEdit,
+  onEndAliasEdit
 }: SidebarProps): JSX.Element {
   const backend = useBackend()
   const deletingPaths = useMemo(() => {
@@ -385,6 +391,9 @@ export function Sidebar({
                   onContinue={wt.isMain || deletingPaths.has(wt.path) ? undefined : () => beginContinue(wt.path, wt.branch)}
                   onSnooze={wt.isMain || deletingPaths.has(wt.path) ? undefined : (e) => onSnoozeRow(wt.path, e)}
                   onUnsnooze={wt.isMain || deletingPaths.has(wt.path) ? undefined : () => onUnsnoozeRow(wt.path)}
+                  isEditingAlias={editingAliasPath === wt.path}
+                  onStartAliasEdit={() => onStartAliasEdit(wt.path)}
+                  onEndAliasEdit={onEndAliasEdit}
                 />
                 {continueTarget?.path === wt.path && (
                   <div className="border-y-2 border-accent bg-panel-raised p-2.5 shadow-inner">

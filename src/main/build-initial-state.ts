@@ -14,6 +14,8 @@ import { initialAnnouncements } from '../shared/state/announcements'
 import { initialScratchpad } from '../shared/state/scratchpad'
 import { initialSshBootstrap } from '../shared/state/ssh-bootstrap'
 import { initialConfigHealth, type ConfigLoadError } from '../shared/state/config-health'
+import { initialAliases } from '../shared/state/aliases'
+import { initialSettings } from '../shared/state/settings'
 import {
   initialSettings,
   DEFAULT_LIGHT_THEME,
@@ -74,6 +76,9 @@ export function buildInitialAppState(
     announcements: initialAnnouncements,
     scratchpad: { byWorktreePath: flattenScratchpadNotes(config.scratchpadNotes) },
     sshBootstrap: initialSshBootstrap,
+    aliases: config.aliases
+      ? { byPath: { ...config.aliases } }
+      : initialAliases,
     settings: {
       ...initialSettings,
       themeMode:

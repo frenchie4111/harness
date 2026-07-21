@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { useSettings, usePrs, useOnboarding, useHooks, useWorktrees, useTerminals, usePanes, useLastActive, useUpdater, useRepoConfigs, useSnooze, useAnnouncements, useConfigLoadError } from './store'
+import { useSettings, usePrs, useOnboarding, useHooks, useWorktrees, useTerminals, usePanes, useLastActive, useUpdater, useRepoConfigs, useSnooze, useAnnouncements, useConfigLoadError, useSnooze, useAliasForPath } from './store'
 import { useBackend } from './backend'
 import { useTailLineBuffer } from './hooks/useTailLineBuffer'
 import { useTabHandlers } from './hooks/useTabHandlers'
@@ -108,6 +108,21 @@ function DesktopApp(): JSX.Element {
   const [activeWorktreeId, setActiveWorktreeId] = useState<string | null>(
     () => worktrees[0]?.path ?? null
   )
+  const activeAlias = useAliasForPath(activeWorktreeId ?? '')
+  useEffect(() => {
+    if (!activeWorktreeId) {
+      document.title = 'Harness'
+      return
+    }
+    const wt = worktrees.find((w) => w.path === activeWorktreeId)
+    if (!wt) {
+      document.title = 'Harness'
+      return
+    }
+    const label = activeAlias ?? wt.branch
+    document.title = `${label} — Harness`
+  }, [activeWorktreeId, activeAlias, worktrees])
+  const [editingAliasPath, setEditingAliasPath] = useState<string | null>(null)
   // Pane / tab tree lives in the main-process store; the renderer reads it
   // and dispatches every mutation as an IPC method call. Per-client UI
   // focus (which pane in each worktree the user last interacted with) is
@@ -804,7 +819,8 @@ const setQuestStep = useCallback((next: QuestStep) => {
     handleSelectTab,
     handleSplitPane,
     handleRefreshWorktrees,
-    setShowSettings
+    setShowSettings,
+    onStartAliasEdit: setEditingAliasPath
   })
 
   // File → Close Tab (Cmd+W). The accelerator lives on the menu item
@@ -1529,6 +1545,9 @@ const setQuestStep = useCallback((next: QuestStep) => {
             unifiedRepos={unifiedRepos}
             onToggleUnifiedRepos={() => setUnifiedRepos((v) => !v)}
             onCollapseSidebar={() => setSidebarVisible(false)}
+            editingAliasPath={editingAliasPath}
+            onStartAliasEdit={setEditingAliasPath}
+            onEndAliasEdit={() => setEditingAliasPath(null)}
           /></div></div>
         )}
         {!singleScreenMode && !sidebarVisible && (
