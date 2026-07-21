@@ -176,6 +176,42 @@ const TOOLS = [
     inputSchema: { type: 'object', properties: {} }
   },
   {
+    name: 'set_worktree_alias',
+    description:
+      "Set a user-facing display alias for a worktree. The alias replaces the branch name wherever the worktree is shown in Harness (sidebar, window title, tab strip, palette) — a cosmetic rename that never touches git. Defaults to the caller's current worktree when worktreePath is omitted. Aliases are trimmed and clamped to 80 chars; an empty string clears the alias (prefer clear_worktree_alias for that).",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        alias: {
+          type: 'string',
+          description:
+            'The alias to display. Trimmed and clamped to 80 characters. Empty string clears the alias.'
+        },
+        worktreePath: {
+          type: 'string',
+          description:
+            "Absolute path of the worktree to alias. Optional — defaults to the caller's current worktree."
+        }
+      },
+      required: ['alias']
+    }
+  },
+  {
+    name: 'clear_worktree_alias',
+    description:
+      "Remove the display alias for a worktree so it shows its branch name again in Harness. Defaults to the caller's current worktree when worktreePath is omitted. No-op if no alias was set.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        worktreePath: {
+          type: 'string',
+          description:
+            "Absolute path of the worktree whose alias to clear. Optional — defaults to the caller's current worktree."
+        }
+      }
+    }
+  },
+  {
     name: 'list_browser_tabs',
     description:
       'List the browser tabs currently open in the SAME worktree as the calling agent. Returns [{id, url, title}]. Use the returned ids with screenshot_tab, get_tab_dom, get_tab_url, and get_tab_console_logs.',
@@ -535,6 +571,24 @@ async function handleToolCall(name, args) {
   if (name === 'list_repos') {
     const r = await callControl('GET', '/repos')
     return JSON.stringify(r, null, 2)
+  }
+  if (name === 'set_worktree_alias') {
+    if (!args || typeof args.alias !== 'string') {
+      throw new Error('alias is required')
+    }
+    const r = await callControl('POST', '/aliases', {
+      alias: args.alias,
+      worktreePath: args.worktreePath
+    })
+    return r.alias
+      ? 'Set alias "' + r.alias + '" for ' + r.worktreePath
+      : 'Cleared alias for ' + r.worktreePath
+  }
+  if (name === 'clear_worktree_alias') {
+    const r = await callControl('DELETE', '/aliases', {
+      worktreePath: args && args.worktreePath
+    })
+    return 'Cleared alias for ' + r.worktreePath
   }
   if (name === 'list_browser_tabs') {
     const r = await callControl('GET', '/browser/tabs')

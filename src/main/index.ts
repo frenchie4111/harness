@@ -3810,6 +3810,20 @@ async function runBoot(): Promise<void> {
       enabled: config.browserToolsEnabled !== false,
       mode: config.browserToolsMode === 'view' ? 'view' : 'full'
     }),
+    setAlias: (worktreePath, alias) => {
+      const trimmed = alias.trim().slice(0, 80)
+      if (!trimmed) {
+        store.dispatch({ type: 'aliases/cleared', payload: { path: worktreePath } })
+      } else {
+        store.dispatch({
+          type: 'aliases/set',
+          payload: { path: worktreePath, alias: trimmed }
+        })
+      }
+    },
+    clearAlias: (worktreePath) => {
+      store.dispatch({ type: 'aliases/cleared', payload: { path: worktreePath } })
+    },
     browser: {
       listTabsForWorktree: (wtPath) => {
         const ids = browserManager.listTabsForWorktree(wtPath)

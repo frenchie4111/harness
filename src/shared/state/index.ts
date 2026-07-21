@@ -247,7 +247,6 @@ export const initialState: AppState = {
   scratchpad: initialScratchpad,
   sshBootstrap: initialSshBootstrap,
   configHealth: initialConfigHealth,
-  snooze: initialSnooze,
   aliases: initialAliases
 }
 
@@ -382,7 +381,8 @@ export function mergeWireSnapshot(state: WireSnapshotState): AppState {
     announcements: { ...initialState.announcements, ...state.announcements },
     scratchpad: { ...initialState.scratchpad, ...state.scratchpad },
     sshBootstrap: { ...initialState.sshBootstrap, ...state.sshBootstrap },
-    configHealth: { ...initialState.configHealth, ...state.configHealth }
+    configHealth: { ...initialState.configHealth, ...state.configHealth },
+    aliases: { ...initialState.aliases, ...state.aliases }
   }
 }
 
