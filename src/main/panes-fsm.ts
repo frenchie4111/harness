@@ -242,7 +242,7 @@ export class PanesFSM {
     const agentKind = opts?.agentKind ?? this.opts.getDefaultAgentKind?.() ?? 'claude'
     const agentInfo = getAgentInfo(agentKind)
     const model = opts?.model && opts.model.trim() ? opts.model.trim() : undefined
-    const shellTabId = `shell-${wtPath}-${Date.now()}`
+    const shellTabId = `shell-${wtPath.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}`
     // Branch to a json-claude default tab when the user has opted in
     // and the kind is Claude. teleport sessions stay on xterm (json-
     // claude has no `--resume <id>` analog for an arbitrary external
