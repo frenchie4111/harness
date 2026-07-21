@@ -646,7 +646,11 @@ export function buildBackend(
     ticketsSetProviderAppliesTo: (providerId: string, repoRoots: string[]) =>
       req('tickets:setProviderAppliesTo', providerId, repoRoots),
     ticketsHasProviderToken: (providerId: string) =>
-      req('tickets:hasProviderToken', providerId)
+      req('tickets:hasProviderToken', providerId),
+    ticketsNotionListDatabases: (token: string, query?: string) =>
+      req('tickets:notionListDatabases', token, query),
+    ticketsNotionDescribeDatabase: (token: string, databaseId: string) =>
+      req('tickets:notionDescribeDatabase', token, databaseId)
   }
 
   return api as ElectronAPI

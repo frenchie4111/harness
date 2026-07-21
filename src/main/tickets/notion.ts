@@ -15,6 +15,8 @@ import { trackedFetch as recordedFetch } from '../github-recorder'
 import { getSecret } from '../secrets'
 import type {
   NotionConfig,
+  NotionDatabaseSchema,
+  NotionDatabaseSummary,
   Ticket,
   TicketProvider
 } from '../../shared/tickets'
@@ -199,5 +201,78 @@ export function createNotionProvider(
         return null
       }
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Setup-time discovery helpers. The Notion provider form calls these with an
+// ephemeral token BEFORE the provider is saved — nothing here touches
+// secrets.enc. Both are simple pass-throughs over the Notion API.
+
+interface NotionDatabaseObject {
+  id: string
+  url: string
+  title?: NotionRichText[]
+  properties?: Record<string, NotionProperty>
+}
+
+interface NotionSearchResult {
+  results?: NotionDatabaseObject[]
+}
+
+function databaseTitle(db: NotionDatabaseObject): string {
+  if (!db.title || db.title.length === 0) return '(untitled database)'
+  const joined = db.title.map((r) => r.plain_text ?? '').join('').trim()
+  return joined || '(untitled database)'
+}
+
+/** Return every database the integration behind `token` has access to,
+ *  optionally filtered by name. Used by the provider form to render a
+ *  picker instead of asking the user to paste a UUID. */
+export async function listNotionDatabases(
+  token: string,
+  query?: string
+): Promise<NotionDatabaseSummary[]> {
+  if (!token) return []
+  const body: Record<string, unknown> = {
+    filter: { property: 'object', value: 'database' },
+    page_size: 100
+  }
+  if (query && query.trim().length > 0) body.query = query.trim()
+  try {
+    const data = (await notionFetch(token, '/search', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })) as NotionSearchResult
+    return (data.results ?? []).map((db) => ({
+      id: db.id,
+      title: databaseTitle(db),
+      url: db.url
+    }))
+  } catch (err) {
+    log('tickets-notion', 'listDatabases failed', formatErr(err))
+    throw err
+  }
+}
+
+/** Fetch the property schema for a single database. Powers the "pick a
+ *  description property" dropdown in the provider form. */
+export async function describeNotionDatabase(
+  token: string,
+  databaseId: string
+): Promise<NotionDatabaseSchema | null> {
+  if (!token || !databaseId) return null
+  try {
+    const db = (await notionFetch(token, `/databases/${databaseId}`)) as NotionDatabaseObject
+    if (!db || !db.id) return null
+    const properties: { name: string; type: string }[] = []
+    for (const key of Object.keys(db.properties ?? {})) {
+      const prop = (db.properties ?? {})[key]
+      properties.push({ name: key, type: prop?.type ?? 'unknown' })
+    }
+    return { id: db.id, title: databaseTitle(db), properties }
+  } catch (err) {
+    log('tickets-notion', `describeDatabase failed for ${databaseId}`, formatErr(err))
+    throw err
   }
 }

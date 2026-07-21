@@ -6,10 +6,21 @@
 // up in), edited inline in the provider form via a checkbox list of the
 // user's known repos. No per-repo .harness.json plumbing needed.
 
-import { useEffect, useState } from 'react'
-import { Plus, Trash2, Pencil, Check, CircleDot, BookOpen, AlertCircle } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import {
+  Plus,
+  Trash2,
+  Pencil,
+  Check,
+  CircleDot,
+  BookOpen,
+  AlertCircle,
+  Loader2,
+  Search
+} from 'lucide-react'
 import { useBackend } from '../backend'
 import { useTicketProviders, useWorktrees } from '../store'
+import type { NotionDatabaseSchema, NotionDatabaseSummary } from '../types'
 
 /** Asks main whether the given provider has a token recorded in
  *  secrets.enc. Tokens are write-only over IPC, so this is the only way
@@ -245,9 +256,6 @@ function TicketProviderForm({ initial, onSubmit, onCancel }: TicketProviderFormP
   const [ghRepo, setGhRepo] = useState(initialGh?.repo ?? '')
   const [ghDefaultQuery, setGhDefaultQuery] = useState(initialGh?.defaultQuery ?? '')
   const [notionDatabaseId, setNotionDatabaseId] = useState(initialNotion?.databaseId ?? '')
-  const [notionTitleProperty, setNotionTitleProperty] = useState(
-    initialNotion?.titleProperty ?? ''
-  )
   const [notionDescriptionProperty, setNotionDescriptionProperty] = useState(
     initialNotion?.descriptionProperty ?? ''
   )
@@ -283,7 +291,6 @@ function TicketProviderForm({ initial, onSubmit, onCancel }: TicketProviderFormP
           ? { repo: ghRepo.trim(), defaultQuery: ghDefaultQuery.trim() || undefined }
           : {
               databaseId: notionDatabaseId.trim(),
-              titleProperty: notionTitleProperty.trim() || undefined,
               descriptionProperty: notionDescriptionProperty.trim() || undefined
             }
       if (initial) {
@@ -365,52 +372,19 @@ function TicketProviderForm({ initial, onSubmit, onCancel }: TicketProviderFormP
       )}
 
       {type === 'notion' && (
-        <>
-          <label className="block">
-            <div className="text-xs font-semibold uppercase tracking-wider text-dim mb-1">
-              Database ID
-            </div>
-            <input
-              type="text"
-              value={notionDatabaseId}
-              onChange={(e) => setNotionDatabaseId(e.target.value)}
-              placeholder="00000000-0000-0000-0000-000000000000"
-              className="w-full bg-app border border-border-strong rounded px-2 py-1.5 text-sm text-fg-bright outline-none focus:border-accent font-mono"
-            />
-          </label>
-          <label className="block">
-            <div className="text-xs font-semibold uppercase tracking-wider text-dim mb-1">
-              Title property{' '}
-              <span className="text-faint normal-case font-normal">(optional)</span>
-            </div>
-            <input
-              type="text"
-              value={notionTitleProperty}
-              onChange={(e) => setNotionTitleProperty(e.target.value)}
-              placeholder="auto-detect"
-              className="w-full bg-app border border-border-strong rounded px-2 py-1.5 text-sm text-fg-bright outline-none focus:border-accent font-mono"
-            />
-            <p className="mt-1 text-xs text-faint">
-              Leave blank to use whatever column your database has of type "title" (there's always exactly one). Set it explicitly to enable server-side search filtering.
-            </p>
-          </label>
-          <label className="block">
-            <div className="text-xs font-semibold uppercase tracking-wider text-dim mb-1">
-              Description property{' '}
-              <span className="text-faint normal-case font-normal">(optional)</span>
-            </div>
-            <input
-              type="text"
-              value={notionDescriptionProperty}
-              onChange={(e) => setNotionDescriptionProperty(e.target.value)}
-              placeholder="e.g. Summary"
-              className="w-full bg-app border border-border-strong rounded px-2 py-1.5 text-sm text-fg-bright outline-none focus:border-accent font-mono"
-            />
-            <p className="mt-1 text-xs text-faint">
-              Leave blank to omit body content — Claude pulls it via the Notion MCP at runtime.
-            </p>
-          </label>
-        </>
+        <NotionSetupFields
+          initialDatabaseId={initialNotion?.databaseId ?? ''}
+          initialDescriptionProperty={initialNotion?.descriptionProperty ?? ''}
+          hasExistingToken={hasExistingToken}
+          replaceToken={replaceToken}
+          onReplaceToken={() => setReplaceToken(true)}
+          token={token}
+          onTokenChange={setToken}
+          databaseId={notionDatabaseId}
+          onDatabaseIdChange={setNotionDatabaseId}
+          descriptionProperty={notionDescriptionProperty}
+          onDescriptionPropertyChange={setNotionDescriptionProperty}
+        />
       )}
 
       <div>
@@ -450,35 +424,7 @@ function TicketProviderForm({ initial, onSubmit, onCancel }: TicketProviderFormP
         </p>
       </div>
 
-      {needsToken ? (
-        <div>
-          <div className="text-xs font-semibold uppercase tracking-wider text-dim mb-1">Token</div>
-          {hasExistingToken && !replaceToken ? (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-success">Token configured</span>
-              <button
-                type="button"
-                onClick={() => setReplaceToken(true)}
-                className="text-xs text-dim hover:text-fg underline cursor-pointer"
-              >
-                Replace token
-              </button>
-            </div>
-          ) : (
-            <input
-              type="password"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              placeholder="Notion integration token (secret_…)"
-              autoComplete="off"
-              className="w-full bg-app border border-border-strong rounded px-2 py-1.5 text-sm text-fg-bright outline-none focus:border-accent font-mono"
-            />
-          )}
-          <p className="mt-1 text-xs text-faint">
-            Tokens stay write-only — Harness encrypts them in <code className="bg-panel-raised px-1 rounded">secrets.enc</code> and never reads them back.
-          </p>
-        </div>
-      ) : (
+      {type === 'github-issues' && (
         <p className="text-xs text-faint">
           GitHub providers reuse the same token Harness uses for PR data — either your Settings PAT or the local <code className="bg-panel-raised px-1 rounded">gh</code> CLI's auth. No per-provider token needed here.
         </p>
@@ -510,6 +456,301 @@ function TicketProviderForm({ initial, onSubmit, onCancel }: TicketProviderFormP
           {initial ? 'Save' : 'Add provider'}
         </button>
       </div>
+    </div>
+  )
+}
+
+interface NotionSetupFieldsProps {
+  initialDatabaseId: string
+  initialDescriptionProperty: string
+  hasExistingToken: boolean
+  replaceToken: boolean
+  onReplaceToken: () => void
+  token: string
+  onTokenChange: (v: string) => void
+  databaseId: string
+  onDatabaseIdChange: (v: string) => void
+  descriptionProperty: string
+  onDescriptionPropertyChange: (v: string) => void
+}
+
+/** Progressive-disclosure Notion setup.
+ *
+ *  1. Token — paste, then Harness queries Notion for every database the
+ *     integration can see.
+ *  2. Database — pick from a searchable list; Harness fetches the schema
+ *     for the selected one.
+ *  3. Description property — dropdown populated from the schema.
+ *
+ *  When editing an existing provider the user hasn't opted to replace the
+ *  token for, we can't call the discovery IPC (we don't have the token
+ *  in the renderer), so we degrade to a read-only display of the saved
+ *  values with a "Replace token" affordance that unlocks the picker. */
+function NotionSetupFields({
+  initialDatabaseId,
+  initialDescriptionProperty,
+  hasExistingToken,
+  replaceToken,
+  onReplaceToken,
+  token,
+  onTokenChange,
+  databaseId,
+  onDatabaseIdChange,
+  descriptionProperty,
+  onDescriptionPropertyChange
+}: NotionSetupFieldsProps): JSX.Element {
+  const backend = useBackend()
+  const canDiscover = replaceToken && token.trim().length > 0
+  const [databases, setDatabases] = useState<NotionDatabaseSummary[]>([])
+  const [dbLoading, setDbLoading] = useState(false)
+  const [dbError, setDbError] = useState<string | null>(null)
+  const [dbSearch, setDbSearch] = useState('')
+  const [schema, setSchema] = useState<NotionDatabaseSchema | null>(null)
+  const [schemaLoading, setSchemaLoading] = useState(false)
+  const [schemaError, setSchemaError] = useState<string | null>(null)
+
+  // Fetch databases whenever the token becomes non-empty. Debounced so a
+  // paste + minor edit doesn't fire twice back-to-back.
+  useEffect(() => {
+    if (!canDiscover) {
+      setDatabases([])
+      setDbLoading(false)
+      setDbError(null)
+      return
+    }
+    const t = token.trim()
+    setDbLoading(true)
+    setDbError(null)
+    const handle = setTimeout(() => {
+      let cancelled = false
+      void backend
+        .ticketsNotionListDatabases(t)
+        .then((list) => {
+          if (cancelled) return
+          setDatabases(list)
+          setDbLoading(false)
+        })
+        .catch(() => {
+          if (cancelled) return
+          setDbError('Could not list databases — check the token.')
+          setDbLoading(false)
+        })
+      return () => {
+        cancelled = true
+      }
+    }, 250)
+    return () => clearTimeout(handle)
+  }, [backend, canDiscover, token])
+
+  // Fetch the schema whenever a database is selected AND we have a live
+  // token in memory. On edit-without-replace we skip; the saved
+  // descriptionProperty is what shows.
+  useEffect(() => {
+    if (!canDiscover || !databaseId) {
+      setSchema(null)
+      setSchemaLoading(false)
+      setSchemaError(null)
+      return
+    }
+    let cancelled = false
+    setSchemaLoading(true)
+    setSchemaError(null)
+    void backend
+      .ticketsNotionDescribeDatabase(token.trim(), databaseId)
+      .then((s) => {
+        if (cancelled) return
+        setSchema(s)
+        setSchemaLoading(false)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setSchemaError('Could not fetch the database schema.')
+        setSchemaLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [backend, canDiscover, databaseId, token])
+
+  const filteredDatabases = useMemo(() => {
+    if (!dbSearch.trim()) return databases
+    const q = dbSearch.trim().toLowerCase()
+    return databases.filter((d) => d.title.toLowerCase().includes(q))
+  }, [databases, dbSearch])
+
+  // Description-property choices — anything text-shaped. `title` is
+  // technically valid but is already the ticket title, so exclude it.
+  const descriptionChoices = useMemo(() => {
+    if (!schema) return null
+    return schema.properties.filter(
+      (p) => p.type === 'rich_text' || p.type === 'text'
+    )
+  }, [schema])
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <div className="text-xs font-semibold uppercase tracking-wider text-dim mb-1">
+          Integration token
+        </div>
+        {hasExistingToken && !replaceToken ? (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-success">Token configured</span>
+            <button
+              type="button"
+              onClick={onReplaceToken}
+              className="text-xs text-dim hover:text-fg underline cursor-pointer"
+            >
+              Replace token
+            </button>
+          </div>
+        ) : (
+          <input
+            type="password"
+            value={token}
+            onChange={(e) => onTokenChange(e.target.value)}
+            placeholder="Notion integration token (secret_… or ntn_…)"
+            autoComplete="off"
+            className="w-full bg-app border border-border-strong rounded px-2 py-1.5 text-sm text-fg-bright outline-none focus:border-accent font-mono"
+          />
+        )}
+        <p className="mt-1 text-xs text-faint">
+          From{' '}
+          <span className="font-mono">notion.so/my-integrations</span>. Once pasted, Harness
+          lists the databases the integration can see. Tokens are write-only —
+          Harness encrypts them in{' '}
+          <code className="bg-panel-raised px-1 rounded">secrets.enc</code> and never reads them back.
+        </p>
+      </div>
+
+      {hasExistingToken && !replaceToken ? (
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-wider text-dim mb-1">
+            Database
+          </div>
+          <div className="text-sm text-fg font-mono truncate">{initialDatabaseId || '—'}</div>
+          <p className="mt-1 text-xs text-faint">
+            Replace the token above to switch databases or change the description property.
+          </p>
+          {initialDescriptionProperty && (
+            <div className="mt-2">
+              <div className="text-xs font-semibold uppercase tracking-wider text-dim mb-1">
+                Description property
+              </div>
+              <div className="text-sm text-fg font-mono">{initialDescriptionProperty}</div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <>
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-wider text-dim mb-1">
+              Database
+            </div>
+            {!canDiscover ? (
+              <p className="text-xs text-faint">Paste a token above to see your databases.</p>
+            ) : dbError ? (
+              <div className="flex items-center gap-1.5 text-xs text-danger">
+                <AlertCircle className="icon-xs" />
+                {dbError}
+              </div>
+            ) : dbLoading ? (
+              <div className="flex items-center gap-1.5 text-xs text-dim">
+                <Loader2 className="icon-xs animate-spin" />
+                Listing databases…
+              </div>
+            ) : databases.length === 0 ? (
+              <p className="text-xs text-warning">
+                No databases visible. Share at least one with your integration (database → ··· →
+                Connections).
+              </p>
+            ) : (
+              <div className="space-y-2">
+                <div className="relative">
+                  <Search className="icon-xs absolute left-2 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
+                  <input
+                    type="text"
+                    value={dbSearch}
+                    onChange={(e) => setDbSearch(e.target.value)}
+                    placeholder="Filter…"
+                    className="w-full bg-app border border-border-strong rounded pl-7 pr-2 py-1.5 text-sm text-fg-bright outline-none focus:border-accent"
+                  />
+                </div>
+                <div className="max-h-48 overflow-y-auto rounded border border-border bg-app">
+                  {filteredDatabases.length === 0 ? (
+                    <p className="text-xs text-faint px-2 py-2">No matches.</p>
+                  ) : (
+                    filteredDatabases.map((db) => {
+                      const selected = db.id === databaseId
+                      return (
+                        <button
+                          key={db.id}
+                          type="button"
+                          onClick={() => onDatabaseIdChange(db.id)}
+                          className={`w-full text-left px-2 py-1.5 text-sm transition-colors cursor-pointer ${
+                            selected
+                              ? 'bg-accent/20 text-fg-bright'
+                              : 'hover:bg-panel text-fg'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <BookOpen className="icon-xs text-dim shrink-0" />
+                            <span className="truncate">{db.title}</span>
+                            {selected && <Check className="icon-xs text-accent shrink-0 ml-auto" />}
+                          </div>
+                          <div className="text-xs text-faint font-mono truncate">{db.id}</div>
+                        </button>
+                      )
+                    })
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-wider text-dim mb-1">
+              Description property{' '}
+              <span className="text-faint normal-case font-normal">(optional)</span>
+            </div>
+            {!databaseId ? (
+              <p className="text-xs text-faint">Pick a database first.</p>
+            ) : schemaLoading ? (
+              <div className="flex items-center gap-1.5 text-xs text-dim">
+                <Loader2 className="icon-xs animate-spin" />
+                Loading schema…
+              </div>
+            ) : schemaError ? (
+              <div className="flex items-center gap-1.5 text-xs text-danger">
+                <AlertCircle className="icon-xs" />
+                {schemaError}
+              </div>
+            ) : descriptionChoices && descriptionChoices.length === 0 ? (
+              <p className="text-xs text-faint">
+                No text properties in this database. Description will be empty — Claude picks up
+                richer body content via the Notion MCP at runtime.
+              </p>
+            ) : (
+              <select
+                value={descriptionProperty}
+                onChange={(e) => onDescriptionPropertyChange(e.target.value)}
+                className="w-full bg-app border border-border-strong rounded px-2 py-1.5 text-sm text-fg-bright outline-none focus:border-accent cursor-pointer"
+              >
+                <option value="">— None (Claude fetches at runtime) —</option>
+                {(descriptionChoices ?? []).map((p) => (
+                  <option key={p.name} value={p.name}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            )}
+            <p className="mt-1 text-xs text-faint">
+              The title is auto-detected — every Notion database has exactly one title column, and
+              Harness finds it regardless of what it's named.
+            </p>
+          </div>
+        </>
+      )}
     </div>
   )
 }

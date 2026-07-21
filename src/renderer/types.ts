@@ -13,6 +13,8 @@ import type {
   TicketProviderType,
   GithubIssuesConfig,
   NotionConfig,
+  NotionDatabaseSchema,
+  NotionDatabaseSummary,
   WorktreeTicketLink
 } from '../shared/tickets'
 export type {
@@ -21,6 +23,8 @@ export type {
   TicketProviderType,
   GithubIssuesConfig,
   NotionConfig,
+  NotionDatabaseSchema,
+  NotionDatabaseSummary,
   WorktreeTicketLink
 }
 
@@ -653,6 +657,17 @@ export interface ElectronAPI {
     repoRoots: string[]
   ): Promise<TicketProviderConfig | null>
   ticketsHasProviderToken(providerId: string): Promise<boolean>
+  /** Setup-time Notion discovery. Takes an ephemeral token that is
+   *  passed with every call and NEVER persisted — the token only lands
+   *  in `secrets.enc` if the user completes ticketsAddProvider. */
+  ticketsNotionListDatabases(
+    token: string,
+    query?: string
+  ): Promise<NotionDatabaseSummary[]>
+  ticketsNotionDescribeDatabase(
+    token: string,
+    databaseId: string
+  ): Promise<NotionDatabaseSchema | null>
 
   // SSH bootstrap (remote-SSH backend flow). Always-local; the local
   // Electron backend is the one that drives SSH. See plans/remote-main.md §4.

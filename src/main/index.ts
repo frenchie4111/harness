@@ -68,7 +68,10 @@ import {
   createTicketProvider,
   validateProviderConfig
 } from './tickets/provider-registry'
+import { describeNotionDatabase, listNotionDatabases } from './tickets/notion'
 import type {
+  NotionDatabaseSchema,
+  NotionDatabaseSummary,
   Ticket,
   TicketProviderConfig,
   TicketProviderType
@@ -3893,6 +3896,42 @@ function registerIpcHandlers(): void {
     if (!cfg || cfg.type !== 'notion') return false
     return getSecret(`ticket-provider-token:${providerId}`) !== null
   })
+
+  // Setup-time helpers for the Notion provider form. The token is
+  // ephemeral (comes over IPC each call) and is NOT persisted anywhere —
+  // only the final `tickets:addProvider` call writes to secrets.enc.
+  transport.onRequest(
+    'tickets:notionListDatabases',
+    async (
+      _ctx,
+      token: string,
+      query?: string
+    ): Promise<NotionDatabaseSummary[]> => {
+      if (typeof token !== 'string' || token.length === 0) return []
+      try {
+        return await listNotionDatabases(token, query)
+      } catch {
+        return []
+      }
+    }
+  )
+
+  transport.onRequest(
+    'tickets:notionDescribeDatabase',
+    async (
+      _ctx,
+      token: string,
+      databaseId: string
+    ): Promise<NotionDatabaseSchema | null> => {
+      if (typeof token !== 'string' || token.length === 0) return null
+      if (typeof databaseId !== 'string' || databaseId.length === 0) return null
+      try {
+        return await describeNotionDatabase(token, databaseId)
+      } catch {
+        return null
+      }
+    }
+  )
 }
 
 function broadcastToAllWindows(channel: string, ...args: unknown[]): void {

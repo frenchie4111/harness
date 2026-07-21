@@ -106,6 +106,24 @@ export interface WorktreeTicketLink {
   externalId: string
 }
 
+/** One database returned by the Notion setup-time picker. Shape kept
+ *  minimal — just what the picker needs to render a row and remember the
+ *  selection until the provider is saved. */
+export interface NotionDatabaseSummary {
+  id: string
+  title: string
+  url: string
+}
+
+/** Property schema for one Notion database, fetched at setup time so the
+ *  provider form can render a dropdown of description-property choices
+ *  instead of asking the user to type a property name. */
+export interface NotionDatabaseSchema {
+  id: string
+  title: string
+  properties: { name: string; type: string }[]
+}
+
 /**
  * Test/dev helper: returns a TicketProvider that serves canned tickets.
  * Used by the UI workstream to build against a real interface before
