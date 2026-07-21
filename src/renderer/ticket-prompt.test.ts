@@ -51,10 +51,22 @@ describe('suggestedBranchName', () => {
     )
   })
 
-  it('uses "notion" prefix for notion tickets', () => {
-    expect(suggestedBranchName(fixture, 'notion')).toBe(
-      'notion-42/add-dark-mode-toggle-to-settings'
+  it('drops the external id for notion (page UUIDs are useless in branch names)', () => {
+    const notionFixture = {
+      ...fixture,
+      externalId: '3a4df6fc-c6e5-818b-9a9d-e0752628295a'
+    }
+    expect(suggestedBranchName(notionFixture, 'notion')).toBe(
+      'notion/add-dark-mode-toggle-to-settings'
     )
+  })
+
+  it('strips URLs out of titles so they do not slugify into noise', () => {
+    const urlFixture = {
+      ...fixture,
+      title: 'hi.chat stuck https://plan.hifinance.ca/chat'
+    }
+    expect(suggestedBranchName(urlFixture, 'notion')).toBe('notion/hi-chat-stuck')
   })
 
   it('falls back to "work" when the title slugifies to nothing', () => {

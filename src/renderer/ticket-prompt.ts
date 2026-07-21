@@ -14,6 +14,9 @@ export const PROVIDER_BRANCH_SHORTCODE: Record<TicketProviderType, string> = {
 
 /** Slugify a ticket title for use as a branch name. The rule:
  *
+ *  - drop URLs first (they explode into url-parts noise otherwise —
+ *    e.g. "https://plan.hifinance.ca/chat" would become
+ *    "https-plan-hifinance-ca-chat")
  *  - lowercase, strip diacritics
  *  - drop everything outside `[a-z0-9 -]`
  *  - collapse whitespace + dashes into a single dash
@@ -28,6 +31,7 @@ export const PROVIDER_BRANCH_SHORTCODE: Record<TicketProviderType, string> = {
  */
 export function slugifyTitle(title: string, maxLen = 50): string {
   const normalized = title
+    .replace(/https?:\/\/\S+/gi, ' ')
     .normalize('NFKD')
     .replace(/[̀-ͯ]/g, '')
     .toLowerCase()
@@ -43,15 +47,24 @@ export function slugifyTitle(title: string, maxLen = 50): string {
   return lastDash > maxLen / 2 ? truncated.slice(0, lastDash) : truncated
 }
 
-/** Compose a suggested branch name from a ticket. Format:
- *  `<providerShortcode-externalId>/<slug>`, e.g. `gh-42/add-dark-mode-toggle`.
+/** Compose a suggested branch name from a ticket. Format depends on
+ *  whether the provider's external id is human-friendly:
+ *  - GitHub issue numbers are short and canonical:
+ *    `gh-42/add-dark-mode-toggle`
+ *  - Notion page ids are 36-char UUIDs, uselessly long in a branch
+ *    name. Drop them entirely: `notion/add-dark-mode-toggle`. The
+ *    link back to the ticket is preserved on the worktree's
+ *    `linkedTicket` field regardless of what the branch name is.
  *  Users can override in the New Worktree input; this just primes it. */
 export function suggestedBranchName(
   ticket: Pick<Ticket, 'title' | 'externalId'>,
   providerType: TicketProviderType
 ): string {
   const slug = slugifyTitle(ticket.title) || 'work'
-  const prefix = `${PROVIDER_BRANCH_SHORTCODE[providerType]}-${ticket.externalId}`
+  const prefix = PROVIDER_BRANCH_SHORTCODE[providerType]
+  if (providerType === 'github-issues') {
+    return `${prefix}-${ticket.externalId}/${slug}`
+  }
   return `${prefix}/${slug}`
 }
 
