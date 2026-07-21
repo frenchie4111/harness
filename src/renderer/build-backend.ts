@@ -491,6 +491,10 @@ export function buildBackend(
       onLocalSignal('app:uiScaleDown', () => callback()),
     onUiScaleReset: (callback: () => void) =>
       onLocalSignal('app:uiScaleReset', () => callback()),
+    onFullscreenChanged: (callback: (isFullscreen: boolean) => void) =>
+      onLocalSignal('window:fullscreenChanged', (...args: unknown[]) =>
+        callback(Boolean(args[0]))
+      ),
 
     acceptHooks: () => req('hooks:accept'),
     declineHooks: () => req('hooks:decline'),

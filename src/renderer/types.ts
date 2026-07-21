@@ -500,6 +500,7 @@ export interface ElectronAPI {
   onUiScaleUp(callback: () => void): () => void
   onUiScaleDown(callback: () => void): () => void
   onUiScaleReset(callback: () => void): () => void
+  onFullscreenChanged(callback: (isFullscreen: boolean) => void): () => void
 
   acceptHooks(): Promise<boolean>
   declineHooks(): Promise<boolean>
