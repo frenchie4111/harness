@@ -7,7 +7,7 @@ import {
   addBreakdown,
   type ContentBreakdown
 } from '../../shared/state/costs'
-import { useWorktrees } from '../store'
+import { useWorktrees, useAliasForPath } from '../store'
 import { useBackend } from '../backend'
 import iconUrl from '../../../resources/icon.png'
 
@@ -476,7 +476,8 @@ function WorktreeRow({
   worktree: WorktreeGroup
   now: number
 }): JSX.Element {
-  const label = worktree.branch ?? basename(worktree.worktreePath)
+  const alias = useAliasForPath(worktree.worktreePath)
+  const label = alias ?? (worktree.branch || basename(worktree.worktreePath))
   const sessionCount = worktree.sessions.length
   const modelLabel = formatModel(
     worktree.models.size === 1 ? [...worktree.models][0] : null
