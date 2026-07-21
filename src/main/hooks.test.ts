@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { writeFileSync, appendFileSync, mkdirSync } from 'fs'
+import { writeFileSync, appendFileSync, mkdirSync, existsSync, readFileSync, rmSync } from 'fs'
+import { execFileSync } from 'child_process'
 import { join } from 'path'
 import { Store } from './store'
-import { tailLog, cleanupTerminalLog } from './hooks'
+import { tailLog, cleanupTerminalLog, makeHookCommand } from './hooks'
 import type { StateEvent } from '../shared/state'
 
 // tailLog reads from the real status dir (/tmp/harness-status). We use a
@@ -89,5 +90,35 @@ describe('tailLog — boot-replay guard', () => {
     expect(events).toHaveLength(3)
     expect(events[1]).toMatchObject({ payload: { status: 'processing' } })
     expect(events[2]).toMatchObject({ payload: { status: 'waiting' } })
+  })
+})
+
+describe('makeHookCommand', () => {
+  // Guards issue #198: legacy shell tab ids persisted in panes.json
+  // contain path separators. bash `>>` won't create the intermediate
+  // dirs, so the append fires ENOENT and every tool call surfaces a
+  // "hook error" until the next boot re-installs the fixed hook.
+  it('succeeds when $HARNESS_TERMINAL_ID contains path separators', () => {
+    const nestedId = `test-hooks-nested-${process.pid}/legacy/sub-${Date.now()}`
+    const cmd = makeHookCommand('PreToolUse')
+    const nestedFile = join('/tmp/harness-status', `${nestedId}.ndjson`)
+    // Precondition: the intermediate dirs must not exist — the whole
+    // point of this test is that the hook has to create them.
+    const topLegacyDir = join('/tmp/harness-status', `test-hooks-nested-${process.pid}`)
+    try { rmSync(topLegacyDir, { recursive: true, force: true }) } catch { /* noop */ }
+    try {
+      execFileSync('bash', ['-c', cmd], {
+        env: { ...process.env, HARNESS_TERMINAL_ID: nestedId },
+        input: '{"tool_name":"Bash","tool_input":{"command":"ls"}}',
+        stdio: ['pipe', 'pipe', 'pipe']
+      })
+      expect(existsSync(nestedFile)).toBe(true)
+      const line = readFileSync(nestedFile, 'utf-8').trim()
+      const parsed = JSON.parse(line)
+      expect(parsed.event).toBe('PreToolUse')
+      expect(parsed.payload).toMatchObject({ tool_name: 'Bash' })
+    } finally {
+      try { rmSync(topLegacyDir, { recursive: true, force: true }) } catch { /* noop */ }
+    }
   })
 })
