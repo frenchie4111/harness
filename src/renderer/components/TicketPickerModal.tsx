@@ -172,6 +172,7 @@ export function TicketPickerModal({
                   key={ticket.id}
                   ticket={ticket}
                   provider={provider}
+                  showProviderLabel={linkedProviders.length > 1}
                   onSelect={() => onSelect(ticket, provider)}
                 />
               ))}
@@ -186,14 +187,25 @@ export function TicketPickerModal({
 interface TicketPickerRowProps {
   ticket: Ticket
   provider: TicketProviderConfig
+  /** Whether to render the provider's label on the second line. Hidden
+   *  when only one provider is linked to the current repo — everything in
+   *  the picker is from the same source, so the label is dead weight. */
+  showProviderLabel: boolean
   onSelect: () => void
 }
 
-function TicketPickerRow({ ticket, provider, onSelect }: TicketPickerRowProps): JSX.Element {
+function TicketPickerRow({
+  ticket,
+  provider,
+  showProviderLabel,
+  onSelect
+}: TicketPickerRowProps): JSX.Element {
   // Only surface the external id for providers where it's a short
   // human-friendly reference (GitHub issue numbers). Notion page UUIDs
   // are opaque and just steal space from the title.
   const showExternalId = provider.type === 'github-issues'
+  const descriptionLine = ticket.description ? ticket.description.split('\n')[0] : ''
+  const showSecondRow = showProviderLabel || descriptionLine.length > 0
   return (
     <button
       type="button"
@@ -218,15 +230,17 @@ function TicketPickerRow({ ticket, provider, onSelect }: TicketPickerRowProps): 
           {ticket.title}
         </span>
       </div>
-      <div className="mt-0.5 flex items-center gap-1.5 text-xs text-dim">
-        <span className="text-faint shrink-0">{provider.label}</span>
-        {ticket.description && (
-          <>
+      {showSecondRow && (
+        <div className="mt-0.5 flex items-center gap-1.5 text-xs text-dim">
+          {showProviderLabel && (
+            <span className="text-faint shrink-0">{provider.label}</span>
+          )}
+          {showProviderLabel && descriptionLine && (
             <span className="text-faint shrink-0">·</span>
-            <span className="truncate">{ticket.description.split('\n')[0]}</span>
-          </>
-        )}
-      </div>
+          )}
+          {descriptionLine && <span className="truncate">{descriptionLine}</span>}
+        </div>
+      )}
     </button>
   )
 }
