@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ChevronDown, GitPullRequest, RefreshCw, Loader2, SquareTerminal, FileText, FileDiff, Globe, X, ExternalLink, PanelRightOpen, PanelRightClose } from 'lucide-react'
-import { useWorktrees, usePanes, useTerminals, usePrs, useSettings, useSnooze } from '../store'
+import { useWorktrees, usePanes, useTerminals, usePrs, useSettings, useSnooze, useAliases } from '../store'
 import { useBackend } from '../backend'
 import { groupWorktrees, type WorktreeGroup } from '../worktree-sort'
 import { getLeaves } from '../../shared/state/terminals'
@@ -261,6 +261,7 @@ interface HeaderProps {
 }
 
 function Header({ worktree, tabs, selectedTabId, statuses, shellActivity, pickerOpen, onTogglePicker, onSelectTab, onConvertTabType, rightPanelOpen, onToggleRightPanel }: HeaderProps): JSX.Element {
+  const aliases = useAliases()
   const repoLabel = worktree ? worktree.repoRoot.split('/').pop() || worktree.repoRoot : null
   return (
     <header className="shrink-0 flex items-stretch border-b border-border bg-panel h-11">
@@ -277,7 +278,7 @@ function Header({ worktree, tabs, selectedTabId, statuses, shellActivity, picker
             <span className="min-w-0 flex flex-col leading-tight">
               <span className="text-[10px] uppercase tracking-wider text-dim truncate">{repoLabel}</span>
               <span className="text-xs font-medium text-fg-bright truncate">
-                {worktree.branch || worktree.path.split('/').pop()}
+                {aliases.byPath[worktree.path] ?? (worktree.branch || worktree.path.split('/').pop())}
               </span>
             </span>
             <ChevronDown className={'w-3.5 h-3.5 text-dim shrink-0 transition-transform ' + (pickerOpen ? 'rotate-180' : '')} />

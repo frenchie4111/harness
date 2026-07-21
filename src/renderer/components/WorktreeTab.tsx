@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react'
 import { GitPullRequest, RotateCw, Trash2, Loader2, Moon } from 'lucide-react'
 import type { Worktree, PtyStatus, PendingTool, PRStatus } from '../types'
 import { isPRMerged } from '../../shared/state/prs'
@@ -8,6 +9,10 @@ import { formatPendingTool } from '../pending-tool'
 import { HotkeyBadge } from './HotkeyBadge'
 import { useMetaHeld } from '../hooks/useMetaHeld'
 import type { Action } from '../hotkeys'
+import { ContextMenu, type ContextMenuItem } from './ContextMenu'
+import { useAliasForPath } from '../store'
+import { useBackend } from '../backend'
+import { displayLabel } from '../worktree-display'
 
 interface WorktreeTabProps {
   worktree: Worktree
@@ -38,6 +43,9 @@ interface WorktreeTabProps {
    *  caller can decide based on altKey. */
   onSnooze?: (e: React.MouseEvent) => void
   onUnsnooze?: () => void
+  isEditingAlias?: boolean
+  onStartAliasEdit?: () => void
+  onEndAliasEdit?: () => void
 }
 
 const STATUS_COLORS: Record<PtyStatus | 'merged', string> = {
@@ -70,8 +78,12 @@ const PR_STATE_COLOR: Record<string, string> = {
   closed: 'text-danger'
 }
 
-export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActive, prStatus, isMerged, repoLabel, cmdOrdinal, deleting, isSnoozed, snoozeWakeAt, onClick, onDelete, onContinue, onSnooze, onUnsnooze }: WorktreeTabProps): JSX.Element {
+export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActive, prStatus, isMerged, repoLabel, cmdOrdinal, deleting, isSnoozed, snoozeWakeAt, onClick, onDelete, onContinue, onSnooze, onUnsnooze, isEditingAlias, onStartAliasEdit, onEndAliasEdit }: WorktreeTabProps): JSX.Element {
   const metaHeld = useMetaHeld()
+  const currentAlias = useAliasForPath(worktree.path)
+  const backend = useBackend()
+  const label = displayLabel(worktree, currentAlias, metaHeld)
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   const displayStatus: PtyStatus | 'merged' = isMerged ? 'merged' : status
   const showPendingTool = displayStatus === 'needs-approval' && pendingTool
   const canContinue = !!onContinue && isPRMerged(prStatus)
@@ -95,6 +107,11 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
   return (
     <div
       onClick={onClick}
+      onContextMenu={(e) => {
+        if (deleting) return
+        e.preventDefault()
+        setMenu({ x: e.clientX, y: e.clientY })
+      }}
       className={`group w-full text-left px-3 py-2 flex items-center gap-2 transition-colors cursor-pointer ${
         deleting ? 'opacity-60 italic' : ''
       } ${
@@ -137,7 +154,23 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
         </span>
       )}
       <div className="min-w-0 flex-1">
-        <div className="text-sm font-medium truncate">{worktree.branch}</div>
+        {isEditingAlias ? (
+          <AliasEditor
+            initialValue={currentAlias ?? ''}
+            onCommit={(value) => {
+              void backend.setAlias(worktree.path, value)
+              onEndAliasEdit?.()
+            }}
+            onCancel={() => onEndAliasEdit?.()}
+          />
+        ) : (
+          <Tooltip
+            label={currentAlias ? `${currentAlias} · ${worktree.branch}` : worktree.branch}
+            side="right"
+          >
+            <div className="text-sm font-medium truncate">{label}</div>
+          </Tooltip>
+        )}
         {showPendingTool ? (
           <div className="text-xs text-danger truncate font-mono" title={formatPendingTool(pendingTool!)}>
             {formatPendingTool(pendingTool!)}
@@ -224,6 +257,64 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
           className="shrink-0"
         />
       )}
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          items={buildAliasMenuItems({
+            hasAlias: currentAlias !== undefined,
+            onEdit: () => onStartAliasEdit?.(),
+            onClear: () => void backend.clearAlias(worktree.path)
+          })}
+          onClose={() => setMenu(null)}
+        />
+      )}
     </div>
+  )
+}
+
+function buildAliasMenuItems(args: {
+  hasAlias: boolean
+  onEdit: () => void
+  onClear: () => void
+}): ContextMenuItem[] {
+  const items: ContextMenuItem[] = [
+    { label: args.hasAlias ? 'Rename Alias…' : 'Alias Worktree…', onClick: args.onEdit }
+  ]
+  if (args.hasAlias) {
+    items.push({ label: 'Clear Alias', onClick: args.onClear })
+  }
+  return items
+}
+
+interface AliasEditorProps {
+  initialValue: string
+  onCommit: (value: string) => void
+  onCancel: () => void
+}
+
+function AliasEditor({ initialValue, onCommit, onCancel }: AliasEditorProps): JSX.Element {
+  const [value, setValue] = useState(initialValue)
+  const inputRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    inputRef.current?.focus()
+    inputRef.current?.select()
+  }, [])
+  return (
+    <input
+      ref={inputRef}
+      value={value}
+      maxLength={80}
+      onChange={(e) => setValue(e.target.value)}
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      onKeyDown={(e) => {
+        e.stopPropagation()
+        if (e.key === 'Enter') onCommit(value)
+        else if (e.key === 'Escape') onCancel()
+      }}
+      onBlur={() => onCommit(value)}
+      className="text-sm font-medium bg-surface border border-border-strong rounded px-1 py-0 w-full outline-none focus:border-accent"
+    />
   )
 }

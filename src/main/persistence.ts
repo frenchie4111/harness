@@ -200,6 +200,8 @@ export interface Config {
   snooze?: Record<string, SnoozeEntry>
   // Default duration (days) for plain-click snooze. Min 1, default 7.
   snoozeDefaultDays?: number
+  // Persisted alias map: worktree path → user-defined display alias.
+  aliases?: Record<string, string>
 }
 
 export const DEFAULT_WORKTREE_BASE: 'remote' | 'local' = 'remote'

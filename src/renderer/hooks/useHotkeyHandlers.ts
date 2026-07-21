@@ -41,6 +41,7 @@ interface UseHotkeyHandlersArgs {
   handleSelectTab: (worktreePath: string, paneId: string, tabId: string) => void
   handleSplitPane: (worktreePath: string, fromPaneId: string, direction?: 'horizontal' | 'vertical') => void
   handleRefreshWorktrees: () => void
+  onStartAliasEdit: (path: string) => void
 }
 
 /** Sidebar-aware hotkey handler block. Computes the visible/ordered
@@ -81,7 +82,8 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
     handleCloseTab,
     handleSelectTab,
     handleSplitPane,
-    handleRefreshWorktrees
+    handleRefreshWorktrees,
+    onStartAliasEdit
   } = args
 
   // Mirror the sidebar's grouping/rendering order so hotkey navigation
@@ -296,7 +298,12 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       },
       togglePerfMonitor: () => setShowPerfMonitor((v) => !v),
       hotkeyCheatsheet: () => setShowHotkeyCheatsheet((v) => !v),
-      openReview: () => setShowReview(true)
+      openReview: () => setShowReview(true),
+      aliasWorktree: () => {
+        if (!activeWorktreeId) return
+        if (activeWorktreeId.startsWith('pending:')) return
+        onStartAliasEdit(activeWorktreeId)
+      }
     }),
     [
       cycleWorktree,
@@ -322,7 +329,8 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       setShowPerfMonitor,
       setShowHotkeyCheatsheet,
       setShowReview,
-      backend
+      backend,
+      onStartAliasEdit
     ]
   )
 

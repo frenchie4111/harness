@@ -7,7 +7,7 @@ import { groupWorktrees, GROUP_ORDER, GROUP_LABELS, type GroupKey } from '../wor
 import { repoNameColor } from './RepoIcon'
 import { fuzzyMatch } from '../fuzzy'
 import { useBackend } from '../backend'
-import { useSettings, useSnooze } from '../store'
+import { useSettings, useSnooze, useAliases } from '../store'
 
 export type PaletteMode = 'root' | 'files'
 
@@ -272,6 +272,7 @@ export function CommandPalette({
   }, [worktrees])
 
   const viewerLogin = useSettings().viewerLogin
+  const aliases = useAliases()
   const snoozeByPath = useSnooze().byPath
   const snoozedPaths = useMemo(() => {
     const m: Record<string, true> = {}
@@ -337,7 +338,15 @@ export function CommandPalette({
         .map((wt) => {
           const branch = wt.branch || wt.path.split('/').pop() || ''
           const repo = wt.repoRoot.split('/').pop() || ''
-          return { wt, score: Math.max(fuzzyScore(query, branch), fuzzyScore(query, repo)) }
+          const alias = aliases.byPath[wt.path] ?? ''
+          return {
+            wt,
+            score: Math.max(
+              fuzzyScore(query, branch),
+              fuzzyScore(query, repo),
+              alias ? fuzzyScore(query, alias) : 0
+            ),
+          }
         })
         .filter(({ score }) => score > 0)
         .sort((a, b) => b.score - a.score)
@@ -423,7 +432,7 @@ export function CommandPalette({
     }
 
     return { items, selectableCount: selectable }
-  }, [mode, fileItems, query, worktrees, groups, actionItems, recents, resolvedHotkeys, activeWorktreeId])
+  }, [mode, fileItems, query, worktrees, groups, actionItems, recents, resolvedHotkeys, activeWorktreeId, aliases])
 
   // Map from selectable index → flat index
   const selectableIndices = useMemo(() => {
@@ -464,7 +473,7 @@ export function CommandPalette({
         pushPaletteRecent({
           id: wt.path,
           type: 'worktree',
-          label: wt.branch || wt.path.split('/').pop() || wt.path,
+          label: aliases.byPath[wt.path] ?? (wt.branch || wt.path.split('/').pop() || wt.path),
         })
         onSelectWorktree(wt.path)
       } else if (item.kind === 'action' || item.kind === 'recent-action') {
@@ -651,8 +660,16 @@ export function CommandPalette({
                     <GitPullRequest size={13} className={`shrink-0 ${iconColor}`} />
                   )}
                   <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium truncate text-left">{wt.branch}</div>
+                    <div className="text-sm font-medium truncate text-left">
+                      {aliases.byPath[wt.path] ?? wt.branch}
+                    </div>
                     <div className="text-xs text-faint truncate text-left">
+                      {aliases.byPath[wt.path] && (
+                        <>
+                          <span className="font-mono">{wt.branch}</span>
+                          <span className="mx-1">&middot;</span>
+                        </>
+                      )}
                       {repoName ? (
                         <span className="inline-flex items-center gap-1">
                           <span className={repoNameColor(repoName)}>{repoName}</span>

@@ -3,6 +3,7 @@ import { ArrowLeft, Trash2, AlertTriangle, GitPullRequest, CheckCircle2, Loader2
 import type { Worktree, PRStatus, ActivityLog, BranchCommit } from '../types'
 import { isPRMerged } from '../../shared/state/prs'
 import { useBackend } from '../backend'
+import { useAliases } from '../store'
 
 interface CleanupProps {
   onClose: () => void
@@ -63,6 +64,7 @@ export function Cleanup({
   onBulkDelete
 }: CleanupProps): JSX.Element {
   const backend = useBackend()
+  const aliases = useAliases()
   const [ageKey, setAgeKey] = useState<AgeKey>('7d')
   const [repoFilter, setRepoFilter] = useState<string | null>(null) // null = all repos
   const [mergedOnly, setMergedOnly] = useState(false)
@@ -231,7 +233,7 @@ export function Cleanup({
     if (selectedPaths.length === 0) return
     const selectedCandidates = candidates.filter((c) => selected[c.worktree.path])
     const listing = selectedCandidates
-      .map((c) => `  - ${c.worktree.branch || basename(c.worktree.path)}`)
+      .map((c) => `  - ${aliases.byPath[c.worktree.path] ?? (c.worktree.branch || basename(c.worktree.path))}`)
       .join('\n')
     const dirtyNote = selectedDirtyCount > 0
       ? `\n\n⚠ ${selectedDirtyCount} of these have uncommitted changes that will be lost.`
@@ -442,7 +444,7 @@ export function Cleanup({
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <span className="text-sm font-mono text-fg truncate">
-                              {c.worktree.branch || basename(path)}
+                              {aliases.byPath[c.worktree.path] ?? (c.worktree.branch || basename(path))}
                             </span>
                             {c.merged && (
                               <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-success/15 text-success border border-success/30">

@@ -10,6 +10,7 @@ import { initialCosts, type CostsState } from '../shared/state/costs'
 import { initialBrowser } from '../shared/state/browser'
 import { initialJsonClaude } from '../shared/state/json-claude'
 import { initialSnooze } from '../shared/state/snooze'
+import { initialAliases } from '../shared/state/aliases'
 import { initialSettings } from '../shared/state/settings'
 import {
   DEFAULT_CLAUDE_COMMAND,
@@ -43,6 +44,9 @@ export function buildInitialAppState(
     browser: initialBrowser,
     jsonClaude: initialJsonClaude,
     snooze: config.snooze ? { byPath: { ...config.snooze } } : initialSnooze,
+    aliases: config.aliases
+      ? { byPath: { ...config.aliases } }
+      : initialAliases,
     settings: {
       ...initialSettings,
       theme: config.theme || DEFAULT_THEME,

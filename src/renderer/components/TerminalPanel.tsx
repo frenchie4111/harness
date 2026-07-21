@@ -11,7 +11,7 @@ import type { WorkspacePane, TerminalTab, PtyStatus, AgentKind } from '../types'
 import { AGENT_REGISTRY, agentDisplayName } from '../../shared/agent-registry'
 import { Tooltip } from './Tooltip'
 import { repoNameColor } from './RepoIcon'
-import { getClientId, useTerminalSession } from '../store'
+import { getClientId, useTerminalSession, useAliasForPath } from '../store'
 import { useBackend } from '../backend'
 
 /** Chip shown in the tab bar when other clients are attached to the
@@ -271,6 +271,7 @@ export function TerminalPanel({
   onShowRightColumn
 }: TerminalPanelProps): JSX.Element {
   const backend = useBackend()
+  const alias = useAliasForPath(worktreePath)
   // Droppable target for the pane itself — lets users drop a tab onto an
   // empty pane or past the last tab.
   const { setNodeRef: setPaneDropRef } = useDroppable({ id: pane.id })
@@ -298,12 +299,12 @@ export function TerminalPanel({
         {repoLabel && (
           <div
             className="no-drag shrink-0 flex items-baseline gap-1.5 px-3 h-full text-xs whitespace-nowrap"
-            title={`${repoLabel} / ${branch}`}
+            title={alias ? `${repoLabel} / ${alias} · ${branch}` : `${repoLabel} / ${branch}`}
             style={{ alignSelf: 'stretch', display: 'flex', alignItems: 'center' }}
           >
             <span className={`font-medium ${repoNameColor(repoLabel)}`}>{repoLabel}</span>
             <span className="text-faint">/</span>
-            <span className="text-fg-bright font-medium">{branch}</span>
+            <span className="text-fg-bright font-medium">{alias ?? branch}</span>
           </div>
         )}
         <div className="flex items-center h-full overflow-x-auto scrollbar-hidden pl-2 flex-1 min-w-0">

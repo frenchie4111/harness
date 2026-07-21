@@ -493,6 +493,19 @@ store.subscribe((event) => {
   }
 })
 
+// Persist alias map through to disk so aliases survive restart.
+store.subscribe((event) => {
+  if (event.type.startsWith('aliases/')) {
+    const byPath = store.getSnapshot().state.aliases.byPath
+    if (Object.keys(byPath).length === 0) {
+      delete config.aliases
+    } else {
+      config.aliases = byPath
+    }
+    saveConfig(config)
+  }
+})
+
 // When a session ID is discovered from a hook event (e.g. Codex assigns
 // its own session ID), persist panes immediately so the ID survives a quit.
 store.subscribe((event) => {
@@ -919,6 +932,19 @@ store.subscribe((event) => {
   for (const path of Object.keys(byPath)) {
     if (!live.has(path)) {
       store.dispatch({ type: 'snooze/clear', payload: path })
+    }
+  }
+})
+
+// Drop alias entries for worktrees that no longer exist so the map
+// can't leak across worktree removals.
+store.subscribe((event) => {
+  if (event.type !== 'worktrees/listChanged') return
+  const live = new Set(store.getSnapshot().state.worktrees.list.map((w) => w.path))
+  const byPath = store.getSnapshot().state.aliases.byPath
+  for (const path of Object.keys(byPath)) {
+    if (!live.has(path)) {
+      store.dispatch({ type: 'aliases/cleared', payload: { path } })
     }
   }
 })
@@ -2695,6 +2721,24 @@ function registerIpcHandlers(): void {
   transport.onRequest('snooze:unsnooze', (_ctx, path: string) => {
     if (typeof path !== 'string' || !path) return false
     store.dispatch({ type: 'snooze/clear', payload: path })
+    return true
+  })
+
+  transport.onRequest('aliases:set', (_ctx, path: string, alias: string) => {
+    if (typeof path !== 'string' || !path) return false
+    if (typeof alias !== 'string') return false
+    const trimmed = alias.trim().slice(0, 80)
+    if (!trimmed) {
+      store.dispatch({ type: 'aliases/cleared', payload: { path } })
+    } else {
+      store.dispatch({ type: 'aliases/set', payload: { path, alias: trimmed } })
+    }
+    return true
+  })
+
+  transport.onRequest('aliases:clear', (_ctx, path: string) => {
+    if (typeof path !== 'string' || !path) return false
+    store.dispatch({ type: 'aliases/cleared', payload: { path } })
     return true
   })
 

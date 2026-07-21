@@ -331,6 +331,8 @@ export interface ElectronAPI {
   snooze(path: string, wakeAt: number): Promise<boolean>
   unsnooze(path: string): Promise<boolean>
   setSnoozeDefaultDays(days: number): Promise<boolean>
+  setAlias(path: string, alias: string): Promise<boolean>
+  clearAlias(path: string): Promise<boolean>
   openInEditor(worktreePath: string, filePath?: string): Promise<{ ok: true } | { ok: false; error: string }>
 
   panesAddTab(wtPath: string, tab: TerminalTab, paneId?: string): Promise<boolean>

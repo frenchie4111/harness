@@ -517,6 +517,14 @@ export function useSnooze() {
   return useAppState((s) => s.snooze)
 }
 
+export function useAliases() {
+  return useAppState((s) => s.aliases)
+}
+
+export function useAliasForPath(path: string): string | undefined {
+  return useAppState((s) => s.aliases.byPath[path])
+}
+
 export function useBrowser() {
   return useAppState((s) => s.browser)
 }

@@ -84,6 +84,12 @@ import {
   type SnoozeEvent,
   type SnoozeState
 } from './snooze'
+import {
+  initialAliases,
+  aliasesReducer,
+  type AliasesEvent,
+  type AliasesState
+} from './aliases'
 
 export type { SettingsState, SettingsEvent }
 export type { UpdaterState, UpdaterEvent, UpdaterStatus } from './updater'
@@ -151,6 +157,7 @@ export type {
 } from './json-claude'
 export type { SnoozeState, SnoozeEvent, SnoozeEntry } from './snooze'
 export { MAX_WAKE } from './snooze'
+export type { AliasesState, AliasesEvent } from './aliases'
 
 export interface AppState {
   settings: SettingsState
@@ -165,6 +172,7 @@ export interface AppState {
   browser: BrowserState
   jsonClaude: JsonClaudeState
   snooze: SnoozeState
+  aliases: AliasesState
 }
 
 export type StateEvent =
@@ -180,6 +188,7 @@ export type StateEvent =
   | BrowserEvent
   | JsonClaudeEvent
   | SnoozeEvent
+  | AliasesEvent
 
 export const initialState: AppState = {
   settings: initialSettings,
@@ -193,7 +202,8 @@ export const initialState: AppState = {
   costs: initialCosts,
   browser: initialBrowser,
   jsonClaude: initialJsonClaude,
-  snooze: initialSnooze
+  snooze: initialSnooze,
+  aliases: initialAliases
 }
 
 export function rootReducer(state: AppState, event: StateEvent): AppState {
@@ -252,6 +262,12 @@ export function rootReducer(state: AppState, event: StateEvent): AppState {
     return {
       ...state,
       snooze: snoozeReducer(state.snooze, event as SnoozeEvent)
+    }
+  }
+  if (event.type.startsWith('aliases/')) {
+    return {
+      ...state,
+      aliases: aliasesReducer(state.aliases, event as AliasesEvent)
     }
   }
   return state
