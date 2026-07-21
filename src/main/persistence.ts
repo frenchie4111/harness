@@ -268,6 +268,10 @@ export interface Config {
   // When true, all announcement banners are suppressed regardless of
   // feed contents.
   announcementsMuted?: boolean
+  // When true, the sidebar's Reviewing group surfaces PRs where the user
+  // is a requested reviewer (across all Harness repos) as phantom entries
+  // that open the "new worktree from PR" screen on click. Default off.
+  showAssignedPRs?: boolean
   // Per-worktree scratchpad notes, nested by repoRoot → worktreePath → text.
   // Same nesting scheme as `panes` so two repos with identical worktree
   // paths stay distinct. Absent / empty entries are pruned on write.

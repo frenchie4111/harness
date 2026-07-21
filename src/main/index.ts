@@ -1578,6 +1578,10 @@ function registerIpcHandlers(): void {
     prPoller.refreshOneIfStale(worktreePath)
     return true
   })
+  transport.onRequest('prs:refreshAssigned', async (_ctx) => {
+    await prPoller.refreshAssignedPRs()
+    return true
+  })
 
   transport.onRequest('announcements:refresh', async (_ctx) => {
     await announcementsPoller.refresh()
@@ -1926,6 +1930,25 @@ function registerIpcHandlers(): void {
       type: 'settings/expandedDiagnosticLoggingEnabledChanged',
       payload: enabled
     })
+    return true
+  })
+
+  transport.onRequest('config:setShowAssignedPRs', (_ctx, enabled: boolean) => {
+    if (enabled) {
+      config.showAssignedPRs = true
+    } else {
+      delete config.showAssignedPRs
+    }
+    saveConfig(config)
+    store.dispatch({
+      type: 'settings/showAssignedPRsChanged',
+      payload: enabled
+    })
+    if (enabled) {
+      void prPoller.refreshAssignedPRs()
+    } else {
+      prPoller.clearAssignedPRs()
+    }
     return true
   })
 
@@ -3668,6 +3691,9 @@ async function runBoot(): Promise<void> {
     void refreshViewerLogin()
     prPoller.start()
     void prPoller.refreshAll()
+    if (store.getSnapshot().state.settings.showAssignedPRs) {
+      void prPoller.refreshAssignedPRs()
+    }
 
     await refreshHarnessStarState()
   })()

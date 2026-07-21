@@ -1173,6 +1173,128 @@ export async function getPRMetadata(
   }
 }
 
+/** One repo entry passed to `fetchAssignedPRs`. `repoRoot` is used as
+ *  the result-map key; `nameWithOwner` (of the *upstream* repo the PR
+ *  would be opened against) is what GitHub returns in the response and
+ *  what we match on to bucket PRs back to the caller. */
+export interface AssignedPRsRepoLookup {
+  repoRoot: string
+  nameWithOwner: string
+}
+
+export interface AssignedPRSummary {
+  number: number
+  title: string
+  url: string
+  branch: string
+  repoRoot: string
+  repoNameWithOwner: string
+  author: { login: string; avatarUrl?: string } | null
+  isDraft: boolean
+  updatedAt: string
+}
+
+interface GraphQLSearchPR {
+  number: number
+  title: string
+  url: string
+  isDraft: boolean
+  updatedAt: string
+  headRefName: string
+  author: { login?: string; avatarUrl?: string } | null
+  repository: { nameWithOwner: string } | null
+}
+
+/** Fetch PRs where the viewer is a requested reviewer, filtered to the
+ *  upstream repo of each Harness repo. Uses GitHub's search API with a
+ *  multi-repo query. Returns a map keyed by repoRoot. Repos with no
+ *  matching PRs get an empty array so the caller can distinguish "no PRs"
+ *  from "not queried."
+ *
+ *  Failure modes:
+ *  - Missing token: returns empty map (caller decides what to do).
+ *  - API failure: throws — caller should log and preserve previous cache. */
+export async function fetchAssignedPRs(
+  lookups: AssignedPRsRepoLookup[]
+): Promise<Map<string, AssignedPRSummary[]>> {
+  const result = new Map<string, AssignedPRSummary[]>()
+  for (const l of lookups) result.set(l.repoRoot, [])
+  if (lookups.length === 0) return result
+
+  const token = getCachedToken()
+  if (!token) return result
+
+  // GitHub search accepts multiple `repo:` qualifiers; they OR together.
+  // Cap at ~30 to keep the URL/query length sane — repositories.length in
+  // Harness is realistically 1–5, so this is a very generous ceiling.
+  const repoQualifiers = lookups
+    .slice(0, 30)
+    .map((l) => `repo:${l.nameWithOwner}`)
+    .join(' ')
+  const query = `is:pr is:open review-requested:@me ${repoQualifiers}`
+
+  const gql = `query($q: String!) {
+    search(query: $q, type: ISSUE, first: 50) {
+      nodes {
+        ... on PullRequest {
+          number title url isDraft updatedAt headRefName
+          author { ... on Actor { login avatarUrl } }
+          repository { nameWithOwner }
+        }
+      }
+    }
+  }`
+
+  const res = await trackedFetch('https://api.github.com/graphql', {
+    method: 'POST',
+    headers: {
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'Harness',
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ query: gql, variables: { q: query } })
+  })
+  if (!res.ok) {
+    throw new Error(`GitHub GraphQL ${res.status} ${res.statusText} for assigned PRs`)
+  }
+  const json = (await res.json()) as {
+    data?: { search?: { nodes?: Array<GraphQLSearchPR | { __typename?: string } | null> | null } }
+    errors?: Array<{ message: string }> | null
+  }
+  if (json.errors && json.errors.length > 0) {
+    log('github', 'GraphQL errors fetching assigned PRs', json.errors.map((e) => e.message).join('; '))
+  }
+  const nodes = json.data?.search?.nodes ?? []
+
+  const rootByNameWithOwner = new Map<string, string>()
+  for (const l of lookups) rootByNameWithOwner.set(l.nameWithOwner, l.repoRoot)
+
+  for (const node of nodes) {
+    if (!node || typeof (node as GraphQLSearchPR).number !== 'number') continue
+    const pr = node as GraphQLSearchPR
+    const nameWithOwner = pr.repository?.nameWithOwner
+    if (!nameWithOwner) continue
+    const repoRoot = rootByNameWithOwner.get(nameWithOwner)
+    if (!repoRoot) continue
+    const summary: AssignedPRSummary = {
+      number: pr.number,
+      title: pr.title,
+      url: pr.url,
+      branch: pr.headRefName,
+      repoRoot,
+      repoNameWithOwner: nameWithOwner,
+      author: pr.author && pr.author.login
+        ? { login: pr.author.login, avatarUrl: pr.author.avatarUrl }
+        : null,
+      isDraft: pr.isDraft,
+      updatedAt: pr.updatedAt
+    }
+    result.get(repoRoot)!.push(summary)
+  }
+  return result
+}
+
 /** Test a token by making an authenticated request to /user. Returns the username if valid. */
 export async function testToken(token: string): Promise<{ ok: boolean; username?: string; error?: string }> {
   try {

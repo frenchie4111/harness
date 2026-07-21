@@ -345,6 +345,8 @@ export interface ElectronAPI {
   setAutoUpdateEnabled(enabled: boolean): Promise<boolean>
   setWarnBeforeQuitting(enabled: boolean): Promise<boolean>
   setExpandedDiagnosticLoggingEnabled(enabled: boolean): Promise<boolean>
+  setShowAssignedPRs(enabled: boolean): Promise<boolean>
+  refreshAssignedPRs(): Promise<boolean>
   setShareClaudeSettings(enabled: boolean): Promise<boolean>
   setHarnessSystemPromptEnabled(enabled: boolean): Promise<boolean>
   setHarnessSystemPrompt(prompt: string): Promise<boolean>
