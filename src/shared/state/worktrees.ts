@@ -23,6 +23,65 @@ export interface Worktree {
   prunableReason?: string
 }
 
+/** Merge per-repo `listWorktrees` results into a flat list, preserving the
+ * caller's prior slice for any repo whose lookup failed (indicated by null).
+ * Purpose: a transient `git worktree list` failure for one repo shouldn't
+ * blank every worktree in that repo out of the UI — with the branch-sync
+ * watcher now driving refreshList off fs events, a per-repo transient error
+ * would otherwise flicker visibly. Successful results fully replace their
+ * repo's slice (deletions still propagate). */
+export function mergeWorktreesPreservingFailures(
+  roots: string[],
+  perRoot: (Worktree[] | null)[],
+  previous: Worktree[]
+): Worktree[] {
+  const priorByRoot = new Map<string, Worktree[]>()
+  for (const wt of previous) {
+    const bucket = priorByRoot.get(wt.repoRoot)
+    if (bucket) bucket.push(wt)
+    else priorByRoot.set(wt.repoRoot, [wt])
+  }
+  const out: Worktree[] = []
+  for (let i = 0; i < roots.length; i++) {
+    const res = perRoot[i]
+    if (res === null) {
+      const prior = priorByRoot.get(roots[i])
+      if (prior) out.push(...prior)
+    } else {
+      out.push(...res)
+    }
+  }
+  return out
+}
+
+/** Structural equality over a flat worktree list, so high-frequency
+ * re-derivers (the PR poller tick, the branch-sync watcher) can skip the
+ * `worktrees/listChanged` dispatch when nothing actually changed. Without
+ * this guard, blindly dispatching would churn the array reference on every
+ * tick and re-render every consumer (CLAUDE.md slice anti-pattern #3).
+ * Order-sensitive — every producer builds the list by iterating repoRoots
+ * in the same order, so positional compare is sound. */
+export function worktreeListsEqual(a: Worktree[], b: Worktree[]): boolean {
+  if (a === b) return true
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i]
+    const y = b[i]
+    if (
+      x.path !== y.path ||
+      x.branch !== y.branch ||
+      x.head !== y.head ||
+      x.isBare !== y.isBare ||
+      x.isMain !== y.isMain ||
+      x.createdAt !== y.createdAt ||
+      x.repoRoot !== y.repoRoot
+    ) {
+      return false
+    }
+  }
+  return true
+}
+
 export type PendingStatus = 'creating' | 'setup' | 'setup-failed' | 'error'
 
 export interface PendingWorktree {

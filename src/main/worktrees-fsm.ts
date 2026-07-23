@@ -12,7 +12,12 @@ import { getPRMetadata } from './github'
 import { loadRepoConfig } from './repo-config'
 import { log } from './debug'
 import type { Store } from './store'
-import type { Worktree, PendingWorktree } from '../shared/state/worktrees'
+import {
+  mergeWorktreesPreservingFailures,
+  worktreeListsEqual,
+  type Worktree,
+  type PendingWorktree
+} from '../shared/state/worktrees'
 
 /** Sanitize a PR's head branch into a name that's safe as both a git
  *  branch (we're not strict here since git accepts most things) and a
@@ -81,20 +86,36 @@ export class WorktreesFSM {
   }
 
   /** Walk all known repos, list worktrees, flatten, and dispatch
-   * worktrees/listChanged. Safe to call repeatedly. */
+   * worktrees/listChanged. Safe to call repeatedly. A repo whose lookup
+   * throws (transient FS error, network drive glitch) preserves its
+   * previously-known worktrees so the UI doesn't flicker — successful
+   * results still replace their repo's slice, so deletions propagate. */
   async refreshList(): Promise<Worktree[]> {
     const roots = this.opts.getRepoRoots()
-    const results = await Promise.all(
+    const perRoot = await Promise.all(
       roots.map((r) =>
         listWorktrees(r).catch((err) => {
           log('worktrees-fsm', `listWorktrees failed for ${r}`, err instanceof Error ? err.message : err)
-          return [] as Worktree[]
+          return null
         })
       )
     )
-    const flat = results.flat()
-    this.store.dispatch({ type: 'worktrees/listChanged', payload: flat })
+    const previous = this.store.getSnapshot().state.worktrees.list
+    const flat = mergeWorktreesPreservingFailures(roots, perRoot, previous)
+    this.applyList(flat)
     return flat
+  }
+
+  /** Replace the flat worktree list, but only dispatch when it actually
+   * differs from what's in the store. Lets the PR poller and the branch
+   * watcher re-derive branch labels on a tick / fs event without churning
+   * the array reference (and re-rendering the world) when nothing moved.
+   * Returns whether a dispatch was emitted. */
+  applyList(flat: Worktree[]): boolean {
+    const current = this.store.getSnapshot().state.worktrees.list
+    if (worktreeListsEqual(current, flat)) return false
+    this.store.dispatch({ type: 'worktrees/listChanged', payload: flat })
+    return true
   }
 
   dispatchRepos(roots: string[]): void {
