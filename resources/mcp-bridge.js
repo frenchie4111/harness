@@ -19,14 +19,28 @@ const fs = require('fs')
 // "the script started but env was empty" — otherwise that case looks
 // identical to "the script never ran" in /tmp/harness-control-bridge.log.
 const LOG_PATH = process.env.HARNESS_CONTROL_BRIDGE_LOG || '/tmp/harness-control-bridge.log'
+
+try {
+  const st = fs.statSync(LOG_PATH)
+  if (st.size > 10 * 1024 * 1024) {
+    fs.truncateSync(LOG_PATH, 0)
+  }
+} catch { /* ignore */ }
+
 function logErr(...args) {
   const line = '[harness-mcp] ' + args.join(' ') + '\n'
-  process.stderr.write(line)
+  try { process.stderr.write(line) } catch { /* ignore */ }
+  try { fs.appendFileSync(LOG_PATH, new Date().toISOString() + ' ' + line) } catch { /* ignore */ }
+}
+
+// Must not call logErr — a broken stderr would re-enter the handler.
+function logFatal(kind, err) {
   try {
-    fs.appendFileSync(LOG_PATH, new Date().toISOString() + ' ' + line)
-  } catch {
-    /* ignore */
-  }
+    fs.appendFileSync(
+      LOG_PATH,
+      new Date().toISOString() + ' [harness-mcp] ' + kind + ' ' + (err && err.stack || String(err)) + '\n'
+    )
+  } catch { /* ignore */ }
 }
 
 // Issue #167 debug. Logs BEFORE env-var validation so the line fires even
@@ -45,8 +59,8 @@ logErr(
   ' execPath=' + process.execPath
 )
 process.on('exit', (code) => logErr('exit code=' + code))
-process.on('uncaughtException', (err) => logErr('uncaught', err && err.stack || String(err)))
-process.on('unhandledRejection', (err) => logErr('unhandledRejection', err && err.stack || String(err)))
+process.on('uncaughtException', (err) => { logFatal('uncaught', err); process.exit(1) })
+process.on('unhandledRejection', (err) => { logFatal('unhandledRejection', err) })
 
 const PORT = process.env.HARNESS_PORT
 const TOKEN = process.env.HARNESS_TOKEN
