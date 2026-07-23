@@ -21,6 +21,7 @@ import {
 } from './persistence-migrations'
 import type { CostsState } from '../shared/state/costs'
 import type { SnoozeEntry } from '../shared/state/snooze'
+import type { PreventSleepMode } from '../shared/state/settings'
 
 export type { PersistedPane, PersistedPaneNode, PersistedTab }
 
@@ -272,6 +273,10 @@ export interface Config {
   // Same nesting scheme as `panes` so two repos with identical worktree
   // paths stay distinct. Absent / empty entries are pruned on write.
   scratchpadNotes?: Record<string, Record<string, string>>
+  // Wake-lock mode: hold a power-save blocker 'off' | while any agent
+  // session is processing | always. Default 'off'. The transient "+1h" timer
+  // (preventSleepUntil) is session-only and deliberately NOT persisted here.
+  preventSleepMode?: PreventSleepMode
 }
 
 export const DEFAULT_WORKTREE_BASE: 'remote' | 'local' = 'remote'
