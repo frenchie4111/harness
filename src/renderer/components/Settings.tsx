@@ -4,10 +4,10 @@ import { openReportIssue } from './ReportIssueScreen'
 import { HARNESS_ISSUES_URL, HARNESS_RELEASES_URL, harnessReleaseNotesUrl } from '../../shared/constants'
 import { useSettings, useUpdater, useRepoConfigs, useHooks } from '../store'
 import { useBackend } from '../backend'
-import type { UpdaterStatus, MergeStrategy, RepoConfig, WorktreeDetail } from '../types'
+import type { UpdaterStatus, MergeStrategy, RepoConfig, WorktreeDetail, AgentKind } from '../types'
 import { DEFAULT_HOTKEYS, ACTION_LABELS, ACTION_CATEGORIES, bindingToString, eventToBinding, formatBindingGlyphs, resolveHotkeys, type Action, type HotkeyBinding } from '../hotkeys'
 import { Tooltip } from './Tooltip'
-import { AGENT_REGISTRY, agentDisplayName, CLAUDE_MODELS, CODEX_MODELS } from '../../shared/agent-registry'
+import { AGENT_REGISTRY, agentDisplayName, CLAUDE_MODELS, CODEX_MODELS, CURSOR_MODELS } from '../../shared/agent-registry'
 import { AgentIcon } from './AgentIcon'
 import { InterfaceToggle } from './InterfaceToggle'
 import { BUILT_IN_THEMES_BY_MODE, type ThemeOption } from '../themes'
@@ -32,6 +32,7 @@ type SubSectionId =
   | 'agent-general'
   | 'agent-claude'
   | 'agent-codex'
+  | 'agent-cursor'
   | 'hotkeys-navigation'
   | 'hotkeys-backends'
   | 'hotkeys-worktree-mgmt'
@@ -67,7 +68,8 @@ const SECTIONS: Section[] = [
   { id: 'agent', label: 'Agent', icon: TerminalIcon, children: [
     { id: 'agent-general', label: 'General' },
     { id: 'agent-claude', label: 'Claude' },
-    { id: 'agent-codex', label: 'Codex' }
+    { id: 'agent-codex', label: 'Codex' },
+    { id: 'agent-cursor', label: 'Cursor Agent' }
   ]},
   { id: 'worktrees', label: 'Worktrees', icon: GitBranch },
   { id: 'editor', label: 'Editor', icon: Code2 },
@@ -90,6 +92,18 @@ const SECTIONS: Section[] = [
     { id: 'experimental-web-mobile', label: 'Web & mobile' }
   ]}
 ]
+
+function agentSubSectionId(kind: AgentKind): SubSectionId {
+  if (kind === 'claude') return 'agent-claude'
+  if (kind === 'codex') return 'agent-codex'
+  return 'agent-cursor'
+}
+
+function agentSubsectionDisplayOrder(kind: AgentKind, defaultAgent: AgentKind): number {
+  if (kind === defaultAgent) return 0
+  const others = AGENT_REGISTRY.map((a) => a.kind).filter((k) => k !== defaultAgent)
+  return 1 + others.indexOf(kind)
+}
 
 interface SearchItem {
   /** Stable per render — `${sectionId}:${kind}:${index}`. */
@@ -152,6 +166,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     'agent-general': null,
     'agent-claude': null,
     'agent-codex': null,
+    'agent-cursor': null,
     'hotkeys-navigation': null,
     'hotkeys-backends': null,
     'hotkeys-worktree-mgmt': null,
@@ -313,12 +328,15 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     defaultAgent,
     claudeCommand,
     codexCommand,
+    cursorCommand,
     harnessMcpEnabled,
     claudeEnvVars,
     codexEnvVars,
+    cursorEnvVars,
     nameClaudeSessions,
     claudeModel,
     codexModel,
+    cursorModel,
     terminalFontFamily,
     terminalFontSize,
     editor: editorId,
@@ -388,12 +406,20 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
   const [codexCommandDraft, setCodexCommandDraft] = useState<string>(codexCommand)
   useEffect(() => { setCodexCommandDraft(codexCommand) }, [codexCommand])
+  const [cursorCommandDraft, setCursorCommandDraft] = useState<string>(cursorCommand)
+  useEffect(() => { setCursorCommandDraft(cursorCommand) }, [cursorCommand])
   const [codexSaveResult, setCodexSaveResult] = useState<{ ok: boolean; message: string } | null>(null)
+  const [cursorSaveResult, setCursorSaveResult] = useState<{ ok: boolean; message: string } | null>(null)
   const [codexEnvRows, setCodexEnvRows] = useState<{ key: string; value: string }[]>(() =>
     Object.entries(codexEnvVars).map(([key, value]) => ({ key, value }))
   )
+  const [cursorEnvRows, setCursorEnvRows] = useState<{ key: string; value: string }[]>(() =>
+    Object.entries(cursorEnvVars).map(([key, value]) => ({ key, value }))
+  )
   const [codexEnvSaveResult, setCodexEnvSaveResult] = useState<{ ok: boolean; message: string } | null>(null)
+  const [cursorEnvSaveResult, setCursorEnvSaveResult] = useState<{ ok: boolean; message: string } | null>(null)
   const [codexRevealedEnvRows, setCodexRevealedEnvRows] = useState<Set<number>>(new Set())
+  const [cursorRevealedEnvRows, setCursorRevealedEnvRows] = useState<Set<number>>(new Set())
 
   const [systemPromptDraft, setSystemPromptDraft] = useState<string>(harnessSystemPrompt)
   useEffect(() => { setSystemPromptDraft(harnessSystemPrompt) }, [harnessSystemPrompt])
@@ -1013,6 +1039,18 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     setCodexSaveResult({ ok: true, message: 'Reset to default' })
   }, [])
 
+  const handleSaveCursorCommand = useCallback(async () => {
+    setCursorSaveResult(null)
+    await backend.setCursorCommand(cursorCommandDraft)
+    setCursorSaveResult({ ok: true, message: 'Saved · new tabs will use this command' })
+  }, [cursorCommandDraft])
+
+  const handleResetCursorCommand = useCallback(async () => {
+    setCursorCommandDraft('agent')
+    await backend.setCursorCommand('agent')
+    setCursorSaveResult({ ok: true, message: 'Reset to default' })
+  }, [])
+
   const handleSaveCodexEnvVars = useCallback(async () => {
     const vars: Record<string, string> = {}
     const seen = new Set<string>()
@@ -1031,6 +1069,25 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     await backend.setCodexEnvVars(vars)
     setCodexEnvSaveResult({ ok: true, message: 'Saved · new Codex tabs will see these' })
   }, [codexEnvRows])
+
+  const handleSaveCursorEnvVars = useCallback(async () => {
+    const vars: Record<string, string> = {}
+    const seen = new Set<string>()
+    const invalidNames: string[] = []
+    const duplicates: string[] = []
+    for (const { key, value } of cursorEnvRows) {
+      const k = key.trim()
+      if (!k) continue
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(k)) { invalidNames.push(k); continue }
+      if (seen.has(k)) { duplicates.push(k); continue }
+      seen.add(k)
+      vars[k] = value
+    }
+    if (invalidNames.length > 0) { setCursorEnvSaveResult({ ok: false, message: `Invalid name(s): ${invalidNames.join(', ')}` }); return }
+    if (duplicates.length > 0) { setCursorEnvSaveResult({ ok: false, message: `Duplicate name(s): ${duplicates.join(', ')}` }); return }
+    await backend.setCursorEnvVars(vars)
+    setCursorEnvSaveResult({ ok: true, message: 'Saved · new Cursor Agent tabs will see these' })
+  }, [cursorEnvRows])
 
   const isOverridden = (action: Action): boolean => {
     if (!hotkeyOverrides || !(action in hotkeyOverrides)) return false
@@ -1668,7 +1725,10 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   {AGENT_REGISTRY.map((agent) => (
                     <button
                       key={agent.kind}
-                      onClick={() => backend.setDefaultAgent(agent.kind)}
+                      onClick={() => {
+                        void backend.setDefaultAgent(agent.kind)
+                        scrollToSubSection(agentSubSectionId(agent.kind))
+                      }}
                       className={`flex items-center gap-2 px-4 py-2 rounded text-sm font-medium transition-colors cursor-pointer ${
                         defaultAgent === agent.kind
                           ? 'bg-surface text-fg-bright border border-fg'
@@ -1706,8 +1766,9 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               <div className="bg-panel-raised border border-border rounded-lg p-4">
                 <p className="text-xs text-dim mb-3">
                   Harness installs a small hook at{' '}
-                  <code className="bg-panel px-1 rounded">~/.claude/settings.json</code> and{' '}
-                  <code className="bg-panel px-1 rounded">~/.codex/hooks.json</code> so it can
+                  <code className="bg-panel px-1 rounded">~/.claude/settings.json</code>,{' '}
+                  <code className="bg-panel px-1 rounded">~/.codex/hooks.json</code>, and{' '}
+                  <code className="bg-panel px-1 rounded">~/.cursor/hooks.json</code> so it can
                   detect when each agent tab is processing, waiting, or awaiting approval.
                   The hook only emits when <code className="bg-panel px-1 rounded">$HARNESS_TERMINAL_ID</code>{' '}
                   is set — sessions you launch outside Harness are untouched.
@@ -1740,8 +1801,9 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               </div>
               </div>
 
+              <div className="flex flex-col">
               {/* ── Claude subsection ── */}
-              <div ref={(el) => { subSectionRefs.current['agent-claude'] = el }} id="agent-claude" className="mt-8">
+              <div ref={(el) => { subSectionRefs.current['agent-claude'] = el }} id="agent-claude" className="mt-8" style={{ order: agentSubsectionDisplayOrder('claude', defaultAgent) }}>
               <h3 className="text-sm font-semibold text-fg-bright mb-3 flex items-center gap-2">
                 Claude Code
                 {defaultAgent === 'claude' && <span className="text-xs font-normal text-dim bg-panel px-1.5 py-0.5 rounded">default</span>}
@@ -2055,7 +2117,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               </div>
 
               {/* ── Codex subsection ── */}
-              <div ref={(el) => { subSectionRefs.current['agent-codex'] = el }} id="agent-codex" className="mt-8">
+              <div ref={(el) => { subSectionRefs.current['agent-codex'] = el }} id="agent-codex" className="mt-8" style={{ order: agentSubsectionDisplayOrder('codex', defaultAgent) }}>
               <h3 className="text-sm font-semibold text-fg-bright mb-3 flex items-center gap-2">
                 Codex
                 {defaultAgent === 'codex' && <span className="text-xs font-normal text-dim bg-panel px-1.5 py-0.5 rounded">default</span>}
@@ -2153,6 +2215,110 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     {codexEnvSaveResult.ok ? <Check className="icon-xs" /> : <X className="icon-xs" />}{codexEnvSaveResult.message}
                   </div>
                 )}
+              </div>
+              </div>
+
+              {/* ── Cursor Agent subsection ── */}
+              <div ref={(el) => { subSectionRefs.current['agent-cursor'] = el }} id="agent-cursor" className="mt-8" style={{ order: agentSubsectionDisplayOrder('cursor', defaultAgent) }}>
+              <h3 className="text-sm font-semibold text-fg-bright mb-3 flex items-center gap-2">
+                Cursor Agent
+                {defaultAgent === 'cursor' && <span className="text-xs font-normal text-dim bg-panel px-1.5 py-0.5 rounded">default</span>}
+              </h3>
+
+              <div className="bg-panel-raised border border-border rounded-lg p-4 mb-4">
+                <label className="block text-sm font-medium text-fg mb-1">Model</label>
+                <p className="text-xs text-dim mb-2">
+                  Appends <code className="bg-panel px-1 rounded">--model</code> to the launch command. Leave on default to let the CLI choose.
+                </p>
+                <select
+                  value={cursorModel || ''}
+                  onChange={(e) => { void backend.setCursorModel(e.target.value || null) }}
+                  className="w-full bg-panel border border-border-strong rounded px-3 py-2 text-sm text-fg-bright outline-none focus:border-fg cursor-pointer"
+                >
+                  <option value="">(Default — let CLI choose)</option>
+                  <optgroup label="Current">
+                    {CURSOR_MODELS.filter((m) => m.tier === 'current').map((m) => (
+                      <option key={m.id} value={m.id}>{m.displayName}</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Legacy">
+                    {CURSOR_MODELS.filter((m) => m.tier === 'legacy').map((m) => (
+                      <option key={m.id} value={m.id}>{m.displayName}</option>
+                    ))}
+                  </optgroup>
+                </select>
+              </div>
+
+              <div className="bg-panel-raised border border-border rounded-lg p-4">
+                <label className="block text-sm font-medium text-fg mb-1">Launch command</label>
+                <p className="text-xs text-dim mb-2">
+                  The Cursor Agent CLI command. Harness manages session resume via{' '}
+                  <code className="bg-panel px-1 rounded">--resume</code> automatically.
+                </p>
+                <textarea
+                  value={cursorCommandDraft}
+                  onChange={(e) => setCursorCommandDraft(e.target.value)}
+                  rows={2}
+                  spellCheck={false}
+                  className="w-full bg-panel border border-border-strong rounded px-3 py-2 text-xs text-fg-bright placeholder-faint outline-none focus:border-fg font-mono resize-y"
+                  placeholder="agent"
+                />
+                <div className="flex items-center gap-2 mt-3">
+                  <button onClick={handleSaveCursorCommand} disabled={!cursorCommandDraft.trim()} className="px-3 py-1.5 bg-surface hover:bg-surface-hover disabled:opacity-40 rounded text-sm text-fg-bright transition-colors cursor-pointer">Save</button>
+                  {cursorCommandDraft !== 'agent' && (
+                    <button onClick={handleResetCursorCommand} className="flex items-center gap-1 px-3 py-1.5 text-sm text-dim hover:text-fg transition-colors cursor-pointer"><RotateCcw className="icon-xs" />Reset</button>
+                  )}
+                </div>
+                {cursorSaveResult && (
+                  <div className={`mt-3 text-xs flex items-center gap-1.5 ${cursorSaveResult.ok ? 'text-success' : 'text-danger'}`}>
+                    {cursorSaveResult.ok ? <Check className="icon-xs" /> : <X className="icon-xs" />}{cursorSaveResult.message}
+                  </div>
+                )}
+                {(() => {
+                  const effectiveCursorCommand = cursorCommandDraft.trim() || 'agent'
+                  const cursorModelPart = cursorModel && !effectiveCursorCommand.includes('--model') ? ` --model ${cursorModel}` : ''
+                  const cursorPreviewInner = `${effectiveCursorCommand}${cursorModelPart}`
+                  return (
+                    <div className="mt-4 pt-3 border-t border-border">
+                      <label className="block text-xs font-medium text-fg mb-1">Full command preview</label>
+                      <div className="bg-panel border border-border rounded px-3 py-2 text-xs text-fg-bright font-mono break-all">{`<shell> -ilc "${cursorPreviewInner}"`}</div>
+                      <p className="text-xs text-dim mt-1">where <code className="bg-panel px-1 rounded">{`<shell>`}</code> is your <code className="bg-panel px-1 rounded">$SHELL</code> (typically <code className="bg-panel px-1 rounded">/bin/bash</code> or <code className="bg-panel px-1 rounded">/bin/zsh</code>).</p>
+                    </div>
+                  )
+                })()}
+              </div>
+
+              <div className="mt-4 bg-panel-raised border border-border rounded-lg p-4">
+                <label className="block text-sm font-medium text-fg mb-1">Environment variables</label>
+                <p className="text-xs text-dim mb-3">
+                  Injected into Cursor Agent tabs. Use for <code className="bg-panel px-1 rounded">CURSOR_API_KEY</code> etc.
+                </p>
+                {cursorEnvRows.length > 0 && (
+                  <div className="space-y-2 mb-3">
+                    {cursorEnvRows.map((row, index) => {
+                      const revealed = cursorRevealedEnvRows.has(index)
+                      return (
+                        <div key={index} className="flex items-center gap-2">
+                          <input type="text" value={row.key} onChange={(e) => { setCursorEnvRows((prev) => prev.map((r, i) => (i === index ? { ...r, key: e.target.value } : r))); setCursorEnvSaveResult(null) }} placeholder="NAME" spellCheck={false} className="w-44 bg-panel border border-border-strong rounded px-2 py-1.5 text-xs text-fg-bright placeholder-faint outline-none focus:border-fg font-mono" />
+                          <span className="text-dim text-xs">=</span>
+                          <input type={revealed ? 'text' : 'password'} value={row.value} onChange={(e) => { setCursorEnvRows((prev) => prev.map((r, i) => (i === index ? { ...r, value: e.target.value } : r))); setCursorEnvSaveResult(null) }} placeholder="value" spellCheck={false} className="flex-1 bg-panel border border-border-strong rounded px-2 py-1.5 text-xs text-fg-bright placeholder-faint outline-none focus:border-fg font-mono" />
+                          <Tooltip label={revealed ? 'Hide value' : 'Reveal value'}><button onClick={() => setCursorRevealedEnvRows((prev) => { const next = new Set(prev); if (next.has(index)) next.delete(index); else next.add(index); return next })} className="p-1.5 text-dim hover:text-fg transition-colors cursor-pointer">{revealed ? <EyeOff className="icon-sm" /> : <Eye className="icon-sm" />}</button></Tooltip>
+                          <Tooltip label="Remove"><button onClick={() => { setCursorEnvRows((prev) => prev.filter((_, i) => i !== index)); setCursorEnvSaveResult(null) }} className="p-1.5 text-dim hover:text-danger transition-colors cursor-pointer"><Trash2 className="icon-sm" /></button></Tooltip>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+                <div className="flex items-center gap-2">
+                  <button onClick={() => { setCursorEnvRows((prev) => [...prev, { key: '', value: '' }]); setCursorEnvSaveResult(null) }} className="flex items-center gap-1 px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer"><Plus className="icon-xs" />Add variable</button>
+                  <button onClick={handleSaveCursorEnvVars} className="px-3 py-1.5 bg-surface hover:bg-surface-hover rounded text-sm text-fg-bright transition-colors cursor-pointer">Save</button>
+                </div>
+                {cursorEnvSaveResult && (
+                  <div className={`mt-3 text-xs flex items-center gap-1.5 ${cursorEnvSaveResult.ok ? 'text-success' : 'text-danger'}`}>
+                    {cursorEnvSaveResult.ok ? <Check className="icon-xs" /> : <X className="icon-xs" />}{cursorEnvSaveResult.message}
+                  </div>
+                )}
+              </div>
               </div>
               </div>
 

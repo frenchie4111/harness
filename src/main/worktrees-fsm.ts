@@ -13,6 +13,7 @@ import { loadRepoConfig } from './repo-config'
 import { log } from './debug'
 import type { Store } from './store'
 import type { Worktree, PendingWorktree } from '../shared/state/worktrees'
+import type { AgentKind } from '../shared/state/terminals'
 
 /** Sanitize a PR's head branch into a name that's safe as both a git
  *  branch (we're not strict here since git accepts most things) and a
@@ -62,7 +63,7 @@ interface WorktreesFSMOptions {
     createdPath: string
     initialPrompt?: string
     teleportSessionId?: string
-    agentKind?: 'claude' | 'codex'
+    agentKind?: AgentKind
     model?: string
   }) => void
 }
@@ -113,7 +114,7 @@ export class WorktreesFSM {
     branchName: string
     initialPrompt?: string
     teleportSessionId?: string
-    agentKind?: 'claude' | 'codex'
+    agentKind?: AgentKind
     model?: string
     /** When set, check out an existing branch instead of creating one
      * with `-b`. Used when the user picks from the existing-branches
@@ -175,7 +176,7 @@ export class WorktreesFSM {
     repoRoot: string
     prNumber: number
     initialPrompt?: string
-    agentKind?: 'claude' | 'codex'
+    agentKind?: AgentKind
     model?: string
   }): Promise<PendingOutcome> {
     const { id, repoRoot, prNumber, initialPrompt, agentKind, model } = params
@@ -235,7 +236,7 @@ export class WorktreesFSM {
     created: WorktreeInfo
     initialPrompt?: string
     teleportSessionId?: string
-    agentKind?: 'claude' | 'codex'
+    agentKind?: AgentKind
     model?: string
   }): Promise<PendingOutcome> {
     const { id, repoRoot, created, initialPrompt, teleportSessionId, agentKind, model } = args
