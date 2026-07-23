@@ -575,6 +575,17 @@ describe('settingsReducer', () => {
     expect(off.announcementsMuted).toBe(false)
   })
 
+  it('showAssignedPRsChanged toggles the flag', () => {
+    expect(initialSettings.showAssignedPRs).toBe(false)
+    const on = apply(initialSettings, {
+      type: 'settings/showAssignedPRsChanged',
+      payload: true
+    })
+    expect(on.showAssignedPRs).toBe(true)
+    const off = apply(on, { type: 'settings/showAssignedPRsChanged', payload: false })
+    expect(off.showAssignedPRs).toBe(false)
+  })
+
   it('returns a new object reference (no mutation)', () => {
     const next = apply(initialSettings, { type: 'settings/themeDarkChanged', payload: 'dracula' })
     expect(next).not.toBe(initialSettings)

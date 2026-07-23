@@ -64,7 +64,10 @@ export class JsonClaudeStatusDeriver {
     if (event.type === 'jsonClaude/approvalResolved') {
       return Object.keys(jc.sessions)
     }
-    const payload = event.payload as { sessionId?: unknown } | undefined
+    const payload =
+      'payload' in event
+        ? ((event as { payload?: unknown }).payload as { sessionId?: unknown } | undefined)
+        : undefined
     if (payload && typeof payload.sessionId === 'string') {
       return [payload.sessionId]
     }

@@ -1,5 +1,6 @@
 import type { Worktree, PRStatus } from './types'
 import { isPRMerged } from '../shared/state/prs'
+import type { AssignedPR } from '../shared/state/assigned-prs'
 
 export type GroupKey = 'needs-attention' | 'reviewing' | 'active' | 'no-pr' | 'snoozed' | 'merged'
 
@@ -7,6 +8,11 @@ export interface WorktreeGroup {
   key: GroupKey
   label: string
   worktrees: Worktree[]
+  /** PRs the viewer is a requested reviewer on that DON'T yet have a
+   *  worktree in the sidebar. Only ever populated on the `reviewing`
+   *  group. Rendered after the group's worktrees as phantom rows —
+   *  clicking one opens the "new worktree from PR" screen pre-selected. */
+  phantomPRs?: AssignedPR[]
 }
 
 export function getGroupKey(
@@ -70,13 +76,20 @@ function collectBaseBranches(prStatuses: Record<string, PRStatus | null>): Set<s
   return out
 }
 
-/** Group worktrees by PR status, sorted by creation time within each group */
+/** Group worktrees by PR status, sorted by creation time within each group.
+ *
+ *  `assignedPRs` (optional) injects phantom entries into the Reviewing
+ *  group for PRs where the viewer is a requested reviewer but no worktree
+ *  yet exists. Dedup key is `repoRoot + PR number` — if a worktree already
+ *  points at PR #42 in the same repo it's suppressed so the phantom
+ *  doesn't shadow the real entry. */
 export function groupWorktrees(
   worktrees: Worktree[],
   prStatuses: Record<string, PRStatus | null>,
   mergedPaths?: Record<string, boolean>,
   snoozedPaths?: Record<string, true>,
-  viewerLogin?: string | null
+  viewerLogin?: string | null,
+  assignedPRs?: AssignedPR[]
 ): WorktreeGroup[] {
   const grouped: Record<GroupKey, Worktree[]> = {
     'needs-attention': [],
@@ -98,17 +111,43 @@ export function groupWorktrees(
     grouped[key].push(wt)
   }
 
+  const phantoms = dedupPhantomPRs(assignedPRs ?? [], worktrees, prStatuses)
+
   const baseBranches = collectBaseBranches(prStatuses)
-  return GROUP_ORDER
-    .filter((key) => grouped[key].length > 0)
-    .map((key) => ({
+  const groups: WorktreeGroup[] = []
+  for (const key of GROUP_ORDER) {
+    const wts = grouped[key]
+    const groupPhantoms = key === 'reviewing' ? phantoms : []
+    if (wts.length === 0 && groupPhantoms.length === 0) continue
+    groups.push({
       key,
       label: GROUP_LABELS[key],
       worktrees:
         key === 'no-pr'
-          ? sortNoPRGroup(grouped[key], baseBranches)
-          : sortByCreatedAt(grouped[key])
-    }))
+          ? sortNoPRGroup(wts, baseBranches)
+          : sortByCreatedAt(wts),
+      phantomPRs: groupPhantoms.length > 0 ? groupPhantoms : undefined
+    })
+  }
+  return groups
+}
+
+/** Filter out any assigned PR that already has a worktree in the sidebar
+ *  (same repoRoot + PR number). Sort by updatedAt descending so the
+ *  freshest review request lands on top. */
+function dedupPhantomPRs(
+  assignedPRs: AssignedPR[],
+  worktrees: Worktree[],
+  prStatuses: Record<string, PRStatus | null>
+): AssignedPR[] {
+  if (assignedPRs.length === 0) return assignedPRs
+  const existing = new Set<string>()
+  for (const wt of worktrees) {
+    const pr = prStatuses[wt.path]
+    if (pr) existing.add(`${wt.repoRoot}#${pr.number}`)
+  }
+  const filtered = assignedPRs.filter((pr) => !existing.has(`${pr.repoRoot}#${pr.number}`))
+  return [...filtered].sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''))
 }
 
 /** Flatten grouped worktrees into a single ordered list (matching sidebar display order) */

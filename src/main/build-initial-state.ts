@@ -13,6 +13,7 @@ import { initialSnooze } from '../shared/state/snooze'
 import { initialAnnouncements } from '../shared/state/announcements'
 import { initialScratchpad } from '../shared/state/scratchpad'
 import { initialSshBootstrap } from '../shared/state/ssh-bootstrap'
+import { initialAssignedPRs } from '../shared/state/assigned-prs'
 import { initialConfigHealth, type ConfigLoadError } from '../shared/state/config-health'
 import {
   initialSettings,
@@ -74,6 +75,7 @@ export function buildInitialAppState(
     announcements: initialAnnouncements,
     scratchpad: { byWorktreePath: flattenScratchpadNotes(config.scratchpadNotes) },
     sshBootstrap: initialSshBootstrap,
+    assignedPRs: initialAssignedPRs,
     settings: {
       ...initialSettings,
       themeMode:
@@ -146,7 +148,8 @@ export function buildInitialAppState(
       dismissedAnnouncementIds: Array.isArray(config.dismissedAnnouncementIds)
         ? config.dismissedAnnouncementIds.filter((x): x is string => typeof x === 'string')
         : [],
-      announcementsMuted: config.announcementsMuted === true
+      announcementsMuted: config.announcementsMuted === true,
+      showAssignedPRs: config.showAssignedPRs === true
     }
   }
 }

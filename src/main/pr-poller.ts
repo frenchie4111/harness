@@ -4,12 +4,15 @@ import {
   getRepoContext,
   fetchPRStatusesForRepo,
   fetchPRStatusByNumber,
+  fetchAssignedPRs,
   type PRStatusRequest,
-  type RepoContext
+  type RepoContext,
+  type AssignedPRsRepoLookup
 } from './github'
 import { log, formatErr } from './debug'
 import type { Store } from './store'
 import type { PRStatus } from '../shared/state/prs'
+import type { AssignedPR } from '../shared/state/assigned-prs'
 
 const POLL_INTERVAL_MS = 5 * 60 * 1000
 const STALE_WINDOW_MS = 60 * 1000
@@ -32,6 +35,7 @@ export class PRPoller {
   private lastAllFetchAt = 0
   private lastFetchAtByPath = new Map<string, number>()
   private inFlightAll = false
+  private inFlightAssigned = false
 
   constructor(store: Store, opts: PRPollerOptions) {
     this.store = store
@@ -42,6 +46,9 @@ export class PRPoller {
     if (this.timer) return
     this.timer = setInterval(() => {
       void this.refreshAll()
+      if (this.store.getSnapshot().state.settings.showAssignedPRs) {
+        void this.refreshAssignedPRs()
+      }
     }, POLL_INTERVAL_MS)
   }
 
@@ -273,5 +280,82 @@ export class PRPoller {
     if (Date.now() - this.lastAllFetchAt > STALE_WINDOW_MS) {
       void this.refreshAll()
     }
+    if (this.store.getSnapshot().state.settings.showAssignedPRs) {
+      void this.refreshAssignedPRs()
+    }
+  }
+
+  /** Fetch PRs where the viewer is a requested reviewer, scoped to the
+   *  upstream repos of every Harness-added repo. Populates the
+   *  `assignedPRs` slice. Guarded to skip when the setting is off; the
+   *  IPC handler that toggles the setting on kicks a refresh explicitly. */
+  async refreshAssignedPRs(): Promise<void> {
+    if (this.inFlightAssigned) return
+    if (!this.store.getSnapshot().state.settings.showAssignedPRs) return
+    const roots = this.opts.getRepoRoots()
+    if (roots.length === 0) {
+      this.store.dispatch({
+        type: 'assignedPRs/dataUpdated',
+        payload: { byRepo: {}, fetchedAt: Date.now() }
+      })
+      return
+    }
+    this.inFlightAssigned = true
+    this.store.dispatch({ type: 'assignedPRs/loadingChanged', payload: true })
+    try {
+      // Look up the upstream repo (owner/name) for each root — that's what
+      // GitHub's search API returns and what we match on to bucket
+      // results back to `repoRoot`. Roots without a resolvable upstream
+      // are skipped (e.g. non-github remotes, missing origin).
+      const lookups: AssignedPRsRepoLookup[] = []
+      await Promise.all(
+        roots.map(async (root) => {
+          const trees = await listWorktrees(root).catch(() => [])
+          const main = trees.find((t) => t.isMain) ?? trees[0]
+          const probePath = main?.path ?? root
+          const ctx = await getRepoContext(probePath).catch(() => null)
+          if (!ctx) return
+          lookups.push({
+            repoRoot: root,
+            nameWithOwner: `${ctx.upstream.owner}/${ctx.upstream.repo}`
+          })
+        })
+      )
+      if (lookups.length === 0) {
+        this.store.dispatch({
+          type: 'assignedPRs/dataUpdated',
+          payload: { byRepo: {}, fetchedAt: Date.now() }
+        })
+        return
+      }
+      const summaries = await fetchAssignedPRs(lookups)
+      const byRepo: Record<string, AssignedPR[]> = {}
+      for (const [repoRoot, prs] of summaries) {
+        byRepo[repoRoot] = prs.map((p) => ({
+          number: p.number,
+          title: p.title,
+          url: p.url,
+          branch: p.branch,
+          repoRoot: p.repoRoot,
+          repoNameWithOwner: p.repoNameWithOwner,
+          author: p.author,
+          isDraft: p.isDraft,
+          updatedAt: p.updatedAt
+        }))
+      }
+      this.store.dispatch({
+        type: 'assignedPRs/dataUpdated',
+        payload: { byRepo, fetchedAt: Date.now() }
+      })
+    } catch (err) {
+      log('pr-poller', 'refreshAssignedPRs failed', formatErr(err))
+    } finally {
+      this.inFlightAssigned = false
+      this.store.dispatch({ type: 'assignedPRs/loadingChanged', payload: false })
+    }
+  }
+
+  clearAssignedPRs(): void {
+    this.store.dispatch({ type: 'assignedPRs/cleared' })
   }
 }
