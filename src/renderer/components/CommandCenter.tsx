@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { X, GitPullRequest, ChevronDown, ChevronRight, Layers, Rows3 } from 'lucide-react'
 import { useSettings, useSnooze } from '../store'
 import { useBackend } from '../backend'
@@ -28,6 +28,8 @@ interface CommandCenterProps {
   terminalTabs: Record<string, TerminalTab[]>
   onClose: () => void
   onSelect: (worktreePath: string) => void
+  isGroupCollapsed: (scope: string, key: GroupKey) => boolean
+  onToggleGroup: (scope: string, key: GroupKey) => void
 }
 
 type DisplayStatus = PtyStatus | 'merged'
@@ -98,7 +100,9 @@ export function CommandCenter({
   tailLines,
   terminalTabs,
   onClose,
-  onSelect
+  onSelect,
+  isGroupCollapsed,
+  onToggleGroup
 }: CommandCenterProps): JSX.Element {
   const backend = useBackend()
   // Activity log for per-worktree mini timelines.
@@ -233,22 +237,6 @@ export function CommandCenter({
     [sections]
   )
 
-  // Collapse state keyed by `${scope}:${groupKey}` so each repo's groups
-  // collapse independently in split mode. Defaults `merged` to collapsed.
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
-  const isCollapsed = useCallback((scope: string, key: GroupKey): boolean => {
-    const composite = `${scope}:${key}`
-    if (composite in collapsed) return collapsed[composite]
-    return key === 'merged'
-  }, [collapsed])
-  const toggleGroup = useCallback((scope: string, key: GroupKey): void => {
-    const composite = `${scope}:${key}`
-    setCollapsed((prev) => {
-      const current = composite in prev ? prev[composite] : key === 'merged'
-      return { ...prev, [composite]: !current }
-    })
-  }, [])
-
   const showRepoLabelOnCards = repoRoots.length > 1
 
   // ESC to close
@@ -369,11 +357,11 @@ export function CommandCenter({
             )}
             <div className="space-y-6">
             {section.groups.map((group) => {
-              const collapsedHere = isCollapsed(section.scope, group.key)
+              const collapsedHere = isGroupCollapsed(section.scope, group.key)
               return (
                 <section key={group.key}>
                   <button
-                    onClick={() => toggleGroup(section.scope, group.key)}
+                    onClick={() => onToggleGroup(section.scope, group.key)}
                     className="w-full flex items-center gap-2 mb-3 text-left text-muted hover:text-fg transition-colors cursor-pointer"
                   >
                     {collapsedHere
