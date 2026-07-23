@@ -1,38 +1,26 @@
-import { useEffect, useRef } from 'react'
-
 // The "Harness" wordmark plus — in dev builds — the active branch, rendered
-// as one block. Used in every spot the app title appears (workspace top bar,
-// empty-state fallback bar, onboarding), so the wordmark + dev-branch suffix,
-// styling, and width are defined exactly once. The width is load-bearing: the
-// left sidebar's max width is capped to this block's right edge, so the
-// min-width gives the expanded sidebar's toolbar room to fit comfortably.
+// as one block. Used in every spot the app title appears (above the sidebar,
+// workspace top bar when sidebar is hidden, empty-state fallback bar,
+// onboarding), so the wordmark + dev-branch suffix and styling are defined
+// exactly once.
 //
-// `onEdge` (when provided) reports the block's right edge in window-x via a
-// ResizeObserver — branch name and uiScale both resize the block. Whichever
-// bar is on screen (workspace or empty-state) reports, so the cap always
-// tracks the title actually visible. Only pass it for the *visible* instance:
-// a hidden (display:none) block measures as zero width.
+// `fillParent` lets the parent control width — used above the sidebar so the
+// title segment's right edge lines up with the sidebar's right edge. Without
+// it, the segment has a fixed min-width sized to fit the dev-branch suffix
+// comfortably (used in the top-bar / fallback / onboarding spots).
 export function AppTitleSegment({
   className,
-  onEdge
+  fillParent = false
 }: {
   className?: string
-  onEdge?: (px: number) => void
+  fillParent?: boolean
 }): JSX.Element {
-  const ref = useRef<HTMLDivElement | null>(null)
-  useEffect(() => {
-    const el = ref.current
-    if (!el || !onEdge) return
-    const report = (): void => onEdge(el.getBoundingClientRect().right)
-    report()
-    const ro = new ResizeObserver(report)
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [onEdge])
+  const sizing = fillParent
+    ? 'flex-1 min-w-0'
+    : 'shrink-0 min-w-[17.46rem] border-r border-border'
   return (
     <div
-      ref={ref}
-      className={`shrink-0 flex items-center h-full min-w-[17.46rem] px-3 text-sm font-semibold whitespace-nowrap border-r border-border bg-app/40${
+      className={`${sizing} flex items-center h-full px-3 text-sm font-semibold whitespace-nowrap bg-app/40${
         className ? ` ${className}` : ''
       }`}
     >
