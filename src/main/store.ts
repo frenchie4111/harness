@@ -62,6 +62,15 @@ export class Store {
     return { state: this.state, seq: this.seq }
   }
 
+  /** Replace the whole state, bumping `seq`. Fires no listener fan-out (no
+   *  event to forward), so callers must re-deliver out of band — e.g. reload
+   *  the window so it re-fetches via `state:getSnapshot`. Used only by the
+   *  dev-mode config recovery soft-reload (see desktop-shell). */
+  replaceState(next: AppState): void {
+    this.state = next
+    this.seq += 1
+  }
+
   dispatch(event: StateEvent): void {
     this.dispatchDepth++
     if (this.dispatchDepth === 1) {

@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from 'react'
 import type { Worktree, PRStatus, PaneNode, TerminalTab } from '../types'
 import { getLeaves, findLeaf } from '../../shared/state/terminals'
-import { resolveHotkeys, type Action, type HotkeyBinding } from '../hotkeys'
+import { resolveHotkeys, isEditableTarget, type Action, type HotkeyBinding } from '../hotkeys'
 import { useHotkeys } from './useHotkeys'
 import { useDoubleTapShift } from './useDoubleTapShift'
 import { groupWorktrees, getGroupKey, type GroupKey } from '../worktree-sort'
@@ -49,6 +49,7 @@ interface UseHotkeyHandlersArgs {
   handleSplitPane: (worktreePath: string, fromPaneId: string, direction?: 'horizontal' | 'vertical') => void
   handleRefreshWorktrees: () => void
   setShowSettings: React.Dispatch<React.SetStateAction<boolean>>
+  onStartAliasEdit: (path: string) => void
 }
 
 /** Sidebar-aware hotkey handler block. Computes the visible/ordered
@@ -92,7 +93,8 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
     handleSelectTab,
     handleSplitPane,
     handleRefreshWorktrees,
-    setShowSettings
+    setShowSettings,
+    onStartAliasEdit
   } = args
 
   // Mirror the sidebar's grouping/rendering order so hotkey navigation
@@ -346,7 +348,12 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       uiScaleReset: () => {
         if (uiScale !== 'small') void backend.setUiScale('small')
       },
-      cycleWorktreeDetail: () => cycleWorktreeDetail(configuredWorktreeDetail)
+      cycleWorktreeDetail: () => cycleWorktreeDetail(configuredWorktreeDetail),
+      aliasWorktree: () => {
+        if (!activeWorktreeId) return
+        if (activeWorktreeId.startsWith('pending:')) return
+        onStartAliasEdit(activeWorktreeId)
+      }
     }),
     [
       cycleWorktree,
@@ -377,7 +384,8 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       setShowSettings,
       backend,
       uiScale,
-      configuredWorktreeDetail
+      configuredWorktreeDetail,
+      onStartAliasEdit
     ]
   )
 
@@ -390,15 +398,7 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
   // editable too, but firing there is a harmless no-op (already focused).
   useDoubleTapShift(
     useCallback(() => {
-      const el = document.activeElement as HTMLElement | null
-      if (
-        el &&
-        (el.isContentEditable ||
-          el.tagName === 'INPUT' ||
-          el.tagName === 'TEXTAREA' ||
-          el.tagName === 'SELECT')
-      )
-        return
+      if (isEditableTarget(document.activeElement as HTMLElement | null)) return
       hotkeyActions.focusTerminal?.()
     }, [hotkeyActions])
   )

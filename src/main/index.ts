@@ -33,11 +33,12 @@ import { PanesFSM, stripTransientTabFields } from './panes-fsm'
 import { ActivityDeriver } from './activity-deriver'
 import { AutoSleepMonitor } from './auto-sleep-monitor'
 import { WorktreeWatcher } from './worktree-watcher'
+import { FileContentWatcher } from './file-content-watcher'
 import { SnoozeTimer } from './snooze-timer'
 import { getWeeklyStats } from './weekly-stats'
 import type { TerminalTab, PaneNode, PaneLeaf } from '../shared/state/terminals'
 import { getLeaves, mapLeaves } from '../shared/state/terminals'
-import { listWorktrees, listBranches, continueWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getCommitMeta, getCommitChangedFiles, getCommitFileDiffSides, getCommitRangeChangedFiles, getCommitRangeFileDiffSides, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, listRecentCommitShas, readWorktreeFile, readWorktreeFileBinary, writeWorktreeFile, getFileDiffSides, getCurrentBranch, symlinkClaudeSettings, type MergeStrategy } from './worktree'
+import { listWorktrees, listBranches, continueWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getCommitMeta, getCommitChangedFiles, getCommitFileDiffSides, getCommitRangeChangedFiles, getCommitRangeFileDiffSides, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, listRecentCommitShas, readWorktreeFile, readWorktreeFileBinary, writeWorktreeFile, getFileDiffSides, getCurrentBranch, symlinkClaudeSettings, pruneWorktrees, type MergeStrategy } from './worktree'
 import { listOpenPRs, testToken, starRepo, unstarRepo, isRepoStarred, mergePR, approvePR, getRepoInfo, type GitHubMergeMethod, type MergePRResult } from './github'
 import { AVAILABLE_EDITORS, DEFAULT_EDITOR_ID, openInEditor } from './editor'
 import { setSecret, getSecret, hasSecret, deleteSecret } from './secrets'
@@ -46,6 +47,8 @@ import {
   loadConfig,
   saveConfig,
   saveConfigSync,
+  getConfigLoadError,
+  discardCorruptConfigAndReset,
   DEFAULT_CLAUDE_COMMAND,
   AVAILABLE_THEMES,
   THEME_APP_BG,
@@ -70,6 +73,7 @@ import type { AddRepoResult } from '../shared/repo-pick'
 import { isWorktreeMerged } from '../shared/state/prs'
 import { MAX_WAKE } from '../shared/state/snooze'
 import { hasScratchpadNote } from '../shared/state/scratchpad'
+import { normalizeAlias } from '../shared/state/aliases'
 import {
   DEFAULT_LIGHT_THEME,
   DEFAULT_DARK_THEME,
@@ -112,9 +116,24 @@ const isBenignPipeError = (e: unknown): boolean =>
 
 process.stdout.on('error', (e) => { if (!isBenignPipeError(e)) throw e })
 process.stderr.on('error', (e) => { if (!isBenignPipeError(e)) throw e })
+// Log-and-continue for uncaught main-process errors (issue #185). A single
+// unhandled throw from any code path — a stray child_process 'error' event,
+// a broken slice dispatch, a rejected background promise — used to take
+// down the whole app and every open Claude tab with it. That's disastrous
+// relative to the underlying bug: we'd rather keep the window alive with
+// one broken session than lose the user's other agents' state.
+// The log line is the load-bearing part — crash forensics need it to
+// figure out which subsystem misbehaved.
 process.on('uncaughtException', (e) => {
   if (isBenignPipeError(e)) return
-  throw e
+  log('main', 'uncaughtException', e instanceof Error ? (e.stack ?? e.message) : String(e))
+})
+process.on('unhandledRejection', (reason) => {
+  log(
+    'main',
+    'unhandledRejection',
+    reason instanceof Error ? (reason.stack ?? reason.message) : String(reason)
+  )
 })
 
 // Runtime detection — Electron sets process.versions.electron, plain
@@ -300,7 +319,19 @@ const ptyManager = new PtyManager()
 let config = loadConfig()
 let stopWatchingStatus: (() => void) | null = null
 
-const store = new Store(buildInitialAppState(config, { hasGithubToken: hasSecret('githubToken') }))
+// Desktop surfaces a corrupt-config load via the recovery modal (configHealth
+// slice → InvalidConfigModal). Headless has no UI to drive the fix, so it
+// abandons the bad file and boots on defaults (the quarantine copy is kept).
+let configLoadError = getConfigLoadError()
+if (configLoadError && runtime !== 'electron') {
+  log('config', `corrupt config on headless boot, resetting: ${configLoadError.message}`)
+  config = discardCorruptConfigAndReset()
+  configLoadError = null
+}
+
+const store = new Store(
+  buildInitialAppState(config, { hasGithubToken: hasSecret('githubToken'), configLoadError })
+)
 
 // Scan for user-authored themes once the store exists. Done as a
 // dispatch (rather than seeding into buildInitialAppState) so the
@@ -544,6 +575,19 @@ store.subscribe((event) => {
   }
 })
 
+// Persist alias map through to disk so aliases survive restart.
+store.subscribe((event) => {
+  if (event.type.startsWith('aliases/')) {
+    const byPath = store.getSnapshot().state.aliases.byPath
+    if (Object.keys(byPath).length === 0) {
+      delete config.aliases
+    } else {
+      config.aliases = byPath
+    }
+    saveConfig(config)
+  }
+})
+
 // When a session ID is discovered from a hook event (e.g. Codex assigns
 // its own session ID), persist panes immediately so the ID survives a quit.
 store.subscribe((event) => {
@@ -627,11 +671,24 @@ perfMonitor.start(store, () => ptyManager.getActivePtyCount())
 const worktreeWatcher = new WorktreeWatcher()
 const worktreeWatchSubs = new Map<string, Map<string, () => void>>()
 
+// Watches individual files for content changes (FileView + working-tree
+// ReviewDiffPane refresh-on-disk-edit). Refcounted per absolute path; one
+// fs.watch handle per file regardless of how many clients are open.
+// Subs are keyed by clientId so a window close releases everything.
+const fileContentWatcher = new FileContentWatcher()
+const fileContentWatchSubs = new Map<string, Map<string, () => void>>()
+
 function unsubscribeAllForClient(clientId: string): void {
-  const subs = worktreeWatchSubs.get(clientId)
-  if (!subs) return
-  for (const off of subs.values()) off()
-  worktreeWatchSubs.delete(clientId)
+  const wtSubs = worktreeWatchSubs.get(clientId)
+  if (wtSubs) {
+    for (const off of wtSubs.values()) off()
+    worktreeWatchSubs.delete(clientId)
+  }
+  const fileSubs = fileContentWatchSubs.get(clientId)
+  if (fileSubs) {
+    for (const off of fileSubs.values()) off()
+    fileContentWatchSubs.delete(clientId)
+  }
 }
 
 transport.onClientDisconnect((clientId) => unsubscribeAllForClient(clientId))
@@ -1041,6 +1098,19 @@ store.subscribe((event) => {
   }
 })
 
+// Drop alias entries for worktrees that no longer exist so the map
+// can't leak across worktree removals.
+store.subscribe((event) => {
+  if (event.type !== 'worktrees/listChanged') return
+  const live = new Set(store.getSnapshot().state.worktrees.list.map((w) => w.path))
+  const byPath = store.getSnapshot().state.aliases.byPath
+  for (const path of Object.keys(byPath)) {
+    if (!live.has(path)) {
+      store.dispatch({ type: 'aliases/cleared', payload: { path } })
+    }
+  }
+})
+
 const snoozeTimer = new SnoozeTimer(store)
 snoozeTimer.start()
 
@@ -1290,6 +1360,13 @@ function registerIpcHandlers(): void {
     return true
   })
 
+  transport.onRequest('worktrees:prune', async (_ctx, repoRoot: string) => {
+    if (!repoRoot) throw new Error('No repo root provided')
+    await pruneWorktrees(repoRoot)
+    await worktreesFSM.refreshList()
+    return true
+  })
+
   transport.onRequest('worktree:dir', async (_ctx, repoRoot: string) => {
     if (!repoRoot) return ''
     return defaultWorktreeDir(repoRoot)
@@ -1385,6 +1462,43 @@ function registerIpcHandlers(): void {
     subs!.delete(worktreePath)
     if (subs!.size === 0) worktreeWatchSubs.delete(ctx.clientId)
   })
+
+  // Per-file content watcher — fires 'file:contentChanged' on the
+  // (worktreePath, relativePath) tuple when the absolute file changes on
+  // disk. Used by FileView and working-tree ReviewDiffPane to refresh
+  // when an agent (or any external tool) edits the same file.
+  transport.onSignal(
+    'file:watchSubscribe',
+    (ctx, worktreePath: string, relativePath: string) => {
+      if (!worktreePath || !relativePath) return
+      const key = `${worktreePath} ${relativePath}`
+      let subs = fileContentWatchSubs.get(ctx.clientId)
+      if (!subs) {
+        subs = new Map()
+        fileContentWatchSubs.set(ctx.clientId, subs)
+      }
+      if (subs.has(key)) return
+      const absolutePath = join(worktreePath, relativePath)
+      const off = fileContentWatcher.subscribe(absolutePath, () => {
+        transport.sendSignal('file:contentChanged', worktreePath, relativePath)
+      })
+      subs.set(key, off)
+    }
+  )
+
+  transport.onSignal(
+    'file:watchUnsubscribe',
+    (ctx, worktreePath: string, relativePath: string) => {
+      if (!worktreePath || !relativePath) return
+      const key = `${worktreePath} ${relativePath}`
+      const subs = fileContentWatchSubs.get(ctx.clientId)
+      const off = subs?.get(key)
+      if (!off) return
+      off()
+      subs!.delete(key)
+      if (subs!.size === 0) fileContentWatchSubs.delete(ctx.clientId)
+    }
+  )
 
   transport.onRequest(
     'worktree:fileDiff',
@@ -3530,6 +3644,24 @@ function registerIpcHandlers(): void {
     }
   )
 
+  transport.onRequest('aliases:set', (_ctx, path: string, alias: string) => {
+    if (typeof path !== 'string' || !path) return false
+    if (typeof alias !== 'string') return false
+    const normalized = normalizeAlias(alias)
+    if (!normalized) {
+      store.dispatch({ type: 'aliases/cleared', payload: { path } })
+    } else {
+      store.dispatch({ type: 'aliases/set', payload: { path, alias: normalized } })
+    }
+    return true
+  })
+
+  transport.onRequest('aliases:clear', (_ctx, path: string) => {
+    if (typeof path !== 'string' || !path) return false
+    store.dispatch({ type: 'aliases/cleared', payload: { path } })
+    return true
+  })
+
   transport.onRequest('config:setSnoozeDefaultDays', (_ctx, days: number) => {
     const n = Number(days)
     if (!Number.isFinite(n)) return false
@@ -3555,6 +3687,37 @@ function broadcastToAllWindows(channel: string, ...args: unknown[]): void {
 const desktopHooks = {
   startAutoUpdateChecks: (): void => {},
   stopAutoUpdateChecks: (): void => {}
+}
+
+// Dev-only re-apply of a freshly-fixed config without relaunching (relaunch
+// blanks the screen under `electron-vite dev` — see desktop-shell). `config`
+// is mutated in place because desktop-shell and many IPC handlers hold it by
+// reference; reassigning would strand them on the stale object. The caller
+// reloads the window afterward so the renderer re-fetches the new snapshot.
+async function reapplyConfigFromDisk(): Promise<void> {
+  const fresh = loadConfig()
+  const mutable = config as unknown as Record<string, unknown>
+  for (const key of Object.keys(mutable)) {
+    delete mutable[key]
+  }
+  Object.assign(config, fresh)
+
+  store.replaceState(
+    buildInitialAppState(config, {
+      hasGithubToken: hasSecret('githubToken'),
+      configLoadError: getConfigLoadError()
+    })
+  )
+
+  const repoConfigsMap: Record<string, RepoConfig> = {}
+  for (const root of config.repoRoots || []) {
+    repoConfigsMap[root] = loadRepoConfig(root)
+  }
+  store.dispatch({ type: 'repoConfigs/loaded', payload: repoConfigsMap })
+
+  await panesFSM.restoreFromConfig(config.panes)
+  await worktreesFSM.refreshList()
+  void prPoller.refreshAll()
 }
 
 async function runBoot(): Promise<void> {
@@ -3697,6 +3860,20 @@ async function runBoot(): Promise<void> {
       enabled: config.browserToolsEnabled !== false,
       mode: config.browserToolsMode === 'view' ? 'view' : 'full'
     }),
+    setAlias: (worktreePath, alias) => {
+      const normalized = normalizeAlias(alias)
+      if (!normalized) {
+        store.dispatch({ type: 'aliases/cleared', payload: { path: worktreePath } })
+      } else {
+        store.dispatch({
+          type: 'aliases/set',
+          payload: { path: worktreePath, alias: normalized }
+        })
+      }
+    },
+    clearAlias: (worktreePath) => {
+      store.dispatch({ type: 'aliases/cleared', payload: { path: worktreePath } })
+    },
     browser: {
       listTabsForWorktree: (wtPath) => {
         const ids = browserManager.listTabsForWorktree(wtPath)
@@ -3933,6 +4110,7 @@ if (desktopShellMod && desktopEarly) {
     worktreesFSM,
     config,
     runBoot,
+    reapplyConfigFromDisk,
     getStopWatchingStatus: () => stopWatchingStatus,
     setStopWatchingStatus: (next) => {
       stopWatchingStatus = next

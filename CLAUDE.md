@@ -643,9 +643,34 @@ npm run release 1.0.1
 ```
 
 The script handles preflight checks, version bump, README link updates,
-build/sign/notarize, tag/push, release notes from `git log`, and
-`gh release create` with all artifacts attached. Notarization needs
-`.env` with `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`.
+release notes from `git log`, and the GitHub interactions that drive
+the build. Build/sign/notarize/`gh release create` all run in CI on
+the tag push at the end — notarization creds live in Actions secrets
+(`APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`), not in
+a local `.env`.
+
+`main` is protected by a ruleset requiring PRs + the `ci` status
+check, so the script can't push the version-bump commit straight to
+main. Instead it commits on a `release/v<ver>` branch, opens a PR via
+`gh pr create`, blocks on `gh pr checks --watch`, merges (rebase by
+default, falling back to a merge commit if rebase is disabled — never
+squash so the "Release v<ver>" subject stays on main), then pulls
+main and tags the new HEAD. The tag push is what fires
+`release.yml`.
+
+If the script fails mid-flight it is **not idempotent** — clean up
+and re-run with the same version. The trap handles the early windows
+(restoring touched files, dropping a local release branch). For
+later windows it prints the exact cleanup commands:
+
+- After branch pushed / PR opened / CI failed:
+  `gh pr close <num> --delete-branch` (or `git push origin :release/v<ver>`)
+  then `git checkout main && git branch -D release/v<ver>`.
+- After merge but before tag push:
+  `git checkout main && git pull --ff-only && git tag v<ver> && git push origin v<ver>`.
+
+The header comment of `scripts/release.sh` is the canonical recovery
+doc — update both if the flow changes again.
 
 Linux release builds now produce both `.deb` (Ubuntu/Debian) and
 `.AppImage` (every distro) — both attached to the GitHub release

@@ -649,9 +649,27 @@ export function useSshBootstrapAll() {
   return useAppState((s) => s.sshBootstrap.byId)
 }
 
+export function useAliases() {
+  return useAppState((s) => s.aliases)
+}
+
+/** Per-id alias selector. Accepts null/undefined for the "no active
+ *  worktree" case so callers don't have to fall back to an empty-string
+ *  path (which would still subscribe, just to a permanently-undefined
+ *  key). Preferred over `useAliases()` for single-worktree consumers to
+ *  avoid whole-slice re-renders (CLAUDE.md anti-pattern #4). */
+export function useAliasForPath(path: string | null | undefined): string | undefined {
+  return useAppState((s) => (path ? s.aliases.byPath[path] : undefined))
+}
 
 export function useBrowser() {
   return useAppState((s) => s.browser)
+}
+
+/** The boot-time config.json load error, or null on a healthy load.
+ *  Drives InvalidConfigModal. */
+export function useConfigLoadError() {
+  return useAppState((s) => s.configHealth.loadError)
 }
 
 /** Session roster (controller + spectators) for a given terminal id.

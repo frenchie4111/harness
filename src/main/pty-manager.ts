@@ -1,5 +1,6 @@
 import * as pty from 'node-pty'
 import { execFile } from 'child_process'
+import { existsSync } from 'fs'
 import { log } from './debug'
 import { cleanupTerminalLog } from './hooks'
 import {
@@ -149,6 +150,19 @@ export class PtyManager {
       HARNESS_TERMINAL_ID: id
     } as Record<string, string>
     const shell = command || env.SHELL || '/bin/zsh'
+    // Pre-flight cwd existence check. node-pty maps a missing cwd to a
+    // confusing "posix_spawnp failed" — better to fail fast with a
+    // targeted message and surface it in the terminal buffer. See #185.
+    if (!existsSync(cwd)) {
+      log('pty', `spawn skipped id=${id} — cwd missing cwd=${cwd}`)
+      const msg = `\r\n\x1b[31mCan't launch terminal — worktree directory no longer exists: ${cwd}\x1b[0m\r\n`
+      this.sendSignal?.('terminal:data', id, msg)
+      this.store?.dispatch({
+        type: 'terminals/statusChanged',
+        payload: { id, status: 'idle', pendingTool: null }
+      })
+      return
+    }
     let ptyProcess: pty.IPty
     try {
       ptyProcess = pty.spawn(shell, args, {

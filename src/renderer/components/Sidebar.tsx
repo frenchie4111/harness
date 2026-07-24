@@ -37,6 +37,7 @@ interface SidebarProps {
   onNewWorktree: (repoRoot?: string) => void
   onContinueWorktree: (worktreePath: string, newBranchName: string) => Promise<void>
   onDeleteWorktree: (path: string) => Promise<void>
+  onPruneWorktrees: (repoRoot: string) => Promise<void>
   onRefresh: () => void
   repoRoots: string[]
   onAddRepo: () => void
@@ -58,6 +59,9 @@ interface SidebarProps {
   unifiedRepos: boolean
   onToggleUnifiedRepos: () => void
   onCollapseSidebar: () => void
+  editingAliasPath: string | null
+  onStartAliasEdit: (path: string) => void
+  onEndAliasEdit: () => void
 }
 
 export function Sidebar({
@@ -81,6 +85,7 @@ export function Sidebar({
   onNewWorktree,
   onContinueWorktree,
   onDeleteWorktree,
+  onPruneWorktrees,
   onRefresh,
   repoRoots,
   onAddRepo,
@@ -101,7 +106,10 @@ export function Sidebar({
   onToggleRepo,
   unifiedRepos,
   onToggleUnifiedRepos,
-  onCollapseSidebar
+  onCollapseSidebar,
+  editingAliasPath,
+  onStartAliasEdit,
+  onEndAliasEdit
 }: SidebarProps): JSX.Element {
   const backend = useBackend()
   const deletingPaths = useMemo(() => {
@@ -379,9 +387,13 @@ export function Sidebar({
                   deleting={deletingPaths.has(wt.path)}
                   onClick={() => onSelectWorktree(wt.path)}
                   onDelete={wt.isMain || deletingPaths.has(wt.path) ? undefined : () => onDeleteWorktree(wt.path)}
+                  onPrune={wt.prunable ? () => onPruneWorktrees(wt.repoRoot) : undefined}
                   onContinue={wt.isMain || deletingPaths.has(wt.path) ? undefined : () => beginContinue(wt.path, wt.branch)}
                   onSnooze={wt.isMain || deletingPaths.has(wt.path) ? undefined : (e) => onSnoozeRow(wt.path, e)}
                   onUnsnooze={wt.isMain || deletingPaths.has(wt.path) ? undefined : () => onUnsnoozeRow(wt.path)}
+                  isEditingAlias={editingAliasPath === wt.path}
+                  onStartAliasEdit={() => onStartAliasEdit(wt.path)}
+                  onEndAliasEdit={onEndAliasEdit}
                 />
                 {continueTarget?.path === wt.path && (
                   <div className="border-y-2 border-accent bg-panel-raised p-2.5 shadow-inner">

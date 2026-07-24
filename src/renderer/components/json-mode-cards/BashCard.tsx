@@ -1,4 +1,5 @@
 import { ToolCardChrome, trunc, type ToolCardProps } from './index'
+import { BashIcon } from './tool-icons'
 
 export function BashCard({ block, result, autoApproved, sessionAllowed }: ToolCardProps): JSX.Element {
   const cmd = String(block.input?.command ?? '')
@@ -8,6 +9,7 @@ export function BashCard({ block, result, autoApproved, sessionAllowed }: ToolCa
       name="Bash"
       subtitle={trunc(cmd, 80)}
       variant="warn"
+      icon={BashIcon}
       isError={result?.isError}
       autoApproved={autoApproved}
       sessionAllowed={sessionAllowed}

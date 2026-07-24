@@ -132,6 +132,7 @@ export function buildBackend(
       removeMeta?: { prNumber?: number; prState?: 'open' | 'draft' | 'merged' | 'closed' }
     ) => req('worktree:remove', repoRoot, path, force, removeMeta),
     dismissPendingDeletion: (path: string) => req('worktree:dismissPendingDeletion', path),
+    pruneWorktrees: (repoRoot: string) => req('worktrees:prune', repoRoot),
     getWorktreeDir: (repoRoot: string) => req('worktree:dir', repoRoot),
 
     listRepos: () => req('repo:list'),
@@ -170,6 +171,16 @@ export function buildBackend(
     onChangedFilesInvalidated: (callback: (worktreePath: string) => void) =>
       onActiveSignal('worktree:changedFilesInvalidated', (path) => {
         callback(path as string)
+      }),
+    watchFile: (worktreePath: string, relativePath: string) =>
+      sig('file:watchSubscribe', worktreePath, relativePath),
+    unwatchFile: (worktreePath: string, relativePath: string) =>
+      sig('file:watchUnsubscribe', worktreePath, relativePath),
+    onFileContentChanged: (
+      callback: (worktreePath: string, relativePath: string) => void
+    ) =>
+      onActiveSignal('file:contentChanged', (worktreePath, relativePath) => {
+        callback(worktreePath as string, relativePath as string)
       }),
     getFileDiff: (
       worktreePath: string,
@@ -378,12 +389,21 @@ export function buildBackend(
     snooze: (path: string, wakeAt: number) => req('snooze:snooze', path, wakeAt),
     unsnooze: (path: string) => req('snooze:unsnooze', path),
     setSnoozeDefaultDays: (days: number) => req('config:setSnoozeDefaultDays', days),
+    setAlias: (path: string, alias: string) => req('aliases:set', path, alias),
+    clearAlias: (path: string) => req('aliases:clear', path),
 
     setScratchpadText: (worktreePath: string, text: string) =>
       req('scratchpad:setText', worktreePath, text),
 
     openInEditor: (worktreePath: string, filePath?: string) =>
       req('editor:open', worktreePath, filePath),
+
+    // Corrupt-config recovery. Always-local: the broken config.json lives on
+    // the local Electron machine, and save-and-retry / reset relaunch it.
+    readRawConfig: () => reqLocal('config:readRawConfig'),
+    saveRawConfigAndRetry: (text: string) =>
+      reqLocal('config:saveRawConfigAndRetry', text),
+    resetConfigToDefaults: () => reqLocal('config:resetConfigToDefaults'),
 
     hasGithubToken: () => req('settings:hasGithubToken'),
     setGithubToken: (token: string) => req('settings:setGithubToken', token),

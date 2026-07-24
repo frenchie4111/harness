@@ -1,4 +1,5 @@
 import { ToolCardChrome, trunc, type ToolCardProps } from './index'
+import { GlobIcon } from './tool-icons'
 
 export function GlobCard({ block, result, autoApproved, sessionAllowed }: ToolCardProps): JSX.Element {
   const pattern = String(block.input?.pattern ?? '')
@@ -7,6 +8,7 @@ export function GlobCard({ block, result, autoApproved, sessionAllowed }: ToolCa
       name="Glob"
       subtitle={pattern}
       variant="info"
+      icon={GlobIcon}
       isError={result?.isError}
       autoApproved={autoApproved}
       sessionAllowed={sessionAllowed}

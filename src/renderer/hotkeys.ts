@@ -46,6 +46,7 @@ export type Action =
   | 'uiScaleDown'
   | 'uiScaleReset'
   | 'cycleWorktreeDetail'
+  | 'aliasWorktree'
 
 export interface Modifiers {
   cmd?: boolean
@@ -117,6 +118,7 @@ export const DEFAULT_HOTKEYS: Record<Action, HotkeyBinding> = {
   uiScaleDown: { key: '-', modifiers: { cmd: true } },
   uiScaleReset: { key: '=', modifiers: { cmd: true } },
   cycleWorktreeDetail: { key: 'i', modifiers: { cmd: true } },
+  aliasWorktree: { key: 'a', modifiers: { cmd: true, shift: true } },
 }
 
 /** Actions triggered by a gesture (e.g. double-tap Shift) rather than a
@@ -141,6 +143,19 @@ export function matchesBinding(e: KeyboardEvent, binding: HotkeyBinding): boolea
   const bindingKey = binding.key.length === 1 ? binding.key.toLowerCase() : binding.key
 
   return eventKey === bindingKey
+}
+
+// Monaco's input surface is an EditContext-backed div (not a textarea, not
+// contenteditable), so it's matched by container class rather than tag.
+export function isEditableTarget(el: HTMLElement | null): boolean {
+  if (!el) return false
+  return (
+    el.tagName === 'INPUT' ||
+    el.tagName === 'TEXTAREA' ||
+    el.tagName === 'SELECT' ||
+    el.isContentEditable ||
+    el.closest('.monaco-editor, .xterm') !== null
+  )
 }
 
 /**
@@ -256,7 +271,8 @@ export const ACTION_LABELS: Record<Action, string> = {
   uiScaleUp: 'Increase UI size',
   uiScaleDown: 'Decrease UI size',
   uiScaleReset: 'Reset UI size',
-  cycleWorktreeDetail: 'Cycle worktree detail (sidebar)'
+  cycleWorktreeDetail: 'Cycle worktree detail (sidebar)',
+  aliasWorktree: 'Alias worktree'
 }
 
 export type CategoryId =
@@ -304,7 +320,7 @@ export const ACTION_CATEGORIES: HotkeyCategory[] = [
   {
     id: 'worktree-mgmt',
     label: 'Worktree management',
-    actions: ['newWorktree', 'refreshWorktrees']
+    actions: ['newWorktree', 'refreshWorktrees', 'aliasWorktree']
   },
   {
     id: 'tabs',

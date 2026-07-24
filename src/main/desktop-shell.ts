@@ -38,7 +38,14 @@ import type { CompoundServerTransport } from './transport-compound'
 import type { PtyManager } from './pty-manager'
 import type { WorktreesFSM } from './worktrees-fsm'
 import type { Config } from './persistence'
-import { saveConfig, saveConfigSync, THEME_APP_BG } from './persistence'
+import {
+  saveConfig,
+  saveConfigSync,
+  THEME_APP_BG,
+  readRawConfigText,
+  saveRawConfigText,
+  discardCorruptConfigAndReset
+} from './persistence'
 import { DEFAULT_LIGHT_THEME, DEFAULT_DARK_THEME } from '../shared/state/settings'
 import { registerWindowControlHandlers } from './window-controls'
 import { sealAllActive } from './activity'
@@ -121,6 +128,11 @@ export interface DesktopShellStartDeps {
    *  starting pollers, etc. Owned by index.ts because most of it is
    *  mode-agnostic. */
   runBoot: () => Promise<void> | void
+  /** Dev-only: re-load config.json and re-seed the store + FSMs in place,
+   *  used by the corrupt-config handlers when not packaged (relaunch blanks
+   *  the screen under the dev server). Owned by index.ts (touches the store,
+   *  FSMs, and shared config object). */
+  reapplyConfigFromDisk: () => Promise<void>
   /** Reference held by index.ts so its handlers can stop the watcher
    *  during quitAndInstall. */
   getStopWatchingStatus: () => (() => void) | null
@@ -155,6 +167,7 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
     worktreesFSM,
     config,
     runBoot,
+    reapplyConfigFromDisk,
     getStopWatchingStatus,
     setStopWatchingStatus,
     onRepoAdded,
@@ -635,6 +648,38 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
 
     transport.onSignal('shell:openExternal', (_ctx, url: string) => {
       shell.openExternal(url)
+    })
+
+    // --- Corrupt-config recovery (see persistence.ts) ---
+    // These fire while the renderer is showing InvalidConfigModal. Production
+    // relaunches for a clean reboot off the fixed file; dev can't (relaunch
+    // tears down the Vite dev server → blank screen) so it re-seeds in place
+    // and reloads the renderer.
+    const applyRecoveredConfig = async (): Promise<void> => {
+      if (app.isPackaged) {
+        app.relaunch()
+        app.exit(0)
+        return
+      }
+      await reapplyConfigFromDisk()
+      for (const win of BrowserWindow.getAllWindows()) win.reload()
+    }
+
+    transport.onRequest('config:readRawConfig', (_ctx) => {
+      return { text: readRawConfigText() }
+    })
+
+    transport.onRequest('config:saveRawConfigAndRetry', async (_ctx, text: string) => {
+      const result = saveRawConfigText(text)
+      if (!result.ok) return { ok: false as const, error: result.error }
+      await applyRecoveredConfig()
+      return { ok: true as const }
+    })
+
+    transport.onRequest('config:resetConfigToDefaults', async (_ctx) => {
+      discardCorruptConfigAndReset()
+      await applyRecoveredConfig()
+      return { ok: true as const }
     })
 
     transport.onRequest('config:openThemesFolder', async (_ctx) => {

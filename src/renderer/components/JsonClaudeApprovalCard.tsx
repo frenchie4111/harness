@@ -4,6 +4,12 @@ import {
   type JsonClaudePendingApproval
 } from '../../shared/state/json-claude'
 import { formatPendingTool } from '../pending-tool'
+import {
+  extractArgs,
+  getToolDisplay,
+  prettyToolName
+} from './json-mode-cards/tool-display'
+import { ArgsBlock } from './json-mode-cards/ArgsDisplay'
 import { useJsonClaudeSession, useSettings } from '../store'
 import { useBackend } from '../backend'
 import {
@@ -68,6 +74,8 @@ export function JsonClaudeApprovalCard({
     () => formatPendingTool({ name: approval.toolName, input: approval.input }),
     [approval.toolName, approval.input]
   )
+  const display = useMemo(() => getToolDisplay(approval.toolName), [approval.toolName])
+  const parsedArgs = useMemo(() => extractArgs(approval.input), [approval.input])
 
   const session = useJsonClaudeSession(approval.sessionId)
   const cwd = session?.worktreePath
@@ -90,7 +98,7 @@ export function JsonClaudeApprovalCard({
   )
   const sessionGrantLabel = isEditTool
     ? 'Allow edits this session'
-    : `Allow ${approval.toolName} this session`
+    : `Allow ${prettyToolName(approval.toolName)} this session`
   // For edit-class tools the button flips permissionMode instead of
   // adding to the per-tool allow set — claude is killed+respawned with
   // --permission-mode acceptEdits and edits stop hitting the bridge
@@ -199,6 +207,7 @@ export function JsonClaudeApprovalCard({
           <span className="text-xs font-semibold uppercase tracking-wide text-danger shrink-0">
             Needs approval
           </span>
+          {display.icon && <display.icon className="icon-sm shrink-0" />}
           <span className="text-xs font-mono text-fg-bright truncate">{summary}</span>
         </div>
       </div>
@@ -287,10 +296,10 @@ export function JsonClaudeApprovalCard({
       )}
 
       {mode === 'summary' && (
-        <div className="px-3 py-2 space-y-2">
+        <div className="space-y-2 pb-2">
           {approval.toolName === 'Bash' &&
           typeof approval.input?.command === 'string' ? (
-            <>
+            <div className="px-3 pt-2 space-y-2">
               <pre className="text-xs font-mono bg-app/40 rounded p-2 overflow-x-auto max-h-48 whitespace-pre-wrap">
                 {String(approval.input.command)}
               </pre>
@@ -300,12 +309,13 @@ export function JsonClaudeApprovalCard({
                     {String(approval.input.description)}
                   </div>
                 )}
-            </>
+            </div>
+          ) : parsedArgs.length > 0 ? (
+            <ArgsBlock args={parsedArgs} rawInput={approval.input} />
           ) : (
-            <pre className="text-xs font-mono bg-app/40 rounded p-2 overflow-x-auto max-h-48 whitespace-pre-wrap">
-              {tryFormatInput(approval.input)}
-            </pre>
+            <div className="px-3 pt-2 text-xs text-muted italic">No input.</div>
           )}
+          <div className="px-3 space-y-2">
           <div className="flex items-center gap-1.5 flex-wrap">
             <button
               onClick={allow}
@@ -343,6 +353,7 @@ export function JsonClaudeApprovalCard({
             >
               Deny
             </button>
+          </div>
           </div>
         </div>
       )}

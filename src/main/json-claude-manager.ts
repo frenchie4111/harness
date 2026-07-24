@@ -393,6 +393,19 @@ export class JsonClaudeManager {
       log('json-claude', `create no-op — already running sessionId=${sessionId}`)
       return
     }
+    // Pre-flight cwd check. Node's child_process.spawn reports a missing
+    // cwd as ENOENT against the executable path — a confusing surface,
+    // and the failure lands in the async 'error' event where every
+    // downstream write to stdin (etc.) would throw. Cheaper and clearer
+    // to fail here with a directed error card.
+    if (!existsSync(worktreePath)) {
+      const reason = `Worktree directory no longer exists on disk: ${worktreePath}`
+      log('json-claude', `create cwd missing sessionId=${sessionId} cwd=${worktreePath}`)
+      this.dispatchState(sessionId, 'exited', { exitReason: reason })
+      this.dispatchSpawnFailedEntry(sessionId, reason)
+      this.opts.closeApprovalSession(sessionId)
+      return
+    }
     log('json-claude', `create begin sessionId=${sessionId} mode=${permissionMode}`)
     const socketPath = this.opts.getApprovalSocketPath(sessionId)
 
@@ -544,7 +557,7 @@ export class JsonClaudeManager {
       const reason = err instanceof Error ? err.message : String(err)
       log('json-claude', `spawn failed sessionId=${sessionId}`, reason)
       this.dispatchState(sessionId, 'exited', { exitReason: reason })
-      this.dispatchSubprocessExitEntry(sessionId, reason)
+      this.dispatchSpawnFailedEntry(sessionId, reason)
       this.opts.closeApprovalSession(sessionId)
       return
     }
@@ -569,7 +582,26 @@ export class JsonClaudeManager {
       log('json-claude', `claude spawn complete sessionId=${sessionId} pid=${proc.pid ?? '?'}`)
     })
     proc.once('error', (err) => {
-      log('json-claude', `claude spawn error sessionId=${sessionId}`, err.message)
+      const reason = err.message
+      log('json-claude', `claude spawn error sessionId=${sessionId}`, reason)
+      // Stale-error guard mirrors the exit handler: a kill()+create()
+      // cycle can register a fresh instance before this async event
+      // fires. Bail so we don't clobber the replacement.
+      if (this.instances.get(sessionId) !== instance) return
+      // Removing the instance from the map before dispatching means the
+      // subsequent 'exit' event's stale-instance guard will bail — we
+      // only surface one card, not two.
+      this.instances.delete(sessionId)
+      this.clearPartial(instance)
+      this.dispatchState(sessionId, 'exited', { exitReason: reason })
+      this.dispatchSpawnFailedEntry(sessionId, reason)
+      this.dispatchBusy(sessionId, false)
+      this.opts.closeApprovalSession(sessionId)
+      // Best-effort: unhook streams so buffered stdin/stdout writes
+      // (typically none, but just in case) don't throw on the dead pipe.
+      try { proc.stdin.destroy() } catch { /* ignore */ }
+      try { proc.stdout.destroy() } catch { /* ignore */ }
+      try { proc.stderr.destroy() } catch { /* ignore */ }
     })
 
     // Kick a slash-command probe in the background. Result populates the
@@ -1053,6 +1085,14 @@ export class JsonClaudeManager {
    *  in the same worktree get it instantly. */
   private probeSlashCommands(cwd: string): Promise<string[]> {
     return new Promise((resolve) => {
+      // Pre-flight cwd check — same rationale as create(). The probe is
+      // best-effort (empty result → autocomplete just misses a bit of
+      // context), so a missing cwd is a hard skip, no card, no dispatch.
+      if (!existsSync(cwd)) {
+        log('json-claude', `probe skipped — cwd missing cwd=${cwd}`)
+        resolve([])
+        return
+      }
       const useSystemClaude = this.opts.getUseSystemClaude()
       const claudeCommand = this.opts.getClaudeCommand() || 'claude'
       const args = [
@@ -1157,6 +1197,23 @@ export class JsonClaudeManager {
           log('json-claude', `probe exited before init cwd=${cwd}`)
           resolve([])
         }
+      })
+      // Async spawn errors (ENOENT etc.) land here. Without a listener,
+      // Node re-emits the error at the process level and takes down the
+      // main process — the same crash chain issue #185 traces.
+      proc.on('error', (err) => {
+        if (resolved) return
+        resolved = true
+        clearTimeout(timeout)
+        log(
+          'json-claude',
+          `probe spawn error cwd=${cwd}`,
+          err instanceof Error ? err.message : String(err)
+        )
+        try { proc.stdin.destroy() } catch { /* ignore */ }
+        try { proc.stdout.destroy() } catch { /* ignore */ }
+        try { proc.stderr.destroy() } catch { /* ignore */ }
+        resolve([])
       })
       // Pump the message + interrupt. Send-then-interrupt makes claude emit
       // init (which is what we want) then abort the turn at $0 cost.
@@ -1745,6 +1802,33 @@ export class JsonClaudeManager {
           timestamp: Date.now(),
           errorKind: 'subprocess-exit',
           errorMessage: exitReason || 'Session ended unexpectedly',
+          exitWasClean: false
+        }
+      }
+    })
+  }
+
+  // Fires when the child process couldn't be spawned at all — either the
+  // sync spawn() throw, the async 'error' event (ENOENT etc.), or the
+  // pre-flight cwd-missing guard. Distinct errorKind from subprocess-exit
+  // so the renderer can surface a targeted "couldn't launch" message
+  // rather than the generic "session ended" card. Restart still uses the
+  // same recovery button — that path is worth trying after the user
+  // prunes a stale worktree.
+  private dispatchSpawnFailedEntry(
+    sessionId: string,
+    reason: string
+  ): void {
+    this.store.dispatch({
+      type: 'jsonClaude/entryAppended',
+      payload: {
+        sessionId,
+        entry: {
+          entryId: `${sessionId}-spawn-fail-${Date.now()}`,
+          kind: 'error',
+          timestamp: Date.now(),
+          errorKind: 'spawn-failed',
+          errorMessage: reason || "Couldn't launch Claude",
           exitWasClean: false
         }
       }

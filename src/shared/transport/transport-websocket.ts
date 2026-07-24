@@ -169,35 +169,16 @@ export class WebSocketClientTransport implements ClientTransport {
         opened = true
         this.backoffMs = this.initialBackoffMs
         this.opts.onConnectionChange?.(true)
-        // Fire-and-forget: the snapshot request lets the store mirror
-        // reconcile after a reconnect gap. First connect also uses this
-        // path, so `getStateSnapshot()` called by the bootstrapper
-        // completes against this same fetch.
-        this.sendSnapshotRequest()
-          .then((snap) => {
-            this.opts.onSnapshot?.(snap)
+        // Reconcile any state gap before telling UI subscribers to re-run
+        // join-on-connect side effects. If a delayed snapshot landed after
+        // terminal:join, it could overwrite the restored controller roster
+        // with the stale "old client disconnected" state and leave PTY input
+        // silently gated off until the user opened a new tab.
+        this.finishOpenHandshake()
+          .then(() => resolve())
+          .catch((err) => {
+            reject(err instanceof Error ? err : new Error(String(err)))
           })
-          .catch(() => {
-            // handled when the socket errors out
-          })
-        // The server mints a new UUID per WebSocket, so the renderer's
-        // cached clientId is stale after every reconnect. Re-fetch and
-        // notify subscribers so they can refresh their mirror's id and
-        // re-fire join-on-mount side effects (terminal:join etc.).
-        this.request('transport:getClientId')
-          .then((id) => {
-            for (const l of this.reconnectListeners) {
-              try {
-                l(id as string)
-              } catch {
-                // swallow — a flaky listener mustn't kill the socket
-              }
-            }
-          })
-          .catch(() => {
-            // handled when the socket errors out
-          })
-        resolve()
       })
 
       ws.addEventListener('message', (evt) => {
@@ -248,6 +229,24 @@ export class WebSocketClientTransport implements ClientTransport {
   private async ensureConnected(): Promise<void> {
     if (this.ws && this.ws.readyState === this.WebSocketCtor.OPEN) return
     await this.connect()
+  }
+
+  private async finishOpenHandshake(): Promise<void> {
+    const snap = await this.sendSnapshotRequest()
+    this.opts.onSnapshot?.(snap)
+
+    // The server mints a new UUID per WebSocket, so the renderer's
+    // cached clientId is stale after every reconnect. Re-fetch and
+    // notify subscribers so they can refresh their mirror's id and
+    // re-fire join-on-mount side effects (terminal:join etc.).
+    const id = await this.request('transport:getClientId')
+    for (const l of this.reconnectListeners) {
+      try {
+        l(id as string)
+      } catch {
+        // swallow — a flaky listener mustn't kill the socket
+      }
+    }
   }
 
   private sendSnapshotRequest(): Promise<StateSnapshot> {

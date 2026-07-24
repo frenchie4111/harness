@@ -8,6 +8,7 @@ import { MonacoDiffEditor } from './MonacoDiffEditor'
 import { Tooltip } from './Tooltip'
 import { useSettings } from '../store'
 import { useBackend } from '../backend'
+import { useFileContentChange } from '../hooks/useFileContentChange'
 import { scaledEditorFontSize } from '../../shared/state/settings'
 
 interface ReviewDiffPaneProps {
@@ -216,38 +217,57 @@ export function ReviewDiffPane({
   const editorRef = useRef<monaco.editor.IStandaloneDiffEditor | null>(null)
   const viewZonesRef = useRef<ViewZoneEntry[]>([])
 
+  // Working-tree diffs reflect the live file on disk; commit-range diffs
+  // are immutable. Only the working-tree case is watched for refresh.
+  const isWorkingTreeDiff = !commitHash && !commitRange
+  const filePathStr = file?.path
+  const fileStaged = file?.staged
+  const fromHash = commitRange?.fromHash
+  const toHash = commitRange?.toHash
+
+  const loadSides = useCallback(
+    (showLoading: boolean): (() => void) => {
+      if (!filePathStr) {
+        setSides(null)
+        return () => {}
+      }
+      let cancelled = false
+      if (showLoading) setLoading(true)
+      const promise =
+        fromHash && toHash
+          ? backend.getCommitRangeFileDiffSides(worktreePath, fromHash, toHash, filePathStr)
+          : commitHash
+            ? backend.getCommitFileDiffSides(worktreePath, commitHash, filePathStr)
+            : backend.getFileDiffSides(worktreePath, filePathStr, !!fileStaged, mode)
+      promise
+        .then((result) => {
+          if (!cancelled) setSides(result)
+        })
+        .catch(() => {
+          if (!cancelled) setSides(null)
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false)
+        })
+      return () => {
+        cancelled = true
+      }
+    },
+    [worktreePath, filePathStr, fileStaged, mode, commitHash, fromHash, toHash, backend]
+  )
+
   useEffect(() => {
-    if (!file) {
-      setSides(null)
-      return
-    }
-    let cancelled = false
-    setLoading(true)
     setCommentLine(null)
-    const promise = commitRange
-      ? backend.getCommitRangeFileDiffSides(
-          worktreePath,
-          commitRange.fromHash,
-          commitRange.toHash,
-          file.path
-        )
-      : commitHash
-        ? backend.getCommitFileDiffSides(worktreePath, commitHash, file.path)
-        : backend.getFileDiffSides(worktreePath, file.path, file.staged, mode)
-    promise
-      .then((result) => {
-        if (!cancelled) setSides(result)
-      })
-      .catch(() => {
-        if (!cancelled) setSides(null)
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-    return () => {
-      cancelled = true
+    return loadSides(true)
+  }, [loadSides])
+
+  useFileContentChange(
+    isWorkingTreeDiff ? worktreePath : undefined,
+    isWorkingTreeDiff ? filePathStr : undefined,
+    () => {
+      loadSides(false)
     }
-  }, [worktreePath, file?.path, file?.staged, mode, commitHash, commitRange?.fromHash, commitRange?.toHash])
+  )
 
   const clearViewZones = useCallback(() => {
     const editor = editorRef.current

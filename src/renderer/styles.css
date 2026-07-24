@@ -442,6 +442,21 @@
   margin-left: -1.4em;
 }
 
+/* Tiny inline swatch the rehypeColorHex plugin inserts after a hex
+   color literal (#fff, #FF00AA, etc.) in chat markdown. em-based so it
+   tracks the surrounding text size; border keeps near-background
+   colors visible against the panel. */
+.hex-color-swatch {
+  display: inline-block;
+  width: 0.85em;
+  height: 0.85em;
+  margin-left: 0.2em;
+  vertical-align: -0.1em;
+  border-radius: 0.2em;
+  border: 1px solid var(--color-border-strong);
+  box-sizing: border-box;
+}
+
 /* Streaming-cursor for partial assistant entries — appears after the
    markdown body while a json-claude turn is still arriving via
    --include-partial-messages. Cleared by the consolidated assistant

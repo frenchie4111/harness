@@ -1,4 +1,5 @@
-import { GitPullRequest, RotateCw, Trash2, Loader2, Moon, TriangleAlert, AlarmClock } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { GitPullRequest, RotateCw, Trash2, Loader2, Moon, TriangleAlert, AlarmClock, Ghost } from 'lucide-react'
 import type { Worktree, PtyStatus, PendingTool, PRStatus } from '../types'
 import { isPRMerged } from '../../shared/state/prs'
 import { formatWakeAt } from '../../shared/state/snooze'
@@ -11,6 +12,11 @@ import { formatPendingTool } from '../pending-tool'
 import { HotkeyBadge } from './HotkeyBadge'
 import { useMetaHeld } from '../hooks/useMetaHeld'
 import type { Action } from '../hotkeys'
+import { ContextMenu, type ContextMenuItem } from './ContextMenu'
+import { useAliasForPath } from '../store'
+import { useBackend } from '../backend'
+import { displayLabel } from '../worktree-display'
+import { ALIAS_MAX_LEN } from '../../shared/state/aliases'
 
 interface WorktreeTabProps {
   worktree: Worktree
@@ -41,6 +47,12 @@ interface WorktreeTabProps {
    *  caller can decide based on altKey. */
   onSnooze?: (e: React.MouseEvent) => void
   onUnsnooze?: () => void
+  /** Only present when `worktree.prunable === true`. Invokes
+   *  `git worktree prune` at the repo root and refreshes the list. */
+  onPrune?: () => void
+  isEditingAlias?: boolean
+  onStartAliasEdit?: () => void
+  onEndAliasEdit?: () => void
 }
 
 const STATUS_COLORS: Record<PtyStatus | 'merged', string> = {
@@ -85,11 +97,15 @@ const PR_STATE_COLOR: Record<string, string> = {
   closed: 'text-danger'
 }
 
-export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActive, prStatus, isMerged, repoLabel, cmdOrdinal, deleting, isSnoozed, snoozeWakeAt, onClick, onDelete, onContinue, onSnooze, onUnsnooze }: WorktreeTabProps): JSX.Element {
+export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActive, prStatus, isMerged, repoLabel, cmdOrdinal, deleting, isSnoozed, snoozeWakeAt, onClick, onDelete, onContinue, onSnooze, onUnsnooze, onPrune, isEditingAlias, onStartAliasEdit, onEndAliasEdit }: WorktreeTabProps): JSX.Element {
   const metaHeld = useMetaHeld()
   const configuredWorktreeDetail = useAppState((s) => s.settings.worktreeDetail)
   const worktreeDetailOverride = useWorktreeDetailOverride()
   const worktreeDetail = worktreeDetailOverride ?? configuredWorktreeDetail
+  const currentAlias = useAliasForPath(worktree.path)
+  const backend = useBackend()
+  const label = displayLabel(worktree, currentAlias, metaHeld)
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   const displayStatus: PtyStatus | 'merged' = isMerged ? 'merged' : status
   const showPendingTool = displayStatus === 'needs-approval' && pendingTool
   const canContinue = !!onContinue && isPRMerged(prStatus)
@@ -113,6 +129,11 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
   return (
     <div
       onClick={onClick}
+      onContextMenu={(e) => {
+        if (deleting) return
+        e.preventDefault()
+        setMenu({ x: e.clientX, y: e.clientY })
+      }}
       className={`group w-full text-left px-3 py-2 flex items-center gap-2 transition-colors cursor-pointer ${
         deleting ? 'opacity-60 italic' : ''
       } ${
@@ -151,17 +172,44 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
         </span>
       )}
       <div className="min-w-0 flex-1">
-        <div className="text-sm font-medium truncate flex items-center gap-1">
-          {(() => {
-            const tip = detachedLikeTooltip(worktree.branch)
-            return tip ? (
-              <span className="shrink-0 inline-flex" title={tip} aria-label={tip}>
-                <TriangleAlert className="icon-xs text-warning" />
+        {isEditingAlias ? (
+          <AliasEditor
+            initialValue={currentAlias ?? ''}
+            onCommit={(value) => {
+              void backend.setAlias(worktree.path, value)
+              onEndAliasEdit?.()
+            }}
+            onCancel={() => onEndAliasEdit?.()}
+          />
+        ) : (
+          <Tooltip
+            label={currentAlias ? `${currentAlias} · ${worktree.branch}` : worktree.branch}
+            side="right"
+          >
+            <div className="text-sm font-medium truncate flex items-center gap-1">
+              {(() => {
+                const tip = detachedLikeTooltip(worktree.branch)
+                return tip ? (
+                  <span className="shrink-0 inline-flex" title={tip} aria-label={tip}>
+                    <TriangleAlert className="icon-xs text-warning" />
+                  </span>
+                ) : null
+              })()}
+              <span className={`truncate ${worktree.prunable ? 'line-through text-dim' : ''}`}>
+                {label}
               </span>
-            ) : null
-          })()}
-          <span className="truncate">{worktree.branch}</span>
-        </div>
+              {worktree.prunable && (
+                <span
+                  className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm bg-warning/15 text-warning text-[10px] uppercase tracking-wide"
+                  title={worktree.prunableReason || 'On-disk directory missing — click the ghost icon to run `git worktree prune`.'}
+                >
+                  <Ghost className="icon-2xs" />
+                  stale
+                </span>
+              )}
+            </div>
+          </Tooltip>
+        )}
         {showPendingTool ? (
           <div className="text-xs text-danger truncate font-mono" title={formatPendingTool(pendingTool!)}>
             {formatPendingTool(pendingTool!)}
@@ -262,7 +310,20 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
           </button>
         </Tooltip>
       )}
-      {onDelete && (
+      {onPrune && worktree.prunable && (
+        <Tooltip label="Prune stale worktree (git worktree prune)" side="left">
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onPrune()
+            }}
+            className="hidden group-hover:flex text-warning hover:text-fg-bright transition-colors shrink-0 cursor-pointer"
+          >
+            <Trash2 className="icon-xs" />
+          </button>
+        </Tooltip>
+      )}
+      {onDelete && !worktree.prunable && (
         <Tooltip label="Remove worktree" side="left">
           <button
             onClick={(e) => {
@@ -282,6 +343,65 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
           className="shrink-0"
         />
       )}
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          items={buildAliasMenuItems({
+            hasAlias: currentAlias !== undefined,
+            onEdit: () => onStartAliasEdit?.(),
+            onClear: () => void backend.clearAlias(worktree.path)
+          })}
+          onClose={() => setMenu(null)}
+        />
+      )}
     </div>
+  )
+}
+
+function buildAliasMenuItems(args: {
+  hasAlias: boolean
+  onEdit: () => void
+  onClear: () => void
+}): ContextMenuItem[] {
+  const items: ContextMenuItem[] = [
+    { label: args.hasAlias ? 'Rename Alias…' : 'Alias Worktree…', onClick: args.onEdit }
+  ]
+  if (args.hasAlias) {
+    items.push({ label: 'Clear Alias', onClick: args.onClear })
+  }
+  return items
+}
+
+interface AliasEditorProps {
+  initialValue: string
+  onCommit: (value: string) => void
+  onCancel: () => void
+}
+
+function AliasEditor({ initialValue, onCommit, onCancel }: AliasEditorProps): JSX.Element {
+  const [value, setValue] = useState(initialValue)
+  const inputRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    inputRef.current?.focus()
+    inputRef.current?.select()
+  }, [])
+  return (
+    <input
+      ref={inputRef}
+      value={value}
+      maxLength={ALIAS_MAX_LEN}
+      data-hotkeys="ignore"
+      onChange={(e) => setValue(e.target.value)}
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      onKeyDown={(e) => {
+        e.stopPropagation()
+        if (e.key === 'Enter') onCommit(value)
+        else if (e.key === 'Escape') onCancel()
+      }}
+      onBlur={() => onCommit(value)}
+      className="text-sm font-medium bg-surface border border-border-strong rounded px-1 py-0 w-full outline-none focus:border-accent"
+    />
   )
 }

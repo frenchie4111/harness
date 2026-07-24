@@ -225,6 +225,7 @@ export interface ElectronAPI {
     removeMeta?: { prNumber?: number; prState?: PRStatus['state'] }
   ): Promise<{ queued: true }>
   dismissPendingDeletion(path: string): Promise<boolean>
+  pruneWorktrees(repoRoot: string): Promise<boolean>
   getWorktreeDir(repoRoot: string): Promise<string>
   listRepos(): Promise<string[]>
   addRepo(): Promise<AddRepoResult>
@@ -296,6 +297,11 @@ export interface ElectronAPI {
   watchChangedFiles(worktreePath: string): void
   unwatchChangedFiles(worktreePath: string): void
   onChangedFilesInvalidated(callback: (worktreePath: string) => void): () => void
+  watchFile(worktreePath: string, relativePath: string): void
+  unwatchFile(worktreePath: string, relativePath: string): void
+  onFileContentChanged(
+    callback: (worktreePath: string, relativePath: string) => void
+  ): () => void
   getFileDiff(
     worktreePath: string,
     filePath: string,
@@ -388,7 +394,15 @@ export interface ElectronAPI {
   unsnooze(path: string): Promise<boolean>
   setSnoozeDefaultDays(days: number): Promise<boolean>
   setScratchpadText(worktreePath: string, text: string): Promise<boolean>
+  setAlias(path: string, alias: string): Promise<boolean>
+  clearAlias(path: string): Promise<boolean>
   openInEditor(worktreePath: string, filePath?: string): Promise<{ ok: true } | { ok: false; error: string }>
+
+  // Corrupt-config recovery (InvalidConfigModal). save/reset re-apply on
+  // success (relaunch in prod), so their result only resolves on failure.
+  readRawConfig(): Promise<{ text: string }>
+  saveRawConfigAndRetry(text: string): Promise<{ ok: true } | { ok: false; error: string }>
+  resetConfigToDefaults(): Promise<{ ok: true } | { ok: false; error: string }>
 
   panesAddTab(wtPath: string, tab: TerminalTab, paneId?: string): Promise<boolean>
   panesCloseTab(wtPath: string, tabId: string): Promise<boolean>

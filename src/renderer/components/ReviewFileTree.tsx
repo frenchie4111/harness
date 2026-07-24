@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback, useMemo, useState } from 'react'
 import { ChevronRight, Folder, FolderOpen, FileText } from 'lucide-react'
 import type { ChangedFile } from '../types'
+import { isEditableTarget } from '../hotkeys'
 
 export interface ReviewComment {
   id: string
@@ -207,10 +208,7 @@ export function ReviewFileTree({
 
   useEffect(() => {
     const handler = (e: KeyboardEvent): void => {
-      if (
-        e.target instanceof HTMLTextAreaElement ||
-        e.target instanceof HTMLInputElement
-      ) {
+      if (isEditableTarget(e.target as HTMLElement | null)) {
         return
       }
       if (e.key === 'j' || (e.key === 'ArrowDown' && !e.metaKey)) {

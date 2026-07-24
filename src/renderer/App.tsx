@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { useSettings, usePrs, useOnboarding, useHooks, useWorktrees, useTerminals, usePanes, useLastActive, useUpdater, useRepoConfigs, useSnooze, useAnnouncements } from './store'
+import { useSettings, usePrs, useOnboarding, useHooks, useWorktrees, useTerminals, usePanes, useLastActive, useUpdater, useRepoConfigs, useSnooze, useAnnouncements, useConfigLoadError, useAliasForPath } from './store'
 import { useBackend } from './backend'
 import { useTailLineBuffer } from './hooks/useTailLineBuffer'
 import { useTabHandlers } from './hooks/useTabHandlers'
@@ -44,6 +44,7 @@ import { ResolveRepoModal } from './components/ResolveRepoModal'
 import { RepoAddErrorModal } from './components/RepoAddErrorModal'
 import { ReportIssueScreen, onOpenReportIssue, type OpenReportIssueDetail } from './components/ReportIssueScreen'
 import { AddBackendModal } from './components/AddBackendModal'
+import { InvalidConfigModal } from './components/InvalidConfigModal'
 import { MonacoWorkerFailedBanner } from './components/MonacoWorkerFailedBanner'
 import iconUrl from '../../resources/icon.png'
 import { PerfMonitorHUD } from './components/PerfMonitorHUD'
@@ -107,6 +108,21 @@ function DesktopApp(): JSX.Element {
   const [activeWorktreeId, setActiveWorktreeId] = useState<string | null>(
     () => worktrees[0]?.path ?? null
   )
+  const activeAlias = useAliasForPath(activeWorktreeId)
+  useEffect(() => {
+    if (!activeWorktreeId) {
+      document.title = 'Harness'
+      return
+    }
+    const wt = worktrees.find((w) => w.path === activeWorktreeId)
+    if (!wt) {
+      document.title = 'Harness'
+      return
+    }
+    const label = activeAlias ?? wt.branch
+    document.title = `${label} — Harness`
+  }, [activeWorktreeId, activeAlias, worktrees])
+  const [editingAliasPath, setEditingAliasPath] = useState<string | null>(null)
   // Pane / tab tree lives in the main-process store; the renderer reads it
   // and dispatches every mutation as an IPC method call. Per-client UI
   // focus (which pane in each worktree the user last interacted with) is
@@ -244,7 +260,12 @@ function DesktopApp(): JSX.Element {
   // here so the rendered sidebar never exceeds the title-segment edge.
   const effectiveSidebarWidth = Math.min(sidebarWidth, sidebarMaxPx)
   const [showNewWorktree, setShowNewWorktree] = useState(false)
+  // Set by the sidebar "+" to pre-pick a repo; transient — cleared on close so
+  // the next open (e.g. cmd+N) defaults to the active worktree's repo instead.
   const [newWorktreeRepo, setNewWorktreeRepo] = useState<string | undefined>(undefined)
+  useEffect(() => {
+    if (!showNewWorktree) setNewWorktreeRepo(undefined)
+  }, [showNewWorktree])
   // Worktrees whose git creation is still running (or has errored). They
   // show in the sidebar immediately on submit so the user sees the new entry
   // right away instead of waiting on the modal.
@@ -315,6 +336,8 @@ function DesktopApp(): JSX.Element {
   // config on boot so it's already correct on first render.
   const { quest: questStep } = useOnboarding()
   const questVisitedRef = useRef<Set<string>>(new Set())
+
+  const configLoadError = useConfigLoadError()
 
   // Count of "real" worktrees the user has spawned — main repo doesn't count
   // as an agent. Used by empty state + quest advancement.
@@ -639,6 +662,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
     handleContinueWorktree,
     handleDeleteWorktree,
     handleBulkDeleteWorktrees,
+    handlePruneWorktrees,
     handleDismissPendingDeletion,
     repoPickerOpen,
     handleRepoPickerSelect,
@@ -795,7 +819,8 @@ const setQuestStep = useCallback((next: QuestStep) => {
     handleSelectTab,
     handleSplitPane,
     handleRefreshWorktrees,
-    setShowSettings
+    setShowSettings,
+    onStartAliasEdit: setEditingAliasPath
   })
 
   // File → Close Tab (Cmd+W). The accelerator lives on the menu item
@@ -928,6 +953,23 @@ const setQuestStep = useCallback((next: QuestStep) => {
       <RepoAddErrorModal message={repoAddPrompt.message} onDismiss={handleDismissRepoPrompt} />
     ) : null
 
+
+  // A corrupt config preempts everything, including the onboarding screen
+  // below — a corrupt load lands on empty defaults, which would otherwise
+  // trigger first-run onboarding underneath the recovery modal.
+  if (configLoadError) {
+    return (
+      <HotkeysProvider bindings={resolvedHotkeys}>
+        <div className="flex h-full flex-col">
+          <div className="drag-region h-10 shrink-0 flex items-stretch pl-20">
+            <AppTitleSegment />
+          </div>
+          <div className="flex-1" />
+        </div>
+        <InvalidConfigModal />
+      </HotkeysProvider>
+    )
+  }
 
   if (repoRoots.length === 0 || previewOnboarding) {
     const step1Complete = themeChosen
@@ -1476,6 +1518,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
             }}
             onContinueWorktree={handleContinueWorktree}
             onDeleteWorktree={handleDeleteWorktree}
+            onPruneWorktrees={handlePruneWorktrees}
             onRefresh={handleRefreshWorktrees}
             repoRoots={repoRoots}
             onAddRepo={handleAddRepo}
@@ -1502,6 +1545,9 @@ const setQuestStep = useCallback((next: QuestStep) => {
             unifiedRepos={unifiedRepos}
             onToggleUnifiedRepos={() => setUnifiedRepos((v) => !v)}
             onCollapseSidebar={() => setSidebarVisible(false)}
+            editingAliasPath={editingAliasPath}
+            onStartAliasEdit={setEditingAliasPath}
+            onEndAliasEdit={() => setEditingAliasPath(null)}
           /></div></div>
         )}
         {!singleScreenMode && !sidebarVisible && (

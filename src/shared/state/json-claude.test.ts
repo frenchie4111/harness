@@ -1234,6 +1234,31 @@ describe('jsonClaudeReducer', () => {
     })
   })
 
+  it('entryAppended preserves errorKind=spawn-failed + errorMessage on an error entry', () => {
+    let state = seedSession(initialJsonClaude)
+    const entry: JsonClaudeChatEntry = {
+      entryId: `${SID}-spawn-fail-1`,
+      kind: 'error',
+      errorKind: 'spawn-failed',
+      errorMessage:
+        'Worktree directory no longer exists on disk: /tmp/gone',
+      exitWasClean: false,
+      timestamp: 42
+    }
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/entryAppended',
+      payload: { sessionId: SID, entry }
+    })
+    expect(state.sessions[SID].entries).toEqual([entry])
+    const stored = state.sessions[SID].entries[0]
+    expect(stored.kind).toBe('error')
+    expect(stored.errorKind).toBe('spawn-failed')
+    expect(stored.errorMessage).toBe(
+      'Worktree directory no longer exists on disk: /tmp/gone'
+    )
+    expect(stored.exitWasClean).toBe(false)
+  })
+
   it('entryAppended carries the rate-limit-error errorKind through', () => {
     let state = seedSession(initialJsonClaude)
     const entry: JsonClaudeChatEntry = {

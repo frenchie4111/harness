@@ -2,6 +2,7 @@ import { createServer, IncomingMessage, ServerResponse } from 'http'
 import { randomBytes, randomUUID } from 'crypto'
 import type { AgentKind } from '../shared/state/terminals'
 import { addWorktree, listWorktrees, defaultWorktreeDir, WorktreeInfo } from './worktree'
+import { normalizeAlias } from '../shared/state/aliases'
 import { log } from './debug'
 
 export interface BrowserTabSummary {
@@ -115,6 +116,10 @@ export interface ControlServerDeps {
   getBrowserPerms: () => BrowserPerms
   browser: BrowserQueries
   shell: ShellQueries
+  /** Trim + 80-char clamp + dispatch. Matches the aliases:set IPC handler.
+   * Empty-after-trim routes to clearAlias — never stores an empty alias. */
+  setAlias: (worktreePath: string, alias: string) => void
+  clearAlias: (worktreePath: string) => void
 }
 
 const FULL_CONTROL_BROWSER_PATHS = new Set([
@@ -251,6 +256,7 @@ async function handleRequest(
 
     const branchName = String(body.branchName || '').trim()
     const initialPrompt = typeof body.initialPrompt === 'string' ? body.initialPrompt : undefined
+    const aliasInput = typeof body.alias === 'string' ? body.alias : undefined
 
     const rawAgent = typeof body.agentKind === 'string' ? body.agentKind.trim().toLowerCase() : ''
     let agentKind: AgentKind | undefined
@@ -282,6 +288,9 @@ async function handleRequest(
         const status = /couldn't fetch pr|not found|404/i.test(result.error) ? 422 : 502
         return sendJson(res, status, { error: result.error })
       }
+      if (aliasInput !== undefined) {
+        deps.setAlias(result.path, aliasInput)
+      }
       return sendJson(res, 200, { path: result.path, branch: result.branch })
     }
 
@@ -299,6 +308,9 @@ async function handleRequest(
     // spawned by ensureInitialized still sees shared settings.
     deps.runWorktreeSetup({ repoRoot, worktreePath: created.path, branch: created.branch })
       .catch((err) => log('control', `setup script failed: ${err instanceof Error ? err.message : String(err)}`))
+    if (aliasInput !== undefined) {
+      deps.setAlias(created.path, aliasInput)
+    }
     deps.broadcast('worktrees:externalCreate', {
       repoRoot,
       worktree: created,
@@ -307,6 +319,41 @@ async function handleRequest(
       model
     })
     return sendJson(res, 200, created)
+  }
+
+  if ((req.method === 'POST' || req.method === 'DELETE') && path === '/aliases') {
+    const body = await readJson(req)
+    let worktreePath =
+      typeof body.worktreePath === 'string' ? body.worktreePath : undefined
+    if (!worktreePath) {
+      // Default to caller's current worktree — matches how create_worktree
+      // resolves repoRoot from scope, so an agent inside a worktree can
+      // alias itself without knowing its own absolute path.
+      const { scope } = resolveScope(req, deps)
+      if (scope) worktreePath = scope.worktreePath
+    }
+    if (!worktreePath) {
+      return sendJson(res, 400, {
+        error: 'worktreePath required when caller is not scoped to a worktree'
+      })
+    }
+    if (req.method === 'DELETE') {
+      deps.clearAlias(worktreePath)
+      return sendJson(res, 200, { worktreePath, cleared: true })
+    }
+    const submitted = typeof body.alias === 'string' ? body.alias : ''
+    const stored = normalizeAlias(submitted)
+    deps.setAlias(worktreePath, submitted)
+    // Surface silent clamping so the agent can decide whether to re-prompt
+    // the user. `clamped: true` when the caller's input differed from what
+    // actually got stored (whitespace normalization or length cap).
+    const clamped = submitted !== (stored ?? '')
+    return sendJson(res, 200, {
+      worktreePath,
+      alias: stored ?? '',
+      cleared: stored === null,
+      clamped
+    })
   }
 
   // Browser MCP endpoints. Every call is scoped to the caller's worktree
