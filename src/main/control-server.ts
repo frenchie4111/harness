@@ -1,6 +1,7 @@
 import { createServer, IncomingMessage, ServerResponse } from 'http'
 import { randomBytes, randomUUID } from 'crypto'
 import { addWorktree, listWorktrees, defaultWorktreeDir, WorktreeInfo } from './worktree'
+import { normalizeAlias } from '../shared/state/aliases'
 import { log } from './debug'
 
 export interface BrowserTabSummary {
@@ -332,9 +333,19 @@ async function handleRequest(
       deps.clearAlias(worktreePath)
       return sendJson(res, 200, { worktreePath, cleared: true })
     }
-    const alias = typeof body.alias === 'string' ? body.alias : ''
-    deps.setAlias(worktreePath, alias)
-    return sendJson(res, 200, { worktreePath, alias: alias.trim().slice(0, 80) })
+    const submitted = typeof body.alias === 'string' ? body.alias : ''
+    const stored = normalizeAlias(submitted)
+    deps.setAlias(worktreePath, submitted)
+    // Surface silent clamping so the agent can decide whether to re-prompt
+    // the user. `clamped: true` when the caller's input differed from what
+    // actually got stored (whitespace normalization or length cap).
+    const clamped = submitted !== (stored ?? '')
+    return sendJson(res, 200, {
+      worktreePath,
+      alias: stored ?? '',
+      cleared: stored === null,
+      clamped
+    })
   }
 
   // Browser MCP endpoints. Every call is scoped to the caller's worktree

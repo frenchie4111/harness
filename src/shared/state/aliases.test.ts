@@ -1,5 +1,28 @@
 import { describe, it, expect } from 'vitest'
-import { initialAliases, aliasesReducer } from './aliases'
+import { initialAliases, aliasesReducer, normalizeAlias, ALIAS_MAX_LEN } from './aliases'
+
+describe('normalizeAlias', () => {
+  it('trims surrounding whitespace', () => {
+    expect(normalizeAlias('  hi  ')).toBe('hi')
+  })
+
+  it('clamps to ALIAS_MAX_LEN', () => {
+    const long = 'a'.repeat(ALIAS_MAX_LEN + 20)
+    expect(normalizeAlias(long)).toBe('a'.repeat(ALIAS_MAX_LEN))
+  })
+
+  it('returns null for empty input', () => {
+    expect(normalizeAlias('')).toBeNull()
+  })
+
+  it('returns null for whitespace-only input', () => {
+    expect(normalizeAlias('   \t  ')).toBeNull()
+  })
+
+  it('preserves interior whitespace', () => {
+    expect(normalizeAlias('  hello world  ')).toBe('hello world')
+  })
+})
 
 describe('aliasesReducer', () => {
   it('aliases/set adds an entry', () => {

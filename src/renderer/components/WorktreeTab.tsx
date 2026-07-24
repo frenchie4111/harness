@@ -16,6 +16,7 @@ import { ContextMenu, type ContextMenuItem } from './ContextMenu'
 import { useAliasForPath } from '../store'
 import { useBackend } from '../backend'
 import { displayLabel } from '../worktree-display'
+import { ALIAS_MAX_LEN } from '../../shared/state/aliases'
 
 interface WorktreeTabProps {
   worktree: Worktree
@@ -389,7 +390,8 @@ function AliasEditor({ initialValue, onCommit, onCancel }: AliasEditorProps): JS
     <input
       ref={inputRef}
       value={value}
-      maxLength={80}
+      maxLength={ALIAS_MAX_LEN}
+      data-hotkeys="ignore"
       onChange={(e) => setValue(e.target.value)}
       onClick={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
