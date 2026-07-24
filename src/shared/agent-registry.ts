@@ -54,8 +54,8 @@ export const CODEX_MODELS: ModelOption[] = [
 ]
 
 export const CURSOR_MODELS: ModelOption[] = [
-  { id: 'composer-2.5', displayName: 'Composer 2.5 Fast', tier: 'current' },
-  { id: 'composer-2.5-fast', displayName: 'Composer 2.5 Fast (explicit)', tier: 'current' },
+  { id: 'composer-2.5', displayName: 'Composer 2.5', tier: 'current' },
+  { id: 'composer-2.5-fast', displayName: 'Composer 2.5 Fast', tier: 'current' },
   { id: 'gpt-5.3-codex', displayName: 'Codex 5.3', tier: 'current' },
   { id: 'gpt-5.3-codex-high', displayName: 'Codex 5.3 High', tier: 'current' },
   { id: 'gpt-5.4', displayName: 'GPT-5.4', tier: 'current' },

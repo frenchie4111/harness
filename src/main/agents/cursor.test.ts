@@ -1,9 +1,22 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-const fsState: { files: Map<string, string> } = { files: new Map() }
+// In-memory fs: `files` keys are file paths; directories are implicit
+// (any strict prefix of a file path is a directory). `mtimes` backs statSync.
+const fsState: { files: Map<string, string>; mtimes: Map<string, number> } = {
+  files: new Map(),
+  mtimes: new Map()
+}
+
+function isDir(p: string): boolean {
+  const prefix = p.endsWith('/') ? p : p + '/'
+  for (const key of fsState.files.keys()) {
+    if (key.startsWith(prefix)) return true
+  }
+  return false
+}
 
 vi.mock('fs', () => ({
-  existsSync: (p: string) => fsState.files.has(p),
+  existsSync: (p: string) => fsState.files.has(p) || isDir(p),
   readFileSync: (p: string) => {
     if (!fsState.files.has(p)) throw new Error(`ENOENT: ${p}`)
     return fsState.files.get(p) as string
@@ -12,8 +25,21 @@ vi.mock('fs', () => ({
     fsState.files.set(p, data)
   },
   mkdirSync: () => {},
-  readdirSync: () => [],
-  statSync: () => ({ mtimeMs: 0 })
+  readdirSync: (p: string) => {
+    const prefix = p.endsWith('/') ? p : p + '/'
+    const names = new Set<string>()
+    for (const key of fsState.files.keys()) {
+      if (key.startsWith(prefix)) names.add(key.slice(prefix.length).split('/')[0])
+    }
+    return [...names].map((name) => ({
+      name,
+      isDirectory: () => isDir(prefix + name)
+    }))
+  },
+  statSync: (p: string) => {
+    if (!fsState.files.has(p) && !isDir(p)) throw new Error(`ENOENT: ${p}`)
+    return { mtimeMs: fsState.mtimes.get(p) ?? 0 }
+  }
 }))
 
 vi.mock('../debug', () => ({
@@ -27,12 +53,25 @@ vi.mock('../hooks', () => ({
 
 import { homedir } from 'os'
 import { join } from 'path'
-import { hooksInstalled, installHooks, hookEvents, uninstallHooks, buildSpawnArgs } from './cursor'
+import { createHash } from 'crypto'
+import {
+  hooksInstalled,
+  installHooks,
+  hookEvents,
+  uninstallHooks,
+  buildSpawnArgs,
+  latestSessionId
+} from './cursor'
 
 const HOOKS_PATH = join(homedir(), '.cursor', 'hooks.json')
 
+function projectDir(cwd: string): string {
+  return join(homedir(), '.cursor', 'chats', createHash('md5').update(cwd).digest('hex'))
+}
+
 beforeEach(() => {
   fsState.files.clear()
+  fsState.mtimes.clear()
 })
 
 describe('cursor hook install / dedup', () => {
@@ -110,5 +149,56 @@ describe('cursor buildSpawnArgs', () => {
         sessionId: 'abc-123'
       })
     ).toBe('agent')
+  })
+
+  it('resumes when the session exists in the project-scoped chats dir', () => {
+    fsState.files.set(join(projectDir('/tmp'), 'abc-123', 'store.db'), '')
+    expect(
+      buildSpawnArgs({
+        command: 'agent',
+        cwd: '/tmp',
+        sessionId: 'abc-123'
+      })
+    ).toBe('agent --resume abc-123')
+  })
+
+  it("resumes via global scan when Cursor's project hash differs from ours", () => {
+    fsState.files.set(
+      join(homedir(), '.cursor', 'chats', 'some-other-hash', 'abc-123', 'store.db'),
+      ''
+    )
+    expect(
+      buildSpawnArgs({
+        command: 'agent',
+        cwd: '/tmp',
+        sessionId: 'abc-123'
+      })
+    ).toBe('agent --resume abc-123')
+  })
+})
+
+describe('cursor latestSessionId', () => {
+  it('returns the session whose store.db was written most recently', () => {
+    const older = join(projectDir('/tmp'), 'aaa-111', 'store.db')
+    const newer = join(projectDir('/tmp'), 'bbb-222', 'store.db')
+    fsState.files.set(older, '')
+    fsState.files.set(newer, '')
+    fsState.mtimes.set(older, 100)
+    fsState.mtimes.set(newer, 200)
+    expect(latestSessionId('/tmp')).toBe('bbb-222')
+  })
+
+  it('ignores sessions belonging to other projects', () => {
+    const ours = join(projectDir('/tmp'), 'aaa-111', 'store.db')
+    const theirs = join(projectDir('/other/project'), 'zzz-999', 'store.db')
+    fsState.files.set(ours, '')
+    fsState.files.set(theirs, '')
+    fsState.mtimes.set(ours, 100)
+    fsState.mtimes.set(theirs, 999)
+    expect(latestSessionId('/tmp')).toBe('aaa-111')
+  })
+
+  it('returns null when the project has no sessions', () => {
+    expect(latestSessionId('/tmp')).toBeNull()
   })
 })

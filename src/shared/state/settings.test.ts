@@ -284,6 +284,42 @@ describe('settingsReducer', () => {
     expect(cleared.codexModel).toBeNull()
   })
 
+  it('cursorCommandChanged sets the command string', () => {
+    const next = apply(initialSettings, {
+      type: 'settings/cursorCommandChanged',
+      payload: 'agent --force'
+    })
+    expect(next.cursorCommand).toBe('agent --force')
+  })
+
+  it('cursorEnvVarsChanged replaces the full map', () => {
+    const next = apply(initialSettings, {
+      type: 'settings/cursorEnvVarsChanged',
+      payload: { CURSOR_API_KEY: 'secret' }
+    })
+    expect(next.cursorEnvVars).toEqual({ CURSOR_API_KEY: 'secret' })
+  })
+
+  it('cursorModelChanged sets the model', () => {
+    const next = apply(initialSettings, {
+      type: 'settings/cursorModelChanged',
+      payload: 'composer-2.5'
+    })
+    expect(next.cursorModel).toBe('composer-2.5')
+  })
+
+  it('cursorModelChanged clears with null', () => {
+    const withModel = apply(initialSettings, {
+      type: 'settings/cursorModelChanged',
+      payload: 'composer-2.5'
+    })
+    const cleared = apply(withModel, {
+      type: 'settings/cursorModelChanged',
+      payload: null
+    })
+    expect(cleared.cursorModel).toBeNull()
+  })
+
   it('harnessSystemPromptEnabledChanged toggles flag', () => {
     const off = apply(initialSettings, {
       type: 'settings/harnessSystemPromptEnabledChanged',
