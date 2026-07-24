@@ -12,7 +12,7 @@ export function HotkeysProvider({
 }): ReactElement {
   return (
     <HotkeysContextProvider bindings={bindings}>
-      <RadixTooltip.Provider delayDuration={250} skipDelayDuration={0}>
+      <RadixTooltip.Provider delayDuration={0} skipDelayDuration={0}>
         {children}
       </RadixTooltip.Provider>
     </HotkeysContextProvider>
