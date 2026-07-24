@@ -580,9 +580,12 @@ async function handleToolCall(name, args) {
       alias: args.alias,
       worktreePath: args.worktreePath
     })
+    const clampNote = r.clamped
+      ? ' (input was normalized: whitespace trimmed and/or clamped to 80 chars)'
+      : ''
     return r.alias
-      ? 'Set alias "' + r.alias + '" for ' + r.worktreePath
-      : 'Cleared alias for ' + r.worktreePath
+      ? 'Set alias "' + r.alias + '" for ' + r.worktreePath + clampNote
+      : 'Cleared alias for ' + r.worktreePath + clampNote
   }
   if (name === 'clear_worktree_alias') {
     const r = await callControl('DELETE', '/aliases', {

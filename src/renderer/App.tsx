@@ -108,7 +108,7 @@ function DesktopApp(): JSX.Element {
   const [activeWorktreeId, setActiveWorktreeId] = useState<string | null>(
     () => worktrees[0]?.path ?? null
   )
-  const activeAlias = useAliasForPath(activeWorktreeId ?? '')
+  const activeAlias = useAliasForPath(activeWorktreeId)
   useEffect(() => {
     if (!activeWorktreeId) {
       document.title = 'Harness'

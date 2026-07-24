@@ -73,6 +73,7 @@ import type { AddRepoResult } from '../shared/repo-pick'
 import { isWorktreeMerged } from '../shared/state/prs'
 import { MAX_WAKE } from '../shared/state/snooze'
 import { hasScratchpadNote } from '../shared/state/scratchpad'
+import { normalizeAlias } from '../shared/state/aliases'
 import {
   DEFAULT_LIGHT_THEME,
   DEFAULT_DARK_THEME,
@@ -3600,11 +3601,11 @@ function registerIpcHandlers(): void {
   transport.onRequest('aliases:set', (_ctx, path: string, alias: string) => {
     if (typeof path !== 'string' || !path) return false
     if (typeof alias !== 'string') return false
-    const trimmed = alias.trim().slice(0, 80)
-    if (!trimmed) {
+    const normalized = normalizeAlias(alias)
+    if (!normalized) {
       store.dispatch({ type: 'aliases/cleared', payload: { path } })
     } else {
-      store.dispatch({ type: 'aliases/set', payload: { path, alias: trimmed } })
+      store.dispatch({ type: 'aliases/set', payload: { path, alias: normalized } })
     }
     return true
   })
@@ -3811,13 +3812,13 @@ async function runBoot(): Promise<void> {
       mode: config.browserToolsMode === 'view' ? 'view' : 'full'
     }),
     setAlias: (worktreePath, alias) => {
-      const trimmed = alias.trim().slice(0, 80)
-      if (!trimmed) {
+      const normalized = normalizeAlias(alias)
+      if (!normalized) {
         store.dispatch({ type: 'aliases/cleared', payload: { path: worktreePath } })
       } else {
         store.dispatch({
           type: 'aliases/set',
-          payload: { path: worktreePath, alias: trimmed }
+          payload: { path: worktreePath, alias: normalized }
         })
       }
     },

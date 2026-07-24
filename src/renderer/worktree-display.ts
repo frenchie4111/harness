@@ -13,14 +13,28 @@ function worktreesRoot(repoRoot: string): string {
   return `${parent}/${repoName}-worktrees`
 }
 
+/** Single source of truth for "what text do we show for this worktree?"
+ *  across every human-facing surface (sidebar row, tab strip, palette).
+ *
+ *  Resolution order:
+ *    1. If Cmd is held AND an `alias` is present → reveal the worktree's
+ *       path relative to the standard worktrees root; falls back to the
+ *       absolute path for worktrees at non-standard locations. This is
+ *       the "peek behind the alias" affordance — non-aliased rows never
+ *       change under Cmd, since they already show the branch.
+ *    2. Otherwise, the `alias` if defined.
+ *    3. Otherwise, `worktree.branch`.
+ *
+ *  Machine-facing surfaces (git commands, PR merge headers, API URLs)
+ *  MUST NOT use this helper — they need the real branch. Callers pass
+ *  the alias string, not the whole aliases map, so per-id subscription
+ *  hooks (`useAliasForPath`) can be used to avoid whole-slice re-render
+ *  fan-out (CLAUDE.md anti-pattern #4). */
 export function displayLabel(
   worktree: Worktree,
   alias: string | undefined,
   metaHeld: boolean
 ): string {
-  // Cmd-held reveals the path behind an alias — only for aliased rows.
-  // Non-aliased rows already show the branch; revealing the path would
-  // just be noise.
   if (metaHeld && alias) {
     const base = worktreesRoot(worktree.repoRoot)
     if (worktree.path.startsWith(base + '/')) {
