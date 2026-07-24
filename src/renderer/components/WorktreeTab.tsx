@@ -15,7 +15,7 @@ import type { Action } from '../hotkeys'
 import { ContextMenu, type ContextMenuItem } from './ContextMenu'
 import { useAliasForPath } from '../store'
 import { useBackend } from '../backend'
-import { displayLabel } from '../worktree-display'
+import { displayLabel, resolveSubtitle } from '../worktree-display'
 import { ALIAS_MAX_LEN } from '../../shared/state/aliases'
 
 interface WorktreeTabProps {
@@ -214,19 +214,27 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
           <div className="text-xs text-danger truncate font-mono" title={formatPendingTool(pendingTool!)}>
             {formatPendingTool(pendingTool!)}
           </div>
-        ) : (
-          <div className="text-xs text-faint truncate">
-            {repoLabel ? (
-              <span className="inline-flex items-center gap-1">
-                <span className={repoNameColor(repoLabel)}>{repoLabel}</span>
-                <span className="mx-0.5">·</span>
-                {worktree.path.split('/').pop()}
-              </span>
-            ) : (
-              worktree.path.split('/').slice(-2).join('/')
-            )}
-          </div>
-        )}
+        ) : (() => {
+          const subtitle = resolveSubtitle(worktree, label, repoLabel)
+          if (!subtitle) return null
+          return (
+            <div className="text-xs text-faint truncate">
+              {subtitle.repoLabel ? (
+                <span className="inline-flex items-center gap-1">
+                  <span className={repoNameColor(subtitle.repoLabel)}>{subtitle.repoLabel}</span>
+                  {subtitle.text && (
+                    <>
+                      <span className="mx-0.5">·</span>
+                      {subtitle.text}
+                    </>
+                  )}
+                </span>
+              ) : (
+                subtitle.text
+              )}
+            </div>
+          )
+        })()}
       </div>
       {canContinue && (
         <Tooltip label="Continue on a new branch off main" side="left">

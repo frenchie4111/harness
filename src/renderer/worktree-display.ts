@@ -44,3 +44,36 @@ export function displayLabel(
   }
   return alias ?? worktree.branch
 }
+
+/** Resolves the sidebar row's subtitle (the small line under the display
+ *  label). Returns null when there's nothing worth showing — callers should
+ *  skip rendering the subtitle `<div>` entirely so it reclaims vertical
+ *  space.
+ *
+ *  Rules:
+ *  - Prunable worktrees always surface the on-disk path so the missing dir
+ *    is identifiable — path.pop() when a repoLabel accompanies it,
+ *    otherwise the last two segments.
+ *  - Otherwise the branch is shown only when it differs from the resolved
+ *    top-line `label` (i.e. only when an alias is set, or when Cmd is held
+ *    on an aliased row and the top line is a path).
+ *  - `repoLabel` is orthogonal cross-repo disambiguation and always shows
+ *    when present. */
+export function resolveSubtitle(
+  worktree: Worktree,
+  label: string,
+  repoLabel: string | undefined
+): { repoLabel: string | null; text: string | null } | null {
+  if (worktree.prunable) {
+    const text = repoLabel
+      ? worktree.path.split('/').pop() ?? null
+      : worktree.path.split('/').slice(-2).join('/')
+    return { repoLabel: repoLabel ?? null, text }
+  }
+  const showBranch = worktree.branch !== label
+  if (!repoLabel && !showBranch) return null
+  return {
+    repoLabel: repoLabel ?? null,
+    text: showBranch ? worktree.branch : null
+  }
+}
