@@ -320,7 +320,7 @@ export const ACTION_CATEGORIES: HotkeyCategory[] = [
   {
     id: 'worktree-mgmt',
     label: 'Worktree management',
-    actions: ['newWorktree', 'refreshWorktrees']
+    actions: ['newWorktree', 'refreshWorktrees', 'aliasWorktree']
   },
   {
     id: 'tabs',
