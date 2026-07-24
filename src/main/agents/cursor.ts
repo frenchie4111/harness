@@ -1,20 +1,26 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
+import { createHash } from 'crypto'
 import { log } from '../debug'
 import { makeHookCommand } from '../hooks'
+import { shellQuote } from '../shell-quote'
 import type { AgentSpawnOpts } from './index'
 
-function shellQuote(s: string): string {
-  return "'" + s.replace(/'/g, "'\\''") + "'"
-}
-
+// Cursor strips unknown fields when it normalizes hooks.json, so dedup
+// recognizes our entries by the status-dir path baked into the hook
+// command instead of a sidecar marker.
 const HARNESS_HOOK_COMMAND_SIGNATURE = '/tmp/harness-status'
 
 export const defaultCommand = 'agent'
 export const assignsSessionId = false
 
+// Cursor uses camelCase event names; hooks.ts normalizes them to the
+// Claude-style names before deriving statuses. sessionStart is included
+// so the agent-assigned session ID is discovered at launch (its payload
+// carries conversation_id) instead of on the first tool use.
 export const hookEvents = [
+  'sessionStart',
   'preToolUse',
   'postToolUse',
   'beforeSubmitPrompt',
@@ -68,19 +74,14 @@ function removeOldHarnessEntries(entries: CursorHookEntry[]): CursorHookEntry[] 
   return entries.filter((entry) => !isHarnessHookEntry(entry))
 }
 
-function sessionDir(sessionId: string): string | null {
-  try {
-    const chatsDir = join(homedir(), '.cursor', 'chats')
-    if (!existsSync(chatsDir)) return null
-    for (const entry of readdirSync(chatsDir, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue
-      const candidate = join(chatsDir, entry.name, sessionId)
-      if (existsSync(candidate)) return candidate
-    }
-    return null
-  } catch {
-    return null
-  }
+function chatsDir(): string {
+  return join(homedir(), '.cursor', 'chats')
+}
+
+// Cursor keys its per-project session store on the MD5 hex of the
+// absolute project path: ~/.cursor/chats/<md5(cwd)>/<session-uuid>/store.db
+function projectChatsDir(cwd: string): string {
+  return join(chatsDir(), createHash('md5').update(cwd).digest('hex'))
 }
 
 export function hooksInstalled(): boolean {
@@ -147,32 +148,47 @@ export function stripHooksFromWorktree(worktreePath: string): boolean {
   return true
 }
 
-export function sessionFileExists(_cwd: string, sessionId: string): boolean {
-  return sessionDir(sessionId) !== null
+export function sessionFileExists(cwd: string, sessionId: string): boolean {
+  try {
+    if (existsSync(join(projectChatsDir(cwd), sessionId))) return true
+    // Fallback: session IDs are UUIDs, so a global scan can't produce a
+    // false positive. Covers any drift between our cwd string and the
+    // path Cursor hashed (symlinks, trailing slashes).
+    const root = chatsDir()
+    if (!existsSync(root)) return false
+    for (const entry of readdirSync(root, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue
+      if (existsSync(join(root, entry.name, sessionId))) return true
+    }
+    return false
+  } catch {
+    return false
+  }
 }
 
-export function latestSessionId(_cwd: string): string | null {
+// Scoped to the worktree's own project dir — this feeds session adoption
+// when a pane initializes, and a global scan would resume whichever
+// session was touched last across ALL projects.
+export function latestSessionId(cwd: string): string | null {
   try {
-    const chatsDir = join(homedir(), '.cursor', 'chats')
-    if (!existsSync(chatsDir)) return null
+    const dir = projectChatsDir(cwd)
+    if (!existsSync(dir)) return null
     let bestId: string | null = null
     let bestMtime = -Infinity
-    for (const hashEntry of readdirSync(chatsDir, { withFileTypes: true })) {
-      if (!hashEntry.isDirectory()) continue
-      const hashDir = join(chatsDir, hashEntry.name)
-      for (const sessionEntry of readdirSync(hashDir, { withFileTypes: true })) {
-        if (!sessionEntry.isDirectory()) continue
-        const metaPath = join(hashDir, sessionEntry.name, 'meta.json')
-        let mtime = statSync(join(hashDir, sessionEntry.name)).mtimeMs
-        try {
-          mtime = statSync(metaPath).mtimeMs
-        } catch {
-          // use directory mtime
-        }
-        if (mtime > bestMtime) {
-          bestMtime = mtime
-          bestId = sessionEntry.name
-        }
+    for (const sessionEntry of readdirSync(dir, { withFileTypes: true })) {
+      if (!sessionEntry.isDirectory()) continue
+      const sessionPath = join(dir, sessionEntry.name)
+      // store.db is written on every turn, so it's the freshest recency
+      // signal; the directory mtime only changes when files are added.
+      let mtime = statSync(sessionPath).mtimeMs
+      try {
+        mtime = statSync(join(sessionPath, 'store.db')).mtimeMs
+      } catch {
+        // no store.db yet — use directory mtime
+      }
+      if (mtime > bestMtime) {
+        bestMtime = mtime
+        bestId = sessionEntry.name
       }
     }
     return bestId
@@ -182,8 +198,10 @@ export function latestSessionId(_cwd: string): string | null {
 }
 
 export function buildSpawnArgs(opts: AgentSpawnOpts): string {
+  // Cursor's MCP config is global (~/.cursor/mcp.json), not a per-terminal
+  // flag, so mcpConfigPath is unused here — same shape as codex.ts.
   let cmd = opts.command
-  if (opts.model && !opts.command.includes('--model')) {
+  if (opts.model && !opts.command.includes('--model') && !opts.command.includes('-m ')) {
     cmd += ` --model ${shellQuote(opts.model)}`
   }
 
