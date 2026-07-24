@@ -153,6 +153,11 @@ const TOOLS = [
           type: 'string',
           description:
             "Model string to pass to the agent CLI's --model flag for this worktree's first tab (e.g. 'opus', 'sonnet-4-5', 'gpt-5'). Pinned per-tab — survives reloads, doesn't affect other worktrees. Omit to use the global default (Settings → Agent)."
+        },
+        alias: {
+          type: 'string',
+          description:
+            'Optional display alias applied to the new worktree once creation succeeds. Same semantics as set_worktree_alias — trimmed and clamped to 80 chars, empty string is ignored. Useful when the user gave the task a memorable label ("call this one auth-refactor") so the sidebar/window title show that instead of the branch name.'
         }
       }
     }
@@ -554,13 +559,15 @@ async function handleToolCall(name, args) {
       baseBranch: args.baseBranch,
       initialPrompt: args.initialPrompt,
       agentKind: args.agentKind,
-      model: args.model
+      model: args.model,
+      alias: args.alias
     })
     const agentLabel = args.agentKind === 'codex' ? 'Codex' : 'Claude'
     const modelSuffix = args.model ? ` (model: ${args.model})` : ''
+    const aliasSuffix = args.alias && args.alias.trim() ? ` (alias: "${args.alias.trim()}")` : ''
     return prNumber
-      ? `Created worktree ${r.path} on branch ${r.branch} for PR #${prNumber}. Harness will open a new ${agentLabel} chat tab in it${modelSuffix}.`
-      : `Created worktree ${r.path} on branch ${r.branch}. Harness will open a new ${agentLabel} chat tab in it${modelSuffix}.`
+      ? `Created worktree ${r.path} on branch ${r.branch} for PR #${prNumber}${aliasSuffix}. Harness will open a new ${agentLabel} chat tab in it${modelSuffix}.`
+      : `Created worktree ${r.path} on branch ${r.branch}${aliasSuffix}. Harness will open a new ${agentLabel} chat tab in it${modelSuffix}.`
   }
   if (name === 'list_worktrees') {
     const q =

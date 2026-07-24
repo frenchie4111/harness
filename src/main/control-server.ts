@@ -255,6 +255,7 @@ async function handleRequest(
 
     const branchName = String(body.branchName || '').trim()
     const initialPrompt = typeof body.initialPrompt === 'string' ? body.initialPrompt : undefined
+    const aliasInput = typeof body.alias === 'string' ? body.alias : undefined
 
     const rawAgent = typeof body.agentKind === 'string' ? body.agentKind.trim().toLowerCase() : ''
     let agentKind: 'claude' | 'codex' | undefined
@@ -286,6 +287,9 @@ async function handleRequest(
         const status = /couldn't fetch pr|not found|404/i.test(result.error) ? 422 : 502
         return sendJson(res, status, { error: result.error })
       }
+      if (aliasInput !== undefined) {
+        deps.setAlias(result.path, aliasInput)
+      }
       return sendJson(res, 200, { path: result.path, branch: result.branch })
     }
 
@@ -303,6 +307,9 @@ async function handleRequest(
     // spawned by ensureInitialized still sees shared settings.
     deps.runWorktreeSetup({ repoRoot, worktreePath: created.path, branch: created.branch })
       .catch((err) => log('control', `setup script failed: ${err instanceof Error ? err.message : String(err)}`))
+    if (aliasInput !== undefined) {
+      deps.setAlias(created.path, aliasInput)
+    }
     deps.broadcast('worktrees:externalCreate', {
       repoRoot,
       worktree: created,

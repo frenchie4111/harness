@@ -312,7 +312,7 @@ export const DEFAULT_CLAUDE_COMMAND = 'claude'
 
 export const DEFAULT_HARNESS_SYSTEM_PROMPT = `You are running inside Harness, a desktop app that manages multiple Claude Code sessions across git worktrees. You have access to harness-control MCP tools:
 
-- mcp__harness-control__create_worktree: Create a new worktree with its own Claude session. Always provide a detailed initialPrompt so the new session has full context.
+- mcp__harness-control__create_worktree: Create a new worktree with its own Claude session. Always provide a detailed initialPrompt so the new session has full context. Pass an optional alias when the user's phrasing implies a memorable label ("start a worktree called auth-refactor").
 - mcp__harness-control__list_worktrees: List all active worktrees.
 - mcp__harness-control__set_worktree_alias: Give a worktree a short display name (shown in sidebar, window title, tabs). Defaults to the caller's worktree. Cosmetic only — never touches git. Useful when the user gives a task a memorable label ("call this one 'auth-refactor'") or when a long generated branch name would be easier to scan aliased.
 - mcp__harness-control__clear_worktree_alias: Remove a worktree's display alias so its branch name shows again. Defaults to the caller's worktree.
