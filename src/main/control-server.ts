@@ -1,5 +1,6 @@
 import { createServer, IncomingMessage, ServerResponse } from 'http'
 import { randomBytes, randomUUID } from 'crypto'
+import type { AgentKind } from '../shared/state/terminals'
 import { addWorktree, listWorktrees, defaultWorktreeDir, WorktreeInfo } from './worktree'
 import { normalizeAlias } from '../shared/state/aliases'
 import { log } from './debug'
@@ -104,7 +105,7 @@ export interface ControlServerDeps {
     repoRoot: string
     prNumber: number
     initialPrompt?: string
-    agentKind?: 'claude' | 'codex'
+    agentKind?: AgentKind
     model?: string
   }) => Promise<{ ok: true; path: string; branch: string } | { ok: false; error: string }>
   /** Returns the caller's current scope, or null if the terminal is not
@@ -258,10 +259,10 @@ async function handleRequest(
     const aliasInput = typeof body.alias === 'string' ? body.alias : undefined
 
     const rawAgent = typeof body.agentKind === 'string' ? body.agentKind.trim().toLowerCase() : ''
-    let agentKind: 'claude' | 'codex' | undefined
+    let agentKind: AgentKind | undefined
     if (rawAgent) {
-      if (rawAgent !== 'claude' && rawAgent !== 'codex') {
-        return sendJson(res, 400, { error: 'agentKind must be "claude" or "codex"' })
+      if (rawAgent !== 'claude' && rawAgent !== 'codex' && rawAgent !== 'cursor') {
+        return sendJson(res, 400, { error: 'agentKind must be "claude", "codex", or "cursor"' })
       }
       agentKind = rawAgent
     }
