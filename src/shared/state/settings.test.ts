@@ -575,6 +575,20 @@ describe('settingsReducer', () => {
     expect(off.announcementsMuted).toBe(false)
   })
 
+  it('autoFetchEnabledChanged toggles the auto-fetch flag', () => {
+    expect(initialSettings.autoFetchEnabled).toBe(true)
+    const off = apply(initialSettings, {
+      type: 'settings/autoFetchEnabledChanged',
+      payload: false
+    })
+    expect(off.autoFetchEnabled).toBe(false)
+    const on = apply(off, {
+      type: 'settings/autoFetchEnabledChanged',
+      payload: true
+    })
+    expect(on.autoFetchEnabled).toBe(true)
+  })
+
   it('returns a new object reference (no mutation)', () => {
     const next = apply(initialSettings, { type: 'settings/themeDarkChanged', payload: 'dracula' })
     expect(next).not.toBe(initialSettings)
