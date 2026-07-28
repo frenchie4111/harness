@@ -1,6 +1,7 @@
 import { ToolCardChrome, basename, trunc, type ToolCardProps } from './index'
 import { EditIcon } from './tool-icons'
 import { UnifiedDiff } from './UnifiedDiff'
+import { HighlightedText } from '../JsonModeChatFind'
 
 export function EditCard({ block, result, autoApproved, sessionAllowed }: ToolCardProps): JSX.Element {
   const fp = String(block.input?.file_path ?? '')
@@ -11,6 +12,7 @@ export function EditCard({ block, result, autoApproved, sessionAllowed }: ToolCa
   const diffSummary = oldStr || newStr ? ` (+${newLines} −${oldLines})` : ''
   return (
     <ToolCardChrome
+      id={block.id}
       name="Edit"
       subtitle={`${basename(fp)}${diffSummary}`}
       variant="warn"
@@ -19,11 +21,15 @@ export function EditCard({ block, result, autoApproved, sessionAllowed }: ToolCa
       autoApproved={autoApproved}
       sessionAllowed={sessionAllowed}
     >
-      {fp && <div className="px-2 py-1 text-xs text-muted truncate font-mono">{fp}</div>}
+      {fp && (
+        <div className="px-2 py-1 text-xs text-muted truncate font-mono">
+          <HighlightedText text={fp} />
+        </div>
+      )}
       <UnifiedDiff oldStr={oldStr} newStr={newStr} filePath={fp} />
       {result && result.isError && (
         <pre className="px-2 py-1 text-xs font-mono text-danger whitespace-pre-wrap">
-          {trunc(result.content, 1000)}
+          <HighlightedText text={trunc(result.content, 1000)} />
         </pre>
       )}
     </ToolCardChrome>

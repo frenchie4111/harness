@@ -40,6 +40,16 @@ import { JsonModeChatImageThumb } from './JsonModeChatImageThumb'
 import { fuzzyMatch } from '../fuzzy'
 import 'highlight.js/styles/github-dark.css'
 import type { JsonClaudeChatEntry } from '../../shared/state/json-claude'
+import {
+  COMPACT_BODY_TEXT,
+  FindContext,
+  FindOverlay,
+  HighlightedText,
+  blockContainerId,
+  createFindRehypePlugin,
+  useFind,
+  useFindController
+} from './JsonModeChatFind'
 
 const REMARK_PLUGINS = [remarkGfm]
 const REHYPE_PLUGINS = [rehypeHighlight, rehypeColorHex]
@@ -124,6 +134,23 @@ function rehypeColorHex() {
   }
 }
 
+/** ReactMarkdown wrapper that dynamically injects the find-highlight
+ *  rehype plugin when Cmd+F has an active query. Kept as a small
+ *  component so the plugins array is memoized per-query rather than
+ *  rebuilt on every parent render. */
+function MarkdownWithFind({ children }: { children: string }): JSX.Element {
+  const { query } = useFind()
+  const rehypePlugins = useMemo(() => {
+    if (!query) return REHYPE_PLUGINS
+    return [rehypeHighlight, createFindRehypePlugin(query)]
+  }, [query])
+  return (
+    <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={rehypePlugins}>
+      {children}
+    </ReactMarkdown>
+  )
+}
+
 // Worktree file list cache. Same TTL/shape as CommandPalette uses — the
 // list rarely changes during a typing session, and listAllFiles shells
 // out to git ls-files which is cheap but not free on big repos.
@@ -182,10 +209,12 @@ interface RenderedRow {
 
 function ThinkingCard({
   text,
-  isPartial
+  isPartial,
+  blockId
 }: {
   text: string
   isPartial: boolean
+  blockId: string
 }): JSX.Element {
   // Default expanded while streaming so the user can see thoughts land in
   // real time; auto-collapse once the model moves on so finalized
@@ -201,10 +230,15 @@ function ThinkingCard({
     wasPartial.current = isPartial
   }, [isPartial])
 
+  const find = useFind()
+  const forceOpen = find.forceOpenIds.has(blockId)
+  const isOpen = expanded || forceOpen
+  const isCurrentHit = find.currentHitBlockId === blockId
   const charCount = text.length
   return (
     <div
-      className="my-1 border border-border/40 bg-app/30 overflow-hidden"
+      data-find-block-id={blockId}
+      className={`my-1 border ${isCurrentHit ? 'border-accent ring-2 ring-accent/50' : 'border-border/40'} bg-app/30 overflow-hidden`}
       style={{ borderRadius: 'var(--chat-bubble-radius)' }}
     >
       <button
@@ -218,7 +252,7 @@ function ThinkingCard({
         }}
       >
         <span className="text-muted text-xs w-2 shrink-0 select-none">
-          {expanded ? '▾' : '▸'}
+          {isOpen ? '▾' : '▸'}
         </span>
         <Brain className="icon-xs text-muted shrink-0" />
         <span
@@ -242,15 +276,10 @@ function ThinkingCard({
           </span>
         )}
       </button>
-      {expanded && (
+      {isOpen && (
         <div className="px-3 py-2 border-t border-border/30 markdown italic text-muted text-xs leading-relaxed">
           {text ? (
-            <ReactMarkdown
-              remarkPlugins={REMARK_PLUGINS}
-              rehypePlugins={REHYPE_PLUGINS}
-            >
-              {text}
-            </ReactMarkdown>
+            <MarkdownWithFind>{text}</MarkdownWithFind>
           ) : !isPartial ? (
             // Claude Code can return signed-but-empty thinking blocks
             // (the API tier elides plaintext but keeps a signature so
@@ -267,13 +296,19 @@ function ThinkingCard({
 function CompactCard({
   trigger,
   preTokens,
-  postTokens
+  postTokens,
+  blockId
 }: {
   trigger?: 'auto' | 'manual'
   preTokens?: number
   postTokens?: number
+  blockId: string
 }): JSX.Element {
   const [expanded, setExpanded] = useState(false)
+  const find = useFind()
+  const forceOpen = find.forceOpenIds.has(blockId)
+  const isOpen = expanded || forceOpen
+  const isCurrentHit = find.currentHitBlockId === blockId
   const subtitle =
     typeof preTokens === 'number' && typeof postTokens === 'number'
       ? `${formatTokenCount(preTokens)} → ${formatTokenCount(postTokens)} tokens`
@@ -284,14 +319,15 @@ function CompactCard({
     trigger === 'manual' ? 'via /compact' : trigger === 'auto' ? 'auto' : null
   return (
     <div
-      className="my-2 border border-info/40 bg-info/5 overflow-hidden"
+      data-find-block-id={blockId}
+      className={`my-2 border ${isCurrentHit ? 'border-accent ring-2 ring-accent/50' : 'border-info/40'} bg-info/5 overflow-hidden`}
       style={{ borderRadius: 'var(--chat-bubble-radius)' }}
     >
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
         className={`w-full flex items-center gap-2 ${
-          expanded ? 'border-b border-info/30' : ''
+          isOpen ? 'border-b border-info/30' : ''
         } bg-info/10 hover:bg-info/15 cursor-pointer transition-colors text-left`}
         style={{
           paddingInline: 'var(--chat-chrome-px)',
@@ -300,7 +336,7 @@ function CompactCard({
         }}
       >
         <span className="text-info/70 text-xs w-2 shrink-0 select-none">
-          {expanded ? '▾' : '▸'}
+          {isOpen ? '▾' : '▸'}
         </span>
         <Layers className="icon-xs text-info shrink-0" />
         <span
@@ -319,11 +355,10 @@ function CompactCard({
           </span>
         )}
       </button>
-      {expanded && (
+      {isOpen && (
         <div className="px-3 py-2 text-xs text-muted space-y-1">
           <div>
-            Earlier conversation history was summarized to free up context.
-            New messages continue from the summary.
+            <HighlightedText text={COMPACT_BODY_TEXT} />
           </div>
           {(typeof preTokens === 'number' ||
             typeof postTokens === 'number') && (
@@ -381,7 +416,7 @@ function SubprocessExitCard({
       </div>
       <div className="px-3 py-2 space-y-2">
         <pre className="text-xs text-muted font-mono whitespace-pre-wrap break-words m-0">
-          {detail}
+          <HighlightedText text={detail} />
         </pre>
         {isExited ? (
           <button
@@ -440,7 +475,7 @@ function AuthFailureCard({
       <div className="px-3 py-2 text-xs text-fg space-y-2">
         {message && (
           <pre className="whitespace-pre-wrap break-words font-mono text-xs text-muted bg-app/40 border border-border/40 rounded px-2 py-1 max-h-32 overflow-auto">
-            {message}
+            <HighlightedText text={message} />
           </pre>
         )}
         <div>
@@ -522,7 +557,7 @@ function RateLimitWarningCard({
           className="font-semibold shrink-0 text-warning"
           style={{ fontFamily: 'var(--chat-tool-name-family)' }}
         >
-          {message}
+          <HighlightedText text={message} />
         </span>
         {utilPct !== null && (
           <span
@@ -586,7 +621,9 @@ function RateLimitErrorCard({
         </span>
       </div>
       <div className="px-3 py-2 text-xs text-muted space-y-1">
-        <div className="text-fg/80">{message}</div>
+        <div className="text-fg/80">
+          <HighlightedText text={message} />
+        </div>
         {resetText && (
           <div className="text-faint">
             Retry available at <span className="font-mono">{resetText}</span>
@@ -648,7 +685,7 @@ function renderEntries(
                 className="flex-1 min-w-0 whitespace-pre-wrap break-words"
                 style={{ fontSize: 'var(--chat-body-text)' }}
               >
-                {entry.text}
+                <HighlightedText text={entry.text ?? ''} />
               </div>
               <div className="flex items-center gap-1 shrink-0">
                 <span
@@ -678,7 +715,7 @@ function renderEntries(
                 fontSize: 'var(--chat-body-text)'
               }}
             >
-              {entry.text}
+              <HighlightedText text={entry.text ?? ''} />
               {entry.images && entry.images.length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {entry.images.map((img) => (
@@ -706,6 +743,7 @@ function renderEntries(
             trigger={entry.compactTrigger}
             preTokens={entry.compactPreTokens}
             postTokens={entry.compactPostTokens}
+            blockId={`${entry.entryId}:compact`}
           />
         )
       })
@@ -779,12 +817,11 @@ function renderEntries(
       continue
     }
     if (entry.kind === 'assistant' && entry.blocks) {
-      let thinkingIdx = 0
-      for (const block of entry.blocks) {
+      for (const [blockIndex, block] of entry.blocks.entries()) {
         if (block.type === 'thinking') {
-          const idx = thinkingIdx++
+          const bid = blockContainerId(entry, block, blockIndex, 'thinking')
           rows.push({
-            key: `${entry.entryId}-th-${idx}`,
+            key: `${entry.entryId}-th-${blockIndex}`,
             entryId: entry.entryId,
             type: 'tool',
             isThinking: true,
@@ -792,6 +829,7 @@ function renderEntries(
               <ThinkingCard
                 text={block.text || ''}
                 isPartial={!!entry.isPartial}
+                blockId={bid}
               />
             )
           })
@@ -805,12 +843,7 @@ function renderEntries(
                 className="markdown leading-relaxed"
                 style={{ fontSize: 'var(--chat-body-text)' }}
               >
-                <ReactMarkdown
-                  remarkPlugins={REMARK_PLUGINS}
-                  rehypePlugins={REHYPE_PLUGINS}
-                >
-                  {block.text || ''}
-                </ReactMarkdown>
+                <MarkdownWithFind>{block.text || ''}</MarkdownWithFind>
                 {entry.isPartial && (
                   <span
                     className="json-claude-cursor"
@@ -869,6 +902,7 @@ function renderEntries(
               <>
                 {showPlaceholder ? (
                   <ToolCardChrome
+                    id={block.id}
                     name={block.name || 'tool'}
                     subtitle="preparing call…"
                     variant="info"
@@ -1041,6 +1075,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
     }
   }, [backend, mode, sessionId, worktreePath])
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  const findInputRef = useRef<HTMLInputElement>(null)
   // dragenter fires for every child element entered, dragleave for every
   // child exited — so a naive boolean flickers as the cursor moves over
   // nested nodes. Counter pattern: increment on enter, decrement on
@@ -1266,6 +1301,53 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
   const entries = session?.entries ?? []
   const entriesHydrated = session?.entriesHydrated ?? false
   const deferredEntries = useDeferredValue(entries)
+  const find = useFindController(entries, scrollRef)
+  const outerDivRef = useRef<HTMLDivElement | null>(null)
+  // Document-level Cmd+F so the shortcut works from anywhere in the app —
+  // sidebar, composer, tab bar, etc. Every mounted JsonModeChat installs
+  // this listener; the visibility + focus gate below picks the right
+  // instance when multiple are mounted (WorkspaceView keeps hidden tabs
+  // display:none rather than unmounting).
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if (e.key !== 'f' && e.key !== 'F') return
+      if (!(e.metaKey || e.ctrlKey) || e.altKey) return
+      const root = outerDivRef.current
+      if (!root) return
+      // display:none up the ancestor chain → offsetParent is null.
+      if (root.offsetParent === null) return
+      const active = document.activeElement as HTMLElement | null
+      const focusInside = !!active && root.contains(active)
+      if (!focusInside) {
+        // Focus is elsewhere in the app. Only claim Cmd+F if we're the
+        // sole visible chat — otherwise a split-pane scenario would have
+        // every visible chat open its bar at once.
+        const all = document.querySelectorAll<HTMLElement>(
+          '[data-json-mode-chat]'
+        )
+        let visibleCount = 0
+        let isSoleVisible = false
+        for (const el of all) {
+          if (el.offsetParent !== null) {
+            visibleCount++
+            if (el === root) isSoleVisible = visibleCount === 1
+            else isSoleVisible = false
+          }
+          if (visibleCount > 1) break
+        }
+        if (!(visibleCount === 1 && isSoleVisible)) return
+      }
+      e.preventDefault()
+      e.stopPropagation()
+      find.open()
+      requestAnimationFrame(() => {
+        findInputRef.current?.focus()
+        findInputRef.current?.select()
+      })
+    }
+    document.addEventListener('keydown', onKeyDown, true)
+    return () => document.removeEventListener('keydown', onKeyDown, true)
+  }, [find])
   const rows = useMemo(() => {
     // Sub-agent nesting pre-pass: split the flat entries array into a
     // top-level transcript and a children-by-parent map so the Task
@@ -1765,6 +1847,8 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
 
   return (
     <div
+      ref={outerDivRef}
+      data-json-mode-chat
       className="absolute inset-0 flex flex-col bg-app text-fg"
       data-chat-density={density}
       onDragEnter={(e) => {
@@ -1847,6 +1931,10 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
         </div>
       )}
       <div className="relative flex-1 min-h-0 flex flex-col">
+        <div className="absolute top-2 left-2 z-30 pointer-events-auto">
+          <FindOverlay controller={find} inputRef={findInputRef} />
+        </div>
+        <FindContext.Provider value={find.contextValue}>
         <div
           ref={scrollRef}
           onScroll={onScroll}
@@ -1954,6 +2042,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
           )}
           </div>
         </div>
+        </FindContext.Provider>
         {showJumpToBottom && (
           <button
             onClick={jumpToBottom}
