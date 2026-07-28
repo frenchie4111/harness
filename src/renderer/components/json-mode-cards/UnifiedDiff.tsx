@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { unifiedDiff, langForPath, highlightLine } from './diff-util'
+import { HighlightedText, useFind } from '../JsonModeChatFind'
 
 export function UnifiedDiff({
   oldStr,
@@ -12,6 +13,7 @@ export function UnifiedDiff({
 }): JSX.Element {
   const lang = filePath ? langForPath(filePath) : null
   const lines = useMemo(() => unifiedDiff(oldStr, newStr), [oldStr, newStr])
+  const { query } = useFind()
 
   if (lines.length === 0) {
     return (
@@ -47,7 +49,9 @@ export function UnifiedDiff({
               ? 'text-danger/90'
               : 'opacity-80'
         const marker = ln.kind === 'add' ? '+' : ln.kind === 'remove' ? '-' : ' '
-        const html = highlightLine(ln.text, lang)
+        // When find is active, swap syntax-highlighted HTML for plain
+        // text with <mark> injection. Users trade colors for the ability
+        // to see matches; both come back when the find bar closes.
         return (
           <div key={i} className={`flex ${bg} ${fg}`}>
             <span className="w-4 shrink-0 text-center select-none opacity-70">
@@ -59,10 +63,18 @@ export function UnifiedDiff({
             <span className="w-8 shrink-0 text-right pr-2 select-none text-muted text-xs tabular-nums">
               {ln.newLn ?? ''}
             </span>
-            <code
-              className="flex-1 whitespace-pre"
-              dangerouslySetInnerHTML={{ __html: html || '&nbsp;' }}
-            />
+            {query ? (
+              <code className="flex-1 whitespace-pre">
+                <HighlightedText text={ln.text || ' '} />
+              </code>
+            ) : (
+              <code
+                className="flex-1 whitespace-pre"
+                dangerouslySetInnerHTML={{
+                  __html: highlightLine(ln.text, lang) || '&nbsp;'
+                }}
+              />
+            )}
           </div>
         )
       })}

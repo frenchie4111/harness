@@ -1,6 +1,7 @@
 import { ToolCardChrome, basename, trunc, type ToolCardProps } from './index'
 import { EditIcon } from './tool-icons'
 import { UnifiedDiff } from './UnifiedDiff'
+import { HighlightedText } from '../JsonModeChatFind'
 
 interface RawEdit {
   old_string?: unknown
@@ -24,6 +25,7 @@ export function MultiEditCard({
 
   return (
     <ToolCardChrome
+      id={block.id}
       name="MultiEdit"
       subtitle={`${basename(fp)} (${edits.length} edit${edits.length === 1 ? '' : 's'})`}
       variant="warn"
@@ -32,7 +34,11 @@ export function MultiEditCard({
       autoApproved={autoApproved}
       sessionAllowed={sessionAllowed}
     >
-      {fp && <div className="px-2 py-1 text-xs text-muted truncate font-mono">{fp}</div>}
+      {fp && (
+        <div className="px-2 py-1 text-xs text-muted truncate font-mono">
+          <HighlightedText text={fp} />
+        </div>
+      )}
       {edits.length === 0 ? (
         <div className="px-2 py-1 text-xs text-muted italic">No edits.</div>
       ) : (
@@ -47,7 +53,7 @@ export function MultiEditCard({
       )}
       {result && result.isError && (
         <pre className="px-2 py-1 text-xs font-mono text-danger whitespace-pre-wrap">
-          {trunc(result.content, 1000)}
+          <HighlightedText text={trunc(result.content, 1000)} />
         </pre>
       )}
     </ToolCardChrome>

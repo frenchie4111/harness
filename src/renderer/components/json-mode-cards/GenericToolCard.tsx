@@ -7,6 +7,7 @@ import {
   type ToolCardProps
 } from './index'
 import { ArgsBlock, CompactArgs } from './ArgsDisplay'
+import { HighlightedText } from '../JsonModeChatFind'
 
 export function GenericToolCard({ block, result, autoApproved, sessionAllowed }: ToolCardProps): JSX.Element {
   const brand = isHarnessControl(block.name)
@@ -25,6 +26,11 @@ export function GenericToolCard({ block, result, autoApproved, sessionAllowed }:
       autoApproved={autoApproved}
       sessionAllowed={sessionAllowed}
     >
+      {block.input && (
+        <pre className="px-2 py-1 text-xs font-mono bg-app/40 whitespace-pre-wrap max-h-40 overflow-auto">
+          <HighlightedText text={JSON.stringify(block.input, null, 2)} />
+        </pre>
+      )}
       {hasArgs && <ArgsBlock args={args} rawInput={block.input} />}
       {result && (
         <pre
@@ -32,7 +38,7 @@ export function GenericToolCard({ block, result, autoApproved, sessionAllowed }:
             result.isError ? 'text-danger' : 'opacity-80'
           }`}
         >
-          {trunc(result.content, 3000)}
+          <HighlightedText text={trunc(result.content, 3000)} />
         </pre>
       )}
     </ToolCardChrome>

@@ -284,6 +284,23 @@
   height: 2rem;
 }
 
+/* Cmd+F find match highlighting. `find-hit` marks every match; the
+ * controller adds `find-hit-current` to the DOM node at index=hitIndex on
+ * every cycle so the user sees which match is active. Chrome/Firefox
+ * style: yellow-on-all, orange-on-current. Colors are hard-coded so they
+ * pop over any theme; matching the theme's --color-warning was too
+ * washed-out against panel backgrounds. */
+mark.find-hit {
+  background-color: rgba(250, 204, 21, 0.55); /* yellow-400 @ ~55% */
+  color: inherit;
+  padding: 0;
+  border-radius: 2px;
+}
+mark.find-hit-current {
+  background-color: rgba(249, 115, 22, 0.85); /* orange-500 @ ~85% */
+  color: #000;
+}
+
 @layer base {
   * {
     margin: 0;
