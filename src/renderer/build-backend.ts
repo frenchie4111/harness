@@ -275,6 +275,8 @@ export function buildBackend(
       req('config:setUiScale', value),
     setJsonModeSendOnEnter: (enabled: boolean) =>
       req('config:setJsonModeSendOnEnter', enabled),
+    setAutoScrollToBottom: (enabled: boolean) =>
+      req('config:setAutoScrollToBottom', enabled),
     setJsonModeDefaultPermissionMode: (value: 'default' | 'acceptEdits' | 'plan') =>
       req('config:setJsonModeDefaultPermissionMode', value),
     setAutoSleepMinutes: (value: number) => req('config:setAutoSleepMinutes', value),

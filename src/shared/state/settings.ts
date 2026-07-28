@@ -183,6 +183,11 @@ export interface SettingsState {
    *  the historical behavior applies: Cmd/Ctrl+Enter sends and plain
    *  Enter inserts a newline. */
   jsonModeSendOnEnter: boolean
+  /** When true (default), JSON-mode chat auto-scrolls to follow the tail
+   *  of a streaming response. When false, the most recent user message is
+   *  pinned to the top of the viewport instead, and a "Jump to prompt"
+   *  button surfaces when the anchor scrolls off the top. */
+  autoScrollToBottom: boolean
   /** Permission mode applied to a freshly-spawned json-mode session.
    *  Existing sessions keep whatever mode they were in (set via the
    *  statusline picker). Default 'acceptEdits' so first-time users
@@ -264,6 +269,7 @@ export type SettingsEvent =
   | { type: 'settings/jsonModeChatDensityChanged'; payload: JsonModeChatDensity }
   | { type: 'settings/uiScaleChanged'; payload: UiScale }
   | { type: 'settings/jsonModeSendOnEnterChanged'; payload: boolean }
+  | { type: 'settings/autoScrollToBottomChanged'; payload: boolean }
   | {
       type: 'settings/jsonModeDefaultPermissionModeChanged'
       payload: JsonClaudePermissionMode
@@ -323,6 +329,7 @@ export const initialSettings: SettingsState = {
   jsonModeChatDensity: 'compact',
   uiScale: 'small',
   jsonModeSendOnEnter: false,
+  autoScrollToBottom: true,
   jsonModeDefaultPermissionMode: 'acceptEdits',
   autoSleepMinutes: 30,
   snoozeDefaultDays: 7,
@@ -424,6 +431,8 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, uiScale: event.payload }
     case 'settings/jsonModeSendOnEnterChanged':
       return { ...state, jsonModeSendOnEnter: event.payload }
+    case 'settings/autoScrollToBottomChanged':
+      return { ...state, autoScrollToBottom: event.payload }
     case 'settings/jsonModeDefaultPermissionModeChanged':
       return { ...state, jsonModeDefaultPermissionMode: event.payload }
     case 'settings/autoSleepMinutesChanged':

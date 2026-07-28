@@ -238,6 +238,10 @@ export interface Config {
   // composer (Shift+Enter inserts a newline). Default off — preserves
   // the historical Cmd/Ctrl+Enter-to-send behavior.
   jsonModeSendOnEnter?: boolean
+  // When false, JSON-mode chat pins the most recent user prompt to the top
+  // of the viewport instead of auto-scrolling to the bottom. Default true
+  // (undefined = follow the tail, matches historical behavior).
+  autoScrollToBottom?: boolean
   // Permission mode applied when a brand-new json-mode session spawns.
   // Existing sessions keep whatever mode they were last in. Default
   // 'acceptEdits' (auto-allow Edit/Write, still ask for Bash etc.).

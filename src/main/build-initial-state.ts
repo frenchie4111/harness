@@ -133,6 +133,7 @@ export function buildInitialAppState(
           ? config.uiScale
           : 'small',
       jsonModeSendOnEnter: config.jsonModeSendOnEnter === true,
+      autoScrollToBottom: config.autoScrollToBottom !== false,
       jsonModeDefaultPermissionMode:
         config.jsonModeDefaultPermissionMode === 'default' ||
         config.jsonModeDefaultPermissionMode === 'plan'

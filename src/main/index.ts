@@ -3213,6 +3213,24 @@ function registerIpcHandlers(): void {
   )
 
   transport.onRequest(
+    'config:setAutoScrollToBottom',
+    (_ctx, value: boolean) => {
+      const next = value !== false
+      if (next) {
+        delete config.autoScrollToBottom
+      } else {
+        config.autoScrollToBottom = false
+      }
+      saveConfig(config)
+      store.dispatch({
+        type: 'settings/autoScrollToBottomChanged',
+        payload: next
+      })
+      return true
+    }
+  )
+
+  transport.onRequest(
     'config:setJsonModeDefaultPermissionMode',
     (_ctx, value: 'default' | 'acceptEdits' | 'plan') => {
       const next: 'default' | 'acceptEdits' | 'plan' =

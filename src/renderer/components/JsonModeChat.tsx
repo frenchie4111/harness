@@ -17,6 +17,7 @@ import {
   AlertTriangle,
   Brain,
   ChevronDown,
+  ChevronUp,
   Square,
   Terminal,
   FileText,
@@ -992,6 +993,14 @@ function renderGroupedItems(items: GroupedItem[]): ReactNode {
   )
 }
 
+// CSS-pixel equivalent of 0.75rem, matching the `space-y-3` gap below the
+// pinned prompt so pin-mode leaves symmetric top/bottom whitespace around
+// it. Reads the live root font-size so it tracks the `uiScale` setting the
+// same way Tailwind's rem-based utilities do.
+function anchorTopPadding(): number {
+  return 0.75 * parseFloat(getComputedStyle(document.documentElement).fontSize)
+}
+
 export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonModeChatProps): JSX.Element {
   const backend = useBackend()
   const session = useJsonClaudeSession(sessionId)
@@ -999,6 +1008,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
   const {
     jsonModeChatDensity: density,
     jsonModeSendOnEnter: sendOnEnter,
+    autoScrollToBottom,
     defaultClaudeTabType
   } = useSettings()
   const cameFromTerminalDefault = defaultClaudeTabType === 'xterm'
@@ -1088,16 +1098,33 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
   // scroll-up before the snap-to-bottom can run. Wheel/touch/keydown +
   // scrollTop-decreased deltas are the only authoritative signals.
   const userScrolledUp = useRef(false)
+  // DOM node of the most recent non-queued user-role entry. Populated by
+  // an inline ref callback in the render loop; consulted by the pin-mode
+  // ResizeObserver callback and (in Task 6) the Jump-to-prompt handler.
+  const anchorPromptRef = useRef<HTMLDivElement | null>(null)
   const lastScrollTop = useRef(0)
   // Suppress the scrollbar-drag fallback while we're driving scroll
   // programmatically (auto-snap on content growth, jump-to-bottom click).
   const isProgrammaticScroll = useRef(false)
   const [showJumpToBottom, setShowJumpToBottom] = useState(false)
+  const [showJumpToPrompt, setShowJumpToPrompt] = useState(false)
 
+  // Reset both pill flags when the setting toggles. The useLayoutEffect
+  // that follows re-runs on toggle and snaps the view to the new target;
+  // this clears any pill visible under the old mode's threshold so it
+  // doesn't linger for one frame before onScroll fires with the new-mode
+  // branch.
+  useEffect(() => {
+    setShowJumpToBottom(false)
+    setShowJumpToPrompt(false)
+  }, [autoScrollToBottom])
+
+  // Ref update only — pill state is driven from onScroll (mode-aware) so
+  // both flags stay in sync with actual scroll position rather than
+  // splitting between gesture-source and position-source updates.
   const setUserScrolledUp = useCallback((v: boolean): void => {
     if (userScrolledUp.current === v) return
     userScrolledUp.current = v
-    setShowJumpToBottom(v)
   }, [])
 
   const reevaluateAfterGesture = useCallback((): void => {
@@ -1190,18 +1217,31 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
   useLayoutEffect(() => {
     const el = scrollRef.current
     if (!el) return
-    el.scrollTop = el.scrollHeight
+    const targetScrollTop = (): number => {
+      // Pin-mode: snap so the anchor prompt sits with symmetric top/bottom
+      // whitespace — the gap ABOVE it matches the `space-y-3` gap BELOW it
+      // to the response. 0.75rem scaled via the root font-size so this
+      // tracks the uiScale setting the same way `space-y-3` does. Fall
+      // back to scrollHeight when there's no anchor yet (fresh session
+      // before the first user message renders) so the mount doesn't leave
+      // the view in a weird half-scrolled state.
+      if (!autoScrollToBottom && anchorPromptRef.current) {
+        return anchorPromptRef.current.offsetTop - anchorTopPadding()
+      }
+      return el.scrollHeight
+    }
+    el.scrollTop = targetScrollTop()
     lastScrollTop.current = el.scrollTop
     let clearTimer: ReturnType<typeof setTimeout> | null = null
     const ro = new ResizeObserver(() => {
       if (userScrolledUp.current) return
       isProgrammaticScroll.current = true
-      el.scrollTop = el.scrollHeight
+      el.scrollTop = targetScrollTop()
       // Single-frame jumps (thinking card body appearing, cursor span
       // landing) grow content by ~30px in one shot — re-snap on the
       // next frame in case more layout settled after our first commit.
       requestAnimationFrame(() => {
-        if (!userScrolledUp.current) el.scrollTop = el.scrollHeight
+        if (!userScrolledUp.current) el.scrollTop = targetScrollTop()
         lastScrollTop.current = el.scrollTop
       })
       // Hold the suppression window past back-to-back scroll events
@@ -1219,7 +1259,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
       ro.disconnect()
       if (clearTimer) clearTimeout(clearTimer)
     }
-  }, [])
+  }, [autoScrollToBottom])
 
   // Scrollbar-drag fallback: macOS pinned scrollbars don't emit wheel
   // events, so a drag is invisible to the input listeners above. Watch
@@ -1246,6 +1286,16 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
     } else if (el.scrollTop > prev && distance < 32) {
       setUserScrolledUp(false)
     }
+    if (autoScrollToBottom) {
+      setShowJumpToBottom(distance > 32)
+      setShowJumpToPrompt(false)
+    } else {
+      const anchor = anchorPromptRef.current
+      const anchorScrolledOff =
+        !!anchor && anchor.offsetTop - anchorTopPadding() < el.scrollTop - 8
+      setShowJumpToPrompt(anchorScrolledOff)
+      setShowJumpToBottom(false)
+    }
   }
 
   const jumpToBottom = (): void => {
@@ -1255,8 +1305,27 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
     el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
     lastScrollTop.current = el.scrollHeight
     setUserScrolledUp(false)
+    setShowJumpToBottom(false)
     // Smooth scroll fires several scroll events over ~300ms; clear the
     // guard well after the animation has landed at the bottom.
+    setTimeout(() => {
+      isProgrammaticScroll.current = false
+    }, 500)
+  }
+
+  const jumpToPrompt = (): void => {
+    const el = scrollRef.current
+    const anchor = anchorPromptRef.current
+    if (!el || !anchor) return
+    const target = anchor.offsetTop - anchorTopPadding()
+    isProgrammaticScroll.current = true
+    el.scrollTo({ top: target, behavior: 'smooth' })
+    lastScrollTop.current = target
+    setUserScrolledUp(false)
+    setShowJumpToPrompt(false)
+    // Smooth scroll fires several scroll events over ~300ms; clear the
+    // guard well after the animation has landed. Same window as
+    // jumpToBottom uses.
     setTimeout(() => {
       isProgrammaticScroll.current = false
     }, 500)
@@ -1418,6 +1487,18 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
   ])
 
   const groupedItems = useMemo(() => groupConsecutiveToolRows(rows), [rows])
+
+  // The anchor for "pin prompt to top" mode is the most recent non-queued
+  // user entry. Derived from `entries` (not `groupedItems`) so the id is
+  // stable across group-shape changes (e.g. tool_use turns that resolve to
+  // a single group after streaming completes).
+  const lastUserEntryId = useMemo<string | null>(() => {
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const e = entries[i]
+      if (e.kind === 'user' && !e.isQueued) return e.entryId
+    }
+    return null
+  }, [entries])
 
   // Right-click "Rewind to here" state. Only available on assistant
   // rows — right-clicking a user bubble or any other row does nothing
@@ -1992,12 +2073,18 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
                 targetEntryId && targetEntry?.kind === 'assistant'
                   ? (e: ReactMouseEvent): void => openRewindMenu(targetEntryId, e)
                   : undefined
+              const isAnchor = targetEntryId != null && targetEntryId === lastUserEntryId
+              const anchorRef = isAnchor
+                ? (el: HTMLDivElement | null): void => {
+                    anchorPromptRef.current = el
+                  }
+                : undefined
               return g.kind === 'single' ? (
-                <div key={g.key} onContextMenu={onContextMenu}>
+                <div key={g.key} ref={anchorRef} onContextMenu={onContextMenu}>
                   {g.rows[0].node}
                 </div>
               ) : (
-                <div key={g.key} onContextMenu={onContextMenu}>
+                <div key={g.key} ref={anchorRef} onContextMenu={onContextMenu}>
                   <ToolGroup rows={g.rows} />
                 </div>
               )
@@ -2051,6 +2138,16 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
           >
             <ChevronDown className="icon-xs" />
             <span>Jump to bottom</span>
+          </button>
+        )}
+        {showJumpToPrompt && (
+          <button
+            onClick={jumpToPrompt}
+            className="absolute right-4 top-4 z-10 px-3 py-1.5 rounded-full bg-accent text-white text-xs shadow-lg hover:bg-accent/90 cursor-pointer flex items-center gap-1.5"
+            title="Jump to prompt"
+          >
+            <ChevronUp className="icon-xs" />
+            <span>Jump to prompt</span>
           </button>
         )}
       </div>

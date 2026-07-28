@@ -338,6 +338,7 @@ export interface ElectronAPI {
   setJsonModeChatDensity(value: 'compact' | 'comfy'): Promise<boolean>
   setUiScale(value: 'x-small' | 'small' | 'medium' | 'large' | 'x-large'): Promise<boolean>
   setJsonModeSendOnEnter(enabled: boolean): Promise<boolean>
+  setAutoScrollToBottom(enabled: boolean): Promise<boolean>
   setJsonModeDefaultPermissionMode(
     value: 'default' | 'acceptEdits' | 'plan'
   ): Promise<boolean>

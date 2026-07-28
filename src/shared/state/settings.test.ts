@@ -489,6 +489,20 @@ describe('settingsReducer', () => {
     expect(off.jsonModeSendOnEnter).toBe(false)
   })
 
+  it('autoScrollToBottomChanged toggles the auto-scroll flag', () => {
+    expect(initialSettings.autoScrollToBottom).toBe(true)
+    const off = apply(initialSettings, {
+      type: 'settings/autoScrollToBottomChanged',
+      payload: false
+    })
+    expect(off.autoScrollToBottom).toBe(false)
+    const on = apply(off, {
+      type: 'settings/autoScrollToBottomChanged',
+      payload: true
+    })
+    expect(on.autoScrollToBottom).toBe(true)
+  })
+
   it('jsonModeDefaultPermissionModeChanged sets the default and preserves other settings', () => {
     expect(initialSettings.jsonModeDefaultPermissionMode).toBe('acceptEdits')
     const start: SettingsState = {
