@@ -487,38 +487,51 @@ function cssEscape(s: string): string {
 // Overlay UI.
 // -----------------------------------------------------------------------------
 
-interface FindOverlayProps {
-  controller: FindController
+/** Pure presentational find bar. Both JsonModeChat and XTerminal use it
+ *  so Cmd+F looks identical regardless of tab type. Positioning is the
+ *  caller's responsibility — wrap this in an absolute-positioned parent.
+ *  State is the caller's too — each backend (React-state model for chat,
+ *  SearchAddon callbacks for terminal) drives the props. */
+export interface FindBarProps {
+  query: string
+  hitIndex: number
+  hitCount: number
+  placeholder?: string
   inputRef: RefObject<HTMLInputElement | null>
+  onQueryChange: (q: string) => void
+  onNext: () => void
+  onPrev: () => void
+  onClose: () => void
 }
 
-export function FindOverlay({
-  controller,
-  inputRef
-}: FindOverlayProps): JSX.Element | null {
-  if (!controller.isOpen) return null
-
+export function FindBar({
+  query,
+  hitIndex,
+  hitCount,
+  placeholder = 'Find',
+  inputRef,
+  onQueryChange,
+  onNext,
+  onPrev,
+  onClose
+}: FindBarProps): JSX.Element {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>): void => {
     if (e.key === 'Escape') {
       e.preventDefault()
-      controller.close()
+      onClose()
       return
     }
     if (e.key === 'Enter') {
       e.preventDefault()
-      if (e.shiftKey) controller.prev()
-      else controller.next()
+      if (e.shiftKey) onPrev()
+      else onNext()
     }
   }
 
-  const counter = controller.query
-    ? controller.hitCount > 0
-      ? `${controller.hitIndex + 1}/${controller.hitCount}`
-      : '0/0'
-    : ''
-
-  const hasMatches = controller.query.length > 0 && controller.hitCount > 0
-  const zeroMatches = controller.query.length > 0 && controller.hitCount === 0
+  const counter =
+    query.length > 0 ? (hitCount > 0 ? `${hitIndex + 1}/${hitCount}` : '0/0') : ''
+  const hasMatches = query.length > 0 && hitCount > 0
+  const zeroMatches = query.length > 0 && hitCount === 0
 
   return (
     <div
@@ -532,10 +545,10 @@ export function FindOverlay({
       <input
         ref={inputRef}
         type="text"
-        value={controller.query}
-        onChange={(e) => controller.setQuery(e.target.value)}
+        value={query}
+        onChange={(e) => onQueryChange(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder="Find in chat"
+        placeholder={placeholder}
         className="bg-transparent text-sm text-fg-bright outline-none placeholder:text-muted w-56 font-medium"
       />
       <span
@@ -547,7 +560,7 @@ export function FindOverlay({
       </span>
       <button
         type="button"
-        onClick={controller.close}
+        onClick={onClose}
         className="p-1 rounded text-muted hover:text-fg-bright hover:bg-border cursor-pointer transition-colors"
         aria-label="Close find"
         title="Close (Esc)"
@@ -555,6 +568,34 @@ export function FindOverlay({
         <X className="icon-sm" />
       </button>
     </div>
+  )
+}
+
+interface FindOverlayProps {
+  controller: FindController
+  inputRef: RefObject<HTMLInputElement | null>
+}
+
+/** Thin adapter that pulls FindBar props out of a FindController. Used
+ *  by JsonModeChat; XTerminal builds its own props from the xterm
+ *  SearchAddon state and uses FindBar directly. */
+export function FindOverlay({
+  controller,
+  inputRef
+}: FindOverlayProps): JSX.Element | null {
+  if (!controller.isOpen) return null
+  return (
+    <FindBar
+      query={controller.query}
+      hitIndex={controller.hitIndex}
+      hitCount={controller.hitCount}
+      placeholder="Find in chat"
+      inputRef={inputRef}
+      onQueryChange={controller.setQuery}
+      onNext={controller.next}
+      onPrev={controller.prev}
+      onClose={controller.close}
+    />
   )
 }
 
