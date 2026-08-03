@@ -25,7 +25,13 @@ import { parseCliFlags, USAGE, type CliFlags } from './cli-args'
 import { PlaywrightBrowserManager } from './browser-manager-playwright'
 import type { BrowserManagerLike } from './browser-manager-types'
 import { PerfMonitor } from './perf-monitor'
-import { setGitHubApiRecorder, setGitHubApiLoggingEnabled } from './github-recorder'
+import {
+  setGitHubApiRecorder,
+  setGitHubApiLoggingEnabled,
+  getGitHubApiLogSnapshot,
+  clearGitHubApiLog,
+  subscribeGitHubApiLog
+} from './github-recorder'
 import { PRPoller } from './pr-poller'
 import { WorktreesFSM } from './worktrees-fsm'
 import { WorktreeDeletionFSM } from './worktree-deletion-fsm'
@@ -2691,6 +2697,20 @@ function registerIpcHandlers(): void {
       ms: +ms.toFixed(2),
       phase
     })
+  })
+
+  // GitHub API debug log — ring buffer + per-minute rollups + last-seen
+  // rate limit. Renderer polls `debug:getGitHubApiLog` on 1s (matching
+  // the perf-monitor polling cadence). The append signal is fired for
+  // clients that want to reduce poll latency on bursts; the current
+  // renderer panel doesn't use it, but it's cheap to expose.
+  transport.onRequest('debug:getGitHubApiLog', (_ctx) => getGitHubApiLogSnapshot())
+  transport.onRequest('debug:clearGitHubApiLog', (_ctx) => {
+    clearGitHubApiLog()
+    return true
+  })
+  subscribeGitHubApiLog((entry) => {
+    transport.sendSignal('debug:githubApiLogAppended', entry)
   })
 
   // Renderer error-boundary reporting — the preload flattens Error/ErrorInfo

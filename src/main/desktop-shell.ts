@@ -511,6 +511,10 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
             }
           },
           {
+            label: 'Debug: Open GitHub API Log',
+            click: () => transport.sendSignal('app:openGitHubApiLog')
+          },
+          {
             label: 'Debug: Crash Focused Tab',
             click: () => transport.sendSignal('app:debugCrashFocusedTab')
           },
