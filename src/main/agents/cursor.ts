@@ -203,6 +203,11 @@ export function latestSessionId(cwd: string): string | null {
   }
 }
 
+export function extractSessionId(payload: Record<string, unknown>): string | null {
+  const sid = payload.conversation_id
+  return typeof sid === 'string' && sid ? sid : null
+}
+
 export function buildSpawnArgs(opts: AgentSpawnOpts): string {
   // Cursor's MCP config is global (~/.cursor/mcp.json), not a per-terminal
   // flag, so mcpConfigPath is unused here — same shape as codex.ts.
