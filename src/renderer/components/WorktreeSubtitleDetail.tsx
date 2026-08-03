@@ -120,7 +120,13 @@ export function SubtitleDetail({ worktree, repoLabel, aliased, prStatus, prefs, 
     <div
       className={
         inline
-          ? 'text-xs text-faint flex items-center gap-1.5 shrink-0 min-w-0'
+          // Compact mode: cluster shares the horizontal row with the label.
+          // `max-w-[50%]` guarantees the label keeps at least half the row so
+          // it never truncates to nothing when the sidebar is narrow. The
+          // flexible items inside (repoLabel / branch / milestone) truncate
+          // first via their own `truncate min-w-0`; rigid items (age, diff,
+          // #N, avatar) stay legible.
+          ? 'text-xs text-faint flex items-center gap-1.5 min-w-0 max-w-[50%] overflow-hidden'
           : 'text-xs text-faint flex items-center gap-1.5 min-w-0'
       }
     >
