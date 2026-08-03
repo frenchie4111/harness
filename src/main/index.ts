@@ -29,6 +29,7 @@ import { setGitHubApiRecorder, setGitHubApiLoggingEnabled } from './github-recor
 import { PRPoller } from './pr-poller'
 import { WorktreesFSM } from './worktrees-fsm'
 import { WorktreeDeletionFSM } from './worktree-deletion-fsm'
+import { sweepWorktreeTrashOnBoot } from './worktree-trash'
 import { PanesFSM, stripTransientTabFields } from './panes-fsm'
 import { ActivityDeriver } from './activity-deriver'
 import { AutoSleepMonitor } from './auto-sleep-monitor'
@@ -3800,6 +3801,11 @@ async function runBoot(): Promise<void> {
   }
   pruneTerminalHistory(keepIds)
   pruneMcpConfigs(keepIds)
+
+  // Drain any worktree-trash entries left by a mid-delete crash. The
+  // sweep dispatches each entry to the fs threadpool without awaiting,
+  // so this call resolves immediately and doesn't block boot.
+  void sweepWorktreeTrashOnBoot()
 
   // Local HTTP control server for the bundled harness-control MCP bridge.
   startControlServer({
