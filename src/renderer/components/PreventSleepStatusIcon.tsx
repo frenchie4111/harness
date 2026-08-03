@@ -4,6 +4,7 @@ import { useBackend } from '../backend'
 import {
   advancePreventSleep,
   currentPreventSleepStep,
+  nextPreventSleepStep,
   PREVENT_SLEEP_META,
   PREVENT_SLEEP_TOAST_KEY
 } from '../prevent-sleep'
@@ -49,23 +50,32 @@ export function PreventSleepStatusIcon(): JSX.Element {
   else if (step === 'while-agents-running') engaged = agentsActive
   else engaged = true
 
-  let label: string
+  let currentLabel: string
   if (step === 'temporary') {
     const mins = Math.max(0, Math.ceil(((preventSleepUntil ?? nowMs) - nowMs) / 60000))
-    label = `Do not sleep — ${mins}m remaining`
+    currentLabel = `Do not sleep — ${mins}m remaining`
   } else if (step === 'always') {
-    label = 'Do not sleep'
+    currentLabel = 'Do not sleep'
   } else if (step === 'while-agents-running') {
-    label = engaged ? 'Do not sleep — agents are working' : 'Awake while agents run'
+    currentLabel = engaged
+      ? 'Do not sleep — agents are working'
+      : 'Do not sleep while agents run'
   } else {
-    label = 'Allow sleep'
+    currentLabel = 'Allow sleep'
   }
+  const nextLabel = PREVENT_SLEEP_META[nextPreventSleepStep(step)].toast
+  const tooltipLabel = (
+    <span className="flex flex-col gap-0.5">
+      <span>{currentLabel}</span>
+      <span className="text-dim">Click: {nextLabel}</span>
+    </span>
+  )
 
   return (
-    <Tooltip label={label} action="cyclePreventSleep" side="top">
+    <Tooltip label={tooltipLabel} action="cyclePreventSleep" side="top">
       <button
         type="button"
-        aria-label={label}
+        aria-label={currentLabel}
         onClick={() => {
           const next = advancePreventSleep(
             preventSleepMode,
