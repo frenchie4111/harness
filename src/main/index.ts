@@ -1,3 +1,11 @@
+// Bump libuv's threadpool from its default of 4 so background filesystem
+// work (fs.promises.rm for trashed worktrees, other unlinks) can
+// parallelize on multi-core machines. Must run before any import that
+// could touch the threadpool. Respect an explicit override — power users
+// setting UV_THREADPOOL_SIZE themselves shouldn't have their choice
+// silently upgraded.
+process.env.UV_THREADPOOL_SIZE = process.env.UV_THREADPOOL_SIZE || '16'
+
 import { existsSync, lstatSync, readFileSync } from 'fs'
 import { createRequire } from 'module'
 import { randomUUID } from 'crypto'
