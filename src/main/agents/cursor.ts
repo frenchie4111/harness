@@ -1,7 +1,6 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
-import { createHash } from 'crypto'
 import { log } from '../debug'
 import { makeHookCommand } from '../hooks'
 import { shellQuote } from '../shell-quote'
@@ -74,14 +73,21 @@ function removeOldHarnessEntries(entries: CursorHookEntry[]): CursorHookEntry[] 
   return entries.filter((entry) => !isHarnessHookEntry(entry))
 }
 
-function chatsDir(): string {
-  return join(homedir(), '.cursor', 'chats')
+function projectsDir(): string {
+  return join(homedir(), '.cursor', 'projects')
 }
 
-// Cursor keys its per-project session store on the MD5 hex of the
-// absolute project path: ~/.cursor/chats/<md5(cwd)>/<session-uuid>/store.db
-function projectChatsDir(cwd: string): string {
-  return join(chatsDir(), createHash('md5').update(cwd).digest('hex'))
+// Cursor slugs the absolute project path by dropping the leading '/' and
+// replacing every remaining '/' with '-'. The slug is lossy (a literal
+// hyphen in the path is indistinguishable from a slash separator), so
+// callers that look for a specific session id fall back to a global scan.
+function projectSlug(cwd: string): string {
+  return cwd.replace(/^\/+/, '').replace(/\//g, '-')
+}
+
+// ~/.cursor/projects/<slug>/agent-transcripts/<session-uuid>/<session-uuid>.jsonl
+function projectTranscriptsDir(cwd: string): string {
+  return join(projectsDir(), projectSlug(cwd), 'agent-transcripts')
 }
 
 export function hooksInstalled(): boolean {
@@ -150,15 +156,15 @@ export function stripHooksFromWorktree(worktreePath: string): boolean {
 
 export function sessionFileExists(cwd: string, sessionId: string): boolean {
   try {
-    if (existsSync(join(projectChatsDir(cwd), sessionId))) return true
+    if (existsSync(join(projectTranscriptsDir(cwd), sessionId))) return true
     // Fallback: session IDs are UUIDs, so a global scan can't produce a
-    // false positive. Covers any drift between our cwd string and the
-    // path Cursor hashed (symlinks, trailing slashes).
-    const root = chatsDir()
+    // false positive. Covers slug drift (symlinks, path hyphens vs.
+    // separators, etc.) between our cwd and the slug Cursor recorded.
+    const root = projectsDir()
     if (!existsSync(root)) return false
     for (const entry of readdirSync(root, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue
-      if (existsSync(join(root, entry.name, sessionId))) return true
+      if (existsSync(join(root, entry.name, 'agent-transcripts', sessionId))) return true
     }
     return false
   } catch {
@@ -171,20 +177,20 @@ export function sessionFileExists(cwd: string, sessionId: string): boolean {
 // session was touched last across ALL projects.
 export function latestSessionId(cwd: string): string | null {
   try {
-    const dir = projectChatsDir(cwd)
+    const dir = projectTranscriptsDir(cwd)
     if (!existsSync(dir)) return null
     let bestId: string | null = null
     let bestMtime = -Infinity
     for (const sessionEntry of readdirSync(dir, { withFileTypes: true })) {
       if (!sessionEntry.isDirectory()) continue
       const sessionPath = join(dir, sessionEntry.name)
-      // store.db is written on every turn, so it's the freshest recency
-      // signal; the directory mtime only changes when files are added.
+      // The transcript jsonl is appended on every turn, so it's the freshest
+      // recency signal; the directory mtime only changes when files are added.
       let mtime = statSync(sessionPath).mtimeMs
       try {
-        mtime = statSync(join(sessionPath, 'store.db')).mtimeMs
+        mtime = statSync(join(sessionPath, `${sessionEntry.name}.jsonl`)).mtimeMs
       } catch {
-        // no store.db yet — use directory mtime
+        // no transcript yet — use directory mtime
       }
       if (mtime > bestMtime) {
         bestMtime = mtime

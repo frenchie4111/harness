@@ -53,7 +53,6 @@ vi.mock('../hooks', () => ({
 
 import { homedir } from 'os'
 import { join } from 'path'
-import { createHash } from 'crypto'
 import {
   hooksInstalled,
   installHooks,
@@ -65,8 +64,14 @@ import {
 
 const HOOKS_PATH = join(homedir(), '.cursor', 'hooks.json')
 
+// Mirror cursor.ts's projectTranscriptsDir(): ~/.cursor/projects/<slug>/agent-transcripts
 function projectDir(cwd: string): string {
-  return join(homedir(), '.cursor', 'chats', createHash('md5').update(cwd).digest('hex'))
+  const slug = cwd.replace(/^\/+/, '').replace(/\//g, '-')
+  return join(homedir(), '.cursor', 'projects', slug, 'agent-transcripts')
+}
+
+function transcriptFile(cwd: string, sessionId: string): string {
+  return join(projectDir(cwd), sessionId, `${sessionId}.jsonl`)
 }
 
 beforeEach(() => {
@@ -151,8 +156,8 @@ describe('cursor buildSpawnArgs', () => {
     ).toBe('agent')
   })
 
-  it('resumes when the session exists in the project-scoped chats dir', () => {
-    fsState.files.set(join(projectDir('/tmp'), 'abc-123', 'store.db'), '')
+  it('resumes when the session exists under the project slug', () => {
+    fsState.files.set(transcriptFile('/tmp', 'abc-123'), '')
     expect(
       buildSpawnArgs({
         command: 'agent',
@@ -162,9 +167,17 @@ describe('cursor buildSpawnArgs', () => {
     ).toBe('agent --resume abc-123')
   })
 
-  it("resumes via global scan when Cursor's project hash differs from ours", () => {
+  it("resumes via global scan when Cursor's project slug differs from ours", () => {
     fsState.files.set(
-      join(homedir(), '.cursor', 'chats', 'some-other-hash', 'abc-123', 'store.db'),
+      join(
+        homedir(),
+        '.cursor',
+        'projects',
+        'some-other-slug',
+        'agent-transcripts',
+        'abc-123',
+        'abc-123.jsonl'
+      ),
       ''
     )
     expect(
@@ -178,9 +191,9 @@ describe('cursor buildSpawnArgs', () => {
 })
 
 describe('cursor latestSessionId', () => {
-  it('returns the session whose store.db was written most recently', () => {
-    const older = join(projectDir('/tmp'), 'aaa-111', 'store.db')
-    const newer = join(projectDir('/tmp'), 'bbb-222', 'store.db')
+  it('returns the session whose transcript was written most recently', () => {
+    const older = transcriptFile('/tmp', 'aaa-111')
+    const newer = transcriptFile('/tmp', 'bbb-222')
     fsState.files.set(older, '')
     fsState.files.set(newer, '')
     fsState.mtimes.set(older, 100)
@@ -189,8 +202,8 @@ describe('cursor latestSessionId', () => {
   })
 
   it('ignores sessions belonging to other projects', () => {
-    const ours = join(projectDir('/tmp'), 'aaa-111', 'store.db')
-    const theirs = join(projectDir('/other/project'), 'zzz-999', 'store.db')
+    const ours = transcriptFile('/tmp', 'aaa-111')
+    const theirs = transcriptFile('/other/project', 'zzz-999')
     fsState.files.set(ours, '')
     fsState.files.set(theirs, '')
     fsState.mtimes.set(ours, 100)
