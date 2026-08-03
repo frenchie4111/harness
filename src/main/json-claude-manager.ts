@@ -1412,6 +1412,16 @@ export class JsonClaudeManager {
         payload: { sessionId: instance.sessionId }
       })
       const authMessage = detectAuthFailureFromResult(parsed)
+      if (
+        parsed['is_error'] === true ||
+        (typeof parsed['subtype'] === 'string' &&
+          (parsed['subtype'] as string).startsWith('error_'))
+      ) {
+        log(
+          'json-claude',
+          `result error sessionId=${instance.sessionId} subtype=${String(parsed['subtype'])} matched=${authMessage !== null} payload=${JSON.stringify(parsed).slice(0, 500)}`
+        )
+      }
       if (authMessage !== null) {
         this.appendEntry(instance, {
           entryId: `${instance.sessionId}-auth-${Date.now()}`,
@@ -2015,7 +2025,15 @@ function detectAuthFailureFromResult(parsed: Record<string, unknown>): string | 
     parsed['is_error'] === true ||
     (typeof subtype === 'string' && subtype.startsWith('error_'))
   if (!isError) return null
-  const err = pickErrorString(parsed)
+  // Strict structural fields (error / error.message) first. When the turn
+  // is flagged is_error:true but the message lives in result/message
+  // (claude sometimes puts the user-facing failure there), broaden to
+  // those fields too — the is_error gate already eliminates the
+  // false-positive case the original AUTH_PATTERN scrub was about.
+  const err =
+    pickErrorString(parsed) ??
+    (typeof parsed['result'] === 'string' && parsed['result'].trim() ? (parsed['result'] as string) : null) ??
+    (typeof parsed['message'] === 'string' && parsed['message'].trim() ? (parsed['message'] as string) : null)
   if (err && AUTH_PATTERN.test(err)) return err
   return null
 }

@@ -3,6 +3,8 @@ import { createServer } from 'http'
 import { spawn } from 'child_process'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
+import { mkdtempSync, writeFileSync, statSync, rmSync } from 'fs'
+import { tmpdir } from 'os'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -302,5 +304,55 @@ describe('mcp-bridge create_worktree', () => {
     expect(response.result.isError).toBe(true)
     expect(response.result.content[0].text).toMatch(/HTTP 422/)
     expect(response.result.content[0].text).toMatch(/99999/)
+  })
+})
+
+describe('mcp-bridge log-size cap on startup', () => {
+  let tmpDir
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'harness-mcp-log-'))
+  })
+
+  afterEach(() => {
+    if (tmpDir) rmSync(tmpDir, { recursive: true, force: true })
+  })
+
+  it('truncates a log file that starts over 10 MB', async () => {
+    const logPath = join(tmpDir, 'bridge.log')
+    writeFileSync(logPath, Buffer.alloc(15 * 1024 * 1024, 0x2e))
+    expect(statSync(logPath).size).toBe(15 * 1024 * 1024)
+
+    const proc = spawn(process.execPath, [BRIDGE], {
+      env: {
+        ...process.env,
+        HARNESS_CONTROL_BRIDGE_LOG: logPath,
+        HARNESS_PORT: '',
+        HARNESS_TOKEN: ''
+      },
+      stdio: ['ignore', 'ignore', 'ignore']
+    })
+    await new Promise((resolve) => proc.once('exit', resolve))
+
+    expect(statSync(logPath).size).toBeLessThan(1024 * 1024)
+  })
+
+  it('leaves a small log file alone', async () => {
+    const logPath = join(tmpDir, 'small.log')
+    writeFileSync(logPath, 'prior boot line\n')
+    const seedSize = statSync(logPath).size
+
+    const proc = spawn(process.execPath, [BRIDGE], {
+      env: {
+        ...process.env,
+        HARNESS_CONTROL_BRIDGE_LOG: logPath,
+        HARNESS_PORT: '',
+        HARNESS_TOKEN: ''
+      },
+      stdio: ['ignore', 'ignore', 'ignore']
+    })
+    await new Promise((resolve) => proc.once('exit', resolve))
+
+    expect(statSync(logPath).size).toBeGreaterThan(seedSize)
   })
 })

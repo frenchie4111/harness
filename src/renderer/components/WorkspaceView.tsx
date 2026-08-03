@@ -63,11 +63,8 @@ interface WorkspaceViewProps {
    *  strip visually continues across the gap above the right column (which
    *  is offset 40px from the top so the tab bar can claim that row). */
   topBarTrailingExtendPx?: number
-  /** Reports the window-x of the top-left leaf's "Harness" segment right edge
-   *  (just before the repo/branch label) so the host can cap the sidebar
-   *  width to line up there. */
-  onTitleBlockEdge?: (px: number) => void
-  /** Hide the "Harness" title block (single-screen mode) — the repo/branch
+  /** Hide the "Harness" title block — used when the sidebar above it is
+   *  already showing the title, or in single-screen mode. The repo/branch
    *  label still clears the traffic lights via the leading padding. */
   hideAppTitle?: boolean
   crashedTabIds?: ReadonlySet<string>
@@ -153,7 +150,6 @@ function SplitRenderer({
   topBarLeadingPx,
   topBarLeadingExtendPx,
   topBarTrailingExtendPx,
-  onTitleBlockEdge,
   hideAppTitle,
   registerSlot,
   onSelectTab,
@@ -184,7 +180,6 @@ function SplitRenderer({
   topBarLeadingPx: number
   topBarLeadingExtendPx: number
   topBarTrailingExtendPx: number
-  onTitleBlockEdge?: (px: number) => void
   hideAppTitle?: boolean
   registerSlot: (paneId: string, el: HTMLDivElement | null) => void
   onSelectTab: (tabId: string, paneId: string) => void
@@ -236,7 +231,6 @@ function SplitRenderer({
           topBarLeadingExtendPx={node.id === topLeftLeafId ? topBarLeadingExtendPx : 0}
           topBarTrailingExtendPx={node.id === topRightLeafId ? topBarTrailingExtendPx : 0}
           showAppTitle={node.id === topLeftLeafId && !hideAppTitle}
-          onTitleBlockEdge={node.id === topLeftLeafId ? onTitleBlockEdge : undefined}
         />
       </div>
     )
@@ -272,7 +266,6 @@ function SplitRenderer({
           topBarLeadingPx={topBarLeadingPx}
           topBarLeadingExtendPx={topBarLeadingExtendPx}
           topBarTrailingExtendPx={topBarTrailingExtendPx}
-          onTitleBlockEdge={onTitleBlockEdge}
           hideAppTitle={hideAppTitle}
           registerSlot={registerSlot}
           onSelectTab={onSelectTab}
@@ -315,7 +308,6 @@ function SplitRenderer({
           topBarLeadingPx={topBarLeadingPx}
           topBarLeadingExtendPx={topBarLeadingExtendPx}
           topBarTrailingExtendPx={topBarTrailingExtendPx}
-          onTitleBlockEdge={onTitleBlockEdge}
           hideAppTitle={hideAppTitle}
           registerSlot={registerSlot}
           onSelectTab={onSelectTab}
@@ -364,7 +356,6 @@ export function WorkspaceView({
   topBarLeadingPx = 0,
   topBarLeadingExtendPx = 0,
   topBarTrailingExtendPx = 0,
-  onTitleBlockEdge,
   hideAppTitle,
   crashedTabIds
 }: WorkspaceViewProps): JSX.Element {
@@ -536,7 +527,6 @@ export function WorkspaceView({
           topBarLeadingPx={topBarLeadingPx}
           topBarLeadingExtendPx={topBarLeadingExtendPx}
           topBarTrailingExtendPx={topBarTrailingExtendPx}
-          onTitleBlockEdge={onTitleBlockEdge}
           hideAppTitle={hideAppTitle}
           registerSlot={attachSlot}
           onSelectTab={(tabId, paneId) => onSelectTab(worktreePath, paneId, tabId)}
