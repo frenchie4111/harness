@@ -15,7 +15,6 @@ import {
 } from '../store'
 import { useBackend } from '../backend'
 import { SCALES } from '../../shared/state/settings'
-import { cycleWorktreeDetail } from '../worktree-detail-override'
 import { advancePreventSleep, PREVENT_SLEEP_META, PREVENT_SLEEP_TOAST_KEY } from '../prevent-sleep'
 import { showToast } from '../toast'
 
@@ -110,7 +109,6 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
   const allSettings = useSettings()
   const viewerLogin = allSettings.viewerLogin
   const uiScale = allSettings.uiScale
-  const configuredWorktreeDetail = allSettings.worktreeDetail
   const preventSleepMode = allSettings.preventSleepMode
   const preventSleepUntil = allSettings.preventSleepUntil
   const snoozeByPath = useSnooze().byPath
@@ -389,7 +387,6 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       uiScaleReset: () => {
         if (uiScale !== 'small') void backend.setUiScale('small')
       },
-      cycleWorktreeDetail: () => cycleWorktreeDetail(configuredWorktreeDetail),
       aliasWorktree: () => {
         if (!activeWorktreeId) return
         if (activeWorktreeId.startsWith('pending:')) return
@@ -457,7 +454,6 @@ export function useHotkeyHandlers(args: UseHotkeyHandlersArgs): {
       setShowSettings,
       backend,
       uiScale,
-      configuredWorktreeDetail,
       onStartAliasEdit,
       activeApproval,
       preventSleepMode,

@@ -39,7 +39,7 @@ import type {
   StateEventListener
 } from '../shared/transport/transport'
 import type { ElectronAPI } from './types'
-import type { PreventSleepMode } from '../shared/state/settings'
+import type { SidebarDetailPrefsByMode, PreventSleepMode } from '../shared/state/settings'
 
 export type { ElectronOnlyHelpers }
 
@@ -384,8 +384,10 @@ export function buildBackend(
     setWorktreeBase: (mode: 'remote' | 'local') => req('config:setWorktreeBase', mode),
     setMergeStrategy: (strategy: 'squash' | 'merge-commit' | 'fast-forward') =>
       req('config:setMergeStrategy', strategy),
-    setWorktreeDetail: (detail: 'diff' | 'age' | 'pr' | 'none') =>
-      req('config:setWorktreeDetail', detail),
+    setSidebarDensity: (density: 'compact' | 'comfy') =>
+      req('config:setSidebarDensity', density),
+    setSidebarDetails: (prefs: SidebarDetailPrefsByMode) =>
+      req('config:setSidebarDetails', prefs),
 
     setEditor: (editorId: string) => req('config:setEditor', editorId),
     getAvailableEditors: () => req('config:getAvailableEditors'),

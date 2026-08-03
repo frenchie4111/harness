@@ -57,7 +57,7 @@ import {
   DEFAULT_TERMINAL_FONT_SIZE,
   DEFAULT_WORKTREE_BASE,
   DEFAULT_MERGE_STRATEGY,
-  DEFAULT_WORKTREE_DETAIL,
+  DEFAULT_SIDEBAR_DENSITY,
   DEFAULT_HARNESS_SYSTEM_PROMPT,
   DEFAULT_HARNESS_SYSTEM_PROMPT_MAIN,
   pruneTerminalHistory,
@@ -79,6 +79,9 @@ import {
   DEFAULT_LIGHT_THEME,
   DEFAULT_DARK_THEME,
   DEFAULT_PR_REVIEW_PROMPT,
+  DEFAULT_SIDEBAR_DETAILS,
+  type SidebarDetailPrefs,
+  type SidebarDetailPrefsByMode,
   type PreventSleepMode
 } from '../shared/state/settings'
 import { watchStatusDir } from './hooks'
@@ -2355,23 +2358,66 @@ function registerIpcHandlers(): void {
   )
 
   transport.onRequest(
-    'config:setWorktreeDetail',
-    (_ctx, detail: 'diff' | 'age' | 'pr' | 'none') => {
-      if (
-        detail !== 'diff' &&
-        detail !== 'age' &&
-        detail !== 'pr' &&
-        detail !== 'none'
-      ) {
-        return false
-      }
-      if (detail === DEFAULT_WORKTREE_DETAIL) {
-        delete config.worktreeDetail
+    'config:setSidebarDensity',
+    (_ctx, density: 'compact' | 'comfy') => {
+      if (density !== 'compact' && density !== 'comfy') return false
+      if (density === DEFAULT_SIDEBAR_DENSITY) {
+        delete config.sidebarDensity
       } else {
-        config.worktreeDetail = detail
+        config.sidebarDensity = density
       }
       saveConfig(config)
-      store.dispatch({ type: 'settings/worktreeDetailChanged', payload: detail })
+      store.dispatch({ type: 'settings/sidebarDensityChanged', payload: density })
+      return true
+    }
+  )
+
+  transport.onRequest(
+    'config:setSidebarDetails',
+    (_ctx, prefs: SidebarDetailPrefsByMode) => {
+      if (!prefs || typeof prefs !== 'object') return false
+      const normalizeMode = (
+        mode: 'compact' | 'comfy',
+        input: Partial<SidebarDetailPrefs> | undefined
+      ): SidebarDetailPrefs => {
+        const defaults = DEFAULT_SIDEBAR_DETAILS[mode]
+        const src = input || {}
+        const bool = (k: keyof SidebarDetailPrefs): boolean =>
+          typeof src[k] === 'boolean' ? (src[k] as boolean) : defaults[k]
+        return {
+          repoLabel: bool('repoLabel'),
+          branch: bool('branch'),
+          age: bool('age'),
+          diff: bool('diff'),
+          milestone: bool('milestone'),
+          prNumber: bool('prNumber'),
+          assignee: bool('assignee')
+        }
+      }
+      const next: SidebarDetailPrefsByMode = {
+        compact: normalizeMode('compact', prefs.compact),
+        comfy: normalizeMode('comfy', prefs.comfy)
+      }
+      const modeIsDefault = (mode: 'compact' | 'comfy'): boolean => {
+        const cur = next[mode]
+        const def = DEFAULT_SIDEBAR_DETAILS[mode]
+        return (
+          cur.repoLabel === def.repoLabel &&
+          cur.branch === def.branch &&
+          cur.age === def.age &&
+          cur.diff === def.diff &&
+          cur.milestone === def.milestone &&
+          cur.prNumber === def.prNumber &&
+          cur.assignee === def.assignee
+        )
+      }
+      if (modeIsDefault('compact') && modeIsDefault('comfy')) {
+        delete config.sidebarDetails
+      } else {
+        config.sidebarDetails = next
+      }
+      saveConfig(config)
+      store.dispatch({ type: 'settings/sidebarDetailsChanged', payload: next })
       return true
     }
   )
