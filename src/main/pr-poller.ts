@@ -1,5 +1,6 @@
 import { listWorktrees, getBranchSha } from './worktree'
 import { isOnRealBranch } from './git-ops-state'
+import { mergeWorktreesPreservingFailures, worktreeListsEqual } from '../shared/state/worktrees'
 import {
   getRepoContext,
   fetchPRStatusesForRepo,
@@ -70,13 +71,32 @@ export class PRPoller {
     this.inFlightAll = true
     this.store.dispatch({ type: 'prs/loadingChanged', payload: true })
     try {
-      const treesByRoot = await Promise.all(
-        roots.map((r) => listWorktrees(r).catch(() => []))
+      // Two-phase: raw (with null on per-repo failure) drives the
+      // preserve-prior-on-failure merge for the store dispatch; the []-
+      // normalized view is what the PR batch loop below consumes.
+      const treesByRootRaw = await Promise.all(
+        roots.map((r) => listWorktrees(r).catch(() => null))
       )
+      const treesByRoot = treesByRootRaw.map((t) => t ?? [])
       const allWorktrees = treesByRoot.flat()
       const now = Date.now()
       this.lastAllFetchAt = now
       for (const wt of allWorktrees) this.lastFetchAtByPath.set(wt.path, now)
+
+      // Coarse safety-net re-derive of the worktree branch list. listWorktrees
+      // is a live `git worktree list --porcelain` read, so this picks up any
+      // branch switch / rename / detached-HEAD / finished-rebase that happened
+      // in a terminal since the last refresh — none of which fire the existing
+      // refresh triggers. The branch-sync watcher handles the prompt updates;
+      // this tick guarantees convergence even if a watcher failed to attach.
+      // Deduped so an unchanged list doesn't churn the array reference.
+      // A repo whose lookup threw preserves its previously-known worktrees
+      // so a transient error doesn't blank the UI.
+      const currentList = this.store.getSnapshot().state.worktrees.list
+      const nextList = mergeWorktreesPreservingFailures(roots, treesByRootRaw, currentList)
+      if (!worktreeListsEqual(currentList, nextList)) {
+        this.store.dispatch({ type: 'worktrees/listChanged', payload: nextList })
+      }
 
       // Per-repo: resolve origin/upstream context, then make one GraphQL
       // call carrying every worktree's branch. ok=false means a transport
@@ -110,7 +130,10 @@ export class PRPoller {
       )
 
       const currentByPath = this.store.getSnapshot().state.prs.byPath
-      const allowedPaths = new Set(allWorktrees.map((wt) => wt.path))
+      // Allowed paths come from the merged list, not `allWorktrees`, so
+      // preserved-prior worktrees keep their cached PR status instead of
+      // being pruned during a per-repo failure.
+      const allowedPaths = new Set(nextList.map((wt) => wt.path))
       const newByPath: Record<string, PRStatus | null> = {}
       for (const path of Object.keys(currentByPath)) {
         if (allowedPaths.has(path)) newByPath[path] = currentByPath[path]
