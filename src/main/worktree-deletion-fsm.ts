@@ -1,4 +1,10 @@
-import { removeWorktree, runWorktreeScript } from './worktree'
+import { pruneWorktrees, removeWorktree, runWorktreeScript } from './worktree'
+import {
+  isSameVolume,
+  moveWorktreeToTrash,
+  scheduleTrashUnlink,
+  worktreeTrashDir
+} from './worktree-trash'
 import { loadRepoConfig } from './repo-config'
 import { log } from './debug'
 import type { Store } from './store'
@@ -14,7 +20,18 @@ interface WorktreeDeletionFSMOptions {
  * (parallel deletions are fine — they touch disjoint paths), streams
  * teardown script output into the store, and refreshes the worktree list
  * on completion. Lives entirely in main so deletions keep running if the
- * user navigates away; the renderer just reads state. */
+ * user navigates away; the renderer just reads state.
+ *
+ * Fast path: on the common same-volume case we rename the worktree dir
+ * into `userData/worktree-trash/<uuid>` (an O(1) APFS metadata op),
+ * clean up git's bookkeeping via `git worktree prune`, dispatch the
+ * "gone" event, and unlink in the background. The user's cleanup screen
+ * empties in ~one render regardless of how many gigabytes of
+ * node_modules the worktree held. Cross-volume worktrees fall back to
+ * the historical `git worktree remove` slow path.
+ *
+ * Teardown scripts run BEFORE the rename because they may reference the
+ * worktree in place (e.g. `docker compose -f $WORKTREE_PATH/... down`). */
 export class WorktreeDeletionFSM {
   private store: Store
   private opts: WorktreeDeletionFSMOptions
@@ -86,12 +103,33 @@ export class WorktreeDeletionFSM {
         type: 'worktrees/pendingDeletionUpdated',
         payload: { path, patch: { phase: 'removing-worktree' } }
       })
-      await removeWorktree(repoRoot, path, force)
 
-      // Clear the pending entry and refresh the list so the sidebar row
-      // disappears in one render.
+      // Fast path: same-volume rename into the trash, prune git's
+      // bookkeeping, background-unlink. `isSameVolume` returns false
+      // if either stat throws (e.g. path is already gone) — the fast
+      // path is skipped in that case, which is what we want.
+      //
+      // Note on locked worktrees: `git worktree remove` refuses to
+      // remove a locked entry without --force. `mv` doesn't care about
+      // git's lock, so the fast path is silently *more* forgiving —
+      // once the working dir is renamed out, `git worktree prune`
+      // happily reaps the bookkeeping. If we ever want to preserve
+      // the old "locked" guardrail we'd need to inspect git's lock
+      // files here; today the deletion FSM's callers already gate on
+      // dirty/locked in the UI so this widening is fine.
+      if (isSameVolume(path, worktreeTrashDir())) {
+        const trashPath = await moveWorktreeToTrash(path)
+        await pruneWorktrees(repoRoot)
+        this.store.dispatch({ type: 'worktrees/pendingDeletionRemoved', payload: path })
+        this.opts.worktreesFSM.refreshListDebounced()
+        scheduleTrashUnlink(trashPath)
+        return
+      }
+
+      log('worktree-deletion-fsm', `cross-volume fallback for ${path} — using slow git worktree remove`)
+      await removeWorktree(repoRoot, path, force)
       this.store.dispatch({ type: 'worktrees/pendingDeletionRemoved', payload: path })
-      await this.opts.worktreesFSM.refreshList()
+      this.opts.worktreesFSM.refreshListDebounced()
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       log('worktree-deletion-fsm', `deletion failed for ${path}: ${message}`)

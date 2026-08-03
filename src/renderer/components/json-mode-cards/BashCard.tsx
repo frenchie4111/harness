@@ -1,11 +1,13 @@
 import { ToolCardChrome, trunc, type ToolCardProps } from './index'
 import { BashIcon } from './tool-icons'
+import { HighlightedText } from '../JsonModeChatFind'
 
 export function BashCard({ block, result, autoApproved, sessionAllowed }: ToolCardProps): JSX.Element {
   const cmd = String(block.input?.command ?? '')
   const description = block.input?.description as string | undefined
   return (
     <ToolCardChrome
+      id={block.id}
       name="Bash"
       subtitle={trunc(cmd, 80)}
       variant="warn"
@@ -14,9 +16,13 @@ export function BashCard({ block, result, autoApproved, sessionAllowed }: ToolCa
       autoApproved={autoApproved}
       sessionAllowed={sessionAllowed}
     >
-      {description && <div className="px-2 py-1 text-xs text-muted">{description}</div>}
+      {description && (
+        <div className="px-2 py-1 text-xs text-muted">
+          <HighlightedText text={description} />
+        </div>
+      )}
       <pre className="px-2 py-1 text-xs font-mono bg-app/40 whitespace-pre-wrap max-h-32 overflow-auto">
-        $ {cmd}
+        $ <HighlightedText text={cmd} />
       </pre>
       {result && (
         <pre
@@ -24,7 +30,7 @@ export function BashCard({ block, result, autoApproved, sessionAllowed }: ToolCa
             result.isError ? 'text-danger' : 'opacity-80'
           }`}
         >
-          {trunc(result.content, 6000)}
+          <HighlightedText text={trunc(result.content, 6000)} />
         </pre>
       )}
     </ToolCardChrome>

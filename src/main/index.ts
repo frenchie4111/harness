@@ -1,3 +1,11 @@
+// Bump libuv's threadpool from its default of 4 so background filesystem
+// work (fs.promises.rm for trashed worktrees, other unlinks) can
+// parallelize on multi-core machines. Must run before any import that
+// could touch the threadpool. Respect an explicit override — power users
+// setting UV_THREADPOOL_SIZE themselves shouldn't have their choice
+// silently upgraded.
+process.env.UV_THREADPOOL_SIZE = process.env.UV_THREADPOOL_SIZE || '16'
+
 import { existsSync, lstatSync, readFileSync } from 'fs'
 import { createRequire } from 'module'
 import { randomUUID } from 'crypto'
@@ -35,9 +43,11 @@ import {
 import { PRPoller } from './pr-poller'
 import { WorktreesFSM } from './worktrees-fsm'
 import { WorktreeDeletionFSM } from './worktree-deletion-fsm'
+import { sweepWorktreeTrashOnBoot } from './worktree-trash'
 import { PanesFSM, stripTransientTabFields } from './panes-fsm'
 import { ActivityDeriver } from './activity-deriver'
 import { AutoSleepMonitor } from './auto-sleep-monitor'
+import { WakeLockController } from './wake-lock-controller'
 import { WorktreeWatcher } from './worktree-watcher'
 import { FileContentWatcher } from './file-content-watcher'
 import { SnoozeTimer } from './snooze-timer'
@@ -62,7 +72,7 @@ import {
   DEFAULT_TERMINAL_FONT_SIZE,
   DEFAULT_WORKTREE_BASE,
   DEFAULT_MERGE_STRATEGY,
-  DEFAULT_WORKTREE_DETAIL,
+  DEFAULT_SIDEBAR_DENSITY,
   DEFAULT_HARNESS_SYSTEM_PROMPT,
   DEFAULT_HARNESS_SYSTEM_PROMPT_MAIN,
   pruneTerminalHistory,
@@ -83,7 +93,11 @@ import { normalizeAlias } from '../shared/state/aliases'
 import {
   DEFAULT_LIGHT_THEME,
   DEFAULT_DARK_THEME,
-  DEFAULT_PR_REVIEW_PROMPT
+  DEFAULT_PR_REVIEW_PROMPT,
+  DEFAULT_SIDEBAR_DETAILS,
+  type SidebarDetailPrefs,
+  type SidebarDetailPrefsByMode,
+  type PreventSleepMode
 } from '../shared/state/settings'
 import { watchStatusDir } from './hooks'
 import { getAgent, type AgentKind } from './agents'
@@ -930,6 +944,11 @@ const activityDeriver = new ActivityDeriver(store)
 // settings.autoSleepMinutes). Constructed after panesFSM since it
 // drives panesFSM.sleepJsonClaudeTab.
 const autoSleepMonitor = new AutoSleepMonitor(store, panesFSM)
+
+// Holds a power-save blocker while the configured prevent-sleep mode
+// (or the temporary timer) wants the machine awake. Pure side effect —
+// subscribes to the store, never owns slice state.
+const wakeLockController = new WakeLockController(store)
 
 /** Install agent status hooks at the user-scope settings file for both
  *  supported agents. Called once when consent flips to 'accepted'. The
@@ -2354,23 +2373,66 @@ function registerIpcHandlers(): void {
   )
 
   transport.onRequest(
-    'config:setWorktreeDetail',
-    (_ctx, detail: 'diff' | 'age' | 'pr' | 'none') => {
-      if (
-        detail !== 'diff' &&
-        detail !== 'age' &&
-        detail !== 'pr' &&
-        detail !== 'none'
-      ) {
-        return false
-      }
-      if (detail === DEFAULT_WORKTREE_DETAIL) {
-        delete config.worktreeDetail
+    'config:setSidebarDensity',
+    (_ctx, density: 'compact' | 'comfy') => {
+      if (density !== 'compact' && density !== 'comfy') return false
+      if (density === DEFAULT_SIDEBAR_DENSITY) {
+        delete config.sidebarDensity
       } else {
-        config.worktreeDetail = detail
+        config.sidebarDensity = density
       }
       saveConfig(config)
-      store.dispatch({ type: 'settings/worktreeDetailChanged', payload: detail })
+      store.dispatch({ type: 'settings/sidebarDensityChanged', payload: density })
+      return true
+    }
+  )
+
+  transport.onRequest(
+    'config:setSidebarDetails',
+    (_ctx, prefs: SidebarDetailPrefsByMode) => {
+      if (!prefs || typeof prefs !== 'object') return false
+      const normalizeMode = (
+        mode: 'compact' | 'comfy',
+        input: Partial<SidebarDetailPrefs> | undefined
+      ): SidebarDetailPrefs => {
+        const defaults = DEFAULT_SIDEBAR_DETAILS[mode]
+        const src = input || {}
+        const bool = (k: keyof SidebarDetailPrefs): boolean =>
+          typeof src[k] === 'boolean' ? (src[k] as boolean) : defaults[k]
+        return {
+          repoLabel: bool('repoLabel'),
+          branch: bool('branch'),
+          age: bool('age'),
+          diff: bool('diff'),
+          milestone: bool('milestone'),
+          prNumber: bool('prNumber'),
+          assignee: bool('assignee')
+        }
+      }
+      const next: SidebarDetailPrefsByMode = {
+        compact: normalizeMode('compact', prefs.compact),
+        comfy: normalizeMode('comfy', prefs.comfy)
+      }
+      const modeIsDefault = (mode: 'compact' | 'comfy'): boolean => {
+        const cur = next[mode]
+        const def = DEFAULT_SIDEBAR_DETAILS[mode]
+        return (
+          cur.repoLabel === def.repoLabel &&
+          cur.branch === def.branch &&
+          cur.age === def.age &&
+          cur.diff === def.diff &&
+          cur.milestone === def.milestone &&
+          cur.prNumber === def.prNumber &&
+          cur.assignee === def.assignee
+        )
+      }
+      if (modeIsDefault('compact') && modeIsDefault('comfy')) {
+        delete config.sidebarDetails
+      } else {
+        config.sidebarDetails = next
+      }
+      saveConfig(config)
+      store.dispatch({ type: 'settings/sidebarDetailsChanged', payload: next })
       return true
     }
   )
@@ -3233,6 +3295,24 @@ function registerIpcHandlers(): void {
   )
 
   transport.onRequest(
+    'config:setAutoScrollToBottom',
+    (_ctx, value: boolean) => {
+      const next = value !== false
+      if (next) {
+        delete config.autoScrollToBottom
+      } else {
+        config.autoScrollToBottom = false
+      }
+      saveConfig(config)
+      store.dispatch({
+        type: 'settings/autoScrollToBottomChanged',
+        payload: next
+      })
+      return true
+    }
+  )
+
+  transport.onRequest(
     'config:setJsonModeDefaultPermissionMode',
     (_ctx, value: 'default' | 'acceptEdits' | 'plan') => {
       const next: 'default' | 'acceptEdits' | 'plan' =
@@ -3265,6 +3345,32 @@ function registerIpcHandlers(): void {
       type: 'settings/autoSleepMinutesChanged',
       payload: rounded
     })
+    return true
+  })
+
+  // ---- Prevent-sleep (wake-lock) -------------------------------------
+  // Mode is persisted; the temporary "+1h" timer (preventSleepUntil) is
+  // session-only and dispatched without saving.
+  const PREVENT_SLEEP_MODES: PreventSleepMode[] = ['off', 'while-agents-running', 'always']
+
+  transport.onRequest('config:setPreventSleepMode', (_ctx, value: PreventSleepMode) => {
+    if (!PREVENT_SLEEP_MODES.includes(value)) return false
+    if (value === 'off') delete config.preventSleepMode
+    else config.preventSleepMode = value
+    saveConfig(config)
+    store.dispatch({ type: 'settings/preventSleepModeChanged', payload: value })
+    return true
+  })
+
+  transport.onRequest('config:setPreventSleepUntil', (_ctx, value: number | null) => {
+    // null / invalid → clear; a positive epoch-ms → arm. Session-only: never
+    // written to config.json — the WakeLockController owns expiry and the
+    // timer resets on relaunch by design.
+    const next =
+      typeof value === 'number' && Number.isFinite(value) && value > 0
+        ? Math.floor(value)
+        : null
+    store.dispatch({ type: 'settings/preventSleepUntilChanged', payload: next })
     return true
   })
 
@@ -3722,6 +3828,8 @@ async function runBoot(): Promise<void> {
 
   autoSleepMonitor.start()
 
+  wakeLockController.start()
+
   // Resolve the GitHub token (PAT → gh CLI → none) before the PR poller
   // makes its first call. The poller's initial refreshAll waits on this.
   void (async () => {
@@ -3820,6 +3928,11 @@ async function runBoot(): Promise<void> {
   }
   pruneTerminalHistory(keepIds)
   pruneMcpConfigs(keepIds)
+
+  // Drain any worktree-trash entries left by a mid-delete crash. The
+  // sweep dispatches each entry to the fs threadpool without awaiting,
+  // so this call resolves immediately and doesn't block boot.
+  void sweepWorktreeTrashOnBoot()
 
   // Local HTTP control server for the bundled harness-control MCP bridge.
   startControlServer({

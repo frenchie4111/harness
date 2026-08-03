@@ -1,0 +1,146 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+
+vi.mock('./debug', () => ({ log: () => {} }))
+
+vi.mock('./repo-config', () => ({
+  loadRepoConfig: vi.fn(() => ({}))
+}))
+
+vi.mock('./worktree', () => ({
+  removeWorktree: vi.fn(async () => {}),
+  pruneWorktrees: vi.fn(async () => {}),
+  runWorktreeScript: vi.fn(async (_kind, _cmd, _ctx, onChunk) => {
+    if (onChunk) onChunk('stdout', 'teardown-output')
+    return { ok: true, exitCode: 0, stdout: '', stderr: '' }
+  })
+}))
+
+vi.mock('./worktree-trash', () => ({
+  isSameVolume: vi.fn(() => true),
+  moveWorktreeToTrash: vi.fn(async (_p: string) => '/trash/uuid'),
+  scheduleTrashUnlink: vi.fn(),
+  worktreeTrashDir: () => '/trash'
+}))
+
+import { Store } from './store'
+import { WorktreeDeletionFSM } from './worktree-deletion-fsm'
+import { removeWorktree, pruneWorktrees, runWorktreeScript } from './worktree'
+import {
+  isSameVolume,
+  moveWorktreeToTrash,
+  scheduleTrashUnlink
+} from './worktree-trash'
+import { loadRepoConfig } from './repo-config'
+import type { StateEvent } from '../shared/state'
+
+function makeFsm(overrides: { teardown?: string } = {}) {
+  const store = new Store()
+  const events: StateEvent[] = []
+  store.subscribe((e) => events.push(e))
+  const refreshList = vi.fn(async () => [])
+  const refreshListDebounced = vi.fn()
+  const worktreesFSM = {
+    refreshList,
+    refreshListDebounced
+  } as unknown as import('./worktrees-fsm').WorktreesFSM
+  const fsm = new WorktreeDeletionFSM(store, {
+    getGlobalTeardownCmd: () => overrides.teardown ?? '',
+    worktreesFSM
+  })
+  return { store, events, fsm, refreshList, refreshListDebounced, worktreesFSM }
+}
+
+describe('WorktreeDeletionFSM — fast path (same volume)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    ;(loadRepoConfig as unknown as ReturnType<typeof vi.fn>).mockReturnValue({})
+    ;(isSameVolume as unknown as ReturnType<typeof vi.fn>).mockReturnValue(true)
+    ;(moveWorktreeToTrash as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+      '/trash/uuid'
+    )
+    ;(pruneWorktrees as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(undefined)
+  })
+
+  it('renames into trash, prunes git bookkeeping, dispatches removal, and fire-and-forgets the unlink', async () => {
+    const { fsm, events, refreshListDebounced } = makeFsm()
+
+    fsm.enqueue({ repoRoot: '/repo', path: '/repo/wt-a', branch: 'a' })
+
+    // Let microtasks settle so run() finishes.
+    await new Promise((r) => setImmediate(r))
+
+    expect(moveWorktreeToTrash).toHaveBeenCalledWith('/repo/wt-a')
+    expect(pruneWorktrees).toHaveBeenCalledWith('/repo')
+    // Order matters: move must precede prune so git prune sees a missing dir.
+    const moveOrder = (moveWorktreeToTrash as unknown as ReturnType<typeof vi.fn>).mock
+      .invocationCallOrder[0]
+    const pruneOrder = (pruneWorktrees as unknown as ReturnType<typeof vi.fn>).mock
+      .invocationCallOrder[0]
+    expect(moveOrder).toBeLessThan(pruneOrder)
+
+    const removed = events.find((e) => e.type === 'worktrees/pendingDeletionRemoved')
+    expect(removed).toBeTruthy()
+
+    expect(refreshListDebounced).toHaveBeenCalledTimes(1)
+    expect(scheduleTrashUnlink).toHaveBeenCalledWith('/trash/uuid')
+    expect(removeWorktree).not.toHaveBeenCalled()
+  })
+
+  it('runs teardown BEFORE the move so scripts can still reference the worktree', async () => {
+    const { fsm } = makeFsm({ teardown: 'echo teardown' })
+    fsm.enqueue({ repoRoot: '/repo', path: '/repo/wt-a', branch: 'a' })
+    await new Promise((r) => setImmediate(r))
+
+    const teardownOrder = (runWorktreeScript as unknown as ReturnType<typeof vi.fn>).mock
+      .invocationCallOrder[0]
+    const moveOrder = (moveWorktreeToTrash as unknown as ReturnType<typeof vi.fn>).mock
+      .invocationCallOrder[0]
+    expect(teardownOrder).toBeLessThan(moveOrder)
+  })
+})
+
+describe('WorktreeDeletionFSM — slow-path fallback (cross-volume)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    ;(loadRepoConfig as unknown as ReturnType<typeof vi.fn>).mockReturnValue({})
+    ;(isSameVolume as unknown as ReturnType<typeof vi.fn>).mockReturnValue(false)
+    ;(removeWorktree as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(undefined)
+  })
+
+  it('calls removeWorktree (git worktree remove) with the force flag preserved', async () => {
+    const { fsm, refreshListDebounced } = makeFsm()
+
+    fsm.enqueue({ repoRoot: '/repo', path: '/vol2/wt', branch: 'x', force: true })
+    await new Promise((r) => setImmediate(r))
+
+    expect(removeWorktree).toHaveBeenCalledWith('/repo', '/vol2/wt', true)
+    expect(moveWorktreeToTrash).not.toHaveBeenCalled()
+    expect(scheduleTrashUnlink).not.toHaveBeenCalled()
+    expect(refreshListDebounced).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('WorktreeDeletionFSM — failure surface', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    ;(loadRepoConfig as unknown as ReturnType<typeof vi.fn>).mockReturnValue({})
+  })
+
+  it('dispatches phase:failed if the rename throws', async () => {
+    ;(isSameVolume as unknown as ReturnType<typeof vi.fn>).mockReturnValue(true)
+    ;(moveWorktreeToTrash as unknown as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('EACCES')
+    )
+    const { fsm, events } = makeFsm()
+
+    fsm.enqueue({ repoRoot: '/repo', path: '/repo/wt', branch: 'z' })
+    await new Promise((r) => setImmediate(r))
+
+    const failed = events.find(
+      (e) =>
+        e.type === 'worktrees/pendingDeletionUpdated' &&
+        e.payload.patch.phase === 'failed'
+    )
+    expect(failed).toBeTruthy()
+  })
+})

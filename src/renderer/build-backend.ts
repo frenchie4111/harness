@@ -39,6 +39,7 @@ import type {
   StateEventListener
 } from '../shared/transport/transport'
 import type { ElectronAPI } from './types'
+import type { SidebarDetailPrefsByMode, PreventSleepMode } from '../shared/state/settings'
 
 export type { ElectronOnlyHelpers }
 
@@ -275,9 +276,15 @@ export function buildBackend(
       req('config:setUiScale', value),
     setJsonModeSendOnEnter: (enabled: boolean) =>
       req('config:setJsonModeSendOnEnter', enabled),
+    setAutoScrollToBottom: (enabled: boolean) =>
+      req('config:setAutoScrollToBottom', enabled),
     setJsonModeDefaultPermissionMode: (value: 'default' | 'acceptEdits' | 'plan') =>
       req('config:setJsonModeDefaultPermissionMode', value),
     setAutoSleepMinutes: (value: number) => req('config:setAutoSleepMinutes', value),
+    setPreventSleepMode: (value: PreventSleepMode) =>
+      req('config:setPreventSleepMode', value),
+    setPreventSleepUntil: (value: number | null) =>
+      req('config:setPreventSleepUntil', value),
     setAutoUpdateEnabled: (enabled: boolean) => req('config:setAutoUpdateEnabled', enabled),
     setWarnBeforeQuitting: (enabled: boolean) => req('config:setWarnBeforeQuitting', enabled),
     setExpandedDiagnosticLoggingEnabled: (enabled: boolean) =>
@@ -377,8 +384,10 @@ export function buildBackend(
     setWorktreeBase: (mode: 'remote' | 'local') => req('config:setWorktreeBase', mode),
     setMergeStrategy: (strategy: 'squash' | 'merge-commit' | 'fast-forward') =>
       req('config:setMergeStrategy', strategy),
-    setWorktreeDetail: (detail: 'diff' | 'age' | 'pr' | 'none') =>
-      req('config:setWorktreeDetail', detail),
+    setSidebarDensity: (density: 'compact' | 'comfy') =>
+      req('config:setSidebarDensity', density),
+    setSidebarDetails: (prefs: SidebarDetailPrefsByMode) =>
+      req('config:setSidebarDetails', prefs),
 
     setEditor: (editorId: string) => req('config:setEditor', editorId),
     getAvailableEditors: () => req('config:getAvailableEditors'),
@@ -500,6 +509,10 @@ export function buildBackend(
       onLocalSignal('app:uiScaleDown', () => callback()),
     onUiScaleReset: (callback: () => void) =>
       onLocalSignal('app:uiScaleReset', () => callback()),
+    onFullscreenChanged: (callback: (isFullscreen: boolean) => void) =>
+      onLocalSignal('window:fullscreenChanged', (...args: unknown[]) =>
+        callback(Boolean(args[0]))
+      ),
 
     acceptHooks: () => req('hooks:accept'),
     declineHooks: () => req('hooks:decline'),
