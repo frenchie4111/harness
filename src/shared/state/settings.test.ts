@@ -200,6 +200,20 @@ describe('settingsReducer', () => {
     expect(next.mergeStrategy).toBe('fast-forward')
   })
 
+  it('sidebarDensityChanged toggles between comfy and compact', () => {
+    expect(initialSettings.sidebarDensity).toBe('comfy')
+    const compact = apply(initialSettings, {
+      type: 'settings/sidebarDensityChanged',
+      payload: 'compact'
+    })
+    expect(compact.sidebarDensity).toBe('compact')
+    const comfy = apply(compact, {
+      type: 'settings/sidebarDensityChanged',
+      payload: 'comfy'
+    })
+    expect(comfy.sidebarDensity).toBe('comfy')
+  })
+
 
   it('hasGithubTokenChanged flips the presence flag', () => {
     const hasIt = apply(initialSettings, {

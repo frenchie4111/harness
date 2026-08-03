@@ -11,7 +11,7 @@ import { HotkeyBadge } from './HotkeyBadge'
 import { useMetaHeld } from '../hooks/useMetaHeld'
 import type { Action } from '../hotkeys'
 import { ContextMenu, type ContextMenuItem } from './ContextMenu'
-import { useAliasForPath } from '../store'
+import { useAliasForPath, useAppState } from '../store'
 import { useBackend } from '../backend'
 import { displayLabel } from '../worktree-display'
 import { ALIAS_MAX_LEN } from '../../shared/state/aliases'
@@ -97,6 +97,7 @@ const PR_STATE_COLOR: Record<string, string> = {
 
 export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActive, prStatus, isMerged, repoLabel, cmdOrdinal, deleting, isSnoozed, snoozeWakeAt, onClick, onDelete, onContinue, onSnooze, onUnsnooze, onPrune, isEditingAlias, onStartAliasEdit, onEndAliasEdit }: WorktreeTabProps): JSX.Element {
   const metaHeld = useMetaHeld()
+  const density = useAppState((s) => s.settings.sidebarDensity)
   const currentAlias = useAliasForPath(worktree.path)
   const backend = useBackend()
   const label = displayLabel(worktree, currentAlias, metaHeld)
@@ -221,15 +222,24 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
               worktree.path.split('/').slice(-2).join('/')
             )}
           </div>
-        ) : (
+        ) : density === 'comfy' ? (
           <SubtitleDetail
             worktree={worktree}
             repoLabel={repoLabel}
             aliased={currentAlias !== undefined}
             prStatus={prStatus}
           />
-        )}
+        ) : null}
       </div>
+      {density === 'compact' && !showPendingTool && !worktree.prunable && (
+        <SubtitleDetail
+          worktree={worktree}
+          repoLabel={repoLabel}
+          aliased={currentAlias !== undefined}
+          prStatus={prStatus}
+          inline
+        />
+      )}
       {canContinue && (
         <Tooltip label="Continue on a new branch off main" side="left">
           <button
@@ -323,20 +333,39 @@ interface SubtitleDetailProps {
   repoLabel?: string
   aliased: boolean
   prStatus?: PRStatus | null
+  /** When true, render as a top-row-inline cluster (compact density):
+   *  container is `shrink-0` so the label truncates first, and long items
+   *  (repoLabel / branch / milestone) hide on hover to make room for the
+   *  action buttons. When false (default), renders as a stacked line-2
+   *  cluster that grows into `flex-1 min-w-0` next to the label. */
+  inline?: boolean
 }
 
-function SubtitleDetail({ worktree, repoLabel, aliased, prStatus }: SubtitleDetailProps): JSX.Element | null {
+function SubtitleDetail({ worktree, repoLabel, aliased, prStatus, inline }: SubtitleDetailProps): JSX.Element | null {
   const items: { key: string; node: ReactNode }[] = []
   if (repoLabel) {
     items.push({
       key: 'repo',
-      node: <span className={`${repoNameColor(repoLabel)} shrink-0`}>{repoLabel}</span>
+      node: (
+        <span
+          className={`${repoNameColor(repoLabel)} truncate min-w-0 max-w-[5rem]${inline ? ' group-hover:hidden' : ''}`}
+        >
+          {repoLabel}
+        </span>
+      )
     })
   }
   if (aliased) {
     items.push({
       key: 'branch',
-      node: <span className="truncate min-w-0" title={worktree.branch}>{worktree.branch}</span>
+      node: (
+        <span
+          className={`truncate min-w-0 max-w-[8rem]${inline ? ' group-hover:hidden' : ''}`}
+          title={worktree.branch}
+        >
+          {worktree.branch}
+        </span>
+      )
     })
   }
   if (worktree.createdAt) {
@@ -357,7 +386,7 @@ function SubtitleDetail({ worktree, repoLabel, aliased, prStatus }: SubtitleDeta
       key: 'diff',
       node: (
         <span
-          className="font-mono shrink-0"
+          className={`font-mono shrink-0${inline ? ' group-hover:hidden' : ''}`}
           title={`+${prStatus.additions} additions, −${prStatus.deletions} deletions`}
         >
           <span className="text-success">+{prStatus.additions}</span>
@@ -371,7 +400,7 @@ function SubtitleDetail({ worktree, repoLabel, aliased, prStatus }: SubtitleDeta
       key: 'milestone',
       node: (
         <span
-          className="truncate min-w-0 max-w-[6rem]"
+          className={`truncate min-w-0 max-w-[6rem]${inline ? ' group-hover:hidden' : ''}`}
           title={`Milestone: ${prStatus.milestone.title}`}
         >
           {prStatus.milestone.title}
@@ -408,10 +437,22 @@ function SubtitleDetail({ worktree, repoLabel, aliased, prStatus }: SubtitleDeta
   }
   if (items.length === 0) return null
   return (
-    <div className="text-xs text-faint flex items-center gap-1 min-w-0">
+    <div
+      className={
+        inline
+          ? 'text-xs text-faint flex items-center gap-1 shrink-0 min-w-0'
+          : 'text-xs text-faint flex items-center gap-1 min-w-0'
+      }
+    >
       {items.map((item, i) => (
         <Fragment key={item.key}>
-          {i > 0 && <span className="text-dim shrink-0">·</span>}
+          {i > 0 && (
+            <span
+              className={`text-dim shrink-0${inline && (item.key === 'branch' || item.key === 'age') ? ' group-hover:hidden' : ''}`}
+            >
+              ·
+            </span>
+          )}
           {item.node}
         </Fragment>
       ))}

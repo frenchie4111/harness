@@ -131,6 +131,10 @@ export interface Config {
   // Default strategy for "Merge locally" action. Auto-updates to whatever
   // was last used unless the user pinned one in Settings.
   mergeStrategy?: 'squash' | 'merge-commit' | 'fast-forward'
+  // Density of each sidebar worktree row. 'comfy' (default) stacks the
+  // detail cluster on a second line; 'compact' folds it onto the right of
+  // a single line.
+  sidebarDensity?: 'compact' | 'comfy'
   // Branches that have been merged locally via Harness, keyed by branch name.
   // Value is the branch-tip SHA at merge time — if the branch later advances
   // past this SHA, the flag is considered stale and the branch is no longer
@@ -274,6 +278,7 @@ export interface Config {
 
 export const DEFAULT_WORKTREE_BASE: 'remote' | 'local' = 'remote'
 export const DEFAULT_MERGE_STRATEGY: 'squash' | 'merge-commit' | 'fast-forward' = 'squash'
+export const DEFAULT_SIDEBAR_DENSITY: 'compact' | 'comfy' = 'comfy'
 
 export const AVAILABLE_THEMES = [
   'dark',

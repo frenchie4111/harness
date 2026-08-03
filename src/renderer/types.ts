@@ -140,6 +140,8 @@ export type { JsonClaudeChatEntry }
 
 export type MergeStrategy = 'squash' | 'merge-commit' | 'fast-forward'
 
+export type SidebarDensity = 'compact' | 'comfy'
+
 export type GitHubMergeMethod = 'merge' | 'squash' | 'rebase'
 
 export interface MergePRResult {
@@ -382,6 +384,7 @@ export interface ElectronAPI {
   setRepoConfig(repoRoot: string, next: Partial<RepoConfig>): Promise<RepoConfig | null>
   setWorktreeBase(mode: 'remote' | 'local'): Promise<boolean>
   setMergeStrategy(strategy: MergeStrategy): Promise<boolean>
+  setSidebarDensity(density: SidebarDensity): Promise<boolean>
   setEditor(editorId: string): Promise<boolean>
   getAvailableEditors(): Promise<{ id: string; name: string }[]>
   snooze(path: string, wakeAt: number): Promise<boolean>

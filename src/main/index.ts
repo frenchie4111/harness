@@ -56,6 +56,7 @@ import {
   DEFAULT_TERMINAL_FONT_SIZE,
   DEFAULT_WORKTREE_BASE,
   DEFAULT_MERGE_STRATEGY,
+  DEFAULT_SIDEBAR_DENSITY,
   DEFAULT_HARNESS_SYSTEM_PROMPT,
   DEFAULT_HARNESS_SYSTEM_PROMPT_MAIN,
   pruneTerminalHistory,
@@ -2342,6 +2343,21 @@ function registerIpcHandlers(): void {
       config.mergeStrategy = strategy
       saveConfig(config)
       store.dispatch({ type: 'settings/mergeStrategyChanged', payload: strategy })
+      return true
+    }
+  )
+
+  transport.onRequest(
+    'config:setSidebarDensity',
+    (_ctx, density: 'compact' | 'comfy') => {
+      if (density !== 'compact' && density !== 'comfy') return false
+      if (density === DEFAULT_SIDEBAR_DENSITY) {
+        delete config.sidebarDensity
+      } else {
+        config.sidebarDensity = density
+      }
+      saveConfig(config)
+      store.dispatch({ type: 'settings/sidebarDensityChanged', payload: density })
       return true
     }
   )

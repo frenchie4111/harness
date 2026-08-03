@@ -7,6 +7,12 @@ export interface WorktreeScripts {
 
 export type MergeStrategy = 'squash' | 'merge-commit' | 'fast-forward'
 export type WorktreeBase = 'remote' | 'local'
+/** Density of each sidebar worktree row. `comfy` stacks the label and
+ *  detail cluster on two lines; `compact` folds the detail cluster onto
+ *  the right of a single line. The pending-tool alert (needs-approval)
+ *  always uses the two-line layout regardless of this setting — that
+ *  signal is too important to hide. */
+export type SidebarDensity = 'compact' | 'comfy'
 
 export type AgentKindSetting = 'claude' | 'codex'
 
@@ -119,6 +125,7 @@ export interface SettingsState {
   editor: string
   worktreeBase: WorktreeBase
   mergeStrategy: MergeStrategy
+  sidebarDensity: SidebarDensity
   shareClaudeSettings: boolean
   claudeModel: string | null
   codexModel: string | null
@@ -235,6 +242,7 @@ export type SettingsEvent =
   | { type: 'settings/editorChanged'; payload: string }
   | { type: 'settings/worktreeBaseChanged'; payload: WorktreeBase }
   | { type: 'settings/mergeStrategyChanged'; payload: MergeStrategy }
+  | { type: 'settings/sidebarDensityChanged'; payload: SidebarDensity }
   | { type: 'settings/shareClaudeSettingsChanged'; payload: boolean }
   | { type: 'settings/hasGithubTokenChanged'; payload: boolean }
   | { type: 'settings/githubAuthSourceChanged'; payload: 'pat' | 'gh-cli' | null }
@@ -293,6 +301,7 @@ export const initialSettings: SettingsState = {
   editor: 'vscode',
   worktreeBase: 'remote',
   mergeStrategy: 'squash',
+  sidebarDensity: 'comfy',
   shareClaudeSettings: true,
   claudeModel: null,
   codexModel: null,
@@ -366,6 +375,8 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, worktreeBase: event.payload }
     case 'settings/mergeStrategyChanged':
       return { ...state, mergeStrategy: event.payload }
+    case 'settings/sidebarDensityChanged':
+      return { ...state, sidebarDensity: event.payload }
     case 'settings/shareClaudeSettingsChanged':
       return { ...state, shareClaudeSettings: event.payload }
     case 'settings/hasGithubTokenChanged':

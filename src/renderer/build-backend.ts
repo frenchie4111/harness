@@ -377,6 +377,8 @@ export function buildBackend(
     setWorktreeBase: (mode: 'remote' | 'local') => req('config:setWorktreeBase', mode),
     setMergeStrategy: (strategy: 'squash' | 'merge-commit' | 'fast-forward') =>
       req('config:setMergeStrategy', strategy),
+    setSidebarDensity: (density: 'compact' | 'comfy') =>
+      req('config:setSidebarDensity', density),
 
     setEditor: (editorId: string) => req('config:setEditor', editorId),
     getAvailableEditors: () => req('config:getAvailableEditors'),
