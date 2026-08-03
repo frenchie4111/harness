@@ -100,6 +100,19 @@ function normalizeHookEvent(event: string): string {
 }
 
 function deriveStatus(terminalId: string, ev: HookEvent): StatusUpdate | null {
+  // Cursor's preToolUse fires when the agent has picked a tool but BEFORE
+  // Cursor decides whether to auto-run it or block on the TUI approval
+  // prompt — and it never emits a separate "asking user" event the way
+  // Claude does (Notification/permission_prompt). So for Cursor's raw
+  // camelCase event, treat preToolUse as needs-approval; auto-approved
+  // tools flip back to processing when postToolUse fires a moment later.
+  // Claude/Codex PreToolUse (PascalCase) keeps its original meaning:
+  // approval already happened, tool is about to run → processing.
+  if (ev.event === 'preToolUse') {
+    const tool = readPendingTool(ev.payload)
+    if (tool) lastPreTool.set(terminalId, tool)
+    return { status: 'needs-approval', pendingTool: tool }
+  }
   switch (normalizeHookEvent(ev.event)) {
     case 'PreToolUse': {
       const tool = readPendingTool(ev.payload)
