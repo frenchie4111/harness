@@ -120,21 +120,12 @@ export function SubtitleDetail({ worktree, repoLabel, aliased, prStatus, prefs, 
     <div
       className={
         inline
-          ? 'text-xs text-faint flex items-center gap-1 shrink-0 min-w-0'
-          : 'text-xs text-faint flex items-center gap-1 min-w-0'
+          ? 'text-xs text-faint flex items-center gap-1.5 shrink-0 min-w-0'
+          : 'text-xs text-faint flex items-center gap-1.5 min-w-0'
       }
     >
-      {items.map((item, i) => (
-        <Fragment key={item.key}>
-          {i > 0 && (
-            <span
-              className={`text-dim shrink-0${inline && (item.key === 'branch' || item.key === 'age') ? ' group-hover:hidden' : ''}`}
-            >
-              ·
-            </span>
-          )}
-          {item.node}
-        </Fragment>
+      {items.map((item) => (
+        <Fragment key={item.key}>{item.node}</Fragment>
       ))}
     </div>
   )
