@@ -45,7 +45,6 @@ export type Action =
   | 'uiScaleUp'
   | 'uiScaleDown'
   | 'uiScaleReset'
-  | 'cycleWorktreeDetail'
   | 'aliasWorktree'
   | 'approveToolUse'
   | 'denyToolUse'
@@ -120,7 +119,6 @@ export const DEFAULT_HOTKEYS: Record<Action, HotkeyBinding> = {
   uiScaleUp: { key: '+', modifiers: { cmd: true, shift: true } },
   uiScaleDown: { key: '-', modifiers: { cmd: true } },
   uiScaleReset: { key: '=', modifiers: { cmd: true } },
-  cycleWorktreeDetail: { key: 'i', modifiers: { cmd: true } },
   aliasWorktree: { key: 'a', modifiers: { cmd: true, shift: true } },
   approveToolUse: { key: 'y', modifiers: { cmd: true, shift: true } },
   denyToolUse: { key: 'n', modifiers: { cmd: true, shift: true } },
@@ -277,7 +275,6 @@ export const ACTION_LABELS: Record<Action, string> = {
   uiScaleUp: 'Increase UI size',
   uiScaleDown: 'Decrease UI size',
   uiScaleReset: 'Reset UI size',
-  cycleWorktreeDetail: 'Cycle worktree detail (sidebar)',
   aliasWorktree: 'Alias worktree',
   approveToolUse: 'Approve pending tool use (Chat)',
   denyToolUse: 'Deny pending tool use (Chat)',
@@ -340,7 +337,7 @@ export const ACTION_CATEGORIES: HotkeyCategory[] = [
   {
     id: 'layout',
     label: 'Window layout',
-    actions: ['toggleSidebar', 'toggleRightColumn', 'toggleSingleScreen', 'uiScaleUp', 'uiScaleDown', 'uiScaleReset', 'cycleWorktreeDetail', 'cyclePreventSleep']
+    actions: ['toggleSidebar', 'toggleRightColumn', 'toggleSingleScreen', 'uiScaleUp', 'uiScaleDown', 'uiScaleReset', 'cyclePreventSleep']
   },
   {
     id: 'commands',

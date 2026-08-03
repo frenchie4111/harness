@@ -20,6 +20,7 @@ import {
   DEFAULT_LIGHT_THEME,
   DEFAULT_DARK_THEME,
   DEFAULT_PR_REVIEW_PROMPT,
+  DEFAULT_SIDEBAR_DETAILS,
   type PreventSleepMode
 } from '../shared/state/settings'
 import {
@@ -28,7 +29,7 @@ import {
   DEFAULT_TERMINAL_FONT_SIZE,
   DEFAULT_WORKTREE_BASE,
   DEFAULT_MERGE_STRATEGY,
-  DEFAULT_WORKTREE_DETAIL,
+  DEFAULT_SIDEBAR_DENSITY,
   DEFAULT_HARNESS_SYSTEM_PROMPT,
   DEFAULT_HARNESS_SYSTEM_PROMPT_MAIN,
   type Config
@@ -108,7 +109,11 @@ export function buildInitialAppState(
       editor: config.editor || DEFAULT_EDITOR_ID,
       worktreeBase: config.worktreeBase || DEFAULT_WORKTREE_BASE,
       mergeStrategy: config.mergeStrategy || DEFAULT_MERGE_STRATEGY,
-      worktreeDetail: config.worktreeDetail || DEFAULT_WORKTREE_DETAIL,
+      sidebarDensity: config.sidebarDensity || DEFAULT_SIDEBAR_DENSITY,
+      sidebarDetails: {
+        compact: { ...DEFAULT_SIDEBAR_DETAILS.compact, ...(config.sidebarDetails?.compact || {}) },
+        comfy: { ...DEFAULT_SIDEBAR_DETAILS.comfy, ...(config.sidebarDetails?.comfy || {}) }
+      },
       claudeModel: config.claudeModel || null,
       codexModel: config.codexModel || null,
       cursorModel: config.cursorModel || null,

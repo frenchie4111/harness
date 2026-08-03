@@ -4,7 +4,8 @@ import { openReportIssue } from './ReportIssueScreen'
 import { HARNESS_ISSUES_URL, HARNESS_RELEASES_URL, harnessReleaseNotesUrl } from '../../shared/constants'
 import { useSettings, useUpdater, useRepoConfigs, useHooks } from '../store'
 import { useBackend } from '../backend'
-import type { UpdaterStatus, MergeStrategy, RepoConfig, WorktreeDetail, AgentKind } from '../types'
+import type { UpdaterStatus, MergeStrategy, RepoConfig, AgentKind, SidebarDensity, SidebarDetailPrefs, Worktree, PRStatus } from '../types'
+import { SubtitleDetail } from './WorktreeSubtitleDetail'
 import { DEFAULT_HOTKEYS, ACTION_LABELS, ACTION_CATEGORIES, bindingToString, eventToBinding, formatBindingGlyphs, resolveHotkeys, type Action, type HotkeyBinding } from '../hotkeys'
 import { Tooltip } from './Tooltip'
 import { HotkeyBadge } from './HotkeyBadge'
@@ -30,6 +31,7 @@ type SubSectionId =
   | 'appearance-custom-themes'
   | 'appearance-ui-size'
   | 'appearance-terminal-font'
+  | 'appearance-sidebar'
   | 'agent-general'
   | 'agent-claude'
   | 'agent-codex'
@@ -64,7 +66,8 @@ const SECTIONS: Section[] = [
     { id: 'appearance-theme', label: 'Theme' },
     { id: 'appearance-custom-themes', label: 'Custom themes' },
     { id: 'appearance-ui-size', label: 'UI size' },
-    { id: 'appearance-terminal-font', label: 'Terminal font' }
+    { id: 'appearance-terminal-font', label: 'Terminal font' },
+    { id: 'appearance-sidebar', label: 'Sidebar' }
   ]},
   { id: 'agent', label: 'Agent', icon: TerminalIcon, children: [
     { id: 'agent-general', label: 'General' },
@@ -164,6 +167,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     'appearance-custom-themes': null,
     'appearance-ui-size': null,
     'appearance-terminal-font': null,
+    'appearance-sidebar': null,
     'agent-general': null,
     'agent-claude': null,
     'agent-codex': null,
@@ -343,7 +347,8 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     editor: editorId,
     worktreeBase,
     mergeStrategy,
-    worktreeDetail,
+    sidebarDensity,
+    sidebarDetails,
     hasGithubToken: settingsHasToken,
     githubAuthSource: authSource,
     harnessStarred,
@@ -639,10 +644,6 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     },
     [scopeRepoRoot, updateRepoConfig]
   )
-
-  const handleSelectWorktreeDetail = useCallback(async (detail: WorktreeDetail) => {
-    await backend.setWorktreeDetail(detail)
-  }, [])
 
   // Resolve what each control should display for the active scope.
   const scopedRepoCfg = scopeRepoRoot ? repoConfigs[scopeRepoRoot] || {} : null
@@ -1725,6 +1726,105 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 </div>
               </div>
 
+              <div ref={(el) => { subSectionRefs.current['appearance-sidebar'] = el }} id="appearance-sidebar" />
+              <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">Sidebar row preview</h3>
+              <p className="text-xs text-dim mb-3">
+                Live preview using mock data — every detail item is present so
+                the checkboxes below have something to toggle. Real rows only
+                include items with actual data (e.g. milestone hides when the
+                PR has none).
+              </p>
+              <SidebarRowPreview density={sidebarDensity} prefs={sidebarDetails[sidebarDensity]} />
+
+              <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">Sidebar row density</h3>
+              <p className="text-xs text-dim mb-3">
+                Comfy stacks the label and detail cluster on two lines. Compact
+                folds it all onto a single line. Rows waiting on approval always
+                switch to two lines so the pending-tool alert stays visible.
+              </p>
+              <div className="space-y-2 mb-6">
+                {(
+                  [
+                    {
+                      id: 'comfy' as const,
+                      label: 'Comfy',
+                      description: 'Two lines — label on top, detail cluster below'
+                    },
+                    {
+                      id: 'compact' as const,
+                      label: 'Compact',
+                      description: 'Single line — detail cluster on the right'
+                    }
+                  ]
+                ).map((opt) => {
+                  const isActive = sidebarDensity === opt.id
+                  return (
+                    <button
+                      key={opt.id}
+                      onClick={() => void backend.setSidebarDensity(opt.id)}
+                      className={`w-full text-left rounded border px-3 py-2 transition-colors cursor-pointer ${
+                        isActive
+                          ? 'border-accent bg-panel-raised'
+                          : 'border-border hover:border-border-strong'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <div
+                          className={`w-3 h-3 rounded-full border ${
+                            isActive ? 'border-accent bg-accent' : 'border-border-strong'
+                          }`}
+                        />
+                        <span className="text-sm text-fg-bright">{opt.label}</span>
+                      </div>
+                      <p className="text-xs text-dim mt-1 ml-5">{opt.description}</p>
+                    </button>
+                  )
+                })}
+              </div>
+
+              <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">
+                Worktree details <span className="text-dim font-normal">— {sidebarDensity === 'compact' ? 'Compact' : 'Comfy'} mode</span>
+              </h3>
+              <p className="text-xs text-dim mb-3">
+                Which items to include in the detail cluster for the currently
+                selected density. Each mode has its own independent toggles —
+                switch density above to configure the other set. Items only
+                render when they have data (e.g. milestone won't show if the
+                PR has none).
+              </p>
+              <div className="bg-panel-raised border border-border rounded-lg p-4 space-y-2">
+                {(
+                  [
+                    { id: 'repoLabel' as const, label: 'Repo label', description: 'Which repository (shown in multi-repo mode)' },
+                    { id: 'branch' as const, label: 'Branch name', description: 'Original branch when a worktree has an alias' },
+                    { id: 'age' as const, label: 'Age', description: 'How long the worktree has existed' },
+                    { id: 'diff' as const, label: 'Diff stats', description: 'PR additions/deletions (+X/−Y)' },
+                    { id: 'milestone' as const, label: 'Milestone', description: 'GitHub milestone title if set' },
+                    { id: 'prNumber' as const, label: 'PR number', description: 'The #123 badge for the associated PR' },
+                    { id: 'assignee' as const, label: 'Assignee avatar', description: 'Avatar of the PR’s first assignee' }
+                  ]
+                ).map((opt) => (
+                  <label key={opt.id} className="flex items-start gap-3 cursor-pointer py-1">
+                    <input
+                      type="checkbox"
+                      checked={sidebarDetails[sidebarDensity][opt.id]}
+                      onChange={() => void backend.setSidebarDetails({
+                        ...sidebarDetails,
+                        [sidebarDensity]: {
+                          ...sidebarDetails[sidebarDensity],
+                          [opt.id]: !sidebarDetails[sidebarDensity][opt.id]
+                        }
+                      })}
+                      className="mt-0.5 w-4 h-4 accent-accent cursor-pointer"
+                    />
+                    <div className="flex-1">
+                      <div className="text-sm text-fg-bright">{opt.label}</div>
+                      <p className="text-xs text-dim mt-0.5">{opt.description}</p>
+                    </div>
+                  </label>
+                ))}
+              </div>
+
             </section>
 
             {/* Agent section */}
@@ -2741,108 +2841,6 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
               {scopeRepoRoot === null && (
                 <>
-                  <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">Worktree details</h3>
-                  <p className="text-xs text-dim mb-3">
-                    What to show next to each worktree row in the sidebar. The
-                    detail hides on hover; row action buttons appear in its place.
-                  </p>
-                  <div className="mb-3 p-2 bg-panel-raised border border-border rounded">
-                    <div className="text-xs text-faint mb-1.5 uppercase tracking-wide">Preview</div>
-                    <div className="group flex items-center gap-2 px-3 py-2 bg-surface rounded">
-                      <span
-                        className="w-2 h-2 rounded-full shrink-0 bg-success"
-                        title="Working..."
-                      />
-                      <GitPullRequest className="icon-xs text-success shrink-0" />
-                      <div className="min-w-0 flex-1">
-                        <div className="text-sm font-medium text-fg-bright truncate">feature/example-branch</div>
-                        <div className="text-xs text-faint truncate">harness/feature-example-branch</div>
-                      </div>
-                      {worktreeDetail === 'diff' && (
-                        <span className="text-xs font-mono shrink-0 leading-none group-hover:hidden" title="+42 additions, −7 deletions">
-                          <span className="text-success">+42</span>
-                          <span className="text-danger ml-0.5">−7</span>
-                        </span>
-                      )}
-                      {worktreeDetail === 'age' && (
-                        <span className="text-xs font-mono shrink-0 leading-none text-dim group-hover:hidden" title="Created 5 days ago">
-                          5d
-                        </span>
-                      )}
-                      {worktreeDetail === 'pr' && (
-                        <span className="inline-flex items-center gap-1.5 shrink-0 group-hover:hidden">
-                          <span className="text-xs text-dim truncate max-w-[6rem]" title="Milestone: v2.10">v2.10</span>
-                          <span className="text-xs font-mono leading-none px-1.5 py-0.5 rounded-full bg-panel border border-border-strong text-fg-bright">
-                            #123
-                          </span>
-                          <span
-                            className="w-3.5 h-3.5 rounded-full bg-accent/40 border border-border-strong shrink-0"
-                            title="Assignee: octocat"
-                          />
-                        </span>
-                      )}
-                      <span className="hidden group-hover:flex text-faint shrink-0" title="Snooze">
-                        <Moon className="icon-xs" />
-                      </span>
-                      <span className="hidden group-hover:flex text-faint shrink-0" title="Remove worktree">
-                        <Trash2 className="icon-xs" />
-                      </span>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    {(
-                      [
-                        {
-                          id: 'diff' as const,
-                          label: 'Diff stat',
-                          description: 'Show added/removed line counts from the PR'
-                        },
-                        {
-                          id: 'age' as const,
-                          label: 'Age',
-                          description: 'Show how long the worktree has existed'
-                        },
-                        {
-                          id: 'pr' as const,
-                          label: 'Pull Request',
-                          description: 'Show assignee avatar, milestone, and PR number'
-                        },
-                        {
-                          id: 'none' as const,
-                          label: 'Nothing',
-                          description: 'Hide the extra detail'
-                        }
-                      ]
-                    ).map((opt) => {
-                      const isActive = worktreeDetail === opt.id
-                      return (
-                        <button
-                          key={opt.id}
-                          onClick={() => handleSelectWorktreeDetail(opt.id)}
-                          className={`w-full text-left rounded border px-3 py-2 transition-colors cursor-pointer ${
-                            isActive
-                              ? 'border-accent bg-panel-raised'
-                              : 'border-border hover:border-border-strong'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2">
-                            <div
-                              className={`w-3 h-3 rounded-full border ${
-                                isActive ? 'border-accent bg-accent' : 'border-border-strong'
-                              }`}
-                            />
-                            <span className="text-sm text-fg-bright">{opt.label}</span>
-                          </div>
-                          <p className="text-xs text-dim mt-1 ml-5">{opt.description}</p>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </>
-              )}
-
-              {scopeRepoRoot === null && (
-                <>
                   <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">Default snooze duration</h3>
                   <p className="text-xs text-dim mb-3">
                     How many days a worktree snoozes by default. ⌥-click the
@@ -3704,6 +3702,93 @@ interface Swatch {
    *  built-ins; arbitrary semantic color key for customs. */
   role: string
   color: string
+}
+
+/** Mock worktree + PR used by the Sidebar row preview so every detail
+ *  item has something to render. The avatar is a self-contained SVG data
+ *  URI so the preview doesn't hit the network. */
+const PREVIEW_WORKTREE: Worktree = {
+  path: '/Users/you/Projects/harness-worktrees/feat/example',
+  branch: 'feat/example-branch',
+  head: '',
+  isBare: false,
+  isMain: false,
+  createdAt: 0,
+  repoRoot: '/Users/you/Projects/harness'
+}
+
+const PREVIEW_PR: PRStatus = {
+  number: 123,
+  title: 'Example pull request',
+  state: 'open',
+  url: '',
+  branch: 'feat/example-branch',
+  author: null,
+  checks: [],
+  checksOverall: 'success',
+  hasConflict: false,
+  reviews: [],
+  reviewDecision: 'none',
+  additions: 42,
+  deletions: 7,
+  baseBranch: 'main',
+  isDefaultBase: true,
+  milestone: { title: 'v2.13.0', url: '', state: 'open' },
+  assignees: [
+    {
+      login: 'octocat',
+      avatarUrl:
+        "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='8' fill='%234a90e2'/><text x='8' y='11' font-family='sans-serif' font-size='9' fill='white' text-anchor='middle'>O</text></svg>"
+    }
+  ],
+  linkedIssues: [],
+  labels: []
+}
+
+interface SidebarRowPreviewProps {
+  density: SidebarDensity
+  prefs: SidebarDetailPrefs
+}
+
+function SidebarRowPreview({ density, prefs }: SidebarRowPreviewProps): JSX.Element {
+  // Compute a live "3 days ago" createdAt so the age item always shows
+  // something reasonable in the preview.
+  const worktree: Worktree = { ...PREVIEW_WORKTREE, createdAt: Date.now() - 3 * 24 * 60 * 60 * 1000 }
+  return (
+    <div className="rounded border border-border bg-panel p-2 max-w-[26rem]">
+      <div className="group flex items-center gap-2 px-3 py-2 bg-surface rounded">
+        <span
+          className="w-2 h-2 rounded-full shrink-0 bg-success"
+          title="Working..."
+        />
+        <GitPullRequest className="icon-sm text-success shrink-0" />
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-medium text-fg-bright truncate">
+            example-alias
+          </div>
+          {density === 'comfy' && (
+            <SubtitleDetail
+              worktree={worktree}
+              repoLabel="harness"
+              aliased
+              prStatus={PREVIEW_PR}
+              prefs={prefs}
+            />
+          )}
+        </div>
+        {density === 'compact' && (
+          <SubtitleDetail
+            worktree={worktree}
+            repoLabel="harness"
+            aliased
+            prStatus={PREVIEW_PR}
+            prefs={prefs}
+            inline
+          />
+        )}
+      </div>
+    </div>
+  )
 }
 
 /** Roles shown in the small swatch row next to each theme name. Stable

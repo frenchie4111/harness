@@ -48,6 +48,7 @@ import { InvalidConfigModal } from './components/InvalidConfigModal'
 import { MonacoWorkerFailedBanner } from './components/MonacoWorkerFailedBanner'
 import iconUrl from '../../resources/icon.png'
 import { PerfMonitorHUD } from './components/PerfMonitorHUD'
+import { GitHubApiLogPanel } from './components/GitHubApiLogPanel'
 import { HoldToQuitOverlay } from './components/HoldToQuitOverlay'
 import { ConfirmCloseTabModal } from './components/ConfirmCloseTabModal'
 import { Toasts } from './components/Toasts'
@@ -275,6 +276,7 @@ function DesktopApp(): JSX.Element {
   const [showCommandPalette, setShowCommandPalette] = useState(false)
   const [commandPaletteMode, setCommandPaletteMode] = useState<'root' | 'files'>('root')
   const [showPerfMonitor, setShowPerfMonitor] = useState(false)
+  const [showGitHubApiLog, setShowGitHubApiLog] = useState(false)
   const [showHotkeyCheatsheet, setShowHotkeyCheatsheet] = useState(false)
   const holdToQuit = useHoldToQuit()
   const [showQuakeTerminal, setShowQuakeTerminal] = useState(false)
@@ -402,6 +404,12 @@ const setQuestStep = useCallback((next: QuestStep) => {
   // Toggle perf monitor from the menu (Cmd+Shift+D)
   useEffect(() => {
     const cleanup = backend.onTogglePerfMonitor(() => setShowPerfMonitor((v) => !v))
+    return cleanup
+  }, [])
+
+  // Debug → Open GitHub API Log
+  useEffect(() => {
+    const cleanup = backend.onOpenGitHubApiLog(() => setShowGitHubApiLog(true))
     return cleanup
   }, [])
 
@@ -1831,6 +1839,9 @@ const setQuestStep = useCallback((next: QuestStep) => {
     {repoPickerOverlay}
     {repoAddPromptOverlay}
     {showPerfMonitor && <PerfMonitorHUD onClose={() => setShowPerfMonitor(false)} />}
+    {showGitHubApiLog && (
+      <GitHubApiLogPanel onClose={() => setShowGitHubApiLog(false)} />
+    )}
     <Toasts />
     {showCommandPalette && (
       <CommandPalette

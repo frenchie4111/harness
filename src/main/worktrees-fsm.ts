@@ -68,6 +68,12 @@ interface WorktreesFSMOptions {
   }) => void
 }
 
+/** How long `refreshListDebounced` waits after the last call before
+ *  firing. Long enough to coalesce a bulk deletion of 30+ worktrees
+ *  into one list refresh, short enough that the sidebar still feels
+ *  live on interactive one-off deletions. */
+const REFRESH_LIST_DEBOUNCE_MS = 250
+
 /** Owns the pending-creation state machine plus the "refresh the flat
  * worktree list across every known repo" operation. All writes go through
  * the Store. Designed so the renderer awaits `runPending(…)` end-to-end;
@@ -75,6 +81,7 @@ interface WorktreesFSMOptions {
 export class WorktreesFSM {
   private store: Store
   private opts: WorktreesFSMOptions
+  private refreshDebounceTimer: ReturnType<typeof setTimeout> | null = null
 
   constructor(store: Store, opts: WorktreesFSMOptions) {
     this.store = store
@@ -96,6 +103,20 @@ export class WorktreesFSM {
     const flat = results.flat()
     this.store.dispatch({ type: 'worktrees/listChanged', payload: flat })
     return flat
+  }
+
+  /** Trailing-debounced variant of `refreshList`. Multiple back-to-back
+   *  callers (e.g. a bulk deletion of 30 worktrees) coalesce into a
+   *  single refresh once the batch settles — the naive per-completion
+   *  `refreshList()` would otherwise spawn `git worktree list --porcelain`
+   *  once per repo per deletion. Fire-and-forget; errors surface via
+   *  the underlying `refreshList` logging path. */
+  refreshListDebounced(): void {
+    if (this.refreshDebounceTimer) clearTimeout(this.refreshDebounceTimer)
+    this.refreshDebounceTimer = setTimeout(() => {
+      this.refreshDebounceTimer = null
+      void this.refreshList()
+    }, REFRESH_LIST_DEBOUNCE_MS)
   }
 
   dispatchRepos(roots: string[]): void {

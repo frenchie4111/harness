@@ -7,7 +7,66 @@ export interface WorktreeScripts {
 
 export type MergeStrategy = 'squash' | 'merge-commit' | 'fast-forward'
 export type WorktreeBase = 'remote' | 'local'
-export type WorktreeDetail = 'diff' | 'age' | 'pr' | 'none'
+/** Density of each sidebar worktree row. `comfy` stacks the label and
+ *  detail cluster on two lines; `compact` folds the detail cluster onto
+ *  the right of a single line. The pending-tool alert (needs-approval)
+ *  always uses the two-line layout regardless of this setting — that
+ *  signal is too important to hide. */
+export type SidebarDensity = 'compact' | 'comfy'
+
+/** Per-item toggles for the sidebar row's detail cluster. Each `true`
+ *  means the item shows when it has data to show (e.g. `assignee` only
+ *  renders when a PR actually has an assignee). Set to `false` to hide
+ *  the item entirely regardless of data availability. */
+export interface SidebarDetailPrefs {
+  repoLabel: boolean
+  branch: boolean
+  age: boolean
+  diff: boolean
+  milestone: boolean
+  prNumber: boolean
+  assignee: boolean
+}
+
+/** Per-density detail prefs. Compact and comfy have independent toggle
+ *  sets because their goals differ — compact users are optimizing for
+ *  density and typically want fewer items, while comfy users have the
+ *  vertical space for the full cluster. */
+export interface SidebarDetailPrefsByMode {
+  compact: SidebarDetailPrefs
+  comfy: SidebarDetailPrefs
+}
+
+/** Comfy default: everything on. Users can turn things off. */
+export const DEFAULT_SIDEBAR_DETAILS_COMFY: SidebarDetailPrefs = {
+  repoLabel: true,
+  branch: true,
+  age: true,
+  diff: true,
+  milestone: true,
+  prNumber: true,
+  assignee: true
+}
+
+/** Compact default: the minimum useful set — repo (multi-repo
+ *  disambiguation), PR number, and assignee avatar. Branch (only
+ *  meaningful when aliased), age, diff stats, and milestone are all
+ *  off by default to keep a single-line row uncrowded. Users can turn
+ *  any of them on. */
+export const DEFAULT_SIDEBAR_DETAILS_COMPACT: SidebarDetailPrefs = {
+  repoLabel: true,
+  branch: false,
+  age: false,
+  diff: false,
+  milestone: false,
+  prNumber: true,
+  assignee: true
+}
+
+export const DEFAULT_SIDEBAR_DETAILS: SidebarDetailPrefsByMode = {
+  compact: DEFAULT_SIDEBAR_DETAILS_COMPACT,
+  comfy: DEFAULT_SIDEBAR_DETAILS_COMFY
+}
 
 export type AgentKindSetting = 'claude' | 'codex' | 'cursor'
 
@@ -127,7 +186,8 @@ export interface SettingsState {
   editor: string
   worktreeBase: WorktreeBase
   mergeStrategy: MergeStrategy
-  worktreeDetail: WorktreeDetail
+  sidebarDensity: SidebarDensity
+  sidebarDetails: SidebarDetailPrefsByMode
   shareClaudeSettings: boolean
   claudeModel: string | null
   codexModel: string | null
@@ -263,7 +323,8 @@ export type SettingsEvent =
   | { type: 'settings/editorChanged'; payload: string }
   | { type: 'settings/worktreeBaseChanged'; payload: WorktreeBase }
   | { type: 'settings/mergeStrategyChanged'; payload: MergeStrategy }
-  | { type: 'settings/worktreeDetailChanged'; payload: WorktreeDetail }
+  | { type: 'settings/sidebarDensityChanged'; payload: SidebarDensity }
+  | { type: 'settings/sidebarDetailsChanged'; payload: SidebarDetailPrefsByMode }
   | { type: 'settings/shareClaudeSettingsChanged'; payload: boolean }
   | { type: 'settings/hasGithubTokenChanged'; payload: boolean }
   | { type: 'settings/githubAuthSourceChanged'; payload: 'pat' | 'gh-cli' | null }
@@ -328,7 +389,8 @@ export const initialSettings: SettingsState = {
   editor: 'vscode',
   worktreeBase: 'remote',
   mergeStrategy: 'squash',
-  worktreeDetail: 'diff',
+  sidebarDensity: 'comfy',
+  sidebarDetails: DEFAULT_SIDEBAR_DETAILS,
   shareClaudeSettings: true,
   claudeModel: null,
   codexModel: null,
@@ -410,8 +472,10 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, worktreeBase: event.payload }
     case 'settings/mergeStrategyChanged':
       return { ...state, mergeStrategy: event.payload }
-    case 'settings/worktreeDetailChanged':
-      return { ...state, worktreeDetail: event.payload }
+    case 'settings/sidebarDensityChanged':
+      return { ...state, sidebarDensity: event.payload }
+    case 'settings/sidebarDetailsChanged':
+      return { ...state, sidebarDetails: event.payload }
     case 'settings/shareClaudeSettingsChanged':
       return { ...state, shareClaudeSettings: event.payload }
     case 'settings/hasGithubTokenChanged':

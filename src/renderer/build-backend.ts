@@ -39,7 +39,7 @@ import type {
   StateEventListener
 } from '../shared/transport/transport'
 import type { ElectronAPI, AgentKind } from './types'
-import type { PreventSleepMode } from '../shared/state/settings'
+import type { SidebarDetailPrefsByMode, PreventSleepMode } from '../shared/state/settings'
 
 export type { ElectronOnlyHelpers }
 
@@ -387,8 +387,10 @@ export function buildBackend(
     setWorktreeBase: (mode: 'remote' | 'local') => req('config:setWorktreeBase', mode),
     setMergeStrategy: (strategy: 'squash' | 'merge-commit' | 'fast-forward') =>
       req('config:setMergeStrategy', strategy),
-    setWorktreeDetail: (detail: 'diff' | 'age' | 'pr' | 'none') =>
-      req('config:setWorktreeDetail', detail),
+    setSidebarDensity: (density: 'compact' | 'comfy') =>
+      req('config:setSidebarDensity', density),
+    setSidebarDetails: (prefs: SidebarDetailPrefsByMode) =>
+      req('config:setSidebarDetails', prefs),
 
     setEditor: (editorId: string) => req('config:setEditor', editorId),
     getAvailableEditors: () => req('config:getAvailableEditors'),
@@ -437,6 +439,11 @@ export function buildBackend(
     getPerfMetrics: () => req('perf:getMetrics'),
     perfLogSlowRender: (id: string, ms: number, phase: string) =>
       sig('perf:logSlowRender', id, ms, phase),
+
+    getGitHubApiLog: () => req('debug:getGitHubApiLog'),
+    clearGitHubApiLog: () => req('debug:clearGitHubApiLog'),
+    onGitHubApiLogAppended: (callback: (entry: unknown) => void) =>
+      onActiveSignal('debug:githubApiLogAppended', (entry) => callback(entry)),
 
     logError: (
       label: string,
@@ -491,6 +498,8 @@ export function buildBackend(
       onLocalSignal('menu:newProject', () => callback()),
     onOpenReportIssue: (callback: () => void) =>
       onLocalSignal('app:openReportIssue', () => callback()),
+    onOpenGitHubApiLog: (callback: () => void) =>
+      onLocalSignal('app:openGitHubApiLog', () => callback()),
     onDebugCrashFocusedTab: (callback: () => void) =>
       onLocalSignal('app:debugCrashFocusedTab', () => callback()),
     onDebugPreviewOnboarding: (callback: () => void) =>
