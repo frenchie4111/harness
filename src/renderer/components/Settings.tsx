@@ -29,6 +29,7 @@ type SubSectionId =
   | 'appearance-custom-themes'
   | 'appearance-ui-size'
   | 'appearance-terminal-font'
+  | 'appearance-sidebar'
   | 'agent-general'
   | 'agent-claude'
   | 'agent-codex'
@@ -62,7 +63,8 @@ const SECTIONS: Section[] = [
     { id: 'appearance-theme', label: 'Theme' },
     { id: 'appearance-custom-themes', label: 'Custom themes' },
     { id: 'appearance-ui-size', label: 'UI size' },
-    { id: 'appearance-terminal-font', label: 'Terminal font' }
+    { id: 'appearance-terminal-font', label: 'Terminal font' },
+    { id: 'appearance-sidebar', label: 'Sidebar' }
   ]},
   { id: 'agent', label: 'Agent', icon: TerminalIcon, children: [
     { id: 'agent-general', label: 'General' },
@@ -149,6 +151,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     'appearance-custom-themes': null,
     'appearance-ui-size': null,
     'appearance-terminal-font': null,
+    'appearance-sidebar': null,
     'agent-general': null,
     'agent-claude': null,
     'agent-codex': null,
@@ -325,6 +328,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     worktreeBase,
     mergeStrategy,
     sidebarDensity,
+    sidebarDetails,
     hasGithubToken: settingsHasToken,
     githubAuthSource: authSource,
     harnessStarred,
@@ -1647,6 +1651,89 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 </div>
               </div>
 
+              <div ref={(el) => { subSectionRefs.current['appearance-sidebar'] = el }} id="appearance-sidebar" />
+              <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">Sidebar row density</h3>
+              <p className="text-xs text-dim mb-3">
+                Comfy stacks the label and detail cluster on two lines. Compact
+                folds it all onto a single line. Rows waiting on approval always
+                switch to two lines so the pending-tool alert stays visible.
+              </p>
+              <div className="space-y-2 mb-6">
+                {(
+                  [
+                    {
+                      id: 'comfy' as const,
+                      label: 'Comfy',
+                      description: 'Two lines — label on top, detail cluster below'
+                    },
+                    {
+                      id: 'compact' as const,
+                      label: 'Compact',
+                      description: 'Single line — detail cluster on the right'
+                    }
+                  ]
+                ).map((opt) => {
+                  const isActive = sidebarDensity === opt.id
+                  return (
+                    <button
+                      key={opt.id}
+                      onClick={() => void backend.setSidebarDensity(opt.id)}
+                      className={`w-full text-left rounded border px-3 py-2 transition-colors cursor-pointer ${
+                        isActive
+                          ? 'border-accent bg-panel-raised'
+                          : 'border-border hover:border-border-strong'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <div
+                          className={`w-3 h-3 rounded-full border ${
+                            isActive ? 'border-accent bg-accent' : 'border-border-strong'
+                          }`}
+                        />
+                        <span className="text-sm text-fg-bright">{opt.label}</span>
+                      </div>
+                      <p className="text-xs text-dim mt-1 ml-5">{opt.description}</p>
+                    </button>
+                  )
+                })}
+              </div>
+
+              <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">Worktree details</h3>
+              <p className="text-xs text-dim mb-3">
+                Which items to include in the detail cluster next to each row.
+                Each toggles independently; items only render when they have
+                data (e.g. milestone won't show if the PR has none).
+              </p>
+              <div className="bg-panel-raised border border-border rounded-lg p-4 space-y-2">
+                {(
+                  [
+                    { id: 'repoLabel' as const, label: 'Repo label', description: 'Which repository (shown in multi-repo mode)' },
+                    { id: 'branch' as const, label: 'Branch name', description: 'Original branch when a worktree has an alias' },
+                    { id: 'age' as const, label: 'Age', description: 'How long the worktree has existed' },
+                    { id: 'diff' as const, label: 'Diff stats', description: 'PR additions/deletions (+X/−Y)' },
+                    { id: 'milestone' as const, label: 'Milestone', description: 'GitHub milestone title if set' },
+                    { id: 'prNumber' as const, label: 'PR number', description: 'The #123 badge for the associated PR' },
+                    { id: 'assignee' as const, label: 'Assignee avatar', description: 'Avatar of the PR’s first assignee' }
+                  ]
+                ).map((opt) => (
+                  <label key={opt.id} className="flex items-start gap-3 cursor-pointer py-1">
+                    <input
+                      type="checkbox"
+                      checked={sidebarDetails[opt.id]}
+                      onChange={() => void backend.setSidebarDetails({
+                        ...sidebarDetails,
+                        [opt.id]: !sidebarDetails[opt.id]
+                      })}
+                      className="mt-0.5 w-4 h-4 accent-accent cursor-pointer"
+                    />
+                    <div className="flex-1">
+                      <div className="text-sm text-fg-bright">{opt.label}</div>
+                      <p className="text-xs text-dim mt-0.5">{opt.description}</p>
+                    </div>
+                  </label>
+                ))}
+              </div>
+
             </section>
 
             {/* Agent section */}
@@ -2470,53 +2557,6 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
 
               {scopeRepoRoot === null && (
                 <>
-                  <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">Sidebar row density</h3>
-                  <p className="text-xs text-dim mb-3">
-                    Comfy stacks the label and detail cluster (age · diff · PR · assignee)
-                    on two lines. Compact folds it all onto a single line. Rows waiting
-                    on approval always switch to two lines so the pending-tool alert
-                    stays visible.
-                  </p>
-                  <div className="space-y-2">
-                    {(
-                      [
-                        {
-                          id: 'comfy' as const,
-                          label: 'Comfy',
-                          description: 'Two lines — label on top, detail cluster below'
-                        },
-                        {
-                          id: 'compact' as const,
-                          label: 'Compact',
-                          description: 'Single line — detail cluster on the right'
-                        }
-                      ]
-                    ).map((opt) => {
-                      const isActive = sidebarDensity === opt.id
-                      return (
-                        <button
-                          key={opt.id}
-                          onClick={() => void backend.setSidebarDensity(opt.id)}
-                          className={`w-full text-left rounded border px-3 py-2 transition-colors cursor-pointer ${
-                            isActive
-                              ? 'border-accent bg-panel-raised'
-                              : 'border-border hover:border-border-strong'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2">
-                            <div
-                              className={`w-3 h-3 rounded-full border ${
-                                isActive ? 'border-accent bg-accent' : 'border-border-strong'
-                              }`}
-                            />
-                            <span className="text-sm text-fg-bright">{opt.label}</span>
-                          </div>
-                          <p className="text-xs text-dim mt-1 ml-5">{opt.description}</p>
-                        </button>
-                      )
-                    })}
-                  </div>
-
                   <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">Default snooze duration</h3>
                   <p className="text-xs text-dim mb-3">
                     How many days a worktree snoozes by default. ⌥-click the

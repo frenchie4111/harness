@@ -77,7 +77,9 @@ import { normalizeAlias } from '../shared/state/aliases'
 import {
   DEFAULT_LIGHT_THEME,
   DEFAULT_DARK_THEME,
-  DEFAULT_PR_REVIEW_PROMPT
+  DEFAULT_PR_REVIEW_PROMPT,
+  DEFAULT_SIDEBAR_DETAILS,
+  type SidebarDetailPrefs
 } from '../shared/state/settings'
 import { watchStatusDir } from './hooks'
 import { getAgent, type AgentKind } from './agents'
@@ -2358,6 +2360,42 @@ function registerIpcHandlers(): void {
       }
       saveConfig(config)
       store.dispatch({ type: 'settings/sidebarDensityChanged', payload: density })
+      return true
+    }
+  )
+
+  transport.onRequest(
+    'config:setSidebarDetails',
+    (_ctx, prefs: SidebarDetailPrefs) => {
+      if (!prefs || typeof prefs !== 'object') return false
+      const bool = (k: keyof SidebarDetailPrefs): boolean =>
+        typeof prefs[k] === 'boolean'
+          ? prefs[k]
+          : DEFAULT_SIDEBAR_DETAILS[k]
+      const next: SidebarDetailPrefs = {
+        repoLabel: bool('repoLabel'),
+        branch: bool('branch'),
+        age: bool('age'),
+        diff: bool('diff'),
+        milestone: bool('milestone'),
+        prNumber: bool('prNumber'),
+        assignee: bool('assignee')
+      }
+      const isDefault =
+        next.repoLabel === DEFAULT_SIDEBAR_DETAILS.repoLabel &&
+        next.branch === DEFAULT_SIDEBAR_DETAILS.branch &&
+        next.age === DEFAULT_SIDEBAR_DETAILS.age &&
+        next.diff === DEFAULT_SIDEBAR_DETAILS.diff &&
+        next.milestone === DEFAULT_SIDEBAR_DETAILS.milestone &&
+        next.prNumber === DEFAULT_SIDEBAR_DETAILS.prNumber &&
+        next.assignee === DEFAULT_SIDEBAR_DETAILS.assignee
+      if (isDefault) {
+        delete config.sidebarDetails
+      } else {
+        config.sidebarDetails = next
+      }
+      saveConfig(config)
+      store.dispatch({ type: 'settings/sidebarDetailsChanged', payload: next })
       return true
     }
   )

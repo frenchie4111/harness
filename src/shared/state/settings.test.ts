@@ -214,6 +214,27 @@ describe('settingsReducer', () => {
     expect(comfy.sidebarDensity).toBe('comfy')
   })
 
+  it('sidebarDetailsChanged replaces the whole prefs object', () => {
+    expect(initialSettings.sidebarDetails.diff).toBe(true)
+    expect(initialSettings.sidebarDetails.assignee).toBe(true)
+    const next = apply(initialSettings, {
+      type: 'settings/sidebarDetailsChanged',
+      payload: {
+        repoLabel: true,
+        branch: true,
+        age: true,
+        diff: false,
+        milestone: false,
+        prNumber: true,
+        assignee: false
+      }
+    })
+    expect(next.sidebarDetails.diff).toBe(false)
+    expect(next.sidebarDetails.milestone).toBe(false)
+    expect(next.sidebarDetails.assignee).toBe(false)
+    expect(next.sidebarDetails.prNumber).toBe(true)
+  })
+
 
   it('hasGithubTokenChanged flips the presence flag', () => {
     const hasIt = apply(initialSettings, {

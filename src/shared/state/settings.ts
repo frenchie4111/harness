@@ -14,6 +14,30 @@ export type WorktreeBase = 'remote' | 'local'
  *  signal is too important to hide. */
 export type SidebarDensity = 'compact' | 'comfy'
 
+/** Per-item toggles for the sidebar row's detail cluster. Each `true`
+ *  means the item shows when it has data to show (e.g. `assignee` only
+ *  renders when a PR actually has an assignee). Set to `false` to hide
+ *  the item entirely regardless of data availability. */
+export interface SidebarDetailPrefs {
+  repoLabel: boolean
+  branch: boolean
+  age: boolean
+  diff: boolean
+  milestone: boolean
+  prNumber: boolean
+  assignee: boolean
+}
+
+export const DEFAULT_SIDEBAR_DETAILS: SidebarDetailPrefs = {
+  repoLabel: true,
+  branch: true,
+  age: true,
+  diff: true,
+  milestone: true,
+  prNumber: true,
+  assignee: true
+}
+
 export type AgentKindSetting = 'claude' | 'codex'
 
 export type BrowserToolsMode = 'view' | 'full'
@@ -126,6 +150,7 @@ export interface SettingsState {
   worktreeBase: WorktreeBase
   mergeStrategy: MergeStrategy
   sidebarDensity: SidebarDensity
+  sidebarDetails: SidebarDetailPrefs
   shareClaudeSettings: boolean
   claudeModel: string | null
   codexModel: string | null
@@ -243,6 +268,7 @@ export type SettingsEvent =
   | { type: 'settings/worktreeBaseChanged'; payload: WorktreeBase }
   | { type: 'settings/mergeStrategyChanged'; payload: MergeStrategy }
   | { type: 'settings/sidebarDensityChanged'; payload: SidebarDensity }
+  | { type: 'settings/sidebarDetailsChanged'; payload: SidebarDetailPrefs }
   | { type: 'settings/shareClaudeSettingsChanged'; payload: boolean }
   | { type: 'settings/hasGithubTokenChanged'; payload: boolean }
   | { type: 'settings/githubAuthSourceChanged'; payload: 'pat' | 'gh-cli' | null }
@@ -302,6 +328,7 @@ export const initialSettings: SettingsState = {
   worktreeBase: 'remote',
   mergeStrategy: 'squash',
   sidebarDensity: 'comfy',
+  sidebarDetails: DEFAULT_SIDEBAR_DETAILS,
   shareClaudeSettings: true,
   claudeModel: null,
   codexModel: null,
@@ -377,6 +404,8 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, mergeStrategy: event.payload }
     case 'settings/sidebarDensityChanged':
       return { ...state, sidebarDensity: event.payload }
+    case 'settings/sidebarDetailsChanged':
+      return { ...state, sidebarDetails: event.payload }
     case 'settings/shareClaudeSettingsChanged':
       return { ...state, shareClaudeSettings: event.payload }
     case 'settings/hasGithubTokenChanged':

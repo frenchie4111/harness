@@ -19,7 +19,8 @@ import {
   initialSettings,
   DEFAULT_LIGHT_THEME,
   DEFAULT_DARK_THEME,
-  DEFAULT_PR_REVIEW_PROMPT
+  DEFAULT_PR_REVIEW_PROMPT,
+  DEFAULT_SIDEBAR_DETAILS
 } from '../shared/state/settings'
 import {
   DEFAULT_CLAUDE_COMMAND,
@@ -104,6 +105,7 @@ export function buildInitialAppState(
       worktreeBase: config.worktreeBase || DEFAULT_WORKTREE_BASE,
       mergeStrategy: config.mergeStrategy || DEFAULT_MERGE_STRATEGY,
       sidebarDensity: config.sidebarDensity || DEFAULT_SIDEBAR_DENSITY,
+      sidebarDetails: { ...DEFAULT_SIDEBAR_DETAILS, ...(config.sidebarDetails || {}) },
       claudeModel: config.claudeModel || null,
       codexModel: config.codexModel || null,
       hasGithubToken: opts.hasGithubToken,

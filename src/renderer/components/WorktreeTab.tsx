@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import { GitPullRequest, RotateCw, Trash2, Loader2, Moon, TriangleAlert, AlarmClock, Ghost } from 'lucide-react'
-import type { Worktree, PtyStatus, PendingTool, PRStatus } from '../types'
+import type { Worktree, PtyStatus, PendingTool, PRStatus, SidebarDetailPrefs } from '../types'
 import { isPRMerged } from '../../shared/state/prs'
 import { formatWakeAt } from '../../shared/state/snooze'
 import { Tooltip } from './Tooltip'
@@ -98,6 +98,7 @@ const PR_STATE_COLOR: Record<string, string> = {
 export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActive, prStatus, isMerged, repoLabel, cmdOrdinal, deleting, isSnoozed, snoozeWakeAt, onClick, onDelete, onContinue, onSnooze, onUnsnooze, onPrune, isEditingAlias, onStartAliasEdit, onEndAliasEdit }: WorktreeTabProps): JSX.Element {
   const metaHeld = useMetaHeld()
   const density = useAppState((s) => s.settings.sidebarDensity)
+  const detailPrefs = useAppState((s) => s.settings.sidebarDetails)
   const currentAlias = useAliasForPath(worktree.path)
   const backend = useBackend()
   const label = displayLabel(worktree, currentAlias, metaHeld)
@@ -228,6 +229,7 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
             repoLabel={repoLabel}
             aliased={currentAlias !== undefined}
             prStatus={prStatus}
+            prefs={detailPrefs}
           />
         ) : null}
       </div>
@@ -237,6 +239,7 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
           repoLabel={repoLabel}
           aliased={currentAlias !== undefined}
           prStatus={prStatus}
+          prefs={detailPrefs}
           inline
         />
       )}
@@ -333,6 +336,7 @@ interface SubtitleDetailProps {
   repoLabel?: string
   aliased: boolean
   prStatus?: PRStatus | null
+  prefs: SidebarDetailPrefs
   /** When true, render as a top-row-inline cluster (compact density):
    *  container is `shrink-0` so the label truncates first, and long items
    *  (repoLabel / branch / milestone) hide on hover to make room for the
@@ -341,9 +345,9 @@ interface SubtitleDetailProps {
   inline?: boolean
 }
 
-function SubtitleDetail({ worktree, repoLabel, aliased, prStatus, inline }: SubtitleDetailProps): JSX.Element | null {
+function SubtitleDetail({ worktree, repoLabel, aliased, prStatus, prefs, inline }: SubtitleDetailProps): JSX.Element | null {
   const items: { key: string; node: ReactNode }[] = []
-  if (repoLabel) {
+  if (repoLabel && prefs.repoLabel) {
     items.push({
       key: 'repo',
       node: (
@@ -355,7 +359,7 @@ function SubtitleDetail({ worktree, repoLabel, aliased, prStatus, inline }: Subt
       )
     })
   }
-  if (aliased) {
+  if (aliased && prefs.branch) {
     items.push({
       key: 'branch',
       node: (
@@ -368,7 +372,7 @@ function SubtitleDetail({ worktree, repoLabel, aliased, prStatus, inline }: Subt
       )
     })
   }
-  if (worktree.createdAt) {
+  if (worktree.createdAt && prefs.age) {
     items.push({
       key: 'age',
       node: (
@@ -381,7 +385,7 @@ function SubtitleDetail({ worktree, repoLabel, aliased, prStatus, inline }: Subt
       )
     })
   }
-  if (prStatus && typeof prStatus.additions === 'number' && typeof prStatus.deletions === 'number') {
+  if (prefs.diff && prStatus && typeof prStatus.additions === 'number' && typeof prStatus.deletions === 'number') {
     items.push({
       key: 'diff',
       node: (
@@ -395,7 +399,7 @@ function SubtitleDetail({ worktree, repoLabel, aliased, prStatus, inline }: Subt
       )
     })
   }
-  if (prStatus?.milestone) {
+  if (prefs.milestone && prStatus?.milestone) {
     items.push({
       key: 'milestone',
       node: (
@@ -408,7 +412,7 @@ function SubtitleDetail({ worktree, repoLabel, aliased, prStatus, inline }: Subt
       )
     })
   }
-  if (prStatus) {
+  if (prefs.prNumber && prStatus) {
     items.push({
       key: 'num',
       node: (
@@ -421,7 +425,7 @@ function SubtitleDetail({ worktree, repoLabel, aliased, prStatus, inline }: Subt
       )
     })
   }
-  if (prStatus?.assignees[0]) {
+  if (prefs.assignee && prStatus?.assignees[0]) {
     const assignee = prStatus.assignees[0]
     items.push({
       key: 'assignee',
