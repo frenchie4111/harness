@@ -98,7 +98,7 @@ const PR_STATE_COLOR: Record<string, string> = {
 export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActive, prStatus, isMerged, repoLabel, cmdOrdinal, deleting, isSnoozed, snoozeWakeAt, onClick, onDelete, onContinue, onSnooze, onUnsnooze, onPrune, isEditingAlias, onStartAliasEdit, onEndAliasEdit }: WorktreeTabProps): JSX.Element {
   const metaHeld = useMetaHeld()
   const density = useAppState((s) => s.settings.sidebarDensity)
-  const detailPrefs = useAppState((s) => s.settings.sidebarDetails)
+  const detailPrefs = useAppState((s) => s.settings.sidebarDetails[s.settings.sidebarDensity])
   const currentAlias = useAliasForPath(worktree.path)
   const backend = useBackend()
   const label = displayLabel(worktree, currentAlias, metaHeld)

@@ -39,7 +39,7 @@ import type {
   StateEventListener
 } from '../shared/transport/transport'
 import type { ElectronAPI } from './types'
-import type { SidebarDetailPrefs } from '../shared/state/settings'
+import type { SidebarDetailPrefsByMode } from '../shared/state/settings'
 
 export type { ElectronOnlyHelpers }
 
@@ -380,7 +380,7 @@ export function buildBackend(
       req('config:setMergeStrategy', strategy),
     setSidebarDensity: (density: 'compact' | 'comfy') =>
       req('config:setSidebarDensity', density),
-    setSidebarDetails: (prefs: SidebarDetailPrefs) =>
+    setSidebarDetails: (prefs: SidebarDetailPrefsByMode) =>
       req('config:setSidebarDetails', prefs),
 
     setEditor: (editorId: string) => req('config:setEditor', editorId),

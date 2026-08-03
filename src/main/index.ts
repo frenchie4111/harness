@@ -79,7 +79,8 @@ import {
   DEFAULT_DARK_THEME,
   DEFAULT_PR_REVIEW_PROMPT,
   DEFAULT_SIDEBAR_DETAILS,
-  type SidebarDetailPrefs
+  type SidebarDetailPrefs,
+  type SidebarDetailPrefsByMode
 } from '../shared/state/settings'
 import { watchStatusDir } from './hooks'
 import { getAgent, type AgentKind } from './agents'
@@ -2366,30 +2367,44 @@ function registerIpcHandlers(): void {
 
   transport.onRequest(
     'config:setSidebarDetails',
-    (_ctx, prefs: SidebarDetailPrefs) => {
+    (_ctx, prefs: SidebarDetailPrefsByMode) => {
       if (!prefs || typeof prefs !== 'object') return false
-      const bool = (k: keyof SidebarDetailPrefs): boolean =>
-        typeof prefs[k] === 'boolean'
-          ? prefs[k]
-          : DEFAULT_SIDEBAR_DETAILS[k]
-      const next: SidebarDetailPrefs = {
-        repoLabel: bool('repoLabel'),
-        branch: bool('branch'),
-        age: bool('age'),
-        diff: bool('diff'),
-        milestone: bool('milestone'),
-        prNumber: bool('prNumber'),
-        assignee: bool('assignee')
+      const normalizeMode = (
+        mode: 'compact' | 'comfy',
+        input: Partial<SidebarDetailPrefs> | undefined
+      ): SidebarDetailPrefs => {
+        const defaults = DEFAULT_SIDEBAR_DETAILS[mode]
+        const src = input || {}
+        const bool = (k: keyof SidebarDetailPrefs): boolean =>
+          typeof src[k] === 'boolean' ? (src[k] as boolean) : defaults[k]
+        return {
+          repoLabel: bool('repoLabel'),
+          branch: bool('branch'),
+          age: bool('age'),
+          diff: bool('diff'),
+          milestone: bool('milestone'),
+          prNumber: bool('prNumber'),
+          assignee: bool('assignee')
+        }
       }
-      const isDefault =
-        next.repoLabel === DEFAULT_SIDEBAR_DETAILS.repoLabel &&
-        next.branch === DEFAULT_SIDEBAR_DETAILS.branch &&
-        next.age === DEFAULT_SIDEBAR_DETAILS.age &&
-        next.diff === DEFAULT_SIDEBAR_DETAILS.diff &&
-        next.milestone === DEFAULT_SIDEBAR_DETAILS.milestone &&
-        next.prNumber === DEFAULT_SIDEBAR_DETAILS.prNumber &&
-        next.assignee === DEFAULT_SIDEBAR_DETAILS.assignee
-      if (isDefault) {
+      const next: SidebarDetailPrefsByMode = {
+        compact: normalizeMode('compact', prefs.compact),
+        comfy: normalizeMode('comfy', prefs.comfy)
+      }
+      const modeIsDefault = (mode: 'compact' | 'comfy'): boolean => {
+        const cur = next[mode]
+        const def = DEFAULT_SIDEBAR_DETAILS[mode]
+        return (
+          cur.repoLabel === def.repoLabel &&
+          cur.branch === def.branch &&
+          cur.age === def.age &&
+          cur.diff === def.diff &&
+          cur.milestone === def.milestone &&
+          cur.prNumber === def.prNumber &&
+          cur.assignee === def.assignee
+        )
+      }
+      if (modeIsDefault('compact') && modeIsDefault('comfy')) {
         delete config.sidebarDetails
       } else {
         config.sidebarDetails = next

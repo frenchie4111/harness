@@ -142,8 +142,12 @@ export type MergeStrategy = 'squash' | 'merge-commit' | 'fast-forward'
 
 export type SidebarDensity = 'compact' | 'comfy'
 
-import type { SidebarDetailPrefs as SidebarDetailPrefsShared } from '../shared/state/settings'
+import type {
+  SidebarDetailPrefs as SidebarDetailPrefsShared,
+  SidebarDetailPrefsByMode as SidebarDetailPrefsByModeShared
+} from '../shared/state/settings'
 export type SidebarDetailPrefs = SidebarDetailPrefsShared
+export type SidebarDetailPrefsByMode = SidebarDetailPrefsByModeShared
 
 export type GitHubMergeMethod = 'merge' | 'squash' | 'rebase'
 
@@ -388,7 +392,7 @@ export interface ElectronAPI {
   setWorktreeBase(mode: 'remote' | 'local'): Promise<boolean>
   setMergeStrategy(strategy: MergeStrategy): Promise<boolean>
   setSidebarDensity(density: SidebarDensity): Promise<boolean>
-  setSidebarDetails(prefs: SidebarDetailPrefs): Promise<boolean>
+  setSidebarDetails(prefs: SidebarDetailPrefsByMode): Promise<boolean>
   setEditor(editorId: string): Promise<boolean>
   getAvailableEditors(): Promise<{ id: string; name: string }[]>
   snooze(path: string, wakeAt: number): Promise<boolean>

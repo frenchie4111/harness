@@ -105,7 +105,10 @@ export function buildInitialAppState(
       worktreeBase: config.worktreeBase || DEFAULT_WORKTREE_BASE,
       mergeStrategy: config.mergeStrategy || DEFAULT_MERGE_STRATEGY,
       sidebarDensity: config.sidebarDensity || DEFAULT_SIDEBAR_DENSITY,
-      sidebarDetails: { ...DEFAULT_SIDEBAR_DETAILS, ...(config.sidebarDetails || {}) },
+      sidebarDetails: {
+        compact: { ...DEFAULT_SIDEBAR_DETAILS.compact, ...(config.sidebarDetails?.compact || {}) },
+        comfy: { ...DEFAULT_SIDEBAR_DETAILS.comfy, ...(config.sidebarDetails?.comfy || {}) }
+      },
       claudeModel: config.claudeModel || null,
       codexModel: config.codexModel || null,
       hasGithubToken: opts.hasGithubToken,

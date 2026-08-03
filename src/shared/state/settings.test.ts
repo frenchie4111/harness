@@ -214,25 +214,45 @@ describe('settingsReducer', () => {
     expect(comfy.sidebarDensity).toBe('comfy')
   })
 
-  it('sidebarDetailsChanged replaces the whole prefs object', () => {
-    expect(initialSettings.sidebarDetails.diff).toBe(true)
-    expect(initialSettings.sidebarDetails.assignee).toBe(true)
+  it('sidebarDetailsChanged replaces the whole per-mode prefs object', () => {
+    // Comfy defaults: everything on.
+    expect(initialSettings.sidebarDetails.comfy.diff).toBe(true)
+    expect(initialSettings.sidebarDetails.comfy.assignee).toBe(true)
+    // Compact defaults: only repoLabel + prNumber + assignee.
+    expect(initialSettings.sidebarDetails.compact.branch).toBe(false)
+    expect(initialSettings.sidebarDetails.compact.age).toBe(false)
+    expect(initialSettings.sidebarDetails.compact.diff).toBe(false)
+    expect(initialSettings.sidebarDetails.compact.milestone).toBe(false)
+    expect(initialSettings.sidebarDetails.compact.repoLabel).toBe(true)
+    expect(initialSettings.sidebarDetails.compact.prNumber).toBe(true)
+    expect(initialSettings.sidebarDetails.compact.assignee).toBe(true)
+
     const next = apply(initialSettings, {
       type: 'settings/sidebarDetailsChanged',
       payload: {
-        repoLabel: true,
-        branch: true,
-        age: true,
-        diff: false,
-        milestone: false,
-        prNumber: true,
-        assignee: false
+        compact: {
+          repoLabel: true,
+          branch: true,
+          age: false,
+          diff: false,
+          milestone: false,
+          prNumber: true,
+          assignee: true
+        },
+        comfy: {
+          repoLabel: true,
+          branch: true,
+          age: true,
+          diff: false,
+          milestone: false,
+          prNumber: true,
+          assignee: false
+        }
       }
     })
-    expect(next.sidebarDetails.diff).toBe(false)
-    expect(next.sidebarDetails.milestone).toBe(false)
-    expect(next.sidebarDetails.assignee).toBe(false)
-    expect(next.sidebarDetails.prNumber).toBe(true)
+    expect(next.sidebarDetails.compact.branch).toBe(true)
+    expect(next.sidebarDetails.comfy.diff).toBe(false)
+    expect(next.sidebarDetails.comfy.assignee).toBe(false)
   })
 
 

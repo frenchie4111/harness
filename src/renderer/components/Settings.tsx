@@ -1660,7 +1660,7 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 include items with actual data (e.g. milestone hides when the
                 PR has none).
               </p>
-              <SidebarRowPreview density={sidebarDensity} prefs={sidebarDetails} />
+              <SidebarRowPreview density={sidebarDensity} prefs={sidebarDetails[sidebarDensity]} />
 
               <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">Sidebar row density</h3>
               <p className="text-xs text-dim mb-3">
@@ -1708,11 +1708,15 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                 })}
               </div>
 
-              <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">Worktree details</h3>
+              <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">
+                Worktree details <span className="text-dim font-normal">— {sidebarDensity === 'compact' ? 'Compact' : 'Comfy'} mode</span>
+              </h3>
               <p className="text-xs text-dim mb-3">
-                Which items to include in the detail cluster next to each row.
-                Each toggles independently; items only render when they have
-                data (e.g. milestone won't show if the PR has none).
+                Which items to include in the detail cluster for the currently
+                selected density. Each mode has its own independent toggles —
+                switch density above to configure the other set. Items only
+                render when they have data (e.g. milestone won't show if the
+                PR has none).
               </p>
               <div className="bg-panel-raised border border-border rounded-lg p-4 space-y-2">
                 {(
@@ -1729,10 +1733,13 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                   <label key={opt.id} className="flex items-start gap-3 cursor-pointer py-1">
                     <input
                       type="checkbox"
-                      checked={sidebarDetails[opt.id]}
+                      checked={sidebarDetails[sidebarDensity][opt.id]}
                       onChange={() => void backend.setSidebarDetails({
                         ...sidebarDetails,
-                        [opt.id]: !sidebarDetails[opt.id]
+                        [sidebarDensity]: {
+                          ...sidebarDetails[sidebarDensity],
+                          [opt.id]: !sidebarDetails[sidebarDensity][opt.id]
+                        }
                       })}
                       className="mt-0.5 w-4 h-4 accent-accent cursor-pointer"
                     />

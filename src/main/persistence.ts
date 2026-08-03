@@ -135,17 +135,28 @@ export interface Config {
   // detail cluster on a second line; 'compact' folds it onto the right of
   // a single line.
   sidebarDensity?: 'compact' | 'comfy'
-  // Per-item toggles for the sidebar row's detail cluster. Missing keys
-  // default to true (show if data present); see DEFAULT_SIDEBAR_DETAILS
-  // for the canonical initial values.
+  // Per-density detail-item toggles for the sidebar row. Compact and
+  // comfy have independent toggle sets. Missing keys/modes fall back to
+  // DEFAULT_SIDEBAR_DETAILS.
   sidebarDetails?: {
-    repoLabel?: boolean
-    branch?: boolean
-    age?: boolean
-    diff?: boolean
-    milestone?: boolean
-    prNumber?: boolean
-    assignee?: boolean
+    compact?: {
+      repoLabel?: boolean
+      branch?: boolean
+      age?: boolean
+      diff?: boolean
+      milestone?: boolean
+      prNumber?: boolean
+      assignee?: boolean
+    }
+    comfy?: {
+      repoLabel?: boolean
+      branch?: boolean
+      age?: boolean
+      diff?: boolean
+      milestone?: boolean
+      prNumber?: boolean
+      assignee?: boolean
+    }
   }
   // Branches that have been merged locally via Harness, keyed by branch name.
   // Value is the branch-tip SHA at merge time — if the branch later advances

@@ -28,7 +28,17 @@ export interface SidebarDetailPrefs {
   assignee: boolean
 }
 
-export const DEFAULT_SIDEBAR_DETAILS: SidebarDetailPrefs = {
+/** Per-density detail prefs. Compact and comfy have independent toggle
+ *  sets because their goals differ — compact users are optimizing for
+ *  density and typically want fewer items, while comfy users have the
+ *  vertical space for the full cluster. */
+export interface SidebarDetailPrefsByMode {
+  compact: SidebarDetailPrefs
+  comfy: SidebarDetailPrefs
+}
+
+/** Comfy default: everything on. Users can turn things off. */
+export const DEFAULT_SIDEBAR_DETAILS_COMFY: SidebarDetailPrefs = {
   repoLabel: true,
   branch: true,
   age: true,
@@ -36,6 +46,26 @@ export const DEFAULT_SIDEBAR_DETAILS: SidebarDetailPrefs = {
   milestone: true,
   prNumber: true,
   assignee: true
+}
+
+/** Compact default: the minimum useful set — repo (multi-repo
+ *  disambiguation), PR number, and assignee avatar. Branch (only
+ *  meaningful when aliased), age, diff stats, and milestone are all
+ *  off by default to keep a single-line row uncrowded. Users can turn
+ *  any of them on. */
+export const DEFAULT_SIDEBAR_DETAILS_COMPACT: SidebarDetailPrefs = {
+  repoLabel: true,
+  branch: false,
+  age: false,
+  diff: false,
+  milestone: false,
+  prNumber: true,
+  assignee: true
+}
+
+export const DEFAULT_SIDEBAR_DETAILS: SidebarDetailPrefsByMode = {
+  compact: DEFAULT_SIDEBAR_DETAILS_COMPACT,
+  comfy: DEFAULT_SIDEBAR_DETAILS_COMFY
 }
 
 export type AgentKindSetting = 'claude' | 'codex'
@@ -150,7 +180,7 @@ export interface SettingsState {
   worktreeBase: WorktreeBase
   mergeStrategy: MergeStrategy
   sidebarDensity: SidebarDensity
-  sidebarDetails: SidebarDetailPrefs
+  sidebarDetails: SidebarDetailPrefsByMode
   shareClaudeSettings: boolean
   claudeModel: string | null
   codexModel: string | null
@@ -268,7 +298,7 @@ export type SettingsEvent =
   | { type: 'settings/worktreeBaseChanged'; payload: WorktreeBase }
   | { type: 'settings/mergeStrategyChanged'; payload: MergeStrategy }
   | { type: 'settings/sidebarDensityChanged'; payload: SidebarDensity }
-  | { type: 'settings/sidebarDetailsChanged'; payload: SidebarDetailPrefs }
+  | { type: 'settings/sidebarDetailsChanged'; payload: SidebarDetailPrefsByMode }
   | { type: 'settings/shareClaudeSettingsChanged'; payload: boolean }
   | { type: 'settings/hasGithubTokenChanged'; payload: boolean }
   | { type: 'settings/githubAuthSourceChanged'; payload: 'pat' | 'gh-cli' | null }
