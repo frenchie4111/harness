@@ -532,6 +532,20 @@ describe('settingsReducer', () => {
     expect(off.jsonModeSendOnEnter).toBe(false)
   })
 
+  it('autoScrollToBottomChanged toggles the auto-scroll flag', () => {
+    expect(initialSettings.autoScrollToBottom).toBe(true)
+    const off = apply(initialSettings, {
+      type: 'settings/autoScrollToBottomChanged',
+      payload: false
+    })
+    expect(off.autoScrollToBottom).toBe(false)
+    const on = apply(off, {
+      type: 'settings/autoScrollToBottomChanged',
+      payload: true
+    })
+    expect(on.autoScrollToBottom).toBe(true)
+  })
+
   it('jsonModeDefaultPermissionModeChanged sets the default and preserves other settings', () => {
     expect(initialSettings.jsonModeDefaultPermissionMode).toBe('acceptEdits')
     const start: SettingsState = {
@@ -616,6 +630,33 @@ describe('settingsReducer', () => {
       payload: false
     })
     expect(off.announcementsMuted).toBe(false)
+  })
+
+  it('preventSleepModeChanged walks through every mode', () => {
+    expect(initialSettings.preventSleepMode).toBe('off')
+    const auto = apply(initialSettings, {
+      type: 'settings/preventSleepModeChanged',
+      payload: 'while-agents-running'
+    })
+    expect(auto.preventSleepMode).toBe('while-agents-running')
+    const always = apply(auto, { type: 'settings/preventSleepModeChanged', payload: 'always' })
+    expect(always.preventSleepMode).toBe('always')
+    const off = apply(always, { type: 'settings/preventSleepModeChanged', payload: 'off' })
+    expect(off.preventSleepMode).toBe('off')
+  })
+
+  it('preventSleepUntilChanged arms and clears the timer deadline', () => {
+    expect(initialSettings.preventSleepUntil).toBeNull()
+    const armed = apply(initialSettings, {
+      type: 'settings/preventSleepUntilChanged',
+      payload: 1_700_000_000_000
+    })
+    expect(armed.preventSleepUntil).toBe(1_700_000_000_000)
+    const cleared = apply(armed, {
+      type: 'settings/preventSleepUntilChanged',
+      payload: null
+    })
+    expect(cleared.preventSleepUntil).toBeNull()
   })
 
   it('returns a new object reference (no mutation)', () => {

@@ -1,11 +1,13 @@
 import { ToolCardChrome, type ToolCardProps } from './index'
 import { TodoIcon } from './tool-icons'
 import { extractTodos } from '../../../shared/state/json-claude-todos'
+import { HighlightedText } from '../JsonModeChatFind'
 
 export function TodoWriteCard({ block, autoApproved, sessionAllowed }: ToolCardProps): JSX.Element {
   const todos = extractTodos(block.input)
   return (
     <ToolCardChrome
+      id={block.id}
       name="TodoWrite"
       subtitle={`${todos.length} item${todos.length === 1 ? '' : 's'}`}
       variant="info"
@@ -30,7 +32,7 @@ export function TodoWriteCard({ block, autoApproved, sessionAllowed }: ToolCardP
             <span
               className={t.status === 'completed' ? 'line-through opacity-60' : ''}
             >
-              {t.content}
+              <HighlightedText text={t.content} />
             </span>
           </li>
         ))}

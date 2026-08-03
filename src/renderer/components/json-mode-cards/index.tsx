@@ -17,6 +17,7 @@ import {
   type ArgEntry
 } from './tool-display'
 import type { ToolIcon } from './tool-icons'
+import { HighlightedText, useFind } from '../JsonModeChatFind'
 
 export { extractArgs, getToolDisplay, isHarnessControl, prettyToolName }
 export type { ArgEntry }
@@ -43,6 +44,7 @@ export function trunc(s: string, n: number): string {
 }
 
 export function ToolCardChrome({
+  id,
   name,
   subtitle,
   variant,
@@ -53,7 +55,13 @@ export function ToolCardChrome({
   sessionAllowed,
   children
 }: {
+  /** Stable id for find-integration. When Cmd+F cycles to a match inside
+   *  this card, the FindContext adds the id to forceOpenIds and this
+   *  card renders as expanded regardless of local state. */
+  id?: string
   name: string
+  /** Accepts a ReactNode so cards whose primary render is the subtitle
+   *  (Grep/Glob's pattern field) can pass a <HighlightedText> here. */
   subtitle: ReactNode
   variant: 'info' | 'warn'
   isError?: boolean
@@ -67,8 +75,14 @@ export function ToolCardChrome({
   // header so they're discoverable, but we don't force-expand — the
   // user can choose to drill in.
   const [expanded, setExpanded] = useState<boolean>(false)
+  const find = useFind()
+  const forceOpen = !!id && find.forceOpenIds.has(id)
+  const isOpen = expanded || forceOpen
+  const isCurrentHit = !!id && find.currentHitBlockId === id
 
-  const ring = isError
+  const ring = isCurrentHit
+    ? 'border-accent ring-2 ring-accent/50'
+    : isError
     ? 'border-danger/50'
     : brand
       ? 'border-warning/40'
@@ -87,6 +101,7 @@ export function ToolCardChrome({
 
   return (
     <div
+      data-find-block-id={id}
       className={`my-2 border ${ring} bg-panel overflow-hidden`}
       style={{ borderRadius: 'var(--chat-bubble-radius)' }}
     >
@@ -94,7 +109,7 @@ export function ToolCardChrome({
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
-        className={`${groupClass} w-full flex items-center gap-2 ${expanded ? 'border-b border-border' : ''} ${headerBg} ${headerHover} cursor-pointer transition-colors text-left`}
+        className={`${groupClass} w-full flex items-center gap-2 ${isOpen ? 'border-b border-border' : ''} ${headerBg} ${headerHover} cursor-pointer transition-colors text-left`}
         style={{
           paddingInline: 'var(--chat-chrome-px)',
           paddingBlock: 'var(--chat-chrome-py)',
@@ -102,14 +117,14 @@ export function ToolCardChrome({
         }}
       >
         <span className="text-muted text-xs w-2 shrink-0 select-none">
-          {expanded ? '▾' : '▸'}
+          {isOpen ? '▾' : '▸'}
         </span>
         {Icon && <Icon className="icon-sm shrink-0" />}
         <span
           className={`font-semibold shrink-0 ${nameClass}`}
           style={{ fontFamily: 'var(--chat-tool-name-family)' }}
         >
-          {name}
+          <HighlightedText text={name} />
         </span>
         <span className="opacity-70 truncate flex-1 min-w-0">{subtitle}</span>
         {autoApproved && (
@@ -139,7 +154,7 @@ export function ToolCardChrome({
           </span>
         )}
       </button>
-      {expanded && children}
+      {isOpen && children}
     </div>
   )
 }

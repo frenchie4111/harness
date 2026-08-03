@@ -40,12 +40,17 @@ export interface PendingTool {
 // the append-mode file. A single write(2) under PIPE_BUF (4096 bytes) is
 // guaranteed atomic vs. other O_APPEND writers on POSIX.
 export function makeHookCommand(event: string): string {
+  // mkdir -p on the append target's dirname (not just $d) so a legacy
+  // $h with embedded slashes — e.g. `shell-/Users/…/wt-<ts>` from older
+  // panes.json — still resolves to a creatable path instead of ENOENT.
+  // Current IDs are sanitized at generation, but this keeps existing
+  // installs quiet on the next boot's hook re-install.
   const inner =
     `h="${'$HARNESS_TERMINAL_ID'}"; [ -z "$h" ] && h="$CLAUDE_HARNESS_ID"; [ -z "$h" ] && exit 0; ` +
-    `d=${STATUS_DIR}; mkdir -p "$d"; ` +
+    `d=${STATUS_DIR}; f="$d/$h.ndjson"; mkdir -p "$(dirname "$f")"; ` +
     `p=$(cat); [ -z "$p" ] && p=null; ` +
     `printf "{\\"event\\":\\"${event}\\",\\"ts\\":%s,\\"payload\\":%s}\\n" ` +
-    `"$(date +%s)" "$p" >> "$d/$h.ndjson"`
+    `"$(date +%s)" "$p" >> "$f"`
   return `bash -c '${inner}'`
 }
 

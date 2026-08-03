@@ -21,6 +21,7 @@ import {
 } from './persistence-migrations'
 import type { CostsState } from '../shared/state/costs'
 import type { SnoozeEntry } from '../shared/state/snooze'
+import type { PreventSleepMode } from '../shared/state/settings'
 
 export type { PersistedPane, PersistedPaneNode, PersistedTab }
 
@@ -261,6 +262,10 @@ export interface Config {
   // composer (Shift+Enter inserts a newline). Default off — preserves
   // the historical Cmd/Ctrl+Enter-to-send behavior.
   jsonModeSendOnEnter?: boolean
+  // When false, JSON-mode chat pins the most recent user prompt to the top
+  // of the viewport instead of auto-scrolling to the bottom. Default true
+  // (undefined = follow the tail, matches historical behavior).
+  autoScrollToBottom?: boolean
   // Permission mode applied when a brand-new json-mode session spawns.
   // Existing sessions keep whatever mode they were last in. Default
   // 'acceptEdits' (auto-allow Edit/Write, still ask for Bash etc.).
@@ -297,6 +302,10 @@ export interface Config {
   scratchpadNotes?: Record<string, Record<string, string>>
   // Persisted alias map: worktree path → user-defined display alias.
   aliases?: Record<string, string>
+  // Wake-lock mode: hold a power-save blocker 'off' | while any agent
+  // session is processing | always. Default 'off'. The transient "+1h" timer
+  // (preventSleepUntil) is session-only and deliberately NOT persisted here.
+  preventSleepMode?: PreventSleepMode
 }
 
 export const DEFAULT_WORKTREE_BASE: 'remote' | 'local' = 'remote'

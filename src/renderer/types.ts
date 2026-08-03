@@ -16,6 +16,9 @@ export type { SessionCostSummary, ClaudeAuthInfo, SubscriptionTier }
 import type { AddRepoResult } from '../shared/repo-pick'
 export type { AddRepoResult }
 
+import type { PreventSleepMode } from '../shared/state/settings'
+export type { PreventSleepMode }
+
 /** Per-kind dirtiness flags for a worktree. `git` reflects
  *  uncommitted changes; `scratchpad` reflects a non-empty scratchpad
  *  note. The delete-worktree flow surfaces each kind separately so the
@@ -345,10 +348,13 @@ export interface ElectronAPI {
   setJsonModeChatDensity(value: 'compact' | 'comfy'): Promise<boolean>
   setUiScale(value: 'x-small' | 'small' | 'medium' | 'large' | 'x-large'): Promise<boolean>
   setJsonModeSendOnEnter(enabled: boolean): Promise<boolean>
+  setAutoScrollToBottom(enabled: boolean): Promise<boolean>
   setJsonModeDefaultPermissionMode(
     value: 'default' | 'acceptEdits' | 'plan'
   ): Promise<boolean>
   setAutoSleepMinutes(value: number): Promise<boolean>
+  setPreventSleepMode(value: PreventSleepMode): Promise<boolean>
+  setPreventSleepUntil(value: number | null): Promise<boolean>
   setAutoUpdateEnabled(enabled: boolean): Promise<boolean>
   setWarnBeforeQuitting(enabled: boolean): Promise<boolean>
   setExpandedDiagnosticLoggingEnabled(enabled: boolean): Promise<boolean>
@@ -510,6 +516,7 @@ export interface ElectronAPI {
   onUiScaleUp(callback: () => void): () => void
   onUiScaleDown(callback: () => void): () => void
   onUiScaleReset(callback: () => void): () => void
+  onFullscreenChanged(callback: (isFullscreen: boolean) => void): () => void
 
   acceptHooks(): Promise<boolean>
   declineHooks(): Promise<boolean>

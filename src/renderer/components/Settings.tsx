@@ -8,6 +8,7 @@ import type { UpdaterStatus, MergeStrategy, RepoConfig, SidebarDensity, SidebarD
 import { SubtitleDetail } from './WorktreeSubtitleDetail'
 import { DEFAULT_HOTKEYS, ACTION_LABELS, ACTION_CATEGORIES, bindingToString, eventToBinding, formatBindingGlyphs, resolveHotkeys, type Action, type HotkeyBinding } from '../hotkeys'
 import { Tooltip } from './Tooltip'
+import { HotkeyBadge } from './HotkeyBadge'
 import { AGENT_REGISTRY, agentDisplayName, CLAUDE_MODELS, CODEX_MODELS } from '../../shared/agent-registry'
 import { AgentIcon } from './AgentIcon'
 import { InterfaceToggle } from './InterfaceToggle'
@@ -351,12 +352,15 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
     jsonModeChatDensity,
     uiScale,
     jsonModeSendOnEnter,
+    autoScrollToBottom,
     jsonModeDefaultPermissionMode,
     autoSleepMinutes,
     autoApprovePermissions,
     autoApproveSteerInstructions,
     snoozeDefaultDays,
-    expandedDiagnosticLoggingEnabled
+    expandedDiagnosticLoggingEnabled,
+    preventSleepMode,
+    preventSleepUntil
   } = settings
   const setupScript = worktreeScripts.setup
   const teardownScript = worktreeScripts.teardown
@@ -582,6 +586,19 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
       setAutoSleepDraft(String(clamped))
     }
   }, [autoSleepDraft, autoSleepMinutes])
+
+  // Live clock used only to refresh the temporary-timer countdown while one
+  // is running. Idle (no timer) → no interval.
+  const [nowTick, setNowTick] = useState(() => Date.now())
+  useEffect(() => {
+    if (preventSleepUntil === null) return
+    const t = setInterval(() => setNowTick(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [preventSleepUntil])
+  const timerActive = preventSleepUntil !== null && preventSleepUntil > nowTick
+  const timerMinutesLeft = timerActive
+    ? Math.max(0, Math.ceil((preventSleepUntil! - nowTick) / 60000))
+    : 0
 
   const handleSelectEditor = useCallback(async (id: string) => {
     await backend.setEditor(id)
@@ -2150,6 +2167,26 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     </div>
                   </label>
                 </div>
+
+                <div className="mt-4 pt-3 border-t border-border">
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={autoScrollToBottom}
+                      onChange={(e) => {
+                        void backend.setAutoScrollToBottom(e.target.checked)
+                      }}
+                      className="mt-0.5 cursor-pointer icon-base" />
+                    <div className="flex-1">
+                      <div className="text-sm text-fg-bright">
+                        Auto scroll to bottom
+                      </div>
+                      <div className="text-xs text-dim mt-0.5">
+                        When on, chat follows the streaming response. When off, the most recent prompt pins to the top and a "Jump to prompt" button appears if you scroll away.
+                      </div>
+                    </div>
+                  </label>
+                </div>
               </div>
 
               </div>
@@ -2324,6 +2361,70 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
                     <p className="mt-3 text-xs text-faint">Changes apply to new sessions only.</p>
                   </>
                 )}
+              </div>
+
+              <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-3">
+                Prevent system sleep
+              </h3>
+              <div className="bg-panel-raised border border-border rounded-lg p-4">
+                <p className="text-xs text-dim mb-3">
+                  Keeps your computer awake (the display can still sleep) so unattended
+                  agent runs aren&apos;t paused by idle sleep. Cycle modes anytime
+                  with{' '}
+                  <HotkeyBadge binding={bindingToString(resolvedHotkeys.cyclePreventSleep)} />.
+                </p>
+                <select
+                  value={preventSleepMode}
+                  onChange={(e) =>
+                    void backend.setPreventSleepMode(e.target.value as typeof preventSleepMode)
+                  }
+                  className="bg-panel border border-border-strong rounded px-2 py-1 text-xs text-fg-bright outline-none focus:border-fg cursor-pointer"
+                >
+                  <option value="off">Off — allow normal sleep</option>
+                  <option value="while-agents-running">
+                    While agents are running — awake whenever a session is processing
+                  </option>
+                  <option value="always">Always — awake while Harness is running</option>
+                </select>
+
+                <div className="mt-3 pt-3 border-t border-border">
+                  <label className="block text-xs font-medium text-fg mb-2">
+                    Keep awake temporarily
+                  </label>
+                  {timerActive ? (
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs text-accent">
+                        Awake for {timerMinutesLeft} more minute{timerMinutesLeft === 1 ? '' : 's'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => void backend.setPreventSleepUntil(null)}
+                        className="px-3 py-1 bg-panel border border-border rounded text-xs text-dim hover:text-fg hover:border-border-strong cursor-pointer transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      {[1, 3, 8].map((hours) => (
+                        <button
+                          key={hours}
+                          type="button"
+                          onClick={() =>
+                            void backend.setPreventSleepUntil(Date.now() + hours * 60 * 60 * 1000)
+                          }
+                          className="px-3 py-1 bg-panel border border-border rounded text-xs text-fg hover:border-border-strong cursor-pointer transition-colors"
+                        >
+                          +{hours}h
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <p className="text-xs text-faint mt-2">
+                    A one-off hold that keeps the computer awake regardless of the
+                    setting above. Automatically clears.
+                  </p>
+                </div>
               </div>
             </section>
 
