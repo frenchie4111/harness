@@ -51,7 +51,6 @@ import { PerfMonitorHUD } from './components/PerfMonitorHUD'
 import { HoldToQuitOverlay } from './components/HoldToQuitOverlay'
 import { ConfirmCloseTabModal } from './components/ConfirmCloseTabModal'
 import { Toasts } from './components/Toasts'
-import { PreventSleepStatusIcon } from './components/PreventSleepStatusIcon'
 import { focusTerminalById } from './components/XTerminal'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { type GroupKey } from './worktree-sort'
@@ -1832,9 +1831,6 @@ const setQuestStep = useCallback((next: QuestStep) => {
     {repoPickerOverlay}
     {repoAddPromptOverlay}
     {showPerfMonitor && <PerfMonitorHUD onClose={() => setShowPerfMonitor(false)} />}
-    <PreventSleepStatusIcon
-      agentsActive={Object.values(statuses).some((s) => s === 'processing')}
-    />
     <Toasts />
     {showCommandPalette && (
       <CommandPalette

@@ -11,6 +11,7 @@ import { WorktreeTab } from './WorktreeTab'
 import { SnoozeCalendar } from './SnoozeCalendar'
 import { repoNameColor } from './RepoIcon'
 import { BackendChipStrip } from './BackendChipStrip'
+import { PreventSleepStatusIcon } from './PreventSleepStatusIcon'
 import { useBackend } from '../backend'
 
 interface SidebarProps {
@@ -577,6 +578,7 @@ export function Sidebar({
             <MessageSquareHeart className="icon-sm" />
           </button>
         </Tooltip>
+        <PreventSleepStatusIcon />
         <Tooltip label="Settings" action="openSettings" side="top">
           <button
             onClick={onOpenSettings}

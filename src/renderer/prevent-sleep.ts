@@ -7,8 +7,8 @@ export const PREVENT_SLEEP_TEMPORARY_MS = 60 * 60 * 1000
 export const PREVENT_SLEEP_TOAST_KEY = 'prevent-sleep'
 
 /** Opaque icon key — the renderer maps these to lucide glyphs in
- *  `components/prevent-sleep-icons.tsx`. 'off' has no glyph. */
-export type PreventSleepIcon = 'agents' | 'always' | 'temporary'
+ *  `components/prevent-sleep-icons.tsx`. */
+export type PreventSleepIcon = 'sleep' | 'agents' | 'always' | 'temporary'
 
 /** The discrete states the cycle hotkey steps through. Equal to the
  *  modes plus the transient 'temporary' overlay. */
@@ -23,12 +23,12 @@ export interface PreventSleepStepMeta {
   label: string
   /** Sentence shown in the cycle toast. */
   toast: string
-  /** Glyph key, or null for 'off' (no icon). */
-  icon: PreventSleepIcon | null
+  /** Glyph key for the sidebar status icon + toast. */
+  icon: PreventSleepIcon
 }
 
 export const PREVENT_SLEEP_META: Record<PreventSleepStep, PreventSleepStepMeta> = {
-  off: { label: 'Off', toast: 'Allow sleep', icon: null },
+  off: { label: 'Off', toast: 'Allow sleep', icon: 'sleep' },
   'while-agents-running': {
     label: 'While agents are running',
     toast: 'Do not sleep if agents are working',
