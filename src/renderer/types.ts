@@ -129,6 +129,19 @@ export interface ChangedFile {
 import type { PerfMetrics, PerfSample } from '../shared/perf-types'
 export type { PerfMetrics, PerfSample }
 
+import type {
+  GitHubApiEntry,
+  GitHubApiLogSnapshot,
+  GitHubApiMinuteBucket,
+  GitHubApiRateLimit
+} from '../shared/github-api-log-types'
+export type {
+  GitHubApiEntry,
+  GitHubApiLogSnapshot,
+  GitHubApiMinuteBucket,
+  GitHubApiRateLimit
+}
+
 import type { CheckStatus, PRReview, PRStatus } from '../shared/state/prs'
 export type { CheckStatus, PRReview, PRStatus }
 
@@ -485,6 +498,10 @@ export interface ElectronAPI {
   getPerfMetrics(): Promise<PerfMetrics>
   perfLogSlowRender(id: string, ms: number, phase: string): void
 
+  getGitHubApiLog(): Promise<GitHubApiLogSnapshot>
+  clearGitHubApiLog(): Promise<boolean>
+  onGitHubApiLogAppended(callback: (entry: GitHubApiEntry) => void): () => void
+
   logError(
     label: string,
     error: { name?: string; message?: string; stack?: string },
@@ -510,6 +527,7 @@ export interface ElectronAPI {
   onSplitPaneDown(callback: () => void): () => void
   onOpenNewProject(callback: () => void): () => void
   onOpenReportIssue(callback: () => void): () => void
+  onOpenGitHubApiLog(callback: () => void): () => void
   onDebugCrashFocusedTab(callback: () => void): () => void
   onDebugPreviewOnboarding(callback: () => void): () => void
   onOpenAddBackend(callback: () => void): () => void

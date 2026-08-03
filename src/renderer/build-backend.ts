@@ -437,6 +437,11 @@ export function buildBackend(
     perfLogSlowRender: (id: string, ms: number, phase: string) =>
       sig('perf:logSlowRender', id, ms, phase),
 
+    getGitHubApiLog: () => req('debug:getGitHubApiLog'),
+    clearGitHubApiLog: () => req('debug:clearGitHubApiLog'),
+    onGitHubApiLogAppended: (callback: (entry: unknown) => void) =>
+      onActiveSignal('debug:githubApiLogAppended', (entry) => callback(entry)),
+
     logError: (
       label: string,
       error: { name?: string; message?: string; stack?: string },
@@ -490,6 +495,8 @@ export function buildBackend(
       onLocalSignal('menu:newProject', () => callback()),
     onOpenReportIssue: (callback: () => void) =>
       onLocalSignal('app:openReportIssue', () => callback()),
+    onOpenGitHubApiLog: (callback: () => void) =>
+      onLocalSignal('app:openGitHubApiLog', () => callback()),
     onDebugCrashFocusedTab: (callback: () => void) =>
       onLocalSignal('app:debugCrashFocusedTab', () => callback()),
     onDebugPreviewOnboarding: (callback: () => void) =>
