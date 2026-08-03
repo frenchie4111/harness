@@ -1,3 +1,11 @@
+// Bump libuv's threadpool from its default of 4 so background filesystem
+// work (fs.promises.rm for trashed worktrees, other unlinks) can
+// parallelize on multi-core machines. Must run before any import that
+// could touch the threadpool. Respect an explicit override — power users
+// setting UV_THREADPOOL_SIZE themselves shouldn't have their choice
+// silently upgraded.
+process.env.UV_THREADPOOL_SIZE = process.env.UV_THREADPOOL_SIZE || '16'
+
 import { existsSync, lstatSync, readFileSync } from 'fs'
 import { createRequire } from 'module'
 import { randomUUID } from 'crypto'
@@ -29,6 +37,7 @@ import { setGitHubApiRecorder, setGitHubApiLoggingEnabled } from './github-recor
 import { PRPoller } from './pr-poller'
 import { WorktreesFSM } from './worktrees-fsm'
 import { WorktreeDeletionFSM } from './worktree-deletion-fsm'
+import { sweepWorktreeTrashOnBoot } from './worktree-trash'
 import { PanesFSM, stripTransientTabFields } from './panes-fsm'
 import { ActivityDeriver } from './activity-deriver'
 import { AutoSleepMonitor } from './auto-sleep-monitor'
@@ -3899,6 +3908,11 @@ async function runBoot(): Promise<void> {
   }
   pruneTerminalHistory(keepIds)
   pruneMcpConfigs(keepIds)
+
+  // Drain any worktree-trash entries left by a mid-delete crash. The
+  // sweep dispatches each entry to the fs threadpool without awaiting,
+  // so this call resolves immediately and doesn't block boot.
+  void sweepWorktreeTrashOnBoot()
 
   // Local HTTP control server for the bundled harness-control MCP bridge.
   startControlServer({
