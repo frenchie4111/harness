@@ -27,7 +27,6 @@ import {
   DEFAULT_TERMINAL_FONT_SIZE,
   DEFAULT_WORKTREE_BASE,
   DEFAULT_MERGE_STRATEGY,
-  DEFAULT_WORKTREE_DETAIL,
   DEFAULT_HARNESS_SYSTEM_PROMPT,
   DEFAULT_HARNESS_SYSTEM_PROMPT_MAIN,
   type Config
@@ -103,7 +102,6 @@ export function buildInitialAppState(
       editor: config.editor || DEFAULT_EDITOR_ID,
       worktreeBase: config.worktreeBase || DEFAULT_WORKTREE_BASE,
       mergeStrategy: config.mergeStrategy || DEFAULT_MERGE_STRATEGY,
-      worktreeDetail: config.worktreeDetail || DEFAULT_WORKTREE_DETAIL,
       claudeModel: config.claudeModel || null,
       codexModel: config.codexModel || null,
       hasGithubToken: opts.hasGithubToken,

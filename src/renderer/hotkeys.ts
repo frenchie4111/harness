@@ -45,7 +45,6 @@ export type Action =
   | 'uiScaleUp'
   | 'uiScaleDown'
   | 'uiScaleReset'
-  | 'cycleWorktreeDetail'
   | 'aliasWorktree'
 
 export interface Modifiers {
@@ -117,7 +116,6 @@ export const DEFAULT_HOTKEYS: Record<Action, HotkeyBinding> = {
   uiScaleUp: { key: '+', modifiers: { cmd: true, shift: true } },
   uiScaleDown: { key: '-', modifiers: { cmd: true } },
   uiScaleReset: { key: '=', modifiers: { cmd: true } },
-  cycleWorktreeDetail: { key: 'i', modifiers: { cmd: true } },
   aliasWorktree: { key: 'a', modifiers: { cmd: true, shift: true } },
 }
 
@@ -271,7 +269,6 @@ export const ACTION_LABELS: Record<Action, string> = {
   uiScaleUp: 'Increase UI size',
   uiScaleDown: 'Decrease UI size',
   uiScaleReset: 'Reset UI size',
-  cycleWorktreeDetail: 'Cycle worktree detail (sidebar)',
   aliasWorktree: 'Alias worktree'
 }
 
@@ -330,7 +327,7 @@ export const ACTION_CATEGORIES: HotkeyCategory[] = [
   {
     id: 'layout',
     label: 'Window layout',
-    actions: ['toggleSidebar', 'toggleRightColumn', 'toggleSingleScreen', 'uiScaleUp', 'uiScaleDown', 'uiScaleReset', 'cycleWorktreeDetail']
+    actions: ['toggleSidebar', 'toggleRightColumn', 'toggleSingleScreen', 'uiScaleUp', 'uiScaleDown', 'uiScaleReset']
   },
   {
     id: 'commands',

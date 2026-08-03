@@ -1,12 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import { GitPullRequest, RotateCw, Trash2, Loader2, Moon, TriangleAlert, AlarmClock, Ghost } from 'lucide-react'
 import type { Worktree, PtyStatus, PendingTool, PRStatus } from '../types'
 import { isPRMerged } from '../../shared/state/prs'
 import { formatWakeAt } from '../../shared/state/snooze'
-import { useAppState } from '../store'
 import { Tooltip } from './Tooltip'
 import { formatWorktreeAge } from './worktree-detail'
-import { useWorktreeDetailOverride } from '../worktree-detail-override'
 import { repoNameColor } from './RepoIcon'
 import { formatPendingTool } from '../pending-tool'
 import { HotkeyBadge } from './HotkeyBadge'
@@ -15,7 +13,7 @@ import type { Action } from '../hotkeys'
 import { ContextMenu, type ContextMenuItem } from './ContextMenu'
 import { useAliasForPath } from '../store'
 import { useBackend } from '../backend'
-import { displayLabel, resolveSubtitle } from '../worktree-display'
+import { displayLabel } from '../worktree-display'
 import { ALIAS_MAX_LEN } from '../../shared/state/aliases'
 
 interface WorktreeTabProps {
@@ -99,9 +97,6 @@ const PR_STATE_COLOR: Record<string, string> = {
 
 export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActive, prStatus, isMerged, repoLabel, cmdOrdinal, deleting, isSnoozed, snoozeWakeAt, onClick, onDelete, onContinue, onSnooze, onUnsnooze, onPrune, isEditingAlias, onStartAliasEdit, onEndAliasEdit }: WorktreeTabProps): JSX.Element {
   const metaHeld = useMetaHeld()
-  const configuredWorktreeDetail = useAppState((s) => s.settings.worktreeDetail)
-  const worktreeDetailOverride = useWorktreeDetailOverride()
-  const worktreeDetail = worktreeDetailOverride ?? configuredWorktreeDetail
   const currentAlias = useAliasForPath(worktree.path)
   const backend = useBackend()
   const label = displayLabel(worktree, currentAlias, metaHeld)
@@ -214,27 +209,26 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
           <div className="text-xs text-danger truncate font-mono" title={formatPendingTool(pendingTool!)}>
             {formatPendingTool(pendingTool!)}
           </div>
-        ) : (() => {
-          const subtitle = resolveSubtitle(worktree, label, repoLabel)
-          if (!subtitle) return null
-          return (
-            <div className="text-xs text-faint truncate">
-              {subtitle.repoLabel ? (
-                <span className="inline-flex items-center gap-1">
-                  <span className={repoNameColor(subtitle.repoLabel)}>{subtitle.repoLabel}</span>
-                  {subtitle.text && (
-                    <>
-                      <span className="mx-0.5">·</span>
-                      {subtitle.text}
-                    </>
-                  )}
-                </span>
-              ) : (
-                subtitle.text
-              )}
-            </div>
-          )
-        })()}
+        ) : worktree.prunable ? (
+          <div className="text-xs text-faint truncate">
+            {repoLabel ? (
+              <span className="inline-flex items-center gap-1">
+                <span className={repoNameColor(repoLabel)}>{repoLabel}</span>
+                <span className="text-dim">·</span>
+                {worktree.path.split('/').pop()}
+              </span>
+            ) : (
+              worktree.path.split('/').slice(-2).join('/')
+            )}
+          </div>
+        ) : (
+          <SubtitleDetail
+            worktree={worktree}
+            repoLabel={repoLabel}
+            aliased={currentAlias !== undefined}
+            prStatus={prStatus}
+          />
+        )}
       </div>
       {canContinue && (
         <Tooltip label="Continue on a new branch off main" side="left">
@@ -248,49 +242,6 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
             <RotateCw className="icon-xs" />
           </button>
         </Tooltip>
-      )}
-      {worktreeDetail === 'diff' && prStatus && typeof prStatus.additions === 'number' && typeof prStatus.deletions === 'number' && (
-        <span
-          className="text-xs font-mono shrink-0 leading-none group-hover:hidden"
-          title={`+${prStatus.additions} additions, −${prStatus.deletions} deletions`}
-        >
-          <span className="text-success">+{prStatus.additions}</span>
-          <span className="text-danger ml-0.5">−{prStatus.deletions}</span>
-        </span>
-      )}
-      {worktreeDetail === 'age' && (
-        <span
-          className="text-xs font-mono shrink-0 leading-none text-dim group-hover:hidden"
-          title={worktree.createdAt ? `Created ${new Date(worktree.createdAt).toLocaleString()}` : 'Creation time unknown'}
-        >
-          {formatWorktreeAge(worktree.createdAt)}
-        </span>
-      )}
-      {worktreeDetail === 'pr' && prStatus && (
-        <span className="inline-flex items-center gap-1.5 shrink-0 group-hover:hidden">
-          {prStatus.milestone && (
-            <span
-              className="text-xs text-dim truncate max-w-[6rem]"
-              title={`Milestone: ${prStatus.milestone.title}`}
-            >
-              {prStatus.milestone.title}
-            </span>
-          )}
-          <span
-            className="text-xs font-mono leading-none px-1.5 py-0.5 rounded-full bg-panel border border-border-strong text-fg-bright"
-            title={`PR #${prStatus.number}`}
-          >
-            #{prStatus.number}
-          </span>
-          {prStatus.assignees[0] && (
-            <img
-              src={prStatus.assignees[0].avatarUrl}
-              alt=""
-              title={`Assignee: ${prStatus.assignees[0].login}${prStatus.assignees.length > 1 ? ` (+${prStatus.assignees.length - 1})` : ''}`}
-              className="w-3.5 h-3.5 rounded-full shrink-0"
-            />
-          )}
-        </span>
       )}
       {(onSnooze || onUnsnooze) && !worktree.isMain && (
         <Tooltip
@@ -363,6 +314,107 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
           onClose={() => setMenu(null)}
         />
       )}
+    </div>
+  )
+}
+
+interface SubtitleDetailProps {
+  worktree: Worktree
+  repoLabel?: string
+  aliased: boolean
+  prStatus?: PRStatus | null
+}
+
+function SubtitleDetail({ worktree, repoLabel, aliased, prStatus }: SubtitleDetailProps): JSX.Element | null {
+  const items: { key: string; node: ReactNode }[] = []
+  if (repoLabel) {
+    items.push({
+      key: 'repo',
+      node: <span className={`${repoNameColor(repoLabel)} shrink-0`}>{repoLabel}</span>
+    })
+  }
+  if (aliased) {
+    items.push({
+      key: 'branch',
+      node: <span className="truncate min-w-0" title={worktree.branch}>{worktree.branch}</span>
+    })
+  }
+  if (worktree.createdAt) {
+    items.push({
+      key: 'age',
+      node: (
+        <span
+          className="font-mono shrink-0"
+          title={`Created ${new Date(worktree.createdAt).toLocaleString()}`}
+        >
+          {formatWorktreeAge(worktree.createdAt)}
+        </span>
+      )
+    })
+  }
+  if (prStatus && typeof prStatus.additions === 'number' && typeof prStatus.deletions === 'number') {
+    items.push({
+      key: 'diff',
+      node: (
+        <span
+          className="font-mono shrink-0"
+          title={`+${prStatus.additions} additions, −${prStatus.deletions} deletions`}
+        >
+          <span className="text-success">+{prStatus.additions}</span>
+          <span className="text-danger ml-0.5">−{prStatus.deletions}</span>
+        </span>
+      )
+    })
+  }
+  if (prStatus?.milestone) {
+    items.push({
+      key: 'milestone',
+      node: (
+        <span
+          className="truncate min-w-0 max-w-[6rem]"
+          title={`Milestone: ${prStatus.milestone.title}`}
+        >
+          {prStatus.milestone.title}
+        </span>
+      )
+    })
+  }
+  if (prStatus) {
+    items.push({
+      key: 'num',
+      node: (
+        <span
+          className="font-mono shrink-0 px-1.5 py-0.5 rounded-full bg-panel border border-border-strong text-fg-bright leading-none"
+          title={`PR #${prStatus.number}`}
+        >
+          #{prStatus.number}
+        </span>
+      )
+    })
+  }
+  if (prStatus?.assignees[0]) {
+    const assignee = prStatus.assignees[0]
+    items.push({
+      key: 'assignee',
+      node: (
+        <img
+          src={assignee.avatarUrl}
+          alt=""
+          title={`Assignee: ${assignee.login}${prStatus.assignees.length > 1 ? ` (+${prStatus.assignees.length - 1})` : ''}`}
+          className="w-3.5 h-3.5 rounded-full shrink-0"
+        />
+      )
+    })
+  }
+  if (items.length === 0) return null
+  return (
+    <div className="text-xs text-faint flex items-center gap-1 min-w-0">
+      {items.map((item, i) => (
+        <Fragment key={item.key}>
+          {i > 0 && <span className="text-dim shrink-0">·</span>}
+          {item.node}
+        </Fragment>
+      ))}
     </div>
   )
 }

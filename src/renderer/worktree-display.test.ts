@@ -1,21 +1,15 @@
 import { describe, it, expect } from 'vitest'
-import { displayLabel, resolveSubtitle } from './worktree-display'
+import { displayLabel } from './worktree-display'
 import type { Worktree } from '../shared/state/worktrees'
 
-const wt = (
-  path: string,
-  branch: string,
-  repoRoot = '/Users/tt/Projects/harness',
-  overrides: Partial<Worktree> = {}
-): Worktree => ({
+const wt = (path: string, branch: string, repoRoot = '/Users/tt/Projects/harness'): Worktree => ({
   path,
   branch,
   head: '',
   isBare: false,
   isMain: false,
   createdAt: 0,
-  repoRoot,
-  ...overrides
+  repoRoot
 })
 
 describe('displayLabel', () => {
@@ -44,59 +38,5 @@ describe('displayLabel', () => {
   it('handles trailing slash on repoRoot', () => {
     const w = wt('/Users/tt/Projects/harness-worktrees/tt/alias-worktrees', 'feat/x', '/Users/tt/Projects/harness/')
     expect(displayLabel(w, 'my-alias', true)).toBe('tt/alias-worktrees')
-  })
-})
-
-describe('resolveSubtitle', () => {
-  const path = '/Users/tt/Projects/harness-worktrees/feat/x'
-  const w = wt(path, 'feat/x')
-
-  it('single-repo, no alias → null (branch matches top label, hide subtitle)', () => {
-    expect(resolveSubtitle(w, 'feat/x', undefined)).toBeNull()
-  })
-
-  it('single-repo, alias set → shows branch on bottom', () => {
-    expect(resolveSubtitle(w, 'my-alias', undefined)).toEqual({
-      repoLabel: null,
-      text: 'feat/x'
-    })
-  })
-
-  it('multi-repo, no alias → shows repoLabel only', () => {
-    expect(resolveSubtitle(w, 'feat/x', 'harness')).toEqual({
-      repoLabel: 'harness',
-      text: null
-    })
-  })
-
-  it('multi-repo, alias set → shows repoLabel and branch', () => {
-    expect(resolveSubtitle(w, 'my-alias', 'harness')).toEqual({
-      repoLabel: 'harness',
-      text: 'feat/x'
-    })
-  })
-
-  it('Cmd-held aliased row (label is path) still shows branch on bottom', () => {
-    const label = 'feat/x-worktrees/mine'
-    expect(resolveSubtitle(w, label, undefined)).toEqual({
-      repoLabel: null,
-      text: 'feat/x'
-    })
-  })
-
-  it('prunable single-repo → shows path last two segments regardless of label match', () => {
-    const p = wt('/tmp/harness-worktrees/mybranch', 'mybranch', '/tmp/harness', { prunable: true })
-    expect(resolveSubtitle(p, 'mybranch', undefined)).toEqual({
-      repoLabel: null,
-      text: 'harness-worktrees/mybranch'
-    })
-  })
-
-  it('prunable multi-repo → shows repoLabel with last path segment', () => {
-    const p = wt('/tmp/harness-worktrees/mybranch', 'mybranch', '/tmp/harness', { prunable: true })
-    expect(resolveSubtitle(p, 'mybranch', 'harness')).toEqual({
-      repoLabel: 'harness',
-      text: 'mybranch'
-    })
   })
 })
