@@ -68,7 +68,7 @@ export const DEFAULT_SIDEBAR_DETAILS: SidebarDetailPrefsByMode = {
   comfy: DEFAULT_SIDEBAR_DETAILS_COMFY
 }
 
-export type AgentKindSetting = 'claude' | 'codex'
+export type AgentKindSetting = 'claude' | 'codex' | 'cursor'
 
 export type BrowserToolsMode = 'view' | 'full'
 
@@ -174,9 +174,11 @@ export interface SettingsState {
   defaultAgent: AgentKindSetting
   claudeCommand: string
   codexCommand: string
+  cursorCommand: string
   worktreeScripts: WorktreeScripts
   claudeEnvVars: Record<string, string>
   codexEnvVars: Record<string, string>
+  cursorEnvVars: Record<string, string>
   harnessMcpEnabled: boolean
   nameClaudeSessions: boolean
   terminalFontFamily: string
@@ -189,6 +191,7 @@ export interface SettingsState {
   shareClaudeSettings: boolean
   claudeModel: string | null
   codexModel: string | null
+  cursorModel: string | null
   hasGithubToken: boolean
   githubAuthSource: 'pat' | 'gh-cli' | null
   /** GitHub login of the user whose token is configured. Resolved at
@@ -308,9 +311,11 @@ export type SettingsEvent =
   | { type: 'settings/defaultAgentChanged'; payload: AgentKindSetting }
   | { type: 'settings/claudeCommandChanged'; payload: string }
   | { type: 'settings/codexCommandChanged'; payload: string }
+  | { type: 'settings/cursorCommandChanged'; payload: string }
   | { type: 'settings/worktreeScriptsChanged'; payload: WorktreeScripts }
   | { type: 'settings/claudeEnvVarsChanged'; payload: Record<string, string> }
   | { type: 'settings/codexEnvVarsChanged'; payload: Record<string, string> }
+  | { type: 'settings/cursorEnvVarsChanged'; payload: Record<string, string> }
   | { type: 'settings/harnessMcpEnabledChanged'; payload: boolean }
   | { type: 'settings/nameClaudeSessionsChanged'; payload: boolean }
   | { type: 'settings/terminalFontFamilyChanged'; payload: string }
@@ -327,6 +332,7 @@ export type SettingsEvent =
   | { type: 'settings/harnessStarredChanged'; payload: boolean | null }
   | { type: 'settings/claudeModelChanged'; payload: string | null }
   | { type: 'settings/codexModelChanged'; payload: string | null }
+  | { type: 'settings/cursorModelChanged'; payload: string | null }
   | { type: 'settings/autoUpdateEnabledChanged'; payload: boolean }
   | { type: 'settings/warnBeforeQuittingChanged'; payload: boolean }
   | { type: 'settings/harnessSystemPromptEnabledChanged'; payload: boolean }
@@ -371,9 +377,11 @@ export const initialSettings: SettingsState = {
   defaultAgent: 'claude',
   claudeCommand: '',
   codexCommand: '',
+  cursorCommand: '',
   worktreeScripts: { setup: '', teardown: '' },
   claudeEnvVars: {},
   codexEnvVars: {},
+  cursorEnvVars: {},
   harnessMcpEnabled: true,
   nameClaudeSessions: false,
   terminalFontFamily: '',
@@ -386,6 +394,7 @@ export const initialSettings: SettingsState = {
   shareClaudeSettings: true,
   claudeModel: null,
   codexModel: null,
+  cursorModel: null,
   hasGithubToken: false,
   githubAuthSource: null,
   viewerLogin: null,
@@ -439,12 +448,16 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, claudeCommand: event.payload }
     case 'settings/codexCommandChanged':
       return { ...state, codexCommand: event.payload }
+    case 'settings/cursorCommandChanged':
+      return { ...state, cursorCommand: event.payload }
     case 'settings/worktreeScriptsChanged':
       return { ...state, worktreeScripts: event.payload }
     case 'settings/claudeEnvVarsChanged':
       return { ...state, claudeEnvVars: event.payload }
     case 'settings/codexEnvVarsChanged':
       return { ...state, codexEnvVars: event.payload }
+    case 'settings/cursorEnvVarsChanged':
+      return { ...state, cursorEnvVars: event.payload }
     case 'settings/harnessMcpEnabledChanged':
       return { ...state, harnessMcpEnabled: event.payload }
     case 'settings/nameClaudeSessionsChanged':
@@ -477,6 +490,8 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, claudeModel: event.payload }
     case 'settings/codexModelChanged':
       return { ...state, codexModel: event.payload }
+    case 'settings/cursorModelChanged':
+      return { ...state, cursorModel: event.payload }
     case 'settings/autoUpdateEnabledChanged':
       return { ...state, autoUpdateEnabled: event.payload }
     case 'settings/warnBeforeQuittingChanged':

@@ -67,6 +67,40 @@ describe('tailLog — boot-replay guard', () => {
     })
   })
 
+  it('marks Cursor preToolUse as needs-approval (no separate ask event fires)', () => {
+    // Cursor's preToolUse fires BEFORE the agent decides whether to auto-run
+    // or block on the TUI approval prompt, and there's no follow-up "asking"
+    // event. Regression guard: Claude's PascalCase PreToolUse stays as
+    // processing (approval already happened).
+    writeFileSync(logPath, record('sessionStart', { session_id: 's' }))
+    const store = new Store()
+    const events = statusEvents(store)
+    tailLog(terminalId, store)
+    events.length = 0
+
+    appendFileSync(
+      logPath,
+      record('preToolUse', { tool_name: 'Shell', tool_input: { command: 'rm -rf /' } })
+    )
+    tailLog(terminalId, store)
+
+    expect(events).toHaveLength(1)
+    expect(events[0]).toMatchObject({
+      payload: {
+        status: 'needs-approval',
+        pendingTool: { name: 'Shell', input: { command: 'rm -rf /' } }
+      }
+    })
+
+    appendFileSync(
+      logPath,
+      record('PreToolUse', { tool_name: 'Bash', tool_input: { command: 'ls' } })
+    )
+    tailLog(terminalId, store)
+    expect(events).toHaveLength(2)
+    expect(events[1]).toMatchObject({ payload: { status: 'processing' } })
+  })
+
   it('processes every newly-appended line on subsequent tails', () => {
     writeFileSync(logPath, record('Stop', { session_id: 's' }))
 

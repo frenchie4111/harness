@@ -5,8 +5,8 @@ import { sanitizeBranchInput, isValidBranchName } from '../branch-name'
 import { RepoIcon } from './RepoIcon'
 import { useBackend } from '../backend'
 import { useSettings } from '../store'
-import { CLAUDE_MODELS, CODEX_MODELS } from '../../shared/agent-registry'
-import type { PRSummary } from '../types'
+import { CLAUDE_MODELS, CODEX_MODELS, CURSOR_MODELS, AGENT_REGISTRY } from '../../shared/agent-registry'
+import type { PRSummary, AgentKind } from '../types'
 
 interface NewWorktreeScreenProps {
   onSubmit: (
@@ -14,7 +14,7 @@ interface NewWorktreeScreenProps {
     branchName: string,
     initialPrompt: string,
     teleportSessionId?: string,
-    agentKind?: 'claude' | 'codex',
+    agentKind?: AgentKind,
     model?: string,
     checkoutExisting?: boolean,
     baseRef?: string
@@ -23,7 +23,7 @@ interface NewWorktreeScreenProps {
     repoRoot: string,
     prNumber: number,
     initialPrompt: string,
-    agentKind?: 'claude' | 'codex',
+    agentKind?: AgentKind,
     model?: string,
     checkoutExisting?: boolean
   ) => Promise<void>
@@ -123,8 +123,12 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
   // settings; model defaults to empty (= use settings.claudeModel/codexModel
   // at spawn time). Teleport mode pins to Claude — codex has no equivalent
   // "resume by id" flow today.
-  const [agentKindOverride, setAgentKindOverride] = useState<'claude' | 'codex'>(
-    settings.defaultAgent === 'codex' ? 'codex' : 'claude'
+  const [agentKindOverride, setAgentKindOverride] = useState<AgentKind>(
+    settings.defaultAgent === 'codex'
+      ? 'codex'
+      : settings.defaultAgent === 'cursor'
+        ? 'cursor'
+        : 'claude'
   )
   const [modelOverride, setModelOverride] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -300,7 +304,7 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
     try {
       // Teleport mode always Claude — codex has no resume-by-session-id
       // analog today.
-      const effectiveAgent: 'claude' | 'codex' =
+      const effectiveAgent: AgentKind =
         mode === 'teleport' ? 'claude' : agentKindOverride
       // Existing tab: `git worktree add <dir> <branch>` (no `-b`) so git
       // checks out the already-existing local branch as-is. Ref tab: create
@@ -677,6 +681,7 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
                   setModel={setModelOverride}
                   defaultClaudeModel={settings.claudeModel}
                   defaultCodexModel={settings.codexModel}
+                  defaultCursorModel={settings.cursorModel}
                   disabled={prClickPending !== null}
                 />
                 <PRPickerList
@@ -701,6 +706,7 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
                 setModel={setModelOverride}
                 defaultClaudeModel={settings.claudeModel}
                 defaultCodexModel={settings.codexModel}
+                defaultCursorModel={settings.cursorModel}
                 disabled={submitting}
               />
             )}
@@ -1051,12 +1057,13 @@ function PRPickerRow({ pr, viewerLogin, isSelected, isPending, disabled, onSelec
 
 interface AgentModelRowProps {
   mode: 'fresh' | 'teleport' | 'pr'
-  agentKind: 'claude' | 'codex'
-  setAgentKind: (k: 'claude' | 'codex') => void
+  agentKind: AgentKind
+  setAgentKind: (k: AgentKind) => void
   model: string
   setModel: (m: string) => void
   defaultClaudeModel: string | null
   defaultCodexModel: string | null
+  defaultCursorModel: string | null
   disabled: boolean
 }
 
@@ -1068,16 +1075,23 @@ function AgentModelRow({
   setModel,
   defaultClaudeModel,
   defaultCodexModel,
+  defaultCursorModel,
   disabled
 }: AgentModelRowProps): JSX.Element {
-  // Teleport mode pins to Claude — codex has no equivalent
-  // "resume by session id" today. Lock the selector so users don't
-  // think they can flip it.
   const locked = mode === 'teleport'
   const effectiveAgent = locked ? 'claude' : agentKind
-  const modelOptions = effectiveAgent === 'codex' ? CODEX_MODELS : CLAUDE_MODELS
+  const modelOptions =
+    effectiveAgent === 'codex'
+      ? CODEX_MODELS
+      : effectiveAgent === 'cursor'
+        ? CURSOR_MODELS
+        : CLAUDE_MODELS
   const fallbackModel =
-    effectiveAgent === 'codex' ? defaultCodexModel : defaultClaudeModel
+    effectiveAgent === 'codex'
+      ? defaultCodexModel
+      : effectiveAgent === 'cursor'
+        ? defaultCursorModel
+        : defaultClaudeModel
   const fallbackDisplay =
     modelOptions.find((m) => m.id === fallbackModel)?.displayName || fallbackModel
   const defaultLabel = fallbackDisplay
@@ -1092,12 +1106,17 @@ function AgentModelRow({
   const hasNonDefault = (!locked && agentKind !== 'claude') || model.trim().length > 0
   const open = openOverride || hasNonDefault
 
-  const handleAgentChange = (next: 'claude' | 'codex'): void => {
-    // Reset the model when switching agents — otherwise a stale Claude
-    // model id would be sent as Codex's --model flag (or vice versa).
+  const handleAgentChange = (next: AgentKind): void => {
     if (next !== agentKind) setModel('')
     setAgentKind(next)
   }
+
+  const agentLabel =
+    effectiveAgent === 'codex'
+      ? 'Codex'
+      : effectiveAgent === 'cursor'
+        ? 'Cursor Agent'
+        : 'Claude'
 
   const modelDisplay = modelOptions.find((m) => m.id === model)?.displayName || model
 
@@ -1112,7 +1131,7 @@ function AgentModelRow({
         Advanced
         {!open && hasNonDefault && (
           <span className="ml-1 normal-case font-normal tracking-normal text-faint">
-            ({effectiveAgent === 'codex' ? 'Codex' : 'Claude'}
+            ({agentLabel}
             {model.trim() ? ` · ${modelDisplay}` : ''})
           </span>
         )}
@@ -1125,13 +1144,14 @@ function AgentModelRow({
             </span>
             <select
               value={effectiveAgent}
-              onChange={(e) => handleAgentChange(e.target.value === 'codex' ? 'codex' : 'claude')}
+              onChange={(e) => handleAgentChange(e.target.value as AgentKind)}
               disabled={disabled || locked}
               title={locked ? 'Teleport sessions require Claude' : undefined}
               className="bg-app border border-border-strong rounded px-2 py-1 text-xs text-fg-bright outline-none focus:border-accent disabled:opacity-50 cursor-pointer"
             >
-              <option value="claude">Claude</option>
-              <option value="codex">Codex</option>
+              {AGENT_REGISTRY.map((agent) => (
+                <option key={agent.kind} value={agent.kind}>{agent.displayName}</option>
+              ))}
             </select>
           </div>
           <div className="flex items-center gap-2 flex-1 min-w-0">
