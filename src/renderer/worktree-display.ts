@@ -44,3 +44,4 @@ export function displayLabel(
   }
   return alias ?? worktree.branch
 }
+

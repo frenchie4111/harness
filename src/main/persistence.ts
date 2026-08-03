@@ -21,6 +21,7 @@ import {
 } from './persistence-migrations'
 import type { CostsState } from '../shared/state/costs'
 import type { SnoozeEntry } from '../shared/state/snooze'
+import type { PreventSleepMode } from '../shared/state/settings'
 
 export type { PersistedPane, PersistedPaneNode, PersistedTab }
 
@@ -131,10 +132,33 @@ export interface Config {
   // Default strategy for "Merge locally" action. Auto-updates to whatever
   // was last used unless the user pinned one in Settings.
   mergeStrategy?: 'squash' | 'merge-commit' | 'fast-forward'
-  // Which "extra detail" to render next to each worktree row in the sidebar.
-  // Defaults to 'diff' (PR additions/deletions); other values trade that
-  // signal for worktree age, PR context (assignee/milestone/#), or nothing.
-  worktreeDetail?: 'diff' | 'age' | 'pr' | 'none'
+  // Density of each sidebar worktree row. 'comfy' (default) stacks the
+  // detail cluster on a second line; 'compact' folds it onto the right of
+  // a single line.
+  sidebarDensity?: 'compact' | 'comfy'
+  // Per-density detail-item toggles for the sidebar row. Compact and
+  // comfy have independent toggle sets. Missing keys/modes fall back to
+  // DEFAULT_SIDEBAR_DETAILS.
+  sidebarDetails?: {
+    compact?: {
+      repoLabel?: boolean
+      branch?: boolean
+      age?: boolean
+      diff?: boolean
+      milestone?: boolean
+      prNumber?: boolean
+      assignee?: boolean
+    }
+    comfy?: {
+      repoLabel?: boolean
+      branch?: boolean
+      age?: boolean
+      diff?: boolean
+      milestone?: boolean
+      prNumber?: boolean
+      assignee?: boolean
+    }
+  }
   // Branches that have been merged locally via Harness, keyed by branch name.
   // Value is the branch-tip SHA at merge time — if the branch later advances
   // past this SHA, the flag is considered stale and the branch is no longer
@@ -238,6 +262,10 @@ export interface Config {
   // composer (Shift+Enter inserts a newline). Default off — preserves
   // the historical Cmd/Ctrl+Enter-to-send behavior.
   jsonModeSendOnEnter?: boolean
+  // When false, JSON-mode chat pins the most recent user prompt to the top
+  // of the viewport instead of auto-scrolling to the bottom. Default true
+  // (undefined = follow the tail, matches historical behavior).
+  autoScrollToBottom?: boolean
   // Permission mode applied when a brand-new json-mode session spawns.
   // Existing sessions keep whatever mode they were last in. Default
   // 'acceptEdits' (auto-allow Edit/Write, still ask for Bash etc.).
@@ -274,11 +302,15 @@ export interface Config {
   scratchpadNotes?: Record<string, Record<string, string>>
   // Persisted alias map: worktree path → user-defined display alias.
   aliases?: Record<string, string>
+  // Wake-lock mode: hold a power-save blocker 'off' | while any agent
+  // session is processing | always. Default 'off'. The transient "+1h" timer
+  // (preventSleepUntil) is session-only and deliberately NOT persisted here.
+  preventSleepMode?: PreventSleepMode
 }
 
 export const DEFAULT_WORKTREE_BASE: 'remote' | 'local' = 'remote'
 export const DEFAULT_MERGE_STRATEGY: 'squash' | 'merge-commit' | 'fast-forward' = 'squash'
-export const DEFAULT_WORKTREE_DETAIL: 'diff' | 'age' | 'pr' | 'none' = 'diff'
+export const DEFAULT_SIDEBAR_DENSITY: 'compact' | 'comfy' = 'comfy'
 
 export const AVAILABLE_THEMES = [
   'dark',
