@@ -120,6 +120,17 @@ export function findLeafByTabId(node: PaneNode, tabId: string): PaneLeaf | null 
   )
 }
 
+export function findTabById(
+  panes: Record<string, PaneNode>,
+  tabId: string
+): TerminalTab | null {
+  for (const tree of Object.values(panes)) {
+    const leaf = findLeafByTabId(tree, tabId)
+    if (leaf) return leaf.tabs.find((t) => t.id === tabId) ?? null
+  }
+  return null
+}
+
 export function hasAnyTabs(node: PaneNode): boolean {
   if (node.type === 'leaf') return node.tabs.length > 0
   return hasAnyTabs(node.children[0]) || hasAnyTabs(node.children[1])
