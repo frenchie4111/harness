@@ -1,5 +1,26 @@
-import { describe, it, expect } from 'vitest'
-import { sanitizeHeadBranchForLocal } from './worktrees-fsm'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+
+vi.mock('./debug', () => ({ log: () => {} }))
+
+vi.mock('./worktree', () => ({
+  listWorktrees: vi.fn(async () => []),
+  addWorktree: vi.fn(),
+  defaultWorktreeDir: vi.fn(),
+  fetchPullRequestRef: vi.fn(),
+  localBranchExists: vi.fn(async () => false),
+  runWorktreeScript: vi.fn(),
+  symlinkClaudeSettings: vi.fn()
+}))
+vi.mock('./github', () => ({
+  getPRMetadata: vi.fn()
+}))
+vi.mock('./repo-config', () => ({
+  loadRepoConfig: vi.fn(() => ({}))
+}))
+
+import { Store } from './store'
+import { sanitizeHeadBranchForLocal, WorktreesFSM } from './worktrees-fsm'
+import { listWorktrees } from './worktree'
 
 describe('sanitizeHeadBranchForLocal', () => {
   it('returns the head ref unchanged for typical names', () => {
@@ -21,5 +42,52 @@ describe('sanitizeHeadBranchForLocal', () => {
     expect(sanitizeHeadBranchForLocal('feature..foo')).toBe('feature.foo')
     expect(sanitizeHeadBranchForLocal('---weird---')).toBe('---weird---'.replace(/^[-.]+|[-.]+$/g, ''))
     expect(sanitizeHeadBranchForLocal('.leading')).toBe('leading')
+  })
+})
+
+describe('WorktreesFSM.refreshListDebounced', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+    ;(listWorktrees as unknown as ReturnType<typeof vi.fn>).mockResolvedValue([])
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('coalesces 30 back-to-back calls into one refresh', () => {
+    const fsm = new WorktreesFSM(new Store(), {
+      getRepoRoots: () => ['/repo'],
+      getWorktreeSetupCmd: () => '',
+      getWorktreeBaseMode: () => 'remote',
+      onWorktreeCreated: () => {}
+    })
+
+    for (let i = 0; i < 30; i++) fsm.refreshListDebounced()
+    // Nothing should have fired yet — debounce is trailing.
+    expect(listWorktrees).not.toHaveBeenCalled()
+
+    vi.advanceTimersByTime(250)
+
+    expect(listWorktrees).toHaveBeenCalledTimes(1)
+  })
+
+  it('a later call resets the timer instead of firing separately', () => {
+    const fsm = new WorktreesFSM(new Store(), {
+      getRepoRoots: () => ['/repo'],
+      getWorktreeSetupCmd: () => '',
+      getWorktreeBaseMode: () => 'remote',
+      onWorktreeCreated: () => {}
+    })
+
+    fsm.refreshListDebounced()
+    vi.advanceTimersByTime(200) // still under the 250ms threshold
+    fsm.refreshListDebounced()
+    vi.advanceTimersByTime(200) // 400ms after the first call, only 200 after the last
+    expect(listWorktrees).not.toHaveBeenCalled()
+
+    vi.advanceTimersByTime(60)
+    expect(listWorktrees).toHaveBeenCalledTimes(1)
   })
 })
