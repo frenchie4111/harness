@@ -4,7 +4,8 @@ import { openReportIssue } from './ReportIssueScreen'
 import { HARNESS_ISSUES_URL, HARNESS_RELEASES_URL, harnessReleaseNotesUrl } from '../../shared/constants'
 import { useSettings, useUpdater, useRepoConfigs, useHooks } from '../store'
 import { useBackend } from '../backend'
-import type { UpdaterStatus, MergeStrategy, RepoConfig } from '../types'
+import type { UpdaterStatus, MergeStrategy, RepoConfig, SidebarDensity, SidebarDetailPrefs, Worktree, PRStatus } from '../types'
+import { SubtitleDetail } from './WorktreeSubtitleDetail'
 import { DEFAULT_HOTKEYS, ACTION_LABELS, ACTION_CATEGORIES, bindingToString, eventToBinding, formatBindingGlyphs, resolveHotkeys, type Action, type HotkeyBinding } from '../hotkeys'
 import { Tooltip } from './Tooltip'
 import { AGENT_REGISTRY, agentDisplayName, CLAUDE_MODELS, CODEX_MODELS } from '../../shared/agent-registry'
@@ -1652,6 +1653,15 @@ export function Settings({ onClose, onOpenGuide, onOpenMyWeek, initialSection }:
               </div>
 
               <div ref={(el) => { subSectionRefs.current['appearance-sidebar'] = el }} id="appearance-sidebar" />
+              <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">Sidebar row preview</h3>
+              <p className="text-xs text-dim mb-3">
+                Live preview using mock data — every detail item is present so
+                the checkboxes below have something to toggle. Real rows only
+                include items with actual data (e.g. milestone hides when the
+                PR has none).
+              </p>
+              <SidebarRowPreview density={sidebarDensity} prefs={sidebarDetails} />
+
               <h3 className="text-sm font-semibold text-fg-bright mt-6 mb-1">Sidebar row density</h3>
               <p className="text-xs text-dim mb-3">
                 Comfy stacks the label and detail cluster on two lines. Compact
@@ -3418,6 +3428,93 @@ interface Swatch {
    *  built-ins; arbitrary semantic color key for customs. */
   role: string
   color: string
+}
+
+/** Mock worktree + PR used by the Sidebar row preview so every detail
+ *  item has something to render. The avatar is a self-contained SVG data
+ *  URI so the preview doesn't hit the network. */
+const PREVIEW_WORKTREE: Worktree = {
+  path: '/Users/you/Projects/harness-worktrees/feat/example',
+  branch: 'feat/example-branch',
+  head: '',
+  isBare: false,
+  isMain: false,
+  createdAt: 0,
+  repoRoot: '/Users/you/Projects/harness'
+}
+
+const PREVIEW_PR: PRStatus = {
+  number: 123,
+  title: 'Example pull request',
+  state: 'open',
+  url: '',
+  branch: 'feat/example-branch',
+  author: null,
+  checks: [],
+  checksOverall: 'success',
+  hasConflict: false,
+  reviews: [],
+  reviewDecision: 'none',
+  additions: 42,
+  deletions: 7,
+  baseBranch: 'main',
+  isDefaultBase: true,
+  milestone: { title: 'v2.13.0', url: '', state: 'open' },
+  assignees: [
+    {
+      login: 'octocat',
+      avatarUrl:
+        "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='8' fill='%234a90e2'/><text x='8' y='11' font-family='sans-serif' font-size='9' fill='white' text-anchor='middle'>O</text></svg>"
+    }
+  ],
+  linkedIssues: [],
+  labels: []
+}
+
+interface SidebarRowPreviewProps {
+  density: SidebarDensity
+  prefs: SidebarDetailPrefs
+}
+
+function SidebarRowPreview({ density, prefs }: SidebarRowPreviewProps): JSX.Element {
+  // Compute a live "3 days ago" createdAt so the age item always shows
+  // something reasonable in the preview.
+  const worktree: Worktree = { ...PREVIEW_WORKTREE, createdAt: Date.now() - 3 * 24 * 60 * 60 * 1000 }
+  return (
+    <div className="rounded border border-border bg-panel p-2 max-w-[26rem]">
+      <div className="group flex items-center gap-2 px-3 py-2 bg-surface rounded">
+        <span
+          className="w-2 h-2 rounded-full shrink-0 bg-success"
+          title="Working..."
+        />
+        <GitPullRequest className="icon-sm text-success shrink-0" />
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-medium text-fg-bright truncate">
+            example-alias
+          </div>
+          {density === 'comfy' && (
+            <SubtitleDetail
+              worktree={worktree}
+              repoLabel="harness"
+              aliased
+              prStatus={PREVIEW_PR}
+              prefs={prefs}
+            />
+          )}
+        </div>
+        {density === 'compact' && (
+          <SubtitleDetail
+            worktree={worktree}
+            repoLabel="harness"
+            aliased
+            prStatus={PREVIEW_PR}
+            prefs={prefs}
+            inline
+          />
+        )}
+      </div>
+    </div>
+  )
 }
 
 /** Roles shown in the small swatch row next to each theme name. Stable
