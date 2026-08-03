@@ -158,6 +158,7 @@ export {
   getLeaves,
   findLeaf,
   findLeafByTabId,
+  findTabById,
   hasAnyTabs,
   mapLeaves,
   replaceNode,

@@ -55,6 +55,7 @@ import { homedir } from 'os'
 import { join } from 'path'
 import { createHash } from 'crypto'
 import {
+  extractSessionId,
   hooksInstalled,
   installHooks,
   hookEvents,
@@ -200,5 +201,22 @@ describe('cursor latestSessionId', () => {
 
   it('returns null when the project has no sessions', () => {
     expect(latestSessionId('/tmp')).toBeNull()
+  })
+})
+
+describe('cursor extractSessionId', () => {
+  it('reads conversation_id from the payload', () => {
+    expect(extractSessionId({ conversation_id: 'cursor-uuid' })).toBe('cursor-uuid')
+  })
+
+  it('ignores fields belonging to other agents', () => {
+    expect(extractSessionId({ session_id: 'codex-only' })).toBeNull()
+    expect(extractSessionId({ chat_id: 'nope', chatId: 'nope' })).toBeNull()
+  })
+
+  it('returns null for missing or non-string values', () => {
+    expect(extractSessionId({})).toBeNull()
+    expect(extractSessionId({ conversation_id: '' })).toBeNull()
+    expect(extractSessionId({ conversation_id: 42 })).toBeNull()
   })
 })

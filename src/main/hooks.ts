@@ -11,6 +11,8 @@ import { join } from 'path'
 import type { PtyStatus } from './pty-manager'
 import type { Store } from './store'
 import { log } from './debug'
+import { getAgent } from './agents'
+import { findTabById } from '../shared/state/terminals'
 
 // This path is also the signature we use to recognize Harness-installed
 // hook entries when deduping at install time. If you change it, update
@@ -223,12 +225,15 @@ export function tailLog(terminalId: string, store: Store): void {
       }
       log('hooks', `event terminal=${terminalId} event=${ev.event}`)
       // Discover the agent-assigned session ID from the first hook event
-      // that carries one. This is how Codex (and future agents that don't
-      // let you set the session ID up front) get their ID stored on the tab.
+      // that carries one. Per-agent extractors keep field names
+      // (session_id vs conversation_id) out of shared code, so a
+      // coincidental collision in one agent's payload can't be misread as
+      // another agent's session ID.
       if (!sessionIdDiscovered.has(terminalId) && ev.payload) {
-        const payload = ev.payload as Record<string, unknown>
-        const sid = payload.session_id ?? payload.conversation_id ?? payload.chat_id ?? payload.chatId
-        if (typeof sid === 'string' && sid) {
+        const tab = findTabById(store.getSnapshot().state.terminals.panes, terminalId)
+        const agent = tab?.agentKind ? getAgent(tab.agentKind) : null
+        const sid = agent?.extractSessionId?.(ev.payload as Record<string, unknown>) ?? null
+        if (sid) {
           sessionIdDiscovered.add(terminalId)
           store.dispatch({
             type: 'terminals/sessionIdDiscovered',
