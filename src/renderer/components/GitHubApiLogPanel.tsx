@@ -220,7 +220,7 @@ export function GitHubApiLogPanel({ onClose }: Props): JSX.Element {
                   <th className="px-2 py-2 font-medium">Path</th>
                   <th className="px-2 py-2 font-medium w-[10%]">Status</th>
                   <th className="px-2 py-2 font-medium w-[10%] text-right">Duration</th>
-                  <th className="px-2 py-2 font-medium w-[12%] text-right">RL left</th>
+                  <th className="px-2 py-2 font-medium w-[12%] text-right">Quota left</th>
                 </tr>
               </thead>
               <tbody className="font-mono">
@@ -351,7 +351,7 @@ function EntryRow({
               {entry.rateLimitLimit != null && (
                 <DetailRow
                   label="Rate limit"
-                  value={`${entry.rateLimitRemaining ?? '?'} / ${entry.rateLimitLimit} remaining · resets ${
+                  value={`${entry.rateLimitRemaining ?? '?'} of ${entry.rateLimitLimit} left · resets ${
                     entry.rateLimitReset != null
                       ? formatUntil(entry.rateLimitReset, now)
                       : '?'
@@ -408,14 +408,19 @@ function RateLimitCard({
     rateLimit.limit > 0 ? Math.max(0, rateLimit.remaining / rateLimit.limit) : 0
   const remainingTone =
     pct < 0.05 ? 'text-error' : pct < 0.2 ? 'text-warning' : 'text-success'
+  const used = Math.max(0, rateLimit.limit - rateLimit.remaining)
   return (
-    <div className="min-w-[220px]">
+    <div className="min-w-[240px]">
       <div className="text-xs uppercase tracking-wider text-faint mb-1">
         Rate limit
       </div>
-      <div className={`text-lg font-mono ${remainingTone}`}>
-        {rateLimit.remaining}
-        <span className="text-muted"> / {rateLimit.limit}</span>
+      <div className="flex items-baseline gap-2">
+        <span className={`text-lg font-mono ${remainingTone}`}>
+          {rateLimit.remaining.toLocaleString()}
+        </span>
+        <span className="text-xs text-muted">
+          of {rateLimit.limit.toLocaleString()} left ({used.toLocaleString()} used)
+        </span>
       </div>
       <div className="text-xs text-muted">
         resets {formatUntil(rateLimit.reset, now)} · updated{' '}
