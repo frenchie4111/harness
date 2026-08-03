@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Check } from 'lucide-react'
 import { useAppState, useSettings } from '../store'
 import { useBackend } from '../backend'
@@ -34,6 +34,9 @@ const STEPS: StepDescriptor[] = [
   }
 ]
 
+const POPOVER_MIN_W = 280
+const POPOVER_GAP = 8
+
 /** Sidebar-footer glyph showing the active prevent-sleep mode. Always
  *  renders (a Moon glyph when off). Solid (accent) when the wake-lock is
  *  actually engaged; dim when off, or when the mode is configured but idle
@@ -55,7 +58,12 @@ export function PreventSleepStatusIcon(): JSX.Element {
   const backend = useBackend()
   const [nowMs, setNowMs] = useState(() => Date.now())
   const [menuOpen, setMenuOpen] = useState(false)
-  const menuRef = useRef<HTMLDivElement | null>(null)
+  const buttonRef = useRef<HTMLButtonElement | null>(null)
+  const popoverRef = useRef<HTMLDivElement | null>(null)
+  // Fixed-positioned coords, computed from the button's rect at open time.
+  // Popover uses `position: fixed` (not `absolute`) so it escapes the
+  // sidebar's stacking context and renders above the chat/terminal panels.
+  const [pos, setPos] = useState<{ bottom: number; left: number } | null>(null)
 
   // While a temporary timer is running, re-render every second so the
   // countdown row stays fresh and the icon reverts on expiry even before
@@ -66,20 +74,44 @@ export function PreventSleepStatusIcon(): JSX.Element {
     return () => clearInterval(t)
   }, [preventSleepUntil])
 
+  useLayoutEffect(() => {
+    if (!menuOpen) {
+      setPos(null)
+      return
+    }
+    if (!buttonRef.current) return
+    const rect = buttonRef.current.getBoundingClientRect()
+    // Anchor the popover so its bottom edge sits POPOVER_GAP px above the
+    // button, and its left edge aligns to the button's left. Clamp left so
+    // the popover doesn't slide off-screen on narrow windows.
+    const left = Math.max(
+      8,
+      Math.min(rect.left, window.innerWidth - POPOVER_MIN_W - 8)
+    )
+    setPos({ bottom: window.innerHeight - rect.top + POPOVER_GAP, left })
+  }, [menuOpen])
+
   useEffect(() => {
     if (!menuOpen) return
     const onDocClick = (e: MouseEvent): void => {
-      if (!menuRef.current) return
-      if (!menuRef.current.contains(e.target as Node)) setMenuOpen(false)
+      const target = e.target as Node
+      if (buttonRef.current?.contains(target)) return
+      if (popoverRef.current?.contains(target)) return
+      setMenuOpen(false)
     }
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') setMenuOpen(false)
     }
+    // Recompute on resize; scroll changes to the window rarely apply here
+    // (sidebar footer is pinned) but a resize can move the button.
+    const onResize = (): void => setMenuOpen(false)
     document.addEventListener('mousedown', onDocClick)
     document.addEventListener('keydown', onKey)
+    window.addEventListener('resize', onResize)
     return () => {
       document.removeEventListener('mousedown', onDocClick)
       document.removeEventListener('keydown', onKey)
+      window.removeEventListener('resize', onResize)
     }
   }, [menuOpen])
 
@@ -118,23 +150,26 @@ export function PreventSleepStatusIcon(): JSX.Element {
   }
 
   return (
-    <div className="no-drag relative" ref={menuRef}>
+    <>
       <Tooltip label={tooltipLabel} action="cyclePreventSleep" side="top">
         <button
+          ref={buttonRef}
           type="button"
           aria-label={tooltipLabel}
           aria-haspopup="menu"
           aria-expanded={menuOpen}
           onClick={() => setMenuOpen((v) => !v)}
-          className={`${engaged ? 'text-accent hover:text-accent' : 'text-dim hover:text-fg'} hover:bg-surface rounded p-1.5 transition-colors cursor-pointer`}
+          className={`no-drag ${engaged ? 'text-accent hover:text-accent' : 'text-dim hover:text-fg'} hover:bg-surface rounded p-1.5 transition-colors cursor-pointer`}
         >
           <PreventSleepGlyph icon={meta.icon} className="icon-sm" />
         </button>
       </Tooltip>
-      {menuOpen && (
+      {menuOpen && pos && (
         <div
+          ref={popoverRef}
           role="menu"
-          className="absolute bottom-full left-0 mb-2 z-50 min-w-[280px] rounded border border-border bg-panel-raised shadow-lg py-1"
+          className="fixed z-50 min-w-[280px] rounded border border-border bg-panel-raised shadow-lg py-1"
+          style={{ bottom: pos.bottom, left: pos.left }}
         >
           <div className="px-3 pt-2 pb-1 text-xs uppercase tracking-wide text-faint font-medium">
             Prevent system sleep
@@ -175,6 +210,6 @@ export function PreventSleepStatusIcon(): JSX.Element {
           </div>
         </div>
       )}
-    </div>
+    </>
   )
 }
