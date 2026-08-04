@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import {
   initialWorktrees,
+  mergeWorktreesPreservingFailures,
   worktreesReducer,
+  worktreeListsEqual,
   type PendingDeletion,
   type PendingWorktree,
   type Worktree,
@@ -35,6 +37,80 @@ function stubPending(overrides: Partial<PendingWorktree> = {}): PendingWorktree 
     ...overrides
   }
 }
+
+describe('worktreeListsEqual', () => {
+  it('is true for the same reference and for structurally identical lists', () => {
+    const a = [stubWorktree({ path: '/a' }), stubWorktree({ path: '/b' })]
+    expect(worktreeListsEqual(a, a)).toBe(true)
+    const b = [stubWorktree({ path: '/a' }), stubWorktree({ path: '/b' })]
+    expect(worktreeListsEqual(a, b)).toBe(true)
+  })
+
+  it('is false when length differs', () => {
+    const a = [stubWorktree({ path: '/a' })]
+    const b = [stubWorktree({ path: '/a' }), stubWorktree({ path: '/b' })]
+    expect(worktreeListsEqual(a, b)).toBe(false)
+  })
+
+  it('detects a branch label change (the rebasing-2/22 -> back-on-branch case)', () => {
+    const a = [stubWorktree({ path: '/a', branch: 'rebasing 2/22' })]
+    const b = [stubWorktree({ path: '/a', branch: 'feature/a' })]
+    expect(worktreeListsEqual(a, b)).toBe(false)
+  })
+
+  it('detects head/path/repoRoot/flag changes', () => {
+    const base = stubWorktree({ path: '/a' })
+    expect(worktreeListsEqual([base], [stubWorktree({ path: '/a', head: 'cafe' })])).toBe(false)
+    expect(worktreeListsEqual([base], [stubWorktree({ path: '/z' })])).toBe(false)
+    expect(worktreeListsEqual([base], [stubWorktree({ path: '/a', isMain: true })])).toBe(false)
+    expect(worktreeListsEqual([base], [stubWorktree({ path: '/a', repoRoot: '/other' })])).toBe(false)
+  })
+
+  it('is order-sensitive', () => {
+    const a = [stubWorktree({ path: '/a' }), stubWorktree({ path: '/b' })]
+    const b = [stubWorktree({ path: '/b' }), stubWorktree({ path: '/a' })]
+    expect(worktreeListsEqual(a, b)).toBe(false)
+  })
+})
+
+describe('mergeWorktreesPreservingFailures', () => {
+  it('replaces each repo\'s slice with its successful result', () => {
+    const roots = ['/repo/a', '/repo/b']
+    const perRoot = [
+      [stubWorktree({ path: '/a/1', repoRoot: '/repo/a' })],
+      [stubWorktree({ path: '/b/1', repoRoot: '/repo/b' })]
+    ]
+    const previous = [stubWorktree({ path: '/a/old', repoRoot: '/repo/a' })]
+    const out = mergeWorktreesPreservingFailures(roots, perRoot, previous)
+    expect(out.map((w) => w.path)).toEqual(['/a/1', '/b/1'])
+  })
+
+  it('preserves the prior slice for a repo whose lookup returned null', () => {
+    const roots = ['/repo/a', '/repo/b']
+    const perRoot = [
+      null,
+      [stubWorktree({ path: '/b/1', repoRoot: '/repo/b' })]
+    ]
+    const previous = [
+      stubWorktree({ path: '/a/1', repoRoot: '/repo/a' }),
+      stubWorktree({ path: '/a/2', repoRoot: '/repo/a' }),
+      stubWorktree({ path: '/b/old', repoRoot: '/repo/b' })
+    ]
+    const out = mergeWorktreesPreservingFailures(roots, perRoot, previous)
+    expect(out.map((w) => w.path)).toEqual(['/a/1', '/a/2', '/b/1'])
+  })
+
+  it('drops a failed repo entirely if it had no prior entries', () => {
+    const out = mergeWorktreesPreservingFailures(['/repo/a'], [null], [])
+    expect(out).toEqual([])
+  })
+
+  it('empty successful result deletes that repo (deletions still propagate)', () => {
+    const previous = [stubWorktree({ path: '/a/1', repoRoot: '/repo/a' })]
+    const out = mergeWorktreesPreservingFailures(['/repo/a'], [[]], previous)
+    expect(out).toEqual([])
+  })
+})
 
 describe('worktreesReducer', () => {
   it('listChanged replaces the flat list', () => {
