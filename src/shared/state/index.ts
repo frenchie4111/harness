@@ -102,6 +102,12 @@ import {
   type SshBootstrapEvent,
   type SshBootstrapState
 } from './ssh-bootstrap'
+import {
+  initialAssignedPRs,
+  assignedPRsReducer,
+  type AssignedPRsEvent,
+  type AssignedPRsState
+} from './assigned-prs'
 import { initialConfigHealth, type ConfigHealthState } from './config-health'
 import {
   initialAliases,
@@ -189,6 +195,7 @@ export type {
   BootstrapProgress,
   BootstrapError
 } from './ssh-bootstrap'
+export type { AssignedPRsState, AssignedPRsEvent, AssignedPR } from './assigned-prs'
 export type { ConfigHealthState, ConfigLoadError } from './config-health'
 export type { AliasesState, AliasesEvent } from './aliases'
 
@@ -208,6 +215,7 @@ export interface AppState {
   announcements: AnnouncementsState
   scratchpad: ScratchpadState
   sshBootstrap: SshBootstrapState
+  assignedPRs: AssignedPRsState
   configHealth: ConfigHealthState
   aliases: AliasesState
 }
@@ -229,6 +237,7 @@ export type StateEvent =
   | ScratchpadEvent
   | SshBootstrapEvent
   | AliasesEvent
+  | AssignedPRsEvent
 
 export const initialState: AppState = {
   settings: initialSettings,
@@ -247,7 +256,8 @@ export const initialState: AppState = {
   scratchpad: initialScratchpad,
   sshBootstrap: initialSshBootstrap,
   configHealth: initialConfigHealth,
-  aliases: initialAliases
+  aliases: initialAliases,
+  assignedPRs: initialAssignedPRs
 }
 
 export function rootReducer(state: AppState, event: StateEvent): AppState {
@@ -332,6 +342,12 @@ export function rootReducer(state: AppState, event: StateEvent): AppState {
       aliases: aliasesReducer(state.aliases, event as AliasesEvent)
     }
   }
+  if (event.type.startsWith('assignedPRs/')) {
+    return {
+      ...state,
+      assignedPRs: assignedPRsReducer(state.assignedPRs, event as AssignedPRsEvent)
+    }
+  }
   // configHealth has no events — it's seeded at construction only (see
   // config-health.ts), so there's no reducer branch. The field flows through
   // unchanged via the `...state` spreads above.
@@ -382,7 +398,8 @@ export function mergeWireSnapshot(state: WireSnapshotState): AppState {
     scratchpad: { ...initialState.scratchpad, ...state.scratchpad },
     sshBootstrap: { ...initialState.sshBootstrap, ...state.sshBootstrap },
     configHealth: { ...initialState.configHealth, ...state.configHealth },
-    aliases: { ...initialState.aliases, ...state.aliases }
+    aliases: { ...initialState.aliases, ...state.aliases },
+    assignedPRs: { ...initialState.assignedPRs, ...state.assignedPRs }
   }
 }
 

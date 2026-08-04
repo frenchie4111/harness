@@ -13,6 +13,7 @@ import { initialSnooze } from '../shared/state/snooze'
 import { initialAnnouncements } from '../shared/state/announcements'
 import { initialScratchpad } from '../shared/state/scratchpad'
 import { initialSshBootstrap } from '../shared/state/ssh-bootstrap'
+import { initialAssignedPRs } from '../shared/state/assigned-prs'
 import { initialConfigHealth, type ConfigLoadError } from '../shared/state/config-health'
 import { initialAliases } from '../shared/state/aliases'
 import {
@@ -82,6 +83,7 @@ export function buildInitialAppState(
     aliases: config.aliases
       ? { byPath: { ...config.aliases } }
       : initialAliases,
+    assignedPRs: initialAssignedPRs,
     settings: {
       ...initialSettings,
       themeMode:
@@ -167,7 +169,8 @@ export function buildInitialAppState(
         ? (config.preventSleepMode as PreventSleepMode)
         : 'off',
       // The temporary "+1h" timer never survives a relaunch — always seed null.
-      preventSleepUntil: null
+      preventSleepUntil: null,
+      showAssignedPRs: config.showAssignedPRs === true
     }
   }
 }

@@ -300,6 +300,9 @@ export interface SettingsState {
    *  surprising the user days later. The WakeLockController clears it back
    *  to null when the deadline passes. */
   preventSleepUntil: number | null
+  /** When true, PRs that have you as a requested reviewer show up as
+   *  phantom entries in the sidebar's Reviewing group. */
+  showAssignedPRs: boolean
 }
 
 export type SettingsEvent =
@@ -365,6 +368,7 @@ export type SettingsEvent =
   | { type: 'settings/announcementsMutedChanged'; payload: boolean }
   | { type: 'settings/preventSleepModeChanged'; payload: PreventSleepMode }
   | { type: 'settings/preventSleepUntilChanged'; payload: number | null }
+  | { type: 'settings/showAssignedPRsChanged'; payload: boolean }
 
 // Client-side placeholder. Real values are seeded in the main-process Store
 // constructor from the on-disk config and secrets.
@@ -427,7 +431,8 @@ export const initialSettings: SettingsState = {
   dismissedAnnouncementIds: [],
   announcementsMuted: false,
   preventSleepMode: 'off',
-  preventSleepUntil: null
+  preventSleepUntil: null,
+  showAssignedPRs: false
 }
 
 export function settingsReducer(state: SettingsState, event: SettingsEvent): SettingsState {
@@ -555,6 +560,8 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, preventSleepMode: event.payload }
     case 'settings/preventSleepUntilChanged':
       return { ...state, preventSleepUntil: event.payload }
+    case 'settings/showAssignedPRsChanged':
+      return { ...state, showAssignedPRs: event.payload }
     default: {
       const _exhaustive: never = event
       void _exhaustive
