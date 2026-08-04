@@ -4128,6 +4128,17 @@ async function runBoot(): Promise<void> {
           command,
           cwd
         })
+        // Spawn the PTY eagerly here so agent-initiated `create_shell` calls
+        // don't wait for a human to focus the tab — otherwise
+        // `read_shell_output` returns empty and the caller thinks the shell
+        // failed. `ptyManager.create` is idempotent, so the renderer's later
+        // `pty:create` (fired from XTerminal on mount) attaches instead of
+        // respawning.
+        const spawnCwd = cwd
+          ? cwd.startsWith('/') ? cwd : `${wtPath}/${cwd}`
+          : wtPath
+        const args = command ? ['-ilc', command] : ['-il']
+        ptyManager.create(id, spawnCwd, '', args, undefined, true)
         return { id, label: finalLabel }
       },
       killShell: (shellId) => {
