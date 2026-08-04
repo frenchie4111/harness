@@ -14,7 +14,7 @@ import { log } from './debug'
 
 // This path is also the signature we use to recognize Harness-installed
 // hook entries when deduping at install time. If you change it, update
-// HARNESS_HOOK_COMMAND_SIGNATURE in src/main/agents/{claude,codex}.ts
+// HARNESS_HOOK_COMMAND_SIGNATURE in src/main/agents/{claude,codex,cursor}.ts
 // to match, or older installed entries become unrecognizable and
 // re-installs will append duplicates.
 const STATUS_DIR = '/tmp/harness-status'
@@ -40,12 +40,17 @@ export interface PendingTool {
 // the append-mode file. A single write(2) under PIPE_BUF (4096 bytes) is
 // guaranteed atomic vs. other O_APPEND writers on POSIX.
 export function makeHookCommand(event: string): string {
+  // mkdir -p on the append target's dirname (not just $d) so a legacy
+  // $h with embedded slashes — e.g. `shell-/Users/…/wt-<ts>` from older
+  // panes.json — still resolves to a creatable path instead of ENOENT.
+  // Current IDs are sanitized at generation, but this keeps existing
+  // installs quiet on the next boot's hook re-install.
   const inner =
     `h="${'$HARNESS_TERMINAL_ID'}"; [ -z "$h" ] && h="$CLAUDE_HARNESS_ID"; [ -z "$h" ] && exit 0; ` +
-    `d=${STATUS_DIR}; mkdir -p "$d"; ` +
+    `d=${STATUS_DIR}; f="$d/$h.ndjson"; mkdir -p "$(dirname "$f")"; ` +
     `p=$(cat); [ -z "$p" ] && p=null; ` +
     `printf "{\\"event\\":\\"${event}\\",\\"ts\\":%s,\\"payload\\":%s}\\n" ` +
-    `"$(date +%s)" "$p" >> "$d/$h.ndjson"`
+    `"$(date +%s)" "$p" >> "$f"`
   return `bash -c '${inner}'`
 }
 
@@ -67,9 +72,9 @@ interface StatusUpdate {
 
 function readPendingTool(p: Record<string, unknown> | null): PendingTool | null {
   if (!p) return null
-  const name = p.tool_name
+  const name = p.tool_name ?? p.toolName
   if (typeof name !== 'string' || !name) return null
-  const rawInput = p.tool_input
+  const rawInput = p.tool_input ?? p.toolInput
   const input =
     rawInput && typeof rawInput === 'object' && !Array.isArray(rawInput)
       ? (rawInput as Record<string, unknown>)
@@ -77,8 +82,38 @@ function readPendingTool(p: Record<string, unknown> | null): PendingTool | null 
   return { name, input }
 }
 
+function normalizeHookEvent(event: string): string {
+  switch (event) {
+    case 'preToolUse':
+      return 'PreToolUse'
+    case 'postToolUse':
+      return 'PostToolUse'
+    case 'beforeSubmitPrompt':
+      return 'UserPromptSubmit'
+    case 'stop':
+      return 'Stop'
+    case 'sessionStart':
+      return 'SessionStart'
+    default:
+      return event
+  }
+}
+
 function deriveStatus(terminalId: string, ev: HookEvent): StatusUpdate | null {
-  switch (ev.event) {
+  // Cursor's preToolUse fires when the agent has picked a tool but BEFORE
+  // Cursor decides whether to auto-run it or block on the TUI approval
+  // prompt — and it never emits a separate "asking user" event the way
+  // Claude does (Notification/permission_prompt). So for Cursor's raw
+  // camelCase event, treat preToolUse as needs-approval; auto-approved
+  // tools flip back to processing when postToolUse fires a moment later.
+  // Claude/Codex PreToolUse (PascalCase) keeps its original meaning:
+  // approval already happened, tool is about to run → processing.
+  if (ev.event === 'preToolUse') {
+    const tool = readPendingTool(ev.payload)
+    if (tool) lastPreTool.set(terminalId, tool)
+    return { status: 'needs-approval', pendingTool: tool }
+  }
+  switch (normalizeHookEvent(ev.event)) {
     case 'PreToolUse': {
       const tool = readPendingTool(ev.payload)
       if (tool) lastPreTool.set(terminalId, tool)
@@ -209,7 +244,8 @@ export function tailLog(terminalId: string, store: Store): void {
       // that carries one. This is how Codex (and future agents that don't
       // let you set the session ID up front) get their ID stored on the tab.
       if (!sessionIdDiscovered.has(terminalId) && ev.payload) {
-        const sid = (ev.payload as Record<string, unknown>).session_id
+        const payload = ev.payload as Record<string, unknown>
+        const sid = payload.session_id ?? payload.conversation_id ?? payload.chat_id ?? payload.chatId
         if (typeof sid === 'string' && sid) {
           sessionIdDiscovered.add(terminalId)
           store.dispatch({

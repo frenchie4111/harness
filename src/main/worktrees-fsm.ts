@@ -13,6 +13,7 @@ import { loadRepoConfig } from './repo-config'
 import { log } from './debug'
 import type { Store } from './store'
 import type { Worktree, PendingWorktree } from '../shared/state/worktrees'
+import type { AgentKind } from '../shared/state/terminals'
 
 /** Sanitize a PR's head branch into a name that's safe as both a git
  *  branch (we're not strict here since git accepts most things) and a
@@ -62,10 +63,16 @@ interface WorktreesFSMOptions {
     createdPath: string
     initialPrompt?: string
     teleportSessionId?: string
-    agentKind?: 'claude' | 'codex'
+    agentKind?: AgentKind
     model?: string
   }) => void
 }
+
+/** How long `refreshListDebounced` waits after the last call before
+ *  firing. Long enough to coalesce a bulk deletion of 30+ worktrees
+ *  into one list refresh, short enough that the sidebar still feels
+ *  live on interactive one-off deletions. */
+const REFRESH_LIST_DEBOUNCE_MS = 250
 
 /** Owns the pending-creation state machine plus the "refresh the flat
  * worktree list across every known repo" operation. All writes go through
@@ -74,6 +81,7 @@ interface WorktreesFSMOptions {
 export class WorktreesFSM {
   private store: Store
   private opts: WorktreesFSMOptions
+  private refreshDebounceTimer: ReturnType<typeof setTimeout> | null = null
 
   constructor(store: Store, opts: WorktreesFSMOptions) {
     this.store = store
@@ -97,6 +105,20 @@ export class WorktreesFSM {
     return flat
   }
 
+  /** Trailing-debounced variant of `refreshList`. Multiple back-to-back
+   *  callers (e.g. a bulk deletion of 30 worktrees) coalesce into a
+   *  single refresh once the batch settles — the naive per-completion
+   *  `refreshList()` would otherwise spawn `git worktree list --porcelain`
+   *  once per repo per deletion. Fire-and-forget; errors surface via
+   *  the underlying `refreshList` logging path. */
+  refreshListDebounced(): void {
+    if (this.refreshDebounceTimer) clearTimeout(this.refreshDebounceTimer)
+    this.refreshDebounceTimer = setTimeout(() => {
+      this.refreshDebounceTimer = null
+      void this.refreshList()
+    }, REFRESH_LIST_DEBOUNCE_MS)
+  }
+
   dispatchRepos(roots: string[]): void {
     this.store.dispatch({ type: 'worktrees/reposChanged', payload: roots })
   }
@@ -113,7 +135,7 @@ export class WorktreesFSM {
     branchName: string
     initialPrompt?: string
     teleportSessionId?: string
-    agentKind?: 'claude' | 'codex'
+    agentKind?: AgentKind
     model?: string
     /** When set, check out an existing branch instead of creating one
      * with `-b`. Used when the user picks from the existing-branches
@@ -175,7 +197,7 @@ export class WorktreesFSM {
     repoRoot: string
     prNumber: number
     initialPrompt?: string
-    agentKind?: 'claude' | 'codex'
+    agentKind?: AgentKind
     model?: string
   }): Promise<PendingOutcome> {
     const { id, repoRoot, prNumber, initialPrompt, agentKind, model } = params
@@ -235,7 +257,7 @@ export class WorktreesFSM {
     created: WorktreeInfo
     initialPrompt?: string
     teleportSessionId?: string
-    agentKind?: 'claude' | 'codex'
+    agentKind?: AgentKind
     model?: string
   }): Promise<PendingOutcome> {
     const { id, repoRoot, created, initialPrompt, teleportSessionId, agentKind, model } = args

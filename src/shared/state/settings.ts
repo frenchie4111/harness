@@ -7,9 +7,68 @@ export interface WorktreeScripts {
 
 export type MergeStrategy = 'squash' | 'merge-commit' | 'fast-forward'
 export type WorktreeBase = 'remote' | 'local'
-export type WorktreeDetail = 'diff' | 'age' | 'pr' | 'none'
+/** Density of each sidebar worktree row. `comfy` stacks the label and
+ *  detail cluster on two lines; `compact` folds the detail cluster onto
+ *  the right of a single line. The pending-tool alert (needs-approval)
+ *  always uses the two-line layout regardless of this setting — that
+ *  signal is too important to hide. */
+export type SidebarDensity = 'compact' | 'comfy'
 
-export type AgentKindSetting = 'claude' | 'codex'
+/** Per-item toggles for the sidebar row's detail cluster. Each `true`
+ *  means the item shows when it has data to show (e.g. `assignee` only
+ *  renders when a PR actually has an assignee). Set to `false` to hide
+ *  the item entirely regardless of data availability. */
+export interface SidebarDetailPrefs {
+  repoLabel: boolean
+  branch: boolean
+  age: boolean
+  diff: boolean
+  milestone: boolean
+  prNumber: boolean
+  assignee: boolean
+}
+
+/** Per-density detail prefs. Compact and comfy have independent toggle
+ *  sets because their goals differ — compact users are optimizing for
+ *  density and typically want fewer items, while comfy users have the
+ *  vertical space for the full cluster. */
+export interface SidebarDetailPrefsByMode {
+  compact: SidebarDetailPrefs
+  comfy: SidebarDetailPrefs
+}
+
+/** Comfy default: everything on. Users can turn things off. */
+export const DEFAULT_SIDEBAR_DETAILS_COMFY: SidebarDetailPrefs = {
+  repoLabel: true,
+  branch: true,
+  age: true,
+  diff: true,
+  milestone: true,
+  prNumber: true,
+  assignee: true
+}
+
+/** Compact default: the minimum useful set — repo (multi-repo
+ *  disambiguation), PR number, and assignee avatar. Branch (only
+ *  meaningful when aliased), age, diff stats, and milestone are all
+ *  off by default to keep a single-line row uncrowded. Users can turn
+ *  any of them on. */
+export const DEFAULT_SIDEBAR_DETAILS_COMPACT: SidebarDetailPrefs = {
+  repoLabel: true,
+  branch: false,
+  age: false,
+  diff: false,
+  milestone: false,
+  prNumber: true,
+  assignee: true
+}
+
+export const DEFAULT_SIDEBAR_DETAILS: SidebarDetailPrefsByMode = {
+  compact: DEFAULT_SIDEBAR_DETAILS_COMPACT,
+  comfy: DEFAULT_SIDEBAR_DETAILS_COMFY
+}
+
+export type AgentKindSetting = 'claude' | 'codex' | 'cursor'
 
 export type BrowserToolsMode = 'view' | 'full'
 
@@ -94,6 +153,11 @@ export const DEFAULT_DARK_THEME = 'dark'
 export const DEFAULT_PR_REVIEW_PROMPT =
   "Review this PR. Read the diff, then check for correctness issues, design problems, security concerns, and missing edge cases. Cite file paths and line numbers for anything you flag. Skip restating what the PR does — focus on what could go wrong or be improved."
 
+/** Primary wake-lock mode. The actual hold = (this mode wants it) OR (the
+ *  transient `preventSleepUntil` timer is still live). Single-select; the
+ *  timer overlay covers the "also keep awake right now" case. */
+export type PreventSleepMode = 'off' | 'while-agents-running' | 'always'
+
 export interface SettingsState {
   /** Whether the active theme is the light theme, the dark theme, or follows
    *  the OS appearance. Default 'system'. */
@@ -110,9 +174,11 @@ export interface SettingsState {
   defaultAgent: AgentKindSetting
   claudeCommand: string
   codexCommand: string
+  cursorCommand: string
   worktreeScripts: WorktreeScripts
   claudeEnvVars: Record<string, string>
   codexEnvVars: Record<string, string>
+  cursorEnvVars: Record<string, string>
   harnessMcpEnabled: boolean
   nameClaudeSessions: boolean
   terminalFontFamily: string
@@ -120,10 +186,12 @@ export interface SettingsState {
   editor: string
   worktreeBase: WorktreeBase
   mergeStrategy: MergeStrategy
-  worktreeDetail: WorktreeDetail
+  sidebarDensity: SidebarDensity
+  sidebarDetails: SidebarDetailPrefsByMode
   shareClaudeSettings: boolean
   claudeModel: string | null
   codexModel: string | null
+  cursorModel: string | null
   hasGithubToken: boolean
   githubAuthSource: 'pat' | 'gh-cli' | null
   /** GitHub login of the user whose token is configured. Resolved at
@@ -183,6 +251,11 @@ export interface SettingsState {
    *  the historical behavior applies: Cmd/Ctrl+Enter sends and plain
    *  Enter inserts a newline. */
   jsonModeSendOnEnter: boolean
+  /** When true (default), JSON-mode chat auto-scrolls to follow the tail
+   *  of a streaming response. When false, the most recent user message is
+   *  pinned to the top of the viewport instead, and a "Jump to prompt"
+   *  button surfaces when the anchor scrolls off the top. */
+  autoScrollToBottom: boolean
   /** Permission mode applied to a freshly-spawned json-mode session.
    *  Existing sessions keep whatever mode they were in (set via the
    *  statusline picker). Default 'acceptEdits' so first-time users
@@ -216,6 +289,17 @@ export interface SettingsState {
    *  the feed contents. Set by the "Hide all announcements" action and
    *  cleared only by the user. */
   announcementsMuted: boolean
+  /** Primary wake-lock mode. The side effect (a power-save blocker)
+   *  lives in the main-process WakeLockController — never in the store.
+   *  Default 'off'. */
+  preventSleepMode: PreventSleepMode
+  /** Epoch-ms deadline for the temporary "keep awake for the next hour"
+   *  overlay, or null when no timer is running. Shared world state (a
+   *  second client sees the countdown) but deliberately NOT persisted to
+   *  config — a temporary hold resets on app relaunch rather than
+   *  surprising the user days later. The WakeLockController clears it back
+   *  to null when the deadline passes. */
+  preventSleepUntil: number | null
 }
 
 export type SettingsEvent =
@@ -227,9 +311,11 @@ export type SettingsEvent =
   | { type: 'settings/defaultAgentChanged'; payload: AgentKindSetting }
   | { type: 'settings/claudeCommandChanged'; payload: string }
   | { type: 'settings/codexCommandChanged'; payload: string }
+  | { type: 'settings/cursorCommandChanged'; payload: string }
   | { type: 'settings/worktreeScriptsChanged'; payload: WorktreeScripts }
   | { type: 'settings/claudeEnvVarsChanged'; payload: Record<string, string> }
   | { type: 'settings/codexEnvVarsChanged'; payload: Record<string, string> }
+  | { type: 'settings/cursorEnvVarsChanged'; payload: Record<string, string> }
   | { type: 'settings/harnessMcpEnabledChanged'; payload: boolean }
   | { type: 'settings/nameClaudeSessionsChanged'; payload: boolean }
   | { type: 'settings/terminalFontFamilyChanged'; payload: string }
@@ -237,7 +323,8 @@ export type SettingsEvent =
   | { type: 'settings/editorChanged'; payload: string }
   | { type: 'settings/worktreeBaseChanged'; payload: WorktreeBase }
   | { type: 'settings/mergeStrategyChanged'; payload: MergeStrategy }
-  | { type: 'settings/worktreeDetailChanged'; payload: WorktreeDetail }
+  | { type: 'settings/sidebarDensityChanged'; payload: SidebarDensity }
+  | { type: 'settings/sidebarDetailsChanged'; payload: SidebarDetailPrefsByMode }
   | { type: 'settings/shareClaudeSettingsChanged'; payload: boolean }
   | { type: 'settings/hasGithubTokenChanged'; payload: boolean }
   | { type: 'settings/githubAuthSourceChanged'; payload: 'pat' | 'gh-cli' | null }
@@ -245,6 +332,7 @@ export type SettingsEvent =
   | { type: 'settings/harnessStarredChanged'; payload: boolean | null }
   | { type: 'settings/claudeModelChanged'; payload: string | null }
   | { type: 'settings/codexModelChanged'; payload: string | null }
+  | { type: 'settings/cursorModelChanged'; payload: string | null }
   | { type: 'settings/autoUpdateEnabledChanged'; payload: boolean }
   | { type: 'settings/warnBeforeQuittingChanged'; payload: boolean }
   | { type: 'settings/harnessSystemPromptEnabledChanged'; payload: boolean }
@@ -264,6 +352,7 @@ export type SettingsEvent =
   | { type: 'settings/jsonModeChatDensityChanged'; payload: JsonModeChatDensity }
   | { type: 'settings/uiScaleChanged'; payload: UiScale }
   | { type: 'settings/jsonModeSendOnEnterChanged'; payload: boolean }
+  | { type: 'settings/autoScrollToBottomChanged'; payload: boolean }
   | {
       type: 'settings/jsonModeDefaultPermissionModeChanged'
       payload: JsonClaudePermissionMode
@@ -274,6 +363,8 @@ export type SettingsEvent =
   | { type: 'settings/prReviewPromptChanged'; payload: string }
   | { type: 'settings/announcementDismissed'; payload: string }
   | { type: 'settings/announcementsMutedChanged'; payload: boolean }
+  | { type: 'settings/preventSleepModeChanged'; payload: PreventSleepMode }
+  | { type: 'settings/preventSleepUntilChanged'; payload: number | null }
 
 // Client-side placeholder. Real values are seeded in the main-process Store
 // constructor from the on-disk config and secrets.
@@ -286,9 +377,11 @@ export const initialSettings: SettingsState = {
   defaultAgent: 'claude',
   claudeCommand: '',
   codexCommand: '',
+  cursorCommand: '',
   worktreeScripts: { setup: '', teardown: '' },
   claudeEnvVars: {},
   codexEnvVars: {},
+  cursorEnvVars: {},
   harnessMcpEnabled: true,
   nameClaudeSessions: false,
   terminalFontFamily: '',
@@ -296,10 +389,12 @@ export const initialSettings: SettingsState = {
   editor: 'vscode',
   worktreeBase: 'remote',
   mergeStrategy: 'squash',
-  worktreeDetail: 'diff',
+  sidebarDensity: 'comfy',
+  sidebarDetails: DEFAULT_SIDEBAR_DETAILS,
   shareClaudeSettings: true,
   claudeModel: null,
   codexModel: null,
+  cursorModel: null,
   hasGithubToken: false,
   githubAuthSource: null,
   viewerLogin: null,
@@ -323,13 +418,16 @@ export const initialSettings: SettingsState = {
   jsonModeChatDensity: 'compact',
   uiScale: 'small',
   jsonModeSendOnEnter: false,
+  autoScrollToBottom: true,
   jsonModeDefaultPermissionMode: 'acceptEdits',
   autoSleepMinutes: 30,
   snoozeDefaultDays: 7,
   expandedDiagnosticLoggingEnabled: false,
   prReviewPrompt: DEFAULT_PR_REVIEW_PROMPT,
   dismissedAnnouncementIds: [],
-  announcementsMuted: false
+  announcementsMuted: false,
+  preventSleepMode: 'off',
+  preventSleepUntil: null
 }
 
 export function settingsReducer(state: SettingsState, event: SettingsEvent): SettingsState {
@@ -350,12 +448,16 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, claudeCommand: event.payload }
     case 'settings/codexCommandChanged':
       return { ...state, codexCommand: event.payload }
+    case 'settings/cursorCommandChanged':
+      return { ...state, cursorCommand: event.payload }
     case 'settings/worktreeScriptsChanged':
       return { ...state, worktreeScripts: event.payload }
     case 'settings/claudeEnvVarsChanged':
       return { ...state, claudeEnvVars: event.payload }
     case 'settings/codexEnvVarsChanged':
       return { ...state, codexEnvVars: event.payload }
+    case 'settings/cursorEnvVarsChanged':
+      return { ...state, cursorEnvVars: event.payload }
     case 'settings/harnessMcpEnabledChanged':
       return { ...state, harnessMcpEnabled: event.payload }
     case 'settings/nameClaudeSessionsChanged':
@@ -370,8 +472,10 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, worktreeBase: event.payload }
     case 'settings/mergeStrategyChanged':
       return { ...state, mergeStrategy: event.payload }
-    case 'settings/worktreeDetailChanged':
-      return { ...state, worktreeDetail: event.payload }
+    case 'settings/sidebarDensityChanged':
+      return { ...state, sidebarDensity: event.payload }
+    case 'settings/sidebarDetailsChanged':
+      return { ...state, sidebarDetails: event.payload }
     case 'settings/shareClaudeSettingsChanged':
       return { ...state, shareClaudeSettings: event.payload }
     case 'settings/hasGithubTokenChanged':
@@ -386,6 +490,8 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, claudeModel: event.payload }
     case 'settings/codexModelChanged':
       return { ...state, codexModel: event.payload }
+    case 'settings/cursorModelChanged':
+      return { ...state, cursorModel: event.payload }
     case 'settings/autoUpdateEnabledChanged':
       return { ...state, autoUpdateEnabled: event.payload }
     case 'settings/warnBeforeQuittingChanged':
@@ -424,6 +530,8 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, uiScale: event.payload }
     case 'settings/jsonModeSendOnEnterChanged':
       return { ...state, jsonModeSendOnEnter: event.payload }
+    case 'settings/autoScrollToBottomChanged':
+      return { ...state, autoScrollToBottom: event.payload }
     case 'settings/jsonModeDefaultPermissionModeChanged':
       return { ...state, jsonModeDefaultPermissionMode: event.payload }
     case 'settings/autoSleepMinutesChanged':
@@ -443,6 +551,10 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
     }
     case 'settings/announcementsMutedChanged':
       return { ...state, announcementsMuted: event.payload }
+    case 'settings/preventSleepModeChanged':
+      return { ...state, preventSleepMode: event.payload }
+    case 'settings/preventSleepUntilChanged':
+      return { ...state, preventSleepUntil: event.payload }
     default: {
       const _exhaustive: never = event
       void _exhaustive

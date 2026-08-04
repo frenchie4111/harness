@@ -23,6 +23,7 @@ import { Eye, X, Sparkles } from 'lucide-react'
 import { Tooltip } from './Tooltip'
 import { CommitInfoModal } from './CommitInfoModal'
 import { CommitHoverCard } from './CommitHoverCard'
+import { FindBar } from './JsonModeChatFind'
 
 function ClaudeLoader() {
   return (
@@ -945,24 +946,19 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
     terminalRef.current?.focus()
   }
 
-  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>): void => {
-    if (e.key === 'Escape') {
-      e.preventDefault()
-      closeSearch()
-      return
-    }
-    if (e.key === 'Enter') {
-      e.preventDefault()
-      const addon = searchAddonRef.current
-      if (!addon || !searchQuery) return
-      const opts = { decorations: SEARCH_DECORATIONS }
-      if (e.shiftKey) addon.findPrevious(searchQuery, opts)
-      else addon.findNext(searchQuery, opts)
-    }
+  const handleSearchNext = (): void => {
+    const addon = searchAddonRef.current
+    if (!addon || !searchQuery) return
+    addon.findNext(searchQuery, { decorations: SEARCH_DECORATIONS })
   }
 
-  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
-    const value = e.target.value
+  const handleSearchPrev = (): void => {
+    const addon = searchAddonRef.current
+    if (!addon || !searchQuery) return
+    addon.findPrevious(searchQuery, { decorations: SEARCH_DECORATIONS })
+  }
+
+  const handleSearchQueryChange = (value: string): void => {
     setSearchQuery(value)
     const addon = searchAddonRef.current
     if (!addon) return
@@ -994,30 +990,18 @@ export function XTerminal({ terminalId, cwd, type, agentKind, visible, sessionNa
     >
       <div ref={containerRef} className="w-full h-full" />
       {searchOpen && (
-        <div className="absolute top-2 right-2 flex items-center gap-1 px-2 py-1 rounded-md bg-panel/95 border border-border shadow-lg z-10">
-          <input
-            ref={searchInputRef}
-            type="text"
-            value={searchQuery}
-            onChange={handleSearchChange}
-            onKeyDown={handleSearchKeyDown}
-            placeholder="Find"
-            className="bg-transparent text-xs text-fg-bright outline-none placeholder:text-dim w-40"
+        <div className="absolute top-2 left-2 z-10 pointer-events-auto">
+          <FindBar
+            query={searchQuery}
+            hitIndex={searchResults?.resultIndex ?? 0}
+            hitCount={searchResults?.resultCount ?? 0}
+            placeholder="Find in terminal"
+            inputRef={searchInputRef}
+            onQueryChange={handleSearchQueryChange}
+            onNext={handleSearchNext}
+            onPrev={handleSearchPrev}
+            onClose={closeSearch}
           />
-          <span className="text-xs text-dim tabular-nums min-w-[3rem] text-right">
-            {searchQuery
-              ? searchResults && searchResults.resultCount > 0
-                ? `${searchResults.resultIndex + 1}/${searchResults.resultCount}`
-                : '0/0'
-              : ''}
-          </span>
-          <button
-            onClick={closeSearch}
-            className="p-0.5 rounded text-dim hover:text-fg-bright hover:bg-border transition-colors"
-            aria-label="Close search"
-          >
-            <X className="icon-xs" />
-          </button>
         </div>
       )}
       {loading && (

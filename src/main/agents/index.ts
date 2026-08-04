@@ -1,6 +1,7 @@
 import type { AgentKind } from '../../shared/state/terminals'
 import * as claude from './claude'
 import * as codex from './codex'
+import * as cursor from './cursor'
 
 export type { AgentKind }
 
@@ -41,7 +42,7 @@ export interface AgentModule {
   buildSpawnArgs(opts: AgentSpawnOpts): string
 }
 
-const agents: Record<AgentKind, AgentModule> = { claude, codex }
+const agents: Record<AgentKind, AgentModule> = { claude, codex, cursor }
 
 export function getAgent(kind: AgentKind): AgentModule {
   return agents[kind]

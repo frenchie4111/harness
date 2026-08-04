@@ -38,7 +38,8 @@ import type {
   LocalTransportHandle,
   StateEventListener
 } from '../shared/transport/transport'
-import type { ElectronAPI } from './types'
+import type { ElectronAPI, AgentKind } from './types'
+import type { SidebarDetailPrefsByMode, PreventSleepMode } from '../shared/state/settings'
 
 export type { ElectronOnlyHelpers }
 
@@ -101,7 +102,7 @@ export function buildBackend(
       branchName: string
       initialPrompt?: string
       teleportSessionId?: string
-      agentKind?: 'claude' | 'codex'
+      agentKind?: AgentKind
       model?: string
       checkoutExisting?: boolean
       baseRef?: string
@@ -111,7 +112,7 @@ export function buildBackend(
       repoRoot: string
       prNumber: number
       initialPrompt?: string
-      agentKind?: 'claude' | 'codex'
+      agentKind?: AgentKind
       model?: string
     }) => req('worktrees:runPendingPR', params),
     retryPendingWorktree: (id: string) => req('worktrees:retryPending', id),
@@ -248,9 +249,12 @@ export function buildBackend(
     setClaudeEnvVars: (vars: Record<string, string>) => req('config:setClaudeEnvVars', vars),
     setDefaultAgent: (agent: string) => req('config:setDefaultAgent', agent),
     setCodexCommand: (command: string) => req('config:setCodexCommand', command),
+    setCursorCommand: (command: string) => req('config:setCursorCommand', command),
     setClaudeModel: (model: string | null) => req('config:setClaudeModel', model),
     setCodexModel: (model: string | null) => req('config:setCodexModel', model),
+    setCursorModel: (model: string | null) => req('config:setCursorModel', model),
     setCodexEnvVars: (vars: Record<string, string>) => req('config:setCodexEnvVars', vars),
+    setCursorEnvVars: (vars: Record<string, string>) => req('config:setCursorEnvVars', vars),
     setHarnessMcpEnabled: (enabled: boolean) => req('config:setHarnessMcpEnabled', enabled),
     setAutoApprovePermissions: (enabled: boolean) =>
       req('config:setAutoApprovePermissions', enabled),
@@ -275,9 +279,15 @@ export function buildBackend(
       req('config:setUiScale', value),
     setJsonModeSendOnEnter: (enabled: boolean) =>
       req('config:setJsonModeSendOnEnter', enabled),
+    setAutoScrollToBottom: (enabled: boolean) =>
+      req('config:setAutoScrollToBottom', enabled),
     setJsonModeDefaultPermissionMode: (value: 'default' | 'acceptEdits' | 'plan') =>
       req('config:setJsonModeDefaultPermissionMode', value),
     setAutoSleepMinutes: (value: number) => req('config:setAutoSleepMinutes', value),
+    setPreventSleepMode: (value: PreventSleepMode) =>
+      req('config:setPreventSleepMode', value),
+    setPreventSleepUntil: (value: number | null) =>
+      req('config:setPreventSleepUntil', value),
     setAutoUpdateEnabled: (enabled: boolean) => req('config:setAutoUpdateEnabled', enabled),
     setWarnBeforeQuitting: (enabled: boolean) => req('config:setWarnBeforeQuitting', enabled),
     setExpandedDiagnosticLoggingEnabled: (enabled: boolean) =>
@@ -377,8 +387,10 @@ export function buildBackend(
     setWorktreeBase: (mode: 'remote' | 'local') => req('config:setWorktreeBase', mode),
     setMergeStrategy: (strategy: 'squash' | 'merge-commit' | 'fast-forward') =>
       req('config:setMergeStrategy', strategy),
-    setWorktreeDetail: (detail: 'diff' | 'age' | 'pr' | 'none') =>
-      req('config:setWorktreeDetail', detail),
+    setSidebarDensity: (density: 'compact' | 'comfy') =>
+      req('config:setSidebarDensity', density),
+    setSidebarDetails: (prefs: SidebarDetailPrefsByMode) =>
+      req('config:setSidebarDetails', prefs),
 
     setEditor: (editorId: string) => req('config:setEditor', editorId),
     getAvailableEditors: () => req('config:getAvailableEditors'),
@@ -427,6 +439,11 @@ export function buildBackend(
     getPerfMetrics: () => req('perf:getMetrics'),
     perfLogSlowRender: (id: string, ms: number, phase: string) =>
       sig('perf:logSlowRender', id, ms, phase),
+
+    getGitHubApiLog: () => req('debug:getGitHubApiLog'),
+    clearGitHubApiLog: () => req('debug:clearGitHubApiLog'),
+    onGitHubApiLogAppended: (callback: (entry: unknown) => void) =>
+      onActiveSignal('debug:githubApiLogAppended', (entry) => callback(entry)),
 
     logError: (
       label: string,
@@ -481,6 +498,8 @@ export function buildBackend(
       onLocalSignal('menu:newProject', () => callback()),
     onOpenReportIssue: (callback: () => void) =>
       onLocalSignal('app:openReportIssue', () => callback()),
+    onOpenGitHubApiLog: (callback: () => void) =>
+      onLocalSignal('app:openGitHubApiLog', () => callback()),
     onDebugCrashFocusedTab: (callback: () => void) =>
       onLocalSignal('app:debugCrashFocusedTab', () => callback()),
     onDebugPreviewOnboarding: (callback: () => void) =>
@@ -493,6 +512,10 @@ export function buildBackend(
       onLocalSignal('app:uiScaleDown', () => callback()),
     onUiScaleReset: (callback: () => void) =>
       onLocalSignal('app:uiScaleReset', () => callback()),
+    onFullscreenChanged: (callback: (isFullscreen: boolean) => void) =>
+      onLocalSignal('window:fullscreenChanged', (...args: unknown[]) =>
+        callback(Boolean(args[0]))
+      ),
 
     acceptHooks: () => req('hooks:accept'),
     declineHooks: () => req('hooks:decline'),

@@ -1,3 +1,11 @@
+// Bump libuv's threadpool from its default of 4 so background filesystem
+// work (fs.promises.rm for trashed worktrees, other unlinks) can
+// parallelize on multi-core machines. Must run before any import that
+// could touch the threadpool. Respect an explicit override — power users
+// setting UV_THREADPOOL_SIZE themselves shouldn't have their choice
+// silently upgraded.
+process.env.UV_THREADPOOL_SIZE = process.env.UV_THREADPOOL_SIZE || '16'
+
 import { existsSync, lstatSync, readFileSync } from 'fs'
 import { createRequire } from 'module'
 import { randomUUID } from 'crypto'
@@ -25,13 +33,21 @@ import { parseCliFlags, USAGE, type CliFlags } from './cli-args'
 import { PlaywrightBrowserManager } from './browser-manager-playwright'
 import type { BrowserManagerLike } from './browser-manager-types'
 import { PerfMonitor } from './perf-monitor'
-import { setGitHubApiRecorder, setGitHubApiLoggingEnabled } from './github-recorder'
+import {
+  setGitHubApiRecorder,
+  setGitHubApiLoggingEnabled,
+  getGitHubApiLogSnapshot,
+  clearGitHubApiLog,
+  subscribeGitHubApiLog
+} from './github-recorder'
 import { PRPoller } from './pr-poller'
 import { WorktreesFSM } from './worktrees-fsm'
 import { WorktreeDeletionFSM } from './worktree-deletion-fsm'
+import { sweepWorktreeTrashOnBoot } from './worktree-trash'
 import { PanesFSM, stripTransientTabFields } from './panes-fsm'
 import { ActivityDeriver } from './activity-deriver'
 import { AutoSleepMonitor } from './auto-sleep-monitor'
+import { WakeLockController } from './wake-lock-controller'
 import { WorktreeWatcher } from './worktree-watcher'
 import { FileContentWatcher } from './file-content-watcher'
 import { SnoozeTimer } from './snooze-timer'
@@ -56,7 +72,7 @@ import {
   DEFAULT_TERMINAL_FONT_SIZE,
   DEFAULT_WORKTREE_BASE,
   DEFAULT_MERGE_STRATEGY,
-  DEFAULT_WORKTREE_DETAIL,
+  DEFAULT_SIDEBAR_DENSITY,
   DEFAULT_HARNESS_SYSTEM_PROMPT,
   DEFAULT_HARNESS_SYSTEM_PROMPT_MAIN,
   pruneTerminalHistory,
@@ -77,7 +93,11 @@ import { normalizeAlias } from '../shared/state/aliases'
 import {
   DEFAULT_LIGHT_THEME,
   DEFAULT_DARK_THEME,
-  DEFAULT_PR_REVIEW_PROMPT
+  DEFAULT_PR_REVIEW_PROMPT,
+  DEFAULT_SIDEBAR_DETAILS,
+  type SidebarDetailPrefs,
+  type SidebarDetailPrefsByMode,
+  type PreventSleepMode
 } from '../shared/state/settings'
 import { watchStatusDir } from './hooks'
 import { getAgent, type AgentKind } from './agents'
@@ -101,7 +121,9 @@ import { buildInitialAppState } from './build-initial-state'
 import { AnnouncementsPoller } from './announcements-poller'
 
 function toAgentKind(value: string | undefined): AgentKind {
-  return value === 'codex' ? 'codex' : 'claude'
+  if (value === 'codex') return 'codex'
+  if (value === 'cursor') return 'cursor'
+  return 'claude'
 }
 
 // Dev-restart resilience: electron-vite closes our stdout/stderr pipe on
@@ -925,6 +947,11 @@ const activityDeriver = new ActivityDeriver(store)
 // drives panesFSM.sleepJsonClaudeTab.
 const autoSleepMonitor = new AutoSleepMonitor(store, panesFSM)
 
+// Holds a power-save blocker while the configured prevent-sleep mode
+// (or the temporary timer) wants the machine awake. Pure side effect —
+// subscribes to the store, never owns slice state.
+const wakeLockController = new WakeLockController(store)
+
 /** Install agent status hooks at the user-scope settings file for both
  *  supported agents. Called once when consent flips to 'accepted'. The
  *  hook command is env-gated on $HARNESS_TERMINAL_ID, so it no-ops for
@@ -933,13 +960,13 @@ function installHooksGlobally(): void {
   // installHooks() is idempotent — it strips any existing Harness entries
   // before writing a fresh one — so calling it unconditionally also
   // collapses duplicate entries left by earlier buggy install passes.
-  for (const agent of [getAgent('claude'), getAgent('codex')]) {
+  for (const agent of [getAgent('claude'), getAgent('codex'), getAgent('cursor')]) {
     agent.installHooks()
   }
 }
 
 function uninstallHooksGlobally(): void {
-  for (const agent of [getAgent('claude'), getAgent('codex')]) {
+  for (const agent of [getAgent('claude'), getAgent('codex'), getAgent('cursor')]) {
     agent.uninstallHooks()
   }
 }
@@ -1262,7 +1289,7 @@ function registerIpcHandlers(): void {
       branchName: string
       initialPrompt?: string
       teleportSessionId?: string
-      agentKind?: 'claude' | 'codex'
+      agentKind?: AgentKind
       model?: string
       checkoutExisting?: boolean
       baseRef?: string
@@ -1279,7 +1306,7 @@ function registerIpcHandlers(): void {
         repoRoot: string
         prNumber: number
         initialPrompt?: string
-        agentKind?: 'claude' | 'codex'
+        agentKind?: AgentKind
         model?: string
       }
     ) => {
@@ -1790,7 +1817,8 @@ function registerIpcHandlers(): void {
   })
 
   transport.onRequest('config:setDefaultAgent', (_ctx, agent: string) => {
-    const kind = agent === 'codex' ? 'codex' : 'claude'
+    const kind: AgentKind =
+      agent === 'codex' ? 'codex' : agent === 'cursor' ? 'cursor' : 'claude'
     config.defaultAgent = kind
     saveConfig(config)
     store.dispatch({ type: 'settings/defaultAgentChanged', payload: kind })
@@ -1808,6 +1836,21 @@ function registerIpcHandlers(): void {
     store.dispatch({
       type: 'settings/codexCommandChanged',
       payload: config.codexCommand || 'codex'
+    })
+    return true
+  })
+
+  transport.onRequest('config:setCursorCommand', (_ctx, command: string) => {
+    const trimmed = command.trim()
+    if (!trimmed || trimmed === 'agent') {
+      delete config.cursorCommand
+    } else {
+      config.cursorCommand = trimmed
+    }
+    saveConfig(config)
+    store.dispatch({
+      type: 'settings/cursorCommandChanged',
+      payload: config.cursorCommand || 'agent'
     })
     return true
   })
@@ -1834,6 +1877,17 @@ function registerIpcHandlers(): void {
     return true
   })
 
+  transport.onRequest('config:setCursorModel', (_ctx, model: string | null) => {
+    if (model) {
+      config.cursorModel = model
+    } else {
+      delete config.cursorModel
+    }
+    saveConfig(config)
+    store.dispatch({ type: 'settings/cursorModelChanged', payload: model })
+    return true
+  })
+
   transport.onRequest('config:setCodexEnvVars', (_ctx, vars: Record<string, string>) => {
     if (!vars || Object.keys(vars).length === 0) {
       delete config.codexEnvVars
@@ -1842,6 +1896,17 @@ function registerIpcHandlers(): void {
     }
     saveConfig(config)
     store.dispatch({ type: 'settings/codexEnvVarsChanged', payload: config.codexEnvVars || {} })
+    return true
+  })
+
+  transport.onRequest('config:setCursorEnvVars', (_ctx, vars: Record<string, string>) => {
+    if (!vars || Object.keys(vars).length === 0) {
+      delete config.cursorEnvVars
+    } else {
+      config.cursorEnvVars = vars
+    }
+    saveConfig(config)
+    store.dispatch({ type: 'settings/cursorEnvVarsChanged', payload: config.cursorEnvVars || {} })
     return true
   })
 
@@ -2348,23 +2413,66 @@ function registerIpcHandlers(): void {
   )
 
   transport.onRequest(
-    'config:setWorktreeDetail',
-    (_ctx, detail: 'diff' | 'age' | 'pr' | 'none') => {
-      if (
-        detail !== 'diff' &&
-        detail !== 'age' &&
-        detail !== 'pr' &&
-        detail !== 'none'
-      ) {
-        return false
-      }
-      if (detail === DEFAULT_WORKTREE_DETAIL) {
-        delete config.worktreeDetail
+    'config:setSidebarDensity',
+    (_ctx, density: 'compact' | 'comfy') => {
+      if (density !== 'compact' && density !== 'comfy') return false
+      if (density === DEFAULT_SIDEBAR_DENSITY) {
+        delete config.sidebarDensity
       } else {
-        config.worktreeDetail = detail
+        config.sidebarDensity = density
       }
       saveConfig(config)
-      store.dispatch({ type: 'settings/worktreeDetailChanged', payload: detail })
+      store.dispatch({ type: 'settings/sidebarDensityChanged', payload: density })
+      return true
+    }
+  )
+
+  transport.onRequest(
+    'config:setSidebarDetails',
+    (_ctx, prefs: SidebarDetailPrefsByMode) => {
+      if (!prefs || typeof prefs !== 'object') return false
+      const normalizeMode = (
+        mode: 'compact' | 'comfy',
+        input: Partial<SidebarDetailPrefs> | undefined
+      ): SidebarDetailPrefs => {
+        const defaults = DEFAULT_SIDEBAR_DETAILS[mode]
+        const src = input || {}
+        const bool = (k: keyof SidebarDetailPrefs): boolean =>
+          typeof src[k] === 'boolean' ? (src[k] as boolean) : defaults[k]
+        return {
+          repoLabel: bool('repoLabel'),
+          branch: bool('branch'),
+          age: bool('age'),
+          diff: bool('diff'),
+          milestone: bool('milestone'),
+          prNumber: bool('prNumber'),
+          assignee: bool('assignee')
+        }
+      }
+      const next: SidebarDetailPrefsByMode = {
+        compact: normalizeMode('compact', prefs.compact),
+        comfy: normalizeMode('comfy', prefs.comfy)
+      }
+      const modeIsDefault = (mode: 'compact' | 'comfy'): boolean => {
+        const cur = next[mode]
+        const def = DEFAULT_SIDEBAR_DETAILS[mode]
+        return (
+          cur.repoLabel === def.repoLabel &&
+          cur.branch === def.branch &&
+          cur.age === def.age &&
+          cur.diff === def.diff &&
+          cur.milestone === def.milestone &&
+          cur.prNumber === def.prNumber &&
+          cur.assignee === def.assignee
+        )
+      }
+      if (modeIsDefault('compact') && modeIsDefault('comfy')) {
+        delete config.sidebarDetails
+      } else {
+        config.sidebarDetails = next
+      }
+      saveConfig(config)
+      store.dispatch({ type: 'settings/sidebarDetailsChanged', payload: next })
       return true
     }
   )
@@ -2570,9 +2678,12 @@ function registerIpcHandlers(): void {
     }): string => {
       const kind = toAgentKind(agentKind)
       const agent = getAgent(kind)
-      const command = kind === 'claude'
-        ? (config.claudeCommand || agent.defaultCommand)
-        : (config.codexCommand || agent.defaultCommand)
+      const command =
+        kind === 'claude'
+          ? (config.claudeCommand || agent.defaultCommand)
+          : kind === 'codex'
+            ? (config.codexCommand || agent.defaultCommand)
+            : (config.cursorCommand || agent.defaultCommand)
       const mcpConfigPath = writeMcpConfigForTerminal(
         opts.terminalId,
         resolveCallerScope(opts.terminalId)
@@ -2592,8 +2703,10 @@ function registerIpcHandlers(): void {
         systemPrompt = launch.systemPrompt
         tuiFullscreen = launch.tuiFullscreen
         model = launch.model ?? null
-      } else {
+      } else if (kind === 'codex') {
         model = override || config.codexModel || null
+      } else {
+        model = override || config.cursorModel || null
       }
 
       return agent.buildSpawnArgs({ ...opts, command, mcpConfigPath, model, systemPrompt, tuiFullscreen })
@@ -2691,6 +2804,20 @@ function registerIpcHandlers(): void {
       ms: +ms.toFixed(2),
       phase
     })
+  })
+
+  // GitHub API debug log — ring buffer + per-minute rollups + last-seen
+  // rate limit. Renderer polls `debug:getGitHubApiLog` on 1s (matching
+  // the perf-monitor polling cadence). The append signal is fired for
+  // clients that want to reduce poll latency on bursts; the current
+  // renderer panel doesn't use it, but it's cheap to expose.
+  transport.onRequest('debug:getGitHubApiLog', (_ctx) => getGitHubApiLogSnapshot())
+  transport.onRequest('debug:clearGitHubApiLog', (_ctx) => {
+    clearGitHubApiLog()
+    return true
+  })
+  subscribeGitHubApiLog((entry) => {
+    transport.sendSignal('debug:githubApiLogAppended', entry)
   })
 
   // Renderer error-boundary reporting — the preload flattens Error/ErrorInfo
@@ -2819,6 +2946,7 @@ function registerIpcHandlers(): void {
       const isAgent = !!agentKind
       const extraEnv = agentKind === 'claude' ? config.claudeEnvVars
         : agentKind === 'codex' ? config.codexEnvVars
+        : agentKind === 'cursor' ? config.cursorEnvVars
         : undefined
       const existed = ptyManager.hasTerminal(id)
       ptyManager.create(id, cwd, cmd, args, extraEnv, !isAgent, cols, rows)
@@ -3213,6 +3341,24 @@ function registerIpcHandlers(): void {
   )
 
   transport.onRequest(
+    'config:setAutoScrollToBottom',
+    (_ctx, value: boolean) => {
+      const next = value !== false
+      if (next) {
+        delete config.autoScrollToBottom
+      } else {
+        config.autoScrollToBottom = false
+      }
+      saveConfig(config)
+      store.dispatch({
+        type: 'settings/autoScrollToBottomChanged',
+        payload: next
+      })
+      return true
+    }
+  )
+
+  transport.onRequest(
     'config:setJsonModeDefaultPermissionMode',
     (_ctx, value: 'default' | 'acceptEdits' | 'plan') => {
       const next: 'default' | 'acceptEdits' | 'plan' =
@@ -3245,6 +3391,32 @@ function registerIpcHandlers(): void {
       type: 'settings/autoSleepMinutesChanged',
       payload: rounded
     })
+    return true
+  })
+
+  // ---- Prevent-sleep (wake-lock) -------------------------------------
+  // Mode is persisted; the temporary "+1h" timer (preventSleepUntil) is
+  // session-only and dispatched without saving.
+  const PREVENT_SLEEP_MODES: PreventSleepMode[] = ['off', 'while-agents-running', 'always']
+
+  transport.onRequest('config:setPreventSleepMode', (_ctx, value: PreventSleepMode) => {
+    if (!PREVENT_SLEEP_MODES.includes(value)) return false
+    if (value === 'off') delete config.preventSleepMode
+    else config.preventSleepMode = value
+    saveConfig(config)
+    store.dispatch({ type: 'settings/preventSleepModeChanged', payload: value })
+    return true
+  })
+
+  transport.onRequest('config:setPreventSleepUntil', (_ctx, value: number | null) => {
+    // null / invalid → clear; a positive epoch-ms → arm. Session-only: never
+    // written to config.json — the WakeLockController owns expiry and the
+    // timer resets on relaunch by design.
+    const next =
+      typeof value === 'number' && Number.isFinite(value) && value > 0
+        ? Math.floor(value)
+        : null
+    store.dispatch({ type: 'settings/preventSleepUntilChanged', payload: next })
     return true
   })
 
@@ -3702,6 +3874,8 @@ async function runBoot(): Promise<void> {
 
   autoSleepMonitor.start()
 
+  wakeLockController.start()
+
   // Resolve the GitHub token (PAT → gh CLI → none) before the PR poller
   // makes its first call. The poller's initial refreshAll waits on this.
   void (async () => {
@@ -3725,6 +3899,7 @@ async function runBoot(): Promise<void> {
   void (async () => {
     const claudeAgent = getAgent('claude')
     const codexAgent = getAgent('codex')
+    const cursorAgent = getAgent('cursor')
 
     // 1. Decide what the user's previous consent was.
     //    - Explicit persisted value wins (including 'declined').
@@ -3733,7 +3908,7 @@ async function runBoot(): Promise<void> {
     //      legacy per-worktree markers as evidence of a prior accept.
     let consent: 'pending' | 'accepted' | 'declined' | undefined = config.hooksConsent
     if (!consent) {
-      if (claudeAgent.hooksInstalled() || codexAgent.hooksInstalled()) {
+      if (claudeAgent.hooksInstalled() || codexAgent.hooksInstalled() || cursorAgent.hooksInstalled()) {
         consent = 'accepted'
       } else {
         let foundLegacy = false
@@ -3746,6 +3921,7 @@ async function runBoot(): Promise<void> {
             // run the strip and treat the "changed" bit as evidence.
             if (claudeAgent.stripHooksFromWorktree(wt.path)) foundLegacy = true
             if (codexAgent.stripHooksFromWorktree(wt.path)) foundLegacy = true
+            if (cursorAgent.stripHooksFromWorktree(wt.path)) foundLegacy = true
           }
         }
         consent = foundLegacy ? 'accepted' : 'pending'
@@ -3774,6 +3950,7 @@ async function runBoot(): Promise<void> {
         for (const wt of trees) {
           claudeAgent.stripHooksFromWorktree(wt.path)
           codexAgent.stripHooksFromWorktree(wt.path)
+          cursorAgent.stripHooksFromWorktree(wt.path)
         }
       }
       config.hooksMigratedToGlobal = true
@@ -3800,6 +3977,11 @@ async function runBoot(): Promise<void> {
   }
   pruneTerminalHistory(keepIds)
   pruneMcpConfigs(keepIds)
+
+  // Drain any worktree-trash entries left by a mid-delete crash. The
+  // sweep dispatches each entry to the fs threadpool without awaiting,
+  // so this call resolves immediately and doesn't block boot.
+  void sweepWorktreeTrashOnBoot()
 
   // Local HTTP control server for the bundled harness-control MCP bridge.
   startControlServer({
@@ -4001,7 +4183,7 @@ async function runBoot(): Promise<void> {
           repoRoot: string
           worktree: { path: string }
           initialPrompt?: string
-          agentKind?: 'claude' | 'codex'
+          agentKind?: AgentKind
           model?: string
         }
         panesFSM.ensureInitialized(p.worktree.path, {
