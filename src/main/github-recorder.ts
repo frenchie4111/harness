@@ -15,6 +15,13 @@ type LogSubscriber = (entry: GitHubApiEntry) => void
 export const MAX_ENTRIES = 2000
 const MINUTE_BUCKETS = 60
 
+// Ceiling on any single GitHub request. Without this a mid-request hang
+// stalls the PR poller forever (repro: monorepo with ~50 worktrees
+// hitting GitHub 504s), leaving locally-merged worktrees stuck in
+// "Active" indefinitely. 30s is the ceiling for anything — we'd rather
+// fail fast and let the next poll retry.
+const DEFAULT_TIMEOUT_MS = 30_000
+
 // Redaction note: `init.headers` is INTENTIONALLY never captured, because
 // it carries the user's GitHub PAT in the Authorization header. Any future
 // "capture headers for debugging" toggle needs to explicitly redact
@@ -196,8 +203,17 @@ export async function trackedFetch(
   const cleanUrl = sanitizeUrl(url)
   const operationName = extractOperationName(init, url)
 
+  // Timeout via AbortController. Chain the caller's signal (if any) via
+  // AbortSignal.any so either side can cancel the fetch. AbortSignal.any
+  // is available in Node 20+ and modern Electron.
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS)
+  const signal = init?.signal
+    ? AbortSignal.any([init.signal, controller.signal])
+    : controller.signal
+
   try {
-    const res = await fetch(url, init)
+    const res = await fetch(url, { ...init, signal })
     const durationMs = Date.now() - started
     const rl = extractRateLimit(res.headers)
     const entry: GitHubApiEntry = {
@@ -223,7 +239,17 @@ export async function trackedFetch(
     return res
   } catch (err) {
     const durationMs = Date.now() - started
-    const message = err instanceof Error ? err.message : String(err)
+    // Distinguish our timeout from a caller-initiated abort so downstream
+    // log lines are actionable ("timeout" vs generic AbortError).
+    const timedOut =
+      controller.signal.aborted &&
+      (!init?.signal || !init.signal.aborted) &&
+      err instanceof Error &&
+      err.name === 'AbortError'
+    const originalMessage = err instanceof Error ? err.message : String(err)
+    const message = timedOut
+      ? `GitHub request timed out after ${DEFAULT_TIMEOUT_MS}ms: ${method} ${shortPath(cleanUrl)}`
+      : originalMessage
     const entry: GitHubApiEntry = {
       id: nextId++,
       startedAt: started,
@@ -242,6 +268,9 @@ export async function trackedFetch(
       )
     }
     recorder?.()
+    if (timedOut) throw new Error(message)
     throw err
+  } finally {
+    clearTimeout(timer)
   }
 }
