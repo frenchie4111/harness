@@ -26,7 +26,7 @@ export interface PRSummary {
    *  (no rollup data on the head commit yet). */
   checksOverall?: 'success' | 'failure' | 'pending' | 'none'
   /** Open/closed/merged. Only populated by the single-PR lookup
-   *  (getOpenPRByNumber); list/poller producers leave it undefined. */
+   *  (getPRByNumber); list/poller producers leave it undefined. */
   state?: 'open' | 'closed' | 'merged'
 }
 

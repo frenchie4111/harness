@@ -23,7 +23,7 @@ vi.mock('child_process', async () => {
   return { execFile }
 })
 
-import { getRepoContext, fetchPRStatusesForRepo, mergePR, chunkPRRequests, getOpenPRByNumber } from './github'
+import { getRepoContext, fetchPRStatusesForRepo, mergePR, chunkPRRequests, getPRByNumber } from './github'
 import type { PRStatusRequest } from './github'
 import { getCachedToken } from './github-auth'
 
@@ -603,7 +603,7 @@ describe('chunkPRRequests', () => {
   })
 })
 
-describe('getOpenPRByNumber', () => {
+describe('getPRByNumber', () => {
   const fetchSpy = vi.spyOn(globalThis, 'fetch')
 
   // forkParentCache is module-level and persists across tests, so each test
@@ -646,7 +646,7 @@ describe('getOpenPRByNumber', () => {
     mocks.originUrl = 'git@github.com:o1/r1.git\n'
     fetchSpy.mockResolvedValueOnce(mockResponse(200, { fork: false }))
     fetchSpy.mockResolvedValueOnce(mockResponse(200, pullBody({ number: 182 })))
-    const res = await getOpenPRByNumber('/wt', 182)
+    const res = await getPRByNumber('/wt', 182)
     expect(res.ok).toBe(true)
     if (res.ok) {
       expect(res.pr.number).toBe(182)
@@ -664,7 +664,7 @@ describe('getOpenPRByNumber', () => {
       mockResponse(200, { fork: true, parent: { owner: { login: 'upstreamA' }, name: 'proj' } })
     )
     fetchSpy.mockResolvedValueOnce(mockResponse(200, pullBody({ number: 5 })))
-    const res = await getOpenPRByNumber('/wt', 5)
+    const res = await getPRByNumber('/wt', 5)
     expect(res.ok).toBe(true)
     expect(pullsCall()?.[0]).toBe('https://api.github.com/repos/upstreamA/proj/pulls/5')
   })
@@ -675,7 +675,7 @@ describe('getOpenPRByNumber', () => {
     fetchSpy.mockResolvedValueOnce(
       mockResponse(200, pullBody({ state: 'closed', merged: false, merged_at: null }))
     )
-    const res = await getOpenPRByNumber('/wt', 182)
+    const res = await getPRByNumber('/wt', 182)
     expect(res.ok).toBe(true)
     if (res.ok) expect(res.pr.state).toBe('closed')
   })
@@ -686,7 +686,7 @@ describe('getOpenPRByNumber', () => {
     fetchSpy.mockResolvedValueOnce(
       mockResponse(200, pullBody({ state: 'closed', merged: true, merged_at: '2026-01-01T00:00:00Z' }))
     )
-    const res = await getOpenPRByNumber('/wt', 182)
+    const res = await getPRByNumber('/wt', 182)
     expect(res.ok).toBe(true)
     if (res.ok) expect(res.pr.state).toBe('merged')
   })
@@ -695,7 +695,7 @@ describe('getOpenPRByNumber', () => {
     mocks.originUrl = 'git@github.com:o4/r4.git\n'
     fetchSpy.mockResolvedValueOnce(mockResponse(200, { fork: false }))
     fetchSpy.mockResolvedValueOnce(mockResponse(404, { message: 'Not Found' }))
-    const res = await getOpenPRByNumber('/wt', 999)
+    const res = await getPRByNumber('/wt', 999)
     expect(res).toEqual({ ok: false, reason: 'not-found' })
   })
 
@@ -704,7 +704,7 @@ describe('getOpenPRByNumber', () => {
     vi.mocked(getCachedToken).mockReturnValue(null)
     // getRepoContext still fires its fork-detection fetch before the token check.
     fetchSpy.mockResolvedValueOnce(mockResponse(200, { fork: false }))
-    const res = await getOpenPRByNumber('/wt', 182)
+    const res = await getPRByNumber('/wt', 182)
     expect(res).toEqual({ ok: false, reason: 'no-token' })
     expect(pullsCall()).toBeUndefined()
   })
@@ -713,7 +713,7 @@ describe('getOpenPRByNumber', () => {
     mocks.originUrl = 'git@github.com:o6/r6.git\n'
     fetchSpy.mockResolvedValueOnce(mockResponse(200, { fork: false }))
     fetchSpy.mockResolvedValueOnce(mockResponse(500, { message: 'oops' }))
-    const res = await getOpenPRByNumber('/wt', 182)
+    const res = await getPRByNumber('/wt', 182)
     expect(res.ok).toBe(false)
     if (!res.ok) expect(res.reason).toBe('error')
   })
