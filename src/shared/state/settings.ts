@@ -158,6 +158,19 @@ export const DEFAULT_PR_REVIEW_PROMPT =
  *  timer overlay covers the "also keep awake right now" case. */
 export type PreventSleepMode = 'off' | 'while-agents-running' | 'always'
 
+/** Default kickoff prompt template for "Spawn worktree from ticket". Substituted
+ *  variables: {title}, {description}, {url}, {externalId}, {providerType}. */
+export const DEFAULT_TICKET_WORKTREE_PROMPT_TEMPLATE =
+  `You're working on this ticket:
+
+Title: {title}
+Source: {providerType} {externalId}
+URL: {url}
+
+{description}
+
+Read the ticket via your own tools (gh CLI for GitHub issues, the Notion MCP for Notion) to pick up comments, links, and any context that isn't in the summary above. Then plan the change and confirm with me before making large edits.`
+
 export interface SettingsState {
   /** Whether the active theme is the light theme, the dark theme, or follows
    *  the OS appearance. Default 'system'. */
@@ -280,6 +293,13 @@ export interface SettingsState {
    *  PR-creation screen is seeded from this value but edits there are
    *  one-shot — managing the default happens in Settings. */
   prReviewPrompt: string
+  /** Template used to render the kickoff prompt when a worktree is spawned
+   *  from a ticket. Supports `{title}` / `{description}` / `{url}` /
+   *  `{externalId}` / `{providerType}` placeholders. The picker substitutes
+   *  these against the chosen ticket and drops the result into the New
+   *  Worktree textarea, where the user can edit per-spawn before submitting.
+   *  Editable globally in Settings → Worktrees. */
+  ticketWorktreePromptTemplate: string
   /** Announcement ids the user has dismissed with the per-banner `×`.
    *  Used to filter the fetched feed down to the most recent unseen
    *  entry. Append-only — we never garbage-collect because entries fall
@@ -364,6 +384,7 @@ export type SettingsEvent =
   | { type: 'settings/snoozeDefaultDaysChanged'; payload: number }
   | { type: 'settings/expandedDiagnosticLoggingEnabledChanged'; payload: boolean }
   | { type: 'settings/prReviewPromptChanged'; payload: string }
+  | { type: 'settings/ticketWorktreePromptTemplateChanged'; payload: string }
   | { type: 'settings/announcementDismissed'; payload: string }
   | { type: 'settings/announcementsMutedChanged'; payload: boolean }
   | { type: 'settings/preventSleepModeChanged'; payload: PreventSleepMode }
@@ -428,6 +449,7 @@ export const initialSettings: SettingsState = {
   snoozeDefaultDays: 7,
   expandedDiagnosticLoggingEnabled: false,
   prReviewPrompt: DEFAULT_PR_REVIEW_PROMPT,
+  ticketWorktreePromptTemplate: DEFAULT_TICKET_WORKTREE_PROMPT_TEMPLATE,
   dismissedAnnouncementIds: [],
   announcementsMuted: false,
   preventSleepMode: 'off',
@@ -547,6 +569,8 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
       return { ...state, expandedDiagnosticLoggingEnabled: event.payload }
     case 'settings/prReviewPromptChanged':
       return { ...state, prReviewPrompt: event.payload }
+    case 'settings/ticketWorktreePromptTemplateChanged':
+      return { ...state, ticketWorktreePromptTemplate: event.payload }
     case 'settings/announcementDismissed': {
       if (state.dismissedAnnouncementIds.includes(event.payload)) return state
       return {

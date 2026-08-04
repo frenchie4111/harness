@@ -11,10 +11,11 @@ import { HotkeyBadge } from './HotkeyBadge'
 import { useMetaHeld } from '../hooks/useMetaHeld'
 import type { Action } from '../hotkeys'
 import { ContextMenu, type ContextMenuItem } from './ContextMenu'
-import { useAliasForPath, useAppState } from '../store'
+import { useAliasForPath, useAppState, useCachedTicket, useTicketProviders, useWorktreeLinkedTicket } from '../store'
 import { useBackend } from '../backend'
 import { displayLabel } from '../worktree-display'
 import { ALIAS_MAX_LEN } from '../../shared/state/aliases'
+import { TicketProviderIcon } from './TicketProvidersSettings'
 
 interface WorktreeTabProps {
   worktree: Worktree
@@ -204,6 +205,7 @@ export function WorktreeTab({ worktree, isActive, status, pendingTool, shellActi
                   stale
                 </span>
               )}
+              <LinkedTicketChip worktreePath={worktree.path} />
             </div>
           </Tooltip>
         )}
@@ -375,5 +377,53 @@ function AliasEditor({ initialValue, onCommit, onCancel }: AliasEditorProps): JS
       onBlur={() => onCommit(value)}
       className="text-sm font-medium bg-surface border border-border-strong rounded px-1 py-0 w-full outline-none focus:border-accent"
     />
+  )
+}
+
+interface LinkedTicketChipProps {
+  worktreePath: string
+}
+
+function LinkedTicketChip({ worktreePath }: LinkedTicketChipProps): JSX.Element | null {
+  const link = useWorktreeLinkedTicket(worktreePath)
+  const cached = useCachedTicket(link)
+  const providers = useTicketProviders()
+  const backend = useBackend()
+
+  useEffect(() => {
+    if (link && !cached) {
+      void backend.ticketsGet(link.providerId, link.externalId)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [link])
+
+  if (!link) return null
+  const provider = providers.find((p) => p.id === link.providerId) ?? null
+  const title = cached?.title ?? `#${link.externalId}`
+  const tooltipBody = cached
+    ? `${cached.title} (${link.externalId}${provider ? ` · ${provider.label}` : ''})`
+    : `${link.externalId}${provider ? ` · ${provider.label}` : ''}`
+
+  const handleClick = (e: React.MouseEvent): void => {
+    e.stopPropagation()
+    if (cached?.url) backend.openExternal(cached.url)
+  }
+
+  return (
+    <Tooltip label={tooltipBody} side="bottom">
+      <button
+        type="button"
+        onClick={handleClick}
+        className="ml-1 inline-flex items-center gap-1 max-w-[8rem] shrink min-w-0 rounded-full px-1.5 py-0.5 text-xs bg-panel-raised border border-border-strong text-dim hover:text-fg hover:border-accent transition-colors cursor-pointer"
+        aria-label={`Linked ticket: ${tooltipBody}`}
+      >
+        {provider ? (
+          <TicketProviderIcon type={provider.type} className="icon-2xs shrink-0" />
+        ) : (
+          <span className="w-2 h-2 rounded-full bg-dim shrink-0" />
+        )}
+        <span className="truncate">{title}</span>
+      </button>
+    </Tooltip>
   )
 }

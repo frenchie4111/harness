@@ -22,6 +22,10 @@ import {
 import type { CostsState } from '../shared/state/costs'
 import type { SnoozeEntry } from '../shared/state/snooze'
 import type { PreventSleepMode } from '../shared/state/settings'
+import type {
+  TicketProviderConfig,
+  WorktreeTicketLink
+} from '../shared/tickets'
 
 export type { PersistedPane, PersistedPaneNode, PersistedTab }
 
@@ -219,6 +223,11 @@ export interface Config {
   // Default kickoff prompt for "Open PR as worktree" / MCP create_worktree
   // with prNumber. Absent = use the bundled DEFAULT_PR_REVIEW_PROMPT.
   prReviewPrompt?: string
+  // Template used when spawning a worktree from a ticket. Supports
+  // {title} / {description} / {url} / {externalId} / {providerType}
+  // placeholders. Absent = use the bundled
+  // DEFAULT_TICKET_WORKTREE_PROMPT_TEMPLATE.
+  ticketWorktreePromptTemplate?: string
   // When false, Claude sessions spawn without CLAUDE_CODE_NO_FLICKER=1, so they
   // use the inline (non-fullscreen) TUI mode. Default is enabled (undefined/true).
   claudeTuiFullscreen?: boolean
@@ -316,6 +325,13 @@ export interface Config {
   // session is processing | always. Default 'off'. The transient "+1h" timer
   // (preventSleepUntil) is session-only and deliberately NOT persisted here.
   preventSleepMode?: PreventSleepMode
+  // Configured ticket providers, keyed by stable Harness-internal uuid.
+  // Auth tokens for each provider live in secrets.enc under
+  // `ticket-provider-token:<id>`, NEVER inline. The renderer reads via
+  // the `ticketProviders` slice; this field is the disk representation.
+  ticketProviders?: Record<string, TicketProviderConfig>
+  // Side-table keyed by worktree absolute path → linked-ticket tuple.
+  worktreeTicketLinks?: Record<string, WorktreeTicketLink>
 }
 
 export const DEFAULT_WORKTREE_BASE: 'remote' | 'local' = 'remote'

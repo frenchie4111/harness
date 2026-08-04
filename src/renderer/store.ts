@@ -24,7 +24,7 @@
 // per-backend store applies it, and any component reading via the
 // active backend's hooks re-renders.
 
-import { useSyncExternalStore } from 'react'
+import { useMemo, useSyncExternalStore } from 'react'
 import {
   initialState,
   mergeWireSnapshot,
@@ -33,6 +33,11 @@ import {
   type StateEvent,
   type WireSnapshotState
 } from '../shared/state'
+import type {
+  Ticket,
+  TicketProviderConfig,
+  WorktreeTicketLink
+} from '../shared/tickets'
 import type { LocalTransportHandle, BackendConnection } from './types'
 import { WebSocketClientTransport } from '../shared/transport/transport-websocket'
 import { initBackend, getBackend } from './backend'
@@ -670,10 +675,63 @@ export function useBrowser() {
   return useAppState((s) => s.browser)
 }
 
-/** The boot-time config.json load error, or null on a healthy load.
- *  Drives InvalidConfigModal. */
 export function useConfigLoadError() {
   return useAppState((s) => s.configHealth.loadError)
+}
+
+export function useTicketProviders(): TicketProviderConfig[] {
+  const byId = useAppState((s) => s.ticketProviders.byId)
+  return useMemo(() => {
+    const out = Object.values(byId)
+    out.sort((a, b) => a.label.localeCompare(b.label))
+    return out
+  }, [byId])
+}
+
+export function useTicketProvider(
+  id: string | null | undefined
+): TicketProviderConfig | null {
+  return useAppState((s) =>
+    id ? (s.ticketProviders.byId[id] ?? null) : null
+  )
+}
+
+const EMPTY_PROVIDER_IDS: string[] = []
+
+export function useRepoLinkedProviderIds(
+  repoRoot: string | null | undefined
+): string[] {
+  const byId = useAppState((s) => s.ticketProviders.byId)
+  return useMemo(() => {
+    if (!repoRoot) return EMPTY_PROVIDER_IDS
+    const out: string[] = []
+    for (const id of Object.keys(byId)) {
+      const cfg = byId[id]
+      if (cfg.appliesToRepoRoots?.includes(repoRoot)) out.push(id)
+    }
+    return out.length === 0 ? EMPTY_PROVIDER_IDS : out
+  }, [byId, repoRoot])
+}
+
+export function useWorktreeLinkedTicket(
+  worktreePath: string | null | undefined
+): WorktreeTicketLink | null {
+  return useAppState((s) => {
+    if (!worktreePath) return null
+    const wt = s.worktrees.list.find((w) => w.path === worktreePath)
+    return wt?.linkedTicket ?? null
+  })
+}
+
+export function useCachedTicket(
+  link: WorktreeTicketLink | null | undefined
+): Ticket | null {
+  return useAppState((s) => {
+    if (!link) return null
+    const cache = s.tickets.byProvider[link.providerId]
+    if (!cache) return null
+    return cache.tickets.find((t) => t.externalId === link.externalId) ?? null
+  })
 }
 
 /** Session roster (controller + spectators) for a given terminal id.
