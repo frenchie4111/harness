@@ -3130,6 +3130,62 @@ function registerIpcHandlers(): void {
     }
   )
 
+  // Fork the current session into a new tab. Unlike rewind, the source
+  // stays running — the manager just copies its jsonl prefix into a
+  // fresh session file, then we register a sibling tab and spawn the
+  // resumed subprocess. panesFSM.addTab appends to the same leaf as
+  // the source's active tab.
+  transport.onRequest(
+    'jsonClaude:forkAt',
+    (
+      _ctx,
+      sessionId: string,
+      entryId: string
+    ): { ok: boolean; newSessionId?: string; reason?: string } => {
+      if (!sessionId || !entryId) return { ok: false, reason: 'missing args' }
+      const source = store.getSnapshot().state.jsonClaude.sessions[sessionId]
+      if (!source) return { ok: false, reason: 'unknown session' }
+
+      const outcome = jsonClaudeManager.forkAt(sessionId, entryId)
+      if (!outcome.ok || !outcome.newSessionId) {
+        return { ok: false, reason: outcome.reason }
+      }
+      const newSessionId = outcome.newSessionId
+
+      // Carry the source tab's label + per-tab model pin so the fork
+      // reads as a sibling. Walk panes for the source worktree; the
+      // source tab id equals its sessionId.
+      let sourceLabel: string | undefined
+      let sourceModel: string | undefined
+      const tree = store.getSnapshot().state.terminals.panes[source.worktreePath]
+      if (tree) {
+        outer: for (const leaf of getLeaves(tree)) {
+          for (const tab of leaf.tabs) {
+            if (tab.id === sessionId && tab.type === 'json-claude') {
+              sourceLabel = tab.customLabel?.trim() || tab.label
+              sourceModel = tab.model && tab.model.trim() ? tab.model.trim() : undefined
+              break outer
+            }
+          }
+        }
+      }
+      const label = sourceLabel ? `${sourceLabel} (fork)` : 'Chat (fork)'
+
+      panesFSM.addTab(source.worktreePath, {
+        id: newSessionId,
+        type: 'json-claude',
+        label,
+        sessionId: newSessionId,
+        mode: 'awake',
+        ...(sourceModel ? { model: sourceModel } : {})
+      })
+
+      startJsonClaudeSession(newSessionId, source.worktreePath)
+
+      return { ok: true, newSessionId }
+    }
+  )
+
   transport.onRequest(
     'jsonClaude:openAuthLoginTab',
     (_ctx, worktreePath: string): { ok: true; tabId: string } | { ok: false; error: string } => {

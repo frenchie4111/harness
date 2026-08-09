@@ -619,6 +619,10 @@ export interface ElectronAPI {
     id: string,
     entryId: string
   ): Promise<{ ok: boolean; reason?: string }>
+  forkJsonClaudeAt(
+    id: string,
+    entryId: string
+  ): Promise<{ ok: boolean; newSessionId?: string; reason?: string }>
   openJsonClaudeAuthLoginTab(
     worktreePath: string
   ): Promise<{ ok: true; tabId: string } | { ok: false; error: string }>
