@@ -103,6 +103,18 @@ import {
   type SshBootstrapState
 } from './ssh-bootstrap'
 import {
+  initialTicketProviders,
+  ticketProvidersReducer,
+  type TicketProvidersEvent,
+  type TicketProvidersState
+} from './ticket-providers'
+import {
+  initialTickets,
+  ticketsReducer,
+  type TicketsEvent,
+  type TicketsState
+} from './tickets'
+import {
   initialAssignedPRs,
   assignedPRsReducer,
   type AssignedPRsEvent,
@@ -195,6 +207,12 @@ export type {
   BootstrapProgress,
   BootstrapError
 } from './ssh-bootstrap'
+export type { TicketProvidersState, TicketProvidersEvent } from './ticket-providers'
+export type {
+  TicketsState,
+  TicketsEvent,
+  TicketProviderCache
+} from './tickets'
 export type { AssignedPRsState, AssignedPRsEvent, AssignedPR } from './assigned-prs'
 export type { ConfigHealthState, ConfigLoadError } from './config-health'
 export type { AliasesState, AliasesEvent } from './aliases'
@@ -215,6 +233,8 @@ export interface AppState {
   announcements: AnnouncementsState
   scratchpad: ScratchpadState
   sshBootstrap: SshBootstrapState
+  ticketProviders: TicketProvidersState
+  tickets: TicketsState
   assignedPRs: AssignedPRsState
   configHealth: ConfigHealthState
   aliases: AliasesState
@@ -236,6 +256,8 @@ export type StateEvent =
   | AnnouncementsEvent
   | ScratchpadEvent
   | SshBootstrapEvent
+  | TicketProvidersEvent
+  | TicketsEvent
   | AssignedPRsEvent
   | AliasesEvent
 
@@ -255,6 +277,8 @@ export const initialState: AppState = {
   announcements: initialAnnouncements,
   scratchpad: initialScratchpad,
   sshBootstrap: initialSshBootstrap,
+  ticketProviders: initialTicketProviders,
+  tickets: initialTickets,
   assignedPRs: initialAssignedPRs,
   configHealth: initialConfigHealth,
   aliases: initialAliases
@@ -336,6 +360,21 @@ export function rootReducer(state: AppState, event: StateEvent): AppState {
       sshBootstrap: sshBootstrapReducer(state.sshBootstrap, event as SshBootstrapEvent)
     }
   }
+  if (event.type.startsWith('ticketProviders/')) {
+    return {
+      ...state,
+      ticketProviders: ticketProvidersReducer(
+        state.ticketProviders,
+        event as TicketProvidersEvent
+      )
+    }
+  }
+  if (event.type.startsWith('tickets/')) {
+    return {
+      ...state,
+      tickets: ticketsReducer(state.tickets, event as TicketsEvent)
+    }
+  }
   if (event.type.startsWith('assignedPRs/')) {
     return {
       ...state,
@@ -397,6 +436,11 @@ export function mergeWireSnapshot(state: WireSnapshotState): AppState {
     announcements: { ...initialState.announcements, ...state.announcements },
     scratchpad: { ...initialState.scratchpad, ...state.scratchpad },
     sshBootstrap: { ...initialState.sshBootstrap, ...state.sshBootstrap },
+    ticketProviders: {
+      ...initialState.ticketProviders,
+      ...state.ticketProviders
+    },
+    tickets: { ...initialState.tickets, ...state.tickets },
     assignedPRs: { ...initialState.assignedPRs, ...state.assignedPRs },
     configHealth: { ...initialState.configHealth, ...state.configHealth },
     aliases: { ...initialState.aliases, ...state.aliases }

@@ -13,6 +13,7 @@ import { loadRepoConfig } from './repo-config'
 import { log } from './debug'
 import type { Store } from './store'
 import type { Worktree, PendingWorktree } from '../shared/state/worktrees'
+import type { WorktreeTicketLink } from '../shared/tickets'
 import type { AgentKind } from '../shared/state/terminals'
 
 /** Sanitize a PR's head branch into a name that's safe as both a git
@@ -55,6 +56,18 @@ interface WorktreesFSMOptions {
   getRepoRoots: () => string[]
   getWorktreeSetupCmd: () => string
   getWorktreeBaseMode: () => 'remote' | 'local'
+  /** Read the persisted side-table mapping worktree path → linked ticket.
+   *  Merged into the Worktree records on every refreshList so the
+   *  Harness-only metadata survives the git re-read. */
+  getWorktreeTicketLinks?: () => Record<string, WorktreeTicketLink>
+  /** Persist a single worktree's link (or drop it, if `link` is undefined).
+   *  Called from the create FSM when a `linkedTicket` is supplied. */
+  setWorktreeTicketLink?: (worktreePath: string, link: WorktreeTicketLink | undefined) => void
+  /** Drop side-table entries for any worktree path NOT in `livePaths`.
+   *  Called from refreshList so orphaned links — left behind by a
+   *  setup-failure cleanup, a manual `git worktree remove`, or an older
+   *  Harness version's deletion path — get garbage-collected. */
+  pruneWorktreeTicketLinks?: (livePaths: Set<string>) => void
   /** Called after a worktree has been created on disk (and its setup
    * script has run, regardless of script outcome). The host wires this
    * to (a) PR poller refresh and (b) PanesFSM.ensureInitialized so the
@@ -101,8 +114,18 @@ export class WorktreesFSM {
       )
     )
     const flat = results.flat()
-    this.store.dispatch({ type: 'worktrees/listChanged', payload: flat })
-    return flat
+    // Sweep orphaned side-table entries before decorating, so the next
+    // boot doesn't keep dragging them around.
+    this.opts.pruneWorktreeTicketLinks?.(new Set(flat.map((wt) => wt.path)))
+    const links = this.opts.getWorktreeTicketLinks?.() ?? null
+    const decorated = links
+      ? flat.map((wt) => {
+          const link = links[wt.path]
+          return link ? { ...wt, linkedTicket: link } : wt
+        })
+      : flat
+    this.store.dispatch({ type: 'worktrees/listChanged', payload: decorated })
+    return decorated
   }
 
   /** Trailing-debounced variant of `refreshList`. Multiple back-to-back
@@ -147,15 +170,20 @@ export class WorktreesFSM {
      * forked from this ref via `git worktree add -b <branchName> <baseRef>`
      * instead of from the repo's default base. */
     baseRef?: string
+    /** When set, the new worktree was spawned from a ticket. Persisted
+     * via setWorktreeTicketLink so refreshList can merge it back onto
+     * the Worktree record once git's view of the worktree is read. */
+    linkedTicket?: WorktreeTicketLink
   }): Promise<PendingOutcome> {
-    const { id, repoRoot, branchName, initialPrompt, teleportSessionId, agentKind, model, checkoutExisting, baseRef } = params
+    const { id, repoRoot, branchName, initialPrompt, teleportSessionId, agentKind, model, checkoutExisting, baseRef, linkedTicket } = params
     const pending: PendingWorktree = {
       id,
       repoRoot,
       branchName,
       status: 'creating',
       initialPrompt,
-      teleportSessionId
+      teleportSessionId,
+      linkedTicket
     }
     this.store.dispatch({ type: 'worktrees/pendingAdded', payload: pending })
 
@@ -169,6 +197,9 @@ export class WorktreesFSM {
         checkoutExisting,
         baseBranch: baseRef
       })
+      if (linkedTicket) {
+        this.opts.setWorktreeTicketLink?.(created.path, linkedTicket)
+      }
       return await this.finishCreate({
         id,
         repoRoot,
@@ -199,8 +230,9 @@ export class WorktreesFSM {
     initialPrompt?: string
     agentKind?: AgentKind
     model?: string
+    linkedTicket?: WorktreeTicketLink
   }): Promise<PendingOutcome> {
-    const { id, repoRoot, prNumber, initialPrompt, agentKind, model } = params
+    const { id, repoRoot, prNumber, initialPrompt, agentKind, model, linkedTicket } = params
     // Show *something* while we go ask GitHub for the head ref name.
     let branchName = `pr-${prNumber}`
     const pending: PendingWorktree = {
@@ -208,7 +240,8 @@ export class WorktreesFSM {
       repoRoot,
       branchName,
       status: 'creating',
-      initialPrompt
+      initialPrompt,
+      linkedTicket
     }
     this.store.dispatch({ type: 'worktrees/pendingAdded', payload: pending })
 
@@ -230,6 +263,10 @@ export class WorktreesFSM {
       const created = await addWorktree(repoRoot, wtDir, branchName, {
         checkoutExisting: true
       })
+
+      if (linkedTicket) {
+        this.opts.setWorktreeTicketLink?.(created.path, linkedTicket)
+      }
 
       return await this.finishCreate({
         id,
@@ -376,7 +413,8 @@ export class WorktreesFSM {
       repoRoot: current.repoRoot,
       branchName: current.branchName,
       initialPrompt: current.initialPrompt,
-      teleportSessionId: current.teleportSessionId
+      teleportSessionId: current.teleportSessionId,
+      linkedTicket: current.linkedTicket
     })
   }
 
