@@ -193,3 +193,55 @@ describe('PRPoller.refreshAll — offline / failure preservation', () => {
     expect(vi.mocked(fetchPRStatusByNumber)).not.toHaveBeenCalled()
   })
 })
+
+describe('PRPoller.refreshAll — branch independence', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(getRepoContext).mockResolvedValue({
+      origin: { owner: 'o', repo: 'r' },
+      upstream: { owner: 'o', repo: 'r' }
+    })
+  })
+
+  it('updates mergedByPath even when the GraphQL branch throws', async () => {
+    // Setup: worktree /wt/m has a persisted merge SHA; the GraphQL call
+    // for the repo throws (simulating a 504). Merged-SHA branch should
+    // still dispatch its result.
+    const state: AppState = { ...initialState }
+    const store = new Store(state)
+    const poller = new PRPoller(store, {
+      getRepoRoots: () => ['/repo'],
+      getLocallyMerged: () => ({ m: 'sha-recorded' }),
+      setLocallyMerged: () => {}
+    })
+
+    vi.mocked(listWorktrees).mockResolvedValue([wt('/wt/m', 'm', 'sha-recorded')])
+    vi.mocked(fetchPRStatusesForRepo).mockRejectedValue(new Error('504 Gateway Timeout'))
+    vi.mocked(getBranchSha).mockResolvedValue('sha-recorded')
+
+    await poller.refreshAll()
+
+    expect(store.getSnapshot().state.prs.mergedByPath['/wt/m']).toBe(true)
+  })
+
+  it('updates bulkStatusChanged even when the merged-SHA branch throws', async () => {
+    const state: AppState = { ...initialState }
+    const store = new Store(state)
+    const poller = new PRPoller(store, {
+      getRepoRoots: () => ['/repo'],
+      getLocallyMerged: () => {
+        throw new Error('locallyMerged read blew up')
+      },
+      setLocallyMerged: () => {}
+    })
+
+    vi.mocked(listWorktrees).mockResolvedValue([wt('/wt/a', 'a', 'sha-a')])
+    vi.mocked(fetchPRStatusesForRepo).mockResolvedValue(
+      new Map<string, PRStatus | null>([['/wt/a', fakePRStatus(7)]])
+    )
+
+    await poller.refreshAll()
+
+    expect(store.getSnapshot().state.prs.byPath['/wt/a']?.number).toBe(7)
+  })
+})

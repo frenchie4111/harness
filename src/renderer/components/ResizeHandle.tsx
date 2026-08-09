@@ -29,7 +29,7 @@ export function ResizeHandle({ onDelta }: Props) {
   }
 
   return (
-    <div className="w-px shrink-0 bg-border relative z-10">
+    <div className="w-px shrink-0 bg-border-strong relative z-10">
       <div
         onMouseDown={handleMouseDown}
         className="absolute inset-y-0 -left-0.5 -right-0.5 cursor-col-resize hover:bg-accent/40 active:bg-accent/60 transition-colors"

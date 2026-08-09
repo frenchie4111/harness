@@ -103,6 +103,12 @@ import {
   type SshBootstrapState
 } from './ssh-bootstrap'
 import { initialConfigHealth, type ConfigHealthState } from './config-health'
+import {
+  initialAliases,
+  aliasesReducer,
+  type AliasesEvent,
+  type AliasesState
+} from './aliases'
 
 export type { SettingsState, SettingsEvent }
 export type { UpdaterState, UpdaterEvent, UpdaterStatus } from './updater'
@@ -184,6 +190,7 @@ export type {
   BootstrapError
 } from './ssh-bootstrap'
 export type { ConfigHealthState, ConfigLoadError } from './config-health'
+export type { AliasesState, AliasesEvent } from './aliases'
 
 export interface AppState {
   settings: SettingsState
@@ -202,6 +209,7 @@ export interface AppState {
   scratchpad: ScratchpadState
   sshBootstrap: SshBootstrapState
   configHealth: ConfigHealthState
+  aliases: AliasesState
 }
 
 export type StateEvent =
@@ -220,6 +228,7 @@ export type StateEvent =
   | AnnouncementsEvent
   | ScratchpadEvent
   | SshBootstrapEvent
+  | AliasesEvent
 
 export const initialState: AppState = {
   settings: initialSettings,
@@ -237,7 +246,8 @@ export const initialState: AppState = {
   announcements: initialAnnouncements,
   scratchpad: initialScratchpad,
   sshBootstrap: initialSshBootstrap,
-  configHealth: initialConfigHealth
+  configHealth: initialConfigHealth,
+  aliases: initialAliases
 }
 
 export function rootReducer(state: AppState, event: StateEvent): AppState {
@@ -316,6 +326,12 @@ export function rootReducer(state: AppState, event: StateEvent): AppState {
       sshBootstrap: sshBootstrapReducer(state.sshBootstrap, event as SshBootstrapEvent)
     }
   }
+  if (event.type.startsWith('aliases/')) {
+    return {
+      ...state,
+      aliases: aliasesReducer(state.aliases, event as AliasesEvent)
+    }
+  }
   // configHealth has no events — it's seeded at construction only (see
   // config-health.ts), so there's no reducer branch. The field flows through
   // unchanged via the `...state` spreads above.
@@ -365,7 +381,8 @@ export function mergeWireSnapshot(state: WireSnapshotState): AppState {
     announcements: { ...initialState.announcements, ...state.announcements },
     scratchpad: { ...initialState.scratchpad, ...state.scratchpad },
     sshBootstrap: { ...initialState.sshBootstrap, ...state.sshBootstrap },
-    configHealth: { ...initialState.configHealth, ...state.configHealth }
+    configHealth: { ...initialState.configHealth, ...state.configHealth },
+    aliases: { ...initialState.aliases, ...state.aliases }
   }
 }
 

@@ -53,8 +53,15 @@ function buildGroups(hotkeys: Record<Action, HotkeyBinding>): ShortcutGroup[] {
         { label: 'Refresh worktrees', binding: b('refreshWorktrees') },
         { label: 'Open PR in browser', binding: b('openPR') },
         { label: 'Open in editor', binding: b('openInEditor') },
-        { label: 'Search terminal', binding: 'Cmd+F' },
+        { label: 'Find in terminal or chat', binding: 'Cmd+F' },
         { label: 'Keyboard shortcuts', binding: b('hotkeyCheatsheet') },
+      ],
+    },
+    {
+      title: 'Chat (JSON mode)',
+      rows: [
+        { label: 'Approve pending tool use', binding: b('approveToolUse') },
+        { label: 'Deny pending tool use', binding: b('denyToolUse') },
       ],
     },
   ]

@@ -13,12 +13,16 @@
   <a href="https://github.com/frenchie4111/harness/stargazers">
     <img src="https://img.shields.io/github/stars/frenchie4111/harness?style=for-the-badge&logo=github&logoColor=white&color=f59e0b&labelColor=18181b&label=Please%20star%20us%20on%20GitHub" alt="Please star us on GitHub" />
   </a>
+  <a href="https://join.slack.com/t/harness-chat/shared_invite/zt-43w6xg34i-mGXrSEKVO0wGC7r_SiePwA">
+    <img src="https://img.shields.io/badge/Slack-Join%20the%20chat-4A154B?style=for-the-badge&logo=slack&logoColor=white&labelColor=18181b" alt="Join the Harness Slack" />
+  </a>
 </p>
 
 <p align="center">
   <a href="https://harness.mikelyons.org/">Website</a> ·
   <a href="https://github.com/frenchie4111/harness/releases/latest">Download</a> ·
-  <a href="https://harness.mikelyons.org/guide.html">Guide</a>
+  <a href="https://harness.mikelyons.org/guide.html">Guide</a> ·
+  <a href="https://join.slack.com/t/harness-chat/shared_invite/zt-43w6xg34i-mGXrSEKVO0wGC7r_SiePwA">Slack</a>
 </p>
 
 ![Harness](site/public/harness-demo-poster.jpg)
