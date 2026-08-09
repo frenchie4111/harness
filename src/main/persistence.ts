@@ -21,6 +21,7 @@ import {
 } from './persistence-migrations'
 import type { CostsState } from '../shared/state/costs'
 import type { SnoozeEntry } from '../shared/state/snooze'
+import type { PreventSleepMode } from '../shared/state/settings'
 
 export type { PersistedPane, PersistedPaneNode, PersistedTab }
 
@@ -74,21 +75,27 @@ export interface Config {
   repoRoots: string[]
   // Custom hotkey overrides: action name → shortcut string (e.g. "Cmd+Shift+T")
   hotkeys?: Record<string, string>
-  // Which agent CLI to default to when creating new tabs: 'claude' or 'codex'.
-  defaultAgent?: 'claude' | 'codex'
+  // Which agent CLI to default to when creating new tabs: 'claude', 'codex', or 'cursor'.
+  defaultAgent?: 'claude' | 'codex' | 'cursor'
   // Command used to launch Claude in a worktree terminal. Runs via login shell.
   // Harness appends `--session-id <uuid>` so each tab has a stable resumable session.
   claudeCommand?: string
   // Command used to launch Codex in a worktree terminal.
   codexCommand?: string
+  // Command used to launch Cursor Agent in a worktree terminal.
+  cursorCommand?: string
   // Extra environment variables injected into the PTY when spawning a Claude tab.
   claudeEnvVars?: Record<string, string>
   // Model override for Claude Code (passed as --model <id>).
   claudeModel?: string
   // Model override for Codex (passed as --model <id>).
   codexModel?: string
+  // Model override for Cursor Agent (passed as --model <id>).
+  cursorModel?: string
   // Extra environment variables injected into the PTY when spawning a Codex tab.
   codexEnvVars?: Record<string, string>
+  // Extra environment variables injected into the PTY when spawning a Cursor Agent tab.
+  cursorEnvVars?: Record<string, string>
   // When false, Harness won't inject `--mcp-config <path>` pointing at the
   // bundled harness-control MCP server. Default is enabled (undefined/true).
   harnessMcpEnabled?: boolean
@@ -131,10 +138,43 @@ export interface Config {
   // Default strategy for "Merge locally" action. Auto-updates to whatever
   // was last used unless the user pinned one in Settings.
   mergeStrategy?: 'squash' | 'merge-commit' | 'fast-forward'
-  // Which "extra detail" to render next to each worktree row in the sidebar.
-  // Defaults to 'diff' (PR additions/deletions); other values trade that
-  // signal for worktree age, PR context (assignee/milestone/#), or nothing.
-  worktreeDetail?: 'diff' | 'age' | 'pr' | 'none'
+  // Density of each sidebar worktree row. 'comfy' (default) stacks the
+  // detail cluster on a second line; 'compact' folds it onto the right of
+  // a single line.
+  sidebarDensity?: 'compact' | 'comfy'
+  // Per-density detail-item toggles for the sidebar row. Compact and
+  // comfy have independent toggle sets. Missing keys/modes fall back to
+  // DEFAULT_SIDEBAR_DETAILS.
+  sidebarDetails?: {
+    compact?: {
+      repoLabel?: boolean
+      branch?: boolean
+      age?: boolean
+      diff?: boolean
+      milestone?: boolean
+      prNumber?: boolean
+      assignee?: boolean
+    }
+    comfy?: {
+      repoLabel?: boolean
+      branch?: boolean
+      age?: boolean
+      diff?: boolean
+      milestone?: boolean
+      prNumber?: boolean
+      assignee?: boolean
+    }
+  }
+  // Which sidebar bottom-launcher icons the user has hidden via the
+  // hamburger menu. Missing / false ⇒ visible. Keys are BottomIconKey
+  // (see shared/state/settings.ts). Absent from disk when the user
+  // hasn't hidden anything, to keep default configs tidy.
+  hiddenBottomIcons?: Record<string, boolean>
+  // User's preferred render order for the bottom-launcher icons. Any
+  // BottomIconKey missing from this array falls back to canonical order at
+  // read time (see resolveBottomIconOrder). Absent from disk when the
+  // user hasn't reordered anything.
+  bottomIconOrder?: string[]
   // Branches that have been merged locally via Harness, keyed by branch name.
   // Value is the branch-tip SHA at merge time — if the branch later advances
   // past this SHA, the flag is considered stale and the branch is no longer
@@ -238,6 +278,10 @@ export interface Config {
   // composer (Shift+Enter inserts a newline). Default off — preserves
   // the historical Cmd/Ctrl+Enter-to-send behavior.
   jsonModeSendOnEnter?: boolean
+  // When false, JSON-mode chat pins the most recent user prompt to the top
+  // of the viewport instead of auto-scrolling to the bottom. Default true
+  // (undefined = follow the tail, matches historical behavior).
+  autoScrollToBottom?: boolean
   // Permission mode applied when a brand-new json-mode session spawns.
   // Existing sessions keep whatever mode they were last in. Default
   // 'acceptEdits' (auto-allow Edit/Write, still ask for Bash etc.).
@@ -276,11 +320,17 @@ export interface Config {
   // Same nesting scheme as `panes` so two repos with identical worktree
   // paths stay distinct. Absent / empty entries are pruned on write.
   scratchpadNotes?: Record<string, Record<string, string>>
+  // Persisted alias map: worktree path → user-defined display alias.
+  aliases?: Record<string, string>
+  // Wake-lock mode: hold a power-save blocker 'off' | while any agent
+  // session is processing | always. Default 'off'. The transient "+1h" timer
+  // (preventSleepUntil) is session-only and deliberately NOT persisted here.
+  preventSleepMode?: PreventSleepMode
 }
 
 export const DEFAULT_WORKTREE_BASE: 'remote' | 'local' = 'remote'
 export const DEFAULT_MERGE_STRATEGY: 'squash' | 'merge-commit' | 'fast-forward' = 'squash'
-export const DEFAULT_WORKTREE_DETAIL: 'diff' | 'age' | 'pr' | 'none' = 'diff'
+export const DEFAULT_SIDEBAR_DENSITY: 'compact' | 'comfy' = 'comfy'
 
 export const AVAILABLE_THEMES = [
   'dark',
@@ -314,8 +364,10 @@ export const DEFAULT_CLAUDE_COMMAND = 'claude'
 
 export const DEFAULT_HARNESS_SYSTEM_PROMPT = `You are running inside Harness, a desktop app that manages multiple Claude Code sessions across git worktrees. You have access to harness-control MCP tools:
 
-- mcp__harness-control__create_worktree: Create a new worktree with its own Claude session. Always provide a detailed initialPrompt so the new session has full context.
+- mcp__harness-control__create_worktree: Create a new worktree with its own Claude session. Always provide a detailed initialPrompt so the new session has full context. Pass an optional alias — a short, human-readable label (Title Case with spaces, like "Auth Refactor" or "PR 214 Review"), not a kebab-case branch-style slug. Think tab title, not branch name.
 - mcp__harness-control__list_worktrees: List all active worktrees.
+- mcp__harness-control__set_worktree_alias: Give a worktree a short display name shown in the sidebar, window title, and tab strip. Defaults to the caller's worktree. Cosmetic only — never touches git. Aliases should read like a human-written tab title ("Auth Refactor", "Fix Login Bug", "PR 214 Review") — Title Case with spaces, a few words max — NOT a kebab-case slug like "auth-refactor" or "fix-login-bug" (that just duplicates what the branch name already conveys). Use it when the user gives the task a memorable label, or when the generated branch name is too long or technical to scan at a glance.
+- mcp__harness-control__clear_worktree_alias: Remove a worktree's display alias so its branch name shows again. Defaults to the caller's worktree.
 
 When the user wants to start a new task, fix, or investigation that would benefit from isolation, suggest creating a worktree for it rather than doing everything inline. Each worktree is an independent git branch with its own terminal and Claude session.
 

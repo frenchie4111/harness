@@ -200,18 +200,61 @@ describe('settingsReducer', () => {
     expect(next.mergeStrategy).toBe('fast-forward')
   })
 
-  it('worktreeDetailChanged switches the sidebar detail mode', () => {
-    expect(initialSettings.worktreeDetail).toBe('diff')
-    const age = apply(initialSettings, {
-      type: 'settings/worktreeDetailChanged',
-      payload: 'age'
+  it('sidebarDensityChanged toggles between comfy and compact', () => {
+    expect(initialSettings.sidebarDensity).toBe('comfy')
+    const compact = apply(initialSettings, {
+      type: 'settings/sidebarDensityChanged',
+      payload: 'compact'
     })
-    expect(age.worktreeDetail).toBe('age')
-    const none = apply(age, { type: 'settings/worktreeDetailChanged', payload: 'none' })
-    expect(none.worktreeDetail).toBe('none')
-    const diff = apply(none, { type: 'settings/worktreeDetailChanged', payload: 'diff' })
-    expect(diff.worktreeDetail).toBe('diff')
+    expect(compact.sidebarDensity).toBe('compact')
+    const comfy = apply(compact, {
+      type: 'settings/sidebarDensityChanged',
+      payload: 'comfy'
+    })
+    expect(comfy.sidebarDensity).toBe('comfy')
   })
+
+  it('sidebarDetailsChanged replaces the whole per-mode prefs object', () => {
+    // Comfy defaults: everything on.
+    expect(initialSettings.sidebarDetails.comfy.diff).toBe(true)
+    expect(initialSettings.sidebarDetails.comfy.assignee).toBe(true)
+    // Compact defaults: only repoLabel + prNumber + assignee.
+    expect(initialSettings.sidebarDetails.compact.branch).toBe(false)
+    expect(initialSettings.sidebarDetails.compact.age).toBe(false)
+    expect(initialSettings.sidebarDetails.compact.diff).toBe(false)
+    expect(initialSettings.sidebarDetails.compact.milestone).toBe(false)
+    expect(initialSettings.sidebarDetails.compact.repoLabel).toBe(true)
+    expect(initialSettings.sidebarDetails.compact.prNumber).toBe(true)
+    expect(initialSettings.sidebarDetails.compact.assignee).toBe(true)
+
+    const next = apply(initialSettings, {
+      type: 'settings/sidebarDetailsChanged',
+      payload: {
+        compact: {
+          repoLabel: true,
+          branch: true,
+          age: false,
+          diff: false,
+          milestone: false,
+          prNumber: true,
+          assignee: true
+        },
+        comfy: {
+          repoLabel: true,
+          branch: true,
+          age: true,
+          diff: false,
+          milestone: false,
+          prNumber: true,
+          assignee: false
+        }
+      }
+    })
+    expect(next.sidebarDetails.compact.branch).toBe(true)
+    expect(next.sidebarDetails.comfy.diff).toBe(false)
+    expect(next.sidebarDetails.comfy.assignee).toBe(false)
+  })
+
 
   it('hasGithubTokenChanged flips the presence flag', () => {
     const hasIt = apply(initialSettings, {
@@ -282,6 +325,42 @@ describe('settingsReducer', () => {
       payload: null
     })
     expect(cleared.codexModel).toBeNull()
+  })
+
+  it('cursorCommandChanged sets the command string', () => {
+    const next = apply(initialSettings, {
+      type: 'settings/cursorCommandChanged',
+      payload: 'agent --force'
+    })
+    expect(next.cursorCommand).toBe('agent --force')
+  })
+
+  it('cursorEnvVarsChanged replaces the full map', () => {
+    const next = apply(initialSettings, {
+      type: 'settings/cursorEnvVarsChanged',
+      payload: { CURSOR_API_KEY: 'secret' }
+    })
+    expect(next.cursorEnvVars).toEqual({ CURSOR_API_KEY: 'secret' })
+  })
+
+  it('cursorModelChanged sets the model', () => {
+    const next = apply(initialSettings, {
+      type: 'settings/cursorModelChanged',
+      payload: 'composer-2.5'
+    })
+    expect(next.cursorModel).toBe('composer-2.5')
+  })
+
+  it('cursorModelChanged clears with null', () => {
+    const withModel = apply(initialSettings, {
+      type: 'settings/cursorModelChanged',
+      payload: 'composer-2.5'
+    })
+    const cleared = apply(withModel, {
+      type: 'settings/cursorModelChanged',
+      payload: null
+    })
+    expect(cleared.cursorModel).toBeNull()
   })
 
   it('harnessSystemPromptEnabledChanged toggles flag', () => {
@@ -489,6 +568,20 @@ describe('settingsReducer', () => {
     expect(off.jsonModeSendOnEnter).toBe(false)
   })
 
+  it('autoScrollToBottomChanged toggles the auto-scroll flag', () => {
+    expect(initialSettings.autoScrollToBottom).toBe(true)
+    const off = apply(initialSettings, {
+      type: 'settings/autoScrollToBottomChanged',
+      payload: false
+    })
+    expect(off.autoScrollToBottom).toBe(false)
+    const on = apply(off, {
+      type: 'settings/autoScrollToBottomChanged',
+      payload: true
+    })
+    expect(on.autoScrollToBottom).toBe(true)
+  })
+
   it('jsonModeDefaultPermissionModeChanged sets the default and preserves other settings', () => {
     expect(initialSettings.jsonModeDefaultPermissionMode).toBe('acceptEdits')
     const start: SettingsState = {
@@ -584,6 +677,55 @@ describe('settingsReducer', () => {
     expect(on.showAssignedPRs).toBe(true)
     const off = apply(on, { type: 'settings/showAssignedPRsChanged', payload: false })
     expect(off.showAssignedPRs).toBe(false)
+  })
+
+  it('preventSleepModeChanged walks through every mode', () => {
+    expect(initialSettings.preventSleepMode).toBe('off')
+    const auto = apply(initialSettings, {
+      type: 'settings/preventSleepModeChanged',
+      payload: 'while-agents-running'
+    })
+    expect(auto.preventSleepMode).toBe('while-agents-running')
+    const always = apply(auto, { type: 'settings/preventSleepModeChanged', payload: 'always' })
+    expect(always.preventSleepMode).toBe('always')
+    const off = apply(always, { type: 'settings/preventSleepModeChanged', payload: 'off' })
+    expect(off.preventSleepMode).toBe('off')
+  })
+
+  it('preventSleepUntilChanged arms and clears the timer deadline', () => {
+    expect(initialSettings.preventSleepUntil).toBeNull()
+    const armed = apply(initialSettings, {
+      type: 'settings/preventSleepUntilChanged',
+      payload: 1_700_000_000_000
+    })
+    expect(armed.preventSleepUntil).toBe(1_700_000_000_000)
+    const cleared = apply(armed, {
+      type: 'settings/preventSleepUntilChanged',
+      payload: null
+    })
+    expect(cleared.preventSleepUntil).toBeNull()
+  })
+
+  it('hiddenBottomIconsChanged replaces the whole hidden map', () => {
+    expect(initialSettings.hiddenBottomIcons).toEqual({})
+    const hidden = apply(initialSettings, {
+      type: 'settings/hiddenBottomIconsChanged',
+      payload: { activity: true, myWeek: true }
+    })
+    expect(hidden.hiddenBottomIcons).toEqual({ activity: true, myWeek: true })
+    const cleared = apply(hidden, {
+      type: 'settings/hiddenBottomIconsChanged',
+      payload: {}
+    })
+    expect(cleared.hiddenBottomIcons).toEqual({})
+  })
+
+  it('bottomIconOrderChanged replaces the render order', () => {
+    const reordered = apply(initialSettings, {
+      type: 'settings/bottomIconOrderChanged',
+      payload: ['settings', 'commandCenter', 'newProject']
+    })
+    expect(reordered.bottomIconOrder).toEqual(['settings', 'commandCenter', 'newProject'])
   })
 
   it('returns a new object reference (no mutation)', () => {

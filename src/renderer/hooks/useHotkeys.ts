@@ -24,6 +24,22 @@ export function useHotkeys(actions: ActionMap, overrides?: Record<string, string
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent): void {
+      // Opt-in shielding: any focused element (or ancestor) with
+      // `data-hotkeys="ignore"` gets full keyboard access — global
+      // hotkeys are suppressed while typing inside it. Used by inline
+      // editors (e.g. the alias rename input) so Cmd+W / Cmd+K / etc.
+      // don't fire mid-edit. We use opt-in rather than a general
+      // "skip when a text input is focused" rule because xterm.js uses
+      // a hidden textarea for input capture — a general rule would
+      // break every terminal-time hotkey.
+      const target = e.target
+      if (
+        target instanceof Element &&
+        target.closest('[data-hotkeys="ignore"]')
+      ) {
+        return
+      }
+
       const bindings = bindingsRef.current
       const handlers = actionsRef.current
 

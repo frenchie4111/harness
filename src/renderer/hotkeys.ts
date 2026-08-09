@@ -45,7 +45,10 @@ export type Action =
   | 'uiScaleUp'
   | 'uiScaleDown'
   | 'uiScaleReset'
-  | 'cycleWorktreeDetail'
+  | 'aliasWorktree'
+  | 'approveToolUse'
+  | 'denyToolUse'
+  | 'cyclePreventSleep'
 
 export interface Modifiers {
   cmd?: boolean
@@ -116,7 +119,10 @@ export const DEFAULT_HOTKEYS: Record<Action, HotkeyBinding> = {
   uiScaleUp: { key: '+', modifiers: { cmd: true, shift: true } },
   uiScaleDown: { key: '-', modifiers: { cmd: true } },
   uiScaleReset: { key: '=', modifiers: { cmd: true } },
-  cycleWorktreeDetail: { key: 'i', modifiers: { cmd: true } },
+  aliasWorktree: { key: 'a', modifiers: { cmd: true, shift: true } },
+  approveToolUse: { key: 'y', modifiers: { cmd: true, shift: true } },
+  denyToolUse: { key: 'n', modifiers: { cmd: true, shift: true } },
+  cyclePreventSleep: { key: 'u', modifiers: { cmd: true, shift: true } },
 }
 
 /** Actions triggered by a gesture (e.g. double-tap Shift) rather than a
@@ -269,7 +275,10 @@ export const ACTION_LABELS: Record<Action, string> = {
   uiScaleUp: 'Increase UI size',
   uiScaleDown: 'Decrease UI size',
   uiScaleReset: 'Reset UI size',
-  cycleWorktreeDetail: 'Cycle worktree detail (sidebar)'
+  aliasWorktree: 'Alias worktree',
+  approveToolUse: 'Approve pending tool use (Chat)',
+  denyToolUse: 'Deny pending tool use (Chat)',
+  cyclePreventSleep: 'Cycle prevent-sleep mode'
 }
 
 export type CategoryId =
@@ -281,6 +290,7 @@ export type CategoryId =
   | 'commands'
   | 'overlays'
   | 'external'
+  | 'chat'
 
 export interface HotkeyCategory {
   id: CategoryId
@@ -317,7 +327,7 @@ export const ACTION_CATEGORIES: HotkeyCategory[] = [
   {
     id: 'worktree-mgmt',
     label: 'Worktree management',
-    actions: ['newWorktree', 'refreshWorktrees']
+    actions: ['newWorktree', 'refreshWorktrees', 'aliasWorktree']
   },
   {
     id: 'tabs',
@@ -327,7 +337,7 @@ export const ACTION_CATEGORIES: HotkeyCategory[] = [
   {
     id: 'layout',
     label: 'Window layout',
-    actions: ['toggleSidebar', 'toggleRightColumn', 'toggleSingleScreen', 'uiScaleUp', 'uiScaleDown', 'uiScaleReset', 'cycleWorktreeDetail']
+    actions: ['toggleSidebar', 'toggleRightColumn', 'toggleSingleScreen', 'uiScaleUp', 'uiScaleDown', 'uiScaleReset', 'cyclePreventSleep']
   },
   {
     id: 'commands',
@@ -343,6 +353,11 @@ export const ACTION_CATEGORIES: HotkeyCategory[] = [
     id: 'external',
     label: 'External actions',
     actions: ['openPR', 'openInEditor']
+  },
+  {
+    id: 'chat',
+    label: 'Chat (JSON mode)',
+    actions: ['approveToolUse', 'denyToolUse']
   }
 ]
 

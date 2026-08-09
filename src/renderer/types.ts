@@ -16,6 +16,9 @@ export type { SessionCostSummary, ClaudeAuthInfo, SubscriptionTier }
 import type { AddRepoResult } from '../shared/repo-pick'
 export type { AddRepoResult }
 
+import type { PreventSleepMode } from '../shared/state/settings'
+export type { PreventSleepMode }
+
 /** Per-kind dirtiness flags for a worktree. `git` reflects
  *  uncommitted changes; `scratchpad` reflects a non-empty scratchpad
  *  note. The delete-worktree flow surfaces each kind separately so the
@@ -126,6 +129,19 @@ export interface ChangedFile {
 import type { PerfMetrics, PerfSample } from '../shared/perf-types'
 export type { PerfMetrics, PerfSample }
 
+import type {
+  GitHubApiEntry,
+  GitHubApiLogSnapshot,
+  GitHubApiMinuteBucket,
+  GitHubApiRateLimit
+} from '../shared/github-api-log-types'
+export type {
+  GitHubApiEntry,
+  GitHubApiLogSnapshot,
+  GitHubApiMinuteBucket,
+  GitHubApiRateLimit
+}
+
 import type { CheckStatus, PRReview, PRStatus } from '../shared/state/prs'
 export type { CheckStatus, PRReview, PRStatus }
 
@@ -140,7 +156,18 @@ export type { JsonClaudeChatEntry }
 
 export type MergeStrategy = 'squash' | 'merge-commit' | 'fast-forward'
 
-export type WorktreeDetail = 'diff' | 'age' | 'pr' | 'none'
+export type SidebarDensity = 'compact' | 'comfy'
+
+import type {
+  SidebarDetailPrefs as SidebarDetailPrefsShared,
+  SidebarDetailPrefsByMode as SidebarDetailPrefsByModeShared,
+  HiddenBottomIcons as HiddenBottomIconsShared,
+  BottomIconKey as BottomIconKeyShared
+} from '../shared/state/settings'
+export type SidebarDetailPrefs = SidebarDetailPrefsShared
+export type SidebarDetailPrefsByMode = SidebarDetailPrefsByModeShared
+export type HiddenBottomIcons = HiddenBottomIconsShared
+export type BottomIconKey = BottomIconKeyShared
 
 export type GitHubMergeMethod = 'merge' | 'squash' | 'rebase'
 
@@ -183,7 +210,7 @@ export interface ElectronAPI {
     branchName: string
     initialPrompt?: string
     teleportSessionId?: string
-    agentKind?: 'claude' | 'codex'
+    agentKind?: AgentKind
     model?: string,
     checkoutExisting?: boolean
     baseRef?: string
@@ -197,7 +224,7 @@ export interface ElectronAPI {
     repoRoot: string
     prNumber: number
     initialPrompt?: string
-    agentKind?: 'claude' | 'codex'
+    agentKind?: AgentKind
     model?: string
   }): Promise<
     | { id: string; outcome: 'success'; createdPath: string }
@@ -338,10 +365,13 @@ export interface ElectronAPI {
   setJsonModeChatDensity(value: 'compact' | 'comfy'): Promise<boolean>
   setUiScale(value: 'x-small' | 'small' | 'medium' | 'large' | 'x-large'): Promise<boolean>
   setJsonModeSendOnEnter(enabled: boolean): Promise<boolean>
+  setAutoScrollToBottom(enabled: boolean): Promise<boolean>
   setJsonModeDefaultPermissionMode(
     value: 'default' | 'acceptEdits' | 'plan'
   ): Promise<boolean>
   setAutoSleepMinutes(value: number): Promise<boolean>
+  setPreventSleepMode(value: PreventSleepMode): Promise<boolean>
+  setPreventSleepUntil(value: number | null): Promise<boolean>
   setAutoUpdateEnabled(enabled: boolean): Promise<boolean>
   setWarnBeforeQuitting(enabled: boolean): Promise<boolean>
   setExpandedDiagnosticLoggingEnabled(enabled: boolean): Promise<boolean>
@@ -359,9 +389,12 @@ export interface ElectronAPI {
   setClaudeEnvVars(vars: Record<string, string>): Promise<boolean>
   setDefaultAgent(agent: string): Promise<boolean>
   setCodexCommand(command: string): Promise<boolean>
+  setCursorCommand(command: string): Promise<boolean>
   setClaudeModel(model: string | null): Promise<boolean>
   setCodexModel(model: string | null): Promise<boolean>
+  setCursorModel(model: string | null): Promise<boolean>
   setCodexEnvVars(vars: Record<string, string>): Promise<boolean>
+  setCursorEnvVars(vars: Record<string, string>): Promise<boolean>
   setNameClaudeSessions(enabled: boolean): Promise<boolean>
   setThemeMode(mode: 'light' | 'dark' | 'system'): Promise<boolean>
   setThemeLight(theme: string): Promise<boolean>
@@ -386,13 +419,18 @@ export interface ElectronAPI {
   setRepoConfig(repoRoot: string, next: Partial<RepoConfig>): Promise<RepoConfig | null>
   setWorktreeBase(mode: 'remote' | 'local'): Promise<boolean>
   setMergeStrategy(strategy: MergeStrategy): Promise<boolean>
-  setWorktreeDetail(detail: WorktreeDetail): Promise<boolean>
+  setSidebarDensity(density: SidebarDensity): Promise<boolean>
+  setSidebarDetails(prefs: SidebarDetailPrefsByMode): Promise<boolean>
+  setHiddenBottomIcons(hidden: HiddenBottomIcons): Promise<boolean>
+  setBottomIconOrder(order: BottomIconKey[]): Promise<boolean>
   setEditor(editorId: string): Promise<boolean>
   getAvailableEditors(): Promise<{ id: string; name: string }[]>
   snooze(path: string, wakeAt: number): Promise<boolean>
   unsnooze(path: string): Promise<boolean>
   setSnoozeDefaultDays(days: number): Promise<boolean>
   setScratchpadText(worktreePath: string, text: string): Promise<boolean>
+  setAlias(path: string, alias: string): Promise<boolean>
+  clearAlias(path: string): Promise<boolean>
   openInEditor(worktreePath: string, filePath?: string): Promise<{ ok: true } | { ok: false; error: string }>
 
   // Corrupt-config recovery (InvalidConfigModal). save/reset re-apply on
@@ -471,6 +509,10 @@ export interface ElectronAPI {
   getPerfMetrics(): Promise<PerfMetrics>
   perfLogSlowRender(id: string, ms: number, phase: string): void
 
+  getGitHubApiLog(): Promise<GitHubApiLogSnapshot>
+  clearGitHubApiLog(): Promise<boolean>
+  onGitHubApiLogAppended(callback: (entry: GitHubApiEntry) => void): () => void
+
   logError(
     label: string,
     error: { name?: string; message?: string; stack?: string },
@@ -496,12 +538,14 @@ export interface ElectronAPI {
   onSplitPaneDown(callback: () => void): () => void
   onOpenNewProject(callback: () => void): () => void
   onOpenReportIssue(callback: () => void): () => void
+  onOpenGitHubApiLog(callback: () => void): () => void
   onDebugCrashFocusedTab(callback: () => void): () => void
   onDebugPreviewOnboarding(callback: () => void): () => void
   onOpenAddBackend(callback: () => void): () => void
   onUiScaleUp(callback: () => void): () => void
   onUiScaleDown(callback: () => void): () => void
   onUiScaleReset(callback: () => void): () => void
+  onFullscreenChanged(callback: (isFullscreen: boolean) => void): () => void
 
   acceptHooks(): Promise<boolean>
   declineHooks(): Promise<boolean>
@@ -583,6 +627,10 @@ export interface ElectronAPI {
     id: string,
     entryId: string
   ): Promise<{ ok: boolean; reason?: string }>
+  forkJsonClaudeAt(
+    id: string,
+    entryId: string
+  ): Promise<{ ok: boolean; newSessionId?: string; reason?: string }>
   openJsonClaudeAuthLoginTab(
     worktreePath: string
   ): Promise<{ ok: true; tabId: string } | { ok: false; error: string }>

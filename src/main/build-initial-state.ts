@@ -15,11 +15,17 @@ import { initialScratchpad } from '../shared/state/scratchpad'
 import { initialSshBootstrap } from '../shared/state/ssh-bootstrap'
 import { initialAssignedPRs } from '../shared/state/assigned-prs'
 import { initialConfigHealth, type ConfigLoadError } from '../shared/state/config-health'
+import { initialAliases } from '../shared/state/aliases'
 import {
   initialSettings,
   DEFAULT_LIGHT_THEME,
   DEFAULT_DARK_THEME,
-  DEFAULT_PR_REVIEW_PROMPT
+  DEFAULT_PR_REVIEW_PROMPT,
+  DEFAULT_SIDEBAR_DETAILS,
+  BOTTOM_ICON_KEYS,
+  resolveBottomIconOrder,
+  type PreventSleepMode,
+  type BottomIconKey
 } from '../shared/state/settings'
 import {
   DEFAULT_CLAUDE_COMMAND,
@@ -27,7 +33,7 @@ import {
   DEFAULT_TERMINAL_FONT_SIZE,
   DEFAULT_WORKTREE_BASE,
   DEFAULT_MERGE_STRATEGY,
-  DEFAULT_WORKTREE_DETAIL,
+  DEFAULT_SIDEBAR_DENSITY,
   DEFAULT_HARNESS_SYSTEM_PROMPT,
   DEFAULT_HARNESS_SYSTEM_PROMPT_MAIN,
   type Config
@@ -51,6 +57,8 @@ function flattenScratchpadNotes(
   }
   return out
 }
+
+const PREVENT_SLEEP_MODES: PreventSleepMode[] = ['off', 'while-agents-running', 'always']
 
 export function buildInitialAppState(
   config: Config,
@@ -76,6 +84,9 @@ export function buildInitialAppState(
     scratchpad: { byWorktreePath: flattenScratchpadNotes(config.scratchpadNotes) },
     sshBootstrap: initialSshBootstrap,
     assignedPRs: initialAssignedPRs,
+    aliases: config.aliases
+      ? { byPath: { ...config.aliases } }
+      : initialAliases,
     settings: {
       ...initialSettings,
       themeMode:
@@ -88,12 +99,14 @@ export function buildInitialAppState(
       defaultAgent: config.defaultAgent || 'claude',
       claudeCommand: config.claudeCommand || DEFAULT_CLAUDE_COMMAND,
       codexCommand: config.codexCommand || 'codex',
+      cursorCommand: config.cursorCommand || 'agent',
       worktreeScripts: {
         setup: config.worktreeSetupCommand || '',
         teardown: config.worktreeTeardownCommand || ''
       },
       claudeEnvVars: config.claudeEnvVars || {},
       codexEnvVars: config.codexEnvVars || {},
+      cursorEnvVars: config.cursorEnvVars || {},
       harnessMcpEnabled: config.harnessMcpEnabled !== false,
       nameClaudeSessions: config.nameClaudeSessions ?? false,
       terminalFontFamily: config.terminalFontFamily || DEFAULT_TERMINAL_FONT_FAMILY,
@@ -101,9 +114,14 @@ export function buildInitialAppState(
       editor: config.editor || DEFAULT_EDITOR_ID,
       worktreeBase: config.worktreeBase || DEFAULT_WORKTREE_BASE,
       mergeStrategy: config.mergeStrategy || DEFAULT_MERGE_STRATEGY,
-      worktreeDetail: config.worktreeDetail || DEFAULT_WORKTREE_DETAIL,
+      sidebarDensity: config.sidebarDensity || DEFAULT_SIDEBAR_DENSITY,
+      sidebarDetails: {
+        compact: { ...DEFAULT_SIDEBAR_DETAILS.compact, ...(config.sidebarDetails?.compact || {}) },
+        comfy: { ...DEFAULT_SIDEBAR_DETAILS.comfy, ...(config.sidebarDetails?.comfy || {}) }
+      },
       claudeModel: config.claudeModel || null,
       codexModel: config.codexModel || null,
+      cursorModel: config.cursorModel || null,
       hasGithubToken: opts.hasGithubToken,
       autoUpdateEnabled: config.autoUpdateEnabled !== false,
       warnBeforeQuitting: config.warnBeforeQuitting !== false,
@@ -131,6 +149,7 @@ export function buildInitialAppState(
           ? config.uiScale
           : 'small',
       jsonModeSendOnEnter: config.jsonModeSendOnEnter === true,
+      autoScrollToBottom: config.autoScrollToBottom !== false,
       jsonModeDefaultPermissionMode:
         config.jsonModeDefaultPermissionMode === 'default' ||
         config.jsonModeDefaultPermissionMode === 'plan'
@@ -149,7 +168,39 @@ export function buildInitialAppState(
         ? config.dismissedAnnouncementIds.filter((x): x is string => typeof x === 'string')
         : [],
       announcementsMuted: config.announcementsMuted === true,
-      showAssignedPRs: config.showAssignedPRs === true
+      showAssignedPRs: config.showAssignedPRs === true,
+      preventSleepMode: PREVENT_SLEEP_MODES.includes(config.preventSleepMode as PreventSleepMode)
+        ? (config.preventSleepMode as PreventSleepMode)
+        : 'off',
+      // The temporary "+1h" timer never survives a relaunch — always seed null.
+      preventSleepUntil: null,
+      hiddenBottomIcons: sanitizeHiddenBottomIcons(config.hiddenBottomIcons),
+      bottomIconOrder: resolveBottomIconOrder(
+        sanitizeBottomIconOrder(config.bottomIconOrder)
+      )
     }
   }
+}
+
+function sanitizeHiddenBottomIcons(
+  input: unknown
+): Partial<Record<BottomIconKey, boolean>> {
+  if (!input || typeof input !== 'object') return {}
+  const out: Partial<Record<BottomIconKey, boolean>> = {}
+  for (const key of BOTTOM_ICON_KEYS) {
+    const val = (input as Record<string, unknown>)[key]
+    if (val === true) out[key] = true
+  }
+  return out
+}
+
+function sanitizeBottomIconOrder(input: unknown): BottomIconKey[] {
+  if (!Array.isArray(input)) return []
+  const out: BottomIconKey[] = []
+  for (const k of input) {
+    if (typeof k === 'string' && (BOTTOM_ICON_KEYS as readonly string[]).includes(k)) {
+      out.push(k as BottomIconKey)
+    }
+  }
+  return out
 }

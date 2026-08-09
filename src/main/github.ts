@@ -358,10 +358,54 @@ const PR_FRAGMENT = `fragment PR on PullRequest {
   }
 }`
 
-/** Build a single GraphQL request that looks up the PR for each requested
- *  branch via headRefName. Aliased sub-queries keep the whole batch in one
- *  round-trip. Returns map: worktreePath → PRStatus|null. Throws on
- *  transport failure so the caller preserves cached state. */
+// Chunking constants for fetchPRStatusesForRepo. A repo with ~50 worktrees
+// pushed the aliased-sub-query batch past GitHub's GraphQL resolver time
+// budget, returning 504s that stalled the whole poll. Chunking caps the
+// per-request cost; the concurrency limit keeps a chunk failure from
+// serializing recovery across the repo.
+export const PR_CHUNK_SIZE = 10
+export const PR_MAX_CONCURRENT_CHUNKS = 3
+
+type BuiltPR = { worktreePath: string; branch: string; status: PRStatus | null }
+
+/** Partition into fixed-size chunks. Exposed so tests can assert the
+ *  invariant without exercising a fake GraphQL server. */
+export function chunkPRRequests(
+  requests: PRStatusRequest[],
+  size: number = PR_CHUNK_SIZE
+): PRStatusRequest[][] {
+  if (size <= 0) throw new Error('chunk size must be positive')
+  const chunks: PRStatusRequest[][] = []
+  for (let i = 0; i < requests.length; i += size) {
+    chunks.push(requests.slice(i, i + size))
+  }
+  return chunks
+}
+
+async function runWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<void>
+): Promise<void> {
+  if (items.length === 0) return
+  let cursor = 0
+  const workerCount = Math.min(limit, items.length)
+  const workers = new Array(workerCount).fill(0).map(async () => {
+    while (true) {
+      const idx = cursor++
+      if (idx >= items.length) return
+      await fn(items[idx], idx)
+    }
+  })
+  await Promise.all(workers)
+}
+
+/** Fetch PR statuses for every requested branch in `requests`. Chunks the
+ *  work into small GraphQL requests (see PR_CHUNK_SIZE) that run in
+ *  parallel with a concurrency cap (see PR_MAX_CONCURRENT_CHUNKS). One
+ *  chunk failing (504 / timeout / network) leaves that chunk's worktrees
+ *  absent from the returned map — callers preserve their cached status
+ *  for absent paths. Returns map: worktreePath → PRStatus|null. */
 export async function fetchPRStatusesForRepo(
   ctx: RepoContext,
   requests: PRStatusRequest[]
@@ -386,6 +430,51 @@ export async function fetchPRStatusesForRepo(
   const { owner, repo } = ctx.upstream
   const originFull = `${ctx.origin.owner}/${ctx.origin.repo}`
 
+  const chunks = chunkPRRequests(queryable, PR_CHUNK_SIZE)
+  const allBuilt: BuiltPR[] = []
+
+  await runWithConcurrency(chunks, PR_MAX_CONCURRENT_CHUNKS, async (chunk, chunkIdx) => {
+    try {
+      const built = await fetchOneChunk(ctx, token, chunk, originFull)
+      allBuilt.push(...built)
+    } catch (err) {
+      const startIdx = chunkIdx * PR_CHUNK_SIZE
+      const endIdx = startIdx + chunk.length - 1
+      log(
+        'pr-poller',
+        `chunk failed for ${owner}/${repo} (worktrees ${startIdx}-${endIdx}): ${formatErr(err)}`
+      )
+      // Deliberately left absent from `result`. The pr-poller's
+      // preserve-cached-status logic (see pr-poller.ts) leaves each
+      // worktree's previous PRStatus in place until the next poll.
+    }
+  })
+
+  // Any branch that some PR is targeting as base (develop / integration /
+  // release/*, etc.) is a merge point, not a PR head. Null out attributions
+  // for worktrees sitting on one of those. Applied across all successful
+  // chunks so cross-chunk base/head relationships still take effect.
+  const baseBranches = new Set<string>()
+  for (const b of allBuilt) if (b.status) baseBranches.add(b.status.baseBranch)
+  for (const b of allBuilt) {
+    if (b.status && baseBranches.has(b.branch)) b.status = null
+  }
+
+  for (const b of allBuilt) result.set(b.worktreePath, b.status)
+  return result
+}
+
+/** Run one GraphQL batch for a chunk of requests. Throws on transport
+ *  failure, non-2xx response, or empty repository payload so the caller
+ *  can decide per-chunk whether to swallow or propagate. */
+async function fetchOneChunk(
+  ctx: RepoContext,
+  token: string,
+  requests: PRStatusRequest[],
+  originFull: string
+): Promise<BuiltPR[]> {
+  const { owner, repo } = ctx.upstream
+
   const varDefs = ['$owner:String!', '$name:String!']
   const repoAliasParts: string[] = []
   const topAliasParts: string[] = []
@@ -395,7 +484,7 @@ export async function fetchPRStatusesForRepo(
   // associatedPullRequests index) and `gh pr checkout`-style synthetic
   // local branches whose name doesn't match the PR's head.ref. Both fire
   // in the same request so the fallback adds no extra round-trip.
-  queryable.forEach((req, i) => {
+  requests.forEach((req, i) => {
     varDefs.push(`$branch${i}:String!`)
     variables[`branch${i}`] = req.branch
     repoAliasParts.push(
@@ -443,17 +532,16 @@ ${PR_FRAGMENT}`
   const topData = json.data ?? {}
 
   const hasMilestones = (repoData.milestones?.totalCount ?? 0) > 0
-
   const defaultBranchName = repoData.defaultBranchRef?.name ?? ''
 
   // Resolve per-request, then fetch behind_by + first-release-tag in parallel.
   const built = await Promise.all(
-    queryable.map(async (req, i) => {
+    requests.map(async (req, i): Promise<BuiltPR> => {
       // A worktree sitting on the repo's default branch (main/master) is
       // not the head of any PR — skip the resolution entirely to avoid
       // misattributing the latest squash-merged PR's status to it.
       if (defaultBranchName && req.branch === defaultBranchName) {
-        return { worktreePath: req.worktreePath, branch: req.branch, status: null as PRStatus | null }
+        return { worktreePath: req.worktreePath, branch: req.branch, status: null }
       }
       const brAlias = repoData[`prBr${i}`] as { nodes: GraphQLPR[] | null } | null | undefined
       const searchAlias = topData[`prSearch${i}`] as
@@ -466,7 +554,7 @@ ${PR_FRAGMENT}`
         (n): n is GraphQLPR => !!n && typeof (n as GraphQLPR).number === 'number'
       )
       const pr = resolvePRForWorktree(branchNodes, searchNodes, req.headSha, originFull)
-      if (!pr) return { worktreePath: req.worktreePath, branch: req.branch, status: null as PRStatus | null }
+      if (!pr) return { worktreePath: req.worktreePath, branch: req.branch, status: null }
       const [behindBy, firstReleaseTag] = await Promise.all([
         pr.state === 'MERGED' || pr.state === 'CLOSED'
           ? Promise.resolve(null)
@@ -480,17 +568,7 @@ ${PR_FRAGMENT}`
     })
   )
 
-  // Any branch that some PR is targeting as base (develop / integration /
-  // release/*, etc.) is a merge point, not a PR head. Null out attributions
-  // for worktrees sitting on one of those.
-  const baseBranches = new Set<string>()
-  for (const b of built) if (b.status) baseBranches.add(b.status.baseBranch)
-  for (const b of built) {
-    if (b.status && baseBranches.has(b.branch)) b.status = null
-  }
-
-  for (const b of built) result.set(b.worktreePath, b.status)
-  return result
+  return built
 }
 
 /** Resolve which PR (if any) belongs to a given worktree.

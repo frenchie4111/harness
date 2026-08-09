@@ -9,14 +9,17 @@ import {
   type MouseEvent as ReactMouseEvent,
   type ReactNode
 } from 'react'
-import ReactMarkdown from 'react-markdown'
+import ReactMarkdown, { type Components } from 'react-markdown'
 import rehypeHighlight from 'rehype-highlight'
 import remarkGfm from 'remark-gfm'
+import { remarkInsight } from '../remark-insight'
+import { InsightCard } from './InsightCard'
 import {
   AlertOctagon,
   AlertTriangle,
   Brain,
   ChevronDown,
+  ChevronUp,
   Square,
   Terminal,
   FileText,
@@ -24,7 +27,8 @@ import {
   Layers,
   RotateCcw,
   ShieldAlert,
-  Sparkles
+  Sparkles,
+  GitBranch
 } from 'lucide-react'
 import { useJsonClaudeSession, useSettings } from '../store'
 import { useBackend } from '../backend'
@@ -40,9 +44,24 @@ import { JsonModeChatImageThumb } from './JsonModeChatImageThumb'
 import { fuzzyMatch } from '../fuzzy'
 import 'highlight.js/styles/github-dark.css'
 import type { JsonClaudeChatEntry } from '../../shared/state/json-claude'
+import {
+  COMPACT_BODY_TEXT,
+  FindContext,
+  FindOverlay,
+  HighlightedText,
+  blockContainerId,
+  createFindRehypePlugin,
+  useFind,
+  useFindController
+} from './JsonModeChatFind'
 
-const REMARK_PLUGINS = [remarkGfm]
+const REMARK_PLUGINS = [remarkGfm, remarkInsight]
 const REHYPE_PLUGINS = [rehypeHighlight, rehypeColorHex]
+
+// react-markdown v10's Components type only lists known HTML tag names,
+// but the runtime accepts any string tag; cast to register our custom
+// <insight-card> element.
+const MARKDOWN_COMPONENTS = { 'insight-card': InsightCard } as unknown as Components
 
 // Matches color literals we want to swatch:
 //   - #RRGGBB and #RRGGBBAA hex. 3-hex (#fff) and 4-hex (#ffff) are
@@ -124,6 +143,27 @@ function rehypeColorHex() {
   }
 }
 
+/** ReactMarkdown wrapper that dynamically injects the find-highlight
+ *  rehype plugin when Cmd+F has an active query. Kept as a small
+ *  component so the plugins array is memoized per-query rather than
+ *  rebuilt on every parent render. */
+function MarkdownWithFind({ children }: { children: string }): JSX.Element {
+  const { query } = useFind()
+  const rehypePlugins = useMemo(() => {
+    if (!query) return REHYPE_PLUGINS
+    return [rehypeHighlight, createFindRehypePlugin(query)]
+  }, [query])
+  return (
+    <ReactMarkdown
+      remarkPlugins={REMARK_PLUGINS}
+      rehypePlugins={rehypePlugins}
+      components={MARKDOWN_COMPONENTS}
+    >
+      {children}
+    </ReactMarkdown>
+  )
+}
+
 // Worktree file list cache. Same TTL/shape as CommandPalette uses — the
 // list rarely changes during a typing session, and listAllFiles shells
 // out to git ls-files which is cheap but not free on big repos.
@@ -182,10 +222,12 @@ interface RenderedRow {
 
 function ThinkingCard({
   text,
-  isPartial
+  isPartial,
+  blockId
 }: {
   text: string
   isPartial: boolean
+  blockId: string
 }): JSX.Element {
   // Default expanded while streaming so the user can see thoughts land in
   // real time; auto-collapse once the model moves on so finalized
@@ -201,10 +243,15 @@ function ThinkingCard({
     wasPartial.current = isPartial
   }, [isPartial])
 
+  const find = useFind()
+  const forceOpen = find.forceOpenIds.has(blockId)
+  const isOpen = expanded || forceOpen
+  const isCurrentHit = find.currentHitBlockId === blockId
   const charCount = text.length
   return (
     <div
-      className="my-1 border border-border/40 bg-app/30 overflow-hidden"
+      data-find-block-id={blockId}
+      className={`my-1 border ${isCurrentHit ? 'border-accent ring-2 ring-accent/50' : 'border-border/40'} bg-app/30 overflow-hidden`}
       style={{ borderRadius: 'var(--chat-bubble-radius)' }}
     >
       <button
@@ -218,7 +265,7 @@ function ThinkingCard({
         }}
       >
         <span className="text-muted text-xs w-2 shrink-0 select-none">
-          {expanded ? '▾' : '▸'}
+          {isOpen ? '▾' : '▸'}
         </span>
         <Brain className="icon-xs text-muted shrink-0" />
         <span
@@ -242,15 +289,10 @@ function ThinkingCard({
           </span>
         )}
       </button>
-      {expanded && (
+      {isOpen && (
         <div className="px-3 py-2 border-t border-border/30 markdown italic text-muted text-xs leading-relaxed">
           {text ? (
-            <ReactMarkdown
-              remarkPlugins={REMARK_PLUGINS}
-              rehypePlugins={REHYPE_PLUGINS}
-            >
-              {text}
-            </ReactMarkdown>
+            <MarkdownWithFind>{text}</MarkdownWithFind>
           ) : !isPartial ? (
             // Claude Code can return signed-but-empty thinking blocks
             // (the API tier elides plaintext but keeps a signature so
@@ -267,13 +309,19 @@ function ThinkingCard({
 function CompactCard({
   trigger,
   preTokens,
-  postTokens
+  postTokens,
+  blockId
 }: {
   trigger?: 'auto' | 'manual'
   preTokens?: number
   postTokens?: number
+  blockId: string
 }): JSX.Element {
   const [expanded, setExpanded] = useState(false)
+  const find = useFind()
+  const forceOpen = find.forceOpenIds.has(blockId)
+  const isOpen = expanded || forceOpen
+  const isCurrentHit = find.currentHitBlockId === blockId
   const subtitle =
     typeof preTokens === 'number' && typeof postTokens === 'number'
       ? `${formatTokenCount(preTokens)} → ${formatTokenCount(postTokens)} tokens`
@@ -284,14 +332,15 @@ function CompactCard({
     trigger === 'manual' ? 'via /compact' : trigger === 'auto' ? 'auto' : null
   return (
     <div
-      className="my-2 border border-info/40 bg-info/5 overflow-hidden"
+      data-find-block-id={blockId}
+      className={`my-2 border ${isCurrentHit ? 'border-accent ring-2 ring-accent/50' : 'border-info/40'} bg-info/5 overflow-hidden`}
       style={{ borderRadius: 'var(--chat-bubble-radius)' }}
     >
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
         className={`w-full flex items-center gap-2 ${
-          expanded ? 'border-b border-info/30' : ''
+          isOpen ? 'border-b border-info/30' : ''
         } bg-info/10 hover:bg-info/15 cursor-pointer transition-colors text-left`}
         style={{
           paddingInline: 'var(--chat-chrome-px)',
@@ -300,7 +349,7 @@ function CompactCard({
         }}
       >
         <span className="text-info/70 text-xs w-2 shrink-0 select-none">
-          {expanded ? '▾' : '▸'}
+          {isOpen ? '▾' : '▸'}
         </span>
         <Layers className="icon-xs text-info shrink-0" />
         <span
@@ -319,11 +368,10 @@ function CompactCard({
           </span>
         )}
       </button>
-      {expanded && (
+      {isOpen && (
         <div className="px-3 py-2 text-xs text-muted space-y-1">
           <div>
-            Earlier conversation history was summarized to free up context.
-            New messages continue from the summary.
+            <HighlightedText text={COMPACT_BODY_TEXT} />
           </div>
           {(typeof preTokens === 'number' ||
             typeof postTokens === 'number') && (
@@ -381,7 +429,7 @@ function SubprocessExitCard({
       </div>
       <div className="px-3 py-2 space-y-2">
         <pre className="text-xs text-muted font-mono whitespace-pre-wrap break-words m-0">
-          {detail}
+          <HighlightedText text={detail} />
         </pre>
         {isExited ? (
           <button
@@ -440,7 +488,7 @@ function AuthFailureCard({
       <div className="px-3 py-2 text-xs text-fg space-y-2">
         {message && (
           <pre className="whitespace-pre-wrap break-words font-mono text-xs text-muted bg-app/40 border border-border/40 rounded px-2 py-1 max-h-32 overflow-auto">
-            {message}
+            <HighlightedText text={message} />
           </pre>
         )}
         <div>
@@ -522,7 +570,7 @@ function RateLimitWarningCard({
           className="font-semibold shrink-0 text-warning"
           style={{ fontFamily: 'var(--chat-tool-name-family)' }}
         >
-          {message}
+          <HighlightedText text={message} />
         </span>
         {utilPct !== null && (
           <span
@@ -586,7 +634,9 @@ function RateLimitErrorCard({
         </span>
       </div>
       <div className="px-3 py-2 text-xs text-muted space-y-1">
-        <div className="text-fg/80">{message}</div>
+        <div className="text-fg/80">
+          <HighlightedText text={message} />
+        </div>
         {resetText && (
           <div className="text-faint">
             Retry available at <span className="font-mono">{resetText}</span>
@@ -648,7 +698,7 @@ function renderEntries(
                 className="flex-1 min-w-0 whitespace-pre-wrap break-words"
                 style={{ fontSize: 'var(--chat-body-text)' }}
               >
-                {entry.text}
+                <HighlightedText text={entry.text ?? ''} />
               </div>
               <div className="flex items-center gap-1 shrink-0">
                 <span
@@ -678,7 +728,7 @@ function renderEntries(
                 fontSize: 'var(--chat-body-text)'
               }}
             >
-              {entry.text}
+              <HighlightedText text={entry.text ?? ''} />
               {entry.images && entry.images.length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {entry.images.map((img) => (
@@ -706,6 +756,7 @@ function renderEntries(
             trigger={entry.compactTrigger}
             preTokens={entry.compactPreTokens}
             postTokens={entry.compactPostTokens}
+            blockId={`${entry.entryId}:compact`}
           />
         )
       })
@@ -779,12 +830,11 @@ function renderEntries(
       continue
     }
     if (entry.kind === 'assistant' && entry.blocks) {
-      let thinkingIdx = 0
-      for (const block of entry.blocks) {
+      for (const [blockIndex, block] of entry.blocks.entries()) {
         if (block.type === 'thinking') {
-          const idx = thinkingIdx++
+          const bid = blockContainerId(entry, block, blockIndex, 'thinking')
           rows.push({
-            key: `${entry.entryId}-th-${idx}`,
+            key: `${entry.entryId}-th-${blockIndex}`,
             entryId: entry.entryId,
             type: 'tool',
             isThinking: true,
@@ -792,6 +842,7 @@ function renderEntries(
               <ThinkingCard
                 text={block.text || ''}
                 isPartial={!!entry.isPartial}
+                blockId={bid}
               />
             )
           })
@@ -805,12 +856,7 @@ function renderEntries(
                 className="markdown leading-relaxed"
                 style={{ fontSize: 'var(--chat-body-text)' }}
               >
-                <ReactMarkdown
-                  remarkPlugins={REMARK_PLUGINS}
-                  rehypePlugins={REHYPE_PLUGINS}
-                >
-                  {block.text || ''}
-                </ReactMarkdown>
+                <MarkdownWithFind>{block.text || ''}</MarkdownWithFind>
                 {entry.isPartial && (
                   <span
                     className="json-claude-cursor"
@@ -869,6 +915,7 @@ function renderEntries(
               <>
                 {showPlaceholder ? (
                   <ToolCardChrome
+                    id={block.id}
                     name={block.name || 'tool'}
                     subtitle="preparing call…"
                     variant="info"
@@ -958,6 +1005,14 @@ function renderGroupedItems(items: GroupedItem[]): ReactNode {
   )
 }
 
+// CSS-pixel equivalent of 0.75rem, matching the `space-y-3` gap below the
+// pinned prompt so pin-mode leaves symmetric top/bottom whitespace around
+// it. Reads the live root font-size so it tracks the `uiScale` setting the
+// same way Tailwind's rem-based utilities do.
+function anchorTopPadding(): number {
+  return 0.75 * parseFloat(getComputedStyle(document.documentElement).fontSize)
+}
+
 export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonModeChatProps): JSX.Element {
   const backend = useBackend()
   const session = useJsonClaudeSession(sessionId)
@@ -965,6 +1020,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
   const {
     jsonModeChatDensity: density,
     jsonModeSendOnEnter: sendOnEnter,
+    autoScrollToBottom,
     defaultClaudeTabType
   } = useSettings()
   const cameFromTerminalDefault = defaultClaudeTabType === 'xterm'
@@ -1041,6 +1097,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
     }
   }, [backend, mode, sessionId, worktreePath])
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  const findInputRef = useRef<HTMLInputElement>(null)
   // dragenter fires for every child element entered, dragleave for every
   // child exited — so a naive boolean flickers as the cursor moves over
   // nested nodes. Counter pattern: increment on enter, decrement on
@@ -1053,16 +1110,33 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
   // scroll-up before the snap-to-bottom can run. Wheel/touch/keydown +
   // scrollTop-decreased deltas are the only authoritative signals.
   const userScrolledUp = useRef(false)
+  // DOM node of the most recent non-queued user-role entry. Populated by
+  // an inline ref callback in the render loop; consulted by the pin-mode
+  // ResizeObserver callback and (in Task 6) the Jump-to-prompt handler.
+  const anchorPromptRef = useRef<HTMLDivElement | null>(null)
   const lastScrollTop = useRef(0)
   // Suppress the scrollbar-drag fallback while we're driving scroll
   // programmatically (auto-snap on content growth, jump-to-bottom click).
   const isProgrammaticScroll = useRef(false)
   const [showJumpToBottom, setShowJumpToBottom] = useState(false)
+  const [showJumpToPrompt, setShowJumpToPrompt] = useState(false)
 
+  // Reset both pill flags when the setting toggles. The useLayoutEffect
+  // that follows re-runs on toggle and snaps the view to the new target;
+  // this clears any pill visible under the old mode's threshold so it
+  // doesn't linger for one frame before onScroll fires with the new-mode
+  // branch.
+  useEffect(() => {
+    setShowJumpToBottom(false)
+    setShowJumpToPrompt(false)
+  }, [autoScrollToBottom])
+
+  // Ref update only — pill state is driven from onScroll (mode-aware) so
+  // both flags stay in sync with actual scroll position rather than
+  // splitting between gesture-source and position-source updates.
   const setUserScrolledUp = useCallback((v: boolean): void => {
     if (userScrolledUp.current === v) return
     userScrolledUp.current = v
-    setShowJumpToBottom(v)
   }, [])
 
   const reevaluateAfterGesture = useCallback((): void => {
@@ -1155,18 +1229,31 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
   useLayoutEffect(() => {
     const el = scrollRef.current
     if (!el) return
-    el.scrollTop = el.scrollHeight
+    const targetScrollTop = (): number => {
+      // Pin-mode: snap so the anchor prompt sits with symmetric top/bottom
+      // whitespace — the gap ABOVE it matches the `space-y-3` gap BELOW it
+      // to the response. 0.75rem scaled via the root font-size so this
+      // tracks the uiScale setting the same way `space-y-3` does. Fall
+      // back to scrollHeight when there's no anchor yet (fresh session
+      // before the first user message renders) so the mount doesn't leave
+      // the view in a weird half-scrolled state.
+      if (!autoScrollToBottom && anchorPromptRef.current) {
+        return anchorPromptRef.current.offsetTop - anchorTopPadding()
+      }
+      return el.scrollHeight
+    }
+    el.scrollTop = targetScrollTop()
     lastScrollTop.current = el.scrollTop
     let clearTimer: ReturnType<typeof setTimeout> | null = null
     const ro = new ResizeObserver(() => {
       if (userScrolledUp.current) return
       isProgrammaticScroll.current = true
-      el.scrollTop = el.scrollHeight
+      el.scrollTop = targetScrollTop()
       // Single-frame jumps (thinking card body appearing, cursor span
       // landing) grow content by ~30px in one shot — re-snap on the
       // next frame in case more layout settled after our first commit.
       requestAnimationFrame(() => {
-        if (!userScrolledUp.current) el.scrollTop = el.scrollHeight
+        if (!userScrolledUp.current) el.scrollTop = targetScrollTop()
         lastScrollTop.current = el.scrollTop
       })
       // Hold the suppression window past back-to-back scroll events
@@ -1184,7 +1271,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
       ro.disconnect()
       if (clearTimer) clearTimeout(clearTimer)
     }
-  }, [])
+  }, [autoScrollToBottom])
 
   // Scrollbar-drag fallback: macOS pinned scrollbars don't emit wheel
   // events, so a drag is invisible to the input listeners above. Watch
@@ -1211,6 +1298,16 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
     } else if (el.scrollTop > prev && distance < 32) {
       setUserScrolledUp(false)
     }
+    if (autoScrollToBottom) {
+      setShowJumpToBottom(distance > 32)
+      setShowJumpToPrompt(false)
+    } else {
+      const anchor = anchorPromptRef.current
+      const anchorScrolledOff =
+        !!anchor && anchor.offsetTop - anchorTopPadding() < el.scrollTop - 8
+      setShowJumpToPrompt(anchorScrolledOff)
+      setShowJumpToBottom(false)
+    }
   }
 
   const jumpToBottom = (): void => {
@@ -1220,8 +1317,27 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
     el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
     lastScrollTop.current = el.scrollHeight
     setUserScrolledUp(false)
+    setShowJumpToBottom(false)
     // Smooth scroll fires several scroll events over ~300ms; clear the
     // guard well after the animation has landed at the bottom.
+    setTimeout(() => {
+      isProgrammaticScroll.current = false
+    }, 500)
+  }
+
+  const jumpToPrompt = (): void => {
+    const el = scrollRef.current
+    const anchor = anchorPromptRef.current
+    if (!el || !anchor) return
+    const target = anchor.offsetTop - anchorTopPadding()
+    isProgrammaticScroll.current = true
+    el.scrollTo({ top: target, behavior: 'smooth' })
+    lastScrollTop.current = target
+    setUserScrolledUp(false)
+    setShowJumpToPrompt(false)
+    // Smooth scroll fires several scroll events over ~300ms; clear the
+    // guard well after the animation has landed. Same window as
+    // jumpToBottom uses.
     setTimeout(() => {
       isProgrammaticScroll.current = false
     }, 500)
@@ -1266,6 +1382,53 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
   const entries = session?.entries ?? []
   const entriesHydrated = session?.entriesHydrated ?? false
   const deferredEntries = useDeferredValue(entries)
+  const find = useFindController(entries, scrollRef)
+  const outerDivRef = useRef<HTMLDivElement | null>(null)
+  // Document-level Cmd+F so the shortcut works from anywhere in the app —
+  // sidebar, composer, tab bar, etc. Every mounted JsonModeChat installs
+  // this listener; the visibility + focus gate below picks the right
+  // instance when multiple are mounted (WorkspaceView keeps hidden tabs
+  // display:none rather than unmounting).
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if (e.key !== 'f' && e.key !== 'F') return
+      if (!(e.metaKey || e.ctrlKey) || e.altKey) return
+      const root = outerDivRef.current
+      if (!root) return
+      // display:none up the ancestor chain → offsetParent is null.
+      if (root.offsetParent === null) return
+      const active = document.activeElement as HTMLElement | null
+      const focusInside = !!active && root.contains(active)
+      if (!focusInside) {
+        // Focus is elsewhere in the app. Only claim Cmd+F if we're the
+        // sole visible chat — otherwise a split-pane scenario would have
+        // every visible chat open its bar at once.
+        const all = document.querySelectorAll<HTMLElement>(
+          '[data-json-mode-chat]'
+        )
+        let visibleCount = 0
+        let isSoleVisible = false
+        for (const el of all) {
+          if (el.offsetParent !== null) {
+            visibleCount++
+            if (el === root) isSoleVisible = visibleCount === 1
+            else isSoleVisible = false
+          }
+          if (visibleCount > 1) break
+        }
+        if (!(visibleCount === 1 && isSoleVisible)) return
+      }
+      e.preventDefault()
+      e.stopPropagation()
+      find.open()
+      requestAnimationFrame(() => {
+        findInputRef.current?.focus()
+        findInputRef.current?.select()
+      })
+    }
+    document.addEventListener('keydown', onKeyDown, true)
+    return () => document.removeEventListener('keydown', onKeyDown, true)
+  }, [find])
   const rows = useMemo(() => {
     // Sub-agent nesting pre-pass: split the flat entries array into a
     // top-level transcript and a children-by-parent map so the Task
@@ -1337,6 +1500,18 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
 
   const groupedItems = useMemo(() => groupConsecutiveToolRows(rows), [rows])
 
+  // The anchor for "pin prompt to top" mode is the most recent non-queued
+  // user entry. Derived from `entries` (not `groupedItems`) so the id is
+  // stable across group-shape changes (e.g. tool_use turns that resolve to
+  // a single group after streaming completes).
+  const lastUserEntryId = useMemo<string | null>(() => {
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const e = entries[i]
+      if (e.kind === 'user' && !e.isQueued) return e.entryId
+    }
+    return null
+  }, [entries])
+
   // Right-click "Rewind to here" state. Only available on assistant
   // rows — right-clicking a user bubble or any other row does nothing
   // (browser default fires). The menu is a positioned <div> a la
@@ -1349,7 +1524,13 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
   //     raw turns again on --resume so truncating into them doesn't help
   //   - the session is exited — no subprocess to respawn against
   const [rewindMenu, setRewindMenu] = useState<
-    | { entryId: string; x: number; y: number; disabledReason: string | null }
+    | {
+        entryId: string
+        x: number
+        y: number
+        disabledReason: string | null
+        forkDisabledReason: string | null
+      }
     | null
   >(null)
   const lastCompactIdx = useMemo(() => {
@@ -1380,6 +1561,24 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
     },
     [entries, entryIndexById, lastCompactIdx, session?.state]
   )
+  // Fork's guardset is a strict subset of rewind's — no "session must
+  // be running" check (fork just reads the jsonl) and no "must have
+  // messages after this one" check (forking off the last message is
+  // fine — the fork starts from the same point with no follow-ups).
+  const forkDisabledReason = useCallback(
+    (entryId: string): string | null => {
+      const idx = entryIndexById.get(entryId)
+      if (idx === undefined) return 'message not found'
+      const e = entries[idx]
+      if (e.kind !== 'assistant') return 'only assistant messages can be forked'
+      if (e.parentToolUseId) return 'sub-agent steps can’t be forked individually'
+      if (idx <= lastCompactIdx) {
+        return 'forking across a /compact boundary isn’t supported'
+      }
+      return null
+    },
+    [entries, entryIndexById, lastCompactIdx]
+  )
   const openRewindMenu = useCallback(
     (entryId: string, e: ReactMouseEvent): void => {
       e.preventDefault()
@@ -1388,15 +1587,23 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
         entryId,
         x: e.clientX,
         y: e.clientY,
-        disabledReason: rewindDisabledReason(entryId)
+        disabledReason: rewindDisabledReason(entryId),
+        forkDisabledReason: forkDisabledReason(entryId)
       })
     },
-    [rewindDisabledReason]
+    [rewindDisabledReason, forkDisabledReason]
   )
   const performRewind = useCallback(
     async (entryId: string) => {
       setRewindMenu(null)
       await backend.rewindJsonClaudeTo(sessionId, entryId)
+    },
+    [backend, sessionId]
+  )
+  const performFork = useCallback(
+    async (entryId: string) => {
+      setRewindMenu(null)
+      await backend.forkJsonClaudeAt(sessionId, entryId)
     },
     [backend, sessionId]
   )
@@ -1765,6 +1972,8 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
 
   return (
     <div
+      ref={outerDivRef}
+      data-json-mode-chat
       className="absolute inset-0 flex flex-col bg-app text-fg"
       data-chat-density={density}
       onDragEnter={(e) => {
@@ -1815,6 +2024,28 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
               </span>
             </div>
           </button>
+          <button
+            type="button"
+            disabled={rewindMenu.forkDisabledReason !== null}
+            onClick={(e) => {
+              e.stopPropagation()
+              if (rewindMenu.forkDisabledReason !== null) return
+              void performFork(rewindMenu.entryId)
+            }}
+            className={`flex w-full items-center gap-2 px-3 py-1.5 text-left ${
+              rewindMenu.forkDisabledReason
+                ? 'text-muted cursor-not-allowed opacity-60'
+                : 'text-fg-bright hover:bg-panel cursor-pointer'
+            }`}
+          >
+            <GitBranch className="icon-xs shrink-0" />
+            <div className="flex flex-col">
+              <span>Fork chat here</span>
+              <span className="text-xs text-muted">
+                {rewindMenu.forkDisabledReason ?? 'opens a new tab with history up to here'}
+              </span>
+            </div>
+          </button>
         </div>
       )}
       {isDragOver && (
@@ -1847,6 +2078,10 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
         </div>
       )}
       <div className="relative flex-1 min-h-0 flex flex-col">
+        <div className="absolute top-2 left-2 z-30 pointer-events-auto">
+          <FindOverlay controller={find} inputRef={findInputRef} />
+        </div>
+        <FindContext.Provider value={find.contextValue}>
         <div
           ref={scrollRef}
           onScroll={onScroll}
@@ -1904,12 +2139,18 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
                 targetEntryId && targetEntry?.kind === 'assistant'
                   ? (e: ReactMouseEvent): void => openRewindMenu(targetEntryId, e)
                   : undefined
+              const isAnchor = targetEntryId != null && targetEntryId === lastUserEntryId
+              const anchorRef = isAnchor
+                ? (el: HTMLDivElement | null): void => {
+                    anchorPromptRef.current = el
+                  }
+                : undefined
               return g.kind === 'single' ? (
-                <div key={g.key} onContextMenu={onContextMenu}>
+                <div key={g.key} ref={anchorRef} onContextMenu={onContextMenu}>
                   {g.rows[0].node}
                 </div>
               ) : (
-                <div key={g.key} onContextMenu={onContextMenu}>
+                <div key={g.key} ref={anchorRef} onContextMenu={onContextMenu}>
                   <ToolGroup rows={g.rows} />
                 </div>
               )
@@ -1954,6 +2195,7 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
           )}
           </div>
         </div>
+        </FindContext.Provider>
         {showJumpToBottom && (
           <button
             onClick={jumpToBottom}
@@ -1962,6 +2204,16 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
           >
             <ChevronDown className="icon-xs" />
             <span>Jump to bottom</span>
+          </button>
+        )}
+        {showJumpToPrompt && (
+          <button
+            onClick={jumpToPrompt}
+            className="absolute right-4 top-4 z-10 px-3 py-1.5 rounded-full bg-accent text-white text-xs shadow-lg hover:bg-accent/90 cursor-pointer flex items-center gap-1.5"
+            title="Jump to prompt"
+          >
+            <ChevronUp className="icon-xs" />
+            <span>Jump to prompt</span>
           </button>
         )}
       </div>

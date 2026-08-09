@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { ToolCardChrome, basename, trunc, type ToolCardProps } from './index'
 import { ReadIcon } from './tool-icons'
+import { HighlightedText, useFind } from '../JsonModeChatFind'
 import { langForPath, highlightToLines } from './diff-util'
 
 const DEFAULT_LINE_CAP = 500
@@ -56,9 +57,11 @@ export function ReadCard({ block, result, autoApproved, sessionAllowed }: ToolCa
     const joined = visible.map((l) => l.text).join('\n')
     return highlightToLines(joined, lang)
   }, [visible, lang])
+  const { query } = useFind()
 
   return (
     <ToolCardChrome
+      id={block.id}
       name="Read"
       subtitle={`${basename(fp)}${range}`}
       variant="info"
@@ -67,10 +70,14 @@ export function ReadCard({ block, result, autoApproved, sessionAllowed }: ToolCa
       autoApproved={autoApproved}
       sessionAllowed={sessionAllowed}
     >
-      {fp && <div className="px-2 py-1 text-xs text-muted truncate font-mono">{fp}</div>}
+      {fp && (
+        <div className="px-2 py-1 text-xs text-muted truncate font-mono">
+          <HighlightedText text={fp} />
+        </div>
+      )}
       {result && isError && (
         <pre className="px-2 py-1 text-xs font-mono text-danger whitespace-pre-wrap max-h-72 overflow-auto">
-          {trunc(result.content, 4000)}
+          <HighlightedText text={trunc(result.content, 4000)} />
         </pre>
       )}
       {result && !isError && rendered && (
@@ -86,10 +93,16 @@ export function ReadCard({ block, result, autoApproved, sessionAllowed }: ToolCa
                   <span className="select-none text-muted w-12 shrink-0 text-right pr-2 text-xs tabular-nums opacity-70">
                     {line.num}
                   </span>
-                  <code
-                    className="flex-1 whitespace-pre"
-                    dangerouslySetInnerHTML={{ __html: html || '&nbsp;' }}
-                  />
+                  {query ? (
+                    <code className="flex-1 whitespace-pre">
+                      <HighlightedText text={line.text || ' '} />
+                    </code>
+                  ) : (
+                    <code
+                      className="flex-1 whitespace-pre"
+                      dangerouslySetInnerHTML={{ __html: html || '&nbsp;' }}
+                    />
+                  )}
                 </div>
               )
             })}

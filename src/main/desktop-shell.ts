@@ -316,6 +316,25 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
       return { action: 'deny' }
     })
 
+    // setWindowOpenHandler only fires for window.open / target=_blank.
+    // A plain <a href="…"> click (e.g. a link inside ReactMarkdown-rendered
+    // chat) hits will-navigate instead and would replace the entire app UI
+    // with the target page. Route cross-origin navigations to the OS
+    // browser; allow same-origin so Vite HMR / hash routing keep working.
+    win.webContents.on('will-navigate', (event, url) => {
+      let sameOrigin = false
+      try {
+        sameOrigin = new URL(url).origin === new URL(win.webContents.getURL()).origin
+      } catch {
+        // Malformed URL — treat as external.
+      }
+      if (sameOrigin) return
+      event.preventDefault()
+      if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('mailto:')) {
+        shell.openExternal(url)
+      }
+    })
+
     win.webContents.on('console-message', (_event, level, message) => {
       const levelName = ['verbose', 'info', 'warn', 'error'][level] || 'log'
       log('renderer', `[win${win.id}] [${levelName}] ${message}`)
@@ -328,6 +347,16 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
     }
     win.on('resize', saveBounds)
     win.on('move', saveBounds)
+
+    // macOS hides the traffic lights in native fullscreen, so the renderer
+    // shouldn't reserve the 80px leading clearance for them. Notify on
+    // transition and on initial paint so first render matches reality.
+    const sendFullscreen = (): void => {
+      transport.sendSignal('window:fullscreenChanged', win.isFullScreen())
+    }
+    win.on('enter-full-screen', sendFullscreen)
+    win.on('leave-full-screen', sendFullscreen)
+    win.webContents.once('did-finish-load', sendFullscreen)
 
     if (process.env['ELECTRON_RENDERER_URL']) {
       win.loadURL(process.env['ELECTRON_RENDERER_URL'])
@@ -459,12 +488,6 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
             label: 'Single Screen Mode',
             accelerator: 'F12',
             click: () => transport.sendSignal('app:toggleSingleScreen')
-          },
-          { type: 'separator' },
-          {
-            label: 'Performance Monitor',
-            accelerator: 'CmdOrCtrl+Alt+P',
-            click: () => transport.sendSignal('app:togglePerfMonitor')
           }
           // macOS appends "Enter Full Screen" to the View menu
           // automatically — explicit togglefullscreen role would show up
@@ -509,6 +532,15 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
             click: () => {
               void shell.openPath(getLogFilePath())
             }
+          },
+          {
+            label: 'Debug: Open GitHub API Log',
+            click: () => transport.sendSignal('app:openGitHubApiLog')
+          },
+          {
+            label: 'Debug: Performance Monitor',
+            accelerator: 'CmdOrCtrl+Alt+P',
+            click: () => transport.sendSignal('app:togglePerfMonitor')
           },
           {
             label: 'Debug: Crash Focused Tab',

@@ -23,7 +23,8 @@ vi.mock('child_process', async () => {
   return { execFile }
 })
 
-import { getRepoContext, fetchPRStatusesForRepo, mergePR } from './github'
+import { getRepoContext, fetchPRStatusesForRepo, mergePR, chunkPRRequests } from './github'
+import type { PRStatusRequest } from './github'
 
 function mockResponse(status: number, body: unknown): Response {
   return {
@@ -561,5 +562,42 @@ describe('fetchPRStatusesForRepo matcher', () => {
       [{ worktreePath: '/wt', branch: 'feature', headSha: sha }]
     )
     expect(result.get('/wt')?.number).toBe(42)
+  })
+})
+
+describe('chunkPRRequests', () => {
+  function req(i: number): PRStatusRequest {
+    return { worktreePath: `/wt/${i}`, branch: `b${i}`, headSha: '' }
+  }
+
+  it('returns no chunks for an empty input', () => {
+    expect(chunkPRRequests([], 10)).toEqual([])
+  })
+
+  it('fits ≤ size into a single chunk', () => {
+    const reqs = Array.from({ length: 10 }, (_, i) => req(i))
+    const chunks = chunkPRRequests(reqs, 10)
+    expect(chunks).toHaveLength(1)
+    expect(chunks[0]).toHaveLength(10)
+  })
+
+  it('splits size+1 into two chunks with a size-1 tail', () => {
+    const reqs = Array.from({ length: 11 }, (_, i) => req(i))
+    const chunks = chunkPRRequests(reqs, 10)
+    expect(chunks).toHaveLength(2)
+    expect(chunks[0]).toHaveLength(10)
+    expect(chunks[1]).toHaveLength(1)
+    expect(chunks.flat()).toEqual(reqs)
+  })
+
+  it('preserves order across chunk boundaries', () => {
+    const reqs = Array.from({ length: 25 }, (_, i) => req(i))
+    const chunks = chunkPRRequests(reqs, 10)
+    expect(chunks.map((c) => c.length)).toEqual([10, 10, 5])
+    expect(chunks.flat()).toEqual(reqs)
+  })
+
+  it('throws on non-positive chunk size', () => {
+    expect(() => chunkPRRequests([req(0)], 0)).toThrow()
   })
 })

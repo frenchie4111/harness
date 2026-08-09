@@ -284,6 +284,23 @@
   height: 2rem;
 }
 
+/* Cmd+F find match highlighting. `find-hit` marks every match; the
+ * controller adds `find-hit-current` to the DOM node at index=hitIndex on
+ * every cycle so the user sees which match is active. Chrome/Firefox
+ * style: yellow-on-all, orange-on-current. Colors are hard-coded so they
+ * pop over any theme; matching the theme's --color-warning was too
+ * washed-out against panel backgrounds. */
+mark.find-hit {
+  background-color: rgba(250, 204, 21, 0.55); /* yellow-400 @ ~55% */
+  color: inherit;
+  padding: 0;
+  border-radius: 2px;
+}
+mark.find-hit-current {
+  background-color: rgba(249, 115, 22, 0.85); /* orange-500 @ ~85% */
+  color: #000;
+}
+
 @layer base {
   * {
     margin: 0;
@@ -524,6 +541,13 @@ button, [role="button"], a[href], [onclick] {
 }
 .no-drag {
   -webkit-app-region: no-drag;
+}
+
+/* macOS native fullscreen hides the traffic lights, so the 80px leading
+ * clearance used on every top-of-window drag bar collapses to 0. Scoped
+ * to .drag-region.pl-20 so unrelated pl-20 uses are untouched. */
+:root[data-fullscreen="true"] .drag-region.pl-20 {
+  padding-left: 0;
 }
 
 /* Brand accents — mirrors harness.mikelyons.org hero styling */
@@ -773,4 +797,45 @@ button, [role="button"], a[href], [onclick] {
 @keyframes hold-to-quit-fade {
   from { opacity: 1; }
   to { opacity: 0; }
+}
+
+/* ★ Insight cards — rendered by <InsightCard> via the remark-insight plugin. */
+.insight-card {
+  border: 1px solid var(--color-accent);
+  border-radius: 6px;
+  background: color-mix(in oklab, var(--color-accent) 6%, transparent);
+  overflow: hidden;
+}
+.insight-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  width: 100%;
+  padding: 0.35em 0.6em;
+  background: color-mix(in oklab, var(--color-accent) 10%, transparent);
+  border: 0;
+  color: var(--color-accent);
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+.insight-card-header:hover {
+  background: color-mix(in oklab, var(--color-accent) 18%, transparent);
+}
+.insight-card-label { flex: 1; }
+.insight-card-chevron { color: var(--color-muted); }
+.insight-card-body {
+  padding: 0.5em 0.75em 0.6em;
+}
+.insight-card-streaming {
+  display: inline-block;
+  margin-left: 0.3em;
+  color: var(--color-muted);
+  font-weight: 700;
+  animation: insight-blink 1.2s steps(1) infinite;
+}
+@keyframes insight-blink {
+  0%, 50% { opacity: 1; }
+  50.01%, 100% { opacity: 0.25; }
 }

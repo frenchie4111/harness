@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { RefreshCw, ArrowUp } from 'lucide-react'
 import type { BranchCommit } from '../types'
 import { Tooltip } from './Tooltip'
@@ -27,6 +27,18 @@ export function BranchCommitsPanel({ worktreePath }: BranchCommitsPanelProps): J
 
   const commits = data ?? []
   const hasLoaded = !loading
+
+  const [menu, setMenu] = useState<{ x: number; y: number; hash: string } | null>(null)
+  useEffect(() => {
+    if (!menu) return
+    const close = (): void => setMenu(null)
+    window.addEventListener('mousedown', close)
+    window.addEventListener('blur', close)
+    return () => {
+      window.removeEventListener('mousedown', close)
+      window.removeEventListener('blur', close)
+    }
+  }, [menu])
 
   if (!worktreePath) return null
 
@@ -66,6 +78,10 @@ export function BranchCommitsPanel({ worktreePath }: BranchCommitsPanelProps): J
           return (
             <Tooltip key={c.hash} label={`${c.shortHash} · ${c.author} · ${c.relativeDate} · ${tipSuffix}`} side="left">
               <div
+                onContextMenu={(e) => {
+                  e.preventDefault()
+                  setMenu({ x: e.clientX, y: e.clientY, hash: c.hash })
+                }}
                 className="group relative flex items-center gap-2.5 pl-4 pr-3 py-1.5 hover:bg-panel-raised cursor-pointer"
                 draggable
                 onDragStart={(e) => {
@@ -98,6 +114,24 @@ export function BranchCommitsPanel({ worktreePath }: BranchCommitsPanelProps): J
           )
         })}
       </div>
+      {menu && (
+        <div
+          className="fixed z-50 bg-panel-raised border border-border-strong rounded shadow-lg text-xs py-1 min-w-[12rem]"
+          style={{ left: menu.x, top: menu.y }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <button
+            className="block w-full text-left px-3 py-1.5 hover:bg-panel text-fg-bright cursor-pointer"
+            onClick={(e) => {
+              e.stopPropagation()
+              void navigator.clipboard.writeText(menu.hash)
+              setMenu(null)
+            }}
+          >
+            Copy commit SHA
+          </button>
+        </div>
+      )}
     </RightPanel>
     {popover && commits[popover.index] && (
       <CommitInfoModal

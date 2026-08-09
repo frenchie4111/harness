@@ -19,14 +19,28 @@ const fs = require('fs')
 // "the script started but env was empty" — otherwise that case looks
 // identical to "the script never ran" in /tmp/harness-control-bridge.log.
 const LOG_PATH = process.env.HARNESS_CONTROL_BRIDGE_LOG || '/tmp/harness-control-bridge.log'
+
+try {
+  const st = fs.statSync(LOG_PATH)
+  if (st.size > 10 * 1024 * 1024) {
+    fs.truncateSync(LOG_PATH, 0)
+  }
+} catch { /* ignore */ }
+
 function logErr(...args) {
   const line = '[harness-mcp] ' + args.join(' ') + '\n'
-  process.stderr.write(line)
+  try { process.stderr.write(line) } catch { /* ignore */ }
+  try { fs.appendFileSync(LOG_PATH, new Date().toISOString() + ' ' + line) } catch { /* ignore */ }
+}
+
+// Must not call logErr — a broken stderr would re-enter the handler.
+function logFatal(kind, err) {
   try {
-    fs.appendFileSync(LOG_PATH, new Date().toISOString() + ' ' + line)
-  } catch {
-    /* ignore */
-  }
+    fs.appendFileSync(
+      LOG_PATH,
+      new Date().toISOString() + ' [harness-mcp] ' + kind + ' ' + (err && err.stack || String(err)) + '\n'
+    )
+  } catch { /* ignore */ }
 }
 
 // Issue #167 debug. Logs BEFORE env-var validation so the line fires even
@@ -45,8 +59,8 @@ logErr(
   ' execPath=' + process.execPath
 )
 process.on('exit', (code) => logErr('exit code=' + code))
-process.on('uncaughtException', (err) => logErr('uncaught', err && err.stack || String(err)))
-process.on('unhandledRejection', (err) => logErr('unhandledRejection', err && err.stack || String(err)))
+process.on('uncaughtException', (err) => { logFatal('uncaught', err); process.exit(1) })
+process.on('unhandledRejection', (err) => { logFatal('unhandledRejection', err) })
 
 const PORT = process.env.HARNESS_PORT
 const TOKEN = process.env.HARNESS_TOKEN
@@ -153,6 +167,11 @@ const TOOLS = [
           type: 'string',
           description:
             "Model string to pass to the agent CLI's --model flag for this worktree's first tab (e.g. 'opus', 'sonnet-4-5', 'gpt-5'). Pinned per-tab — survives reloads, doesn't affect other worktrees. Omit to use the global default (Settings → Agent)."
+        },
+        alias: {
+          type: 'string',
+          description:
+            'Optional display alias applied to the new worktree once creation succeeds. Same semantics as set_worktree_alias — trimmed and clamped to 80 chars, empty string is ignored. Useful when the user gave the task a memorable label ("call this one auth-refactor") so the sidebar/window title show that instead of the branch name.'
         }
       }
     }
@@ -174,6 +193,42 @@ const TOOLS = [
     name: 'list_repos',
     description: 'List the repo roots currently open in Harness.',
     inputSchema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'set_worktree_alias',
+    description:
+      "Set a user-facing display alias for a worktree. The alias replaces the branch name wherever the worktree is shown in Harness (sidebar, window title, tab strip, palette) — a cosmetic rename that never touches git. Defaults to the caller's current worktree when worktreePath is omitted. Aliases are trimmed and clamped to 80 chars; an empty string clears the alias (prefer clear_worktree_alias for that).",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        alias: {
+          type: 'string',
+          description:
+            'The alias to display. Trimmed and clamped to 80 characters. Empty string clears the alias.'
+        },
+        worktreePath: {
+          type: 'string',
+          description:
+            "Absolute path of the worktree to alias. Optional — defaults to the caller's current worktree."
+        }
+      },
+      required: ['alias']
+    }
+  },
+  {
+    name: 'clear_worktree_alias',
+    description:
+      "Remove the display alias for a worktree so it shows its branch name again in Harness. Defaults to the caller's current worktree when worktreePath is omitted. No-op if no alias was set.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        worktreePath: {
+          type: 'string',
+          description:
+            "Absolute path of the worktree whose alias to clear. Optional — defaults to the caller's current worktree."
+        }
+      }
+    }
   },
   {
     name: 'list_browser_tabs',
@@ -518,13 +573,15 @@ async function handleToolCall(name, args) {
       baseBranch: args.baseBranch,
       initialPrompt: args.initialPrompt,
       agentKind: args.agentKind,
-      model: args.model
+      model: args.model,
+      alias: args.alias
     })
     const agentLabel = args.agentKind === 'codex' ? 'Codex' : 'Claude'
     const modelSuffix = args.model ? ` (model: ${args.model})` : ''
+    const aliasSuffix = args.alias && args.alias.trim() ? ` (alias: "${args.alias.trim()}")` : ''
     return prNumber
-      ? `Created worktree ${r.path} on branch ${r.branch} for PR #${prNumber}. Harness will open a new ${agentLabel} chat tab in it${modelSuffix}.`
-      : `Created worktree ${r.path} on branch ${r.branch}. Harness will open a new ${agentLabel} chat tab in it${modelSuffix}.`
+      ? `Created worktree ${r.path} on branch ${r.branch} for PR #${prNumber}${aliasSuffix}. Harness will open a new ${agentLabel} chat tab in it${modelSuffix}.`
+      : `Created worktree ${r.path} on branch ${r.branch}${aliasSuffix}. Harness will open a new ${agentLabel} chat tab in it${modelSuffix}.`
   }
   if (name === 'list_worktrees') {
     const q =
@@ -535,6 +592,27 @@ async function handleToolCall(name, args) {
   if (name === 'list_repos') {
     const r = await callControl('GET', '/repos')
     return JSON.stringify(r, null, 2)
+  }
+  if (name === 'set_worktree_alias') {
+    if (!args || typeof args.alias !== 'string') {
+      throw new Error('alias is required')
+    }
+    const r = await callControl('POST', '/aliases', {
+      alias: args.alias,
+      worktreePath: args.worktreePath
+    })
+    const clampNote = r.clamped
+      ? ' (input was normalized: whitespace trimmed and/or clamped to 80 chars)'
+      : ''
+    return r.alias
+      ? 'Set alias "' + r.alias + '" for ' + r.worktreePath + clampNote
+      : 'Cleared alias for ' + r.worktreePath + clampNote
+  }
+  if (name === 'clear_worktree_alias') {
+    const r = await callControl('DELETE', '/aliases', {
+      worktreePath: args && args.worktreePath
+    })
+    return 'Cleared alias for ' + r.worktreePath
   }
   if (name === 'list_browser_tabs') {
     const r = await callControl('GET', '/browser/tabs')

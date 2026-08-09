@@ -196,6 +196,12 @@ export interface RewindOutcome {
   reason?: string
 }
 
+export interface ForkOutcome {
+  ok: boolean
+  newSessionId?: string
+  reason?: string
+}
+
 export class JsonClaudeManager {
   private instances = new Map<string, JsonClaudeInstance>()
   private store: Store
@@ -963,6 +969,114 @@ export class JsonClaudeManager {
     return { ok: true }
   }
 
+  /** Copy the source session's transcript up to and including the
+   *  clicked assistant message into a new jsonl under a fresh session
+   *  id. Source session is untouched — no kill, no truncation, no slice
+   *  mutation. Caller wires up the new tab + spawns the resumed
+   *  subprocess; the normal --resume path seeds the new slice entry.
+   *
+   *  Why we rewrite the `sessionId` field on each kept line: the CLI
+   *  reads/writes `~/.claude/projects/<dir>/<sessionId>.jsonl` keyed by
+   *  the filename, but every jsonl line ALSO carries its own
+   *  `sessionId` field. On --resume the CLI appends further lines
+   *  stamped with the filename's session id, so if the copied prefix
+   *  keeps the source id, the resulting file is a hybrid where the
+   *  first N lines disagree with the last M — some tooling (and the
+   *  CLI's own auto-memory subsystem) key off the inner id. Rewriting
+   *  keeps filename and record consistent.
+   *
+   *  Same jsonl-scan shape as truncateTranscriptAfterMessage: one
+   *  assistant API turn can span several jsonl lines (thinking, tool_use,
+   *  text) all sharing the message.id, so we cut after the LAST line
+   *  carrying the target id. */
+  forkAt(sourceSessionId: string, fromEntryId: string): ForkOutcome {
+    const source =
+      this.store.getSnapshot().state.jsonClaude.sessions[sourceSessionId]
+    if (!source) return { ok: false, reason: 'unknown session' }
+    const entries = source.entries
+    const idx = entries.findIndex((e) => e.entryId === fromEntryId)
+    if (idx === -1) return { ok: false, reason: 'entry not in slice' }
+    const target = entries[idx]
+    if (target.kind !== 'assistant') {
+      return { ok: false, reason: 'fork targets an assistant message' }
+    }
+    if (!target.apiMessageId) {
+      return { ok: false, reason: 'message lacks an API id' }
+    }
+
+    const newSessionId = randomUUID()
+    const sourcePath = transcriptPathFor(sourceSessionId, source.worktreePath)
+    if (!existsSync(sourcePath)) {
+      return { ok: false, reason: 'source transcript missing' }
+    }
+
+    let raw: string
+    try {
+      raw = readFileSync(sourcePath, 'utf8')
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err)
+      log('json-claude', `fork read failed sessionId=${sourceSessionId}`, reason)
+      return { ok: false, reason }
+    }
+
+    const lines = raw.split('\n')
+    let lastMatchIdx = -1
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim()
+      if (!line) continue
+      let parsed: Record<string, unknown>
+      try {
+        parsed = JSON.parse(line)
+      } catch {
+        continue
+      }
+      if (parsed['type'] !== 'assistant') continue
+      const inner = parsed['message'] as { id?: unknown } | undefined
+      if (typeof inner?.id === 'string' && inner.id === target.apiMessageId) {
+        lastMatchIdx = i
+      }
+    }
+    if (lastMatchIdx === -1) {
+      log(
+        'json-claude',
+        `fork: no jsonl line matched apiMessageId=${target.apiMessageId} sessionId=${sourceSessionId}`
+      )
+      return { ok: false, reason: 'no matching jsonl record' }
+    }
+
+    const rewritten: string[] = []
+    for (let i = 0; i <= lastMatchIdx; i++) {
+      const line = lines[i]
+      const trimmed = line.trim()
+      if (!trimmed) continue
+      let parsed: Record<string, unknown>
+      try {
+        parsed = JSON.parse(trimmed)
+      } catch {
+        continue
+      }
+      if ('sessionId' in parsed) parsed['sessionId'] = newSessionId
+      rewritten.push(JSON.stringify(parsed))
+    }
+    const body = rewritten.length > 0 ? rewritten.join('\n') + '\n' : ''
+
+    const destPath = transcriptPathFor(newSessionId, source.worktreePath)
+    const tmpPath = `${destPath}.fork-${Date.now()}.tmp`
+    try {
+      writeFileSync(tmpPath, body, 'utf8')
+      renameSync(tmpPath, destPath)
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err)
+      log('json-claude', `fork write failed sessionId=${newSessionId}`, reason)
+      return { ok: false, reason }
+    }
+    log(
+      'json-claude',
+      `fork wrote sessionId=${newSessionId} from=${sourceSessionId} keptLines=${rewritten.length}`
+    )
+    return { ok: true, newSessionId }
+  }
+
   /** Truncate the jsonl so it ends with the LAST line carrying
    *  `apiMessageId` in its inner `message.id`. Everything sequenced
    *  after that line is dropped. The original file is moved aside as
@@ -1412,6 +1526,16 @@ export class JsonClaudeManager {
         payload: { sessionId: instance.sessionId }
       })
       const authMessage = detectAuthFailureFromResult(parsed)
+      if (
+        parsed['is_error'] === true ||
+        (typeof parsed['subtype'] === 'string' &&
+          (parsed['subtype'] as string).startsWith('error_'))
+      ) {
+        log(
+          'json-claude',
+          `result error sessionId=${instance.sessionId} subtype=${String(parsed['subtype'])} matched=${authMessage !== null} payload=${JSON.stringify(parsed).slice(0, 500)}`
+        )
+      }
       if (authMessage !== null) {
         this.appendEntry(instance, {
           entryId: `${instance.sessionId}-auth-${Date.now()}`,
@@ -2015,7 +2139,15 @@ function detectAuthFailureFromResult(parsed: Record<string, unknown>): string | 
     parsed['is_error'] === true ||
     (typeof subtype === 'string' && subtype.startsWith('error_'))
   if (!isError) return null
-  const err = pickErrorString(parsed)
+  // Strict structural fields (error / error.message) first. When the turn
+  // is flagged is_error:true but the message lives in result/message
+  // (claude sometimes puts the user-facing failure there), broaden to
+  // those fields too — the is_error gate already eliminates the
+  // false-positive case the original AUTH_PATTERN scrub was about.
+  const err =
+    pickErrorString(parsed) ??
+    (typeof parsed['result'] === 'string' && parsed['result'].trim() ? (parsed['result'] as string) : null) ??
+    (typeof parsed['message'] === 'string' && parsed['message'].trim() ? (parsed['message'] as string) : null)
   if (err && AUTH_PATTERN.test(err)) return err
   return null
 }
