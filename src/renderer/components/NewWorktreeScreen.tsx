@@ -148,11 +148,18 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
   const [prsLoadingRepo, setPrsLoadingRepo] = useState<string | null>(null)
   const [prsError, setPrsError] = useState<string | null>(null)
   const [prClickPending, setPrClickPending] = useState<number | null>(null)
-  // PR mode is select-then-create — same pattern as the other modes. Clicking
   // a row selects it; the footer "Create worktree" button submits. When
   // `initialPRNumber` is provided (e.g. from a sidebar phantom entry) the
   // selection is seeded so the modal opens on the pre-filled state.
   const [selectedPRNumber, setSelectedPRNumber] = useState<number | null>(initialPRNumber ?? null)
+  // "Look up by number" path: type a PR number, resolve it on demand against
+  // the upstream repo, show its details, then create. A successful lookup
+  // becomes THE selection (replaces any list click); selecting a list row
+  // clears it. selectedPRNumber stays the single source of truth for submit.
+  const [prNumberInput, setPrNumberInput] = useState('')
+  const [lookupPending, setLookupPending] = useState(false)
+  const [lookupError, setLookupError] = useState<string | null>(null)
+  const [lookedUpPR, setLookedUpPR] = useState<PRSummary | null>(null)
 
   // Same pattern as prsByRepo: cache normalized branch lists per repo
   // for the lifetime of the modal. Reset when repo changes.
@@ -224,8 +231,45 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
 
   const handlePRSelect = useCallback((prNumber: number) => {
     setSelectedPRNumber((prev) => (prev === prNumber ? null : prNumber))
+    // A list click is now the selection — drop any looked-up card so there's
+    // one visible source of truth.
+    setLookedUpPR(null)
+    setPrNumberInput('')
+    setLookupError(null)
     setError(null)
   }, [])
+
+  const handlePRLookup = useCallback(async () => {
+    if (lookupPending) return
+    const n = Number.parseInt(prNumberInput.trim(), 10)
+    if (!Number.isInteger(n) || n <= 0) {
+      setLookupError('Enter a valid PR number')
+      return
+    }
+    setLookupPending(true)
+    setLookupError(null)
+    try {
+      const res = await backend.getPRByNumber(selectedRepo, n)
+      if (res.ok) {
+        setLookedUpPR(res.pr)
+        setSelectedPRNumber(res.pr.number)
+        setError(null)
+      } else {
+        setLookedUpPR(null)
+        setSelectedPRNumber(null)
+        if (res.reason === 'not-found') setLookupError(`PR #${n} not found`)
+        else if (res.reason === 'no-token')
+          setLookupError('Add a GitHub token in Settings to look up PRs')
+        else setLookupError(res.message || 'Failed to look up PR')
+      }
+    } catch (err) {
+      setLookedUpPR(null)
+      setSelectedPRNumber(null)
+      setLookupError(err instanceof Error ? err.message : 'Failed to look up PR')
+    } finally {
+      setLookupPending(false)
+    }
+  }, [backend, lookupPending, prNumberInput, selectedRepo])
 
   const handlePRSubmit = useCallback(async () => {
     if (prClickPending !== null) return
@@ -367,10 +411,11 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
     [mode, handlePRSubmit, handleSubmit, onCancel, cycleRepo, submitting, prClickPending]
   )
 
-  // Selection is per-(repo, PR-list) — switching repos invalidates it.
-  // Skip the reset on the very first render so a caller-provided
-  // `initialPRNumber` (from clicking a sidebar phantom entry) survives
-  // the initial `selectedRepo` / `mode` "change" from undefined → real.
+  // Selection is per-(repo, PR-list) — switching repos invalidates it,
+  // including the looked-up-by-number card. Skip the reset on the very
+  // first render so a caller-provided `initialPRNumber` (from clicking a
+  // sidebar phantom entry) survives the initial `selectedRepo` / `mode`
+  // "change" from undefined → real.
   const isFirstPrResetRef = useRef(true)
   useEffect(() => {
     if (isFirstPrResetRef.current) {
@@ -378,6 +423,10 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
       return
     }
     setSelectedPRNumber(null)
+    setLookedUpPR(null)
+    setPrNumberInput('')
+    setLookupError(null)
+    setLookupPending(false)
   }, [selectedRepo, mode])
 
   const handleBranchKey = useCallback((e: React.KeyboardEvent) => {
@@ -698,6 +747,59 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
                   defaultCursorModel={settings.cursorModel}
                   disabled={prClickPending !== null}
                 />
+                <div className="mt-5">
+                  <div className="text-xs font-semibold uppercase tracking-wider text-dim mb-2">
+                    Look up by number
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-dim">PR #</span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={prNumberInput}
+                      onChange={(e) => setPrNumberInput(e.target.value.replace(/[^0-9]/g, ''))}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          void handlePRLookup()
+                        }
+                      }}
+                      placeholder="182"
+                      disabled={prClickPending !== null}
+                      className="w-28 bg-app border-2 border-border-strong rounded-lg px-3 py-2 text-sm text-fg-bright placeholder-faint outline-none focus:border-accent transition-colors"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void handlePRLookup()}
+                      disabled={
+                        prClickPending !== null || lookupPending || prNumberInput.trim().length === 0
+                      }
+                      className="px-3 py-2 text-sm rounded-lg border border-border-strong bg-app text-dim hover:text-fg hover:border-accent transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 flex items-center gap-1.5"
+                    >
+                      {lookupPending && <Loader2 className="icon-sm animate-spin" />}
+                      Look up
+                    </button>
+                  </div>
+                  {lookupError && <div className="mt-2 text-sm text-danger">{lookupError}</div>}
+                  {lookedUpPR && (
+                    <div className="mt-3 flex flex-col gap-1.5">
+                      <PRPickerRow
+                        pr={lookedUpPR}
+                        viewerLogin={settings.viewerLogin}
+                        isSelected={selectedPRNumber === lookedUpPR.number}
+                        isPending={prClickPending === lookedUpPR.number}
+                        disabled={prClickPending !== null}
+                        onSelect={() => setSelectedPRNumber(lookedUpPR.number)}
+                      />
+                      {lookedUpPR.state && lookedUpPR.state !== 'open' && (
+                        <div className="text-xs text-warning">This PR is {lookedUpPR.state}.</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <div className="text-xs font-semibold uppercase tracking-wider text-dim mt-6">
+                  Open PRs
+                </div>
                 <PRPickerList
                   prs={prsByRepo[selectedRepo]}
                   loading={prsLoadingRepo === selectedRepo}

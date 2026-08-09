@@ -4,9 +4,9 @@ import { log, formatErr } from './debug'
 import { getCachedToken, invalidateTokenCache, resolveGitHubToken } from './github-auth'
 import { trackedFetch } from './github-recorder'
 import type { CheckStatus, PRReview, PRStatus } from '../shared/state/prs'
-import type { PRSummary, PRMetadata } from '../shared/github-types'
+import type { PRSummary, PRMetadata, PRLookupResult } from '../shared/github-types'
 
-export type { CheckStatus, PRReview, PRStatus, PRSummary, PRMetadata }
+export type { CheckStatus, PRReview, PRStatus, PRSummary, PRMetadata, PRLookupResult }
 
 const execFileAsync = promisify(execFile)
 
@@ -1371,6 +1371,48 @@ export async function fetchAssignedPRs(
     result.get(repoRoot)!.push(summary)
   }
   return result
+}
+
+/** Look up a single PR by number for the add-worktree flow. Resolves against
+ *  the UPSTREAM repo (same as listOpenPRs) so a typed number matches the PRs
+ *  the list shows even on forks. Returns a discriminated result so the UI can
+ *  tell a missing PR / missing token apart from a generic failure. Allows
+ *  closed/merged PRs (state is populated for the caller to show a notice). */
+export async function getPRByNumber(
+  repoRoot: string,
+  prNumber: number
+): Promise<PRLookupResult> {
+  const ctx = await getRepoContext(repoRoot)
+  if (!ctx) return { ok: false, reason: 'error', message: 'No GitHub remote found' }
+  let token = getCachedToken()
+  if (!token) return { ok: false, reason: 'no-token' }
+  const { owner, repo } = ctx.upstream
+  const url = `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}`
+  try {
+    let res = await doFetch(url, token)
+    // Mirror githubFetch's 401 recovery so a stale cached token self-heals
+    // instead of surfacing as a generic "look up failed".
+    if (res.status === 401) {
+      log('github', '401 from GitHub, re-resolving token')
+      invalidateTokenCache()
+      const resolved = await resolveGitHubToken()
+      token = resolved?.token ?? null
+      if (!token) return { ok: false, reason: 'no-token' }
+      res = await doFetch(url, token)
+    }
+    if (res.status === 404) return { ok: false, reason: 'not-found' }
+    if (!res.ok) {
+      return { ok: false, reason: 'error', message: `${res.status} ${res.statusText}` }
+    }
+    const pr = (await res.json()) as ApiPRListItem & { merged?: boolean }
+    if (!pr || typeof pr.number !== 'number') return { ok: false, reason: 'not-found' }
+    const summary = toPRSummary(pr)
+    summary.state = (pr.merged ?? pr.merged_at != null) ? 'merged' : pr.state
+    return { ok: true, pr: summary }
+  } catch (err) {
+    log('github', `getPRByNumber failed for ${owner}/${repo}#${prNumber}`, formatErr(err))
+    return { ok: false, reason: 'error', message: formatErr(err) }
+  }
 }
 
 /** Test a token by making an authenticated request to /user. Returns the username if valid. */
