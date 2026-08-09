@@ -607,6 +607,8 @@ export function buildBackend(
     interruptJsonClaude: (id: string) => req('jsonClaude:interrupt', id),
     rewindJsonClaudeTo: (id: string, entryId: string) =>
       req('jsonClaude:rewindTo', id, entryId),
+    forkJsonClaudeAt: (id: string, entryId: string) =>
+      req('jsonClaude:forkAt', id, entryId),
     openJsonClaudeAuthLoginTab: (worktreePath: string) =>
       req('jsonClaude:openAuthLoginTab', worktreePath),
     setJsonClaudePermissionMode: (
