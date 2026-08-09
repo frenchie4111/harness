@@ -21,7 +21,10 @@ import {
   DEFAULT_DARK_THEME,
   DEFAULT_PR_REVIEW_PROMPT,
   DEFAULT_SIDEBAR_DETAILS,
-  type PreventSleepMode
+  BOTTOM_ICON_KEYS,
+  resolveBottomIconOrder,
+  type PreventSleepMode,
+  type BottomIconKey
 } from '../shared/state/settings'
 import {
   DEFAULT_CLAUDE_COMMAND,
@@ -167,7 +170,34 @@ export function buildInitialAppState(
         ? (config.preventSleepMode as PreventSleepMode)
         : 'off',
       // The temporary "+1h" timer never survives a relaunch — always seed null.
-      preventSleepUntil: null
+      preventSleepUntil: null,
+      hiddenBottomIcons: sanitizeHiddenBottomIcons(config.hiddenBottomIcons),
+      bottomIconOrder: resolveBottomIconOrder(
+        sanitizeBottomIconOrder(config.bottomIconOrder)
+      )
     }
   }
+}
+
+function sanitizeHiddenBottomIcons(
+  input: unknown
+): Partial<Record<BottomIconKey, boolean>> {
+  if (!input || typeof input !== 'object') return {}
+  const out: Partial<Record<BottomIconKey, boolean>> = {}
+  for (const key of BOTTOM_ICON_KEYS) {
+    const val = (input as Record<string, unknown>)[key]
+    if (val === true) out[key] = true
+  }
+  return out
+}
+
+function sanitizeBottomIconOrder(input: unknown): BottomIconKey[] {
+  if (!Array.isArray(input)) return []
+  const out: BottomIconKey[] = []
+  for (const k of input) {
+    if (typeof k === 'string' && (BOTTOM_ICON_KEYS as readonly string[]).includes(k)) {
+      out.push(k as BottomIconKey)
+    }
+  }
+  return out
 }

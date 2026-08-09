@@ -95,9 +95,12 @@ import {
   DEFAULT_DARK_THEME,
   DEFAULT_PR_REVIEW_PROMPT,
   DEFAULT_SIDEBAR_DETAILS,
+  BOTTOM_ICON_KEYS,
   type SidebarDetailPrefs,
   type SidebarDetailPrefsByMode,
-  type PreventSleepMode
+  type PreventSleepMode,
+  type HiddenBottomIcons,
+  type BottomIconKey
 } from '../shared/state/settings'
 import { watchStatusDir } from './hooks'
 import { getAgent, type AgentKind } from './agents'
@@ -2473,6 +2476,60 @@ function registerIpcHandlers(): void {
       }
       saveConfig(config)
       store.dispatch({ type: 'settings/sidebarDetailsChanged', payload: next })
+      return true
+    }
+  )
+
+  transport.onRequest(
+    'config:setHiddenBottomIcons',
+    (_ctx, hidden: HiddenBottomIcons) => {
+      if (!hidden || typeof hidden !== 'object') return false
+      const next: HiddenBottomIcons = {}
+      for (const key of BOTTOM_ICON_KEYS) {
+        if ((hidden as Record<BottomIconKey, unknown>)[key] === true) next[key] = true
+      }
+      if (Object.keys(next).length === 0) {
+        delete config.hiddenBottomIcons
+      } else {
+        config.hiddenBottomIcons = next
+      }
+      saveConfig(config)
+      store.dispatch({ type: 'settings/hiddenBottomIconsChanged', payload: next })
+      return true
+    }
+  )
+
+  transport.onRequest(
+    'config:setBottomIconOrder',
+    (_ctx, order: BottomIconKey[]) => {
+      if (!Array.isArray(order)) return false
+      const seen = new Set<BottomIconKey>()
+      const clean: BottomIconKey[] = []
+      for (const k of order) {
+        if (
+          typeof k === 'string' &&
+          (BOTTOM_ICON_KEYS as readonly string[]).includes(k) &&
+          !seen.has(k as BottomIconKey)
+        ) {
+          clean.push(k as BottomIconKey)
+          seen.add(k as BottomIconKey)
+        }
+      }
+      // Append any canonical keys the caller omitted so the stored order
+      // never silently loses items.
+      for (const k of BOTTOM_ICON_KEYS) {
+        if (!seen.has(k)) clean.push(k)
+      }
+      const isCanonical =
+        clean.length === BOTTOM_ICON_KEYS.length &&
+        clean.every((k, i) => k === BOTTOM_ICON_KEYS[i])
+      if (isCanonical) {
+        delete config.bottomIconOrder
+      } else {
+        config.bottomIconOrder = clean
+      }
+      saveConfig(config)
+      store.dispatch({ type: 'settings/bottomIconOrderChanged', payload: clean })
       return true
     }
   )

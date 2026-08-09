@@ -160,10 +160,14 @@ export type SidebarDensity = 'compact' | 'comfy'
 
 import type {
   SidebarDetailPrefs as SidebarDetailPrefsShared,
-  SidebarDetailPrefsByMode as SidebarDetailPrefsByModeShared
+  SidebarDetailPrefsByMode as SidebarDetailPrefsByModeShared,
+  HiddenBottomIcons as HiddenBottomIconsShared,
+  BottomIconKey as BottomIconKeyShared
 } from '../shared/state/settings'
 export type SidebarDetailPrefs = SidebarDetailPrefsShared
 export type SidebarDetailPrefsByMode = SidebarDetailPrefsByModeShared
+export type HiddenBottomIcons = HiddenBottomIconsShared
+export type BottomIconKey = BottomIconKeyShared
 
 export type GitHubMergeMethod = 'merge' | 'squash' | 'rebase'
 
@@ -415,6 +419,8 @@ export interface ElectronAPI {
   setMergeStrategy(strategy: MergeStrategy): Promise<boolean>
   setSidebarDensity(density: SidebarDensity): Promise<boolean>
   setSidebarDetails(prefs: SidebarDetailPrefsByMode): Promise<boolean>
+  setHiddenBottomIcons(hidden: HiddenBottomIcons): Promise<boolean>
+  setBottomIconOrder(order: BottomIconKey[]): Promise<boolean>
   setEditor(editorId: string): Promise<boolean>
   getAvailableEditors(): Promise<{ id: string; name: string }[]>
   snooze(path: string, wakeAt: number): Promise<boolean>
