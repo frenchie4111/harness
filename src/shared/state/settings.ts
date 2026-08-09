@@ -321,6 +321,12 @@ export interface SettingsState {
    *  the feed contents. Set by the "Hide all announcements" action and
    *  cleared only by the user. */
   announcementsMuted: boolean
+  /** When true, PRs that have you as a requested reviewer (across every
+   *  repo added to Harness) show up as phantom entries in the sidebar's
+   *  Reviewing group — click one and it opens the "new worktree from PR"
+   *  screen with that PR pre-selected. Off by default; opt-in via
+   *  Settings. */
+  showAssignedPRs: boolean
   /** Primary wake-lock mode. The side effect (a power-save blocker)
    *  lives in the main-process WakeLockController — never in the store.
    *  Default 'off'. */
@@ -404,6 +410,7 @@ export type SettingsEvent =
   | { type: 'settings/prReviewPromptChanged'; payload: string }
   | { type: 'settings/announcementDismissed'; payload: string }
   | { type: 'settings/announcementsMutedChanged'; payload: boolean }
+  | { type: 'settings/showAssignedPRsChanged'; payload: boolean }
   | { type: 'settings/preventSleepModeChanged'; payload: PreventSleepMode }
   | { type: 'settings/preventSleepUntilChanged'; payload: number | null }
   | { type: 'settings/hiddenBottomIconsChanged'; payload: HiddenBottomIcons }
@@ -469,6 +476,7 @@ export const initialSettings: SettingsState = {
   prReviewPrompt: DEFAULT_PR_REVIEW_PROMPT,
   dismissedAnnouncementIds: [],
   announcementsMuted: false,
+  showAssignedPRs: false,
   preventSleepMode: 'off',
   preventSleepUntil: null,
   hiddenBottomIcons: {},
@@ -616,6 +624,8 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
     }
     case 'settings/announcementsMutedChanged':
       return { ...state, announcementsMuted: event.payload }
+    case 'settings/showAssignedPRsChanged':
+      return { ...state, showAssignedPRs: event.payload }
     case 'settings/preventSleepModeChanged':
       return { ...state, preventSleepMode: event.payload }
     case 'settings/preventSleepUntilChanged':

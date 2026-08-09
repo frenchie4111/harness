@@ -13,6 +13,7 @@ import { initialSnooze } from '../shared/state/snooze'
 import { initialAnnouncements } from '../shared/state/announcements'
 import { initialScratchpad } from '../shared/state/scratchpad'
 import { initialSshBootstrap } from '../shared/state/ssh-bootstrap'
+import { initialAssignedPRs } from '../shared/state/assigned-prs'
 import { initialConfigHealth, type ConfigLoadError } from '../shared/state/config-health'
 import { initialAliases } from '../shared/state/aliases'
 import {
@@ -82,6 +83,7 @@ export function buildInitialAppState(
     announcements: initialAnnouncements,
     scratchpad: { byWorktreePath: flattenScratchpadNotes(config.scratchpadNotes) },
     sshBootstrap: initialSshBootstrap,
+    assignedPRs: initialAssignedPRs,
     aliases: config.aliases
       ? { byPath: { ...config.aliases } }
       : initialAliases,
@@ -166,6 +168,7 @@ export function buildInitialAppState(
         ? config.dismissedAnnouncementIds.filter((x): x is string => typeof x === 'string')
         : [],
       announcementsMuted: config.announcementsMuted === true,
+      showAssignedPRs: config.showAssignedPRs === true,
       preventSleepMode: PREVENT_SLEEP_MODES.includes(config.preventSleepMode as PreventSleepMode)
         ? (config.preventSleepMode as PreventSleepMode)
         : 'off',

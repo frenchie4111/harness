@@ -668,6 +668,17 @@ describe('settingsReducer', () => {
     expect(off.announcementsMuted).toBe(false)
   })
 
+  it('showAssignedPRsChanged toggles the flag', () => {
+    expect(initialSettings.showAssignedPRs).toBe(false)
+    const on = apply(initialSettings, {
+      type: 'settings/showAssignedPRsChanged',
+      payload: true
+    })
+    expect(on.showAssignedPRs).toBe(true)
+    const off = apply(on, { type: 'settings/showAssignedPRsChanged', payload: false })
+    expect(off.showAssignedPRs).toBe(false)
+  })
+
   it('preventSleepModeChanged walks through every mode', () => {
     expect(initialSettings.preventSleepMode).toBe('off')
     const auto = apply(initialSettings, {

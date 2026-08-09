@@ -299,6 +299,8 @@ export function buildBackend(
     setWarnBeforeQuitting: (enabled: boolean) => req('config:setWarnBeforeQuitting', enabled),
     setExpandedDiagnosticLoggingEnabled: (enabled: boolean) =>
       req('config:setExpandedDiagnosticLoggingEnabled', enabled),
+    setShowAssignedPRs: (enabled: boolean) => req('config:setShowAssignedPRs', enabled),
+    refreshAssignedPRs: () => req('prs:refreshAssigned'),
     setShareClaudeSettings: (enabled: boolean) => req('config:setShareClaudeSettings', enabled),
     setHarnessSystemPromptEnabled: (enabled: boolean) =>
       req('config:setHarnessSystemPromptEnabled', enabled),
