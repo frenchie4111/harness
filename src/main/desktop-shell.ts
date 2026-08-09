@@ -488,12 +488,6 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
             label: 'Single Screen Mode',
             accelerator: 'F12',
             click: () => transport.sendSignal('app:toggleSingleScreen')
-          },
-          { type: 'separator' },
-          {
-            label: 'Performance Monitor',
-            accelerator: 'CmdOrCtrl+Alt+P',
-            click: () => transport.sendSignal('app:togglePerfMonitor')
           }
           // macOS appends "Enter Full Screen" to the View menu
           // automatically — explicit togglefullscreen role would show up
@@ -542,6 +536,11 @@ export function startDesktopShell(deps: DesktopShellStartDeps): DesktopShellStar
           {
             label: 'Debug: Open GitHub API Log',
             click: () => transport.sendSignal('app:openGitHubApiLog')
+          },
+          {
+            label: 'Debug: Performance Monitor',
+            accelerator: 'CmdOrCtrl+Alt+P',
+            click: () => transport.sendSignal('app:togglePerfMonitor')
           },
           {
             label: 'Debug: Crash Focused Tab',
