@@ -9,9 +9,11 @@ import {
   type MouseEvent as ReactMouseEvent,
   type ReactNode
 } from 'react'
-import ReactMarkdown from 'react-markdown'
+import ReactMarkdown, { type Components } from 'react-markdown'
 import rehypeHighlight from 'rehype-highlight'
 import remarkGfm from 'remark-gfm'
+import { remarkInsight } from '../remark-insight'
+import { InsightCard } from './InsightCard'
 import {
   AlertOctagon,
   AlertTriangle,
@@ -52,8 +54,13 @@ import {
   useFindController
 } from './JsonModeChatFind'
 
-const REMARK_PLUGINS = [remarkGfm]
+const REMARK_PLUGINS = [remarkGfm, remarkInsight]
 const REHYPE_PLUGINS = [rehypeHighlight, rehypeColorHex]
+
+// react-markdown v10's Components type only lists known HTML tag names,
+// but the runtime accepts any string tag; cast to register our custom
+// <insight-card> element.
+const MARKDOWN_COMPONENTS = { 'insight-card': InsightCard } as unknown as Components
 
 // Matches color literals we want to swatch:
 //   - #RRGGBB and #RRGGBBAA hex. 3-hex (#fff) and 4-hex (#ffff) are
@@ -146,7 +153,11 @@ function MarkdownWithFind({ children }: { children: string }): JSX.Element {
     return [rehypeHighlight, createFindRehypePlugin(query)]
   }, [query])
   return (
-    <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={rehypePlugins}>
+    <ReactMarkdown
+      remarkPlugins={REMARK_PLUGINS}
+      rehypePlugins={rehypePlugins}
+      components={MARKDOWN_COMPONENTS}
+    >
       {children}
     </ReactMarkdown>
   )
