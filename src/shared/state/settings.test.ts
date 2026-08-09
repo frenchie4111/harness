@@ -695,6 +695,28 @@ describe('settingsReducer', () => {
     expect(cleared.preventSleepUntil).toBeNull()
   })
 
+  it('hiddenBottomIconsChanged replaces the whole hidden map', () => {
+    expect(initialSettings.hiddenBottomIcons).toEqual({})
+    const hidden = apply(initialSettings, {
+      type: 'settings/hiddenBottomIconsChanged',
+      payload: { activity: true, myWeek: true }
+    })
+    expect(hidden.hiddenBottomIcons).toEqual({ activity: true, myWeek: true })
+    const cleared = apply(hidden, {
+      type: 'settings/hiddenBottomIconsChanged',
+      payload: {}
+    })
+    expect(cleared.hiddenBottomIcons).toEqual({})
+  })
+
+  it('bottomIconOrderChanged replaces the render order', () => {
+    const reordered = apply(initialSettings, {
+      type: 'settings/bottomIconOrderChanged',
+      payload: ['settings', 'commandCenter', 'newProject']
+    })
+    expect(reordered.bottomIconOrder).toEqual(['settings', 'commandCenter', 'newProject'])
+  })
+
   it('returns a new object reference (no mutation)', () => {
     const next = apply(initialSettings, { type: 'settings/themeDarkChanged', payload: 'dracula' })
     expect(next).not.toBe(initialSettings)

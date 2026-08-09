@@ -95,9 +95,12 @@ import {
   DEFAULT_DARK_THEME,
   DEFAULT_PR_REVIEW_PROMPT,
   DEFAULT_SIDEBAR_DETAILS,
+  BOTTOM_ICON_KEYS,
   type SidebarDetailPrefs,
   type SidebarDetailPrefsByMode,
-  type PreventSleepMode
+  type PreventSleepMode,
+  type HiddenBottomIcons,
+  type BottomIconKey
 } from '../shared/state/settings'
 import { watchStatusDir } from './hooks'
 import { getAgent, type AgentKind } from './agents'
@@ -2490,6 +2493,60 @@ function registerIpcHandlers(): void {
     }
   )
 
+  transport.onRequest(
+    'config:setHiddenBottomIcons',
+    (_ctx, hidden: HiddenBottomIcons) => {
+      if (!hidden || typeof hidden !== 'object') return false
+      const next: HiddenBottomIcons = {}
+      for (const key of BOTTOM_ICON_KEYS) {
+        if ((hidden as Record<BottomIconKey, unknown>)[key] === true) next[key] = true
+      }
+      if (Object.keys(next).length === 0) {
+        delete config.hiddenBottomIcons
+      } else {
+        config.hiddenBottomIcons = next
+      }
+      saveConfig(config)
+      store.dispatch({ type: 'settings/hiddenBottomIconsChanged', payload: next })
+      return true
+    }
+  )
+
+  transport.onRequest(
+    'config:setBottomIconOrder',
+    (_ctx, order: BottomIconKey[]) => {
+      if (!Array.isArray(order)) return false
+      const seen = new Set<BottomIconKey>()
+      const clean: BottomIconKey[] = []
+      for (const k of order) {
+        if (
+          typeof k === 'string' &&
+          (BOTTOM_ICON_KEYS as readonly string[]).includes(k) &&
+          !seen.has(k as BottomIconKey)
+        ) {
+          clean.push(k as BottomIconKey)
+          seen.add(k as BottomIconKey)
+        }
+      }
+      // Append any canonical keys the caller omitted so the stored order
+      // never silently loses items.
+      for (const k of BOTTOM_ICON_KEYS) {
+        if (!seen.has(k)) clean.push(k)
+      }
+      const isCanonical =
+        clean.length === BOTTOM_ICON_KEYS.length &&
+        clean.every((k, i) => k === BOTTOM_ICON_KEYS[i])
+      if (isCanonical) {
+        delete config.bottomIconOrder
+      } else {
+        config.bottomIconOrder = clean
+      }
+      saveConfig(config)
+      store.dispatch({ type: 'settings/bottomIconOrderChanged', payload: clean })
+      return true
+    }
+  )
+
   transport.onRequest('config:getAvailableThemes', (_ctx) => {
     return AVAILABLE_THEMES
   })
@@ -3140,6 +3197,62 @@ function registerIpcHandlers(): void {
       startJsonClaudeSession(sessionId, startSession.worktreePath)
 
       return { ok: true }
+    }
+  )
+
+  // Fork the current session into a new tab. Unlike rewind, the source
+  // stays running — the manager just copies its jsonl prefix into a
+  // fresh session file, then we register a sibling tab and spawn the
+  // resumed subprocess. panesFSM.addTab appends to the same leaf as
+  // the source's active tab.
+  transport.onRequest(
+    'jsonClaude:forkAt',
+    (
+      _ctx,
+      sessionId: string,
+      entryId: string
+    ): { ok: boolean; newSessionId?: string; reason?: string } => {
+      if (!sessionId || !entryId) return { ok: false, reason: 'missing args' }
+      const source = store.getSnapshot().state.jsonClaude.sessions[sessionId]
+      if (!source) return { ok: false, reason: 'unknown session' }
+
+      const outcome = jsonClaudeManager.forkAt(sessionId, entryId)
+      if (!outcome.ok || !outcome.newSessionId) {
+        return { ok: false, reason: outcome.reason }
+      }
+      const newSessionId = outcome.newSessionId
+
+      // Carry the source tab's label + per-tab model pin so the fork
+      // reads as a sibling. Walk panes for the source worktree; the
+      // source tab id equals its sessionId.
+      let sourceLabel: string | undefined
+      let sourceModel: string | undefined
+      const tree = store.getSnapshot().state.terminals.panes[source.worktreePath]
+      if (tree) {
+        outer: for (const leaf of getLeaves(tree)) {
+          for (const tab of leaf.tabs) {
+            if (tab.id === sessionId && tab.type === 'json-claude') {
+              sourceLabel = tab.customLabel?.trim() || tab.label
+              sourceModel = tab.model && tab.model.trim() ? tab.model.trim() : undefined
+              break outer
+            }
+          }
+        }
+      }
+      const label = sourceLabel ? `${sourceLabel} (fork)` : 'Chat (fork)'
+
+      panesFSM.addTab(source.worktreePath, {
+        id: newSessionId,
+        type: 'json-claude',
+        label,
+        sessionId: newSessionId,
+        mode: 'awake',
+        ...(sourceModel ? { model: sourceModel } : {})
+      })
+
+      startJsonClaudeSession(newSessionId, source.worktreePath)
+
+      return { ok: true, newSessionId }
     }
   )
 
@@ -4141,6 +4254,17 @@ async function runBoot(): Promise<void> {
           command,
           cwd
         })
+        // Spawn the PTY eagerly here so agent-initiated `create_shell` calls
+        // don't wait for a human to focus the tab — otherwise
+        // `read_shell_output` returns empty and the caller thinks the shell
+        // failed. `ptyManager.create` is idempotent, so the renderer's later
+        // `pty:create` (fired from XTerminal on mount) attaches instead of
+        // respawning.
+        const spawnCwd = cwd
+          ? cwd.startsWith('/') ? cwd : `${wtPath}/${cwd}`
+          : wtPath
+        const args = command ? ['-ilc', command] : ['-il']
+        ptyManager.create(id, spawnCwd, '', args, undefined, true)
         return { id, label: finalLabel }
       },
       killShell: (shellId) => {

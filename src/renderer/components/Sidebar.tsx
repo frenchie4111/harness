@@ -1,6 +1,5 @@
 import { useState, useCallback, useMemo } from 'react'
-import { ChevronDown, ChevronRight, Plus, FolderOpen, Loader2, Settings as SettingsIcon, Sparkles, BarChart3, Trash2, LayoutGrid, X, Layers, Rows3, AlertCircle, Keyboard, MessageSquareHeart, PanelLeftClose, FilePlus, CalendarDays, RefreshCw } from 'lucide-react'
-import { openReportIssue } from './ReportIssueScreen'
+import { ChevronDown, ChevronRight, Plus, Sparkles, Trash2, X, Layers, Rows3, AlertCircle, PanelLeftClose, Loader2, RefreshCw } from 'lucide-react'
 import { Tooltip } from './Tooltip'
 import { HotkeyBadge } from './HotkeyBadge'
 import type { Worktree, PtyStatus, PendingTool, PRStatus, PendingWorktree, PendingDeletion } from '../types'
@@ -11,7 +10,7 @@ import { WorktreeTab } from './WorktreeTab'
 import { SnoozeCalendar } from './SnoozeCalendar'
 import { repoNameColor } from './RepoIcon'
 import { BackendChipStrip } from './BackendChipStrip'
-import { PreventSleepStatusIcon } from './PreventSleepStatusIcon'
+import { BottomIconStrip } from './BottomIconStrip'
 import { useBackend } from '../backend'
 
 interface SidebarProps {
@@ -520,74 +519,19 @@ export function Sidebar({
       <BackendChipStrip onAddBackend={onOpenAddBackend} />
 
       {/* Bottom actions — overlay launchers (worktree-management buttons
-          live in the WORKTREES header now). */}
-      <div className="border-t border-border p-2 flex justify-center items-center gap-1 shrink-0 flex-wrap">
-        <Tooltip label="Command Center" action="toggleCommandCenter" side="top">
-          <button
-            onClick={onOpenCommandCenter}
-            className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
-          >
-            <LayoutGrid className="icon-sm" />
-          </button>
-        </Tooltip>
-        <Tooltip label="New project" side="top">
-          <button
-            onClick={onOpenNewProject}
-            className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
-          >
-            <FilePlus className="icon-sm" />
-          </button>
-        </Tooltip>
-        <Tooltip label="Add repository" side="top">
-          <button
-            onClick={onAddRepo}
-            className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
-          >
-            <FolderOpen className="icon-sm" />
-          </button>
-        </Tooltip>
-        <Tooltip label="Activity" side="top">
-          <button
-            onClick={onOpenActivity}
-            className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
-          >
-            <BarChart3 className="icon-sm" />
-          </button>
-        </Tooltip>
-        <Tooltip label="My week" side="top">
-          <button
-            onClick={onOpenMyWeek}
-            className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
-          >
-            <CalendarDays className="icon-sm" />
-          </button>
-        </Tooltip>
-        <Tooltip label="Keyboard shortcuts" action="hotkeyCheatsheet" side="top">
-          <button
-            onClick={onOpenHotkeyCheatsheet}
-            className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
-          >
-            <Keyboard className="icon-sm" />
-          </button>
-        </Tooltip>
-        <Tooltip label="Report an issue / request a feature / submit a suggestion" side="top">
-          <button
-            onClick={() => openReportIssue()}
-            className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
-          >
-            <MessageSquareHeart className="icon-sm" />
-          </button>
-        </Tooltip>
-        <PreventSleepStatusIcon />
-        <Tooltip label="Settings" action="openSettings" side="top">
-          <button
-            onClick={onOpenSettings}
-            className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
-          >
-            <SettingsIcon className="icon-sm" />
-          </button>
-        </Tooltip>
-      </div>
+          live in the WORKTREES header now). The strip adaptively hides
+          trailing icons when the sidebar is too narrow to fit them all,
+          and surfaces every icon via the hamburger menu regardless. */}
+      <BottomIconStrip
+        orientation="horizontal"
+        onOpenCommandCenter={onOpenCommandCenter}
+        onOpenNewProject={onOpenNewProject}
+        onAddRepo={onAddRepo}
+        onOpenActivity={onOpenActivity}
+        onOpenMyWeek={onOpenMyWeek}
+        onOpenHotkeyCheatsheet={onOpenHotkeyCheatsheet}
+        onOpenSettings={onOpenSettings}
+      />
       {calendarFor && (
         <SnoozeCalendar
           anchor={calendarFor.anchor}
