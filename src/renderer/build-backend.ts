@@ -39,7 +39,12 @@ import type {
   StateEventListener
 } from '../shared/transport/transport'
 import type { ElectronAPI, AgentKind } from './types'
-import type { SidebarDetailPrefsByMode, PreventSleepMode } from '../shared/state/settings'
+import type {
+  SidebarDetailPrefsByMode,
+  PreventSleepMode,
+  HiddenBottomIcons,
+  BottomIconKey
+} from '../shared/state/settings'
 
 export type { ElectronOnlyHelpers }
 
@@ -391,6 +396,10 @@ export function buildBackend(
       req('config:setSidebarDensity', density),
     setSidebarDetails: (prefs: SidebarDetailPrefsByMode) =>
       req('config:setSidebarDetails', prefs),
+    setHiddenBottomIcons: (hidden: HiddenBottomIcons) =>
+      req('config:setHiddenBottomIcons', hidden),
+    setBottomIconOrder: (order: BottomIconKey[]) =>
+      req('config:setBottomIconOrder', order),
 
     setEditor: (editorId: string) => req('config:setEditor', editorId),
     getAvailableEditors: () => req('config:getAvailableEditors'),

@@ -165,6 +165,16 @@ export interface Config {
       assignee?: boolean
     }
   }
+  // Which sidebar bottom-launcher icons the user has hidden via the
+  // hamburger menu. Missing / false ⇒ visible. Keys are BottomIconKey
+  // (see shared/state/settings.ts). Absent from disk when the user
+  // hasn't hidden anything, to keep default configs tidy.
+  hiddenBottomIcons?: Record<string, boolean>
+  // User's preferred render order for the bottom-launcher icons. Any
+  // BottomIconKey missing from this array falls back to canonical order at
+  // read time (see resolveBottomIconOrder). Absent from disk when the
+  // user hasn't reordered anything.
+  bottomIconOrder?: string[]
   // Branches that have been merged locally via Harness, keyed by branch name.
   // Value is the branch-tip SHA at merge time — if the branch later advances
   // past this SHA, the flag is considered stale and the branch is no longer
