@@ -39,7 +39,12 @@ import type {
   StateEventListener
 } from '../shared/transport/transport'
 import type { ElectronAPI, AgentKind } from './types'
-import type { SidebarDetailPrefsByMode, PreventSleepMode } from '../shared/state/settings'
+import type {
+  SidebarDetailPrefsByMode,
+  PreventSleepMode,
+  HiddenBottomIcons,
+  BottomIconKey
+} from '../shared/state/settings'
 
 export type { ElectronOnlyHelpers }
 
@@ -232,6 +237,8 @@ export function buildBackend(
     dismissAnnouncement: (id: string) => req('announcements:dismiss', id),
     muteAnnouncements: (muted: boolean) => req('announcements:mute', muted),
     listRepoPRs: (repoRoot: string) => req('prs:listOpen', repoRoot),
+    getPRByNumber: (repoRoot: string, prNumber: number) =>
+      req('prs:getByNumber', repoRoot, prNumber),
     mergePR: (worktreePath: string, method: 'merge' | 'squash' | 'rebase') =>
       req('pr:merge', worktreePath, method),
     approvePR: (worktreePath: string) => req('pr:approve', worktreePath),
@@ -292,6 +299,8 @@ export function buildBackend(
     setWarnBeforeQuitting: (enabled: boolean) => req('config:setWarnBeforeQuitting', enabled),
     setExpandedDiagnosticLoggingEnabled: (enabled: boolean) =>
       req('config:setExpandedDiagnosticLoggingEnabled', enabled),
+    setShowAssignedPRs: (enabled: boolean) => req('config:setShowAssignedPRs', enabled),
+    refreshAssignedPRs: () => req('prs:refreshAssigned'),
     setShareClaudeSettings: (enabled: boolean) => req('config:setShareClaudeSettings', enabled),
     setHarnessSystemPromptEnabled: (enabled: boolean) =>
       req('config:setHarnessSystemPromptEnabled', enabled),
@@ -391,6 +400,10 @@ export function buildBackend(
       req('config:setSidebarDensity', density),
     setSidebarDetails: (prefs: SidebarDetailPrefsByMode) =>
       req('config:setSidebarDetails', prefs),
+    setHiddenBottomIcons: (hidden: HiddenBottomIcons) =>
+      req('config:setHiddenBottomIcons', hidden),
+    setBottomIconOrder: (order: BottomIconKey[]) =>
+      req('config:setBottomIconOrder', order),
 
     setEditor: (editorId: string) => req('config:setEditor', editorId),
     getAvailableEditors: () => req('config:getAvailableEditors'),
@@ -607,6 +620,8 @@ export function buildBackend(
     interruptJsonClaude: (id: string) => req('jsonClaude:interrupt', id),
     rewindJsonClaudeTo: (id: string, entryId: string) =>
       req('jsonClaude:rewindTo', id, entryId),
+    forkJsonClaudeAt: (id: string, entryId: string) =>
+      req('jsonClaude:forkAt', id, entryId),
     openJsonClaudeAuthLoginTab: (worktreePath: string) =>
       req('jsonClaude:openAuthLoginTab', worktreePath),
     setJsonClaudePermissionMode: (

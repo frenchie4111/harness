@@ -9,9 +9,11 @@ import {
   type MouseEvent as ReactMouseEvent,
   type ReactNode
 } from 'react'
-import ReactMarkdown from 'react-markdown'
+import ReactMarkdown, { type Components } from 'react-markdown'
 import rehypeHighlight from 'rehype-highlight'
 import remarkGfm from 'remark-gfm'
+import { remarkInsight } from '../remark-insight'
+import { InsightCard } from './InsightCard'
 import {
   AlertOctagon,
   AlertTriangle,
@@ -25,7 +27,8 @@ import {
   Layers,
   RotateCcw,
   ShieldAlert,
-  Sparkles
+  Sparkles,
+  GitBranch
 } from 'lucide-react'
 import { useJsonClaudeSession, useSettings } from '../store'
 import { useBackend } from '../backend'
@@ -53,8 +56,13 @@ import {
   useFindController
 } from './JsonModeChatFind'
 
-const REMARK_PLUGINS = [remarkGfm]
+const REMARK_PLUGINS = [remarkGfm, remarkInsight]
 const REHYPE_PLUGINS = [rehypeHighlight, rehypeColorHex]
+
+// react-markdown v10's Components type only lists known HTML tag names,
+// but the runtime accepts any string tag; cast to register our custom
+// <insight-card> element.
+const MARKDOWN_COMPONENTS = { 'insight-card': InsightCard } as unknown as Components
 
 // Matches color literals we want to swatch:
 //   - #RRGGBB and #RRGGBBAA hex. 3-hex (#fff) and 4-hex (#ffff) are
@@ -147,7 +155,11 @@ function MarkdownWithFind({ children }: { children: string }): JSX.Element {
     return [rehypeHighlight, createFindRehypePlugin(query)]
   }, [query])
   return (
-    <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={rehypePlugins}>
+    <ReactMarkdown
+      remarkPlugins={REMARK_PLUGINS}
+      rehypePlugins={rehypePlugins}
+      components={MARKDOWN_COMPONENTS}
+    >
       {children}
     </ReactMarkdown>
   )
@@ -1526,7 +1538,13 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
   //     raw turns again on --resume so truncating into them doesn't help
   //   - the session is exited — no subprocess to respawn against
   const [rewindMenu, setRewindMenu] = useState<
-    | { entryId: string; x: number; y: number; disabledReason: string | null }
+    | {
+        entryId: string
+        x: number
+        y: number
+        disabledReason: string | null
+        forkDisabledReason: string | null
+      }
     | null
   >(null)
   const lastCompactIdx = useMemo(() => {
@@ -1557,6 +1575,24 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
     },
     [entries, entryIndexById, lastCompactIdx, session?.state]
   )
+  // Fork's guardset is a strict subset of rewind's — no "session must
+  // be running" check (fork just reads the jsonl) and no "must have
+  // messages after this one" check (forking off the last message is
+  // fine — the fork starts from the same point with no follow-ups).
+  const forkDisabledReason = useCallback(
+    (entryId: string): string | null => {
+      const idx = entryIndexById.get(entryId)
+      if (idx === undefined) return 'message not found'
+      const e = entries[idx]
+      if (e.kind !== 'assistant') return 'only assistant messages can be forked'
+      if (e.parentToolUseId) return 'sub-agent steps can’t be forked individually'
+      if (idx <= lastCompactIdx) {
+        return 'forking across a /compact boundary isn’t supported'
+      }
+      return null
+    },
+    [entries, entryIndexById, lastCompactIdx]
+  )
   const openRewindMenu = useCallback(
     (entryId: string, e: ReactMouseEvent): void => {
       e.preventDefault()
@@ -1565,15 +1601,23 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
         entryId,
         x: e.clientX,
         y: e.clientY,
-        disabledReason: rewindDisabledReason(entryId)
+        disabledReason: rewindDisabledReason(entryId),
+        forkDisabledReason: forkDisabledReason(entryId)
       })
     },
-    [rewindDisabledReason]
+    [rewindDisabledReason, forkDisabledReason]
   )
   const performRewind = useCallback(
     async (entryId: string) => {
       setRewindMenu(null)
       await backend.rewindJsonClaudeTo(sessionId, entryId)
+    },
+    [backend, sessionId]
+  )
+  const performFork = useCallback(
+    async (entryId: string) => {
+      setRewindMenu(null)
+      await backend.forkJsonClaudeAt(sessionId, entryId)
     },
     [backend, sessionId]
   )
@@ -2139,6 +2183,28 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
               <span>Rewind to here</span>
               <span className="text-xs text-muted">
                 {rewindMenu.disabledReason ?? 'drops everything after this'}
+              </span>
+            </div>
+          </button>
+          <button
+            type="button"
+            disabled={rewindMenu.forkDisabledReason !== null}
+            onClick={(e) => {
+              e.stopPropagation()
+              if (rewindMenu.forkDisabledReason !== null) return
+              void performFork(rewindMenu.entryId)
+            }}
+            className={`flex w-full items-center gap-2 px-3 py-1.5 text-left ${
+              rewindMenu.forkDisabledReason
+                ? 'text-muted cursor-not-allowed opacity-60'
+                : 'text-fg-bright hover:bg-panel cursor-pointer'
+            }`}
+          >
+            <GitBranch className="icon-xs shrink-0" />
+            <div className="flex flex-col">
+              <span>Fork chat here</span>
+              <span className="text-xs text-muted">
+                {rewindMenu.forkDisabledReason ?? 'opens a new tab with history up to here'}
               </span>
             </div>
           </button>

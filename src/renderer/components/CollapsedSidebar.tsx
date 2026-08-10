@@ -1,25 +1,17 @@
 import {
   PanelLeftOpen,
-  FolderOpen,
   Plus,
   Trash2,
-  LayoutGrid,
-  FilePlus,
-  BarChart3,
-  CalendarDays,
-  MessageSquareHeart,
-  Keyboard,
-  Settings as SettingsIcon,
   Activity,
   ShieldAlert,
   HatGlasses,
   GitPullRequest
 } from 'lucide-react'
 import { useMemo } from 'react'
-import { openReportIssue } from './ReportIssueScreen'
 import { Tooltip } from './Tooltip'
 import { usePrs, useSettings, useSnooze, useWorktrees } from '../store'
 import { groupWorktrees, type GroupKey } from '../worktree-sort'
+import { BottomIconStrip } from './BottomIconStrip'
 
 interface CollapsedSidebarProps {
   onExpand: () => void
@@ -157,72 +149,16 @@ export function CollapsedSidebar({
 
       <div className="flex-1" />
 
-      <div className="no-drag flex flex-col items-center gap-1 py-3">
-        <Tooltip label="Command Center" action="toggleCommandCenter" side="right">
-          <button
-            onClick={onOpenCommandCenter}
-            className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
-          >
-            <LayoutGrid className="icon-sm" />
-          </button>
-        </Tooltip>
-        <Tooltip label="New project" side="right">
-          <button
-            onClick={onOpenNewProject}
-            className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
-          >
-            <FilePlus className="icon-sm" />
-          </button>
-        </Tooltip>
-        <Tooltip label="Add repository" side="right">
-          <button
-            onClick={onAddRepo}
-            className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
-          >
-            <FolderOpen className="icon-sm" />
-          </button>
-        </Tooltip>
-        <Tooltip label="Activity" side="right">
-          <button
-            onClick={onOpenActivity}
-            className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
-          >
-            <BarChart3 className="icon-sm" />
-          </button>
-        </Tooltip>
-        <Tooltip label="My week" side="right">
-          <button
-            onClick={onOpenMyWeek}
-            className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
-          >
-            <CalendarDays className="icon-sm" />
-          </button>
-        </Tooltip>
-        <Tooltip label="Keyboard shortcuts" action="hotkeyCheatsheet" side="right">
-          <button
-            onClick={onOpenHotkeyCheatsheet}
-            className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
-          >
-            <Keyboard className="icon-sm" />
-          </button>
-        </Tooltip>
-        <Tooltip label="Report an issue / request a feature / submit a suggestion" side="right">
-          <button
-            onClick={() => openReportIssue()}
-            className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
-          >
-            <MessageSquareHeart className="icon-sm" />
-          </button>
-        </Tooltip>
-        <Tooltip label="Settings" action="openSettings" side="right">
-          <button
-            onClick={onOpenSettings}
-            className="text-dim hover:text-fg hover:bg-surface rounded p-1.5 transition-colors cursor-pointer"
-          >
-            <SettingsIcon className="icon-sm" />
-          </button>
-        </Tooltip>
-      </div>
+      <BottomIconStrip
+        orientation="vertical"
+        onOpenCommandCenter={onOpenCommandCenter}
+        onOpenNewProject={onOpenNewProject}
+        onAddRepo={onAddRepo}
+        onOpenActivity={onOpenActivity}
+        onOpenMyWeek={onOpenMyWeek}
+        onOpenHotkeyCheatsheet={onOpenHotkeyCheatsheet}
+        onOpenSettings={onOpenSettings}
+      />
     </div>
   )
 }

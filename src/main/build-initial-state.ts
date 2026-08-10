@@ -13,6 +13,7 @@ import { initialSnooze } from '../shared/state/snooze'
 import { initialAnnouncements } from '../shared/state/announcements'
 import { initialScratchpad } from '../shared/state/scratchpad'
 import { initialSshBootstrap } from '../shared/state/ssh-bootstrap'
+import { initialAssignedPRs } from '../shared/state/assigned-prs'
 import { initialConfigHealth, type ConfigLoadError } from '../shared/state/config-health'
 import { initialAliases } from '../shared/state/aliases'
 import {
@@ -21,7 +22,10 @@ import {
   DEFAULT_DARK_THEME,
   DEFAULT_PR_REVIEW_PROMPT,
   DEFAULT_SIDEBAR_DETAILS,
-  type PreventSleepMode
+  BOTTOM_ICON_KEYS,
+  resolveBottomIconOrder,
+  type PreventSleepMode,
+  type BottomIconKey
 } from '../shared/state/settings'
 import {
   DEFAULT_CLAUDE_COMMAND,
@@ -79,6 +83,7 @@ export function buildInitialAppState(
     announcements: initialAnnouncements,
     scratchpad: { byWorktreePath: flattenScratchpadNotes(config.scratchpadNotes) },
     sshBootstrap: initialSshBootstrap,
+    assignedPRs: initialAssignedPRs,
     aliases: config.aliases
       ? { byPath: { ...config.aliases } }
       : initialAliases,
@@ -163,11 +168,39 @@ export function buildInitialAppState(
         ? config.dismissedAnnouncementIds.filter((x): x is string => typeof x === 'string')
         : [],
       announcementsMuted: config.announcementsMuted === true,
+      showAssignedPRs: config.showAssignedPRs === true,
       preventSleepMode: PREVENT_SLEEP_MODES.includes(config.preventSleepMode as PreventSleepMode)
         ? (config.preventSleepMode as PreventSleepMode)
         : 'off',
       // The temporary "+1h" timer never survives a relaunch — always seed null.
-      preventSleepUntil: null
+      preventSleepUntil: null,
+      hiddenBottomIcons: sanitizeHiddenBottomIcons(config.hiddenBottomIcons),
+      bottomIconOrder: resolveBottomIconOrder(
+        sanitizeBottomIconOrder(config.bottomIconOrder)
+      )
     }
   }
+}
+
+function sanitizeHiddenBottomIcons(
+  input: unknown
+): Partial<Record<BottomIconKey, boolean>> {
+  if (!input || typeof input !== 'object') return {}
+  const out: Partial<Record<BottomIconKey, boolean>> = {}
+  for (const key of BOTTOM_ICON_KEYS) {
+    const val = (input as Record<string, unknown>)[key]
+    if (val === true) out[key] = true
+  }
+  return out
+}
+
+function sanitizeBottomIconOrder(input: unknown): BottomIconKey[] {
+  if (!Array.isArray(input)) return []
+  const out: BottomIconKey[] = []
+  for (const k of input) {
+    if (typeof k === 'string' && (BOTTOM_ICON_KEYS as readonly string[]).includes(k)) {
+      out.push(k as BottomIconKey)
+    }
+  }
+  return out
 }

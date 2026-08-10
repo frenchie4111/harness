@@ -668,6 +668,17 @@ describe('settingsReducer', () => {
     expect(off.announcementsMuted).toBe(false)
   })
 
+  it('showAssignedPRsChanged toggles the flag', () => {
+    expect(initialSettings.showAssignedPRs).toBe(false)
+    const on = apply(initialSettings, {
+      type: 'settings/showAssignedPRsChanged',
+      payload: true
+    })
+    expect(on.showAssignedPRs).toBe(true)
+    const off = apply(on, { type: 'settings/showAssignedPRsChanged', payload: false })
+    expect(off.showAssignedPRs).toBe(false)
+  })
+
   it('preventSleepModeChanged walks through every mode', () => {
     expect(initialSettings.preventSleepMode).toBe('off')
     const auto = apply(initialSettings, {
@@ -693,6 +704,28 @@ describe('settingsReducer', () => {
       payload: null
     })
     expect(cleared.preventSleepUntil).toBeNull()
+  })
+
+  it('hiddenBottomIconsChanged replaces the whole hidden map', () => {
+    expect(initialSettings.hiddenBottomIcons).toEqual({})
+    const hidden = apply(initialSettings, {
+      type: 'settings/hiddenBottomIconsChanged',
+      payload: { activity: true, myWeek: true }
+    })
+    expect(hidden.hiddenBottomIcons).toEqual({ activity: true, myWeek: true })
+    const cleared = apply(hidden, {
+      type: 'settings/hiddenBottomIconsChanged',
+      payload: {}
+    })
+    expect(cleared.hiddenBottomIcons).toEqual({})
+  })
+
+  it('bottomIconOrderChanged replaces the render order', () => {
+    const reordered = apply(initialSettings, {
+      type: 'settings/bottomIconOrderChanged',
+      payload: ['settings', 'commandCenter', 'newProject']
+    })
+    expect(reordered.bottomIconOrder).toEqual(['settings', 'commandCenter', 'newProject'])
   })
 
   it('returns a new object reference (no mutation)', () => {

@@ -4,9 +4,9 @@ import { log, formatErr } from './debug'
 import { getCachedToken, invalidateTokenCache, resolveGitHubToken } from './github-auth'
 import { trackedFetch } from './github-recorder'
 import type { CheckStatus, PRReview, PRStatus } from '../shared/state/prs'
-import type { PRSummary, PRMetadata } from '../shared/github-types'
+import type { PRSummary, PRMetadata, PRLookupResult } from '../shared/github-types'
 
-export type { CheckStatus, PRReview, PRStatus, PRSummary, PRMetadata }
+export type { CheckStatus, PRReview, PRStatus, PRSummary, PRMetadata, PRLookupResult }
 
 const execFileAsync = promisify(execFile)
 
@@ -358,10 +358,54 @@ const PR_FRAGMENT = `fragment PR on PullRequest {
   }
 }`
 
-/** Build a single GraphQL request that looks up the PR for each requested
- *  branch via headRefName. Aliased sub-queries keep the whole batch in one
- *  round-trip. Returns map: worktreePath → PRStatus|null. Throws on
- *  transport failure so the caller preserves cached state. */
+// Chunking constants for fetchPRStatusesForRepo. A repo with ~50 worktrees
+// pushed the aliased-sub-query batch past GitHub's GraphQL resolver time
+// budget, returning 504s that stalled the whole poll. Chunking caps the
+// per-request cost; the concurrency limit keeps a chunk failure from
+// serializing recovery across the repo.
+export const PR_CHUNK_SIZE = 10
+export const PR_MAX_CONCURRENT_CHUNKS = 3
+
+type BuiltPR = { worktreePath: string; branch: string; status: PRStatus | null }
+
+/** Partition into fixed-size chunks. Exposed so tests can assert the
+ *  invariant without exercising a fake GraphQL server. */
+export function chunkPRRequests(
+  requests: PRStatusRequest[],
+  size: number = PR_CHUNK_SIZE
+): PRStatusRequest[][] {
+  if (size <= 0) throw new Error('chunk size must be positive')
+  const chunks: PRStatusRequest[][] = []
+  for (let i = 0; i < requests.length; i += size) {
+    chunks.push(requests.slice(i, i + size))
+  }
+  return chunks
+}
+
+async function runWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<void>
+): Promise<void> {
+  if (items.length === 0) return
+  let cursor = 0
+  const workerCount = Math.min(limit, items.length)
+  const workers = new Array(workerCount).fill(0).map(async () => {
+    while (true) {
+      const idx = cursor++
+      if (idx >= items.length) return
+      await fn(items[idx], idx)
+    }
+  })
+  await Promise.all(workers)
+}
+
+/** Fetch PR statuses for every requested branch in `requests`. Chunks the
+ *  work into small GraphQL requests (see PR_CHUNK_SIZE) that run in
+ *  parallel with a concurrency cap (see PR_MAX_CONCURRENT_CHUNKS). One
+ *  chunk failing (504 / timeout / network) leaves that chunk's worktrees
+ *  absent from the returned map — callers preserve their cached status
+ *  for absent paths. Returns map: worktreePath → PRStatus|null. */
 export async function fetchPRStatusesForRepo(
   ctx: RepoContext,
   requests: PRStatusRequest[]
@@ -386,6 +430,51 @@ export async function fetchPRStatusesForRepo(
   const { owner, repo } = ctx.upstream
   const originFull = `${ctx.origin.owner}/${ctx.origin.repo}`
 
+  const chunks = chunkPRRequests(queryable, PR_CHUNK_SIZE)
+  const allBuilt: BuiltPR[] = []
+
+  await runWithConcurrency(chunks, PR_MAX_CONCURRENT_CHUNKS, async (chunk, chunkIdx) => {
+    try {
+      const built = await fetchOneChunk(ctx, token, chunk, originFull)
+      allBuilt.push(...built)
+    } catch (err) {
+      const startIdx = chunkIdx * PR_CHUNK_SIZE
+      const endIdx = startIdx + chunk.length - 1
+      log(
+        'pr-poller',
+        `chunk failed for ${owner}/${repo} (worktrees ${startIdx}-${endIdx}): ${formatErr(err)}`
+      )
+      // Deliberately left absent from `result`. The pr-poller's
+      // preserve-cached-status logic (see pr-poller.ts) leaves each
+      // worktree's previous PRStatus in place until the next poll.
+    }
+  })
+
+  // Any branch that some PR is targeting as base (develop / integration /
+  // release/*, etc.) is a merge point, not a PR head. Null out attributions
+  // for worktrees sitting on one of those. Applied across all successful
+  // chunks so cross-chunk base/head relationships still take effect.
+  const baseBranches = new Set<string>()
+  for (const b of allBuilt) if (b.status) baseBranches.add(b.status.baseBranch)
+  for (const b of allBuilt) {
+    if (b.status && baseBranches.has(b.branch)) b.status = null
+  }
+
+  for (const b of allBuilt) result.set(b.worktreePath, b.status)
+  return result
+}
+
+/** Run one GraphQL batch for a chunk of requests. Throws on transport
+ *  failure, non-2xx response, or empty repository payload so the caller
+ *  can decide per-chunk whether to swallow or propagate. */
+async function fetchOneChunk(
+  ctx: RepoContext,
+  token: string,
+  requests: PRStatusRequest[],
+  originFull: string
+): Promise<BuiltPR[]> {
+  const { owner, repo } = ctx.upstream
+
   const varDefs = ['$owner:String!', '$name:String!']
   const repoAliasParts: string[] = []
   const topAliasParts: string[] = []
@@ -395,7 +484,7 @@ export async function fetchPRStatusesForRepo(
   // associatedPullRequests index) and `gh pr checkout`-style synthetic
   // local branches whose name doesn't match the PR's head.ref. Both fire
   // in the same request so the fallback adds no extra round-trip.
-  queryable.forEach((req, i) => {
+  requests.forEach((req, i) => {
     varDefs.push(`$branch${i}:String!`)
     variables[`branch${i}`] = req.branch
     repoAliasParts.push(
@@ -443,17 +532,16 @@ ${PR_FRAGMENT}`
   const topData = json.data ?? {}
 
   const hasMilestones = (repoData.milestones?.totalCount ?? 0) > 0
-
   const defaultBranchName = repoData.defaultBranchRef?.name ?? ''
 
   // Resolve per-request, then fetch behind_by + first-release-tag in parallel.
   const built = await Promise.all(
-    queryable.map(async (req, i) => {
+    requests.map(async (req, i): Promise<BuiltPR> => {
       // A worktree sitting on the repo's default branch (main/master) is
       // not the head of any PR — skip the resolution entirely to avoid
       // misattributing the latest squash-merged PR's status to it.
       if (defaultBranchName && req.branch === defaultBranchName) {
-        return { worktreePath: req.worktreePath, branch: req.branch, status: null as PRStatus | null }
+        return { worktreePath: req.worktreePath, branch: req.branch, status: null }
       }
       const brAlias = repoData[`prBr${i}`] as { nodes: GraphQLPR[] | null } | null | undefined
       const searchAlias = topData[`prSearch${i}`] as
@@ -466,7 +554,7 @@ ${PR_FRAGMENT}`
         (n): n is GraphQLPR => !!n && typeof (n as GraphQLPR).number === 'number'
       )
       const pr = resolvePRForWorktree(branchNodes, searchNodes, req.headSha, originFull)
-      if (!pr) return { worktreePath: req.worktreePath, branch: req.branch, status: null as PRStatus | null }
+      if (!pr) return { worktreePath: req.worktreePath, branch: req.branch, status: null }
       const [behindBy, firstReleaseTag] = await Promise.all([
         pr.state === 'MERGED' || pr.state === 'CLOSED'
           ? Promise.resolve(null)
@@ -480,17 +568,7 @@ ${PR_FRAGMENT}`
     })
   )
 
-  // Any branch that some PR is targeting as base (develop / integration /
-  // release/*, etc.) is a merge point, not a PR head. Null out attributions
-  // for worktrees sitting on one of those.
-  const baseBranches = new Set<string>()
-  for (const b of built) if (b.status) baseBranches.add(b.status.baseBranch)
-  for (const b of built) {
-    if (b.status && baseBranches.has(b.branch)) b.status = null
-  }
-
-  for (const b of built) result.set(b.worktreePath, b.status)
-  return result
+  return built
 }
 
 /** Resolve which PR (if any) belongs to a given worktree.
@@ -1170,6 +1248,170 @@ export async function getPRMetadata(
   } catch (err) {
     log('github', `getPRMetadata failed for ${owner}/${repo}#${prNumber}`, formatErr(err))
     return null
+  }
+}
+
+/** One repo entry passed to `fetchAssignedPRs`. `repoRoot` is used as
+ *  the result-map key; `nameWithOwner` (of the *upstream* repo the PR
+ *  would be opened against) is what GitHub returns in the response and
+ *  what we match on to bucket PRs back to the caller. */
+export interface AssignedPRsRepoLookup {
+  repoRoot: string
+  nameWithOwner: string
+}
+
+export interface AssignedPRSummary {
+  number: number
+  title: string
+  url: string
+  branch: string
+  repoRoot: string
+  repoNameWithOwner: string
+  author: { login: string; avatarUrl?: string } | null
+  isDraft: boolean
+  updatedAt: string
+}
+
+interface GraphQLSearchPR {
+  number: number
+  title: string
+  url: string
+  isDraft: boolean
+  updatedAt: string
+  headRefName: string
+  author: { login?: string; avatarUrl?: string } | null
+  repository: { nameWithOwner: string } | null
+}
+
+/** Fetch PRs where the viewer is a requested reviewer, filtered to the
+ *  upstream repo of each Harness repo. Uses GitHub's search API with a
+ *  multi-repo query. Returns a map keyed by repoRoot. Repos with no
+ *  matching PRs get an empty array so the caller can distinguish "no PRs"
+ *  from "not queried."
+ *
+ *  Failure modes:
+ *  - Missing token: returns empty map (caller decides what to do).
+ *  - API failure: throws — caller should log and preserve previous cache. */
+export async function fetchAssignedPRs(
+  lookups: AssignedPRsRepoLookup[]
+): Promise<Map<string, AssignedPRSummary[]>> {
+  const result = new Map<string, AssignedPRSummary[]>()
+  for (const l of lookups) result.set(l.repoRoot, [])
+  if (lookups.length === 0) return result
+
+  const token = getCachedToken()
+  if (!token) return result
+
+  // GitHub search accepts multiple `repo:` qualifiers; they OR together.
+  // Cap at ~30 to keep the URL/query length sane — repositories.length in
+  // Harness is realistically 1–5, so this is a very generous ceiling.
+  const repoQualifiers = lookups
+    .slice(0, 30)
+    .map((l) => `repo:${l.nameWithOwner}`)
+    .join(' ')
+  const query = `is:pr is:open review-requested:@me ${repoQualifiers}`
+
+  const gql = `query($q: String!) {
+    search(query: $q, type: ISSUE, first: 50) {
+      nodes {
+        ... on PullRequest {
+          number title url isDraft updatedAt headRefName
+          author { ... on Actor { login avatarUrl } }
+          repository { nameWithOwner }
+        }
+      }
+    }
+  }`
+
+  const res = await trackedFetch('https://api.github.com/graphql', {
+    method: 'POST',
+    headers: {
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'Harness',
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ query: gql, variables: { q: query } })
+  })
+  if (!res.ok) {
+    throw new Error(`GitHub GraphQL ${res.status} ${res.statusText} for assigned PRs`)
+  }
+  const json = (await res.json()) as {
+    data?: { search?: { nodes?: Array<GraphQLSearchPR | { __typename?: string } | null> | null } }
+    errors?: Array<{ message: string }> | null
+  }
+  if (json.errors && json.errors.length > 0) {
+    log('github', 'GraphQL errors fetching assigned PRs', json.errors.map((e) => e.message).join('; '))
+  }
+  const nodes = json.data?.search?.nodes ?? []
+
+  const rootByNameWithOwner = new Map<string, string>()
+  for (const l of lookups) rootByNameWithOwner.set(l.nameWithOwner, l.repoRoot)
+
+  for (const node of nodes) {
+    if (!node || typeof (node as GraphQLSearchPR).number !== 'number') continue
+    const pr = node as GraphQLSearchPR
+    const nameWithOwner = pr.repository?.nameWithOwner
+    if (!nameWithOwner) continue
+    const repoRoot = rootByNameWithOwner.get(nameWithOwner)
+    if (!repoRoot) continue
+    const summary: AssignedPRSummary = {
+      number: pr.number,
+      title: pr.title,
+      url: pr.url,
+      branch: pr.headRefName,
+      repoRoot,
+      repoNameWithOwner: nameWithOwner,
+      author: pr.author && pr.author.login
+        ? { login: pr.author.login, avatarUrl: pr.author.avatarUrl }
+        : null,
+      isDraft: pr.isDraft,
+      updatedAt: pr.updatedAt
+    }
+    result.get(repoRoot)!.push(summary)
+  }
+  return result
+}
+
+/** Look up a single PR by number for the add-worktree flow. Resolves against
+ *  the UPSTREAM repo (same as listOpenPRs) so a typed number matches the PRs
+ *  the list shows even on forks. Returns a discriminated result so the UI can
+ *  tell a missing PR / missing token apart from a generic failure. Allows
+ *  closed/merged PRs (state is populated for the caller to show a notice). */
+export async function getPRByNumber(
+  repoRoot: string,
+  prNumber: number
+): Promise<PRLookupResult> {
+  const ctx = await getRepoContext(repoRoot)
+  if (!ctx) return { ok: false, reason: 'error', message: 'No GitHub remote found' }
+  let token = getCachedToken()
+  if (!token) return { ok: false, reason: 'no-token' }
+  const { owner, repo } = ctx.upstream
+  const url = `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}`
+  try {
+    let res = await doFetch(url, token)
+    // Mirror githubFetch's 401 recovery so a stale cached token self-heals
+    // instead of surfacing as a generic "look up failed".
+    if (res.status === 401) {
+      log('github', '401 from GitHub, re-resolving token')
+      invalidateTokenCache()
+      const resolved = await resolveGitHubToken()
+      token = resolved?.token ?? null
+      if (!token) return { ok: false, reason: 'no-token' }
+      res = await doFetch(url, token)
+    }
+    if (res.status === 404) return { ok: false, reason: 'not-found' }
+    if (!res.ok) {
+      return { ok: false, reason: 'error', message: `${res.status} ${res.statusText}` }
+    }
+    const pr = (await res.json()) as ApiPRListItem & { merged?: boolean }
+    if (!pr || typeof pr.number !== 'number') return { ok: false, reason: 'not-found' }
+    const summary = toPRSummary(pr)
+    summary.state = (pr.merged ?? pr.merged_at != null) ? 'merged' : pr.state
+    return { ok: true, pr: summary }
+  } catch (err) {
+    log('github', `getPRByNumber failed for ${owner}/${repo}#${prNumber}`, formatErr(err))
+    return { ok: false, reason: 'error', message: formatErr(err) }
   }
 }
 

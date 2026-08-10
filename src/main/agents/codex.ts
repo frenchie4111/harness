@@ -199,6 +199,11 @@ export function latestSessionId(_cwd: string): string | null {
   }
 }
 
+export function extractSessionId(payload: Record<string, unknown>): string | null {
+  const sid = payload.session_id
+  return typeof sid === 'string' && sid ? sid : null
+}
+
 export function buildSpawnArgs(opts: AgentSpawnOpts): string {
   // Codex MCP is configured globally via ~/.codex/config.toml, not per-terminal
   // flags. The mcpConfigPath is unused here but the MCP server was already

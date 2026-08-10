@@ -102,6 +102,12 @@ import {
   type SshBootstrapEvent,
   type SshBootstrapState
 } from './ssh-bootstrap'
+import {
+  initialAssignedPRs,
+  assignedPRsReducer,
+  type AssignedPRsEvent,
+  type AssignedPRsState
+} from './assigned-prs'
 import { initialConfigHealth, type ConfigHealthState } from './config-health'
 import {
   initialAliases,
@@ -158,6 +164,7 @@ export {
   getLeaves,
   findLeaf,
   findLeafByTabId,
+  findTabById,
   hasAnyTabs,
   mapLeaves,
   replaceNode,
@@ -189,6 +196,7 @@ export type {
   BootstrapProgress,
   BootstrapError
 } from './ssh-bootstrap'
+export type { AssignedPRsState, AssignedPRsEvent, AssignedPR } from './assigned-prs'
 export type { ConfigHealthState, ConfigLoadError } from './config-health'
 export type { AliasesState, AliasesEvent } from './aliases'
 
@@ -208,6 +216,7 @@ export interface AppState {
   announcements: AnnouncementsState
   scratchpad: ScratchpadState
   sshBootstrap: SshBootstrapState
+  assignedPRs: AssignedPRsState
   configHealth: ConfigHealthState
   aliases: AliasesState
 }
@@ -228,6 +237,7 @@ export type StateEvent =
   | AnnouncementsEvent
   | ScratchpadEvent
   | SshBootstrapEvent
+  | AssignedPRsEvent
   | AliasesEvent
 
 export const initialState: AppState = {
@@ -246,6 +256,7 @@ export const initialState: AppState = {
   announcements: initialAnnouncements,
   scratchpad: initialScratchpad,
   sshBootstrap: initialSshBootstrap,
+  assignedPRs: initialAssignedPRs,
   configHealth: initialConfigHealth,
   aliases: initialAliases
 }
@@ -326,6 +337,12 @@ export function rootReducer(state: AppState, event: StateEvent): AppState {
       sshBootstrap: sshBootstrapReducer(state.sshBootstrap, event as SshBootstrapEvent)
     }
   }
+  if (event.type.startsWith('assignedPRs/')) {
+    return {
+      ...state,
+      assignedPRs: assignedPRsReducer(state.assignedPRs, event as AssignedPRsEvent)
+    }
+  }
   if (event.type.startsWith('aliases/')) {
     return {
       ...state,
@@ -381,6 +398,7 @@ export function mergeWireSnapshot(state: WireSnapshotState): AppState {
     announcements: { ...initialState.announcements, ...state.announcements },
     scratchpad: { ...initialState.scratchpad, ...state.scratchpad },
     sshBootstrap: { ...initialState.sshBootstrap, ...state.sshBootstrap },
+    assignedPRs: { ...initialState.assignedPRs, ...state.assignedPRs },
     configHealth: { ...initialState.configHealth, ...state.configHealth },
     aliases: { ...initialState.aliases, ...state.aliases }
   }

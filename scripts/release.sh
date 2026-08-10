@@ -490,14 +490,31 @@ ok "Opened PR #${PR_NUMBER}: $PR_URL"
 # and exits non-zero if any failed. If it fails, the trap prints the
 # manual cleanup commands and exits — the user can push fixes to the
 # branch and finish by hand, or close the PR and start over.
+#
+# The pre-wait loop is load-bearing: --watch exits immediately with
+# "no checks reported" if invoked in the tiny window between PR
+# creation and Actions dispatching the workflow. Poll until at least
+# one check run is registered before entering --watch. 60s upper
+# bound — if Actions hasn't reacted in a minute, something else is
+# wrong and --watch will surface it on the next line.
 step "Waiting for CI on PR #${PR_NUMBER}"
+echo "  Waiting for check runs to be registered..."
+for _ in $(seq 1 30); do
+  if [ "$(gh pr view "$PR_NUMBER" --json statusCheckRollup --jq '.statusCheckRollup | length')" -gt 0 ]; then
+    break
+  fi
+  sleep 2
+done
 echo "  (gh pr checks ${PR_NUMBER} --watch — Ctrl-C to abort)"
 gh pr checks "$PR_NUMBER" --watch
 ok "CI passed"
 
 # ---- Merge ----
+# --admin bypasses the "1 approving review" requirement on main's
+# ruleset. The release PR is auto-generated with no reviewer to
+# request, and the maintainer has bypass rights on the ruleset.
 step "Merging PR #${PR_NUMBER} with --${MERGE_METHOD}"
-gh pr merge "$PR_NUMBER" "--${MERGE_METHOD}" --delete-branch
+gh pr merge "$PR_NUMBER" "--${MERGE_METHOD}" --delete-branch --admin
 STAGE=merged
 ok "Merged"
 

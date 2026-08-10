@@ -4,7 +4,8 @@ import { execFileSync } from 'child_process'
 import { join } from 'path'
 import { Store } from './store'
 import { tailLog, cleanupTerminalLog, makeHookCommand } from './hooks'
-import type { StateEvent } from '../shared/state'
+import type { AgentKind } from '../shared/state/terminals'
+import { initialState, type StateEvent, type AppState } from '../shared/state'
 
 // tailLog reads from the real status dir (/tmp/harness-status). We use a
 // unique terminal id per test so the module-level offset/residual maps and
@@ -23,6 +24,32 @@ function statusEvents(store: Store): StateEvent[] {
     if (ev.type === 'terminals/statusChanged') events.push(ev)
   })
   return events
+}
+
+function sessionIdEvents(store: Store): StateEvent[] {
+  const events: StateEvent[] = []
+  store.subscribe((ev) => {
+    if (ev.type === 'terminals/sessionIdDiscovered') events.push(ev)
+  })
+  return events
+}
+
+function storeWithAgentTab(terminalId: string, agentKind: AgentKind): Store {
+  const state: AppState = {
+    ...initialState,
+    terminals: {
+      ...initialState.terminals,
+      panes: {
+        '/wt/a': {
+          type: 'leaf',
+          id: 'pane-1',
+          tabs: [{ id: terminalId, type: 'agent', label: 'Agent', agentKind }],
+          activeTabId: terminalId
+        }
+      }
+    }
+  }
+  return new Store(state)
 }
 
 describe('tailLog — boot-replay guard', () => {
@@ -99,6 +126,36 @@ describe('tailLog — boot-replay guard', () => {
     tailLog(terminalId, store)
     expect(events).toHaveLength(2)
     expect(events[1]).toMatchObject({ payload: { status: 'processing' } })
+  })
+
+  it('adopts the session id via the tab agent\'s extractor', () => {
+    writeFileSync(logPath, record('SessionStart', { session_id: 'codex-sess-1' }))
+    const store = storeWithAgentTab(terminalId, 'codex')
+    const events = sessionIdEvents(store)
+    tailLog(terminalId, store)
+    expect(events).toHaveLength(1)
+    expect(events[0]).toMatchObject({
+      payload: { terminalId, sessionId: 'codex-sess-1' }
+    })
+  })
+
+  it("does not adopt an ID from another agent's field name", () => {
+    // Cursor's extractor reads `conversation_id`. A codex-tab payload
+    // carrying a coincidental `conversation_id` must not be adopted —
+    // codex's extractor only reads `session_id`.
+    writeFileSync(logPath, record('SessionStart', { conversation_id: 'not-mine' }))
+    const store = storeWithAgentTab(terminalId, 'codex')
+    const events = sessionIdEvents(store)
+    tailLog(terminalId, store)
+    expect(events).toHaveLength(0)
+  })
+
+  it('skips discovery for claude tabs (assignsSessionId)', () => {
+    writeFileSync(logPath, record('SessionStart', { session_id: 'claude-sess-1' }))
+    const store = storeWithAgentTab(terminalId, 'claude')
+    const events = sessionIdEvents(store)
+    tailLog(terminalId, store)
+    expect(events).toHaveLength(0)
   })
 
   it('processes every newly-appended line on subsequent tails', () => {

@@ -55,7 +55,7 @@ import { getWeeklyStats } from './weekly-stats'
 import type { TerminalTab, PaneNode, PaneLeaf } from '../shared/state/terminals'
 import { getLeaves, mapLeaves } from '../shared/state/terminals'
 import { listWorktrees, listBranches, continueWorktree, isWorktreeDirty, defaultWorktreeDir, getChangedFiles, getFileDiff, getBranchCommits, getCommitDiff, getCommitMeta, getCommitChangedFiles, getCommitFileDiffSides, getCommitRangeChangedFiles, getCommitRangeFileDiffSides, getMainWorktreeStatus, prepareMainForMerge, mergeWorktreeLocally, getBranchSha, previewMergeConflicts, getBranchDiffStats, listAllFiles, listRecentCommitShas, readWorktreeFile, readWorktreeFileBinary, writeWorktreeFile, getFileDiffSides, getCurrentBranch, symlinkClaudeSettings, pruneWorktrees, type MergeStrategy } from './worktree'
-import { listOpenPRs, testToken, starRepo, unstarRepo, isRepoStarred, mergePR, approvePR, getRepoInfo, type GitHubMergeMethod, type MergePRResult } from './github'
+import { listOpenPRs, getPRByNumber, testToken, starRepo, unstarRepo, isRepoStarred, mergePR, approvePR, getRepoInfo, type GitHubMergeMethod, type MergePRResult, type PRLookupResult } from './github'
 import { AVAILABLE_EDITORS, DEFAULT_EDITOR_ID, openInEditor } from './editor'
 import { setSecret, getSecret, hasSecret, deleteSecret } from './secrets'
 import { resolveGitHubToken, getTokenSource, invalidateTokenCache, getCachedToken } from './github-auth'
@@ -95,9 +95,12 @@ import {
   DEFAULT_DARK_THEME,
   DEFAULT_PR_REVIEW_PROMPT,
   DEFAULT_SIDEBAR_DETAILS,
+  BOTTOM_ICON_KEYS,
   type SidebarDetailPrefs,
   type SidebarDetailPrefsByMode,
-  type PreventSleepMode
+  type PreventSleepMode,
+  type HiddenBottomIcons,
+  type BottomIconKey
 } from '../shared/state/settings'
 import { watchStatusDir } from './hooks'
 import { getAgent, type AgentKind } from './agents'
@@ -684,11 +687,8 @@ ptyManager.setSendSignal((channel, ...args) => transport.sendSignal(channel, ...
 ptyManager.setPerfMonitor(perfMonitor)
 perfMonitor.start(store, () => ptyManager.getActivePtyCount())
 
-// Watches each subscribed worktree's .git/ for index/HEAD/MERGE_HEAD changes
-// so the renderer's Changed Files panel can refresh on real events instead
-// of polling every 3s. Reference-counted: one fs.watch handle per worktree
-// regardless of how many clients are subscribed.
-const worktreeWatcher = new WorktreeWatcher()
+// Per-client changed-files subscriptions, layered on the WorktreeWatcher
+// (constructed below — it needs worktreesFSM for its branch-sync callback).
 const worktreeWatchSubs = new Map<string, Map<string, () => void>>()
 
 // Watches individual files for content changes (FileView + working-tree
@@ -938,6 +938,24 @@ const worktreesFSM = new WorktreesFSM(store, {
 const worktreeDeletionFSM = new WorktreeDeletionFSM(store, {
   getGlobalTeardownCmd: () => config.worktreeTeardownCommand || '',
   worktreesFSM
+})
+
+// The WorktreeWatcher serves both the Changed Files panel (ref-counted
+// subscribe() above/below) and event-driven branch-name sync off one fs.watch
+// handle per worktree. The branch half watches each worktree's gitdir HEAD so a
+// branch switch / rename / detached-HEAD / rebase step in a terminal re-reads
+// the branch immediately, instead of waiting for the next create/delete/manual
+// refresh (which is how "rebasing 2/22" used to get stuck forever). refreshList
+// is deduped via applyList, so a no-op fs event won't churn the store.
+const worktreeWatcher = new WorktreeWatcher(() => {
+  void worktreesFSM.refreshList()
+})
+// Keep the branch-sync watch set in lockstep with the worktree list. Only
+// reacts to listChanged (infrequent); sync() is a cheap set-diff that
+// opens/closes watchers and never dispatches, so there's no feedback loop.
+store.subscribe((event) => {
+  if (event.type !== 'worktrees/listChanged') return
+  worktreeWatcher.sync(store.getSnapshot().state.worktrees.list)
 })
 
 const activityDeriver = new ActivityDeriver(store)
@@ -1632,6 +1650,10 @@ function registerIpcHandlers(): void {
     prPoller.refreshOneIfStale(worktreePath)
     return true
   })
+  transport.onRequest('prs:refreshAssigned', async (_ctx) => {
+    await prPoller.refreshAssignedPRs()
+    return true
+  })
 
   transport.onRequest('announcements:refresh', async (_ctx) => {
     await announcementsPoller.refresh()
@@ -1665,6 +1687,19 @@ function registerIpcHandlers(): void {
     if (!repoRoot) return null
     return listOpenPRs(repoRoot)
   })
+
+  // Used by the "Open PR" tab in New Worktree to resolve a typed PR number
+  // on demand (works even for PRs not in the fetched list). Resolves against
+  // the upstream repo like prs:listOpen.
+  transport.onRequest(
+    'prs:getByNumber',
+    async (_ctx, repoRoot: string, prNumber: number): Promise<PRLookupResult> => {
+      if (!repoRoot || !Number.isInteger(prNumber) || prNumber <= 0) {
+        return { ok: false, reason: 'error', message: 'Invalid PR number' }
+      }
+      return getPRByNumber(repoRoot, prNumber)
+    }
+  )
 
   transport.onRequest(
     'pr:merge',
@@ -2018,6 +2053,25 @@ function registerIpcHandlers(): void {
       type: 'settings/expandedDiagnosticLoggingEnabledChanged',
       payload: enabled
     })
+    return true
+  })
+
+  transport.onRequest('config:setShowAssignedPRs', (_ctx, enabled: boolean) => {
+    if (enabled) {
+      config.showAssignedPRs = true
+    } else {
+      delete config.showAssignedPRs
+    }
+    saveConfig(config)
+    store.dispatch({
+      type: 'settings/showAssignedPRsChanged',
+      payload: enabled
+    })
+    if (enabled) {
+      void prPoller.refreshAssignedPRs()
+    } else {
+      prPoller.clearAssignedPRs()
+    }
     return true
   })
 
@@ -2473,6 +2527,60 @@ function registerIpcHandlers(): void {
       }
       saveConfig(config)
       store.dispatch({ type: 'settings/sidebarDetailsChanged', payload: next })
+      return true
+    }
+  )
+
+  transport.onRequest(
+    'config:setHiddenBottomIcons',
+    (_ctx, hidden: HiddenBottomIcons) => {
+      if (!hidden || typeof hidden !== 'object') return false
+      const next: HiddenBottomIcons = {}
+      for (const key of BOTTOM_ICON_KEYS) {
+        if ((hidden as Record<BottomIconKey, unknown>)[key] === true) next[key] = true
+      }
+      if (Object.keys(next).length === 0) {
+        delete config.hiddenBottomIcons
+      } else {
+        config.hiddenBottomIcons = next
+      }
+      saveConfig(config)
+      store.dispatch({ type: 'settings/hiddenBottomIconsChanged', payload: next })
+      return true
+    }
+  )
+
+  transport.onRequest(
+    'config:setBottomIconOrder',
+    (_ctx, order: BottomIconKey[]) => {
+      if (!Array.isArray(order)) return false
+      const seen = new Set<BottomIconKey>()
+      const clean: BottomIconKey[] = []
+      for (const k of order) {
+        if (
+          typeof k === 'string' &&
+          (BOTTOM_ICON_KEYS as readonly string[]).includes(k) &&
+          !seen.has(k as BottomIconKey)
+        ) {
+          clean.push(k as BottomIconKey)
+          seen.add(k as BottomIconKey)
+        }
+      }
+      // Append any canonical keys the caller omitted so the stored order
+      // never silently loses items.
+      for (const k of BOTTOM_ICON_KEYS) {
+        if (!seen.has(k)) clean.push(k)
+      }
+      const isCanonical =
+        clean.length === BOTTOM_ICON_KEYS.length &&
+        clean.every((k, i) => k === BOTTOM_ICON_KEYS[i])
+      if (isCanonical) {
+        delete config.bottomIconOrder
+      } else {
+        config.bottomIconOrder = clean
+      }
+      saveConfig(config)
+      store.dispatch({ type: 'settings/bottomIconOrderChanged', payload: clean })
       return true
     }
   )
@@ -3127,6 +3235,62 @@ function registerIpcHandlers(): void {
       startJsonClaudeSession(sessionId, startSession.worktreePath)
 
       return { ok: true }
+    }
+  )
+
+  // Fork the current session into a new tab. Unlike rewind, the source
+  // stays running — the manager just copies its jsonl prefix into a
+  // fresh session file, then we register a sibling tab and spawn the
+  // resumed subprocess. panesFSM.addTab appends to the same leaf as
+  // the source's active tab.
+  transport.onRequest(
+    'jsonClaude:forkAt',
+    (
+      _ctx,
+      sessionId: string,
+      entryId: string
+    ): { ok: boolean; newSessionId?: string; reason?: string } => {
+      if (!sessionId || !entryId) return { ok: false, reason: 'missing args' }
+      const source = store.getSnapshot().state.jsonClaude.sessions[sessionId]
+      if (!source) return { ok: false, reason: 'unknown session' }
+
+      const outcome = jsonClaudeManager.forkAt(sessionId, entryId)
+      if (!outcome.ok || !outcome.newSessionId) {
+        return { ok: false, reason: outcome.reason }
+      }
+      const newSessionId = outcome.newSessionId
+
+      // Carry the source tab's label + per-tab model pin so the fork
+      // reads as a sibling. Walk panes for the source worktree; the
+      // source tab id equals its sessionId.
+      let sourceLabel: string | undefined
+      let sourceModel: string | undefined
+      const tree = store.getSnapshot().state.terminals.panes[source.worktreePath]
+      if (tree) {
+        outer: for (const leaf of getLeaves(tree)) {
+          for (const tab of leaf.tabs) {
+            if (tab.id === sessionId && tab.type === 'json-claude') {
+              sourceLabel = tab.customLabel?.trim() || tab.label
+              sourceModel = tab.model && tab.model.trim() ? tab.model.trim() : undefined
+              break outer
+            }
+          }
+        }
+      }
+      const label = sourceLabel ? `${sourceLabel} (fork)` : 'Chat (fork)'
+
+      panesFSM.addTab(source.worktreePath, {
+        id: newSessionId,
+        type: 'json-claude',
+        label,
+        sessionId: newSessionId,
+        mode: 'awake',
+        ...(sourceModel ? { model: sourceModel } : {})
+      })
+
+      startJsonClaudeSession(newSessionId, source.worktreePath)
+
+      return { ok: true, newSessionId }
     }
   )
 
@@ -3961,6 +4125,9 @@ async function runBoot(): Promise<void> {
     void refreshViewerLogin()
     prPoller.start()
     void prPoller.refreshAll()
+    if (store.getSnapshot().state.settings.showAssignedPRs) {
+      void prPoller.refreshAssignedPRs()
+    }
 
     await refreshHarnessStarState()
   })()
@@ -4202,6 +4369,17 @@ async function runBoot(): Promise<void> {
           command,
           cwd
         })
+        // Spawn the PTY eagerly here so agent-initiated `create_shell` calls
+        // don't wait for a human to focus the tab — otherwise
+        // `read_shell_output` returns empty and the caller thinks the shell
+        // failed. `ptyManager.create` is idempotent, so the renderer's later
+        // `pty:create` (fired from XTerminal on mount) attaches instead of
+        // respawning.
+        const spawnCwd = cwd
+          ? cwd.startsWith('/') ? cwd : `${wtPath}/${cwd}`
+          : wtPath
+        const args = command ? ['-ilc', command] : ['-il']
+        ptyManager.create(id, spawnCwd, '', args, undefined, true)
         return { id, label: finalLabel }
       },
       killShell: (shellId) => {
@@ -4331,6 +4509,7 @@ if (desktopShellMod && desktopEarly) {
       // Close local tunnel ends — the remote `harness-server` is left
       // running (intentional; see plans/remote-main.md §4).
       sshTunnelManager.closeAll()
+      worktreeWatcher.shutdown()
     },
     setWarnBeforeQuitting
   })
@@ -4351,6 +4530,7 @@ if (desktopShellMod && desktopEarly) {
     ptyManager.killAll('SIGKILL')
     jsonClaudeManager.killAll()
     approvalBridge.stopAll()
+    worktreeWatcher.shutdown()
     browserManager.destroyAll()
     sshTunnelManager.closeAll()
     sealAllActive()

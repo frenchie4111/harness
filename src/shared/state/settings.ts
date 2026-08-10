@@ -158,6 +158,38 @@ export const DEFAULT_PR_REVIEW_PROMPT =
  *  timer overlay covers the "also keep awake right now" case. */
 export type PreventSleepMode = 'off' | 'while-agents-running' | 'always'
 
+/** Stable keys for each icon in the sidebar's bottom launcher strip. New
+ *  entries can be added at the end; renaming an existing key would strand
+ *  existing users' pinned/unpinned choices, so avoid it. The `settings` and
+ *  hamburger buttons are never in this map — the former is unhidable, the
+ *  latter is the hamburger itself. */
+export type BottomIconKey =
+  | 'commandCenter'
+  | 'newProject'
+  | 'addRepo'
+  | 'activity'
+  | 'myWeek'
+  | 'hotkeys'
+  | 'reportIssue'
+  | 'preventSleep'
+  | 'settings'
+
+/** All bottom-icon keys in default render order. Consumers iterate this and
+ *  filter out anything present-and-true in `hiddenBottomIcons`. */
+export const BOTTOM_ICON_KEYS: readonly BottomIconKey[] = [
+  'commandCenter',
+  'newProject',
+  'addRepo',
+  'activity',
+  'myWeek',
+  'hotkeys',
+  'reportIssue',
+  'preventSleep',
+  'settings'
+] as const
+
+export type HiddenBottomIcons = Partial<Record<BottomIconKey, boolean>>
+
 export interface SettingsState {
   /** Whether the active theme is the light theme, the dark theme, or follows
    *  the OS appearance. Default 'system'. */
@@ -289,6 +321,12 @@ export interface SettingsState {
    *  the feed contents. Set by the "Hide all announcements" action and
    *  cleared only by the user. */
   announcementsMuted: boolean
+  /** When true, PRs that have you as a requested reviewer (across every
+   *  repo added to Harness) show up as phantom entries in the sidebar's
+   *  Reviewing group — click one and it opens the "new worktree from PR"
+   *  screen with that PR pre-selected. Off by default; opt-in via
+   *  Settings. */
+  showAssignedPRs: boolean
   /** Primary wake-lock mode. The side effect (a power-save blocker)
    *  lives in the main-process WakeLockController — never in the store.
    *  Default 'off'. */
@@ -300,6 +338,15 @@ export interface SettingsState {
    *  surprising the user days later. The WakeLockController clears it back
    *  to null when the deadline passes. */
   preventSleepUntil: number | null
+  /** Which bottom-launcher icons the user has hidden. Missing / false ⇒
+   *  visible. Managed via the hamburger dropdown on the strip. Global (not
+   *  per-repo) — these are launcher actions that don't depend on repo state. */
+  hiddenBottomIcons: HiddenBottomIcons
+  /** User's preferred render order for the bottom-launcher icons. Any key
+   *  in `BOTTOM_ICON_KEYS` but missing here gets appended in canonical order
+   *  at read time (so adding a new icon to the codebase just shows up on the
+   *  end). Managed via up/down chevrons in the hamburger dropdown. */
+  bottomIconOrder: BottomIconKey[]
 }
 
 export type SettingsEvent =
@@ -363,8 +410,11 @@ export type SettingsEvent =
   | { type: 'settings/prReviewPromptChanged'; payload: string }
   | { type: 'settings/announcementDismissed'; payload: string }
   | { type: 'settings/announcementsMutedChanged'; payload: boolean }
+  | { type: 'settings/showAssignedPRsChanged'; payload: boolean }
   | { type: 'settings/preventSleepModeChanged'; payload: PreventSleepMode }
   | { type: 'settings/preventSleepUntilChanged'; payload: number | null }
+  | { type: 'settings/hiddenBottomIconsChanged'; payload: HiddenBottomIcons }
+  | { type: 'settings/bottomIconOrderChanged'; payload: BottomIconKey[] }
 
 // Client-side placeholder. Real values are seeded in the main-process Store
 // constructor from the on-disk config and secrets.
@@ -426,8 +476,31 @@ export const initialSettings: SettingsState = {
   prReviewPrompt: DEFAULT_PR_REVIEW_PROMPT,
   dismissedAnnouncementIds: [],
   announcementsMuted: false,
+  showAssignedPRs: false,
   preventSleepMode: 'off',
-  preventSleepUntil: null
+  preventSleepUntil: null,
+  hiddenBottomIcons: {},
+  bottomIconOrder: [...BOTTOM_ICON_KEYS]
+}
+
+/** Read helper: return the user's stored order with any missing keys
+ *  appended in canonical order. Keeps sidebars from silently losing an
+ *  icon when a new one gets added to the codebase between releases. */
+export function resolveBottomIconOrder(
+  stored: readonly BottomIconKey[]
+): BottomIconKey[] {
+  const seen = new Set<BottomIconKey>()
+  const out: BottomIconKey[] = []
+  for (const k of stored) {
+    if (BOTTOM_ICON_KEYS.includes(k) && !seen.has(k)) {
+      out.push(k)
+      seen.add(k)
+    }
+  }
+  for (const k of BOTTOM_ICON_KEYS) {
+    if (!seen.has(k)) out.push(k)
+  }
+  return out
 }
 
 export function settingsReducer(state: SettingsState, event: SettingsEvent): SettingsState {
@@ -551,10 +624,16 @@ export function settingsReducer(state: SettingsState, event: SettingsEvent): Set
     }
     case 'settings/announcementsMutedChanged':
       return { ...state, announcementsMuted: event.payload }
+    case 'settings/showAssignedPRsChanged':
+      return { ...state, showAssignedPRs: event.payload }
     case 'settings/preventSleepModeChanged':
       return { ...state, preventSleepMode: event.payload }
     case 'settings/preventSleepUntilChanged':
       return { ...state, preventSleepUntil: event.payload }
+    case 'settings/hiddenBottomIconsChanged':
+      return { ...state, hiddenBottomIcons: event.payload }
+    case 'settings/bottomIconOrderChanged':
+      return { ...state, bottomIconOrder: event.payload }
     default: {
       const _exhaustive: never = event
       void _exhaustive

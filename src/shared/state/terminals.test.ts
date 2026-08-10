@@ -9,6 +9,7 @@ import {
   getLeaves,
   findLeaf,
   findLeafByTabId,
+  findTabById,
   hasAnyTabs,
   mapLeaves,
   replaceNode,
@@ -67,6 +68,23 @@ describe('tree helpers', () => {
     }
     expect(findLeafByTabId(tree, 't3')?.id).toBe('b')
     expect(findLeafByTabId(tree, 'missing')).toBeNull()
+  })
+
+  it('findTabById searches across every worktree in the panes map', () => {
+    const panes = {
+      '/wt/a': leaf('p1', ['t1', 't2']),
+      '/wt/b': {
+        type: 'split' as const,
+        id: 's1',
+        direction: 'horizontal' as const,
+        ratio: 0.5,
+        children: [leaf('p2', ['t3']), leaf('p3', ['t4'])] as [PaneNode, PaneNode]
+      }
+    }
+    expect(findTabById(panes, 't2')?.id).toBe('t2')
+    expect(findTabById(panes, 't4')?.id).toBe('t4')
+    expect(findTabById(panes, 'missing')).toBeNull()
+    expect(findTabById({}, 't1')).toBeNull()
   })
 
   it('hasAnyTabs detects tabs in nested trees', () => {

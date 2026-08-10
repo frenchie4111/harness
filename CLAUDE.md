@@ -243,7 +243,7 @@ selector (`useJsonClaudeSession(id)`) and use that in components that
 care about one entity. The whole-slice hook is only correct in the few
 places that genuinely need the full map (sidebar grouping, etc.).
 
-**Diagnosing in production.** The HUD at Cmd+Shift+D shows live event
+**Diagnosing in production.** The HUD at Cmd+Opt+P shows live event
 rates and a stacked bar of which event types are firing most. The
 `perf.log` file (see "How performance debugging works" below) captures
 per-event detail including `[cascade]` lines when these anti-patterns
@@ -332,7 +332,7 @@ What gets written to `perf.log` (and where the threshold lives):
 - `[git-op]` — per-call timing breakdown for slow git functions, capturing exec/post/bytes split.
 - `[microtask-drift]` — main-thread blocks ≥50ms (higher resolution than the 500ms event-loop sampler).
 
-The HUD at **Cmd+Shift+D** shows live aggregates (rates, history sparkline,
+The HUD at **Cmd+Opt+P** shows live aggregates (rates, history sparkline,
 React commits per second, top event types). `perf.log` captures the
 per-event detail the HUD can't display. They're complementary —
 `PerfMonitor` aggregates for the HUD, `perfLog` writes discrete
