@@ -794,10 +794,11 @@ interface BucketOrderSectionProps {
 }
 
 /** Bucket reorder + collapse-by-default UI. The list of reorderable
- *  bucket names is the union of (a) whatever the user has already saved
- *  in `bucketOrder`, (b) statuses seen in the tickets slice's cache
- *  from a prior fetch. If neither is populated we show a note pointing
- *  users at the Tickets view. */
+ *  bucket names comes from the tickets-slice cache — populated by any
+ *  prior fetch, or by the on-mount fetch this section fires when the
+ *  cache is empty for the given provider. That way the user can open
+ *  the provider form fresh and get the discovered buckets without a
+ *  detour through the Tickets view. */
 function BucketOrderSection({
   providerId,
   bucketOrder,
@@ -805,7 +806,37 @@ function BucketOrderSection({
   onChangeOrder,
   onChangeCollapsed
 }: BucketOrderSectionProps): JSX.Element {
+  const backend = useBackend()
   const cachedStatuses = useProviderCachedStatuses(providerId)
+  const [discovering, setDiscovering] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // On mount (or when the provider id changes), fetch once so the
+  // bucket list can populate without the user visiting Tickets first.
+  // We only fire when the cache is empty — if a prior fetch already
+  // filled it, no need to re-hit the network from the settings screen.
+  useEffect(() => {
+    if (!providerId) return
+    if (cachedStatuses.length > 0) return
+    let cancelled = false
+    setDiscovering(true)
+    setError(null)
+    void backend
+      .ticketsList(providerId)
+      .then(() => {
+        if (!cancelled) setDiscovering(false)
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return
+        setDiscovering(false)
+        setError(err instanceof Error ? err.message : 'Failed to discover buckets')
+      })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [providerId])
+
   // Same merge logic the Tickets view uses — the reorderable list is
   // the effective bucket order the user would see if they opened the
   // Tickets view right now.
@@ -840,10 +871,19 @@ function BucketOrderSection({
       <div className="text-xs font-semibold uppercase tracking-wider text-dim mb-1">
         Bucket order
       </div>
-      {effective.length === 0 ? (
+      {discovering && effective.length === 0 ? (
+        <div className="flex items-center gap-1.5 text-xs text-dim">
+          <Loader2 className="icon-xs animate-spin" />
+          Discovering buckets…
+        </div>
+      ) : error && effective.length === 0 ? (
+        <div className="flex items-center gap-1.5 text-xs text-danger">
+          <AlertCircle className="icon-xs" />
+          <span>{error}</span>
+        </div>
+      ) : effective.length === 0 ? (
         <p className="text-xs text-faint">
-          Open the Tickets view once to fetch tickets from this provider — the buckets that show
-          up there can be reordered here afterwards.
+          This provider hasn't returned any tickets yet, so there aren't any buckets to reorder.
         </p>
       ) : (
         <div className="space-y-1">
