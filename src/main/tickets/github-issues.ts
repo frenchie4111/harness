@@ -95,33 +95,28 @@ export function createGithubIssuesProvider(
 
   return {
     async list(query) {
-      // GitHub's REST /repos/{owner}/{repo}/issues endpoint returns
-      // both issues AND PRs — PRs are distinguishable by the presence
-      // of a `pull_request` field. We filter PRs out client-side so the
-      // ticket picker doesn't pollute itself with merge requests.
+      // Use /search/issues unconditionally — the REST /repos/*/issues
+      // endpoint returns both issues AND PRs, so on repos with heavy PR
+      // activity the first N results are almost all PRs and by the time
+      // we filter them out the user is left with a handful of issues.
+      // Search filters PRs out server-side via `is:issue`, so every
+      // returned slot is a real issue. Rate limits are lower (30/min
+      // for authed vs. 5000/hr for REST) but ticket listings are
+      // infrequent enough that this doesn't matter.
       //
-      // state=all so the Tickets view's "closed" bucket can populate.
-      // Sorted by GitHub's default (updated desc) so freshest activity
-      // bubbles to the top regardless of state.
-      const params = new URLSearchParams()
-      params.set('state', 'all')
-      params.set('per_page', '50')
+      // No `state:open` filter — we want the "closed" bucket in the
+      // Tickets view to populate too. Search defaults to relevance
+      // when no sort is given; specify `updated` desc so freshest
+      // activity bubbles to the top and stays consistent with the
+      // REST path's ordering.
       const q = (query ?? config.defaultQuery ?? '').trim()
-      // The list endpoint doesn't take a free-text filter. Fall back to
-      // /search/issues when one's supplied so the picker's search box
-      // actually narrows the list.
-      let url: string
-      if (q) {
-        const search = `${q} repo:${owner}/${repo} is:issue`
-        url = `https://api.github.com/search/issues?q=${encodeURIComponent(search)}&per_page=50`
-      } else {
-        url = `https://api.github.com/repos/${owner}/${repo}/issues?${params.toString()}`
-      }
+      const filterParts = ['is:issue', `repo:${owner}/${repo}`]
+      if (q) filterParts.unshift(q)
+      const search = filterParts.join(' ')
+      const url = `https://api.github.com/search/issues?q=${encodeURIComponent(search)}&per_page=100&sort=updated&order=desc`
       try {
         const data = await githubFetch(url)
-        const items: ApiIssue[] = q
-          ? (data as { items?: ApiIssue[] } | null)?.items ?? []
-          : (data as ApiIssue[] | null) ?? []
+        const items: ApiIssue[] = (data as { items?: ApiIssue[] } | null)?.items ?? []
         return items
           .filter((i) => !i.pull_request)
           .map((i) => toTicket(providerId, i))
