@@ -6,7 +6,7 @@
 // or spawn a new one via the "Open" affordance.
 
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, RefreshCw, Loader2, ExternalLink, GitBranch, AlertCircle, ChevronDown, ChevronRight } from 'lucide-react'
+import { ArrowLeft, RefreshCw, Loader2, ExternalLink, GitBranch, AlertCircle, ChevronDown, ChevronRight, Rows3, LayoutGrid } from 'lucide-react'
 import type { Worktree } from '../types'
 import type {
   Ticket,
@@ -18,6 +18,8 @@ import { useBackend } from '../backend'
 import { useTicketProviders } from '../store'
 import { TicketProviderIcon } from './TicketProvidersSettings'
 import { RepoIcon, repoNameColor } from './RepoIcon'
+
+type TicketsViewMode = 'list' | 'board'
 
 interface TicketsProps {
   onClose: () => void
@@ -97,6 +99,18 @@ export function Tickets({
   const backend = useBackend()
   const providers = useTicketProviders()
   const [state, setState] = useState<FetchState>(INITIAL_FETCH)
+  // View mode toggle — persisted in localStorage like the sidebar's
+  // unifiedRepos so it survives reloads. Board = columns per bucket,
+  // list = stacked buckets.
+  const [viewMode, setViewMode] = useState<TicketsViewMode>(() => {
+    if (typeof localStorage === 'undefined') return 'list'
+    return localStorage.getItem('harness:tickets:viewMode') === 'board' ? 'board' : 'list'
+  })
+  useEffect(() => {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('harness:tickets:viewMode', viewMode)
+    }
+  }, [viewMode])
 
   // For every (repo, provider-linked-to-that-repo) pair, kick off a
   // list() call and merge the results into `state.rows` decorated with
@@ -180,6 +194,34 @@ export function Tickets({
           Tickets
         </span>
         <div className="no-drag absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
+          <div className="flex items-center rounded overflow-hidden border border-border-strong">
+            <button
+              onClick={() => setViewMode('list')}
+              className={`p-1 transition-colors cursor-pointer ${
+                viewMode === 'list'
+                  ? 'bg-surface text-fg-bright'
+                  : 'text-muted hover:text-fg-bright hover:bg-surface/50'
+              }`}
+              title="List view"
+              aria-label="List view"
+              aria-pressed={viewMode === 'list'}
+            >
+              <Rows3 className="icon-sm" />
+            </button>
+            <button
+              onClick={() => setViewMode('board')}
+              className={`p-1 transition-colors cursor-pointer ${
+                viewMode === 'board'
+                  ? 'bg-surface text-fg-bright'
+                  : 'text-muted hover:text-fg-bright hover:bg-surface/50'
+              }`}
+              title="Board view"
+              aria-label="Board view"
+              aria-pressed={viewMode === 'board'}
+            >
+              <LayoutGrid className="icon-sm" />
+            </button>
+          </div>
           <button
             onClick={() => void load()}
             disabled={state.loading}
@@ -240,6 +282,7 @@ export function Tickets({
                   key={section.repoRoot ?? '__unified__'}
                   repoRoot={section.repoRoot}
                   rows={section.rows}
+                  viewMode={viewMode}
                   onJumpToWorktree={onJumpToWorktree}
                   onSpawnFromTicket={onSpawnFromTicket}
                 />
@@ -255,6 +298,7 @@ export function Tickets({
 interface TicketsSectionProps {
   repoRoot: string | null
   rows: FetchedRow[]
+  viewMode: TicketsViewMode
   onJumpToWorktree: (worktreePath: string) => void
   onSpawnFromTicket: (ticket: Ticket, provider: TicketProviderConfig, repoRoot: string) => void
 }
@@ -285,6 +329,7 @@ function bucketRowsByStatus(rows: FetchedRow[]): {
 function TicketsSection({
   repoRoot,
   rows,
+  viewMode,
   onJumpToWorktree,
   onSpawnFromTicket
 }: TicketsSectionProps): JSX.Element {
@@ -321,6 +366,14 @@ function TicketsSection({
         <p className="text-xs text-faint px-3 py-2 border border-dashed border-border rounded">
           No tickets from this repo's linked providers.
         </p>
+      ) : viewMode === 'board' ? (
+        <TicketsBoard
+          bucketOrder={bucketOrder}
+          byBucket={byBucket}
+          collapsedByDefault={collapsedByDefault}
+          onJumpToWorktree={onJumpToWorktree}
+          onSpawnFromTicket={onSpawnFromTicket}
+        />
       ) : (
         bucketOrder.map((bucket) => (
           <TicketBucket
@@ -497,5 +550,169 @@ function TicketsEmpty({ kind, onOpenSettings }: TicketsEmptyProps): JSX.Element 
         integration has been shared with the database.
       </p>
     </div>
+  )
+}
+
+interface TicketsBoardProps {
+  bucketOrder: string[]
+  byBucket: Map<string, FetchedRow[]>
+  collapsedByDefault: Set<string>
+  onJumpToWorktree: (worktreePath: string) => void
+  onSpawnFromTicket: (ticket: Ticket, provider: TicketProviderConfig, repoRoot: string) => void
+}
+
+/** Kanban-style board for a single section. Each bucket becomes a
+ *  vertically-scrolling column of cards; the board itself
+ *  horizontally-scrolls when the column set is wider than the pane.
+ *  Collapsed columns render as a narrow rail so the user can see
+ *  everything at a glance without full-collapsing them out of sight. */
+function TicketsBoard({
+  bucketOrder,
+  byBucket,
+  collapsedByDefault,
+  onJumpToWorktree,
+  onSpawnFromTicket
+}: TicketsBoardProps): JSX.Element {
+  return (
+    <div className="-mx-6 px-6 overflow-x-auto">
+      <div className="flex gap-3 pb-2 items-start min-w-max">
+        {bucketOrder.map((bucket) => (
+          <TicketColumn
+            key={bucket}
+            label={bucket}
+            rows={byBucket.get(bucket) ?? []}
+            defaultCollapsed={collapsedByDefault.has(bucket)}
+            onJumpToWorktree={onJumpToWorktree}
+            onSpawnFromTicket={onSpawnFromTicket}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+interface TicketColumnProps {
+  label: string
+  rows: FetchedRow[]
+  defaultCollapsed: boolean
+  onJumpToWorktree: (worktreePath: string) => void
+  onSpawnFromTicket: (ticket: Ticket, provider: TicketProviderConfig, repoRoot: string) => void
+}
+
+function TicketColumn({
+  label,
+  rows,
+  defaultCollapsed,
+  onJumpToWorktree,
+  onSpawnFromTicket
+}: TicketColumnProps): JSX.Element {
+  const [collapsed, setCollapsed] = useState(defaultCollapsed)
+  if (collapsed) {
+    return (
+      <button
+        type="button"
+        onClick={() => setCollapsed(false)}
+        className="shrink-0 w-8 bg-app/50 border border-border rounded flex flex-col items-center gap-2 py-3 hover:bg-app hover:border-border-strong transition-colors cursor-pointer"
+        title={`Expand ${label} (${rows.length})`}
+        aria-label={`Expand ${label} bucket, ${rows.length} tickets`}
+      >
+        <ChevronRight className="icon-xs text-faint" />
+        <span
+          className="text-xs font-semibold uppercase tracking-wider text-dim whitespace-nowrap"
+          style={{ writingMode: 'vertical-rl' }}
+        >
+          {label}
+        </span>
+        <span className="text-xs text-faint">{rows.length}</span>
+      </button>
+    )
+  }
+  return (
+    <div className="shrink-0 w-64 flex flex-col bg-app/40 border border-border rounded">
+      <button
+        type="button"
+        onClick={() => setCollapsed(true)}
+        className="flex items-center gap-1 px-2.5 py-2 border-b border-border text-xs font-semibold uppercase tracking-wider text-dim hover:text-fg cursor-pointer"
+      >
+        <ChevronDown className="icon-xs" />
+        <span className="flex-1 text-left truncate">{label}</span>
+        <span className="text-faint normal-case font-normal">{rows.length}</span>
+      </button>
+      <div className="p-2 space-y-2 max-h-[70vh] overflow-y-auto">
+        {rows.length === 0 ? (
+          <p className="text-xs text-faint text-center py-4">Empty</p>
+        ) : (
+          rows.map((row, i) => (
+            <TicketCard
+              key={`${row.provider.id}:${row.ticket.externalId}:${i}`}
+              row={row}
+              onJumpToWorktree={onJumpToWorktree}
+              onSpawnFromTicket={onSpawnFromTicket}
+            />
+          ))
+        )}
+      </div>
+    </div>
+  )
+}
+
+interface TicketCardProps {
+  row: FetchedRow
+  onJumpToWorktree: (worktreePath: string) => void
+  onSpawnFromTicket: (ticket: Ticket, provider: TicketProviderConfig, repoRoot: string) => void
+}
+
+function TicketCard({ row, onJumpToWorktree, onSpawnFromTicket }: TicketCardProps): JSX.Element {
+  const backend = useBackend()
+  const { ticket, provider, linkedWorktree } = row
+  const showExternalId = provider.type === 'github-issues'
+
+  const handleClick = (): void => {
+    if (linkedWorktree) {
+      onJumpToWorktree(linkedWorktree.path)
+    } else {
+      onSpawnFromTicket(ticket, provider, row.repoRoot)
+    }
+  }
+
+  const handleOpenExternal = (e: React.MouseEvent): void => {
+    e.stopPropagation()
+    if (ticket.url) backend.openExternal(ticket.url)
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      className="w-full text-left bg-panel border border-border-strong rounded p-2 hover:border-accent transition-colors cursor-pointer group"
+      title={ticket.title}
+    >
+      <div className="flex items-center gap-1.5 text-xs text-faint mb-1">
+        <TicketProviderIcon type={provider.type} className="icon-2xs shrink-0" />
+        {showExternalId && (
+          <span className="font-mono">#{ticket.externalId}</span>
+        )}
+        {ticket.url && (
+          <button
+            type="button"
+            onClick={handleOpenExternal}
+            className="ml-auto text-faint hover:text-fg opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+            title="Open in browser"
+            aria-label="Open ticket in browser"
+          >
+            <ExternalLink className="icon-2xs" />
+          </button>
+        )}
+      </div>
+      <div className="text-sm text-fg-bright font-medium line-clamp-2 break-words">
+        {ticket.title}
+      </div>
+      {linkedWorktree && (
+        <div className="mt-1.5 inline-flex items-center gap-1 text-xs text-success">
+          <GitBranch className="icon-2xs" />
+          <span className="truncate max-w-[13rem]">{linkedWorktree.branch}</span>
+        </div>
+      )}
+    </button>
   )
 }
