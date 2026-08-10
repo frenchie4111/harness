@@ -9,6 +9,7 @@ import {
   useWorktreeLinkedTicket
 } from '../store'
 import { useBackend } from '../backend'
+import type { Ticket } from '../../shared/tickets'
 
 interface TicketPanelProps {
   worktreePath: string | null
@@ -18,30 +19,56 @@ interface TicketPanelProps {
  *  was spawned from. Renders nothing when the worktree has no linked
  *  ticket, so the panel only appears where it's relevant. Details beyond
  *  the generalizable fields (labels, comments, assignees) stay in the
- *  provider's native UI — the "Open" action jumps there. */
+ *  provider's native UI — the "Open" action jumps there.
+ *
+ *  The store's ticket cache is only populated by `tickets:list` (the
+ *  full-surface Tickets view), so it may be cold here. We therefore read
+ *  the cache as a fast-path but fetch through `ticketsGet` and hold the
+ *  returned Ticket in local state — otherwise a worktree whose provider
+ *  was never listed would spin forever. */
 export function TicketPanel({ worktreePath }: TicketPanelProps): JSX.Element | null {
   const link = useWorktreeLinkedTicket(worktreePath)
   const cached = useCachedTicket(link)
   const providers = useTicketProviders()
   const backend = useBackend()
-  const [refreshing, setRefreshing] = useState(false)
+  const [fetched, setFetched] = useState<Ticket | null>(null)
+  const [loading, setLoading] = useState(false)
 
-  // Populate / refresh the cache whenever the linked ticket changes.
+  const linkKey = link ? `${link.providerId}:${link.externalId}` : null
+
   useEffect(() => {
-    if (link) void backend.ticketsGet(link.providerId, link.externalId)
+    if (!link) {
+      setFetched(null)
+      return
+    }
+    let cancelled = false
+    setLoading(true)
+    void backend
+      .ticketsGet(link.providerId, link.externalId)
+      .then((t) => {
+        if (!cancelled) setFetched(t)
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [link])
+  }, [linkKey])
 
   if (!link) return null
 
   const provider = providers.find((p) => p.id === link.providerId) ?? null
+  const ticket = cached ?? fetched
 
   const handleRefresh = async (): Promise<void> => {
-    setRefreshing(true)
+    setLoading(true)
     try {
-      await backend.ticketsGet(link.providerId, link.externalId)
+      const t = await backend.ticketsGet(link.providerId, link.externalId)
+      setFetched(t)
     } finally {
-      setRefreshing(false)
+      setLoading(false)
     }
   }
 
@@ -53,13 +80,13 @@ export function TicketPanel({ worktreePath }: TicketPanelProps): JSX.Element | n
           className="text-dim hover:text-fg hover:bg-surface rounded p-0.5 transition-colors cursor-pointer"
           aria-label="Refresh ticket"
         >
-          <RotateCw className={`icon-xs ${refreshing ? 'animate-spin' : ''}`} />
+          <RotateCw className={`icon-xs ${loading ? 'animate-spin' : ''}`} />
         </button>
       </Tooltip>
-      {cached?.url && (
+      {ticket?.url && (
         <Tooltip label="Open ticket in browser">
           <button
-            onClick={() => cached.url && backend.openExternal(cached.url)}
+            onClick={() => ticket.url && backend.openExternal(ticket.url)}
             className="text-dim hover:text-fg hover:bg-surface rounded p-0.5 transition-colors cursor-pointer"
             aria-label="Open ticket in browser"
           >
@@ -80,25 +107,31 @@ export function TicketPanel({ worktreePath }: TicketPanelProps): JSX.Element | n
           {provider && <span className="truncate">{provider.label}</span>}
           <span className="text-dim">·</span>
           <span className="tabular-nums shrink-0">{link.externalId}</span>
-          {cached?.status && (
+          {ticket?.status && (
             <span className="ml-auto shrink-0 rounded-full bg-panel-raised border border-border-strong px-1.5 py-0.5 text-xs text-dim">
-              {cached.status}
+              {ticket.status}
             </span>
           )}
         </div>
 
         <div className="text-sm font-medium text-text break-words">
-          {cached?.title ?? `#${link.externalId}`}
+          {ticket?.title ?? `#${link.externalId}`}
         </div>
 
-        {cached?.description ? (
-          <div className="text-xs text-muted whitespace-pre-wrap break-words max-h-96 overflow-y-auto leading-relaxed">
-            {cached.description}
-          </div>
-        ) : cached ? (
-          <div className="text-xs text-faint italic">No description.</div>
-        ) : (
+        {ticket ? (
+          ticket.description ? (
+            <div className="text-xs text-muted whitespace-pre-wrap break-words max-h-96 overflow-y-auto leading-relaxed">
+              {ticket.description}
+            </div>
+          ) : (
+            <div className="text-xs text-faint italic">No description.</div>
+          )
+        ) : loading ? (
           <div className="text-xs text-faint italic">Loading ticket…</div>
+        ) : (
+          <div className="text-xs text-faint italic">
+            Ticket details unavailable.
+          </div>
         )}
       </div>
     </RightPanel>
