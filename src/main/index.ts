@@ -1514,7 +1514,7 @@ function registerIpcHandlers(): void {
     'file:watchSubscribe',
     (ctx, worktreePath: string, relativePath: string) => {
       if (!worktreePath || !relativePath) return
-      const key = `${worktreePath} ${relativePath}`
+      const key = `${worktreePath}\x00${relativePath}`
       let subs = fileContentWatchSubs.get(ctx.clientId)
       if (!subs) {
         subs = new Map()
@@ -1533,7 +1533,7 @@ function registerIpcHandlers(): void {
     'file:watchUnsubscribe',
     (ctx, worktreePath: string, relativePath: string) => {
       if (!worktreePath || !relativePath) return
-      const key = `${worktreePath} ${relativePath}`
+      const key = `${worktreePath}\x00${relativePath}`
       const subs = fileContentWatchSubs.get(ctx.clientId)
       const off = subs?.get(key)
       if (!off) return
