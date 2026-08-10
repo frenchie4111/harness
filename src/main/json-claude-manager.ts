@@ -1439,6 +1439,17 @@ export class JsonClaudeManager {
           payload: { sessionId: instance.sessionId, slashCommands: filtered }
         })
       }
+      // Ground-truth model id, as reported by the CLI itself. Lets the
+      // `/model` popover show what claude *actually* resolved to (bundle
+      // default when we passed no `--model`, or the exact id we passed
+      // otherwise).
+      const initModel = parsed['model']
+      if (typeof initModel === 'string' && initModel.length > 0) {
+        this.store.dispatch({
+          type: 'jsonClaude/currentModelChanged',
+          payload: { sessionId: instance.sessionId, model: initModel }
+        })
+      }
       return
     }
     if (type === 'stream_event') {

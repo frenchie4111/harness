@@ -843,6 +843,71 @@ describe('terminalsReducer', () => {
     ).toBe(noLabel)
   })
 
+  it('tabModelChanged sets tab.model on a json-claude tab', () => {
+    const tree: PaneNode = {
+      type: 'leaf',
+      id: 'p1',
+      tabs: [{ id: 'sess-1', type: 'json-claude', label: 'Chat', sessionId: 'sess-1' }],
+      activeTabId: 'sess-1'
+    }
+    const start: TerminalsState = { ...initialTerminals, panes: { '/wt/a': tree } }
+    const next = apply(start, {
+      type: 'terminals/tabModelChanged',
+      payload: { worktreePath: '/wt/a', tabId: 'sess-1', model: 'claude-fable-5' }
+    })
+    expect(getLeaves(next.panes['/wt/a'])[0].tabs[0].model).toBe('claude-fable-5')
+  })
+
+  it('tabModelChanged trims the model id and clears when empty', () => {
+    const tree: PaneNode = {
+      type: 'leaf',
+      id: 'p1',
+      tabs: [{ id: 'sess-1', type: 'json-claude', label: 'Chat', sessionId: 'sess-1', model: 'claude-fable-5' }],
+      activeTabId: 'sess-1'
+    }
+    const start: TerminalsState = { ...initialTerminals, panes: { '/wt/a': tree } }
+    const trimmed = apply(start, {
+      type: 'terminals/tabModelChanged',
+      payload: { worktreePath: '/wt/a', tabId: 'sess-1', model: '  claude-opus-4-8  ' }
+    })
+    expect(getLeaves(trimmed.panes['/wt/a'])[0].tabs[0].model).toBe('claude-opus-4-8')
+    const cleared = apply(start, {
+      type: 'terminals/tabModelChanged',
+      payload: { worktreePath: '/wt/a', tabId: 'sess-1', model: '' }
+    })
+    const tab = getLeaves(cleared.panes['/wt/a'])[0].tabs[0]
+    expect('model' in tab).toBe(false)
+  })
+
+  it('tabModelChanged is a no-op for missing/non-model-bearing tabs or unchanged values', () => {
+    const tree: PaneNode = {
+      type: 'leaf',
+      id: 'p1',
+      tabs: [
+        { id: 'sess-1', type: 'json-claude', label: 'Chat', sessionId: 'sess-1', model: 'claude-fable-5' },
+        { id: 't-shell', type: 'shell', label: 'Shell' }
+      ],
+      activeTabId: 'sess-1'
+    }
+    const start: TerminalsState = { ...initialTerminals, panes: { '/wt/a': tree } }
+    // Missing worktree
+    expect(
+      apply(start, { type: 'terminals/tabModelChanged', payload: { worktreePath: '/wt/x', tabId: 'sess-1', model: 'claude-opus-4-8' } })
+    ).toBe(start)
+    // Missing tab
+    expect(
+      apply(start, { type: 'terminals/tabModelChanged', payload: { worktreePath: '/wt/a', tabId: 'missing', model: 'claude-opus-4-8' } })
+    ).toBe(start)
+    // Not a model-bearing tab type
+    expect(
+      apply(start, { type: 'terminals/tabModelChanged', payload: { worktreePath: '/wt/a', tabId: 't-shell', model: 'claude-opus-4-8' } })
+    ).toBe(start)
+    // Same value
+    expect(
+      apply(start, { type: 'terminals/tabModelChanged', payload: { worktreePath: '/wt/a', tabId: 'sess-1', model: 'claude-fable-5' } })
+    ).toBe(start)
+  })
+
   it('tabTypeChanged is a no-op when the worktree or tab is missing', () => {
     const start: TerminalsState = { ...initialTerminals, panes: { '/wt/a': leaf('p1', ['t1']) } }
     const noWt = apply(start, {

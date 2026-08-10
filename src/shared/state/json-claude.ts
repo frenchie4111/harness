@@ -173,6 +173,12 @@ export interface JsonClaudeSession {
    *  user's enabled Skills, plugin commands, and project-local
    *  `.claude/commands/*.md`. Empty until init lands. */
   slashCommands: string[]
+  /** Model id the running subprocess self-reported in the system/init
+   *  message. This is the ground truth (what Claude is actually using)
+   *  as opposed to what Harness asked for on the CLI, so the UI can
+   *  show the effective model even when no `--model` was passed and the
+   *  CLI fell back to its own default. Empty until init lands. */
+  currentModel?: string
   /** Audit map of tool calls that were auto-approved by the LLM-based
    *  reviewer (instead of going through the user UI). Keyed by toolUseId
    *  so the per-tool card can render a small "auto-approved" badge.
@@ -347,6 +353,10 @@ export type JsonClaudeEvent =
       payload: { sessionId: string; slashCommands: string[] }
     }
   | {
+      type: 'jsonClaude/currentModelChanged'
+      payload: { sessionId: string; model: string }
+    }
+  | {
       type: 'jsonClaude/compactBoundaryReceived'
       payload: {
         sessionId: string
@@ -493,6 +503,12 @@ export function jsonClaudeReducer(
               event.payload.defaultPermissionMode ??
               'default',
             slashCommands: existing?.slashCommands ?? [],
+            // Keep the previously-reported model across a respawn — the
+            // fresh init event will overwrite it as soon as it arrives,
+            // but the UI shouldn't flash "unknown model" in the gap.
+            ...(existing?.currentModel !== undefined
+              ? { currentModel: existing.currentModel }
+              : {}),
             autoApprovedDecisions: existing?.autoApprovedDecisions ?? {},
             sessionToolApprovals: existing?.sessionToolApprovals ?? [],
             sessionAllowedDecisions: existing?.sessionAllowedDecisions ?? {}
@@ -786,6 +802,21 @@ export function jsonClaudeReducer(
           [session.sessionId]: {
             ...session,
             slashCommands: event.payload.slashCommands
+          }
+        }
+      }
+    }
+    case 'jsonClaude/currentModelChanged': {
+      const session = state.sessions[event.payload.sessionId]
+      if (!session) return state
+      if (session.currentModel === event.payload.model) return state
+      return {
+        ...state,
+        sessions: {
+          ...state.sessions,
+          [session.sessionId]: {
+            ...session,
+            currentModel: event.payload.model
           }
         }
       }

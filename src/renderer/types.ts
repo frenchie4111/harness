@@ -639,6 +639,10 @@ export interface ElectronAPI {
     id: string,
     mode: 'default' | 'acceptEdits' | 'plan'
   ): Promise<boolean>
+  setJsonClaudeTabModel(
+    id: string,
+    model: string
+  ): Promise<{ ok: boolean; reason?: string }>
   grantJsonClaudeSessionToolApprovals(
     id: string,
     toolNames: string[]

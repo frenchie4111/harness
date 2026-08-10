@@ -304,6 +304,17 @@ export type TerminalsEvent =
       payload: { worktreePath: string; tabId: string; label: string }
     }
   | {
+      type: 'terminals/tabModelChanged'
+      payload: {
+        worktreePath: string
+        tabId: string
+        /** Empty string clears the override so the tab falls back to
+         *  settings.claudeModel (or the CLI's own default when no
+         *  setting is set). */
+        model: string
+      }
+    }
+  | {
       type: 'terminals/reviewSelectionChanged'
       payload: {
         worktreePath: string
@@ -661,6 +672,42 @@ export function terminalsReducer(
           tabs: [
             ...leaf.tabs.slice(0, i),
             { ...tab, customLabel: trimmed },
+            ...leaf.tabs.slice(i + 1)
+          ]
+        }
+      })
+      if (!mutated) return state
+      return { ...state, panes: { ...state.panes, [worktreePath]: updated } }
+    }
+    case 'terminals/tabModelChanged': {
+      const { worktreePath, tabId, model } = event.payload
+      const tree = state.panes[worktreePath]
+      if (!tree) return state
+      const trimmed = model.trim()
+      let mutated = false
+      const updated = mapLeaves(tree, (leaf) => {
+        const i = leaf.tabs.findIndex((t) => t.id === tabId)
+        if (i === -1) return leaf
+        const tab = leaf.tabs[i]
+        if (tab.type !== 'json-claude' && tab.type !== 'agent') return leaf
+        const current = tab.model
+        if (trimmed === '') {
+          if (current === undefined) return leaf
+          const { model: _dropped, ...rest } = tab
+          void _dropped
+          mutated = true
+          return {
+            ...leaf,
+            tabs: [...leaf.tabs.slice(0, i), rest as TerminalTab, ...leaf.tabs.slice(i + 1)]
+          }
+        }
+        if (current === trimmed) return leaf
+        mutated = true
+        return {
+          ...leaf,
+          tabs: [
+            ...leaf.tabs.slice(0, i),
+            { ...tab, model: trimmed },
             ...leaf.tabs.slice(i + 1)
           ]
         }
