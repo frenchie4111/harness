@@ -866,6 +866,48 @@ describe('jsonClaudeReducer', () => {
     expect(state.sessions[SID].slashCommands).toEqual(['clear', 'review'])
   })
 
+  it('currentModelChanged stores the CLI-reported model id', () => {
+    let state = seedSession(initialJsonClaude)
+    expect(state.sessions[SID].currentModel).toBeUndefined()
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/currentModelChanged',
+      payload: { sessionId: SID, model: 'claude-opus-4-7' }
+    })
+    expect(state.sessions[SID].currentModel).toBe('claude-opus-4-7')
+  })
+
+  it('currentModelChanged is a no-op for unknown session or unchanged value', () => {
+    const unknown = jsonClaudeReducer(initialJsonClaude, {
+      type: 'jsonClaude/currentModelChanged',
+      payload: { sessionId: 'missing', model: 'claude-opus-4-7' }
+    })
+    expect(unknown).toBe(initialJsonClaude)
+
+    let state = seedSession(initialJsonClaude)
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/currentModelChanged',
+      payload: { sessionId: SID, model: 'claude-opus-4-7' }
+    })
+    const same = jsonClaudeReducer(state, {
+      type: 'jsonClaude/currentModelChanged',
+      payload: { sessionId: SID, model: 'claude-opus-4-7' }
+    })
+    expect(same).toBe(state)
+  })
+
+  it('sessionStarted preserves currentModel across re-attach', () => {
+    let state = seedSession(initialJsonClaude)
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/currentModelChanged',
+      payload: { sessionId: SID, model: 'claude-fable-5' }
+    })
+    state = jsonClaudeReducer(state, {
+      type: 'jsonClaude/sessionStarted',
+      payload: { sessionId: SID, worktreePath: WT }
+    })
+    expect(state.sessions[SID].currentModel).toBe('claude-fable-5')
+  })
+
   it('compactBoundaryReceived appends a compact entry with metadata', () => {
     let state = seedSession(initialJsonClaude)
     state = jsonClaudeReducer(state, {

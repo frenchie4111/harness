@@ -39,6 +39,7 @@ import { buildChildrenMap, isSubAgentToolName } from './json-mode-cards/grouping
 import { JsonModeMentionPopover, type MentionPopoverItem } from './JsonModeMentionPopover'
 import { JsonModeChatImageThumb } from './JsonModeChatImageThumb'
 import { fuzzyMatch } from '../fuzzy'
+import { CLAUDE_MODELS } from '../../shared/agent-registry'
 import 'highlight.js/styles/github-dark.css'
 import type { JsonClaudeChatEntry } from '../../shared/state/json-claude'
 import {
@@ -167,6 +168,19 @@ const BUILTIN_DESCRIPTIONS: Record<string, string> = {
   clear: 'Reset the conversation context',
   compact: 'Summarize and compact prior messages',
   context: 'Show context window usage'
+}
+
+// Synthetic slash command handled entirely client-side: picking it
+// swaps the popover into a model picker (stage 2), and picking a
+// model there kills+respawns the subprocess with `--model <new>`.
+// The name is intentionally unusable via the real CLI ('/model' is
+// a TUI-only command that stream-json doesn't advertise) so we own
+// its behavior without stepping on any harvested entry.
+const MODEL_COMMAND_NAME = 'model'
+
+function claudeModelDisplayName(id: string | undefined): string {
+  if (!id) return ''
+  return CLAUDE_MODELS.find((m) => m.id === id)?.displayName ?? id
 }
 
 function formatTokenCount(n: number): string {
@@ -1668,22 +1682,108 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
     return findTrigger(draft, cursorPos, '@')
   }, [draft, cursorPos, session?.state])
 
+  // Stage-2 detector for the synthetic `/model` command. The plain
+  // slashTrigger regex rejects the space after `/model`, so once we've
+  // inserted `/model ` this dedicated detector takes over and drives
+  // the model picker off whatever the user types next.
+  const modelPickerTrigger = useMemo<{ query: string } | null>(() => {
+    if (session?.state === 'exited') return null
+    const m = draft.match(/^\/model(?:\s+([\s\S]*))?$/)
+    if (!m) return null
+    return { query: m[1] ?? '' }
+  }, [draft, session?.state])
+
+  const modelIdToDisplay = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const m of CLAUDE_MODELS) map.set(m.id, m.displayName)
+    return map
+  }, [])
+
+  const currentModelDisplay = claudeModelDisplayName(session?.currentModel)
+
   const mentionItems = useMemo<MentionPopoverItem[]>(() => {
     if (mentionDismissed === draft) return []
+    if (modelPickerTrigger !== null) {
+      // Row 0 is always "clear override" so a user can get back to the
+      // settings default (or the CLI's own default when unset) without
+      // having to know which model that is.
+      const clearRow: MentionPopoverItem = {
+        key: '__clear',
+        label: '(Default)',
+        description: currentModelDisplay
+          ? `Use settings/CLI default — currently ${currentModelDisplay}`
+          : 'Use settings/CLI default',
+        icon: <Sparkles className="icon-xs" />
+      }
+      const q = modelPickerTrigger.query.trim().toLowerCase()
+      const searchTargets = CLAUDE_MODELS.map((m) => ({
+        id: m.id,
+        // Fuzzy against "Display Name (id)" so both a friendly typo
+        // like "opus47" and an id like "claude-opus-4-7" both hit.
+        haystack: `${m.displayName} ${m.id}`,
+        tier: m.tier
+      }))
+      let picked: typeof searchTargets
+      if (q.length === 0) {
+        picked = searchTargets
+      } else {
+        const ranked = fuzzyMatch(
+          q,
+          searchTargets.map((t) => t.haystack)
+        )
+        const byHaystack = new Map(searchTargets.map((t) => [t.haystack, t]))
+        picked = ranked
+          .map((r) => byHaystack.get(r.item))
+          .filter((t): t is (typeof searchTargets)[number] => Boolean(t))
+      }
+      const items: MentionPopoverItem[] = picked.map((t) => ({
+        key: t.id,
+        label: modelIdToDisplay.get(t.id) ?? t.id,
+        description:
+          (t.tier === 'legacy' ? 'legacy · ' : '') +
+          t.id +
+          (session?.currentModel === t.id ? ' · current' : ''),
+        icon: <Sparkles className="icon-xs" />
+      }))
+      // Only surface "Default" when no query is typed OR the query
+      // matches the word "default" — filtering it out during a real
+      // model search would put it at the top of unrelated results.
+      const showClear = q.length === 0 || 'default'.startsWith(q)
+      return showClear ? [clearRow, ...items] : items
+    }
     if (slashTrigger !== null) {
       const q = slashTrigger.query.toLowerCase()
-      const all = session?.slashCommands ?? []
+      // Prepend a synthetic `/model` entry so it shows up in the same
+      // list as the CLI-harvested commands. It's client-side only —
+      // stream-json mode never advertises /model itself. Dedupe in case
+      // the CLI ever starts advertising it.
+      const harvested = (session?.slashCommands ?? []).filter(
+        (n) => n !== MODEL_COMMAND_NAME
+      )
+      const all = [MODEL_COMMAND_NAME, ...harvested]
       const ranked =
         q.length === 0
           ? all.map((name) => ({ name, indices: undefined as number[] | undefined }))
           : fuzzyMatch(q, all).map((r) => ({ name: r.item, indices: r.indices }))
-      return ranked.slice(0, 50).map((r) => ({
-        key: r.name,
-        label: `/${r.name}`,
-        labelMatchIndices: r.indices?.map((i) => i + 1), // shift past leading '/'
-        description: BUILTIN_DESCRIPTIONS[r.name],
-        icon: <Terminal className="icon-xs" />
-      }))
+      return ranked.slice(0, 50).map((r) => {
+        const isModel = r.name === MODEL_COMMAND_NAME
+        const description = isModel
+          ? currentModelDisplay
+            ? `Change model — currently ${currentModelDisplay}`
+            : 'Change model'
+          : BUILTIN_DESCRIPTIONS[r.name]
+        return {
+          key: r.name,
+          label: `/${r.name}`,
+          labelMatchIndices: r.indices?.map((i) => i + 1), // shift past leading '/'
+          description,
+          icon: isModel ? (
+            <Sparkles className="icon-xs" />
+          ) : (
+            <Terminal className="icon-xs" />
+          )
+        }
+      })
     }
     if (mentionTrigger !== null && files.length > 0) {
       const q = mentionTrigger.query
@@ -1703,7 +1803,18 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
       }))
     }
     return []
-  }, [slashTrigger, mentionTrigger, files, draft, mentionDismissed, session?.slashCommands])
+  }, [
+    slashTrigger,
+    mentionTrigger,
+    modelPickerTrigger,
+    files,
+    draft,
+    mentionDismissed,
+    session?.slashCommands,
+    session?.currentModel,
+    currentModelDisplay,
+    modelIdToDisplay
+  ])
 
   // Clamp the selection index when the item list shrinks (e.g. the user
   // typed another character and the matches narrowed).
@@ -1739,9 +1850,45 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
     item: MentionPopoverItem,
     opts: { sendOverride?: boolean } = {}
   ): void {
+    if (modelPickerTrigger !== null) {
+      // Stage 2: item.key is either a Claude model id or '__clear'
+      // (which sends an empty string to drop the per-tab override).
+      const modelId = item.key === '__clear' ? '' : item.key
+      void backend
+        .setJsonClaudeTabModel(sessionId, modelId)
+        .catch(() => {
+          /* toast surface TBD — for now silently fail. */
+        })
+      setDraft('')
+      setMentionDismissed(null)
+      requestAnimationFrame(() => {
+        const ta = textareaRef.current
+        if (!ta) return
+        ta.focus()
+        ta.setSelectionRange(0, 0)
+        setCursorPos(0)
+      })
+      return
+    }
     if (slashTrigger !== null) {
       // The slash command name is the label without its leading `/`.
       const name = item.label.startsWith('/') ? item.label.slice(1) : item.label
+      // The synthetic /model command is handled entirely client-side.
+      // Never send it as text — instead, replace whatever the user
+      // typed with `/model ` so the stage-2 model-picker trigger picks
+      // up on the next render.
+      if (name === MODEL_COMMAND_NAME) {
+        setDraft('/model ')
+        setMentionDismissed(null)
+        requestAnimationFrame(() => {
+          const ta = textareaRef.current
+          if (!ta) return
+          ta.focus()
+          ta.setSelectionRange('/model '.length, '/model '.length)
+          setCursorPos('/model '.length)
+        })
+        return
+      }
       const fullCmd = `/${name}`
       // If the trigger spans the entire draft (i.e. user typed `/foo`
       // and nothing else), Enter sends immediately. Otherwise we're
@@ -1833,6 +1980,21 @@ export function JsonModeChat({ sessionId, worktreePath, mode = 'awake' }: JsonMo
     }))
     if (!session || state === 'exited') return
     if (!text && images.length === 0) return
+    // /model handled entirely client-side: swap the running subprocess
+    // to the requested model (empty = clear override). This catches
+    // Cmd+Enter bypass of the popover, or any dismissed-popover path
+    // that lands here with a literal `/model …` draft.
+    const modelMatch = text.match(/^\/model(?:\s+([\s\S]+))?$/)
+    if (modelMatch) {
+      const arg = (modelMatch[1] ?? '').trim()
+      void backend.setJsonClaudeTabModel(sessionId, arg).catch(() => {
+        /* toast surface TBD — for now silently fail. */
+      })
+      setDraft('')
+      setAttachments([])
+      setMentionDismissed(null)
+      return
+    }
     backend.sendJsonClaudeMessage(
       sessionId,
       text,

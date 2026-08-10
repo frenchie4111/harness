@@ -613,6 +613,8 @@ export function buildBackend(
       id: string,
       mode: 'default' | 'acceptEdits' | 'plan'
     ) => req('jsonClaude:setPermissionMode', id, mode),
+    setJsonClaudeTabModel: (id: string, model: string) =>
+      req('jsonClaude:setTabModel', id, model),
     grantJsonClaudeSessionToolApprovals: (id: string, toolNames: string[]) =>
       req('jsonClaude:grantSessionToolApprovals', id, toolNames),
     clearJsonClaudeSessionToolApprovals: (id: string, toolNames?: string[]) =>

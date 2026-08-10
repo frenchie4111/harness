@@ -3204,6 +3204,80 @@ function registerIpcHandlers(): void {
   )
 
   transport.onRequest(
+    'jsonClaude:setTabModel',
+    async (
+      _ctx,
+      sessionId: string,
+      model: string
+    ): Promise<{ ok: boolean; reason?: string }> => {
+      if (!sessionId) return { ok: false, reason: 'missing sessionId' }
+      const session = store.getSnapshot().state.jsonClaude.sessions[sessionId]
+      if (!session) return { ok: false, reason: 'unknown session' }
+      const trimmed = typeof model === 'string' ? model.trim() : ''
+
+      // Find the tab so we can look up which worktree owns it (needed to
+      // dispatch tabModelChanged into the correct pane tree).
+      let worktreePath: string | null = null
+      const panes = store.getSnapshot().state.terminals.panes
+      for (const [wt, tree] of Object.entries(panes)) {
+        for (const leaf of getLeaves(tree)) {
+          if (leaf.tabs.some((t) => t.id === sessionId)) {
+            worktreePath = wt
+            break
+          }
+        }
+        if (worktreePath) break
+      }
+      if (!worktreePath) return { ok: false, reason: 'no owning worktree' }
+
+      // Persist the per-tab override first so the respawn picks it up
+      // via findJsonClaudeTabModel(). Empty string clears the override.
+      store.dispatch({
+        type: 'terminals/tabModelChanged',
+        payload: { worktreePath, tabId: sessionId, model: trimmed }
+      })
+
+      // Quiesce any in-flight turn cleanly — same interrupt-then-await
+      // pattern jsonClaude:rewindTo uses. Interrupt is a soft
+      // control_request that keeps the subprocess alive and preserves
+      // the partial turn in the jsonl, so --resume picks up cleanly.
+      if (session.busy) {
+        await new Promise<void>((resolve) => {
+          let done = false
+          const finish = (): void => {
+            if (done) return
+            done = true
+            unsub()
+            clearTimeout(timer)
+            resolve()
+          }
+          const unsub = store.subscribe((event) => {
+            if (
+              event.type === 'jsonClaude/busyChanged' &&
+              event.payload.sessionId === sessionId &&
+              event.payload.busy === false
+            ) {
+              finish()
+            }
+          })
+          const timer = setTimeout(finish, 1500)
+          jsonClaudeManager.interrupt(sessionId)
+        })
+      }
+
+      approvalBridge.cancelPendingForSession(sessionId)
+
+      // Kill the subprocess, then respawn via the shared start helper.
+      // startJsonClaudeSession is idempotent + reads the new tab.model
+      // through findJsonClaudeTabModel, so the fresh spawn gets
+      // --model <newValue> --resume <sessionId>.
+      jsonClaudeManager.kill(sessionId)
+      startJsonClaudeSession(sessionId, worktreePath)
+      return { ok: true }
+    }
+  )
+
+  transport.onRequest(
     'jsonClaude:setPermissionMode',
     (_ctx, sessionId: string, mode: 'default' | 'acceptEdits' | 'plan') => {
       if (!sessionId) return false
