@@ -184,6 +184,7 @@ export type BottomIconKey =
   | 'newProject'
   | 'addRepo'
   | 'activity'
+  | 'tickets'
   | 'myWeek'
   | 'hotkeys'
   | 'reportIssue'
@@ -197,6 +198,7 @@ export const BOTTOM_ICON_KEYS: readonly BottomIconKey[] = [
   'newProject',
   'addRepo',
   'activity',
+  'tickets',
   'myWeek',
   'hotkeys',
   'reportIssue',

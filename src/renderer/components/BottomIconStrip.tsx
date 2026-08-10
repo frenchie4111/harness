@@ -21,6 +21,7 @@ import {
   MessageSquareHeart,
   Moon,
   Settings as SettingsIcon,
+  Ticket as TicketIcon,
   type LucideIcon
 } from 'lucide-react'
 import { openReportIssue } from './ReportIssueScreen'
@@ -40,6 +41,7 @@ const LABELS: Record<BottomIconKey, string> = {
   newProject: 'New project',
   addRepo: 'Add repository',
   activity: 'Activity',
+  tickets: 'Tickets',
   myWeek: 'My week',
   hotkeys: 'Keyboard shortcuts',
   reportIssue: 'Report an issue',
@@ -52,6 +54,7 @@ const MENU_ICONS: Record<BottomIconKey, LucideIcon> = {
   newProject: FilePlus,
   addRepo: FolderOpen,
   activity: BarChart3,
+  tickets: TicketIcon,
   myWeek: CalendarDays,
   hotkeys: Keyboard,
   reportIssue: MessageSquareHeart,
@@ -65,6 +68,7 @@ export interface BottomIconStripProps {
   onOpenNewProject: () => void
   onAddRepo: () => void
   onOpenActivity: () => void
+  onOpenTickets: () => void
   onOpenMyWeek: () => void
   onOpenHotkeyCheatsheet: () => void
   onOpenSettings: () => void
@@ -141,6 +145,8 @@ export function BottomIconStrip(props: BottomIconStripProps): JSX.Element {
         return props.onAddRepo
       case 'activity':
         return props.onOpenActivity
+      case 'tickets':
+        return props.onOpenTickets
       case 'myWeek':
         return props.onOpenMyWeek
       case 'hotkeys':

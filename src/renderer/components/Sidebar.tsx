@@ -53,6 +53,7 @@ interface SidebarProps {
   onOpenAddBackend: () => void
   onOpenHotkeyCheatsheet: () => void
   onOpenActivity: () => void
+  onOpenTickets: () => void
   onOpenCleanup: () => void
   onOpenCommandCenter: () => void
   onOpenNewProject: () => void
@@ -103,6 +104,7 @@ export function Sidebar({
   onOpenAddBackend,
   onOpenHotkeyCheatsheet,
   onOpenActivity,
+  onOpenTickets,
   onOpenCleanup,
   onOpenCommandCenter,
   onOpenNewProject,
@@ -574,6 +576,7 @@ export function Sidebar({
         onOpenNewProject={onOpenNewProject}
         onAddRepo={onAddRepo}
         onOpenActivity={onOpenActivity}
+        onOpenTickets={onOpenTickets}
         onOpenMyWeek={onOpenMyWeek}
         onOpenHotkeyCheatsheet={onOpenHotkeyCheatsheet}
         onOpenSettings={onOpenSettings}

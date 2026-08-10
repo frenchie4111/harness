@@ -34,6 +34,7 @@ import { AGENT_REGISTRY } from '../shared/agent-registry'
 import { AgentIcon } from './components/AgentIcon'
 import { InterfaceToggle } from './components/InterfaceToggle'
 import { Activity } from './components/Activity'
+import { Tickets } from './components/Tickets'
 import { Cleanup } from './components/Cleanup'
 import { CommandCenter } from './components/CommandCenter'
 import { CommandPalette } from './components/CommandPalette'
@@ -283,6 +284,7 @@ function DesktopApp(): JSX.Element {
   }, [showNewWorktree])
   const handleOpenAssignedPR = useCallback((repoRoot: string, prNumber: number) => {
     setShowActivity(false)
+    setShowTickets(false)
     setShowCleanup(false)
     setShowCommandCenter(false)
     setNewWorktreeRepo(repoRoot)
@@ -297,6 +299,7 @@ function DesktopApp(): JSX.Element {
   const [showGuide, setShowGuide] = useState(false)
   const [showMyWeek, setShowMyWeek] = useState(false)
   const [showActivity, setShowActivity] = useState(false)
+  const [showTickets, setShowTickets] = useState(false)
   const [showCleanup, setShowCleanup] = useState(false)
   const [showCommandCenter, setShowCommandCenter] = useState(false)
   const [showCommandPalette, setShowCommandPalette] = useState(false)
@@ -759,6 +762,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
   const workspaceVisible =
     !showNewWorktree &&
     !showActivity &&
+    !showTickets &&
     !showCleanup &&
     !showCommandCenter &&
     reportIssueState === null &&
@@ -1365,7 +1369,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
       return !!tree && getLeaves(tree).some((l) => l.tabs.length > 0)
     })()
   const inContentOverlay =
-    showNewWorktree || showActivity || showCleanup || showCommandCenter || reportIssueState !== null
+    showNewWorktree || showActivity || showTickets || showCleanup || showCommandCenter || reportIssueState !== null
   const activeIsPending =
     isPendingId(activeWorktreeId) && pendingWorktrees.some((p) => p.id === activeWorktreeId)
   const activeIsDeleting = !!activeWorktreeId && !!pendingDeletionByPath[activeWorktreeId]
@@ -1562,6 +1566,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
             onSelectWorktree={(path) => {
               setShowNewWorktree(false)
               setShowActivity(false)
+              setShowTickets(false)
               setShowCleanup(false)
               setShowCommandCenter(false)
               setActiveWorktreeId(path)
@@ -1582,10 +1587,12 @@ const setQuestStep = useCallback((next: QuestStep) => {
             onOpenAddBackend={() => setShowAddBackend(true)}
             onOpenHotkeyCheatsheet={() => setShowHotkeyCheatsheet(true)}
             onOpenActivity={() => setShowActivity(true)}
+            onOpenTickets={() => setShowTickets(true)}
             onOpenCleanup={() => setShowCleanup(true)}
             onOpenCommandCenter={() => {
               setShowNewWorktree(false)
               setShowActivity(false)
+              setShowTickets(false)
               setShowCleanup(false)
               setShowCommandCenter(true)
             }}
@@ -1617,11 +1624,13 @@ const setQuestStep = useCallback((next: QuestStep) => {
             onOpenCommandCenter={() => {
               setShowNewWorktree(false)
               setShowActivity(false)
+              setShowTickets(false)
               setShowCleanup(false)
               setShowCommandCenter(true)
             }}
             onOpenNewProject={() => setShowNewProject(true)}
             onOpenActivity={() => setShowActivity(true)}
+            onOpenTickets={() => setShowTickets(true)}
             onOpenMyWeek={() => setShowMyWeek(true)}
             onOpenHotkeyCheatsheet={() => setShowHotkeyCheatsheet(true)}
             onOpenSettings={() => setShowSettings(true)}
@@ -1636,7 +1645,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
           if (!paneTree) return null
           const leaves = getLeaves(paneTree)
           if (leaves.length === 0 || !leaves.some((l) => l.tabs.length > 0)) return null
-          const isVisible = !showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && reportIssueState === null && wt.path === activeWorktreeId && !pendingDeletionByPath[wt.path]
+          const isVisible = !showNewWorktree && !showActivity && !showTickets && !showCleanup && !showCommandCenter && reportIssueState === null && wt.path === activeWorktreeId && !pendingDeletionByPath[wt.path]
           return (
             <div
               key={wt.path}
@@ -1682,7 +1691,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
                     singleScreenMode || sidebarVisible ? 0 : 48
                   }
                   topBarTrailingExtendPx={
-                    !singleScreenMode && !showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && reportIssueState === null
+                    !singleScreenMode && !showNewWorktree && !showActivity && !showTickets && !showCleanup && !showCommandCenter && reportIssueState === null
                       ? rightColumnHidden
                         ? 48
                         : rightPanelWidth + 1
@@ -1726,6 +1735,33 @@ const setQuestStep = useCallback((next: QuestStep) => {
             />
           </div>
         )}
+        {showTickets && (
+          <div className="flex-1 min-w-0 flex">
+            <Tickets
+              onClose={() => setShowTickets(false)}
+              repoRoots={repoRoots}
+              worktrees={worktrees}
+              unifiedRepos={unifiedRepos}
+              onJumpToWorktree={(path) => {
+                setShowTickets(false)
+                setActiveWorktreeId(path)
+              }}
+              onSpawnFromTicket={(_ticket, _provider, repoRoot) => {
+                // v1: open the New Worktree screen scoped to the ticket's
+                // repo. The picker preseeding happens on the New Worktree
+                // side once the user opens the "From ticket" affordance
+                // there. Follow-up: preseed the picker's ticket directly.
+                setShowTickets(false)
+                setNewWorktreeRepo(repoRoot)
+                setShowNewWorktree(true)
+              }}
+              onOpenSettings={() => {
+                setShowTickets(false)
+                setShowSettings(true)
+              }}
+            />
+          </div>
+        )}
         {showCleanup && (
           <div className="flex-1 min-w-0 flex">
             <Cleanup
@@ -1753,6 +1789,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
               setShowCommandCenter(false)
               setShowNewWorktree(false)
               setShowActivity(false)
+              setShowTickets(false)
               setShowCleanup(false)
               setActiveWorktreeId(path)
             }}
@@ -1781,7 +1818,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
             </div>
           </div>
         )}
-        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && reportIssueState === null && isPendingId(activeWorktreeId) && (() => {
+        {!showNewWorktree && !showActivity && !showTickets && !showCleanup && !showCommandCenter && reportIssueState === null && isPendingId(activeWorktreeId) && (() => {
           const pending = pendingWorktrees.find((p) => p.id === activeWorktreeId)
           if (!pending) return null
           return (
@@ -1793,7 +1830,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
             />
           )
         })()}
-        {!showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && reportIssueState === null && activeWorktreeId && pendingDeletionByPath[activeWorktreeId] && (
+        {!showNewWorktree && !showActivity && !showTickets && !showCleanup && !showCommandCenter && reportIssueState === null && activeWorktreeId && pendingDeletionByPath[activeWorktreeId] && (
           <DeletingWorktreeScreen
             deletion={pendingDeletionByPath[activeWorktreeId]}
             onDismiss={handleDismissPendingDeletion}
@@ -1811,10 +1848,10 @@ const setQuestStep = useCallback((next: QuestStep) => {
             out. macOS app-region rects are union/diff'd in DOM order (last wins per pixel), so a
             `drag-region` here — rendered after the tab bar — would re-mark the tab pixels as
             draggable and swallow clicks on tabs that overflow above the right column. */}
-        {!singleScreenMode && !showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && reportIssueState === null && !rightColumnHidden && (
+        {!singleScreenMode && !showNewWorktree && !showActivity && !showTickets && !showCleanup && !showCommandCenter && reportIssueState === null && !rightColumnHidden && (
           <div className="shrink-0 flex flex-col"><div className="h-10 shrink-0" /><div className="flex-1 min-h-0 flex"><ResizeHandle onDelta={handleRightPanelResize} /></div></div>
         )}
-        {!singleScreenMode && !showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && reportIssueState === null && !rightColumnHidden && (
+        {!singleScreenMode && !showNewWorktree && !showActivity && !showTickets && !showCleanup && !showCommandCenter && reportIssueState === null && !rightColumnHidden && (
           <div className="shrink-0 flex flex-col"><div className="h-10 shrink-0" /><div className="flex-1 min-h-0 flex"><RightColumn
             width={rightPanelWidth}
             activeWorktreeId={activeWorktreeId}
@@ -1841,7 +1878,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
             onCollapse={() => setRightColumnHidden(true)}
           /></div></div>
         )}
-        {!singleScreenMode && !showNewWorktree && !showActivity && !showCleanup && !showCommandCenter && reportIssueState === null && rightColumnHidden && (
+        {!singleScreenMode && !showNewWorktree && !showActivity && !showTickets && !showCleanup && !showCommandCenter && reportIssueState === null && rightColumnHidden && (
           <div className="shrink-0 flex flex-col"><div className="h-10 shrink-0" /><div className="flex-1 min-h-0 flex"><CollapsedRightPanel
             worktreePath={activeWorktreeId}
             onExpand={() => setRightColumnHidden(false)}

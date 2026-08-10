@@ -21,6 +21,7 @@ interface CollapsedSidebarProps {
   onOpenCommandCenter: () => void
   onOpenNewProject: () => void
   onOpenActivity: () => void
+  onOpenTickets: () => void
   onOpenMyWeek: () => void
   onOpenHotkeyCheatsheet: () => void
   onOpenSettings: () => void
@@ -36,6 +37,7 @@ export function CollapsedSidebar({
   onOpenCommandCenter,
   onOpenNewProject,
   onOpenActivity,
+  onOpenTickets,
   onOpenMyWeek,
   onOpenHotkeyCheatsheet,
   onOpenSettings
@@ -155,6 +157,7 @@ export function CollapsedSidebar({
         onOpenNewProject={onOpenNewProject}
         onAddRepo={onAddRepo}
         onOpenActivity={onOpenActivity}
+        onOpenTickets={onOpenTickets}
         onOpenMyWeek={onOpenMyWeek}
         onOpenHotkeyCheatsheet={onOpenHotkeyCheatsheet}
         onOpenSettings={onOpenSettings}
