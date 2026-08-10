@@ -102,6 +102,35 @@
   <!-- Releases -->
   <div class="max-w-3xl mx-auto px-6 pb-24">
 
+    <!-- v2.13.1 -->
+    <section id="v2.13.1" class="release-section py-10">
+      <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
+        <h2 class="text-3xl font-bold tracking-tight"><a href="#v2.13.1" class="release-anchor">v2.13.1<span class="anchor-icon">🔗</span></a></h2>
+        <span class="text-sm text-neutral-500">August 10, 2026</span>
+      </div>
+      <a href="https://github.com/frenchie4111/harness/releases/tag/v2.13.1" class="text-sm text-amber-400/80 hover:text-amber-300 transition-colors">Download &rarr;</a>
+      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">A patch release: a <code>/model</code> slash command for switching models mid-chat, Claude Opus 5 support, and a set of worktree-tracking and Changed Files reliability fixes.</p>
+      <div class="note-body">
+        <h4>New features</h4>
+        <ul>
+          <li><strong><code>/model</code> slash command</strong> — switch Claude models mid-conversation in Chat with a new <code>/model</code> slash command.</li>
+          <li><strong>Claude Opus 5 support</strong> — Opus 5 is now available in the model picker, with correct pricing.</li>
+        </ul>
+        <h4>Improvements</h4>
+        <ul>
+          <li><strong>Faster changed-files fallback</strong> — when live file-watching falls back to polling, the poll interval is now 30s instead of 60s, so the Changed Files panel catches up sooner.</li>
+          <li><strong>Staged/Unstaged headers always shown</strong> — the Changed Files panel now labels Staged and Unstaged sections even when only one is present, not just when both are mixed.</li>
+        </ul>
+        <h4>Fixes</h4>
+        <ul>
+          <li>Stale worktree badges are no longer deduped away — badge-relevant fields are now compared correctly when deciding whether a worktree list actually changed.</li>
+          <li>A repo's worktree list is now preserved if a single <code>git worktree list</code> call fails, instead of being wiped out.</li>
+          <li>File-watching now retries attaching after an initial failure, fixing a race where Changed Files could get stuck out of sync.</li>
+          <li>Worktree branch labels now re-sync when HEAD changes, fixing branches that got stuck showing "rebasing N/M".</li>
+        </ul>
+      </div>
+    </section>
+
     <!-- v2.13.0 -->
     <section id="v2.13.0" class="release-section py-10">
       <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
