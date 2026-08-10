@@ -1,9 +1,16 @@
 // Full-surface "Tickets" view — takes over the right-hand pane (main + tools)
 // while leaving the worktree sidebar visible, same shell pattern as Activity.
-// v1 lists tickets grouped either by repo (split mode) or in one flat list
-// (unified mode), matching the sidebar's own toggle. Each ticket row shows
-// its linked worktree (if any) so the user can either jump to the worktree
-// or spawn a new one via the "Open" affordance.
+//
+// Single-provider-at-a-time: a dropdown in the header selects which
+// configured provider's tickets to show. Selection persists in
+// localStorage. Two view modes (persisted separately): list (stacked
+// buckets) and board (kanban columns). Buckets come from each
+// provider's raw status values with ordering / collapse defaults from
+// its saved bucketOrder / collapsedBuckets on the provider config.
+//
+// Row (or card) click behavior: jump to the worktree if the ticket
+// already has one (any repo, not just the provider's default), else
+// open the New Worktree screen preseeded from the ticket.
 
 import { useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, RefreshCw, Loader2, ExternalLink, GitBranch, AlertCircle, ChevronDown, ChevronRight, Rows3, LayoutGrid } from 'lucide-react'
@@ -17,24 +24,19 @@ import { NO_STATUS_BUCKET, mergeBucketOrder, unionCollapsedBuckets } from '../..
 import { useBackend } from '../backend'
 import { useTicketProviders } from '../store'
 import { TicketProviderIcon } from './TicketProvidersSettings'
-import { RepoIcon, repoNameColor } from './RepoIcon'
 
 type TicketsViewMode = 'list' | 'board'
 
 interface TicketsProps {
   onClose: () => void
-  /** Repo roots to render sections for. Iterate this instead of pulling
-   *  from the store so the caller keeps ordering + selection control. */
-  repoRoots: string[]
   worktrees: Worktree[]
-  /** When true, one flat list; when false, group by repo with headers.
-   *  Mirrors the sidebar toggle. */
-  unifiedRepos: boolean
   /** Called when the user clicks a ticket that already has a worktree.
    *  Selects the worktree in the sidebar and closes the Tickets view. */
   onJumpToWorktree: (worktreePath: string) => void
-  /** Called when the user clicks "Open" on a ticket that has no worktree
-   *  yet. Opens the New Worktree screen preseeded from the ticket. */
+  /** Called when the user clicks a ticket that has no worktree yet.
+   *  Opens the New Worktree screen preseeded from the ticket. `repoRoot`
+   *  is a best-guess default (the provider's first applies-to repo);
+   *  the user can still swap in the modal. */
   onSpawnFromTicket: (ticket: Ticket, provider: TicketProviderConfig, repoRoot: string) => void
   onOpenSettings?: () => void
 }
@@ -42,45 +44,34 @@ interface TicketsProps {
 interface FetchedRow {
   ticket: Ticket
   provider: TicketProviderConfig
-  /** Repo root this row belongs to (for split-mode grouping). */
+  /** Best-guess repo root to spawn a worktree into if the user clicks a
+   *  card that isn't linked to one yet. First from `provider.appliesToRepoRoots`. */
   repoRoot: string
-  /** Worktree at this repo that was spawned from this ticket, if any. */
+  /** Existing worktree (any repo) that was spawned from this ticket. Null
+   *  when the user hasn't started work yet. */
   linkedWorktree: Worktree | null
 }
 
 interface FetchState {
   loading: boolean
-  /** Aggregate rows across every repo × its linked providers, deduped. */
   rows: FetchedRow[]
-  /** Per-provider failure messages, keyed by providerId. */
-  errors: Record<string, string>
+  /** Provider-level failure message when the fetch throws. Empty when
+   *  the call succeeded (even if it returned zero tickets). */
+  error: string | null
 }
 
-const INITIAL_FETCH: FetchState = { loading: false, rows: [], errors: {} }
+const INITIAL_FETCH: FetchState = { loading: false, rows: [], error: null }
 
-function repoBasename(repoRoot: string): string {
-  return repoRoot.split('/').pop() || repoRoot
-}
-
-/** For a given repo, the providers whose `appliesToRepoRoots` contains it. */
-function providersForRepo(
-  all: TicketProviderConfig[],
-  repoRoot: string
-): TicketProviderConfig[] {
-  return all.filter((p) => p.appliesToRepoRoots?.includes(repoRoot))
-}
-
-/** Locate a worktree in `worktrees` whose linked ticket matches the given
- *  provider + external id. Returns null when the ticket isn't yet in a
- *  worktree. */
+/** Locate a worktree whose linked ticket matches the given provider +
+ *  external id, regardless of which repo the worktree lives in. Since a
+ *  single provider can span multiple `appliesToRepoRoots`, and the ticket
+ *  itself has no intrinsic repo, we search all worktrees. */
 function findLinkedWorktree(
   worktrees: Worktree[],
-  repoRoot: string,
   providerId: string,
   externalId: string
 ): Worktree | null {
   for (const wt of worktrees) {
-    if (wt.repoRoot !== repoRoot) continue
     const link: WorktreeTicketLink | undefined = wt.linkedTicket
     if (link && link.providerId === providerId && link.externalId === externalId) return wt
   }
@@ -89,9 +80,7 @@ function findLinkedWorktree(
 
 export function Tickets({
   onClose,
-  repoRoots,
   worktrees,
-  unifiedRepos,
   onJumpToWorktree,
   onSpawnFromTicket,
   onOpenSettings
@@ -99,9 +88,8 @@ export function Tickets({
   const backend = useBackend()
   const providers = useTicketProviders()
   const [state, setState] = useState<FetchState>(INITIAL_FETCH)
-  // View mode toggle — persisted in localStorage like the sidebar's
-  // unifiedRepos so it survives reloads. Board = columns per bucket,
-  // list = stacked buckets.
+  // View mode toggle — persisted in localStorage so it survives reloads.
+  // Board = columns per bucket, list = stacked buckets.
   const [viewMode, setViewMode] = useState<TicketsViewMode>(() => {
     if (typeof localStorage === 'undefined') return 'list'
     return localStorage.getItem('harness:tickets:viewMode') === 'board' ? 'board' : 'list'
@@ -111,71 +99,73 @@ export function Tickets({
       localStorage.setItem('harness:tickets:viewMode', viewMode)
     }
   }, [viewMode])
+  // Selected provider — single-provider-at-a-time is the whole shape of
+  // this view. Persisted in localStorage so returning users land where
+  // they left off. When the saved id doesn't exist (provider removed),
+  // fall back to the first provider alphabetically.
+  const [selectedProviderId, setSelectedProviderIdRaw] = useState<string | null>(() => {
+    if (typeof localStorage === 'undefined') return null
+    return localStorage.getItem('harness:tickets:selectedProviderId')
+  })
+  const setSelectedProviderId = (id: string | null): void => {
+    setSelectedProviderIdRaw(id)
+    if (typeof localStorage !== 'undefined') {
+      if (id) localStorage.setItem('harness:tickets:selectedProviderId', id)
+      else localStorage.removeItem('harness:tickets:selectedProviderId')
+    }
+  }
+  const selectedProvider = useMemo(
+    () => providers.find((p) => p.id === selectedProviderId) ?? providers[0] ?? null,
+    [providers, selectedProviderId]
+  )
+  // Snap the persisted selection to the effective one so a saved id
+  // that no longer exists gets rewritten to whatever we're actually
+  // rendering.
+  useEffect(() => {
+    if (selectedProvider && selectedProvider.id !== selectedProviderId) {
+      setSelectedProviderId(selectedProvider.id)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProvider?.id])
 
-  // For every (repo, provider-linked-to-that-repo) pair, kick off a
-  // list() call and merge the results into `state.rows` decorated with
-  // repoRoot + linkedWorktree. Any provider that appears in multiple
-  // repos is queried once per repo since the row-level repo context is
-  // what determines the "jump to worktree" mapping.
+  // Fetch just the selected provider's tickets. Each row's repoRoot is
+  // the provider's first applies-to entry (used as the default spawn
+  // target); the actual worktree lookup below scans all worktrees so a
+  // ticket that's already been spawned in ANY of the provider's repos
+  // shows the correct linked chip.
   const load = async (): Promise<void> => {
-    if (providers.length === 0 || repoRoots.length === 0) {
+    if (!selectedProvider) {
       setState(INITIAL_FETCH)
       return
     }
+    const provider = selectedProvider
+    const defaultRepoRoot =
+      provider.appliesToRepoRoots && provider.appliesToRepoRoots.length > 0
+        ? provider.appliesToRepoRoots[0]
+        : ''
     setState((s) => ({ ...s, loading: true }))
-    const errors: Record<string, string> = {}
-    const rows: FetchedRow[] = []
-    const jobs: Promise<void>[] = []
-    for (const repoRoot of repoRoots) {
-      for (const provider of providersForRepo(providers, repoRoot)) {
-        jobs.push(
-          (async () => {
-            try {
-              const tickets = await backend.ticketsList(provider.id)
-              for (const ticket of tickets) {
-                rows.push({
-                  ticket,
-                  provider,
-                  repoRoot,
-                  linkedWorktree: findLinkedWorktree(
-                    worktrees,
-                    repoRoot,
-                    provider.id,
-                    ticket.externalId
-                  )
-                })
-              }
-            } catch (err) {
-              errors[provider.id] = err instanceof Error ? err.message : String(err)
-            }
-          })()
-        )
-      }
+    try {
+      const tickets = await backend.ticketsList(provider.id)
+      const rows: FetchedRow[] = tickets.map((ticket) => ({
+        ticket,
+        provider,
+        repoRoot: defaultRepoRoot,
+        linkedWorktree: findLinkedWorktree(worktrees, provider.id, ticket.externalId)
+      }))
+      setState({ loading: false, rows, error: null })
+    } catch (err) {
+      setState({
+        loading: false,
+        rows: [],
+        error: err instanceof Error ? err.message : String(err)
+      })
     }
-    await Promise.all(jobs)
-    setState({ loading: false, rows, errors })
   }
 
   useEffect(() => {
     void load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [providers, repoRoots, worktrees])
-
-  // Group by repo when not unified; otherwise one flat list.
-  const sections = useMemo(() => {
-    if (unifiedRepos || repoRoots.length <= 1) {
-      return [{ repoRoot: null as string | null, rows: state.rows }]
-    }
-    const byRepo = new Map<string, FetchedRow[]>()
-    for (const root of repoRoots) byRepo.set(root, [])
-    for (const row of state.rows) {
-      byRepo.get(row.repoRoot)?.push(row)
-    }
-    return Array.from(byRepo.entries()).map(([repoRoot, rows]) => ({
-      repoRoot,
-      rows
-    }))
-  }, [state.rows, repoRoots, unifiedRepos])
+  }, [selectedProvider?.id, worktrees])
 
   const totalCount = state.rows.length
   const withWorktree = state.rows.filter((r) => r.linkedWorktree).length
@@ -190,9 +180,26 @@ export function Tickets({
           <ArrowLeft className="icon-sm" />
           Back
         </button>
-        <span className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 text-sm font-medium text-fg pointer-events-none">
-          Tickets
-        </span>
+        <div className="no-drag absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 flex items-center gap-2">
+          <span className="text-sm font-medium text-fg">Tickets</span>
+          {providers.length > 0 && (
+            <>
+              <span className="text-faint">·</span>
+              <select
+                value={selectedProvider?.id ?? ''}
+                onChange={(e) => setSelectedProviderId(e.target.value || null)}
+                className="bg-app border border-border-strong rounded px-2 py-0.5 text-xs text-fg-bright outline-none focus:border-accent cursor-pointer max-w-[16rem] truncate"
+                aria-label="Select provider"
+              >
+                {providers.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
+        </div>
         <div className="no-drag absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
           <div className="flex items-center rounded overflow-hidden border border-border-strong">
             <button
@@ -238,17 +245,11 @@ export function Tickets({
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        <div className="max-w-4xl mx-auto px-6 py-6">
+        <div className="px-6 py-6">
           {providers.length === 0 ? (
-            <TicketsEmpty
-              kind="no-providers"
-              onOpenSettings={onOpenSettings}
-            />
-          ) : totalCount === 0 && !state.loading && Object.keys(state.errors).length === 0 ? (
-            <TicketsEmpty
-              kind="no-tickets"
-              onOpenSettings={onOpenSettings}
-            />
+            <TicketsEmpty kind="no-providers" onOpenSettings={onOpenSettings} />
+          ) : !selectedProvider ? null : totalCount === 0 && !state.loading && !state.error ? (
+            <TicketsEmpty kind="no-tickets" onOpenSettings={onOpenSettings} />
           ) : (
             <>
               <div className="mb-4 flex items-center gap-3 text-xs text-dim">
@@ -262,31 +263,20 @@ export function Tickets({
                 </span>
               </div>
 
-              {Object.entries(state.errors).map(([providerId, message]) => {
-                const provider = providers.find((p) => p.id === providerId)
-                if (!provider) return null
-                return (
-                  <div
-                    key={providerId}
-                    className="mb-3 flex items-center gap-2 px-3 py-2 text-xs text-warning bg-warning/10 border border-warning/30 rounded"
-                  >
-                    <AlertCircle className="icon-xs shrink-0" />
-                    <span className="font-medium">{provider.label}:</span>
-                    <span className="font-mono truncate">{message}</span>
-                  </div>
-                )
-              })}
+              {state.error && (
+                <div className="mb-3 flex items-center gap-2 px-3 py-2 text-xs text-warning bg-warning/10 border border-warning/30 rounded">
+                  <AlertCircle className="icon-xs shrink-0" />
+                  <span className="font-medium">{selectedProvider.label}:</span>
+                  <span className="font-mono truncate">{state.error}</span>
+                </div>
+              )}
 
-              {sections.map((section) => (
-                <TicketsSection
-                  key={section.repoRoot ?? '__unified__'}
-                  repoRoot={section.repoRoot}
-                  rows={section.rows}
-                  viewMode={viewMode}
-                  onJumpToWorktree={onJumpToWorktree}
-                  onSpawnFromTicket={onSpawnFromTicket}
-                />
-              ))}
+              <TicketsSection
+                rows={state.rows}
+                viewMode={viewMode}
+                onJumpToWorktree={onJumpToWorktree}
+                onSpawnFromTicket={onSpawnFromTicket}
+              />
             </>
           )}
         </div>
@@ -296,7 +286,6 @@ export function Tickets({
 }
 
 interface TicketsSectionProps {
-  repoRoot: string | null
   rows: FetchedRow[]
   viewMode: TicketsViewMode
   onJumpToWorktree: (worktreePath: string) => void
@@ -327,14 +316,13 @@ function bucketRowsByStatus(rows: FetchedRow[]): {
 }
 
 function TicketsSection({
-  repoRoot,
   rows,
   viewMode,
   onJumpToWorktree,
   onSpawnFromTicket
 }: TicketsSectionProps): JSX.Element {
-  // Unique providers that contributed rows in this section. Their saved
-  // bucketOrder + collapsedBuckets drive the section's rendering.
+  // The whole section is one provider's tickets. Its saved bucketOrder +
+  // collapsedBuckets drive the rendering.
   const providersInSection = useMemo(() => {
     const byId = new Map<string, TicketProviderConfig>()
     for (const row of rows) byId.set(row.provider.id, row.provider)
@@ -351,20 +339,11 @@ function TicketsSection({
     [providersInSection]
   )
 
-  const repoLabel = repoRoot ? repoBasename(repoRoot) : null
-
   return (
-    <div className="mb-6">
-      {repoLabel && (
-        <div className="mb-2 flex items-center gap-2">
-          <RepoIcon repoName={repoLabel} className="text-sm" />
-          <span className={`text-sm font-medium ${repoNameColor(repoLabel)}`}>{repoLabel}</span>
-          <span className="text-xs text-faint font-mono truncate">{repoRoot}</span>
-        </div>
-      )}
+    <div>
       {rows.length === 0 ? (
         <p className="text-xs text-faint px-3 py-2 border border-dashed border-border rounded">
-          No tickets from this repo's linked providers.
+          No tickets returned by this provider.
         </p>
       ) : viewMode === 'board' ? (
         <TicketsBoard

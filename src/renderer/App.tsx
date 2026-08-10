@@ -1751,9 +1751,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
           <div className="flex-1 min-w-0 flex">
             <Tickets
               onClose={() => setShowTickets(false)}
-              repoRoots={repoRoots}
               worktrees={worktrees}
-              unifiedRepos={unifiedRepos}
               onJumpToWorktree={(path) => {
                 setShowTickets(false)
                 setActiveWorktreeId(path)
