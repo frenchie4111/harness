@@ -127,7 +127,9 @@ describe('repoConfigsReducer', () => {
       'commits',
       'changedFiles',
       'allFiles',
-      'scratchpad'
+      'scratchpad',
+      // Known key absent from the saved order is appended in canonical order.
+      'ticket'
     ])
   })
 
@@ -140,6 +142,7 @@ describe('repoConfigsReducer', () => {
     expect(result[1]).toBe('pr')
     // Remaining keys in canonical order
     expect(result.slice(2)).toEqual([
+      'ticket',
       'merge',
       'commits',
       'changedFiles',

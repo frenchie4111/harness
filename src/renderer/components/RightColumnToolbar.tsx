@@ -4,6 +4,7 @@ import { Tooltip } from './Tooltip'
 import type { HiddenRightPanels, RightPanelKey } from '../../shared/state/repo-configs'
 
 const LABELS: Record<RightPanelKey, string> = {
+  ticket: 'Ticket',
   merge: 'Merge Locally',
   pr: 'PR Status',
   todos: 'Todos',

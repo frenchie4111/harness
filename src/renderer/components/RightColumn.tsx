@@ -12,6 +12,7 @@ import { AllFilesPanel } from './AllFilesPanel'
 import { CostPanel } from './CostPanel'
 import { JsonClaudeTodosPanel } from './JsonClaudeTodosPanel'
 import { ScratchpadPanel } from './ScratchpadPanel'
+import { TicketPanel } from './TicketPanel'
 import { RightColumnToolbar } from './RightColumnToolbar'
 import { useBackend } from '../backend'
 
@@ -87,6 +88,8 @@ export function RightColumn({
   const renderPanel = (key: RightPanelKey): JSX.Element | null => {
     if (hidden[key]) return null
     switch (key) {
+      case 'ticket':
+        return <TicketPanel key="ticket" worktreePath={activeWorktreeId} />
       case 'merge':
         return (
           <MergeLocallyPanel
