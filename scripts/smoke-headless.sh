@@ -15,13 +15,47 @@
 
 set -euo pipefail
 
+BUNDLE=dist-headless/main/index.js
+
+# Static check, before we even launch: the bundle must not require
+# `electron` eagerly.
+#
+# `electron` is an external in vite.headless.config.ts on the premise that
+# every call site is gated on Electron mode and never runs headless. A
+# STATIC `import … from 'electron'` silently breaks that premise — rollup
+# hoists it into the CJS require preamble, so it fires the instant Node
+# loads the bundle, before any gate. That is how v2.13.0/v2.13.1 shipped a
+# harness-server that died with "Cannot find module 'electron'" on every
+# remote.
+#
+# Running the server below cannot catch it: CI runs from the repo root,
+# where node_modules/electron resolves fine. Only the tarball (which ships
+# no electron) hits the failure, so this grep is the guard. Lazy access via
+# createRequire compiles to a variable call, not the literal below, so the
+# supported pattern passes.
+# Comment lines are excluded: the bundle is built with minify:false, so
+# prose that merely mentions the call survives into the output.
+EAGER_ELECTRON="$(
+  grep -nE "require\((\"|')electron(\"|')\)" "$BUNDLE" \
+    | grep -vE '^[0-9]+:[[:space:]]*(\*|//|/\*)' || true
+)"
+if [ -n "$EAGER_ELECTRON" ]; then
+  echo "::error::$BUNDLE requires electron at load time." >&2
+  echo "  This crashes harness-server on any non-Electron host." >&2
+  echo "  Fix: resolve electron lazily via createRequire behind a" >&2
+  echo "  detectRuntime() === 'electron' gate (see wake-lock-controller.ts)." >&2
+  printf '%s\n' "$EAGER_ELECTRON" >&2
+  exit 1
+fi
+echo "ok: no load-time electron require in $BUNDLE"
+
 # Isolated data dir so we don't touch ~/.harness on a dev box or the
 # runner's $HOME in CI.
 LOG="${HARNESS_SMOKE_LOG:-/tmp/harness-server.log}"
 HARNESS_DATA_DIR="$(mktemp -d)"
 export HARNESS_DATA_DIR
 
-node dist-headless/main/index.js --port 0 --host 127.0.0.1 > "$LOG" 2>&1 &
+node "$BUNDLE" --port 0 --host 127.0.0.1 > "$LOG" 2>&1 &
 SERVER_PID=$!
 trap 'kill "$SERVER_PID" 2>/dev/null || true; wait "$SERVER_PID" 2>/dev/null || true' EXIT
 

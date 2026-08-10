@@ -1,7 +1,58 @@
-import { powerSaveBlocker } from 'electron'
+import { createRequire } from 'module'
 import type { Store } from './store'
 import type { StateEvent } from '../shared/state'
 import { log } from './debug'
+import { detectRuntime } from './paths'
+
+/** The slice of electron's `powerSaveBlocker` this controller uses.
+ *  `stop` is typed `void` (electron's returns boolean, which is
+ *  assignable) so test doubles don't have to invent a return value. */
+export interface PowerSaveBlockerLike {
+  start(type: string): number
+  isStarted(id: number): boolean
+  stop(id: number): void
+}
+
+/** Resolved electron `powerSaveBlocker`, or null outside Electron.
+ *  `undefined` means "not yet resolved". */
+let blocker: PowerSaveBlockerLike | null | undefined
+
+/** Lazily resolve `powerSaveBlocker`, gated on actually running inside
+ *  Electron.
+ *
+ *  A static `import { powerSaveBlocker } from 'electron'` here is NOT
+ *  safe: `electron` is an external in `vite.headless.config.ts`, so the
+ *  static import becomes an unconditional electron require hoisted into
+ *  the headless bundle's require preamble. That throws
+ *  `Cannot find module 'electron'` the instant `harness-server` loads —
+ *  before any runtime check can run — which is how v2.13.0 and v2.13.1
+ *  shipped a `harness-server` that could not boot at all.
+ *  `createRequire` at use-time defers the lookup, and the runtime gate
+ *  means headless never performs it. `scripts/smoke-headless.sh` fails
+ *  the build if an eager require ever comes back.
+ *
+ *  Returns null in headless, and every call site treats that as
+ *  "wake-locks unavailable" — correct for a server with no app to keep
+ *  awake, and the reason this controller is safe to construct in both
+ *  runtimes. */
+function powerSaveBlocker(): PowerSaveBlockerLike | null {
+  if (blocker !== undefined) return blocker
+  if (detectRuntime() !== 'electron') {
+    blocker = null
+    return blocker
+  }
+  const dynamicRequire = createRequire(__filename)
+  blocker = (dynamicRequire('electron') as { powerSaveBlocker: PowerSaveBlockerLike })
+    .powerSaveBlocker
+  return blocker
+}
+
+/** Test seam: swap in a fake blocker (or null to simulate headless).
+ *  `createRequire` bypasses vitest's module graph, so `vi.mock('electron')`
+ *  cannot reach the require above. Mirrors `resetPathsForTests()`. */
+export function setPowerSaveBlockerForTests(fake: PowerSaveBlockerLike | null): void {
+  blocker = fake
+}
 
 /** How often the controller re-checks time-driven + drift-prone inputs: the
  *  temporary-timer expiry, plus a cheap reconcile of the processing-id set
@@ -122,8 +173,12 @@ export class WakeLockController {
     const desired = this.computeDesired(settings.preventSleepUntil, nowMs, settings.preventSleepMode)
     if (desired === this.held) return
     this.held = desired
+    const psb = powerSaveBlocker()
+    // Headless has no app to suspend. Intent is still tracked above so the
+    // decision doesn't churn, but there's nothing to start or stop.
+    if (!psb) return
     if (desired) {
-      this.blockerId = powerSaveBlocker.start('prevent-app-suspension')
+      this.blockerId = psb.start('prevent-app-suspension')
       log('wake-lock', `engaged (mode=${settings.preventSleepMode}, id=${this.blockerId})`)
     } else {
       this.releaseBlocker()
@@ -146,8 +201,9 @@ export class WakeLockController {
 
   private releaseBlocker(): void {
     if (this.blockerId === null) return
-    if (powerSaveBlocker.isStarted(this.blockerId)) {
-      powerSaveBlocker.stop(this.blockerId)
+    const psb = powerSaveBlocker()
+    if (psb && psb.isStarted(this.blockerId)) {
+      psb.stop(this.blockerId)
     }
     this.blockerId = null
   }

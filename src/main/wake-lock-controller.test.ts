@@ -24,11 +24,13 @@ const psb = vi.hoisted(() => {
   }
 })
 
-vi.mock('electron', () => ({ powerSaveBlocker: psb }))
+// NOT `vi.mock('electron', …)`: the controller resolves powerSaveBlocker
+// through `createRequire`, which bypasses vitest's module graph, so a
+// module mock can't reach it. The exported seam is the supported hook.
 vi.mock('./debug', () => ({ log: () => {} }))
 
 import { Store } from './store'
-import { WakeLockController } from './wake-lock-controller'
+import { WakeLockController, setPowerSaveBlockerForTests } from './wake-lock-controller'
 import { initialState, type AppState } from '../shared/state'
 import type { PreventSleepMode } from '../shared/state/settings'
 
@@ -49,10 +51,20 @@ describe('WakeLockController', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     psb.reset()
+    setPowerSaveBlockerForTests(psb)
   })
 
   afterEach(() => {
     vi.useRealTimers()
+    setPowerSaveBlockerForTests(null)
+  })
+
+  it('is inert when no blocker is available (headless runtime)', () => {
+    setPowerSaveBlockerForTests(null)
+    const ctrl = new WakeLockController(new Store(stateWith('always')))
+    expect(() => ctrl.start()).not.toThrow()
+    expect(psb.start).not.toHaveBeenCalled()
+    expect(() => ctrl.stop()).not.toThrow()
   })
 
   it('off mode never engages the blocker', () => {
