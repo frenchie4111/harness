@@ -64,6 +64,13 @@ describe('worktreeListsEqual', () => {
     expect(worktreeListsEqual([base], [stubWorktree({ path: '/z' })])).toBe(false)
     expect(worktreeListsEqual([base], [stubWorktree({ path: '/a', isMain: true })])).toBe(false)
     expect(worktreeListsEqual([base], [stubWorktree({ path: '/a', repoRoot: '/other' })])).toBe(false)
+    expect(worktreeListsEqual([base], [stubWorktree({ path: '/a', prunable: true })])).toBe(false)
+    expect(
+      worktreeListsEqual(
+        [stubWorktree({ path: '/a', prunable: true, prunableReason: 'gone' })],
+        [stubWorktree({ path: '/a', prunable: true, prunableReason: 'other' })]
+      )
+    ).toBe(false)
   })
 
   it('is order-sensitive', () => {

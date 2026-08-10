@@ -74,7 +74,9 @@ export function worktreeListsEqual(a: Worktree[], b: Worktree[]): boolean {
       x.isBare !== y.isBare ||
       x.isMain !== y.isMain ||
       x.createdAt !== y.createdAt ||
-      x.repoRoot !== y.repoRoot
+      x.repoRoot !== y.repoRoot ||
+      x.prunable !== y.prunable ||
+      x.prunableReason !== y.prunableReason
     ) {
       return false
     }
