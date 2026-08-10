@@ -45,6 +45,14 @@ interface NewWorktreeScreenProps {
    *  pre-selected. Used by the sidebar's phantom review-requested rows to
    *  jump straight into the review-worktree creation flow. */
   initialPRNumber?: number
+  /** When set, the modal opens with a ticket already selected — same
+   *  effect as if the user had clicked "From ticket" and picked from the
+   *  in-modal picker themselves. Branch name + prompt get primed from
+   *  the ticket, and the eventual submit carries the linkedTicket tuple. */
+  initialTicket?: {
+    ticket: TicketType
+    provider: TicketProviderConfig
+  }
 }
 
 /** Sort + clean the local-branch list from the backend. The backend already
@@ -114,7 +122,7 @@ const STARTER_PROMPTS = [
 const KBD_CHIP = 'text-xs text-faint bg-bg px-1.5 py-0.5 rounded border border-border font-mono'
 const KBD_CHIP_ON_ACCENT = 'text-xs text-white bg-white/20 px-1.5 py-0.5 rounded border border-white/30 font-mono'
 
-export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, defaultRepoRoot, initialPRNumber }: NewWorktreeScreenProps): JSX.Element {
+export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, defaultRepoRoot, initialPRNumber, initialTicket }: NewWorktreeScreenProps): JSX.Element {
   const [mode, setMode] = useState<'fresh' | 'teleport' | 'pr'>(initialPRNumber ? 'pr' : 'fresh')
   const [selectedRepo, setSelectedRepo] = useState<string>(
     defaultRepoRoot && repoRoots.includes(defaultRepoRoot) ? defaultRepoRoot : repoRoots[0] || ''
@@ -154,11 +162,14 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
   // From-ticket flow. When `selectedTicket` is non-null we render a chip
   // above the branch input and the submit will include the link. The
   // picker opens via `showTicketPicker`; closing it via X / Esc / outside
-  // click leaves selection untouched.
+  // click leaves selection untouched. Preseeded from `initialTicket` when
+  // the modal was opened from the Tickets top-level view — the branch
+  // and prompt priming happens in the effect below so we don't clobber
+  // whatever the user has already typed on a re-open.
   const [selectedTicket, setSelectedTicket] = useState<{
     ticket: TicketType
     provider: TicketProviderConfig
-  } | null>(null)
+  } | null>(initialTicket ?? null)
   const [showTicketPicker, setShowTicketPicker] = useState(false)
   const repoLinkedProviderIds = useRepoLinkedProviderIds(selectedRepo)
   // True when the current repo has any provider linked. Used to show the
@@ -222,6 +233,30 @@ export function NewWorktreeScreen({ onSubmit, onPRSubmit, onCancel, repoRoots, d
 
   useEffect(() => {
     branchRef.current?.focus()
+  }, [])
+
+  // One-shot mount priming when the modal opens with a preseeded ticket
+  // (from the Tickets top-level view). Mirrors the priming that
+  // handlePickTicket does after an in-modal picker selection — same
+  // branch + prompt seeding, respecting anything the user has already
+  // typed. Only fires when both fields are empty so a re-open with
+  // user-edited content doesn't clobber them.
+  useEffect(() => {
+    if (!initialTicket) return
+    switchBranchTab('new')
+    if (!branch.trim()) {
+      setBranch(suggestedBranchName(initialTicket.ticket, initialTicket.provider.type))
+    }
+    if (!prompt.trim()) {
+      setPrompt(
+        renderTicketPrompt(
+          settings.ticketWorktreePromptTemplate,
+          initialTicket.ticket,
+          initialTicket.provider.type
+        )
+      )
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Lazy-load the PR list when the tab is shown for a repo we haven't

@@ -276,10 +276,21 @@ function DesktopApp(): JSX.Element {
   // the "new worktree from PR" screen opens with that PR pre-selected.
   // Cleared alongside the repo when the modal closes.
   const [newWorktreeInitialPRNumber, setNewWorktreeInitialPRNumber] = useState<number | undefined>(undefined)
+  // Preseed for the "From ticket" affordance when the New Worktree screen
+  // is opened from the Tickets view. Cleared alongside repo / PR when the
+  // modal closes so a subsequent hand-opened modal starts blank.
+  const [newWorktreeInitialTicket, setNewWorktreeInitialTicket] = useState<
+    | {
+        ticket: import('../shared/tickets').Ticket
+        provider: import('../shared/tickets').TicketProviderConfig
+      }
+    | undefined
+  >(undefined)
   useEffect(() => {
     if (!showNewWorktree) {
       setNewWorktreeRepo(undefined)
       setNewWorktreeInitialPRNumber(undefined)
+      setNewWorktreeInitialTicket(undefined)
     }
   }, [showNewWorktree])
   const handleOpenAssignedPR = useCallback((repoRoot: string, prNumber: number) => {
@@ -1710,6 +1721,7 @@ const setQuestStep = useCallback((next: QuestStep) => {
             repoRoots={repoRoots}
             defaultRepoRoot={newWorktreeRepo ?? (activeWorktreeId ? worktreeRepoByPath[activeWorktreeId] : undefined)}
             initialPRNumber={newWorktreeInitialPRNumber}
+            initialTicket={newWorktreeInitialTicket}
           />
         )}
         {reportIssueState !== null && (
@@ -1746,13 +1758,10 @@ const setQuestStep = useCallback((next: QuestStep) => {
                 setShowTickets(false)
                 setActiveWorktreeId(path)
               }}
-              onSpawnFromTicket={(_ticket, _provider, repoRoot) => {
-                // v1: open the New Worktree screen scoped to the ticket's
-                // repo. The picker preseeding happens on the New Worktree
-                // side once the user opens the "From ticket" affordance
-                // there. Follow-up: preseed the picker's ticket directly.
+              onSpawnFromTicket={(ticket, provider, repoRoot) => {
                 setShowTickets(false)
                 setNewWorktreeRepo(repoRoot)
+                setNewWorktreeInitialTicket({ ticket, provider })
                 setShowNewWorktree(true)
               }}
               onOpenSettings={() => {
