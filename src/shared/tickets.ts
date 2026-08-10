@@ -33,6 +33,12 @@ export interface Ticket {
   description: string
   /** URL to view the ticket in its native UI. */
   url: string
+  /** Provider-native status label. Opaque — Harness doesn't normalize.
+   *  GitHub gives `"open"` / `"closed"`; Notion gives whatever the
+   *  configured status column returns (`"Backlog"`, `"In progress"`,
+   *  `"Shipped"`, etc.). The Tickets view groups by this value verbatim;
+   *  bucket order + collapse state live on the provider config. */
+  status?: string
 }
 
 /** Built-in provider implementations. Add a literal here when adding a
@@ -85,6 +91,15 @@ export interface TicketProviderConfig {
    *  yet. Editing the list lives on the provider form, not on each
    *  repo's settings, so a multi-repo project is one tick per repo. */
   appliesToRepoRoots?: string[]
+  /** User-defined bucket ordering for the Tickets view. Values are raw
+   *  status strings as returned by the provider (e.g. `["In progress",
+   *  "Backlog", "Done"]`). Any status seen at runtime that isn't in
+   *  this list is appended to the end in first-appearance order. When
+   *  unset, everything renders in first-appearance order. */
+  bucketOrder?: string[]
+  /** Status values whose bucket should render collapsed by default in
+   *  the Tickets view. Typically used to hide "Done"-style buckets. */
+  collapsedBuckets?: string[]
 }
 
 /** Runtime interface implemented by each provider. Implementations live
@@ -104,6 +119,66 @@ export interface TicketProvider {
 export interface WorktreeTicketLink {
   providerId: string
   externalId: string
+}
+
+/** Rendered as the bucket header when a ticket has no `status` value. */
+export const NO_STATUS_BUCKET = 'No status'
+
+/** Merge each provider's saved `bucketOrder` with the raw statuses
+ *  actually present in `seenStatuses`, into a single ordered list.
+ *
+ *  Rules:
+ *   - Iterate providers in the order passed. For each, append its saved
+ *     `bucketOrder` entries that (a) haven't been seen yet, (b) are
+ *     present in `seenStatuses`. This preserves the first provider's
+ *     opinion, then layers in subsequent providers' opinions for buckets
+ *     the first didn't have.
+ *   - After all saved orders are consumed, append any `seenStatuses`
+ *     entries that weren't listed anywhere — in the order they appear in
+ *     `seenStatuses` (which callers should build in first-appearance
+ *     order from the fetch). This keeps buckets from disappearing when
+ *     users add new statuses in their ticket system without also updating
+ *     the saved order.
+ *   - Empty / duplicate strings are dropped.
+ *
+ *  The output can be handed straight to the Tickets view as bucket
+ *  headers in render order. */
+export function mergeBucketOrder(
+  providers: TicketProviderConfig[],
+  seenStatuses: string[]
+): string[] {
+  const seenSet = new Set(seenStatuses)
+  const out: string[] = []
+  const added = new Set<string>()
+  for (const provider of providers) {
+    for (const name of provider.bucketOrder ?? []) {
+      if (typeof name !== 'string' || !name || added.has(name)) continue
+      if (!seenSet.has(name)) continue
+      out.push(name)
+      added.add(name)
+    }
+  }
+  for (const name of seenStatuses) {
+    if (typeof name !== 'string' || !name || added.has(name)) continue
+    out.push(name)
+    added.add(name)
+  }
+  return out
+}
+
+/** Union of `collapsedBuckets` across every provider. A bucket is
+ *  collapsed by default if ANY provider that contributed to it has it in
+ *  its collapsed list. */
+export function unionCollapsedBuckets(
+  providers: TicketProviderConfig[]
+): Set<string> {
+  const out = new Set<string>()
+  for (const provider of providers) {
+    for (const name of provider.collapsedBuckets ?? []) {
+      if (typeof name === 'string' && name) out.add(name)
+    }
+  }
+  return out
 }
 
 /** One database returned by the Notion setup-time picker. Shape kept

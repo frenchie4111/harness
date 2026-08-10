@@ -73,7 +73,11 @@ function toTicket(providerId: string, issue: ApiIssue): Ticket {
     externalId: String(issue.number),
     title: issue.title,
     description: issue.body ?? '',
-    url: issue.html_url
+    url: issue.html_url,
+    // GitHub Issues has exactly two states — pass them through verbatim so
+    // the Tickets view's raw-status bucketing renders "open" / "closed"
+    // as user-visible bucket headers.
+    status: issue.state || undefined
   }
 }
 
@@ -95,8 +99,12 @@ export function createGithubIssuesProvider(
       // both issues AND PRs — PRs are distinguishable by the presence
       // of a `pull_request` field. We filter PRs out client-side so the
       // ticket picker doesn't pollute itself with merge requests.
+      //
+      // state=all so the Tickets view's "closed" bucket can populate.
+      // Sorted by GitHub's default (updated desc) so freshest activity
+      // bubbles to the top regardless of state.
       const params = new URLSearchParams()
-      params.set('state', 'open')
+      params.set('state', 'all')
       params.set('per_page', '50')
       const q = (query ?? config.defaultQuery ?? '').trim()
       // The list endpoint doesn't take a free-text filter. Fall back to
@@ -104,7 +112,7 @@ export function createGithubIssuesProvider(
       // actually narrows the list.
       let url: string
       if (q) {
-        const search = `${q} repo:${owner}/${repo} state:open is:issue`
+        const search = `${q} repo:${owner}/${repo} is:issue`
         url = `https://api.github.com/search/issues?q=${encodeURIComponent(search)}&per_page=50`
       } else {
         url = `https://api.github.com/repos/${owner}/${repo}/issues?${params.toString()}`

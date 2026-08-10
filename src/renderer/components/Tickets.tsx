@@ -6,13 +6,14 @@
 // or spawn a new one via the "Open" affordance.
 
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, RefreshCw, Loader2, ExternalLink, GitBranch, AlertCircle } from 'lucide-react'
+import { ArrowLeft, RefreshCw, Loader2, ExternalLink, GitBranch, AlertCircle, ChevronDown, ChevronRight } from 'lucide-react'
 import type { Worktree } from '../types'
 import type {
   Ticket,
   TicketProviderConfig,
   WorktreeTicketLink
 } from '../../shared/tickets'
+import { NO_STATUS_BUCKET, mergeBucketOrder, unionCollapsedBuckets } from '../../shared/tickets'
 import { useBackend } from '../backend'
 import { useTicketProviders } from '../store'
 import { TicketProviderIcon } from './TicketProvidersSettings'
@@ -164,7 +165,6 @@ export function Tickets({
 
   const totalCount = state.rows.length
   const withWorktree = state.rows.filter((r) => r.linkedWorktree).length
-  const withoutWorktree = totalCount - withWorktree
 
   return (
     <div className="flex flex-col h-full w-full bg-panel">
@@ -216,12 +216,7 @@ export function Tickets({
                 </span>
                 <span className="text-faint">·</span>
                 <span>
-                  <span className="text-fg-bright font-medium">{withWorktree}</span> in progress
-                </span>
-                <span className="text-faint">·</span>
-                <span>
-                  <span className="text-fg-bright font-medium">{withoutWorktree}</span> ready to
-                  start
+                  <span className="text-fg-bright font-medium">{withWorktree}</span> with worktree
                 </span>
               </div>
 
@@ -264,16 +259,52 @@ interface TicketsSectionProps {
   onSpawnFromTicket: (ticket: Ticket, provider: TicketProviderConfig, repoRoot: string) => void
 }
 
+/** Group the rows by their raw `status` string (or NO_STATUS_BUCKET when
+ *  unset) into a bucket → rows map, along with the seen-in-order list of
+ *  bucket names for use in `mergeBucketOrder`. Preserves the order in
+ *  which statuses first appear across the fetched rows. */
+function bucketRowsByStatus(rows: FetchedRow[]): {
+  byBucket: Map<string, FetchedRow[]>
+  seenOrder: string[]
+} {
+  const byBucket = new Map<string, FetchedRow[]>()
+  const seenOrder: string[] = []
+  for (const row of rows) {
+    const bucket = row.ticket.status ?? NO_STATUS_BUCKET
+    let arr = byBucket.get(bucket)
+    if (!arr) {
+      arr = []
+      byBucket.set(bucket, arr)
+      seenOrder.push(bucket)
+    }
+    arr.push(row)
+  }
+  return { byBucket, seenOrder }
+}
+
 function TicketsSection({
   repoRoot,
   rows,
   onJumpToWorktree,
   onSpawnFromTicket
 }: TicketsSectionProps): JSX.Element {
-  // Two buckets: rows with a linked worktree ("In progress") and rows without
-  // ("Ready"). Simple v1 grouping until we thread real ticket status through.
-  const inProgress = rows.filter((r) => r.linkedWorktree)
-  const ready = rows.filter((r) => !r.linkedWorktree)
+  // Unique providers that contributed rows in this section. Their saved
+  // bucketOrder + collapsedBuckets drive the section's rendering.
+  const providersInSection = useMemo(() => {
+    const byId = new Map<string, TicketProviderConfig>()
+    for (const row of rows) byId.set(row.provider.id, row.provider)
+    return Array.from(byId.values())
+  }, [rows])
+
+  const { byBucket, seenOrder } = useMemo(() => bucketRowsByStatus(rows), [rows])
+  const bucketOrder = useMemo(
+    () => mergeBucketOrder(providersInSection, seenOrder),
+    [providersInSection, seenOrder]
+  )
+  const collapsedByDefault = useMemo(
+    () => unionCollapsedBuckets(providersInSection),
+    [providersInSection]
+  )
 
   const repoLabel = repoRoot ? repoBasename(repoRoot) : null
 
@@ -291,24 +322,16 @@ function TicketsSection({
           No tickets from this repo's linked providers.
         </p>
       ) : (
-        <>
-          {inProgress.length > 0 && (
-            <TicketBucket
-              label="In progress"
-              rows={inProgress}
-              onJumpToWorktree={onJumpToWorktree}
-              onSpawnFromTicket={onSpawnFromTicket}
-            />
-          )}
-          {ready.length > 0 && (
-            <TicketBucket
-              label="Ready"
-              rows={ready}
-              onJumpToWorktree={onJumpToWorktree}
-              onSpawnFromTicket={onSpawnFromTicket}
-            />
-          )}
-        </>
+        bucketOrder.map((bucket) => (
+          <TicketBucket
+            key={bucket}
+            label={bucket}
+            rows={byBucket.get(bucket) ?? []}
+            defaultCollapsed={collapsedByDefault.has(bucket)}
+            onJumpToWorktree={onJumpToWorktree}
+            onSpawnFromTicket={onSpawnFromTicket}
+          />
+        ))
       )}
     </div>
   )
@@ -317,6 +340,7 @@ function TicketsSection({
 interface TicketBucketProps {
   label: string
   rows: FetchedRow[]
+  defaultCollapsed: boolean
   onJumpToWorktree: (worktreePath: string) => void
   onSpawnFromTicket: (ticket: Ticket, provider: TicketProviderConfig, repoRoot: string) => void
 }
@@ -324,24 +348,38 @@ interface TicketBucketProps {
 function TicketBucket({
   label,
   rows,
+  defaultCollapsed,
   onJumpToWorktree,
   onSpawnFromTicket
 }: TicketBucketProps): JSX.Element {
+  const [collapsed, setCollapsed] = useState(defaultCollapsed)
   return (
     <div className="mb-4">
-      <div className="text-xs font-semibold uppercase tracking-wider text-dim mb-1.5">
-        {label} <span className="text-faint">({rows.length})</span>
-      </div>
-      <div className="border border-border rounded overflow-hidden">
-        {rows.map((row, i) => (
-          <TicketRow
-            key={`${row.provider.id}:${row.ticket.externalId}:${i}`}
-            row={row}
-            onJumpToWorktree={onJumpToWorktree}
-            onSpawnFromTicket={onSpawnFromTicket}
-          />
-        ))}
-      </div>
+      <button
+        type="button"
+        onClick={() => setCollapsed((v) => !v)}
+        className="w-full flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-dim hover:text-fg mb-1.5 cursor-pointer"
+      >
+        {collapsed ? (
+          <ChevronRight className="icon-xs" />
+        ) : (
+          <ChevronDown className="icon-xs" />
+        )}
+        <span>{label}</span>
+        <span className="text-faint normal-case font-normal">({rows.length})</span>
+      </button>
+      {!collapsed && (
+        <div className="border border-border rounded overflow-hidden">
+          {rows.map((row, i) => (
+            <TicketRow
+              key={`${row.provider.id}:${row.ticket.externalId}:${i}`}
+              row={row}
+              onJumpToWorktree={onJumpToWorktree}
+              onSpawnFromTicket={onSpawnFromTicket}
+            />
+          ))}
+        </div>
+      )}
     </div>
   )
 }

@@ -967,6 +967,21 @@ function normalizeAppliesToRepoRoots(input: unknown): string[] {
   return out
 }
 
+/** Same dedup + strip-empties treatment for the bucket-order and
+ *  collapsed-buckets arrays. Names are raw status strings from the
+ *  provider — we don't validate them against a fixed vocabulary. */
+function normalizeStringList(input: unknown): string[] {
+  if (!Array.isArray(input)) return []
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const name of input) {
+    if (typeof name !== 'string' || !name || seen.has(name)) continue
+    seen.add(name)
+    out.push(name)
+  }
+  return out
+}
+
 const worktreesFSM = new WorktreesFSM(store, {
   getRepoRoots: () => config.repoRoots || [],
   getWorktreeSetupCmd: () => config.worktreeSetupCommand || '',
@@ -4055,12 +4070,16 @@ function registerIpcHandlers(): void {
       if (!validatedConfig) return null
       const id = randomUUID()
       const applies = normalizeAppliesToRepoRoots(input.appliesToRepoRoots)
+      const bucketOrder = normalizeStringList(input.bucketOrder)
+      const collapsedBuckets = normalizeStringList(input.collapsedBuckets)
       const next: TicketProviderConfig = {
         id,
         label: String(input.label || '').trim() || 'Untitled provider',
         type,
         config: validatedConfig,
-        appliesToRepoRoots: applies.length > 0 ? applies : undefined
+        appliesToRepoRoots: applies.length > 0 ? applies : undefined,
+        bucketOrder: bucketOrder.length > 0 ? bucketOrder : undefined,
+        collapsedBuckets: collapsedBuckets.length > 0 ? collapsedBuckets : undefined
       }
       const providers = { ...(config.ticketProviders || {}) }
       providers[id] = next
@@ -4104,6 +4123,16 @@ function registerIpcHandlers(): void {
         const cleaned = normalizeAppliesToRepoRoots(patch.appliesToRepoRoots)
         nextApplies = cleaned.length > 0 ? cleaned : undefined
       }
+      let nextBucketOrder = existing.bucketOrder
+      if (patch?.bucketOrder !== undefined) {
+        const cleaned = normalizeStringList(patch.bucketOrder)
+        nextBucketOrder = cleaned.length > 0 ? cleaned : undefined
+      }
+      let nextCollapsedBuckets = existing.collapsedBuckets
+      if (patch?.collapsedBuckets !== undefined) {
+        const cleaned = normalizeStringList(patch.collapsedBuckets)
+        nextCollapsedBuckets = cleaned.length > 0 ? cleaned : undefined
+      }
       const updated: TicketProviderConfig = {
         id: existing.id,
         type: existing.type,
@@ -4112,7 +4141,9 @@ function registerIpcHandlers(): void {
             ? patch.label.trim()
             : existing.label,
         config: nextConfig,
-        appliesToRepoRoots: nextApplies
+        appliesToRepoRoots: nextApplies,
+        bucketOrder: nextBucketOrder,
+        collapsedBuckets: nextCollapsedBuckets
       }
       const providers = { ...(config.ticketProviders || {}) }
       providers[id] = updated
@@ -4134,7 +4165,9 @@ function registerIpcHandlers(): void {
             label: updated.label,
             type: updated.type,
             config: updated.config,
-            appliesToRepoRoots: updated.appliesToRepoRoots
+            appliesToRepoRoots: updated.appliesToRepoRoots,
+            bucketOrder: updated.bucketOrder,
+            collapsedBuckets: updated.collapsedBuckets
           }
         }
       })

@@ -39,9 +39,23 @@ interface NotionRichTextProperty {
   rich_text: NotionRichText[]
 }
 
+interface NotionStatusProperty {
+  id: string
+  type: 'status'
+  status: { name?: string } | null
+}
+
+interface NotionSelectProperty {
+  id: string
+  type: 'select'
+  select: { name?: string } | null
+}
+
 type NotionProperty =
   | NotionTitleProperty
   | NotionRichTextProperty
+  | NotionStatusProperty
+  | NotionSelectProperty
   | { type: string; id: string }
 
 interface NotionPage {
@@ -111,6 +125,30 @@ function findTitleValue(page: NotionPage, hint: string | undefined): string {
   return ''
 }
 
+/** Pull a status value out of a Notion page. Priority: (1) a property of
+ *  Notion's built-in `status` type (there's typically only one — Notion
+ *  UI limits it that way), (2) a property literally named "Status" of
+ *  `select` type. Returns undefined if neither present or the value is
+ *  empty, in which case the Tickets view groups the ticket under
+ *  "No status". */
+function findStatusValue(page: NotionPage): string | undefined {
+  for (const key of Object.keys(page.properties)) {
+    const prop = page.properties[key]
+    if (prop?.type === 'status') {
+      const name = (prop as NotionStatusProperty).status?.name
+      if (name) return name
+    }
+  }
+  for (const key of Object.keys(page.properties)) {
+    const prop = page.properties[key]
+    if (prop?.type === 'select' && /^status$/i.test(key)) {
+      const name = (prop as NotionSelectProperty).select?.name
+      if (name) return name
+    }
+  }
+  return undefined
+}
+
 function toTicket(
   providerId: string,
   config: NotionConfig,
@@ -134,7 +172,8 @@ function toTicket(
     externalId: page.id,
     title: title || '(untitled)',
     description,
-    url: page.url
+    url: page.url,
+    status: findStatusValue(page)
   }
 }
 

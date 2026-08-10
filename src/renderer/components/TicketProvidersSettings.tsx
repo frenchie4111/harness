@@ -16,11 +16,16 @@ import {
   BookOpen,
   AlertCircle,
   Loader2,
-  Search
+  Search,
+  ChevronUp,
+  ChevronDown,
+  EyeOff,
+  Eye
 } from 'lucide-react'
 import { useBackend } from '../backend'
-import { useTicketProviders, useWorktrees } from '../store'
+import { useTicketProviders, useProviderCachedStatuses, useWorktrees } from '../store'
 import type { NotionDatabaseSchema, NotionDatabaseSummary } from '../types'
+import { mergeBucketOrder } from '../../shared/tickets'
 
 /** Asks main whether the given provider has a token recorded in
  *  secrets.enc. Tokens are write-only over IPC, so this is the only way
@@ -264,6 +269,14 @@ function TicketProviderForm({ initial, onSubmit, onCancel }: TicketProviderFormP
   const [appliesToRepoRoots, setAppliesToRepoRoots] = useState<string[]>(
     initial?.appliesToRepoRoots ?? []
   )
+  // Bucket ordering + collapse state. Buckets are the raw status values
+  // the provider returns; the config UI can only render buckets the
+  // Tickets slice has already seen from a fetch. Users can reorder them
+  // with chevrons and mark any as collapsed-by-default.
+  const [bucketOrder, setBucketOrder] = useState<string[]>(initial?.bucketOrder ?? [])
+  const [collapsedBuckets, setCollapsedBuckets] = useState<string[]>(
+    initial?.collapsedBuckets ?? []
+  )
   // Token UX matches the GitHub PAT block: hidden by default, "replace
   // token" reveals the input when one is already configured.
   const [replaceToken, setReplaceToken] = useState(!hasExistingToken)
@@ -296,12 +309,19 @@ function TicketProviderForm({ initial, onSubmit, onCancel }: TicketProviderFormP
       if (initial) {
         await backend.ticketsUpdateProvider(
           initial.id,
-          { label: label.trim(), config, appliesToRepoRoots },
+          { label: label.trim(), config, appliesToRepoRoots, bucketOrder, collapsedBuckets },
           replaceToken && token ? token : undefined
         )
       } else {
         await backend.ticketsAddProvider(
-          { label: label.trim(), type, config, appliesToRepoRoots },
+          {
+            label: label.trim(),
+            type,
+            config,
+            appliesToRepoRoots,
+            bucketOrder,
+            collapsedBuckets
+          },
           replaceToken && token ? token : undefined
         )
       }
@@ -423,6 +443,16 @@ function TicketProviderForm({ initial, onSubmit, onCancel }: TicketProviderFormP
           Tickets from this provider show up in the "From ticket" picker for each selected project.
         </p>
       </div>
+
+      {initial && (
+        <BucketOrderSection
+          providerId={initial.id}
+          bucketOrder={bucketOrder}
+          collapsedBuckets={collapsedBuckets}
+          onChangeOrder={setBucketOrder}
+          onChangeCollapsed={setCollapsedBuckets}
+        />
+      )}
 
       {type === 'github-issues' && (
         <p className="text-xs text-faint">
@@ -751,6 +781,134 @@ function NotionSetupFields({
           </div>
         </>
       )}
+    </div>
+  )
+}
+
+interface BucketOrderSectionProps {
+  providerId: string
+  bucketOrder: string[]
+  collapsedBuckets: string[]
+  onChangeOrder: (next: string[]) => void
+  onChangeCollapsed: (next: string[]) => void
+}
+
+/** Bucket reorder + collapse-by-default UI. The list of reorderable
+ *  bucket names is the union of (a) whatever the user has already saved
+ *  in `bucketOrder`, (b) statuses seen in the tickets slice's cache
+ *  from a prior fetch. If neither is populated we show a note pointing
+ *  users at the Tickets view. */
+function BucketOrderSection({
+  providerId,
+  bucketOrder,
+  collapsedBuckets,
+  onChangeOrder,
+  onChangeCollapsed
+}: BucketOrderSectionProps): JSX.Element {
+  const cachedStatuses = useProviderCachedStatuses(providerId)
+  // Same merge logic the Tickets view uses — the reorderable list is
+  // the effective bucket order the user would see if they opened the
+  // Tickets view right now.
+  const effective = useMemo(
+    () =>
+      mergeBucketOrder(
+        [{ id: providerId, label: '', type: 'notion', config: { databaseId: '' }, bucketOrder }],
+        cachedStatuses
+      ),
+    [providerId, bucketOrder, cachedStatuses]
+  )
+
+  const move = (name: string, direction: -1 | 1): void => {
+    const idx = effective.indexOf(name)
+    const swapWith = idx + direction
+    if (idx < 0 || swapWith < 0 || swapWith >= effective.length) return
+    const next = [...effective]
+    ;[next[idx], next[swapWith]] = [next[swapWith], next[idx]]
+    onChangeOrder(next)
+  }
+
+  const toggleCollapsed = (name: string): void => {
+    onChangeCollapsed(
+      collapsedBuckets.includes(name)
+        ? collapsedBuckets.filter((n) => n !== name)
+        : [...collapsedBuckets, name]
+    )
+  }
+
+  return (
+    <div>
+      <div className="text-xs font-semibold uppercase tracking-wider text-dim mb-1">
+        Bucket order
+      </div>
+      {effective.length === 0 ? (
+        <p className="text-xs text-faint">
+          Open the Tickets view once to fetch tickets from this provider — the buckets that show
+          up there can be reordered here afterwards.
+        </p>
+      ) : (
+        <div className="space-y-1">
+          {effective.map((name, i) => {
+            const isCollapsed = collapsedBuckets.includes(name)
+            return (
+              <div
+                key={name}
+                className="flex items-center gap-1 px-2 py-1 rounded bg-app border border-border-strong"
+              >
+                <div className="flex flex-col">
+                  <button
+                    type="button"
+                    onClick={() => move(name, -1)}
+                    disabled={i === 0}
+                    className="text-faint hover:text-fg disabled:opacity-25 cursor-pointer disabled:cursor-not-allowed"
+                    aria-label={`Move ${name} up`}
+                  >
+                    <ChevronUp className="icon-2xs" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => move(name, 1)}
+                    disabled={i === effective.length - 1}
+                    className="text-faint hover:text-fg disabled:opacity-25 cursor-pointer disabled:cursor-not-allowed"
+                    aria-label={`Move ${name} down`}
+                  >
+                    <ChevronDown className="icon-2xs" />
+                  </button>
+                </div>
+                <span className="text-sm text-fg flex-1 truncate">{name}</span>
+                <button
+                  type="button"
+                  onClick={() => toggleCollapsed(name)}
+                  className={`p-1 rounded cursor-pointer ${
+                    isCollapsed
+                      ? 'text-dim hover:text-fg'
+                      : 'text-faint hover:text-fg'
+                  }`}
+                  title={
+                    isCollapsed
+                      ? 'This bucket starts collapsed'
+                      : 'Collapse this bucket by default'
+                  }
+                  aria-label={
+                    isCollapsed
+                      ? `${name} is collapsed by default; click to show expanded`
+                      : `Collapse ${name} by default`
+                  }
+                >
+                  {isCollapsed ? (
+                    <EyeOff className="icon-xs" />
+                  ) : (
+                    <Eye className="icon-xs" />
+                  )}
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      )}
+      <p className="mt-1 text-xs text-faint">
+        Buckets render top-to-bottom in the Tickets view. Toggle the eye to start a bucket
+        collapsed — useful for "Done"-style buckets you don't want cluttering the top.
+      </p>
     </div>
   )
 }

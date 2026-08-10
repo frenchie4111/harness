@@ -741,6 +741,31 @@ export function useCachedTicket(
   })
 }
 
+/** Unique status values seen in the tickets slice's cache for a given
+ *  provider, in first-appearance order. Used by the provider config UI
+ *  to render the reorderable bucket list — the config UI can't invent
+ *  bucket names, so this feeds it the set of buckets the user might
+ *  actually reorder. Empty array before any list() call has populated
+ *  the cache for this provider. */
+export function useProviderCachedStatuses(providerId: string | null | undefined): string[] {
+  const byProvider = useAppState((s) => s.tickets.byProvider)
+  return useMemo(() => {
+    if (!providerId) return []
+    const cache = byProvider[providerId]
+    if (!cache) return []
+    const seen = new Set<string>()
+    const out: string[] = []
+    for (const t of cache.tickets) {
+      const s = t.status
+      if (typeof s === 'string' && s && !seen.has(s)) {
+        seen.add(s)
+        out.push(s)
+      }
+    }
+    return out
+  }, [byProvider, providerId])
+}
+
 /** The boot-time config.json load error, or null on a healthy load.
  *  Drives InvalidConfigModal. */
 export function useConfigLoadError() {
