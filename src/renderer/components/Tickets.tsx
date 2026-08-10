@@ -244,42 +244,46 @@ export function Tickets({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
-        <div className="px-6 py-6">
-          {providers.length === 0 ? (
+      <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+        {providers.length === 0 ? (
+          <div className="px-6 py-6">
             <TicketsEmpty kind="no-providers" onOpenSettings={onOpenSettings} />
-          ) : !selectedProvider ? null : totalCount === 0 && !state.loading && !state.error ? (
+          </div>
+        ) : !selectedProvider ? null : totalCount === 0 && !state.loading && !state.error ? (
+          <div className="px-6 py-6">
             <TicketsEmpty kind="no-tickets" onOpenSettings={onOpenSettings} />
-          ) : (
-            <>
-              <div className="mb-4 flex items-center gap-3 text-xs text-dim">
-                <span>
-                  <span className="text-fg-bright font-medium">{totalCount}</span> ticket
-                  {totalCount === 1 ? '' : 's'}
-                </span>
-                <span className="text-faint">·</span>
-                <span>
-                  <span className="text-fg-bright font-medium">{withWorktree}</span> with worktree
-                </span>
+          </div>
+        ) : (
+          <>
+            <div className="px-6 pt-4 shrink-0 flex items-center gap-3 text-xs text-dim">
+              <span>
+                <span className="text-fg-bright font-medium">{totalCount}</span> ticket
+                {totalCount === 1 ? '' : 's'}
+              </span>
+              <span className="text-faint">·</span>
+              <span>
+                <span className="text-fg-bright font-medium">{withWorktree}</span> with worktree
+              </span>
+            </div>
+
+            {state.error && (
+              <div className="mx-6 mt-3 shrink-0 flex items-center gap-2 px-3 py-2 text-xs text-warning bg-warning/10 border border-warning/30 rounded">
+                <AlertCircle className="icon-xs shrink-0" />
+                <span className="font-medium">{selectedProvider.label}:</span>
+                <span className="font-mono truncate">{state.error}</span>
               </div>
+            )}
 
-              {state.error && (
-                <div className="mb-3 flex items-center gap-2 px-3 py-2 text-xs text-warning bg-warning/10 border border-warning/30 rounded">
-                  <AlertCircle className="icon-xs shrink-0" />
-                  <span className="font-medium">{selectedProvider.label}:</span>
-                  <span className="font-mono truncate">{state.error}</span>
-                </div>
-              )}
-
+            <div className="flex-1 min-h-0 flex flex-col">
               <TicketsSection
                 rows={state.rows}
                 viewMode={viewMode}
                 onJumpToWorktree={onJumpToWorktree}
                 onSpawnFromTicket={onSpawnFromTicket}
               />
-            </>
-          )}
-        </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   )
@@ -339,32 +343,38 @@ function TicketsSection({
     [providersInSection]
   )
 
-  return (
-    <div>
-      {rows.length === 0 ? (
+  if (rows.length === 0) {
+    return (
+      <div className="px-6 py-6">
         <p className="text-xs text-faint px-3 py-2 border border-dashed border-border rounded">
           No tickets returned by this provider.
         </p>
-      ) : viewMode === 'board' ? (
-        <TicketsBoard
-          bucketOrder={bucketOrder}
-          byBucket={byBucket}
-          collapsedByDefault={collapsedByDefault}
+      </div>
+    )
+  }
+  if (viewMode === 'board') {
+    return (
+      <TicketsBoard
+        bucketOrder={bucketOrder}
+        byBucket={byBucket}
+        collapsedByDefault={collapsedByDefault}
+        onJumpToWorktree={onJumpToWorktree}
+        onSpawnFromTicket={onSpawnFromTicket}
+      />
+    )
+  }
+  return (
+    <div className="flex-1 min-h-0 overflow-y-auto px-6 pt-4 pb-6">
+      {bucketOrder.map((bucket) => (
+        <TicketBucket
+          key={bucket}
+          label={bucket}
+          rows={byBucket.get(bucket) ?? []}
+          defaultCollapsed={collapsedByDefault.has(bucket)}
           onJumpToWorktree={onJumpToWorktree}
           onSpawnFromTicket={onSpawnFromTicket}
         />
-      ) : (
-        bucketOrder.map((bucket) => (
-          <TicketBucket
-            key={bucket}
-            label={bucket}
-            rows={byBucket.get(bucket) ?? []}
-            defaultCollapsed={collapsedByDefault.has(bucket)}
-            onJumpToWorktree={onJumpToWorktree}
-            onSpawnFromTicket={onSpawnFromTicket}
-          />
-        ))
-      )}
+      ))}
     </div>
   )
 }
@@ -553,8 +563,8 @@ function TicketsBoard({
   onSpawnFromTicket
 }: TicketsBoardProps): JSX.Element {
   return (
-    <div className="-mx-6 px-6 overflow-x-auto">
-      <div className="flex gap-3 pb-2 items-start min-w-max">
+    <div className="flex-1 min-h-0 overflow-x-auto px-6 pt-4 pb-4">
+      <div className="flex gap-3 min-w-max h-full">
         {bucketOrder.map((bucket) => (
           <TicketColumn
             key={bucket}
@@ -591,7 +601,7 @@ function TicketColumn({
       <button
         type="button"
         onClick={() => setCollapsed(false)}
-        className="shrink-0 w-8 bg-app/50 border border-border rounded flex flex-col items-center gap-2 py-3 hover:bg-app hover:border-border-strong transition-colors cursor-pointer"
+        className="shrink-0 w-8 h-full bg-app/50 border border-border rounded flex flex-col items-center gap-2 py-3 hover:bg-app hover:border-border-strong transition-colors cursor-pointer"
         title={`Expand ${label} (${rows.length})`}
         aria-label={`Expand ${label} bucket, ${rows.length} tickets`}
       >
@@ -607,17 +617,17 @@ function TicketColumn({
     )
   }
   return (
-    <div className="shrink-0 w-64 flex flex-col bg-app/40 border border-border rounded">
+    <div className="shrink-0 w-64 h-full flex flex-col bg-app/40 border border-border rounded">
       <button
         type="button"
         onClick={() => setCollapsed(true)}
-        className="flex items-center gap-1 px-2.5 py-2 border-b border-border text-xs font-semibold uppercase tracking-wider text-dim hover:text-fg cursor-pointer"
+        className="shrink-0 flex items-center gap-1 px-2.5 py-2 border-b border-border text-xs font-semibold uppercase tracking-wider text-dim hover:text-fg cursor-pointer"
       >
         <ChevronDown className="icon-xs" />
         <span className="flex-1 text-left truncate">{label}</span>
         <span className="text-faint normal-case font-normal">{rows.length}</span>
       </button>
-      <div className="p-2 space-y-2 max-h-[70vh] overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto p-2 space-y-2">
         {rows.length === 0 ? (
           <p className="text-xs text-faint text-center py-4">Empty</p>
         ) : (
