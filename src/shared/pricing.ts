@@ -32,6 +32,7 @@ const RATES: Record<string, ModelRate> = {
   // dated ids like claude-opus-4-8-20260527 would bill at old rates.
   'claude-fable-5': { in: 10, out: 50 },
   'claude-mythos-5': { in: 10, out: 50 },
+  'claude-opus-5': { in: 5, out: 25 },
   'claude-opus-4-8': { in: 5, out: 25 },
   'claude-opus-4-7': { in: 5, out: 25 },
   'claude-opus-4-6': { in: 5, out: 25 },

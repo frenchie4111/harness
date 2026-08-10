@@ -24,6 +24,11 @@ describe('rateFor', () => {
     }
   })
 
+  it('bills Opus 5 at $5/$25 (bare id and dated variant)', () => {
+    expect(rateFor('claude-opus-5')).toEqual({ in: 5, out: 25 })
+    expect(rateFor('claude-opus-5-20260601')).toEqual({ in: 5, out: 25 })
+  })
+
   it('keeps the old-lineage catch-all for Opus 4.0 / 4.1 dated ids', () => {
     expect(rateFor('claude-opus-4-1-20250805')).toEqual({ in: 15, out: 75 })
     expect(rateFor('claude-opus-4-0')).toEqual({ in: 15, out: 75 })
