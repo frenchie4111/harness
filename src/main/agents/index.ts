@@ -40,6 +40,11 @@ export interface AgentModule {
   sessionFileExists(cwd: string, sessionId: string): boolean
   latestSessionId(cwd: string): string | null
   buildSpawnArgs(opts: AgentSpawnOpts): string
+  /** Pull the agent-assigned session ID out of a hook event payload,
+   *  or return null if this payload doesn't carry one. Only implemented
+   *  by agents with `assignsSessionId: false`; keeps agent-specific
+   *  field names (session_id vs conversation_id) out of shared code. */
+  extractSessionId?(payload: Record<string, unknown>): string | null
 }
 
 const agents: Record<AgentKind, AgentModule> = { claude, codex, cursor }

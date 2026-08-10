@@ -30,7 +30,13 @@ vi.mock('../hooks', () => ({
 
 import { homedir } from 'os'
 import { join } from 'path'
-import { hooksInstalled, installHooks, hookEvents, uninstallHooks } from './codex'
+import {
+  extractSessionId,
+  hooksInstalled,
+  installHooks,
+  hookEvents,
+  uninstallHooks
+} from './codex'
 
 const HOOKS_PATH = join(homedir(), '.codex', 'hooks.json')
 
@@ -149,5 +155,22 @@ describe('codex hook install / dedup', () => {
       { hooks: [{ type: 'command', command: 'echo user hook' }] }
     ])
     expect(final.hooks?.PreToolUse).toBeUndefined()
+  })
+})
+
+describe('codex extractSessionId', () => {
+  it('reads session_id from the payload', () => {
+    expect(extractSessionId({ session_id: 'sess-abc' })).toBe('sess-abc')
+  })
+
+  it('ignores fields belonging to other agents', () => {
+    expect(extractSessionId({ conversation_id: 'cursor-only' })).toBeNull()
+    expect(extractSessionId({ chat_id: 'nope', chatId: 'nope' })).toBeNull()
+  })
+
+  it('returns null for missing or non-string values', () => {
+    expect(extractSessionId({})).toBeNull()
+    expect(extractSessionId({ session_id: '' })).toBeNull()
+    expect(extractSessionId({ session_id: 42 })).toBeNull()
   })
 })
