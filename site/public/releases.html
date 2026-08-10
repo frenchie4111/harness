@@ -102,6 +102,54 @@
   <!-- Releases -->
   <div class="max-w-3xl mx-auto px-6 pb-24">
 
+    <!-- v2.13.0 -->
+    <section id="v2.13.0" class="release-section py-10">
+      <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
+        <h2 class="text-3xl font-bold tracking-tight"><a href="#v2.13.0" class="release-anchor">v2.13.0<span class="anchor-icon">🔗</span></a></h2>
+        <span class="text-sm text-neutral-500">August 9, 2026</span>
+      </div>
+      <a href="https://github.com/frenchie4111/harness/releases/tag/v2.13.0" class="text-sm text-amber-400/80 hover:text-amber-300 transition-colors">Download &rarr;</a>
+      <p class="text-neutral-400 mt-4 mb-4 leading-relaxed">A big one: prevent-sleep modes to keep long-running agents alive, custom worktree aliases, Cursor Agent support, and unified <code>Cmd+F</code> find across chat and terminals — plus a wide set of sidebar, chat, and reliability improvements.</p>
+      <div class="note-body">
+        <h4>New features</h4>
+        <ul>
+          <li><strong>PRs assigned to you auto-show in Reviewing</strong> — pull requests where you're a requested reviewer now appear automatically in the sidebar's Reviewing group, no manual add required.</li>
+          <li><strong>Create a worktree from a PR by number</strong> — enter a PR number in the worktree creator to check out that PR directly. <em class="text-neutral-500">(thanks <a href="https://github.com/ghale" class="text-amber-400/80 hover:text-amber-300">@ghale</a>, <a href="https://github.com/frenchie4111/harness/pull/183" class="text-amber-400/80 hover:text-amber-300">#183</a>)</em></li>
+          <li><strong>Customizable bottom launcher strip</strong> — the sidebar's bottom launcher strip is now customizable, with adaptive overflow when there isn't room for every icon.</li>
+          <li><strong>Per-commit right-click menu</strong> — right-click any commit for a new context menu; the first item copies the commit SHA. <em class="text-neutral-500">(thanks <a href="https://github.com/tresat" class="text-amber-400/80 hover:text-amber-300">@tresat</a>, <a href="https://github.com/frenchie4111/harness/pull/161" class="text-amber-400/80 hover:text-amber-300">#161</a>)</em></li>
+          <li><strong>"Fork chat here"</strong> — right-click any message in Chat to fork the conversation into a new session starting from that point.</li>
+          <li><strong>Cursor Agent support</strong> — Cursor Agent is now available alongside Claude Code and other supported agents. <em class="text-neutral-500">(thanks <a href="https://github.com/blindpirate" class="text-amber-400/80 hover:text-amber-300">@blindpirate</a>, <a href="https://github.com/frenchie4111/harness/pull/207" class="text-amber-400/80 hover:text-amber-300">#207</a>)</em></li>
+          <li><strong>GitHub API log viewer</strong> — a new debug view shows raw GitHub API request/response traffic, for diagnosing PR sync issues.</li>
+          <li><strong>Prevent system sleep while agents run</strong> — a new sidebar icon and hotkey block your Mac from sleeping while agents are working, with multiple modes and a popover that previews what each mode does.</li>
+          <li><strong>Unified find across chat and terminals</strong> — <code>Cmd+F</code> now opens the same find UI in both Chat and terminal tabs.</li>
+          <li><strong>Hotkeys to approve/deny tool use in Chat</strong> — approve or deny a pending tool-use request from the keyboard instead of clicking.</li>
+          <li><strong>"Harness" header pinned above the sidebar</strong> — the app title now stays pinned above the worktrees list.</li>
+          <li><strong>Worktree aliases</strong> — give any worktree a custom display name, settable from the UI or via new <code>set_worktree_alias</code> / <code>clear_worktree_alias</code> MCP tools.</li>
+          <li><strong>Option to disable auto-scroll in Chat</strong> — turn off automatic scroll-to-bottom while a response streams in.</li>
+        </ul>
+        <h4>Improvements</h4>
+        <ul>
+          <li><strong>Sidebar row layout overhaul</strong> — worktree rows now put their detail cluster (branch, PR status, etc.) on a second line for a cleaner, more readable layout.</li>
+          <li><strong>Command Center group collapse state persists</strong> — collapsed/expanded state for Command Center groups is now remembered across restarts. <em class="text-neutral-500">(thanks <a href="https://github.com/tresat" class="text-amber-400/80 hover:text-amber-300">@tresat</a>, <a href="https://github.com/frenchie4111/harness/pull/168" class="text-amber-400/80 hover:text-amber-300">#168</a>)</em></li>
+          <li><strong>Collapsible insight callouts</strong> — insight panels now render as collapsible callouts instead of always-expanded blocks. <em class="text-neutral-500">(thanks <a href="https://github.com/tresat" class="text-amber-400/80 hover:text-amber-300">@tresat</a>, <a href="https://github.com/frenchie4111/harness/pull/199" class="text-amber-400/80 hover:text-amber-300">#199</a>)</em></li>
+          <li><strong>Bulk worktree deletion feels instant</strong> — deleting many worktrees at once no longer blocks the UI while it works.</li>
+          <li><strong>More human-readable generated aliases</strong> — automatically generated worktree alias suggestions are now steered toward readable labels instead of terse slugs.</li>
+        </ul>
+        <h4>Fixes</h4>
+        <ul>
+          <li>Agent-created shells now eagerly spawn their PTY, fixing a lag when an agent opens a new shell tab.</li>
+          <li>Links clicked inside the app window now route to your default OS browser instead of navigating in place.</li>
+          <li>The PR poller no longer stalls for every repo when a single repo's GitHub API call returns a 504.</li>
+          <li>MCP bridge scripts no longer fill your disk via a runaway logging recursion.</li>
+          <li>Shell tab IDs are sanitized and the hooks directory is created more defensively, fixing an <code>ENOENT</code> when a path contained separator characters.</li>
+          <li>The auth-failure card in Chat now shows correctly when the error is nested inside the result or message payload.</li>
+          <li>Removed extra clearance for the macOS traffic-light buttons while in fullscreen.</li>
+          <li>Branch commits are now parsed using the correct record separator, fixing undefined rows in the commit list. <em class="text-neutral-500">(thanks <a href="https://github.com/ljacomet" class="text-amber-400/80 hover:text-amber-300">@ljacomet</a>, <a href="https://github.com/frenchie4111/harness/pull/163" class="text-amber-400/80 hover:text-amber-300">#163</a>)</em></li>
+        </ul>
+        <p class="text-neutral-400 text-sm mt-6 leading-relaxed">Huge thanks to <a href="https://github.com/blindpirate" class="text-amber-400/80 hover:text-amber-300">@blindpirate</a>, <a href="https://github.com/ghale" class="text-amber-400/80 hover:text-amber-300">@ghale</a>, <a href="https://github.com/ljacomet" class="text-amber-400/80 hover:text-amber-300">@ljacomet</a>, and <a href="https://github.com/tresat" class="text-amber-400/80 hover:text-amber-300">@tresat</a> for their contributions to this release.</p>
+      </div>
+    </section>
+
     <!-- v2.12.1 -->
     <section id="v2.12.1" class="release-section py-10">
       <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-4 mb-1">
